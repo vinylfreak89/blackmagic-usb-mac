@@ -5,9 +5,12 @@ intensity-shuttle-usb3-macos-brief.md
 .DS_Store
 
 # Build artifacts
-experiments/probe1
 experiments/usb_descriptor_probe
 experiments/iso_stream_smoke
+experiments/capture_naive_callback_io
+experiments/capture_untagged_ring
+experiments/capture_tagged_bench
+experiments/capture_tagged_bench_replay
 *.o
 *.dSYM/
 a.out
