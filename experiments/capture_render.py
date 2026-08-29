@@ -413,6 +413,58 @@ def counter_distance(start: int, end: int) -> int:
     return (end - start) & 0xFFFF
 
 
+def format_counter_runs(counters: list[int]) -> str:
+    if not counters:
+        return "none"
+    runs = []
+    start = previous = counters[0]
+    for counter in counters[1:]:
+        if counter_distance(previous, counter) == 1:
+            previous = counter
+            continue
+        runs.append(str(start) if start == previous else f"{start}-{previous}")
+        start = previous = counter
+    runs.append(str(start) if start == previous else f"{start}-{previous}")
+    return ",".join(runs)
+
+
+def parse_render_size(value: str) -> tuple[int, int] | None:
+    if value.lower() == "source":
+        return None
+    try:
+        width_text, height_text = value.lower().split("x", 1)
+        width, height = int(width_text), int(height_text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("size must be WIDTHxHEIGHT") from error
+    if width <= 0 or height <= 0 or width > 8192 or height > 8192:
+        raise argparse.ArgumentTypeError("render dimensions must be 1..8192")
+    if width % 2 or height % 2:
+        raise argparse.ArgumentTypeError("render dimensions must be even")
+    return width, height
+
+
+def parse_sar(value: str) -> str:
+    separator = ":" if ":" in value else "/"
+    try:
+        numerator_text, denominator_text = value.split(separator, 1)
+        numerator, denominator = int(numerator_text), int(denominator_text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("SAR must be NUM:DEN") from error
+    if numerator <= 0 or denominator <= 0:
+        raise argparse.ArgumentTypeError("SAR terms must be positive")
+    return f"{numerator}/{denominator}"
+
+
+def parse_crf(value: str) -> int:
+    try:
+        crf = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("CRF must be an integer") from error
+    if not 0 <= crf <= 51:
+        raise argparse.ArgumentTypeError("CRF must be in the range 0..51")
+    return crf
+
+
 def write_counter_timed_preview_video(
     mm,
     spans,
@@ -440,6 +492,8 @@ def write_counter_timed_preview_video(
             f"implausible counter range {start_counter}..{end_counter}"
         )
 
+    # Index byte ranges, not decoded frames. A five-minute capture contains
+    # several GiB of UYVY; retaining it here would defeat mmap and exhaust RAM.
     exact = {}
     for marker_index in range(marker_start, marker_end):
         current = markers[marker_index]
@@ -450,10 +504,7 @@ def write_counter_timed_preview_video(
             next_pure - pure == VIDEO_UNIT_BYTES
             and counter_distance(counter, next_counter) == 1
         ):
-            exact[counter] = unit_to_480i(
-                gather_video_bytes(mm, spans, ends, mixed, next_mixed),
-                first_field,
-            )
+            exact[counter] = (mixed, next_mixed)
 
     black_pair = b"\x80\x10\x80\x10"
     black = black_pair * (720 * 480 // 2)
@@ -462,17 +513,17 @@ def write_counter_timed_preview_video(
     with open(output_path, "wb") as output:
         for step in range(frame_count):
             counter = (start_counter + step) & 0xFFFF
-            frame = exact.get(counter)
-            if frame is None:
+            byte_range = exact.get(counter)
+            if byte_range is not None:
+                frame = unit_to_480i(
+                    gather_video_bytes(
+                        mm, spans, ends, byte_range[0], byte_range[1]
+                    ),
+                    first_field,
+                )
+            else:
                 repeated.append(counter)
                 frame = previous
-                if frame is None:
-                    # Look ahead only when the selected range starts damaged.
-                    for lookahead in range(step + 1, frame_count):
-                        candidate = (start_counter + lookahead) & 0xFFFF
-                        if candidate in exact:
-                            frame = exact[candidate]
-                            break
                 if frame is None:
                     frame = black
             output.write(frame)
@@ -491,6 +542,9 @@ def render_preview(
     marker_end,
     first_field,
     ffmpeg,
+    render_size,
+    render_sar,
+    render_crf,
 ):
     sample_by_counter = {counter: sample for counter, sample, *_ in audio_rows}
     with tempfile.TemporaryDirectory(prefix="mixed-capture-render-") as directory:
@@ -515,19 +569,34 @@ def render_preview(
             ) from error
         expected = frames * 48_000 * 1001 / 30_000
         actual = audio_end - audio_start
-        if abs(actual - expected) > 4:
+        tempo = actual / expected
+        if not 0.5 <= tempo <= 2.0:
             raise RuntimeError(
-                f"audio interval is {actual} samples; expected about {expected:.1f}"
+                f"implausible audio/video duration ratio {tempo:.6f}"
+            )
+        if abs(actual - expected) > 4:
+            print(
+                f"WARNING: review audio has {actual:,} samples; counter-timed "
+                f"video expects {expected:,.1f}. Applying atempo={tempo:.9f}; "
+                "raw PCM remains unmodified.",
+                file=sys.stderr,
             )
         parity = "bff" if first_field == "bottom" else "tff"
-        video_filter = (
-            f"bwdif=mode=send_field:parity={parity}:deint=all,"
-            "scale=640:480:flags=lanczos,setsar=1"
-        )
-        audio_filter = (
-            f"atrim=start_sample={audio_start}:end_sample={audio_end},"
-            "asetpts=PTS-STARTPTS"
-        )
+        video_filters = [f"bwdif=mode=send_field:parity={parity}:deint=all"]
+        if render_size:
+            render_width, render_height = render_size
+            video_filters.append(
+                f"scale={render_width}:{render_height}:flags=lanczos"
+            )
+        video_filters.append(f"setsar={render_sar}")
+        video_filter = ",".join(video_filters)
+        audio_filters = [
+            f"atrim=start_sample={audio_start}:end_sample={audio_end}",
+            "asetpts=PTS-STARTPTS",
+        ]
+        if abs(actual - expected) > 4:
+            audio_filters.append(f"atempo={tempo:.12f}")
+        audio_filter = ",".join(audio_filters)
         command = [
             ffmpeg,
             "-y",
@@ -560,7 +629,7 @@ def render_preview(
             "-preset",
             "medium",
             "-crf",
-            "16",
+            str(render_crf),
             "-pix_fmt",
             "yuv420p",
             "-c:a",
@@ -655,6 +724,27 @@ def main():
     parser.add_argument(
         "--ffmpeg", default="ffmpeg", help="ffmpeg executable used by --render"
     )
+    parser.add_argument(
+        "--render-size",
+        type=parse_render_size,
+        default=None,
+        metavar="SOURCE|WIDTHxHEIGHT",
+        help="optional spatial resize for --render (default: source 720x480)",
+    )
+    parser.add_argument(
+        "--render-sar",
+        type=parse_sar,
+        default="8/9",
+        metavar="NUM:DEN",
+        help="sample aspect ratio for --render (default: 8:9 NTSC 4:3)",
+    )
+    parser.add_argument(
+        "--render-crf",
+        type=parse_crf,
+        default=16,
+        metavar="N",
+        help="libx264 constant-rate-factor for --render (default: 16)",
+    )
     args = parser.parse_args()
 
     if args.render and (
@@ -712,13 +802,17 @@ def main():
                         args.render_marker_end,
                         args.first_field,
                         args.ffmpeg,
+                        args.render_size,
+                        args.render_sar,
+                        args.render_crf,
                     )
                     start, end, frames, repeated, audio_start, audio_end = result
                     print(
                         f"rendered {frames:,} frames / {frames*2:,} fields; "
                         f"counter {start}..{end}; audio samples "
                         f"{audio_start:,}..{audio_end:,}; "
-                        f"preview repeats={len(repeated)} {repeated}"
+                        f"preview repeats={len(repeated)} "
+                        f"ranges={format_counter_runs(repeated)}"
                     )
             finally:
                 mm.close()

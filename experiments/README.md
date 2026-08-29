@@ -88,7 +88,8 @@ at matching `DeckLinkAudioResyncT` counters:
 python3 experiments/capture_render.py capture.bin \
   --render review.mp4 \
   --render-marker-start 88 \
-  --render-marker-end 762
+  --render-marker-end 762 \
+  --render-crf 10
 ```
 
 Repeats are preview concealment only and are listed on stdout. The verified
@@ -101,3 +102,17 @@ alternating vertical displacement, despite the usual expectation that NTSC SD
 will be BFF. Use `--first-field bottom` only when motion in another capture
 supports it. This avoids the vertical breathing produced by independently
 scaling two 237-line field crops.
+
+The renderer keeps the source at 720x480 by default and signals NTSC 4:3 with
+SAR 8:9; it does not upscale. `--render-size` is opt-in for non-archival review
+copies, and `--render-sar 1:1` is appropriate only after resizing to square
+pixels.
+
+If the first/last shared counters expose a small accumulated audio deficit, the
+review renderer reports it and applies a bounded `atempo` correction to meet
+the counter-timed video endpoint. Extracted PCM and archival maps are never
+resampled or concealed.
+
+Input remains memory-mapped. Full renders stream decoded units to a temporary
+raw-video file while retaining only one current and one previous frame in RAM;
+the frame index stores byte ranges, not multi-gigabyte image buffers.
