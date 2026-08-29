@@ -55,7 +55,26 @@ damaged security metadata that then had to be restored from a Time Machine backu
 
 ---
 
-### 7. A discrepancy is a lead, not a thing to explain away
+### 7. A metric that constrains a *difference* cannot locate an *absolute* position
+The field-registration fault was reported for hours as "field 2's origin wanders across 274–285."
+It was measured with comb/weave scoring — a metric that is mathematically **only** sensitive to
+`f2 − f1`, because translating both fields together leaves the weave identical. It therefore could
+never have located field 2's origin at all. A full census against **physical anchors** (the
+device's constant hard-padding ruler at lines 0–6/261–269/523–524, and each field's VBI signature)
+showed the transport raster is rigid and that **field 1's picture** is what moves.
+
+Two rules fall out. **Ask what a metric is capable of resolving before quoting its output as a
+measurement** — this is the same error as the "0 errors" bug (§1): an instrument's silence and an
+estimator's best guess were both promoted to fact without checking what they could actually see.
+And **anchor geometry to something the device asserts**, not to a quality score over the content.
+
+Corollary — **low-margin estimator output is not data.** 42% of the off-nominal picks carried a
+median relative margin of **0.027** against **0.587** for confident picks; they were noise being
+reported as signal. Always emit a per-decision confidence, threshold on it, and exclude regions
+where the metric provably has nothing to work with (here: a flat bright field with no vertical
+detail, and dropout frames with no VBI at all). "Unmeasurable" is a valid, useful result.
+
+### 8. A discrepancy is a lead, not a thing to explain away
 The decoder recovered **6,160** video units where the audio resync records proved **8,991** frames
 had occurred. That 2,831-frame gap was *rationalized* on the spot — "consistent with the ~100 s of
 stop/rewind/no-signal" — and moved past. **The gap was the bug.** A plausible story was accepted in
@@ -66,7 +85,7 @@ the highest-value signal available. Explaining it away with a story that happens
 expensive shortcut in this log — it postponed the real finding by hours, and only an independent
 investigator eventually chased the number down.
 
-### 8. Don't claim credit for a fix you didn't prove you caused
+### 9. Don't claim credit for a fix you didn't prove you caused
 A commit that had been failing suddenly succeeded, and the sandbox-ACL strip performed just before
 it was announced as the fix. It was not — the actual cause was the agent's approval policy. Two
 changes had landed close together and the wrong one was credited, purely because it was *mine*.
