@@ -101,29 +101,67 @@ matches them and discards the orphan — **we must NOT do this** (§8).
 **Firmware:** none uploaded; device is already on its main PID. Requests 192/219/222/223/224 are
 firmware-upgrade — stay away.
 
-## 6. Verified vs UNPROVEN
+## 6. Status — confirmed / qualified / open
 
-**Bench-proven on this M3 / macOS 26.6.1, no source connected; `experiments/`):**
+**CONFIRMED on hardware (M3 / macOS 26.6.1; `experiments/`):**
 - ✅ Userspace `libusb` open + `claim_interface(0)` — no root, no entitlement.
 - ✅ Real endpoint map (usb_descriptor_probe): IF0 **alt2** = iso IN **`0x83` video** (49152 B/interval,
-  burst 11) + **`0x84` audio** (2048) + bulk `0x05`/`0x86`; **alt1** = output path.
-- ✅ Full capture init runs clean: `alt1→alt2` reset, mode word `0x3f000000`, latch
-  `0x73c60001`, status read (`214/16` → `00 00 0c e0`).
-- ✅ **Isochronous streaming works flawlessly on Darwin** (iso_stream_smoke): ~87 MB video in 4 s,
-  **0 iso-packet errors, 0 transfer errors**, ~174 Mbit/s (matches SD 8-bit), clean shutdown.
-  → **retires the Darwin-iso (risk #3) and macOS-permissions risks.**
-- ✅ Framing observed live: marker `00 00 ff ff`, then a **LE 16-bit frame counter that
-  increments** (`0x0001,0x0002,…` — our `tc16`) + format code **`0x0800` = no-signal** (correct,
-  nothing connected). So the header after the marker looks like `[tc16 LE][format16 LE]`.
-- ❗ **The ONLY remaining existential unknown (now narrow):** connect a real analog source and
-  confirm `0x0800` → an NTSC code (`0xe1xx`) with real, changing pixels. Everything upstream is
-  proven. **An S-Video cable (on hand) suffices to run this go/no-go — no purchase needed (S-Video is also the recommended input).** bmusb caveats (unconditional input list; upstream lists analog *audio* not
-  *video*) keep it unproven until this passes — settle by the living-room test, not argument.
-  ⚠️ A floating analog input intermittently **false-locks on noise** — with no source we saw
-  stray PAL-family frames (`0xe809`, `0xe801`, value varies) amid the no-signal frames. So the
-  go/no-go must require the NTSC format to be the **dominant** format with changing pixels, not a
-  couple of stray hits (`iso_stream_smoke`'s verdict now enforces dominance). Do not accept a frame on the
-  `00 00 ff ff` magic alone.
+  burst 11) + **`0x84` audio** (2048) + bulk `0x05`/`0x86`; **alt1** = output.
+- ✅ Full init: `alt1→alt2` reset, mode word (`0x3f000000` S-video / `0x3b000000` component),
+  latch `0x73c60001`, status `214/16`.
+- ✅ **ANALOG CAPTURE WORKS — existential unknown RESOLVED.** Real color **NTSC 480i** captured
+  via **S-Video** and **visually confirmed** (bob-deinterlaced to a clean frame). Source deck:
+  JVC HM-DHX2. Deck requirements: use a rear OUTPUT jack (the front AV block is input-only), and
+  HDMI output mode must be off so the deck outputs 480i (in HD/progressive output modes the SD
+  analog outputs are blanked → black-with-sync capture).
+- ✅ Isochronous **throughput** proven: sustained SD at ~**181 Mbit/s decimal** (≈173 Mib/s) —
+  NOT "174 Mbit/s". CPU/bandwidth are non-issues.
+
+**QUALIFIED / CORRECTED:**
+- Bob-deinterlace vs the deck's HDMI: *on the tested tape segments*, field-rate bob from analog
+  avoided the deck-HDMI deinterlace artifacts and looked cleaner. **Comparative, not universal.**
+- The 16-bit value after the marker **increments per marker-delimited transport unit (incl.
+  short/fragmented units)**; it is **NOT** established as a video-frame timecode. (Earlier "tc16
+  frame counter" was wrong.)
+- **Rewind frames are NOT "valid."** During rewind the Shuttle **keeps reporting the NTSC format
+  and emits structurally-framed but severely degraded/noisy raster.** Format classification is
+  **not** a quality guarantee. (So "the device lies about lock" was also wrong.)
+- The 60 s / 1.3 GB run = **"sustained capture completed," NOT "clean"** — until packet-error
+  counters, short-write checks, and submission-order instrumentation exist.
+
+**RESOLVED — the intermittent frame "tear":** a frame-by-frame decode traced it
+to a **renderer bug — not the signal, not the player**: the extractor accepted a **short
+755552-byte unit** (tc 5839, 496 B short of 756048) and **read 756000 B anyway, spilling 496 B
+across the next marker** → horizontal raster slip = the green splice. **Fix:** strict extractor
+invariant — `format==0xe801` **and** `gap==756048` **and** `payload==756000`, **never read past
+the next marker**; short units archived separately, never fed to the fixed-raster renderer. Two
+narrower issues stay OPEN: (a) *why* that unit was short; (b) whether Darwin/libusb callbacks ever
+arrive out of submission order.
+
+**OPEN / NOT retired:**
+- ❗ **Darwin iso callback ordering + loss provenance** — throughput proven, ordering/loss NOT.
+  `capture_naive_callback_io` cannot substantiate "0 errors" (it silently skips failed packets and ignores `fwrite`
+  returns).
+- ❗ **Long-capture data loss:** the 5-min capture came back ~half size, every frame malformed —
+  the naive probe's **`fwrite` inside the iso callback blocks the event thread and drops packets**
+  over long runs.
+
+**Confirmed probe defects → capture-core requirements (fix before trusting captures):**
+1. **No disk I/O in the iso callback** — swap/enqueue buffer + resubmit immediately; a ring buffer
+   + dedicated **writer thread** does the writing.
+2. **Per-endpoint submission sequence** — tag each submission monotonically and reconstruct byte
+   order by **submission** seq, not callback order (clean gaps + monotonic counter do NOT rule out
+   two equal chunks swapping inside one marker interval).
+3. **Count/act on errors** — don't silently skip non-COMPLETED iso packets; check every `fwrite`
+   return; log packet status/lengths.
+4. **Handle a marker split across two iso packets.**
+5. **Cancel outstanding transfers on shutdown.**
+6. **Strict extractor invariant** (above); archive short/fragmented units separately.
+- Provenance test for the open questions: log per completed batch {endpoint, submit seq, callback
+  seq, transfer status, per-packet status/req/actual len, payload}; reconstruct submission vs
+  callback order to distinguish reordering / device-short-unit / host-loss / writer-failure /
+  pre-host corruption. (Do NOT drop to 1 transfer in flight — it changes scheduling and proves
+  nothing.)
 
 ## 7. The core problem: unstable field parity on degraded sources
 
