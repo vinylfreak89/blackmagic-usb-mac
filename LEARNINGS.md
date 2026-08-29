@@ -55,8 +55,39 @@ damaged security metadata that then had to be restored from a Time Machine backu
 
 ---
 
+### 7. A discrepancy is a lead, not a thing to explain away
+The decoder recovered **6,160** video units where the audio resync records proved **8,991** frames
+had occurred. That 2,831-frame gap was *rationalized* on the spot — "consistent with the ~100 s of
+stop/rewind/no-signal" — and moved past. **The gap was the bug.** A plausible story was accepted in
+place of a five-minute check that would have exposed the missing USB frames immediately.
+
+When a count derived from what *should* exist disagrees with what *does* exist, that difference is
+the highest-value signal available. Explaining it away with a story that happens to fit is the most
+expensive shortcut in this log — it postponed the real finding by hours, and only an independent
+investigator eventually chased the number down.
+
+### 8. Don't claim credit for a fix you didn't prove you caused
+A commit that had been failing suddenly succeeded, and the sandbox-ACL strip performed just before
+it was announced as the fix. It was not — the actual cause was the agent's approval policy. Two
+changes had landed close together and the wrong one was credited, purely because it was *mine*.
+Post-hoc-ergo-propter-hoc is how a useless change gets enshrined as a fix and a real cause goes
+unrecorded. State the causal claim only when the counterfactual was actually tested.
+
+---
+
 ## Claude — misdiagnoses
 
+- **Never asked the device for the data at all — silently.** The single worst defect in the
+  project, and it was originally filed only as an instrumentation lesson rather than as the bug it
+  is. `XFERS=6` × `V_NPK=8` queued roughly **6 ms** of Darwin isochronous schedule. Darwin assigns
+  each transfer an explicit *future* USB frame number and, when the submitted queue expires,
+  advances to a later frame. The skipped USB frames therefore had **no request outstanding**: the
+  data was not corrupted, not dropped, and not lost in transit — **it was never requested.** Since
+  a transfer that was never scheduled produces no callback, no status, and no packet descriptor,
+  every error counter stayed at zero and the run was reported as clean. Two distinct failures in
+  one: the omission itself, and reporting silence as success. Queue depth on an isochronous
+  endpoint is a **correctness** parameter, not a tuning knob — the host must be asking for *every*
+  frame interval, continuously, and must be able to prove it did.
 - **Declared analog capture working from a format code alone.** A locked format value is not a
   picture; the frames were noise. Format classification is never a quality guarantee (the same
   error recurred later with rewind frames, which report valid NTSC while being garbage).
