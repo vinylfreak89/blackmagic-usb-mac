@@ -44,3 +44,60 @@ Never accept a frame boundary/format on the 4-byte magic alone.
 3. PASS = dominant format is an NTSC code (`0xe1xx`), verdict `SIGNAL LOCKED`.
    Then eyeball that pixels are changing (real image, not a stuck frame).
    Expected NTSC 8-bit code ≈ `0xe901`/`0xe101`-family.
+
+## capture_render — repair an untagged capture_untagged_ring capture
+
+`capture_untagged_ring.c` accidentally placed completed video (0x83) and audio (0x84)
+transfers in one byte stream without endpoint tags. `capture_render.py`
+recovers the two endpoint streams globally. It does not use a per-frame
+zero-density maximum: audio callbacks can straddle video markers, so that
+approach moves callback edges and causes horizontal wobble or green/magenta
+UYVY bands.
+
+The verified audio record phase is eight S24LE channels per 24-byte record:
+channels 0/1 occupy bytes 0..5, and muted channels 2..7 occupy bytes 6..23.
+`DeckLinkAudioResyncT` is a complete 24-byte record in the same phase. The
+splitter tests all 24 phases, grows maximal record runs, and checks them against
+the 11,520/11,616-byte callback grammar. Adjacent audio callbacks may merge;
+their internal boundary is unknowable and unnecessary for endpoint recovery.
+
+Example archival extraction:
+
+```sh
+python3 experiments/capture_render.py capture.bin \
+  --video-endpoint video-endpoint.bin \
+  --audio-endpoint audio-8ch-with-resync.bin \
+  --stereo-pcm audio-stereo.s24le \
+  --video-480i complete-frames-720x480.uyvy \
+  --audio-spans audio-spans.tsv \
+  --sync-map audio-sync.csv \
+  --video-map video-map.csv
+```
+
+The raw endpoint outputs preserve discontinuities. `--video-480i` contains
+only complete 756,048-byte units and must not be muxed as one gapless CFR movie
+across dropped/fragmented units. The CSV maps retain counters, endpoint offsets,
+and audio sample positions for a timestamp-aware archival writer.
+
+For a review MP4, select two e801 marker indices. This path restores a CFR
+timeline from the shared counter, repeats the prior good image for damaged or
+missing counter slots, bobs with FFmpeg's field-aware `bwdif`, and trims audio
+at matching `DeckLinkAudioResyncT` counters:
+
+```sh
+python3 experiments/capture_render.py capture.bin \
+  --render review.mp4 \
+  --render-marker-start 88 \
+  --render-marker-end 762
+```
+
+Repeats are preview concealment only and are listed on stdout. The verified
+default for this capture is stored chronological field 1 mapped to the top
+field. It constructs ordinary 720x480 TFF UYVY from full 240-line fields
+(source lines 17..256 and 280..519), then
+`bwdif=mode=send_field:parity=tff` performs the half-line-aware 59.94p bob.
+The credit roll is the disambiguator: the opposite mapping produces a strong
+alternating vertical displacement, despite the usual expectation that NTSC SD
+will be BFF. Use `--first-field bottom` only when motion in another capture
+supports it. This avoids the vertical breathing produced by independently
+scaling two 237-line field crops.

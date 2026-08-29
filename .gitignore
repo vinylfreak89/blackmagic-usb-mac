@@ -14,3 +14,4 @@ experiments/capture_tagged_bench_replay
 *.o
 *.dSYM/
 a.out
+experiments/__pycache__/
