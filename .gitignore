@@ -1,0 +1,13 @@
+# Early web-context brief — superseded by CLAUDE.md; kept locally, not tracked.
+intensity-shuttle-usb3-macos-brief.md
+
+# macOS
+.DS_Store
+
+# Build artifacts
+experiments/probe1
+experiments/usb_descriptor_probe
+experiments/iso_stream_smoke
+*.o
+*.dSYM/
+a.out
