@@ -205,7 +205,15 @@ It works because both streams are strongly self-describing **and the format self
 
 Genuinely unrecoverable (and none of it caused by the missing tags): merged adjacent audio
 callbacks' internal boundary (irrelevant — samples stay contiguous, resync records re-anchor
-timing), and anything already dropped at capture time (overflow / failed iso packets).
+timing), and anything already dropped at capture time (overflow / failed iso packets / **the
+unscheduled Darwin holes above**).
+
+⚠️ **"Recoverable" ≠ "complete."** `untagged_capture` itself is missing data — after counter 25026 every
+video deficit is an exact multiple of 24,576 B (unscheduled transfer slots, §6 open items), and
+those positions were **never recorded**, so no decoder can restore them byte-exactly. De-interleave
+recovers *what crossed the bus*; it cannot recover what the host never asked for. Do not read the
+"6,160 units, all exactly 756,048 B" result as evidence the capture was lossless — the units that
+*survive* are exact, which is a different claim.
 
 **Field order: TFF, verified empirically** — stored chronological field 1 → **top** field, built as
 720×480 from source lines 17..256 and 280..519, bobbed with `bwdif=mode=send_field:parity=tff`.
