@@ -89,7 +89,10 @@ experiment's mode word. Then latch: req 215, index 24, `0x73c60001`.
 525/625-line raster** via extra top/bottom lines.
 
 **Audio:** 8-channel **24-bit** raw; **sample rate is NOT signaled — it's guessed** from
-sample-count vs frame-rate (32000/44100/48000).
+sample-count vs frame-rate (32000/44100/48000). **Observed on hardware (§6):** 24-byte records,
+only **2 channels active** (bytes `[0:6]`, the other 6 always zero), and a
+**`DeckLinkAudioResyncT`** record once per video frame carrying the **shared 16-bit counter** —
+which is what makes A/V sync (and untagged de-interleaving) exact.
 
 **Frame boundaries:** a sync marker in the stream (bmusb: `00 00 ff ff`). Only 4 bytes → **can
 occur inside UYVY/v210 content**; validate by expected position + plausible following header +
@@ -138,13 +141,22 @@ the next marker**; short units archived separately, never fed to the fixed-raste
 narrower issues stay OPEN: (a) *why* that unit was short; (b) whether Darwin/libusb callbacks ever
 arrive out of submission order.
 
+**RESOLVED by `capture_untagged_ring` (ring buffer + writer thread):**
+- ✅ **Long-capture data loss fixed.** A full 5-min run held **full rate with 0 iso-packet errors,
+  0 ring overflow, 0 submission-order inversions**; ring high-water stayed at **0 MB**, which
+  *proves* the old failure was `fwrite` **blocking the callback**, not disk throughput. (6 transfer
+  errors occurred at the deliberate stop/rewind transitions and were counted + resubmitted, not
+  silently dropped — that is the error-visibility fix working.)
+- ✅ **Darwin iso callback ordering:** 0 inversions over 10 s and 5 min. Evidence *for* in-order
+  completion on this host — not a proof of the general property; keep the counter in the core.
+
 **OPEN / NOT retired:**
-- ❗ **Darwin iso callback ordering + loss provenance** — throughput proven, ordering/loss NOT.
-  `capture_naive_callback_io` cannot substantiate "0 errors" (it silently skips failed packets and ignores `fwrite`
-  returns).
-- ❗ **Long-capture data loss:** the 5-min capture came back ~half size, every frame malformed —
-  the naive probe's **`fwrite` inside the iso callback blocks the event thread and drops packets**
-  over long runs.
+- ❗ **Silent host-loss holes.** On ring-full, `capture_untagged_ring` drops the payload and only counts bytes —
+  **no marker in the stream**, so a gap is indistinguishable from contiguous data downstream.
+  Violates §8 property 1/6. Fixed by the tagged format (requirement 7).
+- ❗ **Non-atomic shared state in `capture_untagged_ring`:** `inflight`, `v_bytes`, `v_submit` are plain globals
+  mutated from callbacks; `g_stop`/`g_done` are `volatile`, not atomics. Bench-adequate, not
+  core-adequate.
 
 **Confirmed probe defects → capture-core requirements (fix before trusting captures):**
 1. **No disk I/O in the iso callback** — swap/enqueue buffer + resubmit immediately; a ring buffer
@@ -157,6 +169,49 @@ arrive out of submission order.
 4. **Handle a marker split across two iso packets.**
 5. **Cancel outstanding transfers on shutdown.**
 6. **Strict extractor invariant** (above); archive short/fragmented units separately.
+7. **Tag every chunk on the wire-to-disk path** — `{endpoint, submit_seq, length}` header per
+   payload, plus an explicit **`HostLoss` record** on overflow. Untagged output forces the reader
+   to *infer* stream identity from content; tagging makes de-interleaving exact instead of
+   inferential and makes holes explicit. (Improvement, not a rescue — see the recovery result
+   below: untagged captures are NOT stranded.)
+
+### Untagged video+audio mix is RECOVERABLE (proven with `capture_render.py`)
+
+`capture_untagged_ring` submits both endpoints, so completed video (0x83) and audio (0x84) transfers land in one
+flat file **with no endpoint tag**, in completion order. This was accidental — and it turns out to
+be a genuine **A/V** capture, not a corrupt one. Full-file result: **6,160 video units, every one
+exactly 756,048 B**; **26,487 audio spans, 0 counter discontinuities**; renders correctly.
+
+It works because both streams are strongly self-describing **and the format self-validates**:
+- **Audio record = 24 B**: 8ch × 24-bit where only **2 channels are active (bytes `[0:6]`)**, so
+  **bytes `[6:24]` are always zero**. An 18-of-24 zero pattern repeating *in phase* effectively
+  does not occur in UYVY video, and the test holds for loud *or* silent audio.
+- **`DeckLinkAudioResyncT`** appears **once per video frame** (8,991 over 300 s) as a complete
+  24-byte record in the same phase, carrying **the same 16-bit counter as video** → A/V sync comes
+  from a shared counter, never from interleave position.
+- **The validator:** remove exactly the right bytes and consecutive `0xe801` markers land at
+  **exactly 756,048**. Any mis-cut shows as an off-by-N gap. This is a hard property, not a
+  heuristic — it caught every bad extractor (off by 120 B, then 1–4 B, each → whole-frame UYVY
+  phase shift = green/magenta or an "hsync-off" raster slip).
+- **Do NOT de-interleave per-frame by zero-density maximum.** Audio callbacks **straddle video
+  markers** (the first audio block in a frame span is a partial), so per-frame heuristics move
+  callback edges → horizontal wobble + leaked-audio bands. It must be a **global** pass.
+
+Genuinely unrecoverable (and none of it caused by the missing tags): merged adjacent audio
+callbacks' internal boundary (irrelevant — samples stay contiguous, resync records re-anchor
+timing), and anything already dropped at capture time (overflow / failed iso packets).
+
+**Field order: TFF, verified empirically** — stored chronological field 1 → **top** field, built as
+720×480 from source lines 17..256 and 280..519, bobbed with `bwdif=mode=send_field:parity=tff`.
+The credit roll is the disambiguator: TFF gives **0.0345 px** mean motion alternation vs **0.759 px
+(±1.7 px excursions)** for BFF. Note this **contradicts the usual NTSC-SD-is-BFF expectation** —
+trust the measurement, and re-measure per capture rather than assuming.
+
+**Pipeline work does NOT need the deck.** Everything downstream of acquisition — §9 archival
+writer, §10 CMIO/OBS delivery — is developed by **replaying a captured file through a virtual
+device**. This makes the whole downstream pipeline deterministic, testable without tape, and
+exercisable against recorded damage (program cut, no-signal rewind, short units) on demand. It is
+§8 property 9 (deterministic replay) promoted to the primary development workflow.
 - Provenance test for the open questions: log per completed batch {endpoint, submit seq, callback
   seq, transfer status, per-packet status/req/actual len, payload}; reconstruct submission vs
   callback order to distinguish reordering / device-short-unit / host-loss / writer-failure /
@@ -314,9 +369,9 @@ delivery edge; wrong one at acquisition.
 
 ## 11. Milestones / experiment plan
 
-1. **Native probe** (direct-attached, 8-bit S-video, mode `0x3F000000`): open/claim/alt-reset/
-   mode/latch/stream 10–60 s. Confirm status & format go **`0x0800` → NTSC-family**, non-green
-   changing pixels, monotonic V/A timecodes, zero packet errors. **Existential go/no-go.**
+1. ✅ **DONE** — **Native probe** (direct-attached, 8-bit S-video, mode `0x3F000000`):
+   open/claim/alt-reset/mode/latch/stream. Real NTSC 480i captured and visually confirmed;
+   sustained 5-min capture with 0 loss (§6). **Existential go/no-go: PASSED.**
 2. **A/B field fixture**: source with a marker on field 1 vs field 2 + synced audio click, with
    hard signal cuts — pins slot order, spatial-parity mapping, boundary/trailer semantics, V↔A
    counter relationship, loss/relock behavior. Do this *before* torture-tape inference.
@@ -324,6 +379,10 @@ delivery edge; wrong one at acquisition.
    locates where the damage happens (deck HDMI pipeline vs Shuttle frontend vs baked-in line
    timing). Answers the original "why field-flipping" question.
 4. **Capture core** (§8) → 5. **Archival writer** (§9) → 6. **OBS/CMIO live path** (§10).
+   **Steps 5–6 are built by replaying a captured file through a virtual device — no deck, no tape,
+   no live signal** (see §6). Only steps 1–4 need the hardware; everything downstream is
+   deterministic replay, so the archival writer and the CMIO/OBS path can be developed and
+   regression-tested against recorded damage (program cut, no-signal rewind, short units) at will.
 
 **Analog input choice:** default **S-Video** (VHS/S-VHS is natively Y/C → most direct, least
 transformed tap). **A/B vs component** early: component moves chroma demodulation off the
