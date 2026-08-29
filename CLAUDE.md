@@ -286,10 +286,37 @@ single global BFF/TFF flag can fix it.** Precise terms (keep them distinct):
 ### ✅ ANSWERED — it is a **spatial field-ORIGIN slip**, not a temporal/order problem
 
 **The central question of this project is resolved, and the earlier framing below was wrong.**
-The visible "flip"/registration jump is **the second field's start line drifting** within the
-525-line transport unit — observed candidates **274–285** instead of the canonical **280** — so
-the raster is sliced at the wrong offset. It is **not** temporal order, **not** pairing phase, and
-**not** cadence. Consequences, all large:
+The visible "flip"/registration jump is a **spatial vertical registration error measured in whole
+raster lines** — **not** temporal order, **not** pairing phase, **not** cadence.
+
+> **⚠️ CORRECTED (full-capture census, 6,160 intact units).**
+> The first version of this section said *"field 2's start line drifts across 274–285."* **That is
+> false.** Measured against three independent anchors:
+> - **The transport raster is rigid.** `f1_origin=17` (99.35%), `f2_origin=280` (99.25%), spacing
+>   **263** (99.27%), and **100% of consecutive frame pairs are unchanged** on both fields.
+> - **What actually moves is FIELD 1's PICTURE, translating down 1–2 whole lines** — field 2's
+>   picture translated **0 lines in 4,042 of 4,042** rigidly-measurable units. The whole frame
+>   never shifts together. So the varying quantity is the **inter-field spacing**, and field 1 is
+>   the field that slides.
+> - **It is episodic, not chronic:** confirmed translations occur only in counters 24533–25025
+>   (~16 s), as bursts of multi-frame plateaus (median 4 frames, max 44) that return to nominal
+>   in between.
+> - **The "274–285 wander" was estimator noise.** Comb/weave scoring **can only ever constrain
+>   f2−f1**, never an absolute origin (shifting both fields together leaves the weave intact).
+>   42% of its off-263 picks had a median relative margin of **0.027** vs **0.587** for confident
+>   picks. **Never report a best-weave candidate as an observed physical VSYNC location.**
+>
+> **Anchors that broke the tie** (use these, not comb, for geometry): the device inserts a
+> **hard-padding ruler** — `Y==16 & C==128`, zero variance — at lines **0–6, 261–269, 523–524**
+> (byte-identical in 6,159/6,160 units); decoded analog blanking sits at Y≈1.4; and each field
+> carries a **2-line VBI signature**, with **field 2's a line-for-line replica of field 1's,
+> offset exactly 263**.
+>
+> Two traps that produce wrong numbers: dark picture content moving only a field's *top* edge
+> (check the bottom edge too — it stayed put), and a **flat bright field** (counters 23335–24380)
+> flooding the normally-blank lines past any threshold while spacing stays 263.
+
+Consequences, all large:
 
 - **The fix is pure spatial line selection**: detect the per-frame field origins, extract the
   correct 240 lines per field (e.g. `17/278`). Because nothing is reordered, the correction
@@ -307,6 +334,47 @@ the raster is sliced at the wrong offset. It is **not** temporal order, **not** 
   field 2 (line ~21) — **distinct** from the whole-field origin slip, present in the raw fields and
   on the deck's own HDMI/TV output. So a single event can combine whole-field registration
   displacement **and** a within-field H-sync/chroma fault. Don't model it as one phenomenon.
+
+#### Where the fault lives — the OSD is the witness
+
+The deck's **OSD stays coherent at nominal raster coordinates while the program picture is
+displaced**, and correcting the whole field repairs the program picture but **tears the OSD**.
+Two layers with *different* registration is decisive: had the Shuttle misdetected output VSYNC it
+would have shifted program **and** OSD together, and could not have produced the split. So the
+fault sits in the **deck's program-video path, upstream of its OSD compositor** — the deck emits a
+**stable regenerated raster** and places the program layer at the wrong line inside it. Consistent
+with the census (rigid transport raster, moving picture content).
+
+This also explains the CRT question: a CRT locks to the **stable regenerated sync — which never
+moves** — and simply draws displaced content, hidden by overscan and spot size. It only rolls or
+jumps if actual output VSYNC moves, and here it doesn't. *(Corrections to earlier reasoning:
+classical CRT **vertical** sweep is a **triggered relaxation oscillator** — the flywheel/AFC lives
+on **horizontal**, so "vertical flywheel averaging" was wrong. And **flagging is not the analog
+form of this error**: flagging is horizontal line-time error, a separate failure mode that may
+merely share an upstream trigger.)*
+
+**Still unresolved — tape vs deck.** Not settled by this capture: the census cannot separate "the
+deck delivered field 1 one line late" from "the Shuttle sliced field 1 one line differently", and
+the OSD evidence rules the Shuttle out as *primary* without identifying whether the trigger is
+recorded tape timing, control-track/servo trouble, deck misadjustment, or simply this deck
+family's policy for a legal-but-ugly signal. **Cheapest decisive test:** play the same passage on
+a **known-good older analog S-VHS deck** through the same Shuttle and settings — same displacement
+at the same tape location ⇒ tape/recorded-timing origin; clean registration ⇒ the D-VHS deck's
+servo/digital processing. (Gold standard would be a two-channel scope on S-Video Y plus the deck's
+head-switch/PG test point, but the second-deck A/B is cheaper and answers the practical question.)
+
+**Deck policy for archival (revised — the earlier "TBC off" advice was backwards):** software
+corrects **discrete vertical registration only**; it does **not** fix within-line time-base error,
+top flagging, chroma phase, or H-sync damage. TBC-off would keep the registration problem *and*
+add flagging. Default: **TBC on, `Vスタビライズ` off** — test V-stabilize *separately*, since JVC's
+own manual says it corrects vertical picture shaking and should be returned to off afterwards,
+which implies a second vertical-concealment path that may help presentation while destroying
+chronology. Move off TBC-on only when an A/B proves it preserves materially better information,
+judged on **unique-field fingerprints, repeats, H-line phase, vertical origin and signal loss —
+not appearance**. And "don't replace the deck" was too categorical: a different deck can have
+better tracking, tape path, sync separator or a less destructive TBC policy, so a second known-good
+S-VHS deck is worth having as an **archival tool, not a spare** — different decks win on different
+pathological tapes.
 
 **Architecture consequence (supersedes "archival writer + preview" framing in §8–§10):** the final
 shape is a **normal live frameserver**, not an archival writer with a preview bolted on:
