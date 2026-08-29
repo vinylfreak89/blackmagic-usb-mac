@@ -61,6 +61,30 @@ splitter tests all 24 phases, grows maximal record runs, and checks them against
 the 11,520/11,616-byte callback grammar. Adjacent audio callbacks may merge;
 their internal boundary is unknowable and unnecessary for endpoint recovery.
 
+### `untagged_capture` transport caveat and capture_untagged_ring scheduling change
+
+The recovered video remains intact through most of the run, then loses complete
+24,576-byte payload quanta after counter 25026. Every deficit from there to the
+last marker is divisible by 24,576. That is capture_untagged_ring's normal eight-iso-packet
+video-transfer payload, not a 1,440-byte raster-line or 756,048-byte frame
+quantum. Ring overflow was zero and video completion inversions were zero.
+
+Static analysis found that the old `V_NPK=8`, `XFERS=6` arrangement queued only
+about 6 ms of video time on Darwin. The libusb Darwin backend schedules iso
+requests at explicit future USB frame numbers; once resubmission falls behind
+the queued horizon, it resumes at the current frame plus a safety offset. No
+request exists for the intervening time, so neither transfer status nor packet
+status can report that hole. The old probe also silently skipped completed
+zero-length packets.
+
+capture_untagged_ring now queues 128 packets per transfer and eight video transfers, compacts
+each transfer with one ring operation, and prints complete packet-length
+histograms including zero lengths. This is an evidence-gathering fix, not yet a
+hardware-verified archival container: the flat file still cannot describe the
+location of a failed or unscheduled iso interval. Production capture must tag
+endpoint, submission sequence, scheduled packet slot, status, requested/actual
+length, host time, and payload.
+
 Example archival extraction:
 
 ```sh
@@ -80,9 +104,9 @@ across dropped/fragmented units. The CSV maps retain counters, endpoint offsets,
 and audio sample positions for a timestamp-aware archival writer.
 
 For a review MP4, select two e801 marker indices. This path restores a CFR
-timeline from the shared counter, repeats the prior good image for damaged or
-missing counter slots, bobs with FFmpeg's field-aware `bwdif`, and trims audio
-at matching `DeckLinkAudioResyncT` counters:
+timeline from the shared counter, marks damaged or missing counter slots black,
+bobs with FFmpeg's field-aware `bwdif`, and trims audio at matching
+`DeckLinkAudioResyncT` counters:
 
 ```sh
 python3 experiments/capture_render.py capture.bin \
@@ -92,9 +116,14 @@ python3 experiments/capture_render.py capture.bin \
   --render-crf 10
 ```
 
-Repeats are preview concealment only and are listed on stdout. The verified
-default for this capture is stored chronological field 1 mapped to the top
-field. It constructs ordinary 720x480 TFF UYVY from full 240-line fields
+Invalid counter ranges are listed on stdout. `--invalid-frame repeat` enables
+explicit preview concealment. `--invalid-frame partial` exposes bytes from a
+short sequential unit by padding its tail with black; this is diagnostic only,
+because the untagged capture_untagged_ring file does not preserve where omitted USB packets
+belonged inside the raster. Neither mode changes raw endpoint or map outputs.
+
+The verified default for this capture is stored chronological field 1 mapped
+to the top field. It constructs ordinary 720x480 TFF UYVY from full 240-line fields
 (source lines 17..256 and 280..519), then
 `bwdif=mode=send_field:parity=tff` performs the half-line-aware 59.94p bob.
 The credit roll is the disambiguator: the opposite mapping produces a strong

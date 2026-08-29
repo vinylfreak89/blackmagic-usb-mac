@@ -141,19 +141,25 @@ the next marker**; short units archived separately, never fed to the fixed-raste
 narrower issues stay OPEN: (a) *why* that unit was short; (b) whether Darwin/libusb callbacks ever
 arrive out of submission order.
 
-**RESOLVED by `capture_untagged_ring` (ring buffer + writer thread):**
-- ✅ **Long-capture data loss fixed.** A full 5-min run held **full rate with 0 iso-packet errors,
-  0 ring overflow, 0 submission-order inversions**; ring high-water stayed at **0 MB**, which
-  *proves* the old failure was `fwrite` **blocking the callback**, not disk throughput. (6 transfer
-  errors occurred at the deliberate stop/rewind transitions and were counted + resubmitted, not
-  silently dropped — that is the error-visibility fix working.)
-- ✅ **Darwin iso callback ordering:** 0 inversions over 10 s and 5 min. Evidence *for* in-order
-  completion on this host — not a proof of the general property; keep the counter in the core.
+**QUALIFIED by `capture_untagged_ring` (ring buffer + writer thread):**
+- ✅ The writer no longer blocks the libusb callback; the 5-min run reported zero ring overflow
+  and zero observed video submission-order inversions.
+- ❗ **That run was not full-rate or lossless.** After counter 25026, every video deficit is an
+  exact multiple of **24,576 bytes**, the normal payload of one old capture_untagged_ring video transfer. Static
+  analysis shows `V_NPK=8`, `XFERS=6` queued only ~6 ms of Darwin video schedule. Darwin assigns
+  explicit future USB frame numbers and jumps forward when resubmission misses that horizon; an
+  unscheduled interval has no callback and cannot increment transfer/packet error counters.
+- ❗ The old callback also silently ignored completed packets with `actual_length == 0`, so
+  "0 iso-packet errors" did not establish continuity. capture_untagged_ring now queues ~128 ms, uses one ring
+  operation per transfer, and reports packet-length histograms. Hardware verification remains.
 
 **OPEN / NOT retired:**
 - ❗ **Silent host-loss holes.** On ring-full, `capture_untagged_ring` drops the payload and only counts bytes —
   **no marker in the stream**, so a gap is indistinguishable from contiguous data downstream.
   Violates §8 property 1/6. Fixed by the tagged format (requirement 7).
+- ❗ **Unscheduled Darwin iso holes.** A shallow submitted-transfer horizon can expire without
+  producing any transfer record. The production format must identify scheduled packet slots,
+  not merely callback and submission order.
 - ❗ **Non-atomic shared state in `capture_untagged_ring`:** `inflight`, `v_bytes`, `v_submit` are plain globals
   mutated from callbacks; `g_stop`/`g_done` are `volatile`, not atomics. Bench-adequate, not
   core-adequate.

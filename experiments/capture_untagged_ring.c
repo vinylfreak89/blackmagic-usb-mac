@@ -1,6 +1,7 @@
-// capture_untagged_ring — fixed capture: NO disk I/O in the iso callback (ring buffer + writer
-// thread), error counting, fwrite-return checks, submission-seq inversion detection,
-// clean drain. Usage: ./capture_untagged_ring <component|svideo|composite> <seconds> <outfile>
+// capture_untagged_ring — diagnostic capture: NO disk I/O in the iso callback (ring buffer +
+// writer thread), deep Darwin iso scheduling, packet-length accounting,
+// fwrite-return checks, submission-seq inversion detection, clean drain.
+// Usage: ./capture_untagged_ring <component|svideo|composite> <seconds> <outfile>
 #include <libusb.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -14,10 +15,10 @@
 #define VIDEO_EP 0x83
 #define AUDIO_EP 0x84
 #define V_PKT 15360
-#define V_NPK 8
+#define V_NPK 128
 #define A_PKT 0xc0
 #define A_NPK 80
-#define XFERS 6
+#define XFERS 8
 #define RINGSIZE (256u*1024u*1024u)   // 256 MB ring (~11s of buffering)
 
 static uint8_t *ring;
@@ -30,6 +31,8 @@ static volatile int g_stop=0, g_done=0;
 
 static int inflight=0;
 static long v_bytes=0,a_bytes=0,iso_err=0,xfer_err=0;
+static long v_packets=0,a_packets=0,v_zero=0,a_zero=0;
+static unsigned long v_len_hist[V_PKT+1],a_len_hist[A_PKT+1];
 static long v_submit=0;           // next video submission seq
 static long last_v_submit=-1, v_inversions=0;   // reorder detection (video)
 
@@ -72,13 +75,29 @@ static void cb(struct libusb_transfer *x){
         last_v_submit=s;
     }
     if(x->status==LIBUSB_TRANSFER_COMPLETED){
+        size_t packed=0;
         for(int i=0;i<x->num_iso_packets;i++){
             struct libusb_iso_packet_descriptor *p=&x->iso_packet_desc[i];
             if(p->status!=LIBUSB_TRANSFER_COMPLETED){ iso_err++; continue; }
-            int n=p->actual_length; if(n<=0) continue;
-            ring_put(libusb_get_iso_packet_buffer_simple(x,i), n);
-            if(isvideo) v_bytes+=n; else a_bytes+=n;
+            int n=p->actual_length;
+            if(isvideo){
+                v_packets++;
+                if(n<=V_PKT) v_len_hist[n]++;
+                if(n==0) v_zero++;
+            } else {
+                a_packets++;
+                if(n<=A_PKT) a_len_hist[n]++;
+                if(n==0) a_zero++;
+            }
+            if(n<=0) continue;
+            // Compact the fixed-size iso slots in-place, then take the ring
+            // mutex once per transfer. Destination never overtakes source.
+            memmove(x->buffer+packed,
+                    libusb_get_iso_packet_buffer_simple(x,i), (size_t)n);
+            packed+=(size_t)n;
         }
+        if(packed) ring_put(x->buffer,packed);
+        if(isvideo) v_bytes+=(long)packed; else a_bytes+=(long)packed;
     } else if(x->status==LIBUSB_TRANSFER_NO_DEVICE){ g_stop=1; xfer_err++; }
     else { xfer_err++; }
     if(!g_stop && x->status!=LIBUSB_TRANSFER_NO_DEVICE){
@@ -133,6 +152,13 @@ int main(int argc,char**argv){
     printf("iso-packet errors=%ld  transfer errors=%ld  ring overflow=%ld B\n", iso_err, xfer_err, overflow_bytes);
     printf("ring high-water=%.0f MB / %u MB\n", r_max/1e6, RINGSIZE>>20);
     printf("video submission-order INVERSIONS (out-of-order completions)=%ld\n", v_inversions);
+    printf("video packets=%ld zero-length=%ld | audio packets=%ld zero-length=%ld\n",
+           v_packets,v_zero,a_packets,a_zero);
+    printf("video packet lengths:");
+    for(int n=0;n<=V_PKT;n++) if(v_len_hist[n]) printf(" %d:%lu",n,v_len_hist[n]);
+    printf("\naudio packet lengths:");
+    for(int n=0;n<=A_PKT;n++) if(a_len_hist[n]) printf(" %d:%lu",n,a_len_hist[n]);
+    printf("\n");
     libusb_release_interface(h,0); libusb_close(h); libusb_exit(ctx);
     return 0;
 }

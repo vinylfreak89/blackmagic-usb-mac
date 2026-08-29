@@ -473,11 +473,14 @@ def write_counter_timed_preview_video(
     marker_end,
     output_path,
     first_field,
+    invalid_frame,
 ):
-    """Write CFR 480i frames for a marker range, repeating invalid slots.
+    """Write CFR 480i frames for a marker range with explicit damage policy.
 
-    This concealment is intentionally limited to the preview path. Raw endpoint
-    and map outputs retain every discontinuity and never invent captured bytes.
+    Raw endpoint and map outputs retain every discontinuity and never invent
+    captured bytes. ``partial`` is diagnostic only: because capture_untagged_ring did not log
+    packet positions, padding a short unit at its tail cannot restore its raster
+    geometry.
     """
     if not (0 <= marker_start < marker_end < len(markers)):
         raise ValueError(
@@ -495,6 +498,7 @@ def write_counter_timed_preview_video(
     # Index byte ranges, not decoded frames. A five-minute capture contains
     # several GiB of UYVY; retaining it here would defeat mmap and exhaust RAM.
     exact = {}
+    partial = {}
     for marker_index in range(marker_start, marker_end):
         current = markers[marker_index]
         following = markers[marker_index + 1]
@@ -505,11 +509,18 @@ def write_counter_timed_preview_video(
             and counter_distance(counter, next_counter) == 1
         ):
             exact[counter] = (mixed, next_mixed)
+        elif (
+            invalid_frame == "partial"
+            and counter_distance(counter, next_counter) == 1
+            and VIDEO_HEADER_BYTES < next_pure - pure < VIDEO_UNIT_BYTES
+        ):
+            partial[counter] = (mixed, next_mixed)
 
     black_pair = b"\x80\x10\x80\x10"
     black = black_pair * (720 * 480 // 2)
     previous = None
-    repeated = []
+    invalid = []
+    partial_rendered = []
     with open(output_path, "wb") as output:
         for step in range(frame_count):
             counter = (start_counter + step) & 0xFFFF
@@ -522,13 +533,29 @@ def write_counter_timed_preview_video(
                     first_field,
                 )
             else:
-                repeated.append(counter)
-                frame = previous
-                if frame is None:
+                invalid.append(counter)
+                if counter in partial:
+                    mixed_start, mixed_end = partial[counter]
+                    unit = gather_video_bytes(
+                        mm, spans, ends, mixed_start, mixed_end
+                    )
+                    unit += black_pair * ((VIDEO_UNIT_BYTES - len(unit)) // 4)
+                    unit += b"\x80\x10\x80\x10"[: VIDEO_UNIT_BYTES - len(unit)]
+                    frame = unit_to_480i(unit, first_field)
+                    partial_rendered.append(counter)
+                elif invalid_frame == "repeat" and previous is not None:
+                    frame = previous
+                else:
                     frame = black
             output.write(frame)
             previous = frame
-    return start_counter, end_counter, frame_count, repeated
+    return (
+        start_counter,
+        end_counter,
+        frame_count,
+        invalid,
+        partial_rendered,
+    )
 
 
 def render_preview(
@@ -545,11 +572,12 @@ def render_preview(
     render_size,
     render_sar,
     render_crf,
+    invalid_frame,
 ):
     sample_by_counter = {counter: sample for counter, sample, *_ in audio_rows}
     with tempfile.TemporaryDirectory(prefix="mixed-capture-render-") as directory:
         raw_video = Path(directory) / "counter_timed_480i.uyvy"
-        start_counter, end_counter, frames, repeated = (
+        start_counter, end_counter, frames, invalid, partial_rendered = (
             write_counter_timed_preview_video(
                 mm,
                 spans,
@@ -558,6 +586,7 @@ def render_preview(
                 marker_end,
                 raw_video,
                 first_field,
+                invalid_frame,
             )
         )
         try:
@@ -642,7 +671,15 @@ def render_preview(
             str(output_path),
         ]
         subprocess.run(command, check=True)
-    return start_counter, end_counter, frames, repeated, audio_start, audio_end
+    return (
+        start_counter,
+        end_counter,
+        frames,
+        invalid,
+        partial_rendered,
+        audio_start,
+        audio_end,
+    )
 
 
 def validate(mm, spans, audio_rows, video_markers, complete_rows):
@@ -708,7 +745,17 @@ def main():
         metavar="MP4",
         help=(
             "render a counter-timed 59.94p proof clip with stereo audio; "
-            "damaged/missing preview frames repeat the previous good frame"
+            "damaged/missing frames use --invalid-frame policy"
+        ),
+    )
+    parser.add_argument(
+        "--invalid-frame",
+        choices=("black", "repeat", "partial"),
+        default="black",
+        help=(
+            "review policy for damaged/missing video units: black (default, "
+            "honest discontinuity), repeat (concealment), or partial "
+            "(diagnostic tail-padding; geometry is not recoverable)"
         ),
     )
     parser.add_argument(
@@ -805,14 +852,25 @@ def main():
                         args.render_size,
                         args.render_sar,
                         args.render_crf,
+                        args.invalid_frame,
                     )
-                    start, end, frames, repeated, audio_start, audio_end = result
+                    (
+                        start,
+                        end,
+                        frames,
+                        invalid,
+                        partial_rendered,
+                        audio_start,
+                        audio_end,
+                    ) = result
                     print(
                         f"rendered {frames:,} frames / {frames*2:,} fields; "
                         f"counter {start}..{end}; audio samples "
                         f"{audio_start:,}..{audio_end:,}; "
-                        f"preview repeats={len(repeated)} "
-                        f"ranges={format_counter_runs(repeated)}"
+                        f"invalid={len(invalid)} "
+                        f"ranges={format_counter_runs(invalid)}; "
+                        f"policy={args.invalid_frame}; "
+                        f"partial={len(partial_rendered)}"
                     )
             finally:
                 mm.close()
