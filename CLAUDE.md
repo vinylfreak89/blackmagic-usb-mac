@@ -241,6 +241,45 @@ single global BFF/TFF flag can fix it.** Precise terms (keep them distinct):
 - **Temporal order** — which field occurred first.
 - **Pairing phase** — which two fields the Shuttle grouped into one transport unit.
 
+### ✅ ANSWERED — it is a **spatial field-ORIGIN slip**, not a temporal/order problem
+
+**The central question of this project is resolved, and the earlier framing below was wrong.**
+The visible "flip"/registration jump is **the second field's start line drifting** within the
+525-line transport unit — observed candidates **274–285** instead of the canonical **280** — so
+the raster is sliced at the wrong offset. It is **not** temporal order, **not** pairing phase, and
+**not** cadence. Consequences, all large:
+
+- **The fix is pure spatial line selection**: detect the per-frame field origins, extract the
+  correct 240 lines per field (e.g. `17/278`). Because nothing is reordered, the correction
+  **cannot disturb cadence or A/V sync** — a whole class of feared damage simply does not apply.
+- **No dynamic TFF/BFF, no cadence matching, no field reordering.** Ordering stays chronological.
+  (This retires the §9 worry about Viterbi-scored temporal hypotheses for the *common* case.)
+- **Real-time feasible:** the 12-candidate origin search ran at **6.84 ms/decision in unoptimized
+  Python/NumPy** against a **16.68 ms** field budget (and a decision is usually needed only once
+  per 33.37 ms transport unit). C/NEON/Accelerate leaves ample headroom.
+- **It belongs in the frameserver stage, NOT the USB callback**, and costs ≲1 field of latency.
+- Detection must not rely on comb-scoring alone (motion can fool it). Production detector:
+  VBI/active-line boundary cues + same-parity temporal registration + motion-masked comb scoring
+  + a small discrete offset search + **hysteresis** (keep the previous origin when ambiguous).
+- ⚠️ Also observed: a *localized* H-sync/chroma-phase disturbance at the top active lines of
+  field 2 (line ~21) — **distinct** from the whole-field origin slip, present in the raw fields and
+  on the deck's own HDMI/TV output. So a single event can combine whole-field registration
+  displacement **and** a within-field H-sync/chroma fault. Don't model it as one phenomenon.
+
+**Architecture consequence (supersedes "archival writer + preview" framing in §8–§10):** the final
+shape is a **normal live frameserver**, not an archival writer with a preview bolted on:
+`USB capture → frame parser → field-origin correction → 59.94p frame surfaces + 48 kHz audio →
+CMIO/OBS`. **Recording becomes an optional downstream consumer, exactly like OBS** — it must not
+control acquisition or correction. Per transport unit: archive the untouched 525-line unit
+immediately, detect origins on a separate thread, select the corrected windows, publish 480i or
+independent 59.94p spatial bob with monotonic PTS, and **record chosen origins + confidence as
+metadata**. Audio samples are never touched, preserving the A/V clock correlation. Raw transport
+logging stays an optional diagnostic mode, not the defining architecture.
+
+---
+
+*Superseded framing (kept for context — the mechanism guess below was not what the data showed):*
+
 The visible flip is often a **temporal-order or pairing-phase** change while spatial parity is
 normal. Likely mechanism (from the observed *freeze → vertical jump* on the deck's HDMI output): the
 deck's **fixed-clock HDMI frame-synchronizer** reacting to control-track/line-timing
