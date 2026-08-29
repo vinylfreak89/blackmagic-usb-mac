@@ -103,15 +103,27 @@ firmware-upgrade — stay away.
 
 ## 6. Verified vs UNPROVEN
 
-- ✅ Device enumerates at SuperSpeed, userspace-openable, nothing claims it.
-- ✅ Protocol constants above read from bmusb source.
-- ❗ **UNPROVEN / existential risk:** that selecting an **analog** input actually makes *this*
-  unit stream usable analog frames on macOS. bmusb's input list is unconditional (even
-  UltraStudio SDI shows Component/S-video), the file header claims HDMI, and upstream's "tested
-  features" lists analog **audio** but **not analog video**. No first-hand report confirms
-  Shuttle analog *video* via bmusb. **Firmware-managed decoding is the leading hypothesis; if a
-  poke is missing it's more likely another req-215 word than host I²C.** Settle it by experiment
-  (§9), not argument.
+**Bench-proven on this M3 / macOS 26.6.1, no source connected; `experiments/`):**
+- ✅ Userspace `libusb` open + `claim_interface(0)` — no root, no entitlement.
+- ✅ Real endpoint map (usb_descriptor_probe): IF0 **alt2** = iso IN **`0x83` video** (49152 B/interval,
+  burst 11) + **`0x84` audio** (2048) + bulk `0x05`/`0x86`; **alt1** = output path.
+- ✅ Full capture init runs clean: `alt1→alt2` reset, mode word `0x3f000000`, latch
+  `0x73c60001`, status read (`214/16` → `00 00 0c e0`).
+- ✅ **Isochronous streaming works flawlessly on Darwin** (iso_stream_smoke): ~87 MB video in 4 s,
+  **0 iso-packet errors, 0 transfer errors**, ~174 Mbit/s (matches SD 8-bit), clean shutdown.
+  → **retires the Darwin-iso (risk #3) and macOS-permissions risks.**
+- ✅ Framing observed live: marker `00 00 ff ff`, then a **LE 16-bit frame counter that
+  increments** (`0x0001,0x0002,…` — our `tc16`) + format code **`0x0800` = no-signal** (correct,
+  nothing connected). So the header after the marker looks like `[tc16 LE][format16 LE]`.
+- ❗ **The ONLY remaining existential unknown (now narrow):** connect a real analog source and
+  confirm `0x0800` → an NTSC code (`0xe1xx`) with real, changing pixels. Everything upstream is
+  proven. **An S-Video cable (on hand) suffices to run this go/no-go — no purchase needed (S-Video is also the recommended input).** bmusb caveats (unconditional input list; upstream lists analog *audio* not
+  *video*) keep it unproven until this passes — settle by the living-room test, not argument.
+  ⚠️ A floating analog input intermittently **false-locks on noise** — with no source we saw
+  stray PAL-family frames (`0xe809`, `0xe801`, value varies) amid the no-signal frames. So the
+  go/no-go must require the NTSC format to be the **dominant** format with changing pixels, not a
+  couple of stray hits (`iso_stream_smoke`'s verdict now enforces dominance). Do not accept a frame on the
+  `00 00 ff ff` magic alone.
 
 ## 7. The core problem: unstable field parity on degraded sources
 
