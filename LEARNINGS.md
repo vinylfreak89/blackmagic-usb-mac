@@ -53,8 +53,6 @@ stripped. It **did not** fix the problem — the real cause was the agent's appr
 damaged security metadata that then had to be restored from a Time Machine backup. Out-of-scope
 "fixes" are how one bug becomes two.
 
----
-
 ### 7. A metric that constrains a *difference* cannot locate an *absolute* position
 The field-registration fault was reported for hours as "field 2's origin wanders across 274–285."
 It was measured with comb/weave scoring — a metric that is mathematically **only** sensitive to
