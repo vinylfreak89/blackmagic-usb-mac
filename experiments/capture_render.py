@@ -40,6 +40,10 @@ RASTER_LINES = 525
 FIELD_LINES = 240
 FIELD1_START = 17
 FIELD2_START = 280
+FIELD2_ORIGIN_MIN = 274
+FIELD2_ORIGIN_MAX = 285
+FIELD_ORIGIN_X_STEP = 4
+FIELD_ORIGIN_VBI_MARGIN = 25
 
 # Coarse windows only locate points inside audio. They never become boundaries.
 COARSE_WINDOW = 480
@@ -307,15 +311,20 @@ def gather_video_bytes(mm, spans, ends, start, end):
     return b"".join(parts)
 
 
-def unit_to_480i(unit: bytes, first_field: str) -> bytes:
+def unit_to_480i(
+    unit: bytes,
+    first_field: str,
+    field1_start: int = FIELD1_START,
+    field2_start: int = FIELD2_START,
+) -> bytes:
     """Convert one field-sequential 525-line unit to interleaved 480i UYVY."""
     if len(unit) != VIDEO_UNIT_BYTES:
         raise ValueError(f"expected {VIDEO_UNIT_BYTES} bytes, got {len(unit)}")
     raster = np.frombuffer(unit[VIDEO_HEADER_BYTES:], np.uint8).reshape(
         RASTER_LINES, BYTES_PER_LINE
     )
-    field1 = raster[FIELD1_START : FIELD1_START + FIELD_LINES]
-    field2 = raster[FIELD2_START : FIELD2_START + FIELD_LINES]
+    field1 = raster[field1_start : field1_start + FIELD_LINES]
+    field2 = raster[field2_start : field2_start + FIELD_LINES]
     frame = np.empty((FIELD_LINES * 2, BYTES_PER_LINE), np.uint8)
     if first_field == "bottom":
         frame[1::2] = field1
@@ -324,6 +333,37 @@ def unit_to_480i(unit: bytes, first_field: str) -> bytes:
         frame[0::2] = field1
         frame[1::2] = field2
     return frame.tobytes()
+
+
+def measure_field2_origin(unit: bytes) -> tuple[int, float, list[float]]:
+    """Score possible field-2 line origins by woven vertical discontinuity.
+
+    This detects a spatial vertical-origin slip; it does not infer temporal
+    field order. Motion can make adjacent field lines differ, so the renderer
+    changes state only when the best candidate has enough margin over second.
+    """
+    if len(unit) != VIDEO_UNIT_BYTES:
+        raise ValueError(f"expected {VIDEO_UNIT_BYTES} bytes, got {len(unit)}")
+    raster = np.frombuffer(unit[VIDEO_HEADER_BYTES:], np.uint8).reshape(
+        RASTER_LINES, BYTES_PER_LINE
+    )
+    # UYVY luma only, spatially decimated for speed. The two fields are woven
+    # in their established spatial mapping; vertical curvature then exposes a
+    # one-line registration error without rescaling either field.
+    luma = raster[:, 1::2][:, ::FIELD_ORIGIN_X_STEP].astype(np.int16)
+    first = luma[FIELD1_START : FIELD1_START + FIELD_LINES]
+    scores = []
+    for second_start in range(FIELD2_ORIGIN_MIN, FIELD2_ORIGIN_MAX + 1):
+        woven = np.empty((FIELD_LINES * 2, first.shape[1]), np.int16)
+        woven[0::2] = first
+        woven[1::2] = luma[second_start : second_start + FIELD_LINES]
+        middle = woven[FIELD_ORIGIN_VBI_MARGIN : -FIELD_ORIGIN_VBI_MARGIN]
+        curvature = np.abs(2 * middle[1:-1] - middle[:-2] - middle[2:])
+        scores.append(float(np.mean(curvature)))
+    order = np.argsort(scores)
+    best_index = int(order[0])
+    margin = scores[int(order[1])] - scores[best_index]
+    return FIELD2_ORIGIN_MIN + best_index, margin, scores
 
 
 def find_video_markers(mm, spans):
@@ -474,6 +514,9 @@ def write_counter_timed_preview_video(
     output_path,
     first_field,
     invalid_frame,
+    adaptive_field_origin=False,
+    field_origin_map=None,
+    field_origin_switch_margin=1.5,
 ):
     """Write CFR 480i frames for a marker range with explicit damage policy.
 
@@ -521,16 +564,35 @@ def write_counter_timed_preview_video(
     previous = None
     invalid = []
     partial_rendered = []
+    origin_rows = []
+    selected_origin = FIELD2_START
+    origin_counts = Counter()
+    held_ambiguous = 0
     with open(output_path, "wb") as output:
         for step in range(frame_count):
             counter = (start_counter + step) & 0xFFFF
             byte_range = exact.get(counter)
+            best_origin = None
+            confidence = None
+            scores = None
             if byte_range is not None:
+                unit = gather_video_bytes(
+                    mm, spans, ends, byte_range[0], byte_range[1]
+                )
+                if adaptive_field_origin:
+                    best_origin, confidence, scores = measure_field2_origin(unit)
+                    if (
+                        best_origin == selected_origin
+                        or confidence >= field_origin_switch_margin
+                    ):
+                        selected_origin = best_origin
+                    else:
+                        held_ambiguous += 1
+                    origin_counts[selected_origin] += 1
                 frame = unit_to_480i(
-                    gather_video_bytes(
-                        mm, spans, ends, byte_range[0], byte_range[1]
-                    ),
+                    unit,
                     first_field,
+                    field2_start=selected_origin,
                 )
             else:
                 invalid.append(counter)
@@ -541,7 +603,11 @@ def write_counter_timed_preview_video(
                     )
                     unit += black_pair * ((VIDEO_UNIT_BYTES - len(unit)) // 4)
                     unit += b"\x80\x10\x80\x10"[: VIDEO_UNIT_BYTES - len(unit)]
-                    frame = unit_to_480i(unit, first_field)
+                    frame = unit_to_480i(
+                        unit,
+                        first_field,
+                        field2_start=selected_origin,
+                    )
                     partial_rendered.append(counter)
                 elif invalid_frame == "repeat" and previous is not None:
                     frame = previous
@@ -549,12 +615,52 @@ def write_counter_timed_preview_video(
                     frame = black
             output.write(frame)
             previous = frame
+            if adaptive_field_origin:
+                origin_rows.append(
+                    (
+                        step,
+                        counter,
+                        int(byte_range is not None),
+                        FIELD1_START,
+                        selected_origin,
+                        "" if best_origin is None else best_origin,
+                        "" if confidence is None else f"{confidence:.9f}",
+                        *(
+                            [""] * (FIELD2_ORIGIN_MAX - FIELD2_ORIGIN_MIN + 1)
+                            if scores is None
+                            else [f"{score:.9f}" for score in scores]
+                        ),
+                    )
+                )
+    if field_origin_map:
+        with open(field_origin_map, "w", newline="") as output:
+            writer = csv.writer(output)
+            writer.writerow(
+                (
+                    "timeline_frame",
+                    "counter",
+                    "exact_unit",
+                    "field1_start",
+                    "selected_field2_start",
+                    "best_field2_start",
+                    "best_margin",
+                    *(
+                        f"cost_{origin}"
+                        for origin in range(
+                            FIELD2_ORIGIN_MIN, FIELD2_ORIGIN_MAX + 1
+                        )
+                    ),
+                )
+            )
+            writer.writerows(origin_rows)
     return (
         start_counter,
         end_counter,
         frame_count,
         invalid,
         partial_rendered,
+        origin_counts,
+        held_ambiguous,
     )
 
 
@@ -573,11 +679,22 @@ def render_preview(
     render_sar,
     render_crf,
     invalid_frame,
+    adaptive_field_origin,
+    field_origin_map,
+    field_origin_switch_margin,
 ):
     sample_by_counter = {counter: sample for counter, sample, *_ in audio_rows}
     with tempfile.TemporaryDirectory(prefix="mixed-capture-render-") as directory:
         raw_video = Path(directory) / "counter_timed_480i.uyvy"
-        start_counter, end_counter, frames, invalid, partial_rendered = (
+        (
+            start_counter,
+            end_counter,
+            frames,
+            invalid,
+            partial_rendered,
+            origin_counts,
+            held_ambiguous,
+        ) = (
             write_counter_timed_preview_video(
                 mm,
                 spans,
@@ -587,6 +704,9 @@ def render_preview(
                 raw_video,
                 first_field,
                 invalid_frame,
+                adaptive_field_origin,
+                field_origin_map,
+                field_origin_switch_margin,
             )
         )
         try:
@@ -625,6 +745,16 @@ def render_preview(
         ]
         if abs(actual - expected) > 4:
             audio_filters.append(f"atempo={tempo:.12f}")
+        expected_samples = round(expected)
+        # atempo and AAC framing can otherwise leave review audio a few samples
+        # short, causing -shortest to discard the final bobbed field. Pad and
+        # trim only the review branch to the counter-derived video duration.
+        audio_filters.extend(
+            (
+                f"apad=whole_len={expected_samples}",
+                f"atrim=end_sample={expected_samples}",
+            )
+        )
         audio_filter = ",".join(audio_filters)
         command = [
             ffmpeg,
@@ -679,6 +809,8 @@ def render_preview(
         partial_rendered,
         audio_start,
         audio_end,
+        origin_counts,
+        held_ambiguous,
     )
 
 
@@ -792,6 +924,32 @@ def main():
         metavar="N",
         help="libx264 constant-rate-factor for --render (default: 16)",
     )
+    parser.add_argument(
+        "--adaptive-field-origin",
+        action="store_true",
+        help=(
+            "detect spatial field-2 line-origin slips in intact units; this "
+            "does not reorder fields or alter audio timing"
+        ),
+    )
+    parser.add_argument(
+        "--field-origin-map",
+        metavar="CSV",
+        help=(
+            "write per-counter field-origin choices, confidence, and candidate "
+            "costs (requires --render --adaptive-field-origin)"
+        ),
+    )
+    parser.add_argument(
+        "--field-origin-switch-margin",
+        type=float,
+        default=1.5,
+        metavar="N",
+        help=(
+            "minimum best-vs-runner-up score margin needed to change an "
+            "adaptive field origin (default: 1.5)"
+        ),
+    )
     args = parser.parse_args()
 
     if args.render and (
@@ -800,6 +958,14 @@ def main():
         parser.error(
             "--render requires --render-marker-start and --render-marker-end"
         )
+    if args.field_origin_map and not (
+        args.render and args.adaptive_field_origin
+    ):
+        parser.error(
+            "--field-origin-map requires --render --adaptive-field-origin"
+        )
+    if args.field_origin_switch_margin < 0:
+        parser.error("--field-origin-switch-margin must be non-negative")
 
     render_temp = tempfile.TemporaryDirectory(prefix="mixed-capture-audio-") \
         if args.render and not args.stereo_pcm else None
@@ -853,6 +1019,9 @@ def main():
                         args.render_sar,
                         args.render_crf,
                         args.invalid_frame,
+                        args.adaptive_field_origin,
+                        args.field_origin_map,
+                        args.field_origin_switch_margin,
                     )
                     (
                         start,
@@ -862,6 +1031,8 @@ def main():
                         partial_rendered,
                         audio_start,
                         audio_end,
+                        origin_counts,
+                        held_ambiguous,
                     ) = result
                     print(
                         f"rendered {frames:,} frames / {frames*2:,} fields; "
@@ -872,6 +1043,13 @@ def main():
                         f"policy={args.invalid_frame}; "
                         f"partial={len(partial_rendered)}"
                     )
+                    if args.adaptive_field_origin:
+                        print(
+                            "field-2 origins for intact units="
+                            f"{dict(sorted(origin_counts.items()))}; "
+                            f"ambiguous decisions held={held_ambiguous}; "
+                            f"switch margin={args.field_origin_switch_margin:g}"
+                        )
             finally:
                 mm.close()
     finally:

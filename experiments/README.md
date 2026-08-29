@@ -124,13 +124,36 @@ belonged inside the raster. Neither mode changes raw endpoint or map outputs.
 
 The verified default for this capture is stored chronological field 1 mapped
 to the top field. It constructs ordinary 720x480 TFF UYVY from full 240-line fields
-(source lines 17..256 and 280..519), then
+(source field 1 lines 17..256 and a measured field 2 origin), then
 `bwdif=mode=send_field:parity=tff` performs the half-line-aware 59.94p bob.
 The credit roll is the disambiguator: the opposite mapping produces a strong
 alternating vertical displacement, despite the usual expectation that NTSC SD
 will be BFF. Use `--first-field bottom` only when motion in another capture
 supports it. This avoids the vertical breathing produced by independently
 scaling two 237-line field crops.
+
+The fixture A also moves field 2's **spatial line origin** inside an otherwise
+intact 525-line unit. This is not a TFF/BFF change and the fix never reorders
+fields. `--adaptive-field-origin` searches lines 274..285, scores each weave by
+vertical luma curvature, and retains the previous origin when the best score is
+ambiguous. The known clean case is field 1 at 17 and field 2 at 278; the nominal
+stable case is 17/280. Record every decision and all candidate costs for review:
+
+```sh
+python3 experiments/capture_render.py capture.bin \
+  --render corrected.mp4 \
+  --render-marker-start 0 \
+  --render-marker-end <last-marker> \
+  --render-crf 12 \
+  --adaptive-field-origin \
+  --field-origin-map corrected-field-origins.csv
+```
+
+This single-frame comb score is a verified proof renderer, not yet the final
+live estimator. A production frameserver should combine VBI/active-line cues,
+same-parity temporal registration, motion masking, and hysteresis, while still
+publishing the selected origin and confidence. Missing/short units cannot be
+measured and follow `--invalid-frame`; they are marked `exact_unit=0` in the map.
 
 The renderer keeps the source at 720x480 by default and signals NTSC 4:3 with
 SAR 8:9; it does not upscale. `--render-size` is opt-in for non-archival review
