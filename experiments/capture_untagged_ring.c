@@ -109,6 +109,9 @@ int main(int argc,char**argv){
     printf("input=%s mode=0x%08x -> %ds to %s (ring=%uMB, writer thread)\n",in,mode,secs,outf,RINGSIZE>>20);
 
     pthread_t wt; pthread_create(&wt,NULL,writer,NULL);
+    // Submit BOTH endpoints: video 0x83 + audio 0x84. They land in one flat file by
+    // transfer-completion order; capture_render.py de-interleaves them back into
+    // video + stereo audio + counter sync downstream (that "accident" is the A/V capture).
     for(int w=0;w<2;w++){
         int ep=w?AUDIO_EP:VIDEO_EP,npk=w?A_NPK:V_NPK,pkt=w?A_PKT:V_PKT,bufsz=npk*pkt;
         for(int i=0;i<XFERS;i++){
