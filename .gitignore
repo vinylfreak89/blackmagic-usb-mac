@@ -14,4 +14,15 @@ experiments/capture_tagged_bench_replay
 *.o
 *.dSYM/
 a.out
-experiments/__pycache__/
+
+# Python
+__pycache__/
+*.pyc
+
+# Capture & render artifacts — scratch only, never committed to the repo
+*.bin
+*.mp4
+*.wav
+*.pcm
+*.s24le
+*.uyvy
