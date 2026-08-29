@@ -224,8 +224,50 @@ trust the measurement, and re-measure per capture rather than assuming.
 **Pipeline work does NOT need the deck.** Everything downstream of acquisition — §9 archival
 writer, §10 CMIO/OBS delivery — is developed by **replaying a captured file through a virtual
 device**. This makes the whole downstream pipeline deterministic, testable without tape, and
-exercisable against recorded damage (program cut, no-signal rewind, short units) on demand. It is
+exercisable against recorded damage (program cut, deck-blank/relock, short units) on demand. It is
 §8 property 9 (deterministic replay) promoted to the primary development workflow.
+
+### Signal-state timeline — measured over the full 5-min capture
+
+**❌ The "no-signal rewind" never happened — the assumption was wrong.** With the tape stopped and
+heads disengaged, the deck does **not** drop its output: it emits its own **grey mute screen with
+the Japanese OSD and a running tape counter** (visibly `0:23:58 → 0:25:24 → 0:03:31 → -0:00:13`).
+Consequences:
+- **`0x0800` never occurs anywhere in this capture** (0 hits in 5.57 GB); no green pseudo-frames,
+  no ~30.13 Hz cadence. Format stayed `0xe801` and the rate stayed **29.97003 fps exactly**
+  throughout the "dead" window. **Device true-no-signal behaviour is UNTESTED** — to exercise it,
+  disconnect the S-Video cable or power the deck off; stopping the tape is not sufficient.
+- The blank raster is **near-neutral grey, NOT green** (Y 120.6 ±0.1, U 129.9, V 127.3).
+- Two runs of **exactly 19 frames** bracket the blank period with **sub-blanking luma (Y 1–2,
+  below the 16 black level)** and chroma pinned at 128 — not a legal digitized picture, most
+  likely the deck's output relay muting to 0 V.
+
+**⚠️ 17.7% of complete units are structurally perfect non-picture** (1,093 of 6,160: 1,017 deck
+blank, 38 snow, 38 sub-blanking black). Every one is a full 756,048-byte `0xe801` unit with a
+monotonic counter — **in-band indistinguishable from good video.** Relock after the splice took
+51 frames (1.70 s) and after the restart 69 frames (2.30 s), emitting complete well-formed units
+of pure snow the whole time. This is the hard number behind "format classification is not a
+quality guarantee": **only content analysis can establish signal state** (see also the dead-end
+header result in §9).
+
+**✅ Audio is a viable continuity master** (validates §9's approach): 8,991 resync records,
+counter `18706 → 27696`, **every step exactly +1, zero exceptions** — across the splice, the stop,
+the rewind, the relock, and 35 s in which the video endpoint delivered **zero bytes**. Spacing
+alternates 1601/1602 samples (1601.5998 mean in clean segments vs the ideal 1601.6); total drift
+**271 samples ≈ 5.6 ms over 5 minutes**. Audio mute runs also independently locate every deck
+event. ⚠️ No 16-bit wrap occurred (27,696 < 65,536), so **wrap handling remains untested**.
+
+**Transport collapse is worse and earlier than recorded:** loss begins at **ctr 24983 / t 209.4**
+(not ctr 25026), ramps 99%→60%→~40%→~19%, and the video endpoint delivers **zero bytes from ctr
+26651 / t 265.1 to the end** — 1,046 counters, ~794 MB never requested — while audio continued
+untouched (consistent with the high-rate endpoint suffering far more from the shallow queue, not
+proven). **Everything after t≈209 is excluded from source conclusions.** 730 of 733 short units are
+short by an exact multiple of **24,576 B = half the 49,152 B/interval iso packet**.
+
+**Correction to an earlier belief:** the false `00 00 ff ff` markers are **not** in pixel data —
+all 6,345 false hits lie **inside audio spans** (quiet negative S24 samples at record boundaries);
+**zero** occurred in the video raster in this capture. Grid-lock validation is still right, but the
+stated reason ("the magic occurs inside UYVY content") was wrong for this material.
 - Provenance test for the open questions: log per completed batch {endpoint, submit seq, callback
   seq, transfer status, per-packet status/req/actual len, payload}; reconstruct submission vs
   callback order to distinguish reordering / device-short-unit / host-loss / writer-failure /
@@ -365,7 +407,11 @@ capture PTS.
 **Don't treat the 16-bit timecode as a field counter** (it's once per transport unit, not per
 field). **Segment** on signal-loss/relock, USB/parser gap, format-code change, counter
 discontinuity, or strong pairing-phase-change evidence. Within a segment, weigh evidence in
-order: (1) **device/header** — preserve all 44 header bytes, hunt for a real field-marker bit;
+order: (1) **device/header** — ❌ **DEAD END, measured:** across all 6,160 complete
+units the 48-byte header is **byte-identical except the 16-bit counter** (`00 00 ff ff | cc cc |
+01 e8` + 40 zero bytes). **No lock flag, no field-marker bit, no status.** Stop hunting; content
+analysis is the only route to signal state. Preserve the header anyway (cheap, and it proves the
+negative);
 (2) **VBI/raster geometry** — the full 525/625 raster may carry line-21/VITC (but decoded YCbCr
 has no sync-tip waveform, so RF-style tricks are out); (3) **motion/cadence** — split slots, bob
 each, score chronological hypotheses over a **window** with an **HMM/Viterbi** (strong transition
@@ -435,7 +481,7 @@ delivery edge; wrong one at acquisition.
    **Steps 5–6 are built by replaying a captured file through a virtual device — no deck, no tape,
    no live signal** (see §6). Only steps 1–4 need the hardware; everything downstream is
    deterministic replay, so the archival writer and the CMIO/OBS path can be developed and
-   regression-tested against recorded damage (program cut, no-signal rewind, short units) at will.
+   regression-tested against recorded damage (program cut, deck-blank/relock, short units) at will.
 
 **Analog input choice:** default **S-Video** (VHS/S-VHS is natively Y/C → most direct, least
 transformed tap). **A/B vs component** early: component moves chroma demodulation off the
