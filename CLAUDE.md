@@ -247,15 +247,39 @@ blank, 38 snow, 38 sub-blanking black). Every one is a full 756,048-byte `0xe801
 monotonic counter — **in-band indistinguishable from good video.** Relock after the splice took
 51 frames (1.70 s) and after the restart 69 frames (2.30 s), emitting complete well-formed units
 of pure snow the whole time. This is the hard number behind "format classification is not a
-quality guarantee": **only content analysis can establish signal state** (see also the dead-end
-header result in §9).
+quality guarantee": **in-band framing cannot establish signal state** (see also the dead-end header
+result in §9 — and note the `214/16` status register is still un-probed across states).
+
+**→ Signal-state classification is therefore a real design problem. Do NOT reduce it to one
+`signal_valid` boolean.** Three separate layers, each recorded:
+1. **Transport state** — exact unit / partial unit / packet hole / absent video / counter discontinuity.
+2. **Raster appearance** — program-like / snow-like / deck-grey / sub-blanking mute / device
+   no-signal / flat-ambiguous.
+3. **Source-state inference** — present / reacquiring / deck-muted / no input / **unknown**, with
+   confidence.
+
+Useful features: exact hard-padding runs + VBI-signature confidence; active-area luma/chroma mean,
+robust variance, percentiles; fraction of neutral-chroma and sub-black pixels; spatial gradient
+energy and adjacent-line correlation; same-field temporal correlation; a **snow score** (high
+broadband variance + low spatial/temporal coherence); a **deck-mute score** (persistent neutral
+grey + recognizable OSD regions); exact/near-exact frame fingerprints for repeat detection; audio
+RMS/mute state as supporting evidence; and **audio resync counters as the expected video-slot clock
+when video is absent**. Run these through a **temporally hysteretic state machine that is allowed
+to answer `Unknown`**.
+⚠️ **"Snow-like" does not prove relock** — a recording can legitimately *contain* broadcast snow.
+Preserve and publish it by default; live concealment is a separate, user-selected policy.
 
 **✅ Audio is a viable continuity master** (validates §9's approach): 8,991 resync records,
 counter `18706 → 27696`, **every step exactly +1, zero exceptions** — across the splice, the stop,
 the rewind, the relock, and 35 s in which the video endpoint delivered **zero bytes**. Spacing
-alternates 1601/1602 samples (1601.5998 mean in clean segments vs the ideal 1601.6); total drift
-**271 samples ≈ 5.6 ms over 5 minutes**. Audio mute runs also independently locate every deck
-event. ⚠️ No 16-bit wrap occurred (27,696 < 65,536), so **wrap handling remains untested**.
+alternates 1601/1602 samples. **Corrected figure:** three anomalous intervals occur at *startup*
+only (`18708→18709` = 870, `18709→18710` = 784, `18710→18711` = 1589 samples); from counter
+**18711** onward, 8,985 intervals average **1601.600334** against the ideal 1601.6 — a residual of
+**+3 samples total**, i.e. essentially perfect. (An earlier "271 samples / 5.6 ms drift" figure
+was wrong — it folded the startup anomalies into the slope.) Audio mute runs also independently
+locate every deck event. ⚠️ Caveats: no 16-bit wrap occurred (27,696 < 65,536) so **wrap handling
+remains untested**, and **counter continuity does not prove audio-payload completeness** — the
+startup intervals are proof that the two are separate claims.
 
 **Transport collapse is worse and earlier than recorded:** loss begins at **ctr 24983 / t 209.4**
 (not ctr 25026), ramps 99%→60%→~40%→~19%, and the video endpoint delivers **zero bytes from ctr
@@ -318,9 +342,17 @@ raster lines** — **not** temporal order, **not** pairing phase, **not** cadenc
 
 Consequences, all large:
 
-- **The fix is pure spatial line selection**: detect the per-frame field origins, extract the
-  correct 240 lines per field (e.g. `17/278`). Because nothing is reordered, the correction
-  **cannot disturb cadence or A/V sync** — a whole class of feared damage simply does not apply.
+- **The fix is pure spatial line selection**, and its **direction matters**. Correct by holding
+  **field 2 fixed at 280** and moving **field 1's crop**: nominal `17/280`, field-1 displaced +1 →
+  `18/280`, +2 → `19/280`. ⚠️ Holding field 1 at 17 and pulling field 2 to `279`/`278` yields a
+  mathematically identical *weave* but is **backwards** — it makes the stable field chase the
+  displaced one, so absolute program placement jumps. (An earlier `17/278` example here was wrong.)
+  Describe the phenomenon as **field-1 program-layer displacement within a fixed raster, with
+  bottom clipping** — not an unconstrained whole-picture translation. Because nothing is reordered,
+  the correction **cannot disturb cadence or A/V sync** — a whole class of feared damage does not
+  apply. Naming should follow the physics: measure *inter-field registration*, not "field 2 origin";
+  keep the observed transport starts `17/280` immutable; record the chosen correction **separately
+  from the observation**.
 - **No dynamic TFF/BFF, no cadence matching, no field reordering.** Ordering stays chronological.
   (This retires the §9 worry about Viterbi-scored temporal hypotheses for the *common* case.)
 - **Real-time feasible:** the 12-candidate origin search ran at **6.84 ms/decision in unoptimized
@@ -362,6 +394,23 @@ a **known-good older analog S-VHS deck** through the same Shuttle and settings �
 at the same tape location ⇒ tape/recorded-timing origin; clean registration ⇒ the D-VHS deck's
 servo/digital processing. (Gold standard would be a two-channel scope on S-Video Y plus the deck's
 head-switch/PG test point, but the second-deck A/B is cheaper and answers the practical question.)
+
+**Second-deck A/B deferred**; the narrower question is only *"is the deck itself going bad?"*. **Substitute test:** capture a
+**known-good tape with the fixed deeper-queue probe** — ideally **both SP and EP material, once
+cold and once warmed** — and validate: zero scheduled USB holes · fixed hard-padding/VBI geometry ·
+no field-1 registration plateaus · stable horizontal line phase · no unexplained repeats or missing
+fields · continuous audio delivery. This doubles as the hardware verification of the queue fix.
+
+**Deck-health read (evidence favours a healthy deck, with caveats):** ~99.3% of the capture is
+geometrically rigid, the confirmed registration fault is localized and plateau-like, the output
+raster and OSD compositor stay rigid throughout, and two D-VHS decks have shown the same broad
+behaviour → a **tape-triggered edge case or deck-family policy**, not this unit dying. ⚠️ Do not
+over-claim: "a degrading deck would show *pervasive continuous* instability" is **too strong** — a
+marginal deck can misbehave only when warm, only in EP, or only on badly damaged control-track
+sections. And a rigid *output* raster proves the deck's **regenerated raster** is stable; it does
+**not** directly prove the mechanical servo is healthy. A clean known-good-tape run is strong
+evidence of health, but cannot prove this deck handles every damaged tape as well as another design
+would.
 
 **Deck policy for archival (revised — the earlier "TBC off" advice was backwards):** software
 corrects **discrete vertical registration only**; it does **not** fix within-line time-base error,
@@ -477,8 +526,11 @@ field). **Segment** on signal-loss/relock, USB/parser gap, format-code change, c
 discontinuity, or strong pairing-phase-change evidence. Within a segment, weigh evidence in
 order: (1) **device/header** — ❌ **DEAD END, measured:** across all 6,160 complete
 units the 48-byte header is **byte-identical except the 16-bit counter** (`00 00 ff ff | cc cc |
-01 e8` + 40 zero bytes). **No lock flag, no field-marker bit, no status.** Stop hunting; content
-analysis is the only route to signal state. Preserve the header anyway (cheap, and it proves the
+01 e8` + 40 zero bytes). **No lock flag, no field-marker bit, no status.** Stop hunting *in the
+header*. ⚠️ But an empty header does **not** prove content analysis is the only possible telemetry:
+the **status register `214/index 16` has never been polled across states** and must be sampled
+over program / snow / deck-grey / a real cable-pull before hardware telemetry is written off.
+Preserve the header anyway (cheap, and it proves the
 negative);
 (2) **VBI/raster geometry** — the full 525/625 raster may carry line-21/VITC (but decoded YCbCr
 has no sync-tip waveform, so RF-style tricks are out); (3) **motion/cadence** — split slots, bob
