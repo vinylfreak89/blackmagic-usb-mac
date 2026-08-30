@@ -191,11 +191,35 @@ rather than by assuming one resync row per video period.
 ```sh
 python3 experiments/capture_render.py capture.tpc \
   --render review.mp4 \
-  --render-crf 12 --render-preset slow \
-  --render-maxrate 13M --render-bufsize 26M \
+  --render-crf 12 --render-preset veryfast \
   --adaptive-registration \
+  --registration-library src/field_registration/libfieldreg.dylib \
+  --registration-evidence dual \
+  --deinterlacer none \
+  --tagged-start-unit auto \
   --decision-log review_registration.csv
 ```
+
+`--registration-library` selects the allocation-free production C estimator while
+preserving the same decision-log contract. Production `dual` decisions require
+coherent top and bottom geometry; scene cuts hold state without training the
+landmark model, and a stale nonzero correction is released only after two
+independent nominal-geometry/temporal votes. `top` remains a diagnostic port of
+the original Python estimator. Picture-edge landmarks are decision evidence,
+not crop coordinates: the renderer preserves VBI rows 17–18/280–281 and remaps
+only the fixed 19–256/282–518 source envelope. It never shifts the complete
+240-line crop. `--deinterlacer none` emits interlaced TFF video and leaves
+deinterlacing downstream.
+
+`--tagged-start-unit auto` counter-aligns presentation and audio to the first of
+three consecutive exact transport/VBI-valid units. The three units are bounded
+lookahead, not a capture-specific timestamp or counter. It does not remove
+material from the source capture. `--tagged-limit-units N` is available for
+bounded regression renders.
+
+The MP4 and sidecar are first written to sibling partial files. FFmpeg must
+decode the complete partial MP4 without an error before either destination is
+atomically replaced.
 
 The CAP1 transport may be byte-complete while the device's decoded-video
 framing is not. Exactness is therefore measured independently from validated

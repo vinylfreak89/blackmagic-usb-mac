@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import ctypes
 import csv
 import mmap
 import os
@@ -345,6 +346,63 @@ def unit_to_480i(
     )
     field1 = raster[field1_start : field1_start + FIELD_LINES]
     field2 = raster[field2_start : field2_start + FIELD_LINES]
+    frame = np.empty((FIELD_LINES * 2, BYTES_PER_LINE), np.uint8)
+    if first_field == "bottom":
+        frame[1::2] = field1
+        frame[0::2] = field2
+    else:
+        frame[0::2] = field1
+        frame[1::2] = field2
+    return frame.tobytes()
+
+
+def unit_to_registered_480i(
+    unit: bytes,
+    first_field: str,
+    d1: int,
+    d2: int,
+    active_top1: int,
+    active_bottom1: int,
+    active_top2: int,
+    active_bottom2: int,
+) -> bytes:
+    """Correct active-picture phase while keeping both VBI field slots fixed."""
+    if len(unit) != VIDEO_UNIT_BYTES:
+        raise ValueError(f"expected {VIDEO_UNIT_BYTES} bytes, got {len(unit)}")
+    raster = np.frombuffer(unit[VIDEO_HEADER_BYTES:], np.uint8).reshape(
+        RASTER_LINES, BYTES_PER_LINE
+    )
+
+    def corrected_field(start, displacement, active_top, active_bottom):
+        stop = start + FIELD_LINES
+        if not start <= active_top <= active_bottom < stop:
+            raise ValueError(
+                f"active interval {active_top}..{active_bottom} outside "
+                f"fixed field slot {start}..{stop-1}"
+            )
+        source_top = active_top + displacement
+        source_bottom = active_bottom + displacement
+        hard_padding_start = 261 if start == FIELD1_START else 523
+        if source_top < 7 or source_bottom >= hard_padding_start:
+            raise ValueError(
+                f"registered source interval {source_top}..{source_bottom} "
+                f"crosses the decoded field envelope before hard padding "
+                f"at {hard_padding_start}"
+            )
+        field = raster[start:stop].copy()
+        destination_top = active_top - start
+        destination_bottom = active_bottom - start + 1
+        field[destination_top:destination_bottom] = raster[
+            source_top : source_bottom + 1
+        ]
+        return field
+
+    field1 = corrected_field(
+        FIELD1_START, d1, active_top1, active_bottom1
+    )
+    field2 = corrected_field(
+        FIELD2_START, d2, active_top2, active_bottom2
+    )
     frame = np.empty((FIELD_LINES * 2, BYTES_PER_LINE), np.uint8)
     if first_field == "bottom":
         frame[1::2] = field1
@@ -1042,6 +1100,165 @@ class RegistrationEstimator:
         }
 
 
+class _CFieldRegistrationConfig(ctypes.Structure):
+    _fields_ = (
+        ("switch_margin", ctypes.c_double),
+        ("evidence_model", ctypes.c_int),
+    )
+
+
+class _CFieldRegistrationDecision(ctypes.Structure):
+    _fields_ = (
+        ("decision_d1", ctypes.c_int8),
+        ("decision_d2", ctypes.c_int8),
+        ("applied_d1", ctypes.c_int8),
+        ("applied_d2", ctypes.c_int8),
+        ("mode", ctypes.c_int),
+        ("confidence", ctypes.c_double),
+        ("best_d1", ctypes.c_int8),
+        ("best_d2", ctypes.c_int8),
+        ("pending_d1", ctypes.c_int8),
+        ("pending_d2", ctypes.c_int8),
+        ("pending_count", ctypes.c_uint32),
+        ("best_relative", ctypes.c_int8),
+        ("selected_relative", ctypes.c_int8),
+        ("independent_evidence_margin", ctypes.c_double),
+        ("weave_margin", ctypes.c_double),
+        ("temporal_margin_f1", ctypes.c_double),
+        ("temporal_margin_f2", ctypes.c_double),
+        ("temporal_best_f1", ctypes.c_int8),
+        ("temporal_best_f2", ctypes.c_int8),
+        ("temporal_best_cost_f1", ctypes.c_double),
+        ("temporal_best_cost_f2", ctypes.c_double),
+        ("temporal_scene_cut", ctypes.c_bool),
+        ("transport_ok", ctypes.c_bool),
+        ("observed_transport_f1", ctypes.c_int16),
+        ("observed_transport_f2", ctypes.c_int16),
+        ("picture_top_f1", ctypes.c_int16),
+        ("picture_top_f2", ctypes.c_int16),
+        ("picture_bottom_f1", ctypes.c_int16),
+        ("picture_bottom_f2", ctypes.c_int16),
+        ("learned_band_mode_f1", ctypes.c_int16),
+        ("learned_band_mode_f2", ctypes.c_int16),
+        ("learned_bottom_mode_f1", ctypes.c_int16),
+        ("learned_bottom_mode_f2", ctypes.c_int16),
+        ("learned_band_stability_f1", ctypes.c_double),
+        ("learned_band_stability_f2", ctypes.c_double),
+        ("learned_bottom_stability_f1", ctypes.c_double),
+        ("learned_bottom_stability_f2", ctypes.c_double),
+        ("dual_edge_agreement", ctypes.c_bool),
+    )
+
+
+class CRegistrationEstimator:
+    """Thin ctypes adapter for the allocation-free production C engine."""
+
+    UNKNOWN = -128
+    TOP_ONLY = 0
+    DUAL_EDGE = 1
+
+    def __init__(
+        self,
+        library_path: str | Path,
+        switch_margin: float,
+        evidence_model: str,
+    ):
+        self.library_path = Path(library_path)
+        self.library = ctypes.CDLL(str(self.library_path))
+        self.library.fieldreg_state_size.restype = ctypes.c_size_t
+        self.library.fieldreg_config_size.restype = ctypes.c_size_t
+        self.library.fieldreg_decision_size.restype = ctypes.c_size_t
+        if self.library.fieldreg_config_size() != ctypes.sizeof(_CFieldRegistrationConfig):
+            raise RuntimeError("field_registration config ABI size mismatch")
+        if self.library.fieldreg_decision_size() != ctypes.sizeof(_CFieldRegistrationDecision):
+            raise RuntimeError("field_registration decision ABI size mismatch")
+
+        self.state = ctypes.create_string_buffer(self.library.fieldreg_state_size())
+        model_value = {
+            "top": self.TOP_ONLY,
+            "dual": self.DUAL_EDGE,
+        }[evidence_model]
+        self.evidence_model = evidence_model
+        self.config = _CFieldRegistrationConfig(switch_margin, model_value)
+        self.library.fieldreg_init.argtypes = (
+            ctypes.c_void_p,
+            ctypes.POINTER(_CFieldRegistrationConfig),
+        )
+        self.library.fieldreg_begin_segment.argtypes = (ctypes.c_void_p,)
+        self.library.fieldreg_discontinuity.argtypes = (ctypes.c_void_p,)
+        self.library.fieldreg_process.argtypes = (
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.POINTER(_CFieldRegistrationDecision),
+        )
+        self.library.fieldreg_process.restype = ctypes.c_bool
+        self.library.fieldreg_mode_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_mode_name.restype = ctypes.c_char_p
+        self.library.fieldreg_init(self.state, ctypes.byref(self.config))
+        self.selected = (0, 0)
+
+    def begin_segment(self) -> None:
+        self.library.fieldreg_begin_segment(self.state)
+        self.selected = (0, 0)
+
+    def discontinuity(self) -> None:
+        self.library.fieldreg_discontinuity(self.state)
+
+    @staticmethod
+    def _pair(first: int, second: int):
+        return None if first == CRegistrationEstimator.UNKNOWN else (first, second)
+
+    def decide(self, unit: bytes) -> dict[str, object]:
+        if len(unit) != VIDEO_UNIT_BYTES:
+            raise ValueError(f"expected {VIDEO_UNIT_BYTES} bytes, got {len(unit)}")
+        result = _CFieldRegistrationDecision()
+        unit_pointer = ctypes.c_char_p(unit)
+        if not self.library.fieldreg_process(
+            self.state, unit_pointer, ctypes.byref(result)
+        ):
+            raise RuntimeError("production field_registration rejected an exact e801 unit")
+        mode = self.library.fieldreg_mode_name(result.mode).decode("ascii")
+        decision = self._pair(result.decision_d1, result.decision_d2)
+        self.selected = (result.applied_d1, result.applied_d2)
+        return {
+            "decision": decision,
+            "applied": self.selected,
+            "mode": mode,
+            "confidence": result.confidence,
+            "best_pair": (result.best_d1, result.best_d2),
+            "pending_pair": (result.pending_d1, result.pending_d2),
+            "pending_count": result.pending_count,
+            "best_relative": result.best_relative,
+            "selected_relative": result.selected_relative,
+            "independent_evidence": result.independent_evidence_margin,
+            "weave_margin": result.weave_margin,
+            "temporal_margin1": result.temporal_margin_f1,
+            "temporal_margin2": result.temporal_margin_f2,
+            "temporal_best1": result.temporal_best_f1,
+            "temporal_best2": result.temporal_best_f2,
+            "temporal_best_cost1": result.temporal_best_cost_f1,
+            "temporal_best_cost2": result.temporal_best_cost_f2,
+            "temporal_scene_cut": result.temporal_scene_cut,
+            "transport_ok": result.transport_ok,
+            "observed_f1": result.observed_transport_f1,
+            "observed_f2": result.observed_transport_f2,
+            "top1": result.picture_top_f1,
+            "top2": result.picture_top_f2,
+            "bottom1": result.picture_bottom_f1,
+            "bottom2": result.picture_bottom_f2,
+            "band_mode1": result.learned_band_mode_f1,
+            "band_mode2": result.learned_band_mode_f2,
+            "bottom_mode1": result.learned_bottom_mode_f1,
+            "bottom_mode2": result.learned_bottom_mode_f2,
+            "band_stability1": result.learned_band_stability_f1,
+            "band_stability2": result.learned_band_stability_f2,
+            "bottom_stability1": result.learned_bottom_stability_f1,
+            "bottom_stability2": result.learned_bottom_stability_f2,
+            "dual_edge_agreement": result.dual_edge_agreement,
+            "engine": f"field_registration-c-{self.evidence_model}",
+        }
+
+
 def _valid_e801_header(data: bytes | bytearray, offset: int = 0) -> bool:
     return bool(
         len(data) >= offset + VIDEO_HEADER_BYTES
@@ -1166,6 +1383,44 @@ class TaggedVideoUnits:
         # and last complete marker-delimited unit are endpoint fragments, not
         # missing/short counter periods.
         self.trailing_bytes = len(self.buffer)
+
+
+class TaggedArmingDetector:
+    """Find the first replay-stable exact raster epoch, with bounded lookahead."""
+
+    REQUIRED_EXACT_UNITS = 3
+
+    def __init__(self):
+        self.start_unit = None
+        self.candidate_start = None
+        self.consecutive = 0
+        self.splitter = None
+
+    def observe(self, index, _counter, unit, unit_state, captured_bytes) -> None:
+        if self.start_unit is not None:
+            return
+        stable = False
+        if (
+            unit_state == "Exact"
+            and unit is not None
+            and captured_bytes == VIDEO_UNIT_BYTES
+        ):
+            raster = np.frombuffer(
+                unit[VIDEO_HEADER_BYTES:], np.uint8
+            ).reshape(RASTER_LINES, BYTES_PER_LINE)
+            stable, _first, _second = _transport_geometry(raster)
+        if stable:
+            if self.consecutive == 0:
+                self.candidate_start = index
+            self.consecutive += 1
+            if self.consecutive >= self.REQUIRED_EXACT_UNITS:
+                self.start_unit = self.candidate_start
+                # Unit copies are needed only for the bounded arming window.
+                if self.splitter is not None:
+                    self.splitter.copy_units = False
+        else:
+            self.candidate_start = None
+            self.consecutive = 0
 
 
 class TaggedAudioExtractor:
@@ -1334,6 +1589,19 @@ TPC_DECISION_COLUMNS = (
     "learned_band_mode_f2",
     "learned_band_stability_f1",
     "learned_band_stability_f2",
+    "picture_bottom_f1",
+    "picture_bottom_f2",
+    "learned_bottom_mode_f1",
+    "learned_bottom_mode_f2",
+    "learned_bottom_stability_f1",
+    "learned_bottom_stability_f2",
+    "dual_edge_agreement",
+    "temporal_best_f1",
+    "temporal_best_f2",
+    "temporal_best_cost_f1",
+    "temporal_best_cost_f2",
+    "temporal_scene_cut",
+    "registration_engine",
 )
 
 
@@ -1381,7 +1649,7 @@ def tagged_decision_row(
             "",
             "",
             "",
-        )
+        ) + ("",) * 13
     decision = registration["decision"]
     best_d1, best_d2 = registration["best_pair"]
     pending_d1, pending_d2 = registration["pending_pair"]
@@ -1419,6 +1687,37 @@ def tagged_decision_row(
         registration["band_mode2"],
         f"{registration['band_stability1']:.9f}",
         f"{registration['band_stability2']:.9f}",
+        registration.get("bottom1", ""),
+        registration.get("bottom2", ""),
+        registration.get("bottom_mode1", ""),
+        registration.get("bottom_mode2", ""),
+        (
+            "" if "bottom_stability1" not in registration
+            else f"{registration['bottom_stability1']:.9f}"
+        ),
+        (
+            "" if "bottom_stability2" not in registration
+            else f"{registration['bottom_stability2']:.9f}"
+        ),
+        (
+            "" if "dual_edge_agreement" not in registration
+            else int(registration["dual_edge_agreement"])
+        ),
+        registration.get("temporal_best1", ""),
+        registration.get("temporal_best2", ""),
+        (
+            "" if "temporal_best_cost1" not in registration
+            else f"{registration['temporal_best_cost1']:.9f}"
+        ),
+        (
+            "" if "temporal_best_cost2" not in registration
+            else f"{registration['temporal_best_cost2']:.9f}"
+        ),
+        (
+            "" if "temporal_scene_cut" not in registration
+            else int(registration["temporal_scene_cut"])
+        ),
+        registration.get("engine", "python-top-only"),
     )
 
 
@@ -1549,6 +1848,22 @@ def parse_sar(value: str) -> str:
     if numerator <= 0 or denominator <= 0:
         raise argparse.ArgumentTypeError("SAR terms must be positive")
     return f"{numerator}/{denominator}"
+
+
+def parse_tagged_start_unit(value: str) -> int | None:
+    if value.lower() == "auto":
+        return None
+    try:
+        result = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "tpc start unit must be AUTO or a non-negative integer"
+        ) from error
+    if result < 0:
+        raise argparse.ArgumentTypeError(
+            "tpc start unit must be AUTO or a non-negative integer"
+        )
+    return result
 
 
 def parse_crf(value: str) -> int:
@@ -2054,7 +2369,9 @@ def render_preview(
 
 def prepare_tagged_audio_and_census(input_path, pcm_path):
     """First streaming pass: provenance, unit census, and compact stereo PCM."""
-    video = TaggedVideoUnits()
+    arming = TaggedArmingDetector()
+    video = TaggedVideoUnits(on_unit=arming.observe, copy_units=True)
+    arming.splitter = video
     audio = TaggedAudioExtractor(pcm_path)
     try:
         stats = walk_tagged(
@@ -2097,6 +2414,17 @@ def prepare_tagged_audio_and_census(input_path, pcm_path):
         f"resync={audio.resync_records:,}; counter_errors={audio.counter_errors}; "
         f"record_phase_leading={audio.leading_bytes} B; "
         f"counter_discontinuities={audio.counter_discontinuities}"
+    )
+    if arming.start_unit is None:
+        raise RuntimeError(
+            "tpc never produced three consecutive exact units with stable "
+            "transport padding/VBI geometry"
+        )
+    video.arming_start_unit = arming.start_unit
+    print(
+        f"tpc deterministic arming: start_unit={arming.start_unit:,}; "
+        f"confirmation={arming.REQUIRED_EXACT_UNITS} consecutive exact "
+        "transport/VBI-valid units"
     )
     return stats, video, audio
 
@@ -2149,8 +2477,13 @@ def render_tagged(
     render_preset,
     render_maxrate,
     render_bufsize,
+    deinterlacer,
     adaptive_registration,
     registration_switch_margin,
+    fieldreg_library,
+    fieldreg_evidence,
+    start_unit,
+    limit_units,
 ):
     """Two-pass, disk-bounded full render of a tagged capture_tagged_bench capture."""
     output_path = Path(output_path)
@@ -2182,6 +2515,22 @@ def render_tagged(
         )
         if not census.timeline_units or census.first_counter is None:
             raise RuntimeError("tpc contains no marker-delimited e801 video units")
+        selected_start_unit = (
+            census.arming_start_unit if start_unit is None else start_unit
+        )
+        if not 0 <= selected_start_unit < census.timeline_units:
+            raise RuntimeError(
+                f"tpc start unit {selected_start_unit} outside "
+                f"0..{census.timeline_units-1}"
+            )
+        available_units = census.timeline_units - selected_start_unit
+        output_units = (
+            available_units if limit_units is None
+            else min(available_units, limit_units)
+        )
+        first_render_counter = (
+            census.first_counter + selected_start_unit
+        ) & 0xFFFF
         (
             audio_start_row,
             audio_end_row,
@@ -2189,9 +2538,9 @@ def render_tagged(
             audio_start,
             audio_end,
         ) = tagged_audio_window(
-            audio.sync_rows, census.first_counter, census.timeline_units
+            audio.sync_rows, first_render_counter, output_units
         )
-        expected_audio = census.timeline_units * 48_000 * 1001 / 30_000
+        expected_audio = output_units * 48_000 * 1001 / 30_000
         actual_audio = audio_end - audio_start
         tempo = actual_audio / expected_audio
         if not 0.5 <= tempo <= 2.0:
@@ -2203,7 +2552,29 @@ def render_tagged(
         )
 
         parity = "bff" if first_field == "bottom" else "tff"
-        video_filters = [f"bwdif=mode=send_field:parity={parity}:deint=all"]
+        if deinterlacer == "none":
+            video_filters = [
+                f"setfield={parity}",
+                (
+                    "scale=720:480:interl=1:"
+                    "flags=spline+accurate_rnd+full_chroma_int"
+                ),
+                "format=yuv420p",
+            ]
+            output_frames = output_units
+        elif deinterlacer == "estdif":
+            video_filters = [
+                (
+                    f"estdif=mode=field:parity={parity}:deint=all:"
+                    "rslope=2:redge=4:interp=6p"
+                )
+            ]
+            output_frames = output_units * 2
+        else:
+            video_filters = [
+                f"bwdif=mode=send_field:parity={parity}:deint=all"
+            ]
+            output_frames = output_units * 2
         if render_size:
             width, height = render_size
             video_filters.append(f"scale={width}:{height}:flags=lanczos")
@@ -2262,7 +2633,7 @@ def render_tagged(
             "-pix_fmt",
             "yuv420p",
             "-frames:v",
-            str(census.timeline_units * 2),
+            str(output_frames),
             "-c:a",
             "aac",
             "-b:a",
@@ -2271,6 +2642,15 @@ def render_tagged(
             "+faststart",
             "-shortest",
         ]
+        if deinterlacer == "none":
+            command.extend(
+                (
+                    "-flags",
+                    "+ilme+ildct",
+                    "-x264-params",
+                    "tff=1",
+                )
+            )
         if render_maxrate:
             command.extend(("-maxrate", render_maxrate))
             if render_bufsize:
@@ -2278,9 +2658,22 @@ def render_tagged(
         command.extend(("-f", "mp4", str(output_temp)))
         print("starting streaming tpc render: " + " ".join(command))
 
-        estimator = RegistrationEstimator(registration_switch_margin)
+        estimator = (
+            CRegistrationEstimator(
+                fieldreg_library,
+                registration_switch_margin,
+                fieldreg_evidence,
+            )
+            if fieldreg_library
+            else RegistrationEstimator(registration_switch_margin)
+        )
         offset_counts = Counter()
         decision_counts = Counter()
+        # Immutable correction envelope inside the two fixed transport slots.
+        # Rows 17-18 and 280-281 contain the VBI prefix and are never moved.
+        # Picture-edge landmarks vote on displacement; they do not redefine
+        # this envelope (bottom evidence may include head-switching noise).
+        registration_geometry = (19, 256, 282, 518)
         decision_output = (
             open(decision_temp, "w", newline="") if decision_temp else None
         )
@@ -2292,6 +2685,18 @@ def render_tagged(
             raise RuntimeError("ffmpeg raw-video stdin was not created")
 
         def emit_unit(index, counter, unit, unit_state, captured_bytes):
+            if index < selected_start_unit:
+                return
+            output_index = index - selected_start_unit
+            if output_index >= output_units:
+                return
+            if output_index == 0:
+                if unit_state != "Exact":
+                    raise RuntimeError(
+                        "tpc presentation timeline must begin on an exact unit"
+                    )
+                if hasattr(estimator, "begin_segment"):
+                    estimator.begin_segment()
             if unit_state == "Exact":
                 if unit is None or len(unit) != VIDEO_UNIT_BYTES:
                     raise RuntimeError("tpc exact unit copy has wrong length")
@@ -2327,25 +2732,31 @@ def render_tagged(
             if decision_writer:
                 decision_writer.writerow(
                     tagged_decision_row(
-                        index,
+                        output_index,
+                        # The sidecar timeline is the presented CMIO/watch timeline,
+                        # not the suppressed device-arming prefix.
                         counter,
-                        extended_start + index,
+                        extended_start + output_index,
                         unit_state,
                         captured_bytes,
                         registration,
                         (applied_d1, applied_d2),
                     )
                 )
-            frame = unit_to_480i(
-                unit,
-                first_field,
-                field1_start=FIELD1_START + applied_d1,
-                field2_start=FIELD2_START + applied_d2,
-            )
+            if adaptive_registration:
+                frame = unit_to_registered_480i(
+                    unit,
+                    first_field,
+                    applied_d1,
+                    applied_d2,
+                    *registration_geometry,
+                )
+            else:
+                frame = unit_to_480i(unit, first_field)
             process.stdin.write(frame)
-            if index and index % 3000 == 0:
+            if output_index and output_index % 3000 == 0:
                 print(
-                    f"tpc rendered input units {index:,}/{census.timeline_units:,}",
+                    f"tpc rendered output units {output_index:,}/{output_units:,}",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -2384,12 +2795,30 @@ def render_tagged(
             or second_stats.audio.payload_bytes != first_stats.audio.payload_bytes
         ):
             raise RuntimeError("tpc two-pass provenance census disagrees")
+        subprocess.run(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-xerror",
+                "-i",
+                str(output_temp),
+                "-f",
+                "null",
+                "-",
+            ],
+            check=True,
+        )
         os.replace(output_temp, output_path)
         if decision_path and decision_temp:
             os.replace(decision_temp, decision_path)
         print(
-            f"tpc render complete: {census.timeline_units:,} units / "
-            f"{census.timeline_units*2:,} fields; exact={census.exact_units:,}; "
+            f"tpc render complete: {output_units:,} presented units / "
+            f"{output_units*2:,} source fields / {output_frames:,} encoded "
+            f"frames; deinterlacer={deinterlacer}; "
+            f"suppressed_startup={selected_start_unit:,}; "
+            f"source exact={census.exact_units:,}; "
             f"short={census.short_units:,}; absent={census.absent_units:,}; "
             f"applied={dict(sorted(offset_counts.items()))}; "
             f"modes={dict(sorted(decision_counts.items()))}"
@@ -2403,8 +2832,10 @@ def render_tagged(
             "tempo": tempo,
             "offset_counts": offset_counts,
             "decision_counts": decision_counts,
+            "start_unit": selected_start_unit,
+            "output_units": output_units,
         }
-    except Exception:
+    except BaseException:
         if process is not None and process.poll() is None:
             if process.stdin:
                 process.stdin.close()
@@ -2554,6 +2985,15 @@ def main():
         help="optional x264 VBV buffer size, e.g. 26M",
     )
     parser.add_argument(
+        "--deinterlacer",
+        choices=("none", "estdif", "bwdif"),
+        default="none",
+        help=(
+            "presentation deinterlacer: none preserves 480i TFF (default); "
+            "estdif is intra-field 59.94p; bwdif is temporal and may cross cuts"
+        ),
+    )
+    parser.add_argument(
         "--adaptive-registration",
         "--adaptive-field-origin",
         dest="adaptive_registration",
@@ -2585,6 +3025,41 @@ def main():
             "adaptive (d1,d2) decision (default: 1.5)"
         ),
     )
+    parser.add_argument(
+        "--registration-library",
+        metavar="DYLIB",
+        help=(
+            "use the production C dual-edge registration engine from DYLIB "
+            "instead of the Python compatibility estimator"
+        ),
+    )
+    parser.add_argument(
+        "--registration-evidence",
+        choices=("top", "dual"),
+        default="dual",
+        help=(
+            "C registration evidence model (default: dual, requiring coherent "
+            "top+bottom geometry); top is retained for diagnostics"
+        ),
+    )
+    parser.add_argument(
+        "--tagged-start-unit",
+        type=parse_tagged_start_unit,
+        default=None,
+        metavar="AUTO|N",
+        help=(
+            "first presented tpc unit and matching audio anchor; AUTO uses "
+            "the first of three consecutive exact transport/VBI-valid units "
+            "(default: auto)"
+        ),
+    )
+    parser.add_argument(
+        "--tagged-limit-units",
+        type=int,
+        default=None,
+        metavar="N",
+        help="render at most N tpc units after the selected start (test use)",
+    )
     args = parser.parse_args()
 
     input_format = args.input_format
@@ -2595,6 +3070,14 @@ def main():
         parser.error("--render-bufsize requires --render-maxrate")
     if args.decision_log and not args.render:
         parser.error("--decision-log requires --render")
+    if input_format != "tagged" and args.fieldreg_library:
+        parser.error("--registration-library is only supported for tpc input")
+    if input_format != "tagged" and args.tagged_start_unit is not None:
+        parser.error("--tagged-start-unit is only supported for tpc input")
+    if args.tagged_limit_units is not None and args.tagged_limit_units <= 0:
+        parser.error("--tagged-limit-units must be positive")
+    if input_format != "tagged" and args.tagged_limit_units is not None:
+        parser.error("--tagged-limit-units is only supported for tpc input")
 
     if input_format == "tagged":
         if not args.render:
@@ -2618,6 +3101,10 @@ def main():
             )
         if args.decision_log and not args.adaptive_registration:
             parser.error("tpc --decision-log requires --adaptive-registration")
+        if args.fieldreg_library and not args.adaptive_registration:
+            parser.error("--registration-library requires --adaptive-registration")
+        if args.fieldreg_library and not Path(args.fieldreg_library).is_file():
+            parser.error(f"field_registration library not found: {args.fieldreg_library}")
         render_tagged(
             args.input,
             args.render,
@@ -2630,8 +3117,13 @@ def main():
             args.render_preset,
             args.render_maxrate,
             args.render_bufsize,
+            args.deinterlacer,
             args.adaptive_registration,
             args.registration_switch_margin,
+            args.fieldreg_library,
+            args.fieldreg_evidence,
+            args.tagged_start_unit,
+            args.tagged_limit_units,
         )
         return
 
