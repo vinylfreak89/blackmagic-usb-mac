@@ -196,6 +196,31 @@ zero-len/short counts, seq gaps, inversions, HostLoss, split to raw streams); th
 round-trips a synthetic stream exactly, including a deliberately-missing seq detected as a gap.
 Deep queue retained (`V_NPK=128`, `XFERS=8`). Overhead ≈ 0.2% (24 B per 15,360 B video packet).
 
+**Collapse mechanism, measured from the untagged capture:** the delivered-video fraction does not
+drift — it sits on razor-flat plateaus at exactly **40.0%** (~35 s) then **20.0%** (~15 s), i.e.
+steps of **1/5**. That is the signature of Darwin's miss-the-horizon behaviour (a resubmission
+landing past the horizon is scheduled at *current + 4* frames ⇒ a transfer delivers 1 ms in every
+5 ⇒ **20% duty per live transfer**), compounded by **fleet attrition**: old capture_untagged_ring *freed* a
+transfer when resubmission failed, so capacity stepped 2×20% → 1×20% → **0** (permanent video
+death at ctr 26651) while audio — whose transfers each queue 10 ms, a 10× deeper horizon — never
+missed a sample. Both defects are addressed: the deep queue gives ~20× horizon margin, and capture_tagged_bench
+**never silently shrinks the fleet** — a failed resubmit is retried from the event loop, logged
+loudly, and written to the capture as a tagged `TransferError` record (`pkt_index=0xFFFF`), with fleet
+size reported at shutdown. The flat-rational-plateau shape also argues **against** gradual
+USB-vs-host clock drift, which would produce a slope, not steps.
+
+**Interior losses proven; the "multi-frame interleave" is a renderer artifact:** a hard-padding
+ruler census across all 733 damaged intervals (2,543 padding blocks) finds **1,786 of 1,810
+inter-block spacings compacted below one frame period** — the losses are *interior* to the
+interval, not a missing tail; 19 spacings exceed a frame period (0.7%, consistent with the padding
+block itself being lost), and none show duplication or non-monotonic content. So the visible
+mixing of multiple frames in one raster in the damage-review encode is the documented
+**prefix-placement assumption compacting interior losses** — not evidence of USB reordering or
+clock desync. Reordering among *delivered* transfers measured **0 inversions** across the whole
+capture; ordering of the *missing* slots is unobservable in an untagged capture — capture_tagged_bench's
+per-packet `submit_seq`/`pkt_index` makes it directly measurable on the next hardware run, which
+is the definitive test.
+
 **Design decisions:**
 - **Correction-decision log:** the real-time corrector MAY rely on band modes without a stable
   video anchor **provided** every per-unit decision `{d1, d2 or Unknown, mode, confidence}` is
