@@ -221,6 +221,19 @@ capture; ordering of the *missing* slots is unobservable in an untagged capture 
 per-packet `submit_seq`/`pkt_index` makes it directly measurable on the next hardware run, which
 is the definitive test.
 
+**Damage-review rerender:** the obsolete whole-interval prefix placement is replaced
+by a 24,576-byte transfer-grid reconstruction. Marker endpoints plus **1,890 uniquely placeable
+complete hard-padding blocks** constrain the grid; ordered transfers in the remaining spans use a
+same-position temporal content cost. All **5,225,562,336** captured video bytes in the rendered
+counter range are represented exactly once; **781,239,024** absent bytes are conspicuous synthetic
+color bars. Of 7,945 units, 6,160 are exact, 1,781 partial, and 4 wholly absent. Two damaged
+intervals have no complete padding anchor; three false/inconsistent padding-like runs are rejected.
+The three startup fragments and truncated final interval are not individually 24,576-quantized and
+use a separately named padding-bracketed fallback. **Do not overclaim this reconstruction:** a
+synthetic-drop test falsified temporal matching as byte-position-authoritative on fades/uniform
+gray. Only marker/padding anchors are hard evidence; every other slot choice is labelled diagnostic
+in the decision CSV. Tagged capture_tagged_bench data must use packet provenance instead of this rescue path.
+
 **Design decisions:**
 - **Correction-decision log:** the real-time corrector MAY rely on band modes without a stable
   video anchor **provided** every per-unit decision `{d1, d2 or Unknown, mode, confidence}` is

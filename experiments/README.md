@@ -104,8 +104,8 @@ across dropped/fragmented units. The CSV maps retain counters, endpoint offsets,
 and audio sample positions for a timestamp-aware archival writer.
 
 For a review MP4, select two e801 marker indices. This path restores a CFR
-timeline from the shared counter, marks damaged or missing counter slots black,
-bobs with FFmpeg's field-aware `bwdif`, and trims audio at matching
+timeline from the shared counter, exposes damage with conspicuous legal-range
+color bars, bobs with FFmpeg's field-aware `bwdif`, and trims audio at matching
 `DeckLinkAudioResyncT` counters:
 
 ```sh
@@ -116,11 +116,16 @@ python3 experiments/capture_render.py capture.bin \
   --render-crf 10
 ```
 
-Invalid counter ranges are listed on stdout. `--invalid-frame repeat` enables
-explicit preview concealment. `--invalid-frame partial` exposes bytes from a
-short sequential unit by padding its tail with black; this is diagnostic only,
-because the untagged capture_untagged_ring file does not preserve where omitted USB packets
-belonged inside the raster. Neither mode changes raw endpoint or map outputs.
+Invalid counter ranges are listed on stdout. The renderer never repeats or
+blanks a damaged unit. For transfer-quantized capture_untagged_ring damage, it places surviving
+bytes on the 24,576-byte grid: marker endpoints and uniquely mapped complete
+hard-padding blocks are hard constraints; remaining ordered transfers use a
+same-position temporal content score. Missing raster regions get synthetic
+color bars. This is diagnostic recovery, not provenance: the CSV names
+`PaddingAnchoredTemporalTransferGrid`, `AnchorlessTemporalTransferGrid`, and the
+non-quantized fallback separately. Temporal matching is not authoritative on
+fades or uniform fields, and tagged captures should place loss from packet
+metadata instead. Raw endpoint and map outputs are unchanged.
 
 The verified default for this capture is stored chronological field 1 mapped
 to the top field. It constructs ordinary 720x480 TFF UYVY from full 240-line fields
@@ -132,12 +137,14 @@ will be BFF. Use `--first-field bottom` only when motion in another capture
 supports it. This avoids the vertical breathing produced by independently
 scaling two 237-line field crops.
 
-The fixture A also moves field 2's **spatial line origin** inside an otherwise
-intact 525-line unit. This is not a TFF/BFF change and the fix never reorders
-fields. `--adaptive-field-origin` searches lines 274..285, scores each weave by
-vertical luma curvature, and retains the previous origin when the best score is
-ambiguous. The known clean case is field 1 at 17 and field 2 at 278; the nominal
-stable case is 17/280. Record every decision and all candidate costs for review:
+The fixture A also moves a field's **program-layer spatial registration**
+inside an otherwise rigid 525-line transport raster. This is not a TFF/BFF
+change and the fix never reorders fields. `--adaptive-registration` estimates
+relative displacement from weave curvature and independent `(d1,d2)` from
+learned per-field picture-band landmarks. It applies a change only when those
+measurements converge, uses hysteresis, and reports `Unknown` rather than
+inventing a common-mode anchor. Either field may move; neither is hardcoded as
+the permanent reference. Record every decision and its evidence for review:
 
 ```sh
 python3 experiments/capture_render.py capture.bin \
@@ -145,15 +152,15 @@ python3 experiments/capture_render.py capture.bin \
   --render-marker-start 0 \
   --render-marker-end <last-marker> \
   --render-crf 12 \
-  --adaptive-field-origin \
-  --field-origin-map corrected-field-origins.csv
+  --adaptive-registration \
+  --decision-log corrected-registration.csv
 ```
 
-This single-frame comb score is a verified proof renderer, not yet the final
-live estimator. A production frameserver should combine VBI/active-line cues,
-same-parity temporal registration, motion masking, and hysteresis, while still
-publishing the selected origin and confidence. Missing/short units cannot be
-measured and follow `--invalid-frame`; they are marked `exact_unit=0` in the map.
+This remains a proof renderer, not the final live estimator. A production
+frameserver should retain the same transport/VBI, same-parity temporal,
+motion-masked weave, and hysteresis evidence and publish every selected offset
+and confidence. Missing/short units break estimator continuity; the review
+holds the last applied crop while rendering their surviving bytes and fill.
 
 The renderer keeps the source at 720x480 by default and signals NTSC 4:3 with
 SAR 8:9; it does not upscale. `--render-size` is opt-in for non-archival review
@@ -166,5 +173,5 @@ the counter-timed video endpoint. Extracted PCM and archival maps are never
 resampled or concealed.
 
 Input remains memory-mapped. Full renders stream decoded units to a temporary
-raw-video file while retaining only one current and one previous frame in RAM;
-the frame index stores byte ranges, not multi-gigabyte image buffers.
+raw-video file while retaining one reference raster and one marker interval in
+RAM; the frame index stores byte ranges, not multi-gigabyte image buffers.

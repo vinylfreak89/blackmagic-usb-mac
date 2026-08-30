@@ -18,6 +18,7 @@ import struct
 import sys
 import tempfile
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
@@ -34,6 +35,7 @@ VIDEO_UNIT_BYTES = 756_048
 VIDEO_HEADER_BYTES = 48
 BYTES_PER_LINE = 1_440
 RASTER_LINES = 525
+VIDEO_LOSS_QUANTUM = 24_576
 
 # bmusb's e801 metadata: height=480, extra_lines_top=17,
 # second_field_start=280, extra_lines_bottom=28.
@@ -364,6 +366,399 @@ def make_diagnostic_fill_unit() -> bytes:
 
 
 DIAGNOSTIC_FILL_UNIT = make_diagnostic_fill_unit()
+
+
+@dataclass(frozen=True)
+class DamagePlacement:
+    units: bytes
+    captured: bytes
+    padding_anchors: int
+    rejected_padding_runs: int
+    transfer_chunks: int
+    placement_mode: str
+    temporal_cost: float
+
+
+PADDING_BLOCKS = (
+    (VIDEO_HEADER_BYTES, 7 * BYTES_PER_LINE, "field1_top"),
+    (
+        VIDEO_HEADER_BYTES + 261 * BYTES_PER_LINE,
+        9 * BYTES_PER_LINE,
+        "interfield",
+    ),
+    (
+        VIDEO_HEADER_BYTES + 523 * BYTES_PER_LINE,
+        2 * BYTES_PER_LINE,
+        "frame_end",
+    ),
+)
+
+
+def _hard_padding_runs(data: bytes) -> list[tuple[int, int]]:
+    """Find maximal, line-sized runs of exact device hard-padding bytes."""
+    even_length = len(data) & ~1
+    octets = np.frombuffer(data, np.uint8, even_length)
+    pairs = octets.reshape(-1, 2)
+    hard = (pairs[:, 0] == 128) & (pairs[:, 1] == 16)
+    edges = np.diff(np.r_[False, hard, False].astype(np.int8))
+    return [
+        (int(start) * 2, int(end) * 2)
+        for start, end in zip(
+            np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+        )
+        if end - start >= BYTES_PER_LINE // 2
+    ]
+
+
+def _padding_anchors(
+    captured: bytes, counter_step: int, missing_bytes: int
+) -> tuple[list[tuple[int, int]], int, int]:
+    """Map complete hard-padding blocks to unique expected raster positions.
+
+    An anchor is (captured_offset, expected_offset). Since capture_untagged_ring losses are
+    whole 24,576-byte transfers, their difference must be an integer loss
+    quantum. Partial blocks and non-unique candidates are deliberately not
+    used as geometry.
+    """
+    anchors = {(0, 0), (len(captured), len(captured) + missing_bytes)}
+    accepted = 0
+    rejected = 0
+    for start, end in _hard_padding_runs(captured):
+        length = end - start
+        matching = [block for block in PADDING_BLOCKS if block[1] == length]
+        if not matching:
+            continue
+        block_offset, _block_length, _name = matching[0]
+        candidates = []
+        for frame in range(counter_step):
+            expected = frame * VIDEO_UNIT_BYTES + block_offset
+            displacement = expected - start
+            if (
+                0 <= displacement <= missing_bytes
+                and displacement % VIDEO_LOSS_QUANTUM == 0
+            ):
+                candidates.append(expected)
+        if len(candidates) != 1:
+            rejected += 1
+            continue
+        expected = candidates[0]
+        anchors.add((start, expected))
+        anchors.add((end, expected + length))
+        accepted += 1
+
+    ordered = sorted(anchors)
+    consistent = []
+    last_captured = last_expected = -1
+    last_missing = -1
+    for captured_offset, expected_offset in ordered:
+        missing = expected_offset - captured_offset
+        if (
+            captured_offset < last_captured
+            or expected_offset < last_expected
+            or missing < last_missing
+            or missing % VIDEO_LOSS_QUANTUM
+        ):
+            rejected += 1
+            continue
+        if consistent and captured_offset == last_captured:
+            if expected_offset != last_expected:
+                rejected += 1
+            continue
+        consistent.append((captured_offset, expected_offset))
+        last_captured = captured_offset
+        last_expected = expected_offset
+        last_missing = missing
+    return consistent, accepted, rejected
+
+
+def _diagnostic_fill_interval(start_counter: int, count: int) -> bytearray:
+    units = bytearray(DIAGNOSTIC_FILL_UNIT * count)
+    for frame in range(count):
+        struct.pack_into(
+            "<H", units, frame * VIDEO_UNIT_BYTES + 4,
+            (start_counter + frame) & 0xFFFF,
+        )
+    return units
+
+
+def _reconstruct_nonquantized_interval(
+    captured: bytes, start_counter: int, counter_step: int
+) -> DamagePlacement:
+    """Conservative fallback for the three startup marker fragments.
+
+    Their individual deficits are not transfer-quantized (although their sum
+    is), so a 24,576-byte slot claim would be false. Complete padding blocks
+    bracket short captured runs; each run is left-aligned inside its bracket
+    and the unresolved remainder is diagnostic fill.
+    """
+    expected_bytes = counter_step * VIDEO_UNIT_BYTES
+    missing_bytes = expected_bytes - len(captured)
+    anchors = {(0, 0), (len(captured), expected_bytes)}
+    accepted = rejected = 0
+    for start, end in _hard_padding_runs(captured):
+        length = end - start
+        matches = []
+        for block_offset, block_length, _name in PADDING_BLOCKS:
+            if block_length != length:
+                continue
+            for frame in range(counter_step):
+                expected = frame * VIDEO_UNIT_BYTES + block_offset
+                displacement = expected - start
+                if 0 <= displacement <= missing_bytes:
+                    matches.append(expected)
+        if len(matches) != 1:
+            if matches:
+                rejected += 1
+            continue
+        expected = matches[0]
+        anchors.add((start, expected))
+        anchors.add((end, expected + length))
+        accepted += 1
+
+    ordered = []
+    for captured_offset, expected_offset in sorted(anchors):
+        if ordered:
+            previous_captured, previous_expected = ordered[-1]
+            if (
+                captured_offset < previous_captured
+                or expected_offset < previous_expected
+                or expected_offset - captured_offset
+                < previous_expected - previous_captured
+            ):
+                rejected += 1
+                continue
+        ordered.append((captured_offset, expected_offset))
+
+    units = _diagnostic_fill_interval(start_counter, counter_step)
+    valid = bytearray(expected_bytes)
+    for (source_start, target_start), (source_end, target_end) in zip(
+        ordered, ordered[1:]
+    ):
+        source_length = source_end - source_start
+        target_length = target_end - target_start
+        if source_length > target_length:
+            raise RuntimeError("nonquantized padding anchors overlap")
+        units[target_start : target_start + source_length] = captured[
+            source_start:source_end
+        ]
+        valid[target_start : target_start + source_length] = b"\x01" * source_length
+    if valid.count(1) != len(captured):
+        raise RuntimeError("nonquantized captured byte accounting failed")
+    return DamagePlacement(
+        bytes(units), bytes(valid), accepted, rejected, 0,
+        "NonQuantumPaddingBracketedPrefix", 0.0,
+    )
+
+
+def _expected_hard_mask(offsets: np.ndarray) -> np.ndarray:
+    unit_offsets = offsets % VIDEO_UNIT_BYTES
+    mask = np.zeros(offsets.shape, dtype=bool)
+    for start, length, _name in PADDING_BLOCKS:
+        mask |= (unit_offsets >= start) & (unit_offsets < start + length)
+    return mask
+
+
+def _placement_cost(
+    chunk: bytes, expected_start: int, reference: np.ndarray
+) -> float:
+    """Robust same-parity/content cost plus transport-padding constraints."""
+    current = np.frombuffer(chunk, np.uint8)
+    positions = expected_start + np.arange(len(current), dtype=np.int64)
+    unit_offsets = positions % VIDEO_UNIT_BYTES
+    raster = unit_offsets >= VIDEO_HEADER_BYTES
+
+    reference_bytes = reference[unit_offsets]
+    compare = raster
+    if np.any(compare):
+        difference = np.abs(
+            current[compare].astype(np.int16)
+            - reference_bytes[compare].astype(np.int16)
+        )
+        block = 96
+        usable = len(difference) // block * block
+        if usable:
+            temporal = float(
+                np.median(difference[:usable].reshape(-1, block).mean(axis=1))
+            )
+        else:
+            temporal = float(np.mean(difference))
+    else:
+        temporal = 0.0
+
+    hard = _expected_hard_mask(positions)
+    if np.any(hard):
+        fill = np.frombuffer(DIAGNOSTIC_FILL_UNIT, np.uint8)
+        hard_expected = fill[unit_offsets[hard]]
+        hard_penalty = 200.0 * float(np.mean(current[hard] != hard_expected))
+    else:
+        hard_penalty = 0.0
+
+    # A delivered transfer mapped over an intermediate frame header must carry
+    # its fixed marker/format/zero structure. Counter bytes 4..5 are excluded.
+    header = unit_offsets < VIDEO_HEADER_BYTES
+    fixed_header = header & ~((unit_offsets >= 4) & (unit_offsets < 6))
+    if np.any(fixed_header):
+        fill = np.frombuffer(DIAGNOSTIC_FILL_UNIT, np.uint8)
+        expected = fill[unit_offsets[fixed_header]]
+        header_penalty = 400.0 * float(
+            np.mean(current[fixed_header] != expected)
+        )
+    else:
+        header_penalty = 0.0
+    return temporal + hard_penalty + header_penalty
+
+
+def reconstruct_damaged_interval(
+    captured: bytes,
+    pure_start: int,
+    start_counter: int,
+    counter_step: int,
+    reference: bytes,
+) -> DamagePlacement:
+    """Place ordered capture_untagged_ring video transfers on a content-anchored time grid.
+
+    This is a diagnostic recovery for the untagged capture_untagged_ring format, not a claim
+    that missing transfer positions are known from provenance. Marker endpoints
+    and complete hard-padding blocks provide hard constraints. Remaining
+    ordered 24,576-byte transfers are assigned by robust similarity to the
+    preceding reconstructed raster. Ambiguous/anchorless choices remain named
+    in the returned placement mode and in the render decision CSV.
+    """
+    expected_bytes = counter_step * VIDEO_UNIT_BYTES
+    missing_bytes = expected_bytes - len(captured)
+    if missing_bytes < 0:
+        raise ValueError(
+            f"captured={len(captured)}, expected={expected_bytes}"
+        )
+    if missing_bytes % VIDEO_LOSS_QUANTUM:
+        return _reconstruct_nonquantized_interval(
+            captured, start_counter, counter_step
+        )
+    if missing_bytes == 0:
+        return DamagePlacement(
+            captured, b"\x01" * len(captured), 0, 0, 0, "Exact", 0.0
+        )
+
+    anchors, padding_anchors, rejected = _padding_anchors(
+        captured, counter_step, missing_bytes
+    )
+    anchor_offsets = [captured_offset for captured_offset, _ in anchors]
+    anchor_missing = [
+        (expected_offset - captured_offset) // VIDEO_LOSS_QUANTUM
+        for captured_offset, expected_offset in anchors
+    ]
+
+    first_boundary = (-pure_start) % VIDEO_LOSS_QUANTUM
+    if first_boundary > len(captured):
+        first_boundary = len(captured)
+    end_remainder = (pure_start + len(captured)) % VIDEO_LOSS_QUANTUM
+    last_boundary = len(captured) - end_remainder
+    if last_boundary < first_boundary:
+        last_boundary = first_boundary
+    chunks = [
+        captured[offset : offset + VIDEO_LOSS_QUANTUM]
+        for offset in range(first_boundary, last_boundary, VIDEO_LOSS_QUANTUM)
+    ]
+    chunk_offsets = list(
+        range(first_boundary, last_boundary, VIDEO_LOSS_QUANTUM)
+    )
+    total_missing = missing_bytes // VIDEO_LOSS_QUANTUM
+    reference_array = np.frombuffer(reference, np.uint8)
+    if len(reference_array) != VIDEO_UNIT_BYTES:
+        raise ValueError("damage-placement reference must be one video unit")
+
+    # Viterbi over cumulative missing-transfer count. The count is monotonic;
+    # a jump inserts one or more absent scheduled transfers before this chunk.
+    states: dict[int, tuple[float, tuple[int, ...]]] = {0: (0.0, ())}
+    for chunk, start in zip(chunks, chunk_offsets):
+        end = start + VIDEO_LOSS_QUANTUM
+        inside = [
+            anchor_missing[index]
+            for index in range(
+                bisect.bisect_left(anchor_offsets, start),
+                bisect.bisect_left(anchor_offsets, end),
+            )
+        ]
+        if inside and len(set(inside)) != 1:
+            raise RuntimeError(f"loss boundary crosses delivered chunk at {start}")
+        if inside:
+            allowed = range(inside[0], inside[0] + 1)
+        else:
+            left = bisect.bisect_right(anchor_offsets, start) - 1
+            right = bisect.bisect_left(anchor_offsets, end)
+            lower = anchor_missing[left] if left >= 0 else 0
+            upper = (
+                anchor_missing[right]
+                if right < len(anchor_missing)
+                else total_missing
+            )
+            allowed = range(lower, upper + 1)
+
+        next_states = {}
+        for missing_before in allowed:
+            predecessors = [
+                (cost, path)
+                for previous, (cost, path) in states.items()
+                if previous <= missing_before
+            ]
+            if not predecessors:
+                continue
+            previous_cost, previous_path = min(predecessors, key=lambda item: item[0])
+            expected_start = start + missing_before * VIDEO_LOSS_QUANTUM
+            cost = previous_cost + _placement_cost(
+                chunk, expected_start, reference_array
+            )
+            next_states[missing_before] = (
+                cost, previous_path + (missing_before,)
+            )
+        if not next_states:
+            raise RuntimeError(f"no content-anchor placement path at byte {start}")
+        states = next_states
+
+    best_cost, path = min(states.values(), key=lambda item: item[0])
+    units = _diagnostic_fill_interval(start_counter, counter_step)
+    valid = bytearray(expected_bytes)
+
+    # The marker-bearing leading transfer and the transfer containing the next
+    # marker are fixed without content inference.
+    units[:first_boundary] = captured[:first_boundary]
+    valid[:first_boundary] = b"\x01" * first_boundary
+    for chunk, start, missing_before in zip(chunks, chunk_offsets, path):
+        target = start + missing_before * VIDEO_LOSS_QUANTUM
+        units[target : target + len(chunk)] = chunk
+        valid[target : target + len(chunk)] = b"\x01" * len(chunk)
+    suffix = captured[last_boundary:]
+    suffix_target = last_boundary + missing_bytes
+    units[suffix_target : suffix_target + len(suffix)] = suffix
+    valid[suffix_target : suffix_target + len(suffix)] = b"\x01" * len(suffix)
+
+    if valid.count(1) != len(captured):
+        raise RuntimeError(
+            f"captured byte accounting failed: {valid.count(1)} != {len(captured)}"
+        )
+    padding_run_by_start = dict(_hard_padding_runs(captured))
+    for captured_offset, expected_offset in anchors:
+        # Verify only accepted block-start anchors. Block-end anchors constrain
+        # the following transfer but do not claim those following bytes share
+        # the block's cumulative-loss count.
+        run_end = padding_run_by_start.get(captured_offset)
+        if run_end is None:
+            continue
+        check = run_end - captured_offset
+        if units[expected_offset : expected_offset + check] != captured[
+            captured_offset:run_end
+        ]:
+            raise RuntimeError(f"padding anchor moved at byte {captured_offset}")
+
+    placement_mode = (
+        "PaddingAnchoredTemporalTransferGrid"
+        if padding_anchors
+        else "AnchorlessTemporalTransferGrid"
+    )
+    return DamagePlacement(
+        bytes(units), bytes(valid), padding_anchors, rejected, len(chunks),
+        placement_mode, best_cost,
+    )
 
 
 def _runner_up_margin(values: dict[int, float]) -> float:
@@ -798,11 +1193,12 @@ def write_counter_timed_preview_video(
 ):
     """Write counter-timed 480i while preserving visible transport damage.
 
-    For each untagged capture_untagged_ring marker interval, all surviving bytes are placed as
-    a prefix across every counter period spanned by that interval; only the
-    aggregate missing suffix is synthetic SMPTE-style bars. This is diagnostic:
-    capture_untagged_ring did not tag scheduled packet positions, so an internal USB hole may
-    actually have occurred before some surviving bytes. No captured byte is
+    Exact units are copied verbatim. Damaged capture_untagged_ring intervals are reconstructed
+    on their 24,576-byte transfer grid: marker endpoints and uniquely mapped
+    hard-padding blocks constrain placement, then ordered surviving transfers
+    are assigned by temporal content similarity. This remains diagnostic:
+    capture_untagged_ring did not write transfer provenance, so content-scored placements are
+    inferences, explicitly named in the decision CSV. No captured byte is
     discarded, and no captured frame is blanked or repeated.
     """
     if not (0 <= marker_start < marker_end <= len(markers)):
@@ -842,7 +1238,7 @@ def write_counter_timed_preview_video(
             continue
         record = (
             marker_index, counter, counter_step, mixed, next_mixed,
-            next_pure - pure,
+            next_pure - pure, pure,
         )
         for offset in range(counter_step):
             member = (counter + offset) & 0xFFFF
@@ -857,9 +1253,14 @@ def write_counter_timed_preview_video(
     rows = []
     decision_counts = Counter()
     offset_counts = Counter()
+    placement_counts = Counter()
+    padding_anchor_total = 0
+    rejected_padding_total = 0
     estimator = RegistrationEstimator(registration_switch_margin)
     cached_record = None
     cached_capture = b""
+    cached_placement = None
+    reference = DIAGNOSTIC_FILL_UNIT
     with open(output_path, "wb") as output:
         for step in range(frame_count):
             counter = (start_counter + step) & 0xFFFF
@@ -868,37 +1269,49 @@ def write_counter_timed_preview_video(
             marker_index = ""
             next_counter_step = ""
             interval_anchor = ""
+            interval_offset = ""
             if membership is not None:
                 record, interval_offset = membership
                 (
                     marker_index, interval_anchor, next_counter_step,
-                    mixed_start, mixed_end, interval_received,
+                    mixed_start, mixed_end, interval_received, pure_start,
                 ) = record
                 if record != cached_record:
                     cached_capture = gather_video_bytes(
                         mm, spans, ends, mixed_start, mixed_end
                     )
+                    if (
+                        next_counter_step == 1
+                        and interval_received == VIDEO_UNIT_BYTES
+                    ):
+                        cached_placement = None
+                    else:
+                        cached_placement = reconstruct_damaged_interval(
+                            cached_capture,
+                            pure_start,
+                            interval_anchor,
+                            next_counter_step,
+                            reference,
+                        )
                     cached_record = record
                 if len(cached_capture) != interval_received:
                     raise RuntimeError(
                         f"video length mismatch at interval counter {interval_anchor}: "
                         f"{len(cached_capture)} != {interval_received}"
                     )
-                expected_interval = next_counter_step * VIDEO_UNIT_BYTES
-                usable_interval = min(interval_received, expected_interval)
-                unit_base = interval_offset * VIDEO_UNIT_BYTES
-                received_bytes = max(
-                    0, min(VIDEO_UNIT_BYTES, usable_interval - unit_base)
-                )
-                captured = cached_capture[unit_base : unit_base + received_bytes]
                 exact_interval = (
                     next_counter_step == 1
                     and interval_received == VIDEO_UNIT_BYTES
                 )
                 if exact_interval:
-                    unit = captured
+                    unit = cached_capture
+                    valid = b"\x01" * VIDEO_UNIT_BYTES
+                    received_bytes = VIDEO_UNIT_BYTES
                     unit_state = "Exact"
                     placement = "exact"
+                    placement_mode = "Exact"
+                    padding_anchors = rejected_padding = transfer_chunks = 0
+                    temporal_cost = 0.0
                     missing_bytes = 0
                     if adaptive_registration:
                         registration = estimator.decide(unit)
@@ -912,20 +1325,38 @@ def write_counter_timed_preview_video(
                         field2_start=FIELD2_START + applied_d2,
                     )
                 else:
+                    if cached_placement is None or record != cached_record:
+                        raise RuntimeError("damage placement cache lost interval state")
+                    unit_base = interval_offset * VIDEO_UNIT_BYTES
+                    unit = cached_placement.units[
+                        unit_base : unit_base + VIDEO_UNIT_BYTES
+                    ]
+                    valid = cached_placement.captured[
+                        unit_base : unit_base + VIDEO_UNIT_BYTES
+                    ]
+                    if len(unit) != VIDEO_UNIT_BYTES:
+                        raise RuntimeError(
+                            f"short reconstructed unit at counter {counter}"
+                        )
+                    received_bytes = valid.count(1)
                     invalid.append(counter)
                     if adaptive_registration:
                         estimator.discontinuity()
-                    unit = captured + DIAGNOSTIC_FILL_UNIT[received_bytes:]
                     if received_bytes == VIDEO_UNIT_BYTES:
                         unit_state = "CapturedFromDamagedInterval"
                     elif received_bytes:
-                        unit_state = "PartialPrefixTailFill"
+                        unit_state = "PartialContentAnchoredFill"
                     else:
                         unit_state = "AbsentSyntheticFill"
+                    placement_mode = cached_placement.placement_mode
                     placement = (
-                        "interval_captured_prefix_then_synthetic_suffix;"
-                        "internal_loss_position_unknown"
+                        "marker_endpoints+hard_padding+24576_grid;"
+                        "remaining_slots_temporal_inference_without_provenance"
                     )
+                    padding_anchors = cached_placement.padding_anchors
+                    rejected_padding = cached_placement.rejected_padding_runs
+                    transfer_chunks = cached_placement.transfer_chunks
+                    temporal_cost = cached_placement.temporal_cost
                     missing_bytes = max(0, VIDEO_UNIT_BYTES - received_bytes)
                     if adaptive_registration:
                         applied_d1, applied_d2 = estimator.selected
@@ -947,6 +1378,11 @@ def write_counter_timed_preview_video(
                 missing_bytes = VIDEO_UNIT_BYTES
                 unit_state = "AbsentSyntheticFill"
                 placement = "no_marker_or_bytes_assigned_to_counter"
+                placement_mode = "NoVideoInterval"
+                padding_anchors = rejected_padding = transfer_chunks = 0
+                temporal_cost = 0.0
+                valid = b"\x00" * VIDEO_UNIT_BYTES
+                unit = DIAGNOSTIC_FILL_UNIT
                 if adaptive_registration:
                     applied_d1, applied_d2 = estimator.selected
                 else:
@@ -958,6 +1394,15 @@ def write_counter_timed_preview_video(
                     field2_start=FIELD2_START + applied_d2,
                 )
             output.write(frame)
+            if unit_state == "Exact":
+                reference = unit
+            elif received_bytes:
+                composite = bytearray(reference)
+                valid_array = np.frombuffer(valid, np.uint8).astype(bool)
+                composite_array = np.frombuffer(composite, np.uint8)
+                unit_array = np.frombuffer(unit, np.uint8)
+                composite_array[valid_array] = unit_array[valid_array]
+                reference = bytes(composite)
             if registration is None:
                 decision = None
                 mode = "DiagnosticDamage" if unit_state != "Exact" else "Disabled"
@@ -995,11 +1440,16 @@ def write_counter_timed_preview_video(
                 band_stability2 = f"{registration['band_stability2']:.9f}"
             decision_counts[mode] += 1
             offset_counts[(applied_d1, applied_d2)] += 1
+            placement_counts[placement_mode] += 1
+            if interval_offset == 0:
+                padding_anchor_total += padding_anchors
+                rejected_padding_total += rejected_padding
             rows.append(
                 (
                     step, counter, marker_index, unit_state, received_bytes,
                     missing_bytes, next_counter_step, placement,
-                    interval_anchor,
+                    placement_mode, padding_anchors, rejected_padding,
+                    transfer_chunks, f"{temporal_cost:.9f}", interval_anchor,
                     FIELD1_START, FIELD2_START,
                     "" if decision is None else decision[0],
                     "" if decision is None else decision[1],
@@ -1020,7 +1470,9 @@ def write_counter_timed_preview_video(
                     "timeline_frame", "counter", "marker_index", "unit_state",
                     "received_video_bytes", "missing_video_bytes",
                     "counter_step_to_next_marker", "damage_placement_assumption",
-                    "interval_anchor_counter",
+                    "damage_placement_mode", "padding_anchor_blocks",
+                    "rejected_padding_runs", "delivered_transfer_chunks",
+                    "interval_temporal_cost", "interval_anchor_counter",
                     "transport_f1_start", "transport_f2_start",
                     "decision_d1", "decision_d2", "applied_d1", "applied_d2",
                     "mode", "confidence", "best_d1", "best_d2",
@@ -1044,6 +1496,9 @@ def write_counter_timed_preview_video(
         partial_rendered,
         offset_counts,
         decision_counts,
+        placement_counts,
+        padding_anchor_total,
+        rejected_padding_total,
     )
 
 
@@ -1077,6 +1532,9 @@ def render_preview(
             partial_rendered,
             offset_counts,
             decision_counts,
+            placement_counts,
+            padding_anchor_total,
+            rejected_padding_total,
         ) = (
             write_counter_timed_preview_video(
                 mm,
@@ -1141,6 +1599,10 @@ def render_preview(
         audio_filter = ",".join(audio_filters)
         command = [
             ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "warning",
+            "-stats",
             "-y",
             "-f",
             "rawvideo",
@@ -1194,6 +1656,9 @@ def render_preview(
         audio_end,
         offset_counts,
         decision_counts,
+        placement_counts,
+        padding_anchor_total,
+        rejected_padding_total,
     )
 
 
@@ -1417,6 +1882,9 @@ def main():
                         audio_end,
                         offset_counts,
                         decision_counts,
+                        placement_counts,
+                        padding_anchor_total,
+                        rejected_padding_total,
                     ) = result
                     print(
                         f"rendered {frames:,} frames / {frames*2:,} fields; "
@@ -1424,8 +1892,13 @@ def main():
                         f"{audio_start:,}..{audio_end:,}; "
                         f"invalid={len(invalid)} "
                         f"ranges={format_counter_runs(invalid)}; "
-                        "policy=diagnostic-bars-prefix-assumption; "
+                        "policy=content-anchored-transfer-grid; "
                         f"partial={len(partial_rendered)}"
+                    )
+                    print(
+                        f"damage placement modes={dict(sorted(placement_counts.items()))}; "
+                        f"padding anchors={padding_anchor_total:,}; "
+                        f"rejected padding runs={rejected_padding_total:,}"
                     )
                     if args.adaptive_registration:
                         print(
