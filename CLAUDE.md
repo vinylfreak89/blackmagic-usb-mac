@@ -242,6 +242,18 @@ Consequences:
   below the 16 black level)** and chroma pinned at 128 — not a legal digitized picture, most
   likely the deck's output relay muting to 0 V.
 
+**Deck mute policy (measured; the virgin-tape row is visually observed, not USB-verified):**
+| Deck state | S-Video output |
+|---|---|
+| Non-playback transport mode (stop, rewind, FF) | grey mute + OSD |
+| Playing, servo locked | program |
+| Playing, unlocked — **transient** (relock windows) | snow, ~0.7–2.3 s, re-timed into valid `0xe801` units |
+| Playing **virgin tape** (no CTL, no RF), steady state | **grey mute** — observed on the deck's output; capture fragments corroborate (`DECK_BLANK_STATIC(likely)`, grey/blank) but sit in the 40%→20%→0% loss region, so this row is **not USB-verified** |
+
+So snow is only the *acquisition transient*; the deck's steady-state answer to unlocked playback is
+its mute screen. ("The rest of the tape is snow" describes the tape's magnetic content — what this
+deck *shows* for that content is mute.)
+
 **⚠️ 17.7% of complete units are structurally perfect non-picture** (1,093 of 6,160: 1,017 deck
 blank, 38 snow, 38 sub-blanking black). Every one is a full 756,048-byte `0xe801` unit with a
 monotonic counter — **in-band indistinguishable from good video.** Relock after the splice took
@@ -268,6 +280,22 @@ when video is absent**. Run these through a **temporally hysteretic state machin
 to answer `Unknown`**.
 ⚠️ **"Snow-like" does not prove relock** — a recording can legitimately *contain* broadcast snow.
 Preserve and publish it by default; live concealment is a separate, user-selected policy.
+⚠️ **Post-TBC content analysis cannot always separate recorded snow from playback-relock noise.**
+Recorded tuner snow (real helical tracks + CTL, noise content) and virgin-tape/no-RF playback are
+*magnetically* very different, but a TBC deck re-times both into perfectly locked output rasters —
+`0xe801` asserts only that the **output raster** is locked, never that the recorded source had
+valid sync. So: **label observations, don't claim unknowable provenance** — appearance labels
+(program-like / snow-like / neutral-grey-mute / sub-black-mute / no-transport / unknown) plus a
+*separate* contextual inference (e.g. `LikelyRelock`) built from surrounding cuts, OSD, audio,
+duration, transport history.
+⚠️ **Generalize by property, never by this deck (design rule).** Every state above was measured
+through ONE deck (a JVC D-VHS with a TBC that launders everything into a valid raster). Other
+sources will behave differently: a TBC-less VCR can emit genuinely unlocked signal (and the
+Shuttle's real `0x0800` path, still unexercised, will finally fire); mute screens vary per deck
+(grey here, blue elsewhere, black, OSD or none); relock transients differ. Define every classifier
+state by its **observable signal properties** (luma/chroma statistics, coherence, temporal
+behaviour), not by "what the HM-DHX2 does" — deck-specific knowledge may *inform* an inference
+layer, never define a state.
 
 **✅ Audio is a viable continuity master** (validates §9's approach): 8,991 resync records,
 counter `18706 → 27696`, **every step exactly +1, zero exceptions** — across the splice, the stop,
