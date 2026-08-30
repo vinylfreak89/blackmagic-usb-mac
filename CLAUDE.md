@@ -74,6 +74,7 @@ so there is no vendor kext to fight — this is *why* userspace is tractable.
   derivation question becomes moot by compliance) with a NOTICE crediting bmusb for protocol
   discovery; or, for a permissive license, accept the (small) residual derivation argument and
   document the protocol as a standalone facts file. Not legal advice; decide at publication time.
+- **License:** GPLv2+ with a NOTICE crediting bmusb for protocol discovery.
 
 ## 5. Device protocol (from bmusb 0.7.8 — RE-VERIFY empirically in §9 exp 1)
 
