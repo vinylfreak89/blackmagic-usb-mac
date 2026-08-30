@@ -277,6 +277,22 @@ remaining conditions (fixed geometry, no field-1 plateaus, line-phase stability,
 audio continuity) await the content passes. Analyses stream the file by
 seek-walking records; a raw endpoint split is never materialized.
 
+**Deterministic replay (`experiments/libusb_replay_shim.c`):** link the unmodified
+capture code against the mock instead of `-lusb-1.0` and it replays a `.tpc` through the REAL
+callback/ring/writer machinery as if the device were streaming. Proven: 2.83 GB of the actual
+whole-tape capture round-tripped **byte-identically** (SHA-256, both endpoints, zero gaps), and
+fault injection exercised the paths healthy hardware never fires — a swallowed transfer produced
+the mandatory seq GAP in the output accounting, and an injected submit failure exercised the
+no-fleet-shrink retry (`failures=1 recovered=1`, gaps 0) for the first time ever. `REPLAY_PACE_US`
+paces delivery (16 ms/video transfer ≈ realtime) for clock/A-V-sync/live-path development; the
+device timebase is fully reconstructable from the iso cadence + audio resync counters, and replay
+can inject synthetic clock skew (off-nominal pacing) that real hardware cannot be commanded to
+produce. Not recorded, hence not replayable: original host-jitter finer than the 1 Hz ticks
+(a per-transfer host timestamp is the obvious v2 format extension if ever needed) and control-
+transfer responses (mock stubs them). An accidental bonus test: unpaced replay outruns the
+writer and the ring overflow machinery emitted exact HostLoss records — the honesty path works
+under overload.
+
 **capture_tagged_bench hardware smoke test:** 30 s at 179 Mbit/s through a USB 3 hub with
 **zero submit-seq gaps on both endpoints** (complete scheduled-slot continuity, the claim capture_untagged_ring
 could never make), 0 iso errors, 0 inversions, 0 HostLoss, ring high-water 0. 471k records, 0
