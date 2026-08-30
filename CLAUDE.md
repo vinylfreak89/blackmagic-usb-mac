@@ -828,7 +828,17 @@ design assumes a signed system extension, app-group IPC, `/Applications` install
 A sandboxed GUI/extension needs entitlement `com.apple.security.device.usb`. Long-term shape:
 one USB capture service → {archival writer, OBS source (V+A), CMIO video ext + linked CoreAudio}.
 
-**Control surface (earlier): EVERYTHING lives in CMIO.** All configuration —
+**Control surface (final):** three tiers, each on the most standard
+rail available. (1) **Mode selection = advertised FORMATS** in every app's native picker — the
+raw/corrected split ("v-sync"/registration correction) is format choice (`720×480i raw`,
+`720×480p59.94 corrected`), zero custom client code. (2) **CMIO custom properties** carry the
+long tail of device-global knobs. (3) **A real configurator app** — polished SwiftUI, "the
+typical Mac way," Desktop-Video-Setup-class — owns logging, diagnostics, decision-log viewing,
+and property editing. **This is a PUBLISHED app end-state**, so build quality, signing/
+notarization, and the license (GPLv2+) are product requirements, not
+afterthoughts. (Supersedes the earlier no-companion stance — the industry pattern won.)
+
+*(superseded, kept for context)* **Control surface (earlier): EVERYTHING lives in CMIO.** All configuration —
 registration correction on/off, concealment policy, logging on/off, archival-stream behaviour —
 is exposed as **CMIO custom properties** on the virtual device(s); device-**global** scope is
 fine (per-app scoping explicitly not needed). Whether the archival stream is corrected and
@@ -862,6 +872,25 @@ delivery edge; wrong one at acquisition.
    locates where the damage happens (deck HDMI pipeline vs Shuttle frontend vs baked-in line
    timing). Answers the original "why field-flipping" question.
 4. **Capture core** (§8) → 5. **Archival writer** (§9) → 6. **OBS/CMIO live path** (§10).
+
+**BUILD PLAN:**
+- **P1 `capture_core`** — C library productizing capture_tagged_bench: device backend + replay backend
+  (libusb_replay_shim heritage) behind one callback API; tagged transport sink; atomics/QoS/fleet
+  discipline as library invariants. Tested by byte-identical replay round-trips.
+- **P2 registration engine in C** — the (d1,d2) per-field model ported from
+  capture_render.py, same anchors (padding ruler, VBI, temporal registration), hysteresis,
+  `Unknown`. Golden-tested against `field_origin_census.tsv` and the
+  whole_tape decision log; must match the offline estimator's confident decisions and stay within
+  the 16.68 ms/field budget in C.
+- **P3 frameserver** — unit parser + signal-state classifier v0 (three-layer model, §6) +
+  registration engine + bob → IOSurface publisher + decision log + archival writer skeleton.
+  Both components test via replay.
+- **P4 CMIO extension (Swift)** — standard device, two advertised formats (raw 480i, corrected
+  59.94p), IOSurface/XPC consumer, custom properties. Includes a signing/notarization/dev-mode
+  investigation SPIKE first (published-app requirement; no boot-security changes).
+- **P5 configurator app (SwiftUI)** — status, logging, decision-log viewer, property editor.
+- Throughout: **all testing via deterministic replay** (whole_tape.tpc + untagged_capture + libusb_replay_shim +
+  census ground truths); hardware only for final validation passes.
    **Steps 5–6 are built by replaying a captured file through a virtual device — no deck, no tape,
    no live signal** (see §6). Only steps 1–4 need the hardware; everything downstream is
    deterministic replay, so the archival writer and the CMIO/OBS path can be developed and
