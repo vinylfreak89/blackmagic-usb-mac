@@ -423,6 +423,21 @@ at the same tape location ⇒ tape/recorded-timing origin; clean registration �
 servo/digital processing. (Gold standard would be a two-channel scope on S-Video Y plus the deck's
 head-switch/PG test point, but the second-deck A/B is cheaper and answers the practical question.)
 
+**General registration model (replaces the field-2-origin model in the proof renderer):** per unit,
+estimate a **signed integer program-layer offset per field, or `Unknown`** —
+`{transport field starts (observed) · d1 · d2 · relative = d2−d1}` — searching candidate **pairs**
+`(d1, d2)` over configurable bounds, corrected crops `17+d1`/`280+d2` for this format, **no field
+permanently designated the anchor**. Hard padding + VBI give the transport ruler but cannot see
+program-layer displacement; comb constrains only `d2−d1` (common-mode-blind); **absolute** offsets
+need same-parity temporal registration, active-picture landmarks, or a learned stable segment —
+and when those are insufficient (flat fields, snow, cuts) the estimator publishes `Unknown` or
+relative-only rather than arbitrarily anchoring a field. The segment model *learns* which field
+(if either) is stable, normal placement, plausible offset range, and transition/hysteresis costs.
+This capture resolves as `d1∈{0,+1,+2}, d2=0` — **test data, not policy**. Labels, stricter form:
+observation layer stores `UniformField` + measured `{Y,U,V, variance, chroma_distance,
+temporal_coherence}`; `LikelyMute` and friends live **only** in the inference layer; `0x0800` is
+stored as a device observation, not a universal no-signal description.
+
 **Second-deck A/B deferred**; the narrower question is only *"is the deck itself going bad?"*. **Substitute test:** capture a
 **known-good tape with the fixed deeper-queue probe** — ideally **both SP and EP material, once
 cold and once warmed** — and validate: zero scheduled USB holes · fixed hard-padding/VBI geometry ·
