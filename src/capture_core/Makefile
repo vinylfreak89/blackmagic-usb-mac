@@ -12,5 +12,25 @@ check: shuttle-capture
 	@test -n "$(CAPTURE)" || { echo 'usage: make check CAPTURE=<capture.tpc>'; exit 2; }
 	./shuttle-capture --replay $(CAPTURE) /dev/null
 
+FIXTURE=fixture.tpc
+EXPECT=$(shell cat fixture.expect 2>/dev/null)
+
+$(FIXTURE): gen_packet_capture.py
+	python3 gen_packet_capture.py --out $(FIXTURE) --expect fixture.expect --video-transfers 40 --audio-transfers 60 --short-every 97
+
+test: capture_core_test $(FIXTURE)
+	./capture_core_test $(FIXTURE) $$(cat fixture.expect)
+
+test-tsan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE)
+	$(CC) -O1 -g -fsanitize=thread $(CFLAGS) -o test_tsan capture_core.c capture_core_test.c $(LIBS)
+	./test_tsan $(FIXTURE) $$(cat fixture.expect)
+
+test-asan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE)
+	$(CC) -O1 -g -fsanitize=address,undefined $(CFLAGS) -o test_asan capture_core.c capture_core_test.c $(LIBS)
+	./test_asan $(FIXTURE) $$(cat fixture.expect)
+
+capture_core_test: capture_core.c capture_core_test.c capture_core.h
+	$(CC) $(CFLAGS) -o $@ capture_core.c capture_core_test.c $(LIBS)
+
 clean:
-	rm -f shuttle-capture *.o
+	rm -f shuttle-capture capture_core_test test_tsan test_asan *.o fixture.tpc fixture.expect

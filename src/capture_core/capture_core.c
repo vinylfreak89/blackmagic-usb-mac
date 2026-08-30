@@ -94,6 +94,25 @@ static void flush_loss_(cc_session *s, uint8_t ep){
     ring_put_record_(s,&h,NULL,0);
     s->lost_pkts[e]=0; s->lost_bytes[e]=0;
 }
+// Termination-path flush: loss accounting MUST reach the consumer before the
+// backend declares itself done, or bytes vanish unconfessed (caught by the
+// balance test: delivered + lost must equal input to the byte). Waits for the
+// consumer to drain ring space; bounded so a wedged user callback cannot hang
+// cc_stop forever -- on timeout the loss stays visible in cc_stats and we say
+// so loudly. (Polling here is a termination-only liveness backstop; the data
+// path proper never polls.)
+static void flush_loss_blocking_(cc_session *s, uint8_t ep){
+    int e=ep_i(ep);
+    for(int i=0; s->lost_pkts[e] && i<10000; i++){
+        flush_loss_(s,ep);
+        if(!s->lost_pkts[e]){ wake_(s); return; }
+        usleep(1000);
+    }
+    if(s->lost_pkts[e])
+        fprintf(stderr,"capture_core: %u lost packets on ep 0x%02x UNREPORTED to consumer "
+                "(ring never drained); loss remains in cc_stats\n",s->lost_pkts[e],ep);
+}
+
 static void put_pkt_(cc_session *s, uint8_t ep, uint16_t pi, uint32_t seq,
                      uint32_t st, uint32_t req, const uint8_t *d, uint32_t al){
     int e=ep_i(ep);
@@ -252,7 +271,7 @@ static void* device_main(void *arg){
     int guard=0;
     while(atomic_load(&s->inflight)>0 && guard++<300)
         libusb_handle_events_timeout(s->ctx,&tv);
-    flush_loss_(s,CC_EP_VIDEO); flush_loss_(s,CC_EP_AUDIO);
+    flush_loss_blocking_(s,CC_EP_VIDEO); flush_loss_blocking_(s,CC_EP_AUDIO);
     atomic_store(&s->backend_done,1); wake_(s);
     pthread_mutex_lock(&s->sig_m); pthread_cond_signal(&s->sig_c); pthread_mutex_unlock(&s->sig_m);
     return NULL;
@@ -284,8 +303,13 @@ static void* replay_main(void *arg){
                 if(s->cfg.replay_pace_us>0 && e==0) usleep((useconds_t)s->cfg.replay_pace_us); }
             break; }
         case REC_TICK: put_meta_(s,REC_TICK,0,0,0,h.status,NULL,0); break;
-        case REC_HOSTLOSS:
-            put_meta_(s,REC_HOSTLOSS,h.endpoint,0,h.submit_seq,0,NULL,0); break;
+        case REC_HOSTLOSS: {
+            // fold the ORIGINAL capture's loss into our accounting so counts
+            // survive replay (forwarding with zeroed fields lost them)
+            int le=ep_i(h.endpoint);
+            s->lost_pkts[le]+=h.req_len; s->lost_bytes[le]+=h.actual_len;
+            flush_loss_(s,h.endpoint);
+            break; }
         default: break;
         }
     }
@@ -293,7 +317,7 @@ static void* replay_main(void *arg){
     if(atomic_load(&s->end_reason)==CC_END_STOPPED && !atomic_load(&s->stop_req))
         atomic_store(&s->end_reason,CC_END_REPLAY_EOF);
 done:
-    flush_loss_(s,CC_EP_VIDEO); flush_loss_(s,CC_EP_AUDIO);
+    flush_loss_blocking_(s,CC_EP_VIDEO); flush_loss_blocking_(s,CC_EP_AUDIO);
     atomic_store(&s->backend_done,1);
     pthread_mutex_lock(&s->sig_m); pthread_cond_signal(&s->sig_c); pthread_mutex_unlock(&s->sig_m);
     return NULL;
