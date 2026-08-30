@@ -17,6 +17,8 @@
 //   type 1 HostLoss — ring overflow; req_len = lost packet count, actual_len = lost bytes
 //   type 2 TransferError  — transfer-level failure/cancellation; status = libusb status
 //   type 3 SESSION  — file-start parameter record; payload = text
+//   type 4 TICK     — 1 Hz heartbeat; status = elapsed ms (dates stalls/gaps against
+//                     wall clock: untagged_capture's losses were phase-locked at ~1 Hz)
 #include <libusb.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -26,6 +28,8 @@
 #include <time.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <sys/qos.h>
+#include <pthread/qos.h>
 
 #define VID 0x1EDB
 #define PID 0xBD3B
@@ -39,7 +43,7 @@
 #define NXF (XFERS*2)
 
 #define REC_MAGIC 0x31504143u   // "CAP1" little-endian
-enum { REC_DATA=0, REC_HOSTLOSS=1, REC_XFERERR=2, REC_SESSION=3 };
+enum { REC_DATA=0, REC_HOSTLOSS=1, REC_XFERERR=2, REC_SESSION=3, REC_TICK=4 };
 typedef struct {
     uint32_t magic; uint8_t type, endpoint; uint16_t pkt_index;
     uint32_t submit_seq, status, req_len, actual_len;
@@ -57,7 +61,7 @@ static _Atomic long inflight=0;
 
 // Producer-thread-only state (all callbacks run on the single libusb event thread).
 static long v_bytes=0, a_bytes=0, iso_err=0, xfer_err=0, zero_pkts=0, short_pkts=0, hostloss_recs=0;
-static long resubmit_fail=0, resubmit_recovered=0;
+static long resubmit_fail=0, resubmit_recovered=0, cancelled=0;
 static uint32_t seq_ctr[2]={0,0};                    // per-endpoint submit sequence
 static uint64_t lost_bytes[2]={0,0}, total_lost[2]={0,0};
 static uint32_t lost_pkts[2]={0,0};
@@ -117,6 +121,7 @@ static void put_meta(uint8_t type, uint8_t ep, uint16_t pi, uint32_t seq, uint32
 
 static void* writer(void*_){
     (void)_;
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     uint8_t *local=malloc(8u<<20);
     for(;;){
         size_t t=atomic_load_explicit(&r_tail,memory_order_relaxed);
@@ -161,6 +166,8 @@ static void cb(struct libusb_transfer *x){
                     libusb_get_iso_packet_buffer_simple(x,i),al);
             if(xi->ep==VIDEO_EP) v_bytes+=al; else a_bytes+=al;
         }
+    } else if(x->status==LIBUSB_TRANSFER_CANCELLED && atomic_load(&g_stop)){
+        cancelled++;                       // deliberate shutdown cancellation, not an error
     } else {
         xfer_err++;
         put_meta(REC_XFERERR,xi->ep,0,xi->seq,(uint32_t)x->status,NULL,0);
@@ -217,6 +224,10 @@ int main(int argc,char**argv){
         mode,V_PKT,V_NPK,A_PKT,A_NPK,XFERS,ringmb);
     put_meta(REC_SESSION,0,0,0,0,sess,(uint32_t)sl);
 
+    // Default-priority scheduling is implicated in untagged_capture's chronic loss: drops
+    // were phase-locked at ~1 Hz (two ~100 ms phases), i.e. a periodic host task
+    // preempting the event thread past the old 6 ms horizon. Elevate both threads.
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     pthread_t wt; pthread_create(&wt,NULL,writer,NULL);
     int n=0;
     for(int w=0;w<2;w++){
@@ -233,13 +244,20 @@ int main(int argc,char**argv){
     }
 
     time_t start=time(NULL); struct timeval tv={0,100000};
+    struct timespec t0; clock_gettime(CLOCK_MONOTONIC,&t0);
+    uint32_t last_tick=0;
     while(time(NULL)-start<secs && !atomic_load(&g_stop)){
         libusb_handle_events_timeout(ctx,&tv);
+        struct timespec tn; clock_gettime(CLOCK_MONOTONIC,&tn);
+        uint32_t ms=(uint32_t)((tn.tv_sec-t0.tv_sec)*1000+(tn.tv_nsec-t0.tv_nsec)/1000000);
+        if(ms-last_tick>=1000){ last_tick=ms; put_meta(REC_TICK,0,0,0,ms,NULL,0); }
         for(int i=0;i<NXF;i++)                     // retry any resubmit-failed transfer
             if(XS[i].x && XS[i].pending && libusb_submit_transfer(XS[i].x)==0){
                 XS[i].pending=0; atomic_fetch_add(&inflight,1); resubmit_recovered++;
             }
     }
+    int v_fleet=0,a_fleet=0;                       // capture fleet size BEFORE cancelling
+    for(int i=0;i<NXF;i++) if(XS[i].x && !XS[i].pending){ if(XS[i].ep==VIDEO_EP) v_fleet++; else a_fleet++; }
     atomic_store(&g_stop,1);
     for(int i=0;i<NXF;i++) if(XS[i].x) libusb_cancel_transfer(XS[i].x);
     int guard=0;
@@ -259,10 +277,8 @@ int main(int argc,char**argv){
            iso_err,xfer_err,zero_pkts,short_pkts);
     printf("HostLoss records=%ld  lost video=%" PRIu64 " B  lost audio=%" PRIu64 " B\n",
            hostloss_recs,total_lost[0],total_lost[1]);
-    int v_alive=0,a_alive=0;
-    for(int i=0;i<NXF;i++) if(XS[i].x && !XS[i].pending){ if(XS[i].ep==VIDEO_EP) v_alive++; else a_alive++; }
-    printf("resubmit failures=%ld recovered=%ld | fleet at shutdown: video %d/%d audio %d/%d\n",
-           resubmit_fail,resubmit_recovered,v_alive,XFERS,a_alive,XFERS);
+    printf("resubmit failures=%ld recovered=%ld cancelled-at-shutdown=%ld | fleet before shutdown: video %d/%d audio %d/%d\n",
+           resubmit_fail,resubmit_recovered,cancelled,v_fleet,XFERS,a_fleet,XFERS);
     printf("ring high-water=%.0f MB / %zu MB\n",r_max/1e6,ringmb);
     libusb_release_interface(h,0); libusb_close(h); libusb_exit(ctx);
     return 0;
