@@ -221,6 +221,32 @@ capture; ordering of the *missing* slots is unobservable in an untagged capture 
 per-packet `submit_seq`/`pkt_index` makes it directly measurable on the next hardware run, which
 is the definitive test.
 
+**Pre-collapse drops are phase-locked at ~1 Hz:** even the "healthy" region
+carried 130 damaged intervals (~2.1% of units), mostly single-quantum (24,576 B) — and **81 of 127
+(64%) land in just two 100 ms phase bins (.7 s and .9 s) of a 1-second cycle** (uniform ≈ 13/bin).
+A periodic host task was stalling the default-priority event thread past the old ~6 ms horizon
+twice a second; the terminal collapse was this chronic disease going terminal. **Not
+deck-correlated** (0.50 drops/s within ±3 s of deck events vs 0.65 elsewhere — an earlier
+impression that bursts followed the splice failed this test). capture_tagged_bench countermeasures: threads at
+`QOS_CLASS_USER_INITIATED`, the 128 ms horizon, and 1 Hz `TICK` records (type 4, elapsed-ms) so
+any residual stall is datable against wall clock.
+
+**Deck full-frame freezes: measured ZERO.** The hypothesis "the TBC never freezes full
+frames" converted to measurement: inter-frame MAD on subsampled luma over 4,916 consecutive
+program pairs vs the deck-blank static reference (the chain's true frozen-image noise floor,
+MAD 0.65–0.76). **Minimum program-pair MAD = 1.53 — 2× the static ceiling; zero program pairs at
+or below it.** A TBC freeze would replay a stored frame and land at the static floor; none did.
+(Held animation cels explain the ~1.5–2.5 tail: identical cels through two passes of tape noise.)
+Within the delivered data there is also no garbage raster — damage is pure absence plus the two
+known signal-borne faults (field-1 registration, line-21 H/chroma), never TBC-generated
+corruption.
+
+**capture_tagged_bench hardware smoke test:** 30 s at 179 Mbit/s through a USB 3 hub with
+**zero submit-seq gaps on both endpoints** (complete scheduled-slot continuity, the claim capture_untagged_ring
+could never make), 0 iso errors, 0 inversions, 0 HostLoss, ring high-water 0. 471k records, 0
+corrupt. Shutdown cancellations are now accounted separately from
+errors, and fleet size is reported from before cancellation.
+
 **Damage-review rerender:** the obsolete whole-interval prefix placement is replaced
 by a 24,576-byte transfer-grid reconstruction. Marker endpoints plus **1,890 uniquely placeable
 complete hard-padding blocks** constrain the grid; ordered transfers in the remaining spans use a
