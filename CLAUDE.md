@@ -882,6 +882,20 @@ delivery edge; wrong one at acquisition.
   `Unknown`. Golden-tested against `field_origin_census.tsv` and the
   whole_tape decision log; must match the offline estimator's confident decisions and stay within
   the 16.68 ms/field budget in C.
+- ✅ **P1 + P2 landed.** `src/capture_core/` (capture core as a library: device +
+  replay backends behind one callback API, tpc sink, adversarial suite green under plain/TSAN/
+  ASan+UBSan; two real bugs caught pre-consumer — a ring publication race, and unconfessed loss
+  at termination when the ring is full). `src/field_registration/`: allocation-free dual-edge
+  estimator — full-tape golden **86,293/86,293 units and 56,441/56,441 confident decisions**
+  matching the offline model, untagged_capture census 4,042/4,042 applied offsets correct, all 320 (+1)
+  and 66 (+2) events corrected, **1.29 ms median per unit (~25.8× realtime)**, 185 KB state.
+  **Integration contract:** the signal-state layer MUST call `fieldreg_begin_segment()` after
+  acquisition/relock (registration cannot distinguish a long real displacement from a new source
+  segment); plain byte discontinuities use `fieldreg_discontinuity()` and keep the learned
+  gauge. Note: on the end credits the production dual-edge model stabilizes at (-1,0) where the
+  old sidecar chattered +2/+3 — promising, pending visual confirmation. CMIO startup guidance
+  from P2: suppress samples during Arming; start the device timeline at the first stable A/V
+  epoch; no synthetic startup frames.
 - **P3 frameserver** — unit parser + signal-state classifier v0 (three-layer model, §6) +
   registration engine + bob → IOSurface publisher + decision log + archival writer skeleton.
   Both components test via replay.

@@ -34,3 +34,7 @@ src/field_registration/tests/field_registration_truth
 src/field_registration/tests/libfieldreg_truth.dylib
 src/field_registration/tests/registration_truth.*
 src/capture_core/shuttle-capture
+src/capture_core/capture_core_test
+src/capture_core/test_tsan
+src/capture_core/test_asan
+src/capture_core/fixture.expect
