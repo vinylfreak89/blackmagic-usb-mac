@@ -324,6 +324,25 @@ units — estimator chatter, explicitly NOT deck-health evidence**; after bridgi
 regions remain (largest 15.2–975.6 s and 2837 s–end), pending raw-field/visual confirmation.
 Deck-health conditions 2–6 therefore stay OPEN pending that inspection.
 
+**NTSC-M setup: no preserved pedestal in this capture.** Fade-bottom/black frames in fixture A measure **median Y ≈ 12–17** with
+sub-black excursions — with p95 ≈ 22–24 these frames **cannot represent ordinary 7.5 IRE setup
+(expected Y ≈ 16 + 219×0.075 ≈ 32)**. That is the supportable claim; the measurement does NOT
+establish where setup vanished, nor that "US black became Y12" (8 frames is thin; dark program
+content can legitimately contain superblack/crushed fades). **THREE unapportioned stages, not
+two:** the 1998 broadcast→cable→VCR chain, the DHX2's playback processing, and **the Shuttle's
+own analog decoder** — a Y16 result from any test downstream of tape cannot separate the last
+two. The commercial-tape capture is a worthwhile *real-world* test (pro duplication makes setup
+plausible, not guaranteed), but the **decisive test is a calibrated NTSC generator into the
+Shuttle directly, with and without setup** — that isolates the Shuttle; then the deck with a
+known signal. Method upgrades for the next pass: gate on low spatial variance + neutral chroma +
+unimodal luma histogram (not just p95); report the histogram mode (median biases on detail);
+measure setup as **black-minus-same-line-porch** (that difference IS setup); require the black
+peak to settle across contiguous frames. **Renderer implications (adopted):** the Y16/C128
+hard-padding ruler stays valid (device-generated, says nothing about program black); classifiers
+and registration landmarks must treat program black as **relative/adaptive, never assume Y16**;
+any future presentation-side setup removal is an affine remap from measured black/white — and the
+archival stream is never touched.
+
 **Deterministic replay (`experiments/libusb_replay_shim.c`):** link the unmodified
 capture code against the mock instead of `-lusb-1.0` and it replays a `.tpc` through the REAL
 callback/ring/writer machinery as if the device were streaming. Proven: 2.83 GB of the actual
