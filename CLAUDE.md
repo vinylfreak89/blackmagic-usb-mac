@@ -799,6 +799,9 @@ derivative; shed the live consumer before it threatens acquisition.
 
 ## 10. Delivery: OBS virtual camera
 
+**End state: a device every app's picker sees as a standard capture device.** Every design choice below serves that sentence — a normal camera in every
+app's picker, no companion apps, no special client code, knobs in CMIO properties.
+
 A CMIO **camera is video-only** — audio needs a separate CoreAudio device, OR deliver via a
 native **OBS source plugin** (carries video+audio together; the pragmatic path for the OBS goal).
 Either way, **do not put USB ownership inside the CMIO extension** (Apple's camera-extension
