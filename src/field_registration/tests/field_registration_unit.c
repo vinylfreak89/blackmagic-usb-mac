@@ -72,8 +72,13 @@ static void shift_first_picture_down_one(uint8_t *unit)
 
 int main(void)
 {
+    assert(fieldreg_state_size() == sizeof(field_registration));
+    assert(fieldreg_config_size() == sizeof(fieldreg_config));
+    assert(fieldreg_decision_size() == sizeof(fieldreg_decision));
     field_registration engine;
-    fieldreg_init(&engine, NULL);
+    fieldreg_config config = fieldreg_default_config();
+    assert(config.evidence_model == FIELDREG_EVIDENCE_DUAL_EDGE);
+    fieldreg_init(&engine, &config);
     uint8_t *unit = malloc(FIELDREG_UNIT_BYTES);
     assert(unit);
 

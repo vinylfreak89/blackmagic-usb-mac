@@ -19,6 +19,8 @@ enum {
     FIELDREG_FIELD2_START = 280,
     FIELDREG_MIN_OFFSET = -6,
     FIELDREG_MAX_OFFSET = 6,
+    /* 280 + 5 + 240 == 525; +6 would read a nonexistent raster line. */
+    FIELDREG_FIELD2_MAX_OFFSET = 5,
     FIELDREG_X_SAMPLES = 180,
     FIELDREG_UNKNOWN = -128,
 };
@@ -31,9 +33,12 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_UNKNOWN_BAND_DISAGREEMENT,
     FIELDREG_MODE_UNKNOWN_EVIDENCE_DISAGREEMENT,
     FIELDREG_MODE_UNKNOWN_COMMON_MODE_GAUGE,
+    FIELDREG_MODE_UNKNOWN_SCENE_CUT_HOLD,
+    FIELDREG_MODE_UNKNOWN_TEMPORAL_RELEASE_DWELL,
     FIELDREG_MODE_UNKNOWN_CANDIDATE_DWELL,
     FIELDREG_MODE_STABLE,
     FIELDREG_MODE_CONVERGED_RELATIVE_BAND,
+    FIELDREG_MODE_CONVERGED_TEMPORAL_RELEASE,
 } fieldreg_mode;
 
 typedef enum fieldreg_evidence_model {
@@ -66,6 +71,11 @@ typedef struct fieldreg_decision {
     double weave_margin;
     double temporal_margin_f1;
     double temporal_margin_f2;
+    int8_t temporal_best_f1;
+    int8_t temporal_best_f2;
+    double temporal_best_cost_f1;
+    double temporal_best_cost_f2;
+    bool temporal_scene_cut;
 
     bool transport_ok;
     int16_t observed_transport_f1;
@@ -107,17 +117,22 @@ typedef struct field_registration {
     uint32_t band_serial;
 
     bool previous_valid[2];
+    bool temporal_cost_ema_valid;
+    double temporal_cost_ema[2];
     uint8_t previous[2][FIELDREG_FIELD_LINES][FIELDREG_X_SAMPLES];
     uint8_t luma[FIELDREG_RASTER_LINES][FIELDREG_X_SAMPLES];
 } field_registration;
 
 fieldreg_config fieldreg_default_config(void);
+size_t fieldreg_state_size(void);
+size_t fieldreg_config_size(void);
+size_t fieldreg_decision_size(void);
 void fieldreg_init(field_registration *engine, const fieldreg_config *config);
 
 /* Start a newly acquired source segment and relearn its absolute band gauge. */
 void fieldreg_begin_segment(field_registration *engine);
 
-/* Break temporal/dwell evidence after unknown byte placement or a stream cut. */
+/* Break temporal/dwell evidence after unknown byte placement. */
 void fieldreg_discontinuity(field_registration *engine);
 
 /* Process one exact e801 unit. Returns false only for an invalid unit/header. */

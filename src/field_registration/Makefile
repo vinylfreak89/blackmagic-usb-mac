@@ -5,7 +5,10 @@ LDLIBS ?= -lm
 
 .PHONY: all test clean
 
-all: tests/field_registration_unit tests/field_registration_golden
+all: libfieldreg.dylib tests/field_registration_unit tests/field_registration_golden
+
+libfieldreg.dylib: field_registration.c field_registration.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -dynamiclib field_registration.c -o $@ $(LDLIBS)
 
 tests/field_registration_unit: field_registration.c field_registration.h tests/field_registration_unit.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) field_registration.c tests/field_registration_unit.c -o $@ $(LDLIBS)
@@ -31,4 +34,4 @@ tests/field_registration_golden: field_registration.c field_registration.h tests
 	$(CC) $(CPPFLAGS) $(CFLAGS) field_registration.c tests/field_registration_golden.c -o $@ $(LDLIBS)
 
 clean:
-	rm -f tests/field_registration_unit tests/field_registration_golden tests/field_registration_truth tests/libfieldreg_truth.dylib tests/registration_truth.raw tests/registration_truth.csv
+	rm -f libfieldreg.dylib tests/field_registration_unit tests/field_registration_golden

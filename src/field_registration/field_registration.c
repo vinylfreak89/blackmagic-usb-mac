@@ -46,6 +46,21 @@ fieldreg_config fieldreg_default_config(void)
     return config;
 }
 
+size_t fieldreg_state_size(void)
+{
+    return sizeof(field_registration);
+}
+
+size_t fieldreg_config_size(void)
+{
+    return sizeof(fieldreg_config);
+}
+
+size_t fieldreg_decision_size(void)
+{
+    return sizeof(fieldreg_decision);
+}
+
 void fieldreg_init(field_registration *engine, const fieldreg_config *config)
 {
     fieldreg_config chosen = config ? *config : fieldreg_default_config();
@@ -137,14 +152,19 @@ static bool transport_geometry(const uint8_t *unit, int *observed_f1,
            *observed_f2 == FIELDREG_FIELD2_START;
 }
 
+static bool picture_signal(bool hard, double mean, double sigma)
+{
+    return !hard && (sigma > 5.0 || mean > 24.0);
+}
+
 static int picture_top(const bool hard[FIELDREG_RASTER_LINES],
-                       const double mean[FIELDREG_RASTER_LINES],
-                       const double sigma[FIELDREG_RASTER_LINES],
-                       int start, int stop)
+                      const double mean[FIELDREG_RASTER_LINES],
+                      const double sigma[FIELDREG_RASTER_LINES],
+                      int start, int stop)
 {
     bool picture[FIELDREG_RASTER_LINES];
     for (int line = 0; line < FIELDREG_RASTER_LINES; ++line)
-        picture[line] = !hard[line] && (sigma[line] > 5.0 || mean[line] > 24.0);
+        picture[line] = picture_signal(hard[line], mean[line], sigma[line]);
     int after = stop < FIELDREG_RASTER_LINES - 2 ? stop : FIELDREG_RASTER_LINES - 2;
     for (int line = start + 1; line < after; ++line) {
         if (picture[line] && picture[line + 1] && picture[line + 2])
@@ -154,13 +174,13 @@ static int picture_top(const bool hard[FIELDREG_RASTER_LINES],
 }
 
 static int picture_bottom(const bool hard[FIELDREG_RASTER_LINES],
-                          const double mean[FIELDREG_RASTER_LINES],
-                          const double sigma[FIELDREG_RASTER_LINES],
-                          int start, int stop)
+                         const double mean[FIELDREG_RASTER_LINES],
+                         const double sigma[FIELDREG_RASTER_LINES],
+                         int start, int stop)
 {
     bool picture[FIELDREG_RASTER_LINES];
     for (int line = 0; line < FIELDREG_RASTER_LINES; ++line)
-        picture[line] = !hard[line] && (sigma[line] > 5.0 || mean[line] > 24.0);
+        picture[line] = picture_signal(hard[line], mean[line], sigma[line]);
     int last = stop < FIELDREG_RASTER_LINES ? stop - 1 : FIELDREG_RASTER_LINES - 1;
     for (int line = last; line >= start + 2; --line) {
         if (picture[line] && picture[line - 1] && picture[line - 2])
@@ -267,6 +287,17 @@ static void temporal_costs(const field_registration *engine, int parity, int sta
     }
 }
 
+static int best_cost_index(const double costs[13], double *cost)
+{
+    int best = 0;
+    for (int i = 1; i < 13; ++i) {
+        if (costs[i] < costs[best])
+            best = i;
+    }
+    *cost = costs[best];
+    return best + FIELDREG_MIN_OFFSET;
+}
+
 static int band_slot(int value)
 {
     int slot = value + BAND_BIAS;
@@ -349,6 +380,16 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     temporal_costs(engine, 1, FIELDREG_FIELD2_START, temporal2);
     double temporal_margin1 = runner_up_margin(temporal1);
     double temporal_margin2 = runner_up_margin(temporal2);
+    double temporal_best_cost1;
+    double temporal_best_cost2;
+    int temporal_best1 = best_cost_index(temporal1, &temporal_best_cost1);
+    int temporal_best2 = best_cost_index(temporal2, &temporal_best_cost2);
+    bool had_temporal = engine->previous_valid[0] && engine->previous_valid[1];
+    double cut_threshold1 = engine->temporal_cost_ema[0] * 1.8 + 2.0;
+    double cut_threshold2 = engine->temporal_cost_ema[1] * 1.8 + 2.0;
+    bool scene_cut = had_temporal && engine->temporal_cost_ema_valid &&
+                     temporal_best_cost1 > cut_threshold1 &&
+                     temporal_best_cost2 > cut_threshold2;
     double independent_evidence = fmax(weave_margin,
                                        fmax(temporal_margin1, temporal_margin2));
     if (best_relative == engine->selected_relative ||
@@ -401,17 +442,54 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                               band_d1 >= FIELDREG_MIN_OFFSET &&
                               band_d1 <= FIELDREG_MAX_OFFSET &&
                               band_d2 >= FIELDREG_MIN_OFFSET &&
-                              band_d2 <= FIELDREG_MAX_OFFSET;
+                              band_d2 <= FIELDREG_FIELD2_MAX_OFFSET;
     int candidate_relative = candidate_valid ? band_d2 - band_d1 : 0;
     bool common_mode_ambiguous = candidate_valid && band_d1 != 0 &&
                                  band_d2 != 0 &&
                                  ((band_d1 > 0) == (band_d2 > 0));
+    bool temporal_reliable1 = engine->previous_valid[0] && !scene_cut &&
+                              temporal_margin1 >= 0.25;
+    bool temporal_reliable2 = engine->previous_valid[1] && !scene_cut &&
+                              temporal_margin2 >= 0.25;
+    bool temporal_release =
+        (engine->selected[0] != 0 || engine->selected[1] != 0) &&
+        (engine->selected[0] == 0 ||
+         (band_d1 == 0 && bottom_d1 == 0 && temporal_reliable1 &&
+          temporal_best1 == 0)) &&
+        (engine->selected[1] == 0 ||
+         (band_d2 == 0 && bottom_d2 == 0 && temporal_reliable2 &&
+          temporal_best2 == 0));
     if (dual_edge && candidate_in_range)
         engine->selected_relative = (int8_t)candidate_relative;
     ++engine->pending_age;
 
     out->mode = FIELDREG_MODE_INVALID_UNIT;
-    if (!transport_ok) {
+    if (scene_cut) {
+        out->mode = FIELDREG_MODE_UNKNOWN_SCENE_CUT_HOLD;
+    } else if (temporal_release) {
+        if (engine->pending_valid && engine->pending[0] == 0 &&
+            engine->pending[1] == 0 && engine->pending_age <= 2) {
+            ++engine->pending_count;
+        } else {
+            engine->pending[0] = 0;
+            engine->pending[1] = 0;
+            engine->pending_valid = true;
+            engine->pending_count = 1;
+        }
+        engine->pending_age = 0;
+        if (engine->pending_count >= 2) {
+            engine->selected[0] = 0;
+            engine->selected[1] = 0;
+            engine->selected_relative = 0;
+            engine->pending_valid = false;
+            engine->pending_count = 0;
+            out->decision_d1 = 0;
+            out->decision_d2 = 0;
+            out->mode = FIELDREG_MODE_CONVERGED_TEMPORAL_RELEASE;
+        } else {
+            out->mode = FIELDREG_MODE_UNKNOWN_TEMPORAL_RELEASE_DWELL;
+        }
+    } else if (!transport_ok) {
         out->mode = FIELDREG_MODE_UNKNOWN_TRANSPORT_OR_VBI;
     } else if (!enough_history) {
         out->mode = FIELDREG_MODE_UNKNOWN_WARMUP_HOLD;
@@ -482,6 +560,11 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     out->weave_margin = weave_margin;
     out->temporal_margin_f1 = temporal_margin1;
     out->temporal_margin_f2 = temporal_margin2;
+    out->temporal_best_f1 = (int8_t)temporal_best1;
+    out->temporal_best_f2 = (int8_t)temporal_best2;
+    out->temporal_best_cost_f1 = temporal_best_cost1;
+    out->temporal_best_cost_f2 = temporal_best_cost2;
+    out->temporal_scene_cut = scene_cut;
     out->transport_ok = transport_ok;
     out->observed_transport_f1 = (int16_t)observed_f1;
     out->observed_transport_f2 = (int16_t)observed_f2;
@@ -501,13 +584,25 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
 
     save_previous(engine, 0, FIELDREG_FIELD1_START + engine->selected[0]);
     save_previous(engine, 1, FIELDREG_FIELD2_START + engine->selected[1]);
-    if (transport_ok && top1 >= 0 && top2 >= 0) {
+    if (!scene_cut && transport_ok && top1 >= 0 && top2 >= 0) {
         add_band(engine, 0, 0, top1 - FIELDREG_FIELD1_START - engine->selected[0]);
         add_band(engine, 1, 0, top2 - FIELDREG_FIELD2_START - engine->selected[1]);
         if (bottom1 >= 0)
             add_band(engine, 0, 1, bottom1 - 256 - engine->selected[0]);
         if (bottom2 >= 0)
             add_band(engine, 1, 1, bottom2 - 518 - engine->selected[1]);
+    }
+    if (!scene_cut && had_temporal) {
+        if (!engine->temporal_cost_ema_valid) {
+            engine->temporal_cost_ema[0] = temporal_best_cost1;
+            engine->temporal_cost_ema[1] = temporal_best_cost2;
+            engine->temporal_cost_ema_valid = true;
+        } else {
+            engine->temporal_cost_ema[0] =
+                engine->temporal_cost_ema[0] * 0.95 + temporal_best_cost1 * 0.05;
+            engine->temporal_cost_ema[1] =
+                engine->temporal_cost_ema[1] * 0.95 + temporal_best_cost2 * 0.05;
+        }
     }
     ++engine->frames_seen;
     return true;
@@ -523,9 +618,12 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_UNKNOWN_BAND_DISAGREEMENT: return "UnknownBandDisagreement";
     case FIELDREG_MODE_UNKNOWN_EVIDENCE_DISAGREEMENT: return "UnknownEvidenceDisagreement";
     case FIELDREG_MODE_UNKNOWN_COMMON_MODE_GAUGE: return "UnknownCommonModeGauge";
+    case FIELDREG_MODE_UNKNOWN_SCENE_CUT_HOLD: return "UnknownSceneCutHold";
+    case FIELDREG_MODE_UNKNOWN_TEMPORAL_RELEASE_DWELL: return "UnknownTemporalReleaseDwell";
     case FIELDREG_MODE_UNKNOWN_CANDIDATE_DWELL: return "UnknownCandidateDwell";
     case FIELDREG_MODE_STABLE: return "Stable";
     case FIELDREG_MODE_CONVERGED_RELATIVE_BAND: return "ConvergedRelativeBand";
+    case FIELDREG_MODE_CONVERGED_TEMPORAL_RELEASE: return "ConvergedTemporalRelease";
     }
     return "InvalidMode";
 }
