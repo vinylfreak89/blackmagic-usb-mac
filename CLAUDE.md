@@ -310,6 +310,20 @@ especially fades, flat fields, mute/snow, and the 720 one-unit selections. Thus 
 deck-health condition “no field-1 plateaus” is not met by renderer selections, but deck health is
 not falsified by those selections alone.
 
+**Full-tape render + census:** review MP4 720×480 SAR 8:9 (4:3), TFF bob 59.94p, CRF 12, stereo AAC; full `-xerror` decode clean;
+video and audio both exactly 2879.543 s. Unit census over **86,300 counter periods: 86,293 exact
+756,048-B units, 0 absent counters, 0 counter discontinuities — and SEVEN device-short units**
+(ctr 4507–4510, 4515, 4520, 4701; surviving prefixes rendered, bars only on undefined suffixes).
+With transport provably gapless, those shorts are **device-framed: the Shuttle itself occasionally
+emits a short unit.** That closes §6's old open question (a) — capture_60s's short tc-5839 unit was
+device behaviour, not host loss — and vindicates the strict-extractor policy. Audio: PCM
+continuous; one absent resync record (894→896, zero samples lost); cumulative device-vs-nominal
+clock offset **5,226 samples / 48 min ≈ 36 ppm** (atempo 0.999962 in the watch copy only).
+Registration: the corrector chose nonzero field-1 offsets in 2,165 runs, but **1,282 lasted 1–3
+units — estimator chatter, explicitly NOT deck-health evidence**; after bridging, nine candidate
+regions remain (largest 15.2–975.6 s and 2837 s–end), pending raw-field/visual confirmation.
+Deck-health conditions 2–6 therefore stay OPEN pending that inspection.
+
 **Deterministic replay (`experiments/libusb_replay_shim.c`):** link the unmodified
 capture code against the mock instead of `-lusb-1.0` and it replays a `.tpc` through the REAL
 callback/ring/writer machinery as if the device were streaming. Proven: 2.83 GB of the actual
@@ -791,6 +805,17 @@ Either way, **do not put USB ownership inside the CMIO extension** (Apple's came
 design assumes a signed system extension, app-group IPC, `/Applications` install, admin approval).
 A sandboxed GUI/extension needs entitlement `com.apple.security.device.usb`. Long-term shape:
 one USB capture service → {archival writer, OBS source (V+A), CMIO video ext + linked CoreAudio}.
+
+**Control surface (earlier): EVERYTHING lives in CMIO.** All configuration —
+registration correction on/off, concealment policy, logging on/off, archival-stream behaviour —
+is exposed as **CMIO custom properties** on the virtual device(s); device-**global** scope is
+fine (per-app scoping explicitly not needed). Whether the archival stream is corrected and
+whether logs are kept are the **user's decisions through those properties**, not structural
+guards — the software's job is honest defaults and honest labelling, not preventing the user
+from configuring their own pipeline. No second control plane (companion-app/XPC) for settings.
+(This overrides a two-surface recommendation and an "archival never property-controllable"
+guard.) Client identity via `CMIOExtensionClient` may inform diagnostics; multiple published
+virtual devices/streams remain available as a presentation choice, not as a settings mechanism.
 
 **Where CoreVideo fits (and why not at capture):** at the delivery boundary, a resolved
 presentable frame is materialized as a **CoreVideo `CVPixelBuffer`** — IOSurface-backed
