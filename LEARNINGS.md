@@ -102,7 +102,23 @@ against it. The same census also cleared two suspects at once: the drops were no
 (an impression that bursts followed the splice failed its own test), and the flat 1/5-duty
 plateaus ruled out gradual clock drift — steps, not slope.
 
-### 10. Don't claim credit for a fix you didn't prove you caused
+### 10. A silenced guard is no guard
+Hours after building automatic lock-holding into the dispatch tooling, the orchestrator's own
+commit ritual ran `lock acquire ... >/dev/null 2>&1` during a live render turn. The guard worked
+perfectly — it refused with BUSY every single time — and the output suppression threw the refusal
+away. The edits proceeded; the paired `lock release` (then unconditional) destroyed the running
+turn's hold on the first cycle; every later cycle "acquired" cleanly against a tree the first pass
+had unprotected. Only disjoint file sets prevented interleaved commits.
+
+Two rules. **Never redirect a guard's output to /dev/null** — a refusal you cannot see is a hard
+stop you will not make; if a guard's chatter is noisy, fix the guard, don't gag it. And **a
+release operation must never be able to break another live holder** — the tool now refuses
+(exit 1, `--force` for deliberate breaks), because the operator who suppresses output is exactly
+the operator who won't notice they just released someone else's lock. Same family as the global
+rule "never disable a safety net and exercise what it protected in one pass" — performed, this
+time, by the person who built the net that afternoon.
+
+### 11. Don't claim credit for a fix you didn't prove you caused
 A commit that had been failing suddenly succeeded, and the sandbox-ACL strip performed just before
 it was announced as the fix. It was not — the actual cause was the agent's approval policy. Two
 changes had landed close together and the wrong one was credited, purely because it was *mine*.
