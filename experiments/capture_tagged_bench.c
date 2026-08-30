@@ -57,6 +57,7 @@ static _Atomic long inflight=0;
 
 // Producer-thread-only state (all callbacks run on the single libusb event thread).
 static long v_bytes=0, a_bytes=0, iso_err=0, xfer_err=0, zero_pkts=0, short_pkts=0, hostloss_recs=0;
+static long resubmit_fail=0, resubmit_recovered=0;
 static uint32_t seq_ctr[2]={0,0};                    // per-endpoint submit sequence
 static uint64_t lost_bytes[2]={0,0}, total_lost[2]={0,0};
 static uint32_t lost_pkts[2]={0,0};
@@ -105,10 +106,10 @@ static void put_pkt(uint8_t ep, uint16_t pi, uint32_t seq, uint32_t st,
     if(al) ring_write(d,al);
     wake_writer();
 }
-static void put_meta(uint8_t type, uint8_t ep, uint32_t seq, uint32_t st,
+static void put_meta(uint8_t type, uint8_t ep, uint16_t pi, uint32_t seq, uint32_t st,
                      const void*payload, uint32_t plen){
     if(ring_free() < sizeof(rec_hdr)+plen) return;   // meta records are best-effort
-    rec_hdr h={REC_MAGIC,type,ep,0,seq,st,0,plen};
+    rec_hdr h={REC_MAGIC,type,ep,pi,seq,st,0,plen};
     ring_write(&h,sizeof h);
     if(plen) ring_write(payload,plen);
     wake_writer();
@@ -143,7 +144,7 @@ static void* writer(void*_){
     free(local); return NULL;
 }
 
-typedef struct { struct libusb_transfer *x; uint8_t ep; uint32_t seq; int idx; } xinfo;
+typedef struct { struct libusb_transfer *x; uint8_t ep; uint32_t seq; int idx; int pending; } xinfo;
 static xinfo XS[NXF];
 
 static void cb(struct libusb_transfer *x){
@@ -162,13 +163,23 @@ static void cb(struct libusb_transfer *x){
         }
     } else {
         xfer_err++;
-        put_meta(REC_XFERERR,xi->ep,xi->seq,(uint32_t)x->status,NULL,0);
+        put_meta(REC_XFERERR,xi->ep,0,xi->seq,(uint32_t)x->status,NULL,0);
         if(x->status==LIBUSB_TRANSFER_NO_DEVICE) atomic_store(&g_stop,1);
     }
     if(!atomic_load(&g_stop) && x->status!=LIBUSB_TRANSFER_NO_DEVICE){
         xi->seq=seq_ctr[e]++;
-        if(libusb_submit_transfer(x)==0){ atomic_fetch_add(&inflight,1); return; }
-        xfer_err++;
+        int rc=libusb_submit_transfer(x);
+        if(rc==0){ atomic_fetch_add(&inflight,1); return; }
+        // NEVER silently shrink the fleet. Old capture_untagged_ring freed the transfer here,
+        // which is how the untagged_capture collapse stepped 40% -> 20% -> 0: each lost
+        // transfer permanently removed 1/5-duty capacity until video died
+        // entirely. Mark for retry from the event loop, loudly and on tape.
+        xfer_err++; resubmit_fail++;
+        put_meta(REC_XFERERR,xi->ep,0xFFFF,xi->seq,(uint32_t)(-rc),NULL,0);
+        fprintf(stderr,"!! resubmit FAILED ep=0x%02x rc=%d (%s) -- queued for retry\n",
+                xi->ep,rc,libusb_error_name(rc));
+        xi->pending=1;
+        return;
     }
     free(x->buffer); libusb_free_transfer(x); XS[xi->idx].x=NULL;
 }
@@ -204,7 +215,7 @@ int main(int argc,char**argv){
     int sl=snprintf(sess,sizeof sess,
         "capture_tagged_bench v1 mode=0x%08x V_PKT=%d V_NPK=%d A_PKT=%d A_NPK=%d XFERS=%d ring=%zuMB",
         mode,V_PKT,V_NPK,A_PKT,A_NPK,XFERS,ringmb);
-    put_meta(REC_SESSION,0,0,0,sess,(uint32_t)sl);
+    put_meta(REC_SESSION,0,0,0,0,sess,(uint32_t)sl);
 
     pthread_t wt; pthread_create(&wt,NULL,writer,NULL);
     int n=0;
@@ -213,7 +224,7 @@ int main(int argc,char**argv){
         for(int i=0;i<XFERS;i++,n++){
             uint8_t*buf=malloc((size_t)npk*pkt);
             struct libusb_transfer*x=libusb_alloc_transfer(npk);
-            XS[n]=(xinfo){x,ep,seq_ctr[w]++,n};
+            XS[n]=(xinfo){x,ep,seq_ctr[w]++,n,0};
             libusb_fill_iso_transfer(x,h,ep,buf,npk*pkt,npk,cb,&XS[n],0);
             libusb_set_iso_packet_lengths(x,pkt);
             if(libusb_submit_transfer(x)==0) atomic_fetch_add(&inflight,1);
@@ -222,7 +233,13 @@ int main(int argc,char**argv){
     }
 
     time_t start=time(NULL); struct timeval tv={0,100000};
-    while(time(NULL)-start<secs && !atomic_load(&g_stop)) libusb_handle_events_timeout(ctx,&tv);
+    while(time(NULL)-start<secs && !atomic_load(&g_stop)){
+        libusb_handle_events_timeout(ctx,&tv);
+        for(int i=0;i<NXF;i++)                     // retry any resubmit-failed transfer
+            if(XS[i].x && XS[i].pending && libusb_submit_transfer(XS[i].x)==0){
+                XS[i].pending=0; atomic_fetch_add(&inflight,1); resubmit_recovered++;
+            }
+    }
     atomic_store(&g_stop,1);
     for(int i=0;i<NXF;i++) if(XS[i].x) libusb_cancel_transfer(XS[i].x);
     int guard=0;
@@ -242,6 +259,10 @@ int main(int argc,char**argv){
            iso_err,xfer_err,zero_pkts,short_pkts);
     printf("HostLoss records=%ld  lost video=%" PRIu64 " B  lost audio=%" PRIu64 " B\n",
            hostloss_recs,total_lost[0],total_lost[1]);
+    int v_alive=0,a_alive=0;
+    for(int i=0;i<NXF;i++) if(XS[i].x && !XS[i].pending){ if(XS[i].ep==VIDEO_EP) v_alive++; else a_alive++; }
+    printf("resubmit failures=%ld recovered=%ld | fleet at shutdown: video %d/%d audio %d/%d\n",
+           resubmit_fail,resubmit_recovered,v_alive,XFERS,a_alive,XFERS);
     printf("ring high-water=%.0f MB / %zu MB\n",r_max/1e6,ringmb);
     libusb_release_interface(h,0); libusb_close(h); libusb_exit(ctx);
     return 0;
