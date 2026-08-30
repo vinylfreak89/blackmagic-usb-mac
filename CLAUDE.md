@@ -24,6 +24,14 @@ Shuttle analog in → Mac.** (S-Video is the default tap; component is an early 
 - Capture must be **lossless and honest**: record what happened, mark damage, never conceal in
   the archival record.
 - **OBS virtual camera** is the delivery end-state.
+- **Validation fixture A** (the test tape behind every measurement in this doc): consumer T-120
+  VHS carrying two off-air recordings made ~1998 on two unknown consumer VCRs, remainder virgin.
+  Segment 1: SP, weak indoor-antenna source, recording-time horizontal flagging, field-1
+  registration plateaus on playback. Segment 2: EP, rooftop-antenna source, clean H-timing,
+  pause-edit discontinuities (program missing at recording time). Both segments: audio on the
+  linear track only. Chosen because a pipeline that survives it survives ordinary tapes.
+  Target corpus: irreplaceable one-shot consumer VHS — minimize plays; one tagged capture per
+  tape once the pipeline is proven, so nothing ever needs a re-run.
 
 ## 3. Hardware & environment (VERIFIED on the machine)
 
