@@ -33,3 +33,4 @@ src/field_registration/tests/field_registration_golden
 src/field_registration/tests/field_registration_truth
 src/field_registration/tests/libfieldreg_truth.dylib
 src/field_registration/tests/registration_truth.*
+src/capture_core/shuttle-capture
