@@ -45,7 +45,6 @@ REGISTRATION_MAX = 6
 REGISTRATION_X_STEP = 4
 REGISTRATION_VBI_MARGIN = 25
 REGISTRATION_WARMUP = 8
-REGISTRATION_SWITCH_DWELL = 2
 
 # Synthetic bytes used only where an untagged diagnostic capture has no bytes.
 # These are legal-range, SMPTE-style vertical color bars. They are deliberately
@@ -367,18 +366,6 @@ def make_diagnostic_fill_unit() -> bytes:
 DIAGNOSTIC_FILL_UNIT = make_diagnostic_fill_unit()
 
 
-def _normalise_costs(values: dict[int, float]) -> dict[int, float]:
-    finite = np.asarray([value for value in values.values() if np.isfinite(value)])
-    if not len(finite):
-        return {key: 0.0 for key in values}
-    minimum = float(finite.min())
-    scale = max(float(np.median(finite) - minimum), 0.25)
-    return {
-        key: (value - minimum) / scale if np.isfinite(value) else 1e6
-        for key, value in values.items()
-    }
-
-
 def _runner_up_margin(values: dict[int, float]) -> float:
     finite = sorted(value for value in values.values() if np.isfinite(value))
     return finite[1] - finite[0] if len(finite) > 1 else 0.0
@@ -470,17 +457,20 @@ def _temporal_registration_costs(
 class RegistrationEstimator:
     """One-pass, source-general per-field integer registration estimator.
 
-    The estimator searches candidate pairs (d1,d2). Weave evidence constrains
-    only d2-d1; running band modes and same-parity temporal evidence select an
-    absolute gauge when possible. No field is permanently the anchor. Every
-    choice exposes its evidence so a real-time sidecar can be revised offline.
+    Weave evidence estimates only d2-d1. Independent running picture-band
+    landmarks estimate d1 and d2. A correction is applied only when those
+    measurements agree; neither field is permanently designated the anchor.
+    Same-parity temporal evidence is logged for review but cannot by itself
+    override a disagreement. Every choice is exposed for offline revision.
     """
 
     def __init__(self, switch_margin: float):
         self.switch_margin = switch_margin
         self.selected = (0, 0)
+        self.selected_relative = 0
         self.pending = None
         self.pending_count = 0
+        self.pending_age = 0
         self.band_modes = (Counter(), Counter())
         self.previous = (None, None)
         self.frames_seen = 0
@@ -488,6 +478,13 @@ class RegistrationEstimator:
     @staticmethod
     def _mode(counter: Counter) -> int | None:
         return counter.most_common(1)[0][0] if counter else None
+
+    def discontinuity(self) -> None:
+        """Break temporal evidence across unknown byte placement."""
+        self.pending = None
+        self.pending_count = 0
+        self.pending_age = 0
+        self.previous = (None, None)
 
     def decide(self, unit: bytes) -> dict[str, object]:
         raster = np.frombuffer(unit[VIDEO_HEADER_BYTES:], np.uint8).reshape(
@@ -499,60 +496,57 @@ class RegistrationEstimator:
         top2 = _picture_top(raster, FIELD2_START, FIELD2_START + 48)
         mode1 = self._mode(self.band_modes[0])
         mode2 = self._mode(self.band_modes[1])
-        best_relative, weave_margin, weave_costs = measure_interfield_registration(luma)
+        best_relative, weave_margin, _weave_costs = measure_interfield_registration(luma)
         temporal1 = _temporal_registration_costs(luma, FIELD1_START, self.previous[0])
         temporal2 = _temporal_registration_costs(luma, FIELD2_START, self.previous[1])
         temporal_margin1 = _runner_up_margin(temporal1)
         temporal_margin2 = _runner_up_margin(temporal2)
-        weave_normal = _normalise_costs(weave_costs)
-        temporal1_normal = _normalise_costs(temporal1)
-        temporal2_normal = _normalise_costs(temporal2)
+        independent_evidence = max(
+            weave_margin, temporal_margin1, temporal_margin2
+        )
+        if best_relative == self.selected_relative or weave_margin >= self.switch_margin:
+            self.selected_relative = best_relative
 
-        pairs = {}
-        for d1 in range(REGISTRATION_MIN, REGISTRATION_MAX + 1):
-            if not 0 <= FIELD1_START + d1 <= RASTER_LINES - FIELD_LINES:
-                continue
-            for d2 in range(REGISTRATION_MIN, REGISTRATION_MAX + 1):
-                if not 0 <= FIELD2_START + d2 <= RASTER_LINES - FIELD_LINES:
-                    continue
-                relative = d2 - d1
-                if relative not in weave_normal:
-                    continue
-                score = 3.0 * weave_normal[relative]
-                score += temporal1_normal[d1] + temporal2_normal[d2]
-                if mode1 is not None and top1 is not None:
-                    score += 2.0 * abs((top1 - FIELD1_START - mode1) - d1)
-                if mode2 is not None and top2 is not None:
-                    score += 2.0 * abs((top2 - FIELD2_START - mode2) - d2)
-                score += 0.65 * (
-                    abs(d1 - self.selected[0]) + abs(d2 - self.selected[1])
-                )
-                # Stay in the learned absolute gauge unless independent
-                # evidence persists. This applies even when relative changes:
-                # otherwise a content boundary can make (6,5) beat the equally
-                # woven (1,0) and manufacture a large common-mode jump.
-                score += 0.75 * abs(
-                    (d1 + d2) - (self.selected[0] + self.selected[1])
-                )
-                pairs[(d1, d2)] = score
-
-        ordered = sorted(pairs, key=pairs.get)
-        best_pair = ordered[0]
-        confidence = pairs[ordered[1]] - pairs[best_pair]
         enough_history = (
             sum(self.band_modes[0].values()) >= REGISTRATION_WARMUP
             and sum(self.band_modes[1].values()) >= REGISTRATION_WARMUP
         )
-        selected_relative = self.selected[1] - self.selected[0]
-        best_relative_pair = best_pair[1] - best_pair[0]
-        common_mode_only = (
-            best_relative_pair == selected_relative and best_pair != self.selected
+        band_total1 = sum(self.band_modes[0].values())
+        band_total2 = sum(self.band_modes[1].values())
+        stability1 = (
+            0.0 if not band_total1 or mode1 is None
+            else self.band_modes[0][mode1] / band_total1
         )
-        if best_pair != self.pending:
-            self.pending = best_pair
-            self.pending_count = 1
-        else:
-            self.pending_count += 1
+        stability2 = (
+            0.0 if not band_total2 or mode2 is None
+            else self.band_modes[1][mode2] / band_total2
+        )
+        band_d1 = (
+            None if mode1 is None or top1 is None
+            else top1 - FIELD1_START - mode1
+        )
+        band_d2 = (
+            None if mode2 is None or top2 is None
+            else top2 - FIELD2_START - mode2
+        )
+        candidate = (
+            None if band_d1 is None or band_d2 is None
+            else (band_d1, band_d2)
+        )
+        candidate_in_range = bool(
+            candidate is not None
+            and all(REGISTRATION_MIN <= value <= REGISTRATION_MAX for value in candidate)
+        )
+        candidate_relative = (
+            None if candidate is None else candidate[1] - candidate[0]
+        )
+        common_mode_ambiguous = bool(
+            candidate is not None
+            and candidate[0] != 0
+            and candidate[1] != 0
+            and (candidate[0] > 0) == (candidate[1] > 0)
+        )
+        self.pending_age += 1
 
         if not transport_ok:
             decision = None
@@ -562,31 +556,56 @@ class RegistrationEstimator:
             decision = None
             applied = self.selected
             decision_mode = "UnknownWarmupHold"
-        elif best_pair == self.selected:
-            decision = self.selected
+        elif not candidate_in_range:
+            decision = None
             applied = self.selected
-            decision_mode = "Stable"
-        elif common_mode_only:
-            # Comb is exactly blind to this degree of freedom. Temporal and
-            # active-boundary evidence can propose a common-mode shift, but a
-            # single-pass live corrector cannot distinguish it robustly from
-            # vertical picture motion. Preserve the learned gauge and expose
-            # Unknown so the raw-plus-sidecar path can revisit it offline.
+            decision_mode = "UnknownBandLandmark"
+        elif candidate_relative != self.selected_relative:
+            decision = None
+            applied = self.selected
+            decision_mode = "UnknownEvidenceDisagreement"
+        elif common_mode_ambiguous:
             decision = None
             applied = self.selected
             decision_mode = "UnknownCommonModeGauge"
-        elif (
-            confidence >= self.switch_margin
-            and self.pending_count >= REGISTRATION_SWITCH_DWELL
-        ):
-            self.selected = best_pair
-            decision = best_pair
-            applied = best_pair
-            decision_mode = "PairSearch"
-        else:
-            decision = None
+        elif candidate == self.selected:
+            self.pending = None
+            self.pending_count = 0
+            self.pending_age = 0
+            decision = self.selected
             applied = self.selected
-            decision_mode = "UnknownHysteresisHold"
+            decision_mode = "Stable"
+        else:
+            changed_fields = [
+                index for index in (0, 1)
+                if candidate[index] != self.selected[index]
+            ]
+            less_stable = (
+                0 if stability1 + 0.01 < stability2
+                else 1 if stability2 + 0.01 < stability1
+                else None
+            )
+            required_dwell = (
+                1 if len(changed_fields) == 1 and changed_fields[0] == less_stable
+                else 2
+            )
+            if candidate == self.pending and self.pending_age <= 2:
+                self.pending_count += 1
+            else:
+                self.pending = candidate
+                self.pending_count = 1
+            self.pending_age = 0
+            if self.pending_count >= required_dwell:
+                self.selected = candidate
+                self.pending = None
+                self.pending_count = 0
+                decision = candidate
+                applied = candidate
+                decision_mode = "ConvergedRelativeBand"
+            else:
+                decision = None
+                applied = self.selected
+                decision_mode = "UnknownCandidateDwell"
 
         field1 = luma[
             FIELD1_START + applied[0] : FIELD1_START + applied[0] + FIELD_LINES
@@ -603,14 +622,16 @@ class RegistrationEstimator:
             "decision": decision,
             "applied": applied,
             "mode": decision_mode,
-            "confidence": confidence,
-            "best_pair": best_pair,
-            "pending_pair": self.pending,
+            "confidence": weave_margin,
+            "best_pair": candidate if candidate is not None else self.selected,
+            "pending_pair": self.pending if self.pending is not None else self.selected,
             "pending_count": self.pending_count,
             "best_relative": best_relative,
+            "selected_relative": self.selected_relative,
             "weave_margin": weave_margin,
             "temporal_margin1": temporal_margin1,
             "temporal_margin2": temporal_margin2,
+            "independent_evidence": independent_evidence,
             "transport_ok": transport_ok,
             "observed_f1": observed_f1,
             "observed_f2": observed_f2,
@@ -618,6 +639,8 @@ class RegistrationEstimator:
             "top2": top2,
             "band_mode1": mode1,
             "band_mode2": mode2,
+            "band_stability1": stability1,
+            "band_stability2": stability2,
         }
 
 
@@ -890,6 +913,8 @@ def write_counter_timed_preview_video(
                     )
                 else:
                     invalid.append(counter)
+                    if adaptive_registration:
+                        estimator.discontinuity()
                     unit = captured + DIAGNOSTIC_FILL_UNIT[received_bytes:]
                     if received_bytes == VIDEO_UNIT_BYTES:
                         unit_state = "CapturedFromDamagedInterval"
@@ -902,18 +927,36 @@ def write_counter_timed_preview_video(
                         "internal_loss_position_unknown"
                     )
                     missing_bytes = max(0, VIDEO_UNIT_BYTES - received_bytes)
-                    frame = unit_to_480i(unit, first_field)
-                    applied_d1 = applied_d2 = 0
+                    if adaptive_registration:
+                        applied_d1, applied_d2 = estimator.selected
+                    else:
+                        applied_d1 = applied_d2 = 0
+                    frame = unit_to_480i(
+                        unit,
+                        first_field,
+                        field1_start=FIELD1_START + applied_d1,
+                        field2_start=FIELD2_START + applied_d2,
+                    )
                     if received_bytes:
                         partial_rendered.append(counter)
             else:
                 invalid.append(counter)
+                if adaptive_registration:
+                    estimator.discontinuity()
                 received_bytes = 0
                 missing_bytes = VIDEO_UNIT_BYTES
                 unit_state = "AbsentSyntheticFill"
                 placement = "no_marker_or_bytes_assigned_to_counter"
-                applied_d1 = applied_d2 = 0
-                frame = unit_to_480i(DIAGNOSTIC_FILL_UNIT, first_field)
+                if adaptive_registration:
+                    applied_d1, applied_d2 = estimator.selected
+                else:
+                    applied_d1 = applied_d2 = 0
+                frame = unit_to_480i(
+                    DIAGNOSTIC_FILL_UNIT,
+                    first_field,
+                    field1_start=FIELD1_START + applied_d1,
+                    field2_start=FIELD2_START + applied_d2,
+                )
             output.write(frame)
             if registration is None:
                 decision = None
@@ -921,6 +964,8 @@ def write_counter_timed_preview_video(
                 confidence = ""
                 best_d1 = best_d2 = best_relative = ""
                 pending_d1 = pending_d2 = pending_count = ""
+                independent_evidence = ""
+                selected_relative = band_stability1 = band_stability2 = ""
                 weave_margin = temporal_margin1 = temporal_margin2 = ""
                 transport_ok = observed_f1 = observed_f2 = ""
                 top1 = top2 = band_mode1 = band_mode2 = ""
@@ -932,6 +977,10 @@ def write_counter_timed_preview_video(
                 pending_d1, pending_d2 = registration["pending_pair"]
                 pending_count = registration["pending_count"]
                 best_relative = registration["best_relative"]
+                selected_relative = registration["selected_relative"]
+                independent_evidence = (
+                    f"{registration['independent_evidence']:.9f}"
+                )
                 weave_margin = f"{registration['weave_margin']:.9f}"
                 temporal_margin1 = f"{registration['temporal_margin1']:.9f}"
                 temporal_margin2 = f"{registration['temporal_margin2']:.9f}"
@@ -942,6 +991,8 @@ def write_counter_timed_preview_video(
                 top2 = registration["top2"]
                 band_mode1 = registration["band_mode1"]
                 band_mode2 = registration["band_mode2"]
+                band_stability1 = f"{registration['band_stability1']:.9f}"
+                band_stability2 = f"{registration['band_stability2']:.9f}"
             decision_counts[mode] += 1
             offset_counts[(applied_d1, applied_d2)] += 1
             rows.append(
@@ -954,9 +1005,11 @@ def write_counter_timed_preview_video(
                     "" if decision is None else decision[1],
                     applied_d1, applied_d2, mode, confidence,
                     best_d1, best_d2, pending_d1, pending_d2, pending_count,
-                    best_relative, weave_margin,
+                    best_relative, selected_relative,
+                    independent_evidence, weave_margin,
                     temporal_margin1, temporal_margin2, transport_ok,
                     observed_f1, observed_f2, top1, top2, band_mode1, band_mode2,
+                    band_stability1, band_stability2,
                 )
             )
     if decision_log:
@@ -972,11 +1025,14 @@ def write_counter_timed_preview_video(
                     "decision_d1", "decision_d2", "applied_d1", "applied_d2",
                     "mode", "confidence", "best_d1", "best_d2",
                     "pending_d1", "pending_d2", "pending_count",
-                    "best_relative_d2_minus_d1", "weave_margin",
+                    "best_relative_d2_minus_d1", "selected_relative_d2_minus_d1",
+                    "independent_evidence_margin",
+                    "weave_margin",
                     "temporal_margin_f1", "temporal_margin_f2", "transport_ok",
                     "observed_transport_f1", "observed_transport_f2",
                     "picture_top_f1", "picture_top_f2",
                     "learned_band_mode_f1", "learned_band_mode_f2",
+                    "learned_band_stability_f1", "learned_band_stability_f2",
                 )
             )
             writer.writerows(rows)
