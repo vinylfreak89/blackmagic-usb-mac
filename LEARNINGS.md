@@ -83,7 +83,26 @@ the highest-value signal available. Explaining it away with a story that happens
 expensive shortcut in this log — it postponed the real finding by hours, and only an independent
 investigator eventually chased the number down.
 
-### 9. Don't claim credit for a fix you didn't prove you caused
+### 9. A periodic fault carries its period — histogram the timestamps before theorizing
+The USB capture losses spawned days of mechanism theories: bandwidth, disk throughput, hub
+quirks, buffering mechanics, transfer ordering, USB-vs-host clock desync. The actual cause was
+**a timing-cycle mismatch all along**: a ~1 Hz periodic host task beating against a ~6 ms USB
+scheduling horizon. The confession was sitting in plain sight the whole time — **64% of the
+drops landed in two 100 ms windows (.7 s and .9 s) of every second** — findable by a one-line
+histogram of `timestamp mod 1.0`, at any point, by anyone.
+
+Two rules. **When a fault recurs, histogram its timestamps against candidate periods FIRST** —
+periodicity fingerprints the mechanism class instantly (phase-locked ⇒ a scheduling collision;
+uniform ⇒ load or noise; stepped ⇒ discrete state loss) and would have eliminated most of the
+theories in one shot. And **real-time pipelines fail at the beat frequency of their mismatched
+cycles**: any periodic stall longer than the scheduling margin loses data on every beat, so the
+margin must dwarf the longest periodic stall in the system (6 ms lost twice a second; 128 ms
+doesn't), and the thread doing the real-time work must outrank the housekeeping that beats
+against it. The same census also cleared two suspects at once: the drops were not deck-correlated
+(an impression that bursts followed the splice failed its own test), and the flat 1/5-duty
+plateaus ruled out gradual clock drift — steps, not slope.
+
+### 10. Don't claim credit for a fix you didn't prove you caused
 A commit that had been failing suddenly succeeded, and the sandbox-ACL strip performed just before
 it was announced as the fix. It was not — the actual cause was the agent's approval policy. Two
 changes had landed close together and the wrong one was credited, purely because it was *mine*.
