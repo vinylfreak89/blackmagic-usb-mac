@@ -29,13 +29,20 @@ static void unknown_decision(fieldreg_decision *out)
     out->observed_transport_f2 = -1;
     out->picture_top_f1 = -1;
     out->picture_top_f2 = -1;
+    out->picture_bottom_f1 = -1;
+    out->picture_bottom_f2 = -1;
     out->learned_band_mode_f1 = FIELDREG_UNKNOWN;
     out->learned_band_mode_f2 = FIELDREG_UNKNOWN;
+    out->learned_bottom_mode_f1 = FIELDREG_UNKNOWN;
+    out->learned_bottom_mode_f2 = FIELDREG_UNKNOWN;
 }
 
 fieldreg_config fieldreg_default_config(void)
 {
-    fieldreg_config config = {.switch_margin = 1.5};
+    fieldreg_config config = {
+        .switch_margin = 1.5,
+        .evidence_model = FIELDREG_EVIDENCE_DUAL_EDGE,
+    };
     return config;
 }
 
@@ -44,6 +51,12 @@ void fieldreg_init(field_registration *engine, const fieldreg_config *config)
     fieldreg_config chosen = config ? *config : fieldreg_default_config();
     memset(engine, 0, sizeof(*engine));
     engine->config = chosen;
+}
+
+void fieldreg_begin_segment(field_registration *engine)
+{
+    fieldreg_config config = engine->config;
+    fieldreg_init(engine, &config);
 }
 
 void fieldreg_discontinuity(field_registration *engine)
@@ -135,6 +148,22 @@ static int picture_top(const bool hard[FIELDREG_RASTER_LINES],
     int after = stop < FIELDREG_RASTER_LINES - 2 ? stop : FIELDREG_RASTER_LINES - 2;
     for (int line = start + 1; line < after; ++line) {
         if (picture[line] && picture[line + 1] && picture[line + 2])
+            return line;
+    }
+    return -1;
+}
+
+static int picture_bottom(const bool hard[FIELDREG_RASTER_LINES],
+                          const double mean[FIELDREG_RASTER_LINES],
+                          const double sigma[FIELDREG_RASTER_LINES],
+                          int start, int stop)
+{
+    bool picture[FIELDREG_RASTER_LINES];
+    for (int line = 0; line < FIELDREG_RASTER_LINES; ++line)
+        picture[line] = !hard[line] && (sigma[line] > 5.0 || mean[line] > 24.0);
+    int last = stop < FIELDREG_RASTER_LINES ? stop - 1 : FIELDREG_RASTER_LINES - 1;
+    for (int line = last; line >= start + 2; --line) {
+        if (picture[line] && picture[line - 1] && picture[line - 2])
             return line;
     }
     return -1;
@@ -244,14 +273,14 @@ static int band_slot(int value)
     return slot >= 0 && slot < BAND_SLOTS ? slot : -1;
 }
 
-static int band_mode(const field_registration *engine, int parity)
+static int band_mode(const field_registration *engine, int parity, int edge)
 {
     uint32_t best_count = 0;
     uint32_t best_first = UINT32_MAX;
     int best_value = FIELDREG_UNKNOWN;
     for (int slot = 0; slot < BAND_SLOTS; ++slot) {
-        uint32_t count = engine->band_counts[parity][slot];
-        uint32_t first = engine->band_first_seen[parity][slot];
+        uint32_t count = engine->band_counts[parity][edge][slot];
+        uint32_t first = engine->band_first_seen[parity][edge][slot];
         if (count > best_count ||
             (count == best_count && count != 0 && first < best_first)) {
             best_count = count;
@@ -262,15 +291,15 @@ static int band_mode(const field_registration *engine, int parity)
     return best_value;
 }
 
-static void add_band(field_registration *engine, int parity, int value)
+static void add_band(field_registration *engine, int parity, int edge, int value)
 {
     int slot = band_slot(value);
     if (slot < 0)
         return;
-    if (engine->band_counts[parity][slot] == 0)
-        engine->band_first_seen[parity][slot] = ++engine->band_serial;
-    ++engine->band_counts[parity][slot];
-    ++engine->band_total[parity];
+    if (engine->band_counts[parity][edge][slot] == 0)
+        engine->band_first_seen[parity][edge][slot] = ++engine->band_serial;
+    ++engine->band_counts[parity][edge][slot];
+    ++engine->band_total[parity][edge];
 }
 
 static void save_previous(field_registration *engine, int parity, int start)
@@ -305,8 +334,12 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                            FIELDREG_FIELD1_START + 48);
     int top2 = picture_top(hard, mean, sigma, FIELDREG_FIELD2_START,
                            FIELDREG_FIELD2_START + 48);
-    int mode1 = band_mode(engine, 0);
-    int mode2 = band_mode(engine, 1);
+    int bottom1 = picture_bottom(hard, mean, sigma, 200, 262);
+    int bottom2 = picture_bottom(hard, mean, sigma, 462, 525);
+    int mode1 = band_mode(engine, 0, 0);
+    int mode2 = band_mode(engine, 1, 0);
+    int bottom_mode1 = band_mode(engine, 0, 1);
+    int bottom_mode2 = band_mode(engine, 1, 1);
 
     double weave_margin;
     int best_relative = interfield_registration(engine, &weave_margin);
@@ -322,25 +355,49 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
         weave_margin >= engine->config.switch_margin)
         engine->selected_relative = (int8_t)best_relative;
 
-    bool enough_history = engine->band_total[0] >= REGISTRATION_WARMUP &&
-                          engine->band_total[1] >= REGISTRATION_WARMUP;
-    double stability1 = mode1 == FIELDREG_UNKNOWN || engine->band_total[0] == 0
+    bool dual_edge = engine->config.evidence_model == FIELDREG_EVIDENCE_DUAL_EDGE;
+    bool enough_history = engine->band_total[0][0] >= REGISTRATION_WARMUP &&
+                          engine->band_total[1][0] >= REGISTRATION_WARMUP &&
+                          (!dual_edge ||
+                           (engine->band_total[0][1] >= REGISTRATION_WARMUP &&
+                            engine->band_total[1][1] >= REGISTRATION_WARMUP));
+    double stability1 = mode1 == FIELDREG_UNKNOWN || engine->band_total[0][0] == 0
                             ? 0.0
-                            : (double)engine->band_counts[0][band_slot(mode1)] /
-                                  engine->band_total[0];
-    double stability2 = mode2 == FIELDREG_UNKNOWN || engine->band_total[1] == 0
+                            : (double)engine->band_counts[0][0][band_slot(mode1)] /
+                                  engine->band_total[0][0];
+    double stability2 = mode2 == FIELDREG_UNKNOWN || engine->band_total[1][0] == 0
                             ? 0.0
-                            : (double)engine->band_counts[1][band_slot(mode2)] /
-                                  engine->band_total[1];
+                            : (double)engine->band_counts[1][0][band_slot(mode2)] /
+                                  engine->band_total[1][0];
+    double bottom_stability1 =
+        bottom_mode1 == FIELDREG_UNKNOWN || engine->band_total[0][1] == 0
+            ? 0.0
+            : (double)engine->band_counts[0][1][band_slot(bottom_mode1)] /
+                  engine->band_total[0][1];
+    double bottom_stability2 =
+        bottom_mode2 == FIELDREG_UNKNOWN || engine->band_total[1][1] == 0
+            ? 0.0
+            : (double)engine->band_counts[1][1][band_slot(bottom_mode2)] /
+                  engine->band_total[1][1];
     int band_d1 = mode1 == FIELDREG_UNKNOWN || top1 < 0
                       ? FIELDREG_UNKNOWN
                       : top1 - FIELDREG_FIELD1_START - mode1;
     int band_d2 = mode2 == FIELDREG_UNKNOWN || top2 < 0
                       ? FIELDREG_UNKNOWN
                       : top2 - FIELDREG_FIELD2_START - mode2;
+    int bottom_d1 = bottom_mode1 == FIELDREG_UNKNOWN || bottom1 < 0
+                        ? FIELDREG_UNKNOWN
+                        : bottom1 - 256 - bottom_mode1;
+    int bottom_d2 = bottom_mode2 == FIELDREG_UNKNOWN || bottom2 < 0
+                        ? FIELDREG_UNKNOWN
+                        : bottom2 - 518 - bottom_mode2;
+    bool dual_edge_agreement = !dual_edge ||
+                               (bottom_d1 != FIELDREG_UNKNOWN &&
+                                bottom_d2 != FIELDREG_UNKNOWN &&
+                                band_d1 == bottom_d1 && band_d2 == bottom_d2);
     bool candidate_valid = band_d1 != FIELDREG_UNKNOWN &&
                            band_d2 != FIELDREG_UNKNOWN;
-    bool candidate_in_range = candidate_valid &&
+    bool candidate_in_range = candidate_valid && dual_edge_agreement &&
                               band_d1 >= FIELDREG_MIN_OFFSET &&
                               band_d1 <= FIELDREG_MAX_OFFSET &&
                               band_d2 >= FIELDREG_MIN_OFFSET &&
@@ -349,6 +406,8 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     bool common_mode_ambiguous = candidate_valid && band_d1 != 0 &&
                                  band_d2 != 0 &&
                                  ((band_d1 > 0) == (band_d2 > 0));
+    if (dual_edge && candidate_in_range)
+        engine->selected_relative = (int8_t)candidate_relative;
     ++engine->pending_age;
 
     out->mode = FIELDREG_MODE_INVALID_UNIT;
@@ -357,8 +416,10 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     } else if (!enough_history) {
         out->mode = FIELDREG_MODE_UNKNOWN_WARMUP_HOLD;
     } else if (!candidate_in_range) {
-        out->mode = FIELDREG_MODE_UNKNOWN_BAND_LANDMARK;
-    } else if (candidate_relative != engine->selected_relative) {
+        out->mode = candidate_valid && dual_edge && !dual_edge_agreement
+                        ? FIELDREG_MODE_UNKNOWN_BAND_DISAGREEMENT
+                        : FIELDREG_MODE_UNKNOWN_BAND_LANDMARK;
+    } else if (!dual_edge && candidate_relative != engine->selected_relative) {
         out->mode = FIELDREG_MODE_UNKNOWN_EVIDENCE_DISAGREEMENT;
     } else if (common_mode_ambiguous) {
         out->mode = FIELDREG_MODE_UNKNOWN_COMMON_MODE_GAUGE;
@@ -376,7 +437,11 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
         int less_stable = stability1 + 0.01 < stability2
                               ? 0
                               : stability2 + 0.01 < stability1 ? 1 : -1;
-        int required_dwell = changed_count == 1 && changed_field == less_stable ? 1 : 2;
+        bool strong_dual_vote = dual_edge && dual_edge_agreement;
+        int required_dwell = strong_dual_vote ||
+                                     (changed_count == 1 && changed_field == less_stable)
+                                 ? 1
+                                 : 2;
         if (engine->pending_valid && engine->pending[0] == band_d1 &&
             engine->pending[1] == band_d2 && engine->pending_age <= 2) {
             ++engine->pending_count;
@@ -402,7 +467,10 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
 
     out->applied_d1 = engine->selected[0];
     out->applied_d2 = engine->selected[1];
-    out->confidence = weave_margin;
+    out->confidence = dual_edge
+                          ? fmin(fmin(stability1, stability2),
+                                 fmin(bottom_stability1, bottom_stability2))
+                          : weave_margin;
     out->best_d1 = candidate_valid ? (int8_t)band_d1 : engine->selected[0];
     out->best_d2 = candidate_valid ? (int8_t)band_d2 : engine->selected[1];
     out->pending_d1 = engine->pending_valid ? engine->pending[0] : engine->selected[0];
@@ -419,16 +487,27 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     out->observed_transport_f2 = (int16_t)observed_f2;
     out->picture_top_f1 = (int16_t)top1;
     out->picture_top_f2 = (int16_t)top2;
+    out->picture_bottom_f1 = (int16_t)bottom1;
+    out->picture_bottom_f2 = (int16_t)bottom2;
     out->learned_band_mode_f1 = (int16_t)mode1;
     out->learned_band_mode_f2 = (int16_t)mode2;
+    out->learned_bottom_mode_f1 = (int16_t)bottom_mode1;
+    out->learned_bottom_mode_f2 = (int16_t)bottom_mode2;
     out->learned_band_stability_f1 = stability1;
     out->learned_band_stability_f2 = stability2;
+    out->learned_bottom_stability_f1 = bottom_stability1;
+    out->learned_bottom_stability_f2 = bottom_stability2;
+    out->dual_edge_agreement = dual_edge_agreement;
 
     save_previous(engine, 0, FIELDREG_FIELD1_START + engine->selected[0]);
     save_previous(engine, 1, FIELDREG_FIELD2_START + engine->selected[1]);
     if (transport_ok && top1 >= 0 && top2 >= 0) {
-        add_band(engine, 0, top1 - FIELDREG_FIELD1_START - engine->selected[0]);
-        add_band(engine, 1, top2 - FIELDREG_FIELD2_START - engine->selected[1]);
+        add_band(engine, 0, 0, top1 - FIELDREG_FIELD1_START - engine->selected[0]);
+        add_band(engine, 1, 0, top2 - FIELDREG_FIELD2_START - engine->selected[1]);
+        if (bottom1 >= 0)
+            add_band(engine, 0, 1, bottom1 - 256 - engine->selected[0]);
+        if (bottom2 >= 0)
+            add_band(engine, 1, 1, bottom2 - 518 - engine->selected[1]);
     }
     ++engine->frames_seen;
     return true;
@@ -441,6 +520,7 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_UNKNOWN_TRANSPORT_OR_VBI: return "UnknownTransportOrVBI";
     case FIELDREG_MODE_UNKNOWN_WARMUP_HOLD: return "UnknownWarmupHold";
     case FIELDREG_MODE_UNKNOWN_BAND_LANDMARK: return "UnknownBandLandmark";
+    case FIELDREG_MODE_UNKNOWN_BAND_DISAGREEMENT: return "UnknownBandDisagreement";
     case FIELDREG_MODE_UNKNOWN_EVIDENCE_DISAGREEMENT: return "UnknownEvidenceDisagreement";
     case FIELDREG_MODE_UNKNOWN_COMMON_MODE_GAUGE: return "UnknownCommonModeGauge";
     case FIELDREG_MODE_UNKNOWN_CANDIDATE_DWELL: return "UnknownCandidateDwell";

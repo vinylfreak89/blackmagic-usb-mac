@@ -22,6 +22,8 @@
 
 enum { TPC_DATA = 0, TPC_SESSION = 3, TPC_VIDEO_ENDPOINT = 0x83 };
 static const uint32_t TPC_MAGIC = 0x31504143u;
+static fieldreg_evidence_model selected_model = FIELDREG_EVIDENCE_TOP_ONLY;
+static FILE *decision_output;
 
 typedef struct expected_row {
     uint32_t timeline;
@@ -85,6 +87,7 @@ typedef struct video_stream {
     uint8_t *buffer;
     size_t length;
     size_t capacity;
+    size_t marker_search;
     size_t expected_index;
 } video_stream;
 
@@ -350,6 +353,20 @@ static void compare_exact(video_stream *stream, const expected_row *expected,
                           const fieldreg_decision *actual)
 {
     comparison *result = &stream->result;
+    if (decision_output) {
+        fprintf(decision_output,
+                "%u,%d,%d,%s,%d,%d,%.9f,%d,%d,%d,%d,%d,%d,%d,%d,%.9f,%.9f,%d\n",
+                expected->counter, actual->applied_d1, actual->applied_d2,
+                fieldreg_mode_name(actual->mode), actual->decision_d1,
+                actual->decision_d2, actual->confidence,
+                actual->picture_top_f1, actual->picture_top_f2,
+                actual->picture_bottom_f1, actual->picture_bottom_f2,
+                actual->learned_band_mode_f1, actual->learned_band_mode_f2,
+                actual->learned_bottom_mode_f1, actual->learned_bottom_mode_f2,
+                actual->learned_band_stability_f1,
+                actual->learned_bottom_stability_f1,
+                actual->dual_edge_agreement ? 1 : 0);
+    }
     ++result->exact;
     bool applied = actual->applied_d1 == expected->applied_d1 &&
                    actual->applied_d2 == expected->applied_d2;
@@ -472,13 +489,18 @@ static void feed_video(video_stream *stream, const uint8_t *data, size_t length)
             }
             memmove(stream->buffer, stream->buffer + first, stream->length - first);
             stream->length -= first;
+            stream->marker_search = 8;
         }
-        size_t next = find_next_marker(stream->buffer, stream->length, 8);
-        if (next == SIZE_MAX)
+        size_t next = find_next_marker(stream->buffer, stream->length,
+                                       stream->marker_search);
+        if (next == SIZE_MAX) {
+            stream->marker_search = stream->length > 7 ? stream->length - 7 : 8;
             return;
+        }
         consume_unit(stream, stream->buffer, next);
         memmove(stream->buffer, stream->buffer + next, stream->length - next);
         stream->length -= next;
+        stream->marker_search = 8;
     }
 }
 
@@ -491,14 +513,21 @@ static video_stream make_stream(expected_table *expected, truth_table *truth)
     stream.buffer = malloc(stream.capacity);
     if (!stream.buffer)
         die("out of memory allocating framing buffer");
-    fieldreg_init(&stream.engine, NULL);
+    fieldreg_config config = fieldreg_default_config();
+    config.evidence_model = selected_model;
+    fieldreg_init(&stream.engine, &config);
+    stream.marker_search = 8;
     return stream;
 }
 
 static void finish_stream(video_stream *stream)
 {
-    if (video_marker(stream->buffer, stream->length) && stream->length > 0)
+    if (stream->expected_index < stream->expected->count &&
+        video_marker(stream->buffer, stream->length) && stream->length > 0)
         consume_unit(stream, stream->buffer, stream->length);
+    else if (stream->length > 0)
+        fprintf(stderr, "tpc golden: %zu trailing video bytes after the last "
+                        "bounded counter interval\n", stream->length);
     if (stream->expected_index != stream->expected->count) {
         fprintf(stderr, "processed %zu rows but CSV contains %zu\n",
                 stream->expected_index, stream->expected->count);
@@ -536,6 +565,7 @@ static video_stream run_tagged(const char *capture, expected_table *expected,
     int current_packet = -1;
     bool have_seq = false;
     size_t offset = 0;
+    size_t next_progress = 5ull << 30;
     while (offset < size) {
         if (size - offset < 24)
             die("truncated tpc record header");
@@ -570,6 +600,12 @@ static video_stream run_tagged(const char *capture, expected_table *expected,
         }
         offset += 24 + payload;
         ++records;
+        if (offset >= next_progress) {
+            fprintf(stderr, "tpc golden: %.1f/%.1f GiB, rows=%" PRIu64 "\n",
+                    offset / (double)(1ull << 30), size / (double)(1ull << 30),
+                    stream.result.rows);
+            next_progress += 5ull << 30;
+        }
     }
     finish_stream(&stream);
     fprintf(stderr,
@@ -773,9 +809,9 @@ static void usage(const char *program)
 {
     fprintf(stderr,
             "usage:\n"
-            "  %s --packet-capture CAPTURE --csv DECISIONS\n"
+            "  %s --packet-capture CAPTURE --csv DECISIONS [--model top|dual] [--output CSV]\n"
             "  %s --untagged-capture CAPTURE --audio-spans SPANS --marker-index MARKERS --csv DECISIONS "
-            "--field-origin-census FIELD_ORIGIN_CENSUS\n",
+            "--field-origin-census FIELD_ORIGIN_CENSUS [--model top|dual]\n",
             program, program);
     exit(2);
 }
@@ -783,7 +819,7 @@ static void usage(const char *program)
 int main(int argc, char **argv)
 {
     const char *tpc = NULL, *capture_untagged_ring = NULL, *spans = NULL, *markers = NULL;
-    const char *csv = NULL, *census = NULL;
+    const char *csv = NULL, *census = NULL, *output = NULL;
     for (int i = 1; i < argc; ++i) {
         if (i + 1 >= argc) usage(argv[0]);
         if (strcmp(argv[i], "--packet-capture") == 0) tpc = argv[++i];
@@ -792,21 +828,41 @@ int main(int argc, char **argv)
         else if (strcmp(argv[i], "--marker-index") == 0) markers = argv[++i];
         else if (strcmp(argv[i], "--csv") == 0) csv = argv[++i];
         else if (strcmp(argv[i], "--field-origin-census") == 0) census = argv[++i];
+        else if (strcmp(argv[i], "--output") == 0) output = argv[++i];
+        else if (strcmp(argv[i], "--model") == 0) {
+            const char *model = argv[++i];
+            if (strcmp(model, "top") == 0)
+                selected_model = FIELDREG_EVIDENCE_TOP_ONLY;
+            else if (strcmp(model, "dual") == 0)
+                selected_model = FIELDREG_EVIDENCE_DUAL_EDGE;
+            else
+                usage(argv[0]);
+        }
         else usage(argv[0]);
     }
     if (!csv || (!!tpc == !!capture_untagged_ring) || (capture_untagged_ring && (!spans || !markers)))
         usage(argv[0]);
     expected_table expected = load_expected(csv);
     truth_table truth = load_truth(census);
+    if (output) {
+        decision_output = fopen(output, "w");
+        if (!decision_output) die_errno(output);
+        fputs("counter,applied_d1,applied_d2,mode,decision_d1,decision_d2,confidence,"
+              "picture_top_f1,picture_top_f2,picture_bottom_f1,picture_bottom_f2,"
+              "top_mode_f1,top_mode_f2,bottom_mode_f1,bottom_mode_f2,"
+              "top_stability_f1,bottom_stability_f1,dual_edge_agreement\n",
+              decision_output);
+    }
     video_stream stream = tpc ? run_tagged(tpc, &expected, &truth)
                                : run_capture_untagged_ring(capture_untagged_ring, spans, markers, &expected, &truth);
     report(&stream);
     bool pass = stream.result.applied_matches == stream.result.exact &&
                 stream.result.mode_matches == stream.result.exact &&
                 stream.result.confident_matches == stream.result.confident;
+    if (decision_output) fclose(decision_output);
     free(stream.result.timings_us);
     free(stream.buffer);
     free(expected.rows);
     free(truth.rows);
-    return pass ? 0 : 1;
+    return selected_model == FIELDREG_EVIDENCE_TOP_ONLY && !pass ? 1 : 0;
 }

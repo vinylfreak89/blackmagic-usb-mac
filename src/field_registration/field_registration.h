@@ -28,6 +28,7 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_UNKNOWN_TRANSPORT_OR_VBI,
     FIELDREG_MODE_UNKNOWN_WARMUP_HOLD,
     FIELDREG_MODE_UNKNOWN_BAND_LANDMARK,
+    FIELDREG_MODE_UNKNOWN_BAND_DISAGREEMENT,
     FIELDREG_MODE_UNKNOWN_EVIDENCE_DISAGREEMENT,
     FIELDREG_MODE_UNKNOWN_COMMON_MODE_GAUGE,
     FIELDREG_MODE_UNKNOWN_CANDIDATE_DWELL,
@@ -35,9 +36,15 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_CONVERGED_RELATIVE_BAND,
 } fieldreg_mode;
 
+typedef enum fieldreg_evidence_model {
+    FIELDREG_EVIDENCE_TOP_ONLY = 0,
+    FIELDREG_EVIDENCE_DUAL_EDGE = 1,
+} fieldreg_evidence_model;
+
 typedef struct fieldreg_config {
     /* Minimum weave runner-up margin before changing relative registration. */
     double switch_margin;
+    fieldreg_evidence_model evidence_model;
 } fieldreg_config;
 
 typedef struct fieldreg_decision {
@@ -65,10 +72,17 @@ typedef struct fieldreg_decision {
     int16_t observed_transport_f2;
     int16_t picture_top_f1;
     int16_t picture_top_f2;
+    int16_t picture_bottom_f1;
+    int16_t picture_bottom_f2;
     int16_t learned_band_mode_f1;
     int16_t learned_band_mode_f2;
+    int16_t learned_bottom_mode_f1;
+    int16_t learned_bottom_mode_f2;
     double learned_band_stability_f1;
     double learned_band_stability_f2;
+    double learned_bottom_stability_f1;
+    double learned_bottom_stability_f2;
+    bool dual_edge_agreement;
 } fieldreg_decision;
 
 /*
@@ -86,10 +100,10 @@ typedef struct field_registration {
     uint32_t pending_age;
     uint32_t frames_seen;
 
-    /* Band offsets are bounded by the estimator's landmark windows. */
-    uint32_t band_counts[2][129];
-    uint32_t band_first_seen[2][129];
-    uint32_t band_total[2];
+    /* [field][0 top / 1 bottom][signed landmark offset + 64]. */
+    uint32_t band_counts[2][2][129];
+    uint32_t band_first_seen[2][2][129];
+    uint32_t band_total[2][2];
     uint32_t band_serial;
 
     bool previous_valid[2];
@@ -99,6 +113,9 @@ typedef struct field_registration {
 
 fieldreg_config fieldreg_default_config(void);
 void fieldreg_init(field_registration *engine, const fieldreg_config *config);
+
+/* Start a newly acquired source segment and relearn its absolute band gauge. */
+void fieldreg_begin_segment(field_registration *engine);
 
 /* Break temporal/dwell evidence after unknown byte placement or a stream cut. */
 void fieldreg_discontinuity(field_registration *engine);

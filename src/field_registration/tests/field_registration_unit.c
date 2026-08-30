@@ -61,6 +61,15 @@ static void make_unit(uint8_t *unit, uint16_t counter)
         set_line(unit, line, (uint8_t)(38 + (line - 263) % 83), 110, 145);
 }
 
+static void shift_first_picture_down_one(uint8_t *unit)
+{
+    uint8_t *raster = unit + FIELDREG_HEADER_BYTES;
+    memmove(raster + (size_t)20 * FIELDREG_BYTES_PER_LINE,
+            raster + (size_t)19 * FIELDREG_BYTES_PER_LINE,
+            (size_t)(257 - 19) * FIELDREG_BYTES_PER_LINE);
+    set_line(unit, 19, 2, 128, 128);
+}
+
 int main(void)
 {
     field_registration engine;
@@ -82,22 +91,37 @@ int main(void)
             assert(decision.mode == FIELDREG_MODE_STABLE);
     }
 
+    /* Strong, coherent top+bottom evidence may correct a real one-unit jump. */
+    make_unit(unit, 12);
+    shift_first_picture_down_one(unit);
+    assert(fieldreg_process(&engine, unit, &decision));
+    assert(decision.picture_top_f1 == 20 && decision.picture_bottom_f1 == 257);
+    assert(decision.dual_edge_agreement);
+    assert(decision.applied_d1 == 1 && decision.applied_d2 == 0);
+    assert(decision.mode == FIELDREG_MODE_CONVERGED_RELATIVE_BAND);
+
     fieldreg_discontinuity(&engine);
     assert(!engine.previous_valid[0] && !engine.previous_valid[1]);
-    assert(engine.band_total[0] == 12 && engine.band_total[1] == 12);
+    assert(engine.band_total[0][0] == 13 && engine.band_total[1][0] == 13);
+    assert(engine.band_total[0][1] == 13 && engine.band_total[1][1] == 13);
 
     /* A false content run before the real first-field fiducial must not move it. */
-    make_unit(unit, 12);
+    make_unit(unit, 13);
     set_line(unit, 10, 80, 96, 160);
     set_line(unit, 11, 72, 96, 160);
     assert(fieldreg_process(&engine, unit, &decision));
     assert(!decision.transport_ok);
     assert(decision.mode == FIELDREG_MODE_UNKNOWN_TRANSPORT_OR_VBI);
-    assert(decision.applied_d1 == 0 && decision.applied_d2 == 0);
+    assert(decision.applied_d1 == 1 && decision.applied_d2 == 0);
 
     unit[6] = 0;
     assert(!fieldreg_process(&engine, unit, &decision));
     assert(decision.mode == FIELDREG_MODE_INVALID_UNIT);
+
+    fieldreg_begin_segment(&engine);
+    assert(engine.frames_seen == 0);
+    assert(engine.band_total[0][0] == 0 && engine.band_total[1][1] == 0);
+    assert(engine.selected[0] == 0 && engine.selected[1] == 0);
 
     free(unit);
     printf("field_registration unit tests: PASS (state %zu bytes)\n", sizeof(engine));
