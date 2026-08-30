@@ -263,6 +263,20 @@ Within the delivered data there is also no garbage raster — damage is pure abs
 known signal-borne faults (field-1 registration, line-21 H/chroma), never TBC-generated
 corruption.
 
+**48-minute tagged capture of fixture A (69.7 GB): provably byte-complete.**
+Sustained 181 Mbit/s through a USB 3 hub: **46,075,614 records, zero corrupt;
+video 65.247 GB in 23,036,416 packets across 179,972 transfers with seq GAPS = 0; audio 3.319 GB,
+287,954 transfers, GAPS = 0; HostLoss 0, transfer errors 0, zero-length packets 0, resubmit
+failures 0, fleet 8/8 + 8/8 end to end, ring high-water 3 MB of 256.** Every scheduled USB slot
+across the entire tape was requested, delivered, and recorded — the first capture in this project
+whose completeness is proven from its own tag stream rather than inferred. The 2,877 tick records
+bound any event-loop stall below ~1.04 s (tick jitter max 38 ms, within the 100 ms loop
+granularity — ticks cannot resolve stalls below that; the dispositive continuity proof is
+GAPS = 0). Deck-health substitute test condition 1 (zero scheduled USB holes) is **met**; the
+remaining conditions (fixed geometry, no field-1 plateaus, line-phase stability, no repeats,
+audio continuity) await the content passes. Analyses stream the file by
+seek-walking records; a raw endpoint split is never materialized.
+
 **capture_tagged_bench hardware smoke test:** 30 s at 179 Mbit/s through a USB 3 hub with
 **zero submit-seq gaps on both endpoints** (complete scheduled-slot continuity, the claim capture_untagged_ring
 could never make), 0 iso errors, 0 inversions, 0 HostLoss, ring high-water 0. 471k records, 0
