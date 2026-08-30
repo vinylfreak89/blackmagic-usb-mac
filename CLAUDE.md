@@ -181,6 +181,31 @@ arrive out of submission order.
    inferential and makes holes explicit. (Improvement, not a rescue — see the recovery result
    below: untagged captures are NOT stranded.)
 
+### capture_tagged_bench — tagged capture bench
+
+Implements requirement 7: **single libusb event thread → SPSC
+byte ring (default 256 MB ≈ 11 s, atomic head/tail, lock-free data path; condvar only for
+sleep/wake with a 100 ms liveness backstop) → writer thread**; shared state in C11 atomics;
+transfers cancelled on shutdown. **Every iso packet** gets a 24-byte record —
+`{magic 'CAP1', type DATA/HostLoss/TransferError/SESSION, endpoint, pkt_index, submit_seq, libusb
+status, req_len, actual_len}` + payload — **including zero-length packets**, so scheduled-slot
+accounting is complete: a missing USB frame appears as a per-endpoint **seq GAP** in the tag
+stream, provable rather than inferred. **Ring overflow → explicit in-stream `HostLoss` record**
+(lost pkts + bytes), never silent. `verify_packet_capture.py` verifies/de-multiplexes (per-endpoint bytes,
+zero-len/short counts, seq gaps, inversions, HostLoss, split to raw streams); the format
+round-trips a synthetic stream exactly, including a deliberately-missing seq detected as a gap.
+Deep queue retained (`V_NPK=128`, `XFERS=8`). Overhead ≈ 0.2% (24 B per 15,360 B video packet).
+
+**Design decisions:**
+- **Correction-decision log:** the real-time corrector MAY rely on band modes without a stable
+  video anchor **provided** every per-unit decision `{d1, d2 or Unknown, mode, confidence}` is
+  logged in real time to an optional sidecar — corrections are real-time in the driver; the log
+  is the post-fixup escape hatch, not lookahead.
+- **Review-encode damage policy:** never blank or repeat. Render corruption **as-is** (surviving
+  bytes at their positions); genuinely absent bytes get an unmistakable standard-NTSC-style
+  no-signal fill, documented, with the placement assumption stated for untagged captures. Purpose:
+  drop *patterns* must stay visible and inspectable.
+
 ### Untagged video+audio mix is RECOVERABLE (proven with `capture_render.py`)
 
 `capture_untagged_ring` submits both endpoints, so completed video (0x83) and audio (0x84) transfers land in one
