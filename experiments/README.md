@@ -175,3 +175,32 @@ resampled or concealed.
 Input remains memory-mapped. Full renders stream decoded units to a temporary
 raw-video file while retaining one reference raster and one marker interval in
 RAM; the frame index stores byte ranges, not multi-gigabyte image buffers.
+
+## Tagged capture_tagged_bench (`.tpc`) render
+
+The same tool accepts capture_tagged_bench's tagged capture container directly. It seek-walks
+the 24-byte `CAP1` records, validates per-endpoint submission sequence, packet
+index/status, `HostLoss`, and `TransferError`, and concatenates DATA payloads only in
+memory-sized parser buffers. It never writes a raw video or endpoint split.
+The first pass writes only compact two-channel S24LE PCM and indexes
+`DeckLinkAudioResyncT`; the second pass streams one reconstructed 720x480 unit
+at a time into FFmpeg. A missing resync metadata record is logged but does not
+discard continuous PCM; timing anchors are found on an unwrapped 16-bit counter
+rather than by assuming one resync row per video period.
+
+```sh
+python3 experiments/capture_render.py capture.tpc \
+  --render review.mp4 \
+  --render-crf 12 --render-preset slow \
+  --render-maxrate 13M --render-bufsize 26M \
+  --adaptive-registration \
+  --decision-log review_registration.csv
+```
+
+The CAP1 transport may be byte-complete while the device's decoded-video
+framing is not. Exactness is therefore measured independently from validated
+`e801` header spacing and counter continuity. A short marker-delimited unit is
+named `ShortDeviceUnit`, keeps its captured prefix at its observed byte
+position, and receives diagnostic bars only for the undefined suffix; a
+missing counter period is named `AbsentDeviceUnit`. Those states break
+registration-estimator temporal continuity and remain explicit in the CSV.

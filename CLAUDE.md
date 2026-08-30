@@ -277,6 +277,39 @@ remaining conditions (fixed geometry, no field-1 plateaus, line-phase stability,
 audio continuity) await the content passes. Analyses stream the file by
 seek-walking records; a raw endpoint split is never materialized.
 
+**Whole-tape render/content pass:** two bounded passes over the tagged capture (compact stereo
+PCM only; no endpoint/video split) produced a review MP4 plus a registration decision log. Both passes
+reproduced the 46,075,614-record CAP1 census exactly; a complete decode of the result returned
+zero errors. Output: 720×480, SAR 8:9/DAR 4:3, 60000/1001, 172,600 frames, stereo 48 kHz,
+2879.543333 s, 4,420,351,820 B. **USB byte-complete does not mean decoder-unit-exact:** the video
+endpoint contains 86,293 exact 756,048-byte marker intervals, seven short device-emitted units,
+zero absent counters, and zero counter errors. The shorts are counters 4507=371,568 B,
+4508=13,008 B, 4509=371,568 B, 4510=371,568 B, 4515=755,824 B, 4520=755,824 B, and
+4701=755,824 B. They retain their observed prefix and use conspicuous fill only for the undefined
+suffix; CAP1 proves they are not host loss. Arbitrary endpoint edges add a 1,652,048-byte leading
+fragment and 495,376-byte trailing fragment outside the marker-delimited census.
+
+Audio is continuous, but audio resync *metadata* is not perfectly dense: one
+`DeckLinkAudioResyncT` record is absent at 894→896 (sample index 99,177,246). CAP1 audio sequence
+is still complete and no PCM is discarded. The renderer therefore unwraps counter values and
+looks anchors up by value rather than treating audio-row ordinal as frame time. The selected A/V
+window had 138,212,854 samples for a counter-timed expectation of 138,218,080 (5,226-sample /
+108.9 ms deficit over 48 min); the review copy applies `atempo=0.999962190185`. Raw extraction
+does not conceal or resample this.
+
+⚠️ **Do not call every registration-render decision a measured deck plateau.** The generalized
+one-pass estimator selected `(d1,d2)` counts `(0,0)=63,476`, `(1,0)=19,265`, `(2,0)=2,315`,
+`(3,0)=1,244`, with 2,165 maximal nonzero constant runs; 1,282 of those runs are only 1–3 units.
+The raw decision log is an auditable correction trace, not by itself deck-health ground truth.
+Using an explicitly diagnostic summary rule (bridge zero gaps shorter than 10 s), selections form
+nine high-level clusters: 15.215–975.641 s (chronic +1/+2), 990.089–999.532, 1017.516–1018.251,
+1046.312–1047.446, 1127.760–1128.427, 1459.458–1461.293, 1880.011–1882.814 (+2),
+2669.600–2704.569 (+1), and 2837.201–2879.543 (+2/+3). An independent field-origin census or
+visual/raw-field check must decide which are physical registration events versus estimator chatter,
+especially fades, flat fields, mute/snow, and the 720 one-unit selections. Thus the earlier
+deck-health condition “no field-1 plateaus” is not met by renderer selections, but deck health is
+not falsified by those selections alone.
+
 **Deterministic replay (`experiments/libusb_replay_shim.c`):** link the unmodified
 capture code against the mock instead of `-lusb-1.0` and it replays a `.tpc` through the REAL
 callback/ring/writer machinery as if the device were streaming. Proven: 2.83 GB of the actual

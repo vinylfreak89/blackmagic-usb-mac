@@ -13,6 +13,7 @@ import argparse
 import bisect
 import csv
 import mmap
+import os
 import subprocess
 import struct
 import sys
@@ -23,6 +24,8 @@ from pathlib import Path
 from typing import BinaryIO
 
 import numpy as np
+
+from packet_capture_reader import format_tagged_stats, walk_tagged
 
 AUDIO_SYNC = b"DeckLinkAudioResyncT"
 AUDIO_FORMAT = 0x6E65
@@ -1039,6 +1042,386 @@ class RegistrationEstimator:
         }
 
 
+def _valid_e801_header(data: bytes | bytearray, offset: int = 0) -> bool:
+    return bool(
+        len(data) >= offset + VIDEO_HEADER_BYTES
+        and data[offset : offset + 4] == VIDEO_SYNC
+        and struct.unpack_from("<H", data, offset + 6)[0] == VIDEO_FORMAT
+        and not any(data[offset + 8 : offset + VIDEO_HEADER_BYTES])
+    )
+
+
+class TaggedVideoUnits:
+    """Incrementally split tagged video payloads on validated e801 headers."""
+
+    def __init__(self, on_unit=None, copy_units: bool = False):
+        self.on_unit = on_unit
+        self.copy_units = copy_units
+        self.buffer = bytearray()
+        self.locked = False
+        self.payload_bytes = 0
+        self.leading_bytes = 0
+        self.trailing_bytes = 0
+        self.exact_units = 0
+        self.short_units = 0
+        self.absent_units = 0
+        self.timeline_units = 0
+        self.counter_errors = 0
+        self.first_counter = None
+        self.end_counter = None
+        self._next_header_search = 1
+
+    def feed(self, payload: bytes) -> None:
+        self.payload_bytes += len(payload)
+        self.buffer.extend(payload)
+        if not self.locked:
+            search = 0
+            while True:
+                marker = self.buffer.find(VIDEO_SYNC, search)
+                if marker < 0:
+                    # Retain enough bytes for a split marker/header.
+                    keep = min(len(self.buffer), VIDEO_HEADER_BYTES - 1)
+                    discard = len(self.buffer) - keep
+                    self.leading_bytes += discard
+                    if discard:
+                        del self.buffer[:discard]
+                    return
+                if len(self.buffer) < marker + VIDEO_HEADER_BYTES:
+                    if marker:
+                        self.leading_bytes += marker
+                        del self.buffer[:marker]
+                    return
+                if _valid_e801_header(self.buffer, marker):
+                    self.leading_bytes += marker
+                    if marker:
+                        del self.buffer[:marker]
+                    self.locked = True
+                    self._next_header_search = 1
+                    break
+                search = marker + 1
+
+        while len(self.buffer) >= VIDEO_HEADER_BYTES:
+            current_counter = struct.unpack_from("<H", self.buffer, 4)[0]
+            search = self._next_header_search
+            next_marker = None
+            while True:
+                candidate = self.buffer.find(VIDEO_SYNC, search)
+                if candidate < 0:
+                    if len(self.buffer) > VIDEO_UNIT_BYTES * 2:
+                        raise RuntimeError(
+                            f"no next validated e801 header within "
+                            f"{len(self.buffer):,} bytes after counter {current_counter}"
+                        )
+                    self._next_header_search = max(1, len(self.buffer) - 3)
+                    return
+                if len(self.buffer) < candidate + VIDEO_HEADER_BYTES:
+                    self._next_header_search = candidate
+                    return
+                if _valid_e801_header(self.buffer, candidate):
+                    next_marker = candidate
+                    break
+                search = candidate + 1
+
+            next_counter = struct.unpack_from("<H", self.buffer, next_marker + 4)[0]
+            counter_step = (next_counter - current_counter) & 0xFFFF
+            if not counter_step or counter_step >= 0x8000:
+                self.counter_errors += 1
+                raise RuntimeError(
+                    f"implausible tpc e801 counter step "
+                    f"{current_counter}->{next_counter}"
+                )
+            if self.first_counter is None:
+                self.first_counter = current_counter
+            captured = next_marker
+            if captured == VIDEO_UNIT_BYTES:
+                state = "Exact"
+                self.exact_units += 1
+            elif captured < VIDEO_UNIT_BYTES:
+                state = "ShortDeviceUnit"
+                self.short_units += 1
+            else:
+                raise RuntimeError(
+                    f"tpc counter {current_counter} spans {captured:,} bytes "
+                    f"(expected at most {VIDEO_UNIT_BYTES:,}); tags are continuous"
+                )
+            unit = bytes(self.buffer[:captured]) if self.copy_units else None
+            index = self.timeline_units
+            self.timeline_units += 1
+            if self.on_unit is not None:
+                self.on_unit(index, current_counter, unit, state, captured)
+
+            for missing in range(1, counter_step):
+                missing_counter = (current_counter + missing) & 0xFFFF
+                self.absent_units += 1
+                index = self.timeline_units
+                self.timeline_units += 1
+                if self.on_unit is not None:
+                    self.on_unit(index, missing_counter, None, "AbsentDeviceUnit", 0)
+            self.end_counter = next_counter
+            del self.buffer[:next_marker]
+            self._next_header_search = 1
+
+    def finish(self) -> None:
+        # Capture starts/ends on arbitrary USB slots. Bytes outside the first
+        # and last complete marker-delimited unit are endpoint fragments, not
+        # missing/short counter periods.
+        self.trailing_bytes = len(self.buffer)
+
+
+class TaggedAudioExtractor:
+    """Vectorized 8ch-record parser producing stereo PCM and resync rows."""
+
+    FLUSH_BYTES = 8 << 20
+
+    def __init__(self, pcm_path: str | Path):
+        self.pcm = open(pcm_path, "wb")
+        self.buffer = bytearray()
+        self.phase_locked = False
+        self.leading_bytes = 0
+        self.trailing_bytes = 0
+        self.endpoint_bytes = 0
+        self.parsed_endpoint_bytes = 0
+        self.sample_records = 0
+        self.resync_records = 0
+        self.muted_channel_errors = 0
+        self.counter_errors = 0
+        self.sync_rows: list[tuple[int, int, int]] = []
+        self.counter_discontinuities: list[tuple[int, int, int, int]] = []
+        self._last_counter = None
+        self._extended_counter = None
+
+    def feed(self, payload: bytes) -> None:
+        self.endpoint_bytes += len(payload)
+        self.buffer.extend(payload)
+        if not self.phase_locked:
+            marker = self.buffer.find(AUDIO_SYNC)
+            while marker >= 0:
+                if len(self.buffer) < marker + AUDIO_RECORD_BYTES:
+                    return
+                if struct.unpack_from("<H", self.buffer, marker + 22)[0] == AUDIO_FORMAT:
+                    phase = marker % AUDIO_RECORD_BYTES
+                    self.leading_bytes = phase
+                    if phase:
+                        del self.buffer[:phase]
+                    self.phase_locked = True
+                    break
+                marker = self.buffer.find(AUDIO_SYNC, marker + 1)
+            if not self.phase_locked:
+                if len(self.buffer) > self.FLUSH_BYTES:
+                    raise RuntimeError("no DeckLinkAudioResyncT record in first 8 MiB")
+                return
+        if len(self.buffer) >= self.FLUSH_BYTES:
+            self._flush(False)
+
+    def _flush(self, final: bool) -> None:
+        usable = len(self.buffer) // AUDIO_RECORD_BYTES * AUDIO_RECORD_BYTES
+        if not usable:
+            return
+        if not final and usable == len(self.buffer):
+            # Keep one record so a future implementation can inspect continuity
+            # across flush boundaries without changing emitted sample indices.
+            usable -= AUDIO_RECORD_BYTES
+        if not usable:
+            return
+        octets = np.frombuffer(self.buffer, np.uint8, usable).reshape(
+            -1, AUDIO_RECORD_BYTES
+        )
+        sync = np.frombuffer(AUDIO_SYNC, np.uint8)
+        marker = (
+            np.all(octets[:, :20] == sync, axis=1)
+            & (octets[:, 22] == 0x65)
+            & (octets[:, 23] == 0x6E)
+        )
+        nonmarker = ~marker
+        if np.any(nonmarker):
+            self.muted_channel_errors += int(
+                np.count_nonzero(np.any(octets[nonmarker, 6:24] != 0, axis=1))
+            )
+        marker_indices = np.flatnonzero(marker)
+        nonmarker_prefix = np.cumsum(nonmarker, dtype=np.int64)
+        for record_index in marker_indices:
+            counter = int(octets[record_index, 20]) | (
+                int(octets[record_index, 21]) << 8
+            )
+            samples_before = (
+                int(nonmarker_prefix[record_index - 1]) if record_index else 0
+            )
+            if self._last_counter is not None:
+                delta = (counter - self._last_counter) & 0xFFFF
+                if delta != 1:
+                    self.counter_errors += 1
+                    self.counter_discontinuities.append(
+                        (
+                            self._last_counter,
+                            counter,
+                            self.sample_records + samples_before,
+                            delta,
+                        )
+                    )
+                if not delta or delta >= 0x8000:
+                    raise RuntimeError(
+                        f"tpc audio resync counter is not forward: "
+                        f"{self._last_counter}->{counter}"
+                    )
+                self._extended_counter += delta
+            else:
+                self._extended_counter = counter
+            self.sync_rows.append(
+                (
+                    counter,
+                    self.sample_records + samples_before,
+                    self._extended_counter,
+                )
+            )
+            self._last_counter = counter
+        self.pcm.write(octets[nonmarker, :6].tobytes())
+        samples = int(np.count_nonzero(nonmarker))
+        markers = int(np.count_nonzero(marker))
+        self.sample_records += samples
+        self.resync_records += markers
+        self.parsed_endpoint_bytes += usable
+        remainder = bytes(self.buffer[usable:])
+        del octets, marker, nonmarker, marker_indices, nonmarker_prefix
+        self.buffer = bytearray(remainder)
+
+    def finish(self) -> None:
+        if not self.phase_locked:
+            raise RuntimeError("tpc audio record phase never locked")
+        self._flush(True)
+        self.trailing_bytes = len(self.buffer)
+        self.pcm.close()
+        if self.trailing_bytes:
+            raise RuntimeError(
+                f"tpc audio endpoint ends with {self.trailing_bytes} partial bytes"
+            )
+        if self.muted_channel_errors:
+            raise RuntimeError(
+                f"tpc audio has {self.muted_channel_errors:,} records with "
+                "nonzero muted channels; record phase/channel model is wrong"
+            )
+
+
+TPC_DECISION_COLUMNS = (
+    "timeline_frame",
+    "counter",
+    "extended_counter",
+    "unit_state",
+    "captured_video_bytes",
+    "undefined_video_bytes",
+    "decision_d1",
+    "decision_d2",
+    "applied_d1",
+    "applied_d2",
+    "mode",
+    "confidence",
+    "best_d1",
+    "best_d2",
+    "pending_d1",
+    "pending_d2",
+    "pending_count",
+    "best_relative_d2_minus_d1",
+    "selected_relative_d2_minus_d1",
+    "independent_evidence_margin",
+    "weave_margin",
+    "temporal_margin_f1",
+    "temporal_margin_f2",
+    "transport_ok",
+    "observed_transport_f1",
+    "observed_transport_f2",
+    "picture_top_f1",
+    "picture_top_f2",
+    "learned_band_mode_f1",
+    "learned_band_mode_f2",
+    "learned_band_stability_f1",
+    "learned_band_stability_f2",
+)
+
+
+def tagged_decision_row(
+    index,
+    counter,
+    extended_counter,
+    unit_state,
+    captured_bytes,
+    registration,
+    applied,
+):
+    if registration is None:
+        applied_d1, applied_d2 = applied
+        return (
+            index,
+            counter,
+            extended_counter,
+            unit_state,
+            captured_bytes,
+            VIDEO_UNIT_BYTES - captured_bytes,
+            "",
+            "",
+            applied_d1,
+            applied_d2,
+            unit_state,
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        )
+    decision = registration["decision"]
+    best_d1, best_d2 = registration["best_pair"]
+    pending_d1, pending_d2 = registration["pending_pair"]
+    applied_d1, applied_d2 = registration["applied"]
+    return (
+        index,
+        counter,
+        extended_counter,
+        unit_state,
+        captured_bytes,
+        VIDEO_UNIT_BYTES - captured_bytes,
+        "" if decision is None else decision[0],
+        "" if decision is None else decision[1],
+        applied_d1,
+        applied_d2,
+        registration["mode"],
+        f"{registration['confidence']:.9f}",
+        best_d1,
+        best_d2,
+        pending_d1,
+        pending_d2,
+        registration["pending_count"],
+        registration["best_relative"],
+        registration["selected_relative"],
+        f"{registration['independent_evidence']:.9f}",
+        f"{registration['weave_margin']:.9f}",
+        f"{registration['temporal_margin1']:.9f}",
+        f"{registration['temporal_margin2']:.9f}",
+        int(registration["transport_ok"]),
+        registration["observed_f1"],
+        registration["observed_f2"],
+        registration["top1"],
+        registration["top2"],
+        registration["band_mode1"],
+        registration["band_mode2"],
+        f"{registration['band_stability1']:.9f}",
+        f"{registration['band_stability2']:.9f}",
+    )
+
+
 def find_video_markers(mm, spans):
     starts, ends, prefix = build_span_index(spans)
     markers = []
@@ -1516,6 +1899,9 @@ def render_preview(
     render_size,
     render_sar,
     render_crf,
+    render_preset,
+    render_maxrate,
+    render_bufsize,
     adaptive_registration,
     decision_log,
     registration_switch_margin,
@@ -1631,7 +2017,7 @@ def render_preview(
             "-c:v",
             "libx264",
             "-preset",
-            "medium",
+            render_preset,
             "-crf",
             str(render_crf),
             "-pix_fmt",
@@ -1643,8 +2029,12 @@ def render_preview(
             "-movflags",
             "+faststart",
             "-shortest",
-            str(output_path),
         ]
+        if render_maxrate:
+            command.extend(("-maxrate", render_maxrate))
+            if render_bufsize:
+                command.extend(("-bufsize", render_bufsize))
+        command.append(str(output_path))
         subprocess.run(command, check=True)
     return (
         start_counter,
@@ -1660,6 +2050,373 @@ def render_preview(
         padding_anchor_total,
         rejected_padding_total,
     )
+
+
+def prepare_tagged_audio_and_census(input_path, pcm_path):
+    """First streaming pass: provenance, unit census, and compact stereo PCM."""
+    video = TaggedVideoUnits()
+    audio = TaggedAudioExtractor(pcm_path)
+    try:
+        stats = walk_tagged(
+            input_path,
+            on_video=video.feed,
+            on_audio=audio.feed,
+        )
+        video.finish()
+        audio.finish()
+    except Exception:
+        if not audio.pcm.closed:
+            audio.pcm.close()
+        raise
+    if stats.video.payload_bytes != video.payload_bytes:
+        raise RuntimeError(
+            f"tpc video dispatch mismatch {video.payload_bytes} != "
+            f"{stats.video.payload_bytes}"
+        )
+    if stats.audio.payload_bytes != audio.endpoint_bytes:
+        raise RuntimeError(
+            f"tpc audio dispatch mismatch {audio.endpoint_bytes} != "
+            f"{stats.audio.payload_bytes}"
+        )
+    if (
+        audio.leading_bytes + audio.parsed_endpoint_bytes + audio.trailing_bytes
+        != audio.endpoint_bytes
+    ):
+        raise RuntimeError("tpc audio endpoint byte accounting failed")
+    print(format_tagged_stats(stats))
+    print(
+        f"tpc video units: exact={video.exact_units:,}; short={video.short_units}; "
+        f"absent={video.absent_units}; counter_errors={video.counter_errors}; "
+        f"leading_fragment={video.leading_bytes:,} B; "
+        f"trailing_fragment={video.trailing_bytes:,} B; "
+        f"timeline={video.timeline_units:,}; "
+        f"counter={video.first_counter}->{video.end_counter}"
+    )
+    print(
+        f"tpc audio: samples={audio.sample_records:,}; "
+        f"resync={audio.resync_records:,}; counter_errors={audio.counter_errors}; "
+        f"record_phase_leading={audio.leading_bytes} B; "
+        f"counter_discontinuities={audio.counter_discontinuities}"
+    )
+    return stats, video, audio
+
+
+def tagged_audio_window(audio_rows, first_video_counter, video_frames):
+    candidates = [
+        index for index, (counter, _sample, _extended) in enumerate(audio_rows)
+        if counter == first_video_counter
+    ]
+    if not candidates:
+        raise RuntimeError(
+            f"no audio resync occurrence for first video counter {first_video_counter}"
+        )
+    # Both endpoints start together, so the earliest matching occurrence is
+    # the correct epoch. A 48-minute tape wraps the raw 16-bit counter once.
+    start_row = candidates[0]
+    start_extended = audio_rows[start_row][2]
+    end_extended = start_extended + video_frames
+    extended_values = [row[2] for row in audio_rows]
+    end_row = bisect.bisect_left(extended_values, end_extended)
+    if end_row >= len(audio_rows) or extended_values[end_row] != end_extended:
+        raise RuntimeError(
+            f"no audio resync anchor at extended counter {end_extended}; "
+            f"last is {extended_values[-1]}"
+        )
+    expected_end_counter = (first_video_counter + video_frames) & 0xFFFF
+    if audio_rows[end_row][0] != expected_end_counter:
+        raise RuntimeError(
+            f"audio/video counter window mismatch: expected end "
+            f"{expected_end_counter}, got {audio_rows[end_row][0]}"
+        )
+    return (
+        start_row,
+        end_row,
+        start_extended,
+        audio_rows[start_row][1],
+        audio_rows[end_row][1],
+    )
+
+
+def render_tagged(
+    input_path,
+    output_path,
+    decision_log,
+    first_field,
+    ffmpeg,
+    render_size,
+    render_sar,
+    render_crf,
+    render_preset,
+    render_maxrate,
+    render_bufsize,
+    adaptive_registration,
+    registration_switch_margin,
+):
+    """Two-pass, disk-bounded full render of a tagged capture_tagged_bench capture."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_temp = output_path.with_name(
+        f".{output_path.stem}.partial{output_path.suffix}"
+    )
+    decision_path = Path(decision_log) if decision_log else None
+    decision_temp = (
+        decision_path.with_name(f".{decision_path.name}.partial")
+        if decision_path else None
+    )
+    for temporary in (output_temp, decision_temp):
+        if temporary and temporary.exists():
+            temporary.unlink()
+
+    pcm_file = tempfile.NamedTemporaryFile(
+        prefix=".tpc-audio-",
+        suffix=".s24le",
+        dir=output_path.parent,
+        delete=False,
+    )
+    pcm_path = Path(pcm_file.name)
+    pcm_file.close()
+    process = None
+    try:
+        first_stats, census, audio = prepare_tagged_audio_and_census(
+            input_path, pcm_path
+        )
+        if not census.timeline_units or census.first_counter is None:
+            raise RuntimeError("tpc contains no marker-delimited e801 video units")
+        (
+            audio_start_row,
+            audio_end_row,
+            extended_start,
+            audio_start,
+            audio_end,
+        ) = tagged_audio_window(
+            audio.sync_rows, census.first_counter, census.timeline_units
+        )
+        expected_audio = census.timeline_units * 48_000 * 1001 / 30_000
+        actual_audio = audio_end - audio_start
+        tempo = actual_audio / expected_audio
+        if not 0.5 <= tempo <= 2.0:
+            raise RuntimeError(f"implausible tpc audio tempo {tempo:.9f}")
+        print(
+            f"tpc A/V window: audio rows {audio_start_row:,}..{audio_end_row:,}; "
+            f"samples {audio_start:,}..{audio_end:,}; video expects "
+            f"{expected_audio:,.1f}; review atempo={tempo:.12f}"
+        )
+
+        parity = "bff" if first_field == "bottom" else "tff"
+        video_filters = [f"bwdif=mode=send_field:parity={parity}:deint=all"]
+        if render_size:
+            width, height = render_size
+            video_filters.append(f"scale={width}:{height}:flags=lanczos")
+        video_filters.append(f"setsar={render_sar}")
+        audio_filters = [
+            f"atrim=start_sample={audio_start}:end_sample={audio_end}",
+            "asetpts=PTS-STARTPTS",
+        ]
+        if abs(actual_audio - expected_audio) > 4:
+            audio_filters.append(f"atempo={tempo:.12f}")
+        expected_samples = round(expected_audio)
+        audio_filters.extend(
+            (
+                f"apad=whole_len={expected_samples}",
+                f"atrim=end_sample={expected_samples}",
+            )
+        )
+        command = [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "warning",
+            "-stats",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pixel_format",
+            "uyvy422",
+            "-video_size",
+            "720x480",
+            "-framerate",
+            "30000/1001",
+            "-i",
+            "pipe:0",
+            "-f",
+            "s24le",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-i",
+            str(pcm_path),
+            "-filter_complex",
+            f"[0:v]{','.join(video_filters)}[v];"
+            f"[1:a]{','.join(audio_filters)}[a]",
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            render_preset,
+            "-crf",
+            str(render_crf),
+            "-pix_fmt",
+            "yuv420p",
+            "-frames:v",
+            str(census.timeline_units * 2),
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
+            "-shortest",
+        ]
+        if render_maxrate:
+            command.extend(("-maxrate", render_maxrate))
+            if render_bufsize:
+                command.extend(("-bufsize", render_bufsize))
+        command.extend(("-f", "mp4", str(output_temp)))
+        print("starting streaming tpc render: " + " ".join(command))
+
+        estimator = RegistrationEstimator(registration_switch_margin)
+        offset_counts = Counter()
+        decision_counts = Counter()
+        decision_output = (
+            open(decision_temp, "w", newline="") if decision_temp else None
+        )
+        decision_writer = csv.writer(decision_output) if decision_output else None
+        if decision_writer:
+            decision_writer.writerow(TPC_DECISION_COLUMNS)
+        process = subprocess.Popen(command, stdin=subprocess.PIPE)
+        if process.stdin is None:
+            raise RuntimeError("ffmpeg raw-video stdin was not created")
+
+        def emit_unit(index, counter, unit, unit_state, captured_bytes):
+            if unit_state == "Exact":
+                if unit is None or len(unit) != VIDEO_UNIT_BYTES:
+                    raise RuntimeError("tpc exact unit copy has wrong length")
+            elif unit_state == "ShortDeviceUnit":
+                if unit is None or len(unit) != captured_bytes:
+                    raise RuntimeError("tpc short unit copy has wrong length")
+                estimator.discontinuity()
+                reconstructed = bytearray(DIAGNOSTIC_FILL_UNIT)
+                reconstructed[:captured_bytes] = unit
+                struct.pack_into("<H", reconstructed, 4, counter)
+                unit = bytes(reconstructed)
+            elif unit_state == "AbsentDeviceUnit":
+                if unit is not None or captured_bytes:
+                    raise RuntimeError("tpc absent unit unexpectedly has bytes")
+                estimator.discontinuity()
+                reconstructed = bytearray(DIAGNOSTIC_FILL_UNIT)
+                struct.pack_into("<H", reconstructed, 4, counter)
+                unit = bytes(reconstructed)
+            else:
+                raise RuntimeError(f"unknown tpc unit state {unit_state}")
+
+            registration = None
+            if adaptive_registration and unit_state == "Exact":
+                registration = estimator.decide(unit)
+                applied_d1, applied_d2 = registration["applied"]
+                decision_counts[registration["mode"]] += 1
+            elif adaptive_registration:
+                applied_d1, applied_d2 = estimator.selected
+                decision_counts[unit_state] += 1
+            else:
+                applied_d1 = applied_d2 = 0
+            offset_counts[(applied_d1, applied_d2)] += 1
+            if decision_writer:
+                decision_writer.writerow(
+                    tagged_decision_row(
+                        index,
+                        counter,
+                        extended_start + index,
+                        unit_state,
+                        captured_bytes,
+                        registration,
+                        (applied_d1, applied_d2),
+                    )
+                )
+            frame = unit_to_480i(
+                unit,
+                first_field,
+                field1_start=FIELD1_START + applied_d1,
+                field2_start=FIELD2_START + applied_d2,
+            )
+            process.stdin.write(frame)
+            if index and index % 3000 == 0:
+                print(
+                    f"tpc rendered input units {index:,}/{census.timeline_units:,}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
+        render_units = TaggedVideoUnits(on_unit=emit_unit, copy_units=True)
+        try:
+            second_stats = walk_tagged(
+                input_path,
+                on_video=render_units.feed,
+            )
+            render_units.finish()
+            process.stdin.close()
+            return_code = process.wait()
+        finally:
+            if decision_output:
+                decision_output.close()
+        if return_code:
+            raise subprocess.CalledProcessError(return_code, command)
+        if (
+            render_units.exact_units != census.exact_units
+            or render_units.short_units != census.short_units
+            or render_units.absent_units != census.absent_units
+            or render_units.timeline_units != census.timeline_units
+        ):
+            raise RuntimeError(
+                "tpc render-pass unit census disagrees: "
+                f"render exact/short/absent/timeline="
+                f"{render_units.exact_units:,}/{render_units.short_units:,}/"
+                f"{render_units.absent_units:,}/{render_units.timeline_units:,}; "
+                f"first pass={census.exact_units:,}/{census.short_units:,}/"
+                f"{census.absent_units:,}/{census.timeline_units:,}"
+            )
+        if (
+            second_stats.records != first_stats.records
+            or second_stats.video.payload_bytes != first_stats.video.payload_bytes
+            or second_stats.audio.payload_bytes != first_stats.audio.payload_bytes
+        ):
+            raise RuntimeError("tpc two-pass provenance census disagrees")
+        os.replace(output_temp, output_path)
+        if decision_path and decision_temp:
+            os.replace(decision_temp, decision_path)
+        print(
+            f"tpc render complete: {census.timeline_units:,} units / "
+            f"{census.timeline_units*2:,} fields; exact={census.exact_units:,}; "
+            f"short={census.short_units:,}; absent={census.absent_units:,}; "
+            f"applied={dict(sorted(offset_counts.items()))}; "
+            f"modes={dict(sorted(decision_counts.items()))}"
+        )
+        return {
+            "stats": first_stats,
+            "census": census,
+            "audio": audio,
+            "audio_start": audio_start,
+            "audio_end": audio_end,
+            "tempo": tempo,
+            "offset_counts": offset_counts,
+            "decision_counts": decision_counts,
+        }
+    except Exception:
+        if process is not None and process.poll() is None:
+            if process.stdin:
+                process.stdin.close()
+            process.terminate()
+            process.wait()
+        for temporary in (output_temp, decision_temp):
+            if temporary and temporary.exists():
+                temporary.unlink()
+        raise
+    finally:
+        if pcm_path.exists():
+            pcm_path.unlink()
 
 
 def validate(mm, spans, audio_rows, video_markers, complete_rows):
@@ -1698,6 +2455,12 @@ def validate(mm, spans, audio_rows, video_markers, complete_rows):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input")
+    parser.add_argument(
+        "--input-format",
+        choices=("tagged", "untagged"),
+        default="tagged",
+        help="capture container: tagged packet capture (default) or the untagged ring-buffer format",
+    )
     parser.add_argument("--video-endpoint", help="raw video endpoint, including runts")
     parser.add_argument(
         "--audio-endpoint", help="raw 8ch endpoint, including resync records"
@@ -1772,6 +2535,25 @@ def main():
         help="libx264 constant-rate-factor for --render (default: 16)",
     )
     parser.add_argument(
+        "--render-preset",
+        choices=(
+            "ultrafast", "superfast", "veryfast", "faster", "fast",
+            "medium", "slow", "slower", "veryslow",
+        ),
+        default="medium",
+        help="libx264 preset for --render (default: medium)",
+    )
+    parser.add_argument(
+        "--render-maxrate",
+        metavar="RATE",
+        help="optional x264 VBV maximum rate, e.g. 13M",
+    )
+    parser.add_argument(
+        "--render-bufsize",
+        metavar="SIZE",
+        help="optional x264 VBV buffer size, e.g. 26M",
+    )
+    parser.add_argument(
         "--adaptive-registration",
         "--adaptive-field-origin",
         dest="adaptive_registration",
@@ -1805,17 +2587,60 @@ def main():
     )
     args = parser.parse_args()
 
+    input_format = args.input_format
+
+    if args.registration_switch_margin < 0:
+        parser.error("--registration-switch-margin must be non-negative")
+    if args.render_bufsize and not args.render_maxrate:
+        parser.error("--render-bufsize requires --render-maxrate")
+    if args.decision_log and not args.render:
+        parser.error("--decision-log requires --render")
+
+    if input_format == "tagged":
+        if not args.render:
+            parser.error("tpc currently requires --render")
+        if args.render_marker_start is not None or args.render_marker_end is not None:
+            parser.error("tpc renders its complete tagged timeline; omit marker limits")
+        legacy_outputs = {
+            "--video-endpoint": args.video_endpoint,
+            "--audio-endpoint": args.audio_endpoint,
+            "--stereo-pcm": args.stereo_pcm,
+            "--sync-map": args.sync_map,
+            "--audio-spans": args.spans,
+            "--video-480i": args.video_480i,
+            "--video-map": args.video_map,
+        }
+        used = [name for name, value in legacy_outputs.items() if value]
+        if used:
+            parser.error(
+                "tpc streams without endpoint splits; unsupported options: "
+                + ", ".join(used)
+            )
+        if args.decision_log and not args.adaptive_registration:
+            parser.error("tpc --decision-log requires --adaptive-registration")
+        render_tagged(
+            args.input,
+            args.render,
+            args.decision_log,
+            args.first_field,
+            args.ffmpeg,
+            args.render_size,
+            args.render_sar,
+            args.render_crf,
+            args.render_preset,
+            args.render_maxrate,
+            args.render_bufsize,
+            args.adaptive_registration,
+            args.registration_switch_margin,
+        )
+        return
+
     if args.render and (
         args.render_marker_start is None or args.render_marker_end is None
     ):
         parser.error(
             "--render requires --render-marker-start and --render-marker-end"
         )
-    if args.decision_log and not args.render:
-        parser.error("--decision-log requires --render")
-    if args.registration_switch_margin < 0:
-        parser.error("--registration-switch-margin must be non-negative")
-
     render_temp = tempfile.TemporaryDirectory(prefix="mixed-capture-audio-") \
         if args.render and not args.stereo_pcm else None
     pcm_path = args.stereo_pcm
@@ -1867,6 +2692,9 @@ def main():
                         args.render_size,
                         args.render_sar,
                         args.render_crf,
+                        args.render_preset,
+                        args.render_maxrate,
+                        args.render_bufsize,
                         args.adaptive_registration,
                         args.decision_log,
                         args.registration_switch_margin,
