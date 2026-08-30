@@ -61,6 +61,19 @@ so there is no vendor kext to fight — this is *why* userspace is tractable.
   global-default libusb context) is **disqualifying for archival**.
 - **GPL note:** copying bmusb code makes a derivative GPLv2+. We reimplement its *ideas*
   (protocol facts are not copyrightable). Fine for personal use; matters if ever distributed.
+- **Licensing position:** the position is unusually
+  clean with one wrinkle. **Clean:** no BMD SDK was used and no BMD EULA was ever accepted (BMD
+  never shipped macOS software for this device — the project's founding premise), so no contract
+  restricts the RE; no firmware is touched or redistributed; nothing circumvents a protection
+  measure (the protocol is unencrypted); interoperability RE of this kind is the classically
+  protected case. Name the device nominatively only (compatibility), never implying endorsement.
+  **The wrinkle:** this was not a formal clean-room — the author read bmusb's GPL source directly
+  while writing our code. Nothing was copied or translated (all code here is original, and the
+  protocol facts — constants, endpoints, request numbers — are facts), but the two-team spec-wall
+  defense doesn't exist. Cheapest resolutions if publishing: license our code **GPLv2+** (any
+  derivation question becomes moot by compliance) with a NOTICE crediting bmusb for protocol
+  discovery; or, for a permissive license, accept the (small) residual derivation argument and
+  document the protocol as a standalone facts file. Not legal advice; decide at publication time.
 
 ## 5. Device protocol (from bmusb 0.7.8 — RE-VERIFY empirically in §9 exp 1)
 
