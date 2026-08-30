@@ -40,10 +40,26 @@ RASTER_LINES = 525
 FIELD_LINES = 240
 FIELD1_START = 17
 FIELD2_START = 280
-FIELD2_ORIGIN_MIN = 274
-FIELD2_ORIGIN_MAX = 285
-FIELD_ORIGIN_X_STEP = 4
-FIELD_ORIGIN_VBI_MARGIN = 25
+REGISTRATION_MIN = -6
+REGISTRATION_MAX = 6
+REGISTRATION_X_STEP = 4
+REGISTRATION_VBI_MARGIN = 25
+REGISTRATION_WARMUP = 8
+REGISTRATION_SWITCH_DWELL = 2
+
+# Synthetic bytes used only where an untagged diagnostic capture has no bytes.
+# These are legal-range, SMPTE-style vertical color bars. They are deliberately
+# conspicuous and are not claimed to be the Shuttle's or a deck's no-signal
+# raster. Captured bytes always win.
+DIAGNOSTIC_BARS_UYVY = (
+    (128, 235, 128),  # white
+    (16, 210, 146),   # yellow
+    (166, 170, 16),   # cyan
+    (54, 145, 34),    # green
+    (202, 106, 222),  # magenta
+    (90, 81, 240),    # red
+    (240, 41, 110),   # blue
+)
 
 # Coarse windows only locate points inside audio. They never become boundaries.
 COARSE_WINDOW = 480
@@ -335,35 +351,274 @@ def unit_to_480i(
     return frame.tobytes()
 
 
-def measure_field2_origin(unit: bytes) -> tuple[int, float, list[float]]:
-    """Score possible field-2 line origins by woven vertical discontinuity.
+def make_diagnostic_fill_unit() -> bytes:
+    """Return a synthetic header + 525-line UYVY diagnostic-bars unit."""
+    row = bytearray()
+    macro_pixels = 720 // 2
+    for index in range(macro_pixels):
+        bar = min(len(DIAGNOSTIC_BARS_UYVY) - 1,
+                  index * len(DIAGNOSTIC_BARS_UYVY) // macro_pixels)
+        u, y, v = DIAGNOSTIC_BARS_UYVY[bar]
+        row.extend((u, y, v, y))
+    header = VIDEO_SYNC + b"\x00\x00" + struct.pack("<H", VIDEO_FORMAT) + bytes(40)
+    return header + bytes(row) * RASTER_LINES
 
-    This detects a spatial vertical-origin slip; it does not infer temporal
-    field order. Motion can make adjacent field lines differ, so the renderer
-    changes state only when the best candidate has enough margin over second.
+
+DIAGNOSTIC_FILL_UNIT = make_diagnostic_fill_unit()
+
+
+def _normalise_costs(values: dict[int, float]) -> dict[int, float]:
+    finite = np.asarray([value for value in values.values() if np.isfinite(value)])
+    if not len(finite):
+        return {key: 0.0 for key in values}
+    minimum = float(finite.min())
+    scale = max(float(np.median(finite) - minimum), 0.25)
+    return {
+        key: (value - minimum) / scale if np.isfinite(value) else 1e6
+        for key, value in values.items()
+    }
+
+
+def _runner_up_margin(values: dict[int, float]) -> float:
+    finite = sorted(value for value in values.values() if np.isfinite(value))
+    return finite[1] - finite[0] if len(finite) > 1 else 0.0
+
+
+def _picture_top(raster: np.ndarray, start: int, stop: int) -> int | None:
+    y = raster[:, 1::2].astype(np.float32)
+    c = raster[:, 0::2]
+    mean = y.mean(axis=1)
+    sigma = y.std(axis=1)
+    hard = np.all(y == 16, axis=1) & np.all(c == 128, axis=1)
+    picture = (~hard) & ((sigma > 5.0) | (mean > 24.0))
+    # Match the census landmark: the first three-line picture run after the
+    # two-line VBI signature. One/two-line excursions must not vote for a
+    # whole-field displacement.
+    for line in range(start + 1, min(stop, RASTER_LINES - 2)):
+        if picture[line : line + 3].all():
+            return line
+    return None
+
+
+def _transport_geometry(raster: np.ndarray) -> tuple[bool, int | None, int | None]:
+    """Validate the device-inserted ruler and locate the two VBI signatures.
+
+    Padding/VBI establish transport coordinates only. They do not say which
+    program layer moved inside those coordinates.
     """
-    if len(unit) != VIDEO_UNIT_BYTES:
-        raise ValueError(f"expected {VIDEO_UNIT_BYTES} bytes, got {len(unit)}")
-    raster = np.frombuffer(unit[VIDEO_HEADER_BYTES:], np.uint8).reshape(
-        RASTER_LINES, BYTES_PER_LINE
+    y = raster[:, 1::2]
+    c = raster[:, 0::2]
+    hard = np.all(y == 16, axis=1) & np.all(c == 128, axis=1)
+    hard_ok = bool(
+        hard[0:7].all() and hard[261:270].all() and hard[523:525].all()
     )
-    # UYVY luma only, spatially decimated for speed. The two fields are woven
-    # in their established spatial mapping; vertical curvature then exposes a
-    # one-line registration error without rescaling either field.
-    luma = raster[:, 1::2][:, ::FIELD_ORIGIN_X_STEP].astype(np.int16)
+    mean = y.mean(axis=1)
+    sigma = y.std(axis=1)
+    blank = (mean < 8.0) & (sigma < 8.0)
+    content = ~(hard | blank)
+
+    def fiducial(lo: int, hi: int) -> int | None:
+        for line in range(max(lo, 4), min(hi, RASTER_LINES - 1)):
+            if content[line] and content[line + 1] and not content[line - 4:line].any():
+                return line + 1
+        return None
+
+    first = fiducial(0, 48)
+    second = fiducial(250, 320)
+    return hard_ok and first == FIELD1_START and second == FIELD2_START, first, second
+
+
+def measure_interfield_registration(
+    luma: np.ndarray,
+) -> tuple[int, float, dict[int, float]]:
+    """Measure only d2-d1; absolute per-field offsets are gauge-ambiguous."""
     first = luma[FIELD1_START : FIELD1_START + FIELD_LINES]
-    scores = []
-    for second_start in range(FIELD2_ORIGIN_MIN, FIELD2_ORIGIN_MAX + 1):
+    scores = {}
+    for relative in range(REGISTRATION_MIN, REGISTRATION_MAX + 1):
+        second_start = FIELD2_START + relative
+        second = luma[second_start : second_start + FIELD_LINES]
+        if first.shape != second.shape:
+            scores[relative] = float("inf")
+            continue
         woven = np.empty((FIELD_LINES * 2, first.shape[1]), np.int16)
         woven[0::2] = first
-        woven[1::2] = luma[second_start : second_start + FIELD_LINES]
-        middle = woven[FIELD_ORIGIN_VBI_MARGIN : -FIELD_ORIGIN_VBI_MARGIN]
+        woven[1::2] = second
+        middle = woven[REGISTRATION_VBI_MARGIN : -REGISTRATION_VBI_MARGIN]
         curvature = np.abs(2 * middle[1:-1] - middle[:-2] - middle[2:])
-        scores.append(float(np.mean(curvature)))
-    order = np.argsort(scores)
-    best_index = int(order[0])
-    margin = scores[int(order[1])] - scores[best_index]
-    return FIELD2_ORIGIN_MIN + best_index, margin, scores
+        scores[relative] = float(np.mean(curvature))
+    best = min(scores, key=scores.get)
+    return best, _runner_up_margin(scores), scores
+
+
+def _temporal_registration_costs(
+    luma: np.ndarray, start: int, previous: np.ndarray | None
+) -> dict[int, float]:
+    costs = {}
+    for delta in range(REGISTRATION_MIN, REGISTRATION_MAX + 1):
+        field = luma[start + delta : start + delta + FIELD_LINES]
+        if field.shape[0] != FIELD_LINES or previous is None:
+            costs[delta] = 0.0 if previous is None else float("inf")
+            continue
+        current = field[16:-16].astype(np.int16)
+        reference = previous[16:-16].astype(np.int16)
+        # Median per-line error resists localized motion and OSD changes better
+        # than a whole-field mean while retaining one-line registration cues.
+        costs[delta] = float(np.median(np.mean(np.abs(current - reference), axis=1)))
+    return costs
+
+
+class RegistrationEstimator:
+    """One-pass, source-general per-field integer registration estimator.
+
+    The estimator searches candidate pairs (d1,d2). Weave evidence constrains
+    only d2-d1; running band modes and same-parity temporal evidence select an
+    absolute gauge when possible. No field is permanently the anchor. Every
+    choice exposes its evidence so a real-time sidecar can be revised offline.
+    """
+
+    def __init__(self, switch_margin: float):
+        self.switch_margin = switch_margin
+        self.selected = (0, 0)
+        self.pending = None
+        self.pending_count = 0
+        self.band_modes = (Counter(), Counter())
+        self.previous = (None, None)
+        self.frames_seen = 0
+
+    @staticmethod
+    def _mode(counter: Counter) -> int | None:
+        return counter.most_common(1)[0][0] if counter else None
+
+    def decide(self, unit: bytes) -> dict[str, object]:
+        raster = np.frombuffer(unit[VIDEO_HEADER_BYTES:], np.uint8).reshape(
+            RASTER_LINES, BYTES_PER_LINE
+        )
+        luma = raster[:, 1::2][:, ::REGISTRATION_X_STEP].astype(np.int16)
+        transport_ok, observed_f1, observed_f2 = _transport_geometry(raster)
+        top1 = _picture_top(raster, FIELD1_START, FIELD1_START + 48)
+        top2 = _picture_top(raster, FIELD2_START, FIELD2_START + 48)
+        mode1 = self._mode(self.band_modes[0])
+        mode2 = self._mode(self.band_modes[1])
+        best_relative, weave_margin, weave_costs = measure_interfield_registration(luma)
+        temporal1 = _temporal_registration_costs(luma, FIELD1_START, self.previous[0])
+        temporal2 = _temporal_registration_costs(luma, FIELD2_START, self.previous[1])
+        temporal_margin1 = _runner_up_margin(temporal1)
+        temporal_margin2 = _runner_up_margin(temporal2)
+        weave_normal = _normalise_costs(weave_costs)
+        temporal1_normal = _normalise_costs(temporal1)
+        temporal2_normal = _normalise_costs(temporal2)
+
+        pairs = {}
+        for d1 in range(REGISTRATION_MIN, REGISTRATION_MAX + 1):
+            if not 0 <= FIELD1_START + d1 <= RASTER_LINES - FIELD_LINES:
+                continue
+            for d2 in range(REGISTRATION_MIN, REGISTRATION_MAX + 1):
+                if not 0 <= FIELD2_START + d2 <= RASTER_LINES - FIELD_LINES:
+                    continue
+                relative = d2 - d1
+                if relative not in weave_normal:
+                    continue
+                score = 3.0 * weave_normal[relative]
+                score += temporal1_normal[d1] + temporal2_normal[d2]
+                if mode1 is not None and top1 is not None:
+                    score += 2.0 * abs((top1 - FIELD1_START - mode1) - d1)
+                if mode2 is not None and top2 is not None:
+                    score += 2.0 * abs((top2 - FIELD2_START - mode2) - d2)
+                score += 0.65 * (
+                    abs(d1 - self.selected[0]) + abs(d2 - self.selected[1])
+                )
+                # Stay in the learned absolute gauge unless independent
+                # evidence persists. This applies even when relative changes:
+                # otherwise a content boundary can make (6,5) beat the equally
+                # woven (1,0) and manufacture a large common-mode jump.
+                score += 0.75 * abs(
+                    (d1 + d2) - (self.selected[0] + self.selected[1])
+                )
+                pairs[(d1, d2)] = score
+
+        ordered = sorted(pairs, key=pairs.get)
+        best_pair = ordered[0]
+        confidence = pairs[ordered[1]] - pairs[best_pair]
+        enough_history = (
+            sum(self.band_modes[0].values()) >= REGISTRATION_WARMUP
+            and sum(self.band_modes[1].values()) >= REGISTRATION_WARMUP
+        )
+        selected_relative = self.selected[1] - self.selected[0]
+        best_relative_pair = best_pair[1] - best_pair[0]
+        common_mode_only = (
+            best_relative_pair == selected_relative and best_pair != self.selected
+        )
+        if best_pair != self.pending:
+            self.pending = best_pair
+            self.pending_count = 1
+        else:
+            self.pending_count += 1
+
+        if not transport_ok:
+            decision = None
+            applied = self.selected
+            decision_mode = "UnknownTransportOrVBI"
+        elif not enough_history:
+            decision = None
+            applied = self.selected
+            decision_mode = "UnknownWarmupHold"
+        elif best_pair == self.selected:
+            decision = self.selected
+            applied = self.selected
+            decision_mode = "Stable"
+        elif common_mode_only:
+            # Comb is exactly blind to this degree of freedom. Temporal and
+            # active-boundary evidence can propose a common-mode shift, but a
+            # single-pass live corrector cannot distinguish it robustly from
+            # vertical picture motion. Preserve the learned gauge and expose
+            # Unknown so the raw-plus-sidecar path can revisit it offline.
+            decision = None
+            applied = self.selected
+            decision_mode = "UnknownCommonModeGauge"
+        elif (
+            confidence >= self.switch_margin
+            and self.pending_count >= REGISTRATION_SWITCH_DWELL
+        ):
+            self.selected = best_pair
+            decision = best_pair
+            applied = best_pair
+            decision_mode = "PairSearch"
+        else:
+            decision = None
+            applied = self.selected
+            decision_mode = "UnknownHysteresisHold"
+
+        field1 = luma[
+            FIELD1_START + applied[0] : FIELD1_START + applied[0] + FIELD_LINES
+        ].copy()
+        field2 = luma[
+            FIELD2_START + applied[1] : FIELD2_START + applied[1] + FIELD_LINES
+        ].copy()
+        self.previous = (field1, field2)
+        if transport_ok and top1 is not None and top2 is not None:
+            self.band_modes[0][top1 - FIELD1_START - applied[0]] += 1
+            self.band_modes[1][top2 - FIELD2_START - applied[1]] += 1
+        self.frames_seen += 1
+        return {
+            "decision": decision,
+            "applied": applied,
+            "mode": decision_mode,
+            "confidence": confidence,
+            "best_pair": best_pair,
+            "pending_pair": self.pending,
+            "pending_count": self.pending_count,
+            "best_relative": best_relative,
+            "weave_margin": weave_margin,
+            "temporal_margin1": temporal_margin1,
+            "temporal_margin2": temporal_margin2,
+            "transport_ok": transport_ok,
+            "observed_f1": observed_f1,
+            "observed_f2": observed_f2,
+            "top1": top1,
+            "top2": top2,
+            "band_mode1": mode1,
+            "band_mode2": mode2,
+        }
 
 
 def find_video_markers(mm, spans):
@@ -513,154 +768,226 @@ def write_counter_timed_preview_video(
     marker_end,
     output_path,
     first_field,
-    invalid_frame,
-    adaptive_field_origin=False,
-    field_origin_map=None,
-    field_origin_switch_margin=1.5,
+    adaptive_registration=False,
+    decision_log=None,
+    registration_switch_margin=1.5,
+    counter_end_override=None,
 ):
-    """Write CFR 480i frames for a marker range with explicit damage policy.
+    """Write counter-timed 480i while preserving visible transport damage.
 
-    Raw endpoint and map outputs retain every discontinuity and never invent
-    captured bytes. ``partial`` is diagnostic only: because capture_untagged_ring did not log
-    packet positions, padding a short unit at its tail cannot restore its raster
-    geometry.
+    For each untagged capture_untagged_ring marker interval, all surviving bytes are placed as
+    a prefix across every counter period spanned by that interval; only the
+    aggregate missing suffix is synthetic SMPTE-style bars. This is diagnostic:
+    capture_untagged_ring did not tag scheduled packet positions, so an internal USB hole may
+    actually have occurred before some surviving bytes. No captured byte is
+    discarded, and no captured frame is blanked or repeated.
     """
-    if not (0 <= marker_start < marker_end < len(markers)):
+    if not (0 <= marker_start < marker_end <= len(markers)):
         raise ValueError(
-            f"render marker range must satisfy 0 <= start < end < {len(markers)}"
+            f"render marker range must satisfy 0 <= start < end <= {len(markers)}"
         )
     _starts, ends, _prefix = build_span_index(spans)
     start_counter = markers[marker_start][2]
-    end_counter = markers[marker_end][2]
+    if counter_end_override is not None:
+        end_counter = counter_end_override & 0xFFFF
+    elif marker_end < len(markers):
+        end_counter = markers[marker_end][2]
+    else:
+        end_counter = (markers[-1][2] + 1) & 0xFFFF
     frame_count = counter_distance(start_counter, end_counter)
     if not frame_count or frame_count >= 0x8000:
         raise ValueError(
             f"implausible counter range {start_counter}..{end_counter}"
         )
 
-    # Index byte ranges, not decoded frames. A five-minute capture contains
-    # several GiB of UYVY; retaining it here would defeat mmap and exhaust RAM.
-    exact = {}
-    partial = {}
+    # Index byte ranges, not decoded frames. One marker interval may span
+    # several counter periods when intervening headers were lost. Preserve its
+    # entire surviving byte sequence across those periods; never throw an
+    # over-one-frame tail away merely because the next marker skipped ahead.
+    intervals = {}
     for marker_index in range(marker_start, marker_end):
         current = markers[marker_index]
-        following = markers[marker_index + 1]
         mixed, pure, counter = current
-        next_mixed, next_pure, next_counter = following
-        if (
-            next_pure - pure == VIDEO_UNIT_BYTES
-            and counter_distance(counter, next_counter) == 1
-        ):
-            exact[counter] = (mixed, next_mixed)
-        elif (
-            invalid_frame == "partial"
-            and counter_distance(counter, next_counter) == 1
-            and VIDEO_HEADER_BYTES < next_pure - pure < VIDEO_UNIT_BYTES
-        ):
-            partial[counter] = (mixed, next_mixed)
+        if marker_index + 1 < len(markers):
+            next_mixed, next_pure, next_counter = markers[marker_index + 1]
+            counter_step = counter_distance(counter, next_counter)
+        else:
+            next_mixed = len(mm)
+            next_pure = pure + len(gather_video_bytes(mm, spans, ends, mixed, len(mm)))
+            counter_step = counter_distance(counter, end_counter)
+        if not counter_step or counter_step >= 0x8000:
+            continue
+        record = (
+            marker_index, counter, counter_step, mixed, next_mixed,
+            next_pure - pure,
+        )
+        for offset in range(counter_step):
+            member = (counter + offset) & 0xFFFF
+            if counter_distance(start_counter, member) >= frame_count:
+                break
+            if member in intervals:
+                raise RuntimeError(f"overlapping video intervals at counter {member}")
+            intervals[member] = (record, offset)
 
-    black_pair = b"\x80\x10\x80\x10"
-    black = black_pair * (720 * 480 // 2)
-    previous = None
     invalid = []
     partial_rendered = []
-    origin_rows = []
-    selected_origin = FIELD2_START
-    origin_counts = Counter()
-    held_ambiguous = 0
+    rows = []
+    decision_counts = Counter()
+    offset_counts = Counter()
+    estimator = RegistrationEstimator(registration_switch_margin)
+    cached_record = None
+    cached_capture = b""
     with open(output_path, "wb") as output:
         for step in range(frame_count):
             counter = (start_counter + step) & 0xFFFF
-            byte_range = exact.get(counter)
-            best_origin = None
-            confidence = None
-            scores = None
-            if byte_range is not None:
-                unit = gather_video_bytes(
-                    mm, spans, ends, byte_range[0], byte_range[1]
-                )
-                if adaptive_field_origin:
-                    best_origin, confidence, scores = measure_field2_origin(unit)
-                    if (
-                        best_origin == selected_origin
-                        or confidence >= field_origin_switch_margin
-                    ):
-                        selected_origin = best_origin
-                    else:
-                        held_ambiguous += 1
-                    origin_counts[selected_origin] += 1
-                frame = unit_to_480i(
-                    unit,
-                    first_field,
-                    field2_start=selected_origin,
-                )
-            else:
-                invalid.append(counter)
-                if counter in partial:
-                    mixed_start, mixed_end = partial[counter]
-                    unit = gather_video_bytes(
+            membership = intervals.get(counter)
+            registration = None
+            marker_index = ""
+            next_counter_step = ""
+            interval_anchor = ""
+            if membership is not None:
+                record, interval_offset = membership
+                (
+                    marker_index, interval_anchor, next_counter_step,
+                    mixed_start, mixed_end, interval_received,
+                ) = record
+                if record != cached_record:
+                    cached_capture = gather_video_bytes(
                         mm, spans, ends, mixed_start, mixed_end
                     )
-                    unit += black_pair * ((VIDEO_UNIT_BYTES - len(unit)) // 4)
-                    unit += b"\x80\x10\x80\x10"[: VIDEO_UNIT_BYTES - len(unit)]
+                    cached_record = record
+                if len(cached_capture) != interval_received:
+                    raise RuntimeError(
+                        f"video length mismatch at interval counter {interval_anchor}: "
+                        f"{len(cached_capture)} != {interval_received}"
+                    )
+                expected_interval = next_counter_step * VIDEO_UNIT_BYTES
+                usable_interval = min(interval_received, expected_interval)
+                unit_base = interval_offset * VIDEO_UNIT_BYTES
+                received_bytes = max(
+                    0, min(VIDEO_UNIT_BYTES, usable_interval - unit_base)
+                )
+                captured = cached_capture[unit_base : unit_base + received_bytes]
+                exact_interval = (
+                    next_counter_step == 1
+                    and interval_received == VIDEO_UNIT_BYTES
+                )
+                if exact_interval:
+                    unit = captured
+                    unit_state = "Exact"
+                    placement = "exact"
+                    missing_bytes = 0
+                    if adaptive_registration:
+                        registration = estimator.decide(unit)
+                        applied_d1, applied_d2 = registration["applied"]
+                    else:
+                        applied_d1 = applied_d2 = 0
                     frame = unit_to_480i(
                         unit,
                         first_field,
-                        field2_start=selected_origin,
+                        field1_start=FIELD1_START + applied_d1,
+                        field2_start=FIELD2_START + applied_d2,
                     )
-                    partial_rendered.append(counter)
-                elif invalid_frame == "repeat" and previous is not None:
-                    frame = previous
                 else:
-                    frame = black
-            output.write(frame)
-            previous = frame
-            if adaptive_field_origin:
-                origin_rows.append(
-                    (
-                        step,
-                        counter,
-                        int(byte_range is not None),
-                        FIELD1_START,
-                        selected_origin,
-                        "" if best_origin is None else best_origin,
-                        "" if confidence is None else f"{confidence:.9f}",
-                        *(
-                            [""] * (FIELD2_ORIGIN_MAX - FIELD2_ORIGIN_MIN + 1)
-                            if scores is None
-                            else [f"{score:.9f}" for score in scores]
-                        ),
+                    invalid.append(counter)
+                    unit = captured + DIAGNOSTIC_FILL_UNIT[received_bytes:]
+                    if received_bytes == VIDEO_UNIT_BYTES:
+                        unit_state = "CapturedFromDamagedInterval"
+                    elif received_bytes:
+                        unit_state = "PartialPrefixTailFill"
+                    else:
+                        unit_state = "AbsentSyntheticFill"
+                    placement = (
+                        "interval_captured_prefix_then_synthetic_suffix;"
+                        "internal_loss_position_unknown"
                     )
+                    missing_bytes = max(0, VIDEO_UNIT_BYTES - received_bytes)
+                    frame = unit_to_480i(unit, first_field)
+                    applied_d1 = applied_d2 = 0
+                    if received_bytes:
+                        partial_rendered.append(counter)
+            else:
+                invalid.append(counter)
+                received_bytes = 0
+                missing_bytes = VIDEO_UNIT_BYTES
+                unit_state = "AbsentSyntheticFill"
+                placement = "no_marker_or_bytes_assigned_to_counter"
+                applied_d1 = applied_d2 = 0
+                frame = unit_to_480i(DIAGNOSTIC_FILL_UNIT, first_field)
+            output.write(frame)
+            if registration is None:
+                decision = None
+                mode = "DiagnosticDamage" if unit_state != "Exact" else "Disabled"
+                confidence = ""
+                best_d1 = best_d2 = best_relative = ""
+                pending_d1 = pending_d2 = pending_count = ""
+                weave_margin = temporal_margin1 = temporal_margin2 = ""
+                transport_ok = observed_f1 = observed_f2 = ""
+                top1 = top2 = band_mode1 = band_mode2 = ""
+            else:
+                decision = registration["decision"]
+                mode = registration["mode"]
+                confidence = f"{registration['confidence']:.9f}"
+                best_d1, best_d2 = registration["best_pair"]
+                pending_d1, pending_d2 = registration["pending_pair"]
+                pending_count = registration["pending_count"]
+                best_relative = registration["best_relative"]
+                weave_margin = f"{registration['weave_margin']:.9f}"
+                temporal_margin1 = f"{registration['temporal_margin1']:.9f}"
+                temporal_margin2 = f"{registration['temporal_margin2']:.9f}"
+                transport_ok = int(registration["transport_ok"])
+                observed_f1 = registration["observed_f1"]
+                observed_f2 = registration["observed_f2"]
+                top1 = registration["top1"]
+                top2 = registration["top2"]
+                band_mode1 = registration["band_mode1"]
+                band_mode2 = registration["band_mode2"]
+            decision_counts[mode] += 1
+            offset_counts[(applied_d1, applied_d2)] += 1
+            rows.append(
+                (
+                    step, counter, marker_index, unit_state, received_bytes,
+                    missing_bytes, next_counter_step, placement,
+                    interval_anchor,
+                    FIELD1_START, FIELD2_START,
+                    "" if decision is None else decision[0],
+                    "" if decision is None else decision[1],
+                    applied_d1, applied_d2, mode, confidence,
+                    best_d1, best_d2, pending_d1, pending_d2, pending_count,
+                    best_relative, weave_margin,
+                    temporal_margin1, temporal_margin2, transport_ok,
+                    observed_f1, observed_f2, top1, top2, band_mode1, band_mode2,
                 )
-    if field_origin_map:
-        with open(field_origin_map, "w", newline="") as output:
+            )
+    if decision_log:
+        with open(decision_log, "w", newline="") as output:
             writer = csv.writer(output)
             writer.writerow(
                 (
-                    "timeline_frame",
-                    "counter",
-                    "exact_unit",
-                    "field1_start",
-                    "selected_field2_start",
-                    "best_field2_start",
-                    "best_margin",
-                    *(
-                        f"cost_{origin}"
-                        for origin in range(
-                            FIELD2_ORIGIN_MIN, FIELD2_ORIGIN_MAX + 1
-                        )
-                    ),
+                    "timeline_frame", "counter", "marker_index", "unit_state",
+                    "received_video_bytes", "missing_video_bytes",
+                    "counter_step_to_next_marker", "damage_placement_assumption",
+                    "interval_anchor_counter",
+                    "transport_f1_start", "transport_f2_start",
+                    "decision_d1", "decision_d2", "applied_d1", "applied_d2",
+                    "mode", "confidence", "best_d1", "best_d2",
+                    "pending_d1", "pending_d2", "pending_count",
+                    "best_relative_d2_minus_d1", "weave_margin",
+                    "temporal_margin_f1", "temporal_margin_f2", "transport_ok",
+                    "observed_transport_f1", "observed_transport_f2",
+                    "picture_top_f1", "picture_top_f2",
+                    "learned_band_mode_f1", "learned_band_mode_f2",
                 )
             )
-            writer.writerows(origin_rows)
+            writer.writerows(rows)
     return (
         start_counter,
         end_counter,
         frame_count,
         invalid,
         partial_rendered,
-        origin_counts,
-        held_ambiguous,
+        offset_counts,
+        decision_counts,
     )
 
 
@@ -678,10 +1005,10 @@ def render_preview(
     render_size,
     render_sar,
     render_crf,
-    invalid_frame,
-    adaptive_field_origin,
-    field_origin_map,
-    field_origin_switch_margin,
+    adaptive_registration,
+    decision_log,
+    registration_switch_margin,
+    counter_end_override,
 ):
     sample_by_counter = {counter: sample for counter, sample, *_ in audio_rows}
     with tempfile.TemporaryDirectory(prefix="mixed-capture-render-") as directory:
@@ -692,8 +1019,8 @@ def render_preview(
             frames,
             invalid,
             partial_rendered,
-            origin_counts,
-            held_ambiguous,
+            offset_counts,
+            decision_counts,
         ) = (
             write_counter_timed_preview_video(
                 mm,
@@ -703,10 +1030,10 @@ def render_preview(
                 marker_end,
                 raw_video,
                 first_field,
-                invalid_frame,
-                adaptive_field_origin,
-                field_origin_map,
-                field_origin_switch_margin,
+                adaptive_registration,
+                decision_log,
+                registration_switch_margin,
+                counter_end_override,
             )
         )
         try:
@@ -809,8 +1136,8 @@ def render_preview(
         partial_rendered,
         audio_start,
         audio_end,
-        origin_counts,
-        held_ambiguous,
+        offset_counts,
+        decision_counts,
     )
 
 
@@ -877,17 +1204,7 @@ def main():
         metavar="MP4",
         help=(
             "render a counter-timed 59.94p proof clip with stereo audio; "
-            "damaged/missing frames use --invalid-frame policy"
-        ),
-    )
-    parser.add_argument(
-        "--invalid-frame",
-        choices=("black", "repeat", "partial"),
-        default="black",
-        help=(
-            "review policy for damaged/missing video units: black (default, "
-            "honest discontinuity), repeat (concealment), or partial "
-            "(diagnostic tail-padding; geometry is not recoverable)"
+            "damaged bytes remain visible and missing bytes use diagnostic bars"
         ),
     )
     parser.add_argument(
@@ -899,6 +1216,15 @@ def main():
         "--render-marker-end",
         type=int,
         help="exclusive e801 marker index / ending counter anchor for --render",
+    )
+    parser.add_argument(
+        "--render-counter-end",
+        type=int,
+        metavar="COUNTER",
+        help=(
+            "exclusive 16-bit audio/video counter for --render; permits a "
+            "diagnostic tail beyond the final video marker"
+        ),
     )
     parser.add_argument(
         "--ffmpeg", default="ffmpeg", help="ffmpeg executable used by --render"
@@ -925,29 +1251,35 @@ def main():
         help="libx264 constant-rate-factor for --render (default: 16)",
     )
     parser.add_argument(
+        "--adaptive-registration",
         "--adaptive-field-origin",
+        dest="adaptive_registration",
         action="store_true",
         help=(
-            "detect spatial field-2 line-origin slips in intact units; this "
-            "does not reorder fields or alter audio timing"
+            "estimate independent signed integer program offsets (d1,d2) in "
+            "intact units; never reorders fields or alters audio timing"
         ),
     )
     parser.add_argument(
+        "--decision-log",
         "--field-origin-map",
+        dest="decision_log",
         metavar="CSV",
         help=(
-            "write per-counter field-origin choices, confidence, and candidate "
-            "costs (requires --render --adaptive-field-origin)"
+            "write per-counter registration decision, evidence, and diagnostic "
+            "damage placement (requires --render)"
         ),
     )
     parser.add_argument(
+        "--registration-switch-margin",
         "--field-origin-switch-margin",
+        dest="registration_switch_margin",
         type=float,
         default=1.5,
         metavar="N",
         help=(
             "minimum best-vs-runner-up score margin needed to change an "
-            "adaptive field origin (default: 1.5)"
+            "adaptive (d1,d2) decision (default: 1.5)"
         ),
     )
     args = parser.parse_args()
@@ -958,14 +1290,10 @@ def main():
         parser.error(
             "--render requires --render-marker-start and --render-marker-end"
         )
-    if args.field_origin_map and not (
-        args.render and args.adaptive_field_origin
-    ):
-        parser.error(
-            "--field-origin-map requires --render --adaptive-field-origin"
-        )
-    if args.field_origin_switch_margin < 0:
-        parser.error("--field-origin-switch-margin must be non-negative")
+    if args.decision_log and not args.render:
+        parser.error("--decision-log requires --render")
+    if args.registration_switch_margin < 0:
+        parser.error("--registration-switch-margin must be non-negative")
 
     render_temp = tempfile.TemporaryDirectory(prefix="mixed-capture-audio-") \
         if args.render and not args.stereo_pcm else None
@@ -1018,10 +1346,10 @@ def main():
                         args.render_size,
                         args.render_sar,
                         args.render_crf,
-                        args.invalid_frame,
-                        args.adaptive_field_origin,
-                        args.field_origin_map,
-                        args.field_origin_switch_margin,
+                        args.adaptive_registration,
+                        args.decision_log,
+                        args.registration_switch_margin,
+                        args.render_counter_end,
                     )
                     (
                         start,
@@ -1031,8 +1359,8 @@ def main():
                         partial_rendered,
                         audio_start,
                         audio_end,
-                        origin_counts,
-                        held_ambiguous,
+                        offset_counts,
+                        decision_counts,
                     ) = result
                     print(
                         f"rendered {frames:,} frames / {frames*2:,} fields; "
@@ -1040,15 +1368,15 @@ def main():
                         f"{audio_start:,}..{audio_end:,}; "
                         f"invalid={len(invalid)} "
                         f"ranges={format_counter_runs(invalid)}; "
-                        f"policy={args.invalid_frame}; "
+                        "policy=diagnostic-bars-prefix-assumption; "
                         f"partial={len(partial_rendered)}"
                     )
-                    if args.adaptive_field_origin:
+                    if args.adaptive_registration:
                         print(
-                            "field-2 origins for intact units="
-                            f"{dict(sorted(origin_counts.items()))}; "
-                            f"ambiguous decisions held={held_ambiguous}; "
-                            f"switch margin={args.field_origin_switch_margin:g}"
+                            "applied (d1,d2)="
+                            f"{dict(sorted(offset_counts.items()))}; "
+                            f"decision modes={dict(sorted(decision_counts.items()))}; "
+                            f"switch margin={args.registration_switch_margin:g}"
                         )
             finally:
                 mm.close()
