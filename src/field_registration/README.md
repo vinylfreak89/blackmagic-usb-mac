@@ -12,10 +12,12 @@ modes. Every call returns the applied offsets, a named mode, confidence, and
 the evidence needed for a sidecar decision log.
 
 Call `fieldreg_begin_segment()` after acquisition/relock establishes a new
-source segment. It clears the learned absolute band gauge as well as temporal
-state. Do not call it for ordinary program edits. The signal-state layer owns
-that distinction; registration geometry alone cannot prove whether a sustained
-new edge baseline is a real plateau or a newly acquired source segment.
+source segment. It clears temporal history, pending decisions, and diagnostic
+band histograms. It does **not** redefine zero: offsets are always absolute in
+the device's transport-raster coordinates. Do not call it for ordinary program
+edits. The signal-state layer owns that distinction; registration geometry
+alone cannot prove whether a sustained new edge baseline is a real plateau or
+a newly acquired source segment.
 
 ## Evidence and policy
 
@@ -23,14 +25,15 @@ The exact device padding at lines 0-6, 261-269, and 523-524 establishes the
 transport ruler. VBI signatures validate the expected field origins. Neither
 is treated as a program-picture displacement by itself.
 
-Production dual-edge mode (`FIELDREG_EVIDENCE_DUAL_EDGE`, the default) learns the
-stable top and bottom picture-edge modes for each field independently. A
-single-unit correction is allowed when both edges report the same offset.
-Top/bottom disagreement is `UnknownBandDisagreement`: the previous correction
-is retained and the conflict is logged. A same-parity temporal cut gate prevents
-scene changes from training the landmark model. Two consecutive nominal
-top+bottom and temporal votes may release a stale nonzero correction, but
-temporal or weave evidence can never create a nonzero correction. This is
+Production dual-edge mode (`FIELDREG_EVIDENCE_DUAL_EDGE`, the default) measures
+the top and bottom picture edges for each field independently against the fixed
+nominal envelopes `19..256` and `282..518`. A single-unit correction is allowed
+when both edges of that field report the same in-range offset. One field can
+move while the other abstains; a bad landmark in one field must not veto a
+coherent absolute vote in the other. Top/bottom disagreement is
+`UnknownBandDisagreement`: the previous correction is retained and the conflict
+is logged. Same-parity temporal correlation diagnoses cuts and corroborates the
+absolute vote, but cannot override coherent top+bottom geometry. This is
 important around fades, duplicate VBI-looking lines, and head-switch noise. The
 weave score is relative evidence only; it cannot define the absolute anchor.
 
@@ -66,12 +69,13 @@ fidelity; it does not make every old decision physical truth.
 `--start-unit` must match any deterministic device-arming interval omitted by
 the decision CSV; it skips bounded source units without training the engine.
 
-On an M3 host, the gated dual-edge model processed the 6,160 exact legacy
-units at a 1.20 ms median and 1.31 ms p95 per 29.97-frame unit (about 27.7x
-real time). On the 4,042 independently measurable census units it agreed on
-4,039 (99.93%); the three disagreements are one-unit release-dwell lag, and all
-3,851 explicit/confident decisions agree. These measurements are calibration
-evidence from one capture, not hard-coded source assumptions.
+On an M3 host, the absolute dual-edge model processed the 6,160 exact
+legacy units at about 1.19 ms mean/median and 1.21 ms p95 per 29.97-frame unit
+(about 28x real time). On the 4,042 independently measurable census units its
+applied offsets agreed on all 4,042 (100%); all 3,989 explicit/confident census
+decisions also agree. These measurements are calibration evidence from one
+capture, not a license to hard-code which field moves or how long a plateau
+lasts.
 
 The complete tagged-capture golden contains 86,300 bounded counter intervals:
 86,293 exact units and seven startup shorts. Compatibility mode matches all

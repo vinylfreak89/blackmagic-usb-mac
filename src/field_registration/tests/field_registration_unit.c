@@ -105,13 +105,28 @@ int main(void)
     assert(decision.applied_d1 == 1 && decision.applied_d2 == 0);
     assert(decision.mode == FIELDREG_MODE_CONVERGED_RELATIVE_BAND);
 
+    /* A source-carried top-line feature alone is not a registration event. */
+    make_unit(unit, 13);
+    shift_first_picture_down_one(unit);
+    /* Restore the bottom edge, leaving only the top landmark displaced. */
+    memcpy(unit + FIELDREG_HEADER_BYTES +
+               (size_t)257 * FIELDREG_BYTES_PER_LINE,
+           unit + FIELDREG_HEADER_BYTES +
+               (size_t)258 * FIELDREG_BYTES_PER_LINE,
+           FIELDREG_BYTES_PER_LINE);
+    set_line(unit, 258, 2, 128, 128);
+    assert(fieldreg_process(&engine, unit, &decision));
+    assert(!decision.dual_edge_agreement);
+    assert(decision.applied_d1 == 1 && decision.applied_d2 == 0);
+    assert(decision.mode == FIELDREG_MODE_UNKNOWN_BAND_DISAGREEMENT);
+
     fieldreg_discontinuity(&engine);
     assert(!engine.previous_valid[0] && !engine.previous_valid[1]);
-    assert(engine.band_total[0][0] == 13 && engine.band_total[1][0] == 13);
-    assert(engine.band_total[0][1] == 13 && engine.band_total[1][1] == 13);
+    assert(engine.band_total[0][0] == 14 && engine.band_total[1][0] == 14);
+    assert(engine.band_total[0][1] == 14 && engine.band_total[1][1] == 14);
 
     /* A false content run before the real first-field fiducial must not move it. */
-    make_unit(unit, 13);
+    make_unit(unit, 14);
     set_line(unit, 10, 80, 96, 160);
     set_line(unit, 11, 72, 96, 160);
     assert(fieldreg_process(&engine, unit, &decision));

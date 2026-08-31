@@ -17,10 +17,16 @@ enum {
     FIELDREG_FIELD_LINES = 240,
     FIELDREG_FIELD1_START = 17,
     FIELDREG_FIELD2_START = 280,
+    /* Nominal decoded picture envelope inside the two fixed transport slots. */
+    FIELDREG_ACTIVE_TOP_F1 = 19,
+    FIELDREG_ACTIVE_BOTTOM_F1 = 256,
+    FIELDREG_ACTIVE_TOP_F2 = 282,
+    FIELDREG_ACTIVE_BOTTOM_F2 = 518,
     FIELDREG_MIN_OFFSET = -6,
     FIELDREG_MAX_OFFSET = 6,
-    /* 280 + 5 + 240 == 525; +6 would read a nonexistent raster line. */
-    FIELDREG_FIELD2_MAX_OFFSET = 5,
+    /* Larger positive shifts cross device hard padding and are unrecoverable. */
+    FIELDREG_FIELD1_MAX_OFFSET = 4,
+    FIELDREG_FIELD2_MAX_OFFSET = 4,
     FIELDREG_X_SAMPLES = 180,
     FIELDREG_UNKNOWN = -128,
 };

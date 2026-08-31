@@ -418,48 +418,39 @@ def unit_to_registered_480i(
     first_field: str,
     d1: int,
     d2: int,
-    active_top1: int,
-    active_bottom1: int,
-    active_top2: int,
-    active_bottom2: int,
 ) -> bytes:
-    """Correct active-picture phase while keeping both VBI field slots fixed."""
+    """Correct picture registration while preserving fixed transport/VBI slots.
+
+    The Shuttle's hard-padding and two-line VBI rulers do not move when the
+    source picture slips.  A correction therefore remaps only the independently
+    validated picture envelope inside each 240-line output slot; it must not
+    move the slot itself.  Vacated/uncaptured edge lines remain exactly as the
+    device delivered them rather than being synthesized.
+    """
     if len(unit) != VIDEO_UNIT_BYTES:
         raise ValueError(f"expected {VIDEO_UNIT_BYTES} bytes, got {len(unit)}")
     raster = np.frombuffer(unit[VIDEO_HEADER_BYTES:], np.uint8).reshape(
         RASTER_LINES, BYTES_PER_LINE
     )
 
-    def corrected_field(start, displacement, active_top, active_bottom):
+    def corrected_field(start, active_top, active_bottom, displacement):
         stop = start + FIELD_LINES
-        if not start <= active_top <= active_bottom < stop:
-            raise ValueError(
-                f"active interval {active_top}..{active_bottom} outside "
-                f"fixed field slot {start}..{stop-1}"
-            )
         source_top = active_top + displacement
         source_bottom = active_bottom + displacement
         hard_padding_start = 261 if start == FIELD1_START else 523
         if source_top < 7 or source_bottom >= hard_padding_start:
             raise ValueError(
                 f"registered source interval {source_top}..{source_bottom} "
-                f"crosses the decoded field envelope before hard padding "
-                f"at {hard_padding_start}"
+                f"crosses device hard padding at {hard_padding_start}"
             )
         field = raster[start:stop].copy()
-        destination_top = active_top - start
-        destination_bottom = active_bottom - start + 1
-        field[destination_top:destination_bottom] = raster[
+        field[active_top - start : active_bottom - start + 1] = raster[
             source_top : source_bottom + 1
         ]
         return field
 
-    field1 = corrected_field(
-        FIELD1_START, d1, active_top1, active_bottom1
-    )
-    field2 = corrected_field(
-        FIELD2_START, d2, active_top2, active_bottom2
-    )
+    field1 = corrected_field(FIELD1_START, 19, 256, d1)
+    field2 = corrected_field(FIELD2_START, 282, 518, d2)
     frame = np.empty((FIELD_LINES * 2, BYTES_PER_LINE), np.uint8)
     if first_field == "bottom":
         frame[1::2] = field1
@@ -1673,7 +1664,8 @@ def tagged_decision_row(
 ):
     if registration is None:
         applied_d1, applied_d2 = applied
-        return (
+        row = [""] * len(TPC_DECISION_COLUMNS)
+        row[:11] = (
             index,
             counter,
             extended_counter,
@@ -1685,33 +1677,13 @@ def tagged_decision_row(
             applied_d1,
             applied_d2,
             unit_state,
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-        ) + ("",) * 13
+        )
+        return tuple(row)
     decision = registration["decision"]
     best_d1, best_d2 = registration["best_pair"]
     pending_d1, pending_d2 = registration["pending_pair"]
     applied_d1, applied_d2 = registration["applied"]
-    return (
+    row = (
         index,
         counter,
         extended_counter,
@@ -1776,6 +1748,7 @@ def tagged_decision_row(
         ),
         registration.get("engine", "python-top-only"),
     )
+    return row
 
 
 def find_video_markers(mm, spans):
@@ -2644,25 +2617,30 @@ def render_tagged(
                     "scale=720:480:interl=1:"
                     "flags=spline+accurate_rnd+full_chroma_int"
                 ),
-                "format=yuv420p",
             ]
             output_frames = output_units
         elif deinterlacer == "estdif":
             video_filters = [
+                "format=yuv422p",
                 (
                     f"estdif=mode=field:parity={parity}:deint=all:"
                     "rslope=2:redge=4:interp=6p"
-                )
+                ),
             ]
             output_frames = output_units * 2
         else:
             video_filters = [
-                f"bwdif=mode=send_field:parity={parity}:deint=all"
+                "format=yuv422p",
+                f"bwdif=mode=send_field:parity={parity}:deint=all",
             ]
             output_frames = output_units * 2
         if render_size:
             width, height = render_size
             video_filters.append(f"scale={width}:{height}:flags=lanczos")
+        # Keep the captured 4:2:2 chroma through registration, deinterlacing,
+        # and any resize.  Subsample to delivery 4:2:0 only after the output is
+        # progressive (or with interlaced scaling explicitly selected above).
+        video_filters.append("format=yuv420p")
         video_filters.append(f"setsar={render_sar}")
         audio_filters = [
             f"atrim=start_sample={audio_start}:end_sample={audio_end}",
@@ -2754,11 +2732,6 @@ def render_tagged(
         )
         offset_counts = Counter()
         decision_counts = Counter()
-        # Immutable correction envelope inside the two fixed transport slots.
-        # Rows 17-18 and 280-281 contain the VBI prefix and are never moved.
-        # Picture-edge landmarks vote on displacement; they do not redefine
-        # this envelope (bottom evidence may include head-switching noise).
-        registration_geometry = (19, 256, 282, 518)
         decision_output = (
             open(decision_temp, "w", newline="") if decision_temp else None
         )
@@ -2834,7 +2807,6 @@ def render_tagged(
                     first_field,
                     applied_d1,
                     applied_d2,
-                    *registration_geometry,
                 )
             else:
                 frame = unit_to_480i(unit, first_field)

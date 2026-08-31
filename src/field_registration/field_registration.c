@@ -420,126 +420,103 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
             ? 0.0
             : (double)engine->band_counts[1][1][band_slot(bottom_mode2)] /
                   engine->band_total[1][1];
-    int band_d1 = mode1 == FIELDREG_UNKNOWN || top1 < 0
-                      ? FIELDREG_UNKNOWN
-                      : top1 - FIELDREG_FIELD1_START - mode1;
-    int band_d2 = mode2 == FIELDREG_UNKNOWN || top2 < 0
-                      ? FIELDREG_UNKNOWN
-                      : top2 - FIELDREG_FIELD2_START - mode2;
-    int bottom_d1 = bottom_mode1 == FIELDREG_UNKNOWN || bottom1 < 0
-                        ? FIELDREG_UNKNOWN
-                        : bottom1 - 256 - bottom_mode1;
-    int bottom_d2 = bottom_mode2 == FIELDREG_UNKNOWN || bottom2 < 0
-                        ? FIELDREG_UNKNOWN
-                        : bottom2 - 518 - bottom_mode2;
-    bool dual_edge_agreement = !dual_edge ||
-                               (bottom_d1 != FIELDREG_UNKNOWN &&
-                                bottom_d2 != FIELDREG_UNKNOWN &&
-                                band_d1 == bottom_d1 && band_d2 == bottom_d2);
-    bool candidate_valid = band_d1 != FIELDREG_UNKNOWN &&
-                           band_d2 != FIELDREG_UNKNOWN;
-    bool candidate_in_range = candidate_valid && dual_edge_agreement &&
-                              band_d1 >= FIELDREG_MIN_OFFSET &&
-                              band_d1 <= FIELDREG_MAX_OFFSET &&
-                              band_d2 >= FIELDREG_MIN_OFFSET &&
-                              band_d2 <= FIELDREG_FIELD2_MAX_OFFSET;
-    int candidate_relative = candidate_valid ? band_d2 - band_d1 : 0;
-    bool common_mode_ambiguous = candidate_valid && band_d1 != 0 &&
-                                 band_d2 != 0 &&
-                                 ((band_d1 > 0) == (band_d2 > 0));
+    /*
+     * These are absolute decoded-raster landmarks, not a mutable content
+     * gauge.  Learning the first visible picture edge as zero made a source
+     * acquired while displaced permanently invert every later decision.  It
+     * also let the selected correction feed back into the learned baseline.
+     * The hard-padding transport ruler fixes the coordinate system; both
+     * independently measured edges of a field must report the same offset.
+     */
+    int band_d1 = top1 < 0 ? FIELDREG_UNKNOWN
+                           : top1 - FIELDREG_ACTIVE_TOP_F1;
+    int band_d2 = top2 < 0 ? FIELDREG_UNKNOWN
+                           : top2 - FIELDREG_ACTIVE_TOP_F2;
+    int bottom_d1 = bottom1 < 0 ? FIELDREG_UNKNOWN
+                                : bottom1 - FIELDREG_ACTIVE_BOTTOM_F1;
+    int bottom_d2 = bottom2 < 0 ? FIELDREG_UNKNOWN
+                                : bottom2 - FIELDREG_ACTIVE_BOTTOM_F2;
+    bool edge_known1 = band_d1 != FIELDREG_UNKNOWN &&
+                       (!dual_edge || bottom_d1 != FIELDREG_UNKNOWN);
+    bool edge_known2 = band_d2 != FIELDREG_UNKNOWN &&
+                       (!dual_edge || bottom_d2 != FIELDREG_UNKNOWN);
+    bool edge_agreement1 = edge_known1 &&
+                           (!dual_edge || band_d1 == bottom_d1);
+    bool edge_agreement2 = edge_known2 &&
+                           (!dual_edge || band_d2 == bottom_d2);
+    bool candidate_in_range1 = edge_agreement1 &&
+                               band_d1 >= FIELDREG_MIN_OFFSET &&
+                               band_d1 <= FIELDREG_FIELD1_MAX_OFFSET;
+    bool candidate_in_range2 = edge_agreement2 &&
+                               band_d2 >= FIELDREG_MIN_OFFSET &&
+                               band_d2 <= FIELDREG_FIELD2_MAX_OFFSET;
+    bool dual_edge_agreement = edge_agreement1 && edge_agreement2;
+    int target_d1 = candidate_in_range1 ? band_d1 : engine->selected[0];
+    int target_d2 = candidate_in_range2 ? band_d2 : engine->selected[1];
+    bool common_mode_ambiguous = candidate_in_range1 && candidate_in_range2 &&
+                                 target_d1 != 0 && target_d2 != 0 &&
+                                 ((target_d1 > 0) == (target_d2 > 0));
     bool temporal_reliable1 = engine->previous_valid[0] && !scene_cut &&
                               temporal_margin1 >= 0.25;
     bool temporal_reliable2 = engine->previous_valid[1] && !scene_cut &&
                               temporal_margin2 >= 0.25;
-    bool temporal_release =
-        (engine->selected[0] != 0 || engine->selected[1] != 0) &&
-        (engine->selected[0] == 0 ||
-         (band_d1 == 0 && bottom_d1 == 0 && temporal_reliable1 &&
-          temporal_best1 == 0)) &&
-        (engine->selected[1] == 0 ||
-         (band_d2 == 0 && bottom_d2 == 0 && temporal_reliable2 &&
-          temporal_best2 == 0));
-    if (dual_edge && candidate_in_range)
-        engine->selected_relative = (int8_t)candidate_relative;
+    bool changed1 = target_d1 != engine->selected[0];
+    bool changed2 = target_d2 != engine->selected[1];
+    bool temporal_conflict1 = changed1 && temporal_reliable1 &&
+                              temporal_best1 != target_d1;
+    bool temporal_conflict2 = changed2 && temporal_reliable2 &&
+                              temporal_best2 != target_d2;
     ++engine->pending_age;
 
     out->mode = FIELDREG_MODE_INVALID_UNIT;
-    if (scene_cut) {
+    if (scene_cut && !changed1 && !changed2) {
         out->mode = FIELDREG_MODE_UNKNOWN_SCENE_CUT_HOLD;
-    } else if (temporal_release) {
-        if (engine->pending_valid && engine->pending[0] == 0 &&
-            engine->pending[1] == 0 && engine->pending_age <= 2) {
-            ++engine->pending_count;
-        } else {
-            engine->pending[0] = 0;
-            engine->pending[1] = 0;
-            engine->pending_valid = true;
-            engine->pending_count = 1;
-        }
-        engine->pending_age = 0;
-        if (engine->pending_count >= 2) {
-            engine->selected[0] = 0;
-            engine->selected[1] = 0;
-            engine->selected_relative = 0;
-            engine->pending_valid = false;
-            engine->pending_count = 0;
-            out->decision_d1 = 0;
-            out->decision_d2 = 0;
-            out->mode = FIELDREG_MODE_CONVERGED_TEMPORAL_RELEASE;
-        } else {
-            out->mode = FIELDREG_MODE_UNKNOWN_TEMPORAL_RELEASE_DWELL;
-        }
     } else if (!transport_ok) {
         out->mode = FIELDREG_MODE_UNKNOWN_TRANSPORT_OR_VBI;
     } else if (!enough_history) {
         out->mode = FIELDREG_MODE_UNKNOWN_WARMUP_HOLD;
-    } else if (!candidate_in_range) {
-        out->mode = candidate_valid && dual_edge && !dual_edge_agreement
-                        ? FIELDREG_MODE_UNKNOWN_BAND_DISAGREEMENT
-                        : FIELDREG_MODE_UNKNOWN_BAND_LANDMARK;
-    } else if (!dual_edge && candidate_relative != engine->selected_relative) {
-        out->mode = FIELDREG_MODE_UNKNOWN_EVIDENCE_DISAGREEMENT;
     } else if (common_mode_ambiguous) {
         out->mode = FIELDREG_MODE_UNKNOWN_COMMON_MODE_GAUGE;
-    } else if (band_d1 == engine->selected[0] && band_d2 == engine->selected[1]) {
+    } else if (!candidate_in_range1 && !candidate_in_range2) {
+        out->mode = (edge_known1 || edge_known2)
+                        ? FIELDREG_MODE_UNKNOWN_BAND_DISAGREEMENT
+                        : FIELDREG_MODE_UNKNOWN_BAND_LANDMARK;
+    } else if (!changed1 && !changed2) {
         engine->pending_valid = false;
         engine->pending_count = 0;
         engine->pending_age = 0;
         out->decision_d1 = engine->selected[0];
         out->decision_d2 = engine->selected[1];
-        out->mode = FIELDREG_MODE_STABLE;
+        out->mode = candidate_in_range1 && candidate_in_range2
+                        ? FIELDREG_MODE_STABLE
+                        : FIELDREG_MODE_UNKNOWN_BAND_DISAGREEMENT;
     } else {
-        int changed_count = (band_d1 != engine->selected[0]) +
-                            (band_d2 != engine->selected[1]);
-        int changed_field = band_d1 != engine->selected[0] ? 0 : 1;
-        int less_stable = stability1 + 0.01 < stability2
-                              ? 0
-                              : stability2 + 0.01 < stability1 ? 1 : -1;
-        bool strong_dual_vote = dual_edge && dual_edge_agreement;
-        int required_dwell = strong_dual_vote ||
-                                     (changed_count == 1 && changed_field == less_stable)
-                                 ? 1
-                                 : 2;
-        if (engine->pending_valid && engine->pending[0] == band_d1 &&
-            engine->pending[1] == band_d2 && engine->pending_age <= 2) {
+        bool temporal_conflict = temporal_conflict1 || temporal_conflict2;
+        /* A coherent top+bottom displacement is the absolute raster vote. */
+        int required_dwell = dual_edge ? 1 : temporal_conflict ? 2 : 1;
+        if (engine->pending_valid && engine->pending[0] == target_d1 &&
+            engine->pending[1] == target_d2 && engine->pending_age <= 2) {
             ++engine->pending_count;
         } else {
-            engine->pending[0] = (int8_t)band_d1;
-            engine->pending[1] = (int8_t)band_d2;
+            engine->pending[0] = (int8_t)target_d1;
+            engine->pending[1] = (int8_t)target_d2;
             engine->pending_valid = true;
             engine->pending_count = 1;
         }
         engine->pending_age = 0;
         if ((int)engine->pending_count >= required_dwell) {
-            engine->selected[0] = (int8_t)band_d1;
-            engine->selected[1] = (int8_t)band_d2;
+            engine->selected[0] = (int8_t)target_d1;
+            engine->selected[1] = (int8_t)target_d2;
+            engine->selected_relative = (int8_t)(target_d2 - target_d1);
             engine->pending_valid = false;
             engine->pending_count = 0;
-            out->decision_d1 = (int8_t)band_d1;
-            out->decision_d2 = (int8_t)band_d2;
+            out->decision_d1 = (int8_t)target_d1;
+            out->decision_d2 = (int8_t)target_d2;
             out->mode = FIELDREG_MODE_CONVERGED_RELATIVE_BAND;
         } else {
-            out->mode = FIELDREG_MODE_UNKNOWN_CANDIDATE_DWELL;
+            out->mode = temporal_conflict
+                            ? FIELDREG_MODE_UNKNOWN_EVIDENCE_DISAGREEMENT
+                            : FIELDREG_MODE_UNKNOWN_CANDIDATE_DWELL;
         }
     }
 
@@ -549,8 +526,8 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                           ? fmin(fmin(stability1, stability2),
                                  fmin(bottom_stability1, bottom_stability2))
                           : weave_margin;
-    out->best_d1 = candidate_valid ? (int8_t)band_d1 : engine->selected[0];
-    out->best_d2 = candidate_valid ? (int8_t)band_d2 : engine->selected[1];
+    out->best_d1 = candidate_in_range1 ? (int8_t)band_d1 : engine->selected[0];
+    out->best_d2 = candidate_in_range2 ? (int8_t)band_d2 : engine->selected[1];
     out->pending_d1 = engine->pending_valid ? engine->pending[0] : engine->selected[0];
     out->pending_d2 = engine->pending_valid ? engine->pending[1] : engine->selected[1];
     out->pending_count = engine->pending_count;
@@ -582,8 +559,20 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     out->learned_bottom_stability_f2 = bottom_stability2;
     out->dual_edge_agreement = dual_edge_agreement;
 
-    save_previous(engine, 0, FIELDREG_FIELD1_START + engine->selected[0]);
-    save_previous(engine, 1, FIELDREG_FIELD2_START + engine->selected[1]);
+    /*
+     * While an absolute dual-edge candidate is in dwell, retain the current
+     * field in that candidate's coordinates.  Saving it with the old applied
+     * offset makes the next temporal comparison prefer the old offset and can
+     * self-lock a one-frame release forever.
+     */
+    int save_d1 = engine->selected[0];
+    int save_d2 = engine->selected[1];
+    if (dual_edge && candidate_in_range1 && !common_mode_ambiguous)
+        save_d1 = band_d1;
+    if (dual_edge && candidate_in_range2 && !common_mode_ambiguous)
+        save_d2 = band_d2;
+    save_previous(engine, 0, FIELDREG_FIELD1_START + save_d1);
+    save_previous(engine, 1, FIELDREG_FIELD2_START + save_d2);
     if (!scene_cut && transport_ok && top1 >= 0 && top2 >= 0) {
         add_band(engine, 0, 0, top1 - FIELDREG_FIELD1_START - engine->selected[0]);
         add_band(engine, 1, 0, top2 - FIELDREG_FIELD2_START - engine->selected[1]);
