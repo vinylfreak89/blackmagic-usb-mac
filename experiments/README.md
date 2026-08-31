@@ -191,6 +191,7 @@ rather than by assuming one resync row per video period.
 ```sh
 python3 experiments/capture_render.py capture.tpc \
   --render review.mp4 \
+  --scratch-dir <same-filesystem-tmp> \
   --render-crf 12 --render-preset veryfast \
   --adaptive-registration \
   --registration-library src/field_registration/libfieldreg.dylib \
@@ -199,6 +200,11 @@ python3 experiments/capture_render.py capture.tpc \
   --tagged-start-unit auto \
   --decision-log review_registration.csv
 ```
+
+All growing encode, PCM, and sidecar files are staged outside File Provider
+roots and moved into place only after close and validation. `--scratch-dir`
+must be on the same filesystem as the destination; cross-device copy fallback
+is deliberately refused. The default is a non-synced system temporary folder.
 
 `--registration-library` selects the allocation-free production C estimator while
 preserving the same decision-log contract. Production `dual` decisions require

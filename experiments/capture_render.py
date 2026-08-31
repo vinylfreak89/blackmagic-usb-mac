@@ -72,6 +72,63 @@ COARSE_CHUNK_WINDOWS = 131_072
 COARSE_MIN_ZEROS = 265
 REFINE_PAD = 18_000
 
+DEFAULT_SCRATCH_DIR = Path(tempfile.gettempdir()) / "blackmagic-usb-mac"
+
+
+def _path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def prepare_render_scratch(output_path, scratch_dir=None) -> Path:
+    """Return non-cloud scratch on the destination filesystem.
+
+    Encoders create and mutate large files for minutes or hours. File Provider
+    must see only the closed final object, so all growing MP4/PCM/CSV files live
+    outside known sync roots and are published with one same-filesystem rename.
+    A cross-device fallback copy is intentionally forbidden.
+    """
+    output_path = Path(output_path).expanduser().resolve(strict=False)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    scratch = Path(scratch_dir or DEFAULT_SCRATCH_DIR).expanduser().resolve(
+        strict=False
+    )
+
+    home = Path.home().resolve()
+    cloud_roots = (
+        home / "Desktop",
+        home / "Documents",
+        home / "Library" / "Mobile Documents",
+        home / "Library" / "CloudStorage",
+    )
+    if any(_path_is_within(scratch, root) for root in cloud_roots):
+        raise RuntimeError(
+            f"scratch directory is cloud-synced: {scratch}; choose a local "
+            "directory such as /private/tmp/blackmagic-usb-mac"
+        )
+    scratch.mkdir(parents=True, exist_ok=True)
+    scratch = scratch.resolve(strict=True)
+    if os.stat(scratch).st_dev != os.stat(output_path.parent).st_dev:
+        raise RuntimeError(
+            f"scratch and destination are on different filesystems: {scratch} "
+            f"-> {output_path.parent}; refusing a copy disguised as a move"
+        )
+    return scratch
+
+
+def make_scratch_path(scratch: Path, destination, kind: str) -> Path:
+    destination = Path(destination)
+    fd, name = tempfile.mkstemp(
+        prefix=f".{destination.stem}.{kind}.",
+        suffix=destination.suffix,
+        dir=scratch,
+    )
+    os.close(fd)
+    return Path(name)
+
 
 def find_audio_markers(mm: mmap.mmap) -> list[tuple[int, int]]:
     markers = []
@@ -2221,10 +2278,25 @@ def render_preview(
     decision_log,
     registration_switch_margin,
     counter_end_override,
+    scratch_dir,
 ):
+    output_path = Path(output_path).expanduser().resolve(strict=False)
+    scratch = prepare_render_scratch(output_path, scratch_dir)
+    decision_path = (
+        Path(decision_log).expanduser().resolve(strict=False)
+        if decision_log else None
+    )
+    if decision_path:
+        prepare_render_scratch(decision_path, scratch)
     sample_by_counter = {counter: sample for counter, sample, *_ in audio_rows}
-    with tempfile.TemporaryDirectory(prefix="mixed-capture-render-") as directory:
+    with tempfile.TemporaryDirectory(
+        prefix="mixed-capture-render-", dir=scratch
+    ) as directory:
         raw_video = Path(directory) / "counter_timed_480i.uyvy"
+        output_temp = Path(directory) / output_path.name
+        decision_temp = (
+            Path(directory) / decision_path.name if decision_path else None
+        )
         (
             start_counter,
             end_counter,
@@ -2246,7 +2318,7 @@ def render_preview(
                 raw_video,
                 first_field,
                 adaptive_registration,
-                decision_log,
+                decision_temp,
                 registration_switch_margin,
                 counter_end_override,
             )
@@ -2349,8 +2421,19 @@ def render_preview(
             command.extend(("-maxrate", render_maxrate))
             if render_bufsize:
                 command.extend(("-bufsize", render_bufsize))
-        command.append(str(output_path))
+        command.append(str(output_temp))
         subprocess.run(command, check=True)
+        subprocess.run(
+            [
+                ffmpeg, "-hide_banner", "-loglevel", "error", "-xerror",
+                "-i", str(output_temp), "-f", "null", "-",
+            ],
+            check=True,
+        )
+        if decision_path:
+            decision_path.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(decision_temp, decision_path)
+        os.replace(output_temp, output_path)
     return (
         start_counter,
         end_counter,
@@ -2484,26 +2567,28 @@ def render_tagged(
     fieldreg_evidence,
     start_unit,
     limit_units,
+    scratch_dir,
 ):
     """Two-pass, disk-bounded full render of a tagged capture_tagged_bench capture."""
-    output_path = Path(output_path)
+    output_path = Path(output_path).expanduser().resolve(strict=False)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_temp = output_path.with_name(
-        f".{output_path.stem}.partial{output_path.suffix}"
+    scratch = prepare_render_scratch(output_path, scratch_dir)
+    output_temp = make_scratch_path(scratch, output_path, "encode")
+    decision_path = (
+        Path(decision_log).expanduser().resolve(strict=False)
+        if decision_log else None
     )
-    decision_path = Path(decision_log) if decision_log else None
+    if decision_path:
+        prepare_render_scratch(decision_path, scratch)
     decision_temp = (
-        decision_path.with_name(f".{decision_path.name}.partial")
+        make_scratch_path(scratch, decision_path, "decisions")
         if decision_path else None
     )
-    for temporary in (output_temp, decision_temp):
-        if temporary and temporary.exists():
-            temporary.unlink()
 
     pcm_file = tempfile.NamedTemporaryFile(
         prefix=".tpc-audio-",
         suffix=".s24le",
-        dir=output_path.parent,
+        dir=scratch,
         delete=False,
     )
     pcm_path = Path(pcm_file.name)
@@ -2945,6 +3030,14 @@ def main():
         "--ffmpeg", default="ffmpeg", help="ffmpeg executable used by --render"
     )
     parser.add_argument(
+        "--scratch-dir",
+        metavar="DIR",
+        help=(
+            "non-cloud staging directory for growing encode/PCM/CSV files "
+            f"(default: {DEFAULT_SCRATCH_DIR}); must share the destination filesystem"
+        ),
+    )
+    parser.add_argument(
         "--render-size",
         type=parse_render_size,
         default=None,
@@ -3124,6 +3217,7 @@ def main():
             args.fieldreg_evidence,
             args.tagged_start_unit,
             args.tagged_limit_units,
+            args.scratch_dir,
         )
         return
 
@@ -3191,6 +3285,7 @@ def main():
                         args.decision_log,
                         args.registration_switch_margin,
                         args.render_counter_end,
+                        args.scratch_dir,
                     )
                     (
                         start,

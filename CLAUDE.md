@@ -388,6 +388,14 @@ in the decision CSV. Tagged capture_tagged_bench data must use packet provenance
   no-signal fill, documented, with the placement assumption stated for untagged captures. Purpose:
   drop *patterns* must stay visible and inspectable.
 
+**Writer output rule:** no encoder or capture writer may create or grow its working file
+inside a cloud-synced (File Provider) root, even under a hidden or `.partial` name — a dataless
+placeholder or an in-flight sync corrupts a growing file. Growing TPC, MP4, PCM, and decision-log files live in a non-synced scratch
+directory. After the writer closes and validation succeeds, publish with one same-filesystem
+atomic rename; never fall back to copy+delete. Scratch and destination filesystem identity is
+checked before work begins. An unfinished capture remains in scratch for diagnosis/recovery.
+The destination above describes final publication only, not the writer's working directory.
+
 ### Untagged video+audio mix is RECOVERABLE (proven with `capture_render.py`)
 
 `capture_untagged_ring` submits both endpoints, so completed video (0x83) and audio (0x84) transfers land in one
