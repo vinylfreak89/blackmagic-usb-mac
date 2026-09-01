@@ -920,6 +920,9 @@ delivery edge; wrong one at acquisition.
   abstentions. At the horizon, the caller flushes the already-held buffered trajectory,
   labels abstentions `HeldUnresolvedHorizon`, logs `trajectory_reset`, and starts fresh—never
   rewrite the buffer to raw around isolated observations, and never drop/repeat a unit.
+  Reset invalidates the learned lock but preserves the last actually presented phase (which may
+  differ from the locked baseline); following abstentions cannot create an unobserved snap while
+  the engine reacquires.
   Neither field is a permanent anchor; `(0,1) -> (1,0)` is legal. Integration is off the USB hot
   path via preallocated lock-free SPSC pointer handoffs; `field_registration` itself allocates nothing.
   **Six-minute production-path proof:** 10,800 units through C registration +
@@ -937,6 +940,19 @@ delivery edge; wrong one at acquisition.
   one-unit `(1,0)`, rather than holding a new phase to tape end. Both checks had zero
   known-observation/application mismatches and zero backdating over observed units. This does
   not claim one global field offset can reconcile the tape's spatially incompatible layers.
+  **Algorithm v4 horizon fix:** a full v3 sidecar audit found that 936/948 applied
+  transitions began on a matching current-unit observation and six were deliberate backdated
+  locks, but two `RawAwaitingLock` transitions snapped to `(0,0)` after reset with no observation.
+  Reset now invalidates confidence while preserving the last actually presented phase, not just
+  the last locked baseline. A synthetic divergent-baseline/presentation reset test proves the
+  contract; local untagged_capture remains 3,784/4,042 overall and 3,499/3,499 confident. The full v4 golden processed all
+  86,293 exact units at 2.532 ms median (13.2x realtime), matched 50,042/50,042 confident v3
+  evidence decisions, and observed 464 hard resets with **zero reset-induced phase changes**.
+  The five transitions without a same-unit observation were all explicit 30--32-unit convergence
+  commits with backdates, never reset snaps. The pass accounted for all 46,075,614 CAP1 records
+  and 23,036,416 video DATA records with zero sequence/packet gaps and zero status errors.
+  The renderer refuses dataless (File Provider placeholder) inputs rather than triggering a
+  multi-gigabyte cloud fetch.
 - **P3 frameserver** — unit parser + signal-state classifier v0 (three-layer model, §6) +
   registration engine → interlaced UYVY IOSurface publisher + decision log + archival writer
   skeleton. **No deinterlacer in C or on the real-time device path**; ffmpeg/OBS/post owns that

@@ -372,6 +372,18 @@ int main(void)
     engine.pending_count = 1;
     engine.pending_age = 1;
     engine.phase_unsettled_units = 1;
+    engine.selected[0] = 1;
+    engine.selected[1] = 0;
+    engine.baseline[0] = 1;
+    engine.baseline[1] = 0;
+    engine.selected_relative = -1;
+    /* The locked baseline and the last actually presented phase can differ:
+     * direct per-unit observations move presentation before hysteresis moves
+     * the fallback.  A horizon reset must preserve presentation, not snap to
+     * the old locked baseline. */
+    engine.previous_phase[0] = 0;
+    engine.previous_phase[1] = 0;
+    engine.previous_phase_valid = true;
     bool reset_seen = false;
     for (uint16_t counter = 540; counter < 580; ++counter) {
         make_unit(unit, counter);
@@ -384,6 +396,7 @@ int main(void)
             reset_seen = true;
             assert(!decision.trajectory_locked);
             assert(decision.applied_d1 == 0 && decision.applied_d2 == 0);
+            assert(decision.baseline_d1 == 1 && decision.baseline_d2 == 0);
             break;
         }
     }

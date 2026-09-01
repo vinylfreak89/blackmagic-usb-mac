@@ -1109,11 +1109,11 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
             engine->pending_age = 0;
             engine->phase_unsettled_units = 0;
             engine->phase_baseline_valid = false;
-            engine->selected[0] = 0;
-            engine->selected[1] = 0;
-            engine->baseline[0] = 0;
-            engine->baseline[1] = 0;
-            engine->selected_relative = 0;
+            /* Confidence resets; presentation phase does not. Snapping the
+             * fallback to raw here creates a visible transition with no
+             * current-unit observation. The invalid baseline forces fresh
+             * acquisition while selected[] remains the honest last-known
+             * phase for intervening abstentions. */
             out->trajectory_reset = true;
             out->decision_d1 = FIELDREG_UNKNOWN;
             out->decision_d2 = FIELDREG_UNKNOWN;
@@ -1269,7 +1269,7 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                                                 : engine->selected[0];
     int held_d2 = engine->previous_phase_valid ? engine->previous_phase[1]
                                                 : engine->selected[1];
-    if (!phase_model || out->decision_backdate || out->trajectory_reset) {
+    if (!phase_model || out->decision_backdate) {
         held_d1 = engine->selected[0];
         held_d2 = engine->selected[1];
     }

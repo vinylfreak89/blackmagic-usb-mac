@@ -83,7 +83,9 @@ If geometry remains unresolved beyond `maximum_buffered_units`, the result sets
 buffer, marks its abstaining units `HeldUnresolvedHorizon`, and reacquires a
 fresh stable fallback. It must not rewrite those abstentions to `(0,0)` around
 isolated observations—that creates raw/corrected crop chatter at the exact
-point where evidence is weakest. No video unit may be dropped or repeated. The
+point where evidence is weakest. The reset invalidates confidence while
+preserving the last presentation phase, so following abstentions also cannot
+snap to raw without evidence. No video unit may be dropped or repeated. The
 sidecar presentation policy therefore
 distinguishes `CorrectedObserved`, `CorrectedLocked`, `CorrectedBackdated`,
 `HeldLastObservation`, `RawAwaitingLock`, and `HeldUnresolvedHorizon`; a visible
@@ -176,6 +178,28 @@ directly observed one-unit `(1,0)` correction; it did not turn that event into
 a delayed or permanent plateau.  These are policy/visual regression checks,
 not claims that the spatially incompatible source layers can be made globally
 coherent by one field offset.
+
+A subsequent full-run v3 sidecar audit found one remaining reset-policy bug:
+936/948 applied transitions began on a matching current-unit observation and
+six were intentional backdated locks, but two `RawAwaitingLock` transitions
+snapped to `(0,0)` after a hard-horizon reset with no observation. Algorithm
+v4 invalidates lock confidence while preserving the last presentation phase,
+not merely the last locked baseline, so reacquisition cannot itself create
+that raw snap. The divergent-baseline/presentation reset test proves this
+contract. The local untagged_capture golden remains 3,784/4,042 overall and
+3,499/3,499 confident. The full v4 golden processed all 86,293 exact units at 2.532 ms median (13.2x real
+time), matched all 50,042 confident v3 evidence decisions, and observed 464
+hard trajectory resets with zero reset-induced phase changes. The five applied
+transitions without a same-unit absolute observation were all explicit
+30--32-unit convergence commits with backdates; none was a reset snap. The
+same pass accounted for all 46,075,614 CAP1 records and 23,036,416 video DATA
+records with zero sequence/packet gaps and zero status errors.
+
+`capture_render.py` now checks `SF_DATALESS` before opening any input
+and fails immediately on a File Provider placeholder. This prevents a census,
+golden, or render invocation from silently becoming a multi-gigabyte iCloud
+download. Restore the source to resident storage before decoding; production
+capture/render output belongs outside synced Desktop/Documents.
 
 The 86,293-unit full-tape **algorithm-v2 audit (superseded)** applied 48 baseline transitions: 42,767 units
 at `(0,0)`, 43,030 at `(1,0)`, and 496 at `(2,0)`. Rejecting clipped temporal

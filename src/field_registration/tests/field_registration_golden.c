@@ -637,10 +637,8 @@ static video_stream run_tagged(const char *capture, expected_table *expected,
             if (packet != current_packet)
                 ++seq_gaps;
             current_packet = packet + 1;
-            if (actual)
+            if (actual && !stream.done)
                 feed_video(&stream, header + 24, actual);
-            if (stream.done)
-                break;
         }
         offset += 24 + payload;
         ++records;

@@ -32,7 +32,7 @@ enum {
      * units so a settled decision can be applied at its observed onset. */
     FIELDREG_PHASE_CONFIRM_UNITS = 30,
     FIELDREG_MAX_CONFIRM_UNITS = 120,
-    FIELDREG_ALGORITHM_VERSION = 3,
+    FIELDREG_ALGORITHM_VERSION = 4,
     FIELDREG_UNKNOWN = -128,
 };
 
