@@ -40,6 +40,7 @@ VIDEO_HEADER_BYTES = 48
 BYTES_PER_LINE = 1_440
 RASTER_LINES = 525
 VIDEO_LOSS_QUANTUM = 24_576
+SF_DATALESS = 0x40000000
 
 # bmusb's e801 metadata: height=480, extra_lines_top=17,
 # second_field_start=280, extra_lines_bottom=28.
@@ -51,6 +52,18 @@ REGISTRATION_MAX = 6
 REGISTRATION_X_STEP = 4
 REGISTRATION_VBI_MARGIN = 25
 REGISTRATION_WARMUP = 8
+
+
+def require_materialized_input(path):
+    """Refuse File Provider placeholders instead of silently cloud-streaming."""
+    target = Path(path)
+    stat = target.stat()
+    if getattr(stat, "st_flags", 0) & SF_DATALESS:
+        raise RuntimeError(
+            f"input is a dataless File Provider placeholder: {target}; "
+            "restore/materialize it to a non-synced local location before "
+            "decoding"
+        )
 
 # Synthetic bytes used only where an untagged diagnostic capture has no bytes.
 # These are legal-range, SMPTE-style vertical color bars. They are deliberately
@@ -3447,6 +3460,8 @@ def main():
         help="render at most N tpc units after the selected start (test use)",
     )
     args = parser.parse_args()
+
+    require_materialized_input(args.input)
 
     input_format = args.input_format
 
