@@ -90,6 +90,7 @@ typedef struct video_stream {
     size_t marker_search;
     size_t expected_index;
     size_t skip_units;
+    bool done;
 } video_stream;
 
 typedef struct span {
@@ -356,11 +357,20 @@ static void compare_exact(video_stream *stream, const expected_row *expected,
     comparison *result = &stream->result;
     if (decision_output) {
         fprintf(decision_output,
-                "%u,%d,%d,%s,%d,%d,%.9f,%d,%d,%d,%d,%d,%d,%d,%d,%.9f,%.9f,%d,%d,%d,%.9f,%.9f,"
-                "%d,%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%u,%u,%d,%d,%u,%u,%d\n",
+                "%u,%d,%d,%s,%d,%d,%.9f,"
+                "%d,%d,%u,%u,%u,%d,%d,"
+                "%d,%d,%d,%d,%d,%d,%d,%d,"
+                "%.9f,%.9f,%d,%d,%d,%.9f,%.9f,%.9f,%.9f,"
+                "%d,%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%u,%u,%d,%d,%u,%u,%d,"
+                "%d,%d,%u,%d,%d\n",
                 expected->counter, actual->applied_d1, actual->applied_d2,
                 fieldreg_mode_name(actual->mode), actual->decision_d1,
                 actual->decision_d2, actual->confidence,
+                actual->pending_d1, actual->pending_d2,
+                actual->pending_count, actual->pending_span,
+                actual->decision_backdate,
+                actual->trajectory_reset ? 1 : 0,
+                actual->trajectory_locked ? 1 : 0,
                 actual->picture_top_f1, actual->picture_top_f2,
                 actual->picture_bottom_f1, actual->picture_bottom_f2,
                 actual->learned_band_mode_f1, actual->learned_band_mode_f2,
@@ -369,6 +379,7 @@ static void compare_exact(video_stream *stream, const expected_row *expected,
                 actual->learned_bottom_stability_f1,
                 actual->dual_edge_agreement ? 1 : 0,
                 actual->temporal_best_f1, actual->temporal_best_f2,
+                actual->temporal_margin_f1, actual->temporal_margin_f2,
                 actual->temporal_best_cost_f1, actual->temporal_best_cost_f2,
                 actual->phase_vote_left, actual->phase_vote_center,
                 actual->phase_vote_right, actual->phase_motion_left,
@@ -380,7 +391,12 @@ static void compare_exact(video_stream *stream, const expected_row *expected,
                 actual->phase_window_margin, actual->fast_edge_d1,
                 actual->fast_edge_d2, actual->fast_edge_support_f1,
                 actual->fast_edge_support_f2,
-                actual->fast_edge_spatial_conflict ? 1 : 0);
+                actual->fast_edge_spatial_conflict ? 1 : 0,
+                actual->frame_observation_d1,
+                actual->frame_observation_d2,
+                actual->frame_observation_support,
+                actual->frame_observation_motion_priority ? 1 : 0,
+                actual->frame_observation_conflict ? 1 : 0);
     }
     ++result->exact;
     bool applied = actual->applied_d1 == expected->applied_d1 &&
@@ -465,6 +481,7 @@ static void consume_unit(video_stream *stream, const uint8_t *unit, size_t lengt
                 stream->expected_index - 1, counter, expected->counter);
         exit(2);
     }
+    stream->done = stream->expected_index == stream->expected->count;
     if (length != FIELDREG_UNIT_BYTES || !expected->exact) {
         ++stream->result.unknown_units;
         fieldreg_discontinuity(&stream->engine);
@@ -517,6 +534,8 @@ static void feed_video(video_stream *stream, const uint8_t *data, size_t length)
             return;
         }
         consume_unit(stream, stream->buffer, next);
+        if (stream->done)
+            return;
         memmove(stream->buffer, stream->buffer + next, stream->length - next);
         stream->length -= next;
         stream->marker_search = 8;
@@ -543,7 +562,9 @@ static video_stream make_stream(expected_table *expected, truth_table *truth,
 
 static void finish_stream(video_stream *stream)
 {
-    if (stream->expected_index < stream->expected->count &&
+    if (stream->done) {
+        stream->length = 0;
+    } else if (stream->expected_index < stream->expected->count &&
         video_marker(stream->buffer, stream->length) && stream->length > 0)
         consume_unit(stream, stream->buffer, stream->length);
     else if (stream->length > 0)
@@ -618,6 +639,8 @@ static video_stream run_tagged(const char *capture, expected_table *expected,
             current_packet = packet + 1;
             if (actual)
                 feed_video(&stream, header + 24, actual);
+            if (stream.done)
+                break;
         }
         offset += 24 + payload;
         ++records;
@@ -881,17 +904,22 @@ int main(int argc, char **argv)
         decision_output = fopen(output, "w");
         if (!decision_output) die_errno(output);
         fputs("counter,applied_d1,applied_d2,mode,decision_d1,decision_d2,confidence,"
+              "pending_d1,pending_d2,pending_count,pending_span,decision_backdate,"
+              "trajectory_reset,trajectory_locked,"
               "picture_top_f1,picture_top_f2,picture_bottom_f1,picture_bottom_f2,"
               "top_mode_f1,top_mode_f2,bottom_mode_f1,bottom_mode_f2,"
               "top_stability_f1,bottom_stability_f1,dual_edge_agreement,"
-              "temporal_best_f1,temporal_best_f2,temporal_best_cost_f1,"
+              "temporal_best_f1,temporal_best_f2,temporal_margin_f1,"
+              "temporal_margin_f2,temporal_best_cost_f1,"
               "temporal_best_cost_f2,phase_vote_left,phase_vote_center,"
               "phase_vote_right,phase_motion_left,phase_motion_center,"
               "phase_motion_right,phase_priority_band,phase_consensus,phase_support,"
               "spatial_phase_conflict,phase_window,phase_window_count,"
               "phase_window_margin,fast_edge_d1,fast_edge_d2,"
               "fast_edge_support_f1,fast_edge_support_f2,"
-              "fast_edge_spatial_conflict\n",
+              "fast_edge_spatial_conflict,frame_observation_d1,"
+              "frame_observation_d2,frame_observation_support,"
+              "frame_observation_motion_priority,frame_observation_conflict\n",
               decision_output);
     }
     video_stream stream = tpc ? run_tagged(tpc, &expected, &truth, start_unit)

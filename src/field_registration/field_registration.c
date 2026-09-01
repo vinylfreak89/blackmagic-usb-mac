@@ -19,6 +19,12 @@ static const int phase_bounds[PHASE_BANDS][2] = {
     {118, 168}, /* source pixels 472..671 */
 };
 
+/* A weak temporal minimum cannot positively establish registration, but an
+ * opposite-direction minimum is still useful as a veto. This lower bar keeps
+ * a content-derived top/bottom edge from moving the whole field against the
+ * dominant same-parity picture asset. */
+static const double temporal_contradiction_margin = 0.05;
+
 static bool unit_header_valid(const uint8_t *unit)
 {
     return unit[0] == 0 && unit[1] == 0 && unit[2] == 0xff &&
@@ -30,6 +36,8 @@ static void unknown_decision(fieldreg_decision *out)
     memset(out, 0, sizeof(*out));
     out->decision_d1 = FIELDREG_UNKNOWN;
     out->decision_d2 = FIELDREG_UNKNOWN;
+    out->frame_observation_d1 = FIELDREG_UNKNOWN;
+    out->frame_observation_d2 = FIELDREG_UNKNOWN;
     out->best_d1 = FIELDREG_UNKNOWN;
     out->best_d2 = FIELDREG_UNKNOWN;
     out->pending_d1 = FIELDREG_UNKNOWN;
@@ -62,6 +70,9 @@ fieldreg_config fieldreg_default_config(void)
     fieldreg_config config = {
         .switch_margin = 1.5,
         .evidence_model = FIELDREG_EVIDENCE_MOTION_PHASE,
+        .confirmation_units = FIELDREG_PHASE_CONFIRM_UNITS,
+        .minimum_support_units = FIELDREG_PHASE_CONFIRM_UNITS,
+        .maximum_buffered_units = FIELDREG_PHASE_CONFIRM_UNITS + 6,
     };
     return config;
 }
@@ -86,9 +97,30 @@ uint32_t fieldreg_algorithm_version(void)
     return FIELDREG_ALGORITHM_VERSION;
 }
 
+uint32_t fieldreg_confirmation_units(const field_registration *engine)
+{
+    return engine ? engine->config.confirmation_units
+                  : FIELDREG_PHASE_CONFIRM_UNITS;
+}
+
+uint32_t fieldreg_buffer_units(const field_registration *engine)
+{
+    return engine ? engine->config.maximum_buffered_units
+                  : FIELDREG_PHASE_CONFIRM_UNITS + 6;
+}
+
 void fieldreg_init(field_registration *engine, const fieldreg_config *config)
 {
     fieldreg_config chosen = config ? *config : fieldreg_default_config();
+    if (chosen.confirmation_units == 0 ||
+        chosen.confirmation_units > FIELDREG_MAX_CONFIRM_UNITS)
+        chosen.confirmation_units = FIELDREG_PHASE_CONFIRM_UNITS;
+    if (chosen.minimum_support_units == 0 ||
+        chosen.minimum_support_units > chosen.confirmation_units)
+        chosen.minimum_support_units = chosen.confirmation_units;
+    if (chosen.maximum_buffered_units < chosen.confirmation_units ||
+        chosen.maximum_buffered_units > FIELDREG_MAX_CONFIRM_UNITS)
+        chosen.maximum_buffered_units = chosen.confirmation_units;
     memset(engine, 0, sizeof(*engine));
     engine->config = chosen;
 }
@@ -104,8 +136,10 @@ void fieldreg_discontinuity(field_registration *engine)
     engine->pending_valid = false;
     engine->pending_count = 0;
     engine->pending_age = 0;
+    engine->phase_unsettled_units = 0;
     engine->previous_valid[0] = false;
     engine->previous_valid[1] = false;
+    engine->previous_phase_valid = false;
 }
 
 static void extract_luma(field_registration *engine, const uint8_t *unit)
@@ -382,6 +416,24 @@ static int best_cost_index(const double costs[13], double *cost)
     return best + FIELDREG_MIN_OFFSET;
 }
 
+static double field_luma_mean(const field_registration *engine, int parity, int start,
+                              bool previous)
+{
+    double sum = 0.0;
+    size_t count = 0;
+    /* Stay well inside active picture; VBI and head-switch edges are geometry
+     * evidence, not scene-luminance evidence. */
+    for (int row = 16; row < FIELDREG_FIELD_LINES - 16; ++row) {
+        const uint8_t *samples = previous ? engine->previous[parity][row]
+                                          : engine->luma[start + row];
+        for (int x = 0; x < FIELDREG_X_SAMPLES; ++x) {
+            sum += samples[x];
+            ++count;
+        }
+    }
+    return sum / (double)count;
+}
+
 typedef struct phase_evidence {
     int8_t vote[PHASE_BANDS];
     int8_t motion[PHASE_BANDS];
@@ -518,43 +570,6 @@ static phase_evidence motion_phase_evidence(const field_registration *engine,
     return out;
 }
 
-static int update_phase_window(field_registration *engine, int phase,
-                               uint8_t *best_count, uint8_t *best_margin)
-{
-    if (engine->phase_history_filled == FIELDREG_PHASE_HISTORY) {
-        int old = engine->phase_history[engine->phase_history_index];
-        if (old >= FIELDREG_MIN_OFFSET && old <= FIELDREG_MAX_OFFSET)
-            --engine->phase_counts[old - FIELDREG_MIN_OFFSET];
-    } else {
-        ++engine->phase_history_filled;
-    }
-    engine->phase_history[engine->phase_history_index] = (int8_t)phase;
-    engine->phase_history_index =
-        (engine->phase_history_index + 1) % FIELDREG_PHASE_HISTORY;
-    if (phase >= FIELDREG_MIN_OFFSET && phase <= FIELDREG_MAX_OFFSET)
-        ++engine->phase_counts[phase - FIELDREG_MIN_OFFSET];
-
-    int best = 0;
-    int runner = 0;
-    int best_phase = FIELDREG_UNKNOWN;
-    for (int i = 0; i < 13; ++i) {
-        int count = engine->phase_counts[i];
-        if (count > best) {
-            runner = best;
-            best = count;
-            best_phase = i + FIELDREG_MIN_OFFSET;
-        } else if (count > runner) {
-            runner = count;
-        }
-    }
-    *best_count = (uint8_t)best;
-    *best_margin = (uint8_t)(best - runner);
-    /* Roughly 2/3 second of actual evidence and a decisive local mode. */
-    if (best < 20 || best - runner < 8)
-        return FIELDREG_UNKNOWN;
-    return best_phase;
-}
-
 static int band_slot(int value)
 {
     int slot = value + BAND_BIAS;
@@ -643,6 +658,8 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     if (!engine || !unit || !out)
         return false;
     unknown_decision(out);
+    out->baseline_d1 = engine->selected[0];
+    out->baseline_d2 = engine->selected[1];
     out->applied_d1 = engine->selected[0];
     out->applied_d2 = engine->selected[1];
     out->mode = FIELDREG_MODE_INVALID_UNIT;
@@ -697,11 +714,23 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     int temporal_best1 = best_cost_index(temporal1, &temporal_best_cost1);
     int temporal_best2 = best_cost_index(temporal2, &temporal_best_cost2);
     bool had_temporal = engine->previous_valid[0] && engine->previous_valid[1];
+    double luma_step1 = 0.0;
+    double luma_step2 = 0.0;
+    if (had_temporal) {
+        luma_step1 = field_luma_mean(engine, 0, FIELDREG_FIELD1_START, false) -
+                     field_luma_mean(engine, 0, FIELDREG_FIELD1_START, true);
+        luma_step2 = field_luma_mean(engine, 1, FIELDREG_FIELD2_START, false) -
+                     field_luma_mean(engine, 1, FIELDREG_FIELD2_START, true);
+    }
+    bool global_luma_step = had_temporal && fabs(luma_step1) >= 2.0 &&
+                            fabs(luma_step2) >= 2.0 &&
+                            ((luma_step1 > 0.0) == (luma_step2 > 0.0));
     double cut_threshold1 = engine->temporal_cost_ema[0] * 1.8 + 2.0;
     double cut_threshold2 = engine->temporal_cost_ema[1] * 1.8 + 2.0;
-    bool scene_cut = had_temporal && engine->temporal_cost_ema_valid &&
-                     temporal_best_cost1 > cut_threshold1 &&
-                     temporal_best_cost2 > cut_threshold2;
+    bool scene_cut = global_luma_step ||
+                     (had_temporal && engine->temporal_cost_ema_valid &&
+                      temporal_best_cost1 > cut_threshold1 &&
+                      temporal_best_cost2 > cut_threshold2);
     double independent_evidence = fmax(weave_margin,
                                        fmax(temporal_margin1, temporal_margin2));
     bool phase_model =
@@ -782,92 +811,313 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     bool temporal_conflict2 = changed2 && temporal_reliable2 &&
                               temporal_best2 != target_d2;
     phase_evidence phase = motion_phase_evidence(engine, scene_cut);
-    uint8_t phase_window_count = 0;
-    uint8_t phase_window_margin = 0;
-    int phase_window = update_phase_window(
-        engine, phase.consensus, &phase_window_count, &phase_window_margin);
-    int phase_target_d1 = engine->baseline[0];
-    int phase_target_d2 = engine->baseline[1];
-    if (phase_window != FIELDREG_UNKNOWN) {
-        /*
-         * Relative phase cannot identify an absolute anchor.  Move the field
-         * whose raw top+bottom landmarks have been less stable; on a tie use
-         * field 2 as the anchor, but log every band vote so post can revisit
-         * the choice.  No source-specific field is hard-coded as always stable.
-         */
-        double geometry1 = fmin(stability1, bottom_stability1);
-        double geometry2 = fmin(stability2, bottom_stability2);
-        if (geometry2 + 0.05 < geometry1) {
-            phase_target_d1 = 0;
-            phase_target_d2 = phase_window;
-        } else {
-            phase_target_d1 = -phase_window;
-            phase_target_d2 = 0;
-        }
-        if (phase_target_d1 < FIELDREG_MIN_OFFSET ||
-            phase_target_d1 > FIELDREG_FIELD1_MAX_OFFSET ||
-            phase_target_d2 < FIELDREG_MIN_OFFSET ||
-            phase_target_d2 > FIELDREG_FIELD2_MAX_OFFSET) {
-            phase_window = FIELDREG_UNKNOWN;
+    int phase_window = transport_ok && !scene_cut
+                           ? phase.consensus
+                           : FIELDREG_UNKNOWN;
+    uint8_t phase_window_margin = phase.support;
+    bool absolute_phase_pair =
+        band_d1 != FIELDREG_UNKNOWN && bottom_d1 != FIELDREG_UNKNOWN &&
+        band_d2 != FIELDREG_UNKNOWN && bottom_d2 != FIELDREG_UNKNOWN &&
+        band_d1 == bottom_d1 && band_d2 == bottom_d2 &&
+        band_d1 >= FIELDREG_MIN_OFFSET &&
+        band_d1 <= FIELDREG_FIELD1_MAX_OFFSET &&
+        band_d2 >= FIELDREG_MIN_OFFSET &&
+        band_d2 <= FIELDREG_FIELD2_MAX_OFFSET;
+
+    /* A buffered trajectory does not make a strong observation wait for a
+     * one-second plateau. Real TBC registration faults can last one unit.
+     * Establish the current unit's absolute candidate from coherent top+bottom
+     * geometry in independent horizontal bands, preferring the uniquely
+     * moving broad asset when the raster contains two real phases. The
+     * same-parity differential veto below decides whether that source-carried
+     * candidate is safe to apply to the whole field. */
+    int band_pair_d1[PHASE_BANDS];
+    int band_pair_d2[PHASE_BANDS];
+    for (int band = 0; band < PHASE_BANDS; ++band) {
+        band_pair_d1[band] = FIELDREG_UNKNOWN;
+        band_pair_d2[band] = FIELDREG_UNKNOWN;
+        int top_delta1 = spatial_top[0][band] - FIELDREG_ACTIVE_TOP_F1;
+        int bottom_delta1 = spatial_bottom[0][band] -
+                            FIELDREG_ACTIVE_BOTTOM_F1;
+        int top_delta2 = spatial_top[1][band] - FIELDREG_ACTIVE_TOP_F2;
+        int bottom_delta2 = spatial_bottom[1][band] -
+                            FIELDREG_ACTIVE_BOTTOM_F2;
+        if (spatial_top[0][band] >= 0 && spatial_bottom[0][band] >= 0 &&
+            spatial_top[1][band] >= 0 && spatial_bottom[1][band] >= 0 &&
+            top_delta1 == bottom_delta1 && top_delta2 == bottom_delta2 &&
+            top_delta1 >= FIELDREG_MIN_OFFSET &&
+            top_delta1 <= FIELDREG_FIELD1_MAX_OFFSET &&
+            top_delta2 >= FIELDREG_MIN_OFFSET &&
+            top_delta2 <= FIELDREG_FIELD2_MAX_OFFSET) {
+            band_pair_d1[band] = top_delta1;
+            band_pair_d2[band] = top_delta2;
         }
     }
-    ++engine->pending_age;
+    int absolute_d1 = FIELDREG_UNKNOWN;
+    int absolute_d2 = FIELDREG_UNKNOWN;
+    uint8_t frame_support = 0;
+    bool frame_motion_priority = false;
+    bool frame_conflict = false;
+    if (phase.priority_band >= 0 &&
+        band_pair_d1[(int)phase.priority_band] != FIELDREG_UNKNOWN) {
+        int band = phase.priority_band;
+        absolute_d1 = band_pair_d1[band];
+        absolute_d2 = band_pair_d2[band];
+        frame_support = 1;
+        frame_motion_priority = true;
+    } else {
+        int valid_band_pairs = 0;
+        for (int band = 0; band < PHASE_BANDS; ++band) {
+            if (band_pair_d1[band] == FIELDREG_UNKNOWN)
+                continue;
+            ++valid_band_pairs;
+            int support = 0;
+            for (int other = 0; other < PHASE_BANDS; ++other)
+                support += band_pair_d1[other] == band_pair_d1[band] &&
+                           band_pair_d2[other] == band_pair_d2[band];
+            if (support > frame_support) {
+                frame_support = (uint8_t)support;
+                absolute_d1 = band_pair_d1[band];
+                absolute_d2 = band_pair_d2[band];
+            }
+        }
+        frame_conflict = valid_band_pairs >= 2 && frame_support < 2;
+        if (frame_support < 2) {
+            bool phase_corroborates_global =
+                absolute_phase_pair && phase.support >= 2 &&
+                phase.consensus == band_d2 - band_d1;
+            bool continues_previous_absolute =
+                absolute_phase_pair && engine->previous_phase_valid &&
+                band_d1 == engine->previous_phase[0] &&
+                band_d2 == engine->previous_phase[1];
+            if (absolute_phase_pair &&
+                (phase_corroborates_global ||
+                 (!frame_conflict && continues_previous_absolute))) {
+                absolute_d1 = band_d1;
+                absolute_d2 = band_d2;
+                frame_support = 1;
+            } else {
+                absolute_d1 = FIELDREG_UNKNOWN;
+                absolute_d2 = FIELDREG_UNKNOWN;
+                frame_support = 0;
+            }
+        }
+    }
+    /* Common-mode movement has no relative-phase corroboration. Require both
+     * same-parity temporal searches to independently see it. */
+    if (absolute_d1 != FIELDREG_UNKNOWN && absolute_d1 == absolute_d2 &&
+        absolute_d1 != 0 &&
+        !(temporal_margin1 >= 0.5 && temporal_margin2 >= 0.5 &&
+          temporal_best1 == absolute_d1 && temporal_best2 == absolute_d2)) {
+        absolute_d1 = FIELDREG_UNKNOWN;
+        absolute_d2 = FIELDREG_UNKNOWN;
+        frame_support = 0;
+    }
 
+    /*
+     * The picture envelope is source-carried.  Even top+bottom agreement can
+     * change at a scene boundary or when a local overlay enters/leaves, so it
+     * is a candidate absolute phase, not by itself proof that this one field
+     * moved. Preserve real one-unit jumps when either two independent bands,
+     * motion-compensated relative phase, or same-parity motion corroborates
+     * the change. Otherwise abstain for this unit; a persistent candidate may
+     * still establish a new baseline through the bounded dwell below and will
+     * then be backdated by the caller's raw-unit FIFO.
+     */
+    int frame_d1 = absolute_d1;
+    int frame_d2 = absolute_d2;
+    if (frame_d1 != FIELDREG_UNKNOWN) {
+        int prior_d1 = engine->previous_phase_valid
+                           ? engine->previous_phase[0]
+                           : engine->selected[0];
+        int prior_d2 = engine->previous_phase_valid
+                           ? engine->previous_phase[1]
+                           : engine->selected[1];
+        bool change1 = frame_d1 != prior_d1;
+        bool change2 = frame_d2 != prior_d2;
+        bool temporal_supports1 =
+            !change1 || (temporal_reliable1 &&
+                         temporal_best1 == frame_d1 - prior_d1);
+        bool temporal_supports2 =
+            !change2 || (temporal_reliable2 &&
+                         temporal_best2 == frame_d2 - prior_d2);
+        bool relative_supports_absolute =
+            phase_window != FIELDREG_UNKNOWN && phase.support >= 2 &&
+            phase_window == frame_d2 - frame_d1;
+        bool independent_spatial_support =
+            frame_support >= 2 || frame_motion_priority ||
+            (frame_support == 1 && relative_supports_absolute);
+        bool temporal_supports_change =
+            engine->previous_phase_valid && temporal_supports1 &&
+            temporal_supports2;
+        int requested_delta1 = frame_d1 - prior_d1;
+        int requested_delta2 = frame_d2 - prior_d2;
+        bool temporal_veto_ready1 = engine->previous_valid[0] && !scene_cut &&
+                                    temporal_margin1 >=
+                                        temporal_contradiction_margin;
+        bool temporal_veto_ready2 = engine->previous_valid[1] && !scene_cut &&
+                                    temporal_margin2 >=
+                                        temporal_contradiction_margin;
+        bool relative_change = requested_delta1 != requested_delta2;
+        bool temporal_contradicts_change;
+        if (relative_change && temporal_veto_ready1 && temporal_veto_ready2) {
+            /* Cancel coherent source motion. A field-registration event is
+             * the difference between the two same-parity motions, not either
+             * field's absolute motion against a moving picture. */
+            temporal_contradicts_change =
+                temporal_best1 - temporal_best2 !=
+                requested_delta1 - requested_delta2;
+        } else {
+            /* Common-mode registration has no differential signature. When
+             * only one temporal field is usable, retain its weaker absolute
+             * veto rather than manufacturing evidence for the other field. */
+            temporal_contradicts_change =
+                (change1 && temporal_veto_ready1 &&
+                 temporal_best1 != requested_delta1) ||
+                (change2 && temporal_veto_ready2 &&
+                 temporal_best2 != requested_delta2);
+        }
+        if ((change1 || change2) &&
+            (scene_cut || temporal_contradicts_change ||
+             (!independent_spatial_support && !temporal_supports_change))) {
+            frame_d1 = FIELDREG_UNKNOWN;
+            frame_d2 = FIELDREG_UNKNOWN;
+        }
+    }
+
+    int phase_target_d1 = FIELDREG_UNKNOWN;
+    int phase_target_d2 = FIELDREG_UNKNOWN;
+    bool absolute_changes_baseline =
+        absolute_d1 != FIELDREG_UNKNOWN &&
+        (!engine->phase_baseline_valid || absolute_d1 != engine->selected[0] ||
+         absolute_d2 != engine->selected[1]);
+    bool absolute_common_mode =
+        absolute_d1 != FIELDREG_UNKNOWN && absolute_d1 == absolute_d2;
+    bool absolute_relative_corroborated =
+        phase_window != FIELDREG_UNKNOWN &&
+        phase_window == absolute_d2 - absolute_d1;
+    if (absolute_d1 != FIELDREG_UNKNOWN &&
+        (!absolute_changes_baseline || absolute_common_mode ||
+         absolute_relative_corroborated)) {
+        phase_target_d1 = absolute_d1;
+        phase_target_d2 = absolute_d2;
+    } else if (phase_window != FIELDREG_UNKNOWN && engine->pending_valid &&
+               engine->pending[1] - engine->pending[0] == phase_window) {
+        /* Absolute edges may abstain inside a candidate run. Relative phase
+         * may continue that already-anchored exact pair, but cannot invent a
+         * new absolute gauge. */
+        phase_target_d1 = engine->pending[0];
+        phase_target_d2 = engine->pending[1];
+    } else if (phase_window != FIELDREG_UNKNOWN &&
+               engine->phase_baseline_valid &&
+               engine->selected[1] - engine->selected[0] == phase_window) {
+        phase_target_d1 = engine->selected[0];
+        phase_target_d2 = engine->selected[1];
+    }
+    bool phase_pair_valid = phase_target_d1 != FIELDREG_UNKNOWN &&
+                            phase_target_d2 != FIELDREG_UNKNOWN;
     out->mode = FIELDREG_MODE_INVALID_UNIT;
     bool phase_changed = false;
     if (phase_model) {
-        phase_changed = phase_window != FIELDREG_UNKNOWN &&
+        phase_changed = phase_pair_valid &&
                         (!engine->phase_baseline_valid ||
-                         phase_target_d1 != engine->baseline[0] ||
-                         phase_target_d2 != engine->baseline[1]);
+                         phase_target_d1 != engine->selected[0] ||
+                         phase_target_d2 != engine->selected[1]);
         if (!transport_ok) {
+            engine->pending_valid = false;
+            engine->pending_count = 0;
+            engine->pending_age = 0;
+            engine->phase_unsettled_units = 0;
             out->mode = FIELDREG_MODE_UNKNOWN_TRANSPORT_OR_VBI;
         } else if (scene_cut) {
+            /* MPEG/new-picture boundaries are deliberately absent evidence:
+             * preserve a candidate, but neither support nor contradict it. */
+            if (engine->pending_valid) {
+                ++engine->pending_age;
+                ++engine->phase_unsettled_units;
+            }
             out->mode = FIELDREG_MODE_UNKNOWN_SCENE_CUT_HOLD;
-        } else if (phase_window == FIELDREG_UNKNOWN) {
+        } else if (!phase_pair_valid && phase_window == FIELDREG_UNKNOWN) {
+            if (engine->pending_valid) {
+                ++engine->pending_age;
+                ++engine->phase_unsettled_units;
+            }
             out->mode = FIELDREG_MODE_UNKNOWN_SPATIAL_PHASE;
+        } else if (!phase_pair_valid) {
+            engine->pending_valid = false;
+            engine->pending_count = 0;
+            engine->pending_age = 0;
+            ++engine->phase_unsettled_units;
+            out->mode = FIELDREG_MODE_UNKNOWN_COMMON_MODE_GAUGE;
         } else if (!phase_changed) {
-            /* Contrary evidence drains, rather than instantly erases, a
-             * pending re-estimate. This is a bounded leaky hysteresis window. */
-            if (engine->pending_valid && engine->pending_count > 0)
-                --engine->pending_count;
-            if (engine->pending_count == 0)
-                engine->pending_valid = false;
+            engine->pending_valid = false;
+            engine->pending_count = 0;
+            engine->pending_age = 0;
+            engine->phase_unsettled_units = 0;
             out->decision_d1 = engine->selected[0];
             out->decision_d2 = engine->selected[1];
             out->mode = FIELDREG_MODE_STABLE_MOTION_PHASE;
         } else {
-            /* The rolling spatial phase mode is the hysteresis. */
-            int required_dwell = 1;
+            /* A candidate is a contiguous exact (d1,d2) trajectory, not a
+             * trailing majority. Contradictory current evidence replaces it
+             * immediately, so old votes can never fire after a jump ends. */
             if (engine->pending_valid &&
                 engine->pending[0] == phase_target_d1 &&
-                engine->pending[1] == phase_target_d2 &&
-                engine->pending_age <= 30) {
+                engine->pending[1] == phase_target_d2) {
                 ++engine->pending_count;
             } else {
                 engine->pending[0] = (int8_t)phase_target_d1;
                 engine->pending[1] = (int8_t)phase_target_d2;
                 engine->pending_valid = true;
                 engine->pending_count = 1;
+                engine->pending_age = 0;
             }
-            engine->pending_age = 0;
-            if ((int)engine->pending_count >= required_dwell) {
+            ++engine->pending_age;
+            ++engine->phase_unsettled_units;
+            if (engine->pending_age >= engine->config.confirmation_units &&
+                engine->pending_count >= engine->config.minimum_support_units) {
                 engine->selected[0] = (int8_t)phase_target_d1;
                 engine->selected[1] = (int8_t)phase_target_d2;
                 engine->baseline[0] = (int8_t)phase_target_d1;
                 engine->baseline[1] = (int8_t)phase_target_d2;
                 engine->phase_baseline_valid = true;
                 engine->phase_baseline_age = 0;
-                engine->selected_relative = (int8_t)phase_window;
+                engine->selected_relative =
+                    (int8_t)(phase_target_d2 - phase_target_d1);
+                out->decision_backdate = engine->pending_age;
                 clear_band_history(engine);
                 engine->pending_valid = false;
                 engine->pending_count = 0;
+                engine->pending_age = 0;
+                engine->phase_unsettled_units = 0;
                 out->decision_d1 = engine->selected[0];
                 out->decision_d2 = engine->selected[1];
                 out->mode = FIELDREG_MODE_CONVERGED_MOTION_PHASE;
             } else {
                 out->mode = FIELDREG_MODE_UNKNOWN_PHASE_DWELL;
             }
+        }
+        if (engine->phase_unsettled_units >=
+            engine->config.maximum_buffered_units) {
+            /* The bounded caller FIFO cannot retain an unfinalized path
+             * forever. It flushes each unit at the phase already assigned,
+             * logs this reset, and demands a fresh stable lock; the engine
+             * never asks the caller to drop, repeat, or retroactively rewrite
+             * those units to raw. */
+            engine->pending_valid = false;
+            engine->pending_count = 0;
+            engine->pending_age = 0;
+            engine->phase_unsettled_units = 0;
+            engine->phase_baseline_valid = false;
+            engine->selected[0] = 0;
+            engine->selected[1] = 0;
+            engine->baseline[0] = 0;
+            engine->baseline[1] = 0;
+            engine->selected_relative = 0;
+            out->trajectory_reset = true;
+            out->decision_d1 = FIELDREG_UNKNOWN;
+            out->decision_d2 = FIELDREG_UNKNOWN;
+            out->mode = FIELDREG_MODE_UNKNOWN_PHASE_DWELL;
         }
     } else if (scene_cut && !changed1 && !changed2) {
         out->mode = FIELDREG_MODE_UNKNOWN_SCENE_CUT_HOLD;
@@ -925,7 +1175,7 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
         ++engine->phase_baseline_age;
 
     if (phase_model && transport_ok && engine->phase_baseline_valid &&
-        engine->phase_baseline_age >= FIELDREG_PHASE_HISTORY) {
+        engine->phase_baseline_age >= engine->config.confirmation_units) {
         int fast_d[2] = {FIELDREG_UNKNOWN, FIELDREG_UNKNOWN};
         uint8_t fast_support[2] = {0, 0};
         bool fast_conflict = false;
@@ -981,15 +1231,10 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
         out->fast_edge_support_f1 = fast_support[0];
         out->fast_edge_support_f2 = fast_support[1];
         out->fast_edge_spatial_conflict = fast_conflict;
-        /*
-         * These absolute-edge observations are deliberately diagnostic-only.
-         * Heterogeneous rasters can contain two real spatial phases (an
-         * overlay and the underlying programme), and dot crawl can move a
-         * local edge without any transport-registration change.  The full
-         * tape audit showed that granting this fast path authority produced
-         * thousands of false transitions.  Log the candidate, but let only
-         * the broad, motion-compensated rolling phase estimate move state.
-         */
+        /* This historical-mode delta remains diagnostic-only. Heterogeneous
+         * rasters can move a local edge without moving the field. The current
+         * unit's independently coherent absolute pair was already fused
+         * above; this path only reports a sudden delta from learned modes. */
         bool common_mode = fast_d1 != FIELDREG_UNKNOWN && fast_d1 != 0 &&
                            fast_d1 == fast_d2;
         bool fast_valid = fast_d1 != FIELDREG_UNKNOWN &&
@@ -1013,8 +1258,30 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
         }
     }
 
-    out->applied_d1 = engine->selected[0];
-    out->applied_d2 = engine->selected[1];
+    out->baseline_d1 = engine->selected[0];
+    out->baseline_d2 = engine->selected[1];
+    out->frame_observation_d1 = (int8_t)frame_d1;
+    out->frame_observation_d2 = (int8_t)frame_d2;
+    out->frame_observation_support = frame_support;
+    out->frame_observation_motion_priority = frame_motion_priority;
+    out->frame_observation_conflict = frame_conflict;
+    int held_d1 = engine->previous_phase_valid ? engine->previous_phase[0]
+                                                : engine->selected[0];
+    int held_d2 = engine->previous_phase_valid ? engine->previous_phase[1]
+                                                : engine->selected[1];
+    if (!phase_model || out->decision_backdate || out->trajectory_reset) {
+        held_d1 = engine->selected[0];
+        held_d2 = engine->selected[1];
+    }
+    out->applied_d1 = phase_model && frame_d1 != FIELDREG_UNKNOWN
+                          ? (int8_t)frame_d1
+                          : (int8_t)held_d1;
+    out->applied_d2 = phase_model && frame_d2 != FIELDREG_UNKNOWN
+                          ? (int8_t)frame_d2
+                          : (int8_t)held_d2;
+    engine->previous_phase[0] = out->applied_d1;
+    engine->previous_phase[1] = out->applied_d2;
+    engine->previous_phase_valid = transport_ok;
     out->confidence = phase_model
                           ? phase.confidence
                           : dual_edge
@@ -1033,6 +1300,8 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     out->pending_d1 = engine->pending_valid ? engine->pending[0] : engine->selected[0];
     out->pending_d2 = engine->pending_valid ? engine->pending[1] : engine->selected[1];
     out->pending_count = engine->pending_count;
+    out->pending_span = engine->pending_age;
+    out->trajectory_locked = engine->phase_baseline_valid;
     out->best_relative = phase_model ? (int8_t)phase_window
                                      : (int8_t)best_relative;
     out->selected_relative = engine->selected_relative;
@@ -1072,7 +1341,9 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     out->phase_support = phase.support;
     out->spatial_phase_conflict = phase.conflict;
     out->phase_window = (int8_t)phase_window;
-    out->phase_window_count = phase_window_count;
+    out->phase_window_count =
+        engine->pending_count > UINT8_MAX ? UINT8_MAX
+                                          : (uint8_t)engine->pending_count;
     out->phase_window_margin = phase_window_margin;
 
     /*

@@ -838,8 +838,9 @@ one USB capture service → {archival writer, OBS source (V+A), CMIO video ext +
 
 **Control surface (final):** three tiers, each on the most standard
 rail available. (1) **Mode selection = advertised FORMATS** in every app's native picker — the
-raw/corrected split ("v-sync"/registration correction) is format choice (`720×480i raw`,
-`720×480p59.94 corrected`), zero custom client code. (2) **CMIO custom properties** carry the
+raw/corrected split ("v-sync"/registration correction) is a device stream/property choice;
+**both remain `720×480i`**. The device does not bake in bob or cadence decisions—OBS/ffmpeg/post
+deinterlaces if desired. (2) **CMIO custom properties** carry the
 long tail of device-global knobs. (3) **A real configurator app** — polished SwiftUI, "the
 typical Mac way," Desktop-Video-Setup-class — owns logging, diagnostics, decision-log viewing,
 and property editing. **This is a PUBLISHED app end-state**, so build quality, signing/
@@ -890,7 +891,7 @@ delivery edge; wrong one at acquisition.
   `Unknown`. Golden-tested against `field_origin_census.tsv` and the
   whole_tape decision log; must match the offline estimator's confident decisions and stay within
   the 16.68 ms/field budget in C.
-- ✅ **P1 + P2 landed.** `src/capture_core/` (capture core as a library: device +
+- ✅ **P1 + initial P2 landed (P2 estimator superseded below).** `src/capture_core/` (capture core as a library: device +
   replay backends behind one callback API, tpc sink, adversarial suite green under plain/TSAN/
   ASan+UBSan; two real bugs caught pre-consumer — a ring publication race, and unconfessed loss
   at termination when the ring is full). `src/field_registration/`: allocation-free dual-edge
@@ -904,11 +905,46 @@ delivery edge; wrong one at acquisition.
   old sidecar chattered +2/+3 — promising, pending visual confirmation. CMIO startup guidance
   from P2: suppress samples during Arming; start the device timeline at the first stable A/V
   epoch; no synthetic startup frames.
+- **P2 trajectory correction (supersedes the 120-unit rolling-mode policy above):**
+  the rolling majority was proven to manufacture delayed plateaus. Production now uses a
+  caller-owned bounded FIFO (30-unit confirmation, 36-unit hard horizon). Strong per-unit
+  absolute geometry and the stable fallback trajectory are separate: a coherent top+bottom
+  `(d1,d2)` candidate may correct a buffered unit even if it lasts only one frame, but an
+  opposite same-parity **differential** motion measurement vetoes it. The differential cancels
+  coherent picture/credit motion and prevents a source-carried edge or overlay phase from moving
+  the whole field against the dominant picture asset. Hysteresis changes only the fallback for
+  abstaining units. Cuts/global-luma steps make the current unit abstain because the measured
+  envelope is source-carried. Between observations, presentation
+  holds the last accepted per-unit phase instead of snapping to an older baseline; the sidecar
+  names this `HeldLastObservation`. A settled fallback is backdated only onto buffered
+  abstentions. At the horizon, the caller flushes the already-held buffered trajectory,
+  labels abstentions `HeldUnresolvedHorizon`, logs `trajectory_reset`, and starts fresh—never
+  rewrite the buffer to raw around isolated observations, and never drop/repeat a unit.
+  Neither field is a permanent anchor; `(0,1) -> (1,0)` is legal. Integration is off the USB hot
+  path via preallocated lock-free SPSC pointer handoffs; `field_registration` itself allocates nothing.
+  **Six-minute production-path proof:** 10,800 units through C registration +
+  bounded FIFO + `estdif` produced 54 finalized offset transitions (only five 1–3-unit runs),
+  zero known-observation/applied mismatches, and zero backdates over known observations. A caught
+  caller bug had rewritten buffered abstentions to raw at every hard-horizon reset, manufacturing
+  144 transitions/70 short runs; preserving the already-held trajectory reduced it to the numbers
+  above. untagged_capture golden: 3,784/4,042 overall census agreement, **3,499/3,499 confident**, with all
+  258 disagreements conservative under-corrections and no opposite correction; median 2.58 ms/unit
+  on M3 (~7.7% of one core). The lower overall agreement than the old edge-only result is deliberate:
+  differential dominant-picture motion may veto a rigid envelope edge on a multi-phase raster.
+  Targeted late-tape checks also close the specific delayed-plateau regression: a 7,300-unit
+  tail/credits window finalized three transitions and zero 1--3-unit runs; a 4,500-unit window
+  around a known one-unit registration event at 36:40 stayed `(0,0)` for 4,499 units and applied one directly observed
+  one-unit `(1,0)`, rather than holding a new phase to tape end. Both checks had zero
+  known-observation/application mismatches and zero backdating over observed units. This does
+  not claim one global field offset can reconcile the tape's spatially incompatible layers.
 - **P3 frameserver** — unit parser + signal-state classifier v0 (three-layer model, §6) +
-  registration engine + bob → IOSurface publisher + decision log + archival writer skeleton.
+  registration engine → interlaced UYVY IOSurface publisher + decision log + archival writer
+  skeleton. **No deinterlacer in C or on the real-time device path**; ffmpeg/OBS/post owns that
+  presentation decision.
   Both components test via replay.
 - **P4 CMIO extension (Swift)** — standard device, two advertised formats (raw 480i, corrected
-  59.94p), IOSurface/XPC consumer, custom properties. Includes a signing/notarization/dev-mode
+  480i), IOSurface/XPC consumer, custom properties. Deinterlacing belongs to OBS/ffmpeg/post.
+  Includes a signing/notarization/dev-mode
   investigation SPIKE first (published-app requirement; no boot-security changes).
 - **P5 configurator app (SwiftUI)** — status, logging, decision-log viewer, property editor.
 - Throughout: **all testing via deterministic replay** (whole_tape.tpc + untagged_capture + libusb_replay_shim +

@@ -28,8 +28,11 @@ enum {
     FIELDREG_FIELD1_MAX_OFFSET = 4,
     FIELDREG_FIELD2_MAX_OFFSET = 4,
     FIELDREG_X_SAMPLES = 180,
-    FIELDREG_PHASE_HISTORY = 120,
-    FIELDREG_ALGORITHM_VERSION = 2,
+    /* One second at 30000/1001. The caller delays presentation by this many
+     * units so a settled decision can be applied at its observed onset. */
+    FIELDREG_PHASE_CONFIRM_UNITS = 30,
+    FIELDREG_MAX_CONFIRM_UNITS = 120,
+    FIELDREG_ALGORITHM_VERSION = 3,
     FIELDREG_UNKNOWN = -128,
 };
 
@@ -64,6 +67,12 @@ typedef struct fieldreg_config {
     /* Minimum weave runner-up margin before changing relative registration. */
     double switch_margin;
     fieldreg_evidence_model evidence_model;
+    /* Bounded presentation latency / contiguous trajectory horizon. */
+    uint32_t confirmation_units;
+    /* Required agreeing observations inside confirmation_units. */
+    uint32_t minimum_support_units;
+    /* Hard bound on caller-owned delayed units, including abstentions. */
+    uint32_t maximum_buffered_units;
 } fieldreg_config;
 
 typedef struct fieldreg_decision {
@@ -71,6 +80,15 @@ typedef struct fieldreg_decision {
     int8_t decision_d2;
     int8_t applied_d1;
     int8_t applied_d2;
+    /* Stable fallback state for units whose own geometry abstains. */
+    int8_t baseline_d1;
+    int8_t baseline_d2;
+    /* Strong absolute observation for this unit, independent of hysteresis. */
+    int8_t frame_observation_d1;
+    int8_t frame_observation_d2;
+    uint8_t frame_observation_support;
+    bool frame_observation_motion_priority;
+    bool frame_observation_conflict;
     fieldreg_mode mode;
     double confidence;
 
@@ -79,6 +97,10 @@ typedef struct fieldreg_decision {
     int8_t pending_d1;
     int8_t pending_d2;
     uint32_t pending_count;
+    uint32_t pending_span;
+    uint32_t decision_backdate;
+    bool trajectory_reset;
+    bool trajectory_locked;
     int8_t best_relative;
     int8_t selected_relative;
     double independent_evidence_margin;
@@ -146,10 +168,12 @@ typedef struct field_registration {
     uint32_t pending_count;
     uint32_t pending_age;
     uint32_t frames_seen;
-    int8_t phase_history[FIELDREG_PHASE_HISTORY];
-    uint16_t phase_history_index;
-    uint16_t phase_history_filled;
-    uint8_t phase_counts[13];
+    uint32_t phase_unsettled_units;
+    /* Best phase assigned to the immediately preceding raw unit. An
+     * abstention holds this phase; only new corroborated evidence, convergence,
+     * or an explicit reset may create a presentation transition. */
+    int8_t previous_phase[2];
+    bool previous_phase_valid;
 
     /* [field][top/bottom][left/center/right][signed line + 64]. */
     uint16_t spatial_edge_counts[2][2][3][129];
@@ -173,6 +197,8 @@ size_t fieldreg_state_size(void);
 size_t fieldreg_config_size(void);
 size_t fieldreg_decision_size(void);
 uint32_t fieldreg_algorithm_version(void);
+uint32_t fieldreg_confirmation_units(const field_registration *engine);
+uint32_t fieldreg_buffer_units(const field_registration *engine);
 void fieldreg_init(field_registration *engine, const fieldreg_config *config);
 
 /* Start a newly acquired source segment and clear temporal decision state. */

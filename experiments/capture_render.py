@@ -19,7 +19,7 @@ import subprocess
 import struct
 import sys
 import tempfile
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -1152,6 +1152,9 @@ class _CFieldRegistrationConfig(ctypes.Structure):
     _fields_ = (
         ("switch_margin", ctypes.c_double),
         ("evidence_model", ctypes.c_int),
+        ("confirmation_units", ctypes.c_uint32),
+        ("minimum_support_units", ctypes.c_uint32),
+        ("maximum_buffered_units", ctypes.c_uint32),
     )
 
 
@@ -1161,6 +1164,13 @@ class _CFieldRegistrationDecision(ctypes.Structure):
         ("decision_d2", ctypes.c_int8),
         ("applied_d1", ctypes.c_int8),
         ("applied_d2", ctypes.c_int8),
+        ("baseline_d1", ctypes.c_int8),
+        ("baseline_d2", ctypes.c_int8),
+        ("frame_observation_d1", ctypes.c_int8),
+        ("frame_observation_d2", ctypes.c_int8),
+        ("frame_observation_support", ctypes.c_uint8),
+        ("frame_observation_motion_priority", ctypes.c_bool),
+        ("frame_observation_conflict", ctypes.c_bool),
         ("mode", ctypes.c_int),
         ("confidence", ctypes.c_double),
         ("best_d1", ctypes.c_int8),
@@ -1168,6 +1178,10 @@ class _CFieldRegistrationDecision(ctypes.Structure):
         ("pending_d1", ctypes.c_int8),
         ("pending_d2", ctypes.c_int8),
         ("pending_count", ctypes.c_uint32),
+        ("pending_span", ctypes.c_uint32),
+        ("decision_backdate", ctypes.c_uint32),
+        ("trajectory_reset", ctypes.c_bool),
+        ("trajectory_locked", ctypes.c_bool),
         ("best_relative", ctypes.c_int8),
         ("selected_relative", ctypes.c_int8),
         ("independent_evidence_margin", ctypes.c_double),
@@ -1229,6 +1243,9 @@ class CRegistrationEstimator:
         library_path: str | Path,
         switch_margin: float,
         evidence_model: str,
+        confirmation_units: int = 30,
+        minimum_support_units: int | None = None,
+        maximum_buffered_units: int | None = None,
     ):
         self.library_path = Path(library_path)
         self.library = ctypes.CDLL(str(self.library_path))
@@ -1236,6 +1253,10 @@ class CRegistrationEstimator:
         self.library.fieldreg_config_size.restype = ctypes.c_size_t
         self.library.fieldreg_decision_size.restype = ctypes.c_size_t
         self.library.fieldreg_algorithm_version.restype = ctypes.c_uint32
+        self.library.fieldreg_confirmation_units.argtypes = (ctypes.c_void_p,)
+        self.library.fieldreg_confirmation_units.restype = ctypes.c_uint32
+        self.library.fieldreg_buffer_units.argtypes = (ctypes.c_void_p,)
+        self.library.fieldreg_buffer_units.restype = ctypes.c_uint32
         if self.library.fieldreg_config_size() != ctypes.sizeof(_CFieldRegistrationConfig):
             raise RuntimeError("field_registration config ABI size mismatch")
         if self.library.fieldreg_decision_size() != ctypes.sizeof(_CFieldRegistrationDecision):
@@ -1249,7 +1270,17 @@ class CRegistrationEstimator:
         }[evidence_model]
         self.evidence_model = evidence_model
         self.algorithm_version = self.library.fieldreg_algorithm_version()
-        self.config = _CFieldRegistrationConfig(switch_margin, model_value)
+        if minimum_support_units is None:
+            minimum_support_units = confirmation_units
+        if maximum_buffered_units is None:
+            maximum_buffered_units = confirmation_units + 6
+        self.config = _CFieldRegistrationConfig(
+            switch_margin,
+            model_value,
+            confirmation_units,
+            minimum_support_units,
+            maximum_buffered_units,
+        )
         self.library.fieldreg_init.argtypes = (
             ctypes.c_void_p,
             ctypes.POINTER(_CFieldRegistrationConfig),
@@ -1265,6 +1296,10 @@ class CRegistrationEstimator:
         self.library.fieldreg_mode_name.argtypes = (ctypes.c_int,)
         self.library.fieldreg_mode_name.restype = ctypes.c_char_p
         self.library.fieldreg_init(self.state, ctypes.byref(self.config))
+        self.confirmation_units = self.library.fieldreg_confirmation_units(
+            self.state
+        )
+        self.buffer_units = self.library.fieldreg_buffer_units(self.state)
         self.selected = (0, 0)
 
     def begin_segment(self) -> None:
@@ -1289,15 +1324,31 @@ class CRegistrationEstimator:
             raise RuntimeError("production field_registration rejected an exact e801 unit")
         mode = self.library.fieldreg_mode_name(result.mode).decode("ascii")
         decision = self._pair(result.decision_d1, result.decision_d2)
-        self.selected = (result.applied_d1, result.applied_d2)
+        applied = (result.applied_d1, result.applied_d2)
+        self.selected = (result.baseline_d1, result.baseline_d2)
         return {
             "decision": decision,
-            "applied": self.selected,
+            "applied": applied,
+            "baseline": (result.baseline_d1, result.baseline_d2),
+            "frame_observation": self._pair(
+                result.frame_observation_d1, result.frame_observation_d2
+            ),
+            "frame_observation_support": result.frame_observation_support,
+            "frame_observation_motion_priority": (
+                result.frame_observation_motion_priority
+            ),
+            "frame_observation_conflict": result.frame_observation_conflict,
             "mode": mode,
             "confidence": result.confidence,
             "best_pair": (result.best_d1, result.best_d2),
             "pending_pair": (result.pending_d1, result.pending_d2),
             "pending_count": result.pending_count,
+            "pending_span": result.pending_span,
+            "decision_backdate": result.decision_backdate,
+            "trajectory_reset": result.trajectory_reset,
+            "trajectory_locked": result.trajectory_locked,
+            "confirmation_units": self.confirmation_units,
+            "maximum_buffered_units": self.buffer_units,
             "best_relative": result.best_relative,
             "selected_relative": result.selected_relative,
             "independent_evidence": result.independent_evidence_margin,
@@ -1657,6 +1708,13 @@ TPC_DECISION_COLUMNS = (
     "decision_d2",
     "applied_d1",
     "applied_d2",
+    "baseline_d1",
+    "baseline_d2",
+    "frame_observation_d1",
+    "frame_observation_d2",
+    "frame_observation_support",
+    "frame_observation_motion_priority",
+    "frame_observation_conflict",
     "mode",
     "confidence",
     "best_d1",
@@ -1664,6 +1722,13 @@ TPC_DECISION_COLUMNS = (
     "pending_d1",
     "pending_d2",
     "pending_count",
+    "pending_span",
+    "decision_backdate",
+    "trajectory_reset",
+    "trajectory_locked",
+    "confirmation_units",
+    "maximum_buffered_units",
+    "presentation_policy",
     "best_relative_d2_minus_d1",
     "selected_relative_d2_minus_d1",
     "independent_evidence_margin",
@@ -1721,11 +1786,12 @@ def tagged_decision_row(
     captured_bytes,
     registration,
     applied,
+    presentation_policy,
 ):
     if registration is None:
         applied_d1, applied_d2 = applied
         row = [""] * len(TPC_DECISION_COLUMNS)
-        row[:11] = (
+        row[:10] = (
             index,
             counter,
             extended_counter,
@@ -1736,13 +1802,18 @@ def tagged_decision_row(
             "",
             applied_d1,
             applied_d2,
-            unit_state,
+        )
+        row[TPC_DECISION_COLUMNS.index("mode")] = unit_state
+        row[TPC_DECISION_COLUMNS.index("presentation_policy")] = (
+            presentation_policy
         )
         return tuple(row)
     decision = registration["decision"]
     best_d1, best_d2 = registration["best_pair"]
     pending_d1, pending_d2 = registration["pending_pair"]
-    applied_d1, applied_d2 = registration["applied"]
+    # A later buffered decision may have finalized this earlier unit with a
+    # backdated mapping. Preserve the caller's finalized pair in the sidecar.
+    applied_d1, applied_d2 = applied
     row = (
         index,
         counter,
@@ -1754,6 +1825,11 @@ def tagged_decision_row(
         "" if decision is None else decision[1],
         applied_d1,
         applied_d2,
+        *registration.get("baseline", applied),
+        *(registration.get("frame_observation") or ("", "")),
+        registration.get("frame_observation_support", ""),
+        int(registration.get("frame_observation_motion_priority", False)),
+        int(registration.get("frame_observation_conflict", False)),
         registration["mode"],
         f"{registration['confidence']:.9f}",
         best_d1,
@@ -1761,6 +1837,13 @@ def tagged_decision_row(
         pending_d1,
         pending_d2,
         registration["pending_count"],
+        registration.get("pending_span", ""),
+        registration.get("decision_backdate", ""),
+        int(registration.get("trajectory_reset", False)),
+        int(registration.get("trajectory_locked", False)),
+        registration.get("confirmation_units", ""),
+        registration.get("maximum_buffered_units", ""),
+        presentation_policy,
         registration["best_relative"],
         registration["selected_relative"],
         f"{registration['independent_evidence']:.9f}",
@@ -2569,17 +2652,21 @@ def prepare_tagged_audio_and_census(input_path, pcm_path):
     return stats, video, audio
 
 
-def tagged_audio_window(audio_rows, first_video_counter, video_frames):
+def tagged_audio_window(audio_rows, first_video_extended_counter, video_frames):
     candidates = [
-        index for index, (counter, _sample, _extended) in enumerate(audio_rows)
-        if counter == first_video_counter
+        index for index, (_counter, _sample, _extended) in enumerate(audio_rows)
+        if _extended == first_video_extended_counter
     ]
     if not candidates:
         raise RuntimeError(
-            f"no audio resync occurrence for first video counter {first_video_counter}"
+            "no audio resync occurrence for first extended video counter "
+            f"{first_video_extended_counter}"
         )
-    # Both endpoints start together, so the earliest matching occurrence is
-    # the correct epoch. A 48-minute tape wraps the raw 16-bit counter once.
+    if len(candidates) != 1:
+        raise RuntimeError(
+            "ambiguous audio resync occurrence for extended video counter "
+            f"{first_video_extended_counter}: {candidates}"
+        )
     start_row = candidates[0]
     start_extended = audio_rows[start_row][2]
     end_extended = start_extended + video_frames
@@ -2590,7 +2677,7 @@ def tagged_audio_window(audio_rows, first_video_counter, video_frames):
             f"no audio resync anchor at extended counter {end_extended}; "
             f"last is {extended_values[-1]}"
         )
-    expected_end_counter = (first_video_counter + video_frames) & 0xFFFF
+    expected_end_counter = (first_video_extended_counter + video_frames) & 0xFFFF
     if audio_rows[end_row][0] != expected_end_counter:
         raise RuntimeError(
             f"audio/video counter window mismatch: expected end "
@@ -2620,6 +2707,9 @@ def render_tagged(
     deinterlacer,
     adaptive_registration,
     registration_switch_margin,
+    registration_confirm_units,
+    registration_min_support_units,
+    registration_max_buffered_units,
     fieldreg_library,
     fieldreg_evidence,
     start_unit,
@@ -2670,9 +2760,9 @@ def render_tagged(
             available_units if limit_units is None
             else min(available_units, limit_units)
         )
-        first_render_counter = (
+        first_render_extended_counter = (
             census.first_counter + selected_start_unit
-        ) & 0xFFFF
+        )
         (
             audio_start_row,
             audio_end_row,
@@ -2680,7 +2770,7 @@ def render_tagged(
             audio_start,
             audio_end,
         ) = tagged_audio_window(
-            audio.sync_rows, first_render_counter, output_units
+            audio.sync_rows, first_render_extended_counter, output_units
         )
         expected_audio = output_units * 48_000 * 1001 / 30_000
         actual_audio = audio_end - audio_start
@@ -2810,6 +2900,9 @@ def render_tagged(
                 fieldreg_library,
                 registration_switch_margin,
                 fieldreg_evidence,
+                registration_confirm_units,
+                registration_min_support_units,
+                registration_max_buffered_units,
             )
             if fieldreg_library
             else RegistrationEstimator(registration_switch_margin)
@@ -2826,12 +2919,64 @@ def render_tagged(
         if process.stdin is None:
             raise RuntimeError("ffmpeg raw-video stdin was not created")
 
+        delayed_units = deque()
+        decision_buffer_units = (
+            estimator.buffer_units
+            if adaptive_registration
+            and isinstance(estimator, CRegistrationEstimator)
+            and fieldreg_evidence == "phase"
+            else 0
+        )
+
+        def present_entry(entry):
+            output_index = entry["output_index"]
+            applied_d1, applied_d2 = entry["applied"]
+            registration = entry["registration"]
+            offset_counts[(applied_d1, applied_d2)] += 1
+            if decision_writer:
+                decision_writer.writerow(
+                    tagged_decision_row(
+                        output_index,
+                        entry["counter"],
+                        extended_start + output_index,
+                        entry["unit_state"],
+                        entry["captured_bytes"],
+                        registration,
+                        (applied_d1, applied_d2),
+                        entry["presentation_policy"],
+                    )
+                )
+            if adaptive_registration:
+                frame = unit_to_registered_480i(
+                    entry["unit"],
+                    first_field,
+                    applied_d1,
+                    applied_d2,
+                )
+            else:
+                frame = unit_to_480i(entry["unit"], first_field)
+            process.stdin.write(frame)
+            if output_index and output_index % 3000 == 0:
+                print(
+                    f"tpc rendered output units {output_index:,}/{output_units:,}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
+        def flush_delayed_units(all_units=False):
+            retain = 0 if all_units else decision_buffer_units
+            while len(delayed_units) > retain:
+                present_entry(delayed_units.popleft())
+
+        class RenderLimitReached(Exception):
+            pass
+
         def emit_unit(index, counter, unit, unit_state, captured_bytes):
             if index < selected_start_unit:
                 return
             output_index = index - selected_start_unit
             if output_index >= output_units:
-                return
+                raise RenderLimitReached
             if output_index == 0:
                 if unit_state != "Exact":
                     raise RuntimeError(
@@ -2864,51 +3009,107 @@ def render_tagged(
             if adaptive_registration and unit_state == "Exact":
                 registration = estimator.decide(unit)
                 applied_d1, applied_d2 = registration["applied"]
+                if registration.get("frame_observation") is not None:
+                    presentation_policy = "CorrectedObserved"
+                elif registration["applied"] != registration.get(
+                    "baseline", registration["applied"]
+                ):
+                    presentation_policy = "HeldLastObservation"
+                elif registration.get("trajectory_locked", True):
+                    presentation_policy = "CorrectedLocked"
+                else:
+                    presentation_policy = "RawAwaitingLock"
                 decision_counts[registration["mode"]] += 1
             elif adaptive_registration:
                 applied_d1, applied_d2 = estimator.selected
+                presentation_policy = "HeldAcrossDeviceDamage"
                 decision_counts[unit_state] += 1
             else:
                 applied_d1 = applied_d2 = 0
-            offset_counts[(applied_d1, applied_d2)] += 1
-            if decision_writer:
-                decision_writer.writerow(
-                    tagged_decision_row(
-                        output_index,
-                        # The sidecar timeline is the presented CMIO/watch timeline,
-                        # not the suppressed device-arming prefix.
-                        counter,
-                        extended_start + output_index,
-                        unit_state,
-                        captured_bytes,
-                        registration,
-                        (applied_d1, applied_d2),
+                presentation_policy = "RawRegistrationDisabled"
+            delayed_units.append(
+                {
+                    "output_index": output_index,
+                    "counter": counter,
+                    "unit_state": unit_state,
+                    "captured_bytes": captured_bytes,
+                    "unit": unit,
+                    "registration": registration,
+                    "applied": (applied_d1, applied_d2),
+                    "presentation_policy": presentation_policy,
+                }
+            )
+            if registration is not None:
+                backdate = registration.get("decision_backdate", 0)
+                if backdate:
+                    if backdate > len(delayed_units):
+                        raise RuntimeError(
+                            f"registration backdate {backdate} exceeds buffered "
+                            f"units {len(delayed_units)}"
+                        )
+                    finalized = registration.get(
+                        "baseline", registration["applied"]
                     )
-                )
-            if adaptive_registration:
-                frame = unit_to_registered_480i(
-                    unit,
-                    first_field,
-                    applied_d1,
-                    applied_d2,
-                )
-            else:
-                frame = unit_to_480i(unit, first_field)
-            process.stdin.write(frame)
-            if output_index and output_index % 3000 == 0:
-                print(
-                    f"tpc rendered output units {output_index:,}/{output_units:,}",
-                    file=sys.stderr,
-                    flush=True,
-                )
+                    for buffered in list(delayed_units)[-backdate:]:
+                        buffered_registration = buffered.get("registration")
+                        if (
+                            buffered_registration is not None
+                            and buffered_registration.get("frame_observation")
+                            is None
+                        ):
+                            buffered["applied"] = finalized
+                            buffered["presentation_policy"] = (
+                                "CorrectedBackdated"
+                            )
+                if registration.get("trajectory_reset", False):
+                    # The hard horizon means the trajectory could not be
+                    # finalized, not that every abstaining unit suddenly had
+                    # zero displacement. Preserve the phase each buffered unit
+                    # was already holding; rewriting abstentions to (0,0)
+                    # interleaves raw/corrected crops and manufactures jitter.
+                    # If the reset-triggering unit also abstained, keep it on
+                    # the preceding held phase. A genuine per-unit observation
+                    # remains authoritative even when it lands at the horizon.
+                    # Then flush and reacquire from fresh C state.
+                    preceding_applied = (
+                        delayed_units[-2]["applied"]
+                        if len(delayed_units) >= 2
+                        else delayed_units[-1]["applied"]
+                    )
+                    for buffered in delayed_units:
+                        buffered_registration = buffered.get("registration")
+                        if (
+                            buffered_registration is None
+                            or buffered_registration.get("frame_observation")
+                            is None
+                        ):
+                            buffered["presentation_policy"] = (
+                                "HeldUnresolvedHorizon"
+                            )
+                    latest_registration = delayed_units[-1].get("registration")
+                    if (
+                        latest_registration is None
+                        or latest_registration.get("frame_observation") is None
+                    ):
+                        delayed_units[-1]["applied"] = preceding_applied
+                        delayed_units[-1]["presentation_policy"] = (
+                            "HeldUnresolvedHorizon"
+                        )
+                    flush_delayed_units(all_units=True)
+                    return
+            flush_delayed_units()
 
         render_units = TaggedVideoUnits(on_unit=emit_unit, copy_units=True)
         try:
-            second_stats = walk_tagged(
-                input_path,
-                on_video=render_units.feed,
-            )
-            render_units.finish()
+            try:
+                second_stats = walk_tagged(
+                    input_path,
+                    on_video=render_units.feed,
+                )
+                render_units.finish()
+            except RenderLimitReached:
+                second_stats = None
+            flush_delayed_units(all_units=True)
             process.stdin.close()
             return_code = process.wait()
         finally:
@@ -2916,7 +3117,12 @@ def render_tagged(
                 decision_output.close()
         if return_code:
             raise subprocess.CalledProcessError(return_code, command)
-        if (
+        if sum(offset_counts.values()) != output_units:
+            raise RuntimeError(
+                f"tpc render emitted {sum(offset_counts.values()):,} units, "
+                f"expected {output_units:,}"
+            )
+        if second_stats is not None and (
             render_units.exact_units != census.exact_units
             or render_units.short_units != census.short_units
             or render_units.absent_units != census.absent_units
@@ -2930,7 +3136,7 @@ def render_tagged(
                 f"first pass={census.exact_units:,}/{census.short_units:,}/"
                 f"{census.absent_units:,}/{census.timeline_units:,}"
             )
-        if (
+        if second_stats is not None and (
             second_stats.records != first_stats.records
             or second_stats.video.payload_bytes != first_stats.video.payload_bytes
             or second_stats.audio.payload_bytes != first_stats.audio.payload_bytes
@@ -3193,6 +3399,36 @@ def main():
         ),
     )
     parser.add_argument(
+        "--registration-confirm-units",
+        type=int,
+        default=30,
+        metavar="N",
+        help=(
+            "support trajectory for N 29.97-Hz units before applying a "
+            "backdated phase change (default: 30, about one second)"
+        ),
+    )
+    parser.add_argument(
+        "--registration-min-support-units",
+        type=int,
+        default=30,
+        metavar="N",
+        help=(
+            "minimum non-abstaining observations inside the confirmation "
+            "window (default: 30; cut/fade abstentions do not count)"
+        ),
+    )
+    parser.add_argument(
+        "--registration-max-buffered-units",
+        type=int,
+        default=36,
+        metavar="N",
+        help=(
+            "hard delayed-unit bound including cut/fade abstentions; an "
+            "unresolved path flushes honestly at this limit (default: 36)"
+        ),
+    )
+    parser.add_argument(
         "--tagged-start-unit",
         type=parse_tagged_start_unit,
         default=None,
@@ -3216,6 +3452,16 @@ def main():
 
     if args.registration_switch_margin < 0:
         parser.error("--registration-switch-margin must be non-negative")
+    if not (
+        1 <= args.registration_min_support_units
+        <= args.registration_confirm_units
+        <= args.registration_max_buffered_units
+        <= 120
+    ):
+        parser.error(
+            "registration units must satisfy 1 <= min-support <= confirm "
+            "<= max-buffered <= 120"
+        )
     if args.render_bufsize and not args.render_maxrate:
         parser.error("--render-bufsize requires --render-maxrate")
     if args.decision_log and not args.render:
@@ -3270,6 +3516,9 @@ def main():
             args.deinterlacer,
             args.adaptive_registration,
             args.registration_switch_margin,
+            args.registration_confirm_units,
+            args.registration_min_support_units,
+            args.registration_max_buffered_units,
             args.fieldreg_library,
             args.fieldreg_evidence,
             args.tagged_start_unit,
