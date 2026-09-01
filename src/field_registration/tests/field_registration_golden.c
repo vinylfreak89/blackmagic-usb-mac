@@ -356,7 +356,8 @@ static void compare_exact(video_stream *stream, const expected_row *expected,
     comparison *result = &stream->result;
     if (decision_output) {
         fprintf(decision_output,
-                "%u,%d,%d,%s,%d,%d,%.9f,%d,%d,%d,%d,%d,%d,%d,%d,%.9f,%.9f,%d,%d,%d,%.9f,%.9f\n",
+                "%u,%d,%d,%s,%d,%d,%.9f,%d,%d,%d,%d,%d,%d,%d,%d,%.9f,%.9f,%d,%d,%d,%.9f,%.9f,"
+                "%d,%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%u,%u,%d,%d,%u,%u,%d\n",
                 expected->counter, actual->applied_d1, actual->applied_d2,
                 fieldreg_mode_name(actual->mode), actual->decision_d1,
                 actual->decision_d2, actual->confidence,
@@ -368,7 +369,18 @@ static void compare_exact(video_stream *stream, const expected_row *expected,
                 actual->learned_bottom_stability_f1,
                 actual->dual_edge_agreement ? 1 : 0,
                 actual->temporal_best_f1, actual->temporal_best_f2,
-                actual->temporal_best_cost_f1, actual->temporal_best_cost_f2);
+                actual->temporal_best_cost_f1, actual->temporal_best_cost_f2,
+                actual->phase_vote_left, actual->phase_vote_center,
+                actual->phase_vote_right, actual->phase_motion_left,
+                actual->phase_motion_center, actual->phase_motion_right,
+                actual->phase_priority_band, actual->phase_consensus,
+                actual->phase_support,
+                actual->spatial_phase_conflict ? 1 : 0,
+                actual->phase_window, actual->phase_window_count,
+                actual->phase_window_margin, actual->fast_edge_d1,
+                actual->fast_edge_d2, actual->fast_edge_support_f1,
+                actual->fast_edge_support_f2,
+                actual->fast_edge_spatial_conflict ? 1 : 0);
     }
     ++result->exact;
     bool applied = actual->applied_d1 == expected->applied_d1 &&
@@ -819,9 +831,9 @@ static void usage(const char *program)
     fprintf(stderr,
             "usage:\n"
             "  %s --packet-capture CAPTURE --csv DECISIONS [--start-unit N] "
-            "[--model top|dual] [--output CSV]\n"
+            "[--model top|dual|phase] [--output CSV]\n"
             "  %s --untagged-capture CAPTURE --audio-spans SPANS --marker-index MARKERS --csv DECISIONS "
-            "--field-origin-census FIELD_ORIGIN_CENSUS [--model top|dual]\n",
+            "--field-origin-census FIELD_ORIGIN_CENSUS [--model top|dual|phase]\n",
             program, program);
     exit(2);
 }
@@ -853,6 +865,8 @@ int main(int argc, char **argv)
                 selected_model = FIELDREG_EVIDENCE_TOP_ONLY;
             else if (strcmp(model, "dual") == 0)
                 selected_model = FIELDREG_EVIDENCE_DUAL_EDGE;
+            else if (strcmp(model, "phase") == 0)
+                selected_model = FIELDREG_EVIDENCE_MOTION_PHASE;
             else
                 usage(argv[0]);
         }
@@ -871,7 +885,13 @@ int main(int argc, char **argv)
               "top_mode_f1,top_mode_f2,bottom_mode_f1,bottom_mode_f2,"
               "top_stability_f1,bottom_stability_f1,dual_edge_agreement,"
               "temporal_best_f1,temporal_best_f2,temporal_best_cost_f1,"
-              "temporal_best_cost_f2\n",
+              "temporal_best_cost_f2,phase_vote_left,phase_vote_center,"
+              "phase_vote_right,phase_motion_left,phase_motion_center,"
+              "phase_motion_right,phase_priority_band,phase_consensus,phase_support,"
+              "spatial_phase_conflict,phase_window,phase_window_count,"
+              "phase_window_margin,fast_edge_d1,fast_edge_d2,"
+              "fast_edge_support_f1,fast_edge_support_f2,"
+              "fast_edge_spatial_conflict\n",
               decision_output);
     }
     video_stream stream = tpc ? run_tagged(tpc, &expected, &truth, start_unit)

@@ -1195,6 +1195,24 @@ class _CFieldRegistrationDecision(ctypes.Structure):
         ("learned_bottom_stability_f1", ctypes.c_double),
         ("learned_bottom_stability_f2", ctypes.c_double),
         ("dual_edge_agreement", ctypes.c_bool),
+        ("phase_vote_left", ctypes.c_int8),
+        ("phase_vote_center", ctypes.c_int8),
+        ("phase_vote_right", ctypes.c_int8),
+        ("phase_motion_left", ctypes.c_int8),
+        ("phase_motion_center", ctypes.c_int8),
+        ("phase_motion_right", ctypes.c_int8),
+        ("phase_priority_band", ctypes.c_int8),
+        ("phase_consensus", ctypes.c_int8),
+        ("phase_support", ctypes.c_uint8),
+        ("spatial_phase_conflict", ctypes.c_bool),
+        ("phase_window", ctypes.c_int8),
+        ("phase_window_count", ctypes.c_uint8),
+        ("phase_window_margin", ctypes.c_uint8),
+        ("fast_edge_d1", ctypes.c_int8),
+        ("fast_edge_d2", ctypes.c_int8),
+        ("fast_edge_support_f1", ctypes.c_uint8),
+        ("fast_edge_support_f2", ctypes.c_uint8),
+        ("fast_edge_spatial_conflict", ctypes.c_bool),
     )
 
 
@@ -1204,6 +1222,7 @@ class CRegistrationEstimator:
     UNKNOWN = -128
     TOP_ONLY = 0
     DUAL_EDGE = 1
+    MOTION_PHASE = 2
 
     def __init__(
         self,
@@ -1216,6 +1235,7 @@ class CRegistrationEstimator:
         self.library.fieldreg_state_size.restype = ctypes.c_size_t
         self.library.fieldreg_config_size.restype = ctypes.c_size_t
         self.library.fieldreg_decision_size.restype = ctypes.c_size_t
+        self.library.fieldreg_algorithm_version.restype = ctypes.c_uint32
         if self.library.fieldreg_config_size() != ctypes.sizeof(_CFieldRegistrationConfig):
             raise RuntimeError("field_registration config ABI size mismatch")
         if self.library.fieldreg_decision_size() != ctypes.sizeof(_CFieldRegistrationDecision):
@@ -1225,8 +1245,10 @@ class CRegistrationEstimator:
         model_value = {
             "top": self.TOP_ONLY,
             "dual": self.DUAL_EDGE,
+            "phase": self.MOTION_PHASE,
         }[evidence_model]
         self.evidence_model = evidence_model
+        self.algorithm_version = self.library.fieldreg_algorithm_version()
         self.config = _CFieldRegistrationConfig(switch_margin, model_value)
         self.library.fieldreg_init.argtypes = (
             ctypes.c_void_p,
@@ -1303,7 +1325,27 @@ class CRegistrationEstimator:
             "bottom_stability1": result.learned_bottom_stability_f1,
             "bottom_stability2": result.learned_bottom_stability_f2,
             "dual_edge_agreement": result.dual_edge_agreement,
-            "engine": f"field_registration-c-{self.evidence_model}",
+            "phase_vote_left": result.phase_vote_left,
+            "phase_vote_center": result.phase_vote_center,
+            "phase_vote_right": result.phase_vote_right,
+            "phase_motion_left": result.phase_motion_left,
+            "phase_motion_center": result.phase_motion_center,
+            "phase_motion_right": result.phase_motion_right,
+            "phase_priority_band": result.phase_priority_band,
+            "phase_consensus": result.phase_consensus,
+            "phase_support": result.phase_support,
+            "spatial_phase_conflict": result.spatial_phase_conflict,
+            "phase_window": result.phase_window,
+            "phase_window_count": result.phase_window_count,
+            "phase_window_margin": result.phase_window_margin,
+            "fast_edge_d1": result.fast_edge_d1,
+            "fast_edge_d2": result.fast_edge_d2,
+            "fast_edge_support_f1": result.fast_edge_support_f1,
+            "fast_edge_support_f2": result.fast_edge_support_f2,
+            "fast_edge_spatial_conflict": result.fast_edge_spatial_conflict,
+            "engine": (
+                f"field_registration-c-{self.evidence_model}-v{self.algorithm_version}"
+            ),
         }
 
 
@@ -1649,6 +1691,24 @@ TPC_DECISION_COLUMNS = (
     "temporal_best_cost_f1",
     "temporal_best_cost_f2",
     "temporal_scene_cut",
+    "phase_vote_left",
+    "phase_vote_center",
+    "phase_vote_right",
+    "phase_motion_left",
+    "phase_motion_center",
+    "phase_motion_right",
+    "phase_priority_band",
+    "phase_consensus",
+    "phase_support",
+    "spatial_phase_conflict",
+    "phase_window",
+    "phase_window_count",
+    "phase_window_margin",
+    "fast_edge_d1",
+    "fast_edge_d2",
+    "fast_edge_support_f1",
+    "fast_edge_support_f2",
+    "fast_edge_spatial_conflict",
     "registration_engine",
 )
 
@@ -1745,6 +1805,30 @@ def tagged_decision_row(
         (
             "" if "temporal_scene_cut" not in registration
             else int(registration["temporal_scene_cut"])
+        ),
+        registration.get("phase_vote_left", ""),
+        registration.get("phase_vote_center", ""),
+        registration.get("phase_vote_right", ""),
+        registration.get("phase_motion_left", ""),
+        registration.get("phase_motion_center", ""),
+        registration.get("phase_motion_right", ""),
+        registration.get("phase_priority_band", ""),
+        registration.get("phase_consensus", ""),
+        registration.get("phase_support", ""),
+        (
+            "" if "spatial_phase_conflict" not in registration
+            else int(registration["spatial_phase_conflict"])
+        ),
+        registration.get("phase_window", ""),
+        registration.get("phase_window_count", ""),
+        registration.get("phase_window_margin", ""),
+        registration.get("fast_edge_d1", ""),
+        registration.get("fast_edge_d2", ""),
+        registration.get("fast_edge_support_f1", ""),
+        registration.get("fast_edge_support_f2", ""),
+        (
+            "" if "fast_edge_spatial_conflict" not in registration
+            else int(registration["fast_edge_spatial_conflict"])
         ),
         registration.get("engine", "python-top-only"),
     )
@@ -3094,17 +3178,18 @@ def main():
         "--registration-library",
         metavar="DYLIB",
         help=(
-            "use the production C dual-edge registration engine from DYLIB "
+            "use the production C registration engine from DYLIB "
             "instead of the Python compatibility estimator"
         ),
     )
     parser.add_argument(
         "--registration-evidence",
-        choices=("top", "dual"),
-        default="dual",
+        choices=("top", "dual", "phase"),
+        default="phase",
         help=(
-            "C registration evidence model (default: dual, requiring coherent "
-            "top+bottom geometry); top is retained for diagnostics"
+            "C registration evidence model (default: phase, using spatially "
+            "banded motion-compensated inter-field phase); dual/top are "
+            "retained for diagnostics"
         ),
     )
     parser.add_argument(
