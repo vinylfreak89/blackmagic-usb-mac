@@ -67,6 +67,9 @@ static void make_unit(uint8_t *unit, pattern kind, unsigned frame, uint8_t gray)
                     break;
                 case PATTERN_GRAY:
                     y = gray;
+                    if ((frame & 1) && line >= 40 && line <= 55 &&
+                        x >= 500 && x <= 650)
+                        y = ((x / 5 + line) & 1) ? 210 : gray;
                     break;
                 case PATTERN_SUBBLACK:
                     y = 2;
@@ -148,6 +151,9 @@ int main(void)
         assert(result.appearance == SIGNAL_APPEARANCE_NEUTRAL_GRAY_MUTE_LIKE);
     }
     assert(result.source == SIGNAL_SOURCE_MUTED);
+    result = classify(state, unit, PATTERN_GRAY, 133, 120);
+    result = classify(state, unit, PATTERN_GRAY, 135, 120);
+    assert(result.appearance == SIGNAL_APPEARANCE_NEUTRAL_GRAY_MUTE_LIKE);
 
     for (unsigned i = 0; i < 4; ++i) {
         result = classify(state, unit, PATTERN_SUBBLACK, 400 + i, 0);

@@ -206,9 +206,17 @@ static signal_appearance classify_appearance(const signal_measurements *m,
                               (4.0 - m->luma_sigma) / 8.0);
         return SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE;
     }
+    bool uniform_neutral = m->luma_sigma < 3.0 &&
+                           m->spatial_gradient_energy < 2.0;
+    bool neutral_with_small_overlay =
+        m->flat_pixel_fraction > 0.55 &&
+        m->spatial_gradient_energy < 3.0 &&
+        (!m->temporal_mad || m->temporal_mad < 2.0);
     if (neutral && m->luma_mean >= 8.0 && m->luma_mean <= 240.0 &&
-        m->luma_sigma < 3.0 && m->spatial_gradient_energy < 2.0) {
-        *confidence = clamp01(1.0 - m->luma_sigma / 3.0);
+        (uniform_neutral || neutral_with_small_overlay)) {
+        *confidence = uniform_neutral
+                          ? clamp01(1.0 - m->luma_sigma / 3.0)
+                          : clamp01((m->flat_pixel_fraction - 0.50) * 2.0);
         return SIGNAL_APPEARANCE_NEUTRAL_GRAY_MUTE_LIKE;
     }
     if (m->luma_sigma > 35.0 && m->spatial_gradient_energy > 30.0) {
