@@ -982,7 +982,23 @@ delivery edge; wrong one at acquisition.
   and 23,036,416 video DATA records with zero sequence/packet gaps and zero status errors.
   The renderer refuses dataless (File Provider placeholder) inputs rather than triggering a
   multi-gigabyte cloud fetch.
-- **P3 frameserver** — unit parser + signal-state classifier v0 (three-layer model, §6) +
+- ✅ **P3 landed (parser, classifier, frameserver assembly; trajectory redesign gated).**
+  `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
+  out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio
+  resync correlation), `src/signal_state/` (property-based three-layer classifier v0 with an
+  explicit unsettled-interval signal and the registration actions; ~0.61 ms/unit), and
+  `src/frameserver/` (capture core → parser → classifier → engine → IOSurface publisher →
+  decision log, fixed pool + SPSC handoff, low-latency live policy). **Whole-tape validation at
+  2× realtime:** 86,305 observations = 86,293 exact + 7 short + 4 unframed + 1 `0x0800`, 0 holes,
+  0 drops, 86,293 frames published, pool high-water 2/64; the live applied phases differ from the
+  archival log in exactly the 147 rows (five plateau onsets) that forward-only publication implies.
+  **Lookback investigation (two independent arms, reconciled):** backtracking IS necessary under
+  the intended reacquisition semantics, and the current caller does NOT deliver it — it backdates
+  only abstaining rows, and a lone positive `(0,1)` at frame 8169 stays latched 104 units against a
+  locked `(1,0)`; see `src/field_registration/TRAJECTORY.md` (gated redesign contract) and its
+  falsifying two-truth golden (current engine 307/327 raster, 276/430 trajectory, 124/124 wrong in
+  the stale interval). No P2 behaviour was changed; the redesign implementation awaits approval.
+- **P3 frameserver (original plan)** — unit parser + signal-state classifier v0 (three-layer model, §6) +
   registration engine → interlaced UYVY IOSurface publisher + decision log + standard-media
   recorder skeleton; TPC/raw packet persistence is an explicit debug option only. **No
   deinterlacer in C or on the real-time device path**; ffmpeg/OBS/post owns that presentation
