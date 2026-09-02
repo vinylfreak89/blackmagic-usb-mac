@@ -688,7 +688,8 @@ shape is a **normal live frameserver**, not an archival writer with a preview bo
 `USB capture → frame parser → field-origin correction → 59.94p frame surfaces + 48 kHz audio →
 CMIO/OBS`. **Recording becomes an optional downstream consumer, exactly like OBS** — it must not
 control acquisition or correction. Per transport unit: archive the untouched 525-line unit
-immediately, detect origins on a separate thread, select the corrected windows, publish 480i or
+only when explicit debug transport capture is enabled; otherwise retain it in bounded pipeline
+storage, detect origins on a separate thread, select the corrected windows, publish 480i or
 independent 59.94p spatial bob with monotonic PTS, and **record chosen origins + confidence as
 metadata**. Audio samples are never touched, preserving the A/V clock correlation. Raw transport
 logging stays an optional diagnostic mode, not the defining architecture.
@@ -714,14 +715,24 @@ fields are not.
 
 ## 8. Architecture (independently agreed by two analyses)
 
-**Core principle:** *Save what crossed the USB bus as immutable truth. Describe what's known as
-separate, versioned interpretation. Infer field chronology reversibly. Conceal only in
-disposable live output.*
+**Production persistence decision: the tagged capture sink is debug-only.** A normal installed
+capture does **not** write a raw USB/tag stream or a hidden/partial TPC alongside the user's
+recording. The TPC sink remains available behind an explicit diagnostic flag for development,
+hardware fault isolation, and deterministic fixture creation. The live core must still account
+for every scheduled packet and propagate named loss/error state; disabling raw persistence does
+not permit silent gaps. The normal downstream recorder writes the chosen standard media master
+plus timing/registration decisions. TPC files used while developing that path are transient and
+may be deleted after the resulting master is fully decoded, QC'd, hashed, and backed up.
+
+**Core principle:** *Account for what crossed the USB bus before interpretation. Describe what's
+known separately from the pixels. Infer registration reversibly while the raw unit is buffered.
+Conceal only in disposable live output; persist raw transport only in explicit debug mode.*
 
 **Non-negotiable properties:**
-1. **Transport truth before interpretation** — record every iso packet's endpoint, submit seq,
-   status, requested/actual length, host time, bytes. A failed packet is an explicit **hole**;
-   never concatenate around it.
+1. **Transport truth before interpretation** — account for every iso packet's endpoint, submit
+   seq, status, requested/actual length, and host time before decoding. A failed packet is an
+   explicit **hole**; never concatenate around it. Persist those tags and bytes only when the
+   explicit debug/TPC sink is enabled.
 2. **Multidimensional validity** — not one `valid` bool. Separate axes: Transport (complete/gap/
    error/overrun), Framing (plausible/short/long/unframed), Signal (locked/no-signal/relocking/
    unknown), Cadence (normal/suspected repeat-drop-mispair/unknown), Interpretation confidence.
@@ -740,18 +751,21 @@ disposable live output.*
 7. **Bounded queues, honest overflow** — iso can't be backpressured. Under pressure shed parity
    analysis / preview / OBS first; if the acquisition pool exhausts, emit a host-loss marker
    immediately. Default: continue but mark the run "not clean"; offer fail-stop as an option.
-8. **Append-only, crash-recoverable storage** — payload once in chunked files; observation
-   records reference byte spans; per-chunk checksums, a journal, and a manifest (sw rev, libusb
-   ver, descriptors, USB topology, mode word, control transactions).
+8. **Debug transport storage, when enabled, is append-only and crash-recoverable** — payload
+   once in chunked files; observation records reference byte spans; per-chunk checksums, a
+   journal, and a manifest (sw rev, libusb ver, descriptors, USB topology, mode word, control
+   transactions). This is not a normal side effect of recording through CMIO.
 9. **Deterministic replay** — the parser also consumes a saved transport log offline, so packet
    loss / split markers / short fields / wraps / relocks are testable without tape.
-10. **Acquisition/live isolation** — OBS or a CMIO extension is a *disposable* downstream
-    consumer, fed over **IOSurface-backed shared frames** (CoreVideo's zero-copy surface) / XPC;
-    its crash or slowness must never endanger the archival writer.
+10. **Acquisition/live isolation** — OBS, a CMIO extension, or the standard-media recorder is a
+    downstream consumer, fed over **IOSurface-backed shared frames** (CoreVideo's zero-copy
+    surface) / XPC; its crash or slowness must never endanger acquisition. The optional debug
+    TPC sink follows the same bounded-consumer rule.
 
 **Threads:** control/session thread (owns lifecycle, serializes transitions) · exactly **one
-libusb event thread** (services events only) · per-endpoint ingest/parser queues · append-only
-writer · timeline/correlation worker · optional parity/cadence analyzer · optional live adapter.
+libusb event thread** (services events only) · per-endpoint ingest/parser queues · optional
+debug transport writer · timeline/correlation worker · optional parity/cadence analyzer ·
+optional live/recorder adapters.
 **Lifecycle:** `Detached → Opened → Claimed → ResetViaAlt1 → InputAlt2 → ModeSet → Latched →
 Streaming` (+ `SourceRelocking / Stopping / DeviceLost / Fault`). **Source lock state is distinct
 from USB session state** (a tape dropout ≠ the USB device needs resetting).
@@ -969,9 +983,10 @@ delivery edge; wrong one at acquisition.
   The renderer refuses dataless (File Provider placeholder) inputs rather than triggering a
   multi-gigabyte cloud fetch.
 - **P3 frameserver** — unit parser + signal-state classifier v0 (three-layer model, §6) +
-  registration engine → interlaced UYVY IOSurface publisher + decision log + archival writer
-  skeleton. **No deinterlacer in C or on the real-time device path**; ffmpeg/OBS/post owns that
-  presentation decision.
+  registration engine → interlaced UYVY IOSurface publisher + decision log + standard-media
+  recorder skeleton; TPC/raw packet persistence is an explicit debug option only. **No
+  deinterlacer in C or on the real-time device path**; ffmpeg/OBS/post owns that presentation
+  decision.
   Both components test via replay.
 - **P4 CMIO extension (Swift)** — standard device, two advertised formats (raw 480i, corrected
   480i), IOSurface/XPC consumer, custom properties. Deinterlacing belongs to OBS/ffmpeg/post.
