@@ -836,6 +836,21 @@ design assumes a signed system extension, app-group IPC, `/Applications` install
 A sandboxed GUI/extension needs entitlement `com.apple.security.device.usb`. Long-term shape:
 one USB capture service → {archival writer, OBS source (V+A), CMIO video ext + linked CoreAudio}.
 
+**Packaging / adapter model:** the command-line probes,
+TPC renderer, and replay tools are development/forensic infrastructure, not
+the shipping interaction model. The normal installation is kextless: a signed
+application bundle installs/manages the CMIO camera extension (and linked
+CoreAudio endpoint), after which ordinary clients select the Shuttle as a
+standard capture device. Keep `capture_core` + `field_registration` behind an
+adapter-neutral C callback API. CMIO is the primary compatibility adapter, but
+if real clients hide required controls or mishandle 480i, add a native OBS
+source plugin and/or first-party capture UI against that same API. Those are
+thin consumers, not alternate USB implementations: one service owns the
+device, acquisition remains byte-accountable, and expensive deinterlacing or
+encoding stays on bounded downstream workers rather than the USB/event path.
+This is a preserved contingency, not a requirement to ship a custom capture
+GUI in the first release.
+
 **Control surface (final):** three tiers, each on the most standard
 rail available. (1) **Mode selection = advertised FORMATS** in every app's native picker — the
 raw/corrected split ("v-sync"/registration correction) is a device stream/property choice;
