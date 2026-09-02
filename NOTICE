@@ -1,0 +1,17 @@
+Blackmagic Intensity Shuttle (USB 3.0) userspace capture for macOS
+Copyright (C) 2026 the project authors
+
+This program is free software; you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation; either version 2 of the License, or (at your option) any later version.
+See LICENSE.
+
+Protocol discovery credit: the device's USB protocol (control requests, mode words,
+endpoint map, stream framing) was first reverse-engineered and published by
+Steinar H. Gunderson in bmusb (https://git.sesse.net/?p=bmusb, GPLv2+). This project
+reimplements the protocol independently from those published facts and its own
+measurements on hardware; it contains no bmusb code.
+
+"Blackmagic", "Intensity Shuttle" and "DeckLink" are trademarks of Blackmagic Design.
+They are used here only to identify the hardware this software interoperates with;
+this project is not affiliated with or endorsed by Blackmagic Design.
