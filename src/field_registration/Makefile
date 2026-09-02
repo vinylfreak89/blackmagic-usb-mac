@@ -3,7 +3,7 @@ CFLAGS ?= -O3 -std=c11 -Wall -Wextra -Werror
 CPPFLAGS ?=
 LDLIBS ?= -lm
 
-.PHONY: all test clean
+.PHONY: all test trajectory-test clean
 
 all: libfieldreg.dylib tests/field_registration_unit tests/field_registration_golden
 
@@ -21,6 +21,15 @@ test: tests/field_registration_unit $(TRUTH_DEPS)
 	./tests/field_registration_unit
 	$(if $(TRUTH_SRC),./tests/field_registration_truth --library tests/libfieldreg_truth.dylib --raw tests/registration_truth.raw --truth tests/registration_truth.csv)
 
+trajectory-test: tests/field_registration_trajectory tests/registration_trajectory.raw
+	./tests/field_registration_trajectory tests/registration_trajectory.raw tests/registration_trajectory.csv
+
+tests/field_registration_trajectory: field_registration.c field_registration.h tests/field_registration_trajectory.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I. field_registration.c tests/field_registration_trajectory.c -o $@ $(LDLIBS)
+
+tests/registration_trajectory.raw: tests/gen_trajectory_units.py tests/gen_registration_units.py
+	python3 tests/gen_trajectory_units.py --output $@ --truth tests/registration_trajectory.csv --seed 1414676810 --noise 1
+
 tests/field_registration_truth: field_registration.h tests/field_registration_truth.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -I. tests/field_registration_truth.c -o $@ $(LDLIBS)
 
@@ -34,4 +43,6 @@ tests/field_registration_golden: field_registration.c field_registration.h tests
 	$(CC) $(CPPFLAGS) $(CFLAGS) field_registration.c tests/field_registration_golden.c -o $@ $(LDLIBS)
 
 clean:
-	rm -f libfieldreg.dylib tests/field_registration_unit tests/field_registration_golden
+	rm -f libfieldreg.dylib tests/field_registration_unit tests/field_registration_golden \
+		tests/field_registration_trajectory tests/registration_trajectory.raw \
+		tests/registration_trajectory.csv

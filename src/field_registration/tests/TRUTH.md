@@ -49,3 +49,21 @@ This is a controlled integer-translation test, not proof against every analog wa
 not synthesize heterogeneous within-field phase, sub-line phase, missing USB bytes, or a real
 decoder's noise distribution. Measurements on real captures remain extended validation; they are
 not needed to run this golden.
+
+## Gated trajectory-redesign fixture
+
+`make trajectory-test` runs a second, deliberately falsifying golden. It emits
+two independent labels per unit: the physical location of the designated main
+picture and the endpoint-constrained trajectory-policy oracle described in
+`../TRAJECTORY.md`. A smaller right-hand asset may carry a conflicting phase;
+it is evidence, never the main-picture label.
+
+The fixture includes a real one-unit displacement, an edge-only secondary
+artifact, a coherent provisional inversion, chatter, a non-settling horizon,
+an epoch reset, and a synthetic version of the timeline-frame-8169 stale
+latch: one positive `(0,1)` observation followed by 103 flat units while the
+committed phase is `(1,0)`. The current caller rewrites only abstaining rows,
+so this target is expected to print `CURRENT-LIMITATION-REPRODUCED: YES`.
+That is a characterization pass, not approval of the current behavior. A
+future trajectory implementation must improve the trajectory-oracle score
+without silently relabeling physical-raster disagreements as successes.
