@@ -41,6 +41,7 @@ BYTES_PER_LINE = 1_440
 RASTER_LINES = 525
 VIDEO_LOSS_QUANTUM = 24_576
 SF_DATALESS = 0x40000000
+NNEDI_WEIGHTS_BYTES = 13_574_928
 
 # bmusb's e801 metadata: height=480, extra_lines_top=17,
 # second_field_start=280, extra_lines_bottom=28.
@@ -64,6 +65,60 @@ def require_materialized_input(path):
             "restore/materialize it to a non-synced local location before "
             "decoding"
         )
+
+
+def validate_nnedi_weights(path):
+    """Validate the external weights file required by FFmpeg's nnedi filter."""
+    if path is None:
+        raise ValueError("--deinterlacer nnedi requires --nnedi-weights")
+    require_materialized_input(path)
+    size = Path(path).stat().st_size
+    if size != NNEDI_WEIGHTS_BYTES:
+        raise ValueError(
+            f"NNEDI weights must be exactly {NNEDI_WEIGHTS_BYTES:,} bytes; "
+            f"got {size:,}: {path}"
+        )
+
+
+def ffmpeg_filter_value(path):
+    """Escape a path embedded as a value in an FFmpeg filtergraph."""
+    value = str(Path(path).expanduser().resolve(strict=False))
+    for character in "\\':,;[]":
+        value = value.replace(character, "\\" + character)
+    return value
+
+
+def presentation_video_filters(deinterlacer, parity, nnedi_weights=None):
+    """Return the presentation filters and output frames per input unit."""
+    if deinterlacer == "none":
+        return [
+            f"setfield={parity}",
+            "scale=720:480:interl=1:flags=spline+accurate_rnd+full_chroma_int",
+        ], 1
+    if deinterlacer == "estdif":
+        return [
+            "format=yuv422p",
+            (
+                f"estdif=mode=field:parity={parity}:deint=all:"
+                "rslope=2:redge=4:interp=6p"
+            ),
+        ], 2
+    if deinterlacer == "bwdif":
+        return [
+            "format=yuv422p",
+            f"bwdif=mode=send_field:parity={parity}:deint=all",
+        ], 2
+    if deinterlacer == "nnedi":
+        validate_nnedi_weights(nnedi_weights)
+        field = "tf" if parity == "tff" else "bf"
+        return [
+            "format=yuv422p",
+            (
+                f"nnedi=weights={ffmpeg_filter_value(nnedi_weights)}:"
+                f"field={field}:deint=all:nns=n32:qual=fast"
+            ),
+        ], 2
+    raise ValueError(f"unsupported deinterlacer: {deinterlacer}")
 
 # Synthetic bytes used only where an untagged diagnostic capture has no bytes.
 # These are legal-range, SMPTE-style vertical color bars. They are deliberately
@@ -2427,6 +2482,8 @@ def render_preview(
     render_preset,
     render_maxrate,
     render_bufsize,
+    deinterlacer,
+    nnedi_weights,
     adaptive_registration,
     decision_log,
     registration_switch_margin,
@@ -2498,7 +2555,9 @@ def render_preview(
                 file=sys.stderr,
             )
         parity = "bff" if first_field == "bottom" else "tff"
-        video_filters = [f"bwdif=mode=send_field:parity={parity}:deint=all"]
+        video_filters, frames_per_unit = presentation_video_filters(
+            deinterlacer, parity, nnedi_weights
+        )
         if render_size:
             render_width, render_height = render_size
             video_filters.append(
@@ -2562,6 +2621,8 @@ def render_preview(
             str(render_crf),
             "-pix_fmt",
             "yuv420p",
+            "-frames:v",
+            str(frames * frames_per_unit),
             "-c:a",
             "aac",
             "-b:a",
@@ -2570,6 +2631,15 @@ def render_preview(
             "+faststart",
             "-shortest",
         ]
+        if deinterlacer == "none":
+            command.extend(
+                (
+                    "-flags",
+                    "+ilme+ildct",
+                    "-x264-params",
+                    "tff=1",
+                )
+            )
         if render_maxrate:
             command.extend(("-maxrate", render_maxrate))
             if render_bufsize:
@@ -2718,6 +2788,7 @@ def render_tagged(
     render_maxrate,
     render_bufsize,
     deinterlacer,
+    nnedi_weights,
     adaptive_registration,
     registration_switch_margin,
     registration_confirm_units,
@@ -2797,30 +2868,10 @@ def render_tagged(
         )
 
         parity = "bff" if first_field == "bottom" else "tff"
-        if deinterlacer == "none":
-            video_filters = [
-                f"setfield={parity}",
-                (
-                    "scale=720:480:interl=1:"
-                    "flags=spline+accurate_rnd+full_chroma_int"
-                ),
-            ]
-            output_frames = output_units
-        elif deinterlacer == "estdif":
-            video_filters = [
-                "format=yuv422p",
-                (
-                    f"estdif=mode=field:parity={parity}:deint=all:"
-                    "rslope=2:redge=4:interp=6p"
-                ),
-            ]
-            output_frames = output_units * 2
-        else:
-            video_filters = [
-                "format=yuv422p",
-                f"bwdif=mode=send_field:parity={parity}:deint=all",
-            ]
-            output_frames = output_units * 2
+        video_filters, frames_per_unit = presentation_video_filters(
+            deinterlacer, parity, nnedi_weights
+        )
+        output_frames = output_units * frames_per_unit
         if render_size:
             width, height = render_size
             video_filters.append(f"scale={width}:{height}:flags=lanczos")
@@ -3354,11 +3405,20 @@ def main():
     )
     parser.add_argument(
         "--deinterlacer",
-        choices=("none", "estdif", "bwdif"),
+        choices=("none", "estdif", "bwdif", "nnedi"),
         default="none",
         help=(
             "presentation deinterlacer: none preserves 480i TFF (default); "
-            "estdif is intra-field 59.94p; bwdif is temporal and may cross cuts"
+            "estdif and nnedi are intra-field 59.94p; bwdif is temporal and "
+            "may cross cuts"
+        ),
+    )
+    parser.add_argument(
+        "--nnedi-weights",
+        metavar="FILE",
+        help=(
+            "13,574,928-byte nnedi3_weights.bin required by "
+            "--deinterlacer nnedi"
         ),
     )
     parser.add_argument(
@@ -3479,6 +3539,13 @@ def main():
         )
     if args.render_bufsize and not args.render_maxrate:
         parser.error("--render-bufsize requires --render-maxrate")
+    if args.deinterlacer == "nnedi":
+        try:
+            validate_nnedi_weights(args.nnedi_weights)
+        except (OSError, ValueError, RuntimeError) as error:
+            parser.error(str(error))
+    elif args.nnedi_weights:
+        parser.error("--nnedi-weights requires --deinterlacer nnedi")
     if args.decision_log and not args.render:
         parser.error("--decision-log requires --render")
     if input_format != "tagged" and args.fieldreg_library:
@@ -3529,6 +3596,7 @@ def main():
             args.render_maxrate,
             args.render_bufsize,
             args.deinterlacer,
+            args.nnedi_weights,
             args.adaptive_registration,
             args.registration_switch_margin,
             args.registration_confirm_units,
@@ -3602,6 +3670,8 @@ def main():
                         args.render_preset,
                         args.render_maxrate,
                         args.render_bufsize,
+                        args.deinterlacer,
+                        args.nnedi_weights,
                         args.adaptive_registration,
                         args.decision_log,
                         args.registration_switch_margin,

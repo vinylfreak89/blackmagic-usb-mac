@@ -215,7 +215,16 @@ the original Python estimator. Picture-edge landmarks are decision evidence,
 not crop coordinates: the renderer preserves VBI rows 17–18/280–281 and remaps
 only the fixed 19–256/282–518 source envelope. It never shifts the complete
 240-line crop. `--deinterlacer none` emits interlaced TFF video and leaves
-deinterlacing downstream.
+deinterlacing downstream. For a 59.94p review copy, `--deinterlacer nnedi`
+performs intra-field interpolation and therefore cannot blend across a scene
+cut or across chronological fields. FFmpeg requires the external
+`nnedi3_weights.bin`; pass it explicitly with `--nnedi-weights`. The expected
+file is 13,574,928 bytes (upstream SHA-256
+`27f382430435bb7613deb1c52f3c79c300c9869812cfe29079432a9c82251d42`).
+The renderer does not bundle or silently download that model. `bwdif` remains
+available for comparison, but its temporal/local decisions can be unstable on
+noisy mixed-cadence tape. Deinterlacing is presentation-only and is not part of
+the registration library or eventual CMIO capture path.
 
 `--tagged-start-unit auto` counter-aligns presentation and audio to the first of
 three consecutive exact transport/VBI-valid units. The three units are bounded
