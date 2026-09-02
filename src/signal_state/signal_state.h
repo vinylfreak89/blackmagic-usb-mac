@@ -105,6 +105,9 @@ void signal_state_note_registration(signal_state *state, signal_result *result,
                                     bool observation_known, int8_t d1, int8_t d2,
                                     double confidence);
 
+/* Called only when the trajectory layer commits a newly settled endpoint. */
+void signal_state_commit_registration(signal_state *state, int8_t d1, int8_t d2);
+
 const char *signal_appearance_name(signal_appearance appearance);
 const char *signal_source_state_name(signal_source_state source);
 
