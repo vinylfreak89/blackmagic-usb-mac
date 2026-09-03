@@ -25,4 +25,8 @@ extern int (*publish_copy_test_fail)(enum publish_step step);
 // Test hook: when set, every read() the helper issues goes through it (short-read / EINTR injection).
 #include <sys/types.h>
 extern ssize_t (*publish_copy_test_read)(int fd, void *buf, size_t n);
+// Test hooks: every write() and the close() of the staging file go through these when set
+// (partial-write / EINTR / zero-byte-write and close-failure injection).
+extern ssize_t (*publish_copy_test_write)(int fd, const void *buf, size_t n);
+extern int (*publish_copy_test_close)(int fd);
 #endif

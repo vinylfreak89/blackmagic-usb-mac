@@ -10,7 +10,11 @@
 int (*publish_copy_test_fail)(enum publish_step step) = NULL;
 ssize_t (*publish_copy_test_read)(int fd, void *buf, size_t n) = NULL;
 #define FAIL_AT(step) (publish_copy_test_fail && publish_copy_test_fail(step))
+ssize_t (*publish_copy_test_write)(int fd, const void *buf, size_t n) = NULL;
+int (*publish_copy_test_close)(int fd) = NULL;
 static ssize_t do_read(int fd, void *buf, size_t n){ return publish_copy_test_read ? publish_copy_test_read(fd, buf, n) : read(fd, buf, n); }
+static ssize_t do_write(int fd, const void *buf, size_t n){ return publish_copy_test_write ? publish_copy_test_write(fd, buf, n) : write(fd, buf, n); }
+static int do_close_out(int fd){ return publish_copy_test_close ? publish_copy_test_close(fd) : close(fd); }
 
 /* read exactly `want` bytes unless EOF; returns bytes read (< want only at EOF), -1 on error */
 static ssize_t read_full(int fd, char *buf, size_t want){
@@ -20,7 +24,7 @@ static ssize_t read_full(int fd, char *buf, size_t want){
 }
 static int write_full(int fd, const char *buf, size_t len){
     size_t off = 0;
-    while (off < len){ ssize_t w = write(fd, buf + off, len - off); if (w < 0){ if (errno == EINTR) continue; return -1; } if (w == 0){ errno = EIO; return -1; } off += (size_t)w; }
+    while (off < len){ ssize_t w = do_write(fd, buf + off, len - off); if (w < 0){ if (errno == EINTR) continue; return -1; } if (w == 0){ errno = EIO; return -1; } off += (size_t)w; }
     return 0;
 }
 static int fsync_dir_of(const char *path){
@@ -51,7 +55,7 @@ int publish_by_copy(const char *src, const char *final){
         if ((size_t)n < BUF) break;
     }
     if (ok && (FAIL_AT(PUB_STEP_FSYNC) || fsync(out) != 0)){ ok = 0; e = errno ? errno : EIO; }
-    if (close(out) != 0 && ok){ ok = 0; e = errno; }
+    if (do_close_out(out) != 0 && ok){ ok = 0; e = errno ? errno : EIO; }
     if (ok){   /* verify: read-full both sides, byte-compare */
         int chk = FAIL_AT(PUB_STEP_REOPEN) ? -1 : open(staging, O_RDONLY);
         if (chk < 0){ ok = 0; e = errno ? errno : EIO; }

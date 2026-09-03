@@ -18,6 +18,9 @@ static int partials(const char *final){ char pat[4200]; snprintf(pat,sizeof pat,
 static enum publish_step fail_step; static int hook(enum publish_step s){ return s==fail_step; }
 static enum publish_step two[2]; static int hook2(enum publish_step s){ return s==two[0]||s==two[1]; }
 #include <errno.h>
+static int wr_calls; static ssize_t short_write(int fd, const void *buf, size_t n){ wr_calls++; if(wr_calls%7==0){ errno=EINTR; return -1; } size_t cap=(wr_calls%3==0)?4096:(wr_calls%5==0?1:n); return write(fd,buf,n<cap?n:cap); }
+static ssize_t zero_write(int fd, const void *buf, size_t n){ (void)fd;(void)buf;(void)n; return 0; }
+static int close_fail(int fd){ close(fd); errno=EIO; return -1; }
 static int rd_calls; static ssize_t short_read(int fd, void *buf, size_t n){ rd_calls++; if(rd_calls%7==0){ errno=EINTR; return -1; } size_t cap = (rd_calls%3==0) ? 4096 : (rd_calls%5==0 ? 1 : n); return read(fd,buf,n<cap?n:cap); }
 int main(void){
     char dir[]="/tmp/pc_dir_XXXXXX"; mkdtemp(dir);
@@ -56,6 +59,17 @@ int main(void){
     publish_copy_test_fail=NULL; publish_copy_test_read=short_read;
     { int rc=publish_by_copy(src,dst); CHECK(rc==0,"short-read/EINTR injection: expected 0 got %d",rc); CHECK(same(dst,ref),"short-read: final byte-exact"); CHECK(access(src,F_OK)!=0,"short-read: source removed"); unlink(dst); fill(src,n,7); }
     publish_copy_test_read=NULL;
+    // 3c. partial writes and EINTR on the write side must still produce a verified copy
+    publish_copy_test_write=short_write;
+    { int rc=publish_by_copy(src,dst); CHECK(rc==0,"short-write/EINTR injection: expected 0 got %d",rc); CHECK(same(dst,ref),"short-write: final byte-exact"); unlink(dst); fill(src,n,7); }
+    // 3d. a zero-byte write is a failure (never a busy loop): -1, no final, no partial, source intact
+    publish_copy_test_write=zero_write;
+    { int rc=publish_by_copy(src,dst); CHECK(rc==-1,"zero-byte write: expected -1 got %d",rc); CHECK(access(dst,F_OK)!=0,"zero-byte write: final absent"); CHECK(partials(dst)==0,"zero-byte write: staging removed"); CHECK(same(src,ref),"zero-byte write: source intact"); }
+    publish_copy_test_write=NULL;
+    // 3e. close() of the staging file fails: -1, no final, no partial, source intact
+    publish_copy_test_close=close_fail;
+    { int rc=publish_by_copy(src,dst); CHECK(rc==-1,"close failure: expected -1 got %d",rc); CHECK(access(dst,F_OK)!=0,"close failure: final absent"); CHECK(partials(dst)==0,"close failure: staging removed"); CHECK(same(src,ref),"close failure: source intact"); }
+    publish_copy_test_close=NULL;
     // 4. normal publish -> 0, byte-exact, source removed, no partial
     publish_copy_test_fail=NULL;
     CHECK(publish_by_copy(src,dst)==0,"publish");
