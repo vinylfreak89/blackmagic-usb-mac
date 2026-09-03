@@ -940,12 +940,14 @@ don't force 1601/1602. Separate **physical cadence** from **content cadence** (t
 
 **⚠️ Owner correction (2026-09-03): there is NO first-class "archival master".** This project is
 an *anyone-can-use* capture path for the Shuttle, and the Shuttle itself is not archival grade.
-The deliverables are the live device (OBS source plugin, then the CMIO camera) and an ordinary
-recording of what it publishes — corrected 480i or the deinterlaced presentation, in a standard
-codec (ProRes 422/HQ MOV with field and aspect metadata when interlaced). A lossless
-interlaced file is at most an optional sidecar/recorder mode for users who want it, never a
-requirement, never the thing the pipeline is designed around; the tpc sink stays debug-only. The
-paragraph below is retained as the *optional* lossless mode's design, not as the primary product.
+The deliverables are the live device (OBS source plugin, then the CMIO camera) and a
+**master-quality recording** of what it publishes: the corrected 480i as a standard high-bitrate
+intra-frame file — ProRes 422 HQ, 720×480 TFF with field-order and 8:9 pixel-aspect metadata,
+4:2:2 10-bit, nothing baked in (no deinterlacing, no scaling, no level remap) — the kind of file
+that survives future generations of digital clean-up and restoration. "Lossless" is not a goal
+and is not meaningful past the ADC on an analog source; the presentation/streaming path (OBS,
+deinterlaced) is a separate consumer of the same frames. The tpc sink stays debug-only. The
+paragraph below is retained as the design of an *optional* lossless mode, not the product.
 
 **Optional lossless recording mode (not the product):** a playable lossless file, produced
 *semi-live* — resolve **deterministic** field ordering with a short lookahead (unpair/reorder/
