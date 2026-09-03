@@ -1189,6 +1189,16 @@ delivery edge; wrong one at acquisition.
   late-tape flips unknown to it, censored edges). Codex's engine-internal strict-consistency count
   went 1,021 → 1,128 — a proxy that the frames contradict; it is not an acceptance criterion.
   Engine cost 3.6 ms median / 5.5 ms p95 per unit on M3 (was 1.5/1.6), inside §11b.
+  **`captures/fulltape_render.{mp4,_registration.csv}` re-rendered from the v7 engine
+  (2026-09-04 02:53, `experiments/render_fulltape.sh` at `b2d0f70`, gate
+  `render_fulltape_gate.sh` all PASS: clean `-xerror` decode, duration 2879.410 s and 86,296
+  sidecar rows identical to the v6 pair, 172,592 frames).** Applied pairs: (0,0) 48,366, (1,0)
+  30,017, (−1,0) 4,068, (2,0) 3,360, (0,−1) 313; 7,461 applied-phase transitions and 2,570
+  one-unit flips (v6: 3,957 / 1,281) — the increase is the engine following per-unit raster
+  jitter, which the credits-window audit above classifies as correct follows. The renderer had
+  to learn that a crop may read into the hard-padding ruler (the engine's +5 bottom-censored
+  class); the v6 pair was deleted, not archived (owner: Time Machine). Owner visual sign-off
+  pending.
   **Owner visual sign-off (2026-09-03, full forward-only NNEDI watch copy of fixture A):** a
   large improvement over the validated v4 engine; judged representative of what a digitally
   captured VHS tape should look like. Of the jumps that remain, nearly every one in the SP

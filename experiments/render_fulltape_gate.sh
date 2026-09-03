@@ -4,7 +4,7 @@ R=$(cd "$(dirname "$0")/.." && pwd); OUT=${1:?render_out_dir}; fails=0
 chk(){ if [ "$1" = 0 ]; then echo "PASS $2"; else echo "FAIL $2"; fails=$((fails+1)); fi }
 [ -f $OUT/fulltape_render.mp4 ] && [ -f $OUT/fulltape_render_registration.csv ]; chk $? "outputs exist"
 grep -q RENDER_DONE $OUT/timing.txt; chk $? "render script completed"
-grep -qi 'error\|traceback' $OUT/render.log; [ $? -ne 0 ]; chk $? "render log has no error/traceback"
+grep -q 'Traceback\|Error:\|error:' $OUT/render.log; [ $? -ne 0 ]; chk $? "render log has no Python traceback or error (census lines like counter_errors=0 are not errors)"
 ffmpeg -v error -xerror -i $OUT/fulltape_render.mp4 -f null - 2> $OUT/decode.log; chk $? "full decode with -xerror clean"
 newd=$(ffprobe -v error -show_entries format=duration -of csv=p=0 $OUT/fulltape_render.mp4); oldd=$(ffprobe -v error -show_entries format=duration -of csv=p=0 $R/captures/fulltape_render.mp4)
 python3 -c "import sys; n,o=float('$newd'),float('$oldd'); sys.exit(0 if abs(n-o)<0.1 else 1)"; chk $? "duration matches the previous render ($newd vs $oldd s)"
