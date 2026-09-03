@@ -1114,6 +1114,11 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   recorded in this file. Iterate until both agents converge. A mismatch is resolved by a
   **deterministic test** that decides it; if it is genuinely an interpretation question, end the
   turn and bring it to the owner instead of picking a side. Token cost is accepted.
+  **Both agents implement, both review** (owner, same day): review is not one agent judging
+  and the other coding. Each agent fixes the findings it owns as commits with deciding tests,
+  and the other reviews that *implementation* — the code, not only the decision — before merge.
+  If one agent is mid-review of the other's branch, let that review finish before pushing more
+  commits under it; then swap roles on the next round.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).
