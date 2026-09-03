@@ -47,3 +47,9 @@ src/frameserver/tests/frameserver_test
 src/frameserver/tests/test_asan
 src/frameserver/tests/test_tsan
 src/frameserver/tests/test_smallring
+
+# field_registration test outputs
+src/field_registration/tests/field_registration_trajectory
+src/field_registration/tests/registration_trajectory.csv
+src/field_registration/tests/registration_trajectory.raw
+src/field_registration/libfieldreg.dylib

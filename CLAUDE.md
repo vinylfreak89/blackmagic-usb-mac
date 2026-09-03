@@ -1175,6 +1175,20 @@ delivery edge; wrong one at acquisition.
   presentation acceptance test is `experiments/static_comb_metric.py` on
   `frameserver_replay --dump-uyvy` output (affected runs move to shift 0, normal frames stay).
   Yadif is the presentation check only, never registration truth.
+  **✅ v7 relative-only authority landed (main `abfa648`, 2026-09-04, three §14 rounds).** Codex's
+  static-region comb estimator releases a held phase at unit rate when the raster returns; it is
+  current-unit authority only (a golden proves a relative presentation never latches into later
+  abstentions); gauge by differential field identity, minimum-crop when unknown; sidecar schema 3
+  carries the provenance. Two threshold changes tuned against tape results were reverted before
+  merge. Deciding measurements (paced replay, zero drops, `static_comb_metric.py`, record-aligned
+  windows cut with `experiments/tpc_slice.py`): misregistered static frames **88 → 29** in the
+  first 100 s, **17 → 13** at 620 s, **803 → 268** in the 2,400 s credits window. The credits
+  raster genuinely jitters by a line unit to unit: of the branch's 97 one-unit phase flips there,
+  87 are correct follows (the flipped frame is registered), 5 unmeasurable, 5 engine noise (main:
+  3 noise of 6); Codex's strict edge oracle found zero noise flips over the whole tape (1,887
+  late-tape flips unknown to it, censored edges). Codex's engine-internal strict-consistency count
+  went 1,021 → 1,128 — a proxy that the frames contradict; it is not an acceptance criterion.
+  Engine cost 3.6 ms median / 5.5 ms p95 per unit on M3 (was 1.5/1.6), inside §11b.
   **Owner visual sign-off (2026-09-03, full forward-only NNEDI watch copy of fixture A):** a
   large improvement over the validated v4 engine; judged representative of what a digitally
   captured VHS tape should look like. Of the jumps that remain, nearly every one in the SP
@@ -1261,6 +1275,18 @@ delivery edge; wrong one at acquisition.
   640×480 — 640×480 (not 720×540) because it leaves the 480 scan lines untouched and VHS
   horizontal resolution (~240 TVL) is oversampled at 720 anyway; the source defaults to Yadif 2x
   TFF; OBS owns deinterlacing.
+  **Recording-aligned sidecar (2026-09-04):** the frameserver gained runtime decision-log
+  attach/detach (`fs_log_start`/`fs_log_stop`: exclusive open, checked writes with
+  `log_write_errors`/`log_close_errors`, `fs_log_stop` reports a file with any failed row as
+  incomplete; a stall-hook test proves a hung sidecar write sheds video downstream with exact
+  range accounting, never acquisition). The plugin subscribes to OBS's recording-started/stopped
+  events and writes `<recording>.registration.csv` per recording: grown in a per-uid 0700 scratch
+  directory on the recording's filesystem, published by `renamex_np(RENAME_EXCL)`, never
+  truncating or replacing an existing sidecar, never published if incomplete. Alignment is within
+  one unit (the counter of the last frame delivered before the event is logged; exact alignment
+  needs an in-band frame counter). OPEN: a `.tpc` tee from inside the plugin (needs a
+  runtime-attachable tagged sink in the capture core); a log writer thread if storage stalls are
+  ever observed; the plugin's live-device path has never been exercised inside OBS.
 - **P4b CMIO extension (Swift)** — after P4a and the Apple team exist: standard device, two
   advertised formats (raw 480i, corrected 480i), sink-stream consumer, custom properties.
   Deinterlacing belongs to OBS/ffmpeg/post.
