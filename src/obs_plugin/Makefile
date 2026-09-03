@@ -13,7 +13,11 @@ OBS_HEADERS ?= $(HOME)/Library/Application Support/blackmagic-usb-mac/obs-header
 SIMDE_DIR ?= $(HOME)/Library/Application Support/blackmagic-usb-mac/simde-0.8.2
 LIBUSB_A ?= /opt/homebrew/opt/libusb/lib/libusb-1.0.a
 PLUGIN = shuttle-source
-BUNDLE = $(PLUGIN).plugin
+# The bundle is assembled OUTSIDE the repo: the checkout lives under a cloud-synced root whose
+# Finder/iCloud xattrs reappear on the bundle and make codesign refuse ("detritus"). /private/tmp
+# is local and non-synced; `make install` copies from there.
+BUILD_DIR ?= /private/tmp/blackmagic-usb-mac-build
+BUNDLE = $(BUILD_DIR)/$(PLUGIN).plugin
 INSTALL_DIR = $(HOME)/Library/Application Support/obs-studio/plugins
 
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c \
@@ -30,7 +34,7 @@ LDFLAGS = -bundle -F"$(OBS_APP)/Contents/Frameworks" -framework libobs "$(OBS_AP
 all: $(BUNDLE)
 
 $(BUNDLE): shuttle_source.c publish_copy.c publish_copy.h obsconfig.h Info.plist $(CORE)
-	mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/locale
+	mkdir -p "$(BUILD_DIR)"; rm -rf $(BUNDLE); mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/locale
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) shuttle_source.c publish_copy.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
 	cp Info.plist $(BUNDLE)/Contents/Info.plist
 	printf 'ShuttleSource="Blackmagic Intensity Shuttle (frameserver)"\n' > $(BUNDLE)/Contents/Resources/locale/en-US.ini
@@ -45,11 +49,11 @@ test: publish_copy.c publish_copy.h tests_publish_copy.c
 install: $(BUNDLE)
 	mkdir -p "$(INSTALL_DIR)"
 	rm -rf "$(INSTALL_DIR)/$(BUNDLE)"
-	cp -R $(BUNDLE) "$(INSTALL_DIR)/"
-	@echo "installed to $(INSTALL_DIR)/$(BUNDLE) -- restart OBS"
+	cp -R $(BUNDLE) "$(INSTALL_DIR)/"; xattr -cr "$(INSTALL_DIR)/$(PLUGIN).plugin"; codesign --verify --deep "$(INSTALL_DIR)/$(PLUGIN).plugin" && echo "installed signature verifies"
+	@echo "installed to $(INSTALL_DIR)/$(PLUGIN).plugin -- restart OBS"
 
 uninstall:
 	rm -rf "$(INSTALL_DIR)/$(BUNDLE)"
 
 clean:
-	rm -rf $(BUNDLE) tests_publish_copy
+	rm -rf $(BUNDLE) tests_publish_copy $(PLUGIN).plugin
