@@ -53,6 +53,9 @@ static int repeat_fixture(const char *src,const char *dst,int copies){
     }
     fclose(in); return fclose(out);
 }
+static unsigned csv_fields(const char *line){
+    unsigned n=1; for(const char *p=line;*p;p++) if(*p==',') n++; return n;
+}
 int main(int argc, char **argv){
     if (argc < 2){ fprintf(stderr, "usage: %s <fixture.tpc>\n", argv[0]); return 9; }
     int ring_may_drop = getenv("FS_TEST_EXPECT_RING_DROPS") != NULL;
@@ -118,10 +121,15 @@ int main(int argc, char **argv){
           "eligible ingress conservation failed");
     if(!ring_may_drop) CHECK(s.short_units + s.holes + s.unframed + s.exact_units + s.other_format + s.no_signal_0800 >= s.video_observations, "every observation classified by transport/kind");
     // log integrity: header + rows, columns as the contract names them
-    FILE *L = fopen(logp, "r"); char line[1024]; unsigned rows = 0; int hdr_ok = 0;
-    while (fgets(line, sizeof line, L)){ if (rows == 0) hdr_ok = strstr(line, "interval_id,unsettled,provisional_d1") != NULL; rows++; }
+    FILE *L = fopen(logp, "r"); char line[2048]; unsigned rows = 0; int hdr_ok = 0, row_shape_ok = 1; unsigned header_fields = 0;
+    while (fgets(line, sizeof line, L)){
+        if (rows == 0){ hdr_ok = strstr(line, "interval_id,unsettled,provisional_d1") != NULL && strstr(line, "relative_only,relative_only_gauge_unknown,relative_only_gauge_source") != NULL; header_fields=csv_fields(line); }
+        else if(csv_fields(line)!=header_fields) row_shape_ok=0;
+        rows++;
+    }
     fclose(L); unlink(logp);
     CHECK(hdr_ok, "decision-log header carries the contract fields");
+    CHECK(row_shape_ok, "every decision-log row has the schema's %u columns", header_fields);
     CHECK(rows == s.log_rows + 1, "log rows on disk match (%u vs %llu)", rows, (unsigned long long)s.log_rows + 1);
     fs_close(f);
 

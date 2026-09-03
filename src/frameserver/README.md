@@ -1,13 +1,17 @@
 # Frameserver sidecar
 
 The frameserver publishes corrected interlaced UYVY units immediately and writes an optional CSV
-decision sidecar. Schema `2` has this exact header:
+decision sidecar. Schema `3` has this exact header:
 
 ```text
-ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,published,drop_reason,schema_version,preceding_ring_drops
+ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,relative_only,relative_only_gauge_unknown,relative_only_gauge_source,relative_only_phase,relative_only_best_energy,relative_only_runner_energy,relative_only_prior_energy,relative_only_margin,relative_only_ratio,relative_only_static_columns,relative_only_persistent_columns,relative_only_transport_gate,relative_only_cut_gate,bottom_f1_censored,bottom_f2_censored,published,drop_reason,schema_version,preceding_ring_drops
 ```
 
 `drop_reason` is `None`, `PoolFull`, `PublisherFull`, or `RingFullTail`.
+The `relative_only_*` columns preserve the static-region curvature decision,
+absolute-gauge provenance, winner energies/margins, spatial support, and gates.
+`bottom_f*_censored` distinguishes a measured boundary from a complete lower
+picture edge. Their semantics are specified by the registration contract.
 
 - A pool-full observation retains its own ordinary row, is unpublished, and says `PoolFull`.
 - Ring-full observations cannot reach the worker individually. Their count is attached to the
