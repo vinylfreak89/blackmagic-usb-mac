@@ -35,12 +35,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <IOSurface/IOSurface.h>
 #include <util/dstr.h>
 #include <pthread.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <libgen.h>
+#include <stdio.h>      /* renamex_np (macOS 10.12+): RENAME_EXCL makes the publish rename fail instead of replacing a file that appeared meanwhile */
 #include "../frameserver/frameserver.h"
 
 OBS_DECLARE_MODULE()
@@ -72,7 +75,7 @@ typedef struct {
     char *sidecar_partial, *sidecar_final;  /* growing scratch path, and the published name it gets at detach */
     _Atomic uint64_t last_counter;          /* counter_ext of the last frame delivered to OBS */
 } shuttle_src;
-#define SIDECAR_SCRATCH "/private/tmp/shuttle-source"   /* non-synced; must share a filesystem with the recording for the atomic publish */
+#define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; must share a filesystem with the recording for the atomic publish */
 
 static _Atomic int g_instances;
 
@@ -149,15 +152,18 @@ static void sidecar_attach(shuttle_src *s){
     struct dstr fin = {0}; struct stat st; unsigned dup = 1;
     for (sidecar_final_name(&fin, s, dup); stat(fin.array, &st) == 0; sidecar_final_name(&fin, s, ++dup))
         if (dup > 999){ blog(LOG_ERROR, "[shuttle-source] sidecar: too many existing files next to %s", s->sidecar_base); dstr_free(&fin); return; }
-    /* grow in non-synced scratch on the same filesystem, publish by rename */
-    mkdir(SIDECAR_SCRATCH, 0755);
+    /* grow in private non-synced scratch on the same filesystem, publish by rename */
+    char scratch[64]; snprintf(scratch, sizeof scratch, SIDECAR_SCRATCH_FMT, (unsigned)getuid());
+    struct stat sd;
+    if (mkdir(scratch, 0700) != 0 && errno != EEXIST){ blog(LOG_ERROR, "[shuttle-source] sidecar scratch %s: %s", scratch, strerror(errno)); dstr_free(&fin); return; }
+    if (stat(scratch, &sd) != 0 || !S_ISDIR(sd.st_mode) || sd.st_uid != getuid() || (sd.st_mode & 077)){ blog(LOG_ERROR, "[shuttle-source] sidecar scratch %s is not a private directory owned by this user; refusing", scratch); dstr_free(&fin); return; }
     char *dircopy = bstrdup(fin.array); const char *destdir = dirname(dircopy);
-    int same = same_filesystem(SIDECAR_SCRATCH, destdir);
-    if (!same) blog(LOG_ERROR, "[shuttle-source] sidecar NOT written: %s is on a different filesystem from %s, so it cannot be published by an atomic rename (copy+delete is forbidden for a growing evidence file)", destdir, SIDECAR_SCRATCH);
+    int same = same_filesystem(scratch, destdir);
+    if (!same) blog(LOG_ERROR, "[shuttle-source] sidecar NOT written: %s is on a different filesystem from %s, so it cannot be published by an atomic rename (copy+delete is forbidden for a growing evidence file)", destdir, scratch);
     bfree(dircopy);
     if (!same){ dstr_free(&fin); return; }
     char *namecopy = bstrdup(fin.array); struct dstr part = {0};
-    dstr_printf(&part, "%s/%s.partial-%d", SIDECAR_SCRATCH, basename(namecopy), (int)getpid()); bfree(namecopy);
+    dstr_printf(&part, "%s/%s.partial-%08x%08x", scratch, basename(namecopy), (unsigned)arc4random(), (unsigned)arc4random()); bfree(namecopy);   /* random, exclusive (fs_log_start opens "wx") */
     if (fs_log_start(s->fs, part.array) == 0){
         s->sidecar_attached = 1; s->sidecar_part++;
         bfree(s->sidecar_partial); s->sidecar_partial = bstrdup(part.array);
@@ -171,8 +177,9 @@ static void sidecar_detach(shuttle_src *s){
     if (!s->sidecar_attached) return;
     s->sidecar_attached = 0;
     if (!s->fs){ blog(LOG_ERROR, "[shuttle-source] sidecar left unpublished at %s (capture already closed)", s->sidecar_partial); return; }
-    if (fs_log_stop(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] sidecar close failed (disk full?); left at %s, NOT published", s->sidecar_partial); return; }
-    if (rename(s->sidecar_partial, s->sidecar_final) != 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish rename failed; complete file left at %s", s->sidecar_partial);
+    if (fs_log_stop(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] sidecar is INCOMPLETE (a row write or the close failed: disk full?); left unpublished at %s", s->sidecar_partial); return; }
+    /* exclusive publish: if a file with the final name appeared since it was chosen at attach, fail rather than replace it */
+    if (renamex_np(s->sidecar_partial, s->sidecar_final, RENAME_EXCL) != 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish refused (%s); the complete file is left at %s", strerror(errno), s->sidecar_partial);
     else blog(LOG_INFO, "[shuttle-source] sidecar published: %s", s->sidecar_final);
 }
 static void frontend_event(enum obs_frontend_event ev, void *data){
@@ -253,11 +260,15 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     obs_source_set_deinterlace_mode(source, OBS_DEINTERLACE_MODE_YADIF_2X);          /* default presentation; the user may change it (OBS owns deinterlacing) */
     pthread_mutex_init(&s->m, NULL);
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
+    /* Register for recording events BEFORE inspecting recording state, so a recording that starts
+     * in between is seen by the callback rather than missed. Frontend events and this source's
+     * update/destroy all serialize on s->m; removal in destroy happens on the frontend's own thread,
+     * so no already-dispatched event can enter after it returns. */
+    obs_frontend_add_event_callback(frontend_event, s);
     pthread_mutex_lock(&s->m);
     if (obs_frontend_recording_active() && recording_path(s) == 0) s->sidecar_part = 0;   /* created during a recording */
     if (shuttle_start(s, settings) != 0) blog(LOG_WARNING, "[shuttle-source] created without a running capture; fix settings");
     pthread_mutex_unlock(&s->m);
-    obs_frontend_add_event_callback(frontend_event, s);
     return s;
 }
 
