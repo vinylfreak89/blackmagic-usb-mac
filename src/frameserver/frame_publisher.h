@@ -39,7 +39,7 @@ typedef struct {
     IOSurfaceRef surface;      // '2vuy', 720×480, interlaced TFF; use-count held by consumer
     uint64_t pts_num;          // PTS = pts_num / pts_den seconds (monotonic per epoch)
     uint32_t pts_den;
-    uint32_t counter_ext;      // extended unit counter this frame came from
+    uint64_t counter_ext;      // extended unit counter this frame came from (64-bit: monotonic epoch contract)
     int8_t   d1, d2;           // applied per-field offsets used for the crop
     uint8_t  transport;        // enum fp_transport of the source unit
 } fp_frame;
@@ -63,7 +63,7 @@ int  fp_open (fp_publisher **out, unsigned pool_size, const fp_sink *sink);
 // Assemble and publish one unit. d1/d2 are clamped to keep every crop line inside the
 // 525-line source; returns 0 on publish, 1 if dropped (no free surface), -1 on bad args.
 int  fp_publish(fp_publisher *p, const uint8_t *unit, size_t unit_len,
-                uint32_t counter_ext, int d1, int d2, uint8_t transport);
+                uint64_t counter_ext, int d1, int d2, uint8_t transport);
 void fp_get_stats(const fp_publisher *p, fp_stats *out);
 void fp_close(fp_publisher *p);
 

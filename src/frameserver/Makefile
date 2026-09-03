@@ -23,6 +23,11 @@ test: tests/frame_publisher_test tests/frameserver_test $(FIXTURE)
 	./tests/frame_publisher_test
 	./tests/frameserver_test $(FIXTURE)
 
+# Item ring of 2 so a stalled consumer exhausts it deterministically (ring-full accounting path).
+test-smallring: $(FIXTURE)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -DRING_ITEMS=2 -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_smallring $(LIBS)
+	FS_TEST_EXPECT_RING_DROPS=1 ./tests/test_smallring $(FIXTURE)
+
 test-asan: $(FIXTURE)
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_asan $(LIBS)
 	./tests/test_asan $(FIXTURE)
@@ -32,4 +37,4 @@ test-tsan: $(FIXTURE)
 	./tests/test_tsan $(FIXTURE)
 
 clean:
-	rm -f frameserver_replay tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan
+	rm -f frameserver_replay tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring

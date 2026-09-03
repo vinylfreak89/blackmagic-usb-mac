@@ -31,7 +31,7 @@ typedef struct frameserver frameserver;
 
 typedef struct {
     cc_config capture;          // device input or replay_path
-    unsigned pool_units;        // unit slots between delivery thread and worker (0 => 64)
+    unsigned pool_units;        // unit slots between delivery thread and worker (0 => 16)
     unsigned surface_pool;      // IOSurface pool for the publisher (0 => 6)
     const char *decision_log;   // CSV sidecar path, or NULL
     fp_sink sink;               // consumer of published frames (may be {NULL,NULL} => count only)
@@ -42,9 +42,13 @@ typedef struct {
 typedef struct {
     uint64_t video_observations, exact_units, short_units, holes, unframed, other_format, no_signal_0800;
     uint64_t audio_records, audio_resync;
-    uint64_t published, dropped_pool_full, dropped_ring_full, publisher_dropped;
+    uint64_t eligible_observations;   // fixed-raster-eligible units seen at ingress (the denominator)
+    uint64_t published, dropped_pool_full, dropped_ring_full, publisher_dropped, ring_drops_logged;
     // dropped_pool_full: eligible unit, no free slot -> bytes shed, observation still logged (drop_reason=PoolFull).
-    // dropped_ring_full: item ring full -> observation never reaches the worker; counted only.
+    // dropped_ring_full: item ring full -> observation never reaches the worker; counted, and folded
+    //   into the next sidecar row's preceding_ring_drops column so it is locatable in the timeline.
+    // Invariants: published + dropped_pool_full + publisher_dropped == exact_units;
+    //             exact_units + eligible ring drops == eligible_observations.
     uint64_t unsettled_units, begin_segment_calls, discontinuity_calls;
     uint64_t log_rows;
     unsigned pool_high_water;

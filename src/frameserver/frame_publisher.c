@@ -62,7 +62,7 @@ int fp_open(fp_publisher **out, unsigned pool_size, const fp_sink *sink){
 }
 
 int fp_publish(fp_publisher *p, const uint8_t *unit, size_t unit_len,
-               uint32_t counter_ext, int d1, int d2, uint8_t transport){
+               uint64_t counter_ext, int d1, int d2, uint8_t transport){
     if (!p || !unit || unit_len != FP_UNIT_BYTES){ if (p) p->st.rejected_bad_args++; return -1; }
     IOSurfaceRef s = NULL;
     unsigned in_use = 0;
@@ -75,7 +75,7 @@ int fp_publish(fp_publisher *p, const uint8_t *unit, size_t unit_len,
     IOSurfaceLock(s, 0, NULL);
     fp_assemble((uint8_t *)IOSurfaceGetBaseAddress(s), unit, d1, d2);
     IOSurfaceUnlock(s, 0, NULL);
-    fp_frame f = { s, (uint64_t)counter_ext * 1001u, 30000u, counter_ext,
+    fp_frame f = { s, counter_ext * 1001u, 30000u, counter_ext,
                    (int8_t)clamp_offset(FP_FIELD1_START, d1), (int8_t)clamp_offset(FP_FIELD2_START, d2), transport };
     p->st.published++;
     p->sink.on_frame(p->sink.ctx, &f);

@@ -32,6 +32,9 @@ int main(int argc, char **argv){
     CHECK(s.published + s.dropped_pool_full + s.publisher_dropped == s.exact_units, "exact units are published or counted as drops (%llu+%llu+%llu vs %llu)",
           (unsigned long long)s.published, (unsigned long long)s.dropped_pool_full, (unsigned long long)s.publisher_dropped, (unsigned long long)s.exact_units);
     CHECK(atomic_load(&frames_seen) == s.published, "sink saw every published frame");
+    CHECK(s.discontinuity_calls > 0, "hole/short/unframed observations never reached the engine as discontinuities");
+    CHECK(s.eligible_observations == s.exact_units, "eligible ingress %llu != exact units %llu with no ring drops",
+          (unsigned long long)s.eligible_observations, (unsigned long long)s.exact_units);
     CHECK(s.short_units + s.holes + s.unframed + s.exact_units + s.other_format + s.no_signal_0800 >= s.video_observations, "every observation classified by transport/kind");
     // log integrity: header + rows, columns as the contract names them
     FILE *L = fopen(logp, "r"); char line[1024]; unsigned rows = 0; int hdr_ok = 0;
@@ -56,17 +59,52 @@ int main(int argc, char **argv){
     atomic_store(&sink_stall_us, 0);
     fs_stats s2; fs_get_stats(g, &s2);
     CHECK(s2.dropped_pool_full > 0, "pool=1 with a stalled consumer did not exercise pool exhaustion");
-    CHECK(s2.log_rows == s2.video_observations, "pool=1: one log row per observation (%llu vs %llu)", (unsigned long long)s2.log_rows, (unsigned long long)s2.video_observations);
-    CHECK(s2.published + s2.dropped_pool_full + s2.publisher_dropped == s2.exact_units, "pool=1: exact units published or counted (%llu+%llu+%llu vs %llu)",
+    int ring_may_drop = getenv("FS_TEST_EXPECT_RING_DROPS") != NULL;   // -DRING_ITEMS=2 build
+    CHECK(s2.log_rows + s2.dropped_ring_full == s2.video_observations, "pool=1: every observation is a row or a counted ring drop (%llu+%llu vs %llu)",
+          (unsigned long long)s2.log_rows, (unsigned long long)s2.dropped_ring_full, (unsigned long long)s2.video_observations);
+    if (!ring_may_drop){
+        CHECK(s2.log_rows == s2.video_observations, "pool=1: one log row per observation (%llu vs %llu)", (unsigned long long)s2.log_rows, (unsigned long long)s2.video_observations);
+        CHECK(s2.exact_units == s.exact_units, "pool size must not change how many exact units were observed (%llu vs %llu)", (unsigned long long)s2.exact_units, (unsigned long long)s.exact_units);
+    }
+    CHECK(s2.published + s2.dropped_pool_full + s2.publisher_dropped >= s2.exact_units, "pool=1: exact units published or counted (%llu+%llu+%llu vs %llu)",
           (unsigned long long)s2.published, (unsigned long long)s2.dropped_pool_full, (unsigned long long)s2.publisher_dropped, (unsigned long long)s2.exact_units);
-    CHECK(s2.exact_units == s.exact_units, "pool size must not change how many exact units were observed (%llu vs %llu)", (unsigned long long)s2.exact_units, (unsigned long long)s.exact_units);
+    if (!ring_may_drop)
+        CHECK(s2.published + s2.dropped_pool_full + s2.publisher_dropped == s2.exact_units, "pool=1: drop accounting exact without ring drops");
     CHECK(s2.pool_high_water <= 1, "pool high-water bounded by pool size (%u)", s2.pool_high_water);
     unsigned poolfull_rows = 0; rows = 0;
     L = fopen(logp2, "r");
-    while (fgets(line, sizeof line, L)){ if (rows && strstr(line, ",PoolFull\n")) poolfull_rows++; rows++; }
+    while (fgets(line, sizeof line, L)){ if (rows && strstr(line, ",PoolFull,")) poolfull_rows++; rows++; }
     fclose(L); unlink(logp2);
-    CHECK(poolfull_rows == s2.dropped_pool_full, "every pool-full drop is an explicit PoolFull sidecar row (%u vs %llu)", poolfull_rows, (unsigned long long)s2.dropped_pool_full);
+    if (!ring_may_drop){
+        CHECK(poolfull_rows == s2.dropped_pool_full, "every pool-full drop is an explicit PoolFull sidecar row (%u vs %llu)", poolfull_rows, (unsigned long long)s2.dropped_pool_full);
+        CHECK(s2.discontinuity_calls > s.discontinuity_calls, "a shed unit must reach the engine as a discontinuity");
+    } else CHECK(poolfull_rows <= s2.dropped_pool_full, "more PoolFull rows than drops");
     fs_close(g);
+
+    // Ring exhaustion (built with -DRING_ITEMS=2 by `make test-smallring`): drops are counted AND
+    // folded into the next row's preceding_ring_drops column so they are locatable in time.
+    if (getenv("FS_TEST_EXPECT_RING_DROPS")){
+        done = 0; atomic_store(&frames_seen, 0);
+        char logp3[] = "/tmp/fs_test_log3_XXXXXX"; fd = mkstemp(logp3); close(fd);
+        fs_config c4 = cfg; c4.decision_log = logp3; c4.pool_units = 8;
+        atomic_store(&sink_stall_us, 200000);
+        frameserver *r = NULL;
+        CHECK(fs_open(&r, &c4) == 0, "open (small ring)");
+        CHECK(fs_start(r) == 0, "start (small ring)");
+        while (!done) usleep(10000);
+        CHECK(fs_stop(r) == 0, "stop (small ring)");
+        atomic_store(&sink_stall_us, 0);
+        fs_stats s4; fs_get_stats(r, &s4);
+        CHECK(s4.dropped_ring_full > 0, "small ring with a stalled consumer did not exercise ring exhaustion");
+        unsigned long long col_sum = 0; rows = 0;
+        L = fopen(logp3, "r");
+        while (fgets(line, sizeof line, L)){ if (rows){ char *c = strrchr(line, ','); if (c) col_sum += strtoull(c + 1, NULL, 10); } rows++; }
+        fclose(L); unlink(logp3);
+        CHECK(col_sum == s4.ring_drops_logged, "preceding_ring_drops column sum %llu != ring_drops_logged %llu", col_sum, (unsigned long long)s4.ring_drops_logged);
+        CHECK(s4.ring_drops_logged <= s4.dropped_ring_full, "logged ring drops exceed counted");
+        CHECK(s4.eligible_observations >= s4.exact_units, "ingress denominator below processed exact units");
+        fs_close(r);
+    }
 
     // F6: close after start without stop must stop first (ASan/TSan builds prove no use-after-free)
     done = 0;

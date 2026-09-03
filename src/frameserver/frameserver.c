@@ -11,7 +11,9 @@
 #include <sys/qos.h>
 #include <pthread/qos.h>
 
-#define RING_ITEMS 128
+#ifndef RING_ITEMS
+#define RING_ITEMS 128      // overridable for tests that must exhaust the item ring deterministically
+#endif
 
 // The publisher and the parser each name the fixed-raster unit size; they must be the same
 // number or fp_publish would over-read into the neighbouring pool slot (silent, intermittent).
@@ -41,6 +43,8 @@ struct frameserver {
     enum cc_end end_reason;
     fs_stats st; _Atomic uint64_t audio_records, audio_resync, dropped_pool_full, dropped_ring_full, video_obs, holes, unframed, shorts, other_fmt, ns0800;
     _Atomic unsigned pool_hw;              // written on the delivery thread, read by fs_get_stats
+    _Atomic uint64_t eligible_ingress;     // fixed-raster-eligible observations seen at ingress (denominator)
+    _Atomic uint64_t ring_drops_pending;   // ring-full drops not yet folded into a sidecar row
     _Atomic int stopped;
 };
 
@@ -60,7 +64,10 @@ static void push(frameserver *f, const fs_item *it){
     unsigned t = atomic_load_explicit(&f->r_tail, memory_order_acquire);
     // Ring full: the worker is behind. Distinct from pool exhaustion (slots held too long). No
     // worker ever sees this item, so it cannot get a sidecar row; it is counted, never silent.
-    if (h - t >= RING_ITEMS){ atomic_fetch_add(&f->dropped_ring_full, 1); if (it->slot >= 0) atomic_store(&f->slot_used[it->slot], 0); return; }
+    if (h - t >= RING_ITEMS){
+        atomic_fetch_add(&f->dropped_ring_full, 1); atomic_fetch_add(&f->ring_drops_pending, 1);
+        if (it->slot >= 0) atomic_store(&f->slot_used[it->slot], 0); return;
+    }
     f->ring[h % RING_ITEMS] = *it;
     atomic_store_explicit(&f->r_head, h + 1, memory_order_release);
     if (pthread_mutex_trylock(&f->m) == 0){ pthread_cond_signal(&f->c); pthread_mutex_unlock(&f->m); }
@@ -70,6 +77,7 @@ static void on_video(void *ctx, const unit_video_observation *u){
     atomic_fetch_add(&f->video_obs, 1);
     fs_item it; it.slot = -1; it.drop = FS_DROP_NONE; it.obs = *u; it.obs.bytes = NULL; it.obs.payload = NULL;
     if (u->fixed_raster_eligible && u->byte_count == UNIT_PARSER_VIDEO_UNIT_BYTES){
+        atomic_fetch_add(&f->eligible_ingress, 1);
         int s = take_slot(f);
         if (s < 0){
             // Bytes are shed (§8 property 7) but the OBSERVATION is not: the item still reaches the
@@ -105,7 +113,7 @@ static const char *transport_name(unit_transport_state t){
 static void log_header(FILE *L){
     fprintf(L, "ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,"
                "interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,"
-               "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,published,drop_reason\n");
+               "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,published,drop_reason,preceding_ring_drops\n");
 }
 static void process_item(frameserver *f, const fs_item *it){
     unit_video_observation obs = it->obs;
@@ -122,19 +130,30 @@ static void process_item(frameserver *f, const fs_item *it){
     // classifier's contract is metadata-only for those (signal_state.c: !fixed_raster_eligible || !bytes).
     bool classified = signal_state_classify(f->sig, &obs, NULL, &sr);
     fieldreg_decision d; memset(&d, 0, sizeof d); bool have_d = false; int published = 0;
-    if (it->drop == FS_DROP_POOL_FULL) f->st.exact_units++;   // eligible, bytes shed: still an exact unit
+    // Ring-full drops since the previous processed item: folded into this row (locatable in time)
+    // and a byte discontinuity for the engine's temporal state.
+    uint64_t rd = atomic_exchange(&f->ring_drops_pending, 0);
+    if (rd){ f->st.ring_drops_logged += rd; fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++; }
+    // Registration actions are dispatched for EVERY classified observation, not only those with
+    // bytes: holes, short and unframed units carry the discontinuity the engine must see before
+    // the next exact unit, and they never have a retained raster.
+    if (classified){
+        if (sr.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT){ fieldreg_begin_segment(f->eng); f->st.begin_segment_calls++; }
+        else if (sr.actions & SIGNAL_ACTION_REGISTRATION_DISCONTINUITY){ fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++; }
+    }
+    if (it->drop == FS_DROP_POOL_FULL){
+        // eligible, bytes shed here: still an exact unit for accounting, and a byte discontinuity
+        // for the engine's temporal state (the classifier only knows "no bytes", not why)
+        f->st.exact_units++; fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++;
+    }
     if (unit){
         f->st.exact_units++;
-        if (classified){
-            if (sr.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT){ fieldreg_begin_segment(f->eng); f->st.begin_segment_calls++; }
-            else if (sr.actions & SIGNAL_ACTION_REGISTRATION_DISCONTINUITY){ fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++; }
-        }
         have_d = fieldreg_process(f->eng, unit, &d);
         if (have_d && classified)
             signal_state_note_registration(f->sig, &sr, d.frame_observation_support > 0,
                                            d.frame_observation_d1, d.frame_observation_d2, d.confidence);
         if (classified && sr.unsettled) f->st.unsettled_units++;
-        int rc = fp_publish(f->pub, unit, FP_UNIT_BYTES, (uint32_t)obs.counter_extended,
+        int rc = fp_publish(f->pub, unit, FP_UNIT_BYTES, obs.counter_extended,
                             have_d ? d.applied_d1 : 0, have_d ? d.applied_d2 : 0,
                             obs.transport == UNIT_TRANSPORT_COMPLETE ? FP_TRANSPORT_COMPLETE : FP_TRANSPORT_SHORT);
         if (rc == 0){ f->st.published++; published = 1; } else if (rc == 1) f->st.publisher_dropped++;
@@ -143,7 +162,7 @@ static void process_item(frameserver *f, const fs_item *it){
         atomic_store(&f->slot_used[it->slot], 0);
     }
     if (f->log){
-        fprintf(f->log, "%llu,%llu,%s,%d,%s,%.3f,%s,%.3f,%llu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s,%s,%.3f,%d,%s\n",
+        fprintf(f->log, "%llu,%llu,%s,%d,%s,%.3f,%s,%.3f,%llu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s,%s,%.3f,%d,%s,%llu\n",
             (unsigned long long)obs.ordinal, (unsigned long long)obs.counter_extended, transport_name(obs.transport), (int)obs.kind,
             classified ? signal_appearance_name(sr.appearance) : "Unclassified", classified ? sr.appearance_confidence : 0.0,
             classified ? signal_source_state_name(sr.source) : "Unknown", classified ? sr.source_confidence : 0.0,
@@ -153,7 +172,7 @@ static void process_item(frameserver *f, const fs_item *it){
             have_d ? d.baseline_d1 : 0, have_d ? d.baseline_d2 : 0,
             classified && sr.settled_phase_known, classified ? sr.settled_d1 : 0, classified ? sr.settled_d2 : 0,
             "Immediate", have_d ? fieldreg_mode_name(d.mode) : "None", have_d ? d.confidence : 0.0, published,
-            it->drop == FS_DROP_POOL_FULL ? "PoolFull" : "None");
+            it->drop == FS_DROP_POOL_FULL ? "PoolFull" : "None", (unsigned long long)rd);
         f->st.log_rows++;
     }
 }
@@ -197,7 +216,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if (!out || !cfg) return -1;
     frameserver *f = calloc(1, sizeof *f); if (!f) return -1;
     f->cfg = *cfg;
-    f->n_slots = cfg->pool_units ? cfg->pool_units : 64;   // sized to a worst-case worker stall (~2 s), not steady state
+    f->n_slots = cfg->pool_units ? cfg->pool_units : 16;   // default kept at 16 (~0.5 s): whole-tape high-water was 2; change only on a measured stall (F5 stress matrix)
     f->pool = malloc((size_t)f->n_slots * UNIT_PARSER_VIDEO_UNIT_BYTES);
     f->slot_used = calloc(f->n_slots, sizeof(_Atomic int));
     f->parser = aligned_alloc(unit_parser_alignment(), unit_parser_size());
@@ -220,8 +239,15 @@ int fs_start(frameserver *f){
     if (!f || atomic_load(&f->started)) return -1;
     atomic_store(&f->started, 1);
     unit_parser_begin_epoch(f->parser, 1); signal_state_begin_epoch(f->sig, 1);
-    if (pthread_create(&f->worker, NULL, worker_main, f)) return -1;
-    return cc_start(f->cap);
+    if (pthread_create(&f->worker, NULL, worker_main, f)){ atomic_store(&f->started, 0); return -1; }
+    if (cc_start(f->cap) != 0){
+        // roll back: release the worker (it exits on producer_done with an empty ring) and join it
+        atomic_store(&f->producer_done, 1);
+        pthread_mutex_lock(&f->m); pthread_cond_signal(&f->c); pthread_mutex_unlock(&f->m);
+        pthread_join(f->worker, NULL);
+        atomic_store(&f->started, 0); return -1;
+    }
+    return 0;
 }
 int fs_stop(frameserver *f){
     if (!f || !atomic_load(&f->started)) return -1;
@@ -236,6 +262,7 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->video_observations = atomic_load(&f->video_obs); o->audio_records = atomic_load(&f->audio_records);
     o->audio_resync = atomic_load(&f->audio_resync); o->dropped_pool_full = atomic_load(&f->dropped_pool_full);
     o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw);
+    o->eligible_observations = atomic_load(&f->eligible_ingress);
     o->holes = atomic_load(&f->holes); o->unframed = atomic_load(&f->unframed); o->short_units = atomic_load(&f->shorts);
     o->other_format = atomic_load(&f->other_fmt); o->no_signal_0800 = atomic_load(&f->ns0800);
 }
@@ -245,5 +272,6 @@ void fs_close(frameserver *f){
     if (f->cap) cc_close(f->cap);
     if (f->pub) fp_close(f->pub);
     if (f->log) fclose(f->log);
+    pthread_mutex_destroy(&f->m); pthread_cond_destroy(&f->c);
     free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f->eng); free(f);
 }
