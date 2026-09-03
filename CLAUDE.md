@@ -555,7 +555,17 @@ HostLoss 0, errors 0).** The Shuttle with nothing on its input does NOT sit in o
   capture-level HostLoss. Replay with `--ring-mb` ≥ file size or `--pace-us 16000`; the tool must
   surface capture-core loss (fix queued).
 
-**Classifier v0 on the virgin-tape capture — three real-data defects (queued):** (1) sub-blanking
+**Classifier v0 on the virgin-tape capture — three real-data defects, FIXED (main `f2f445e`, mutual
+review, two rounds): robust luma/chroma medians and a 15×15-tile program-extent measure; a
+sub-blanking neutral raster (median Y ≤ 12) is `SubBlackMuteLike` by veto regardless of streak or
+OSD edges; a localized static overlay over a flat raster cannot imply program; asymmetric
+hysteresis (5 units to enter program/reacquiring, 3 mute/no-input, 2 ambiguous); `unsettled`
+settles from the phase actually applied on the forward-only path; and a **host-side shed (PoolFull,
+ring drop) is absence of evidence, never a source transition** — the frameserver tells the
+classifier via `signal_context`, which holds every inferred state and clears only temporal raster
+history (a parser hole still resets). Paced replay of the capture: OSD-over-black span
+Program/Present 786→0 rows, tail flapping 148/227→0, unsettled 1,396→53 of 1,396, begin_segment 3;
+5-minute registration action check 0 differences in 9,097 units. Original findings:** (1) sub-blanking
 black with sparse dropout streaks flapped between `SubBlackMuteLike` and `ProgramLike` every ~2
 units for 7 s — gradient energy from the streaks passes the program test; a raster whose luma sits
 below blanking must veto `ProgramLike` outright. (2) The deck's OSD over black-with-noise classified
