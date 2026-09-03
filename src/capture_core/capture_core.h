@@ -50,7 +50,8 @@ typedef struct {
     // policy into this layer.
     void (*on_packet)(void *ctx, const cc_packet *pkt);
     // Optional. Explicit host-side loss (delivery ring overflow): the packets
-    // existed and are GONE; the archive must record a hole here.
+    // existed and are GONE; the archive must record a hole here. A very large contiguous
+    // interval may arrive as adjacent aggregate chunks; sum packet/byte counts across them.
     void (*on_loss)(void *ctx, uint8_t endpoint, uint32_t packets, uint64_t bytes);
     // Optional. Transfer-level error or resubmit failure (is_submit_failure=1).
     // The fleet is never silently shrunk; failures are retried internally.

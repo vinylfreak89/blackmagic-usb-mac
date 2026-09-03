@@ -56,6 +56,7 @@ struct cc_session {
     size_t r_max;
     pthread_mutex_t sig_m; pthread_cond_t sig_c;
     pthread_mutex_t life_m; pthread_cond_t life_c;
+    int sig_m_init, sig_c_init, life_m_init, life_c_init;
     // threads / state machine
     pthread_t backend_t, delivery_t;
     _Atomic int stop_req, backend_done, started_successfully;
@@ -77,6 +78,13 @@ struct cc_session {
     xinfo xs[NXF];
     _Atomic long inflight;
 };
+
+static void destroy_sync_(cc_session *s){
+    if(s->life_c_init) pthread_cond_destroy(&s->life_c);
+    if(s->life_m_init) pthread_mutex_destroy(&s->life_m);
+    if(s->sig_c_init) pthread_cond_destroy(&s->sig_c);
+    if(s->sig_m_init) pthread_mutex_destroy(&s->sig_m);
+}
 
 #ifdef CAPTURE_CORE_TEST_HOOKS
 extern void cc_test_after_empty_snapshot(cc_session *s);
@@ -467,10 +475,14 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
     cc_session *s=calloc(1,sizeof *s);
     if(!s) return CC_ERR_NOMEM;
     s->cfg=*cfg; s->cb=*cb;
-    if(pthread_mutex_init(&s->sig_m,NULL) || pthread_cond_init(&s->sig_c,NULL) ||
-       pthread_mutex_init(&s->life_m,NULL) || pthread_cond_init(&s->life_c,NULL)){
-        free(s); return CC_ERR_STATE;
-    }
+    if(pthread_mutex_init(&s->sig_m,NULL)) goto sync_fail;
+    s->sig_m_init=1;
+    if(pthread_cond_init(&s->sig_c,NULL)) goto sync_fail;
+    s->sig_c_init=1;
+    if(pthread_mutex_init(&s->life_m,NULL)) goto sync_fail;
+    s->life_m_init=1;
+    if(pthread_cond_init(&s->life_c,NULL)) goto sync_fail;
+    s->life_c_init=1;
     s->life=CC_LIFE_OPEN;
     s->ring_sz=(size_t)(cfg->ring_mb>0?cfg->ring_mb:256)<<20;
     s->ring=malloc(s->ring_sz);
@@ -498,18 +510,17 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
     *out=s; return CC_OK;
 nodevice:
     if(s->ctx) libusb_exit(s->ctx); s->ctx=NULL;
-    pthread_cond_destroy(&s->life_c); pthread_mutex_destroy(&s->life_m);
-    pthread_cond_destroy(&s->sig_c); pthread_mutex_destroy(&s->sig_m); free(s->ring); free(s);
+    destroy_sync_(s); free(s->ring); free(s);
     return CC_ERR_NODEVICE;
 usb_fail:
     if(s->h){ libusb_release_interface(s->h,0); libusb_close(s->h); }
     if(s->ctx) libusb_exit(s->ctx);
-    pthread_cond_destroy(&s->life_c); pthread_mutex_destroy(&s->life_m);
-    pthread_cond_destroy(&s->sig_c); pthread_mutex_destroy(&s->sig_m); free(s->ring); free(s);
+    destroy_sync_(s); free(s->ring); free(s);
     return CC_ERR_USB;
 nomem:
-    pthread_cond_destroy(&s->life_c); pthread_mutex_destroy(&s->life_m);
-    pthread_cond_destroy(&s->sig_c); pthread_mutex_destroy(&s->sig_m); free(s); return CC_ERR_NOMEM;
+    destroy_sync_(s); free(s); return CC_ERR_NOMEM;
+sync_fail:
+    destroy_sync_(s); free(s); return CC_ERR_STATE;
 }
 int cc_start(cc_session *s){
     if(!s) return CC_ERR_STATE;
@@ -569,8 +580,7 @@ void cc_close(cc_session *s){
     }
     if(s->h){ libusb_release_interface(s->h,0); libusb_close(s->h); }
     if(s->ctx) libusb_exit(s->ctx);
-    pthread_mutex_destroy(&s->sig_m); pthread_cond_destroy(&s->sig_c);
-    pthread_mutex_destroy(&s->life_m); pthread_cond_destroy(&s->life_c);
+    destroy_sync_(s);
     free(s->ring); free(s);
 }
 void cc_get_stats(const cc_session *s, cc_stats *o){
