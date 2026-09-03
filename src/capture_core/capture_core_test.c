@@ -24,9 +24,22 @@ typedef struct {
     uint64_t loss_bytes[2]; uint32_t loss_events; uint32_t error_events;
     int end_count; int end_reason;
     pthread_t main_thread; int cb_on_main;
-    int throttle;              // sleep every 256th packet: consumer provably slower
+    int throttle;              // 1=periodic slowdown, 2=block first callback for reserve test
     _Atomic int ended;
 } tally;
+
+static _Atomic int hook_arm, hook_empty, hook_release, hook_fail_alloc;
+void cc_test_after_empty_snapshot(cc_session *s){
+    (void)s;
+    if(atomic_load(&hook_arm) && !atomic_exchange(&hook_empty,1))
+        while(!atomic_load(&hook_release)) usleep(100);
+}
+void cc_test_before_backend_done(cc_session *s){
+    (void)s; if(atomic_load(&hook_arm)) atomic_store(&hook_release,1);
+}
+int cc_test_fail_delivery_allocation(size_t bytes){
+    (void)bytes; return atomic_exchange(&hook_fail_alloc,0);
+}
 
 static void t_packet(void *ctx, const cc_packet *p){
     tally *t=ctx;
@@ -35,7 +48,9 @@ static void t_packet(void *ctx, const cc_packet *p){
     if(pthread_equal(pthread_self(),t->main_thread)) t->cb_on_main=1;
     // overflow tests must not race: cap consumer throughput well below the
     // producer's disk speed so a small ring is GUARANTEED to overflow
-    if(t->throttle && ((t->pkts[0]+t->pkts[1]) & 255)==0) usleep(2000);
+    uint64_t total=t->pkts[0]+t->pkts[1];
+    if(t->throttle==2 && total==1) usleep(2000000);
+    else if(t->throttle==1 && (total & 255)==0) usleep(2000);
 }
 static void t_loss(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     tally *t=ctx; (void)pk;
@@ -47,6 +62,8 @@ static void t_end(void *ctx, enum cc_end r){
     t->end_count++; t->end_reason=r;
     atomic_store(&t->ended,1);
 }
+typedef struct { cc_session *s; int rc; } stop_arg;
+static void *stop_thread(void *p){ stop_arg *a=p; a->rc=cc_stop(a->s); return NULL; }
 static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle){
     memset(t,0,sizeof *t);
     t->main_thread=pthread_self();
@@ -103,6 +120,14 @@ int main(int argc, char **argv){
     CHECK(t.bytes[1]+t.loss_bytes[1]==aB,"audio accounting unbalanced");
     CHECK(t.end_count==1,"on_end fired %d times (overflow run)",t.end_count);
 
+    // A hard two-second callback stall used to consume META_RESERVE as one HostLoss header per
+    // packet and silently discard a later TransferError.  Coalescing must preserve both.
+    if(argc>=7){
+        run_replay_opt(argv[6],1,&t,2);
+        CHECK(t.loss_events>0,"blocked consumer did not exercise loss coalescing");
+        CHECK(t.error_events==1,"late TransferError lost behind DATA pressure (got %u)",t.error_events);
+    }
+
     // 3: truncation robustness — cut mid-header and mid-payload
     long cuts[]={ 10, 24+5, 3000, 500000, 7777777 };
     FILE *in=fopen(slice,"rb");
@@ -152,6 +177,37 @@ int main(int argc, char **argv){
     CHECK(lt2.end_count==1,"close-without-stop on_end count %d",lt2.end_count);
     cc_config badin={0}; badin.input=(enum cc_input)77;
     CHECK(cc_open(&s2,&badin,&cb)==CC_ERR_ARGS,"invalid input enum was accepted (would silently select S-video)");
+
+    // Force the consumer to hold a stale empty snapshot while the producer publishes the
+    // complete fixture and backend_done.  The acquire reload must still drain every record.
+    atomic_store(&hook_arm,1); atomic_store(&hook_empty,0); atomic_store(&hook_release,0);
+    run_replay(slice,0,&t);
+    CHECK(atomic_load(&hook_empty),"empty-snapshot hook was not exercised");
+    CHECK(t.bytes[0]==vB && t.bytes[1]==aB,"stale-empty race stranded published records");
+    atomic_store(&hook_arm,0);
+
+    // A delivery allocation failure is a failed start, not a silently wedged session.  No
+    // on_end callback belongs to a start call that returned failure.
+    tally af; memset(&af,0,sizeof af); af.main_thread=pthread_self(); cb.ctx=&af;
+    cfg.replay_path=slice; atomic_store(&hook_fail_alloc,1); s=NULL;
+    CHECK(cc_open(&s,&cfg,&cb)==CC_OK,"open (delivery allocation fault)");
+    if(s){
+        CHECK(cc_start(s)==CC_ERR_NOMEM,"delivery allocation fault did not fail start as NOMEM");
+        CHECK(af.end_count==0,"on_end fired for failed start"); cc_close(s);
+    }
+
+    // Concurrent stop callers elect exactly one joiner; the waiter returns only after STOPPED.
+    tally ct; memset(&ct,0,sizeof ct); ct.main_thread=pthread_self(); cb.ctx=&ct;
+    cc_config pcfg={0}; pcfg.replay_path=slice; pcfg.replay_pace_us=100000; s=NULL;
+    CHECK(cc_open(&s,&pcfg,&cb)==CC_OK,"open (concurrent stop)");
+    if(s){
+        CHECK(cc_start(s)==CC_OK,"start (concurrent stop)"); usleep(20000);
+        stop_arg a={s,-99}, b={s,-99}; pthread_t ta,tb;
+        pthread_create(&ta,NULL,stop_thread,&a); pthread_create(&tb,NULL,stop_thread,&b);
+        pthread_join(ta,NULL); pthread_join(tb,NULL);
+        CHECK(a.rc==CC_OK && b.rc==CC_OK,"concurrent stop results %d/%d",a.rc,b.rc);
+        CHECK(ct.end_count==1,"concurrent stop on_end count %d",ct.end_count); cc_close(s);
+    }
 
     printf(fails? "FAILURES: %d\n" : "ALL TESTS PASSED\n", fails);
     return fails?1:0;

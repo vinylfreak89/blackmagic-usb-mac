@@ -2,6 +2,7 @@
 # suite; `make check CAPTURE=<file.tpc>` replays a real capture through the library.
 CC=clang
 CFLAGS=-O2 -Wall $(shell pkg-config --cflags libusb-1.0)
+TESTFLAGS=-DCAPTURE_CORE_TEST_HOOKS
 LIBS=$(shell pkg-config --libs libusb-1.0) -lpthread
 CAPTURE?=
 
@@ -13,24 +14,28 @@ check: shuttle-capture
 	./shuttle-capture --replay $(CAPTURE) /dev/null
 
 FIXTURE=fixture.tpc
+META_FIXTURE=fixture_meta.tpc
 EXPECT=$(shell cat fixture.expect 2>/dev/null)
 
 $(FIXTURE): gen_packet_capture.py
 	python3 gen_packet_capture.py --out $(FIXTURE) --expect fixture.expect --video-transfers 40 --audio-transfers 60 --short-every 97 --xfererr-at 7
 
-test: capture_core_test $(FIXTURE)
-	./capture_core_test $(FIXTURE) $$(cat fixture.expect)
+$(META_FIXTURE): gen_packet_capture.py
+	python3 gen_packet_capture.py --out $(META_FIXTURE) --expect fixture_meta.expect --video-transfers 40 --audio-transfers 60 --short-every 97 --xfererr-at 39
 
-test-tsan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE)
-	$(CC) -O1 -g -fsanitize=thread $(CFLAGS) -o test_tsan capture_core.c capture_core_test.c $(LIBS)
-	./test_tsan $(FIXTURE) $$(cat fixture.expect)
+test: capture_core_test $(FIXTURE) $(META_FIXTURE)
+	./capture_core_test $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE)
 
-test-asan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE)
-	$(CC) -O1 -g -fsanitize=address,undefined $(CFLAGS) -o test_asan capture_core.c capture_core_test.c $(LIBS)
-	./test_asan $(FIXTURE) $$(cat fixture.expect)
+test-tsan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_FIXTURE)
+	$(CC) -O1 -g -fsanitize=thread $(CFLAGS) $(TESTFLAGS) -o test_tsan capture_core.c capture_core_test.c $(LIBS)
+	./test_tsan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE)
+
+test-asan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_FIXTURE)
+	$(CC) -O1 -g -fsanitize=address,undefined $(CFLAGS) $(TESTFLAGS) -o test_asan capture_core.c capture_core_test.c $(LIBS)
+	./test_asan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE)
 
 capture_core_test: capture_core.c capture_core_test.c capture_core.h
-	$(CC) $(CFLAGS) -o $@ capture_core.c capture_core_test.c $(LIBS)
+	$(CC) $(CFLAGS) $(TESTFLAGS) -o $@ capture_core.c capture_core_test.c $(LIBS)
 
 # Device backend against the replay shim (no libusb linked): init, fleet, resubmission,
 # cancellation and teardown run as on hardware, with injected faults. ASan build.
@@ -40,4 +45,4 @@ test-shim: capture_core.c capture_core_shim_test.c capture_core.h $(SHIM) $(FIXT
 	./test_shim $(FIXTURE)
 
 clean:
-	rm -f shuttle-capture capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect
+	rm -f shuttle-capture capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect
