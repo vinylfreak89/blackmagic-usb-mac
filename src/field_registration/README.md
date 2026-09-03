@@ -249,6 +249,36 @@ no video sequence/packet gaps and no packet status errors. It reports 495,376
 trailing video bytes after the final bounded interval rather than inventing an
 extra frame.
 
+Algorithm v6 is the authority-first, forward-only live policy. Its public
+two-truth fixture contains 1,140 units, 1,017 of them with unambiguous physical
+raster geometry. The pre-change v4 engine matched 858/1,017 raster-known units
+and 962/1,140 trajectory-oracle units. V6 matches 1,017/1,017 raster-known
+units and 1,130/1,140 oracle units. The remaining ten are deliberately
+different truths: a physically observed `(0,1)` provisional raster which an
+optional future endpoint-constrained recording pass is instructed to revise
+to `(1,0)`. The live engine correctly follows all ten physical observations.
+It also passes the separate unit-rate physical field jitter, common-mode
+jitter, multiphase-envelope jitter, secondary-edge rejection, false-edge
+chatter, clipped `-2` upward offsets, blank-with-padding, and 124-unit stale
+latch classes.
+
+On the full tagged fixture, v6 changed 19,237/86,296 presented pairs versus the
+accepted v4 review sidecar. Under the strict measurable check—both top and
+bottom edges of each field define one coherent offset, then compare the raw
+and applied relative phase—misaligned rows fell from 10,547/55,329 to
+1,021/55,329 (90.32% fewer). Among coherent one-field edge transitions, v4
+followed 850/4,128 and held 3,277; v6 follows 2,939 and holds 1,093. In the
+35:00--40:00 band it follows 594/1,066 and holds 438, versus v4 following none
+and holding all 1,066. These are observable-consistency metrics, not a claim
+that every content-derived edge is physical truth. The required NNEDI watch
+copy and raw/new freeze frames remain a human sign-off gate.
+
+The full-pass C timing on the M3 was 1.466 ms median and 1.569 ms p95 per
+29.97-frame unit, including all registration evidence but excluding the
+Python tagged-capture walker. `sizeof(field_registration)` is 188,320 bytes;
+the engine allocates nothing per call. The production caller holds this state
+once per stream and uses no live presentation FIFO.
+
 In the final CMIO pathway, startup acquisition belongs to device arming. The
 registration state is begun at the first stable source epoch; CMIO does not
 publish diagnostic bars or short startup units. This is not capture-file
