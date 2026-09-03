@@ -1065,6 +1065,24 @@ delivery edge; wrong one at acquisition.
   which is the tpc sink's real job. Full-raster lossless captures found online (vhs-decode outputs
   carry the 625-line raster with VBI) can drive the descriptor plumbing synthetically but cannot
   prove device framing. HD bus bandwidth (~1.3 Gbit/s at 1080i v210) is unmeasured on this host.
+- **Next hardware session — owed experiments (all ≤30 s tagged captures via `shuttle-capture`,
+  no long plays; poll status register `214/16` at 1 Hz throughout each):**
+  1. **True no-signal path:** deck powered OFF with the Shuttle streaming, then a live S-Video
+     cable pull. Expect the never-observed `0x0800` format code and whatever pseudo-frames /
+     cadence the device emits (bmusb: green, ~30.13 Hz) — the only device state no capture has
+     ever triggered, and the one that cannot be synthesized because its content is unknown.
+  2. **Unlocked input:** the deck's analog tuner on a dead channel, if the tuner path bypasses
+     the playback TBC. Unframed units or `0x0800` ⇒ the Shuttle's unlocked-input behaviour is
+     finally exercised; locked `0xe801` snow ⇒ the deck's frame synchronizer covers the tuner
+     path too (also a finding). Genuinely unlocked baseband otherwise needs a TBC-less deck.
+  3. **Virgin-tape mute row (table in §6, marked observed-not-USB-verified):** start a few
+     seconds before a recording ends and run ~30 s into a virgin section, so the acquisition
+     transient (snow) and the settled deck mute are in one file. Verifies "snow is only the
+     acquisition transient".
+  4. **Composite fixture (P6):** ~30 s of program via composite (mode word `0x3d000000`) — the
+     first composite `.tpc`, and the chroma-decoding A/B against S-Video on the same passage.
+  No over-the-air analog exists in Japan since 2011/2012 (cable digi-ana ended 2015), and dead-air
+  tapes through this deck yield TBC-locked snow identical to the relock windows already captured.
 - Throughout: **all testing via deterministic replay** (whole_tape.tpc + untagged_capture + libusb_replay_shim +
   census ground truths); hardware only for final validation passes.
    **Steps 5–6 are built by replaying a captured file through a virtual device — no deck, no tape,
