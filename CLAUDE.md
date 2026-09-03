@@ -940,14 +940,16 @@ don't force 1601/1602. Separate **physical cadence** from **content cadence** (t
 
 **⚠️ Owner correction (2026-09-03): there is NO first-class "archival master".** This project is
 an *anyone-can-use* capture path for the Shuttle, and the Shuttle itself is not archival grade.
-The deliverables are the live device (OBS source plugin, then the CMIO camera) and a
-**master-quality recording** of what it publishes: the corrected 480i as a standard high-bitrate
-intra-frame file — ProRes 422 HQ, 720×480 TFF with field-order and 8:9 pixel-aspect metadata,
-4:2:2 10-bit, nothing baked in (no deinterlacing, no scaling, no level remap) — the kind of file
-that survives future generations of digital clean-up and restoration. "Lossless" is not a goal
-and is not meaningful past the ADC on an analog source; the presentation/streaming path (OBS,
-deinterlaced) is a separate consumer of the same frames. The tpc sink stays debug-only. The
-paragraph below is retained as the design of an *optional* lossless mode, not the product.
+**The frameserver is an SDK.** It publishes registration-corrected 480i frames and PCM blocks,
+each with provenance and timestamps, through a C callback API; what a consumer does with them is
+the consumer's business. No codec, container or file format is part of the frameserver's
+contract. The sinks this project ships are the OBS source plugin and later the CMIO camera; a
+recorder is just another sink, and a *reference* recorder sink writing ProRes 422 HQ 720×480i
+with field-order and 8:9 aspect metadata and nothing baked in (no deinterlacing, scaling or level
+remap) is a sensible default for a **master-quality** capture that survives future digital
+clean-up — but anyone can build a different sink. "Lossless" is not a goal and is not meaningful
+past the ADC on an analog source. The tpc sink stays debug-only. The paragraph below is retained
+as the design of an *optional* lossless sink, not the product.
 
 **Optional lossless recording mode (not the product):** a playable lossless file, produced
 *semi-live* — resolve **deterministic** field ordering with a short lookahead (unpair/reorder/
