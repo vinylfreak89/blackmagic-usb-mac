@@ -5,7 +5,7 @@ TESTFLAGS = -DFRAMESERVER_TEST_HOOKS
 CPPFLAGS ?= -I. -I../capture_core -I../unit_parser -I../signal_state -I../field_registration
 LIBS = $(shell pkg-config --libs libusb-1.0) -lpthread -lm -framework IOSurface -framework CoreFoundation
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/field_registration.c
-SRCS = frame_publisher.c frameserver.c $(CORE)
+SRCS = frame_publisher.c audio_publisher.c frameserver.c $(CORE)
 FIXTURE = ../unit_parser/tests/fixture.tpc
 
 $(FIXTURE): ../unit_parser/tests/gen_unit_parser_capture.py
@@ -14,13 +14,17 @@ $(FIXTURE): ../unit_parser/tests/gen_unit_parser_capture.py
 frameserver_replay: $(SRCS) frameserver_replay.c frameserver.h frame_publisher.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o $@ $(LIBS)
 
+tests/audio_publisher_test: audio_publisher.c audio_publisher.h tests/audio_publisher_test.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) audio_publisher.c tests/audio_publisher_test.c -o $@
+
 tests/frame_publisher_test: frame_publisher.c frame_publisher.h tests/frame_publisher_test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) frame_publisher.c tests/frame_publisher_test.c -o $@ -framework IOSurface -framework CoreFoundation
 
 tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TESTFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o $@ $(LIBS)
 
-test: tests/frame_publisher_test tests/frameserver_test $(FIXTURE)
+test: tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE)
+	./tests/audio_publisher_test
 	./tests/frame_publisher_test
 	./tests/frameserver_test $(FIXTURE)
 
@@ -38,4 +42,4 @@ test-tsan: $(FIXTURE)
 	./tests/test_tsan $(FIXTURE)
 
 clean:
-	rm -f frameserver_replay tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring
+	rm -f frameserver_replay tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring

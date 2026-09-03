@@ -37,7 +37,15 @@ int main(int argc, char **argv){
         (unsigned long long)s.eligible_observations,(unsigned long long)s.exact_units,
         (unsigned long long)s.eligible_ring_drops,(unsigned long long)s.ring_drops_logged,
         (unsigned long long)s.ring_gap_rows);
-    printf("audio records %llu (resync %llu)\n", (unsigned long long)s.audio_records, (unsigned long long)s.audio_resync);
+    printf("audio records %llu (resync %llu) | pcm %llu -> published %llu frames in %llu blocks (unanchored %llu, discontinuities %llu)\n",
+        (unsigned long long)s.audio_records, (unsigned long long)s.audio_resync, (unsigned long long)s.audio_pcm_records,
+        (unsigned long long)s.audio_frames_published, (unsigned long long)s.audio_blocks,
+        (unsigned long long)s.audio_blocks_unanchored, (unsigned long long)s.audio_discontinuities);
+    printf("audio sink: delivered %llu blocks / %llu frames, dropped %llu / %llu | counter gaps %llu | residual [%lld, %lld] ticks | frames with audio-clock pts %llu\n",
+        (unsigned long long)s.audio_blocks_delivered, (unsigned long long)s.audio_frames_delivered,
+        (unsigned long long)s.audio_dropped_blocks, (unsigned long long)s.audio_dropped_frames,
+        (unsigned long long)s.audio_counter_gaps, (long long)s.audio_residual_min, (long long)s.audio_residual_max,
+        (unsigned long long)s.audio_master_frames);
     fs_close(f);
     return 0;
 }

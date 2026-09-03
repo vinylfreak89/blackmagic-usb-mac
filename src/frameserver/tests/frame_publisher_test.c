@@ -46,9 +46,9 @@ int main(void){
     fp_sink s = { on_frame, &c };
     fp_publisher *p = NULL;
     CHECK(fp_open(&p, 2, &s) == 0 && p, "open");
-    for (uint32_t i = 0; i < 10; i++) CHECK(fp_publish(p, u, FP_UNIT_BYTES, 1000 + i, 1, 0, FP_TRANSPORT_COMPLETE) == 0, "publish %u", i);
+    for (uint32_t i = 0; i < 10; i++) CHECK(fp_publish(p, u, FP_UNIT_BYTES, 1000 + i, 1, 0, FP_TRANSPORT_COMPLETE, 0, 0) == 0, "publish %u", i);
     CHECK(c.frames == 10 && c.pts_monotonic, "10 frames, monotonic PTS");
-    CHECK(fp_publish(p,u,FP_UNIT_BYTES,(uint64_t)UINT32_MAX+1,0,0,FP_TRANSPORT_COMPLETE)==0,
+    CHECK(fp_publish(p,u,FP_UNIT_BYTES,(uint64_t)UINT32_MAX+1,0,0,FP_TRANSPORT_COMPLETE,0,0)==0,
           "publish counter beyond 32-bit");
     CHECK(c.last_counter==(uint64_t)UINT32_MAX+1 && c.last_pts==((uint64_t)UINT32_MAX+1)*1001,
           "64-bit counter/PTS narrowed (%llu/%llu)",(unsigned long long)c.last_counter,
@@ -62,10 +62,10 @@ int main(void){
     // honest exhaustion: consumer holds both surfaces -> third publish is DROPPED and counted
     c.hold = 1;
     IOSurfaceRef h1 = NULL, h2 = NULL;
-    fp_publish(p, u, FP_UNIT_BYTES, 2000, 0, 0, FP_TRANSPORT_COMPLETE); h1 = c.held;
-    fp_publish(p, u, FP_UNIT_BYTES, 2001, 0, 0, FP_TRANSPORT_COMPLETE); h2 = c.held;
+    fp_publish(p, u, FP_UNIT_BYTES, 2000, 0, 0, FP_TRANSPORT_COMPLETE, 0, 0); h1 = c.held;
+    fp_publish(p, u, FP_UNIT_BYTES, 2001, 0, 0, FP_TRANSPORT_COMPLETE, 0, 0); h2 = c.held;
     c.hold = 0;
-    int rc = fp_publish(p, u, FP_UNIT_BYTES, 2002, 0, 0, FP_TRANSPORT_COMPLETE);
+    int rc = fp_publish(p, u, FP_UNIT_BYTES, 2002, 0, 0, FP_TRANSPORT_COMPLETE, 0, 0);
     fp_stats st; fp_get_stats(p, &st);
     CHECK(rc == 1 && st.dropped_no_free_surface == 1 && st.pool_in_use == 2, "drop when pool exhausted (rc=%d dropped=%llu in_use=%u)", rc, (unsigned long long)st.dropped_no_free_surface, st.pool_in_use);
     // held surface carries the assembled rows
@@ -74,9 +74,9 @@ int main(void){
     IOSurfaceUnlock(h1, kIOSurfaceLockReadOnly, NULL);
     // release -> publishing resumes
     IOSurfaceDecrementUseCount(h1); IOSurfaceDecrementUseCount(h2);
-    CHECK(fp_publish(p, u, FP_UNIT_BYTES, 2003, 0, 0, FP_TRANSPORT_COMPLETE) == 0, "publish after release");
+    CHECK(fp_publish(p, u, FP_UNIT_BYTES, 2003, 0, 0, FP_TRANSPORT_COMPLETE, 0, 0) == 0, "publish after release");
     // bad args are rejected, not guessed
-    CHECK(fp_publish(p, u, FP_UNIT_BYTES - 1, 3000, 0, 0, 0) == -1, "short unit rejected");
+    CHECK(fp_publish(p, u, FP_UNIT_BYTES - 1, 3000, 0, 0, 0, 0, 0) == -1, "short unit rejected");
     fp_close(p); free(u); free(frame);
     printf(fails ? "FAILURES: %d\n" : "frame_publisher tests: PASS\n", fails);
     return fails ? 1 : 0;

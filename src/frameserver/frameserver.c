@@ -39,6 +39,17 @@ struct frameserver {
     signal_state *sig;
     field_registration *eng;
     fp_publisher *pub;
+    audio_publisher *aud;
+    // audio queue: single producer (delivery thread, inside the publisher's sink) -> audio worker
+    ap_block *aq; uint8_t *aq_pcm; unsigned aq_slots, aq_cap_frames; _Atomic unsigned aq_head, aq_tail;
+    pthread_mutex_t aq_m; pthread_cond_t aq_c; int aq_m_init, aq_c_init;
+    pthread_t audio_worker; int audio_worker_created; _Atomic int audio_done, audio_worker_done;
+    uint64_t aq_drops_pending;           // producer-owned: flagged on the next enqueued block
+    ap_sink user_audio_sink;
+    _Atomic uint64_t aq_dropped_blocks, aq_dropped_frames;
+    uint64_t aq_delivered_blocks, aq_delivered_frames;   // audio worker owned
+    _Atomic uint64_t audio_master_frames;
+    _Atomic int workers_terminal;        // video + audio workers that have drained; the second fires on_end
     FILE *log;
     // pool + ring (single producer = delivery thread, single consumer = worker)
     unsigned n_slots; uint8_t *pool; _Atomic int *slot_used;
@@ -47,7 +58,7 @@ struct frameserver {
     pthread_mutex_t life_m; pthread_cond_t life_c;
     int m_init,c_init,life_m_init,life_c_init;
     pthread_t worker; _Atomic int producer_done, worker_done;
-    fs_life life; int worker_created, start_gate, notify_end;
+    fs_life life; int worker_created, start_gate; _Atomic int notify_end;   // read by both workers, written by fs_start
     enum cc_end end_reason;
     fs_stats st; _Atomic uint64_t audio_records, audio_resync, dropped_pool_full, dropped_ring_full, video_obs, holes, unframed, shorts, other_fmt, ns0800;
     _Atomic unsigned pool_hw;              // written on the delivery thread, read by fs_get_stats
@@ -131,6 +142,57 @@ static void on_audio(void *ctx, const unit_audio_observation *a){
     frameserver *f = ctx;
     atomic_fetch_add(&f->audio_records, 1);
     if (a->kind == UNIT_AUDIO_RESYNC) atomic_fetch_add(&f->audio_resync, 1);
+    ap_on_audio(f->aud, a);                 // delivery thread: bounded, allocation-free
+}
+// publisher sink (delivery thread): copy the block into the bounded queue or drop it explicitly
+static void aq_enqueue(void *ctx, const ap_block *b){
+    frameserver *f = ctx;
+    unsigned h = atomic_load_explicit(&f->aq_head, memory_order_relaxed);
+    unsigned t = atomic_load_explicit(&f->aq_tail, memory_order_acquire);
+    if (h - t >= f->aq_slots || b->n_frames > f->aq_cap_frames){
+        atomic_fetch_add(&f->aq_dropped_blocks, 1); atomic_fetch_add(&f->aq_dropped_frames, b->n_frames);
+        f->aq_drops_pending++; return;      // consumer too slow: shed HERE, never upstream
+    }
+    unsigned i = h % f->aq_slots;
+    uint8_t *dst = f->aq_pcm + (size_t)i * f->aq_cap_frames * AP_BYTES_PER_FRAME;
+    memcpy(dst, b->s24le, (size_t)b->n_frames * AP_BYTES_PER_FRAME);
+    f->aq[i] = *b; f->aq[i].s24le = dst;
+    if (f->aq_drops_pending){ f->aq[i].flags |= AP_FLAG_DISCONTINUITY_BEFORE; f->aq_drops_pending = 0; }
+    atomic_store_explicit(&f->aq_head, h + 1, memory_order_release);
+    if (pthread_mutex_trylock(&f->aq_m) == 0){ pthread_cond_signal(&f->aq_c); pthread_mutex_unlock(&f->aq_m); }
+}
+static void *audio_worker_main(void *arg){
+    frameserver *f = arg;
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0);
+    for (;;){
+        unsigned t = atomic_load_explicit(&f->aq_tail, memory_order_relaxed);
+        unsigned h = atomic_load_explicit(&f->aq_head, memory_order_acquire);
+        if (h == t){
+            if (atomic_load(&f->audio_done)){
+                h = atomic_load_explicit(&f->aq_head, memory_order_acquire);   // same drain discipline as the video worker
+                if (h == t) break;
+                continue;
+            }
+            pthread_mutex_lock(&f->aq_m);
+            h = atomic_load_explicit(&f->aq_head, memory_order_acquire);
+            if (h == t && !atomic_load(&f->audio_done)){
+                struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); ts.tv_nsec += 100*1000000L;
+                if (ts.tv_nsec >= 1000000000L){ ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
+                pthread_cond_timedwait(&f->aq_c, &f->aq_m, &ts);
+            }
+            pthread_mutex_unlock(&f->aq_m);
+            continue;
+        }
+        const ap_block *b = &f->aq[t % f->aq_slots];
+        if (f->user_audio_sink.on_block) f->user_audio_sink.on_block(f->user_audio_sink.ctx, b);
+        f->aq_delivered_blocks++; f->aq_delivered_frames += b->n_frames;
+        atomic_store_explicit(&f->aq_tail, t + 1, memory_order_release);
+    }
+    atomic_store(&f->audio_worker_done, 1);
+    // on_end means BOTH media workers are terminal: whichever drains second fires it
+    if (atomic_fetch_add(&f->workers_terminal, 1) == 1 && atomic_load_explicit(&f->notify_end, memory_order_acquire) && f->cfg.on_end)
+        f->cfg.on_end(f->cfg.end_ctx, f->end_reason);
+    return NULL;
 }
 static void cc_on_packet(void *ctx, const cc_packet *p){ frameserver *f = ctx; unit_parser_on_packet(f->parser, p); }
 static void cc_on_loss(void *ctx, uint8_t ep, uint32_t n, uint64_t b){ frameserver *f = ctx; unit_parser_on_loss(f->parser, ep, n, b); }
@@ -138,6 +200,9 @@ static void cc_on_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){ 
 static void cc_on_end(void *ctx, enum cc_end r){
     frameserver *f = ctx; f->end_reason = r;
     unit_parser_finish(f->parser);
+    ap_flush(f->aud);                       // the tail of the last unit, with its provenance
+    atomic_store_explicit(&f->audio_done, 1, memory_order_release);   // producer is done: the audio worker drains and exits
+    pthread_mutex_lock(&f->aq_m); pthread_cond_signal(&f->aq_c); pthread_mutex_unlock(&f->aq_m);
     fs_test_before_producer_done(f);
     push_tail_gap(f);
     atomic_store_explicit(&f->producer_done, 1, memory_order_release);
@@ -210,9 +275,12 @@ static void process_item(frameserver *f, const fs_item *it){
                                            d.confidence, true,
                                            d.applied_d1, d.applied_d2);
         if (classified && sr.unsettled) f->st.unsettled_units++;
+        uint64_t apts = 0; int aknown = ap_lookup(f->aud, obs.epoch, obs.counter_extended, &apts, NULL);   // audio-clock time of this unit
+        if (aknown) atomic_fetch_add(&f->audio_master_frames, 1);
         int rc = fp_publish(f->pub, unit, FP_UNIT_BYTES, obs.counter_extended,
                             have_d ? d.applied_d1 : 0, have_d ? d.applied_d2 : 0,
-                            obs.transport == UNIT_TRANSPORT_COMPLETE ? FP_TRANSPORT_COMPLETE : FP_TRANSPORT_SHORT);
+                            obs.transport == UNIT_TRANSPORT_COMPLETE ? FP_TRANSPORT_COMPLETE : FP_TRANSPORT_SHORT,
+                            aknown, apts);
         if (rc == 0){ f->st.published++; published = 1; } else if (rc == 1) f->st.publisher_dropped++;
         // The publisher copied the bytes: free the slot before the (slow) log write so slot
         // occupancy is the analysis time, not analysis + I/O.
@@ -268,7 +336,8 @@ static void *worker_main(void *arg){
         process_item(f, &it);
     }
     atomic_store(&f->worker_done, 1);
-    if (f->notify_end && f->cfg.on_end) f->cfg.on_end(f->cfg.end_ctx, f->end_reason);
+    if (atomic_fetch_add(&f->workers_terminal, 1) == 1 && atomic_load_explicit(&f->notify_end, memory_order_acquire) && f->cfg.on_end)
+        f->cfg.on_end(f->cfg.end_ctx, f->end_reason);
     return NULL;
 }
 
@@ -300,6 +369,16 @@ int fs_open(frameserver **out, const fs_config *cfg){
     fieldreg_config ec = fieldreg_default_config(); fieldreg_init(f->eng, &ec);
     fp_sink sink = cfg->sink.on_frame ? cfg->sink : (fp_sink){ count_sink, NULL };
     if (fp_open(&f->pub, cfg->surface_pool ? cfg->surface_pool : 6, &sink) != 0){ fs_close(f); return -1; }
+    f->user_audio_sink = cfg->audio_sink;
+    f->aq_cap_frames = cfg->audio_block_frames ? cfg->audio_block_frames : 4096;
+    f->aq_slots = cfg->audio_queue_blocks ? cfg->audio_queue_blocks : 32;
+    f->aq = calloc(f->aq_slots, sizeof *f->aq);
+    f->aq_pcm = malloc((size_t)f->aq_slots * f->aq_cap_frames * AP_BYTES_PER_FRAME);
+    if (!f->aq || !f->aq_pcm){ fs_close(f); return -1; }
+    if (pthread_mutex_init(&f->aq_m, NULL)){ fs_close(f); return -1; } f->aq_m_init = 1;
+    if (pthread_cond_init(&f->aq_c, NULL)){ fs_close(f); return -1; } f->aq_c_init = 1;
+    ap_sink asink = { aq_enqueue, f };
+    if (ap_open(&f->aud, f->aq_cap_frames, &asink) != 0){ fs_close(f); return -1; }
     if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "w"); if (!f->log){ fs_close(f); return -1; } log_header(f->log); }
     cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, NULL, cc_on_end, f };
     if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
@@ -319,16 +398,29 @@ int fs_start(frameserver *f){
     unit_parser_begin_epoch(f->parser, 1); signal_state_begin_epoch(f->sig, 1);
     if (pthread_create(&f->worker, NULL, worker_main, f)) goto fail_no_worker;
     f->worker_created=1;
+    if (pthread_create(&f->audio_worker, NULL, audio_worker_main, f)){
+        // roll back the video worker the same way a failed cc_start does
+        atomic_store_explicit(&f->producer_done, 1, memory_order_release);
+        pthread_mutex_lock(&f->life_m); f->start_gate=1; pthread_cond_broadcast(&f->life_c); pthread_mutex_unlock(&f->life_m);
+        pthread_mutex_lock(&f->m); pthread_cond_signal(&f->c); pthread_mutex_unlock(&f->m);
+        pthread_join(f->worker, NULL);
+        goto fail_no_worker;
+    }
+    f->audio_worker_created=1;
     if (cc_start(f->cap) != 0){
         // Failed starts have no media callback; release the worker only to perform rollback.
         atomic_store_explicit(&f->producer_done, 1,memory_order_release);
         pthread_mutex_lock(&f->life_m); f->start_gate=1; pthread_cond_broadcast(&f->life_c); pthread_mutex_unlock(&f->life_m);
         pthread_mutex_lock(&f->m); pthread_cond_signal(&f->c); pthread_mutex_unlock(&f->m);
         pthread_join(f->worker, NULL);
+        atomic_store_explicit(&f->audio_done, 1, memory_order_release);
+        pthread_mutex_lock(&f->aq_m); pthread_cond_signal(&f->aq_c); pthread_mutex_unlock(&f->aq_m);
+        pthread_join(f->audio_worker, NULL);
         pthread_mutex_lock(&f->life_m); f->life=FS_LIFE_STOPPED; pthread_cond_broadcast(&f->life_c); pthread_mutex_unlock(&f->life_m);
         return -1;
     }
-    pthread_mutex_lock(&f->life_m); f->notify_end=1; f->life=FS_LIFE_RUNNING; f->start_gate=1;
+    atomic_store_explicit(&f->notify_end, 1, memory_order_release);
+    pthread_mutex_lock(&f->life_m); f->life=FS_LIFE_RUNNING; f->start_gate=1;
     pthread_cond_broadcast(&f->life_c); pthread_mutex_unlock(&f->life_m);
     return 0;
 fail_no_worker:
@@ -337,14 +429,16 @@ fail_no_worker:
 }
 int fs_stop(frameserver *f){
     if(!f) return -1;
-    if(f->worker_created && pthread_equal(pthread_self(),f->worker)) return -1;
+    if((f->worker_created && pthread_equal(pthread_self(),f->worker)) ||
+       (f->audio_worker_created && pthread_equal(pthread_self(),f->audio_worker))) return -1;   // no self-join from a callback
     pthread_mutex_lock(&f->life_m);
     while(f->life==FS_LIFE_STOPPING) pthread_cond_wait(&f->life_c,&f->life_m);
     if(f->life==FS_LIFE_STOPPED){ pthread_mutex_unlock(&f->life_m); return 0; }
     if(f->life!=FS_LIFE_RUNNING){ pthread_mutex_unlock(&f->life_m); return -1; }
     f->life=FS_LIFE_STOPPING; pthread_mutex_unlock(&f->life_m);
-    cc_stop(f->cap);                        // fires on_end -> producer_done
+    cc_stop(f->cap);                        // fires on_end -> producer_done (audio flushed before it)
     pthread_join(f->worker, NULL);
+    pthread_join(f->audio_worker, NULL);    // exits by itself once cc_on_end set audio_done and the queue drained
     if (f->log){ fclose(f->log); f->log = NULL; }
     pthread_mutex_lock(&f->life_m); f->life=FS_LIFE_STOPPED; pthread_cond_broadcast(&f->life_c); pthread_mutex_unlock(&f->life_m);
     return 0;
@@ -353,6 +447,12 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     *o = f->st;
     o->video_observations = atomic_load(&f->video_obs); o->audio_records = atomic_load(&f->audio_records);
     o->audio_resync = atomic_load(&f->audio_resync); o->dropped_pool_full = atomic_load(&f->dropped_pool_full);
+    if (f->aud){ ap_stats a; ap_get_stats(f->aud, &a); o->audio_pcm_records = a.records_pcm; o->audio_blocks = a.blocks;
+        o->audio_frames_published = a.frames_published; o->audio_discontinuities = a.discontinuities; o->audio_blocks_unanchored = a.blocks_unanchored;
+        o->audio_counter_gaps = a.counter_gaps; o->audio_residual_min = a.resyncs_anchored ? a.residual_min : 0; o->audio_residual_max = a.resyncs_anchored ? a.residual_max : 0; }
+    o->audio_blocks_delivered = f->aq_delivered_blocks; o->audio_frames_delivered = f->aq_delivered_frames;
+    o->audio_dropped_blocks = atomic_load(&f->aq_dropped_blocks); o->audio_dropped_frames = atomic_load(&f->aq_dropped_frames);
+    o->audio_master_frames = atomic_load(&f->audio_master_frames);
     o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw);
     o->eligible_observations = atomic_load(&f->eligible_ingress);
     o->holes = atomic_load(&f->holes); o->unframed = atomic_load(&f->unframed); o->short_units = atomic_load(&f->shorts);
@@ -360,13 +460,18 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
 }
 void fs_close(frameserver *f){
     if (!f) return;
-    if(f->worker_created && pthread_equal(pthread_self(),f->worker)){
-        fprintf(stderr,"frameserver: close from worker callback is forbidden; session retained\n"); return;
+    if((f->worker_created && pthread_equal(pthread_self(),f->worker)) ||
+       (f->audio_worker_created && pthread_equal(pthread_self(),f->audio_worker))){
+        fprintf(stderr,"frameserver: close from a worker callback is forbidden; session retained\n"); return;
     }
     pthread_mutex_lock(&f->life_m); fs_life life=f->life; pthread_mutex_unlock(&f->life_m);
     if(life==FS_LIFE_RUNNING || life==FS_LIFE_STOPPING) fs_stop(f);
     if (f->cap) cc_close(f->cap);
     if (f->pub) fp_close(f->pub);
+    if (f->aud) ap_close(f->aud);
+    if (f->aq_c_init) pthread_cond_destroy(&f->aq_c);
+    if (f->aq_m_init) pthread_mutex_destroy(&f->aq_m);
+    free(f->aq); free(f->aq_pcm);
     if (f->log) fclose(f->log);
     if(f->c_init) pthread_cond_destroy(&f->c);
     if(f->m_init) pthread_mutex_destroy(&f->m);

@@ -21,8 +21,26 @@ void fs_test_after_empty_snapshot(frameserver *f){
         while(!atomic_load(&hook_release)) usleep(100);
 }
 void fs_test_before_producer_done(frameserver *f){ (void)f; if(atomic_load(&hook_arm)) atomic_store(&hook_release,1); }
-static void on_end(void *c, enum cc_end r){ (void)c; (void)r; done = 1; }
+static _Atomic int end_calls;
+static void on_end(void *c, enum cc_end r){ (void)c; (void)r; atomic_fetch_add(&end_calls, 1); done = 1; }
+static _Atomic uint64_t audio_frames_seen; static _Atomic int audio_flagged_blocks; static _Atomic uint64_t audio_last_pts; static _Atomic int audio_pts_nonmonotonic;
+static _Atomic int audio_sink_stall_us; static _Atomic int audio_after_end; static _Atomic int ordinal_break;
+static uint64_t audio_next_ordinal; static int audio_have_next;
+#define CORR_MAX 64
+static uint64_t corr_ctr[CORR_MAX], corr_pts[CORR_MAX]; static _Atomic int corr_n;   // first block after resync c: its pts is the audio-clock time of unit c
+static void audio_sink(void *c, const ap_block *b){ (void)c; atomic_fetch_add(&audio_frames_seen, b->n_frames);
+    if (done) atomic_store(&audio_after_end, 1);
+    if (audio_have_next && !(b->flags & AP_FLAG_DISCONTINUITY_BEFORE) && b->sample_ordinal != audio_next_ordinal) atomic_store(&ordinal_break, 1);
+    audio_next_ordinal = b->sample_ordinal + b->n_frames; audio_have_next = 1;
+    if (!(b->flags & AP_FLAG_UNANCHORED) && b->last_resync_counter_ext && atomic_load(&corr_n) < CORR_MAX){ int n = atomic_load(&corr_n); corr_ctr[n] = b->last_resync_counter_ext; corr_pts[n] = b->pts_num; atomic_store(&corr_n, n + 1); }
+    int st = atomic_load(&audio_sink_stall_us); if (st) usleep(st);
+    if (b->flags & AP_FLAG_DISCONTINUITY_BEFORE) atomic_fetch_add(&audio_flagged_blocks, 1);
+    if (!(b->flags & (AP_FLAG_UNANCHORED|AP_FLAG_DISCONTINUITY_BEFORE)) && b->pts_num < atomic_load(&audio_last_pts)) atomic_store(&audio_pts_nonmonotonic, 1);
+    if (!(b->flags & AP_FLAG_UNANCHORED)) atomic_store(&audio_last_pts, b->pts_num); }
+static uint64_t vf_ctr[CORR_MAX], vf_apts[CORR_MAX]; static _Atomic int vf_n; static _Atomic int video_after_end;
 static void sink(void *c, const fp_frame *fr){ (void)c; if (fr->surface) atomic_fetch_add(&frames_seen, 1);
+    if (done) atomic_store(&video_after_end, 1);
+    if (fr->audio_pts_known && atomic_load(&vf_n) < CORR_MAX){ int n = atomic_load(&vf_n); vf_ctr[n] = fr->counter_ext; vf_apts[n] = fr->audio_pts_num; atomic_store(&vf_n, n + 1); }
     if(atomic_load(&sink_hold)&&!held_surface){ IOSurfaceIncrementUseCount(fr->surface); held_surface=fr->surface; }
     int st = atomic_load(&sink_stall_us); if (st) usleep(st); }   // a slow consumer holds the slot
 typedef struct { frameserver *f; int rc; } fs_stop_arg;
@@ -40,7 +58,7 @@ int main(int argc, char **argv){
     int ring_may_drop = getenv("FS_TEST_EXPECT_RING_DROPS") != NULL;
     char logp[] = "/tmp/fs_test_log_XXXXXX"; int fd = mkstemp(logp); close(fd);
     fs_config cfg = {0}; cfg.capture.replay_path = argv[1]; cfg.decision_log = logp; cfg.on_end = on_end;
-    cfg.sink.on_frame = sink; cfg.pool_units = 4; cfg.surface_pool = 3;
+    cfg.sink.on_frame = sink; cfg.pool_units = 4; cfg.surface_pool = 3; cfg.audio_sink.on_block = audio_sink;
     frameserver *f = NULL;
     CHECK(fs_open(&f, &cfg) == 0, "open");
     atomic_store(&hook_arm,!ring_may_drop); atomic_store(&hook_empty,0); atomic_store(&hook_release,0);
@@ -57,6 +75,45 @@ int main(int argc, char **argv){
           (unsigned long long)s.published, (unsigned long long)s.dropped_pool_full, (unsigned long long)s.publisher_dropped, (unsigned long long)s.exact_units);
     CHECK(atomic_load(&frames_seen) == s.published, "sink saw every published frame");
     CHECK(s.discontinuity_calls > 0, "hole/short/unframed observations never reached the engine as discontinuities");
+    CHECK(s.audio_pcm_records > 0 && s.audio_frames_published == s.audio_pcm_records, "audio conservation: %llu pcm records vs %llu frames published",
+          (unsigned long long)s.audio_pcm_records, (unsigned long long)s.audio_frames_published);
+    CHECK(!atomic_load(&ordinal_break), "delivered audio blocks are ordinal-contiguous except where flagged");
+    CHECK(!atomic_load(&audio_after_end) && !atomic_load(&video_after_end), "no media callback after on_end (on_end means both workers drained)");
+    { int matched = 0, mismatched = 0;   // every video frame with an audio-clock pts must agree with the first audio block after that unit's resync
+      for (int i = 0; i < atomic_load(&vf_n); i++) for (int j = 0; j < atomic_load(&corr_n); j++) if (corr_ctr[j] == vf_ctr[i]){ if (corr_pts[j] == vf_apts[i]) matched++; else mismatched++; break; }
+      CHECK(mismatched == 0 && matched == (int)s.audio_master_frames, "fp_frame.audio_pts_num propagates the audio-clock time (%d matched, %d mismatched, %llu stamped)", matched, mismatched, (unsigned long long)s.audio_master_frames); }
+    CHECK(s.audio_discontinuities >= 1, "the fixture's audio hole must surface as a discontinuity");
+    CHECK(atomic_load(&audio_frames_seen) == s.audio_frames_published && atomic_load(&audio_flagged_blocks) >= 1, "sink saw every frame and the flagged block");
+    CHECK(!atomic_load(&audio_pts_nonmonotonic), "anchored audio pts went backwards within a contiguous run");
+    CHECK(s.audio_frames_delivered + s.audio_dropped_frames == s.audio_frames_published && s.audio_dropped_frames == 0,
+          "audio queue accounts every frame (delivered %llu + dropped %llu vs published %llu)",
+          (unsigned long long)s.audio_frames_delivered, (unsigned long long)s.audio_dropped_frames, (unsigned long long)s.audio_frames_published);
+    CHECK(s.audio_master_frames <= s.published, "audio-clock pts count bounded by published frames (%llu of %llu)", (unsigned long long)s.audio_master_frames, (unsigned long long)s.published);
+    printf("  audio: %llu blocks, %llu frames, residual [%lld,%lld] ticks, counter gaps %llu, frames with audio-clock pts %llu/%llu\n",
+           (unsigned long long)s.audio_blocks, (unsigned long long)s.audio_frames_published, (long long)s.audio_residual_min, (long long)s.audio_residual_max,
+           (unsigned long long)s.audio_counter_gaps, (unsigned long long)s.audio_master_frames, (unsigned long long)s.published);
+
+    // Slow audio consumer with a one-block queue: drops happen HERE (explicit, flagged), never upstream.
+    done = 0; atomic_store(&frames_seen, 0); atomic_store(&audio_frames_seen, 0); atomic_store(&audio_flagged_blocks, 0);
+    atomic_store(&audio_after_end, 0); atomic_store(&video_after_end, 0); audio_have_next = 0;
+    atomic_store(&audio_sink_stall_us, 50000);
+    fs_config c5 = cfg; c5.decision_log = NULL; c5.audio_queue_blocks = 1;
+    frameserver *q = NULL;
+    CHECK(fs_open(&q, &c5) == 0, "open (slow audio sink)");
+    CHECK(fs_start(q) == 0, "start (slow audio sink)");
+    while (!done) usleep(10000);
+    CHECK(fs_stop(q) == 0, "stop (slow audio sink)");
+    atomic_store(&audio_sink_stall_us, 0);
+    fs_stats s5; fs_get_stats(q, &s5);
+    CHECK(s5.audio_dropped_blocks > 0, "slow sink with a one-block queue did not exercise the audio drop path");
+    CHECK(s5.audio_frames_delivered + s5.audio_dropped_frames == s5.audio_frames_published, "slow sink: every frame delivered or explicitly dropped (%llu+%llu vs %llu)",
+          (unsigned long long)s5.audio_frames_delivered, (unsigned long long)s5.audio_dropped_frames, (unsigned long long)s5.audio_frames_published);
+    CHECK(s5.audio_frames_published == s5.audio_pcm_records, "slow sink never caused upstream loss in the publisher");
+    CHECK(atomic_load(&audio_frames_seen) == s5.audio_frames_delivered, "sink saw exactly the delivered frames");
+    CHECK(!atomic_load(&audio_after_end), "slow sink: on_end waited for the audio worker (no block after it)");
+    CHECK(atomic_load(&end_calls) == 2, "on_end fired exactly once per started session so far (%d for 2 sessions: main + slow sink)", atomic_load(&end_calls));
+    fs_stats c5c; fs_get_stats(q, &c5c); CHECK(c5c.holes == s.holes && c5c.video_observations == s.video_observations, "a slow audio sink must not change what the capture delivered");
+    fs_close(q);
     CHECK(s.eligible_observations == s.exact_units+s.eligible_ring_drops,
           "eligible ingress conservation failed");
     if(!ring_may_drop) CHECK(s.short_units + s.holes + s.unframed + s.exact_units + s.other_format + s.no_signal_0800 >= s.video_observations, "every observation classified by transport/kind");
