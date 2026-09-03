@@ -1094,7 +1094,11 @@ delivery edge; wrong one at acquisition.
 - **P4 CMIO extension (Swift)** — standard device, two advertised formats (raw 480i, corrected
   480i), IOSurface/XPC consumer, custom properties. Deinterlacing belongs to OBS/ffmpeg/post.
   Includes a signing/notarization/dev-mode
-  investigation SPIKE first (published-app requirement; no boot-security changes).
+  investigation SPIKE first (published-app requirement; no boot-security changes). Spike report:
+  `src/cmio/PACKAGING_SPIKE.md` — first hard blocker is a paid Apple Developer Program team
+  (pay + identity check, no software review; only DriverKit entitlements need Apple approval and
+  the design avoids them). Real-device test target after synthetic validation: the commercial SP
+  tape behind `captures/composite_program_30s.tpc`, captured over S-Video.
 - **P5 configurator app (SwiftUI)** — status, logging, decision-log viewer, property editor.
 - **P6 (far future) every device mode** — PAL 576i, component, composite, HDMI, 720p, 1080i/p,
   10-bit v210. A public driver cannot stay S-Video/NTSC-only. Measured state: all NTSC geometry
