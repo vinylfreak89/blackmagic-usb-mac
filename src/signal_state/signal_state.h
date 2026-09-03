@@ -44,6 +44,11 @@ typedef struct signal_context {
     bool audio_muted;
     bool osd_activity_known;
     bool osd_active;
+    /* Current raster bytes were shed after transport parsing. This is absence
+     * of evidence, never evidence that the source changed. */
+    bool host_raster_unobserved;
+    /* One or more host-shed observations preceded this retained unit. */
+    bool host_observations_missing_before;
 } signal_context;
 
 typedef struct signal_measurements {
@@ -72,6 +77,7 @@ typedef struct signal_result {
     signal_source_state source;
     double appearance_confidence;
     double source_confidence;
+    bool host_raster_unobserved;
     signal_measurements measurements;
     uint32_t actions;
 

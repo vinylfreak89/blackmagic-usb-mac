@@ -175,6 +175,32 @@ int main(void)
     assert(begin_actions == 1);
     assert(!result.unsettled && result.settled_phase_known);
 
+    /* A host-side pool shed is not a signal observation. Hold the confirmed
+     * source/phase/interval across any number of unobserved rasters, then
+     * resume without manufacturing a new acquisition. */
+    uint64_t settled_interval = result.unsettled_interval_id;
+    signal_context shed_context = {.host_raster_unobserved = true};
+    for (unsigned i = 0; i < 10; ++i) {
+        unit_video_observation shed = observation(unit, 20 + i);
+        shed.bytes = NULL;
+        shed.payload = NULL;
+        assert(signal_state_classify(state, &shed, &shed_context, &result));
+        assert(result.host_raster_unobserved);
+        assert(result.appearance == SIGNAL_APPEARANCE_UNKNOWN);
+        assert(result.source == SIGNAL_SOURCE_PRESENT);
+        assert(result.actions == SIGNAL_ACTION_NONE);
+        assert(!result.unsettled && result.settled_phase_known);
+        assert(result.unsettled_interval_id == settled_interval);
+    }
+    make_unit(unit, PATTERN_PROGRAM, 31, 0);
+    unit_video_observation resumed = observation(unit, 31);
+    signal_context after_shed = {.host_observations_missing_before = true};
+    assert(signal_state_classify(state, &resumed, &after_shed, &result));
+    note(state, &result, true, 0, 0, 0, 0);
+    assert(result.source == SIGNAL_SOURCE_PRESENT);
+    assert(result.actions == SIGNAL_ACTION_NONE);
+    assert(!result.unsettled && result.unsettled_interval_id == settled_interval);
+
     /* Property sweep: neutral gray level changes the parameter, not the label. */
     for (uint8_t gray = 32; gray <= 192; gray += 32) {
         result = classify(state, unit, PATTERN_GRAY, 100 + gray, gray);
@@ -272,6 +298,8 @@ int main(void)
     };
     assert(signal_state_classify(state, &hole, NULL, &result));
     assert(result.actions & SIGNAL_ACTION_REGISTRATION_DISCONTINUITY);
+    assert(result.source == SIGNAL_SOURCE_UNKNOWN);
+    assert(!result.host_raster_unobserved);
     assert(result.unsettled);
 
     /* Re-establish a settled live phase after the structural hole. */

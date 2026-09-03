@@ -65,3 +65,12 @@ absolute visual evidence abstains; `settled_phase_known` describes the phase
 being presented, not a claim that a physical landmark was observed in every
 unit. The optional archival trajectory layer may revisit provisional history,
 but it is not part of this zero-latency state machine.
+
+Host-side shedding is explicitly separate from source state. A caller sets
+`host_raster_unobserved` when an otherwise valid current raster was shed by a
+bounded downstream pool; the result reports `Unknown` appearance for that row
+while retaining the confirmed source, interval, and settled phase. It cannot
+fire a registration action. `host_observations_missing_before` clears only the
+same-parity temporal image reference before classifying the next retained
+raster. Parser-originated hole, short, and unframed observations remain real
+structural discontinuities and still reset source/phase inference.

@@ -385,6 +385,29 @@ bool signal_state_classify(signal_state *state,
     out->transport = unit->transport;
     out->transport_flags = unit->transport_flags;
     out->settled_d1 = out->settled_d2 = 0;
+    bool host_unobserved = context && context->host_raster_unobserved;
+    if (context && context->host_observations_missing_before)
+        state->previous_valid = false;
+
+    /* A downstream shed says only that this classifier did not receive the
+     * raster. Keep every inferred state bit unchanged. In particular, do not
+     * turn host pressure into a source transition or registration epoch. */
+    if (host_unobserved) {
+        out->host_raster_unobserved = true;
+        out->appearance = SIGNAL_APPEARANCE_UNKNOWN;
+        out->source = state->stable_source;
+        out->source_confidence = state->stable_source == SIGNAL_SOURCE_UNKNOWN
+                                     ? 0.0
+                                     : 0.5;
+        out->unsettled = state->unsettled;
+        out->unsettled_interval_id = state->active_interval;
+        out->settled_phase_known = state->phase_valid && !state->unsettled;
+        if (state->phase_valid) {
+            out->settled_d1 = state->phase_d1;
+            out->settled_d2 = state->phase_d2;
+        }
+        return true;
+    }
     bool structural_unknown = false;
 
     if (unit->transport == UNIT_TRANSPORT_HOLE ||

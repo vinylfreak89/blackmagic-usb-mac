@@ -175,14 +175,18 @@ static void process_item(frameserver *f, const fs_item *it){
     if (obs.kind == UNIT_VIDEO_DEVICE_NO_SIGNAL_0800) atomic_fetch_add(&f->ns0800, 1);
     else if (obs.kind == UNIT_VIDEO_OTHER_FORMAT) atomic_fetch_add(&f->other_fmt, 1);
 
+    uint64_t rd = it->preceding_ring_drops;
+    signal_context signal_ctx = {
+        .host_raster_unobserved = it->drop == FS_DROP_POOL_FULL,
+        .host_observations_missing_before = rd != 0,
+    };
     signal_result sr; memset(&sr, 0, sizeof sr);
     // obs.bytes/payload are NULL for units without a pool slot (ineligible, or PoolFull); the
     // classifier's contract is metadata-only for those (signal_state.c: !fixed_raster_eligible || !bytes).
-    bool classified = signal_state_classify(f->sig, &obs, NULL, &sr);
+    bool classified = signal_state_classify(f->sig, &obs, &signal_ctx, &sr);
     fieldreg_decision d; memset(&d, 0, sizeof d); bool have_d = false; int published = 0;
     // Ring-full drops since the previous processed item: folded into this row (locatable in time)
     // and a byte discontinuity for the engine's temporal state.
-    uint64_t rd = it->preceding_ring_drops;
     if (rd){ f->st.ring_drops_logged += rd; fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++; }
     // Registration actions are dispatched for EVERY classified observation, not only those with
     // bytes: holes, short and unframed units carry the discontinuity the engine must see before
