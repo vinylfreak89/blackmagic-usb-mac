@@ -222,6 +222,8 @@ int main(int argc, char **argv)
         if (!oracle_match &&
             (strcmp(row->truth.scenario, "multiphase-main-10") == 0 ||
              strcmp(row->truth.scenario,
+                    "physical-multiphase-envelope-jitter") == 0 ||
+             strcmp(row->truth.scenario,
                     "physical-field1-unit-rate-jitter") == 0)) {
             printf("  mismatch row=%zu scenario=%s applied=(%d,%d) oracle=(%d,%d) mode=%s obs=(%d,%d)/%u authority=%d phase=%d/%u temporal=(%d,%d)\n",
                    i, row->truth.scenario, row->applied_d1, row->applied_d2,
@@ -297,6 +299,7 @@ int main(int argc, char **argv)
 
     static const char *required_live_classes[] = {
         "physical-field1-unit-rate-jitter",
+        "physical-multiphase-envelope-jitter",
         "physical-common-plus-unit-rate-jitter",
         "physical-common-minus-unit-rate-jitter",
         "false-edge-chatter",

@@ -279,8 +279,6 @@ int main(void)
            decision.frame_observation_d2 == baseline_d2);
     assert(decision.applied_d1 == baseline_d1 + 1 &&
            decision.applied_d2 == baseline_d2);
-    assert(decision.baseline_d1 == baseline_d1 + 1 &&
-           decision.baseline_d2 == baseline_d2);
 
     /* The equally authoritative return restores the committed fallback on
      * the immediately following unit. */

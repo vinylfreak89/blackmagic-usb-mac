@@ -1004,6 +1004,14 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
             engine->motion_anchor_phase[0] + anchor_delta[0];
         motion_target_d2 =
             engine->motion_anchor_phase[1] + anchor_delta[1];
+        /* Delta authority tracks bounded field-rate jitter around the last
+         * independently established absolute gauge. Larger excursions are
+         * content motion or a new absolute plateau and must go through the
+         * absolute/relative paths; otherwise scrolling layers can walk the
+         * crop to a search boundary. */
+        if (abs(motion_target_d1 - engine->baseline[0]) > 1 ||
+            abs(motion_target_d2 - engine->baseline[1]) > 1)
+            global_motion_authority = false;
         if (motion_target_d1 < FIELDREG_MIN_OFFSET ||
             motion_target_d1 > FIELDREG_FIELD1_MAX_OFFSET ||
             motion_target_d2 < FIELDREG_MIN_OFFSET ||
@@ -1242,8 +1250,6 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
              * following unit holds the phase just presented. */
             engine->selected[0] = (int8_t)motion_target_d1;
             engine->selected[1] = (int8_t)motion_target_d2;
-            engine->baseline[0] = (int8_t)motion_target_d1;
-            engine->baseline[1] = (int8_t)motion_target_d2;
             engine->selected_relative =
                 (int8_t)(motion_target_d2 - motion_target_d1);
             engine->phase_baseline_valid = true;
@@ -1675,8 +1681,13 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
         engine->motion_anchor_picture_top[1] = (int16_t)top2;
         engine->motion_anchor_picture_bottom[0] = (int16_t)bottom1;
         engine->motion_anchor_picture_bottom[1] = (int16_t)bottom2;
-        engine->motion_anchor_phase[0] = out->applied_d1;
-        engine->motion_anchor_phase[1] = out->applied_d2;
+        if (global_relative_authority && !global_motion_authority) {
+            engine->motion_anchor_phase[0] = out->applied_d1;
+            engine->motion_anchor_phase[1] = out->applied_d2;
+        } else {
+            engine->motion_anchor_phase[0] = engine->baseline[0];
+            engine->motion_anchor_phase[1] = engine->baseline[1];
+        }
         for (int field = 0; field < 2; ++field) {
             for (int band = 0; band < PHASE_BANDS; ++band) {
                 engine->motion_anchor_spatial_top[field][band] =

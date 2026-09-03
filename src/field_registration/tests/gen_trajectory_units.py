@@ -80,8 +80,9 @@ def trajectory() -> list[Step]:
     for index in range(24):
         phase = (1, 0) if index & 1 else (0, 0)
         out.append(Step("physical-multiphase-envelope-jitter", phase, phase,
-                        unsettled=True, main_ranges=((0, 720),),
-                        secondary_ranges=(), main_top_trim=3))
+                        unsettled=True, reset_before=index == 0,
+                        main_ranges=((0, 720),), secondary_ranges=(),
+                        main_top_trim=3))
     out.append(Step("after-physical-multiphase-jitter", (0, 0), (0, 0),
                     reset_before=True, main_ranges=((0, 720),),
                     secondary_ranges=()))
