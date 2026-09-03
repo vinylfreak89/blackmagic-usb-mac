@@ -153,19 +153,48 @@ def trajectory() -> list[Step]:
         obscure_edges=True, main_ranges=((0, 720),), secondary_ranges=(),
         unsettled=True)
 
-    # False-positive guards for the static-region comb vote.
+    # False-positive guards for the static-region comb vote. Each guard gets
+    # an independent nominal lock so a preceding deliberately gauge-unknown
+    # scenario cannot contaminate its expected fallback.
+    out.append(Step("relative-guard-card-reset", (0, 0), (0, 0),
+                    reset_before=True, main_ranges=((0, 720),),
+                    secondary_ranges=()))
+    add(12, "relative-guard-card-baseline", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
     add(12, "relative-guard-alternating-card", (0, 0), (0, 0),
         alternating_card=True, obscure_edges=True,
+        main_ranges=((0, 720),), secondary_ranges=())
+
+    out.append(Step("relative-guard-overlay-reset", (0, 0), (0, 0),
+                    reset_before=True, main_ranges=((0, 720),),
+                    secondary_ranges=()))
+    add(12, "relative-guard-overlay-baseline", (0, 0), (0, 0),
         main_ranges=((0, 720),), secondary_ranges=())
     add(12, "relative-guard-local-overlay", (0, 0), (0, 0),
         obscure_edges=True, main_ranges=(), secondary=(1, 0),
         secondary_ranges=((600, 640),), secondary_animated=False)
+
+    out.append(Step("relative-guard-cut-reset", (0, 0), (0, 0),
+                    reset_before=True, main_ranges=((0, 720),),
+                    secondary_ranges=()))
+    add(12, "relative-guard-cut-baseline", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
     out.append(Step("relative-guard-scene-cut", (0, 0), (0, 0), scene=2,
                     obscure_edges=True, force_scene_cut=True,
                     main_ranges=((0, 720),), secondary_ranges=()))
+
+    out.append(Step("relative-guard-motion-reset", (0, 0), (0, 0),
+                    reset_before=True, main_ranges=((0, 720),),
+                    secondary_ranges=()))
+    add(12, "relative-guard-motion-baseline", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
     add(12, "relative-guard-interfield-motion", (0, 0), (0, 0),
         obscure_edges=True, main_motion=True, main_ranges=((0, 720),),
         secondary_ranges=())
+
+    out.append(Step("relative-guard-nominal-reset", (0, 0), (0, 0),
+                    reset_before=True, main_ranges=((0, 720),),
+                    secondary_ranges=()))
     add(12, "relative-guard-nominal", (0, 0), (0, 0),
         main_ranges=((0, 720),), secondary_ranges=())
 

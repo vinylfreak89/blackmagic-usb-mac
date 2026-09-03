@@ -24,8 +24,10 @@ enum {
     FIELDREG_ACTIVE_BOTTOM_F2 = 518,
     FIELDREG_MIN_OFFSET = -6,
     FIELDREG_MAX_OFFSET = 6,
-    /* Larger positive shifts cross device hard padding and are unrecoverable. */
-    FIELDREG_FIELD1_MAX_OFFSET = 4,
+    /* Field 1 may read captured hard padding after source content clips at
+     * line 260. The pixels remain honest device output; the sidecar marks the
+     * censored source extent. Field 2 cannot address beyond unit line 524. */
+    FIELDREG_FIELD1_MAX_OFFSET = 9,
     FIELDREG_FIELD2_MAX_OFFSET = 4,
     FIELDREG_X_SAMPLES = 180,
     /* One second at 30000/1001. This governs fallback-candidate settlement;
@@ -35,7 +37,10 @@ enum {
     FIELDREG_MAX_CONFIRM_UNITS = 120,
     /* Physical reacquisition horizon, independent of caller ring depth. */
     FIELDREG_TRAJECTORY_STALENESS_UNITS = 75,
-    FIELDREG_ALGORITHM_VERSION = 6,
+    FIELDREG_RELATIVE_SEARCH_MIN = -3,
+    FIELDREG_RELATIVE_SEARCH_MAX = 3,
+    FIELDREG_RELATIVE_STATIC_RUN = 16,
+    FIELDREG_ALGORITHM_VERSION = 7,
     FIELDREG_UNKNOWN = -128,
 };
 
@@ -58,6 +63,7 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_UNKNOWN_EDGE_TRANSIENT,
     FIELDREG_MODE_STABLE_MOTION_PHASE,
     FIELDREG_MODE_CONVERGED_MOTION_PHASE,
+    FIELDREG_MODE_RELATIVE_ONLY,
 } fieldreg_mode;
 
 typedef enum fieldreg_evidence_model {
@@ -65,6 +71,15 @@ typedef enum fieldreg_evidence_model {
     FIELDREG_EVIDENCE_DUAL_EDGE = 1,
     FIELDREG_EVIDENCE_MOTION_PHASE = 2,
 } fieldreg_evidence_model;
+
+typedef enum fieldreg_relative_gauge_source {
+    FIELDREG_RELATIVE_GAUGE_NONE = 0,
+    FIELDREG_RELATIVE_GAUGE_PRIOR,
+    FIELDREG_RELATIVE_GAUGE_TEMPORAL_F1,
+    FIELDREG_RELATIVE_GAUGE_TEMPORAL_F2,
+    FIELDREG_RELATIVE_GAUGE_TEMPORAL_BOTH,
+    FIELDREG_RELATIVE_GAUGE_MIN_CROP,
+} fieldreg_relative_gauge_source;
 
 typedef struct fieldreg_config {
     /* Minimum weave runner-up margin before changing relative registration. */
@@ -156,6 +171,26 @@ typedef struct fieldreg_decision {
     uint8_t fast_edge_support_f1;
     uint8_t fast_edge_support_f2;
     bool fast_edge_spatial_conflict;
+
+    /* Static-region relative-only authority. Energies are 8-pixel
+     * horizontally low-passed inter-field curvature costs. This path reports
+     * an honest unknown absolute gauge when temporal evidence cannot identify
+     * which field moved. */
+    bool relative_only;
+    bool relative_only_gauge_unknown;
+    fieldreg_relative_gauge_source relative_only_gauge_source;
+    int8_t relative_only_phase;
+    double relative_only_best_energy;
+    double relative_only_runner_energy;
+    double relative_only_prior_energy;
+    double relative_only_margin;
+    double relative_only_ratio;
+    uint16_t relative_only_static_columns;
+    uint16_t relative_only_persistent_columns;
+    bool relative_only_transport_gate;
+    bool relative_only_cut_gate;
+    bool bottom_f1_censored;
+    bool bottom_f2_censored;
 } fieldreg_decision;
 
 /*
@@ -199,6 +234,10 @@ typedef struct field_registration {
     int8_t motion_anchor_phase[2];
     bool motion_anchor_valid;
 
+    int8_t relative_gauge_phase[2];
+    bool relative_gauge_unknown_active;
+    bool relative_only_active;
+
     /* [field][top/bottom][left/center/right][signed line + 64]. */
     uint16_t spatial_edge_counts[2][2][3][129];
     uint16_t spatial_edge_total[2][2][3];
@@ -237,6 +276,7 @@ bool fieldreg_process(field_registration *engine,
                        fieldreg_decision *out);
 
 const char *fieldreg_mode_name(fieldreg_mode mode);
+const char *fieldreg_relative_gauge_name(fieldreg_relative_gauge_source source);
 
 #ifdef __cplusplus
 }

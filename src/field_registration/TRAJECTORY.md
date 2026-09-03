@@ -79,6 +79,15 @@ never manufacture an absolute `(d1,d2)` gauge on its own. The committed
 endpoint, an uncensored absolute landmark, or another explicit gauge source is
 required to place that relative constraint in the transport raster.
 
+The zero-latency live presentation is allowed one explicitly labelled choice
+when a strong static-region relative measurement exists but no absolute gauge
+does: retain a compatible prior pair, use same-parity temporal motion to name
+the moved field, or deterministically choose the in-range pair with minimum
+crop magnitude. The last case is `gauge_unknown`; it is a presentation
+coordinate choice, not fabricated absolute evidence. Its relative constraint,
+chosen pair, gauge source, energies, margin/ratio, spatial support, and gates
+must all remain in the sidecar.
+
 A picture-top result at the first searchable line (`start+1` in the current
 estimator) is censored: the real edge may lie there or anywhere above it. It is
 not a measured `-1` offset. A bottom edge that remains inside the transport slot
@@ -189,7 +198,13 @@ settled_known, settled_d1, settled_d2,
 structural_transport_ok, content_evidence_available,
 top_f1_censored, top_f2_censored, retained_ring_units, interval_age,
 resolution {Immediate, SettledPath, UnresolvedHorizon, Discontinuity, EpochReset},
-evidence_mode, confidence
+evidence_mode, confidence,
+relative_only, relative_only_gauge_unknown, relative_only_gauge_source,
+relative_only_phase, relative_only_best_energy, relative_only_runner_energy,
+relative_only_prior_energy, relative_only_margin, relative_only_ratio,
+relative_only_static_columns, relative_only_persistent_columns,
+relative_only_transport_gate, relative_only_cut_gate,
+bottom_f1_censored, bottom_f2_censored
 ```
 
 The log must distinguish live provisional presentation from a later finalized

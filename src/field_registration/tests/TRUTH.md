@@ -112,3 +112,14 @@ transport/content abstentions, and trajectory resets. The deliberately
 provisional inversion remains an explicitly reported archival-only oracle
 disagreement: no zero-latency estimator may claim to know that coherent raster
 geometry will later prove provisional.
+
+Algorithm v7's expanded fixture has 1,397 units and 1,273 raster-known rows.
+The forward live engine matches 1,272/1,273 raster rows and 1,387/1,397
+trajectory-oracle rows. The sole raster mismatch is the intentionally
+gauge-unknown acquisition warmup; all ten oracle mismatches are the explicitly
+archival-only provisional inversion. The deciding relative-only release,
+sustained-phase mirror, temporal-gauge onset, unknown-gauge sequence,
+bottom-censored `+5`, and every false-positive guard pass. The harness also
+asserts provenance: relative authority is present throughout its four positive
+classes, the unknown-gauge class is labelled on every row, and no guard row is
+labelled relative-only.
