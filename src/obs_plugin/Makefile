@@ -29,15 +29,18 @@ LDFLAGS = -bundle -F"$(OBS_APP)/Contents/Frameworks" -framework libobs "$(OBS_AP
 
 all: $(BUNDLE)
 
-$(BUNDLE): shuttle_source.c obsconfig.h Info.plist $(CORE)
+$(BUNDLE): shuttle_source.c publish_copy.c publish_copy.h obsconfig.h Info.plist $(CORE)
 	mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/locale
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) shuttle_source.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) shuttle_source.c publish_copy.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
 	cp Info.plist $(BUNDLE)/Contents/Info.plist
 	printf 'ShuttleSource="Blackmagic Intensity Shuttle (frameserver)"\n' > $(BUNDLE)/Contents/Resources/locale/en-US.ini
 	cp $(BUNDLE)/Contents/Resources/locale/en-US.ini $(BUNDLE)/Contents/Resources/locale/ja-JP.ini
 	xattr -cr $(BUNDLE)    # iCloud/Finder xattrs on the bundle make codesign refuse ("detritus")
 	codesign --force --sign - $(BUNDLE)
 	@echo "built $(BUNDLE)"; otool -L $(BUNDLE)/Contents/MacOS/$(PLUGIN) | grep -E 'libobs|libusb' || true
+
+test: publish_copy.c publish_copy.h tests_publish_copy.c
+	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_copy.c tests_publish_copy.c -o tests_publish_copy && ./tests_publish_copy
 
 install: $(BUNDLE)
 	mkdir -p "$(INSTALL_DIR)"
@@ -49,4 +52,4 @@ uninstall:
 	rm -rf "$(INSTALL_DIR)/$(BUNDLE)"
 
 clean:
-	rm -rf $(BUNDLE)
+	rm -rf $(BUNDLE) tests_publish_copy
