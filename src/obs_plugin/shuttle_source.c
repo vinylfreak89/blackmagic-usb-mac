@@ -142,7 +142,14 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     s->abuf_frames = 4096; s->abuf = bmalloc((size_t)s->abuf_frames * 2 * sizeof(int32_t));
     video_format_get_parameters(VIDEO_CS_601, VIDEO_RANGE_PARTIAL, s->color_matrix, s->color_min, s->color_max);
     obs_source_set_async_unbuffered(source, false);                       /* let libobs pace by our device timestamps */
+    /* Audio and video are cut from ONE device clock and arrive on different threads with the
+     * audio block for a unit completing one unit after its video frame; with coupled audio,
+     * libobs holds audio for the displayed video frame and discards what arrives late — audible
+     * as constant dropouts. Decoupled audio is mixed on its own device-time line (the DeckLink and
+     * AV-capture sources do the same). */
+    obs_source_set_async_decoupled(source, true);
     obs_source_set_deinterlace_field_order(source, OBS_DEINTERLACE_FIELD_ORDER_TOP);   /* measured TFF (CLAUDE.md §6) */
+    obs_source_set_deinterlace_mode(source, OBS_DEINTERLACE_MODE_YADIF_2X);          /* default presentation; the user may change it (OBS owns deinterlacing) */
     if (shuttle_start(s, settings) != 0) blog(LOG_WARNING, "[shuttle-source] created without a running capture; fix settings");
     return s;
 }
