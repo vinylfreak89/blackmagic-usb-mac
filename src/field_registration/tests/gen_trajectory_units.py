@@ -57,12 +57,51 @@ def trajectory() -> list[Step]:
     add(1, "physical-single-20", (2, 0), (2, 0), unsettled=True)
     add(18, "physical-single-return-10", (1, 0), (1, 0))
 
+    # Unit-rate motion is physical truth when both program-envelope edges move
+    # coherently and same-parity picture content follows the same displacement.
+    # A trajectory filter must follow these units, not smooth them merely
+    # because their dwell is one frame.
+    for index in range(24):
+        phase = (1, 0) if index & 1 else (0, 0)
+        out.append(Step("physical-field1-unit-rate-jitter", phase, phase,
+                        unsettled=True, main_ranges=((0, 720),),
+                        secondary_ranges=()))
+    add(12, "after-physical-field1-jitter", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+
+    for index in range(24):
+        phase = (1, 1) if index & 1 else (0, 0)
+        out.append(Step("physical-common-plus-unit-rate-jitter", phase, phase,
+                        unsettled=True, main_ranges=((0, 720),),
+                        secondary_ranges=()))
+    add(12, "after-physical-common-plus-jitter", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+
+    for index in range(24):
+        phase = (-1, -1) if index & 1 else (0, 0)
+        out.append(Step("physical-common-minus-unit-rate-jitter", phase, phase,
+                        unsettled=True, main_ranges=((0, 720),),
+                        secondary_ranges=()))
+    add(12, "after-physical-common-minus-jitter", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+
     # Only the right-hand secondary asset moves. The designated main picture
     # remains at the committed phase, so following the edge-only artifact is a
     # policy error even if it is a plausible per-unit observation.
     add(8, "secondary-edge-artifact", (1, 0), (1, 0),
         secondary=(0, 1), unsettled=True)
     add(12, "after-secondary-artifact", (1, 0), (1, 0))
+
+    # An explicit negative control for the FOLLOW rule. Only a narrow,
+    # secondary asset alternates; the broad main envelope is stationary.
+    for index in range(24):
+        secondary = (0, 1) if index & 1 else (2, 0)
+        out.append(Step("false-edge-chatter", (1, 0), (1, 0),
+                        secondary=secondary, unsettled=True,
+                        main_ranges=((0, 720),),
+                        secondary_ranges=((560, 640),)))
+    add(12, "after-false-edge-chatter", (1, 0), (1, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
 
     # Synthetic form of the timeline-frame-8169 stale latch: one coherent but
     # provisional positive observation, followed by 103 units with no spatial
@@ -79,11 +118,16 @@ def trajectory() -> list[Step]:
     add(10, "inversion-provisional-01", (0, 1), (1, 0), unsettled=True)
     add(35, "inversion-settled-10", (1, 0), (1, 0))
 
-    # Chatter alternates coherent positive observations. The future path must
-    # not mistake each one for a new committed trajectory.
+    # Estimator chatter is deliberately WEAK and conflicting. The main raster
+    # stays at the committed phase; only a narrow secondary layer alternates.
+    # Coherently moving the complete raster here would incorrectly teach the
+    # policy to suppress real physical unit-rate motion.
     for index in range(20):
-        raster = (0, 1) if index & 1 else (2, 0)
-        out.append(Step("phase-chatter", raster, (1, 0), unsettled=True))
+        secondary = (0, 1) if index & 1 else (2, 0)
+        out.append(Step("phase-chatter", (1, 0), (1, 0),
+                        secondary=secondary, unsettled=True,
+                        main_ranges=((0, 720),),
+                        secondary_ranges=((600, 680),)))
     add(35, "post-chatter-10", (1, 0), (1, 0))
 
     # A non-settling interval reaches the future horizon. Its oracle is the

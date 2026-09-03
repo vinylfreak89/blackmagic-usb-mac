@@ -58,8 +58,10 @@ picture and the endpoint-constrained trajectory-policy oracle described in
 `../TRAJECTORY.md`. A smaller right-hand asset may carry a conflicting phase;
 it is evidence, never the main-picture label.
 
-The fixture includes a real one-unit displacement, an edge-only secondary
-artifact, a coherent provisional inversion, chatter, a non-settling horizon,
+The fixture includes a real one-unit displacement; coherent physical field-1
+and common-mode displacements alternating every unit (which must be followed);
+an edge-only secondary artifact; a false-edge chatter negative control; a
+coherent provisional inversion; weak/localized estimator chatter; a non-settling horizon;
 an epoch reset, upward `-1`/`-2` offsets, common-mode `(-2,-2)`, a multi-phase
 raster whose two outer evidence bands disagree with its designated main
 picture, a fade while a candidate is active, and flat/dark content with intact

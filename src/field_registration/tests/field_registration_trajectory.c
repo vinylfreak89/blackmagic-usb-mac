@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { MAX_ROWS = 1024, MAX_SCENARIOS = 64, CSV_FIELDS = 11 };
+enum { MAX_ROWS = 2048, MAX_SCENARIOS = 80, CSV_FIELDS = 11 };
 
 typedef struct truth_row {
     size_t index;
