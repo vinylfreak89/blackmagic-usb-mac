@@ -603,6 +603,18 @@ submission-order reconstruction (API now promises callback-completion order + ta
 inversion mock exists); live stats are after-stop-authoritative; the sidecar's full raw-evidence
 columns; audio serving.
 
+**The hard-padding ruler is SHUTTLE-side digital fill — measured 2026-09-03.** All 18 padding lines
+(0–6, 261–269, 523–524) are exactly Y16/C128 with zero variance in every `0xe801` unit, including
+34 units captured with **no deck connected** and 300 with the deck on an unconnected input, so no
+deck signal can ever land there: whatever the deck pushes past line 260 (field 1) or 522 (field 2)
+is gone at the device, and a crop that reads into the padding reads legal black, not a
+substitution. The four near-blank lines under each field (257–260, 519–522) ARE digitized signal:
+Y ≈ 1.4 ± 0.5 with no input, but on the program tape they average Y31 ± 29 — picture reaches into
+them — so any bottom-edge detector must measure against the field's own content, never a fixed
+blank level. Measured per-line geometry (3,000-unit average): field-1 picture lines 20–256, field-2
+282–518; VBI signature lines 17/19 and 280; ~10 lines of decoded blanking above each picture, 4
+below, then padding.
+
 **The "36 ppm audio clock offset" was WRONG — measured 2026-09-03 over every resync interval of the
 whole-tape capture (86,302 intervals, transport byte-complete):** 51,773 intervals of 1602 samples
 and 34,522 of 1601 — a steady-state mean of **exactly 1601.6 samples per unit, i.e. the audio
