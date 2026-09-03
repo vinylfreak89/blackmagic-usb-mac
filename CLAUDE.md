@@ -528,6 +528,13 @@ layer, never define a state.
 HostLoss 0, errors 0).** The Shuttle with nothing on its input does NOT sit in one state:
 - **`0x0800` finally observed** (1,089 marker units): pseudo-frames of the full **756,048-byte
   525-line unit size**, monotonic counter, ~30 Hz. First 5 units at startup, then the last ~28 s.
+  Content (second capture, `captures/deck_unlocked_30s.tpc`, deck output dropped by its HDMI
+  mode engaging — a deck-side cable pull, transport byte-complete): a **flat synthetic raster,
+  Y ≈ 12 ± 4, chroma bytes far from neutral (U ≈ 188 or 76, V ≈ 0 — renders deep blue in a naive
+  UYVY decode; bmusb called it green), no hard-padding ruler, consecutive units not
+  byte-identical.** When the deck's output returned, the Shuttle relocked to `0xe801` (no-RF
+  sub-blanking black, padding ruler back) with a counter jump 4961 → 5162: a second epoch instance.
+  ⚠️ This is *absence of input*, not unlocked video — the unlocked-input experiment is still owed.
 - **`0xe809` — the PAL-family code — for ~15 s (444 units)** with the decoder free-running: units
   alternate **436,368 B and 463,728 B = 48-byte header + 303 and 322 lines × 1,440 B**
   (303 + 322 = 625). So in the PAL family the device emits **one field per unit with unequal
