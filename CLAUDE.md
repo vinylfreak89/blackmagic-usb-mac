@@ -1019,6 +1019,15 @@ delivery edge; wrong one at acquisition.
   Human sign-off remains required: these are observable-consistency metrics, not proof that every
   content-derived edge is physical truth. Integer vertical registration does not correct
   sub-line, horizontal/line-time, flagging, or skew errors.
+  **Owner visual sign-off (2026-09-03, full forward-only NNEDI watch copy of fixture A):** a
+  large improvement over the validated v4 engine; judged representative of what a digitally
+  captured VHS tape should look like. Of the jumps that remain, nearly every one in the SP
+  recording brings *new* lines into the picture (unique luma and chroma, not a shifted copy of
+  lines already present) — dispositive that they are recorded-signal instability, not raster
+  position, and therefore outside any integer registration engine. The EP recording additionally
+  shows line-21 content bleeding into the active picture, forbidden on a compliant broadcast —
+  consistent with a generational copy at the source and/or EP-mode playback; also not a raster
+  fault. Conclusion: not every jump is fixed, and the ones that remain are not registration.
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
   out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio
