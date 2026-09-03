@@ -982,7 +982,33 @@ delivery edge; wrong one at acquisition.
   and 23,036,416 video DATA records with zero sequence/packet gaps and zero status errors.
   The renderer refuses dataless (File Provider placeholder) inputs rather than triggering a
   multi-gigabyte cloud fetch.
-- ✅ **P3 landed (parser, classifier, frameserver assembly; trajectory redesign gated).**
+- ✅ **P2 authority-first v6 (supersedes the live FIFO/backtracking policy above).**
+  Reconciled raw-field evidence showed that the dominant whole-tape failure was evidence
+  authority, not missing lookahead: a local two-of-three band majority overruled an agreeing
+  coherent full-width envelope and relative phase. The production live engine is now
+  **forward-only with zero presentation FIFO**. A coherent full-width envelope plus relative
+  consensus is authoritative; coherent top+bottom motion in at least two broad bands plus
+  same-parity temporal corroboration follows physical per-unit jitter immediately. A stable raw
+  edge anchor prevents delta integration from walking the crop, and delta authority is bounded
+  to one line around an independently established absolute gauge. Other fixes split structural
+  transport validity from content availability, treat a search-floor top edge as censored and
+  permit a corroborated bottom-only absolute candidate, compare common-mode *displacement*
+  against `(absolute-prior)`, and prevent a lone positive observation from latching through later
+  abstentions. The optional endpoint-constrained retroactive pass remains recording-side only and
+  is gated on real-tape evidence that a coherent positive observation was wrong.
+
+  Public two-truth golden: physical raster **1,017/1,017** (v4: 858/1,017), trajectory oracle
+  **1,130/1,140** (v4: 962/1,140); its ten differences intentionally ask archival hindsight to
+  override the live raster. All physical field/common-mode/multiphase unit-rate FOLLOW classes,
+  false/secondary-edge HOLD classes, upward `-2` classes, blank-with-padding, and the 124-unit
+  stale-latch class pass. Full-tape strict coherent-envelope disagreement fell from
+  **10,547/55,329 to 1,021/55,329**; one-field coherent transitions followed rose from 850/4,128
+  to 2,939/4,128. At 35:00--40:00, follow/hold changed from 0/1,066 to 594/438. Full-pass M3 C
+  timing was 1.466 ms median / 1.569 ms p95 per unit; state is 188,320 bytes, allocation-free.
+  Human sign-off remains required: these are observable-consistency metrics, not proof that every
+  content-derived edge is physical truth. Integer vertical registration does not correct
+  sub-line, horizontal/line-time, flagging, or skew errors.
+- ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
   out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio
   resync correlation), `src/signal_state/` (property-based three-layer classifier v0 with an
@@ -992,12 +1018,11 @@ delivery edge; wrong one at acquisition.
   2× realtime:** 86,305 observations = 86,293 exact + 7 short + 4 unframed + 1 `0x0800`, 0 holes,
   0 drops, 86,293 frames published, pool high-water 2/64; the live applied phases differ from the
   archival log in exactly the 147 rows (five plateau onsets) that forward-only publication implies.
-  **Lookback investigation (two independent arms, reconciled):** backtracking IS necessary under
-  the intended reacquisition semantics, and the current caller does NOT deliver it — it backdates
-  only abstaining rows, and a lone positive `(0,1)` at frame 8169 stays latched 104 units against a
-  locked `(1,0)`; see `src/field_registration/TRAJECTORY.md` (gated redesign contract) and its
-  falsifying two-truth golden (current engine 307/327 raster, 276/430 trajectory, 124/124 wrong in
-  the stale interval). No P2 behaviour was changed; the redesign implementation awaits approval.
+  **Lookback investigation (two independent arms, reconciled and superseded for live use):** the
+  old caller backdated only abstaining rows and could not revise positive provisional evidence;
+  the lone frame-8169 `(0,1)` then latched for 104 units. V6 fixes the latch forward and follows
+  coherent physical evidence immediately. `TRAJECTORY.md` retains the optional archival-side
+  endpoint-constrained design, but no caller FIFO/backtracking belongs in the CMIO live path.
 - **P3 frameserver (original plan)** — unit parser + signal-state classifier v0 (three-layer model, §6) +
   registration engine → interlaced UYVY IOSurface publisher + decision log + standard-media
   recorder skeleton; TPC/raw packet persistence is an explicit debug option only. **No
