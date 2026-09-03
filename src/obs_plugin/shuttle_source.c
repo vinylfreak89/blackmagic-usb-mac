@@ -79,7 +79,7 @@ typedef struct {
     char *sidecar_partial, *sidecar_final;  /* growing scratch path, and the published name it gets at detach */
     _Atomic uint64_t last_counter;          /* counter_ext of the last frame delivered to OBS */
 } shuttle_src;
-#define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; must share a filesystem with the recording for the atomic publish */
+#define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; published by rename on the same filesystem, by verified copy otherwise */
 
 static _Atomic int g_instances;
 
@@ -173,12 +173,13 @@ static void sidecar_attach(shuttle_src *s){
     dstr_free(&part); dstr_free(&fin);
 }
 #include "publish_copy.h"
-static void sidecar_detach(shuttle_src *s){
-    if (!s->sidecar_attached) return;
-    s->sidecar_attached = 0;
-    if (!s->fs){ blog(LOG_ERROR, "[shuttle-source] sidecar left unpublished at %s (capture already closed)", s->sidecar_partial); return; }
-    if (fs_log_stop(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] sidecar is INCOMPLETE (a row write or the close failed: disk full?); left unpublished at %s", s->sidecar_partial); return; }
-    /* exclusive publish: if a file with the final name appeared since it was chosen at attach, fail rather than replace it */
+/* Publish a complete, closed scratch sidecar at its final name. Same filesystem: one exclusive
+ * rename. Different filesystem (a recording on a cloud volume or a share): staged copy on the
+ * destination filesystem, fsync, read-back byte-compare, exclusive rename, then the scratch copy is
+ * deleted. "Published" means the destination filesystem acknowledged the bytes; on a write-back
+ * cloud volume (LucidLink) that is cache-visible, and the volume's own upload counter says when it
+ * is remote — the plugin cannot see that, so it does not claim it. */
+static void sidecar_publish(shuttle_src *s){
     char *dircopy = bstrdup(s->sidecar_final); char *scratchcopy = bstrdup(s->sidecar_partial);
     int same = same_filesystem(dirname(scratchcopy), dirname(dircopy)); bfree(dircopy); bfree(scratchcopy);
     if (same){
@@ -186,9 +187,17 @@ static void sidecar_detach(shuttle_src *s){
         else blog(LOG_INFO, "[shuttle-source] sidecar published: %s", s->sidecar_final);
     } else {
         int rc = publish_by_copy(s->sidecar_partial, s->sidecar_final);
-        if (rc < 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish by copy failed or did not verify (%s); the complete file is left at %s", strerror(errno), s->sidecar_partial);
-        else blog(LOG_INFO, "[shuttle-source] sidecar published by verified copy (different filesystem): %s%s", s->sidecar_final, rc == 1 ? " (scratch copy could not be removed)" : "");
+        if (rc == -2) blog(LOG_ERROR, "[shuttle-source] sidecar publish by copy failed (%s) AND its staging file could not be removed: look for %s.partial-*; the complete file is at %s", strerror(errno), s->sidecar_final, s->sidecar_partial);
+        else if (rc < 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish by copy failed or did not verify (%s); the complete file is left at %s", strerror(errno), s->sidecar_partial);
+        else blog(LOG_INFO, "[shuttle-source] sidecar published by verified copy (different filesystem; cache-visible on a cloud volume): %s%s", s->sidecar_final, rc == 1 ? " (scratch copy could not be removed)" : "");
     }
+}
+static void sidecar_detach(shuttle_src *s){
+    if (!s->sidecar_attached) return;
+    s->sidecar_attached = 0;
+    if (!s->fs){ blog(LOG_ERROR, "[shuttle-source] sidecar left unpublished at %s (capture already closed)", s->sidecar_partial); return; }
+    if (fs_log_stop(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] sidecar is INCOMPLETE (a row write or the close failed: disk full?); left unpublished at %s", s->sidecar_partial); return; }
+    sidecar_publish(s);
 }
 static void frontend_event(enum obs_frontend_event ev, void *data){
     shuttle_src *s = data;
@@ -210,8 +219,15 @@ static void frontend_event(enum obs_frontend_event ev, void *data){
 
 static void shuttle_stop(shuttle_src *s){
     if (!s->fs) return;
-    if (s->sidecar_attached){ blog(LOG_INFO, "[shuttle-source] capture stopping mid-recording: publishing this sidecar part"); sidecar_detach(s); }
+    /* Mid-recording restart: do NOT detach the log first — units delivered between a detach and the
+     * capture stop would be recorded without sidecar rows. fs_stop closes the attached log after the
+     * workers drain (every delivered unit has its row); publish afterwards from the session's stats. */
+    int publish_after = s->sidecar_attached; s->sidecar_attached = 0;
     fs_stats st; fs_stop(s->fs); fs_get_stats(s->fs, &st);
+    if (publish_after){
+        if (st.log_write_errors || st.log_close_errors) blog(LOG_ERROR, "[shuttle-source] sidecar part is INCOMPLETE (%llu write / %llu close errors in this session); left unpublished at %s", (unsigned long long)st.log_write_errors, (unsigned long long)st.log_close_errors, s->sidecar_partial);
+        else sidecar_publish(s);
+    }
     blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, residual steps applied %llu",
          (unsigned long long)st.published, (unsigned long long)atomic_load(&s->frames_out), (unsigned long long)st.audio_frames_delivered,
          (unsigned long long)st.audio_dropped_frames, (unsigned long long)st.dropped_pool_full, (unsigned long long)st.dropped_ring_full,

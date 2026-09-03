@@ -393,8 +393,11 @@ in the decision CSV. Tagged capture_tagged_bench data must use packet provenance
 inside a cloud-synced (File Provider) root, even under a hidden or `.partial` name — a dataless
 placeholder or an in-flight sync corrupts a growing file. Growing TPC, MP4, PCM, and decision-log files live in a non-synced scratch
 directory. After the writer closes and validation succeeds, publish with one same-filesystem
-atomic rename; never fall back to copy+delete. Scratch and destination filesystem identity is
-checked before work begins. An unfinished capture remains in scratch for diagnosis/recovery.
+atomic rename. For a multi-gigabyte media file never fall back to copy+delete; a small FINISHED
+file (a sidecar CSV) may be published to another filesystem by a staged, fsynced, read-back-verified
+copy followed by an exclusive rename, then deletion of the scratch copy (owner, 2026-09-04: a
+recording may live on a cloud volume such as a LucidLink filespace). Filesystem identity is checked
+before work begins and selects the path. An unfinished capture remains in scratch for diagnosis/recovery.
 The destination above describes final publication only, not the writer's working directory.
 
 **Archival re-registration does NOT require a full-raster master (owner decision, 2026-09-03).**
@@ -1291,8 +1294,12 @@ delivery edge; wrong one at acquisition.
   incomplete; a stall-hook test proves a hung sidecar write sheds video downstream with exact
   range accounting, never acquisition). The plugin subscribes to OBS's recording-started/stopped
   events and writes `<recording>.registration.csv` per recording: grown in a per-uid 0700 scratch
-  directory on the recording's filesystem, published by `renamex_np(RENAME_EXCL)`, never
-  truncating or replacing an existing sidecar, never published if incomplete. Alignment is within
+  directory, published by `renamex_np(RENAME_EXCL)` on the same filesystem or by a staged,
+  fsynced, byte-verified copy plus exclusive rename on another (`publish_copy.c`, fault-injected
+  tests for every post-create step; "published" = the destination filesystem acknowledged the
+  bytes, cache-visible on a write-back cloud volume), never truncating or replacing an existing
+  sidecar, never published if incomplete; on a mid-recording source restart the log is closed by
+  `fs_stop` after the workers drain, so no delivered unit is ever unlogged. Alignment is within
   one unit (the counter of the last frame delivered before the event is logged; exact alignment
   needs an in-band frame counter). OPEN: a `.tpc` tee from inside the plugin (needs a
   runtime-attachable tagged sink in the capture core); a log writer thread if storage stalls are
