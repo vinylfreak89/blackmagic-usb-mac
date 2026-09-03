@@ -432,8 +432,11 @@ signature against the frameserver decision log.
 4. **Woven-interlaced record via OBS is unsupported by OBS** (works only by construction: no
    scaling, no deinterlace, P216). Decide whether it is worth validating (idet test) or whether the OBS
    deliverable is always Yadif-2x 59.94p and interlace-preserving masters come from the native recorder.
-5. **Hardware ProRes on base M3**: expect only the software encoder; fine at SD, but the property
-   page must not assume "Hardware" exists.
+5. ~~**Hardware ProRes on base M3**: expect only the software encoder~~ — **CORRECTED (measured
+   2026-09-03 on this M3):** the VideoToolbox ProRes encoder is present and hardware-backed
+   (`prores_videotoolbox` encodes 30 s of 720×480 ProRes 422 in 0.98 s wall, 4.4 s CPU, field
+   order preserved); the M2/M3 base media engine includes ProRes encode/decode. The property page
+   may offer the hardware encoder.
 6. **Single-session ownership**: one libusb context/session per process; define the behaviour of a
    second OBS source instance (refuse vs shared read-only) and of OBS's source duplication
    (`OBS_SOURCE_DO_NOT_DUPLICATE` is available [doc]).
