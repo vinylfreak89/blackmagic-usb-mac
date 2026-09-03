@@ -29,24 +29,33 @@ extern "C" {
 
 typedef struct frameserver frameserver;
 
+#define FS_DECISION_LOG_SCHEMA 2
+
 typedef struct {
     cc_config capture;          // device input or replay_path
     unsigned pool_units;        // unit slots between delivery thread and worker (0 => 16)
     unsigned surface_pool;      // IOSurface pool for the publisher (0 => 6)
-    const char *decision_log;   // CSV sidecar path, or NULL
+    const char *decision_log;   // schema FS_DECISION_LOG_SCHEMA CSV, or NULL. The current P3
+                                // schema records decisions/baselines and loss; full raw evidence
+                                // vectors remain an explicit later-P3 extension.
     fp_sink sink;               // consumer of published frames (may be {NULL,NULL} => count only)
     void (*on_end)(void *ctx, enum cc_end reason);   // optional; fires after the worker drains
     void *end_ctx;
 } fs_config;
+
+// Audio observations are parsed and counted in this assembly revision but are not yet exposed
+// to a media sink. That is a named P3 gap, not an implied audio-serving API.
 
 typedef struct {
     uint64_t video_observations, exact_units, short_units, holes, unframed, other_format, no_signal_0800;
     uint64_t audio_records, audio_resync;
     uint64_t eligible_observations;   // fixed-raster-eligible units seen at ingress (the denominator)
     uint64_t published, dropped_pool_full, dropped_ring_full, publisher_dropped, ring_drops_logged;
+    uint64_t eligible_ring_drops, ring_gap_rows;
     // dropped_pool_full: eligible unit, no free slot -> bytes shed, observation still logged (drop_reason=PoolFull).
     // dropped_ring_full: item ring full -> observation never reaches the worker; counted, and folded
-    //   into the next sidecar row's preceding_ring_drops column so it is locatable in the timeline.
+    //   into the next sidecar row's preceding_ring_drops column. Tail loss gets one synthetic
+    //   RingFullTail row, so every missing range remains chronologically locatable.
     // Invariants: published + dropped_pool_full + publisher_dropped == exact_units;
     //             exact_units + eligible ring drops == eligible_observations.
     uint64_t unsettled_units, begin_segment_calls, discontinuity_calls;
@@ -57,6 +66,8 @@ typedef struct {
 int  fs_open (frameserver **out, const fs_config *cfg);
 int  fs_start(frameserver *f);
 int  fs_stop (frameserver *f);            // stops capture, drains the worker, closes the log
+// Authoritative after fs_stop. During streaming worker-owned members are diagnostic only and
+// may be momentarily inconsistent; atomic ingress counters remain individually safe.
 void fs_get_stats(const frameserver *f, fs_stats *out);
 void fs_close(frameserver *f);
 

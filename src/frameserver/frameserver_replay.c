@@ -33,6 +33,10 @@ int main(int argc, char **argv){
         (unsigned long long)s.published, (unsigned long long)s.dropped_pool_full, (unsigned long long)s.dropped_ring_full, (unsigned long long)s.publisher_dropped,
         (unsigned long long)s.unsettled_units, (unsigned long long)s.begin_segment_calls, (unsigned long long)s.discontinuity_calls,
         (unsigned long long)s.log_rows, s.pool_high_water);
+    printf("eligible ingress %llu = processed exact %llu + eligible ring loss %llu | ring loss logged %llu in %llu terminal range rows\n",
+        (unsigned long long)s.eligible_observations,(unsigned long long)s.exact_units,
+        (unsigned long long)s.eligible_ring_drops,(unsigned long long)s.ring_drops_logged,
+        (unsigned long long)s.ring_gap_rows);
     printf("audio records %llu (resync %llu)\n", (unsigned long long)s.audio_records, (unsigned long long)s.audio_resync);
     fs_close(f);
     return 0;

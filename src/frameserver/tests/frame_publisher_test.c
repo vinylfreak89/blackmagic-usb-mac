@@ -15,11 +15,12 @@ static uint8_t *make_unit(void){
 }
 static int row_src_line(const uint8_t *frame, int row){ return frame[(size_t)row * FP_LINE_BYTES]; }
 
-typedef struct { int frames; uint64_t last_pts; int pts_monotonic; IOSurfaceRef held; int hold; } sink_ctx;
+typedef struct { int frames; uint64_t last_pts, last_counter; int pts_monotonic; IOSurfaceRef held; int hold; } sink_ctx;
 static void on_frame(void *ctx, const fp_frame *f){
     sink_ctx *c = ctx; c->frames++;
     if (c->frames > 1 && f->pts_num <= c->last_pts) c->pts_monotonic = 0;
     c->last_pts = f->pts_num;
+    c->last_counter = f->counter_ext;
     if (c->hold){ IOSurfaceIncrementUseCount(f->surface); c->held = f->surface; }
 }
 
@@ -47,11 +48,16 @@ int main(void){
     CHECK(fp_open(&p, 2, &s) == 0 && p, "open");
     for (uint32_t i = 0; i < 10; i++) CHECK(fp_publish(p, u, FP_UNIT_BYTES, 1000 + i, 1, 0, FP_TRANSPORT_COMPLETE) == 0, "publish %u", i);
     CHECK(c.frames == 10 && c.pts_monotonic, "10 frames, monotonic PTS");
+    CHECK(fp_publish(p,u,FP_UNIT_BYTES,(uint64_t)UINT32_MAX+1,0,0,FP_TRANSPORT_COMPLETE)==0,
+          "publish counter beyond 32-bit");
+    CHECK(c.last_counter==(uint64_t)UINT32_MAX+1 && c.last_pts==((uint64_t)UINT32_MAX+1)*1001,
+          "64-bit counter/PTS narrowed (%llu/%llu)",(unsigned long long)c.last_counter,
+          (unsigned long long)c.last_pts);
     // surface content: row 0 must be source line 18 (d1=1)
     {
         IOSurfaceRef last = p ? NULL : NULL; (void)last;
         fp_stats st; fp_get_stats(p, &st);
-        CHECK(st.published == 10 && st.dropped_no_free_surface == 0, "stats after 10");
+        CHECK(st.published == 11 && st.dropped_no_free_surface == 0, "stats after publishes");
     }
     // honest exhaustion: consumer holds both surfaces -> third publish is DROPPED and counted
     c.hold = 1;

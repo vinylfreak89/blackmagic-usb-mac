@@ -1,6 +1,7 @@
 # frameserver: P3 assembly + IOSurface frame publisher. `make test` needs no hardware.
 CC ?= clang
 CFLAGS ?= -O2 -std=c11 -Wall -Wextra
+TESTFLAGS = -DFRAMESERVER_TEST_HOOKS
 CPPFLAGS ?= -I. -I../capture_core -I../unit_parser -I../signal_state -I../field_registration
 LIBS = $(shell pkg-config --libs libusb-1.0) -lpthread -lm -framework IOSurface -framework CoreFoundation
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/field_registration.c
@@ -17,7 +18,7 @@ tests/frame_publisher_test: frame_publisher.c frame_publisher.h tests/frame_publ
 	$(CC) $(CPPFLAGS) $(CFLAGS) frame_publisher.c tests/frame_publisher_test.c -o $@ -framework IOSurface -framework CoreFoundation
 
 tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o $@ $(LIBS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(TESTFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o $@ $(LIBS)
 
 test: tests/frame_publisher_test tests/frameserver_test $(FIXTURE)
 	./tests/frame_publisher_test
@@ -25,15 +26,15 @@ test: tests/frame_publisher_test tests/frameserver_test $(FIXTURE)
 
 # Item ring of 2 so a stalled consumer exhausts it deterministically (ring-full accounting path).
 test-smallring: $(FIXTURE)
-	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -DRING_ITEMS=2 -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_smallring $(LIBS)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -DRING_ITEMS=2 $(TESTFLAGS) -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_smallring $(LIBS)
 	FS_TEST_EXPECT_RING_DROPS=1 ./tests/test_smallring $(FIXTURE)
 
 test-asan: $(FIXTURE)
-	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_asan $(LIBS)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined $(TESTFLAGS) -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_asan $(LIBS)
 	./tests/test_asan $(FIXTURE)
 
 test-tsan: $(FIXTURE)
-	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_tsan $(LIBS)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread $(TESTFLAGS) -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_tsan $(LIBS)
 	./tests/test_tsan $(FIXTURE)
 
 clean:
