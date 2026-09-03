@@ -1105,6 +1105,15 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+- **Mutual code-and-intent review is the coding style of this project (owner rule, 2026-09-03).**
+  Every change by one agent (Claude or Codex) is reviewed by the other before it is considered
+  done, and the review covers **intent as well as code**: the reviewer must be able to state the
+  decision-making behind any part it does not understand, and must ask rather than assume. Review
+  the change **in the context of the whole system, never the changeset alone** — a diff-only
+  review dangerously misses side effects on other modules, invariants, and the design decisions
+  recorded in this file. Iterate until both agents converge. A mismatch is resolved by a
+  **deterministic test** that decides it; if it is genuinely an interpretation question, end the
+  turn and bring it to the owner instead of picking a side. Token cost is accepted.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).
