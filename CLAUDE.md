@@ -1124,8 +1124,12 @@ delivery edge; wrong one at acquisition.
      seconds before a recording ends and run ~30 s into a virgin section, so the acquisition
      transient (snow) and the settled deck mute are in one file. Verifies "snow is only the
      acquisition transient".
-  4. **Composite fixture (P6):** ~30 s of program via composite (mode word `0x3d000000`) — the
-     first composite `.tpc`, and the chroma-decoding A/B against S-Video on the same passage.
+  4. ~~**Composite fixture (P6)**~~ — **DONE 2026-09-03 (`captures/composite_program_30s.tpc`,
+     700 MB, byte-complete):** mode word `0x3d000000` selects the composite decoder; framing is
+     identical to S-Video (`0xe801`, 756,048-byte units, padding ruler at the same 18 lines),
+     real colour program decoded. Taken over an audio-grade RCA lead (not 75 Ω), so it proves the
+     path and the framing, **not** chroma quality — the S-Video-vs-composite chroma A/B still needs
+     a proper 75 Ω cable and the same passage on both inputs.
   No over-the-air analog exists in Japan since 2011/2012 (cable digi-ana ended 2015), and dead-air
   tapes through this deck yield TBC-locked snow identical to the relock windows already captured.
 - Throughout: **all testing via deterministic replay** (whole_tape.tpc + untagged_capture + libusb_replay_shim +
