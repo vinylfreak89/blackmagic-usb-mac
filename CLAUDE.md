@@ -30,8 +30,9 @@ Shuttle analog in → Mac.** (S-Video is the default tap; component is an early 
   registration plateaus on playback. Segment 2: EP, rooftop-antenna source, clean H-timing,
   pause-edit discontinuities (program missing at recording time). Both segments: audio on the
   linear track only. Chosen because a pipeline that survives it survives ordinary tapes.
-  Target corpus: irreplaceable one-shot consumer VHS — minimize plays; one tagged capture per
-  tape once the pipeline is proven, so nothing ever needs a re-run.
+  Target corpus: ordinary consumer VHS. Minimize plays as a courtesy to the tape, but nothing in
+  the corpus is so fragile that a capture cannot be re-run (owner, 2026-09-03; an earlier
+  "one-shot, one capture per tape" framing here was invented, not a requirement).
 
 ## 3. Hardware & environment (VERIFIED on the machine)
 
