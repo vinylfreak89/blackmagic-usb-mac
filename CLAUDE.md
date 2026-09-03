@@ -1246,8 +1246,20 @@ delivery edge; wrong one at acquisition.
   (`libusb-1.0.a`); one session per process, a second source instance is refused
   (`OBS_SOURCE_DO_NOT_DUPLICATE`); Color Format P216 / Rec.601 / limited for the ProRes record, and
   a synthetic Y=1 / Y=250 clamp test before any OBS file is trusted. **The OBS ProRes is a
-  presentation copy** (progressive RGB composite, square pixels, no field metadata); the faithful
-  4:2:2 interlaced master stays the native recorder's job (§9).
+  presentation copy** (progressive RGB composite, square pixels, no field metadata); a 1:1-pixel
+  720×480 file with 8:9 aspect metadata is a recorder sink's job (§9).
+  **✅ First live OBS test (2026-09-03, `src/obs_plugin/`, replay of fixture A inside OBS 32.2.2):**
+  the plugin loads, the source publishes, and the frameserver accounting inside OBS was 0 drops,
+  0 holes on every session. Two problems, both fixed and measured: (1) constant audio dropouts —
+  the replay's fixed sleep per transfer added the parser's work to each period (a "realtime"
+  replay ran **28% slow**, 59.65 s for 46.58 s of device time) and starved libobs's mixer;
+  deadline-based pacing brought it to 46.96 s and the dropouts stopped; (2) libobs keeps audio
+  timing independent of video only when the source is **decoupled AND unbuffered** (read from
+  `obs-source.c`), so the plugin sets both — the shared device clock is the sync. Known and
+  accepted: OBS shows 720×480 square-pixel (stretched) until the scene item's transform is set to
+  640×480 — 640×480 (not 720×540) because it leaves the 480 scan lines untouched and VHS
+  horizontal resolution (~240 TVL) is oversampled at 720 anyway; the source defaults to Yadif 2x
+  TFF; OBS owns deinterlacing.
 - **P4b CMIO extension (Swift)** — after P4a and the Apple team exist: standard device, two
   advertised formats (raw 480i, corrected 480i), sink-stream consumer, custom properties.
   Deinterlacing belongs to OBS/ffmpeg/post.
