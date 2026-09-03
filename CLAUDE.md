@@ -565,6 +565,34 @@ OSD-region awareness is needed, and `Present` must not be inferred from overlay 
 the unsettled interval never closes on the live path. Transport/parser were flawless on both
 captures (GAPS 0, HostLoss 0, errors 0).
 
+**Hardening pass (2026-09-03, main `f75dccf`) — an external static review of `capture_core` and
+`frameserver`, verified independently by both agents, then three mutual review rounds under the
+§14 rule.** Of the 15 external findings, 11 were confirmed, 2 refuted by measurement (Apple
+`aligned_alloc` sizes are multiples of alignment by the C object model; the classifier already
+guards NULL payloads), 2 partial. The whole-system read added defects the diff could not show:
+holes/short/unframed discontinuities never reached the registration engine; loss stats were
+pending-since-flush, not cumulative; a full data ring could suppress the report of its own
+overflow; an initial submit failure silently shrank the fleet; recorded transfer errors were not
+replayed; two stale-snapshot drain races at termination. **Fixed, each with a deciding test
+(barrier-controlled races, fault-injecting shim, small-ring build, falsified against the old
+code):** joined lifecycle state machines in both libraries (elected stopper, callback-thread
+refusal, failed-start rollback, no `on_end` for a session that never started); start succeeds only
+after the full 8+8 fleet is submitted; permanent resubmit failure ends the session after a
+configurable deadline (`CC_END_TRANSFER_FAILED`); coalesced, non-truncating, cumulative HostLoss;
+a control-record reserve plus a **one-time in-stream "control truth lost" marker** (`XFERERR`,
+pkt_index `0xFFFE`, status `UINT32_MAX`) — **default: mark once and continue (§8 property 7);
+`fail_stop_on_control_loss` opts into termination**; pool-full sheds bytes but never the
+observation (`drop_reason=PoolFull`); ring-full loss is attached to the first retained post-gap
+row with a reserved `RingFullTail` slot so every missing range is chronologically locatable
+(sidecar schema 2, `schema_version` column); publisher exhaustion named; exact conservation
+`published + PoolFull + PublisherFull == exact_units` and `exact_units + eligible ring drops ==
+eligible_observations`; every transfer freed at stop (`transfers_allocated == transfers_freed`);
+init checks alt1/alt2/mode/latch/input; the CLI names end reasons and the SESSION note now carries
+input, mode word, ring size, fleet and loss policy. **Deferred, named OPEN, not implied complete:**
+submission-order reconstruction (API now promises callback-completion order + tags until the
+inversion mock exists); live stats are after-stop-authoritative; the sidecar's full raw-evidence
+columns; audio serving.
+
 **✅ Audio is a viable continuity master** (validates §9's approach): 8,991 resync records,
 counter `18706 → 27696`, **every step exactly +1, zero exceptions** — across the splice, the stop,
 the rewind, the relock, and 35 s in which the video endpoint delivered **zero bytes**. Spacing
