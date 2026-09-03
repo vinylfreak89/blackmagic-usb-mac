@@ -3548,7 +3548,7 @@ def main():
         parser.error("--nnedi-weights requires --deinterlacer nnedi")
     if args.decision_log and not args.render:
         parser.error("--decision-log requires --render")
-    if input_format != "tagged" and args.fieldreg_library:
+    if input_format != "tagged" and args.registration_library:
         parser.error("--registration-library is only supported for tpc input")
     if input_format != "tagged" and args.tagged_start_unit is not None:
         parser.error("--tagged-start-unit is only supported for tpc input")
@@ -3567,7 +3567,7 @@ def main():
             "--audio-endpoint": args.audio_endpoint,
             "--stereo-pcm": args.stereo_pcm,
             "--sync-map": args.sync_map,
-            "--audio-spans": args.spans,
+            "--audio-spans": args.audio_spans,
             "--video-480i": args.video_480i,
             "--video-map": args.video_map,
         }
@@ -3579,10 +3579,10 @@ def main():
             )
         if args.decision_log and not args.adaptive_registration:
             parser.error("tpc --decision-log requires --adaptive-registration")
-        if args.fieldreg_library and not args.adaptive_registration:
+        if args.registration_library and not args.adaptive_registration:
             parser.error("--registration-library requires --adaptive-registration")
-        if args.fieldreg_library and not Path(args.fieldreg_library).is_file():
-            parser.error(f"field_registration library not found: {args.fieldreg_library}")
+        if args.registration_library and not Path(args.registration_library).is_file():
+            parser.error(f"field_registration library not found: {args.registration_library}")
         render_tagged(
             args.input,
             args.render,
@@ -3602,8 +3602,8 @@ def main():
             args.registration_confirm_units,
             args.registration_min_support_units,
             args.registration_max_buffered_units,
-            args.fieldreg_library,
-            args.fieldreg_evidence,
+            args.registration_library,
+            args.registration_evidence,
             args.tagged_start_unit,
             args.tagged_limit_units,
             args.scratch_dir,
@@ -3628,8 +3628,8 @@ def main():
                 spans, warnings = find_audio_spans(mm)
                 for warning in warnings:
                     print(f"WARNING: {warning}", file=sys.stderr)
-                if args.spans:
-                    with open(args.spans, "w") as output:
+                if args.audio_spans:
+                    with open(args.audio_spans, "w") as output:
                         for start, end in spans:
                             output.write(f"{start}\t{end}\n")
                 write_endpoint_streams(
