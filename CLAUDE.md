@@ -396,6 +396,17 @@ atomic rename; never fall back to copy+delete. Scratch and destination filesyste
 checked before work begins. An unfinished capture remains in scratch for diagnosis/recovery.
 The destination above describes final publication only, not the writer's working directory.
 
+**Archival re-registration does NOT require a full-raster master (owner decision, 2026-09-03).**
+The normal recorder records the corrected 480i as an ordinary downstream consumer; a 525-line
+FFV1 master in the service was proposed and rejected as an extreme-edge-case tax. A whole-line
+re-registration of a 480i recording lacks the 1–3 raster lines outside the crop; those lines sit
+in the head-switching / line-21 region, so the accepted archival repair is an edge-duplicated or
+estimated whole-line shift, recorded in the sidecar as a substitution. Where lossless repair is
+actually wanted, a `.tpc` of that segment (explicit debug sink; requires replaying the segment)
+is patched into the recording. Expected consumer need for either path is ~0.1%. The one live-path
+requirement this imposes: the sidecar carries per-unit applied `(d1,d2)`, the observation that
+produced it, and the interval label, so an offline pass can locate and re-shift affected units.
+
 ### Untagged video+audio mix is RECOVERABLE (proven with `capture_render.py`)
 
 `capture_untagged_ring` submits both endpoints, so completed video (0x83) and audio (0x84) transfers land in one
@@ -1034,6 +1045,17 @@ delivery edge; wrong one at acquisition.
   Includes a signing/notarization/dev-mode
   investigation SPIKE first (published-app requirement; no boot-security changes).
 - **P5 configurator app (SwiftUI)** — status, logging, decision-log viewer, property editor.
+- **P6 (far future) every device mode** — PAL 576i, component, composite, HDMI, 720p, 1080i/p,
+  10-bit v210. A public driver cannot stay S-Video/NTSC-only. Measured state: all NTSC geometry
+  (unit bytes, line bytes, 525 lines, field starts 17/280, padding-ruler lines, 240-line field)
+  sits behind named constants in `unit_parser`, `field_registration`, `signal_state` and
+  `frame_publisher`; the parser already keys on the `0xe8xx` family and the classifier is
+  property-based. The change is one seam: a runtime format descriptor selected by format code.
+  Exact Shuttle PAL framing is a HYPOTHESIS (bmusb: `0xe109` family, 720×576, second field at
+  335) until a real PAL `.tpc` exists — a 30 s `shuttle-capture` from any PAL user is the fixture,
+  which is the tpc sink's real job. Full-raster lossless captures found online (vhs-decode outputs
+  carry the 625-line raster with VBI) can drive the descriptor plumbing synthetically but cannot
+  prove device framing. HD bus bandwidth (~1.3 Gbit/s at 1080i v210) is unmeasured on this host.
 - Throughout: **all testing via deterministic replay** (whole_tape.tpc + untagged_capture + libusb_replay_shim +
   census ground truths); hardware only for final validation passes.
    **Steps 5–6 are built by replaying a captured file through a virtual device — no deck, no tape,
