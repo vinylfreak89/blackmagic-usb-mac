@@ -523,6 +523,31 @@ state by its **observable signal properties** (luma/chroma statistics, coherence
 behaviour), not by "what the HM-DHX2 does" — deck-specific knowledge may *inform* an inference
 layer, never define a state.
 
+**Device NO-INPUT behaviour — MEASURED (2026-09-03, `captures/shuttle_no_input_45s.tpc`, 1.13 GB,
+45 s S-Video with the deck powered off; transport byte-complete: 743,727 records, GAPS 0,
+HostLoss 0, errors 0).** The Shuttle with nothing on its input does NOT sit in one state:
+- **`0x0800` finally observed** (1,089 marker units): pseudo-frames of the full **756,048-byte
+  525-line unit size**, monotonic counter, ~30 Hz. First 5 units at startup, then the last ~28 s.
+- **`0xe809` — the PAL-family code — for ~15 s (444 units)** with the decoder free-running: units
+  alternate **436,368 B and 463,728 B = 48-byte header + 303 and 322 lines × 1,440 B**
+  (303 + 322 = 625). So in the PAL family the device emits **one field per unit with unequal
+  line counts**, not one 625-line frame. This is device framing observed from the device itself,
+  but from a free-running decoder, not a PAL signal — it promotes the P6 PAL framing from
+  hypothesis to "measured shape, unverified against real PAL content".
+- **`0xe801` for ~2 s at startup (66 units)** classified sub-black mute / a few program-like:
+  the decoder's initial guess before it gave up; 34 exact units, 28 device-short.
+- **A counter epoch restart** at the `0xe809`→`0x0800` transition (raw 534 → 329): §8 property 5
+  (never extend the 16-bit counter across an ambiguous restart) has its first real instance.
+- **Iso packets shrink to ~2,848 B** (every packet "short" vs the 15,360 B request) while the byte
+  rate stays ≈22.6 MB/s: packet length is a scheduling artefact, never a unit-validity signal.
+- Parser + classifier handled all of it without a fixed-raster consumer ever seeing a wrong-size
+  unit (other-format units kept out, `DeviceNoSignal0800` appearance, `NoInput` source).
+- ⚠️ Lesson: an **unpaced `frameserver_replay` overflowed the 256 MB capture ring** on this file
+  (byte-at-a-time parser slower than disk) and the resulting holes were *replay* host loss, not
+  capture loss — visible only via the verifier, because `frameserver_replay` did not print
+  capture-level HostLoss. Replay with `--ring-mb` ≥ file size or `--pace-us 16000`; the tool must
+  surface capture-core loss (fix queued).
+
 **✅ Audio is a viable continuity master** (validates §9's approach): 8,991 resync records,
 counter `18706 → 27696`, **every step exactly +1, zero exceptions** — across the splice, the stop,
 the rewind, the relock, and 35 s in which the video endpoint delivered **zero bytes**. Spacing
