@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 #include <stdatomic.h>
 #include <pthread.h>
 static int fails = 0;
@@ -22,7 +23,9 @@ void fs_test_after_empty_snapshot(frameserver *f){
 }
 void fs_test_before_producer_done(frameserver *f){ (void)f; if(atomic_load(&hook_arm)) atomic_store(&hook_release,1); }
 static _Atomic int log_stall_us; static _Atomic int log_stalled;   // storage-stall injection: the first row after arming blocks inside the row lock
-void fs_test_after_log_row(frameserver *f){ (void)f; int st=atomic_exchange(&log_stall_us,0); if(st){ atomic_store(&log_stalled,1); usleep(st); } }
+static _Atomic int log_break;   // write-failure injection: swap the stream's fd for a pipe with no reader (EPIPE on every write; SIGPIPE ignored), unbuffered so each row fprintf fails
+void fs_test_after_log_row(frameserver *f, FILE *log){ (void)f; int st=atomic_exchange(&log_stall_us,0); if(st){ atomic_store(&log_stalled,1); usleep(st); }
+    if(atomic_exchange(&log_break,0)){ int p[2]; if(pipe(p)!=0) abort(); close(p[0]); fflush(log); if(dup2(p[1],fileno(log))<0) abort(); close(p[1]); setvbuf(log,NULL,_IONBF,0); } }
 static frameserver *g_cb_target; static _Atomic int cb_try, cb_start_rc, cb_stop_rc;   // callback-refusal probe
 static _Atomic int end_calls;
 static void on_end(void *c, enum cc_end r){ (void)c; (void)r; atomic_fetch_add(&end_calls, 1); done = 1; }
@@ -66,8 +69,9 @@ static int repeat_fixture(const char *src,const char *dst,int copies){
 }
 int main(int argc, char **argv){
     if (argc < 2){ fprintf(stderr, "usage: %s <fixture.tpc>\n", argv[0]); return 9; }
+    signal(SIGPIPE, SIG_IGN);   /* the write-failure injection writes to a reader-less pipe */
     int ring_may_drop = getenv("FS_TEST_EXPECT_RING_DROPS") != NULL;
-    char logp[] = "/tmp/fs_test_log_XXXXXX"; int fd = mkstemp(logp); close(fd);
+    char logp[] = "/tmp/fs_test_log_XXXXXX"; int fd = mkstemp(logp); close(fd); unlink(logp);
     fs_config cfg = {0}; cfg.capture.replay_path = argv[1]; cfg.decision_log = logp; cfg.on_end = on_end;
     cfg.sink.on_frame = sink; cfg.pool_units = 4; cfg.surface_pool = 3; cfg.audio_sink.on_block = audio_sink;
     frameserver *f = NULL;
@@ -139,7 +143,7 @@ int main(int argc, char **argv){
     // F4/F5: with a ONE-slot pool the delivery thread must shed bytes, but every observation
     // still gets a sidecar row, and shed units are marked PoolFull rather than silently absent.
     done = 0; atomic_store(&frames_seen, 0);
-    char logp2[] = "/tmp/fs_test_log2_XXXXXX"; fd = mkstemp(logp2); close(fd);
+    char logp2[] = "/tmp/fs_test_log2_XXXXXX"; fd = mkstemp(logp2); close(fd); unlink(logp2);
     fs_config c2 = cfg; c2.decision_log = logp2; c2.pool_units = 1;
     atomic_store(&sink_stall_us, 200000);   // slot held ~200 ms per unit: the next unit MUST find the pool full
     frameserver *g = NULL;
@@ -178,7 +182,7 @@ int main(int argc, char **argv){
     // folded into the next row's preceding_ring_drops column so they are locatable in time.
     if (getenv("FS_TEST_EXPECT_RING_DROPS")){
         done = 0; atomic_store(&frames_seen, 0);
-        char logp3[] = "/tmp/fs_test_log3_XXXXXX"; fd = mkstemp(logp3); close(fd);
+        char logp3[] = "/tmp/fs_test_log3_XXXXXX"; fd = mkstemp(logp3); close(fd); unlink(logp3);
         char ringcap[]="/tmp/fs_ring_capture_XXXXXX"; fd=mkstemp(ringcap); close(fd);
         CHECK(repeat_fixture(argv[1],ringcap,5)==0,"make repeated ring fixture");
         fs_config c4 = cfg; c4.decision_log = logp3; c4.pool_units = 8;
@@ -251,7 +255,7 @@ int main(int argc, char **argv){
     // Hold the sole IOSurface so the second exact unit is rejected at the publisher edge; the
     // sidecar must name PublisherFull rather than an ambiguous None.
     done=0; atomic_store(&sink_hold,1); held_surface=NULL;
-    char logp4[]="/tmp/fs_test_log4_XXXXXX"; fd=mkstemp(logp4); close(fd);
+    char logp4[]="/tmp/fs_test_log4_XXXXXX"; fd=mkstemp(logp4); close(fd); unlink(logp4);
     fs_config pc=cfg; pc.decision_log=logp4; pc.surface_pool=1; frameserver *pf=NULL;
     CHECK(fs_open(&pf,&pc)==0,"open (publisher full)");
     if(pf){
@@ -318,23 +322,49 @@ int main(int argc, char **argv){
         CHECK(fs_stop(sf)==0,"stop (stall)"); g_cb_target=NULL;
         CHECK(atomic_load(&log_stalled),"the stall hook did not fire");
         fs_stats ss; fs_get_stats(sf,&ss);
-        CHECK(ss.dropped_pool_full>0,"a stalled sidecar write must shed video at the pool (PoolFull), got 0");
+        /* Which bounded queue saturates first depends on the build's topology: the 4-slot pool
+         * normally, the item ring under RING_ITEMS=2. Either way something is shed and accounted. */
+        CHECK(ss.dropped_pool_full+ss.dropped_ring_full>0,"a stalled sidecar write must shed video downstream (pool or ring), got 0");
         CHECK(ss.published+ss.dropped_pool_full+ss.publisher_dropped==ss.exact_units,"conservation under stall: %llu+%llu+%llu != %llu",(unsigned long long)ss.published,(unsigned long long)ss.dropped_pool_full,(unsigned long long)ss.publisher_dropped,(unsigned long long)ss.exact_units);
         /* A long enough stall also fills the item ring; those observations are all PoolFull (the pool
          * filled first) and are accounted in the next row's preceding_ring_drops rather than as rows. */
-        unsigned long long poolrows=0,rows=0,ringdrops=0,firstord=0,lastord=0; int firstrow=1; L=fopen(lc,"r");
-        while(fgets(line,sizeof line,L)){ if(!strncmp(line,"ordinal,",8)) continue; rows++; unsigned long long ord=strtoull(line,NULL,10); if(firstrow){firstord=ord;firstrow=0;} if(ord>lastord) lastord=ord;
+        unsigned long long poolrows=0,rows=0,obsrows=0,ringdrops=0,firstord=0; int firstrow=1; L=fopen(lc,"r");
+        while(fgets(line,sizeof line,L)){ if(!strncmp(line,"ordinal,",8)) continue; rows++; unsigned long long ord=strtoull(line,NULL,10); if(firstrow){firstord=ord;firstrow=0;}
+            if(!strstr(line,",RingFullTail,")) obsrows++;   /* the synthetic tail-loss row is a range marker, not an observation */
             if(strstr(line,",PoolFull,")) poolrows++; char *last=strrchr(line,','); if(last) ringdrops+=strtoull(last+1,NULL,10); } fclose(L);
         CHECK(ringdrops==ss.ring_drops_logged,"preceding_ring_drops in the log %llu != ring drops logged %llu",ringdrops,(unsigned long long)ss.ring_drops_logged);
-        /* Every observation from the first logged ordinal on is either a row or range-accounted by a
-         * later row's preceding_ring_drops: nothing shed during the stall vanishes from the sidecar. */
-        CHECK(rows+ringdrops==lastord-firstord+1,"logged ordinals %llu..%llu: %llu rows + %llu ring-accounted != %llu observations",firstord,lastord,rows,ringdrops,lastord-firstord+1);
-        CHECK(poolrows>0&&poolrows<=ss.dropped_pool_full,"PoolFull rows %llu vs pool drops %llu",poolrows,(unsigned long long)ss.dropped_pool_full);
+        /* Every observation from the first logged ordinal to the end of the session is either an
+         * observation row or range-accounted by a later row's preceding_ring_drops (including the
+         * RingFullTail marker): nothing shed during the stall vanishes from the sidecar. */
+        CHECK(obsrows+ringdrops==ss.video_observations-firstord,"from ordinal %llu: %llu observation rows + %llu ring-accounted != %llu observations",firstord,obsrows,ringdrops,(unsigned long long)ss.video_observations-firstord);
+        CHECK(poolrows<=ss.dropped_pool_full,"PoolFull rows %llu vs pool drops %llu",poolrows,(unsigned long long)ss.dropped_pool_full);
+        CHECK(poolrows>0||ringdrops>0,"neither PoolFull rows nor ring-accounted drops appeared in the sidecar");
         CHECK(rows==ss.log_rows,"stall log rows %llu != counted %llu",rows,(unsigned long long)ss.log_rows);
         printf("  stall: %llu published, %llu PoolFull (%llu rows + %llu ring-accounted), %llu rows\n",(unsigned long long)ss.published,(unsigned long long)ss.dropped_pool_full,poolrows,ringdrops,rows);
         fs_close(sf);
     }
     unlink(lc);
+
+    // Write-failure injection: after the first row the stream is redirected to /dev/full; every
+    // later row fails, is counted in log_write_errors and NOT in log_rows, and fs_log_stop reports
+    // the file as incomplete (-1) so a publisher cannot pass it off as complete.
+    done=0; char ld[]="/tmp/fs_test_logD_XXXXXX"; fd=mkstemp(ld); close(fd); unlink(ld);
+    fs_config bc=cfg; bc.decision_log=NULL; bc.capture.replay_path=argc>=3?argv[2]:argv[1]; bc.capture.replay_pace_us=8000; frameserver *bf=NULL;
+    CHECK(fs_open(&bf,&bc)==0,"open (write failure)");
+    if(bf&&argc>=3){
+        unsigned long long bbase=atomic_load(&frames_seen);
+        CHECK(fs_start(bf)==0,"start (write failure)"); CHECK(wait_frames(bbase,5),"frames before the failing attach");
+        atomic_store(&log_break,1); CHECK(fs_log_start(bf,ld)==0,"attach D");
+        CHECK(wait_frames(bbase,40),"frames while writes fail");
+        CHECK(fs_log_stop(bf)==-1,"fs_log_stop must report a file with failed rows as incomplete");
+        while(!done) usleep(10000); CHECK(fs_stop(bf)==0,"stop (write failure)");
+        fs_stats bs; fs_get_stats(bf,&bs);
+        CHECK(bs.log_write_errors>0,"injected write failures were not counted");
+        CHECK(bs.log_rows<=1,"failed rows were counted as written (%llu)",(unsigned long long)bs.log_rows);
+        printf("  write failure: %llu rows, %llu write errors\n",(unsigned long long)bs.log_rows,(unsigned long long)bs.log_write_errors);
+        fs_close(bf);
+    }
+    unlink(ld);
     if (fails) printf("FAILURES: %d\n", fails);
     else printf("frameserver tests: PASS (obs %llu, exact %llu, published %llu, short %llu, hole %llu, unframed %llu)\n",
            (unsigned long long)s.video_observations, (unsigned long long)s.exact_units, (unsigned long long)s.published,

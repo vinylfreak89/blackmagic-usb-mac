@@ -50,7 +50,7 @@ struct frameserver {
     uint64_t aq_delivered_blocks, aq_delivered_frames;   // audio worker owned
     _Atomic uint64_t audio_master_frames;
     _Atomic int workers_terminal;        // video + audio workers that have drained; the second fires on_end
-    FILE *log; pthread_mutex_t log_m; int log_m_init;   // log_m: worker row writes vs control-thread attach/detach (fs_log_start/stop)
+    FILE *log; pthread_mutex_t log_m; int log_m_init; uint64_t log_file_errors;   // write errors in the CURRENTLY attached file (reset at attach; fs_log_stop reports them)   // log_m: worker row writes vs control-thread attach/detach (fs_log_start/stop)
     // pool + ring (single producer = delivery thread, single consumer = worker)
     unsigned n_slots; uint8_t *pool; _Atomic int *slot_used;
     fs_item ring[RING_ITEMS]; _Atomic unsigned r_head, r_tail;
@@ -70,11 +70,11 @@ struct frameserver {
 #ifdef FRAMESERVER_TEST_HOOKS
 extern void fs_test_after_empty_snapshot(frameserver *f);
 extern void fs_test_before_producer_done(frameserver *f);
-extern void fs_test_after_log_row(frameserver *f);
+extern void fs_test_after_log_row(frameserver *f, FILE *log);
 #else
 #define fs_test_after_empty_snapshot(f) ((void)(f))
 #define fs_test_before_producer_done(f) ((void)(f))
-#define fs_test_after_log_row(f) ((void)(f))
+#define fs_test_after_log_row(f,L) ((void)(f),(void)(L))
 #endif
 
 // ------------------------------------------------------------ producer side (delivery thread)
@@ -229,9 +229,9 @@ static void process_item(frameserver *f, const fs_item *it){
         if(f->log){
             if(fprintf(f->log,"%llu,0,Hole,-1,Unclassified,0.000,Unknown,0.000,0,0,0,0,0,0,0,0,0,0,0,Immediate,None,0.000,0,RingFullTail,%u,%llu\n",
                     (unsigned long long)it->obs.ordinal,FS_DECISION_LOG_SCHEMA,
-                    (unsigned long long)it->preceding_ring_drops) < 0) f->st.log_write_errors++;
+                    (unsigned long long)it->preceding_ring_drops) < 0){ f->st.log_write_errors++; f->log_file_errors++; }
             else f->st.log_rows++;
-            fs_test_after_log_row(f);
+            fs_test_after_log_row(f, f->log);
         }
         pthread_mutex_unlock(&f->log_m);
         return;
@@ -307,8 +307,8 @@ static void process_item(frameserver *f, const fs_item *it){
             "Immediate", have_d ? fieldreg_mode_name(d.mode) : "None", have_d ? d.confidence : 0.0, published,
             it->drop == FS_DROP_POOL_FULL ? "PoolFull" : (!published && unit ? "PublisherFull" : "None"),FS_DECISION_LOG_SCHEMA,
             (unsigned long long)rd);
-        if (wr < 0) f->st.log_write_errors++; else f->st.log_rows++;   // a failed row is never counted as written
-        fs_test_after_log_row(f);
+        if (wr < 0){ f->st.log_write_errors++; f->log_file_errors++; } else f->st.log_rows++;   // a failed row is never counted as written
+        fs_test_after_log_row(f, f->log);
     }
     pthread_mutex_unlock(&f->log_m);
 }
@@ -390,7 +390,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
     ap_sink asink = { aq_enqueue, f };
     if (ap_open(&f->aud, f->aq_cap_frames, &asink) != 0){ fs_close(f); return -1; }
     if (pthread_mutex_init(&f->log_m, NULL)){ fs_close(f); return -1; } f->log_m_init = 1;
-    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "w"); if (!f->log || log_header(f->log) != 0){ fs_close(f); return -1; } f->st.log_files++; }
+    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "wx"); if (!f->log || log_header(f->log) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
     cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, NULL, cc_on_end, f };
     if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
@@ -475,7 +475,7 @@ int fs_log_start(frameserver *f, const char *path){
     if(f->life==FS_LIFE_STOPPING || f->life==FS_LIFE_STOPPED){ pthread_mutex_unlock(&f->life_m); fclose(L); remove(path); return -1; }
     pthread_mutex_lock(&f->log_m);
     if(f->log){ pthread_mutex_unlock(&f->log_m); pthread_mutex_unlock(&f->life_m); fclose(L); remove(path); return -1; }   // lost a race with another control caller
-    f->log = L; f->st.log_files++;
+    f->log = L; f->st.log_files++; f->log_file_errors = 0;
     pthread_mutex_unlock(&f->log_m);
     pthread_mutex_unlock(&f->life_m);
     return 0;
@@ -483,11 +483,11 @@ int fs_log_start(frameserver *f, const char *path){
 int fs_log_stop(frameserver *f){
     if(!f || fs_log_from_worker(f)) return -1;
     pthread_mutex_lock(&f->log_m);
-    FILE *L = f->log; f->log = NULL;                   // detach under the lock ...
+    FILE *L = f->log; f->log = NULL; uint64_t errs = f->log_file_errors;   // detach under the lock ...
     pthread_mutex_unlock(&f->log_m);
     if(!L) return -1;
     if(fclose(L) != 0){ f->st.log_close_errors++; return -1; }   // ... flush and close outside it; a failed close is reported, never hidden
-    return 0;
+    return errs ? -1 : 0;                              // rows failed inside this file: the caller must not publish it as complete
 }
 void fs_get_stats(const frameserver *f, fs_stats *o){
     *o = f->st;

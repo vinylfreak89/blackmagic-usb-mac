@@ -36,7 +36,7 @@ typedef struct {
     cc_config capture;          // device input or replay_path
     unsigned pool_units;        // unit slots between delivery thread and worker (0 => 16)
     unsigned surface_pool;      // IOSurface pool for the publisher (0 => 6)
-    const char *decision_log;   // schema FS_DECISION_LOG_SCHEMA CSV, or NULL. The current P3
+    const char *decision_log;   // schema FS_DECISION_LOG_SCHEMA CSV, or NULL; opened exclusively (must not exist). The current P3
                                 // schema records decisions/baselines and loss; full raw evidence
                                 // vectors remain an explicit later-P3 extension.
     fp_sink sink;               // consumer of published frames (may be {NULL,NULL} => count only)
@@ -102,7 +102,7 @@ int  fs_stop (frameserver *f);            // stops capture, drains the worker, c
 // stall test. A bounded row queue + writer thread is the named follow-up if that shedding is ever
 // observed in practice.
 int  fs_log_start(frameserver *f, const char *path);
-int  fs_log_stop (frameserver *f);        // -1 if none attached or the close failed
+int  fs_log_stop (frameserver *f);        // -1 if none attached, the close failed, or any row write failed in this file (it is then incomplete: do not publish it as complete)
 // Authoritative after fs_stop. During streaming worker-owned members are diagnostic only and
 // may be momentarily inconsistent; atomic ingress counters remain individually safe.
 void fs_get_stats(const frameserver *f, fs_stats *out);
