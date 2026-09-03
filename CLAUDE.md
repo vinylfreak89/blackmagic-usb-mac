@@ -1125,7 +1125,19 @@ delivery edge; wrong one at acquisition.
   end to end through OBS before paying for a certificate**. The plugin is a thin consumer of the
   same C API (async video source, 480i UYVY frames + 48 kHz audio; OBS owns deinterlacing and
   the ProRes encode). First iteration may link the frameserver in-process; the API boundary stays
-  the service's callback API so the CMIO extension later consumes the same thing.
+  the service's callback API so the CMIO extension later consumes the same thing. Spike report:
+  `src/obs_plugin/PLUGIN_SPIKE.md`. Decisions taken from it: **build route A** for the dev loop (plain
+  Makefile against OBS.app's own `libobs.framework` + matching headers; no CMake, ad-hoc signature,
+  no Apple account — OBS 32.2.2 has no sandbox and disables library validation), obs-plugintemplate
+  only when publishing; **audio-as-master timestamps** — video frame timestamps derive from the
+  audio sample ordinal at the unit's resync anchor (the audio publisher exposes `anchor_counter_ext`
+  and `sample_ordinal`), so the device's ~36 ppm audio-clock offset lands on the video derivative as
+  one repeated frame per ~15 min instead of an audio hiccup; libusb statically linked
+  (`libusb-1.0.a`); one session per process, a second source instance is refused
+  (`OBS_SOURCE_DO_NOT_DUPLICATE`); Color Format P216 / Rec.601 / limited for the ProRes record, and
+  a synthetic Y=1 / Y=250 clamp test before any OBS file is trusted. **The OBS ProRes is a
+  presentation copy** (progressive RGB composite, square pixels, no field metadata); the faithful
+  4:2:2 interlaced master stays the native recorder's job (§9).
 - **P4b CMIO extension (Swift)** — after P4a and the Apple team exist: standard device, two
   advertised formats (raw 480i, corrected 480i), sink-stream consumer, custom properties.
   Deinterlacing belongs to OBS/ffmpeg/post.
