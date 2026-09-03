@@ -53,6 +53,9 @@ struct cc_session {
     uint32_t seq_ctr[2];
     int fleet[2];
     long xfers_alloc, xfers_freed;   // every allocated transfer must be freed by stop (no leak, no double free)
+    uint64_t lost_bytes_total[2]; uint32_t lost_pkts_total[2];   // cumulative (pending counters reset on every flush)
+    long meta_dropped;               // control records that found no ring space even inside the reserve
+    _Atomic int stopped; int teardown_incomplete;
     // usb
     libusb_context *ctx; libusb_device_handle *h;
     xinfo xs[NXF];
@@ -89,11 +92,18 @@ static void wake_(cc_session *s){
 }
 static void flush_loss_(cc_session *s, uint8_t ep){
     int e=ep_i(ep);
-    if(!s->lost_pkts[e] || ring_free_(s)<sizeof(rec_hdr)) return;
-    uint32_t lb = s->lost_bytes[e]>0xffffffffu?0xffffffffu:(uint32_t)s->lost_bytes[e];
-    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,0,s->seq_ctr[e],0,s->lost_pkts[e],lb};
-    ring_put_record_(s,&h,NULL,0);
-    s->lost_pkts[e]=0; s->lost_bytes[e]=0;
+    // The record carries 32-bit counts; a blocked interval can exceed that, so emit as many
+    // records as it takes rather than truncating (each record confesses what it carries).
+    while(s->lost_pkts[e] && ring_free_(s)>=sizeof(rec_hdr)){
+        uint32_t lb = s->lost_bytes[e]>0xffffffffu?0xffffffffu:(uint32_t)s->lost_bytes[e];
+        uint32_t lp = s->lost_pkts[e];
+        if(lb<s->lost_bytes[e] && lp>1) lp=1;      // oversize: partial record, keep the remainder pending
+        rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,0,s->seq_ctr[e],0,lp,lb};
+        ring_put_record_(s,&h,NULL,0);
+        s->lost_pkts[e]-=lp; s->lost_bytes[e]-=lb;
+        s->lost_pkts_total[e]+=lp; s->lost_bytes_total[e]+=lb;
+        if(s->lost_pkts[e]==0) s->lost_bytes[e]=0;
+    }
 }
 // Termination-path flush: loss accounting MUST reach the consumer before the
 // backend declares itself done, or bytes vanish unconfessed (caught by the
@@ -114,11 +124,15 @@ static void flush_loss_blocking_(cc_session *s, uint8_t ep){
                 "(ring never drained); loss remains in cc_stats\n",s->lost_pkts[e],ep);
 }
 
+// Ring space reserved for control records (HostLoss, TransferError, TICK, SESSION): DATA
+// records may not consume it, so a full data ring cannot suppress the report of its own
+// overflow or of a transfer error (transport truth, §8 property 1/6).
+#define META_RESERVE (64u*1024u)
 static void put_pkt_(cc_session *s, uint8_t ep, uint16_t pi, uint32_t seq,
                      uint32_t st, uint32_t req, const uint8_t *d, uint32_t al){
     int e=ep_i(ep);
     flush_loss_(s,ep);
-    if(s->lost_pkts[e] || ring_free_(s)<sizeof(rec_hdr)+al){
+    if(s->lost_pkts[e] || ring_free_(s)<META_RESERVE+sizeof(rec_hdr)+al){
         s->lost_pkts[e]++; s->lost_bytes[e]+=al; return;   // marked on flush
     }
     rec_hdr h={REC_MAGIC,REC_DATA,ep,pi,seq,st,req,al};
@@ -127,7 +141,7 @@ static void put_pkt_(cc_session *s, uint8_t ep, uint16_t pi, uint32_t seq,
 }
 static void put_meta_(cc_session *s, uint8_t type, uint8_t ep, uint16_t pi,
                       uint32_t seq, uint32_t st, const void *p, uint32_t plen){
-    if(ring_free_(s)<sizeof(rec_hdr)+plen) return;
+    if(ring_free_(s)<sizeof(rec_hdr)+plen){ s->meta_dropped++; return; }   // counted, never silent
     rec_hdr h={REC_MAGIC,type,ep,pi,seq,st,0,plen};
     ring_put_record_(s,&h,p,plen);
     wake_(s);
@@ -138,6 +152,7 @@ static void* delivery_main(void *arg){
     cc_session *s=arg;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     size_t cap=1u<<20; uint8_t *buf=malloc(cap);
+    if(!buf){ fprintf(stderr,"capture_core: delivery buffer allocation failed\n"); atomic_store(&s->stop_req,1); return NULL; }
     for(;;){
         size_t t=atomic_load_explicit(&s->r_tail,memory_order_relaxed);
         size_t h=atomic_load_explicit(&s->r_head,memory_order_acquire);
@@ -168,7 +183,7 @@ static void* delivery_main(void *arg){
         if(first>=sizeof rh) memcpy(&rh,s->ring+off,sizeof rh);
         else { memcpy(&rh,s->ring+off,first); memcpy((uint8_t*)&rh+first,s->ring,sizeof rh-first); }
         size_t plen=(rh.type==REC_DATA||rh.type==REC_SESSION)?rh.actual_len:0;
-        if(plen>cap){ cap=plen; buf=realloc(buf,cap); }
+        if(plen>cap){ cap=plen; { uint8_t *nb=realloc(buf,cap); if(!nb){ fprintf(stderr,"capture_core: delivery buffer growth failed\n"); atomic_store(&s->stop_req,1); break; } buf=nb; } }
         size_t p0=(t+sizeof rh)%s->ring_sz;
         size_t f2=s->ring_sz-p0; if(f2>plen) f2=plen;
         memcpy(buf,s->ring+p0,f2);
@@ -257,8 +272,15 @@ static void* device_main(void *arg){
             s->xs[n]=(xinfo){x,ep,s->seq_ctr[w]++,n,0,s};
             libusb_fill_iso_transfer(x,s->h,ep,buf,npk*pkt,npk,usb_cb,&s->xs[n],0);
             libusb_set_iso_packet_lengths(x,pkt);
-            if(libusb_submit_transfer(x)==0) atomic_fetch_add(&s->inflight,1);
-            else { free(buf); libusb_free_transfer(x); s->xs[n].x=NULL; s->xfers_freed++; }
+            int rc=libusb_submit_transfer(x);
+            if(rc==0) atomic_fetch_add(&s->inflight,1);
+            else {
+                // same discipline as a failed RESUBMIT: park it pending, retry from the event loop,
+                // record a TransferError -- the fleet is never silently shrunk, not even at start
+                s->xfer_err++; s->resub_fail++;
+                put_meta_(s,REC_XFERERR,ep,0xFFFF,s->xs[n].seq,(uint32_t)(-rc),NULL,0);
+                s->xs[n].pending=1;
+            }
         }
     }
     struct timespec t0; clock_gettime(CLOCK_MONOTONIC,&t0);
@@ -288,6 +310,10 @@ static void* device_main(void *arg){
     int guard=0;
     while(atomic_load(&s->inflight)>0 && guard++<300)
         libusb_handle_events_timeout(s->ctx,&tv);
+    if(atomic_load(&s->inflight)>0){
+        s->teardown_incomplete=1;
+        fprintf(stderr,"capture_core: %ld transfers still in flight after cancellation drain\n",(long)atomic_load(&s->inflight));
+    }
     flush_loss_blocking_(s,CC_EP_VIDEO); flush_loss_blocking_(s,CC_EP_AUDIO);
     atomic_store(&s->backend_done,1); wake_(s);
     pthread_mutex_lock(&s->sig_m); pthread_cond_signal(&s->sig_c); pthread_mutex_unlock(&s->sig_m);
@@ -301,12 +327,13 @@ static void* replay_main(void *arg){
     FILE *f=fopen(s->cfg.replay_path,"rb");
     if(!f){ atomic_store(&s->end_reason,CC_END_REPLAY_EOF); goto done; }
     uint8_t *pay=malloc(1u<<20); size_t cap=1u<<20;
+    if(!pay){ fclose(f); atomic_store(&s->end_reason,CC_END_REPLAY_EOF); goto done; }
     int fill[2]={0,0};   // packets since last transfer boundary, for pacing
     while(!atomic_load(&s->stop_req)){
         rec_hdr h;
         if(fread(&h,1,sizeof h,f)!=sizeof h || h.magic!=REC_MAGIC) break;
         size_t plen=(h.type==REC_DATA||h.type==REC_SESSION)?h.actual_len:0;
-        if(plen>cap){ cap=plen; pay=realloc(pay,cap); }
+        if(plen>cap){ uint8_t *np=realloc(pay,plen); if(!np) break; pay=np; cap=plen; }
         if(plen && fread(pay,1,plen,f)!=plen) break;
         switch(h.type){
         case REC_DATA: {
@@ -320,6 +347,7 @@ static void* replay_main(void *arg){
                 if(s->cfg.replay_pace_us>0 && e==0) usleep((useconds_t)s->cfg.replay_pace_us); }
             break; }
         case REC_TICK: put_meta_(s,REC_TICK,0,0,0,h.status,NULL,0); break;
+        case REC_XFERERR: put_meta_(s,REC_XFERERR,h.endpoint,h.pkt_index,h.submit_seq,h.status,NULL,0); break;
         case REC_HOSTLOSS: {
             // fold the ORIGINAL capture's loss into our accounting so counts
             // survive replay (forwarding with zeroed fields lost them)
@@ -343,6 +371,8 @@ done:
 // ---------------- lifecycle
 int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
     if(!out||!cfg||!cb||!cb->on_packet||!cb->on_end) return CC_ERR_ARGS;
+    if(!cfg->replay_path && cfg->input!=CC_INPUT_SVIDEO && cfg->input!=CC_INPUT_COMPONENT &&
+       cfg->input!=CC_INPUT_COMPOSITE) return CC_ERR_ARGS;   // never silently map junk to S-video
     cc_session *s=calloc(1,sizeof *s);
     if(!s) return CC_ERR_NOMEM;
     s->cfg=*cfg; s->cb=*cb;
@@ -357,8 +387,12 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         if(!s->h){ libusb_exit(s->ctx); free(s->ring); free(s); return CC_ERR_NODEVICE; }
         if(libusb_claim_interface(s->h,0)){ libusb_close(s->h); libusb_exit(s->ctx);
             free(s->ring); free(s); return CC_ERR_USB; }
-        libusb_set_interface_alt_setting(s->h,0,1);
-        libusb_set_interface_alt_setting(s->h,0,2);
+        // alt1 -> alt2 is the reset + input select (§5); an unchecked failure here streams nothing
+        // or streams the previous state, so every lifecycle transition must be confirmed.
+        if(libusb_set_interface_alt_setting(s->h,0,1) || libusb_set_interface_alt_setting(s->h,0,2)){
+            libusb_release_interface(s->h,0); libusb_close(s->h); libusb_exit(s->ctx);
+            free(s->ring); free(s); return CC_ERR_USB;
+        }
         uint32_t vsel = s->cfg.input==CC_INPUT_COMPONENT?0x02000000u
                       : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
         if(vout_(s->h,215,0,0x09000000u|vsel|0x10000000u|0x20000000u)!=4 ||
@@ -374,13 +408,20 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
 int cc_start(cc_session *s){
     if(!s||atomic_load(&s->started)) return CC_ERR_STATE;
     atomic_store(&s->started,1);
-    if(pthread_create(&s->delivery_t,NULL,delivery_main,s)) return CC_ERR_STATE;
+    if(pthread_create(&s->delivery_t,NULL,delivery_main,s)){ atomic_store(&s->started,0); return CC_ERR_STATE; }
     void*(*bm)(void*)=s->cfg.replay_path?replay_main:device_main;
-    if(pthread_create(&s->backend_t,NULL,bm,s)) return CC_ERR_STATE;
+    if(pthread_create(&s->backend_t,NULL,bm,s)){
+        // roll the partial start back: the delivery thread must not be left waiting forever
+        atomic_store(&s->backend_done,1); wake_(s);
+        pthread_mutex_lock(&s->sig_m); pthread_cond_signal(&s->sig_c); pthread_mutex_unlock(&s->sig_m);
+        pthread_join(s->delivery_t,NULL);
+        atomic_store(&s->started,0); return CC_ERR_STATE;
+    }
     return CC_OK;
 }
 int cc_stop(cc_session *s){
     if(!s||!atomic_load(&s->started)) return CC_ERR_STATE;
+    if(atomic_exchange(&s->stopped,1)) return CC_OK;    // idempotent
     atomic_store(&s->stop_req,1);
     pthread_join(s->backend_t,NULL);
     pthread_join(s->delivery_t,NULL);
@@ -388,15 +429,25 @@ int cc_stop(cc_session *s){
 }
 void cc_close(cc_session *s){
     if(!s) return;
+    if(atomic_load(&s->started)) cc_stop(s);           // close-after-start must not free live state
+    if(s->teardown_incomplete){
+        // libusb never proved quiescence: a late callback would touch freed state. Leak the
+        // session deliberately and say so; a silent use-after-free is the worse outcome.
+        fprintf(stderr,"capture_core: teardown incomplete (transfers still in flight); session leaked deliberately\n");
+        return;
+    }
     if(s->h){ libusb_release_interface(s->h,0); libusb_close(s->h); }
     if(s->ctx) libusb_exit(s->ctx);
+    pthread_mutex_destroy(&s->sig_m); pthread_cond_destroy(&s->sig_c);
     free(s->ring); free(s);
 }
 void cc_get_stats(const cc_session *s, cc_stats *o){
     memset(o,0,sizeof *o);
     o->bytes[0]=s->bytes[0]; o->bytes[1]=s->bytes[1];
-    o->lost_bytes[0]=s->lost_bytes[0]; o->lost_bytes[1]=s->lost_bytes[1];
-    o->lost_packets[0]=s->lost_pkts[0]; o->lost_packets[1]=s->lost_pkts[1];
+    // cumulative confessed loss plus anything still pending (unflushed) at the time of the call
+    o->lost_bytes[0]=s->lost_bytes_total[0]+s->lost_bytes[0]; o->lost_bytes[1]=s->lost_bytes_total[1]+s->lost_bytes[1];
+    o->lost_packets[0]=s->lost_pkts_total[0]+s->lost_pkts[0]; o->lost_packets[1]=s->lost_pkts_total[1]+s->lost_pkts[1];
+    o->control_records_dropped=s->meta_dropped; o->teardown_incomplete=s->teardown_incomplete;
     o->iso_errors=s->iso_err; o->transfer_errors=s->xfer_err;
     o->resubmit_failures=s->resub_fail; o->resubmit_recovered=s->resub_rec;
     o->zero_len_packets=s->zero_pkts; o->short_packets=s->short_pkts;
@@ -458,6 +509,6 @@ void cc_tagged_sink_callbacks(cc_tagged_sink *k, cc_callbacks *o){
 }
 int cc_tagged_sink_close(cc_tagged_sink *k){
     int rc = CC_OK;
-    if(k->f && (k->io_err || fclose(k->f)!=0)) rc=CC_ERR_IO;
+    if(k->f){ int ferr=fclose(k->f)!=0; if(k->io_err || ferr) rc=CC_ERR_IO; }   // always close; keep the earlier error
     free(k); return rc;
 }

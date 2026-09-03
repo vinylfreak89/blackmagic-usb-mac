@@ -68,7 +68,8 @@ typedef struct {
 } cc_config;
 
 // Lifecycle: open -> start -> (callbacks) -> stop -> close.
-// stop() cancels in-flight transfers, drains, joins, then fires on_end.
+// stop() cancels in-flight transfers, drains, joins, then fires on_end. stop is idempotent and
+// close performs it if the caller did not; a failed start rolls back completely.
 int  cc_open (cc_session **out, const cc_config *cfg, const cc_callbacks *cb);
 int  cc_start(cc_session *s);
 int  cc_stop (cc_session *s);
@@ -77,14 +78,18 @@ const char *cc_strerror(int err);
 
 typedef struct {
     uint64_t bytes[2];              // [0]=video [1]=audio payload delivered
-    uint64_t lost_bytes[2];         // explicit ring-overflow loss
+    uint64_t lost_bytes[2];         // explicit ring-overflow loss: CUMULATIVE (confessed + still pending)
     uint32_t lost_packets[2];
     long iso_errors, transfer_errors, resubmit_failures, resubmit_recovered;
     long zero_len_packets, short_packets;
     size_t ring_high_water, ring_size;
     int fleet[2], fleet_size;       // live transfers per endpoint / configured
     long transfers_allocated, transfers_freed;   // device backend: equal after cc_stop (leak invariant)
+    long control_records_dropped;   // HostLoss/TransferError/TICK/SESSION records that found no ring space (reserve exhausted)
+    int  teardown_incomplete;       // libusb never proved quiescence at stop: cc_close leaks the session deliberately
 } cc_stats;
+// Snapshot of plain backend-thread counters: authoritative after cc_stop; a live call during
+// streaming is a racy diagnostic read (values may be momentarily inconsistent), never corrupting.
 void cc_get_stats(const cc_session *s, cc_stats *out);
 
 // Convenience sink: a callback set that writes the tagged .tpc format

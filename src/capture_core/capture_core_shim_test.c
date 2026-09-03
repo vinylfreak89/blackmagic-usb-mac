@@ -8,6 +8,7 @@
 //   2 pending park  — every video RE-submit fails (the initial fleet submits succeed, then
 //                     every later submit returns BUSY): the fleet parks in the pending state
 //                     (never silently shrunk) and cc_stop must still free every transfer
+//   2b initial fail — the first video submit at start fails: parked, confessed, recovered, freed
 //   3 init honesty  — a failing control transfer (mode word / latch) makes cc_open FAIL with
 //                     CC_ERR_USB instead of returning a clean capture of the wrong input
 #include "capture_core.h"
@@ -62,6 +63,16 @@ int main(int argc, char **argv){
     CHECK(st.transfers_allocated==st.transfers_freed,
           "pending transfers leaked: allocated %ld freed %ld (failures %ld)",
           st.transfers_allocated,st.transfers_freed,st.resubmit_failures);
+
+    // 2b: the FIRST video submit fails at start: the fleet must not silently shrink -- the
+    //     transfer parks, is retried from the event loop, recovers, and is freed at stop
+    setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT","1",1);
+    CHECK(run_device(&st,&t,1)==CC_OK,"device open (initial-submit case)");
+    unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT");
+    CHECK(st.resubmit_failures>=1 && st.resubmit_recovered>=1,
+          "initial submit failure not confessed+recovered (failures %ld recovered %ld)",st.resubmit_failures,st.resubmit_recovered);
+    CHECK(st.fleet[0]==st.fleet_size,"fleet silently shrank at start: %d of %d video transfers live",st.fleet[0],st.fleet_size);
+    CHECK(st.transfers_allocated==st.transfers_freed,"initial-submit case leaked: %ld vs %ld",st.transfers_allocated,st.transfers_freed);
 
     // 3: control transfer failure must fail open, never a clean capture of the wrong input
     setenv("REPLAY_FAIL_CONTROL","1",1);

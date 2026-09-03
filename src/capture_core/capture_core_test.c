@@ -21,7 +21,7 @@ static int fails=0;
 
 typedef struct {
     uint64_t bytes[2]; uint64_t pkts[2];
-    uint64_t loss_bytes[2]; uint32_t loss_events;
+    uint64_t loss_bytes[2]; uint32_t loss_events; uint32_t error_events;
     int end_count; int end_reason;
     pthread_t main_thread; int cb_on_main;
     int throttle;              // sleep every 256th packet: consumer provably slower
@@ -41,6 +41,7 @@ static void t_loss(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     tally *t=ctx; (void)pk;
     t->loss_bytes[ep==CC_EP_AUDIO]+=by; t->loss_events++;
 }
+static void t_error(void *ctx, uint8_t ep, uint32_t seq, int st, int isf){ tally *t=ctx; (void)ep;(void)seq;(void)st;(void)isf; t->error_events++; }
 static void t_end(void *ctx, enum cc_end r){
     tally *t=ctx;
     t->end_count++; t->end_reason=r;
@@ -52,13 +53,21 @@ static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle
     t->throttle=throttle;
     cc_config cfg={0}; cfg.replay_path=path; cfg.ring_mb=ring_mb;
     cc_callbacks cb={0};
-    cb.on_packet=t_packet; cb.on_loss=t_loss; cb.on_end=t_end; cb.ctx=t;
+    cb.on_packet=t_packet; cb.on_loss=t_loss; cb.on_error=t_error; cb.on_end=t_end; cb.ctx=t;
     cc_session *s=NULL;
     CHECK(cc_open(&s,&cfg,&cb)==CC_OK,"open %s",path);
     if(!s) return;
     CHECK(cc_start(s)==CC_OK,"start");
     while(!atomic_load(&t->ended)) usleep(20000);
     CHECK(cc_stop(s)==CC_OK,"stop");
+    cc_stats st; cc_get_stats(s,&st);
+    // stats must tell the same story as the callbacks: cumulative loss, not "pending since last flush"
+    CHECK(st.lost_bytes[0]==t->loss_bytes[0] && st.lost_bytes[1]==t->loss_bytes[1],
+          "cc_stats loss (%llu/%llu) != callback loss (%llu/%llu)",
+          (unsigned long long)st.lost_bytes[0],(unsigned long long)st.lost_bytes[1],
+          (unsigned long long)t->loss_bytes[0],(unsigned long long)t->loss_bytes[1]);
+    CHECK(st.control_records_dropped==0,"control records dropped: %ld",st.control_records_dropped);
+    CHECK(!st.teardown_incomplete,"teardown incomplete");
     cc_close(s);
 }
 static void run_replay(const char *path, int ring_mb, tally *t){
@@ -79,6 +88,7 @@ int main(int argc, char **argv){
           (unsigned long long)vB,(unsigned long long)vP);
     CHECK(t.bytes[1]==aB && t.pkts[1]==aP,"audio fidelity");
     CHECK(t.loss_events==0,"unexpected loss in fidelity run");
+    CHECK(t.error_events==1,"recorded TransferError not replayed to on_error (got %u, fixture carries 1)",t.error_events);
     CHECK(t.end_reason==CC_END_REPLAY_EOF,"end reason %d",t.end_reason);
     CHECK(t.end_count==1,"on_end fired %d times",t.end_count);
     CHECK(!t.cb_on_main,"callbacks ran on the caller's thread");
@@ -130,8 +140,18 @@ int main(int argc, char **argv){
     CHECK(cc_start(s)==CC_ERR_STATE,"double start accepted");
     while(!atomic_load(&lt.ended)) usleep(20000);
     CHECK(cc_stop(s)==CC_OK,"stop (lifecycle)");
+    CHECK(cc_stop(s)==CC_OK,"second stop must be an idempotent no-op");
     cc_close(s);
     CHECK(lt.end_count==1,"lifecycle on_end count %d",lt.end_count);
+    // close-after-start without stop must stop first (ASan/TSan builds prove no use-after-free)
+    cc_session *s2=NULL; tally lt2; memset(&lt2,0,sizeof lt2); lt2.main_thread=pthread_self(); cb.ctx=&lt2;
+    CHECK(cc_open(&s2,&cfg,&cb)==CC_OK,"open (close-without-stop)");
+    CHECK(cc_start(s2)==CC_OK,"start (close-without-stop)");
+    while(!atomic_load(&lt2.ended)) usleep(20000);
+    cc_close(s2);
+    CHECK(lt2.end_count==1,"close-without-stop on_end count %d",lt2.end_count);
+    cc_config badin={0}; badin.input=(enum cc_input)77;
+    CHECK(cc_open(&s2,&badin,&cb)==CC_ERR_ARGS,"invalid input enum was accepted (would silently select S-video)");
 
     printf(fails? "FAILURES: %d\n" : "ALL TESTS PASSED\n", fails);
     return fails?1:0;

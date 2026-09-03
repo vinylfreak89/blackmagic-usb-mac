@@ -16,7 +16,7 @@ FIXTURE=fixture.tpc
 EXPECT=$(shell cat fixture.expect 2>/dev/null)
 
 $(FIXTURE): gen_packet_capture.py
-	python3 gen_packet_capture.py --out $(FIXTURE) --expect fixture.expect --video-transfers 40 --audio-transfers 60 --short-every 97
+	python3 gen_packet_capture.py --out $(FIXTURE) --expect fixture.expect --video-transfers 40 --audio-transfers 60 --short-every 97 --xfererr-at 7
 
 test: capture_core_test $(FIXTURE)
 	./capture_core_test $(FIXTURE) $$(cat fixture.expect)
