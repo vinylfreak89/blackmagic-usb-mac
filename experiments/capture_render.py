@@ -1262,6 +1262,10 @@ class _CFieldRegistrationDecision(ctypes.Structure):
         ("temporal_best_cost_f2", ctypes.c_double),
         ("temporal_scene_cut", ctypes.c_bool),
         ("transport_ok", ctypes.c_bool),
+        ("content_evidence_available", ctypes.c_bool),
+        ("top_f1_censored", ctypes.c_bool),
+        ("top_f2_censored", ctypes.c_bool),
+        ("global_envelope_authority", ctypes.c_bool),
         ("observed_transport_f1", ctypes.c_int16),
         ("observed_transport_f2", ctypes.c_int16),
         ("picture_top_f1", ctypes.c_int16),
@@ -1429,6 +1433,10 @@ class CRegistrationEstimator:
             "temporal_best_cost2": result.temporal_best_cost_f2,
             "temporal_scene_cut": result.temporal_scene_cut,
             "transport_ok": result.transport_ok,
+            "content_evidence_available": result.content_evidence_available,
+            "top_f1_censored": result.top_f1_censored,
+            "top_f2_censored": result.top_f2_censored,
+            "global_envelope_authority": result.global_envelope_authority,
             "observed_f1": result.observed_transport_f1,
             "observed_f2": result.observed_transport_f2,
             "top1": result.picture_top_f1,
@@ -1804,6 +1812,10 @@ TPC_DECISION_COLUMNS = (
     "temporal_margin_f1",
     "temporal_margin_f2",
     "transport_ok",
+    "content_evidence_available",
+    "top_f1_censored",
+    "top_f2_censored",
+    "global_envelope_authority",
     "observed_transport_f1",
     "observed_transport_f2",
     "picture_top_f1",
@@ -1919,6 +1931,10 @@ def tagged_decision_row(
         f"{registration['temporal_margin1']:.9f}",
         f"{registration['temporal_margin2']:.9f}",
         int(registration["transport_ok"]),
+        int(registration.get("content_evidence_available", False)),
+        int(registration.get("top_f1_censored", False)),
+        int(registration.get("top_f2_censored", False)),
+        int(registration.get("global_envelope_authority", False)),
         registration["observed_f1"],
         registration["observed_f2"],
         registration["top1"],
@@ -2794,6 +2810,7 @@ def render_tagged(
     registration_confirm_units,
     registration_min_support_units,
     registration_max_buffered_units,
+    registration_forward_only,
     fieldreg_library,
     fieldreg_evidence,
     start_unit,
@@ -2989,6 +3006,7 @@ def render_tagged(
             if adaptive_registration
             and isinstance(estimator, CRegistrationEstimator)
             and fieldreg_evidence == "phase"
+            and not registration_forward_only
             else 0
         )
 
@@ -3105,7 +3123,7 @@ def render_tagged(
             )
             if registration is not None:
                 backdate = registration.get("decision_backdate", 0)
-                if backdate:
+                if backdate and not registration_forward_only:
                     if backdate > len(delayed_units):
                         raise RuntimeError(
                             f"registration backdate {backdate} exceeds buffered "
@@ -3125,7 +3143,8 @@ def render_tagged(
                             buffered["presentation_policy"] = (
                                 "CorrectedBackdated"
                             )
-                if registration.get("trajectory_reset", False):
+                if (registration.get("trajectory_reset", False) and
+                        not registration_forward_only):
                     # The hard horizon means the trajectory could not be
                     # finalized, not that every abstaining unit suddenly had
                     # zero displacement. Preserve the phase each buffered unit
@@ -3502,6 +3521,14 @@ def main():
         ),
     )
     parser.add_argument(
+        "--registration-forward-only",
+        action="store_true",
+        help=(
+            "present the production engine's current-unit decision immediately; "
+            "disable caller FIFO/backdating (the zero-latency live policy)"
+        ),
+    )
+    parser.add_argument(
         "--tagged-start-unit",
         type=parse_tagged_start_unit,
         default=None,
@@ -3602,6 +3629,7 @@ def main():
             args.registration_confirm_units,
             args.registration_min_support_units,
             args.registration_max_buffered_units,
+            args.registration_forward_only,
             args.registration_library,
             args.registration_evidence,
             args.tagged_start_unit,
