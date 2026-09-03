@@ -224,7 +224,9 @@ int main(int argc, char **argv)
              strcmp(row->truth.scenario,
                     "physical-multiphase-envelope-jitter") == 0 ||
              strcmp(row->truth.scenario,
-                    "physical-field1-unit-rate-jitter") == 0)) {
+                    "physical-field1-unit-rate-jitter") == 0 ||
+             strncmp(row->truth.scenario, "relative-only-", 14) == 0 ||
+             strncmp(row->truth.scenario, "bottom-censored-", 16) == 0)) {
             printf("  mismatch row=%zu scenario=%s applied=(%d,%d) oracle=(%d,%d) mode=%s obs=(%d,%d)/%u authority=%d phase=%d/%u temporal=(%d,%d)\n",
                    i, row->truth.scenario, row->applied_d1, row->applied_d2,
                    row->truth.oracle_d1, row->truth.oracle_d2,
@@ -310,6 +312,17 @@ int main(int argc, char **argv)
         "multiphase-main-10",
         "flat-dark-intact-padding-vbi",
         "flat-blank-intact-padding-no-vbi",
+        "relative-only-return-temporal-gauge",
+        "relative-only-sustained-plus1-guard",
+        "relative-only-onset-temporal-gauge",
+        "relative-only-gauge-unknown",
+        "relative-guard-alternating-card",
+        "relative-guard-local-overlay",
+        "relative-guard-scene-cut",
+        "relative-guard-interfield-motion",
+        "relative-guard-nominal",
+        "bottom-censored-field1-plus5",
+        "bottom-censored-static-card-guard",
     };
     bool live_pass = stale_wrong == 0;
     for (size_t required = 0;

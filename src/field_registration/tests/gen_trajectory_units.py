@@ -42,6 +42,11 @@ class Step:
     secondary_animated: bool = True
     main_motion: bool = False
     main_top_trim: int = 0
+    obscure_edges: bool = False
+    clip_at_padding: bool = False
+    alternating_card: bool = False
+    force_scene_cut: bool = False
+    fake_bottom_censor: bool = False
 
 
 def trajectory() -> list[Step]:
@@ -105,10 +110,90 @@ def trajectory() -> list[Step]:
     add(12, "after-physical-common-minus-jitter", (0, 0), (0, 0),
         main_ranges=((0, 720),), secondary_ranges=())
 
+    # Relative-only truth.  The body moves while deliberately uninformative
+    # source-carried top/bottom strips keep the absolute envelope from naming
+    # an (d1,d2) gauge.  This is the measured residual class: a strong +1
+    # phase is committed, then the raster returns to nominal for a short run.
+    # The current engine holds +1 because its relative vote cannot open a new
+    # absolute pair.  Same-parity body motion identifies field 1 on the return.
+    out.append(Step("relative-release-reset", (0, 0), (0, 0),
+                    reset_before=True, main_ranges=((0, 720),),
+                    secondary_ranges=()))
+    add(40, "relative-release-lock-10", (1, 0), (1, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+    add(12, "relative-only-return-temporal-gauge", (0, 0), (0, 0),
+        unsettled=True, obscure_edges=True, main_ranges=((0, 720),),
+        secondary_ranges=())
+    add(12, "relative-release-back-10", (1, 0), (1, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+
+    # Mirror guard: loss of absolute edges while the correctly registered +1
+    # state becomes static must not release it.  Its raw relative phase still
+    # says +1 even though same-parity temporal displacement is now zero.
+    add(12, "relative-only-sustained-plus1-guard", (1, 0), (1, 0),
+        obscure_edges=True, main_ranges=((0, 720),), secondary_ranges=())
+
+    # A relative-only onset whose same-parity displacement identifies field 1.
+    add(12, "relative-only-onset-temporal-gauge", (2, 0), (2, 0),
+        unsettled=True, obscure_edges=True, main_ranges=((0, 720),),
+        secondary_ranges=())
+    add(12, "relative-only-onset-return-10", (1, 0), (1, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+
+    # No prior absolute gauge: the first unit is honestly unresolvable.  Once
+    # same-parity history establishes a static body, the relative phase is
+    # usable but field identity remains unknown.  The live presentation uses
+    # the deterministic minimum-crop/prior representation (0,+1).
+    out.append(Step("relative-gauge-unknown-reset", None, (0, 0),
+                    reset_before=True, vbi_present=True))
+    out.append(Step("relative-gauge-unknown-warmup", (0, 1), (0, 0),
+                    obscure_edges=True, main_ranges=((0, 720),),
+                    secondary_ranges=(), unsettled=True))
+    add(15, "relative-only-gauge-unknown", (0, 1), (0, 1),
+        obscure_edges=True, main_ranges=((0, 720),), secondary_ranges=(),
+        unsettled=True)
+
+    # False-positive guards for the static-region comb vote.
+    add(12, "relative-guard-alternating-card", (0, 0), (0, 0),
+        alternating_card=True, obscure_edges=True,
+        main_ranges=((0, 720),), secondary_ranges=())
+    add(12, "relative-guard-local-overlay", (0, 0), (0, 0),
+        obscure_edges=True, main_ranges=(), secondary=(1, 0),
+        secondary_ranges=((600, 640),), secondary_animated=False)
+    out.append(Step("relative-guard-scene-cut", (0, 0), (0, 0), scene=2,
+                    obscure_edges=True, force_scene_cut=True,
+                    main_ranges=((0, 720),), secondary_ranges=()))
+    add(12, "relative-guard-interfield-motion", (0, 0), (0, 0),
+        obscure_edges=True, main_motion=True, main_ranges=((0, 720),),
+        secondary_ranges=())
+    add(12, "relative-guard-nominal", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+
+    # A physically clipped field at the format boundary.  Field 1 moves +5;
+    # source lines that would occupy hard-padding row 261 are omitted.  The
+    # top/body motion supplies magnitude, while bottom==260 is censored rather
+    # than an exact +4 vote.  Repeated leading rows and chroma are deliberately
+    # absent from the authority condition.
+    out.append(Step("bottom-censored-reset", (0, 0), (0, 0),
+                    reset_before=True, main_ranges=((0, 720),),
+                    secondary_ranges=()))
+    add(12, "bottom-censored-field1-plus5", (5, 0), (5, 0),
+        unsettled=True, clip_at_padding=True, main_ranges=((0, 720),),
+        secondary_ranges=())
+    add(12, "bottom-censored-return-00", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+    # Same apparent top/boundary landmarks, but a stationary body: the
+    # temporal/body condition is false and the crop must remain nominal.
+    add(12, "bottom-censored-static-card-guard", (0, 0), (0, 0),
+        alternating_card=True, fake_bottom_censor=True,
+        main_ranges=((0, 720),), secondary_ranges=())
+
     # Only the right-hand secondary asset moves. The designated main picture
     # remains at the committed phase, so following the edge-only artifact is a
     # policy error even if it is a plausible per-unit observation.
-    add(8, "secondary-edge-artifact", (1, 0), (1, 0),
+    out.append(Step("secondary-edge-artifact", (1, 0), (1, 0),
+                    secondary=(0, 1), unsettled=True, reset_before=True))
+    add(7, "secondary-edge-artifact", (1, 0), (1, 0),
         secondary=(0, 1), unsettled=True)
     add(12, "after-secondary-artifact", (1, 0), (1, 0))
 
@@ -251,9 +336,18 @@ def make_unit(counter: int, index: int, step: Step,
                     continue
                 if step.main_motion:
                     line = source[(row + phase * 2) % len(source)]
+                if step.alternating_card:
+                    level = 56 if (row & 1) == 0 else 188
+                    line = bytes((128, level)) * 720
                 line = base.scaled_line(line, step.gain)
                 for x0, x1 in step.main_ranges:
-                    put_span(raster[top + displacement + row], line, x0, x1)
+                    destination = top + displacement + row
+                    if destination < 0 or destination >= base.LINES:
+                        continue
+                    if step.clip_at_padding and any(
+                            lo <= destination <= hi for lo, hi in base.HARD_RANGES):
+                        continue
+                    put_span(raster[destination], line, x0, x1)
 
     # By default the rightmost 160 pixels form the independently phased
     # secondary asset. Scenarios may place it in complete evidence bands to
@@ -271,6 +365,36 @@ def make_unit(counter: int, index: int, step: Step,
                 line = base.scaled_line(line, step.gain)
                 for x0, x1 in step.secondary_ranges:
                     put_span(raster[top + displacement + row], line, x0, x1)
+
+    if step.obscure_edges and step.raster is not None:
+        # Remove enough of both source-carried boundaries that top and bottom
+        # no longer form a nominal-height absolute envelope.  The inner 220+
+        # rows remain untouched for temporal and relative registration.
+        for top, bottom in ((base.F1_TOP, base.F1_BOTTOM),
+                            (base.F2_TOP, base.F2_BOTTOM)):
+            for line in range(top, top + 6):
+                raster[line][:] = blank
+            for line in range(bottom - 5, bottom + 1):
+                raster[line][:] = blank
+
+    if step.force_scene_cut:
+        # Change both fields globally, including their interior texture.  The
+        # scene-cut gate must outrank any accidental relative minimum.
+        for top, bottom in ((base.F1_TOP + 8, base.F1_BOTTOM - 8),
+                            (base.F2_TOP + 8, base.F2_BOTTOM - 8)):
+            for line in range(top, bottom + 1):
+                for x in range(1, base.BPL, 2):
+                    raster[line][x] = 230 - raster[line][x] // 2
+
+    if step.fake_bottom_censor:
+        # A boundary-shaped decoy with no body translation.  Top appears at
+        # +5 and picture reaches the final ADC row before hard padding, but
+        # same-parity registration of the broad body remains zero.
+        for line in range(base.F1_TOP, base.F1_TOP + 5):
+            raster[line][:] = blank
+        source = templates[(step.scene, phase, 0, 100)]
+        for line in range(257, 261):
+            raster[line][:] = source[-1]
 
     header = bytearray(base.HEADER_BYTES)
     header[:4] = b"\x00\x00\xff\xff"
