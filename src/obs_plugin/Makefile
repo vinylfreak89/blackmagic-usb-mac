@@ -31,6 +31,7 @@ $(BUNDLE): shuttle_source.c obsconfig.h Info.plist $(CORE)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) shuttle_source.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
 	cp Info.plist $(BUNDLE)/Contents/Info.plist
 	printf 'ShuttleSource="Blackmagic Intensity Shuttle (frameserver)"\n' > $(BUNDLE)/Contents/Resources/locale/en-US.ini
+	cp $(BUNDLE)/Contents/Resources/locale/en-US.ini $(BUNDLE)/Contents/Resources/locale/ja-JP.ini
 	codesign --force --sign - $(BUNDLE)
 	@echo "built $(BUNDLE)"; otool -L $(BUNDLE)/Contents/MacOS/$(PLUGIN) | grep -E 'libobs|libusb' || true
 

@@ -125,6 +125,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     cfg.audio_block_frames = s->abuf_frames;
     cfg.on_end = on_end; cfg.end_ctx = s;
     atomic_store(&s->ended, 0); s->residual_applied_ticks = 0; s->have_residual = 0;
+    atomic_store(&s->frames_out, 0); atomic_store(&s->audio_frames_out, 0); atomic_store(&s->audio_steps, 0);   /* per-session accounting */
     if (fs_open(&s->fs, &cfg) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL; return -1; }
     if (fs_start(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver start failed"); fs_close(s->fs); s->fs = NULL; return -1; }
     blog(LOG_INFO, "[shuttle-source] started (%s)", cfg.capture.replay_path ? "replay" : "device");
