@@ -134,7 +134,7 @@ static void on_audio(void *ctx, const unit_audio_observation *a){
 }
 static void cc_on_packet(void *ctx, const cc_packet *p){ frameserver *f = ctx; unit_parser_on_packet(f->parser, p); }
 static void cc_on_loss(void *ctx, uint8_t ep, uint32_t n, uint64_t b){ frameserver *f = ctx; unit_parser_on_loss(f->parser, ep, n, b); }
-static void cc_on_error(void *ctx, uint8_t ep, uint32_t seq, int st, int isf){ frameserver *f = ctx; unit_parser_on_error(f->parser, ep, seq, st, isf); }
+static void cc_on_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){ frameserver *f = ctx; unit_parser_on_error(f->parser, ep, seq, st, kind); }
 static void cc_on_end(void *ctx, enum cc_end r){
     frameserver *f = ctx; f->end_reason = r;
     unit_parser_finish(f->parser);

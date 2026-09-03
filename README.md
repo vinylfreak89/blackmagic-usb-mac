@@ -29,6 +29,11 @@ packet payload. Every scheduled USB slot is accounted for, so a missing packet i
 tag stream rather than inferred from content. `experiments/verify_packet_capture.py` checks a file;
 `experiments/packet_capture_reader.py` streams one.
 
+`TransferError` packet index `0xffff` denotes a submit failure. Index `0xfffe` with status
+`UINT32_MAX` is the terminal **control-truth-lost** marker: the metadata reserve was exhausted,
+the file is permanently not clean, and capture continues by default. See
+[`src/capture_core/README.md`](src/capture_core/README.md) for the complete record policy.
+
 ## Build and test (no hardware needed)
 
 Requirements: Apple clang, `libusb` 1.0 (Homebrew), Python 3, `ffmpeg` for rendering.

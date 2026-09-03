@@ -411,12 +411,12 @@ void unit_parser_on_loss(void *context, uint8_t endpoint, uint32_t packets,
 }
 
 void unit_parser_on_error(void *context, uint8_t endpoint, uint32_t submit_seq,
-                          int status, int is_submit_failure)
+                          int status, int error_kind)
 {
     unit_parser *parser = context;
     (void)submit_seq;
     (void)status;
-    (void)is_submit_failure;
+    (void)error_kind;
     if (!parser || parser->finished)
         return;
     if (endpoint == CC_EP_VIDEO)

@@ -105,7 +105,7 @@ void unit_parser_on_packet(void *context, const cc_packet *packet);
 void unit_parser_on_loss(void *context, uint8_t endpoint, uint32_t packets,
                          uint64_t bytes);
 void unit_parser_on_error(void *context, uint8_t endpoint, uint32_t submit_seq,
-                          int status, int is_submit_failure);
+                          int status, int error_kind);
 
 /* Emits any terminal unframed fragment. No callback follows after finish. */
 void unit_parser_finish(unit_parser *parser);

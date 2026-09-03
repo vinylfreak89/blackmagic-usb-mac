@@ -195,6 +195,13 @@ evidence_mode, confidence
 The log must distinguish live provisional presentation from a later finalized
 recording decision without rewriting the original observation.
 
+The assembled frameserver adds transport/presentation columns, including
+`baseline_d1`, `baseline_d2`, `drop_reason`, `schema_version`, and
+`preceding_ring_drops`. Its canonical schema and the range semantics of a
+synthetic `RingFullTail` row are documented in
+[`../frameserver/README.md`](../frameserver/README.md); they are not trajectory
+observations and must not be inferred from the abbreviated minimum above.
+
 ## Required golden classes
 
 The public golden is capture-free and labels two independent truths:

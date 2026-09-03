@@ -20,7 +20,8 @@ if len(sys.argv) > 3 and sys.argv[2] == "--split":
              0x84: open(sys.argv[3] + "_audio.raw", "wb")}
 
 st = {ep: dict(bytes=0, pkts=0, zero=0, short=0, seqs=set(), inversions=0,
-               last_seq=-1, hostloss=0, lost_bytes=0, lost_pkts=0, xfererr=0)
+               last_seq=-1, hostloss=0, lost_bytes=0, lost_pkts=0, xfererr=0,
+               control_loss=0)
       for ep in (0x83, 0x84)}
 session = None
 corrupt = ok = ticks = 0
@@ -58,7 +59,10 @@ with open(path, "rb") as f:
             elif typ == 1:
                 s["hostloss"] += 1; s["lost_pkts"] += req; s["lost_bytes"] += alen
             elif typ == 2:
-                s["xfererr"] += 1
+                if pi == 0xFFFE and status == 0xFFFFFFFF:
+                    s["control_loss"] += 1
+                else:
+                    s["xfererr"] += 1
         ok += 1
         off += 24 + (len(payload) if typ in (0, 3) else 0)
 
@@ -74,6 +78,6 @@ for ep in (0x83, 0x84):
           f"(zero-len {s['zero']:,}, short {s['short']:,}) | "
           f"seq span {len(s['seqs'])} used, GAPS={gaps} | inversions={s['inversions']} | "
           f"HostLoss recs={s['hostloss']} ({s['lost_pkts']} pkts / {s['lost_bytes']:,} B) | "
-          f"xfererr={s['xfererr']}")
+          f"xfererr={s['xfererr']} | control-truth-lost={s['control_loss']}")
 if split:
     for fh in split.values(): fh.close()

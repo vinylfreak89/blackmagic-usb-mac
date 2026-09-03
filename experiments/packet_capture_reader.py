@@ -40,6 +40,7 @@ class EndpointStats:
     hostloss_packets: int = 0
     hostloss_bytes: int = 0
     transfer_errors: int = 0
+    control_loss_markers: int = 0
     first_sequence: int | None = None
     last_sequence: int | None = None
     _current_sequence: int | None = field(default=None, repr=False)
@@ -132,6 +133,7 @@ class TaggedStats:
                 ("packet status errors", endpoint.status_errors),
                 ("HostLoss records", endpoint.hostloss_records),
                 ("TransferError records", endpoint.transfer_errors),
+                ("control-truth-lost markers", endpoint.control_loss_markers),
             ):
                 if value:
                     problems.append(f"{label} {name}={value}")
@@ -213,7 +215,10 @@ def walk_tagged(
                         raise RuntimeError(
                             f"tpc TransferError has unknown endpoint 0x{endpoint_value:02x}"
                         )
-                    endpoint.transfer_errors += 1
+                    if packet_index == 0xFFFE and status == 0xFFFFFFFF:
+                        endpoint.control_loss_markers += 1
+                    else:
+                        endpoint.transfer_errors += 1
                 elif record_type == TPC_SESSION:
                     stats.session = mm[payload_start:payload_end].decode(
                         "ascii", "replace"
@@ -263,6 +268,7 @@ def format_tagged_stats(stats: TaggedStats) -> str:
             f"seq_gaps={endpoint.sequence_gaps}; inversions={endpoint.inversions}; "
             f"packet_index_errors={endpoint.packet_index_errors}; "
             f"status_errors={endpoint.status_errors}; "
-            f"HostLoss={endpoint.hostloss_records}; TransferError={endpoint.transfer_errors}"
+            f"HostLoss={endpoint.hostloss_records}; TransferError={endpoint.transfer_errors}; "
+            f"control-truth-lost={endpoint.control_loss_markers}"
         )
     return "\n".join(lines)
