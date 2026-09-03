@@ -477,7 +477,14 @@ Consequences:
 | Playing **virgin tape** (no CTL, no RF), steady state | **NOT grey mute — MEASURED 2026-09-03 (`captures/virgin_transition.tpc`, 45 s, byte-complete):** the deck outputs **sub-blanking black (Y ≈ 1.5–2, chroma 128) with sparse white dropout streaks and a noise band at the bottom of the raster**, all in locked `0xe801` units; the OSD (if enabled) is composited over it. The earlier "grey mute" came from a **deck setting** (a mute/back-screen mode the owner has since switched off); with it off the deck passes its raw no-RF output. So the grey rows in this table describe that setting, not the deck's only behaviour — one more reason states are defined by signal properties, never by deck (design rule below). Deck-specific tell for the inference layer: with OSD display set to off, this deck still composites its OSD when playback is fully unlocked (no control track) — an OSD appearing over a sub-blanking raster is strong no-RF evidence on this family, usable by the deck-mute score, never as a state definition. The end-of-recording transient was short (~0.5 s: flat → sub-black → 2 snow-like units → black), not the 1.7–2.3 s snow relock seen after splices — a virgin section has no CTL to chase. |
 
 So snow is only the *acquisition transient*; the deck's steady-state answer to unlocked playback is
-its mute screen. ("The rest of the tape is snow" describes the tape's magnetic content — what this
+its mute screen — or, with the mute setting off, its dropout compensator's output. **Likely mechanism
+(interpretation, 2026-09-03, from the virgin-transition render):** a plain VCR shows snow because its
+FM demodulator turns head/tape noise into luma; this deck shows sub-blanking black with sparse white
+specks because the dropout compensator's RF-envelope detector marks every no-RF line as a dropout
+and clamps it to blanking, and only momentary envelope excursions above threshold demodulate as
+bright bursts. The ~7 s before that (frame TBC holding/repeating every other frame) is the erased
+tail of the recording where control-track pulses are present but failing. Other decks fill the same
+regenerated raster with snow, blue or black — the classifier labels appearance, never the fill. ("The rest of the tape is snow" describes the tape's magnetic content — what this
 deck *shows* for that content is mute.)
 
 **⚠️ 17.7% of complete units are structurally perfect non-picture** (1,093 of 6,160: 1,017 deck
