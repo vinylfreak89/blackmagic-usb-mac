@@ -202,7 +202,9 @@ static void process_item(frameserver *f, const fs_item *it){
         have_d = fieldreg_process(f->eng, unit, &d);
         if (have_d && classified)
             signal_state_note_registration(f->sig, &sr, d.frame_observation_support > 0,
-                                           d.frame_observation_d1, d.frame_observation_d2, d.confidence);
+                                           d.frame_observation_d1, d.frame_observation_d2,
+                                           d.confidence, true,
+                                           d.applied_d1, d.applied_d2);
         if (classified && sr.unsettled) f->st.unsettled_units++;
         int rc = fp_publish(f->pub, unit, FP_UNIT_BYTES, obs.counter_extended,
                             have_d ? d.applied_d1 : 0, have_d ? d.applied_d2 : 0,

@@ -17,7 +17,10 @@ enum {
 struct signal_state {
     signal_state_config config;
     uint64_t epoch;
+    signal_appearance stable_appearance;
+    double stable_appearance_confidence;
     signal_appearance appearance_candidate;
+    double appearance_candidate_confidence;
     uint32_t appearance_candidate_count;
     signal_source_state stable_source;
     signal_source_state source_candidate;
@@ -52,7 +55,7 @@ signal_state_config signal_state_default_config(void)
 {
     signal_state_config config = {
         .appearance_confirm_units = 2,
-        .acquisition_confirm_units = 3,
+        .acquisition_confirm_units = 5,
         .mute_confirm_units = 3,
         .phase_chatter_window_units = 30,
         .phase_chatter_threshold = 4,
@@ -72,7 +75,7 @@ void signal_state_init(signal_state *state, const signal_state_config *config)
     chosen.appearance_confirm_units = clamp_nonzero(
         chosen.appearance_confirm_units, 2);
     chosen.acquisition_confirm_units = clamp_nonzero(
-        chosen.acquisition_confirm_units, 3);
+        chosen.acquisition_confirm_units, 5);
     chosen.mute_confirm_units = clamp_nonzero(chosen.mute_confirm_units, 3);
     chosen.phase_chatter_window_units = clamp_nonzero(
         chosen.phase_chatter_window_units, 30);
@@ -120,9 +123,19 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
     double sum_y = 0.0, sum_y2 = 0.0, chroma = 0.0;
     double gradient = 0.0, temporal = 0.0;
     uint64_t samples = 0, gradients = 0, temporal_samples = 0;
-    uint64_t flat = 0, hard = 0, hard_total = 0;
+    uint64_t flat = 0, hard = 0, hard_total = 0, neutral_chroma = 0;
+    uint64_t subblack = 0;
+    uint32_t luma_histogram[256] = {0};
+    uint32_t chroma_distance_histogram[129] = {0};
+    enum { TILE_COLUMNS = 15, TILE_ROWS_PER_FIELD = 15, TILE_COUNT = 450 };
+    uint8_t tile_min[TILE_COUNT], tile_max[TILE_COUNT];
+    uint8_t previous_line[X_SAMPLES];
+    bool previous_line_valid = false;
+    memset(tile_min, 255, sizeof tile_min);
+    memset(tile_max, 0, sizeof tile_max);
     double vbi_sum = 0.0, vbi_sum2 = 0.0;
     uint64_t vbi_samples = 0;
+    bool had_temporal_reference = state->previous_valid;
 
     for (int line = 0; line < RASTER_LINES; ++line) {
         const uint8_t *row = raster + (size_t)line * BYTES_PER_LINE;
@@ -133,6 +146,8 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
             }
         }
         bool vbi = line == 16 || line == 17 || line == 279 || line == 280;
+        if (line == 20 || line == 282)
+            previous_line_valid = false;
         uint8_t prior = 0;
         for (int sx = 0; sx < X_SAMPLES; ++sx) {
             int x = sx * SAMPLE_STEP_PIXELS;
@@ -147,12 +162,30 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
                 continue;
             sum_y += y;
             sum_y2 += (double)y * y;
-            chroma += fabs((double)c - 128.0);
+            int chroma_delta = abs((int)c - 128);
+            chroma += chroma_delta;
+            neutral_chroma += chroma_delta <= 4;
+            ++chroma_distance_histogram[chroma_delta];
+            subblack += y < 16;
+            ++luma_histogram[y];
             if (sx) {
                 gradient += abs((int)y - (int)prior);
                 ++gradients;
             }
+            if (previous_line_valid) {
+                gradient += abs((int)y - (int)previous_line[sx]);
+                ++gradients;
+            }
             prior = y;
+            previous_line[sx] = y;
+            int field = line >= 282;
+            int relative_line = line - (field ? 282 : 20);
+            int tile_y = relative_line * TILE_ROWS_PER_FIELD / 237;
+            int tile_x = sx * TILE_COLUMNS / X_SAMPLES;
+            int tile = field * TILE_COLUMNS * TILE_ROWS_PER_FIELD +
+                       tile_y * TILE_COLUMNS + tile_x;
+            if (y < tile_min[tile]) tile_min[tile] = y;
+            if (y > tile_max[tile]) tile_max[tile] = y;
             if (state->previous_valid) {
                 temporal += abs((int)y - (int)state->previous[line][sx]);
                 ++temporal_samples;
@@ -160,6 +193,8 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
             state->previous[line][sx] = y;
             ++samples;
         }
+        if (sampled_picture_line(line))
+            previous_line_valid = true;
     }
     double mean = samples ? sum_y / samples : 0.0;
     double variance = samples ? sum_y2 / samples - mean * mean : 0.0;
@@ -181,10 +216,41 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
                               : 0.0;
     if (vbi_variance < 0.0)
         vbi_variance = 0.0;
+    uint64_t midpoint = samples / 2;
+    uint64_t cumulative = 0;
+    unsigned median = 0;
+    for (; median < 255; ++median) {
+        cumulative += luma_histogram[median];
+        if (cumulative > midpoint)
+            break;
+    }
+    cumulative = 0;
+    unsigned chroma_median = 0;
+    for (; chroma_median < 128; ++chroma_median) {
+        cumulative += chroma_distance_histogram[chroma_median];
+        if (cumulative > midpoint)
+            break;
+    }
+    unsigned active_tiles = 0;
+    for (int tile = 0; tile < TILE_COUNT; ++tile)
+        active_tiles += (unsigned)(tile_max[tile] - tile_min[tile] >= 12);
+    double extent = (double)active_tiles / TILE_COUNT;
+    double static_score = had_temporal_reference
+                              ? clamp01((3.0 - (temporal_samples ? temporal / temporal_samples : 0.0)) / 3.0)
+                              : 0.0;
+    double localized = clamp01(extent / 0.02) * clamp01((0.35 - extent) / 0.25);
     out->luma_mean = mean;
+    out->luma_median = median;
     out->luma_sigma = sqrt(variance);
     out->chroma_distance = samples ? chroma / samples : 0.0;
+    out->chroma_distance_median = chroma_median;
+    out->neutral_chroma_fraction = samples ? (double)neutral_chroma / samples : 0.0;
+    out->subblack_pixel_fraction = samples ? (double)subblack / samples : 0.0;
     out->spatial_gradient_energy = gradients ? gradient / gradients : 0.0;
+    out->program_extent_fraction = extent;
+    out->localized_overlay_score = localized *
+                                    (samples ? (double)flat / samples : 0.0) *
+                                    static_score;
     out->temporal_mad = temporal_samples ? temporal / temporal_samples : 0.0;
     out->hard_padding_fraction = hard_total ? (double)hard / hard_total : 0.0;
     out->vbi_signature_energy = sqrt(vbi_variance);
@@ -199,33 +265,37 @@ static signal_appearance classify_appearance(const signal_measurements *m,
         *confidence = clamp01((0.98 - m->hard_padding_fraction) * 10.0);
         return SIGNAL_APPEARANCE_UNKNOWN;
     }
-    bool neutral = m->chroma_distance < 3.0;
-    if (neutral && m->luma_mean < 8.0 && m->luma_sigma < 4.0 &&
-        m->spatial_gradient_energy < 3.0) {
-        *confidence = clamp01((8.0 - m->luma_mean) / 8.0 +
-                              (4.0 - m->luma_sigma) / 8.0);
+    bool neutral = m->chroma_distance_median <= 4.0 &&
+                   m->neutral_chroma_fraction >= 0.75;
+    /* A robustly sub-blanking neutral background is not program, even when
+     * sparse white streaks or an OSD contribute arbitrarily sharp edges. */
+    if (neutral && m->luma_median <= 12.0) {
+        *confidence = clamp01((16.0 - m->luma_median) / 8.0 +
+                              (m->subblack_pixel_fraction - 0.70));
         return SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE;
+    }
+    if (m->luma_sigma > 35.0 && m->spatial_gradient_energy > 30.0 &&
+        m->program_extent_fraction > 0.50) {
+        *confidence = clamp01(fmin((m->luma_sigma - 30.0) / 25.0,
+                                  (m->spatial_gradient_energy - 25.0) / 30.0));
+        return SIGNAL_APPEARANCE_SNOW_LIKE;
     }
     bool uniform_neutral = m->luma_sigma < 3.0 &&
                            m->spatial_gradient_energy < 2.0;
     bool neutral_with_small_overlay =
         m->flat_pixel_fraction > 0.55 &&
-        m->spatial_gradient_energy < 3.0 &&
-        (!m->temporal_mad || m->temporal_mad < 2.0);
+        m->program_extent_fraction < 0.30 &&
+        (!m->temporal_mad || m->temporal_mad < 3.0);
     if (neutral && m->luma_mean >= 8.0 && m->luma_mean <= 240.0 &&
         (uniform_neutral || neutral_with_small_overlay)) {
         *confidence = uniform_neutral
                           ? clamp01(1.0 - m->luma_sigma / 3.0)
-                          : clamp01((m->flat_pixel_fraction - 0.50) * 2.0);
+                          : clamp01(fmax((m->flat_pixel_fraction - 0.50) * 2.0,
+                                        m->localized_overlay_score));
         return SIGNAL_APPEARANCE_NEUTRAL_GRAY_MUTE_LIKE;
     }
-    if (m->luma_sigma > 35.0 && m->spatial_gradient_energy > 30.0) {
-        *confidence = clamp01(fmin((m->luma_sigma - 30.0) / 25.0,
-                                  (m->spatial_gradient_energy - 25.0) / 30.0));
-        return SIGNAL_APPEARANCE_SNOW_LIKE;
-    }
-    if (m->luma_sigma < 5.0 && m->spatial_gradient_energy < 3.0) {
-        *confidence = clamp01(1.0 - m->luma_sigma / 5.0);
+    if (m->program_extent_fraction < 0.12) {
+        *confidence = clamp01(1.0 - m->program_extent_fraction / 0.12);
         return SIGNAL_APPEARANCE_FLAT_AMBIGUOUS;
     }
     *confidence = clamp01(fmax(m->luma_sigma / 24.0,
@@ -261,7 +331,30 @@ static uint32_t confirmation_for(const signal_state *state,
 {
     if (source == SIGNAL_SOURCE_MUTED || source == SIGNAL_SOURCE_NO_INPUT)
         return state->config.mute_confirm_units;
+    if (source == SIGNAL_SOURCE_UNKNOWN)
+        return state->config.appearance_confirm_units;
     return state->config.acquisition_confirm_units;
+}
+
+static uint32_t appearance_confirmation_for(const signal_state *state,
+                                             signal_appearance appearance)
+{
+    uint32_t needed = state->config.appearance_confirm_units;
+    uint32_t contextual = (appearance == SIGNAL_APPEARANCE_PROGRAM_LIKE ||
+                           appearance == SIGNAL_APPEARANCE_SNOW_LIKE)
+                              ? state->config.acquisition_confirm_units
+                              : (appearance == SIGNAL_APPEARANCE_NEUTRAL_GRAY_MUTE_LIKE ||
+                                 appearance == SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE ||
+                                 appearance == SIGNAL_APPEARANCE_DEVICE_NO_SIGNAL_0800)
+                                    ? state->config.mute_confirm_units
+                                    : state->config.appearance_confirm_units;
+    return contextual > needed ? contextual : needed;
+}
+
+static void increment_saturating(uint32_t *value)
+{
+    if (*value != UINT32_MAX)
+        ++*value;
 }
 
 static void open_interval(signal_state *state)
@@ -271,6 +364,14 @@ static void open_interval(signal_state *state)
         state->active_interval = ++state->interval_serial;
     }
     state->stable_phase_count = 0;
+}
+
+static void invalidate_phase(signal_state *state)
+{
+    state->phase_valid = false;
+    state->stable_phase_count = 0;
+    state->phase_change_bits = 0;
+    state->phase_window_count = 0;
 }
 
 bool signal_state_classify(signal_state *state,
@@ -284,6 +385,7 @@ bool signal_state_classify(signal_state *state,
     out->transport = unit->transport;
     out->transport_flags = unit->transport_flags;
     out->settled_d1 = out->settled_d2 = 0;
+    bool structural_unknown = false;
 
     if (unit->transport == UNIT_TRANSPORT_HOLE ||
         unit->transport == UNIT_TRANSPORT_UNFRAMED ||
@@ -292,6 +394,7 @@ bool signal_state_classify(signal_state *state,
         out->source = SIGNAL_SOURCE_UNKNOWN;
         out->actions |= SIGNAL_ACTION_REGISTRATION_DISCONTINUITY;
         open_interval(state);
+        structural_unknown = true;
         state->previous_valid = false;
     } else if (unit->kind == UNIT_VIDEO_DEVICE_NO_SIGNAL_0800) {
         out->appearance = SIGNAL_APPEARANCE_DEVICE_NO_SIGNAL_0800;
@@ -300,6 +403,7 @@ bool signal_state_classify(signal_state *state,
         out->appearance = SIGNAL_APPEARANCE_UNKNOWN;
         out->source = SIGNAL_SOURCE_UNKNOWN;
         open_interval(state);
+        structural_unknown = true;
         state->previous_valid = false;
     } else {
         measure_raster(state, unit->bytes, &out->measurements);
@@ -307,15 +411,38 @@ bool signal_state_classify(signal_state *state,
                                               &out->appearance_confidence);
     }
 
-    if (out->appearance == state->appearance_candidate) {
-        ++state->appearance_candidate_count;
+    signal_appearance observed_appearance = out->appearance;
+    double observed_confidence = out->appearance_confidence;
+    if (observed_appearance == state->appearance_candidate) {
+        increment_saturating(&state->appearance_candidate_count);
+        if (observed_confidence < state->appearance_candidate_confidence)
+            state->appearance_candidate_confidence = observed_confidence;
     } else {
-        state->appearance_candidate = out->appearance;
+        state->appearance_candidate = observed_appearance;
         state->appearance_candidate_count = 1;
+        state->appearance_candidate_confidence = observed_confidence;
     }
-    signal_source_state target = appearance_source(out->appearance, context);
+    uint32_t appearance_needed = appearance_confirmation_for(
+        state, observed_appearance);
+    if (structural_unknown ||
+        observed_appearance == SIGNAL_APPEARANCE_DEVICE_NO_SIGNAL_0800 ||
+        observed_appearance == SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE) {
+        state->stable_appearance = observed_appearance;
+        state->stable_appearance_confidence = observed_confidence;
+    } else if (observed_appearance == state->stable_appearance) {
+        state->stable_appearance_confidence = observed_confidence;
+    } else if (state->appearance_candidate_count >= appearance_needed) {
+        state->stable_appearance = observed_appearance;
+        state->stable_appearance_confidence = state->appearance_candidate_confidence;
+    }
+    out->appearance = state->stable_appearance;
+    out->appearance_confidence = state->stable_appearance_confidence;
+
+    /* Source inference accumulates the instantaneous property observation in
+     * parallel with appearance hysteresis, so confirmation is not paid twice. */
+    signal_source_state target = appearance_source(observed_appearance, context);
     if (target == state->source_candidate) {
-        ++state->source_candidate_count;
+        increment_saturating(&state->source_candidate_count);
     } else {
         state->source_candidate = target;
         state->source_candidate_count = 1;
@@ -324,36 +451,49 @@ bool signal_state_classify(signal_state *state,
     uint32_t needed = confirmation_for(state, target);
     if (needed < state->config.appearance_confirm_units)
         needed = state->config.appearance_confirm_units;
-    if (target != SIGNAL_SOURCE_UNKNOWN &&
-        state->source_candidate_count >= needed) {
+    if (structural_unknown) {
+        invalidate_phase(state);
+        state->stable_source = SIGNAL_SOURCE_UNKNOWN;
+        state->source_candidate = SIGNAL_SOURCE_UNKNOWN;
+        state->source_candidate_count = 1;
+    } else if ((target == SIGNAL_SOURCE_MUTED &&
+                observed_appearance == SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE) ||
+               state->source_candidate_count >= needed) {
         signal_source_state prior = state->stable_source;
         state->stable_source = target;
-        if (target == SIGNAL_SOURCE_REACQUIRING &&
-            prior != SIGNAL_SOURCE_REACQUIRING) {
+        if (target != prior && target == SIGNAL_SOURCE_REACQUIRING) {
+            invalidate_phase(state);
             out->actions |= SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT;
             state->acquisition_open = true;
             open_interval(state);
-        } else if (target == SIGNAL_SOURCE_PRESENT &&
-                   prior != SIGNAL_SOURCE_PRESENT) {
+        } else if (target != prior && target == SIGNAL_SOURCE_PRESENT) {
+            invalidate_phase(state);
             if (!state->acquisition_open)
                 out->actions |= SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT;
             state->acquisition_open = true;
             open_interval(state);
-        } else if (target == SIGNAL_SOURCE_MUTED ||
-                   target == SIGNAL_SOURCE_NO_INPUT) {
+        } else if (target != prior &&
+                   (target == SIGNAL_SOURCE_MUTED ||
+                    target == SIGNAL_SOURCE_NO_INPUT)) {
+            invalidate_phase(state);
+            state->acquisition_open = false;
+            open_interval(state);
+            /* The confirmed non-picture state is itself a settled endpoint;
+             * raster registration has no meaning until acquisition resumes. */
+            state->unsettled = false;
+        } else if (target != prior && target == SIGNAL_SOURCE_UNKNOWN) {
             state->acquisition_open = false;
             open_interval(state);
         }
-        out->source = state->stable_source;
-        out->source_confidence = clamp01(
-            (double)state->source_candidate_count / needed);
-    } else {
-        out->source = SIGNAL_SOURCE_UNKNOWN;
-        out->source_confidence = 0.0;
     }
+    out->source = state->stable_source;
+    out->source_confidence = state->stable_source == SIGNAL_SOURCE_UNKNOWN
+                                 ? 0.0
+                                 : target == state->stable_source
+                                       ? clamp01((double)state->source_candidate_count / needed)
+                                       : 0.5;
 
-    if (out->appearance == SIGNAL_APPEARANCE_UNKNOWN ||
-        out->source == SIGNAL_SOURCE_UNKNOWN)
+    if (state->interval_serial == 0 && out->source == SIGNAL_SOURCE_UNKNOWN)
         open_interval(state);
     out->unsettled = state->unsettled;
     out->unsettled_interval_id = state->active_interval;
@@ -377,11 +517,19 @@ static uint32_t popcount64(uint64_t value)
 
 void signal_state_note_registration(signal_state *state, signal_result *result,
                                     bool observation_known, int8_t d1, int8_t d2,
-                                    double confidence)
+                                    double confidence, bool applied_known,
+                                    int8_t applied_d1, int8_t applied_d2)
 {
     if (!state || !result)
         return;
-    bool changed = observation_known && state->phase_valid &&
+    if (state->stable_source != SIGNAL_SOURCE_PRESENT) {
+        result->unsettled = state->unsettled;
+        result->unsettled_interval_id = state->active_interval;
+        result->settled_phase_known = false;
+        return;
+    }
+
+    bool changed = observation_known && confidence >= 0.25 && state->phase_valid &&
                    (d1 != state->phase_d1 || d2 != state->phase_d2);
     uint32_t window = state->config.phase_chatter_window_units;
     uint64_t mask = window == 64 ? UINT64_MAX : ((UINT64_C(1) << window) - 1);
@@ -393,18 +541,20 @@ void signal_state_note_registration(signal_state *state, signal_result *result,
         state->config.phase_chatter_threshold)
         open_interval(state);
 
-    if (observation_known && confidence >= 0.25) {
-        if (!state->phase_valid || (d1 == state->phase_d1 && d2 == state->phase_d2)) {
-            if (!state->phase_valid) {
-                state->phase_d1 = d1;
-                state->phase_d2 = d2;
-                state->phase_valid = true;
-            }
-            ++state->stable_phase_count;
+    if (applied_known) {
+        if (!state->phase_valid) {
+            state->phase_d1 = applied_d1;
+            state->phase_d2 = applied_d2;
+            state->phase_valid = true;
+            state->stable_phase_count = 1;
+        } else if (applied_d1 == state->phase_d1 &&
+                   applied_d2 == state->phase_d2) {
+            increment_saturating(&state->stable_phase_count);
         } else {
-            /* Positive departures are provisional until the trajectory layer
-             * resolves them; do not overwrite the settled phase here. */
+            state->phase_d1 = applied_d1;
+            state->phase_d2 = applied_d2;
             open_interval(state);
+            state->stable_phase_count = 1;
         }
     } else if (state->unsettled) {
         state->stable_phase_count = 0;

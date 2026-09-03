@@ -48,9 +48,17 @@ typedef struct signal_context {
 
 typedef struct signal_measurements {
     double luma_mean;
+    double luma_median;
     double luma_sigma;
     double chroma_distance;
+    double chroma_distance_median;
+    double neutral_chroma_fraction;
+    double subblack_pixel_fraction;
     double spatial_gradient_energy;
+    /* Fraction of broad active-area tiles with meaningful luma range. */
+    double program_extent_fraction;
+    /* Static, high-contrast activity localized over an otherwise flat raster. */
+    double localized_overlay_score;
     double temporal_mad;
     double hard_padding_fraction;
     double vbi_signature_energy;
@@ -97,13 +105,15 @@ bool signal_state_classify(signal_state *state,
 
 /*
  * Second stage, called after field_registration examines the same unit.
- * A positive per-unit phase is an observation, not an automatic settlement.
- * This updates the explicit unsettled interval and may revise out->unsettled;
- * it never changes pixels or calls field_registration itself.
+ * A positive per-unit observation can open an interval.  `applied_*` is the
+ * phase actually presented by the zero-latency forward engine; a stable
+ * applied phase is what can settle that live interval when absolute evidence
+ * legitimately abstains. This never changes pixels or calls registration.
  */
 void signal_state_note_registration(signal_state *state, signal_result *result,
                                     bool observation_known, int8_t d1, int8_t d2,
-                                    double confidence);
+                                    double confidence, bool applied_known,
+                                    int8_t applied_d1, int8_t applied_d2);
 
 /* Called only when the trajectory layer commits a newly settled endpoint. */
 void signal_state_commit_registration(signal_state *state, int8_t d1, int8_t d2);

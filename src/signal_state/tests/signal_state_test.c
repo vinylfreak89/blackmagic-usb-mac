@@ -16,6 +16,9 @@ typedef enum pattern {
     PATTERN_SNOW,
     PATTERN_GRAY,
     PATTERN_SUBBLACK,
+    PATTERN_SUBBLACK_STREAK,
+    PATTERN_OSD_BLACK,
+    PATTERN_GRAY_OSD,
     PATTERN_FLAT_CHROMA,
 } pattern;
 
@@ -74,6 +77,22 @@ static void make_unit(uint8_t *unit, pattern kind, unsigned frame, uint8_t gray)
                 case PATTERN_SUBBLACK:
                     y = 2;
                     break;
+                case PATTERN_SUBBLACK_STREAK:
+                    y = (line == 80 + (int)(frame & 1)) ? 235 : 2;
+                    break;
+                case PATTERN_OSD_BLACK:
+                    y = 2;
+                    if (line >= 40 && line <= 55 && x >= 500 && x <= 650)
+                        y = ((x / 5 + line) & 1) ? 220 : 2;
+                    break;
+                case PATTERN_GRAY_OSD:
+                    y = gray;
+                    if (((line >= 40 && line <= 100) ||
+                         (line >= 302 && line <= 362)) &&
+                        x >= 120 && x <= 480 &&
+                        ((x / 8 + line) % 12) == 0)
+                        y = 220;
+                    break;
                 case PATTERN_FLAT_CHROMA:
                     y = 50;
                     c = 80;
@@ -115,6 +134,15 @@ static signal_result classify(signal_state *state, uint8_t *unit, pattern kind,
     return result;
 }
 
+static void note(signal_state *state, signal_result *result,
+                 bool observation_known, int8_t observed_d1, int8_t observed_d2,
+                 int8_t applied_d1, int8_t applied_d2)
+{
+    signal_state_note_registration(state, result, observation_known,
+                                   observed_d1, observed_d2, 1.0, true,
+                                   applied_d1, applied_d2);
+}
+
 static uint64_t monotonic_ns(void)
 {
     struct timespec value;
@@ -136,66 +164,108 @@ int main(void)
 
     uint32_t begin_actions = 0;
     signal_result result = {0};
-    for (unsigned i = 0; i < 6; ++i) {
+    for (unsigned i = 0; i < 12; ++i) {
         result = classify(state, unit, PATTERN_PROGRAM, i, 0);
         begin_actions += !!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT);
-        signal_state_note_registration(state, &result, true, 0, 0, 1.0);
-        assert(result.appearance == SIGNAL_APPEARANCE_PROGRAM_LIKE);
+        note(state, &result, true, 0, 0, 0, 0);
+        if (i >= config.acquisition_confirm_units - 1)
+            assert(result.appearance == SIGNAL_APPEARANCE_PROGRAM_LIKE);
     }
     assert(result.source == SIGNAL_SOURCE_PRESENT);
     assert(begin_actions == 1);
+    assert(!result.unsettled && result.settled_phase_known);
 
     /* Property sweep: neutral gray level changes the parameter, not the label. */
     for (uint8_t gray = 32; gray <= 192; gray += 32) {
         result = classify(state, unit, PATTERN_GRAY, 100 + gray, gray);
-        assert(result.appearance == SIGNAL_APPEARANCE_NEUTRAL_GRAY_MUTE_LIKE);
     }
-    assert(result.source == SIGNAL_SOURCE_MUTED);
-    result = classify(state, unit, PATTERN_GRAY, 133, 120);
-    result = classify(state, unit, PATTERN_GRAY, 135, 120);
     assert(result.appearance == SIGNAL_APPEARANCE_NEUTRAL_GRAY_MUTE_LIKE);
-
-    for (unsigned i = 0; i < 4; ++i) {
-        result = classify(state, unit, PATTERN_SUBBLACK, 400 + i, 0);
-        assert(result.appearance == SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE);
-    }
     assert(result.source == SIGNAL_SOURCE_MUTED);
+
+    /* A localized static overlay on gray is measured, but remains mute-like. */
+    for (unsigned i = 0; i < 6; ++i)
+        result = classify(state, unit, PATTERN_GRAY_OSD, 200 + i, 120);
+    assert(result.appearance == SIGNAL_APPEARANCE_NEUTRAL_GRAY_MUTE_LIKE);
+    assert(result.measurements.program_extent_fraction > 0.15);
+    assert(result.measurements.program_extent_fraction < 0.30);
+    assert(result.measurements.localized_overlay_score > 0.0);
+    assert(!result.unsettled);
+
+    /* Sparse high-energy dropout streaks can never turn a robustly sub-black,
+     * neutral raster into ProgramLike. Appearance commits after 3 units and
+     * never flaps thereafter. */
+    signal_state_begin_epoch(state, 2);
+    unsigned appearance_changes = 0;
+    signal_appearance prior_appearance = SIGNAL_APPEARANCE_UNKNOWN;
+    for (unsigned i = 0; i < 12; ++i) {
+        pattern p = (i & 1) ? PATTERN_SUBBLACK_STREAK : PATTERN_SUBBLACK;
+        result = classify(state, unit, p, 400 + i, 0);
+        assert(result.appearance != SIGNAL_APPEARANCE_PROGRAM_LIKE);
+        if (result.appearance != prior_appearance) {
+            ++appearance_changes;
+            prior_appearance = result.appearance;
+        }
+    }
+    assert(result.appearance == SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE);
+    assert(result.source == SIGNAL_SOURCE_MUTED);
+    assert(result.measurements.luma_median < 16.0);
+    assert(result.measurements.subblack_pixel_fraction > 0.95);
+    assert(result.measurements.spatial_gradient_energy > 0.0);
+    assert(appearance_changes == 1);
+    assert(!result.unsettled);
+
+    /* OSD text is a localized asset, not evidence that the whole raster is
+     * program or that a source is present. */
+    for (unsigned i = 0; i < 6; ++i)
+        result = classify(state, unit, PATTERN_OSD_BLACK, 450 + i, 0);
+    assert(result.appearance == SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE);
+    assert(result.source == SIGNAL_SOURCE_MUTED);
+    assert(result.measurements.program_extent_fraction < 0.15);
+    assert(result.measurements.localized_overlay_score > 0.0);
 
     uint32_t reacquire_actions = 0;
     for (unsigned i = 0; i < 5; ++i) {
         random_state = 0x12345678u + i;
         result = classify(state, unit, PATTERN_SNOW, 500 + i, 0);
-        assert(result.appearance == SIGNAL_APPEARANCE_SNOW_LIKE);
         reacquire_actions += !!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT);
     }
+    assert(result.appearance == SIGNAL_APPEARANCE_SNOW_LIKE);
     assert(result.source == SIGNAL_SOURCE_REACQUIRING);
     assert(reacquire_actions == 1);
     assert(result.unsettled);
 
     for (unsigned i = 0; i < 12; ++i) {
         result = classify(state, unit, PATTERN_PROGRAM, 600 + i, 0);
-        signal_state_note_registration(state, &result, true, 0, 0, 1.0);
+        /* Exercise the real live case: absolute observation abstains while
+         * the forward engine presents a stable applied phase. */
+        note(state, &result, false, 0, 0, 0, 0);
     }
     assert(result.source == SIGNAL_SOURCE_PRESENT);
     assert(!result.unsettled);
     assert(result.settled_phase_known);
 
     result = classify(state, unit, PATTERN_FLAT_CHROMA, 700, 0);
+    result = classify(state, unit, PATTERN_FLAT_CHROMA, 701, 0);
     assert(result.appearance == SIGNAL_APPEARANCE_FLAT_AMBIGUOUS);
 
     unit_video_observation no_signal = {
         .epoch = 1,
-        .ordinal = 701,
+        .ordinal = 702,
         .format = 0x0800,
         .kind = UNIT_VIDEO_DEVICE_NO_SIGNAL_0800,
         .transport = UNIT_TRANSPORT_COMPLETE,
     };
-    assert(signal_state_classify(state, &no_signal, NULL, &result));
-    assert(result.appearance == SIGNAL_APPEARANCE_DEVICE_NO_SIGNAL_0800);
+    for (unsigned i = 0; i < config.mute_confirm_units; ++i) {
+        no_signal.ordinal++;
+        assert(signal_state_classify(state, &no_signal, NULL, &result));
+        assert(result.appearance == SIGNAL_APPEARANCE_DEVICE_NO_SIGNAL_0800);
+    }
+    assert(result.source == SIGNAL_SOURCE_NO_INPUT);
+    assert(!result.unsettled);
 
     unit_video_observation hole = {
         .epoch = 1,
-        .ordinal = 702,
+        .ordinal = 710,
         .kind = UNIT_VIDEO_E801,
         .transport = UNIT_TRANSPORT_HOLE,
         .transport_flags = UNIT_FLAG_HOST_LOSS,
@@ -204,12 +274,17 @@ int main(void)
     assert(result.actions & SIGNAL_ACTION_REGISTRATION_DISCONTINUITY);
     assert(result.unsettled);
 
+    /* Re-establish a settled live phase after the structural hole. */
+    for (unsigned i = 0; i < 12; ++i) {
+        result = classify(state, unit, PATTERN_PROGRAM, 750 + i, 0);
+        note(state, &result, false, 0, 0, 0, 0);
+    }
+    assert(!result.unsettled);
+
     /* Four phase changes inside ten units open a classifier interval. */
-    signal_state_commit_registration(state, 0, 0);
-    for (unsigned i = 0; i < 6; ++i) {
+    for (unsigned i = 0; i < 8; ++i) {
         result = classify(state, unit, PATTERN_PROGRAM, 800 + i, 0);
-        signal_state_note_registration(state, &result, true,
-                                       (int8_t)(i & 1), 0, 1.0);
+        note(state, &result, true, (int8_t)(i & 1), 0, 0, 0);
     }
     assert(result.unsettled);
     uint64_t chatter_interval = result.unsettled_interval_id;
@@ -218,7 +293,7 @@ int main(void)
     signal_state_commit_registration(state, 1, 0);
     for (unsigned i = 0; i < 12; ++i) {
         result = classify(state, unit, PATTERN_PROGRAM, 900 + i, 0);
-        signal_state_note_registration(state, &result, true, 1, 0, 1.0);
+        note(state, &result, true, 1, 0, 1, 0);
     }
     assert(!result.unsettled);
     assert(result.settled_phase_known && result.settled_d1 == 1 &&
