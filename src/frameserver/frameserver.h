@@ -11,7 +11,10 @@
 //
 // Threading: the parser runs on capture_core's delivery thread and only copies an eligible unit
 // into a free pool slot and pushes an item onto the SPSC ring; if no slot is free the unit is
-// DROPPED and counted — never blocked (§8 property 7). The worker does all analysis and I/O.
+// DROPPED and counted — never blocked (§8 property 7) — but its observation still reaches the
+// worker and the sidecar (drop_reason=PoolFull), so a later re-render sees a marked hole, never an
+// unmarked one. The worker does all analysis and I/O. Lifecycle: open -> start -> stop -> close;
+// fs_stop is idempotent and fs_close performs it if the caller did not.
 // No per-unit allocation anywhere: pool, engine, classifier and parser are allocated at open.
 #ifndef FRAMESERVER_H
 #define FRAMESERVER_H
@@ -28,7 +31,7 @@ typedef struct frameserver frameserver;
 
 typedef struct {
     cc_config capture;          // device input or replay_path
-    unsigned pool_units;        // unit slots between delivery thread and worker (0 => 16)
+    unsigned pool_units;        // unit slots between delivery thread and worker (0 => 64)
     unsigned surface_pool;      // IOSurface pool for the publisher (0 => 6)
     const char *decision_log;   // CSV sidecar path, or NULL
     fp_sink sink;               // consumer of published frames (may be {NULL,NULL} => count only)
@@ -39,7 +42,9 @@ typedef struct {
 typedef struct {
     uint64_t video_observations, exact_units, short_units, holes, unframed, other_format, no_signal_0800;
     uint64_t audio_records, audio_resync;
-    uint64_t published, dropped_pool_full, publisher_dropped;
+    uint64_t published, dropped_pool_full, dropped_ring_full, publisher_dropped;
+    // dropped_pool_full: eligible unit, no free slot -> bytes shed, observation still logged (drop_reason=PoolFull).
+    // dropped_ring_full: item ring full -> observation never reaches the worker; counted only.
     uint64_t unsettled_units, begin_segment_calls, discontinuity_calls;
     uint64_t log_rows;
     unsigned pool_high_water;

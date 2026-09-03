@@ -184,7 +184,7 @@ Every unit records at minimum:
 
 ```
 interval_id, unsettled, provisional_d1, provisional_d2,
-applied_d1, applied_d2, committed_d1, committed_d2,
+applied_d1, applied_d2, baseline_d1, baseline_d2,
 settled_known, settled_d1, settled_d2,
 structural_transport_ok, content_evidence_available,
 top_f1_censored, top_f2_censored, retained_ring_units, interval_age,

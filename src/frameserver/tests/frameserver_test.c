@@ -2,6 +2,8 @@
 // HostLoss hole, a marker split across packets, counter wrap, unframed tails):
 //   every video observation yields exactly one log row; every exact unit is either published
 //   or counted as a drop; non-eligible units are never published; the pipeline drains.
+//   Then with a one-slot pool: rows are never lost to pool exhaustion (PoolFull rows), stop is
+//   idempotent, and close-after-start is safe.
 #include "../frameserver.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,9 +12,10 @@
 #include <stdatomic.h>
 static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { fails++; fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); } } while (0)
-static _Atomic int done; static _Atomic uint64_t frames_seen;
+static _Atomic int done; static _Atomic uint64_t frames_seen; static _Atomic int sink_stall_us;
 static void on_end(void *c, enum cc_end r){ (void)c; (void)r; done = 1; }
-static void sink(void *c, const fp_frame *fr){ (void)c; if (fr->surface) atomic_fetch_add(&frames_seen, 1); }
+static void sink(void *c, const fp_frame *fr){ (void)c; if (fr->surface) atomic_fetch_add(&frames_seen, 1);
+    int st = atomic_load(&sink_stall_us); if (st) usleep(st); }   // a slow consumer holds the slot
 int main(int argc, char **argv){
     if (argc < 2){ fprintf(stderr, "usage: %s <fixture.tpc>\n", argv[0]); return 9; }
     char logp[] = "/tmp/fs_test_log_XXXXXX"; int fd = mkstemp(logp); close(fd);
@@ -37,6 +40,41 @@ int main(int argc, char **argv){
     CHECK(hdr_ok, "decision-log header carries the contract fields");
     CHECK(rows == s.log_rows + 1, "log rows on disk match (%u vs %llu)", rows, (unsigned long long)s.log_rows + 1);
     fs_close(f);
+
+    // F4/F5: with a ONE-slot pool the delivery thread must shed bytes, but every observation
+    // still gets a sidecar row, and shed units are marked PoolFull rather than silently absent.
+    done = 0; atomic_store(&frames_seen, 0);
+    char logp2[] = "/tmp/fs_test_log2_XXXXXX"; fd = mkstemp(logp2); close(fd);
+    fs_config c2 = cfg; c2.decision_log = logp2; c2.pool_units = 1;
+    atomic_store(&sink_stall_us, 200000);   // slot held ~200 ms per unit: the next unit MUST find the pool full
+    frameserver *g = NULL;
+    CHECK(fs_open(&g, &c2) == 0, "open (pool=1)");
+    CHECK(fs_start(g) == 0, "start (pool=1)");
+    while (!done) usleep(10000);
+    CHECK(fs_stop(g) == 0, "stop (pool=1)");
+    CHECK(fs_stop(g) == 0, "second stop is an idempotent no-op");
+    atomic_store(&sink_stall_us, 0);
+    fs_stats s2; fs_get_stats(g, &s2);
+    CHECK(s2.dropped_pool_full > 0, "pool=1 with a stalled consumer did not exercise pool exhaustion");
+    CHECK(s2.log_rows == s2.video_observations, "pool=1: one log row per observation (%llu vs %llu)", (unsigned long long)s2.log_rows, (unsigned long long)s2.video_observations);
+    CHECK(s2.published + s2.dropped_pool_full + s2.publisher_dropped == s2.exact_units, "pool=1: exact units published or counted (%llu+%llu+%llu vs %llu)",
+          (unsigned long long)s2.published, (unsigned long long)s2.dropped_pool_full, (unsigned long long)s2.publisher_dropped, (unsigned long long)s2.exact_units);
+    CHECK(s2.exact_units == s.exact_units, "pool size must not change how many exact units were observed (%llu vs %llu)", (unsigned long long)s2.exact_units, (unsigned long long)s.exact_units);
+    CHECK(s2.pool_high_water <= 1, "pool high-water bounded by pool size (%u)", s2.pool_high_water);
+    unsigned poolfull_rows = 0; rows = 0;
+    L = fopen(logp2, "r");
+    while (fgets(line, sizeof line, L)){ if (rows && strstr(line, ",PoolFull\n")) poolfull_rows++; rows++; }
+    fclose(L); unlink(logp2);
+    CHECK(poolfull_rows == s2.dropped_pool_full, "every pool-full drop is an explicit PoolFull sidecar row (%u vs %llu)", poolfull_rows, (unsigned long long)s2.dropped_pool_full);
+    fs_close(g);
+
+    // F6: close after start without stop must stop first (ASan/TSan builds prove no use-after-free)
+    done = 0;
+    frameserver *k = NULL; fs_config c3 = cfg; c3.decision_log = NULL;
+    CHECK(fs_open(&k, &c3) == 0, "open (close-without-stop)");
+    CHECK(fs_start(k) == 0, "start (close-without-stop)");
+    while (!done) usleep(10000);
+    fs_close(k);
     if (fails) printf("FAILURES: %d\n", fails);
     else printf("frameserver tests: PASS (obs %llu, exact %llu, published %llu, short %llu, hole %llu, unframed %llu)\n",
            (unsigned long long)s.video_observations, (unsigned long long)s.exact_units, (unsigned long long)s.published,
