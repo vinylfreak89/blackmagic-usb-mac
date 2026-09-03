@@ -505,11 +505,15 @@ def unit_to_registered_480i(
         stop = start + FIELD_LINES
         source_top = active_top + displacement
         source_bottom = active_bottom + displacement
-        hard_padding_start = 261 if start == FIELD1_START else 523
-        if source_top < 7 or source_bottom >= hard_padding_start:
+        # A crop may read INTO the Shuttle's hard-padding ruler (lines 0-6, 261-269, 523-524):
+        # that is device-generated legal black, not a substitution (CLAUDE.md §6, measured with
+        # no deck connected), and the frameserver's publisher does the same. It must never read
+        # past the padding into the other field's raster.
+        low, high = (0, 269) if start == FIELD1_START else (261, RASTER_LINES - 1)
+        if source_top < low or source_bottom > high:
             raise ValueError(
                 f"registered source interval {source_top}..{source_bottom} "
-                f"crosses device hard padding at {hard_padding_start}"
+                f"leaves this field's raster ({low}..{high})"
             )
         field = raster[start:stop].copy()
         field[active_top - start : active_bottom - start + 1] = raster[
