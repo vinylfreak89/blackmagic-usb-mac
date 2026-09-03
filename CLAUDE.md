@@ -1091,8 +1091,16 @@ delivery edge; wrong one at acquisition.
   deinterlacer in C or on the real-time device path**; ffmpeg/OBS/post owns that presentation
   decision.
   Both components test via replay.
-- **P4 CMIO extension (Swift)** — standard device, two advertised formats (raw 480i, corrected
-  480i), IOSurface/XPC consumer, custom properties. Deinterlacing belongs to OBS/ffmpeg/post.
+- **P4a native OBS source plugin FIRST (owner decision, 2026-09-03).** OBS is the initial
+  target; the CMIO extension needs a paid Apple team even for personal use (system-extension
+  entitlement; developer mode does not waive signing), and the owner wants a **ProRes capture
+  end to end through OBS before paying for a certificate**. The plugin is a thin consumer of the
+  same C API (async video source, 480i UYVY frames + 48 kHz audio; OBS owns deinterlacing and
+  the ProRes encode). First iteration may link the frameserver in-process; the API boundary stays
+  the service's callback API so the CMIO extension later consumes the same thing.
+- **P4b CMIO extension (Swift)** — after P4a and the Apple team exist: standard device, two
+  advertised formats (raw 480i, corrected 480i), sink-stream consumer, custom properties.
+  Deinterlacing belongs to OBS/ffmpeg/post.
   Includes a signing/notarization/dev-mode
   investigation SPIKE first (published-app requirement; no boot-security changes). Spike report:
   `src/cmio/PACKAGING_SPIKE.md` — first hard blocker is a paid Apple Developer Program team
