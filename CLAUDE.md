@@ -603,6 +603,24 @@ submission-order reconstruction (API now promises callback-completion order + ta
 inversion mock exists); live stats are after-stop-authoritative; the sidecar's full raw-evidence
 columns; audio serving.
 
+**The "36 ppm audio clock offset" was WRONG — measured 2026-09-03 over every resync interval of the
+whole-tape capture (86,302 intervals, transport byte-complete):** 51,773 intervals of 1602 samples
+and 34,522 of 1601 — a steady-state mean of **exactly 1601.6 samples per unit, i.e. the audio
+sample clock is locked to the video unit clock with no measurable rate offset.** The entire
+5,557-sample deficit sits in **seven intervals**: five at capture start (counters 4506–4510:
+1272/787/28/787/787 samples — the same units the device emitted short on the video endpoint, a
+device startup hiccup), one at **1021.5 s** (counter 35119: 1579 samples, 23 short) and one at
+**2066.2 s** (the absent resync record 894→896: 2020 samples over two units, ~1,183 short). The
+two mid-tape events are **audio-endpoint-only device events**: video was Exact/Present/stable
+registration on both sides of each, and neither coincides with a cut, relock or mute in the
+decision log. Not periodic, not a clock. **Consequences:** the whole-tape review copy's global
+`atempo` was the wrong treatment (it smeared ~110 ms of localized loss across 48 min); an A/V
+adapter must apply the audio publisher's **correlation residual only where it steps** (a
+discontinuity event: advance audio time by the lost samples once, flagged) and never resample
+continuously; video timestamps come from the unit counter and audio from the sample count, which
+agree exactly between events. The earlier P4a "audio-as-master, one repeated frame per 15 min"
+reasoning is withdrawn — there is no rate mismatch to absorb.
+
 **✅ Audio is a viable continuity master** (validates §9's approach): 8,991 resync records,
 counter `18706 → 27696`, **every step exactly +1, zero exceptions** — across the splice, the stop,
 the rewind, the relock, and 35 s in which the video endpoint delivered **zero bytes**. Spacing
@@ -1137,7 +1155,8 @@ delivery edge; wrong one at acquisition.
   ticks, a frame 5), so block boundaries never carry the ±0.6-sample gaps that re-anchoring at
   1601/1602-frame units would create; each later resync yields a signed **correlation residual**
   (video time − audio time), reported on the block and in stats as the measured audio/video clock
-  offset, never applied. Holes/unframed/epoch changes end the run (next block flagged, unanchored
+  offset, never applied — on the whole tape the residual is flat (±3 ticks of quantization) except
+  at the seven device events in §6, where it steps. Holes/unframed/epoch changes end the run (next block flagged, unanchored
   until the next resync — ordinal continuity cannot locate missing bytes in physical time);
   counter jumps and parser-flagged discontinuities flag `COUNTER_GAP` with the PCM untouched.
   The user's sink sits behind a **bounded preallocated queue and a dedicated audio worker** (never
@@ -1163,8 +1182,10 @@ delivery edge; wrong one at acquisition.
   no Apple account — OBS 32.2.2 has no sandbox and disables library validation), obs-plugintemplate
   only when publishing; **audio-as-master timestamps** — video frame timestamps derive from the
   audio sample ordinal at the unit's resync anchor (the audio publisher exposes `anchor_counter_ext`
-  and `sample_ordinal`), so the device's ~36 ppm audio-clock offset lands on the video derivative as
-  one repeated frame per ~15 min instead of an audio hiccup; libusb statically linked
+  and `sample_ordinal`) — **superseded the same day by the resync-interval census (§6): the audio
+  clock has no rate offset, so video timestamps come from the unit counter, audio from the sample
+  count, and the adapter applies the correlation residual only where it steps (three events on the
+  whole tape)**; libusb statically linked
   (`libusb-1.0.a`); one session per process, a second source instance is refused
   (`OBS_SOURCE_DO_NOT_DUPLICATE`); Color Format P216 / Rec.601 / limited for the ProRes record, and
   a synthetic Y=1 / Y=250 clamp test before any OBS file is trusted. **The OBS ProRes is a
