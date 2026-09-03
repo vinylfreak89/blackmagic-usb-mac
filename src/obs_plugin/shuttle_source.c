@@ -141,7 +141,11 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     s->vbuf = bmalloc((size_t)FP_FRAME_WIDTH * FP_FRAME_HEIGHT * 2);
     s->abuf_frames = 4096; s->abuf = bmalloc((size_t)s->abuf_frames * 2 * sizeof(int32_t));
     video_format_get_parameters(VIDEO_CS_601, VIDEO_RANGE_PARTIAL, s->color_matrix, s->color_min, s->color_max);
-    obs_source_set_async_unbuffered(source, false);                       /* let libobs pace by our device timestamps */
+    /* libobs keeps audio timing independent of video only when the source is BOTH decoupled and
+     * unbuffered (obs-source.c: the audio path re-anchors timing_adjust on its own only in that
+     * mode, and the video path stops overwriting it). Frames are shown as they arrive at device
+     * pace, which is what a live device wants; A/V sync comes from the shared device clock. */
+    obs_source_set_async_unbuffered(source, true);
     /* Audio and video are cut from ONE device clock and arrive on different threads with the
      * audio block for a unit completing one unit after its video frame; with coupled audio,
      * libobs holds audio for the displayed video frame and discards what arrives late — audible

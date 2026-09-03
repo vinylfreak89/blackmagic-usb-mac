@@ -440,6 +440,10 @@ static void* replay_main(void *arg){
     startup_report_(s,CC_OK);
     if(!await_start_gate_(s)){ free(pay); fclose(f); goto done; }
     int fill[2]={0,0};   // packets since last transfer boundary, for pacing
+    // Pacing is deadline-based: the n-th video transfer boundary is due at t0 + n*pace. Sleeping a
+    // fixed interval per transfer ADDS the parser's own work to each period (measured: a "realtime"
+    // replay ran 28% slow, starving a live audio mixer); sleeping until the deadline does not.
+    struct timespec pace_t0; clock_gettime(CLOCK_MONOTONIC,&pace_t0); uint64_t paced_transfers=0;
     while(!atomic_load(&s->stop_req)){
         rec_hdr h;
         if(fread(&h,1,sizeof h,f)!=sizeof h || h.magic!=REC_MAGIC) break;
@@ -455,7 +459,13 @@ static void* replay_main(void *arg){
             if(h.actual_len==0) s->zero_pkts++; else if(h.actual_len<h.req_len) s->short_pkts++;
             int npk = e ? A_NPK : V_NPK;
             if(++fill[e]>=npk){ fill[e]=0;
-                if(s->cfg.replay_pace_us>0 && e==0) usleep((useconds_t)s->cfg.replay_pace_us); }
+                if(s->cfg.replay_pace_us>0 && e==0){
+                    paced_transfers++;
+                    struct timespec now; clock_gettime(CLOCK_MONOTONIC,&now);
+                    int64_t elapsed_us=(int64_t)(now.tv_sec-pace_t0.tv_sec)*1000000+(now.tv_nsec-pace_t0.tv_nsec)/1000;
+                    int64_t due_us=(int64_t)paced_transfers*s->cfg.replay_pace_us;
+                    if(due_us>elapsed_us) usleep((useconds_t)(due_us-elapsed_us));   // late boundaries are not slept
+                } }
             break; }
         case REC_TICK: put_meta_(s,REC_TICK,0,0,0,h.status,NULL,0); break;
         case REC_XFERERR: put_meta_(s,REC_XFERERR,h.endpoint,h.pkt_index,h.submit_seq,h.status,NULL,0); break;
