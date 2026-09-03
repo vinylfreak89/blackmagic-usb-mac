@@ -1109,15 +1109,18 @@ delivery edge; wrong one at acquisition.
   prove device framing. HD bus bandwidth (~1.3 Gbit/s at 1080i v210) is unmeasured on this host.
 - **Next hardware session — owed experiments (all ≤30 s tagged captures via `shuttle-capture`,
   no long plays; poll status register `214/16` at 1 Hz throughout each):**
-  1. **True no-signal path:** deck powered OFF with the Shuttle streaming, then a live S-Video
-     cable pull. Expect the never-observed `0x0800` format code and whatever pseudo-frames /
+  1. ~~**True no-signal path**~~ — **DONE 2026-09-03** (two captures, see the no-input paragraph in
+     §6): deck absent/off and deck output dropped by its HDMI mode both yield `0x0800`. Expect the never-observed `0x0800` format code and whatever pseudo-frames /
      cadence the device emits (bmusb: green, ~30.13 Hz) — the only device state no capture has
      ever triggered, and the one that cannot be synthesized because its content is unknown.
-  2. **Unlocked input:** the deck's analog tuner on a dead channel, if the tuner path bypasses
-     the playback TBC. Unframed units or `0x0800` ⇒ the Shuttle's unlocked-input behaviour is
-     finally exercised; locked `0xe801` snow ⇒ the deck's frame synchronizer covers the tuner
-     path too (also a finding). Genuinely unlocked baseband otherwise needs a TBC-less deck.
-  3. **Virgin-tape mute row (table in §6, marked observed-not-USB-verified):** start a few
+  2. ~~**Unlocked input** via the deck's tuner on a dead channel~~ — **DONE 2026-09-03, negative
+     result (`captures/deck_ext_input_nosource_30s.tpc`):** with the deck on an unconnected
+     external input and then on a dead tuner channel, its output is **locked `0xe801` sub-blanking
+     black (Y ≈ 2 ± 5, chroma 128, padding ruler intact), no OSD**. This deck regenerates sync in
+     every mode; it cannot produce unlocked video. Genuinely unlocked baseband needs a TBC-less
+     deck or camcorder (still owed; the Shuttle's unlocked-input behaviour remains unexercised).
+  3. ~~**Virgin-tape mute row**~~ — **DONE 2026-09-03**, row corrected (raw no-RF black, not grey).
+     Original plan: start a few
      seconds before a recording ends and run ~30 s into a virgin section, so the acquisition
      transient (snow) and the settled deck mute are in one file. Verifies "snow is only the
      acquisition transient".
