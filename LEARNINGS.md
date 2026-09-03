@@ -194,3 +194,15 @@ exactly why they held for so long.
 - **Preserving damage instead of concealing it.** Refusing to fake missing frames kept the real
   signature (deficits in exact multiples of 24,576 B) visible — which is what made the Darwin
   scheduling bug findable at all. Concealment would have hidden the evidence.
+
+## A described change is not a landed change — the other reviewer must verify the tree
+
+During the audio-path review a patch script aborted on a duplicate match after the first file,
+and the subsequent `git commit --amend` carried nothing. The dispatch to the reviewing agent
+described the fix as present and the suites as green; the reviewer verified the tree instead of
+the description and returned CHANGES-REQUIRED with the exact discrepancy. Two rules fall out:
+patch scripts must assert every replacement count and verify by grep before any test or commit
+claims are made, and a review request must never rely on the author's description — the reviewer
+reads the tree at the named revision. The mutual-review rule (CLAUDE.md §14) exists for exactly
+this failure.
+

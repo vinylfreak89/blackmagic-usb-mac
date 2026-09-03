@@ -1129,6 +1129,28 @@ delivery edge; wrong one at acquisition.
   deinterlacer in C or on the real-time device path**; ffmpeg/OBS/post owns that presentation
   decision.
   Both components test via replay.
+- ✅ **P3 audio path landed (main `da39beb`, four mutual review rounds).** `src/frameserver/
+  audio_publisher.{h,c}`: every PCM record the parser emits reaches a media sink as bounded blocks
+  cut at each `DeckLinkAudioResyncT` record. **Audio is the master clock:** a contiguous run is
+  placed on the video timebase ONCE at its first resync (counter c → c·1001/30000 s) and every
+  later frame is exactly 1/48000 s after the previous, in one rational (den 240000: a unit is 8008
+  ticks, a frame 5), so block boundaries never carry the ±0.6-sample gaps that re-anchoring at
+  1601/1602-frame units would create; each later resync yields a signed **correlation residual**
+  (video time − audio time), reported on the block and in stats as the measured audio/video clock
+  offset, never applied. Holes/unframed/epoch changes end the run (next block flagged, unanchored
+  until the next resync — ordinal continuity cannot locate missing bytes in physical time);
+  counter jumps and parser-flagged discontinuities flag `COUNTER_GAP` with the PCM untouched.
+  The user's sink sits behind a **bounded preallocated queue and a dedicated audio worker** (never
+  the video worker, never the delivery thread): a slow consumer causes explicit, counted, flagged
+  downstream drops, never upstream HostLoss (§8 properties 7/10); `on_end` fires only after BOTH
+  workers drain; stop/close are refused from any callback thread. For audio-as-master consumers a
+  seqlock correlation table (resync counter → audio-clock pts) stamps every published video frame
+  with its unit's audio-clock time (`fp_frame.audio_pts_known/num`). Invariants asserted after
+  every run: frames published == PCM records; delivered + dropped == published. Real 45 s capture:
+  2,228,913 PCM records → 2,228,913 frames in 1,393 blocks, 0 dropped, 1,385/1,385 frames stamped
+  at device pace. **Open for P4a:** the adapter's policy when `audio_pts_known == 0` (bounded
+  one-frame hold or a marked nominal-time fallback; zero is never a timestamp); S24LE→S32/float
+  conversion belongs in the adapter; a full PCM digest test after the queue is a follow-up.
 - **P4a native OBS source plugin FIRST (owner decision, 2026-09-03).** OBS is the initial
   target; the CMIO extension needs a paid Apple team even for personal use (system-extension
   entitlement; developer mode does not waive signing), and the owner wants a **ProRes capture
