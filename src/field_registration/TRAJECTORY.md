@@ -20,6 +20,16 @@ that row through later abstentions after the locked fallback contradicts it.
 The whole-tape sidecar contains one such event: a lone `(0,1)` observation at
 timeline frame 8169 is held for 104 units against a locked `(1,0)` fallback.
 
+There is a second, independent lock mechanism in the current estimator. A
+measured relative phase may contradict the selected phase while absolute
+picture edges abstain. `UnknownCommonModeGauge` then clears the pending
+candidate and charges the presentation-horizon counter until a trajectory
+reset invalidates the baseline, but the selected phase remains the presented
+fallback. Reacquisition consequently requires stronger evidence while the
+phase contradicted by the relative measurement stays on screen. The trajectory
+layer must treat sustained relative contradiction as an unsettled interval,
+not as a reason to retain the old phase indefinitely.
+
 ## State and terminology
 
 - **Observation:** immutable per-unit estimator output and evidence.
@@ -30,6 +40,11 @@ timeline frame 8169 is held for 104 units against a locked `(1,0)` fallback.
   path, not merely the last observed pair winning a counter.
 - **Horizon:** maximum retained duration. It is a physical parameter and must
   cover measured source reacquisition (at least 69 NTSC units); 36 is too short.
+- **Ring depth:** caller-owned storage capacity for delayed units. It limits
+  how far a later decision can be applied retroactively, not how long evidence
+  remains valid.
+- **Trajectory staleness limit:** independent physical bound after which an
+  unresolved candidate must produce an explicit outcome and fresh acquisition.
 
 Committed and provisional phase are separate variables. A provisional phase
 must never silently overwrite the committed phase.
@@ -48,6 +63,28 @@ initial `UnknownSpatialPhase` unit that commonly precedes
 Scene cuts and global luma changes gate visual evidence but do not alone start
 a source-relock epoch. `fieldreg_begin_segment()` is reserved for acquisition
 or relock. Plain byte discontinuities call `fieldreg_discontinuity()`.
+
+Transport truth and content availability are separate inputs. Broken hard
+padding or an explicit byte discontinuity invalidates raster geometry and
+terminates temporal evidence. Missing VBI, a dark/flat field, or an absent
+picture landmark is only missing content evidence: it abstains and holds an
+existing candidate rather than destroying it.
+
+## Absolute gauge and censored landmarks
+
+Relative evidence constrains only `d2-d1`. A sustained relative contradiction
+may open an unsettled interval and constrain its candidate paths, but it may
+never manufacture an absolute `(d1,d2)` gauge on its own. The committed
+endpoint, an uncensored absolute landmark, or another explicit gauge source is
+required to place that relative constraint in the transport raster.
+
+A picture-top result at the first searchable line (`start+1` in the current
+estimator) is censored: the real edge may lie there or anywhere above it. It is
+not a measured `-1` offset. A bottom edge that remains inside the transport slot
+may provide a bottom-only absolute candidate when relative phase corroborates
+it; confidence is stronger when independent horizontal bands and same-parity
+temporal evidence also agree. Top and bottom censoring must be reported in the
+decision log rather than converted into contradictory exact measurements.
 
 ## Endpoint-constrained path
 
@@ -72,6 +109,15 @@ On settlement, finalize and emit every buffered unit in order, including units
 that had positive provisional observations. The path may contain real internal
 transitions; settlement does not require a flat result.
 
+The current `phase_unsettled_units` counter is retired. Candidate/interval age,
+trajectory staleness, and retained ring occupancy are distinct quantities. A
+settled decision may request at most
+`min(interval_age, retained_ring_units)` of backdating. Units already emitted
+outside the ring remain honestly provisional in the live output and are
+recoverable only from the sidecar/raw recording; no counter may pretend they
+were rewritten. Candidate age is not unbounded: the independent physical
+staleness limit still forces the horizon outcome below.
+
 On horizon expiry:
 
 1. emit the best unresolved path currently available; never drop, repeat, or
@@ -80,8 +126,11 @@ On horizon expiry:
 3. enter cooldown so the same unresolved episode is not repeatedly buffered;
 4. reacquire a fresh committed lock when the classifier and estimator settle.
 
-The horizon is configurable in media units and time. Default NTSC sizing must
-be at least 69 units plus a small scheduling margin; PAL uses equivalent time.
+The trajectory-staleness horizon is configurable in media units and time.
+Default NTSC sizing must be at least 69 units plus a small scheduling margin;
+PAL uses equivalent time. Ring depth is independently configurable according
+to the selected live-latency/memory policy and may be shorter than the physical
+horizon.
 
 ## Stale-latch invariant
 
@@ -109,6 +158,8 @@ Every unit records at minimum:
 interval_id, unsettled, provisional_d1, provisional_d2,
 applied_d1, applied_d2, committed_d1, committed_d2,
 settled_known, settled_d1, settled_d2,
+structural_transport_ok, content_evidence_available,
+top_f1_censored, top_f2_censored, retained_ring_units, interval_age,
 resolution {Immediate, SettledPath, UnresolvedHorizon, Discontinuity, EpochReset},
 evidence_mode, confidence
 ```
@@ -129,6 +180,13 @@ inversion, chatter, cuts/fades, non-settling horizon expiry, and segment reset.
 Secondary horizontal assets may carry a different phase, but the generator
 marks which asset is the main-picture truth. Tests report both scores and must
 never collapse them into one "accuracy" number.
+
+Required boundary/content classes include field-1 and field-2 upward
+displacements at `-1` and `-2`, common-mode `(-2,-2)`, a multi-phase raster in
+which a band majority and the global envelope disagree, a fade while a
+candidate is active, and blank/dark units whose hard-padding transport ruler
+remains intact. The frozen current implementation is expected to fail some of
+these; those failures are required characterization until the redesign lands.
 
 The current engine/caller is expected to fail the provisional-policy cases;
 that is the frozen pre-redesign baseline, not a reason to weaken the golden.
