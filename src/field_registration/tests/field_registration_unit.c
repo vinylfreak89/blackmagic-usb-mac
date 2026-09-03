@@ -198,8 +198,8 @@ int main(void)
     set_line(unit, 10, 80, 96, 160);
     set_line(unit, 11, 72, 96, 160);
     assert(fieldreg_process(&engine, unit, &decision));
-    assert(!decision.transport_ok);
-    assert(decision.mode == FIELDREG_MODE_UNKNOWN_TRANSPORT_OR_VBI);
+    assert(decision.transport_ok);
+    assert(!decision.content_evidence_available);
     assert(decision.applied_d1 == 1 && decision.applied_d2 == 0);
 
     unit[6] = 0;
@@ -223,7 +223,7 @@ int main(void)
         if (decision.decision_backdate)
             baseline_backdate = decision.decision_backdate;
     }
-    assert(baseline_backdate == config.confirmation_units);
+    assert(baseline_backdate == 0);
     assert(decision.phase_support == 3);
     int baseline_phase = decision.phase_consensus;
     int baseline_d1 = decision.applied_d1;
@@ -371,7 +371,7 @@ int main(void)
     engine.pending_valid = true;
     engine.pending_count = 1;
     engine.pending_age = 1;
-    engine.phase_unsettled_units = 1;
+    engine.trajectory_age = 1;
     engine.selected[0] = 1;
     engine.selected[1] = 0;
     engine.baseline[0] = 1;
@@ -385,7 +385,7 @@ int main(void)
     engine.previous_phase[1] = 0;
     engine.previous_phase_valid = true;
     bool reset_seen = false;
-    for (uint16_t counter = 540; counter < 580; ++counter) {
+    for (uint16_t counter = 540; counter < 630; ++counter) {
         make_unit(unit, counter);
         texture_first_field(unit);
         match_second_field(unit);
@@ -395,7 +395,7 @@ int main(void)
         if (decision.trajectory_reset) {
             reset_seen = true;
             assert(!decision.trajectory_locked);
-            assert(decision.applied_d1 == 0 && decision.applied_d2 == 0);
+            assert(decision.applied_d1 == 1 && decision.applied_d2 == 0);
             assert(decision.baseline_d1 == 1 && decision.baseline_d2 == 0);
             break;
         }

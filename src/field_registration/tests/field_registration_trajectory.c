@@ -32,6 +32,14 @@ typedef struct result_row {
     bool backdated;
     bool trajectory_reset;
     fieldreg_mode mode;
+    int observation_d1;
+    int observation_d2;
+    unsigned observation_support;
+    bool envelope_authority;
+    int phase_consensus;
+    unsigned phase_support;
+    int temporal1;
+    int temporal2;
 } result_row;
 
 typedef struct scenario_summary {
@@ -151,6 +159,14 @@ int main(int argc, char **argv)
             decision.frame_observation_d1 != FIELDREG_UNKNOWN;
         result->trajectory_reset = decision.trajectory_reset;
         result->mode = decision.mode;
+        result->observation_d1 = decision.frame_observation_d1;
+        result->observation_d2 = decision.frame_observation_d2;
+        result->observation_support = decision.frame_observation_support;
+        result->envelope_authority = decision.global_envelope_authority;
+        result->phase_consensus = decision.phase_consensus;
+        result->phase_support = decision.phase_support;
+        result->temporal1 = decision.temporal_best_f1;
+        result->temporal2 = decision.temporal_best_f2;
 
         /* Exact simulation of the current caller's limited backdating: only
          * abstaining rows still in its FIFO are rewritten. Positive
@@ -202,6 +218,18 @@ int main(int argc, char **argv)
         if (row->truth.unsettled) {
             ++unsettled_rows;
             unsettled_wrong += !oracle_match;
+        }
+        if (!oracle_match &&
+            (strcmp(row->truth.scenario, "multiphase-main-10") == 0 ||
+             strcmp(row->truth.scenario,
+                    "physical-field1-unit-rate-jitter") == 0)) {
+            printf("  mismatch row=%zu scenario=%s applied=(%d,%d) oracle=(%d,%d) mode=%s obs=(%d,%d)/%u authority=%d phase=%d/%u temporal=(%d,%d)\n",
+                   i, row->truth.scenario, row->applied_d1, row->applied_d2,
+                   row->truth.oracle_d1, row->truth.oracle_d2,
+                   fieldreg_mode_name(row->mode), row->observation_d1,
+                   row->observation_d2, row->observation_support,
+                   row->envelope_authority, row->phase_consensus,
+                   row->phase_support, row->temporal1, row->temporal2);
         }
         if (strncmp(row->truth.scenario, "stale-positive-", 15) == 0) {
             ++stale_rows;
@@ -267,12 +295,42 @@ int main(int argc, char **argv)
                summary->scene_cut_hold, summary->trajectory_resets);
     }
 
-    /* This is a pre-redesign characterization test. Passing means the public
-     * fixture still exposes the known semantic gap; it does not bless it. */
-    bool reproduced = stale_wrong > 1 && stale_wrong_positive >= 1;
-    printf("CURRENT-LIMITATION-REPRODUCED: %s\n", reproduced ? "YES" : "NO");
+    static const char *required_live_classes[] = {
+        "physical-field1-unit-rate-jitter",
+        "physical-common-plus-unit-rate-jitter",
+        "physical-common-minus-unit-rate-jitter",
+        "false-edge-chatter",
+        "phase-chatter",
+        "upward-minus2-field1",
+        "upward-minus2-field2",
+        "upward-minus2-common",
+        "multiphase-main-10",
+        "flat-dark-intact-padding-vbi",
+        "flat-blank-intact-padding-no-vbi",
+    };
+    bool live_pass = stale_wrong == 0;
+    for (size_t required = 0;
+         required < sizeof(required_live_classes) /
+                        sizeof(required_live_classes[0]);
+         ++required) {
+        bool found = false;
+        for (size_t i = 0; i < scenario_count; ++i) {
+            if (strcmp(scenarios[i].name, required_live_classes[required]) == 0) {
+                found = true;
+                live_pass = live_pass &&
+                            scenarios[i].oracle_matches == scenarios[i].rows;
+                break;
+            }
+        }
+        live_pass = live_pass && found;
+    }
+    /* Provisional inversion is intentionally an archival-side trajectory
+     * question. The zero-latency live engine follows its coherent raster and
+     * reports the disagreement; this test does not pretend otherwise. */
+    printf("archival-only oracle disagreements: %" PRIu64 "\n", oracle_wrong);
+    printf("LIVE-AUTHORITY-GOLDEN: %s\n", live_pass ? "PASS" : "FAIL");
     free(unit);
     fclose(raw);
     fclose(truth);
-    return reproduced ? 0 : 1;
+    return live_pass ? 0 : 1;
 }

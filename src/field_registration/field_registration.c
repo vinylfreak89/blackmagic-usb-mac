@@ -118,9 +118,9 @@ void fieldreg_init(field_registration *engine, const fieldreg_config *config)
     if (chosen.minimum_support_units == 0 ||
         chosen.minimum_support_units > chosen.confirmation_units)
         chosen.minimum_support_units = chosen.confirmation_units;
-    if (chosen.maximum_buffered_units < chosen.confirmation_units ||
+    if (chosen.maximum_buffered_units == 0 ||
         chosen.maximum_buffered_units > FIELDREG_MAX_CONFIRM_UNITS)
-        chosen.maximum_buffered_units = chosen.confirmation_units;
+        chosen.maximum_buffered_units = FIELDREG_PHASE_CONFIRM_UNITS + 6;
     memset(engine, 0, sizeof(*engine));
     engine->config = chosen;
 }
@@ -136,7 +136,7 @@ void fieldreg_discontinuity(field_registration *engine)
     engine->pending_valid = false;
     engine->pending_count = 0;
     engine->pending_age = 0;
-    engine->phase_unsettled_units = 0;
+    engine->trajectory_age = 0;
     engine->previous_valid[0] = false;
     engine->previous_valid[1] = false;
     engine->previous_phase_valid = false;
@@ -161,14 +161,14 @@ static void line_stats(const uint8_t *unit, int line, double *mean,
 {
     const uint8_t *src = unit + FIELDREG_HEADER_BYTES +
                          (size_t)line * FIELDREG_BYTES_PER_LINE;
-    double sum = 0.0;
-    double square_sum = 0.0;
+    uint64_t sum = 0;
+    uint64_t square_sum = 0;
     bool is_hard = true;
     for (int pixel = 0; pixel < 720; ++pixel) {
         uint8_t chroma = src[pixel * 2];
         uint8_t luma = src[pixel * 2 + 1];
         sum += luma;
-        square_sum += (double)luma * luma;
+        square_sum += (uint64_t)luma * luma;
         is_hard = is_hard && luma == 16 && chroma == 128;
     }
     *mean = sum / 720.0;
@@ -211,8 +211,10 @@ static bool transport_geometry(const uint8_t *unit, int *observed_f1,
         hard_ok = hard_ok && hard[line];
     *observed_f1 = fiducial(content, 0, 48);
     *observed_f2 = fiducial(content, 250, 320);
-    return hard_ok && *observed_f1 == FIELDREG_FIELD1_START &&
-           *observed_f2 == FIELDREG_FIELD2_START;
+    /* Hard padding is transport truth. VBI/content fiducials are optional
+     * source evidence and must not turn a flat but byte-complete field into a
+     * transport discontinuity. */
+    return hard_ok;
 }
 
 static bool picture_signal(bool hard, double mean, double sigma)
@@ -365,11 +367,27 @@ static int interfield_registration(const field_registration *engine, double *mar
                                         margin);
 }
 
-static int compare_double(const void *left, const void *right)
+static double histogram_median(const uint16_t histogram[256], int count)
 {
-    double a = *(const double *)left;
-    double b = *(const double *)right;
-    return (a > b) - (a < b);
+    int lower_rank = (count - 1) / 2;
+    int upper_rank = count / 2;
+    int seen = 0;
+    int lower = 0;
+    int upper = 0;
+    bool lower_found = false;
+    for (int value = 0; value < 256; ++value) {
+        int next = seen + histogram[value];
+        if (!lower_found && lower_rank < next) {
+            lower = value;
+            lower_found = true;
+        }
+        if (upper_rank < next) {
+            upper = value;
+            break;
+        }
+        seen = next;
+    }
+    return (lower + upper) * 0.5;
 }
 
 static void temporal_costs_band(const field_registration *engine, int parity, int start,
@@ -381,7 +399,7 @@ static void temporal_costs_band(const field_registration *engine, int parity, in
         return;
     }
     for (int delta = FIELDREG_MIN_OFFSET; delta <= FIELDREG_MAX_OFFSET; ++delta) {
-        double line_costs[FIELDREG_FIELD_LINES - 32];
+        uint16_t histogram[256] = {0};
         for (int row = 16; row < FIELDREG_FIELD_LINES - 16; ++row) {
             uint64_t sum = 0;
             for (int x = x_start; x < x_stop; ++x) {
@@ -389,13 +407,14 @@ static void temporal_costs_band(const field_registration *engine, int parity, in
                                  (int)engine->previous[parity][row][x];
                 sum += (uint64_t)(difference < 0 ? -difference : difference);
             }
-            line_costs[row - 16] = (double)sum / (x_stop - x_start);
+            unsigned average = (unsigned)((sum + (uint64_t)(x_stop - x_start) / 2) /
+                                          (uint64_t)(x_stop - x_start));
+            if (average > 255)
+                average = 255;
+            ++histogram[average];
         }
-        qsort(line_costs, FIELDREG_FIELD_LINES - 32, sizeof(line_costs[0]),
-              compare_double);
-        int middle = (FIELDREG_FIELD_LINES - 32) / 2;
         costs[delta - FIELDREG_MIN_OFFSET] =
-            (line_costs[middle - 1] + line_costs[middle]) * 0.5;
+            histogram_median(histogram, FIELDREG_FIELD_LINES - 32);
     }
 }
 
@@ -419,7 +438,7 @@ static int best_cost_index(const double costs[13], double *cost)
 static double field_luma_mean(const field_registration *engine, int parity, int start,
                               bool previous)
 {
-    double sum = 0.0;
+    uint64_t sum = 0;
     size_t count = 0;
     /* Stay well inside active picture; VBI and head-switch edges are geometry
      * evidence, not scene-luminance evidence. */
@@ -431,7 +450,7 @@ static double field_luma_mean(const field_registration *engine, int parity, int 
             ++count;
         }
     }
-    return sum / (double)count;
+    return (double)sum / (double)count;
 }
 
 typedef struct phase_evidence {
@@ -652,6 +671,27 @@ static void save_previous(field_registration *engine, int parity, int start)
     engine->previous_valid[parity] = true;
 }
 
+/* Return an absolute field offset from a top/bottom envelope pair. The first
+ * searchable top line is a censored observation: the real edge may be there
+ * or above it. In that case the still-visible bottom is the absolute ruler. */
+static int envelope_offset(int top, int bottom, int search_start,
+                           int nominal_top, int nominal_bottom,
+                           int maximum_offset, bool *top_censored)
+{
+    bool censored = top == search_start + 1;
+    if (top_censored)
+        *top_censored = censored;
+    if (bottom < 0)
+        return FIELDREG_UNKNOWN;
+    int bottom_d = bottom - nominal_bottom;
+    if (bottom_d < FIELDREG_MIN_OFFSET || bottom_d > maximum_offset)
+        return FIELDREG_UNKNOWN;
+    if (top < 0 || censored)
+        return bottom_d;
+    int top_d = top - nominal_top;
+    return top_d == bottom_d ? bottom_d : FIELDREG_UNKNOWN;
+}
+
 bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                        fieldreg_decision *out)
 {
@@ -674,6 +714,9 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     int observed_f2 = -1;
     bool transport_ok = transport_geometry(unit, &observed_f1, &observed_f2,
                                            hard, mean, sigma);
+    bool content_evidence_available =
+        observed_f1 == FIELDREG_FIELD1_START &&
+        observed_f2 == FIELDREG_FIELD2_START;
     int top1 = picture_top(hard, mean, sigma, FIELDREG_FIELD1_START,
                            FIELDREG_FIELD1_START + 48);
     int top2 = picture_top(hard, mean, sigma, FIELDREG_FIELD2_START,
@@ -727,10 +770,15 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                             ((luma_step1 > 0.0) == (luma_step2 > 0.0));
     double cut_threshold1 = engine->temporal_cost_ema[0] * 1.8 + 2.0;
     double cut_threshold2 = engine->temporal_cost_ema[1] * 1.8 + 2.0;
-    bool scene_cut = global_luma_step ||
-                     (had_temporal && engine->temporal_cost_ema_valid &&
-                      temporal_best_cost1 > cut_threshold1 &&
-                      temporal_best_cost2 > cut_threshold2);
+    bool temporal_discontinuity =
+        had_temporal && engine->temporal_cost_ema_valid &&
+        temporal_best_cost1 > cut_threshold1 &&
+        temporal_best_cost2 > cut_threshold2;
+    /* A vertical translation can change the sampled global mean. Once a
+     * temporal noise floor exists, luma alone is not a cut: a real cut/fade
+     * also collapses displaced same-parity correlation in both fields. */
+    bool scene_cut = temporal_discontinuity ||
+                     (global_luma_step && !engine->temporal_cost_ema_valid);
     double independent_evidence = fmax(weave_margin,
                                        fmax(temporal_margin1, temporal_margin2));
     bool phase_model =
@@ -772,28 +820,30 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
      * The hard-padding transport ruler fixes the coordinate system; both
      * independently measured edges of a field must report the same offset.
      */
-    int band_d1 = top1 < 0 ? FIELDREG_UNKNOWN
-                           : top1 - FIELDREG_ACTIVE_TOP_F1;
-    int band_d2 = top2 < 0 ? FIELDREG_UNKNOWN
-                           : top2 - FIELDREG_ACTIVE_TOP_F2;
-    int bottom_d1 = bottom1 < 0 ? FIELDREG_UNKNOWN
-                                : bottom1 - FIELDREG_ACTIVE_BOTTOM_F1;
-    int bottom_d2 = bottom2 < 0 ? FIELDREG_UNKNOWN
-                                : bottom2 - FIELDREG_ACTIVE_BOTTOM_F2;
-    bool edge_known1 = band_d1 != FIELDREG_UNKNOWN &&
-                       (!dual_edge || bottom_d1 != FIELDREG_UNKNOWN);
-    bool edge_known2 = band_d2 != FIELDREG_UNKNOWN &&
-                       (!dual_edge || bottom_d2 != FIELDREG_UNKNOWN);
-    bool edge_agreement1 = edge_known1 &&
-                           (!dual_edge || band_d1 == bottom_d1);
-    bool edge_agreement2 = edge_known2 &&
-                           (!dual_edge || band_d2 == bottom_d2);
+    bool top_censored1 = false;
+    bool top_censored2 = false;
+    int band_d1 = envelope_offset(top1, bottom1, FIELDREG_FIELD1_START,
+                                  FIELDREG_ACTIVE_TOP_F1,
+                                  FIELDREG_ACTIVE_BOTTOM_F1,
+                                  FIELDREG_FIELD1_MAX_OFFSET,
+                                  &top_censored1);
+    int band_d2 = envelope_offset(top2, bottom2, FIELDREG_FIELD2_START,
+                                  FIELDREG_ACTIVE_TOP_F2,
+                                  FIELDREG_ACTIVE_BOTTOM_F2,
+                                  FIELDREG_FIELD2_MAX_OFFSET,
+                                  &top_censored2);
+    bool edge_known1 = band_d1 != FIELDREG_UNKNOWN;
+    bool edge_known2 = band_d2 != FIELDREG_UNKNOWN;
+    bool edge_agreement1 = edge_known1;
+    bool edge_agreement2 = edge_known2;
     bool candidate_in_range1 = edge_agreement1 &&
                                band_d1 >= FIELDREG_MIN_OFFSET &&
                                band_d1 <= FIELDREG_FIELD1_MAX_OFFSET;
     bool candidate_in_range2 = edge_agreement2 &&
                                band_d2 >= FIELDREG_MIN_OFFSET &&
                                band_d2 <= FIELDREG_FIELD2_MAX_OFFSET;
+    candidate_in_range1 = candidate_in_range1 && content_evidence_available;
+    candidate_in_range2 = candidate_in_range2 && content_evidence_available;
     bool dual_edge_agreement = edge_agreement1 && edge_agreement2;
     int target_d1 = candidate_in_range1 ? band_d1 : engine->selected[0];
     int target_d2 = candidate_in_range2 ? band_d2 : engine->selected[1];
@@ -816,9 +866,7 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                            : FIELDREG_UNKNOWN;
     uint8_t phase_window_margin = phase.support;
     bool absolute_phase_pair =
-        band_d1 != FIELDREG_UNKNOWN && bottom_d1 != FIELDREG_UNKNOWN &&
-        band_d2 != FIELDREG_UNKNOWN && bottom_d2 != FIELDREG_UNKNOWN &&
-        band_d1 == bottom_d1 && band_d2 == bottom_d2 &&
+        band_d1 != FIELDREG_UNKNOWN && band_d2 != FIELDREG_UNKNOWN &&
         band_d1 >= FIELDREG_MIN_OFFSET &&
         band_d1 <= FIELDREG_FIELD1_MAX_OFFSET &&
         band_d2 >= FIELDREG_MIN_OFFSET &&
@@ -836,21 +884,18 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     for (int band = 0; band < PHASE_BANDS; ++band) {
         band_pair_d1[band] = FIELDREG_UNKNOWN;
         band_pair_d2[band] = FIELDREG_UNKNOWN;
-        int top_delta1 = spatial_top[0][band] - FIELDREG_ACTIVE_TOP_F1;
-        int bottom_delta1 = spatial_bottom[0][band] -
-                            FIELDREG_ACTIVE_BOTTOM_F1;
-        int top_delta2 = spatial_top[1][band] - FIELDREG_ACTIVE_TOP_F2;
-        int bottom_delta2 = spatial_bottom[1][band] -
-                            FIELDREG_ACTIVE_BOTTOM_F2;
-        if (spatial_top[0][band] >= 0 && spatial_bottom[0][band] >= 0 &&
-            spatial_top[1][band] >= 0 && spatial_bottom[1][band] >= 0 &&
-            top_delta1 == bottom_delta1 && top_delta2 == bottom_delta2 &&
-            top_delta1 >= FIELDREG_MIN_OFFSET &&
-            top_delta1 <= FIELDREG_FIELD1_MAX_OFFSET &&
-            top_delta2 >= FIELDREG_MIN_OFFSET &&
-            top_delta2 <= FIELDREG_FIELD2_MAX_OFFSET) {
-            band_pair_d1[band] = top_delta1;
-            band_pair_d2[band] = top_delta2;
+        int candidate1 = envelope_offset(
+            spatial_top[0][band], spatial_bottom[0][band],
+            FIELDREG_FIELD1_START, FIELDREG_ACTIVE_TOP_F1,
+            FIELDREG_ACTIVE_BOTTOM_F1, FIELDREG_FIELD1_MAX_OFFSET, NULL);
+        int candidate2 = envelope_offset(
+            spatial_top[1][band], spatial_bottom[1][band],
+            FIELDREG_FIELD2_START, FIELDREG_ACTIVE_TOP_F2,
+            FIELDREG_ACTIVE_BOTTOM_F2, FIELDREG_FIELD2_MAX_OFFSET, NULL);
+        if (candidate1 != FIELDREG_UNKNOWN &&
+            candidate2 != FIELDREG_UNKNOWN) {
+            band_pair_d1[band] = candidate1;
+            band_pair_d2[band] = candidate2;
         }
     }
     int absolute_d1 = FIELDREG_UNKNOWN;
@@ -858,6 +903,7 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     uint8_t frame_support = 0;
     bool frame_motion_priority = false;
     bool frame_conflict = false;
+    bool global_envelope_authority = false;
     if (phase.priority_band >= 0 &&
         band_pair_d1[(int)phase.priority_band] != FIELDREG_UNKNOWN) {
         int band = phase.priority_band;
@@ -903,12 +949,43 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
             }
         }
     }
+    /* Authority is by independent evidence, not horizontal-band headcount.
+     * When the full-width top+bottom envelope and the motion-compensated
+     * inter-field consensus agree, a conflicting two-of-three local-band vote
+     * is a secondary-layer observation. Follow the global field geometry at
+     * unit rate; transition penalties are not allowed to smooth this case. */
+    bool global_relative_authority =
+        absolute_phase_pair && phase.support >= 2 && !scene_cut &&
+        phase.consensus == band_d2 - band_d1;
+    global_envelope_authority = global_relative_authority;
+    if (global_relative_authority &&
+        (absolute_d1 == FIELDREG_UNKNOWN || absolute_d1 != band_d1 ||
+         absolute_d2 != band_d2)) {
+        absolute_d1 = band_d1;
+        absolute_d2 = band_d2;
+        frame_support = phase.support;
+        frame_motion_priority = false;
+    }
+    if (!content_evidence_available) {
+        absolute_d1 = FIELDREG_UNKNOWN;
+        absolute_d2 = FIELDREG_UNKNOWN;
+        frame_support = 0;
+        global_envelope_authority = false;
+    }
     /* Common-mode movement has no relative-phase corroboration. Require both
      * same-parity temporal searches to independently see it. */
-    if (absolute_d1 != FIELDREG_UNKNOWN && absolute_d1 == absolute_d2 &&
-        absolute_d1 != 0 &&
+    int common_prior_d1 = engine->previous_phase_valid
+                              ? engine->previous_phase[0]
+                              : engine->selected[0];
+    int common_prior_d2 = engine->previous_phase_valid
+                              ? engine->previous_phase[1]
+                              : engine->selected[1];
+    if (absolute_d1 != FIELDREG_UNKNOWN &&
+        absolute_d1 - common_prior_d1 == absolute_d2 - common_prior_d2 &&
+        (absolute_d1 != common_prior_d1 || absolute_d2 != common_prior_d2) &&
         !(temporal_margin1 >= 0.5 && temporal_margin2 >= 0.5 &&
-          temporal_best1 == absolute_d1 && temporal_best2 == absolute_d2)) {
+          temporal_best1 == absolute_d1 - common_prior_d1 &&
+          temporal_best2 == absolute_d2 - common_prior_d2)) {
         absolute_d1 = FIELDREG_UNKNOWN;
         absolute_d2 = FIELDREG_UNKNOWN;
         frame_support = 0;
@@ -926,6 +1003,7 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
      */
     int frame_d1 = absolute_d1;
     int frame_d2 = absolute_d2;
+    bool geometry_overrides_cut = false;
     if (frame_d1 != FIELDREG_UNKNOWN) {
         int prior_d1 = engine->previous_phase_valid
                            ? engine->previous_phase[0]
@@ -950,6 +1028,15 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
         bool temporal_supports_change =
             engine->previous_phase_valid && temporal_supports1 &&
             temporal_supports2;
+        bool weak_temporal_geometry_support =
+            engine->previous_phase_valid && engine->previous_valid[0] &&
+            engine->previous_valid[1] && temporal_margin1 >= 0.05 &&
+            temporal_margin2 >= 0.05 &&
+            (!change1 || temporal_best1 == frame_d1 - prior_d1) &&
+            (!change2 || temporal_best2 == frame_d2 - prior_d2);
+        geometry_overrides_cut =
+            (change1 || change2) && frame_support >= 2 &&
+            (temporal_supports_change || weak_temporal_geometry_support);
         int requested_delta1 = frame_d1 - prior_d1;
         int requested_delta2 = frame_d2 - prior_d2;
         bool temporal_veto_ready1 = engine->previous_valid[0] && !scene_cut &&
@@ -978,12 +1065,14 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                  temporal_best2 != requested_delta2);
         }
         if ((change1 || change2) &&
-            (scene_cut || temporal_contradicts_change ||
+            ((scene_cut && !geometry_overrides_cut) ||
+             (temporal_contradicts_change && !global_envelope_authority) ||
              (!independent_spatial_support && !temporal_supports_change))) {
             frame_d1 = FIELDREG_UNKNOWN;
             frame_d2 = FIELDREG_UNKNOWN;
         }
     }
+    bool registration_scene_cut = scene_cut && !geometry_overrides_cut;
 
     int phase_target_d1 = FIELDREG_UNKNOWN;
     int phase_target_d2 = FIELDREG_UNKNOWN;
@@ -1019,6 +1108,23 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     out->mode = FIELDREG_MODE_INVALID_UNIT;
     bool phase_changed = false;
     if (phase_model) {
+        bool initial_authoritative_lock =
+            !engine->phase_baseline_valid && frame_d1 != FIELDREG_UNKNOWN &&
+            (frame_support >= 2 || frame_motion_priority ||
+             global_envelope_authority);
+        if (initial_authoritative_lock) {
+            engine->selected[0] = (int8_t)frame_d1;
+            engine->selected[1] = (int8_t)frame_d2;
+            engine->baseline[0] = (int8_t)frame_d1;
+            engine->baseline[1] = (int8_t)frame_d2;
+            engine->selected_relative = (int8_t)(frame_d2 - frame_d1);
+            engine->phase_baseline_valid = true;
+            engine->phase_baseline_age = 0;
+            phase_target_d1 = frame_d1;
+            phase_target_d2 = frame_d2;
+            phase_pair_valid = true;
+            phase_changed = false;
+        }
         phase_changed = phase_pair_valid &&
                         (!engine->phase_baseline_valid ||
                          phase_target_d1 != engine->selected[0] ||
@@ -1027,33 +1133,37 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
             engine->pending_valid = false;
             engine->pending_count = 0;
             engine->pending_age = 0;
-            engine->phase_unsettled_units = 0;
+            engine->trajectory_age = 0;
             out->mode = FIELDREG_MODE_UNKNOWN_TRANSPORT_OR_VBI;
-        } else if (scene_cut) {
+        } else if (registration_scene_cut) {
             /* MPEG/new-picture boundaries are deliberately absent evidence:
              * preserve a candidate, but neither support nor contradict it. */
             if (engine->pending_valid) {
                 ++engine->pending_age;
-                ++engine->phase_unsettled_units;
+                ++engine->trajectory_age;
             }
             out->mode = FIELDREG_MODE_UNKNOWN_SCENE_CUT_HOLD;
         } else if (!phase_pair_valid && phase_window == FIELDREG_UNKNOWN) {
             if (engine->pending_valid) {
                 ++engine->pending_age;
-                ++engine->phase_unsettled_units;
+                ++engine->trajectory_age;
             }
             out->mode = FIELDREG_MODE_UNKNOWN_SPATIAL_PHASE;
         } else if (!phase_pair_valid) {
+            /* Relative-only evidence has no absolute gauge, but a sustained
+             * contradiction is still an unsettled interval. Preserve the
+             * committed gauge, age the interval, and abstain; do not invent
+             * which field moved. */
             engine->pending_valid = false;
             engine->pending_count = 0;
-            engine->pending_age = 0;
-            ++engine->phase_unsettled_units;
+            ++engine->pending_age;
+            ++engine->trajectory_age;
             out->mode = FIELDREG_MODE_UNKNOWN_COMMON_MODE_GAUGE;
         } else if (!phase_changed) {
             engine->pending_valid = false;
             engine->pending_count = 0;
             engine->pending_age = 0;
-            engine->phase_unsettled_units = 0;
+            engine->trajectory_age = 0;
             out->decision_d1 = engine->selected[0];
             out->decision_d2 = engine->selected[1];
             out->mode = FIELDREG_MODE_STABLE_MOTION_PHASE;
@@ -1073,7 +1183,7 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                 engine->pending_age = 0;
             }
             ++engine->pending_age;
-            ++engine->phase_unsettled_units;
+            ++engine->trajectory_age;
             if (engine->pending_age >= engine->config.confirmation_units &&
                 engine->pending_count >= engine->config.minimum_support_units) {
                 engine->selected[0] = (int8_t)phase_target_d1;
@@ -1084,12 +1194,15 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                 engine->phase_baseline_age = 0;
                 engine->selected_relative =
                     (int8_t)(phase_target_d2 - phase_target_d1);
-                out->decision_backdate = engine->pending_age;
+                out->decision_backdate =
+                    engine->pending_age < engine->config.maximum_buffered_units
+                        ? engine->pending_age
+                        : engine->config.maximum_buffered_units;
                 clear_band_history(engine);
                 engine->pending_valid = false;
                 engine->pending_count = 0;
                 engine->pending_age = 0;
-                engine->phase_unsettled_units = 0;
+                engine->trajectory_age = 0;
                 out->decision_d1 = engine->selected[0];
                 out->decision_d2 = engine->selected[1];
                 out->mode = FIELDREG_MODE_CONVERGED_MOTION_PHASE;
@@ -1097,8 +1210,7 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                 out->mode = FIELDREG_MODE_UNKNOWN_PHASE_DWELL;
             }
         }
-        if (engine->phase_unsettled_units >=
-            engine->config.maximum_buffered_units) {
+        if (engine->trajectory_age >= FIELDREG_TRAJECTORY_STALENESS_UNITS) {
             /* The bounded caller FIFO cannot retain an unfinalized path
              * forever. It flushes each unit at the phase already assigned,
              * logs this reset, and demands a fresh stable lock; the engine
@@ -1107,7 +1219,7 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
             engine->pending_valid = false;
             engine->pending_count = 0;
             engine->pending_age = 0;
-            engine->phase_unsettled_units = 0;
+            engine->trajectory_age = 0;
             engine->phase_baseline_valid = false;
             /* Confidence resets; presentation phase does not. Snapping the
              * fallback to raw here creates a visible transition with no
@@ -1265,14 +1377,12 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     out->frame_observation_support = frame_support;
     out->frame_observation_motion_priority = frame_motion_priority;
     out->frame_observation_conflict = frame_conflict;
-    int held_d1 = engine->previous_phase_valid ? engine->previous_phase[0]
-                                                : engine->selected[0];
-    int held_d2 = engine->previous_phase_valid ? engine->previous_phase[1]
-                                                : engine->selected[1];
-    if (!phase_model || out->decision_backdate) {
-        held_d1 = engine->selected[0];
-        held_d2 = engine->selected[1];
-    }
+    /* A positive per-unit observation is provisional. Once that unit has
+     * passed, an abstention falls back to the committed phase, never to the
+     * last positive observation. This prevents a single contradicted sample
+     * from latching indefinitely (the frame-8169 class). */
+    int held_d1 = engine->selected[0];
+    int held_d2 = engine->selected[1];
     out->applied_d1 = phase_model && frame_d1 != FIELDREG_UNKNOWN
                           ? (int8_t)frame_d1
                           : (int8_t)held_d1;
@@ -1315,6 +1425,10 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     out->temporal_best_cost_f2 = temporal_best_cost2;
     out->temporal_scene_cut = scene_cut;
     out->transport_ok = transport_ok;
+    out->content_evidence_available = content_evidence_available;
+    out->top_f1_censored = top_censored1;
+    out->top_f2_censored = top_censored2;
+    out->global_envelope_authority = global_envelope_authority;
     out->observed_transport_f1 = (int16_t)observed_f1;
     out->observed_transport_f2 = (int16_t)observed_f2;
     out->picture_top_f1 = (int16_t)top1;

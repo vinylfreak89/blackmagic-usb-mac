@@ -14,9 +14,9 @@ the evidence needed for a sidecar decision log.
 The library remains allocation-free and retains no input pointer. Production
 integration keeps USB capture on its own hot path: a preallocated lock-free SPSC
 descriptor ring hands raw units to a registration worker, and another bounded
-SPSC ring carries finalized pointers onward. The caller-owned delayed FIFO is
-preallocated to `fieldreg_buffer_units()` entries; Python's `deque` in the
-offline renderer is only a test harness for the same ownership contract.
+SPSC ring carries pointers onward. The live engine is forward-only and adds no
+presentation FIFO. An optional retroactive recording pass may consume the
+decision sidecar later; it is not part of the CMIO path.
 
 Call `fieldreg_begin_segment()` after acquisition/relock establishes a new
 source segment. It clears temporal history, pending decisions, and diagnostic
@@ -49,6 +49,13 @@ second) confirmation span, with a hard 36-unit presentation-buffer horizon.
 Contradictory geometry replaces the candidate immediately, so votes from a
 finished jump cannot trigger a delayed correction.
 
+Evidence authority outranks horizontal-band headcount. A coherent full-width
+top+bottom envelope, corroborated by motion-compensated relative consensus,
+outvotes a conflicting local two-of-three band majority. Likewise, coherent
+top+bottom displacement across broad bands plus matching same-parity temporal
+motion is applied at unit rate. This distinguishes physical field-rate jitter
+(follow) from a moving edge in one localized overlay (hold/reject).
+
 Top/bottom picture edges remain source-carried evidence, not a transport
 oracle. Before an edge vote can move the whole field, the engine compares the
 same-parity motion of both fields. It uses their **difference**, not either
@@ -72,13 +79,13 @@ abstaining units at the candidate onset. This changes crop selection, not
 pixels, and permits transitions such as `(0,1) -> (1,0)` without treating
 either field as a permanent anchor.
 
-An abstaining unit holds the last accepted per-unit phase rather than snapping
-back to an older fallback. That distinction removed a renderer-created
-one-unit notch between otherwise coherent observations. The sidecar calls this
-`HeldLastObservation`; convergence/backdating or an explicit trajectory reset
-is required to replace it.
+An abstaining unit holds the committed fallback, never the immediately prior
+positive observation. A coherent one-unit observation is allowed to appear for
+that unit, but cannot latch through later abstentions after the committed
+trajectory contradicts it.
 
-If geometry remains unresolved beyond `maximum_buffered_units`, the result sets
+If geometry remains unresolved beyond the independent physical staleness
+horizon, the result sets
 `trajectory_reset`. The caller flushes the trajectory already assigned to the
 buffer, marks its abstaining units `HeldUnresolvedHorizon`, and reacquires a
 fresh stable fallback. It must not rewrite those abstentions to `(0,0)` around
@@ -103,6 +110,19 @@ because changing apertures, overlays, and dot crawl can move one band without
 moving the field. Relative phase may continue a fallback candidate whose
 absolute gauge is already established, but it may not invent a new absolute
 pair by itself.
+
+A top edge found at the first searchable line is explicitly censored. The
+still-visible bottom edge may establish the absolute offset when relative and
+temporal evidence corroborate it; this makes upward offsets such as `-2`
+measurable without pretending the clipped top was observed.
+
+Hard padding and byte continuity are structural transport truth. Missing VBI
+or flat picture content is an evidence abstention, not transport failure, and
+does not erase a valid committed phase.
+
+The model corrects signed integer vertical field registration only. Sub-line
+phase, horizontal/line-time instability, flagging/skew, and source layers with
+genuinely different phases are out of scope.
 
 Cuts and correlated global-luma steps make the current unit abstain even when
 its content-derived envelope appears coherent. A scene transition can change

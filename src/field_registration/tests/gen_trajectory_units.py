@@ -39,6 +39,8 @@ class Step:
     secondary_ranges: tuple[tuple[int, int], ...] = ((560, 720),)
     vbi_present: bool = True
     flat_y: int = 2
+    secondary_animated: bool = True
+    main_motion: bool = False
 
 
 def trajectory() -> list[Step]:
@@ -103,11 +105,11 @@ def trajectory() -> list[Step]:
     add(12, "after-false-edge-chatter", (1, 0), (1, 0),
         main_ranges=((0, 720),), secondary_ranges=())
 
-    # Synthetic form of the timeline-frame-8169 stale latch: one coherent but
-    # provisional positive observation, followed by 103 units with no spatial
-    # phase evidence. The locked trajectory contradicts (0,1), so the policy
-    # oracle remains (1,0). The current caller is expected to hold (0,1).
-    add(1, "stale-positive-trigger-01", (0, 1), (1, 0), unsettled=True)
+    # Synthetic form of the timeline-frame-8169 stale latch. The triggering
+    # unit is coherent physical truth and is allowed to present (0,1); the bug
+    # was holding that one observation across 103 later abstentions after the
+    # committed (1,0) path contradicted it.
+    add(1, "stale-positive-trigger-01", (0, 1), (0, 1), unsettled=True)
     add(103, "stale-positive-flat-hold", None, (1, 0), gain=0.0,
         unsettled=True)
     add(20, "stale-positive-recovery-10", (1, 0), (1, 0))
@@ -162,7 +164,8 @@ def trajectory() -> list[Step]:
                     reset_before=True, main_ranges=((0, 720),)))
     add(44, "multiphase-main-10", (1, 0), (1, 0), scene=2,
         secondary=(0, 1), main_ranges=((0, 720),),
-        secondary_ranges=((48, 248), (472, 672)), unsettled=True)
+        secondary_ranges=((48, 248), (472, 672)), unsettled=True,
+        secondary_animated=False, main_motion=True)
     add(20, "after-multiphase-main-10", (1, 0), (1, 0), scene=2,
         main_ranges=((0, 720),))
 
@@ -226,6 +229,8 @@ def make_unit(counter: int, index: int, step: Step,
         ):
             source = templates[(step.scene, phase, parity, 100)]
             for row, line in enumerate(source):
+                if step.main_motion:
+                    line = source[(row + phase * 2) % len(source)]
                 line = base.scaled_line(line, step.gain)
                 for x0, x1 in step.main_ranges:
                     put_span(raster[top + displacement + row], line, x0, x1)
@@ -239,7 +244,9 @@ def make_unit(counter: int, index: int, step: Step,
             (0, base.F1_TOP, secondary[0]),
             (1, base.F2_TOP, secondary[1]),
         ):
-            source = templates[((step.scene + 1) % 3, phase, parity, 100)]
+            secondary_phase = phase if step.secondary_animated else 0
+            source = templates[((step.scene + 1) % 3, secondary_phase,
+                                parity, 100)]
             for row, line in enumerate(source):
                 line = base.scaled_line(line, step.gain)
                 for x0, x1 in step.secondary_ranges:

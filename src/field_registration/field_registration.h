@@ -32,7 +32,9 @@ enum {
      * units so a settled decision can be applied at its observed onset. */
     FIELDREG_PHASE_CONFIRM_UNITS = 30,
     FIELDREG_MAX_CONFIRM_UNITS = 120,
-    FIELDREG_ALGORITHM_VERSION = 4,
+    /* Physical reacquisition horizon, independent of caller ring depth. */
+    FIELDREG_TRAJECTORY_STALENESS_UNITS = 75,
+    FIELDREG_ALGORITHM_VERSION = 5,
     FIELDREG_UNKNOWN = -128,
 };
 
@@ -114,6 +116,10 @@ typedef struct fieldreg_decision {
     bool temporal_scene_cut;
 
     bool transport_ok;
+    bool content_evidence_available;
+    bool top_f1_censored;
+    bool top_f2_censored;
+    bool global_envelope_authority;
     int16_t observed_transport_f1;
     int16_t observed_transport_f2;
     int16_t picture_top_f1;
@@ -168,7 +174,8 @@ typedef struct field_registration {
     uint32_t pending_count;
     uint32_t pending_age;
     uint32_t frames_seen;
-    uint32_t phase_unsettled_units;
+    /* Physical candidate age. This is not caller ring occupancy. */
+    uint32_t trajectory_age;
     /* Best phase assigned to the immediately preceding raw unit. An
      * abstention holds this phase; only new corroborated evidence, convergence,
      * or an explicit reset may create a presentation transition. */

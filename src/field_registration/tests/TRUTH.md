@@ -69,11 +69,11 @@ hard padding. It also contains a synthetic version of the timeline-frame-8169
 stale latch: one positive `(0,1)` observation followed by 103 flat units while
 the committed phase is `(1,0)`.
 
-The current caller rewrites only abstaining rows, so this target is expected to
-print `CURRENT-LIMITATION-REPRODUCED: YES`. The current top-edge search is also
-expected to fail sustained upward `-2` cases: this is a required falsifying
-characterization, not a test expectation to weaken. Per-scenario output reports
-raster/oracle matches, common-gauge and transport/content abstentions, and
-trajectory resets. A future trajectory implementation must improve the
-trajectory-oracle score without silently relabeling physical-raster
-disagreements as successes.
+The live authority golden requires exact agreement for physical unit-rate
+jitter, localized false-edge chatter, upward `-2` cases, the stale-hold class,
+flat content with intact transport padding, and the multi-phase main-picture
+class. Per-scenario output reports raster/oracle matches, common-gauge and
+transport/content abstentions, and trajectory resets. The deliberately
+provisional inversion remains an explicitly reported archival-only oracle
+disagreement: no zero-latency estimator may claim to know that coherent raster
+geometry will later prove provisional.

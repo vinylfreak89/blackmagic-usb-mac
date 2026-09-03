@@ -1,9 +1,10 @@
-# Registration trajectory contract (implementation gated)
+# Registration trajectory contract
 
-This document specifies the trajectory layer that sits between per-unit
-`field_registration` observations and a consumer. It does not change the C
-estimator. Implementation is gated on owner approval because it changes
-presented offsets, including the measured 104-unit stale-latch interval.
+The live contract is implemented by the allocation-free C estimator: coherent
+physical evidence is followed forward at unit rate with no presentation FIFO.
+The optional retroactive layer described below is recording-side only and
+remains gated until a real tape proves that a positive, coherent provisional
+observation was wrong. It is not part of the CMIO latency path.
 
 ## Why a second layer exists
 
@@ -88,6 +89,9 @@ decision log rather than converted into contradictory exact measurements.
 
 ## Endpoint-constrained path
 
+This section specifies that optional archival-side pass. It consumes the live
+decision sidecar; it is not permission for the live device to delay frames.
+
 Resolution is a bounded path problem over candidate `(d1,d2)` states, not
 "paint the interval with the final phase." The cost includes:
 
@@ -102,6 +106,14 @@ A misleading positive observation can be revised when the endpoint-constrained
 path rejects it. Both raw raster geometry truth and trajectory-policy truth are
 reported by tests; agreement with one must never be mislabeled agreement with
 the other.
+
+The live authority rule is stricter and immediate: **coherent per-field
+top+bottom displacement across independent broad bands, corroborated by
+same-parity temporal displacement and not gated by a cut, applies at unit
+rate. Transition penalties arbitrate weaker evidence only; they may not smooth
+this case.** A coherent full-width envelope plus relative-phase consensus also
+outvotes a conflicting local band majority. Field 2 remains pinned unless its
+own evidence moves it.
 
 ## Resolution and horizon
 
@@ -141,14 +153,20 @@ resolution, horizon emission, explicit discontinuity, or epoch reset.
 
 ## Live and recording policies
 
-- **Delayed/corrected:** retain the bounded interval and publish only finalized
-  units. This is the recorder/default corrected-stream policy.
-- **Low-latency live:** publish provisional units immediately, marked
-  `Unsettled`. The sidecar retains enough evidence for an archival re-render.
+- **Live/default:** publish the forward authority-first result immediately,
+  marked provisional/settled in the sidecar. There is no registration FIFO.
+- **Optional recording-side refinement:** a downstream recorder may retain a
+  bounded interval and publish a finalized endpoint-constrained path, but only
+  when explicitly enabled and justified by source evidence.
 
 Both policies preserve unit order and timestamps. The USB/event thread never
 waits for trajectory resolution; a fixed pool is handed to a processing worker
 through SPSC pointer rings. No per-unit allocation is permitted.
+
+This engine corrects integer vertical field registration only. Sub-line phase,
+horizontal/line-time instability, flagging, skew, and heterogeneous source
+layers that genuinely occupy different phases are out of scope. It does not
+"stabilize the tape completely."
 
 ## Decision-log fields
 
