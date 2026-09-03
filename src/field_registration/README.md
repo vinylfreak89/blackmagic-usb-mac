@@ -127,7 +127,9 @@ minimum-crop representation deterministically and marks the absolute gauge
 unknown. This path is cut- and transport-gated and reports its energies,
 support, gauge source, and gates in every decision. It follows a measured
 return from a held nonzero phase at unit rate; it does not wait for the fallback
-dwell.
+dwell. Because relative evidence cannot establish an absolute gauge, its pair
+is a current-unit presentation only: it never replaces the committed absolute
+lock that a later abstaining unit holds.
 
 A lower picture edge at the last ADC-output row before hard padding is likewise
 censored rather than treated as an exact landmark. A format-bounded positive

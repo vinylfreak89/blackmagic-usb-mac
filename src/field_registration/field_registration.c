@@ -526,9 +526,7 @@ static unsigned histogram_midpoint_u16(const uint16_t *histogram, int slots,
  * or allocation is used.
  */
 static relative_only_evidence static_relative_evidence(
-    const field_registration *engine, bool scene_cut, int temporal_best1,
-    int temporal_best2, double temporal_margin1, double temporal_margin2,
-    int prior_relative)
+    const field_registration *engine, bool scene_cut, int prior_relative)
 {
     relative_only_evidence out;
     memset(&out, 0, sizeof(out));
@@ -536,19 +534,6 @@ static relative_only_evidence static_relative_evidence(
     out.prior_energy = INFINITY;
     if (scene_cut || !engine->previous_valid[0] ||
         !engine->previous_valid[1])
-        return out;
-
-    bool temporal1_known = temporal_margin1 >= 0.25 &&
-                           temporal_best1 > FIELDREG_MIN_OFFSET &&
-                           temporal_best1 < FIELDREG_MAX_OFFSET;
-    bool temporal2_known = temporal_margin2 >= 0.25 &&
-                           temporal_best2 > FIELDREG_MIN_OFFSET &&
-                           temporal_best2 < FIELDREG_MAX_OFFSET;
-    int motion1 = temporal1_known ? temporal_best1 : 0;
-    int motion2 = temporal2_known ? temporal_best2 : 0;
-    /* A coherent non-zero displacement of both parity histories is source
-     * motion, not a static region on which direct weave phase is trustworthy. */
-    if (temporal1_known && temporal2_known && motion1 == motion2 && motion1 != 0)
         return out;
 
     uint8_t temporal_cost[RELATIVE_LP_COLUMNS];
@@ -559,10 +544,13 @@ static relative_only_evidence static_relative_evidence(
         uint64_t detail_sum = 0;
         unsigned count = 0;
         for (int row = RELATIVE_FIRST_ROW; row < RELATIVE_LAST_ROW; ++row) {
+            /* Static means static in the transport coordinates, not merely
+             * alignable by a vertical motion search.  Motion compensation here
+             * admits scrolling/source motion and turns it into a false gauge. */
             unsigned current1 = lowpass8_current(
-                engine, FIELDREG_FIELD1_START + motion1 + row, x);
+                engine, FIELDREG_FIELD1_START + row, x);
             unsigned current2 = lowpass8_current(
-                engine, FIELDREG_FIELD2_START + motion2 + row, x);
+                engine, FIELDREG_FIELD2_START + row, x);
             unsigned previous1 = lowpass8_previous(engine, 0, row, x);
             unsigned previous2 = lowpass8_previous(engine, 1, row, x);
             temporal_sum += current1 > previous1 ? current1 - previous1
@@ -571,9 +559,9 @@ static relative_only_evidence static_relative_evidence(
                                                  : previous2 - current2;
             if (row + 1 < RELATIVE_LAST_ROW) {
                 unsigned next1 = lowpass8_current(
-                    engine, FIELDREG_FIELD1_START + motion1 + row + 1, x);
+                    engine, FIELDREG_FIELD1_START + row + 1, x);
                 unsigned next2 = lowpass8_current(
-                    engine, FIELDREG_FIELD2_START + motion2 + row + 1, x);
+                    engine, FIELDREG_FIELD2_START + row + 1, x);
                 detail_sum += current1 > next1 ? current1 - next1
                                                : next1 - current1;
                 detail_sum += current2 > next2 ? current2 - next2
@@ -739,16 +727,29 @@ static void choose_relative_gauge(
     bool known2 = temporal_margin2 >= 0.25 &&
                   temporal_best2 > FIELDREG_MIN_OFFSET &&
                   temporal_best2 < FIELDREG_MAX_OFFSET;
-    int temporal1 = prior1 + (known1 ? temporal_best1 : 0);
-    int temporal2 = prior2 + (known2 ? temporal_best2 : 0);
-    if ((known1 || known2) && temporal2 - temporal1 == relative &&
-        relative_pair_in_range(temporal1, temporal2)) {
-        *d1 = temporal1;
-        *d2 = temporal2;
-        *source = known1 && known2 ? FIELDREG_RELATIVE_GAUGE_TEMPORAL_BOTH
-                                  : known1
-                                        ? FIELDREG_RELATIVE_GAUGE_TEMPORAL_F1
-                                        : FIELDREG_RELATIVE_GAUGE_TEMPORAL_F2;
+    int relative_delta = relative - (prior2 - prior1);
+    int field1_candidate = prior1 - relative_delta;
+    int field2_candidate = prior2 + relative_delta;
+    bool temporal_field1 =
+        known1 && temporal_best1 == -relative_delta &&
+        (!known2 || temporal_best2 == 0);
+    bool temporal_field2 =
+        known2 && temporal_best2 == relative_delta &&
+        (!known1 || temporal_best1 == 0);
+    if (temporal_field1 && !temporal_field2 &&
+        relative_pair_in_range(field1_candidate, prior2)) {
+        *d1 = field1_candidate;
+        *d2 = prior2;
+        *source = known2 ? FIELDREG_RELATIVE_GAUGE_TEMPORAL_BOTH
+                         : FIELDREG_RELATIVE_GAUGE_TEMPORAL_F1;
+        return;
+    }
+    if (temporal_field2 && !temporal_field1 &&
+        relative_pair_in_range(prior1, field2_candidate)) {
+        *d1 = prior1;
+        *d2 = field2_candidate;
+        *source = known1 ? FIELDREG_RELATIVE_GAUGE_TEMPORAL_BOTH
+                         : FIELDREG_RELATIVE_GAUGE_TEMPORAL_F2;
         return;
     }
 
@@ -763,10 +764,10 @@ static void choose_relative_gauge(
         int cost = abs(candidate1 - prior1) + abs(candidate2 - prior2);
         int crop = abs(candidate1) + abs(candidate2);
         int negative = (candidate1 < 0) + (candidate2 < 0);
-        if (cost < best_cost ||
-            (cost == best_cost && crop < best_crop) ||
-            (cost == best_cost && crop == best_crop && negative < best_negative) ||
-            (cost == best_cost && crop == best_crop && negative == best_negative &&
+        if (crop < best_crop ||
+            (crop == best_crop && cost < best_cost) ||
+            (crop == best_crop && cost == best_cost && negative < best_negative) ||
+            (crop == best_crop && cost == best_cost && negative == best_negative &&
              candidate1 > *d1)) {
             best_cost = cost;
             best_crop = crop;
@@ -1112,8 +1113,7 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                                    engine->previous_phase[0]
                              : engine->selected[1] - engine->selected[0];
     relative_only_evidence relative_only = static_relative_evidence(
-        engine, scene_cut, temporal_best1, temporal_best2,
-        temporal_margin1, temporal_margin2, prior_relative);
+        engine, scene_cut, prior_relative);
     double independent_evidence = fmax(weave_margin,
                                        fmax(temporal_margin1, temporal_margin2));
     bool phase_model =
@@ -1661,11 +1661,10 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     bool phase_changed = false;
     if (phase_model) {
         if (relative_only_authority) {
-            engine->selected[0] = (int8_t)relative_d1;
-            engine->selected[1] = (int8_t)relative_d2;
-            engine->selected_relative = relative_only.phase;
-            engine->phase_baseline_valid = true;
-            engine->phase_baseline_age = 0;
+            /* Relative phase is current-unit authority, not an absolute
+             * gauge. Present it now, but never promote it into selected[]:
+             * an unrelated following abstention must hold the last absolute
+             * lock rather than latch a relative presentation indefinitely. */
             engine->pending_valid = false;
             engine->pending_count = 0;
             engine->pending_age = 0;
