@@ -28,15 +28,15 @@ $(META_EXHAUST_FIXTURE): gen_packet_capture.py
 	python3 gen_packet_capture.py --out $(META_EXHAUST_FIXTURE) --expect fixture_meta_exhaust.expect --video-transfers 40 --audio-transfers 60 --xfererr-at 39 --xfererr-burst 3000
 
 test: capture_core_test $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
-	./capture_core_test $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
+	./capture_core_test $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE) $$(cat fixture_meta_exhaust.expect)
 
 test-tsan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
 	$(CC) -O1 -g -fsanitize=thread $(CFLAGS) $(TESTFLAGS) -o test_tsan capture_core.c capture_core_test.c $(LIBS)
-	./test_tsan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
+	./test_tsan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE) $$(cat fixture_meta_exhaust.expect)
 
 test-asan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
 	$(CC) -O1 -g -fsanitize=address,undefined $(CFLAGS) $(TESTFLAGS) -o test_asan capture_core.c capture_core_test.c $(LIBS)
-	./test_asan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
+	./test_asan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE) $$(cat fixture_meta_exhaust.expect)
 
 capture_core_test: capture_core.c capture_core_test.c capture_core.h
 	$(CC) $(CFLAGS) $(TESTFLAGS) -o $@ capture_core.c capture_core_test.c $(LIBS)

@@ -8,6 +8,8 @@
 //                    REPLAY_EOF with no crash and no over-delivery
 //   4 lifecycle    — bad args and bad state transitions are refused
 //   5 discipline   — on_end fires exactly once; callbacks never run on main
+//   6 control loss — metadata exhaustion marks-and-continues by default and
+//                    terminates only under the explicit fail-stop policy
 #include "capture_core.h"
 #include <pthread.h>
 #include <stdatomic.h>
@@ -22,6 +24,7 @@ static int fails=0;
 typedef struct {
     uint64_t bytes[2]; uint64_t pkts[2];
     uint64_t loss_bytes[2]; uint32_t loss_events; uint32_t error_events;
+    uint32_t control_loss_markers;
     int end_count; int end_reason;
     pthread_t main_thread; int cb_on_main;
     int throttle;              // 1=periodic slowdown, 2=block first callback for reserve test
@@ -56,7 +59,11 @@ static void t_loss(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     tally *t=ctx; (void)pk;
     t->loss_bytes[ep==CC_EP_AUDIO]+=by; t->loss_events++;
 }
-static void t_error(void *ctx, uint8_t ep, uint32_t seq, int st, int isf){ tally *t=ctx; (void)ep;(void)seq;(void)st;(void)isf; t->error_events++; }
+static void t_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
+    tally *t=ctx; (void)ep;(void)seq;(void)st;
+    t->error_events++;
+    if(kind==CC_ERROR_CONTROL_LOSS) t->control_loss_markers++;
+}
 static void t_end(void *ctx, enum cc_end r){
     tally *t=ctx;
     t->end_count++; t->end_reason=r;
@@ -64,11 +71,13 @@ static void t_end(void *ctx, enum cc_end r){
 }
 typedef struct { cc_session *s; int rc; } stop_arg;
 static void *stop_thread(void *p){ stop_arg *a=p; a->rc=cc_stop(a->s); return NULL; }
-static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle, long expected_meta_drops){
+static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle,
+                           long expected_meta_drops, int fail_stop_on_control_loss){
     memset(t,0,sizeof *t);
     t->main_thread=pthread_self();
     t->throttle=throttle;
     cc_config cfg={0}; cfg.replay_path=path; cfg.ring_mb=ring_mb;
+    cfg.fail_stop_on_control_loss=fail_stop_on_control_loss;
     cc_callbacks cb={0};
     cb.on_packet=t_packet; cb.on_loss=t_loss; cb.on_error=t_error; cb.on_end=t_end; cb.ctx=t;
     cc_session *s=NULL;
@@ -83,16 +92,22 @@ static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle
           "cc_stats loss (%llu/%llu) != callback loss (%llu/%llu)",
           (unsigned long long)st.lost_bytes[0],(unsigned long long)st.lost_bytes[1],
           (unsigned long long)t->loss_bytes[0],(unsigned long long)t->loss_bytes[1]);
-    CHECK(st.control_records_dropped==expected_meta_drops,"control records dropped: %ld (expected %ld)",st.control_records_dropped,expected_meta_drops);
+    if(expected_meta_drops>=0)
+        CHECK(st.control_records_dropped==expected_meta_drops,"control records dropped: %ld (expected %ld)",st.control_records_dropped,expected_meta_drops);
+    else
+        CHECK(st.control_records_dropped>0,"metadata-exhaustion fixture dropped no control records");
+    CHECK(st.control_loss_markers==(long)t->control_loss_markers,
+          "control-loss marker stats/callback mismatch: %ld/%u",
+          st.control_loss_markers,t->control_loss_markers);
     CHECK(!st.teardown_incomplete,"teardown incomplete");
     cc_close(s);
 }
 static void run_replay(const char *path, int ring_mb, tally *t){
-    run_replay_opt(path,ring_mb,t,0,0);
+    run_replay_opt(path,ring_mb,t,0,0,0);
 }
 
 int main(int argc, char **argv){
-    if(argc<6){ fprintf(stderr,"usage: %s <slice.tpc> vB vP aB aP\n",argv[0]); return 9; }
+    if(argc<6){ fprintf(stderr,"usage: %s <slice.tpc> vB vP aB aP [late.tpc [exhaust.tpc vB vP aB aP]]\n",argv[0]); return 9; }
     const char *slice=argv[1];
     uint64_t vB=strtoull(argv[2],0,10), vP=strtoull(argv[3],0,10);
     uint64_t aB=strtoull(argv[4],0,10), aP=strtoull(argv[5],0,10);
@@ -111,7 +126,7 @@ int main(int argc, char **argv){
     CHECK(!t.cb_on_main,"callbacks ran on the caller's thread");
 
     // 2: honesty under forced overflow (1 MB ring, throttled consumer)
-    run_replay_opt(slice,1,&t,1,0);
+    run_replay_opt(slice,1,&t,1,0,0);
     CHECK(t.loss_events>0,"1MB ring produced no overflow — test not exercising loss");
     CHECK(t.bytes[0]+t.loss_bytes[0]==vB,
           "video accounting UNBALANCED: %llu delivered + %llu lost != %llu",
@@ -123,14 +138,25 @@ int main(int argc, char **argv){
     // A hard two-second callback stall used to consume META_RESERVE as one HostLoss header per
     // packet and silently discard a later TransferError.  Coalescing must preserve both.
     if(argc>=7){
-        run_replay_opt(argv[6],1,&t,2,0);
+        run_replay_opt(argv[6],1,&t,2,0,0);
         CHECK(t.loss_events>0,"blocked consumer did not exercise loss coalescing");
         CHECK(t.error_events==1,"late TransferError lost behind DATA pressure (got %u)",t.error_events);
     }
-    if(argc>=8){
-        run_replay_opt(argv[7],1,&t,2,1);
-        CHECK(t.end_reason==CC_END_INTERNAL_ERROR,"metadata exhaustion was not terminal (%d)",t.end_reason);
-        CHECK(t.error_events>0,"metadata exhaustion left no in-stream TransferError marker");
+    if(argc>=12){
+        uint64_t ex_vB=strtoull(argv[8],0,10), ex_aB=strtoull(argv[10],0,10);
+
+        // Default policy preserves the archive's data path while marking it permanently
+        // not-clean exactly once.  Every DATA byte is still either delivered or confessed.
+        run_replay_opt(argv[7],1,&t,2,-1,0);
+        CHECK(t.end_reason==CC_END_REPLAY_EOF,"continuation policy ended %d, expected replay EOF",t.end_reason);
+        CHECK(t.control_loss_markers==1,"continuation policy emitted %u control-loss markers",t.control_loss_markers);
+        CHECK(t.bytes[0]+t.loss_bytes[0]==ex_vB,"metadata continuation video accounting unbalanced");
+        CHECK(t.bytes[1]+t.loss_bytes[1]==ex_aB,"metadata continuation audio accounting unbalanced");
+
+        // Operators may explicitly choose the old fail-stop policy.
+        run_replay_opt(argv[7],1,&t,2,-1,1);
+        CHECK(t.end_reason==CC_END_INTERNAL_ERROR,"fail-stop metadata exhaustion ended %d",t.end_reason);
+        CHECK(t.control_loss_markers==1,"fail-stop policy emitted %u control-loss markers",t.control_loss_markers);
     }
 
     // 3: truncation robustness — cut mid-header and mid-payload

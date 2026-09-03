@@ -27,6 +27,8 @@ enum cc_end    { CC_END_STOPPED = 0, CC_END_DEVICE_GONE = 1, CC_END_REPLAY_EOF =
                  CC_END_INTERNAL_ERROR = 5 };
 enum cc_err    { CC_OK = 0, CC_ERR_ARGS = -1, CC_ERR_NODEVICE = -2, CC_ERR_USB = -3,
                  CC_ERR_NOMEM = -4, CC_ERR_STATE = -5, CC_ERR_IO = -6 };
+enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
+                     CC_ERROR_CONTROL_LOSS = 2 };
 
 #define CC_EP_VIDEO 0x83
 #define CC_EP_AUDIO 0x84
@@ -53,10 +55,11 @@ typedef struct {
     // existed and are GONE; the archive must record a hole here. A very large contiguous
     // interval may arrive as adjacent aggregate chunks; sum packet/byte counts across them.
     void (*on_loss)(void *ctx, uint8_t endpoint, uint32_t packets, uint64_t bytes);
-    // Optional. Transfer-level error or resubmit failure (is_submit_failure=1).
+    // Optional. Transfer, resubmit, or control-truth-loss marker. `error_kind` is an
+    // enum cc_error_kind; CONTROL_LOSS corresponds to .tpc pkt_index=0xFFFE/status=UINT32_MAX.
     // The fleet is never silently shrunk; failures are retried internally.
     void (*on_error)(void *ctx, uint8_t endpoint, uint32_t submit_seq,
-                     int status, int is_submit_failure);
+                     int status, int error_kind);
     // Optional. ~1 Hz heartbeat with elapsed milliseconds (stall forensics).
     void (*on_tick)(void *ctx, uint32_t elapsed_ms);
     // Required. Fires exactly once; after it returns no callback will fire.
@@ -70,7 +73,10 @@ typedef struct {
     const char *replay_path;    // non-NULL => replay backend reading this .tpc
     int replay_pace_us;         // replay: usleep per transfer (0 = as fast as possible;
                                 // 16000 ~= the device's real video cadence)
-    int resubmit_deadline_ms;   // device: 0 => 2000; persistent failure ends the session
+    int resubmit_deadline_ms;   // device: 0 => 2000; persistent failure ends the whole session.
+                                // This is deliberately stricter than host-overflow continuation:
+                                // one parked transfer means future scheduled slots are absent.
+    int fail_stop_on_control_loss; // 0: mark not-clean once and continue; nonzero: marker + stop
 } cc_config;
 
 // Lifecycle: open -> start -> (callbacks) -> stop -> close.
@@ -94,6 +100,7 @@ typedef struct {
     int fleet[2], fleet_size;       // live transfers per endpoint / configured
     long transfers_allocated, transfers_freed;   // device backend: equal after cc_stop (leak invariant)
     long control_records_dropped;   // HostLoss/TransferError/TICK/SESSION records that found no ring space (reserve exhausted)
+    long control_loss_markers;      // terminal 0xFFFE marker emitted (0 or 1 per session)
     int  teardown_incomplete;       // libusb never proved quiescence at stop: cc_close leaks the session deliberately
 } cc_stats;
 // Snapshot of plain backend-thread counters: authoritative after cc_stop; a live call during

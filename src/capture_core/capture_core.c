@@ -73,6 +73,7 @@ struct cc_session {
     long xfers_alloc, xfers_freed;   // every allocated transfer must be freed by stop (no leak, no double free)
     uint64_t lost_bytes_total[2], lost_pkts_total[2];   // cumulative (pending counters reset on every flush)
     long meta_dropped;               // control records that found no ring space even inside the reserve
+    int control_loss_marked;
     int teardown_incomplete;
     // usb
     libusb_context *ctx; libusb_device_handle *h;
@@ -209,14 +210,16 @@ static void put_meta_(cc_session *s, uint8_t type, uint8_t ep, uint16_t pi,
                       uint32_t seq, uint32_t st, const void *p, uint32_t plen){
     if(ring_free_(s)<sizeof(rec_hdr)+plen+CONTROL_TERMINAL_RESERVE){
         s->meta_dropped++;
-        // Consume the permanently reserved final header to make the saved stream itself say
-        // that control truth was lost, then terminate. Stats provide detail; the record keeps
-        // an archive from looking complete after metadata exhaustion.
-        if(ring_free_(s)>=sizeof(rec_hdr)){
+        // Consume the permanently reserved final header ONCE so the saved stream itself says
+        // control truth was lost. Default policy continues but is permanently not-clean;
+        // fail-stop is an explicit opt-in for operators who prefer termination.
+        if(!s->control_loss_marked && ring_free_(s)>=sizeof(rec_hdr)){
             rec_hdr fatal={REC_MAGIC,REC_XFERERR,ep,0xFFFE,seq,UINT32_MAX,0,0};
-            ring_put_record_(s,&fatal,NULL,0); wake_(s);
+            ring_put_record_(s,&fatal,NULL,0); wake_(s); s->control_loss_marked=1;
         }
-        atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); atomic_store(&s->stop_req,1);
+        if(s->cfg.fail_stop_on_control_loss){
+            atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); atomic_store(&s->stop_req,1);
+        }
         return;
     }
     rec_hdr h={REC_MAGIC,type,ep,pi,seq,st,0,plen};
@@ -283,7 +286,8 @@ static void* delivery_main(void *arg){
             break;
         case REC_XFERERR:
             if(s->cb.on_error) s->cb.on_error(s->cb.ctx,rh.endpoint,rh.submit_seq,
-                                              (int)rh.status,rh.pkt_index==0xFFFF);
+                                              (int)rh.status,rh.pkt_index==0xFFFE?CC_ERROR_CONTROL_LOSS:
+                                              (rh.pkt_index==0xFFFF?CC_ERROR_SUBMIT:CC_ERROR_TRANSFER));
             break;
         case REC_TICK:
             if(s->cb.on_tick) s->cb.on_tick(s->cb.ctx,rh.status);
@@ -601,7 +605,9 @@ void cc_get_stats(const cc_session *s, cc_stats *o){
     // cumulative confessed loss plus anything still pending (unflushed) at the time of the call
     o->lost_bytes[0]=s->lost_bytes_total[0]+s->lost_bytes[0]; o->lost_bytes[1]=s->lost_bytes_total[1]+s->lost_bytes[1];
     o->lost_packets[0]=s->lost_pkts_total[0]+s->lost_pkts[0]; o->lost_packets[1]=s->lost_pkts_total[1]+s->lost_pkts[1];
-    o->control_records_dropped=s->meta_dropped; o->teardown_incomplete=s->teardown_incomplete;
+    o->control_records_dropped=s->meta_dropped;
+    o->control_loss_markers=s->control_loss_marked;
+    o->teardown_incomplete=s->teardown_incomplete;
     o->iso_errors=s->iso_err; o->transfer_errors=s->xfer_err;
     o->resubmit_failures=s->resub_fail; o->resubmit_recovered=s->resub_rec;
     o->zero_len_packets=s->zero_pkts; o->short_packets=s->short_pkts;
@@ -634,9 +640,10 @@ static void snk_loss(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,0,0,0,pk,(uint32_t)(by>0xffffffffu?0xffffffffu:by)};
     snk_wr(k,&h,sizeof h);
 }
-static void snk_error(void *ctx, uint8_t ep, uint32_t seq, int st, int isf){
+static void snk_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
     struct cc_tagged_sink *k=sink_of(ctx);
-    rec_hdr h={REC_MAGIC,REC_XFERERR,ep,(uint16_t)(isf?0xFFFF:0),seq,(uint32_t)st,0,0};
+    uint16_t pi=kind==CC_ERROR_CONTROL_LOSS?0xFFFE:(kind==CC_ERROR_SUBMIT?0xFFFF:0);
+    rec_hdr h={REC_MAGIC,REC_XFERERR,ep,pi,seq,(uint32_t)st,0,0};
     snk_wr(k,&h,sizeof h);
 }
 static void snk_tick(void *ctx, uint32_t ms){
