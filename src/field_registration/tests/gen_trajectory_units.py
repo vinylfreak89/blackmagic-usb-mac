@@ -35,6 +35,10 @@ class Step:
     gain: float = 1.0
     reset_before: bool = False
     unsettled: bool = False
+    main_ranges: tuple[tuple[int, int], ...] = ((0, 560),)
+    secondary_ranges: tuple[tuple[int, int], ...] = ((560, 720),)
+    vbi_present: bool = True
+    flat_y: int = 2
 
 
 def trajectory() -> list[Step]:
@@ -92,6 +96,60 @@ def trajectory() -> list[Step]:
     out.append(Step("segment-reset", (0, 0), (0, 0), scene=1,
                     reset_before=True))
     add(40, "segment2-locked-00", (0, 0), (0, 0), scene=1)
+
+    # Boundary coverage missing from the original golden. The current top-edge
+    # search can represent -1 exactly, but censors -2 while the bottom edge
+    # remains measurable. Raster and trajectory truth agree: these are real
+    # physical translations, not policy-only corrections.
+    add(35, "upward-minus1-field1", (-1, 0), (-1, 0), scene=1)
+    add(18, "after-upward-minus1", (0, 0), (0, 0), scene=1)
+    add(40, "upward-minus2-field1", (-2, 0), (-2, 0), scene=1)
+    add(18, "after-upward-minus2-field1", (0, 0), (0, 0), scene=1)
+    add(40, "upward-minus2-field2", (0, -2), (0, -2), scene=1)
+    add(18, "after-upward-minus2-field2", (0, 0), (0, 0), scene=1)
+    add(40, "upward-minus2-common", (-2, -2), (-2, -2), scene=1)
+    add(18, "after-upward-minus2-common", (0, 0), (0, 0), scene=1)
+
+    # The underlying main picture spans the complete width at (1,0), while
+    # two full motion-evidence bands are overwritten by a secondary layer at
+    # (0,1). This deliberately gives the per-band voter and the designated
+    # global/main-picture truth different answers.
+    out.append(Step("multiphase-reset", (1, 0), (1, 0), scene=2,
+                    reset_before=True, main_ranges=((0, 720),)))
+    add(44, "multiphase-main-10", (1, 0), (1, 0), scene=2,
+        secondary=(0, 1), main_ranges=((0, 720),),
+        secondary_ranges=((48, 248), (472, 672)), unsettled=True)
+    add(20, "after-multiphase-main-10", (1, 0), (1, 0), scene=2,
+        main_ranges=((0, 720),))
+
+    # Enter a real candidate, then remove reliable visual evidence during a
+    # fade. The 29-unit prefix is one unit short of the current confirmation
+    # requirement so the fade begins while the candidate is active.
+    out.append(Step("fade-candidate-reset", (0, 0), (0, 0), scene=0,
+                    reset_before=True))
+    add(39, "fade-candidate-baseline-00", (0, 0), (0, 0), scene=0)
+    add(29, "fade-active-candidate-10", (1, 0), (1, 0), scene=0,
+        unsettled=True)
+    fade_gains = (0.80, 0.60, 0.40, 0.20, 0.0, 0.0, 0.20, 0.40, 0.60, 0.80)
+    for gain in fade_gains:
+        out.append(Step("fade-with-active-candidate", (1, 0), (1, 0),
+                        scene=0, gain=gain, unsettled=True))
+    add(35, "fade-candidate-settled-10", (1, 0), (1, 0), scene=0)
+
+    # Missing picture evidence must not be confused with broken transport.
+    # Both classes retain byte-exact hard padding. The first retains the VBI
+    # fiducial over a flat legal-black raster; the second deliberately removes
+    # all content/VBI while preserving the same transport ruler.
+    out.append(Step("flat-candidate-reset", (0, 0), (0, 0), scene=1,
+                    reset_before=True))
+    add(39, "flat-candidate-baseline-00", (0, 0), (0, 0), scene=1)
+    add(29, "flat-active-candidate-10", (1, 0), (1, 0), scene=1,
+        unsettled=True)
+    add(10, "flat-dark-intact-padding-vbi", None, (1, 0), scene=1,
+        flat_y=16, unsettled=True)
+    add(10, "flat-blank-intact-padding-no-vbi", None, (1, 0), scene=1,
+        flat_y=2, vbi_present=False, unsettled=True)
+    add(35, "flat-candidate-recovery-10", (1, 0), (1, 0), scene=1)
     return out
 
 
@@ -104,16 +162,17 @@ def put_span(destination: bytearray, source: bytes, x0: int, x1: int) -> None:
 def make_unit(counter: int, index: int, step: Step,
               templates: dict[tuple[int, int, int, int], list[bytes]],
               seed: int) -> bytes:
-    blank = bytes((128, 2)) * 720
+    blank = bytes((128, step.flat_y)) * 720
     hard = bytes((128, 16)) * 720
     raster = [bytearray(blank) for _ in range(base.LINES)]
     for lo, hi in base.HARD_RANGES:
         for line in range(lo, hi + 1):
             raster[line][:] = hard
-    raster[16][:] = base.vbi_line(seed, 0, 0)
-    raster[17][:] = base.vbi_line(seed, 0, 1)
-    raster[279][:] = base.vbi_line(seed, 1, 0)
-    raster[280][:] = base.vbi_line(seed, 1, 1)
+    if step.vbi_present:
+        raster[16][:] = base.vbi_line(seed, 0, 0)
+        raster[17][:] = base.vbi_line(seed, 0, 1)
+        raster[279][:] = base.vbi_line(seed, 1, 0)
+        raster[280][:] = base.vbi_line(seed, 1, 1)
 
     phase = index & 3
     if step.raster is not None:
@@ -124,11 +183,12 @@ def make_unit(counter: int, index: int, step: Step,
             source = templates[(step.scene, phase, parity, 100)]
             for row, line in enumerate(source):
                 line = base.scaled_line(line, step.gain)
-                put_span(raster[top + displacement + row], line, 0, 560)
+                for x0, x1 in step.main_ranges:
+                    put_span(raster[top + displacement + row], line, x0, x1)
 
-    # The rightmost 160 pixels form the independently phased secondary asset.
-    # It is deliberately substantial enough to be evidence, but smaller than
-    # the designated main-picture area.
+    # By default the rightmost 160 pixels form the independently phased
+    # secondary asset. Scenarios may place it in complete evidence bands to
+    # construct a deliberately heterogeneous raster.
     secondary = step.secondary if step.secondary is not None else step.raster
     if secondary is not None:
         for parity, top, displacement in (
@@ -138,7 +198,8 @@ def make_unit(counter: int, index: int, step: Step,
             source = templates[((step.scene + 1) % 3, phase, parity, 100)]
             for row, line in enumerate(source):
                 line = base.scaled_line(line, step.gain)
-                put_span(raster[top + displacement + row], line, 560, 720)
+                for x0, x1 in step.secondary_ranges:
+                    put_span(raster[top + displacement + row], line, x0, x1)
 
     header = bytearray(base.HEADER_BYTES)
     header[:4] = b"\x00\x00\xff\xff"

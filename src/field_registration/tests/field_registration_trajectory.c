@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { MAX_ROWS = 1024, CSV_FIELDS = 11 };
+enum { MAX_ROWS = 1024, MAX_SCENARIOS = 64, CSV_FIELDS = 11 };
 
 typedef struct truth_row {
     size_t index;
@@ -30,8 +30,21 @@ typedef struct result_row {
     int applied_d2;
     bool observation_known;
     bool backdated;
+    bool trajectory_reset;
     fieldreg_mode mode;
 } result_row;
+
+typedef struct scenario_summary {
+    char name[80];
+    uint64_t rows;
+    uint64_t raster_rows;
+    uint64_t raster_matches;
+    uint64_t oracle_matches;
+    uint64_t common_mode_gauge;
+    uint64_t transport_unknown;
+    uint64_t scene_cut_hold;
+    uint64_t trajectory_resets;
+} scenario_summary;
 
 static void fail(const char *message)
 {
@@ -136,6 +149,7 @@ int main(int argc, char **argv)
         result->applied_d2 = decision.applied_d2;
         result->observation_known =
             decision.frame_observation_d1 != FIELDREG_UNKNOWN;
+        result->trajectory_reset = decision.trajectory_reset;
         result->mode = decision.mode;
 
         /* Exact simulation of the current caller's limited backdating: only
@@ -170,6 +184,9 @@ int main(int argc, char **argv)
     uint64_t unsettled_rows = 0, unsettled_wrong = 0;
     uint64_t stale_rows = 0, stale_wrong = 0;
     uint64_t stale_wrong_positive = 0;
+    scenario_summary scenarios[MAX_SCENARIOS];
+    memset(scenarios, 0, sizeof(scenarios));
+    size_t scenario_count = 0;
     for (size_t i = 0; i < count; ++i) {
         result_row *row = &rows[i];
         bool oracle_match = row->applied_d1 == row->truth.oracle_d1 &&
@@ -191,6 +208,34 @@ int main(int argc, char **argv)
             stale_wrong += !oracle_match;
             stale_wrong_positive += !oracle_match && row->observation_known;
         }
+
+        size_t scenario = 0;
+        while (scenario < scenario_count &&
+               strcmp(scenarios[scenario].name, row->truth.scenario) != 0)
+            ++scenario;
+        if (scenario == scenario_count) {
+            if (scenario_count == MAX_SCENARIOS)
+                fail("fixture exceeds MAX_SCENARIOS");
+            snprintf(scenarios[scenario].name, sizeof(scenarios[scenario].name),
+                     "%s", row->truth.scenario);
+            ++scenario_count;
+        }
+        scenario_summary *summary = &scenarios[scenario];
+        ++summary->rows;
+        summary->oracle_matches += oracle_match;
+        if (row->truth.raster_known) {
+            ++summary->raster_rows;
+            summary->raster_matches +=
+                row->applied_d1 == row->truth.raster_d1 &&
+                row->applied_d2 == row->truth.raster_d2;
+        }
+        summary->common_mode_gauge +=
+            row->mode == FIELDREG_MODE_UNKNOWN_COMMON_MODE_GAUGE;
+        summary->transport_unknown +=
+            row->mode == FIELDREG_MODE_UNKNOWN_TRANSPORT_OR_VBI;
+        summary->scene_cut_hold +=
+            row->mode == FIELDREG_MODE_UNKNOWN_SCENE_CUT_HOLD;
+        summary->trajectory_resets += row->trajectory_reset;
     }
 
     printf("trajectory fixture: rows=%zu raster-known=%" PRIu64
@@ -206,6 +251,21 @@ int main(int argc, char **argv)
     printf("stale-latch class: wrong=%" PRIu64 "/%" PRIu64
            " positive-wrong=%" PRIu64 "\n", stale_wrong, stale_rows,
            stale_wrong_positive);
+    puts("per-scenario current-engine scores:");
+    for (size_t i = 0; i < scenario_count; ++i) {
+        const scenario_summary *summary = &scenarios[i];
+        printf("  %-36s oracle=%" PRIu64 "/%" PRIu64,
+               summary->name, summary->oracle_matches, summary->rows);
+        if (summary->raster_rows != 0)
+            printf(" raster=%" PRIu64 "/%" PRIu64,
+                   summary->raster_matches, summary->raster_rows);
+        else
+            printf(" raster=unknown");
+        printf(" common-gauge=%" PRIu64 " transport-unknown=%" PRIu64
+               " scene-hold=%" PRIu64 " resets=%" PRIu64 "\n",
+               summary->common_mode_gauge, summary->transport_unknown,
+               summary->scene_cut_hold, summary->trajectory_resets);
+    }
 
     /* This is a pre-redesign characterization test. Passing means the public
      * fixture still exposes the known semantic gap; it does not bless it. */
