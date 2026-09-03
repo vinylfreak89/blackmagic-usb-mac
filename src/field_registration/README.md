@@ -262,7 +262,7 @@ jitter, multiphase-envelope jitter, secondary-edge rejection, false-edge
 chatter, clipped `-2` upward offsets, blank-with-padding, and 124-unit stale
 latch classes.
 
-On the full tagged fixture, v6 changed 19,237/86,296 presented pairs versus the
+On the full tagged fixture, v6 changed 19,238/86,296 presented pairs versus the
 accepted v4 review sidecar. Under the strict measurable check—both top and
 bottom edges of each field define one coherent offset, then compare the raw
 and applied relative phase—misaligned rows fell from 10,547/55,329 to
