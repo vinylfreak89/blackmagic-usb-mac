@@ -1142,6 +1142,27 @@ delivery edge; wrong one at acquisition.
   Human sign-off remains required: these are observable-consistency metrics, not proof that every
   content-derived edge is physical truth. Integer vertical registration does not correct
   sub-line, horizontal/line-time, flagging, or skew errors.
+  **Residual class found on re-review (2026-09-03 evening, two independent arms reconciled):** a
+  yadif-2x test of the first 5 min from the frameserver's published frames combs wherever the two
+  fields of a unit are misregistered against each other. The hypothesis "the field is pushed down
+  and its bottom landmark falls off the raster" was measured and REFUTED for the common +1/+2
+  events: the lower picture edge moves from row 256 into rows 257/258 — inside the four captured
+  near-blank lines, still measurable — only two units on the whole tape show an apparent top
+  offset beyond +4, and both are multi-edge rasters, not rigid shifts. What remains is a
+  **relative-only misregistration class**: both fields' absolute edges nominal, no gauge, but a
+  noise-tolerant static-region comb search (8-px horizontal low-pass, same-parity static mask,
+  persistence ≥16 columns, reweave −3..+3) finds a clean one- or two-line minimum with a ~40%
+  comb-energy drop. First 100 s of the SP recording, frameserver output: 153 of 2,974 measurable
+  frames (5.1%) in twelve 3–19-frame runs plus 17 single-frame events; on most runs the engine
+  had applied (1,0) with a further 1–2 lines residual — under-correction of larger slips while
+  abstaining (support 0–3). v6 only *constrains* by relative evidence; it never applies a relative
+  correction without an absolute gauge. Plan (Codex implements, Claude reviews): goldens first for
+  both classes (relative-only A/B with gauge provenance; bottom-censored requiring true boundary
+  censoring + body-temporal corroboration), then a relative-only estimator/authority applied at
+  unit rate with `relative_only`/`gauge_unknown` sidecar provenance, costed against §11b; the
+  presentation acceptance test is `experiments/static_comb_metric.py` on
+  `frameserver_replay --dump-uyvy` output (affected runs move to shift 0, normal frames stay).
+  Yadif is the presentation check only, never registration truth.
   **Owner visual sign-off (2026-09-03, full forward-only NNEDI watch copy of fixture A):** a
   large improvement over the validated v4 engine; judged representative of what a digitally
   captured VHS tape should look like. Of the jumps that remain, nearly every one in the SP
