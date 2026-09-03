@@ -38,3 +38,12 @@ src/capture_core/capture_core_test
 src/capture_core/test_tsan
 src/capture_core/test_asan
 src/capture_core/fixture.expect
+
+# frameserver build outputs
+src/frameserver/frameserver_replay
+src/frameserver/tests/audio_publisher_test
+src/frameserver/tests/frame_publisher_test
+src/frameserver/tests/frameserver_test
+src/frameserver/tests/test_asan
+src/frameserver/tests/test_tsan
+src/frameserver/tests/test_smallring
