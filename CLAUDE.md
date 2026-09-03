@@ -1275,6 +1275,28 @@ Shuttle and onto the deck, and this best-in-class deck may decode better — the
 which component can win (both are 480i; field/interlace handling is identical). Compare on a
 saturated, motion-heavy passage (chroma noise, color bleed, edge cleanliness).
 
+## 11b. Real-time budget and CPU minimum (owner requirement, 2026-09-03)
+
+Registration will keep getting more capable; it must stay real-time, and the project publishes a
+CPU minimum rather than assuming M-class silicon. Rules:
+
+- **Budget.** One unit period is 33.37 ms. The per-unit cost of the whole frameserver worker path
+  (classifier + registration + assembly + publish, excluding I/O) must stay **≤ 10 ms on the
+  reference M3 P-core, single-threaded** — ~30% of the period — so a core three times slower still
+  keeps up. Anything beyond that needs a measured justification and a design that sheds work
+  before it sheds frames (§8 property 7).
+- **Measured today (M3):** registration 1.47 ms median / 1.57 ms p95 per unit; classifier
+  ~0.65 ms; publish/copy well under 1 ms; whole worker ≈ 2.5 ms/unit. Any new evidence path (e.g.
+  a static-region comb search) is costed against this table before it lands.
+- **Enforcement.** Every engine or classifier change reports ms/unit (median, p95) from the golden
+  runs in its commit; a `bench` target over a fixed 10,000-unit fixture is the regression gate.
+  Allocation-free and SIMD-friendly code (NEON now, SSE/AVX2 when ported) is the norm on this path.
+- **Published minimum (provisional, from measurement + a 3× scalar-throughput margin):** any Apple
+  M-series; on x86, a 2017-or-later quad-core with AVX2 at ≥ 3 GHz for the full pipeline at 480i.
+  A 2015-class dual-core i3 is explicitly NOT supported. Revised when an Intel build exists and is
+  measured; never restated from extrapolation once real numbers exist.
+- HD modes (P6) multiply the raster by 4–6×; their budget is a separate measurement, not this one.
+
 ## 12. Fallback if analog needs host-side decoder config
 
 If exp 1 streams but stays `0x0800` on analog select, host-side analog init is missing. **Don't
