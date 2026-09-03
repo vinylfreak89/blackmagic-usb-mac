@@ -338,6 +338,7 @@ int main(int argc, char **argv)
         "flat-dark-intact-padding-vbi",
         "flat-blank-intact-padding-no-vbi",
         "relative-only-return-temporal-gauge",
+        "relative-only-following-abstain",
         "relative-only-sustained-plus1-guard",
         "relative-only-onset-temporal-gauge",
         "relative-only-gauge-unknown",
@@ -368,13 +369,20 @@ int main(int argc, char **argv)
     for (size_t i = 0; i < scenario_count; ++i) {
         const scenario_summary *summary = &scenarios[i];
         if (strcmp(summary->name, "relative-only-return-temporal-gauge") == 0 ||
-            strcmp(summary->name, "relative-only-onset-temporal-gauge") == 0 ||
-            strcmp(summary->name, "relative-only-sustained-plus1-guard") == 0) {
+            strcmp(summary->name, "relative-only-onset-temporal-gauge") == 0) {
             live_pass = live_pass && summary->relative_only == summary->rows &&
                         summary->relative_gauge_unknown == 0;
+        } else if (strcmp(summary->name,
+                          "relative-only-sustained-plus1-guard") == 0) {
+            /* The minimum confirms the already committed phase. It is a
+             * guard, not a new relative-only presentation. */
+            live_pass = live_pass && summary->relative_only == 0;
         } else if (strcmp(summary->name, "relative-only-gauge-unknown") == 0) {
             live_pass = live_pass && summary->relative_only == summary->rows &&
                         summary->relative_gauge_unknown == summary->rows;
+        } else if (strcmp(summary->name,
+                          "relative-only-following-abstain") == 0) {
+            live_pass = live_pass && summary->relative_only == 0;
         } else if (strncmp(summary->name, "relative-guard-", 15) == 0) {
             live_pass = live_pass && summary->relative_only == 0;
         } else if (strcmp(summary->name, "bottom-censored-field1-plus5") == 0) {

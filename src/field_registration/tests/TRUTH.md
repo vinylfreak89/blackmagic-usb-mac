@@ -78,7 +78,8 @@ comb minimum establishes `d2-d1 == 0` thereafter. Mirror cases cover a sustained
 `(1,0)` phase, a relative-only onset, and an epoch whose absolute gauge is never
 known. Negative controls are an alternating-line card, a sub-16-column local
 overlay, a scene cut, inter-field motion without a static-region consensus, and
-a nominal raster.
+a nominal raster. A no-evidence unit immediately after the release asserts that
+the relative presentation did not replace the committed absolute lock.
 
 The boundary class moves field 1 down five lines, clips source content at the
 Shuttle's hard-padding row 261, and requires the visible body motion plus the
@@ -113,13 +114,14 @@ provisional inversion remains an explicitly reported archival-only oracle
 disagreement: no zero-latency estimator may claim to know that coherent raster
 geometry will later prove provisional.
 
-Algorithm v7's expanded fixture has 1,397 units and 1,273 raster-known rows.
-The forward live engine matches 1,272/1,273 raster rows and 1,387/1,397
+Algorithm v7's expanded fixture has 1,398 units and 1,273 raster-known rows.
+The forward live engine matches 1,272/1,273 raster rows and 1,388/1,398
 trajectory-oracle rows. The sole raster mismatch is the intentionally
 gauge-unknown acquisition warmup; all ten oracle mismatches are the explicitly
 archival-only provisional inversion. The deciding relative-only release,
 sustained-phase mirror, temporal-gauge onset, unknown-gauge sequence,
 bottom-censored `+5`, and every false-positive guard pass. The harness also
-asserts provenance: relative authority is present throughout its four positive
-classes, the unknown-gauge class is labelled on every row, and no guard row is
-labelled relative-only.
+asserts provenance: relative authority is present on the release and onset
+classes, the unknown-gauge class is labelled on every row, and a minimum that
+confirms an already committed phase remains a guard rather than being labelled
+as new relative-only authority.

@@ -124,6 +124,11 @@ def trajectory() -> list[Step]:
     add(12, "relative-only-return-temporal-gauge", (0, 0), (0, 0),
         unsettled=True, obscure_edges=True, main_ranges=((0, 720),),
         secondary_ranges=())
+    # A relative-only presentation must not replace the last absolute lock.
+    # With no evidence on the following unit, hold (1,0), not the relative
+    # (0,0) representation that was valid only for the measured unit.
+    add(1, "relative-only-following-abstain", None, (1, 0), gain=0.0,
+        unsettled=True, vbi_present=False)
     add(12, "relative-release-back-10", (1, 0), (1, 0),
         main_ranges=((0, 720),), secondary_ranges=())
 
