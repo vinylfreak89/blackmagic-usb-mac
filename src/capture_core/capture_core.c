@@ -31,6 +31,7 @@ typedef struct {
     uint32_t submit_seq, status, req_len, actual_len;
 } rec_hdr;
 _Static_assert(sizeof(rec_hdr)==24, "rec_hdr must be 24 bytes");
+#define CONTROL_TERMINAL_RESERVE (sizeof(rec_hdr))
 
 typedef struct cc_session cc_session_fwd;
 typedef struct {
@@ -152,7 +153,7 @@ static void flush_loss_(cc_session *s, uint8_t ep){
     int e=ep_i(ep);
     // The record carries 32-bit counts; a blocked interval can exceed that, so emit as many
     // records as it takes rather than truncating (each record confesses what it carries).
-    while(s->lost_pkts[e] && ring_free_(s)>=sizeof(rec_hdr)){
+    while(s->lost_pkts[e] && ring_free_(s)>=sizeof(rec_hdr)+CONTROL_TERMINAL_RESERVE){
         size_t chunks=loss_record_count_(s,e);
         uint32_t lb=(uint32_t)((s->lost_bytes[e]+chunks-1)/chunks);
         uint32_t lp=(uint32_t)((s->lost_pkts[e]+chunks-1)/chunks);
@@ -206,7 +207,18 @@ static void put_pkt_(cc_session *s, uint8_t ep, uint16_t pi, uint32_t seq,
 }
 static void put_meta_(cc_session *s, uint8_t type, uint8_t ep, uint16_t pi,
                       uint32_t seq, uint32_t st, const void *p, uint32_t plen){
-    if(ring_free_(s)<sizeof(rec_hdr)+plen){ s->meta_dropped++; return; }   // counted, never silent
+    if(ring_free_(s)<sizeof(rec_hdr)+plen+CONTROL_TERMINAL_RESERVE){
+        s->meta_dropped++;
+        // Consume the permanently reserved final header to make the saved stream itself say
+        // that control truth was lost, then terminate. Stats provide detail; the record keeps
+        // an archive from looking complete after metadata exhaustion.
+        if(ring_free_(s)>=sizeof(rec_hdr)){
+            rec_hdr fatal={REC_MAGIC,REC_XFERERR,ep,0xFFFE,seq,UINT32_MAX,0,0};
+            ring_put_record_(s,&fatal,NULL,0); wake_(s);
+        }
+        atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); atomic_store(&s->stop_req,1);
+        return;
+    }
     rec_hdr h={REC_MAGIC,type,ep,pi,seq,st,0,plen};
     ring_put_record_(s,&h,p,plen);
     wake_(s);

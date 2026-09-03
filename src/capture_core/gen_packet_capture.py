@@ -44,6 +44,8 @@ def main():
                     help="every Nth video packet is short (device-short behaviour); 0 = none")
     ap.add_argument("--xfererr-at", type=int, default=0,
                     help="emit one TransferError record (video, resubmit-failure form) before video transfer N")
+    ap.add_argument("--xfererr-burst", type=int, default=1,
+                    help="number of adjacent TransferError records emitted at --xfererr-at")
     ap.add_argument("--hostloss-at", type=int, default=0,
                     help="emit one HostLoss record after this many video transfers; 0 = none")
     a = ap.parse_args()
@@ -74,7 +76,8 @@ def main():
                     vb += n; vp += 1
                 vseq += 1; vi += 1
                 if a.xfererr_at and vi == a.xfererr_at:
-                    f.write(rec(2, V_EP, 0xFFFF, vseq, 5, 0, 0))   # type 2 = TransferError, resubmit-failure form
+                    for j in range(a.xfererr_burst):
+                        f.write(rec(2, V_EP, 0xFFFF, vseq + j, 5, 0, 0))
                 if a.hostloss_at and vi == a.hostloss_at:
                     f.write(rec(1, V_EP, 0, vseq, 0, 3, 3 * V_PKT))
                 if vi % 60 == 0:

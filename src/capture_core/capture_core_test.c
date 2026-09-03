@@ -64,7 +64,7 @@ static void t_end(void *ctx, enum cc_end r){
 }
 typedef struct { cc_session *s; int rc; } stop_arg;
 static void *stop_thread(void *p){ stop_arg *a=p; a->rc=cc_stop(a->s); return NULL; }
-static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle){
+static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle, long expected_meta_drops){
     memset(t,0,sizeof *t);
     t->main_thread=pthread_self();
     t->throttle=throttle;
@@ -83,12 +83,12 @@ static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle
           "cc_stats loss (%llu/%llu) != callback loss (%llu/%llu)",
           (unsigned long long)st.lost_bytes[0],(unsigned long long)st.lost_bytes[1],
           (unsigned long long)t->loss_bytes[0],(unsigned long long)t->loss_bytes[1]);
-    CHECK(st.control_records_dropped==0,"control records dropped: %ld",st.control_records_dropped);
+    CHECK(st.control_records_dropped==expected_meta_drops,"control records dropped: %ld (expected %ld)",st.control_records_dropped,expected_meta_drops);
     CHECK(!st.teardown_incomplete,"teardown incomplete");
     cc_close(s);
 }
 static void run_replay(const char *path, int ring_mb, tally *t){
-    run_replay_opt(path,ring_mb,t,0);
+    run_replay_opt(path,ring_mb,t,0,0);
 }
 
 int main(int argc, char **argv){
@@ -111,7 +111,7 @@ int main(int argc, char **argv){
     CHECK(!t.cb_on_main,"callbacks ran on the caller's thread");
 
     // 2: honesty under forced overflow (1 MB ring, throttled consumer)
-    run_replay_opt(slice,1,&t,1);
+    run_replay_opt(slice,1,&t,1,0);
     CHECK(t.loss_events>0,"1MB ring produced no overflow — test not exercising loss");
     CHECK(t.bytes[0]+t.loss_bytes[0]==vB,
           "video accounting UNBALANCED: %llu delivered + %llu lost != %llu",
@@ -123,9 +123,14 @@ int main(int argc, char **argv){
     // A hard two-second callback stall used to consume META_RESERVE as one HostLoss header per
     // packet and silently discard a later TransferError.  Coalescing must preserve both.
     if(argc>=7){
-        run_replay_opt(argv[6],1,&t,2);
+        run_replay_opt(argv[6],1,&t,2,0);
         CHECK(t.loss_events>0,"blocked consumer did not exercise loss coalescing");
         CHECK(t.error_events==1,"late TransferError lost behind DATA pressure (got %u)",t.error_events);
+    }
+    if(argc>=8){
+        run_replay_opt(argv[7],1,&t,2,1);
+        CHECK(t.end_reason==CC_END_INTERNAL_ERROR,"metadata exhaustion was not terminal (%d)",t.end_reason);
+        CHECK(t.error_events>0,"metadata exhaustion left no in-stream TransferError marker");
     }
 
     // 3: truncation robustness — cut mid-header and mid-payload

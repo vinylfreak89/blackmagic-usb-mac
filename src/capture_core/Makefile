@@ -15,6 +15,7 @@ check: shuttle-capture
 
 FIXTURE=fixture.tpc
 META_FIXTURE=fixture_meta.tpc
+META_EXHAUST_FIXTURE=fixture_meta_exhaust.tpc
 EXPECT=$(shell cat fixture.expect 2>/dev/null)
 
 $(FIXTURE): gen_packet_capture.py
@@ -23,16 +24,19 @@ $(FIXTURE): gen_packet_capture.py
 $(META_FIXTURE): gen_packet_capture.py
 	python3 gen_packet_capture.py --out $(META_FIXTURE) --expect fixture_meta.expect --video-transfers 40 --audio-transfers 60 --short-every 97 --xfererr-at 39
 
-test: capture_core_test $(FIXTURE) $(META_FIXTURE)
-	./capture_core_test $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE)
+$(META_EXHAUST_FIXTURE): gen_packet_capture.py
+	python3 gen_packet_capture.py --out $(META_EXHAUST_FIXTURE) --expect fixture_meta_exhaust.expect --video-transfers 40 --audio-transfers 60 --xfererr-at 39 --xfererr-burst 3000
 
-test-tsan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_FIXTURE)
+test: capture_core_test $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
+	./capture_core_test $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
+
+test-tsan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
 	$(CC) -O1 -g -fsanitize=thread $(CFLAGS) $(TESTFLAGS) -o test_tsan capture_core.c capture_core_test.c $(LIBS)
-	./test_tsan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE)
+	./test_tsan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
 
-test-asan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_FIXTURE)
+test-asan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
 	$(CC) -O1 -g -fsanitize=address,undefined $(CFLAGS) $(TESTFLAGS) -o test_asan capture_core.c capture_core_test.c $(LIBS)
-	./test_asan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE)
+	./test_asan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
 
 capture_core_test: capture_core.c capture_core_test.c capture_core.h
 	$(CC) $(CFLAGS) $(TESTFLAGS) -o $@ capture_core.c capture_core_test.c $(LIBS)
@@ -45,4 +49,4 @@ test-shim: capture_core.c capture_core_shim_test.c capture_core.h $(SHIM) $(FIXT
 	./test_shim $(FIXTURE)
 
 clean:
-	rm -f shuttle-capture capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect
+	rm -f shuttle-capture capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect fixture_meta_exhaust.tpc fixture_meta_exhaust.expect
