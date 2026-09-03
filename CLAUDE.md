@@ -1153,10 +1153,14 @@ delivery edge; wrong one at acquisition.
   noise-tolerant static-region comb search (8-px horizontal low-pass, same-parity static mask,
   persistence ≥16 columns, reweave −3..+3) finds a clean one- or two-line minimum with a ~40%
   comb-energy drop. First 100 s of the SP recording, frameserver output: 153 of 2,974 measurable
-  frames (5.1%) in twelve 3–19-frame runs plus 17 single-frame events; on most runs the engine
-  had applied (1,0) with a further 1–2 lines residual — under-correction of larger slips while
-  abstaining (support 0–3). v6 only *constrains* by relative evidence; it never applies a relative
-  correction without an absolute gauge. Plan (Codex implements, Claude reviews): goldens first for
+  frames (5.1%) in twelve 3–19-frame runs plus 17 single-frame events. **Raw vs corrected on the
+  same frames:** the nominal crop is misregistered in 1,659 of 2,975 (55.8%, +1 ×1,328, +2 ×320)
+  and the engine brings that to 153 — but 132 of the 143 classifiable residual frames are
+  **over-corrections**: the raster had returned to nominal (raw need 0, or −1) while the engine
+  kept its held (1,0) through 3–19 units of abstention (support 0–3, `UnknownPhaseDwell`). The
+  engine follows the steps up on evidence and misses the returns. v6 only *constrains* by
+  relative evidence; it never applies a relative correction — or releases a held phase — without
+  an absolute gauge. Plan (Codex implements, Claude reviews): goldens first for
   both classes (relative-only A/B with gauge provenance; bottom-censored requiring true boundary
   censoring + body-temporal corroboration), then a relative-only estimator/authority applied at
   unit rate with `relative_only`/`gauge_unknown` sidecar provenance, costed against §11b; the
