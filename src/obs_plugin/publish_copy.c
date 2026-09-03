@@ -8,12 +8,14 @@
 #include <libgen.h>
 
 int (*publish_copy_test_fail)(enum publish_step step) = NULL;
+ssize_t (*publish_copy_test_read)(int fd, void *buf, size_t n) = NULL;
 #define FAIL_AT(step) (publish_copy_test_fail && publish_copy_test_fail(step))
+static ssize_t do_read(int fd, void *buf, size_t n){ return publish_copy_test_read ? publish_copy_test_read(fd, buf, n) : read(fd, buf, n); }
 
 /* read exactly `want` bytes unless EOF; returns bytes read (< want only at EOF), -1 on error */
 static ssize_t read_full(int fd, char *buf, size_t want){
     size_t got = 0;
-    while (got < want){ ssize_t n = read(fd, buf + got, want - got); if (n < 0){ if (errno == EINTR) continue; return -1; } if (n == 0) break; got += (size_t)n; }
+    while (got < want){ ssize_t n = do_read(fd, buf + got, want - got); if (n < 0){ if (errno == EINTR) continue; return -1; } if (n == 0) break; got += (size_t)n; }
     return (ssize_t)got;
 }
 static int write_full(int fd, const char *buf, size_t len){
@@ -70,7 +72,7 @@ int publish_by_copy(const char *src, const char *final){
         if (staged && (FAIL_AT(PUB_STEP_CLEANUP) || unlink(staging) != 0)){ if (!errno) errno = EIO; return -2; }
         errno = e; return -1;
     }
-    (void)fsync_dir_of(final);                       /* best effort: make the directory entry durable where the filesystem supports it */
+    if (FAIL_AT(PUB_STEP_DIRSYNC) || fsync_dir_of(final) != 0) return 1;   /* published, but the directory entry may not be durable yet: keep the source */
     if (FAIL_AT(PUB_STEP_UNLINK_SRC) || unlink(src) != 0) return 1;
     return 0;
 }

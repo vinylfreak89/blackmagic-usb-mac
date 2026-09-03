@@ -470,8 +470,8 @@ int fs_stop(frameserver *f){
     cc_stop(f->cap);                        // fires on_end -> producer_done (audio flushed before it)
     pthread_join(f->worker, NULL);
     pthread_join(f->audio_worker, NULL);    // exits by itself once cc_on_end set audio_done and the queue drained
-    pthread_mutex_lock(&f->log_m); FILE *L = f->log; f->log = NULL; pthread_mutex_unlock(&f->log_m);   // detach under the lock (fs_log_stop may race), close outside it
-    if (L && fclose(L) != 0) f->st.log_close_errors++;
+    pthread_mutex_lock(&f->log_m); FILE *L = f->log; f->log = NULL; uint64_t ferrs = f->log_file_errors; pthread_mutex_unlock(&f->log_m);   // detach under the lock (fs_log_stop may race), close outside it
+    if (L){ if (fclose(L) != 0){ f->st.log_close_errors++; ferrs++; } f->st.log_last_file_errors = ferrs; }
     pthread_mutex_lock(&f->life_m); f->life=FS_LIFE_STOPPED; pthread_cond_broadcast(&f->life_c); pthread_mutex_unlock(&f->life_m);
     return 0;
 }
@@ -506,7 +506,8 @@ int fs_log_stop(frameserver *f){
     FILE *L = f->log; f->log = NULL; uint64_t errs = f->log_file_errors;   // detach under the lock ...
     pthread_mutex_unlock(&f->log_m);
     if(!L) return -1;
-    if(fclose(L) != 0){ f->st.log_close_errors++; return -1; }   // ... flush and close outside it; a failed close is reported, never hidden
+    if(fclose(L) != 0){ f->st.log_close_errors++; errs++; }   // ... flush and close outside it; a failed close is reported, never hidden
+    f->st.log_last_file_errors = errs;
     return errs ? -1 : 0;                              // rows failed inside this file: the caller must not publish it as complete
 }
 void fs_get_stats(const frameserver *f, fs_stats *o){

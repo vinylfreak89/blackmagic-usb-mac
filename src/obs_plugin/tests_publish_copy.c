@@ -17,6 +17,8 @@ static int same(const char *a, const char *b){ FILE *fa=fopen(a,"rb"), *fb=fopen
 static int partials(const char *final){ char pat[4200]; snprintf(pat,sizeof pat,"%s.partial-*",final); glob_t g; int n=glob(pat,0,NULL,&g)==0?(int)g.gl_pathc:0; globfree(&g); return n; }
 static enum publish_step fail_step; static int hook(enum publish_step s){ return s==fail_step; }
 static enum publish_step two[2]; static int hook2(enum publish_step s){ return s==two[0]||s==two[1]; }
+#include <errno.h>
+static int rd_calls; static ssize_t short_read(int fd, void *buf, size_t n){ rd_calls++; if(rd_calls%7==0){ errno=EINTR; return -1; } size_t cap = (rd_calls%3==0) ? 4096 : (rd_calls%5==0 ? 1 : n); return read(fd,buf,n<cap?n:cap); }
 int main(void){
     char dir[]="/tmp/pc_dir_XXXXXX"; mkdtemp(dir);
     char src[4096], dst[4096], ref[4096]; snprintf(src,sizeof src,"%s/src.csv",dir); snprintf(dst,sizeof dst,"%s/dst.csv",dir); snprintf(ref,sizeof ref,"%s/ref.csv",dir);
@@ -45,9 +47,15 @@ int main(void){
         CHECK(same(src,ref),"source intact after cleanup failure");
         char pat[4200]; snprintf(pat,sizeof pat,"%s.partial-*",dst); glob_t g; if(glob(pat,0,NULL,&g)==0){ for(size_t i=0;i<g.gl_pathc;i++) unlink(g.gl_pathv[i]); globfree(&g); }
     }
-    // 3. source-unlink failure: published (1), final byte-exact, source still there
-    fail_step=PUB_STEP_UNLINK_SRC; publish_copy_test_fail=hook;
-    { int rc=publish_by_copy(src,dst); CHECK(rc==1,"source-unlink failure -> 1, got %d",rc); CHECK(same(dst,ref),"final byte-exact"); CHECK(same(src,ref),"source still present"); unlink(dst); }
+    // 3. source-unlink failure and directory-fsync failure: published (1), final byte-exact, source still there
+    for (enum publish_step s2=PUB_STEP_DIRSYNC; s2<=PUB_STEP_UNLINK_SRC; s2++){
+        fail_step=s2; publish_copy_test_fail=hook;
+        int rc=publish_by_copy(src,dst); CHECK(rc==1,"step %d -> 1, got %d",(int)s2,rc); CHECK(same(dst,ref),"step %d: final byte-exact",(int)s2); CHECK(same(src,ref),"step %d: source still present",(int)s2); unlink(dst);
+    }
+    // 3b. legal short reads and EINTR on the destination side must not reject a byte-identical copy
+    publish_copy_test_fail=NULL; publish_copy_test_read=short_read;
+    { int rc=publish_by_copy(src,dst); CHECK(rc==0,"short-read/EINTR injection: expected 0 got %d",rc); CHECK(same(dst,ref),"short-read: final byte-exact"); CHECK(access(src,F_OK)!=0,"short-read: source removed"); unlink(dst); fill(src,n,7); }
+    publish_copy_test_read=NULL;
     // 4. normal publish -> 0, byte-exact, source removed, no partial
     publish_copy_test_fail=NULL;
     CHECK(publish_by_copy(src,dst)==0,"publish");

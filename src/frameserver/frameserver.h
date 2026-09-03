@@ -81,6 +81,7 @@ typedef struct {
     uint64_t log_files;               // decision-log files opened (cfg.decision_log + fs_log_start)
     uint64_t log_write_errors;        // rows whose fprintf failed (NOT counted in log_rows): the sidecar is incomplete
     uint64_t log_close_errors;        // fclose failures at detach/stop: the tail of that file may be missing
+    uint64_t log_last_file_errors;    // write+close errors of the most recently CLOSED log file (fs_log_stop or fs_stop): 0 => that file is complete
     unsigned pool_high_water;
 } fs_stats;
 

@@ -365,11 +365,17 @@ int main(int argc, char **argv){
         atomic_store(&log_break,1); CHECK(fs_log_start(bf,ld)==0,"attach D");
         CHECK(wait_frames(bbase,40),"frames while writes fail");
         CHECK(fs_log_stop(bf)==-1,"fs_log_stop must report a file with failed rows as incomplete");
+        fs_stats mid; fs_get_stats(bf,&mid); CHECK(mid.log_last_file_errors>0,"last-file verdict must be nonzero for the broken file");
+        /* a second, clean log in the same session, closed by fs_stop: its verdict must be 0 although the session total is not */
+        char le[]="/tmp/fs_test_logE_XXXXXX"; fd=mkstemp(le); close(fd); unlink(le);
+        CHECK(fs_log_start(bf,le)==0,"attach E (clean after broken)"); CHECK(wait_frames(bbase,60),"frames in the clean log");
         while(!done) usleep(10000); CHECK(fs_stop(bf)==0,"stop (write failure)");
         fs_stats bs; fs_get_stats(bf,&bs);
         CHECK(bs.log_write_errors>0,"injected write failures were not counted");
-        CHECK(bs.log_rows<=1,"failed rows were counted as written (%llu)",(unsigned long long)bs.log_rows);
-        printf("  write failure: %llu rows, %llu write errors\n",(unsigned long long)bs.log_rows,(unsigned long long)bs.log_write_errors);
+        CHECK(bs.log_last_file_errors==0,"the clean file closed by fs_stop must have a zero verdict (%llu) despite session errors %llu",(unsigned long long)bs.log_last_file_errors,(unsigned long long)bs.log_write_errors);
+        CHECK(bs.log_rows>1,"the clean log wrote rows (%llu)",(unsigned long long)bs.log_rows);
+        unlink(le);
+        printf("  write failure: %llu rows, %llu write errors, last-file verdict %llu\n",(unsigned long long)bs.log_rows,(unsigned long long)bs.log_write_errors,(unsigned long long)bs.log_last_file_errors);
         fs_close(bf);
     }
     unlink(ld);

@@ -189,7 +189,8 @@ static void sidecar_publish(shuttle_src *s){
         int rc = publish_by_copy(s->sidecar_partial, s->sidecar_final);
         if (rc == -2) blog(LOG_ERROR, "[shuttle-source] sidecar publish by copy failed (%s) AND its staging file could not be removed: look for %s.partial-*; the complete file is at %s", strerror(errno), s->sidecar_final, s->sidecar_partial);
         else if (rc < 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish by copy failed or did not verify (%s); the complete file is left at %s", strerror(errno), s->sidecar_partial);
-        else blog(LOG_INFO, "[shuttle-source] sidecar published by verified copy (different filesystem; cache-visible on a cloud volume): %s%s", s->sidecar_final, rc == 1 ? " (scratch copy could not be removed)" : "");
+        else if (rc == 1) blog(LOG_WARNING, "[shuttle-source] sidecar published by verified copy: %s — the scratch copy was KEPT at %s (directory fsync or scratch removal failed: %s)", s->sidecar_final, s->sidecar_partial, strerror(errno));
+        else blog(LOG_INFO, "[shuttle-source] sidecar published by verified copy (different filesystem; cache-visible on a cloud volume): %s", s->sidecar_final);
     }
 }
 static void sidecar_detach(shuttle_src *s){
@@ -225,7 +226,7 @@ static void shuttle_stop(shuttle_src *s){
     int publish_after = s->sidecar_attached; s->sidecar_attached = 0;
     fs_stats st; fs_stop(s->fs); fs_get_stats(s->fs, &st);
     if (publish_after){
-        if (st.log_write_errors || st.log_close_errors) blog(LOG_ERROR, "[shuttle-source] sidecar part is INCOMPLETE (%llu write / %llu close errors in this session); left unpublished at %s", (unsigned long long)st.log_write_errors, (unsigned long long)st.log_close_errors, s->sidecar_partial);
+        if (st.log_last_file_errors) blog(LOG_ERROR, "[shuttle-source] sidecar part is INCOMPLETE (%llu write/close errors in this file); left unpublished at %s", (unsigned long long)st.log_last_file_errors, s->sidecar_partial);
         else sidecar_publish(s);
     }
     blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, residual steps applied %llu",
