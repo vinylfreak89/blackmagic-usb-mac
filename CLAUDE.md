@@ -474,7 +474,7 @@ Consequences:
 | Non-playback transport mode (stop, rewind, FF) | grey mute + OSD |
 | Playing, servo locked | program |
 | Playing, unlocked — **transient** (relock windows) | snow, ~0.7–2.3 s, re-timed into valid `0xe801` units |
-| Playing **virgin tape** (no CTL, no RF), steady state | **grey mute** — observed on the deck's output; capture fragments corroborate (`DECK_BLANK_STATIC(likely)`, grey/blank) but sit in the 40%→20%→0% loss region, so this row is **not USB-verified** |
+| Playing **virgin tape** (no CTL, no RF), steady state | **NOT grey mute — MEASURED 2026-09-03 (`captures/virgin_transition.tpc`, 45 s, byte-complete):** the deck outputs **sub-blanking black (Y ≈ 1.5–2, chroma 128) with sparse white dropout streaks and a noise band at the bottom of the raster**, all in locked `0xe801` units; the OSD (if enabled) is composited over it. The earlier "grey mute" belief for this row was wrong (the grey+OSD screen is the *non-playback* mode above). The end-of-recording transient was short (~0.5 s: flat → sub-black → 2 snow-like units → black), not the 1.7–2.3 s snow relock seen after splices — a virgin section has no CTL to chase. |
 
 So snow is only the *acquisition transient*; the deck's steady-state answer to unlocked playback is
 its mute screen. ("The rest of the tape is snow" describes the tape's magnetic content — what this
@@ -547,6 +547,16 @@ HostLoss 0, errors 0).** The Shuttle with nothing on its input does NOT sit in o
   capture loss — visible only via the verifier, because `frameserver_replay` did not print
   capture-level HostLoss. Replay with `--ring-mb` ≥ file size or `--pace-us 16000`; the tool must
   surface capture-core loss (fix queued).
+
+**Classifier v0 on the virgin-tape capture — three real-data defects (queued):** (1) sub-blanking
+black with sparse dropout streaks flapped between `SubBlackMuteLike` and `ProgramLike` every ~2
+units for 7 s — gradient energy from the streaks passes the program test; a raster whose luma sits
+below blanking must veto `ProgramLike` outright. (2) The deck's OSD over black-with-noise classified
+as `ProgramLike`/`Present` for 26 s (the OSD text supplies edges): the planned deck-mute score with
+OSD-region awareness is needed, and `Present` must not be inferred from overlay content alone.
+(3) `unsettled` stayed 1 for every unit of two clean 45 s captures (1,385/1,385 and 1,387/1,387):
+the unsettled interval never closes on the live path. Transport/parser were flawless on both
+captures (GAPS 0, HostLoss 0, errors 0).
 
 **✅ Audio is a viable continuity master** (validates §9's approach): 8,991 resync records,
 counter `18706 → 27696`, **every step exactly +1, zero exceptions** — across the splice, the stop,
