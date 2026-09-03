@@ -77,13 +77,22 @@ typedef struct {
     // Invariants: published + dropped_pool_full + publisher_dropped == exact_units;
     //             exact_units + eligible ring drops == eligible_observations.
     uint64_t unsettled_units, begin_segment_calls, discontinuity_calls;
-    uint64_t log_rows;
+    uint64_t log_rows;                // cumulative over every attached log file
+    uint64_t log_files;               // decision-log files opened (cfg.decision_log + fs_log_start)
     unsigned pool_high_water;
 } fs_stats;
 
 int  fs_open (frameserver **out, const fs_config *cfg);
 int  fs_start(frameserver *f);
 int  fs_stop (frameserver *f);            // stops capture, drains the worker, closes the log
+// Runtime decision-log attachment, for a recorder that aligns the sidecar to its own recording
+// rather than to the session: rows are written only while a log is attached; the first row after
+// fs_log_start is the first unit the worker processed after the call (it anchors the recording on
+// the device clock via counter_extended). Same schema and header as cfg.decision_log. One log at
+// a time: start fails (-1) while one is attached (including cfg.decision_log) — stop it first.
+// Refused from the worker/audio callbacks and after stop. fs_stop closes an attached log.
+int  fs_log_start(frameserver *f, const char *path);
+int  fs_log_stop (frameserver *f);        // -1 if none attached or the close failed
 // Authoritative after fs_stop. During streaming worker-owned members are diagnostic only and
 // may be momentarily inconsistent; atomic ingress counters remain individually safe.
 void fs_get_stats(const frameserver *f, fs_stats *out);

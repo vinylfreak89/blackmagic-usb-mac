@@ -50,7 +50,7 @@ struct frameserver {
     uint64_t aq_delivered_blocks, aq_delivered_frames;   // audio worker owned
     _Atomic uint64_t audio_master_frames;
     _Atomic int workers_terminal;        // video + audio workers that have drained; the second fires on_end
-    FILE *log;
+    FILE *log; pthread_mutex_t log_m; int log_m_init;   // log_m: worker row writes vs control-thread attach/detach (fs_log_start/stop)
     // pool + ring (single producer = delivery thread, single consumer = worker)
     unsigned n_slots; uint8_t *pool; _Atomic int *slot_used;
     fs_item ring[RING_ITEMS]; _Atomic unsigned r_head, r_tail;
@@ -223,12 +223,14 @@ static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
         fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++;
         f->st.ring_drops_logged+=it->preceding_ring_drops; f->st.ring_gap_rows++;
+        pthread_mutex_lock(&f->log_m);
         if(f->log){
             fprintf(f->log,"%llu,0,Hole,-1,Unclassified,0.000,Unknown,0.000,0,0,0,0,0,0,0,0,0,0,0,Immediate,None,0.000,0,RingFullTail,%u,%llu\n",
                     (unsigned long long)it->obs.ordinal,FS_DECISION_LOG_SCHEMA,
                     (unsigned long long)it->preceding_ring_drops);
             f->st.log_rows++;
         }
+        pthread_mutex_unlock(&f->log_m);
         return;
     }
     unit_video_observation obs = it->obs;
@@ -286,6 +288,9 @@ static void process_item(frameserver *f, const fs_item *it){
         // occupancy is the analysis time, not analysis + I/O.
         atomic_store(&f->slot_used[it->slot], 0);
     }
+    // The attach/detach lock is held only for this one buffered fprintf; the control thread's
+    // fopen/fclose happen outside it (fs_log_start/fs_log_stop), so the worker never waits on I/O it did not issue.
+    pthread_mutex_lock(&f->log_m);
     if (f->log){
         fprintf(f->log, "%llu,%llu,%s,%d,%s,%.3f,%s,%.3f,%llu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s,%s,%.3f,%d,%s,%u,%llu\n",
             (unsigned long long)obs.ordinal, (unsigned long long)obs.counter_extended, transport_name(obs.transport), (int)obs.kind,
@@ -301,6 +306,7 @@ static void process_item(frameserver *f, const fs_item *it){
             (unsigned long long)rd);
         f->st.log_rows++;
     }
+    pthread_mutex_unlock(&f->log_m);
 }
 static void *worker_main(void *arg){
     frameserver *f = arg;
@@ -379,7 +385,8 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if (pthread_cond_init(&f->aq_c, NULL)){ fs_close(f); return -1; } f->aq_c_init = 1;
     ap_sink asink = { aq_enqueue, f };
     if (ap_open(&f->aud, f->aq_cap_frames, &asink) != 0){ fs_close(f); return -1; }
-    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "w"); if (!f->log){ fs_close(f); return -1; } log_header(f->log); }
+    if (pthread_mutex_init(&f->log_m, NULL)){ fs_close(f); return -1; } f->log_m_init = 1;
+    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "w"); if (!f->log){ fs_close(f); return -1; } log_header(f->log); f->st.log_files++; }
     cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, NULL, cc_on_end, f };
     if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
@@ -439,9 +446,38 @@ int fs_stop(frameserver *f){
     cc_stop(f->cap);                        // fires on_end -> producer_done (audio flushed before it)
     pthread_join(f->worker, NULL);
     pthread_join(f->audio_worker, NULL);    // exits by itself once cc_on_end set audio_done and the queue drained
-    if (f->log){ fclose(f->log); f->log = NULL; }
+    if (f->log){ fclose(f->log); f->log = NULL; }   // workers are joined: no lock needed
     pthread_mutex_lock(&f->life_m); f->life=FS_LIFE_STOPPED; pthread_cond_broadcast(&f->life_c); pthread_mutex_unlock(&f->life_m);
     return 0;
+}
+// Runtime decision-log attachment (a recorder aligns the sidecar to ITS recording, not to the
+// session). Refused from the worker threads (they hold the row lock while writing) and while a
+// log is attached: one log at a time, and the caller decides when the previous one ends.
+static int fs_log_from_worker(const frameserver *f){
+    return (f->worker_created && pthread_equal(pthread_self(),f->worker)) ||
+           (f->audio_worker_created && pthread_equal(pthread_self(),f->audio_worker));
+}
+int fs_log_start(frameserver *f, const char *path){
+    if(!f || !path || !*path || fs_log_from_worker(f)) return -1;
+    pthread_mutex_lock(&f->life_m); fs_life life=f->life; pthread_mutex_unlock(&f->life_m);
+    if(life==FS_LIFE_STOPPING || life==FS_LIFE_STOPPED) return -1;
+    pthread_mutex_lock(&f->log_m); int attached = f->log != NULL; pthread_mutex_unlock(&f->log_m);
+    if(attached) return -1;                            // one log at a time; the caller ends the previous one
+    FILE *L = fopen(path, "w"); if(!L) return -1;     // opened and headed OUTSIDE the row lock
+    log_header(L);
+    pthread_mutex_lock(&f->log_m);
+    if(f->log){ pthread_mutex_unlock(&f->log_m); fclose(L); return -1; }   // lost a race with another control caller: header-only file left, never a partial log
+    f->log = L; f->st.log_files++;
+    pthread_mutex_unlock(&f->log_m);
+    return 0;
+}
+int fs_log_stop(frameserver *f){
+    if(!f || fs_log_from_worker(f)) return -1;
+    pthread_mutex_lock(&f->log_m);
+    FILE *L = f->log; f->log = NULL;                   // detach under the lock ...
+    pthread_mutex_unlock(&f->log_m);
+    if(!L) return -1;
+    return fclose(L)==0 ? 0 : -1;                      // ... flush and close outside it
 }
 void fs_get_stats(const frameserver *f, fs_stats *o){
     *o = f->st;
@@ -473,6 +509,7 @@ void fs_close(frameserver *f){
     if (f->aq_m_init) pthread_mutex_destroy(&f->aq_m);
     free(f->aq); free(f->aq_pcm);
     if (f->log) fclose(f->log);
+    if (f->log_m_init) pthread_mutex_destroy(&f->log_m);
     if(f->c_init) pthread_cond_destroy(&f->c);
     if(f->m_init) pthread_mutex_destroy(&f->m);
     if(f->life_c_init) pthread_cond_destroy(&f->life_c);

@@ -15,6 +15,10 @@ unit_parser.o: unit_parser.c unit_parser.h ../capture_core/capture_core.h
 tests/fixture.tpc: tests/gen_unit_parser_capture.py
 	python3 $< --output $@
 
+# 120 exact units (~91 MB, generated, ignored): long enough for windowed/runtime tests.
+tests/fixture_plain.tpc: tests/gen_unit_parser_capture.py
+	python3 $< --output $@ --plain-units 120
+
 tests/unit_parser_test: unit_parser.c unit_parser.h tests/unit_parser_test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) unit_parser.c tests/unit_parser_test.c -o $@
 

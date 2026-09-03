@@ -55,11 +55,45 @@ def packetize(stream: bytes, endpoint: int, rng: random.Random,
     return result
 
 
+def write_plain(output: Path, n_units: int) -> None:
+    """N exact 0xe801 units in device-sized (15,360 B) packets plus an audio stream
+    with one resync per unit and 1601/1602 PCM records between resyncs."""
+    packet = 15_360
+    video_stream = b"".join(unit(i) for i in range(n_units))
+    audio_stream = b""
+    sample = 0
+    for i in range(n_units):
+        audio_stream += resync(i)
+        frames = 1602 if i % 5 in (0, 2) else 1601
+        audio_stream += b"".join(pcm(sample + k) for k in range(frames))
+        sample += frames
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("wb") as out:
+        note = f"unit_parser synthetic plain {n_units} units".encode()
+        out.write(record(SESSION, 0, 0, 0, 0, len(note), note))
+        seq = 0
+        for off in range(0, len(video_stream), packet):
+            chunk = video_stream[off:off + packet]
+            out.write(record(DATA, VIDEO, 0, seq, 0, packet, chunk)); seq += 1
+        seq = 0
+        for off in range(0, len(audio_stream), 2048):
+            chunk = audio_stream[off:off + 2048]
+            out.write(record(DATA, AUDIO, 0, seq, 0, 2048, chunk)); seq += 1
+    print(f"wrote {output} ({n_units} plain units)")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--plain-units", type=int, default=0,
+                        help="instead of the adversarial stream, write N exact "
+                             "units with device-sized packets and a resync per "
+                             "unit (a long, boring capture for windowed tests)")
     args = parser.parse_args()
     rng = random.Random(0x55504A31)
+    if args.plain_units:
+        write_plain(args.output, args.plain_units)
+        return
 
     # The first marker begins two bytes before a packet boundary. Counter 0 is
     # explicitly damaged by both a HostLoss record and a submission-seq gap.

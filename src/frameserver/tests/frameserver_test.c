@@ -252,6 +252,40 @@ int main(int argc, char **argv){
         fs_close(pf);
     }
     atomic_store(&sink_hold,0); unlink(logp4);
+
+    // Runtime log attachment: a recorder aligns the sidecar to ITS recording. Rows exist only
+    // while attached, each file carries exactly one header, ordinals stay monotonic, the gap
+    // between two attachments is genuinely unlogged, and every written row is counted.
+    done=0; char la[]="/tmp/fs_test_logA_XXXXXX"; fd=mkstemp(la); close(fd); char lb[]="/tmp/fs_test_logB_XXXXXX"; fd=mkstemp(lb); close(fd);
+    CHECK(argc>=3,"runtime-log test needs the long plain fixture as argv[2]");
+    fs_config rc=cfg; rc.decision_log=NULL; rc.capture.replay_path=argc>=3?argv[2]:argv[1]; rc.capture.replay_pace_us=30000; frameserver *rf=NULL;
+    CHECK(fs_open(&rf,&rc)==0,"open (runtime log)");
+    if(rf&&argc>=3){
+        CHECK(fs_log_stop(rf)==-1,"stop with no log attached must fail");
+        CHECK(fs_start(rf)==0,"start (runtime log)"); usleep(150000);
+        CHECK(fs_log_start(rf,la)==0,"attach A");
+        CHECK(fs_log_start(rf,lb)==-1,"second attach while A is attached must fail");
+        usleep(250000);
+        CHECK(fs_log_stop(rf)==0,"detach A"); usleep(150000);
+        CHECK(fs_log_start(rf,lb)==0,"attach B"); usleep(250000);
+        while(!done) usleep(10000);
+        CHECK(fs_stop(rf)==0,"stop (runtime log)");
+        CHECK(fs_log_start(rf,la)==-1,"attach after stop must fail");
+        fs_stats rs; fs_get_stats(rf,&rs);
+        unsigned long long rowsA=0,rowsB=0,hdrA=0,hdrB=0,lastA=0,firstB=0,lastB=0; int monoA=1,monoB=1; unsigned long long prev; int first;
+        L=fopen(la,"r"); prev=0; first=1; while(fgets(line,sizeof line,L)){ if(!strncmp(line,"ordinal,",8)){hdrA++;continue;} unsigned long long ord=strtoull(line,NULL,10); if(!first&&ord<=prev) monoA=0; prev=ord; first=0; rowsA++; lastA=ord; } fclose(L);
+        L=fopen(lb,"r"); prev=0; first=1; while(fgets(line,sizeof line,L)){ if(!strncmp(line,"ordinal,",8)){hdrB++;continue;} unsigned long long ord=strtoull(line,NULL,10); if(first) firstB=ord; if(!first&&ord<=prev) monoB=0; prev=ord; first=0; rowsB++; lastB=ord; } fclose(L);
+        CHECK(hdrA==1&&hdrB==1,"each runtime log carries exactly one header (%llu/%llu)",hdrA,hdrB);
+        CHECK(rowsA>0&&rowsB>0,"both attachments logged rows (%llu/%llu)",rowsA,rowsB);
+        CHECK(monoA&&monoB,"ordinals monotonic within each runtime log");
+        CHECK(firstB>lastA+1,"the detached interval is unlogged (A ends %llu, B starts %llu)",lastA,firstB);
+        CHECK(rowsA+rowsB==rs.log_rows,"runtime log rows on disk %llu != counted %llu",rowsA+rowsB,(unsigned long long)rs.log_rows);
+        CHECK(rs.log_files==2,"log_files %llu != 2",(unsigned long long)rs.log_files);
+        CHECK(rs.log_rows<rs.video_observations,"rows must cover only the attached windows (%llu of %llu observations)",(unsigned long long)rs.log_rows,(unsigned long long)rs.video_observations);
+        printf("  runtime log: A %llu rows (last ordinal %llu), gap, B %llu rows (%llu..%llu) of %llu observations\n",rowsA,lastA,rowsB,firstB,lastB,(unsigned long long)rs.video_observations);
+        fs_close(rf);
+    }
+    unlink(la); unlink(lb);
     if (fails) printf("FAILURES: %d\n", fails);
     else printf("frameserver tests: PASS (obs %llu, exact %llu, published %llu, short %llu, hole %llu, unframed %llu)\n",
            (unsigned long long)s.video_observations, (unsigned long long)s.exact_units, (unsigned long long)s.published,
