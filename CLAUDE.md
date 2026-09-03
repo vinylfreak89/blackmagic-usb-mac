@@ -528,7 +528,7 @@ layer, never define a state.
 HostLoss 0, errors 0).** The Shuttle with nothing on its input does NOT sit in one state:
 - **`0x0800` finally observed** (1,089 marker units): pseudo-frames of the full **756,048-byte
   525-line unit size**, monotonic counter, ~30 Hz. First 5 units at startup, then the last ~28 s.
-  Content (second capture, `captures/deck_unlocked_30s.tpc`, deck output dropped by its HDMI
+  Content (second capture, `captures/deck_hdmi_mode_output_drop_30s.tpc`, deck output dropped by its HDMI
   mode engaging — a deck-side cable pull, transport byte-complete): a **flat synthetic raster,
   Y ≈ 12 ± 4, chroma bytes far from neutral (U ≈ 188 or 76, V ≈ 0 — renders deep blue in a naive
   UYVY decode; bmusb called it green), no hard-padding ruler, consecutive units not
