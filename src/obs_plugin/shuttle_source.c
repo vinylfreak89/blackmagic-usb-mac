@@ -14,9 +14,14 @@
 //
 // Sidecar: the registration decision log is aligned to the RECORDING, not to the source's
 // lifetime. On OBS's recording-started event the plugin attaches the frameserver's decision log
-// as <recording>.registration.csv (fs_log_start) and detaches it on recording-stopped; the first
-// row is the first unit processed after the record button, which anchors the recording on the
-// device clock (counter_extended). A source restart mid-recording continues in .partN.csv files.
+// (fs_log_start) and detaches it on recording-stopped. The first row is the first unit processed
+// after OBS reported the recording started; the recording's first encoded frame is that unit or
+// the one delivered just before the event (its counter is written to the OBS log at attach), so
+// alignment is within one unit, not exact — an in-band frame counter would be needed for exact.
+// The log grows in a non-synced scratch directory on the recording's filesystem and is published
+// as <recording>.registration.csv by one atomic rename at detach (CLAUDE.md writer output rule:
+// never grow a file inside a cloud-synced root). An existing sidecar is never truncated (.2, .3
+// suffixes); a source restart mid-recording continues in .partN.csv files.
 //
 // Threading: the video sink runs on the frameserver's video worker, the audio sink on its audio
 // worker; obs_source_output_video/audio copy under libobs's own locks and return. Neither sink
@@ -31,6 +36,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <IOSurface/IOSurface.h>
+#include <util/dstr.h>
+#include <pthread.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <libgen.h>
 #include "../frameserver/frameserver.h"
 
 OBS_DECLARE_MODULE()
@@ -54,11 +64,15 @@ typedef struct {
     int64_t residual_applied_ticks;        /* accumulated residual steps applied to audio time */
     int64_t last_residual; int have_residual;
     _Atomic int ended; enum cc_end end_reason;
+    pthread_mutex_t m;                      /* serializes session + sidecar transitions (frontend events, update, destroy) */
     int sidecar_enabled;                    /* property: attach the decision log to each OBS recording */
-    char sidecar_base[1024];                /* <recording path> of the active recording, "" when none */
+    char *sidecar_base;                     /* <recording path> of the active recording (bfree), NULL when none */
     unsigned sidecar_part;                  /* 0 = first file of this recording; N>0 => .partN+1 (source restarted mid-recording) */
     int sidecar_attached;
+    char *sidecar_partial, *sidecar_final;  /* growing scratch path, and the published name it gets at detach */
+    _Atomic uint64_t last_counter;          /* counter_ext of the last frame delivered to OBS */
 } shuttle_src;
+#define SIDECAR_SCRATCH "/private/tmp/shuttle-source"   /* non-synced; must share a filesystem with the recording for the atomic publish */
 
 static _Atomic int g_instances;
 
@@ -79,7 +93,7 @@ static void on_frame(void *ctx, const fp_frame *fr){
     memcpy(f.color_range_min, s->color_min, sizeof f.color_range_min); memcpy(f.color_range_max, s->color_max, sizeof f.color_range_max);
     f.full_range = false;
     obs_source_output_video(s->source, &f);
-    atomic_fetch_add(&s->frames_out, 1);
+    atomic_fetch_add(&s->frames_out, 1); atomic_store(&s->last_counter, fr->counter_ext);
 }
 
 static void on_audio(void *ctx, const ap_block *b){
@@ -112,51 +126,76 @@ static void on_audio(void *ctx, const ap_block *b){
 static void on_end(void *ctx, enum cc_end r){ shuttle_src *s = ctx; s->end_reason = r; atomic_store(&s->ended, 1);
     blog(LOG_INFO, "[shuttle-source] capture ended: reason %d", (int)r); }
 
-/* ---- recording-aligned sidecar (runs on OBS's UI thread via the frontend event callback) ---- */
-static int recording_path(char *out, size_t cap){
-    out[0] = 0;
-    obs_output_t *o = obs_frontend_get_recording_output(); if (!o) return -1;
-    obs_data_t *st = obs_output_get_settings(o);
-    const char *path = st ? obs_data_get_string(st, "path") : NULL;           /* ffmpeg_muxer (standard recording) */
-    if ((!path || !*path) && st) path = obs_data_get_string(st, "url");        /* ffmpeg_output (custom FFmpeg) */
-    if (path && *path) snprintf(out, cap, "%s", path);
-    if (st) obs_data_release(st); obs_output_release(o);
-    return out[0] ? 0 : -1;
+/* ---- recording-aligned sidecar (frontend events; every transition runs under s->m) ---- */
+static int recording_path(shuttle_src *s){
+    bfree(s->sidecar_base); s->sidecar_base = NULL;
+    char *p = obs_frontend_get_current_record_output_path();        /* the active recording's file */
+    if (!p || !*p){ bfree(p); return -1; }
+    s->sidecar_base = p; return 0;
+}
+static int same_filesystem(const char *dir_a, const char *dir_b){
+    struct stat a, b; if (stat(dir_a, &a) != 0 || stat(dir_b, &b) != 0) return 0; return a.st_dev == b.st_dev;
+}
+static void sidecar_final_name(struct dstr *fin, const shuttle_src *s, unsigned dup){
+    dstr_free(fin);
+    if (s->sidecar_part == 0) dstr_printf(fin, "%s.registration", s->sidecar_base);
+    else dstr_printf(fin, "%s.registration.part%u", s->sidecar_base, s->sidecar_part + 1);
+    if (dup > 1) dstr_catf(fin, ".%u", dup);
+    dstr_cat(fin, ".csv");
 }
 static void sidecar_attach(shuttle_src *s){
-    if (!s->sidecar_enabled || !s->fs || s->sidecar_attached || !s->sidecar_base[0]) return;
-    char path[1200];
-    if (s->sidecar_part == 0) snprintf(path, sizeof path, "%s.registration.csv", s->sidecar_base);
-    else snprintf(path, sizeof path, "%s.registration.part%u.csv", s->sidecar_base, s->sidecar_part + 1);
-    if (fs_log_start(s->fs, path) == 0){ s->sidecar_attached = 1; s->sidecar_part++;
-        blog(LOG_INFO, "[shuttle-source] sidecar attached: %s (first row = first unit after record start; anchors the recording on the device clock)", path); }
-    else blog(LOG_ERROR, "[shuttle-source] sidecar could not be opened: %s", path);
+    if (!s->sidecar_enabled || !s->fs || s->sidecar_attached || !s->sidecar_base) return;
+    /* final name: <recording>.registration[.partN][.dup].csv — an existing sidecar is never truncated */
+    struct dstr fin = {0}; struct stat st; unsigned dup = 1;
+    for (sidecar_final_name(&fin, s, dup); stat(fin.array, &st) == 0; sidecar_final_name(&fin, s, ++dup))
+        if (dup > 999){ blog(LOG_ERROR, "[shuttle-source] sidecar: too many existing files next to %s", s->sidecar_base); dstr_free(&fin); return; }
+    /* grow in non-synced scratch on the same filesystem, publish by rename */
+    mkdir(SIDECAR_SCRATCH, 0755);
+    char *dircopy = bstrdup(fin.array); const char *destdir = dirname(dircopy);
+    int same = same_filesystem(SIDECAR_SCRATCH, destdir);
+    if (!same) blog(LOG_ERROR, "[shuttle-source] sidecar NOT written: %s is on a different filesystem from %s, so it cannot be published by an atomic rename (copy+delete is forbidden for a growing evidence file)", destdir, SIDECAR_SCRATCH);
+    bfree(dircopy);
+    if (!same){ dstr_free(&fin); return; }
+    char *namecopy = bstrdup(fin.array); struct dstr part = {0};
+    dstr_printf(&part, "%s/%s.partial-%d", SIDECAR_SCRATCH, basename(namecopy), (int)getpid()); bfree(namecopy);
+    if (fs_log_start(s->fs, part.array) == 0){
+        s->sidecar_attached = 1; s->sidecar_part++;
+        bfree(s->sidecar_partial); s->sidecar_partial = bstrdup(part.array);
+        bfree(s->sidecar_final); s->sidecar_final = bstrdup(fin.array);
+        blog(LOG_INFO, "[shuttle-source] sidecar attached -> %s (growing as %s); last unit delivered before attach: counter %llu — the recording's first frame is that unit or the next",
+             fin.array, part.array, (unsigned long long)atomic_load(&s->last_counter));
+    } else blog(LOG_ERROR, "[shuttle-source] sidecar could not be opened: %s", part.array);
+    dstr_free(&part); dstr_free(&fin);
 }
 static void sidecar_detach(shuttle_src *s){
     if (!s->sidecar_attached) return;
     s->sidecar_attached = 0;
-    if (s->fs && fs_log_stop(s->fs) != 0) blog(LOG_ERROR, "[shuttle-source] sidecar close failed (disk full?) — the CSV may be truncated");
-    else blog(LOG_INFO, "[shuttle-source] sidecar closed");
+    if (!s->fs){ blog(LOG_ERROR, "[shuttle-source] sidecar left unpublished at %s (capture already closed)", s->sidecar_partial); return; }
+    if (fs_log_stop(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] sidecar close failed (disk full?); left at %s, NOT published", s->sidecar_partial); return; }
+    if (rename(s->sidecar_partial, s->sidecar_final) != 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish rename failed; complete file left at %s", s->sidecar_partial);
+    else blog(LOG_INFO, "[shuttle-source] sidecar published: %s", s->sidecar_final);
 }
 static void frontend_event(enum obs_frontend_event ev, void *data){
     shuttle_src *s = data;
+    pthread_mutex_lock(&s->m);
     switch (ev){
     case OBS_FRONTEND_EVENT_RECORDING_STARTED:
-        if (recording_path(s->sidecar_base, sizeof s->sidecar_base) != 0){ blog(LOG_WARNING, "[shuttle-source] recording started but its path is unknown; no sidecar"); break; }
+        if (recording_path(s) != 0){ blog(LOG_WARNING, "[shuttle-source] recording started but its path is unknown; no sidecar"); break; }
         s->sidecar_part = 0;
         if (!s->fs) blog(LOG_WARNING, "[shuttle-source] recording started while the capture is not running; sidecar starts when it does");
         sidecar_attach(s);
         break;
     case OBS_FRONTEND_EVENT_RECORDING_STOPPED:
-        sidecar_detach(s); s->sidecar_base[0] = 0;
+        sidecar_detach(s); bfree(s->sidecar_base); s->sidecar_base = NULL;
         break;
     default: break;
     }
+    pthread_mutex_unlock(&s->m);
 }
 
 static void shuttle_stop(shuttle_src *s){
     if (!s->fs) return;
-    if (s->sidecar_attached){ blog(LOG_INFO, "[shuttle-source] capture stopping mid-recording: sidecar part closes here"); s->sidecar_attached = 0; }   /* fs_stop closes the attached log */
+    if (s->sidecar_attached){ blog(LOG_INFO, "[shuttle-source] capture stopping mid-recording: publishing this sidecar part"); sidecar_detach(s); }
     fs_stats st; fs_stop(s->fs); fs_get_stats(s->fs, &st);
     blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, residual steps applied %llu",
          (unsigned long long)st.published, (unsigned long long)atomic_load(&s->frames_out), (unsigned long long)st.audio_frames_delivered,
@@ -185,7 +224,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     if (fs_start(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver start failed"); fs_close(s->fs); s->fs = NULL; return -1; }
     blog(LOG_INFO, "[shuttle-source] started (%s)", cfg.capture.replay_path ? "replay" : "device");
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
-    if (s->sidecar_enabled && obs_frontend_recording_active() && s->sidecar_base[0]) sidecar_attach(s);   /* restarted mid-recording: continue as the next part */
+    if (s->sidecar_enabled && obs_frontend_recording_active() && s->sidecar_base) sidecar_attach(s);   /* restarted mid-recording: continue as the next part */
     return 0;
 }
 
@@ -212,24 +251,28 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     obs_source_set_async_decoupled(source, true);
     obs_source_set_deinterlace_field_order(source, OBS_DEINTERLACE_FIELD_ORDER_TOP);   /* measured TFF (CLAUDE.md §6) */
     obs_source_set_deinterlace_mode(source, OBS_DEINTERLACE_MODE_YADIF_2X);          /* default presentation; the user may change it (OBS owns deinterlacing) */
+    pthread_mutex_init(&s->m, NULL);
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
-    obs_frontend_add_event_callback(frontend_event, s);
-    if (obs_frontend_recording_active() && recording_path(s->sidecar_base, sizeof s->sidecar_base) == 0) s->sidecar_part = 0;   /* created during a recording */
+    pthread_mutex_lock(&s->m);
+    if (obs_frontend_recording_active() && recording_path(s) == 0) s->sidecar_part = 0;   /* created during a recording */
     if (shuttle_start(s, settings) != 0) blog(LOG_WARNING, "[shuttle-source] created without a running capture; fix settings");
+    pthread_mutex_unlock(&s->m);
+    obs_frontend_add_event_callback(frontend_event, s);
     return s;
 }
 
 static void shuttle_destroy(void *data){
     shuttle_src *s = data; if (!s) return;
     obs_frontend_remove_event_callback(frontend_event, s);
-    shuttle_stop(s);
+    pthread_mutex_lock(&s->m); shuttle_stop(s); pthread_mutex_unlock(&s->m); pthread_mutex_destroy(&s->m);
+    bfree(s->sidecar_base); bfree(s->sidecar_partial); bfree(s->sidecar_final);
     bfree(s->vbuf); bfree(s->abuf); bfree(s);
     atomic_fetch_sub(&g_instances, 1);
 }
 
 static void shuttle_update(void *data, obs_data_t *settings){
     shuttle_src *s = data; if (!s) return;
-    shuttle_stop(s); shuttle_start(s, settings);
+    pthread_mutex_lock(&s->m); shuttle_stop(s); shuttle_start(s, settings); pthread_mutex_unlock(&s->m);
 }
 
 static void shuttle_defaults(obs_data_t *settings){
