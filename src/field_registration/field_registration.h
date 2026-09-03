@@ -192,6 +192,12 @@ typedef struct field_registration {
     int16_t previous_spatial_top[2][3];
     int16_t previous_spatial_bottom[2][3];
     bool previous_edge_valid;
+    int16_t motion_anchor_picture_top[2];
+    int16_t motion_anchor_picture_bottom[2];
+    int16_t motion_anchor_spatial_top[2][3];
+    int16_t motion_anchor_spatial_bottom[2][3];
+    int8_t motion_anchor_phase[2];
+    bool motion_anchor_valid;
 
     /* [field][top/bottom][left/center/right][signed line + 64]. */
     uint16_t spatial_edge_counts[2][2][3][129];
