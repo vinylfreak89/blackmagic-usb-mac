@@ -1299,6 +1299,21 @@ class _CFieldRegistrationDecision(ctypes.Structure):
         ("fast_edge_support_f1", ctypes.c_uint8),
         ("fast_edge_support_f2", ctypes.c_uint8),
         ("fast_edge_spatial_conflict", ctypes.c_bool),
+        ("relative_only", ctypes.c_bool),
+        ("relative_only_gauge_unknown", ctypes.c_bool),
+        ("relative_only_gauge_source", ctypes.c_int),
+        ("relative_only_phase", ctypes.c_int8),
+        ("relative_only_best_energy", ctypes.c_double),
+        ("relative_only_runner_energy", ctypes.c_double),
+        ("relative_only_prior_energy", ctypes.c_double),
+        ("relative_only_margin", ctypes.c_double),
+        ("relative_only_ratio", ctypes.c_double),
+        ("relative_only_static_columns", ctypes.c_uint16),
+        ("relative_only_persistent_columns", ctypes.c_uint16),
+        ("relative_only_transport_gate", ctypes.c_bool),
+        ("relative_only_cut_gate", ctypes.c_bool),
+        ("bottom_f1_censored", ctypes.c_bool),
+        ("bottom_f2_censored", ctypes.c_bool),
     )
 
 
@@ -1367,6 +1382,8 @@ class CRegistrationEstimator:
         self.library.fieldreg_process.restype = ctypes.c_bool
         self.library.fieldreg_mode_name.argtypes = (ctypes.c_int,)
         self.library.fieldreg_mode_name.restype = ctypes.c_char_p
+        self.library.fieldreg_relative_gauge_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_relative_gauge_name.restype = ctypes.c_char_p
         self.library.fieldreg_init(self.state, ctypes.byref(self.config))
         self.confirmation_units = self.library.fieldreg_confirmation_units(
             self.state
@@ -1395,6 +1412,9 @@ class CRegistrationEstimator:
         ):
             raise RuntimeError("production field_registration rejected an exact e801 unit")
         mode = self.library.fieldreg_mode_name(result.mode).decode("ascii")
+        relative_gauge = self.library.fieldreg_relative_gauge_name(
+            result.relative_only_gauge_source
+        ).decode("ascii")
         decision = self._pair(result.decision_d1, result.decision_d2)
         applied = (result.applied_d1, result.applied_d2)
         self.selected = (result.baseline_d1, result.baseline_d2)
@@ -1470,6 +1490,23 @@ class CRegistrationEstimator:
             "fast_edge_support_f1": result.fast_edge_support_f1,
             "fast_edge_support_f2": result.fast_edge_support_f2,
             "fast_edge_spatial_conflict": result.fast_edge_spatial_conflict,
+            "relative_only": result.relative_only,
+            "relative_only_gauge_unknown": result.relative_only_gauge_unknown,
+            "relative_only_gauge_source": relative_gauge,
+            "relative_only_phase": result.relative_only_phase,
+            "relative_only_best_energy": result.relative_only_best_energy,
+            "relative_only_runner_energy": result.relative_only_runner_energy,
+            "relative_only_prior_energy": result.relative_only_prior_energy,
+            "relative_only_margin": result.relative_only_margin,
+            "relative_only_ratio": result.relative_only_ratio,
+            "relative_only_static_columns": result.relative_only_static_columns,
+            "relative_only_persistent_columns": (
+                result.relative_only_persistent_columns
+            ),
+            "relative_only_transport_gate": result.relative_only_transport_gate,
+            "relative_only_cut_gate": result.relative_only_cut_gate,
+            "bottom_f1_censored": result.bottom_f1_censored,
+            "bottom_f2_censored": result.bottom_f2_censored,
             "engine": (
                 f"field_registration-c-{self.evidence_model}-v{self.algorithm_version}"
             ),
@@ -1854,6 +1891,21 @@ TPC_DECISION_COLUMNS = (
     "fast_edge_support_f1",
     "fast_edge_support_f2",
     "fast_edge_spatial_conflict",
+    "relative_only",
+    "relative_only_gauge_unknown",
+    "relative_only_gauge_source",
+    "relative_only_phase",
+    "relative_only_best_energy",
+    "relative_only_runner_energy",
+    "relative_only_prior_energy",
+    "relative_only_margin",
+    "relative_only_ratio",
+    "relative_only_static_columns",
+    "relative_only_persistent_columns",
+    "relative_only_transport_gate",
+    "relative_only_cut_gate",
+    "bottom_f1_censored",
+    "bottom_f2_censored",
     "registration_engine",
 )
 
@@ -1997,6 +2049,21 @@ def tagged_decision_row(
             "" if "fast_edge_spatial_conflict" not in registration
             else int(registration["fast_edge_spatial_conflict"])
         ),
+        int(registration.get("relative_only", False)),
+        int(registration.get("relative_only_gauge_unknown", False)),
+        registration.get("relative_only_gauge_source", "None"),
+        registration.get("relative_only_phase", ""),
+        f"{registration.get('relative_only_best_energy', 0.0):.9f}",
+        f"{registration.get('relative_only_runner_energy', 0.0):.9f}",
+        f"{registration.get('relative_only_prior_energy', 0.0):.9f}",
+        f"{registration.get('relative_only_margin', 0.0):.9f}",
+        f"{registration.get('relative_only_ratio', 0.0):.9f}",
+        registration.get("relative_only_static_columns", 0),
+        registration.get("relative_only_persistent_columns", 0),
+        int(registration.get("relative_only_transport_gate", False)),
+        int(registration.get("relative_only_cut_gate", False)),
+        int(registration.get("bottom_f1_censored", False)),
+        int(registration.get("bottom_f2_censored", False)),
         registration.get("engine", "python-top-only"),
     )
     return row

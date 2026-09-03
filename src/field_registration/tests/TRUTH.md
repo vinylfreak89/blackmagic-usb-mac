@@ -69,6 +69,42 @@ hard padding. It also contains a synthetic version of the timeline-frame-8169
 stale latch: one positive `(0,1)` observation followed by 103 flat units while
 the committed phase is `(1,0)`.
 
+It additionally freezes two source classes measured after v6. Relative-only
+static registration deliberately removes a trustworthy absolute envelope while
+leaving a broad, temporally static picture body. The decisive release sequence
+first locks `(1,0)`, then returns to `(0,0)` for 12 units: same-parity temporal
+registration identifies field 1 on the first return and a persistent static
+comb minimum establishes `d2-d1 == 0` thereafter. Mirror cases cover a sustained
+`(1,0)` phase, a relative-only onset, and an epoch whose absolute gauge is never
+known. Negative controls are an alternating-line card, a sub-16-column local
+overlay, a scene cut, inter-field motion without a static-region consensus, and
+a nominal raster. A no-evidence unit immediately after the release asserts that
+the relative presentation did not replace the committed absolute lock.
+
+The boundary class moves field 1 down five lines, clips source content at the
+Shuttle's hard-padding row 261, and requires the visible body motion plus the
+censored lower boundary to establish `+5`. Its negative control presents the
+same top/boundary landmarks over a stationary body. Repeated leading lines and
+their chroma are diagnostic only and are not synthesized as authority.
+
+Frozen v6 scores before the relative-only implementation are:
+
+```
+relative-only-return-temporal-gauge  0/12
+relative-only-sustained-plus1-guard 12/12
+relative-only-onset-temporal-gauge   0/12
+relative-only-gauge-unknown           0/15
+bottom-censored-field1-plus5          0/12
+all five relative false-positive guards 12/12 (scene-cut 1/1)
+```
+
+The complete pre-change fixture scores 1,168/1,220 against raster truth and
+1,283/1,344 against the trajectory oracle. Ten of the 61 oracle differences
+remain the deliberately archival-only provisional inversion; the other 51 are
+the new deciding relative/boundary failures. The gauge-unknown warmup is an
+additional intentional difference between physical raster truth and the
+zero-lookahead presentation oracle, but it is not an oracle failure.
+
 The live authority golden requires exact agreement for physical unit-rate
 jitter, localized false-edge chatter, upward `-2` cases, the stale-hold class,
 flat content with intact transport padding, and the multi-phase main-picture
@@ -77,3 +113,15 @@ transport/content abstentions, and trajectory resets. The deliberately
 provisional inversion remains an explicitly reported archival-only oracle
 disagreement: no zero-latency estimator may claim to know that coherent raster
 geometry will later prove provisional.
+
+Algorithm v7's expanded fixture has 1,398 units and 1,273 raster-known rows.
+The forward live engine matches 1,272/1,273 raster rows and 1,388/1,398
+trajectory-oracle rows. The sole raster mismatch is the intentionally
+gauge-unknown acquisition warmup; all ten oracle mismatches are the explicitly
+archival-only provisional inversion. The deciding relative-only release,
+sustained-phase mirror, temporal-gauge onset, unknown-gauge sequence,
+bottom-censored `+5`, and every false-positive guard pass. The harness also
+asserts provenance: relative authority is present on the release and onset
+classes, the unknown-gauge class is labelled on every row, and a minimum that
+confirms an already committed phase remains a guard rather than being labelled
+as new relative-only authority.

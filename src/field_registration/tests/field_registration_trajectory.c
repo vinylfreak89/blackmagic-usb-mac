@@ -40,6 +40,13 @@ typedef struct result_row {
     unsigned phase_support;
     int temporal1;
     int temporal2;
+    bool relative_only;
+    bool relative_gauge_unknown;
+    fieldreg_relative_gauge_source relative_gauge;
+    int relative_phase;
+    unsigned relative_static_columns;
+    unsigned relative_persistent_columns;
+    bool bottom_f1_censored;
 } result_row;
 
 typedef struct scenario_summary {
@@ -52,6 +59,9 @@ typedef struct scenario_summary {
     uint64_t transport_unknown;
     uint64_t scene_cut_hold;
     uint64_t trajectory_resets;
+    uint64_t relative_only;
+    uint64_t relative_gauge_unknown;
+    uint64_t bottom_f1_censored;
 } scenario_summary;
 
 static void fail(const char *message)
@@ -167,6 +177,14 @@ int main(int argc, char **argv)
         result->phase_support = decision.phase_support;
         result->temporal1 = decision.temporal_best_f1;
         result->temporal2 = decision.temporal_best_f2;
+        result->relative_only = decision.relative_only;
+        result->relative_gauge_unknown = decision.relative_only_gauge_unknown;
+        result->relative_gauge = decision.relative_only_gauge_source;
+        result->relative_phase = decision.relative_only_phase;
+        result->relative_static_columns = decision.relative_only_static_columns;
+        result->relative_persistent_columns =
+            decision.relative_only_persistent_columns;
+        result->bottom_f1_censored = decision.bottom_f1_censored;
 
         /* Exact simulation of the current caller's limited backdating: only
          * abstaining rows still in its FIFO are rewritten. Positive
@@ -224,7 +242,9 @@ int main(int argc, char **argv)
              strcmp(row->truth.scenario,
                     "physical-multiphase-envelope-jitter") == 0 ||
              strcmp(row->truth.scenario,
-                    "physical-field1-unit-rate-jitter") == 0)) {
+                    "physical-field1-unit-rate-jitter") == 0 ||
+             strncmp(row->truth.scenario, "relative-", 9) == 0 ||
+             strncmp(row->truth.scenario, "bottom-censored-", 16) == 0)) {
             printf("  mismatch row=%zu scenario=%s applied=(%d,%d) oracle=(%d,%d) mode=%s obs=(%d,%d)/%u authority=%d phase=%d/%u temporal=(%d,%d)\n",
                    i, row->truth.scenario, row->applied_d1, row->applied_d2,
                    row->truth.oracle_d1, row->truth.oracle_d2,
@@ -266,6 +286,9 @@ int main(int argc, char **argv)
         summary->scene_cut_hold +=
             row->mode == FIELDREG_MODE_UNKNOWN_SCENE_CUT_HOLD;
         summary->trajectory_resets += row->trajectory_reset;
+        summary->relative_only += row->relative_only;
+        summary->relative_gauge_unknown += row->relative_gauge_unknown;
+        summary->bottom_f1_censored += row->bottom_f1_censored;
     }
 
     printf("trajectory fixture: rows=%zu raster-known=%" PRIu64
@@ -292,9 +315,13 @@ int main(int argc, char **argv)
         else
             printf(" raster=unknown");
         printf(" common-gauge=%" PRIu64 " transport-unknown=%" PRIu64
-               " scene-hold=%" PRIu64 " resets=%" PRIu64 "\n",
+               " scene-hold=%" PRIu64 " resets=%" PRIu64
+               " relative-only=%" PRIu64 " gauge-unknown=%" PRIu64
+               " bottom1-censored=%" PRIu64 "\n",
                summary->common_mode_gauge, summary->transport_unknown,
-               summary->scene_cut_hold, summary->trajectory_resets);
+               summary->scene_cut_hold, summary->trajectory_resets,
+               summary->relative_only, summary->relative_gauge_unknown,
+               summary->bottom_f1_censored);
     }
 
     static const char *required_live_classes[] = {
@@ -310,6 +337,18 @@ int main(int argc, char **argv)
         "multiphase-main-10",
         "flat-dark-intact-padding-vbi",
         "flat-blank-intact-padding-no-vbi",
+        "relative-only-return-temporal-gauge",
+        "relative-only-following-abstain",
+        "relative-only-sustained-plus1-guard",
+        "relative-only-onset-temporal-gauge",
+        "relative-only-gauge-unknown",
+        "relative-guard-alternating-card",
+        "relative-guard-local-overlay",
+        "relative-guard-scene-cut",
+        "relative-guard-interfield-motion",
+        "relative-guard-nominal",
+        "bottom-censored-field1-plus5",
+        "bottom-censored-static-card-guard",
     };
     bool live_pass = stale_wrong == 0;
     for (size_t required = 0;
@@ -326,6 +365,33 @@ int main(int argc, char **argv)
             }
         }
         live_pass = live_pass && found;
+    }
+    for (size_t i = 0; i < scenario_count; ++i) {
+        const scenario_summary *summary = &scenarios[i];
+        if (strcmp(summary->name, "relative-only-return-temporal-gauge") == 0 ||
+            strcmp(summary->name, "relative-only-onset-temporal-gauge") == 0) {
+            live_pass = live_pass && summary->relative_only == summary->rows &&
+                        summary->relative_gauge_unknown == 0;
+        } else if (strcmp(summary->name,
+                          "relative-only-sustained-plus1-guard") == 0) {
+            /* The minimum confirms the already committed phase. It is a
+             * guard, not a new relative-only presentation. */
+            live_pass = live_pass && summary->relative_only == 0;
+        } else if (strcmp(summary->name, "relative-only-gauge-unknown") == 0) {
+            live_pass = live_pass && summary->relative_only == summary->rows &&
+                        summary->relative_gauge_unknown == summary->rows;
+        } else if (strcmp(summary->name,
+                          "relative-only-following-abstain") == 0) {
+            live_pass = live_pass && summary->relative_only == 0;
+        } else if (strncmp(summary->name, "relative-guard-", 15) == 0) {
+            live_pass = live_pass && summary->relative_only == 0;
+        } else if (strcmp(summary->name, "bottom-censored-field1-plus5") == 0) {
+            live_pass = live_pass &&
+                        summary->bottom_f1_censored == summary->rows;
+        } else if (strcmp(summary->name,
+                          "bottom-censored-static-card-guard") == 0) {
+            live_pass = live_pass && summary->relative_only == 0;
+        }
     }
     /* Provisional inversion is intentionally an archival-side trajectory
      * question. The zero-latency live engine follows its coherent raster and

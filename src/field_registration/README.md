@@ -116,6 +116,28 @@ still-visible bottom edge may establish the absolute offset when relative and
 temporal evidence corroborate it; this makes upward offsets such as `-2`
 measurable without pretending the clipped top was observed.
 
+Algorithm v7 adds a deliberately narrow relative-only authority for units in
+which content-derived absolute edges abstain. It horizontally low-passes eight
+source pixels, admits only columns that are static against both previous
+same-parity fields, requires at least 16 contiguous usable columns, and searches
+`d2-d1` over `-3..+3` by robust inter-field curvature. The winner must have both
+an absolute energy margin and a winner/runner-up ratio. Same-parity motion
+identifies which field moved; when it cannot, the engine chooses the
+minimum-crop representation deterministically and marks the absolute gauge
+unknown. This path is cut- and transport-gated and reports its energies,
+support, gauge source, and gates in every decision. It follows a measured
+return from a held nonzero phase at unit rate; it does not wait for the fallback
+dwell. Because relative evidence cannot establish an absolute gauge, its pair
+is a current-unit presentation only: it never replaces the committed absolute
+lock that a later abstaining unit holds.
+
+A lower picture edge at the last ADC-output row before hard padding is likewise
+censored rather than treated as an exact landmark. A format-bounded positive
+field-1 candidate may use that boundary only with matching picture-body
+same-parity motion; a stationary card with the same apparent boundary must not
+move. `bottom_f1_censored`/`bottom_f2_censored` record the condition even when
+it does not become authority.
+
 Hard padding and byte continuity are structural transport truth. Missing VBI
 or flat picture content is an evidence abstention, not transport failure, and
 does not erase a valid committed phase.
@@ -273,7 +295,7 @@ and holding all 1,066. These are observable-consistency metrics, not a claim
 that every content-derived edge is physical truth. The required NNEDI watch
 copy and raw/new freeze frames remain a human sign-off gate.
 
-The full-pass C timing on the M3 was 1.466 ms median and 1.569 ms p95 per
+The algorithm-v6 full-pass C timing on the M3 was 1.466 ms median and 1.569 ms p95 per
 29.97-frame unit, including all registration evidence but excluding the
 Python tagged-capture walker. `sizeof(field_registration)` is 188,320 bytes;
 the engine allocates nothing per call. The production caller holds this state
