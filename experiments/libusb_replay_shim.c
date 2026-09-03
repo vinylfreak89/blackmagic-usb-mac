@@ -17,6 +17,9 @@
 //                              its callback never fires; the output MUST show
 //                              a submit-seq GAP or the accounting is broken
 //   REPLAY_FAIL_SUBMIT_VIDEO_AT=N  Nth video submit returns LIBUSB_ERROR_BUSY
+//   REPLAY_FAIL_SUBMIT_VIDEO_FROM=N  every video submit from the Nth on fails (parks the
+//                                fleet in the pending state until stop — leak/teardown test)
+//   REPLAY_FAIL_CONTROL=1        every control transfer returns LIBUSB_ERROR_PIPE (init must fail)
 //                              once — exercises the no-fleet-shrink retry path
 //   REPLAY_PACE_US=N             sleep N µs per completed transfer (16000 ≈ the
 //                              real device's video cadence -> realtime replay
@@ -56,7 +59,8 @@ static epstate EP83, EP84;
 static FILE *g_in;
 static long g_data_seen=0, g_max_data=-1;
 static long g_v_completed=0, g_drop_video=-1;
-static long g_v_submits=0, g_fail_submit_at=-1;
+static long g_v_submits=0, g_fail_submit_at=-1, g_fail_submit_from=-1;
+static int g_fail_control=0;
 static int g_eof=0;
 
 static epstate* eps(uint8_t ep){ return ep==0x84 ? &EP84 : &EP83; }
@@ -64,11 +68,18 @@ static epstate* eps(uint8_t ep){ return ep==0x84 ? &EP84 : &EP83; }
 int libusb_init(libusb_context **ctx){
     const char *p=getenv("REPLAY_CAPTURE");
     if(!p){ fprintf(stderr,"libusb_replay_shim: set REPLAY_CAPTURE=<capture.tpc>\n"); return LIBUSB_ERROR_OTHER; }
+    if(g_in) fclose(g_in);
     g_in=fopen(p,"rb");
     if(!g_in){ fprintf(stderr,"libusb_replay_shim: cannot open %s\n",p); return LIBUSB_ERROR_OTHER; }
+    // per-session state: a process may open several sessions (test harnesses do), and the
+    // fault-injection counters must count THIS session's submits, not the process's
+    g_data_seen=0; g_v_completed=0; g_v_submits=0; g_eof=0;
+    g_max_data=-1; g_drop_video=-1; g_fail_submit_at=-1; g_fail_submit_from=-1;
     if(getenv("REPLAY_MAX_DATA")) g_max_data=atol(getenv("REPLAY_MAX_DATA"));
     if(getenv("REPLAY_DROP_VIDEO_XFER")) g_drop_video=atol(getenv("REPLAY_DROP_VIDEO_XFER"));
     if(getenv("REPLAY_FAIL_SUBMIT_VIDEO_AT")) g_fail_submit_at=atol(getenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"));
+    if(getenv("REPLAY_FAIL_SUBMIT_VIDEO_FROM")) g_fail_submit_from=atol(getenv("REPLAY_FAIL_SUBMIT_VIDEO_FROM"));
+    g_fail_control=getenv("REPLAY_FAIL_CONTROL")!=NULL;
     if(ctx) *ctx=&g_ctx;
     return 0;
 }
@@ -81,7 +92,7 @@ int libusb_release_interface(libusb_device_handle*h,int i){ (void)h;(void)i; ret
 int libusb_set_interface_alt_setting(libusb_device_handle*h,int i,int a){ (void)h;(void)i;(void)a; return 0; }
 int libusb_control_transfer(libusb_device_handle*h,uint8_t t,uint8_t r,uint16_t v,
                             uint16_t i,unsigned char*d,uint16_t len,unsigned int to){
-    (void)h;(void)t;(void)r;(void)v;(void)i;(void)d;(void)to; return len; }
+    (void)h;(void)t;(void)r;(void)v;(void)i;(void)d;(void)to; return g_fail_control?LIBUSB_ERROR_PIPE:len; }
 const char* libusb_error_name(int code){
     static char b[32]; snprintf(b,sizeof b,"REPLAY_ERR_%d",code); return b; }
 
@@ -99,6 +110,7 @@ int libusb_submit_transfer(struct libusb_transfer *x){
             g_fail_submit_at=-1;             // fail exactly once
             return LIBUSB_ERROR_BUSY;
         }
+        if(g_fail_submit_from>0 && g_v_submits>=g_fail_submit_from) return LIBUSB_ERROR_BUSY;
     }
     if(s->count>=QMAX) return LIBUSB_ERROR_BUSY;
     s->q[(s->head+s->count)%QMAX]=x; s->count++;

@@ -32,5 +32,12 @@ test-asan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE)
 capture_core_test: capture_core.c capture_core_test.c capture_core.h
 	$(CC) $(CFLAGS) -o $@ capture_core.c capture_core_test.c $(LIBS)
 
+# Device backend against the replay shim (no libusb linked): init, fleet, resubmission,
+# cancellation and teardown run as on hardware, with injected faults. ASan build.
+SHIM=../../experiments/libusb_replay_shim.c
+test-shim: capture_core.c capture_core_shim_test.c capture_core.h $(SHIM) $(FIXTURE)
+	$(CC) -O1 -g -fsanitize=address,undefined $(CFLAGS) -o test_shim capture_core.c capture_core_shim_test.c $(SHIM) -lpthread
+	./test_shim $(FIXTURE)
+
 clean:
-	rm -f shuttle-capture capture_core_test test_tsan test_asan *.o fixture.tpc fixture.expect
+	rm -f shuttle-capture capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect

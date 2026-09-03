@@ -83,6 +83,7 @@ typedef struct {
     long zero_len_packets, short_packets;
     size_t ring_high_water, ring_size;
     int fleet[2], fleet_size;       // live transfers per endpoint / configured
+    long transfers_allocated, transfers_freed;   // device backend: equal after cc_stop (leak invariant)
 } cc_stats;
 void cc_get_stats(const cc_session *s, cc_stats *out);
 

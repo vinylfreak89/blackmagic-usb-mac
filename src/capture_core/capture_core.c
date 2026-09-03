@@ -52,6 +52,7 @@ struct cc_session {
     long iso_err, xfer_err, resub_fail, resub_rec, zero_pkts, short_pkts;
     uint32_t seq_ctr[2];
     int fleet[2];
+    long xfers_alloc, xfers_freed;   // every allocated transfer must be freed by stop (no leak, no double free)
     // usb
     libusb_context *ctx; libusb_device_handle *h;
     xinfo xs[NXF];
@@ -141,7 +142,15 @@ static void* delivery_main(void *arg){
         size_t t=atomic_load_explicit(&s->r_tail,memory_order_relaxed);
         size_t h=atomic_load_explicit(&s->r_head,memory_order_acquire);
         if(h==t){
-            if(atomic_load(&s->backend_done)) break;
+            if(atomic_load(&s->backend_done)){
+                // backend_done is stored after the backend's final ring publications (including
+                // the termination HostLoss records), so an acquire re-load of r_head sees them.
+                // Breaking on the stale h would drop exactly the loss accounting the design
+                // leans on (delivered + lost == input).
+                h=atomic_load_explicit(&s->r_head,memory_order_acquire);
+                if(h==t) break;
+                continue;
+            }
             pthread_mutex_lock(&s->sig_m);
             h=atomic_load_explicit(&s->r_head,memory_order_acquire);
             if(h==t && !atomic_load(&s->backend_done)){
@@ -225,7 +234,7 @@ static void usb_cb(struct libusb_transfer *x){
         xi->pending=1;                          // retried from the event loop; never freed
         return;
     }
-    free(x->buffer); libusb_free_transfer(x); s->xs[xi->idx].x=NULL;
+    free(x->buffer); libusb_free_transfer(x); s->xs[xi->idx].x=NULL; s->xfers_freed++;
 }
 static int vout_(libusb_device_handle*h,uint8_t req,uint16_t idx,uint32_t be){
     uint8_t b[4]={(uint8_t)(be>>24),(uint8_t)(be>>16),(uint8_t)(be>>8),(uint8_t)be};
@@ -244,11 +253,12 @@ static void* device_main(void *arg){
         for(int i=0;i<XFERS;i++,n++){
             uint8_t *buf=malloc((size_t)npk*pkt);
             struct libusb_transfer *x=libusb_alloc_transfer(npk);
+            s->xfers_alloc++;
             s->xs[n]=(xinfo){x,ep,s->seq_ctr[w]++,n,0,s};
             libusb_fill_iso_transfer(x,s->h,ep,buf,npk*pkt,npk,usb_cb,&s->xs[n],0);
             libusb_set_iso_packet_lengths(x,pkt);
             if(libusb_submit_transfer(x)==0) atomic_fetch_add(&s->inflight,1);
-            else { free(buf); libusb_free_transfer(x); s->xs[n].x=NULL; }
+            else { free(buf); libusb_free_transfer(x); s->xs[n].x=NULL; s->xfers_freed++; }
         }
     }
     struct timespec t0; clock_gettime(CLOCK_MONOTONIC,&t0);
@@ -267,7 +277,14 @@ static void* device_main(void *arg){
     // capture fleet before cancelling
     for(int i=0;i<NXF;i++) if(s->xs[i].x && !s->xs[i].pending)
         s->fleet[ep_i(s->xs[i].ep)]++;
-    for(int i=0;i<NXF;i++) if(s->xs[i].x) libusb_cancel_transfer(s->xs[i].x);
+    for(int i=0;i<NXF;i++){
+        if(!s->xs[i].x) continue;
+        if(s->xs[i].pending){
+            // never (re)submitted: cancel would return NOT_FOUND and the callback that frees a
+            // transfer would never run, leaking buffer+transfer per session
+            free(s->xs[i].x->buffer); libusb_free_transfer(s->xs[i].x); s->xs[i].x=NULL; s->xfers_freed++;
+        } else libusb_cancel_transfer(s->xs[i].x);
+    }
     int guard=0;
     while(atomic_load(&s->inflight)>0 && guard++<300)
         libusb_handle_events_timeout(s->ctx,&tv);
@@ -344,8 +361,13 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         libusb_set_interface_alt_setting(s->h,0,2);
         uint32_t vsel = s->cfg.input==CC_INPUT_COMPONENT?0x02000000u
                       : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
-        vout_(s->h,215,0,0x09000000u|vsel|0x10000000u|0x20000000u);
-        vout_(s->h,215,24,0x73c60001u);
+        if(vout_(s->h,215,0,0x09000000u|vsel|0x10000000u|0x20000000u)!=4 ||
+           vout_(s->h,215,24,0x73c60001u)!=4){
+            // A failed/short control transfer leaves the analog mux wherever it was and every
+            // downstream layer would report a healthy capture of the WRONG input.
+            libusb_release_interface(s->h,0); libusb_close(s->h); libusb_exit(s->ctx);
+            free(s->ring); free(s); return CC_ERR_USB;
+        }
     }
     *out=s; return CC_OK;
 }
@@ -380,6 +402,7 @@ void cc_get_stats(const cc_session *s, cc_stats *o){
     o->zero_len_packets=s->zero_pkts; o->short_packets=s->short_pkts;
     o->ring_high_water=s->r_max; o->ring_size=s->ring_sz;
     o->fleet[0]=s->fleet[0]; o->fleet[1]=s->fleet[1]; o->fleet_size=XFERS;
+    o->transfers_allocated=s->xfers_alloc; o->transfers_freed=s->xfers_freed;
 }
 const char* cc_strerror(int e){
     switch(e){ case CC_OK:return "ok"; case CC_ERR_ARGS:return "bad arguments";
