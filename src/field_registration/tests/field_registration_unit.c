@@ -274,27 +274,28 @@ int main(void)
     match_second_field(unit);
     shift_first_picture_down_one(unit);
     assert(fieldreg_process(&engine, unit, &decision));
-    assert(decision.fast_edge_d1 == 1 && decision.fast_edge_d2 == 0);
-    assert(decision.mode == FIELDREG_MODE_UNKNOWN_EDGE_TRANSIENT);
-    assert(decision.decision_d1 == FIELDREG_UNKNOWN);
+    assert(decision.global_envelope_authority);
     assert(decision.frame_observation_d1 == baseline_d1 + 1 &&
            decision.frame_observation_d2 == baseline_d2);
     assert(decision.applied_d1 == baseline_d1 + 1 &&
            decision.applied_d2 == baseline_d2);
-    assert(decision.baseline_d1 == baseline_d1 &&
+    assert(decision.baseline_d1 == baseline_d1 + 1 &&
            decision.baseline_d2 == baseline_d2);
 
-    /* A one-unit observation is corrected without changing fallback state. */
+    /* The equally authoritative return restores the committed fallback on
+     * the immediately following unit. */
     make_unit(unit, 175);
     texture_first_field(unit);
     match_second_field(unit);
     assert(fieldreg_process(&engine, unit, &decision));
+    assert(decision.global_envelope_authority);
     assert(decision.applied_d1 == baseline_d1 &&
            decision.applied_d2 == baseline_d2);
     assert(decision.baseline_d1 == baseline_d1 &&
            decision.baseline_d2 == baseline_d2);
 
-    /* A persistent one-line first-field phase eventually moves the fallback. */
+    /* A broad, temporally corroborated one-line first-field phase moves the
+     * live fallback immediately; it is not a plateau/backdate decision. */
     make_unit(unit, 176);
     texture_first_field(unit);
     match_second_field(unit);
@@ -310,13 +311,12 @@ int main(void)
         if (decision.decision_backdate)
             first_shift_backdate = decision.decision_backdate;
     }
-    assert(first_shift_backdate >= config.confirmation_units &&
-           first_shift_backdate <= config.maximum_buffered_units);
+    assert(first_shift_backdate == 0);
     assert(decision.phase_support == 3);
     assert(decision.phase_consensus == baseline_phase - 1);
     assert(decision.selected_relative == baseline_phase - 1);
-    assert(decision.mode == FIELDREG_MODE_STABLE_MOTION_PHASE ||
-           decision.mode == FIELDREG_MODE_CONVERGED_MOTION_PHASE);
+    assert(decision.applied_d1 == baseline_d1 + 1 &&
+           decision.applied_d2 == baseline_d2);
 
     /* Neither field is a permanent anchor. Train a fresh clean segment, then
      * prove that persistent field-2 geometry can move the ordered pair. */
@@ -339,8 +339,7 @@ int main(void)
         if (decision.decision_backdate)
             opposite_backdate = decision.decision_backdate;
     }
-    assert(opposite_backdate >= config.confirmation_units &&
-           opposite_backdate <= config.maximum_buffered_units);
+    assert(opposite_backdate == 0);
     assert(decision.applied_d1 == shifted_d1 &&
            decision.applied_d2 != shifted_d2);
 

@@ -42,19 +42,22 @@ mistakes four lines/frame of source motion for about two lines of registration.
 Two agreeing bands normally define the per-unit vote. If spatial layers carry
 different real phases, a uniquely and coherently vertically moving broad band
 may win instead; raw temporal energy cannot win because VHS dot crawl is noisy
-but is not coherent integer translation in both parity histories. A bounded
-contiguous candidate trajectory replaces the former 120-unit trailing mode.
-The defaults require 30 supporting observations inside a 30-unit (about one
-second) confirmation span, with a hard 36-unit presentation-buffer horizon.
-Contradictory geometry replaces the candidate immediately, so votes from a
-finished jump cannot trigger a delayed correction.
+but is not coherent integer translation in both parity histories. Strong
+current-unit evidence is presented forward with zero added latency. A bounded
+contiguous candidate trajectory governs only the committed fallback used when
+later units abstain; its 30-unit default is not a live presentation FIFO.
+Contradictory geometry replaces the candidate immediately.
 
 Evidence authority outranks horizontal-band headcount. A coherent full-width
 top+bottom envelope, corroborated by motion-compensated relative consensus,
 outvotes a conflicting local two-of-three band majority. Likewise, coherent
 top+bottom displacement across broad bands plus matching same-parity temporal
-motion is applied at unit rate. This distinguishes physical field-rate jitter
-(follow) from a moving edge in one localized overlay (hold/reject).
+motion is applied at unit rate even when the raster contains multiple layers
+and top/bottom do not define one nominal-height absolute envelope. The engine
+tracks the *delta* of both full-width edges and requires that same delta in at
+least two independent broad bands and in both same-parity temporal searches.
+This distinguishes physical field-rate jitter (follow) from a moving edge in
+one localized overlay (hold/reject).
 
 Top/bottom picture edges remain source-carried evidence, not a transport
 oracle. Before an edge vote can move the whole field, the engine compares the
@@ -69,15 +72,12 @@ search-boundary-clipped motion make the temporal estimator abstain. Unresolved
 spatial disagreement also abstains unless the coherently moving asset breaks
 the tie. A best motion estimate at `-6` or `+6` is censored evidence—the source
 may have moved farther—and is never converted into a registration correction.
-The state trajectory and the
-individual unit mapping are deliberately separate. A strong absolute
-observation is applied to that buffered unit immediately, even when it lasts
-for only one unit; it does not have to survive a one-second dwell. The dwell
-changes only the stable fallback used by units whose geometry abstains. When
-that fallback settles, `decision_backdate` applies it only to still-buffered
-abstaining units at the candidate onset. This changes crop selection, not
-pixels, and permits transitions such as `(0,1) -> (1,0)` without treating
-either field as a permanent anchor.
+The state trajectory and the individual unit mapping are deliberately
+separate. A strong observation is applied immediately, even when it lasts for
+only one unit; it does not have to survive a one-second dwell. The dwell
+changes only the stable fallback used by units whose geometry abstains.
+`decision_backdate` is metadata for an optional downstream archival refinement;
+the default live caller ignores it and never buffers presentation.
 
 An abstaining unit holds the committed fallback, never the immediately prior
 positive observation. A coherent one-unit observation is allowed to appear for

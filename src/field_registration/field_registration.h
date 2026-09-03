@@ -28,13 +28,14 @@ enum {
     FIELDREG_FIELD1_MAX_OFFSET = 4,
     FIELDREG_FIELD2_MAX_OFFSET = 4,
     FIELDREG_X_SAMPLES = 180,
-    /* One second at 30000/1001. The caller delays presentation by this many
-     * units so a settled decision can be applied at its observed onset. */
+    /* One second at 30000/1001. This governs fallback-candidate settlement;
+     * the default live path presents authoritative observations immediately
+     * and adds no FIFO latency. */
     FIELDREG_PHASE_CONFIRM_UNITS = 30,
     FIELDREG_MAX_CONFIRM_UNITS = 120,
     /* Physical reacquisition horizon, independent of caller ring depth. */
     FIELDREG_TRAJECTORY_STALENESS_UNITS = 75,
-    FIELDREG_ALGORITHM_VERSION = 5,
+    FIELDREG_ALGORITHM_VERSION = 6,
     FIELDREG_UNKNOWN = -128,
 };
 
@@ -69,11 +70,11 @@ typedef struct fieldreg_config {
     /* Minimum weave runner-up margin before changing relative registration. */
     double switch_margin;
     fieldreg_evidence_model evidence_model;
-    /* Bounded presentation latency / contiguous trajectory horizon. */
+    /* Fallback-candidate support span; not live presentation latency. */
     uint32_t confirmation_units;
     /* Required agreeing observations inside confirmation_units. */
     uint32_t minimum_support_units;
-    /* Hard bound on caller-owned delayed units, including abstentions. */
+    /* Optional archival caller's retained depth; live callers use zero. */
     uint32_t maximum_buffered_units;
 } fieldreg_config;
 
@@ -181,6 +182,16 @@ typedef struct field_registration {
      * or an explicit reset may create a presentation transition. */
     int8_t previous_phase[2];
     bool previous_phase_valid;
+
+    /* Raw source-carried envelope landmarks from the immediately preceding
+     * unit.  Absolute landmark offsets can be ambiguous in a multi-layer
+     * raster; coherent top+bottom motion across broad bands remains a usable
+     * per-unit displacement observation. */
+    int16_t previous_picture_top[2];
+    int16_t previous_picture_bottom[2];
+    int16_t previous_spatial_top[2][3];
+    int16_t previous_spatial_bottom[2][3];
+    bool previous_edge_valid;
 
     /* [field][top/bottom][left/center/right][signed line + 64]. */
     uint16_t spatial_edge_counts[2][2][3][129];

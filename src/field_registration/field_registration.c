@@ -140,6 +140,7 @@ void fieldreg_discontinuity(field_registration *engine)
     engine->previous_valid[0] = false;
     engine->previous_valid[1] = false;
     engine->previous_phase_valid = false;
+    engine->previous_edge_valid = false;
 }
 
 static void extract_luma(field_registration *engine, const uint8_t *unit)
@@ -898,6 +899,79 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
             band_pair_d2[band] = candidate2;
         }
     }
+    int motion_delta[2] = {FIELDREG_UNKNOWN, FIELDREG_UNKNOWN};
+    uint8_t motion_band_support[2] = {0, 0};
+    if (engine->previous_edge_valid) {
+        const int current_top[2] = {top1, top2};
+        const int current_bottom[2] = {bottom1, bottom2};
+        for (int field = 0; field < 2; ++field) {
+            if (current_top[field] < 0 || current_bottom[field] < 0 ||
+                engine->previous_picture_top[field] < 0 ||
+                engine->previous_picture_bottom[field] < 0)
+                continue;
+            int top_delta = current_top[field] -
+                            engine->previous_picture_top[field];
+            int bottom_delta = current_bottom[field] -
+                               engine->previous_picture_bottom[field];
+            if (top_delta != bottom_delta ||
+                top_delta < FIELDREG_MIN_OFFSET ||
+                top_delta > FIELDREG_MAX_OFFSET)
+                continue;
+            for (int band = 0; band < PHASE_BANDS; ++band) {
+                int previous_top = engine->previous_spatial_top[field][band];
+                int previous_bottom =
+                    engine->previous_spatial_bottom[field][band];
+                if (spatial_top[field][band] < 0 ||
+                    spatial_bottom[field][band] < 0 || previous_top < 0 ||
+                    previous_bottom < 0)
+                    continue;
+                int band_top_delta =
+                    spatial_top[field][band] - previous_top;
+                int band_bottom_delta =
+                    spatial_bottom[field][band] - previous_bottom;
+                if (band_top_delta == top_delta &&
+                    band_bottom_delta == top_delta)
+                    ++motion_band_support[field];
+            }
+            if (motion_band_support[field] >= 2)
+                motion_delta[field] = top_delta;
+        }
+    }
+    /* Some real rasters contain two vertical phases: for example a broad
+     * program layer whose top and bottom landmarks are not one nominal-height
+     * envelope.  Absolute offsets then abstain, but a coherent displacement
+     * remains observable.  Full-width top and bottom must move together,
+     * independently in at least two broad bands, and the same-parity temporal
+     * search must report that exact delta for both fields.  This is the
+     * zero-latency FOLLOW path; localized/edge-only chatter cannot enter it. */
+    bool global_motion_authority =
+        phase_model && transport_ok && content_evidence_available &&
+        engine->previous_phase_valid && !scene_cut &&
+        motion_delta[0] != FIELDREG_UNKNOWN &&
+        motion_delta[1] != FIELDREG_UNKNOWN &&
+        (motion_delta[0] != 0 || motion_delta[1] != 0) &&
+        temporal_margin1 >= 0.25 && temporal_margin2 >= 0.25 &&
+        temporal_best1 == motion_delta[0] &&
+        temporal_best2 == motion_delta[1];
+    int motion_target_d1 = FIELDREG_UNKNOWN;
+    int motion_target_d2 = FIELDREG_UNKNOWN;
+    if (global_motion_authority) {
+        /* The committed phase is the gauge. A merely provisional absolute
+         * observation from the preceding unit must not seed this path; that
+         * would turn one false edge into a persistent stale offset. Every
+         * accepted motion observation commits below, so genuine alternating
+         * motion still composes one delta at a time. */
+        motion_target_d1 = engine->selected[0] + motion_delta[0];
+        motion_target_d2 = engine->selected[1] + motion_delta[1];
+        if (motion_target_d1 < FIELDREG_MIN_OFFSET ||
+            motion_target_d1 > FIELDREG_FIELD1_MAX_OFFSET ||
+            motion_target_d2 < FIELDREG_MIN_OFFSET ||
+            motion_target_d2 > FIELDREG_FIELD2_MAX_OFFSET) {
+            global_motion_authority = false;
+            motion_target_d1 = FIELDREG_UNKNOWN;
+            motion_target_d2 = FIELDREG_UNKNOWN;
+        }
+    }
     int absolute_d1 = FIELDREG_UNKNOWN;
     int absolute_d2 = FIELDREG_UNKNOWN;
     uint8_t frame_support = 0;
@@ -965,6 +1039,15 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
         absolute_d2 = band_d2;
         frame_support = phase.support;
         frame_motion_priority = false;
+    }
+    if (global_motion_authority) {
+        absolute_d1 = motion_target_d1;
+        absolute_d2 = motion_target_d2;
+        frame_support = motion_band_support[0] < motion_band_support[1]
+                            ? motion_band_support[0]
+                            : motion_band_support[1];
+        frame_motion_priority = false;
+        global_envelope_authority = true;
     }
     if (!content_evidence_available) {
         absolute_d1 = FIELDREG_UNKNOWN;
@@ -1108,6 +1191,26 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     out->mode = FIELDREG_MODE_INVALID_UNIT;
     bool phase_changed = false;
     if (phase_model) {
+        if (global_motion_authority) {
+            /* This is a current-unit physical displacement observation, not
+             * a plateau hypothesis.  Commit it immediately so an abstaining
+             * following unit holds the phase just presented. */
+            engine->selected[0] = (int8_t)motion_target_d1;
+            engine->selected[1] = (int8_t)motion_target_d2;
+            engine->baseline[0] = (int8_t)motion_target_d1;
+            engine->baseline[1] = (int8_t)motion_target_d2;
+            engine->selected_relative =
+                (int8_t)(motion_target_d2 - motion_target_d1);
+            engine->phase_baseline_valid = true;
+            engine->phase_baseline_age = 0;
+            engine->pending_valid = false;
+            engine->pending_count = 0;
+            engine->pending_age = 0;
+            engine->trajectory_age = 0;
+            phase_target_d1 = motion_target_d1;
+            phase_target_d2 = motion_target_d2;
+            phase_pair_valid = true;
+        }
         bool initial_authoritative_lock =
             !engine->phase_baseline_valid && frame_d1 != FIELDREG_UNKNOWN &&
             (frame_support >= 2 || frame_motion_priority ||
@@ -1510,6 +1613,22 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
                 engine->temporal_cost_ema[0] * 0.95 + temporal_best_cost1 * 0.05;
             engine->temporal_cost_ema[1] =
                 engine->temporal_cost_ema[1] * 0.95 + temporal_best_cost2 * 0.05;
+        }
+    }
+    engine->previous_edge_valid =
+        transport_ok && content_evidence_available && !scene_cut;
+    if (engine->previous_edge_valid) {
+        engine->previous_picture_top[0] = (int16_t)top1;
+        engine->previous_picture_top[1] = (int16_t)top2;
+        engine->previous_picture_bottom[0] = (int16_t)bottom1;
+        engine->previous_picture_bottom[1] = (int16_t)bottom2;
+        for (int field = 0; field < 2; ++field) {
+            for (int band = 0; band < PHASE_BANDS; ++band) {
+                engine->previous_spatial_top[field][band] =
+                    (int16_t)spatial_top[field][band];
+                engine->previous_spatial_bottom[field][band] =
+                    (int16_t)spatial_bottom[field][band];
+            }
         }
     }
     ++engine->frames_seen;

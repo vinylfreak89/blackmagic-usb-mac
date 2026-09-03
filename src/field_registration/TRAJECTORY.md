@@ -115,6 +115,16 @@ this case.** A coherent full-width envelope plus relative-phase consensus also
 outvotes a conflicting local band majority. Field 2 remains pinned unless its
 own evidence moves it.
 
+The displacement form is deliberately a delta rule as well as an absolute
+envelope rule. A heterogeneous raster can expose a top landmark from one layer
+and a bottom landmark from another, so neither yields a trustworthy absolute
+gauge. If both landmarks move by the same signed integer between consecutive
+units, at least two broad bands independently show the same top+bottom delta,
+and both same-parity temporal searches corroborate it, apply that delta to the
+committed phase immediately. A localized overlay cannot satisfy the broad-band
+and full-width requirements. The `physical-multiphase-envelope-jitter` golden
+freezes this distinction.
+
 ## Resolution and horizon
 
 On settlement, finalize and emit every buffered unit in order, including units

@@ -41,6 +41,7 @@ class Step:
     flat_y: int = 2
     secondary_animated: bool = True
     main_motion: bool = False
+    main_top_trim: int = 0
 
 
 def trajectory() -> list[Step]:
@@ -69,6 +70,22 @@ def trajectory() -> list[Step]:
                         unsettled=True, main_ranges=((0, 720),),
                         secondary_ranges=()))
     add(12, "after-physical-field1-jitter", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+
+    # Real heterogeneous rasters need not expose a nominal-height absolute
+    # envelope. Here the main layer's first three active rows are absent, so
+    # top and bottom imply different absolute offsets. Both landmarks and all
+    # broad bands still move by the same +/-1 delta, and temporal correlation
+    # corroborates it. The live delta-authority path must FOLLOW every unit.
+    for index in range(24):
+        phase = (1, 0) if index & 1 else (0, 0)
+        out.append(Step("physical-multiphase-envelope-jitter", phase, phase,
+                        unsettled=True, main_ranges=((0, 720),),
+                        secondary_ranges=(), main_top_trim=3))
+    out.append(Step("after-physical-multiphase-jitter", (0, 0), (0, 0),
+                    reset_before=True, main_ranges=((0, 720),),
+                    secondary_ranges=()))
+    add(11, "after-physical-multiphase-jitter", (0, 0), (0, 0),
         main_ranges=((0, 720),), secondary_ranges=())
 
     for index in range(24):
@@ -229,6 +246,8 @@ def make_unit(counter: int, index: int, step: Step,
         ):
             source = templates[(step.scene, phase, parity, 100)]
             for row, line in enumerate(source):
+                if row < step.main_top_trim:
+                    continue
                 if step.main_motion:
                     line = source[(row + phase * 2) % len(source)]
                 line = base.scaled_line(line, step.gain)
