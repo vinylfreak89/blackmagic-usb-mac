@@ -79,6 +79,8 @@ typedef struct {
     uint64_t unsettled_units, begin_segment_calls, discontinuity_calls;
     uint64_t log_rows;                // cumulative over every attached log file
     uint64_t log_files;               // decision-log files opened (cfg.decision_log + fs_log_start)
+    uint64_t log_write_errors;        // rows whose fprintf failed (NOT counted in log_rows): the sidecar is incomplete
+    uint64_t log_close_errors;        // fclose failures at detach/stop: the tail of that file may be missing
     unsigned pool_high_water;
 } fs_stats;
 
@@ -91,6 +93,14 @@ int  fs_stop (frameserver *f);            // stops capture, drains the worker, c
 // the device clock via counter_extended). Same schema and header as cfg.decision_log. One log at
 // a time: start fails (-1) while one is attached (including cfg.decision_log) — stop it first.
 // Refused from the worker/audio callbacks and after stop. fs_stop closes an attached log.
+// The path must not exist (opened exclusively: a sidecar is evidence and is never truncated).
+// Control-thread ownership: fs_open/start/stop/close and fs_log_start/stop are serialized
+// against each other internally (life_m/log_m), but the sidecar's PATH policy is the caller's —
+// a growing file must not live in a cloud-synced root (CLAUDE.md writer output rule).
+// A synchronous row write runs on the video worker: a stalled disk stalls that worker and sheds
+// video downstream (PoolFull rows, then ring drops), never acquisition — proven by the storage-
+// stall test. A bounded row queue + writer thread is the named follow-up if that shedding is ever
+// observed in practice.
 int  fs_log_start(frameserver *f, const char *path);
 int  fs_log_stop (frameserver *f);        // -1 if none attached or the close failed
 // Authoritative after fs_stop. During streaming worker-owned members are diagnostic only and

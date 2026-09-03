@@ -21,6 +21,9 @@ void fs_test_after_empty_snapshot(frameserver *f){
         while(!atomic_load(&hook_release)) usleep(100);
 }
 void fs_test_before_producer_done(frameserver *f){ (void)f; if(atomic_load(&hook_arm)) atomic_store(&hook_release,1); }
+static _Atomic int log_stall_us; static _Atomic int log_stalled;   // storage-stall injection: the first row after arming blocks inside the row lock
+void fs_test_after_log_row(frameserver *f){ (void)f; int st=atomic_exchange(&log_stall_us,0); if(st){ atomic_store(&log_stalled,1); usleep(st); } }
+static frameserver *g_cb_target; static _Atomic int cb_try, cb_start_rc, cb_stop_rc;   // callback-refusal probe
 static _Atomic int end_calls;
 static void on_end(void *c, enum cc_end r){ (void)c; (void)r; atomic_fetch_add(&end_calls, 1); done = 1; }
 static _Atomic uint64_t audio_frames_seen; static _Atomic int audio_flagged_blocks; static _Atomic uint64_t audio_last_pts; static _Atomic int audio_pts_nonmonotonic;
@@ -39,10 +42,18 @@ static void audio_sink(void *c, const ap_block *b){ (void)c; atomic_fetch_add(&a
     if (!(b->flags & AP_FLAG_UNANCHORED)) atomic_store(&audio_last_pts, b->pts_num); }
 static uint64_t vf_ctr[CORR_MAX], vf_apts[CORR_MAX]; static _Atomic int vf_n; static _Atomic int video_after_end;
 static void sink(void *c, const fp_frame *fr){ (void)c; if (fr->surface) atomic_fetch_add(&frames_seen, 1);
+    if (atomic_exchange(&cb_try,0) && g_cb_target){ atomic_store(&cb_start_rc, fs_log_start(g_cb_target,"/tmp/fs_test_from_callback.csv")); atomic_store(&cb_stop_rc, fs_log_stop(g_cb_target)); }
     if (done) atomic_store(&video_after_end, 1);
     if (fr->audio_pts_known && atomic_load(&vf_n) < CORR_MAX){ int n = atomic_load(&vf_n); vf_ctr[n] = fr->counter_ext; vf_apts[n] = fr->audio_pts_num; atomic_store(&vf_n, n + 1); }
     if(atomic_load(&sink_hold)&&!held_surface){ IOSurfaceIncrementUseCount(fr->surface); held_surface=fr->surface; }
     int st = atomic_load(&sink_stall_us); if (st) usleep(st); }   // a slow consumer holds the slot
+/* Observation-driven waits (no fixed sleeps): block until the sink has seen `n` more frames than
+ * `base`, or the session ended, or a 20 s cap — so the windows below are defined by delivered
+ * frames, not wall time, and survive sanitizer slowdowns. */
+static int wait_frames(unsigned long long base, unsigned long long n){
+    for (int i = 0; i < 2000; i++){ if (atomic_load(&frames_seen) >= base + n) return 1; if (done) return 0; usleep(10000); }
+    return 0;
+}
 typedef struct { frameserver *f; int rc; } fs_stop_arg;
 static void *fs_stop_thread(void *p){ fs_stop_arg *a=p; a->rc=fs_stop(a->f); return NULL; }
 static int repeat_fixture(const char *src,const char *dst,int copies){
@@ -256,18 +267,19 @@ int main(int argc, char **argv){
     // Runtime log attachment: a recorder aligns the sidecar to ITS recording. Rows exist only
     // while attached, each file carries exactly one header, ordinals stay monotonic, the gap
     // between two attachments is genuinely unlogged, and every written row is counted.
-    done=0; char la[]="/tmp/fs_test_logA_XXXXXX"; fd=mkstemp(la); close(fd); char lb[]="/tmp/fs_test_logB_XXXXXX"; fd=mkstemp(lb); close(fd);
+    done=0; char la[]="/tmp/fs_test_logA_XXXXXX"; fd=mkstemp(la); close(fd); unlink(la); char lb[]="/tmp/fs_test_logB_XXXXXX"; fd=mkstemp(lb); close(fd); unlink(lb);   /* fs_log_start opens exclusively */
     CHECK(argc>=3,"runtime-log test needs the long plain fixture as argv[2]");
     fs_config rc=cfg; rc.decision_log=NULL; rc.capture.replay_path=argc>=3?argv[2]:argv[1]; rc.capture.replay_pace_us=30000; frameserver *rf=NULL;
     CHECK(fs_open(&rf,&rc)==0,"open (runtime log)");
     if(rf&&argc>=3){
         CHECK(fs_log_stop(rf)==-1,"stop with no log attached must fail");
-        CHECK(fs_start(rf)==0,"start (runtime log)"); usleep(150000);
+        unsigned long long base=atomic_load(&frames_seen);
+        CHECK(fs_start(rf)==0,"start (runtime log)"); CHECK(wait_frames(base,10),"frames before attach A");
         CHECK(fs_log_start(rf,la)==0,"attach A");
         CHECK(fs_log_start(rf,lb)==-1,"second attach while A is attached must fail");
-        usleep(250000);
-        CHECK(fs_log_stop(rf)==0,"detach A"); usleep(150000);
-        CHECK(fs_log_start(rf,lb)==0,"attach B"); usleep(250000);
+        CHECK(wait_frames(base,30),"frames during A");
+        CHECK(fs_log_stop(rf)==0,"detach A"); CHECK(wait_frames(base,45),"frames in the gap");
+        CHECK(fs_log_start(rf,lb)==0,"attach B");
         while(!done) usleep(10000);
         CHECK(fs_stop(rf)==0,"stop (runtime log)");
         CHECK(fs_log_start(rf,la)==-1,"attach after stop must fail");
@@ -282,10 +294,47 @@ int main(int argc, char **argv){
         CHECK(rowsA+rowsB==rs.log_rows,"runtime log rows on disk %llu != counted %llu",rowsA+rowsB,(unsigned long long)rs.log_rows);
         CHECK(rs.log_files==2,"log_files %llu != 2",(unsigned long long)rs.log_files);
         CHECK(rs.log_rows<rs.video_observations,"rows must cover only the attached windows (%llu of %llu observations)",(unsigned long long)rs.log_rows,(unsigned long long)rs.video_observations);
+        CHECK(rs.log_write_errors==0&&rs.log_close_errors==0,"no log I/O errors expected (%llu/%llu)",(unsigned long long)rs.log_write_errors,(unsigned long long)rs.log_close_errors);
+        CHECK(fs_log_start(rf,la)==-1,"attach onto an existing path must fail (never truncate a sidecar)");
         printf("  runtime log: A %llu rows (last ordinal %llu), gap, B %llu rows (%llu..%llu) of %llu observations\n",rowsA,lastA,rowsB,firstB,lastB,(unsigned long long)rs.video_observations);
         fs_close(rf);
     }
     unlink(la); unlink(lb);
+
+    // Callback refusal and storage stall: fs_log_start/stop from the video worker return -1 without
+    // deadlock; a row write that stalls (disk hang) stalls the worker and sheds video DOWNSTREAM —
+    // PoolFull rows with exact conservation — never acquisition. Rows that failed are never counted.
+    done=0; char lc[]="/tmp/fs_test_logC_XXXXXX"; fd=mkstemp(lc); close(fd); unlink(lc);
+    fs_config sc=cfg; sc.decision_log=NULL; sc.capture.replay_path=argc>=3?argv[2]:argv[1]; sc.capture.replay_pace_us=8000; sc.pool_units=4; frameserver *sf=NULL;
+    CHECK(fs_open(&sf,&sc)==0,"open (stall)");
+    if(sf&&argc>=3){
+        g_cb_target=sf; atomic_store(&cb_start_rc,99); atomic_store(&cb_stop_rc,99); atomic_store(&cb_try,1);
+        unsigned long long sbase=atomic_load(&frames_seen);
+        CHECK(fs_start(sf)==0,"start (stall)"); CHECK(wait_frames(sbase,5),"frames before the stall attach");
+        CHECK(atomic_load(&cb_start_rc)==-1&&atomic_load(&cb_stop_rc)==-1,"log start/stop from the worker callback must be refused (%d/%d)",atomic_load(&cb_start_rc),atomic_load(&cb_stop_rc));
+        atomic_store(&log_stalled,0); atomic_store(&log_stall_us,1500000);
+        CHECK(fs_log_start(sf,lc)==0,"attach C");
+        while(!done) usleep(10000);
+        CHECK(fs_stop(sf)==0,"stop (stall)"); g_cb_target=NULL;
+        CHECK(atomic_load(&log_stalled),"the stall hook did not fire");
+        fs_stats ss; fs_get_stats(sf,&ss);
+        CHECK(ss.dropped_pool_full>0,"a stalled sidecar write must shed video at the pool (PoolFull), got 0");
+        CHECK(ss.published+ss.dropped_pool_full+ss.publisher_dropped==ss.exact_units,"conservation under stall: %llu+%llu+%llu != %llu",(unsigned long long)ss.published,(unsigned long long)ss.dropped_pool_full,(unsigned long long)ss.publisher_dropped,(unsigned long long)ss.exact_units);
+        /* A long enough stall also fills the item ring; those observations are all PoolFull (the pool
+         * filled first) and are accounted in the next row's preceding_ring_drops rather than as rows. */
+        unsigned long long poolrows=0,rows=0,ringdrops=0,firstord=0,lastord=0; int firstrow=1; L=fopen(lc,"r");
+        while(fgets(line,sizeof line,L)){ if(!strncmp(line,"ordinal,",8)) continue; rows++; unsigned long long ord=strtoull(line,NULL,10); if(firstrow){firstord=ord;firstrow=0;} if(ord>lastord) lastord=ord;
+            if(strstr(line,",PoolFull,")) poolrows++; char *last=strrchr(line,','); if(last) ringdrops+=strtoull(last+1,NULL,10); } fclose(L);
+        CHECK(ringdrops==ss.ring_drops_logged,"preceding_ring_drops in the log %llu != ring drops logged %llu",ringdrops,(unsigned long long)ss.ring_drops_logged);
+        /* Every observation from the first logged ordinal on is either a row or range-accounted by a
+         * later row's preceding_ring_drops: nothing shed during the stall vanishes from the sidecar. */
+        CHECK(rows+ringdrops==lastord-firstord+1,"logged ordinals %llu..%llu: %llu rows + %llu ring-accounted != %llu observations",firstord,lastord,rows,ringdrops,lastord-firstord+1);
+        CHECK(poolrows>0&&poolrows<=ss.dropped_pool_full,"PoolFull rows %llu vs pool drops %llu",poolrows,(unsigned long long)ss.dropped_pool_full);
+        CHECK(rows==ss.log_rows,"stall log rows %llu != counted %llu",rows,(unsigned long long)ss.log_rows);
+        printf("  stall: %llu published, %llu PoolFull (%llu rows + %llu ring-accounted), %llu rows\n",(unsigned long long)ss.published,(unsigned long long)ss.dropped_pool_full,poolrows,ringdrops,rows);
+        fs_close(sf);
+    }
+    unlink(lc);
     if (fails) printf("FAILURES: %d\n", fails);
     else printf("frameserver tests: PASS (obs %llu, exact %llu, published %llu, short %llu, hole %llu, unframed %llu)\n",
            (unsigned long long)s.video_observations, (unsigned long long)s.exact_units, (unsigned long long)s.published,

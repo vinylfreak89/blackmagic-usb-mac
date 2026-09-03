@@ -39,4 +39,4 @@ test-tsan: tests/fixture.tpc
 
 clean:
 	rm -f unit_parser.o libunitparser.a tests/unit_parser_test \
-		tests/unit_parser_asan tests/unit_parser_tsan tests/fixture.tpc
+		tests/unit_parser_asan tests/unit_parser_tsan tests/fixture.tpc tests/fixture_plain.tpc
