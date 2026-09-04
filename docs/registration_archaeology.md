@@ -14,11 +14,31 @@ and reviewed Codex's engine work. Each version was mutually reviewed before merg
 
 ## The phenomenon
 
-The deck's output shows the picture "jumping" vertically by a line or two, and any motion-adaptive
-deinterlacer (yadif, NNEDI) combs wherever that happens. For nine versions the engine tried to
-remove the jump by inferring where the picture sat from the picture itself. The question that was
-not asked until the ninth was: *where, in the signal, is the reference the picture is jumping
-relative to?*
+The deck's output shows the picture "jumping" vertically by a line or two: one field's content
+sits a line or two away from where the standard puts it, so the two fields of a frame no longer
+interleave. For nine versions the engine tried to remove the jump by inferring where the picture
+sat from the picture itself. The question that was not asked until the ninth was: *where, in the
+signal, is the reference the picture is jumping relative to?*
+
+## Where deinterlacers sit in this story
+
+Deinterlacing is presentation, downstream of the frameserver, and it was also the lens through
+which every render was judged, so it matters which lens. Two kinds were used and they behave
+oppositely on a misregistered frame. **NNEDI3** interpolates each field into a full frame from
+that field alone: it never combines the two fields, makes no motion decision, and invents nothing
+beyond spatial interpolation, so a displaced field shows as exactly the physical jump and nothing
+else. **Yadif, bwdif and estdif** are motion-adaptive weavers: they interleave the two fields
+wherever they judge the picture static and interpolate where they judge it moving. On a frame
+whose fields are misregistered by a line the weave combs, and the per-pixel decisions add
+structure of the deinterlacer's own (bwdif and estdif produced false field inversions on fixture
+A). Their output mixes the signal's error with the deinterlacer's inventions, which is why the
+owner could not tell the two apart in early reviews and settled on NNEDI3 for every watch copy.
+Yadif kept one role: because it combs exactly where the two fields disagree, it is a stress
+indicator of *relative* inter-field misregistration, a presentation check and never registration
+truth. "Not good enough for yadif" below means the fields are still relatively misregistered often
+enough that a weaving deinterlacer combs, not that yadif is the target. Earlier versions of the
+record said "any deinterlacer combs", which put a class of deinterlacer artifacts on the signal's
+account; that conflation was half the confusion and is corrected throughout.
 
 ## The story, item by item
 
@@ -113,7 +133,7 @@ positive can no longer latch (`1daad46` to `3b30718`). Two-truth golden: raster 
 one-field transitions followed 850 → 2,939 of 4,128; at 35–40 min follow/hold 0/1,066 → 594/438;
 1.466 ms per unit.
 
-The owner watched a full NNEDI copy and signed off: a large improvement, representative of a
+The owner watched a full NNEDI3 copy (intra-field, so what he saw was the signal) and signed off: a large improvement, representative of a
 digitally captured VHS tape, and the remaining jumps "bring new lines into the picture", i.e.
 recorded-signal instability outside any integer engine (`089ea5b`). Both agents took that as
 "done except the deck". **It was not**: the 09-04 raw measurements (items 12 and 13) showed the
@@ -121,8 +141,10 @@ engine abstaining on rigid whole-field shifts that are exactly what an integer e
 
 ### 8. Relative-only v7 (Claude's diagnosis 09-03 22:13; Codex's engine 22:19 to 09-04 01:15; merged `abfa648`)
 
-Claude's yadif test of the frameserver's own output combed wherever the two fields were
-misregistered. The "bottom landmark falls off the raster" hypothesis was refuted (the edge moves
+Claude ran yadif over the frameserver's own output as a stress test: it combed wherever the two
+fields were still misregistered against each other, which located a residual class; the residual
+itself was then measured on the raw frames, not through yadif. The "bottom landmark falls off the
+raster" hypothesis was refuted (the edge moves
 into rows 257/258, still measurable); the residual was a **relative-only class**: raw need 0
 while the engine held `(1,0)` through 3–19 units of abstention. Of 143 classifiable residual
 frames in the first 100 s, 132 were over-corrections. Instrument: `static_comb_metric.py`
@@ -144,7 +166,8 @@ either sits in the raster.
 
 ### 9. The morning review and the first false alarm (Owner and Claude, 09-04 morning)
 
-The owner: "better, but still not good enough for yadif." Watching frame by frame with the
+The owner: "better, but still not good enough for yadif" (the fields still disagree often enough
+that a weaving deinterlacer combs). Watching frame by frame with the
 sidecar overlaid (Claude's `overlay_sidecar.py`, built that morning): "the decision engine is
 definitely picking up on things, it's just severely under-selecting"; almost all of its Unknown
 decisions fall exactly where the raster is genuinely unstable.

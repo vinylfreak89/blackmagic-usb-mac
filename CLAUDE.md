@@ -1155,7 +1155,9 @@ delivery edge; wrong one at acquisition.
   sub-line, horizontal/line-time, flagging, or skew errors.
   **Residual class found on re-review (2026-09-03 evening, two independent arms reconciled):** a
   yadif-2x test of the first 5 min from the frameserver's published frames combs wherever the two
-  fields of a unit are misregistered against each other. The hypothesis "the field is pushed down
+  fields of a unit are misregistered against each other (yadif used as a stress indicator: a
+  weaving deinterlacer combs exactly where the two fields disagree; see the deinterlacer rule
+  below). The hypothesis "the field is pushed down
   and its bottom landmark falls off the raster" was measured and REFUTED for the common +1/+2
   events: the lower picture edge moves from row 256 into rows 257/258 — inside the four captured
   near-blank lines, still measurable — only two units on the whole tape show an apparent top
@@ -1177,7 +1179,19 @@ delivery edge; wrong one at acquisition.
   unit rate with `relative_only`/`gauge_unknown` sidecar provenance, costed against §11b; the
   presentation acceptance test is `experiments/static_comb_metric.py` on
   `frameserver_replay --dump-uyvy` output (affected runs move to shift 0, normal frames stay).
-  Yadif is the presentation check only, never registration truth.
+  **Deinterlacer rule (owner, 2026-09-04; supersedes any "deinterlacers comb" wording):**
+  deinterlacing is presentation, downstream of the frameserver, and two classes behave oppositely
+  on a misregistered frame. An intra-field interpolator (NNEDI3) builds each frame from one field
+  alone, makes no weave or motion decision, and invents nothing: a displaced field shows as
+  exactly the physical jump. A motion-adaptive weaver (yadif, bwdif, estdif) interleaves the two
+  fields where it judges the picture static, so a one-line inter-field misregistration combs, and
+  its per-pixel decisions add structure of its own (bwdif and estdif produced false field
+  inversions on fixture A). Weaver output mixes the signal's error with the deinterlacer's
+  inventions and misled early reviews; **NNEDI3 is the review presentation** (weights: see
+  `experiments/README.md`). Yadif's one role is as a stress indicator of *relative* inter-field
+  misregistration ("not good enough for yadif" = the fields still disagree often enough that a
+  weaver combs); it is a presentation check only, never registration truth, and never how a
+  render is judged.
   **✅ v7 relative-only authority landed (main `abfa648`, 2026-09-04, three §14 rounds).** Codex's
   static-region comb estimator releases a held phase at unit rate when the raster returns; it is
   current-unit authority only (a golden proves a relative presentation never latches into later
@@ -1202,7 +1216,8 @@ delivery edge; wrong one at acquisition.
   to learn that a crop may read into the hard-padding ruler (the engine's +5 bottom-censored
   class); the v6 pair was deleted, not archived (owner: Time Machine). Owner visual sign-off
   pending.
-  **Owner visual sign-off (2026-09-03, full forward-only NNEDI watch copy of fixture A):** a
+  **Owner visual sign-off (2026-09-03, full forward-only NNEDI3 watch copy of fixture A; NNEDI3
+  because it is intra-field and invents nothing, so what is seen is the signal):** a
   large improvement over the validated v4 engine; judged representative of what a digitally
   captured VHS tape should look like. Of the jumps that remain, nearly every one in the SP
   recording brings *new* lines into the picture (unique luma and chroma, not a shifted copy of
@@ -1366,7 +1381,9 @@ delivery edge; wrong one at acquisition.
   accepted: OBS shows 720×480 square-pixel (stretched) until the scene item's transform is set to
   640×480 — 640×480 (not 720×540) because it leaves the 480 scan lines untouched and VHS
   horizontal resolution (~240 TVL) is oversampled at 720 anyway; the source defaults to Yadif 2x
-  TFF; OBS owns deinterlacing.
+  TFF; OBS owns deinterlacing. ⚠️ Yadif is a weaving deinterlacer that combs and invents where
+  the fields disagree (deinterlacer rule, §7); whether the plugin should default to it, to OBS's
+  other modes, or to none is an open product decision for the owner.
   **Recording-aligned sidecar (2026-09-04):** the frameserver gained runtime decision-log
   attach/detach (`fs_log_start`/`fs_log_stop`: exclusive open, checked writes with
   `log_write_errors`/`log_close_errors`, `fs_log_stop` reports a file with any failed row as
@@ -1494,7 +1511,9 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 - **DeckLink SDK** input model: stream-time / hw-ref arrival / validity flags
   (`bmdFrameHasNoInputSource`) / format-change (`bmdVideoInputFieldDominanceChanged`) / timecode.
 - **FFmpeg**: `idet` (motion TFF/BFF/undetermined, ~1.04 threshold, 4-frame vote) as the parity
-  baseline **applied between fields**; `bwdif` for the live bob; **`fieldmatch` is content-cadence
+  baseline **applied between fields**; `bwdif` was the first bob used for the TFF measurement
+  (it and `estdif` produced false field inversions on fixture A; NNEDI3 is the review
+  presentation, deinterlacer rule in §7); **`fieldmatch` is content-cadence
   tooling, NOT acquisition truth** (harmful if allowed to "repair" physical field records).
   `decklink_dec.cpp` for the multi-PTS-source matrix.
 - **OBS decklink**: live-adapter reference only.

@@ -85,12 +85,18 @@ Representative SD decoder, ADI ADV7180 ([datasheet Rev. I](https://docs.rs-onlin
 
 ## 5. Codec level
 
-Interlaced coding (MPEG-2, H.264 field/MBAFF) and every deinterlacer assume the standard spatial
-parity: field 1's lines are the spatially higher lines. A field whose content is displaced by
-one line inside its raster violates that assumption — the frame weaves with a one-line error
-between the fields, which a motion-adaptive deinterlacer renders as combing wherever the picture
-has vertical detail. No codec or deinterlacer corrects it; the correction has to happen on the
-480i frame before either, as a per-field whole-line shift (which is what `fp_assemble` does).
+Interlaced coding (MPEG-2, H.264 field/MBAFF) and every weaving deinterlacer assume the standard
+spatial parity: field 1's lines are the spatially higher lines. A field whose content is displaced
+by one line inside its raster violates that assumption: the frame weaves with a one-line error
+between the fields. What a viewer then sees depends on the deinterlacer class. An intra-field
+interpolator (NNEDI3: each field to a full frame from that field alone, no weave, no motion
+decision) shows the displacement as exactly the physical jump and adds nothing. A motion-adaptive
+weaver (yadif, bwdif, estdif) interleaves the two fields where it judges the picture static, so
+the error appears as combing wherever the picture has vertical detail, and its per-pixel decisions
+add structure of its own (bwdif and estdif produced false field inversions on fixture A). That is
+why NNEDI3 is the review presentation and yadif only a stress indicator of relative inter-field
+misregistration. No codec or deinterlacer corrects the displacement; the correction has to happen
+on the 480i frame before either, as a per-field whole-line shift (which is what `fp_assemble` does).
 
 ## 6. What this says about the model
 
