@@ -327,3 +327,39 @@ decides the crop whenever it is measurable; the caption places a unit only when 
 not measurable, corroborates otherwise, and anchors the segment zero. That is the general form
 of the ruling and the next brief to Codex. The same audit is running on the C/D build for the
 before/after.
+
+## Round 4: the C/D build and the body witness `dc8a459`, measured (2026-09-05, 04:40–05:30 JST)
+
+**C/D build (`021eb0d`) on the whole tape** (same audit, same script with the content-motion
+class): field 1 engine-motion **2,971** (baseline 954), missed moves 2,631 (baseline 2,259),
+follows 5,729; field 2 engine-motion 1,723, missed 2,916. The engine-motion rose in minutes 2–12
+of the SP recording (1,623 events: GeometryLockDecides 1,542, applied change ±1 alternating, body
+MAD below 4 in 924 of them): the no-caption path chases the picture's first visible line as it
+flickers between lines 23 and 24 while the body stands still. It fell in the second recording.
+
+**Body witness `dc8a459`** (verified in a detached checkout: goldens 122/122, whole tape
+86,293/86,293 exact, zero drops) trades engine motion for missed moves and the net wrongness at
+the owner's sites went up — 35:00 wrong 40→46 (engine-motion 33→11, missed 7→35), 37:01 wrong
+7→30 (3→5, 4→25); every missed move is differential (field 2 still). On the raw raster at 37:01
+(ordinals 30–47 of the slice sidecar) the tape's line 21, the black line 22 and the picture move
+together by one line unit to unit — a rigid whole-field jitter that the engine's caption reading,
+its own top edge and its geometry candidate all see. Four defects, sent to Codex as one brief
+(`/private/tmp/hw-session/briefs/r4_body_witness.md`):
+
+1. The witness is a 1-D row-mean profile with MAD 0.5–2.0 and a flat minimum; it reads 0 on
+   units that moved by one line and disagrees with the 2-D body shift on 12–55% of the moving
+   units (37:01 field 1 19 of 88; 35:00 field 2 17 of 31). It must be a 2-D block MAD.
+2. It is anchored on the last APPLIED offset, so one wrong hold is inherited by every following
+   unit until a caption reading rescues it (37:01 ordinals 34, 42, 43, 46). Anchor on the previous
+   unit's measured position; a top edge that moved with the body is physical and places the crop
+   regardless of what was applied last unit.
+3. The picture-wins ruling is implemented in one direction only: a caption reading that did NOT
+   change while the picture moved is still applied unchanged (Line21Placement missed moves, 19
+   at 35:00, 7 at 37:01). Differential body motion with an unmeasurable top follows the body;
+   common-mode motion with no measurable top is the one undecidable case and stays a named hold.
+4. With no caption, a top edge that moves against a reliable still body still moves the crop
+   (05:00 slice: 33 engine-motions, all GeometryLockDecides, body 0 by both witnesses).
+
+Tools added: `experiments/raw_panel.py` (four strips per unit, both fields' top and bottom, crop
+drawn in, NTSC line labels) and `experiments/held_vs_top_runs.py` (runs where the applied offset
+contradicts the engine's own top candidate). The whole-tape follow audit of `dc8a459` is running.
