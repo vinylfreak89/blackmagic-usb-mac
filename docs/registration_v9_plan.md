@@ -427,7 +427,7 @@ engine-motion 32, missed 3,078. Comb audit over 86,292 unit pairs: **78,908 regi
 flat, 3,691 misregistered** (+1 ×2,038, +2 ×902, −1 ×691, others 60) — the whole-tape
 "combing under yadif" figure before calibration. The `a683926` whole-tape pass is running.
 
-## Round 5 whole-tape sidecar of `a683926` (2026-09-05 08:00 JST) — two zero defects, sent as round 6
+## Round 5 whole-tape sidecar of `a683926` (2026-09-05 07:45 JST) — two zero defects, sent as round 6
 
 Paced replay 86,293/86,293, zero drops; parity Calibrated 83,705 / Uncalibrated 2,514 / Drift
 74; field-2 zero Comb 51,035 (first recording 43,671), Envelope 34,805, Standard 406.
