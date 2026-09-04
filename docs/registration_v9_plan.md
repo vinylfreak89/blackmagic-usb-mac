@@ -292,3 +292,22 @@ true signal loss or a cut is audited against the raw 525-line raster before hand
   picture's edges outrank a single contradicting caption reading. A caption that agrees with the
   picture's edges still places the unit directly (the 180/200 case). To be implemented on
   `render-live` after Codex's current unit reports, with a golden from the 35:00 units.
+
+## Round 3, state at 06:00 on 2026-09-05 (`render-live` at `be7691a`, not merged)
+
+Landed with goldens (105/105): A (VBI-type lines excluded by signature, weak captions separated
+from picture rows at run-in variance 20), B (near-blank band censored), C (standard origin, gauges
+re-anchor, content never), D (threshold relative to blanking), the gap line, the XDS bar's
+left-half signature with fragments excluded, the caption-only veto by conserved edges, and
+`AnchorUncorroborated` (a single parity hit places its unit but does not move the zero). Codex
+confirmed the invariant in writing. Slices: 37:01 field 2 100% at +2, 45:00 and 35:00 exact,
+disaster region 3 engine-motion units in 79, 1:26 one.
+
+Open, in the order they go to Codex: (1) the veto never fires at 35:00 because the bottom is
+censored there and Claude's rule demanded both edges — a censored bottom is absence of evidence;
+the picture's testimony becomes the top edge plus a body-shift witness (the follow audit's
+measurement, in the engine); (2) every hold state that can occur with usable geometry
+(Line21Ambiguous, GaugeConflict, LockBroken, OutOfRangeHold) is placed by geometry with the
+state as provenance; InsertAbsent, GeometryUnmeasurable and discontinuity stay legitimate holds;
+ClipUnknownHold is dead and deleted; (3) the per-segment parity calibration by static comb;
+(4) the raster-damage state.
