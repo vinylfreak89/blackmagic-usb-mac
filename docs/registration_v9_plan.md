@@ -284,7 +284,11 @@ true signal loss or a cut is audited against the raw 525-line raster before hand
 - **Caption vs picture, measured (Codex, low-MAD transitions only):** 35:00 — caption and body
   moved together 180, body still 5, different 15, excluded 24; 45:00 — 9 / 0 / 0. So the tape's
   caption line moves without the picture in roughly 2.5% of caption transitions on this tape.
-  **Owner decision pending:** follow the caption always (the picture bounces in those units), or
-  hold the crop when the picture's own top AND bottom edges are measurable and unchanged while the
-  caption moved (`CaptionOnlyMotion`, logged), which keeps the invariant at the cost of a
-  deterministic, bounded exception to "parity is never vetoed". Not implemented either way.
+  **Owner ruling (2026-09-05 05:xx): the PICTURE wins the crop and the lock is kept.** A caption
+  reading that disagrees with the settled lock while the picture's own edges agree with the lock
+  is invalid geometry for that unit: it loses its vote (treated as non-picture VBI data), the crop
+  follows the picture, the lock is unchanged, and the sidecar logs `CaptionOnlyMotion` with the
+  edges as evidence. After the lock, parity is no longer unconditional: the lock plus the
+  picture's edges outrank a single contradicting caption reading. A caption that agrees with the
+  picture's edges still places the unit directly (the 180/200 case). To be implemented on
+  `render-live` after Codex's current unit reports, with a golden from the 35:00 units.
