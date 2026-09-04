@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # v9 acceptance: compare a schema-5 frameserver decision log against the whole-tape parity truth set (line21_truth.py).
 # For every unit where the truth has a reading, the engine's applied d must equal it:
-#   field 1: exactly one parity-valid line other than 21 => d1 = line-21; only line 21 with NON-null bytes => d1 = 0
-#   field 2: exactly one parity-valid line other than 284 => d2 = line-284; only 284 with non-null bytes => d2 = 0
+#   field 1: exactly one parity-valid line other than 21 => d1 = line-21
+#   field 2: exactly one parity-valid line other than 284 => d2 = line-284
+#   (non-null bytes on the regenerated 21/284 with nothing elsewhere are the device's own slicing decision — reported,
+#    never used as truth: measured 2026-09-05, rigid +1 picture shifts coexist with re-encoded data at 21)
 # Units are joined on the device counter (truth: raw 16-bit, unwrapped here; sidecar: counter_extended).
 # Usage: v9_acceptance.py <decision_log.csv> <line21_truth.csv>
 import sys, csv, collections
@@ -24,20 +26,20 @@ def expect(lines, bytes_, insert, ins_line):
         if d < -6 or d > 9: return None, 'implausible'   # a picture line that passed parity by chance
         return d, 'parity@%d'%off[0][0]
     if len(off)>1: return None, 'ambiguous'
-    if insert!='none' and insert!='8080': return 0, 'insert-data'
+    if insert!='none' and insert!='8080': return None, 'insert-data'   # the device's own slicing decision: corroboration, never truth
     return None, 'none'
 T={}
 for c,r in zip(ctr,truth):
     e1=expect(r['f1_lines'],r['f1_bytes'],r['insert21'],21); e2=expect(r['f2_lines'],r['f2_bytes'],r['insert284'],284)
     T[c]=(e1,e2)
-log=[r for r in csv.DictReader(open(log_path)) if r.get('transport')!='Hole' and r.get('kind')=='0']
-# align the sidecar's extended counter with the truth's unwrapped counter: pick the offset that lands the most
-# sidecar rows on truth rows (both count from different bases)
-lc=[int(r['counter_extended']) for r in log]; tkeys=sorted(T); best=(0,0)
-for k in set(lc[i]-tkeys[j] for i in range(min(50,len(lc))) for j in range(min(50,len(tkeys)))):
-    hits=sum(1 for c in lc[:5000] if (c-k) in T)
-    if hits>best[0]: best=(hits,k)
-offset=best[1]
+log=[r for r in csv.DictReader(open(log_path)) if r.get('transport')=='Complete']   # exact units only (kind is the video kind, not exactness)
+# the frameserver extends the device counter from its raw value and the truth set unwraps the same raw counter,
+# so the two agree directly; verify on the first rows rather than searching for an offset
+lc=[int(r['counter_extended']) for r in log]
+offset=0
+common=sum(1 for c in lc[:2000] if c in T)
+if common < min(2000,len(lc))*0.9:
+    raise SystemExit(f"counter join failed: only {common} of the first {min(2000,len(lc))} sidecar units have a truth row")
 stats={1:collections.Counter(),2:collections.Counter()}; mism=[]
 for r in log:
     c=int(r['counter_extended'])-offset
