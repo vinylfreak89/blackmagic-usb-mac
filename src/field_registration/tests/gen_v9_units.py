@@ -24,7 +24,8 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               extra_valid=(), base_bottoms=(256, 518), bright_rows=(),
               top_overrides=(None, None), bottom_overrides=(None, None),
               weak_caption_rows=(), smeared_vbi_rows=(),
-              field_luma=(None, None), dark_fields=(False, False)):
+              field_luma=(None, None), dark_fields=(False, False),
+              gap_rows=()):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -92,6 +93,8 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
             waveform((17 if field == 0 else 280) + d, b1, b2)
     for row in bright_rows:
         fill(row, 180)
+    for row in gap_rows:
+        fill(row, 7)
     for row, b1, b2, parity, cycles in extra_valid:
         waveform(row, b1, b2, parity=parity, run_cycles=cycles)
 
@@ -364,6 +367,13 @@ def main():
         extra_valid=((283, 0x14, 0x2c, False, 7),),
         f2_reason="Field2EnvelopePlacement", f2_lock="Locked",
         f2_zero="Envelope", f2_lock_top=282)
+
+    # A flat, dim tape line 22 can sit just above much brighter picture while
+    # still clearing blank+4. It is a VBI gap, not the picture's first row.
+    add("field1-gap-line-before-picture", (1, 0), begin=True,
+        top_overrides=(20, None), gap_rows=(19,), field_luma=(90, None),
+        f1_reason="GeometryLockDecides", f1_lock="Locked",
+        f1_zero="Standard", f1_lock_top=19)
 
     # Root cause C: picture content never defines zero. Each segment starts
     # locked to the standard picture origins (NTSC 23/286), so an immediately

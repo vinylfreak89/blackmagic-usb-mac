@@ -36,7 +36,10 @@ the picture top and bottom by row-mean luma. A row is picture-like when its
 active-area mean exceeds that field's measured blanking mean by 4 luma codes;
 the top additionally requires three consecutive picture-like, non-VBI rows.
 This relative threshold preserves dark program near Y=10 against a blanking
-floor near Y=1.4 without mistaking mute/black for picture.
+floor near Y=1.4 without mistaking mute/black for picture. A candidate that is
+flat (luma variance at most 16) and less than half the mean of the three rows
+below is the measured tape line-22 gap, not picture; all three rows in the
+accepted top run must independently escape that classification.
 
 Each field starts every segment locked to the standard picture origin (NTSC
 lines 23/286). There is no content-acquired position and no acquisition dwell:
