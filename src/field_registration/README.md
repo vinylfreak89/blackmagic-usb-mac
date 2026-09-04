@@ -89,6 +89,16 @@ One missing Shuttle insert is an `InsertAbsent` hold and does not itself erase
 a lock; a real mute/unlock is already a signal-state segment boundary, while
 subsequent measurable geometry can independently invalidate a stale lock.
 
+Parity places its current unit immediately, with one bounded exception. If a
+unique decoded caption changes displacement while a fully visible top and
+bottom both conserve the settled envelope at the previous applied offset, the
+picture wins for that unit (`CaptionOnlyMotion`); a censored or unmeasurable
+edge cannot veto parity. A parity reading can move the segment zero only when
+that same fully visible envelope corroborates its implied base or the next
+consecutive parity unit implies the same base. Until then it still places the
+unit as `AnchorUncorroborated`, but leaves the zero and lock geometry intact.
+This one-unit anchor memory never delays or smooths crop placement.
+
 ## Sidecar schema 5
 
 The frameserver retains its transport/signal columns and writes the following

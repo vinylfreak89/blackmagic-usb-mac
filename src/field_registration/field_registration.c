@@ -389,6 +389,32 @@ static void record_invariant(const fieldreg_field_state *s,
     d->invariant_residual = (int16_t)(m->bottom - expected);
 }
 
+/* A fully visible envelope is independent testimony about one displacement.
+ * Censored or unknown bottoms cannot veto the primary line-21 reading. */
+static bool edges_agree_at(const fieldreg_field_state *s,
+                           const field_measurement *m, int measured)
+{
+    if (s->lock_state != FIELDREG_LOCK_LOCKED || s->height < 0 ||
+        !s->height_known || !m->geometry_measurable || m->bottom_censored ||
+        m->top != s->top + measured)
+        return false;
+    const int expected = s->top + s->height - 1 + measured;
+    return (s->clip_ceiling < 0 || expected <= s->clip_ceiling) &&
+           m->bottom == expected;
+}
+
+static bool anchor_edges_agree(const fieldreg_field_state *s,
+                               const field_measurement *m, int base_top,
+                               int measured)
+{
+    if (s->height < 0 || !s->height_known || !m->geometry_measurable ||
+        m->bottom_censored || m->top != base_top + measured)
+        return false;
+    const int expected = base_top + s->height - 1 + measured;
+    return (s->clip_ceiling < 0 || expected <= s->clip_ceiling) &&
+           m->bottom == expected;
+}
+
 static void decide_geometry(fieldreg_field_state *s,
                             const field_measurement *m, int field,
                             fieldreg_field_decision *d)
@@ -458,6 +484,8 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
     d->insert_byte2 = m->insert_byte2;
     d->parity_candidate_count = m->off_count;
     d->fallback_candidate_count = m->fallback_count;
+    if (m->off_count != 1)
+        s->parity_anchor_candidate = INT16_MIN;
     if (s->lock_state == FIELDREG_LOCK_LOCKED && m->geometry_measurable)
         d->geometry_d = (int8_t)(m->top - s->top);
     if (m->insert_present &&
@@ -475,13 +503,25 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
     } else if (m->off_count == 1) {
         const int measured = m->off_candidate.raster_row -
                              (field == 0 ? FIELDREG_INSERT_F1 : FIELDREG_INSERT_F2);
+        const int previous = s->last_applied;
         d->gauge_row = m->off_candidate.raster_row;
         d->gauge_byte1 = m->off_candidate.byte1;
         d->gauge_byte2 = m->off_candidate.byte2;
         d->gauge_amplitude = m->off_candidate.amplitude;
         const bool insert_nonnull = m->insert_byte1 != 0x80 ||
                                     m->insert_byte2 != 0x80;
-        if (measured == 1 && insert_nonnull && d->geometry_d == 0) {
+        if (measured != previous && edges_agree_at(s, m, previous)) {
+            /* The decoded VBI line moved while both picture edges prove that
+             * the tape raster did not. Treat the caption as damaged content
+             * for this unit; it cannot become an anchor candidate. */
+            s->parity_anchor_candidate = INT16_MIN;
+            d->measured_d = (int8_t)previous;
+            d->applied_d = (int8_t)previous;
+            d->reason = FIELDREG_MODE_CAPTION_ONLY_MOTION;
+            d->gauge = FIELDREG_GAUGE_GEOMETRY;
+            record_invariant(s, m, previous, d);
+        } else if (measured == 1 && insert_nonnull && d->geometry_d == 0) {
+            s->parity_anchor_candidate = INT16_MIN;
             d->measured_d = 0;
             d->applied_d = 0;
             d->reason = FIELDREG_MODE_LINE22_DATA_PRESENT;
@@ -491,18 +531,41 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
         } else if (measured == 1 && !insert_nonnull &&
                    s->lock_state == FIELDREG_LOCK_LOCKED &&
                    d->geometry_d == 0) {
+            s->parity_anchor_candidate = INT16_MIN;
             hold(s, d, FIELDREG_MODE_GAUGE_CONFLICT);
             d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
-        } else if (!in_range(field, measured))
+        } else if (!in_range(field, measured)) {
+            s->parity_anchor_candidate = INT16_MIN;
             hold(s, d, FIELDREG_MODE_OUT_OF_RANGE_HOLD);
-        else {
+        } else {
+            bool anchor_ready = true;
+            bool anchor_uncorroborated = false;
+            if (m->geometry_measurable) {
+                const int base_top = m->top - measured;
+                if (base_top == s->top) {
+                    s->parity_anchor_candidate = INT16_MIN;
+                } else if (anchor_edges_agree(s, m, base_top, measured) ||
+                           s->parity_anchor_candidate == base_top) {
+                    s->parity_anchor_candidate = INT16_MIN;
+                } else {
+                    s->parity_anchor_candidate = (int16_t)base_top;
+                    anchor_ready = false;
+                    anchor_uncorroborated = true;
+                }
+            } else {
+                s->parity_anchor_candidate = INT16_MIN;
+            }
             d->measured_d = (int8_t)measured;
             d->applied_d = (int8_t)measured;
-            d->reason = FIELDREG_MODE_LINE21_PLACEMENT;
+            d->reason = anchor_uncorroborated ?
+                        FIELDREG_MODE_ANCHOR_UNCORROBORATED :
+                        FIELDREG_MODE_LINE21_PLACEMENT;
             d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
             s->last_applied = (int8_t)measured;
-            seed_from_gauge(s, m, measured, FIELDREG_ZERO_PARITY);
-            fit_clip(s, m, measured);
+            if (anchor_ready) {
+                seed_from_gauge(s, m, measured, FIELDREG_ZERO_PARITY);
+                fit_clip(s, m, measured);
+            }
             record_invariant(s, m, measured, d);
         }
     } else if (field == 1 && m->fallback_count > 1) {
@@ -556,6 +619,7 @@ static void reset_field(fieldreg_field_state *s, bool reset_applied, int field)
     s->top = field == 0 ? FIELDREG_PICTURE_ORIGIN_F1 :
                           FIELDREG_PICTURE_ORIGIN_F2;
     clear_clip(s);
+    s->parity_anchor_candidate = INT16_MIN;
     s->last_applied = applied;
     s->lock_id = lock_id;
     s->lock_state = FIELDREG_LOCK_LOCKED;
@@ -651,6 +715,8 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_OUT_OF_RANGE_HOLD: return "OutOfRangeHold";
     case FIELDREG_MODE_LINE22_DATA_PRESENT: return "Line22DataPresent";
     case FIELDREG_MODE_GAUGE_CONFLICT: return "GaugeConflict";
+    case FIELDREG_MODE_CAPTION_ONLY_MOTION: return "CaptionOnlyMotion";
+    case FIELDREG_MODE_ANCHOR_UNCORROBORATED: return "AnchorUncorroborated";
     case FIELDREG_MODE_CLIP_UNKNOWN_HOLD: return "ClipUnknownHold";
     case FIELDREG_MODE_MIXED_FIELD_DECISION: return "MixedFieldDecision";
     }
