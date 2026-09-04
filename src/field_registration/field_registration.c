@@ -90,7 +90,7 @@ static bool xds_left_structure(const uint8_t *raster, int row)
 {
     double bins[24];
     if (row_bins(raster, row, bins, 24) >= 95.0) return false;
-    if (bins[1] <= 60.0) return false;
+    if (bins[1] <= 60.0 || bins[2] > 40.0) return false;
     int bar_run = 0;
     bool bar_present = false;
     for (int bin = 4; bin <= 7; ++bin) {
