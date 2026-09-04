@@ -1442,6 +1442,246 @@ class CRegistrationEstimator:
         }
 
 
+class _CUnitVideoObservation(ctypes.Structure):
+    _fields_ = (
+        ("epoch", ctypes.c_uint64),
+        ("ordinal", ctypes.c_uint64),
+        ("counter16", ctypes.c_uint16),
+        ("counter_extended", ctypes.c_uint64),
+        ("format", ctypes.c_uint16),
+        ("kind", ctypes.c_int),
+        ("transport", ctypes.c_int),
+        ("transport_flags", ctypes.c_uint32),
+        ("bytes", ctypes.c_void_p),
+        ("byte_count", ctypes.c_size_t),
+        ("payload", ctypes.c_void_p),
+        ("payload_bytes", ctypes.c_size_t),
+        ("fixed_raster_eligible", ctypes.c_bool),
+    )
+
+
+class _CSignalContext(ctypes.Structure):
+    _fields_ = (
+        ("audio_mute_known", ctypes.c_bool),
+        ("audio_muted", ctypes.c_bool),
+        ("osd_activity_known", ctypes.c_bool),
+        ("osd_active", ctypes.c_bool),
+        ("host_raster_unobserved", ctypes.c_bool),
+        ("host_observations_missing_before", ctypes.c_bool),
+    )
+
+
+class _CSignalMeasurements(ctypes.Structure):
+    _fields_ = tuple(
+        (name, ctypes.c_double)
+        for name in (
+            "luma_mean", "luma_median", "luma_sigma", "chroma_distance",
+            "chroma_distance_median", "neutral_chroma_fraction",
+            "subblack_pixel_fraction", "spatial_gradient_energy",
+            "program_extent_fraction", "localized_overlay_score", "temporal_mad",
+            "hard_padding_fraction", "vbi_signature_energy", "flat_pixel_fraction",
+        )
+    )
+
+
+class _CSignalResult(ctypes.Structure):
+    _fields_ = (
+        ("transport", ctypes.c_int),
+        ("transport_flags", ctypes.c_uint32),
+        ("appearance", ctypes.c_int),
+        ("source", ctypes.c_int),
+        ("appearance_confidence", ctypes.c_double),
+        ("source_confidence", ctypes.c_double),
+        ("host_raster_unobserved", ctypes.c_bool),
+        ("measurements", _CSignalMeasurements),
+        ("actions", ctypes.c_uint32),
+        ("unsettled", ctypes.c_bool),
+        ("unsettled_interval_id", ctypes.c_uint64),
+        ("settled_phase_known", ctypes.c_bool),
+        ("settled_d1", ctypes.c_int8),
+        ("settled_d2", ctypes.c_int8),
+    )
+
+
+class _CSignalStateConfig(ctypes.Structure):
+    _fields_ = (
+        ("appearance_confirm_units", ctypes.c_uint32),
+        ("acquisition_confirm_units", ctypes.c_uint32),
+        ("mute_confirm_units", ctypes.c_uint32),
+        ("phase_chatter_window_units", ctypes.c_uint32),
+        ("phase_chatter_threshold", ctypes.c_uint32),
+        ("settle_confirm_units", ctypes.c_uint32),
+    )
+
+
+class CSignalState:
+    """ctypes adapter for the live frameserver's source-state classifier."""
+
+    COMPLETE = 0
+    HOLE = 1
+    SHORT = 2
+    E801 = 0
+    COUNTER_DISCONTINUITY = 1 << 4
+    REGISTRATION_DISCONTINUITY = 1 << 0
+    REGISTRATION_BEGIN_SEGMENT = 1 << 1
+
+    def __init__(self, library_path: str | Path):
+        self.library_path = Path(library_path)
+        self.library = ctypes.CDLL(str(self.library_path))
+        self.library.signal_state_size.restype = ctypes.c_size_t
+        self.library.signal_state_alignment.restype = ctypes.c_size_t
+        self.library.signal_state_config_size.restype = ctypes.c_size_t
+        self.library.signal_result_size.restype = ctypes.c_size_t
+        self.library.signal_unit_video_observation_size.restype = ctypes.c_size_t
+        if self.library.signal_state_config_size() != ctypes.sizeof(_CSignalStateConfig):
+            raise RuntimeError("signal_state config ABI size mismatch")
+        if self.library.signal_result_size() != ctypes.sizeof(_CSignalResult):
+            raise RuntimeError("signal_state result ABI size mismatch")
+        if self.library.signal_unit_video_observation_size() != ctypes.sizeof(
+            _CUnitVideoObservation
+        ):
+            raise RuntimeError("signal_state unit observation ABI size mismatch")
+
+        self.library.signal_state_default_config.restype = _CSignalStateConfig
+        self.library.signal_state_init.argtypes = (
+            ctypes.c_void_p,
+            ctypes.POINTER(_CSignalStateConfig),
+        )
+        self.library.signal_state_begin_epoch.argtypes = (
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+        )
+        self.library.signal_state_classify.argtypes = (
+            ctypes.c_void_p,
+            ctypes.POINTER(_CUnitVideoObservation),
+            ctypes.POINTER(_CSignalContext),
+            ctypes.POINTER(_CSignalResult),
+        )
+        self.library.signal_state_classify.restype = ctypes.c_bool
+        self.library.signal_state_note_registration.argtypes = (
+            ctypes.c_void_p,
+            ctypes.POINTER(_CSignalResult),
+            ctypes.c_bool,
+            ctypes.c_int8,
+            ctypes.c_int8,
+            ctypes.c_double,
+            ctypes.c_bool,
+            ctypes.c_int8,
+            ctypes.c_int8,
+        )
+        self.state = ctypes.create_string_buffer(self.library.signal_state_size())
+        config = self.library.signal_state_default_config()
+        self.library.signal_state_init(self.state, ctypes.byref(config))
+        self.library.signal_state_begin_epoch(self.state, 1)
+
+    def classify(
+        self,
+        ordinal: int,
+        counter: int,
+        extended_counter: int,
+        unit: bytes | None,
+        unit_state: str,
+        captured_bytes: int,
+    ) -> _CSignalResult:
+        if unit_state == "Exact":
+            transport = self.COMPLETE
+            flags = 0
+            eligible = True
+        elif unit_state == "ShortDeviceUnit":
+            transport = self.SHORT
+            flags = 0
+            eligible = False
+        elif unit_state == "AbsentDeviceUnit":
+            transport = self.HOLE
+            flags = self.COUNTER_DISCONTINUITY
+            eligible = False
+        else:
+            raise RuntimeError(f"unknown tpc unit state {unit_state}")
+
+        # The frameserver deliberately gives the classifier no raster pointer
+        # for ineligible units; reproduce that metadata-only contract here.
+        raw_pointer = ctypes.c_char_p(unit) if eligible and unit is not None else None
+        address = ctypes.cast(raw_pointer, ctypes.c_void_p).value if raw_pointer else None
+        observation = _CUnitVideoObservation(
+            epoch=1,
+            ordinal=ordinal,
+            counter16=counter,
+            counter_extended=extended_counter,
+            format=VIDEO_FORMAT,
+            kind=self.E801,
+            transport=transport,
+            transport_flags=flags,
+            bytes=address,
+            byte_count=captured_bytes,
+            payload=address + VIDEO_HEADER_BYTES if address is not None else None,
+            payload_bytes=(captured_bytes - VIDEO_HEADER_BYTES
+                           if address is not None and captured_bytes >= VIDEO_HEADER_BYTES
+                           else 0),
+            fixed_raster_eligible=eligible,
+        )
+        context = _CSignalContext()
+        result = _CSignalResult()
+        if not self.library.signal_state_classify(
+            self.state, ctypes.byref(observation), ctypes.byref(context), ctypes.byref(result)
+        ):
+            raise RuntimeError("production signal_state rejected a tpc observation")
+        return result
+
+    def note_registration(self, result: _CSignalResult, registration: dict) -> None:
+        observation = registration.get("frame_observation")
+        known = registration.get("frame_observation_support") == 2
+        d1, d2 = observation if observation is not None else (0, 0)
+        applied_d1, applied_d2 = registration["applied"]
+        self.library.signal_state_note_registration(
+            self.state,
+            ctypes.byref(result),
+            known,
+            d1,
+            d2,
+            registration["confidence"],
+            True,
+            applied_d1,
+            applied_d2,
+        )
+
+
+class LiveRegistrationControl:
+    """Apply the frameserver's classifier/registration call order offline."""
+
+    def __init__(self, estimator: CRegistrationEstimator, signal: CSignalState):
+        self.estimator = estimator
+        self.signal = signal
+        self.begin_segment_calls = 0
+        self.discontinuity_calls = 0
+
+    def process(
+        self,
+        ordinal: int,
+        counter: int,
+        extended_counter: int,
+        unit: bytes | None,
+        unit_state: str,
+        captured_bytes: int,
+    ) -> dict | None:
+        result = self.signal.classify(
+            ordinal, counter, extended_counter, unit, unit_state, captured_bytes
+        )
+        if result.actions & CSignalState.REGISTRATION_BEGIN_SEGMENT:
+            self.estimator.begin_segment()
+            self.begin_segment_calls += 1
+        elif result.actions & CSignalState.REGISTRATION_DISCONTINUITY:
+            self.estimator.discontinuity()
+            self.discontinuity_calls += 1
+
+        if unit_state != "Exact":
+            return None
+        if unit is None or len(unit) != VIDEO_UNIT_BYTES:
+            raise RuntimeError("tpc exact unit copy has wrong length")
+        registration = self.estimator.decide(unit)
+        self.signal.note_registration(result, registration)
+        return registration
+
+
 def _valid_e801_header(data: bytes | bytearray, offset: int = 0) -> bool:
     return bool(
         len(data) >= offset + VIDEO_HEADER_BYTES
@@ -2049,6 +2289,18 @@ def tagged_decision_row(
         registration.get("engine", "python-top-only"),
     )
     return row
+
+
+def tagged_registration_policy(registration):
+    if registration.get("frame_observation") is not None:
+        return "CorrectedObserved"
+    if registration["applied"] != registration.get(
+        "baseline", registration["applied"]
+    ):
+        return "HeldLastObservation"
+    if registration.get("trajectory_locked", True):
+        return "CorrectedLocked"
+    return "RawAwaitingLock"
 
 
 def find_video_markers(mm, spans):
@@ -2840,6 +3092,96 @@ def tagged_audio_window(audio_rows, first_video_extended_counter, video_frames):
     )
 
 
+def write_tagged_registration_decisions(
+    input_path,
+    decision_path,
+    fieldreg_library,
+    signal_state_library,
+    start_unit,
+    limit_units=None,
+    scratch_dir=None,
+):
+    """Run the renderer's live-equivalent control plane without encoding media.
+
+    This is the bounded-I/O acceptance path for comparing a full-tape renderer
+    sidecar with a frameserver sidecar.  It uses the same adapter and call order
+    as ``render_tagged``; ``start_unit`` is explicit because the normal render's
+    arming point is learned during its separate audio/census pass.
+    """
+    if start_unit is None:
+        raise ValueError("registration-only replay requires an explicit start unit")
+    estimator = CRegistrationEstimator(fieldreg_library, 0.0, "phase")
+    control = LiveRegistrationControl(estimator, CSignalState(signal_state_library))
+    path = Path(decision_path).expanduser().resolve(strict=False)
+    scratch = prepare_render_scratch(path, scratch_dir)
+    temporary = make_scratch_path(scratch, path, "registration-only")
+    rows = 0
+
+    class LimitReached(Exception):
+        pass
+
+    try:
+        with open(temporary, "w", newline="") as output:
+            writer = csv.writer(output)
+            writer.writerow(TPC_DECISION_COLUMNS)
+            splitter = None
+
+            def observe(index, counter, unit, unit_state, captured_bytes):
+                nonlocal rows
+                output_index = index - start_unit
+                if limit_units is not None and output_index >= limit_units:
+                    raise LimitReached
+                registration = control.process(
+                    index,
+                    counter,
+                    splitter.first_counter + index,
+                    unit,
+                    unit_state,
+                    captured_bytes,
+                )
+                if index < start_unit:
+                    return
+                if registration is not None:
+                    applied = registration["applied"]
+                    policy = tagged_registration_policy(registration)
+                else:
+                    applied = estimator.selected
+                    policy = "HeldAcrossDeviceDamage"
+                writer.writerow(
+                    tagged_decision_row(
+                        output_index,
+                        counter,
+                        splitter.first_counter + index,
+                        unit_state,
+                        captured_bytes,
+                        registration,
+                        applied,
+                        policy,
+                    )
+                )
+                rows += 1
+
+            splitter = TaggedVideoUnits(on_unit=observe, copy_units=True)
+            try:
+                stats = walk_tagged(input_path, on_video=splitter.feed)
+                splitter.finish()
+            except LimitReached:
+                stats = None
+        os.replace(temporary, path)
+    except BaseException:
+        if temporary.exists():
+            temporary.unlink()
+        raise
+    print(
+        f"registration-only complete: rows={rows:,}; exact={splitter.exact_units:,}; "
+        f"short={splitter.short_units}; absent={splitter.absent_units}; "
+        f"classifier_begin_segments={control.begin_segment_calls}; "
+        f"classifier_discontinuities={control.discontinuity_calls}; "
+        f"complete_provenance_pass={int(stats is not None)}"
+    )
+    return rows
+
+
 def render_tagged(
     input_path,
     output_path,
@@ -2861,6 +3203,7 @@ def render_tagged(
     registration_max_buffered_units,
     registration_forward_only,
     fieldreg_library,
+    signal_state_library,
     fieldreg_evidence,
     start_unit,
     limit_units,
@@ -3037,6 +3380,11 @@ def render_tagged(
             if fieldreg_library
             else RegistrationEstimator(registration_switch_margin)
         )
+        registration_control = (
+            LiveRegistrationControl(estimator, CSignalState(signal_state_library))
+            if isinstance(estimator, CRegistrationEstimator) and signal_state_library
+            else None
+        )
         offset_counts = Counter()
         decision_counts = Counter()
         decision_output = (
@@ -3103,53 +3451,62 @@ def render_tagged(
             pass
 
         def emit_unit(index, counter, unit, unit_state, captured_bytes):
-            if index < selected_start_unit:
+            if index < selected_start_unit and registration_control is None:
                 return
             output_index = index - selected_start_unit
             if output_index >= output_units:
                 raise RenderLimitReached
-            if output_index == 0:
-                if unit_state != "Exact":
-                    raise RuntimeError(
-                        "tpc presentation timeline must begin on an exact unit"
-                    )
-                if hasattr(estimator, "begin_segment"):
-                    estimator.begin_segment()
             if unit_state == "Exact":
                 if unit is None or len(unit) != VIDEO_UNIT_BYTES:
                     raise RuntimeError("tpc exact unit copy has wrong length")
             elif unit_state == "ShortDeviceUnit":
                 if unit is None or len(unit) != captured_bytes:
                     raise RuntimeError("tpc short unit copy has wrong length")
-                estimator.discontinuity()
+            elif unit_state == "AbsentDeviceUnit":
+                if unit is not None or captured_bytes:
+                    raise RuntimeError("tpc absent unit unexpectedly has bytes")
+            else:
+                raise RuntimeError(f"unknown tpc unit state {unit_state}")
+
+            registration = None
+            if registration_control is not None:
+                registration = registration_control.process(
+                    index,
+                    counter,
+                    census.first_counter + index,
+                    unit,
+                    unit_state,
+                    captured_bytes,
+                )
+            if index < selected_start_unit:
+                return
+
+            if output_index == 0:
+                if unit_state != "Exact":
+                    raise RuntimeError(
+                        "tpc presentation timeline must begin on an exact unit"
+                    )
+                if registration_control is None and hasattr(estimator, "begin_segment"):
+                    estimator.begin_segment()
+            if unit_state == "ShortDeviceUnit":
+                if registration_control is None:
+                    estimator.discontinuity()
                 reconstructed = bytearray(DIAGNOSTIC_FILL_UNIT)
                 reconstructed[:captured_bytes] = unit
                 struct.pack_into("<H", reconstructed, 4, counter)
                 unit = bytes(reconstructed)
             elif unit_state == "AbsentDeviceUnit":
-                if unit is not None or captured_bytes:
-                    raise RuntimeError("tpc absent unit unexpectedly has bytes")
-                estimator.discontinuity()
+                if registration_control is None:
+                    estimator.discontinuity()
                 reconstructed = bytearray(DIAGNOSTIC_FILL_UNIT)
                 struct.pack_into("<H", reconstructed, 4, counter)
                 unit = bytes(reconstructed)
-            else:
-                raise RuntimeError(f"unknown tpc unit state {unit_state}")
 
-            registration = None
             if adaptive_registration and unit_state == "Exact":
-                registration = estimator.decide(unit)
+                if registration is None:
+                    registration = estimator.decide(unit)
                 applied_d1, applied_d2 = registration["applied"]
-                if registration.get("frame_observation") is not None:
-                    presentation_policy = "CorrectedObserved"
-                elif registration["applied"] != registration.get(
-                    "baseline", registration["applied"]
-                ):
-                    presentation_policy = "HeldLastObservation"
-                elif registration.get("trajectory_locked", True):
-                    presentation_policy = "CorrectedLocked"
-                else:
-                    presentation_policy = "RawAwaitingLock"
+                presentation_policy = tagged_registration_policy(registration)
                 decision_counts[registration["mode"]] += 1
             elif adaptive_registration:
                 applied_d1, applied_d2 = estimator.selected
@@ -3300,7 +3657,11 @@ def render_tagged(
             f"source exact={census.exact_units:,}; "
             f"short={census.short_units:,}; absent={census.absent_units:,}; "
             f"applied={dict(sorted(offset_counts.items()))}; "
-            f"modes={dict(sorted(decision_counts.items()))}"
+            f"modes={dict(sorted(decision_counts.items()))}; "
+            f"classifier_begin_segments="
+            f"{registration_control.begin_segment_calls if registration_control else 0}; "
+            f"classifier_discontinuities="
+            f"{registration_control.discontinuity_calls if registration_control else 0}"
         )
         return {
             "stats": first_stats,
@@ -3510,6 +3871,14 @@ def main():
         ),
     )
     parser.add_argument(
+        "--registration-only",
+        metavar="CSV",
+        help=(
+            "for tagged input, run the renderer registration control plane and "
+            "write its sidecar without encoding media"
+        ),
+    )
+    parser.add_argument(
         "--registration-switch-margin",
         "--field-origin-switch-margin",
         dest="registration_switch_margin",
@@ -3527,6 +3896,14 @@ def main():
         help=(
             "use the production C registration engine from DYLIB "
             "instead of the Python compatibility estimator"
+        ),
+    )
+    parser.add_argument(
+        "--signal-state-library",
+        metavar="DYLIB",
+        help=(
+            "run the production signal-state classifier from DYLIB and dispatch "
+            "registration lifecycle actions exactly as the live frameserver does"
         ),
     )
     parser.add_argument(
@@ -3624,8 +4001,12 @@ def main():
         parser.error("--nnedi-weights requires --deinterlacer nnedi")
     if args.decision_log and not args.render:
         parser.error("--decision-log requires --render")
+    if args.registration_only and args.render:
+        parser.error("--registration-only and --render are mutually exclusive")
     if input_format != "tagged" and args.registration_library:
         parser.error("--registration-library is only supported for tpc input")
+    if input_format != "tagged" and args.signal_state_library:
+        parser.error("--signal-state-library is only supported for tpc input")
     if input_format != "tagged" and args.tagged_start_unit is not None:
         parser.error("--tagged-start-unit is only supported for tpc input")
     if args.tagged_limit_units is not None and args.tagged_limit_units <= 0:
@@ -3634,8 +4015,8 @@ def main():
         parser.error("--tagged-limit-units is only supported for tpc input")
 
     if input_format == "tagged":
-        if not args.render:
-            parser.error("tpc currently requires --render")
+        if not args.render and not args.registration_only:
+            parser.error("tpc requires --render or --registration-only")
         if args.render_marker_start is not None or args.render_marker_end is not None:
             parser.error("tpc renders its complete tagged timeline; omit marker limits")
         legacy_outputs = {
@@ -3657,8 +4038,36 @@ def main():
             parser.error("tpc --decision-log requires --adaptive-registration")
         if args.registration_library and not args.adaptive_registration:
             parser.error("--registration-library requires --adaptive-registration")
+        if args.signal_state_library and not args.registration_library:
+            parser.error("--signal-state-library requires --registration-library")
+        if args.registration_library and not args.signal_state_library:
+            parser.error(
+                "--registration-library requires --signal-state-library so tagged "
+                "offline registration has the live lifecycle"
+            )
         if args.registration_library and not Path(args.registration_library).is_file():
             parser.error(f"field_registration library not found: {args.registration_library}")
+        if args.signal_state_library and not Path(args.signal_state_library).is_file():
+            parser.error(f"signal_state library not found: {args.signal_state_library}")
+        if args.registration_only:
+            if not args.adaptive_registration:
+                parser.error("--registration-only requires --adaptive-registration")
+            if not args.registration_library or not args.signal_state_library:
+                parser.error(
+                    "--registration-only requires both production registration libraries"
+                )
+            if args.tagged_start_unit is None:
+                parser.error("--registration-only requires --tagged-start-unit N")
+            write_tagged_registration_decisions(
+                args.input,
+                args.registration_only,
+                args.registration_library,
+                args.signal_state_library,
+                args.tagged_start_unit,
+                args.tagged_limit_units,
+                args.scratch_dir,
+            )
+            return
         render_tagged(
             args.input,
             args.render,
@@ -3680,6 +4089,7 @@ def main():
             args.registration_max_buffered_units,
             args.registration_forward_only,
             args.registration_library,
+            args.signal_state_library,
             args.registration_evidence,
             args.tagged_start_unit,
             args.tagged_limit_units,
