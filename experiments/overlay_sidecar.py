@@ -18,6 +18,7 @@ Band frames are drawn with PIL and composited by ffmpeg's `overlay` (no libass n
 from __future__ import annotations
 import argparse, csv, subprocess
 from PIL import Image, ImageDraw, ImageFont
+from live_overlay_strip import payload as strip_payload, draw as draw_strip
 
 def g(r, k, d=""):
     v = r.get(k); return d if v in (None, "") else v
@@ -39,11 +40,21 @@ def main() -> None:
     a = ap.parse_args()
     probe = subprocess.run(["ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=width,height,sample_aspect_ratio","-of","csv=p=0",a.video],capture_output=True,text=True).stdout.strip().split(",")
     W, H = int(probe[0]), int(probe[1]); sar = probe[2] if len(probe) > 2 and probe[2] not in ("", "N/A", "0:1") else "1:1"
-    rows = list(csv.DictReader(open(a.sidecar)))
+    with open(a.sidecar, newline="") as sidecar_file:
+        source_rows = list(csv.DictReader(sidecar_file))
+    live = bool(source_rows and "ordinal" in source_rows[0])
+    if live:
+        exact = [r for r in source_rows if g(r, "transport") == "Complete"]
+        unpublished = [r for r in exact if g(r, "published", "0") not in ("1", "True", "true")]
+        if unpublished:
+            raise SystemExit(f"refusing to overlay: {len(unpublished)} exact live units were not published")
+        rows = exact
+    else:
+        rows = source_rows
     # Alignment is by construction only when the video holds exactly two bobbed frames per sidecar row from the first
     # row: an excerpt cut on a keyframe silently offsets every label (measured 2026-09-05: 25 extra frames = 12 units).
     nfr = int(subprocess.run(["ffprobe","-v","error","-select_streams","v","-count_packets","-show_entries","stream=nb_read_packets","-of","csv=p=0",a.video],capture_output=True,text=True).stdout.strip() or 0)
-    if abs(nfr - 2 * len(rows)) > 2:
+    if nfr != 2 * len(rows):
         raise SystemExit(f"refusing to overlay: video has {nfr} frames but the sidecar has {len(rows)} rows (expected {2*len(rows)} frames); "
                          f"overlay the FULL render with its full sidecar, never an excerpt")
     d1s = []
@@ -57,12 +68,14 @@ def main() -> None:
     vf = f"[0:v]pad=iw:ih+{B}:0:{B if a.top else 0}:black[p];[p][1:v]overlay=0:{0 if a.top else H}[c];[c]setsar={sar.replace(':', '/')}[o]"
     ff = subprocess.Popen(["ffmpeg","-hide_banner","-loglevel","error","-y","-i",a.video,
         "-f","rawvideo","-pix_fmt","rgb24","-video_size",f"{W}x{B}","-framerate","30000/1001","-i","pipe:0",
-        "-filter_complex",vf,"-map","[o]","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf",a.crf,"-pix_fmt","yuv420p","-c:a","copy","-shortest",a.out], stdin=subprocess.PIPE)
+        "-filter_complex",vf,"-map","[o]","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf",a.crf,"-pix_fmt","yuv420p","-c:a","copy",a.out], stdin=subprocess.PIPE)
     for i, r in enumerate(rows):
         img = Image.new("RGB", (W, B), (0, 0, 0)); d = ImageDraw.Draw(img)
-        f = g(r, "timeline_frame", str(i))
+        f = g(r, "ordinal" if live else "timeline_frame", str(i))
+        counter = g(r, "counter_extended" if live else "counter", "?")
+        unit_state = g(r, "transport" if live else "unit_state", "")
         safe = g(r, "comb_safe", "0") in ("1", "True", "true")
-        line1 = (f"u{int(f):06d} c{g(r,'counter','?'):>5} {g(r,'unit_state','')[:7]:7s} applied({g(r,'applied_d1','?')},{g(r,'applied_d2','?')})  "
+        line1 = (f"u{int(f):06d} c{counter:>5} {unit_state[:7]:7s} applied({g(r,'applied_d1','?')},{g(r,'applied_d2','?')})  "
                  f"{'comb-safe' if safe else 'NOT comb-safe'}")
         d.text((6, 4), line1, font=font, fill=(255, 255, 255) if safe else (255, 215, 0))
         for n, y in ((1, 20), (2, 48)):
@@ -86,7 +99,7 @@ def main() -> None:
                 info += f"  ins {ib or '-'} {ins} cand {pc}/{fc}"
             d.text((6, y + 12), info[:int((sx0 - 6) / 5.6)], font=small,
                    fill=(160, 160, 160))   # never run into the sparkline
-        d.text((W - 262 - 100, 4), f"t={int(f)*1001/30000:8.3f}s", font=small, fill=(180, 180, 180))   # top right of the text area
+        d.text((W - 262 - 100, 4), f"t={i*1001/30000:8.3f}s", font=small, fill=(180, 180, 180))   # top right of the text area
         # sparkline
         d.line([(sx0, py(0)), (sx0 + sw, py(0))], fill=(0, 120, 0), width=1)
         for lv in (-2, 2): d.line([(sx0, py(lv)), (sx0 + sw, py(lv))], fill=(40, 40, 40), width=1)
@@ -95,8 +108,13 @@ def main() -> None:
         d.line([(px(i, i), sy0), (px(i, i), sy0 + sh)], fill=(255, 60, 60), width=2)
         d.text((sx0 - 40, sy0 + sh - 10), "d1 ±3s", font=small, fill=(180, 180, 180))
         d.text((sx0 + sw + 2, py(3) - 5), "+3", font=small, fill=(120, 120, 120)); d.text((sx0 + sw + 2, py(-3) - 5), "-3", font=small, fill=(120, 120, 120))
+        draw_strip(d, B - 7, strip_payload(int(f), int(counter),
+                                          int(g(r, "applied_d1", "0")),
+                                          int(g(r, "applied_d2", "0"))))
         ff.stdin.write(img.tobytes())
     ff.stdin.close(); rc = ff.wait()
+    if rc != 0:
+        raise SystemExit(f"overlay ffmpeg failed with status {rc}")
     print(f"{len(rows)} units overlaid -> {a.out} (band {B}px {'top' if a.top else 'bottom'}, SAR {sar}); ffmpeg rc={rc}")
 
 if __name__ == "__main__":
