@@ -278,4 +278,8 @@ presentation stage's own contribution before attributing an artifact to the stag
 tool that makes decisions is a source of artifacts, not a transparent lens. The corollary cuts
 the other way too: once the fields are registered the weaver is the better presentation (all 480
 recorded lines on static picture, nothing interpolated), so "no combing under yadif" is the
-acceptance bar for registration; NNEDI3 is the diagnostic lens, not the product.
+acceptance bar for registration; NNEDI3 is the diagnostic lens, not the product. Second
+casualty found the same evening: the "OSD stays put while the picture moves" witness in
+CLAUDE.md §7, which had located the fault inside the deck's program path and ruled the Shuttle
+out, was an `estdif` render; frame by frame the OSD moves with the picture. A whole causal
+chain rested on one weaver artifact.
