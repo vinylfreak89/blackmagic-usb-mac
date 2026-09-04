@@ -15,7 +15,7 @@ def decode(row):
     lo,hi=10,230
     seg=x[lo:hi]-x[lo:hi].mean(); n=np.arange(lo,hi)
     w=2*np.pi/CELL; c=(seg*np.cos(w*n)).sum(); s=(seg*np.sin(w*n)).sum(); amp=np.hypot(c,s)*2/len(seg)
-    if amp<15: return (False,None,None,'no run-in')
+    if amp<35: return (False,None,None,'no run-in')   # real 608 run-in measures 52-60 here; picture lines that pass parity by chance measure 15-22
     phase=np.arctan2(s,c)                 # peaks where cos(w n - phase)=1 -> n = (phase+2pi k)/w
     peaks=[(phase+2*np.pi*k)/w for k in range(-2,40)]; peaks=[p for p in peaks if lo<=p<hi+16*CELL+8*CELL]
     # find the run-in extent: consecutive peaks with high value
