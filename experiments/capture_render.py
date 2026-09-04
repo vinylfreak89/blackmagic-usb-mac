@@ -1274,6 +1274,11 @@ class _CFieldRegistrationDecision(ctypes.Structure):
         ("frame_observation_support", ctypes.c_uint8),
         ("mode", ctypes.c_int), ("confidence", ctypes.c_double),
         ("transport_ok", ctypes.c_bool), ("comb_safe", ctypes.c_bool),
+        ("parity_state", ctypes.c_int), ("comb_check", ctypes.c_int),
+        ("comb_best_shift", ctypes.c_int8), ("parity_bias", ctypes.c_int8),
+        ("comb_best_energy", ctypes.c_double),
+        ("comb_second_energy", ctypes.c_double),
+        ("comb_static_fraction", ctypes.c_double),
         ("segment_id", ctypes.c_uint32), ("field", _CFieldDecision * 2),
     )
 
@@ -1338,6 +1343,10 @@ class CRegistrationEstimator:
         self.library.fieldreg_zero_source_name.restype = ctypes.c_char_p
         self.library.fieldreg_insert_relation_name.argtypes = (ctypes.c_int,)
         self.library.fieldreg_insert_relation_name.restype = ctypes.c_char_p
+        self.library.fieldreg_parity_state_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_parity_state_name.restype = ctypes.c_char_p
+        self.library.fieldreg_comb_check_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_comb_check_name.restype = ctypes.c_char_p
         self.library.fieldreg_init(self.state, ctypes.byref(self.config))
         self.confirmation_units = self.library.fieldreg_confirmation_units(
             self.state
@@ -1451,6 +1460,15 @@ class CRegistrationEstimator:
             "maximum_buffered_units": self.buffer_units,
             "transport_ok": result.transport_ok,
             "comb_safe": bool(result.comb_safe),
+            "parity_state": self.library.fieldreg_parity_state_name(
+                result.parity_state).decode("ascii"),
+            "comb_check": self.library.fieldreg_comb_check_name(
+                result.comb_check).decode("ascii"),
+            "comb_best_shift": result.comb_best_shift,
+            "parity_bias": result.parity_bias,
+            "comb_best_energy": result.comb_best_energy,
+            "comb_second_energy": result.comb_second_energy,
+            "comb_static_fraction": result.comb_static_fraction,
             "segment_id": result.segment_id,
             "fields": fields,
             # Compatibility values for the untagged damage-review path. They
@@ -1869,7 +1887,7 @@ TPC_DECISION_COLUMNS = (
     "registration_engine",
 )
 
-# Schema 7 retains the transport/presentation columns consumed by the renderer
+# Schema 8 retains the transport/presentation columns consumed by the renderer
 # and replaces every v7 evidence column with the v9 per-field provenance.
 V9_FIELD_COLUMNS = (
     "reason", "gauge", "insert_present", "insert_bytes", "insert_relation",
@@ -1888,7 +1906,9 @@ TPC_DECISION_COLUMNS = (
     "timeline_frame", "counter", "extended_counter", "unit_state",
     "captured_video_bytes", "undefined_video_bytes", "decision_d1",
     "decision_d2", "applied_d1", "applied_d2", "baseline_d1", "baseline_d2",
-    "mode", "confidence", "transport_ok", "comb_safe", "segment_id",
+    "mode", "confidence", "transport_ok", "comb_safe", "parity_state",
+    "comb_check", "comb_best_shift", "parity_bias", "comb_best_energy",
+    "comb_second_energy", "comb_static_fraction", "segment_id",
     "presentation_policy",
     *(f"f1_{name}" for name in V9_FIELD_COLUMNS),
     *(f"f2_{name}" for name in V9_FIELD_COLUMNS),
@@ -1959,9 +1979,15 @@ def tagged_decision_row(
             VIDEO_UNIT_BYTES - captured_bytes, *measured, *applied,
             *registration["baseline"], registration["mode"],
             f"{registration['confidence']:.9f}", int(registration["transport_ok"]),
-            int(registration["comb_safe"]), registration["segment_id"],
-            presentation_policy, *_v9_field_row(fields[0]),
-            *_v9_field_row(fields[1]), registration["engine"], 7,
+            int(registration["comb_safe"]),
+            registration["parity_state"], registration["comb_check"],
+            registration["comb_best_shift"], registration["parity_bias"],
+            f"{registration['comb_best_energy']:.3f}",
+            f"{registration['comb_second_energy']:.3f}",
+            f"{registration['comb_static_fraction']:.6f}",
+            registration["segment_id"], presentation_policy,
+            *_v9_field_row(fields[0]),
+            *_v9_field_row(fields[1]), registration["engine"], 8,
         )
     decision = registration["decision"]
     best_d1, best_d2 = registration["best_pair"]
