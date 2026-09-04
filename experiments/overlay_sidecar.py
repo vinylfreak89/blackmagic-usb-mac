@@ -63,12 +63,13 @@ def main() -> None:
             d.text((6, y), f"f{n} {reason}", font=font, fill=mode_colour(reason))
             x = 6 + d.textlength(f"f{n} {reason}", font=font) + 8
             gline = g(r, f"f{n}_gauge_line", "-1"); gb = g(r, f"f{n}_gauge_bytes", "")
-            info = (f"gauge {g(r, f'f{n}_gauge', '?')}{(' L' + gline) if gline not in ('-1', '') else ''}{(' ' + gb) if gb else ''}  "
-                    f"geo {g(r, f'f{n}_geometry_d', '.')}  raw {g(r, f'f{n}_raw_top', '?')}/{g(r, f'f{n}_raw_bottom', '?')}  "
-                    f"lock {g(r, f'f{n}_lock_state', '?')}/{g(r, f'f{n}_zero_source', '?')} top {g(r, f'f{n}_lock_top', '?')} h {g(r, f'f{n}_lock_height', '?')} clip {g(r, f'f{n}_clip_ceiling', '?')}")
+            zero = g(r, f'f{n}_zero_source', '?')[:3]; lock = g(r, f'f{n}_lock_state', '?')[:3]
+            info = (f"{g(r, f'f{n}_gauge', '?')}{(' L' + gline) if gline not in ('-1', '') else ''}{(' ' + gb) if gb else ''} "
+                    f"geo{g(r, f'f{n}_geometry_d', '.')} raw {g(r, f'f{n}_raw_top', '?')}/{g(r, f'f{n}_raw_bottom', '?')} "
+                    f"{lock}/{zero} t{g(r, f'f{n}_lock_top', '?')} h{g(r, f'f{n}_lock_height', '?')} c{g(r, f'f{n}_clip_ceiling', '?')}")
             ins = g(r, f"f{n}_insert_relation", "None")
-            if ins not in ("None", ""): info += f"  {ins}"
-            d.text((x, y), info, font=small, fill=(200, 200, 200))
+            if ins not in ("None", ""): info += " " + ("ins+" if "Corrob" in ins else "ins-")
+            d.text((x, y), info[:int((sx0 - x) / 5.6)], font=small, fill=(200, 200, 200))   # never run into the sparkline
         d.text((W - 262 - 100, 4), f"t={int(f)*1001/30000:8.3f}s", font=small, fill=(180, 180, 180))   # top right of the text area
         # sparkline
         d.line([(sx0, py(0)), (sx0 + sw, py(0))], fill=(0, 120, 0), width=1)
