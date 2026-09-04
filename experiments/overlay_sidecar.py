@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Burn a v9 (schema 6) registration sidecar into a rendered review video as a metrics band.
+"""Burn a v9 (schema 7) registration sidecar into a rendered review video as a metrics band.
 
 The band is ADDED below (or above) the picture — the picture is never covered. One band image per
 unit (two bobbed frames): line 1 = unit, counter, unit state, applied (d1,d2), comb_safe; lines 2-5 =
@@ -84,7 +84,10 @@ def main() -> None:
             x = 6 + d.textlength(f"f{n} {reason}", font=font) + 8
             gline = g(r, f"f{n}_gauge_line", "-1"); gb = g(r, f"f{n}_gauge_bytes", "")
             body = (f" body {g(r, f'f{n}_body_shift', '.')}@"
-                    f"{g(r, f'f{n}_body_mad', '.')}")
+                    f"{g(r, f'f{n}_body_mad', '.')} "
+                    f"{g(r, f'f{n}_body_reference_top', '?')}→"
+                    f"{g(r, f'f{n}_body_implied_top', '?')} "
+                    f"pos {g(r, f'f{n}_measured_picture_top', '?')}")
             summary = (f"gauge {g(r, f'f{n}_gauge', '?')}{(' L' + gline) if gline not in ('-1', '') else ''}{(' ' + gb) if gb else ''}  "
                        f"geo {g(r, f'f{n}_geometry_d', '.')}" + body +
                        f" raw {g(r, f'f{n}_raw_top', '?')}/{g(r, f'f{n}_raw_bottom', '?')}")

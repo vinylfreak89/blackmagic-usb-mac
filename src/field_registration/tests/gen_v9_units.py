@@ -379,21 +379,27 @@ def main():
     # Once the observed bottom is in the censored near-blank band, top position
     # is the only available geometry coordinate and decides placement.
     add("boundary-top-only-acquire-1", (0, 0), begin=True,
-        top_overrides=(None, 282), bottom_overrides=(None, 521))
+        top_overrides=(None, 282), bottom_overrides=(None, 521),
+        content_phases=(0, 0))
     add("boundary-top-only-acquire-2", (0, 0),
-        top_overrides=(None, 282), bottom_overrides=(None, 521))
+        top_overrides=(None, 282), bottom_overrides=(None, 521),
+        content_phases=(0, 0))
     add("boundary-top-only-placement", (0, 1),
         top_overrides=(None, 283), bottom_overrides=(None, 522),
+        content_phases=(0, 0), content_shifts=(0, 1),
         f2_reason="GeometryLockDecides", f2_lock="Locked", f2_zero="Standard")
 
     # Fixture A's near-blank band begins above the hard ADC-last line.  A rigid
     # top move while its bottom remains in that censored band is placement.
     add("unknown-c-field2-standard-plus1-1", (0, 1), begin=True,
-        top_overrides=(None, 283), bottom_overrides=(None, 519))
+        top_overrides=(None, 283), bottom_overrides=(None, 519),
+        content_phases=(0, 0), content_shifts=(0, 1))
     add("unknown-c-field2-standard-plus1-2", (0, 1),
-        top_overrides=(None, 283), bottom_overrides=(None, 519))
+        top_overrides=(None, 283), bottom_overrides=(None, 519),
+        content_phases=(0, 0), content_shifts=(0, 1))
     add("unknown-c-field2-band-return", (0, 0),
         top_overrides=(None, 282), bottom_overrides=(None, 518),
+        content_phases=(0, 0), content_shifts=(0, 0),
         f2_reason="GeometryLockDecides", f2_lock="Locked", f2_zero="Standard",
         comb=1)
 
@@ -415,10 +421,12 @@ def main():
         weak_caption_rows=(19,), f1_reason="GeometryLockDecides",
         f1_lock="Locked")
 
-    add("nonsignature-bar-context-1", (0, 0), begin=True)
-    add("nonsignature-bar-context-2", (0, 0))
-    add("nonsignature-bar-remains-picture", (0, 0), picture=(0, 2),
-        nonsignature_bar_rows=(282, 283), f2_reason="GeometryLockDecides",
+    add("nonsignature-bar-context-1", (0, 0), begin=True,
+        content_phases=(0, 0))
+    add("nonsignature-bar-context-2", (0, 0), content_phases=(0, 0))
+    add("nonsignature-bar-remains-picture", (0, 0), picture=(0, 0),
+        nonsignature_bar_rows=(282, 283), content_phases=(0, 0),
+        f2_reason="GeometryLockDecides",
         f2_lock="Locked", f2_raw_top=282)
 
     # The deck's near-blank band is a censored boundary.  Its measured bottom
@@ -557,7 +565,7 @@ def main():
     add("lock-broken-body-conflict-hold", (0, 0), picture=(1, 0),
         bottom_overrides=(252, None), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(0, 0),
-        f1_reason="LockBroken", f1_body_shift=0)
+        f1_reason="TopBodyDisagree", f1_body_shift=0)
 
     # +10 is outside the old policy range but remains inside the source
     # raster. A +1 body witness distinguishes it from a false top reading.
@@ -572,7 +580,7 @@ def main():
         content_phases=(0, 0), content_shifts=(9, 0))
     add("out-of-range-body-conflict-hold", (9, 0), picture=(10, 0),
         base_bottoms=(240, 518), content_phases=(0, 0),
-        content_shifts=(9, 0), f1_reason="OutOfRangeHold", f1_body_shift=0)
+        content_shifts=(9, 0), f1_reason="TopBodyDisagree", f1_body_shift=0)
 
     # A cold false parity hit can imply a bogus zero (NTSC line 29 here).
     # It places its own unit but may not poison following geometry. A second
@@ -662,7 +670,7 @@ def main():
     add("body2d-latch-stay-d2", (2, 0), picture=(2, 0),
         captions=((3, 0x14, 0x2c), None), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(2, 0),
-        body_texture=(True, False), f1_reason="CaptionBodyDisagree",
+        body_texture=(True, False), f1_reason="CaptionOnlyMotion",
         f1_body_shift=0)
     add("body2d-latch-return-d3", (3, 0), picture=(3, 0),
         captions=((3, 0x14, 0x2c), None), base_bottoms=(250, 518),
@@ -685,7 +693,7 @@ def main():
     add("body2d-caption-static-stays-d3", (3, 0), picture=(3, 0),
         captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(3, 0),
-        body_texture=(True, False), f1_reason="CaptionBodyDisagree",
+        body_texture=(True, False), f1_reason="CaptionOnlyMotion",
         f1_body_shift=0)
 
     # 05:00: first-line brightness changes the detected top while the entire

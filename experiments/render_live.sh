@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Produce a review copy exclusively from the live frameserver's published
-# 480i frames, PCM blocks, and schema-6 decision log. Raw media travels through
+# 480i frames, PCM blocks, and schema-7 decision log. Raw media travels through
 # FIFOs and is never materialized. Usage:
 #   render_live.sh capture.tpc non_synced_out_dir [pace_us]
 set -euo pipefail

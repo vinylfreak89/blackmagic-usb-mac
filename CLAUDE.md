@@ -1556,17 +1556,22 @@ delivery edge; wrong one at acquisition.
   loss or a cut is audited against the raw raster before hand-over. The published v9 pair stays
   as the sanity baseline; it is not accepted.
   **Round-three direct-position rule (2026-09-05, branch `render-live`):** a current picture top
-  is paired with one bounded previous-unit body witness: horizontal luma means over field rows
-  40..199 / 303..462, searched at integer shifts -3..+3, reliable only below MAD 9. A unique
-  caption that moves differently from a measurable top plus reliable body loses for that unit:
+  is paired with one bounded previous-unit body witness: full active-width luma over field rows
+  40..199 / 303..462, searched at integer shifts -3..+3, reliable through MAD 25. The earlier
+  horizontal-row-mean summary was falsified: on the owner's 35:00/37:01 sites its minimum was
+  flat and it chose the wrong shift in 12–55% of moving units. A unique caption that moves
+  differently from a measurable top plus reliable 2-D body loses symmetrically for that unit:
   still body is `CaptionOnlyMotion`; a different reliable body move is
-  `CaptionBodyDisagree`, applied only when the top agrees. The same top/body testimony converts
-  `Line21Ambiguous`, `GaugeConflict`, `LockBroken`, and physically possible out-of-policy-range
-  observations from remembered holds into current-unit geometry placements while retaining the
-  original reason as provenance. `InsertAbsent`, genuinely unmeasurable geometry, and explicit
-  discontinuity remain holds. Sidecar schema 6 adds body validity, shift, MAD, and top/body
-  agreement per field. This is a position witness, not smoothing: it never learns zero, votes
-  over time, or changes the crop without a current top.
+  `CaptionBodyDisagree`, whether the caption or picture was the value that changed. Position is
+  propagated from the previous unit's *measured picture top*, never `last_applied`; a hold is
+  presentation state and cannot latch as motion evidence. Top motion over a still body is a
+  named `TopBodyDisagree` brightness/content-edge flicker. With no top, differential field motion
+  can be `BodyOnlyPlacement`; equal nonzero motion across both fields is a named
+  `CommonModeBodyHold`. `InsertAbsent`, genuinely unmeasurable geometry, unresolved top/body
+  conflict, and explicit discontinuity remain holds. Sidecar schema 7 records the prior/implied
+  and resolved picture positions in NTSC line numbers plus differential/common-mode provenance.
+  This is a position witness, not smoothing: it never learns zero, votes over time, or changes
+  the crop without a current physical measurement.
   The first paced whole-tape pass of that rule published 86,293/86,293 exact units with zero
   pool/ring/surface drops. The parity audit is necessarily partitioned under the owner-approved
   exception rather than claiming unconditional parity agreement: field 1 applied 37,878 parity

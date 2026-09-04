@@ -73,6 +73,7 @@ an accepted displacement observation, and `0` means neither does. It is not a
 probability and does not assign an invented intermediate score to a one-field
 observation.
 
-The fixture deliberately landed before the v9 implementation. The old v7
-engine must fail it; that red result proves the test distinguishes the new
-contract rather than merely preserving prior output.
+The fixture deliberately landed before each implementation step. The original
+v9 engine scored 126/132 on the 2-D additions; that red result proves these
+cases distinguish the corrected contract rather than merely preserve prior
+output.

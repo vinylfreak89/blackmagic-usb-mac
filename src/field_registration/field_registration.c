@@ -3,7 +3,6 @@
 
 #include <limits.h>
 #include <math.h>
-#include <stdlib.h>
 #include <string.h>
 
 typedef struct field_measurement {
@@ -23,12 +22,21 @@ typedef struct field_measurement {
     bool body_witness_valid;
     int8_t body_shift;
     double body_mad;
+    int16_t body_reference_top;
+    int16_t body_implied_top;
+    bool body_geometry_agrees;
+    bool body_differential;
+    bool body_common_mode;
+    bool picture_position_valid;
+    int16_t picture_top;
+    bool picture_from_body;
+    bool picture_conflict;
 } field_measurement;
 
 enum {
     BODY_PROFILE_ROWS = 160,
+    BODY_PROFILE_COLUMNS = 640,
     BODY_SEARCH_RADIUS = 3,
-    BODY_PROFILE_SCALE = 64,
 };
 
 static uint16_t read_le16(const uint8_t *p)
@@ -54,24 +62,28 @@ static double row_mean(const uint8_t *raster, int row)
     return (double)sum / 640.0;
 }
 
-static uint16_t body_row_mean(const uint8_t *raster, int row)
+static void body_row_luma(const uint8_t *raster, int row,
+                          uint8_t out[BODY_PROFILE_COLUMNS])
 {
     const uint8_t *line = raster + (size_t)row * FIELDREG_BYTES_PER_LINE;
-    uint32_t sum = 0;
-    for (int x = 40; x < 680; ++x) sum += line[x * 2 + 1];
-    /* 640 samples / scale 64 = 10 exactly. */
-    return (uint16_t)(sum / 10u);
+    for (int column = 0; column < BODY_PROFILE_COLUMNS; ++column)
+        out[column] = line[(40 + column) * 2 + 1];
 }
 
 static void measure_body(const uint8_t *raster, int field,
                          fieldreg_field_state *s, field_measurement *m)
 {
     const int base = field == 0 ? 40 : 303;
-    uint16_t current[BODY_PROFILE_ROWS + 2 * BODY_SEARCH_RADIUS];
-    for (int i = 0; i < (int)(sizeof current / sizeof current[0]); ++i)
-        current[i] = body_row_mean(raster, base - BODY_SEARCH_RADIUS + i);
+    uint8_t current[(BODY_PROFILE_ROWS + 2 * BODY_SEARCH_RADIUS) *
+                    BODY_PROFILE_COLUMNS];
+    for (int row = 0; row < BODY_PROFILE_ROWS + 2 * BODY_SEARCH_RADIUS;
+         ++row)
+        body_row_luma(raster, base - BODY_SEARCH_RADIUS + row,
+                      current + row * BODY_PROFILE_COLUMNS);
 
     m->body_shift = FIELDREG_UNKNOWN;
+    m->body_reference_top = s->previous_measured_top;
+    m->body_implied_top = -1;
     if (s->previous_body_valid) {
         uint64_t best_cost = UINT64_MAX;
         int best_shift = 0;
@@ -79,12 +91,19 @@ static void measure_body(const uint8_t *raster, int field,
              shift <= BODY_SEARCH_RADIUS; ++shift) {
             uint64_t cost = 0;
             for (int row = 0; row < BODY_PROFILE_ROWS; ++row) {
-                const int delta = (int)s->previous_body_profile[row] -
-                    (int)current[row + BODY_SEARCH_RADIUS + shift];
-                cost += (uint64_t)(delta < 0 ? -delta : delta);
+                const uint8_t *previous = s->previous_body_luma +
+                                          row * BODY_PROFILE_COLUMNS;
+                const uint8_t *next = current +
+                    (row + BODY_SEARCH_RADIUS + shift) * BODY_PROFILE_COLUMNS;
+                for (int column = 0; column < BODY_PROFILE_COLUMNS; ++column) {
+                    const int delta = (int)previous[column] - (int)next[column];
+                    cost += (uint64_t)(delta < 0 ? -delta : delta);
+                }
             }
-            if (cost < best_cost ||
-                (cost == best_cost && abs(shift) < abs(best_shift))) {
+            /* Match follow_audit.py: ascending shifts and the first strict
+             * minimum wins. This also makes a flat minimum visible rather
+             * than silently preferring zero. */
+            if (cost < best_cost) {
                 best_cost = cost;
                 best_shift = shift;
             }
@@ -92,10 +111,11 @@ static void measure_body(const uint8_t *raster, int field,
         m->body_witness_valid = true;
         m->body_shift = (int8_t)best_shift;
         m->body_mad = (double)best_cost /
-                      (BODY_PROFILE_ROWS * BODY_PROFILE_SCALE);
+                      (BODY_PROFILE_ROWS * BODY_PROFILE_COLUMNS);
     }
-    memcpy(s->previous_body_profile, current + BODY_SEARCH_RADIUS,
-           sizeof s->previous_body_profile);
+    memcpy(s->previous_body_luma,
+           current + BODY_SEARCH_RADIUS * BODY_PROFILE_COLUMNS,
+           sizeof s->previous_body_luma);
     s->previous_body_valid = true;
 }
 
@@ -357,10 +377,11 @@ static void hold(fieldreg_field_state *s, fieldreg_field_decision *d,
 
 static void seed_from_gauge(fieldreg_field_state *s,
                             const field_measurement *m, int measured,
-                            fieldreg_zero_source zero_source)
+                            fieldreg_zero_source zero_source,
+                            int observed_top)
 {
-    if (!m->geometry_measurable) return;
-    const int base_top = m->top - measured;
+    if (!m->geometry_measurable || observed_top < 0) return;
+    const int base_top = observed_top - measured;
     if (base_top != s->top) {
         /* A physical gauge may calibrate a source whose first picture line is
          * not the standard origin. Picture content alone never does this. */
@@ -406,11 +427,11 @@ static void seed_from_gauge(fieldreg_field_state *s,
 }
 
 static void fit_clip(fieldreg_field_state *s, const field_measurement *m,
-                     int measured)
+                     int measured, int observed_top)
 {
     if (!m->geometry_measurable || s->clip_ceiling >= 0)
         return;
-    if (m->top != s->top + measured) return;
+    if (observed_top != s->top + measured) return;
     if (s->clip_candidate < m->bottom) {
         /* Track the greatest passable line. Darker/shorter content can only
          * move the apparent bottom upward and must never fit a smaller C. */
@@ -446,7 +467,55 @@ static void record_invariant(const fieldreg_field_state *s,
 
 static bool body_reliable(const field_measurement *m)
 {
-    return m->body_witness_valid && m->body_mad < 9.0;
+    return m->body_witness_valid && m->body_mad <= 25.0;
+}
+
+static void resolve_picture_positions(field_measurement m[2])
+{
+    const bool reliable0 = body_reliable(&m[0]);
+    const bool reliable1 = body_reliable(&m[1]);
+    if (reliable0 && reliable1) {
+        const bool common = m[0].body_shift == m[1].body_shift &&
+                            m[0].body_shift != 0;
+        m[0].body_common_mode = m[1].body_common_mode = common;
+        m[0].body_differential = m[1].body_differential =
+            m[0].body_shift != m[1].body_shift;
+    }
+
+    for (int field = 0; field < 2; ++field) {
+        field_measurement *one = &m[field];
+        const bool reliable = body_reliable(one);
+        if (reliable && one->body_reference_top >= 0)
+            one->body_implied_top = (int16_t)(one->body_reference_top +
+                                              one->body_shift);
+
+        if (one->top >= 0) {
+            if (one->body_implied_top < 0) {
+                one->picture_position_valid = true;
+                one->picture_top = one->top;
+            } else if (one->top == one->body_implied_top) {
+                one->body_geometry_agrees = true;
+                one->picture_position_valid = true;
+                one->picture_top = one->top;
+            } else if (one->body_shift == 0) {
+                /* The body stood still: a one-line brightness change at the
+                 * top is content, not field displacement. */
+                one->picture_position_valid = true;
+                one->picture_top = one->body_implied_top;
+                one->picture_from_body = true;
+                one->picture_conflict = true;
+            } else {
+                one->picture_conflict = true;
+            }
+        } else if (one->body_implied_top >= 0 &&
+                   (one->body_shift == 0 || one->body_differential)) {
+            /* With no top, differential body motion is field displacement;
+             * equal nonzero motion in both fields could instead be a pan. */
+            one->picture_position_valid = true;
+            one->picture_top = one->body_implied_top;
+            one->picture_from_body = true;
+        }
+    }
 }
 
 /* A censored or absent bottom is no testimony. A fully visible one must
@@ -463,10 +532,10 @@ static bool bottom_allows_caption(const fieldreg_field_state *s,
 
 static bool anchor_edges_agree(const fieldreg_field_state *s,
                                const field_measurement *m, int base_top,
-                               int measured)
+                               int measured, int observed_top)
 {
     if (s->height < 0 || !s->height_known || !m->geometry_measurable ||
-        m->bottom_censored || m->top != base_top + measured)
+        m->bottom_censored || observed_top != base_top + measured)
         return false;
     const int expected = base_top + s->height - 1 + measured;
     return (s->clip_ceiling < 0 || expected <= s->clip_ceiling) &&
@@ -487,12 +556,12 @@ static bool body_confirms_geometry(const fieldreg_field_state *s,
                                    const field_measurement *m, int field,
                                    int *measured)
 {
-    if (s->lock_state != FIELDREG_LOCK_LOCKED || m->top < 0 ||
-        !body_reliable(m))
+    if (s->lock_state != FIELDREG_LOCK_LOCKED ||
+        !m->picture_position_valid || !body_reliable(m) ||
+        (!m->body_geometry_agrees && !m->picture_from_body))
         return false;
-    const int candidate = m->top - s->top;
-    if (!crop_offset_valid(field, candidate) ||
-        candidate - s->last_applied != m->body_shift)
+    const int candidate = m->picture_top - s->top;
+    if (!crop_offset_valid(field, candidate))
         return false;
     *measured = candidate;
     return true;
@@ -514,10 +583,41 @@ static bool apply_body_geometry(fieldreg_field_state *s,
     return true;
 }
 
+static bool apply_picture_position(fieldreg_field_state *s,
+                                   const field_measurement *m, int field,
+                                   fieldreg_mode provenance,
+                                   fieldreg_field_decision *d)
+{
+    if (!m->picture_position_valid) return false;
+    const int measured = m->picture_top - s->top;
+    if (!crop_offset_valid(field, measured)) return false;
+    d->measured_d = (int8_t)measured;
+    d->applied_d = (int8_t)measured;
+    d->reason = provenance;
+    d->gauge = FIELDREG_GAUGE_GEOMETRY;
+    s->last_applied = (int8_t)measured;
+    record_invariant(s, m, measured, d);
+    return true;
+}
+
 static void decide_geometry(fieldreg_field_state *s,
                             const field_measurement *m, int field,
                             fieldreg_field_decision *d)
 {
+    if (m->picture_conflict && !m->picture_position_valid) {
+        hold(s, d, FIELDREG_MODE_TOP_BODY_DISAGREE);
+        return;
+    }
+    if (m->body_common_mode && !m->picture_position_valid) {
+        hold(s, d, FIELDREG_MODE_COMMON_MODE_BODY_HOLD);
+        return;
+    }
+    if (m->picture_from_body) {
+        const fieldreg_mode provenance = m->top >= 0 ?
+            FIELDREG_MODE_TOP_BODY_DISAGREE :
+            FIELDREG_MODE_BODY_ONLY_PLACEMENT;
+        if (apply_picture_position(s, m, field, provenance, d)) return;
+    }
     if (!m->geometry_measurable) {
         if (apply_body_geometry(s, m, field,
                                 FIELDREG_MODE_GEOMETRY_LOCK_DECIDES, d))
@@ -525,7 +625,8 @@ static void decide_geometry(fieldreg_field_state *s,
         hold(s, d, FIELDREG_MODE_GEOMETRY_UNMEASURABLE);
         return;
     }
-    const int measured = m->top - s->top;
+    const int measured = m->picture_position_valid ?
+                         m->picture_top - s->top : m->top - s->top;
     if (!in_range(field, measured)) {
         if (apply_body_geometry(s, m, field,
                                 FIELDREG_MODE_OUT_OF_RANGE_HOLD, d))
@@ -592,6 +693,15 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
     d->body_witness_valid = m->body_witness_valid;
     d->body_shift = m->body_shift;
     d->body_mad = m->body_mad;
+    d->body_geometry_agrees = m->body_geometry_agrees;
+    d->body_reference_top = m->body_reference_top;
+    d->body_implied_top = m->body_implied_top;
+    d->body_differential = m->body_differential;
+    d->body_common_mode = m->body_common_mode;
+    d->picture_position_valid = m->picture_position_valid;
+    d->measured_picture_top = m->picture_position_valid ?
+                              m->picture_top : -1;
+    d->picture_from_body = m->picture_from_body;
     d->insert_present = m->insert_present;
     d->insert_byte1 = m->insert_byte1;
     d->insert_byte2 = m->insert_byte2;
@@ -599,11 +709,9 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
     d->fallback_candidate_count = m->fallback_count;
     if (m->off_count != 1)
         s->parity_anchor_candidate = INT16_MIN;
-    if (s->lock_state == FIELDREG_LOCK_LOCKED && m->top >= 0)
-        d->geometry_d = (int8_t)(m->top - s->top);
-    if (d->geometry_d != FIELDREG_UNKNOWN && body_reliable(m))
-        d->body_geometry_agrees =
-            d->geometry_d - s->last_applied == m->body_shift;
+    if (s->lock_state == FIELDREG_LOCK_LOCKED &&
+        m->picture_position_valid)
+        d->geometry_d = (int8_t)(m->picture_top - s->top);
     if (m->insert_present &&
         (m->insert_byte1 != 0x80 || m->insert_byte2 != 0x80) &&
         d->geometry_d != FIELDREG_UNKNOWN)
@@ -621,16 +729,21 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
     } else if (m->off_count == 1) {
         const int measured = m->off_candidate.raster_row -
                              (field == 0 ? FIELDREG_INSERT_F1 : FIELDREG_INSERT_F2);
-        const int previous = s->last_applied;
         d->gauge_row = m->off_candidate.raster_row;
         d->gauge_byte1 = m->off_candidate.byte1;
         d->gauge_byte2 = m->off_candidate.byte2;
         d->gauge_amplitude = m->off_candidate.amplitude;
         const bool insert_nonnull = m->insert_byte1 != 0x80 ||
                                     m->insert_byte2 != 0x80;
-        const bool body_disagrees = measured != previous &&
-                                    body_reliable(m) &&
-                                    previous + m->body_shift != measured;
+        int picture_d = FIELDREG_UNKNOWN;
+        const bool body_position = body_confirms_geometry(s, m, field,
+                                                          &picture_d);
+        const bool picture_testimony = body_position &&
+            bottom_allows_caption(s, m, picture_d);
+        const bool picture_disagrees = picture_testimony &&
+                                       picture_d != measured;
+        const bool picture_internally_conflicted = body_position &&
+            !picture_testimony && picture_d != measured;
         if (measured == 1 && insert_nonnull && d->geometry_d == 0) {
             s->parity_anchor_candidate = INT16_MIN;
             d->measured_d = 0;
@@ -648,26 +761,19 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
                 hold(s, d, FIELDREG_MODE_GAUGE_CONFLICT);
                 d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
             }
-        } else if (body_disagrees) {
-            const int body_d = previous + m->body_shift;
-            const bool top_agrees = m->top >= 0 &&
-                                    m->top == s->top + body_d;
-            const bool picture_agrees = top_agrees &&
-                bottom_allows_caption(s, m, body_d) &&
-                crop_offset_valid(field, body_d);
+        } else if (picture_disagrees) {
             s->parity_anchor_candidate = INT16_MIN;
-            d->reason = m->body_shift == 0 && picture_agrees ?
+            d->reason = m->body_shift == 0 ?
                         FIELDREG_MODE_CAPTION_ONLY_MOTION :
                         FIELDREG_MODE_CAPTION_BODY_DISAGREE;
-            if (picture_agrees) {
-                d->measured_d = (int8_t)body_d;
-                d->applied_d = (int8_t)body_d;
-                d->gauge = FIELDREG_GAUGE_GEOMETRY;
-                s->last_applied = (int8_t)body_d;
-                record_invariant(s, m, body_d, d);
-            } else {
-                hold(s, d, FIELDREG_MODE_CAPTION_BODY_DISAGREE);
-            }
+            d->measured_d = (int8_t)picture_d;
+            d->applied_d = (int8_t)picture_d;
+            d->gauge = FIELDREG_GAUGE_GEOMETRY;
+            s->last_applied = (int8_t)picture_d;
+            record_invariant(s, m, picture_d, d);
+        } else if (picture_internally_conflicted) {
+            s->parity_anchor_candidate = INT16_MIN;
+            hold(s, d, FIELDREG_MODE_CAPTION_BODY_DISAGREE);
         } else if (!in_range(field, measured)) {
             s->parity_anchor_candidate = INT16_MIN;
             if (!apply_body_geometry(s, m, field,
@@ -676,11 +782,14 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
         } else {
             bool anchor_ready = true;
             bool anchor_uncorroborated = false;
+            const int anchor_top = picture_testimony && picture_d == measured ?
+                                   m->picture_top : m->top;
             if (m->geometry_measurable) {
-                const int base_top = m->top - measured;
+                const int base_top = anchor_top - measured;
                 if (base_top == s->top) {
                     s->parity_anchor_candidate = INT16_MIN;
-                } else if (anchor_edges_agree(s, m, base_top, measured) ||
+                } else if (anchor_edges_agree(s, m, base_top, measured,
+                                              anchor_top) ||
                            s->parity_anchor_candidate == base_top) {
                     s->parity_anchor_candidate = INT16_MIN;
                 } else {
@@ -699,8 +808,9 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
             d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
             s->last_applied = (int8_t)measured;
             if (anchor_ready) {
-                seed_from_gauge(s, m, measured, FIELDREG_ZERO_PARITY);
-                fit_clip(s, m, measured);
+                seed_from_gauge(s, m, measured, FIELDREG_ZERO_PARITY,
+                                anchor_top);
+                fit_clip(s, m, measured, anchor_top);
             }
             record_invariant(s, m, measured, d);
         }
@@ -721,11 +831,20 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
             d->gauge = FIELDREG_GAUGE_FIELD2_ENVELOPE;
             d->gauge_row = m->fallback_row;
             s->last_applied = (int8_t)measured;
-            seed_from_gauge(s, m, measured, FIELDREG_ZERO_ENVELOPE);
-            fit_clip(s, m, measured);
+            seed_from_gauge(s, m, measured, FIELDREG_ZERO_ENVELOPE, m->top);
+            fit_clip(s, m, measured, m->top);
             record_invariant(s, m, measured, d);
         }
     } else decide_geometry(s, m, field, d);
+
+    /* Motion for the next unit is anchored only to a position measured in
+     * this unit. A held crop is presentation state, never evidence about
+     * where the picture was. */
+    if (m->picture_position_valid && d->measured_d != FIELDREG_UNKNOWN &&
+        d->applied_d == m->picture_top - s->top)
+        s->previous_measured_top = m->picture_top;
+    else
+        s->previous_measured_top = -1;
     copy_lock(s, d);
 }
 
@@ -760,6 +879,7 @@ static void reset_field(fieldreg_field_state *s, bool reset_applied, int field)
                           FIELDREG_PICTURE_ORIGIN_F2;
     clear_clip(s);
     s->parity_anchor_candidate = INT16_MIN;
+    s->previous_measured_top = -1;
     s->last_applied = applied;
     s->lock_id = lock_id;
     s->lock_state = FIELDREG_LOCK_LOCKED;
@@ -803,6 +923,7 @@ bool fieldreg_process(field_registration *engine,
     measure_field(raster, 1, &m[1]);
     measure_body(raster, 0, &engine->field[0], &m[0]);
     measure_body(raster, 1, &engine->field[1], &m[1]);
+    resolve_picture_positions(m);
     decide_field(&engine->field[0], &m[0], 0, &out->field[0]);
     decide_field(&engine->field[1], &m[1], 1, &out->field[1]);
 
@@ -860,6 +981,9 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_CAPTION_ONLY_MOTION: return "CaptionOnlyMotion";
     case FIELDREG_MODE_CAPTION_BODY_DISAGREE: return "CaptionBodyDisagree";
     case FIELDREG_MODE_ANCHOR_UNCORROBORATED: return "AnchorUncorroborated";
+    case FIELDREG_MODE_TOP_BODY_DISAGREE: return "TopBodyDisagree";
+    case FIELDREG_MODE_BODY_ONLY_PLACEMENT: return "BodyOnlyPlacement";
+    case FIELDREG_MODE_COMMON_MODE_BODY_HOLD: return "CommonModeBodyHold";
     case FIELDREG_MODE_MIXED_FIELD_DECISION: return "MixedFieldDecision";
     }
     return "Unknown";
