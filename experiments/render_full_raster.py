@@ -23,6 +23,7 @@ def main() -> None:
     ap.add_argument("--units", type=int, default=1800)
     ap.add_argument("--weights", default=str(Path.home() / "Library/Application Support/blackmagic-usb-mac/nnedi3_weights.bin"))
     ap.add_argument("--crf", default="12")
+    ap.add_argument("--raw", action="store_true", help="apply no registration (d1=d2=0): the raster exactly as the device delivered it")
     a = ap.parse_args()
     dec = {}
     with open(a.decisions) as f:
@@ -42,8 +43,9 @@ def main() -> None:
         return b"".join(out)
     def emit(unit: bytes) -> None:
         counter = int.from_bytes(unit[4:6], "little")
-        if counter not in dec: state["nodec"] += 1; return
-        d1, d2 = dec[counter]
+        if a.raw: d1, d2 = 0, 0
+        elif counter in dec: d1, d2 = dec[counter]
+        else: state["nodec"] += 1; return
         raster = unit[HDR:]
         f1 = shifted(raster[:F1*LINE], F1, d1); f2 = shifted(raster[F1*LINE:LINES*LINE], F2, d2) + BLACK   # 262 -> 263 rows
         frame = bytearray(2 * F1 * LINE)
