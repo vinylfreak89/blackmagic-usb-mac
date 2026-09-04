@@ -257,12 +257,12 @@ def main():
         captions=((0, 0x14, 0x2c), None),
         f1_reason="GeometryLockDecides", f1_lock="Locked", comb=1)
 
-    # Geometry acquired a content-dependent zero one line low. A parity-valid
-    # +2 line re-anchors it to the physical raster. Non-rigid content then
-    # holds that gold zero, while the next rigid +1 envelope is followed.
-    add("parity-reanchor-acquire-1", (0, 0), begin=True,
+    # Geometry is compared with the standard origin from the first unit. A
+    # parity-valid +2 line then re-anchors that standard zero to the physical
+    # raster. Non-rigid content holds; the next rigid +1 envelope is followed.
+    add("parity-reanchor-standard-1", (1, 0), begin=True,
         top_overrides=(20, None), bottom_overrides=(256, None))
-    add("parity-reanchor-acquire-2", (0, 0),
+    add("parity-reanchor-standard-2", (1, 0),
         top_overrides=(20, None), bottom_overrides=(256, None))
     add("parity-plus2-reanchors", (2, 0),
         captions=((2, 0x14, 0x2c), None),
@@ -274,7 +274,7 @@ def main():
         f1_reason="LockBroken", f1_lock="Locked")
     add("gold-zero-rigid-plus1", (1, 0),
         top_overrides=(20, None), bottom_overrides=(256, None),
-        f1_reason="GeometryLockDecides", f1_lock="Locked", comb=1)
+        f1_reason="GeometryLockDecides", f1_lock="Locked", comb=0)
 
     # Once the observed bottom is in the censored near-blank band, top position
     # is the only available geometry coordinate and decides placement.
@@ -284,27 +284,27 @@ def main():
         top_overrides=(None, 282), bottom_overrides=(None, 521))
     add("boundary-top-only-placement", (0, 1),
         top_overrides=(None, 283), bottom_overrides=(None, 522),
-        f2_reason="GeometryLockDecides", f2_lock="Locked", f2_zero="Acquired")
+        f2_reason="GeometryLockDecides", f2_lock="Locked", f2_zero="Standard")
 
     # Fixture A's near-blank band begins above the hard ADC-last line.  A rigid
     # top move while its bottom remains in that censored band is placement.
-    add("unknown-c-field2-acquire-1", (0, 0), begin=True,
+    add("unknown-c-field2-standard-plus1-1", (0, 1), begin=True,
         top_overrides=(None, 283), bottom_overrides=(None, 519))
-    add("unknown-c-field2-acquire-2", (0, 0),
+    add("unknown-c-field2-standard-plus1-2", (0, 1),
         top_overrides=(None, 283), bottom_overrides=(None, 519))
-    add("unknown-c-field2-band-placement", (0, -1),
+    add("unknown-c-field2-band-return", (0, 0),
         top_overrides=(None, 282), bottom_overrides=(None, 518),
-        f2_reason="GeometryLockDecides", f2_lock="Locked", f2_zero="Acquired",
+        f2_reason="GeometryLockDecides", f2_lock="Locked", f2_zero="Standard",
         comb=1)
 
-    # A content-acquired position cannot promise deinterlacing safety on an
-    # unmeasurable unit merely because both state machines remain Locked.
-    add("acquired-zero-acquire-1", (0, 0), begin=True)
-    add("acquired-zero-acquire-2", (0, 0))
-    add("acquired-zero-dark-hold", (0, 0), dark=True,
+    # A standard-zero lock cannot promise deinterlacing safety on an
+    # unmeasurable unit without a current rigid observation in both fields.
+    add("standard-zero-measurable-1", (0, 0), begin=True)
+    add("standard-zero-measurable-2", (0, 0))
+    add("standard-zero-dark-hold", (0, 0), dark=True,
         f1_reason="GeometryUnmeasurable", f2_reason="GeometryUnmeasurable",
-        f1_lock="Locked", f2_lock="Locked", f1_zero="Acquired",
-        f2_zero="Acquired", comb=0)
+        f1_lock="Locked", f2_lock="Locked", f1_zero="Standard",
+        f2_zero="Standard", comb=0)
 
     # Damaged vertical-interval waveforms remain VBI even when they fail the
     # strict decoder/fallback.  Geometry begins at the first three-line

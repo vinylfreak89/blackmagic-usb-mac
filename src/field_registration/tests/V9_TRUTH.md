@@ -11,8 +11,8 @@ parity. The fixture covers:
 - the measured field-2 smeared-XDS fallback and its no-candidate hold;
 - rejection of parity-invalid vertical copies and hold on two valid candidates;
 - insert absence;
-- two-unit geometry-lock acquisition, rigid per-unit movement, conservation
-  failure on a height change, and re-acquisition without moving the crop; and
+- immediate standard-origin geometry placement, rigid per-unit movement, and
+  conservation failure on a height/content change without redefining zero; and
 - invalid transport rejection.
 
 Review-round additions decide four lock-policy details that an applied-pair-only
@@ -32,14 +32,20 @@ Round-two additions pin the corrected gauge hierarchy:
 
 - non-null data re-encoded on the insert is provenance only; rigid geometry
   still applies a `+1` placement;
-- parity `+2` re-anchors a content-acquired zero immediately, after which a
-  non-rigid envelope holds and a rigid `+1` envelope follows that gold zero;
-- a field-2 top-only change at the ADC boundary holds whenever the clip
-  ceiling is unknown, including before a clip candidate exists; and
-- the measured fixture-A field-2 287/523 to 286/522 envelope change likewise
-  holds because its content-acquired zero has no fitted physical ceiling; and
-- two `Locked` state machines with content-acquired zeroes do not claim
+- parity `+2` re-anchors the standard zero immediately when the gauged picture
+  origin proves that source geometry differs, after which a non-rigid envelope
+  holds and a rigid `+1` envelope follows that gold zero;
+- standard-origin geometry applies immediately, including a top move whose
+  bottom is censored by the deck's near-blank clip band; and
+- two `Locked` state machines with only standard zeroes do not claim
   `comb_safe` on an unmeasurable unit.
+
+The root-C/D additions pin the remaining direct-placement rules: each segment
+starts at the standard line-23/286 picture zero rather than learning position
+from content; a field at either standard origin is placed from its first unit;
+one-line clip-band flicker cannot move that top decision; and picture at Y=10
+is measurable against a Y=2 blanking floor while mute/black remains
+unmeasurable.
 
 `confidence` is deliberately binary in v9: `1` means at least one field has
 an accepted displacement observation, and `0` means neither does. It is not a

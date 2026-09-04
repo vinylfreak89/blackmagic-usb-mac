@@ -29,7 +29,7 @@ int main(void)
     field_registration engine;
     fieldreg_config config = fieldreg_default_config();
     fieldreg_init(&engine, &config);
-    assert(fieldreg_confirmation_units(&engine) == 2);
+    assert(fieldreg_confirmation_units(&engine) == 1);
     assert(fieldreg_buffer_units(&engine) == 0);
     uint8_t *unit = blank_unit();
     fieldreg_decision decision;
@@ -41,7 +41,10 @@ int main(void)
     unit[6] = 0;
     assert(!fieldreg_process(&engine, unit, &decision));
     fieldreg_discontinuity(&engine);
-    assert(engine.field[0].lock_state == FIELDREG_LOCK_UNLOCKED);
+    assert(engine.field[0].lock_state == FIELDREG_LOCK_LOCKED);
+    assert(engine.field[0].top == FIELDREG_PICTURE_ORIGIN_F1);
+    assert(engine.field[1].top == FIELDREG_PICTURE_ORIGIN_F2);
+    assert(engine.field[0].zero_source == FIELDREG_ZERO_STANDARD);
     fieldreg_begin_segment(&engine);
     assert(engine.segment_id == 1 && engine.field[0].last_applied == 0);
     assert(strcmp(fieldreg_mode_name(FIELDREG_MODE_LINE21_PLACEMENT),
