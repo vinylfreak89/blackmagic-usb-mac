@@ -466,3 +466,19 @@ still body then preserves (114 runs, up to 15 units); ZeroConflict 270 (item C);
 standard zero 82 (warm-up). Rule for round 7: the top and the comb check agreeing against a
 still or absent body is picture evidence and moves the crop; the top alone never does after
 the segment's first placement.
+
+## Round 6 result: `7e10fee` (Codex, 2026-09-05 08:30 JST; Claude's verification running)
+
+Zero handling rebuilt with failing-first goldens (146/146 → 169/169): a different zero needs
+three consecutive identical gauge bases (alternating bases and a singleton envelope leave it);
+comb calibration requires a parity-placed field 1 and a field-2 crop actually on its zero, the
+candidate zero comes from observed geometry, and either field's zero is refused outside the
+standard origin ±3; a decisive parity-referenced comb replaces a conflicting envelope zero once
+(`ZeroConflict` is an installation event, two on the tape); a byte hole preserves installed
+zeros and calibration. Codex's whole tape: 86,293/86,293, zero drops; parity truth 40,237/40,237
+and 25/25; Calibrated 81,960 / Uncalibrated 4,329 / Drift 4; field-2 zero Comb 80,064,
+Envelope 2,104, Standard 4,101; bias 0 ×49,688, +1 ×23,604, +2 ×13,001, none beyond ±3; minute
+43 flat at +2. Engine 0.386 ms median / 1.358 p95. Slice tables unchanged from `a683926` (the
+stricter reference reduces calibration coverage: 05:00 calibrated 325/608 instead of 601/608).
+Not merge-ready by either agent: the round-7 classes (tied-witness fallback, top+comb against a
+still body) and the 35:38 warm-up remain, and the damage discriminator is unresolved.
