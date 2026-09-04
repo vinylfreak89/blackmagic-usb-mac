@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Burn a registration sidecar into a rendered review video as a metrics band.
+"""Burn a v9 (schema 5) registration sidecar into a rendered review video as a metrics band.
 
 The band is ADDED below (or above) the picture — the picture is never covered. One band image per
-unit (two bobbed frames) shows: unit index, counter, unit state, applied (d1,d2), decision (d1,d2)
-or '.', baseline, frame observation and support, mode (colour-coded: green stable/converged, cyan
-relative-only, yellow dwell/held, red unknown/transient, magenta reset/cut, grey non-picture), the
-relative-only provenance when present, and a sparkline of applied_d1 over the surrounding ±90
-units (3 s) with the current unit marked and a zero line. Unit i spans [i, i+1) × 1001/30000 s.
+unit (two bobbed frames): line 1 = unit, counter, unit state, applied (d1,d2), comb_safe; lines 2-3 =
+per field: reason (colour-coded: green = placed by a physical gauge, cyan = geometry lock decides,
+yellow = acquiring / clip-unknown / gauge-conflict hold, red = lock broken / ambiguous / out of range,
+grey = insert absent / geometry unmeasurable), gauge + line + decoded bytes, geometry d, raw
+top/bottom, lock state + zero source (Parity / Envelope / Acquired) and clip; plus a sparkline of
+applied_d1 over the surrounding ±90 units (3 s). All lines are NTSC line numbers as written by the
+renderer. Unit i spans [i, i+1) × 1001/30000 s.
 
 Band frames are drawn with PIL and composited by ffmpeg's `overlay` (no libass needed).
 
-    overlay_sidecar.py rendered.mp4 rendered_registration.csv out.mp4 [--band 72] [--top] [--crf 14]
+    overlay_sidecar.py rendered.mp4 rendered_registration.csv out.mp4 [--band 84] [--top] [--crf 14]
 """
 from __future__ import annotations
 import argparse, csv, subprocess
@@ -19,20 +21,19 @@ from PIL import Image, ImageDraw, ImageFont
 def g(r, k, d=""):
     v = r.get(k); return d if v in (None, "") else v
 
-def mode_colour(mode: str):
-    m = mode.lower()
-    if "relativeonly" in m: return (0, 255, 255)
-    if "stable" in m or "converged" in m: return (0, 230, 0)
-    if "dwell" in m or "held" in m or "awaiting" in m: return (255, 215, 0)
-    if "reset" in m or "cut" in m: return (255, 0, 255)
-    if "unknown" in m or "transient" in m or "censored" in m: return (255, 80, 80)
-    if "short" in m or "hole" in m or "invalid" in m or "nopicture" in m: return (140, 140, 140)
+def mode_colour(reason: str):
+    m = reason.lower()
+    if "placement" in m or "line22data" in m: return (0, 230, 0)
+    if "geometrylock" in m: return (0, 255, 255)
+    if "acquiring" in m or "clipunknown" in m or "gaugeconflict" in m: return (255, 215, 0)
+    if "broken" in m or "ambiguous" in m or "outofrange" in m: return (255, 80, 80)
+    if "absent" in m or "unmeasurable" in m or "invalid" in m: return (140, 140, 140)
     return (255, 255, 255)
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("video"); ap.add_argument("sidecar"); ap.add_argument("out")
-    ap.add_argument("--band", type=int, default=72); ap.add_argument("--top", action="store_true")
+    ap.add_argument("--band", type=int, default=84); ap.add_argument("--top", action="store_true")
     ap.add_argument("--crf", default="14"); ap.add_argument("--font", default="/System/Library/Fonts/Menlo.ttc")
     a = ap.parse_args()
     probe = subprocess.run(["ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=width,height,sample_aspect_ratio","-of","csv=p=0",a.video],capture_output=True,text=True).stdout.strip().split(",")
@@ -52,25 +53,22 @@ def main() -> None:
         "-filter_complex",vf,"-map","[o]","-map","0:a?","-c:v","libx264","-preset","veryfast","-crf",a.crf,"-pix_fmt","yuv420p","-c:a","copy","-shortest",a.out], stdin=subprocess.PIPE)
     for i, r in enumerate(rows):
         img = Image.new("RGB", (W, B), (0, 0, 0)); d = ImageDraw.Draw(img)
-        mode = g(r, "mode", "?")
         f = g(r, "timeline_frame", str(i))
-        line1 = (f"u{int(f):06d} c{g(r,'counter','?'):>5} {g(r,'unit_state','')[:7]:7s} applied({g(r,'applied_d1','?')},{g(r,'applied_d2','?')}) "
-                 f"dec({g(r,'decision_d1','.')},{g(r,'decision_d2','.')}) base({g(r,'baseline_d1','.')},{g(r,'baseline_d2','.')})")
-        d.text((6, 4), line1, font=font, fill=(255, 255, 255))
-        d.text((6, 22), mode, font=font, fill=mode_colour(mode))
-        x = 6 + d.textlength(mode, font=font) + 10
-        obs = f"obs({g(r,'frame_observation_d1','.')},{g(r,'frame_observation_d2','.')}) sup{g(r,'frame_observation_support','.')}"
-        d.text((x, 22), obs, font=font, fill=(200, 200, 200)); x += d.textlength(obs, font=font) + 10
-        if g(r, "relative_only") in ("1", "True", "true"):
-            rel = (f"REL phase {g(r,'relative_only_phase','?')} gauge {g(r,'relative_only_gauge_source','?')}"
-                   f"{' UNKNOWN-GAUGE' if g(r,'relative_only_gauge_unknown') in ('1','True','true') else ''} margin {g(r,'relative_only_margin','?')} ratio {g(r,'relative_only_ratio','?')} static {g(r,'relative_only_static_columns','?')}")
-            d.text((6, 40), rel, font=font, fill=(0, 255, 255))
-        extra = []
-        if g(r, "frame_observation_motion_priority", "0") not in ("0", ""): extra.append("motion-priority")
-        if g(r, "frame_observation_conflict", "0") not in ("0", ""): extra.append("CONFLICT")
-        if g(r, "bottom_f1_censored", "0") not in ("0", ""): extra.append("f1-bottom-censored")
-        if g(r, "bottom_f2_censored", "0") not in ("0", ""): extra.append("f2-bottom-censored")
-        if extra: d.text((x, 22), "  ".join(extra), font=font, fill=(255, 215, 0))
+        safe = g(r, "comb_safe", "0") in ("1", "True", "true")
+        line1 = (f"u{int(f):06d} c{g(r,'counter','?'):>5} {g(r,'unit_state','')[:7]:7s} applied({g(r,'applied_d1','?')},{g(r,'applied_d2','?')})  "
+                 f"{'comb-safe' if safe else 'NOT comb-safe'}")
+        d.text((6, 4), line1, font=font, fill=(255, 255, 255) if safe else (255, 215, 0))
+        for n, y in ((1, 22), (2, 40)):
+            reason = g(r, f"f{n}_reason", "?")
+            d.text((6, y), f"f{n} {reason}", font=font, fill=mode_colour(reason))
+            x = 6 + d.textlength(f"f{n} {reason}", font=font) + 8
+            gline = g(r, f"f{n}_gauge_line", "-1"); gb = g(r, f"f{n}_gauge_bytes", "")
+            info = (f"gauge {g(r, f'f{n}_gauge', '?')}{(' L' + gline) if gline not in ('-1', '') else ''}{(' ' + gb) if gb else ''}  "
+                    f"geo {g(r, f'f{n}_geometry_d', '.')}  raw {g(r, f'f{n}_raw_top', '?')}/{g(r, f'f{n}_raw_bottom', '?')}  "
+                    f"lock {g(r, f'f{n}_lock_state', '?')}/{g(r, f'f{n}_zero_source', '?')} top {g(r, f'f{n}_lock_top', '?')} h {g(r, f'f{n}_lock_height', '?')} clip {g(r, f'f{n}_clip_ceiling', '?')}")
+            ins = g(r, f"f{n}_insert_relation", "None")
+            if ins not in ("None", ""): info += f"  {ins}"
+            d.text((x, y), info, font=small, fill=(200, 200, 200))
         d.text((W - 262 - 100, 4), f"t={int(f)*1001/30000:8.3f}s", font=small, fill=(180, 180, 180))   # top right of the text area
         # sparkline
         d.line([(sx0, py(0)), (sx0 + sw, py(0))], fill=(0, 120, 0), width=1)
