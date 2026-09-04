@@ -36,6 +36,8 @@ Round-two additions pin the corrected gauge hierarchy:
   non-rigid envelope holds and a rigid `+1` envelope follows that gold zero;
 - a field-2 top-only change at the ADC boundary holds whenever the clip
   ceiling is unknown, including before a clip candidate exists; and
+- the measured fixture-A field-2 287/523 to 286/522 envelope change likewise
+  holds because its content-acquired zero has no fitted physical ceiling; and
 - two `Locked` state machines with content-acquired zeroes do not claim
   `comb_safe` on an unmeasurable unit.
 

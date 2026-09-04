@@ -251,6 +251,18 @@ def main():
         top_overrides=(None, 283), bottom_overrides=(None, 522),
         f2_reason="ClipUnknownHold", f2_lock="Locked", f2_zero="Acquired")
 
+    # Fixture A's effective field-2 bottom is NTSC line 522, above the hard
+    # ADC-last line. With no physical zero and no fitted C, a seemingly rigid
+    # 287/523 -> 286/522 move is still not placement authority.
+    add("unknown-c-field2-acquire-1", (0, 0), begin=True,
+        top_overrides=(None, 283), bottom_overrides=(None, 519))
+    add("unknown-c-field2-acquire-2", (0, 0),
+        top_overrides=(None, 283), bottom_overrides=(None, 519))
+    add("unknown-c-field2-hold", (0, 0),
+        top_overrides=(None, 282), bottom_overrides=(None, 518),
+        f2_reason="ClipUnknownHold", f2_lock="Locked", f2_zero="Acquired",
+        comb=0)
+
     # A content-acquired position cannot promise deinterlacing safety on an
     # unmeasurable unit merely because both state machines remain Locked.
     add("acquired-zero-acquire-1", (0, 0), begin=True)
