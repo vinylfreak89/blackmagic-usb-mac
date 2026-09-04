@@ -48,6 +48,7 @@ class Step:
     force_scene_cut: bool = False
     fake_bottom_censor: bool = False
     dark_false_edge: bool = False
+    bottom_trim_f1: int = 0
 
 
 def trajectory() -> list[Step]:
@@ -235,6 +236,8 @@ def trajectory() -> list[Step]:
                         main_ranges=((0, 720),), secondary_ranges=()))
     add(8, "bottom-v8-plateau-plus1", (1, 0), (1, 0),
         main_ranges=((0, 720),), secondary_ranges=())
+    add(12, "bottom-v8-relative-residual", (2, 0), (2, 0),
+        bottom_trim_f1=1, main_ranges=((0, 720),), secondary_ranges=())
     add(8, "bottom-v8-plateau-plus2", (2, 0), (2, 0),
         main_ranges=((0, 720),), secondary_ranges=())
     add(8, "bottom-v8-field2-step", (2, 1), (2, 1),
@@ -418,11 +421,24 @@ def make_unit(counter: int, index: int, step: Step,
             for row, line in enumerate(source):
                 if row < step.main_top_trim:
                     continue
+                if parity == 0 and step.bottom_trim_f1 and \
+                        row >= len(source) - step.bottom_trim_f1:
+                    continue
                 if step.main_motion:
                     line = source[(row + phase * 2) % len(source)]
                 if step.alternating_card:
                     level = 56 if (row & 1) == 0 else 188
                     line = bytes((128, level)) * 720
+                if step.scenario.startswith("bottom-v8-") and row >= len(source) - 2:
+                    # The v8 truth is specifically a boundary-placement test,
+                    # so its final two picture rows have an unmistakable broad
+                    # luma extent. Ordinary scenarios retain natural content
+                    # whose last row may itself be mostly black.
+                    firm = bytearray(base.BPL)
+                    for x in range(720):
+                        firm[2 * x] = 128
+                        firm[2 * x + 1] = 72 if (x // 24) & 1 else 112
+                    line = bytes(firm)
                 line = base.scaled_line(line, step.gain)
                 for x0, x1 in step.main_ranges:
                     destination = top + displacement + row

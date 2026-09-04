@@ -135,6 +135,12 @@ measurable program, the crop moves by `raw_edge - target` on every measurable
 unit. The fixture requires unit-rate field-1 jitter, sustained +1/+2 plateaus,
 and an independent field-2 step to be followed.
 
+`bottom-v8-relative-residual` moves the field-1 picture body by two lines but
+ends its visible lower envelope after only one. It is the measured full-raster
+failure of bottom-only placement: the direct boundary supplies the absolute
+gauge while the broad body-relative observation supplies the missing line.
+The output must be `(2,0)`, not the boundary-only `(1,0)`.
+
 Dark/flat rasters, fades without a measurable program edge, and a one-unit
 edge excursion larger than three lines hold the preceding crop. A grey mute
 cannot teach the target; program following it learns a fresh target. Field 1
@@ -147,3 +153,15 @@ already left the ADC raster. That truth is intentionally retained as a visible
 contract conflict: v8's direct-edge rule rejects a one-unit jump greater than
 three and cannot measure an edge which was not captured. It requires owner
 adjudication rather than silently redefining either truth.
+
+The rest of the retained v7 oracle also deliberately remains untouched. In
+particular, its first segment starts at physical `(1,0)` and calls that absolute
+device-grid phase `(1,0)`, while v8 learns the acquired bottom as its segment
+target and therefore calls the same stable placement `(0,0)`. The old
+unit-rate-jitter, relative-only release/onset/unknown-gauge, secondary-edge,
+stale-positive, provisional inversion, chatter/horizon, and multi-phase cases
+inherit that incompatible starting gauge or deliberately hide the direct
+bottom. They are reported as `V7-AUTHORITY-COMPATIBILITY: FAIL`; they are not
+silently re-authored to make v8 pass. The separately named `bottom-v8-*`
+classes are the deciding v8 contract and report
+`BOTTOM-PLACEMENT-GOLDEN: PASS`.

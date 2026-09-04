@@ -47,6 +47,16 @@ typedef struct result_row {
     unsigned relative_static_columns;
     unsigned relative_persistent_columns;
     bool bottom_f1_censored;
+    int raw_bottom1;
+    int raw_bottom2;
+    int target_bottom1;
+    int target_bottom2;
+    bool bottom_measurable1;
+    bool bottom_measurable2;
+    bool bottom_placement1;
+    bool bottom_placement2;
+    fieldreg_bottom_hold_reason bottom_reason1;
+    fieldreg_bottom_hold_reason bottom_reason2;
 } result_row;
 
 typedef struct scenario_summary {
@@ -62,6 +72,9 @@ typedef struct scenario_summary {
     uint64_t relative_only;
     uint64_t relative_gauge_unknown;
     uint64_t bottom_f1_censored;
+    uint64_t bottom_placement;
+    uint64_t bottom_flat_hold;
+    uint64_t bottom_jump_hold;
 } scenario_summary;
 
 static void fail(const char *message)
@@ -185,6 +198,16 @@ int main(int argc, char **argv)
         result->relative_persistent_columns =
             decision.relative_only_persistent_columns;
         result->bottom_f1_censored = decision.bottom_f1_censored;
+        result->raw_bottom1 = decision.bottom_raw_edge_f1;
+        result->raw_bottom2 = decision.bottom_raw_edge_f2;
+        result->target_bottom1 = decision.bottom_target_f1;
+        result->target_bottom2 = decision.bottom_target_f2;
+        result->bottom_measurable1 = decision.bottom_measurable_f1;
+        result->bottom_measurable2 = decision.bottom_measurable_f2;
+        result->bottom_placement1 = decision.bottom_placement_f1;
+        result->bottom_placement2 = decision.bottom_placement_f2;
+        result->bottom_reason1 = decision.bottom_hold_reason_f1;
+        result->bottom_reason2 = decision.bottom_hold_reason_f2;
 
         /* Exact simulation of the current caller's limited backdating: only
          * abstaining rows still in its FIFO are rewritten. Positive
@@ -289,6 +312,14 @@ int main(int argc, char **argv)
         summary->relative_only += row->relative_only;
         summary->relative_gauge_unknown += row->relative_gauge_unknown;
         summary->bottom_f1_censored += row->bottom_f1_censored;
+        summary->bottom_placement +=
+            row->bottom_placement1 || row->bottom_placement2;
+        summary->bottom_flat_hold +=
+            row->bottom_reason1 == FIELDREG_BOTTOM_HOLD_FLAT_OR_DARK ||
+            row->bottom_reason2 == FIELDREG_BOTTOM_HOLD_FLAT_OR_DARK;
+        summary->bottom_jump_hold +=
+            row->bottom_reason1 == FIELDREG_BOTTOM_HOLD_EDGE_JUMP ||
+            row->bottom_reason2 == FIELDREG_BOTTOM_HOLD_EDGE_JUMP;
     }
 
     printf("trajectory fixture: rows=%zu raster-known=%" PRIu64
@@ -362,7 +393,7 @@ int main(int argc, char **argv)
         "bottom-v8-after-large-jump",
         "bottom-v8-padding-plus3",
     };
-    bool live_pass = stale_wrong == 0;
+    bool legacy_live_pass = stale_wrong == 0;
     for (size_t required = 0;
          required < sizeof(required_live_classes) /
                         sizeof(required_live_classes[0]);
@@ -371,47 +402,84 @@ int main(int argc, char **argv)
         for (size_t i = 0; i < scenario_count; ++i) {
             if (strcmp(scenarios[i].name, required_live_classes[required]) == 0) {
                 found = true;
-                live_pass = live_pass &&
-                            scenarios[i].oracle_matches == scenarios[i].rows;
+                legacy_live_pass = legacy_live_pass &&
+                                   scenarios[i].oracle_matches == scenarios[i].rows;
                 break;
             }
         }
-        live_pass = live_pass && found;
+        legacy_live_pass = legacy_live_pass && found;
     }
     for (size_t i = 0; i < scenario_count; ++i) {
         const scenario_summary *summary = &scenarios[i];
         if (strcmp(summary->name, "relative-only-return-temporal-gauge") == 0 ||
             strcmp(summary->name, "relative-only-onset-temporal-gauge") == 0) {
-            live_pass = live_pass && summary->relative_only == summary->rows &&
-                        summary->relative_gauge_unknown == 0;
+            legacy_live_pass = legacy_live_pass &&
+                               summary->relative_only == summary->rows &&
+                               summary->relative_gauge_unknown == 0;
         } else if (strcmp(summary->name,
                           "relative-only-sustained-plus1-guard") == 0) {
             /* The minimum confirms the already committed phase. It is a
              * guard, not a new relative-only presentation. */
-            live_pass = live_pass && summary->relative_only == 0;
+            legacy_live_pass = legacy_live_pass && summary->relative_only == 0;
         } else if (strcmp(summary->name, "relative-only-gauge-unknown") == 0) {
-            live_pass = live_pass && summary->relative_only == summary->rows &&
-                        summary->relative_gauge_unknown == summary->rows;
+            legacy_live_pass = legacy_live_pass &&
+                               summary->relative_only == summary->rows &&
+                               summary->relative_gauge_unknown == summary->rows;
         } else if (strcmp(summary->name,
                           "relative-only-following-abstain") == 0) {
-            live_pass = live_pass && summary->relative_only == 0;
+            legacy_live_pass = legacy_live_pass && summary->relative_only == 0;
         } else if (strncmp(summary->name, "relative-guard-", 15) == 0) {
-            live_pass = live_pass && summary->relative_only == 0;
+            legacy_live_pass = legacy_live_pass && summary->relative_only == 0;
         } else if (strcmp(summary->name, "bottom-censored-field1-plus5") == 0) {
-            live_pass = live_pass &&
-                        summary->bottom_f1_censored == summary->rows;
+            legacy_live_pass = legacy_live_pass &&
+                               summary->bottom_f1_censored == summary->rows;
         } else if (strcmp(summary->name,
                           "bottom-censored-static-card-guard") == 0) {
-            live_pass = live_pass && summary->relative_only == 0;
+            legacy_live_pass = legacy_live_pass && summary->relative_only == 0;
         }
+    }
+    static const char *bottom_classes[] = {
+        "bottom-v8-field1-jitter", "bottom-v8-plateau-plus1",
+        "bottom-v8-relative-residual", "bottom-v8-plateau-plus2",
+        "bottom-v8-field2-step",
+        "bottom-v8-dark-hold", "bottom-v8-fade-hold",
+        "bottom-v8-fade-reacquire", "bottom-v8-grey-mute",
+        "bottom-v8-program-after-grey", "bottom-v8-large-jump-hold",
+        "bottom-v8-after-large-jump", "bottom-v8-padding-plus3",
+    };
+    bool bottom_pass = true;
+    for (size_t required = 0;
+         required < sizeof(bottom_classes) / sizeof(bottom_classes[0]);
+         ++required) {
+        bool found = false;
+        for (size_t i = 0; i < scenario_count; ++i) {
+            if (strcmp(scenarios[i].name, bottom_classes[required]) == 0) {
+                found = true;
+                bottom_pass = bottom_pass &&
+                              scenarios[i].oracle_matches == scenarios[i].rows;
+                if (strcmp(scenarios[i].name, "bottom-v8-dark-hold") == 0 ||
+                    strcmp(scenarios[i].name, "bottom-v8-grey-mute") == 0)
+                    bottom_pass = bottom_pass &&
+                                  scenarios[i].bottom_flat_hold > 0;
+                if (strcmp(scenarios[i].name,
+                           "bottom-v8-large-jump-hold") == 0)
+                    bottom_pass = bottom_pass &&
+                                  scenarios[i].bottom_jump_hold ==
+                                      scenarios[i].rows;
+                break;
+            }
+        }
+        bottom_pass = bottom_pass && found;
     }
     /* Provisional inversion is intentionally an archival-side trajectory
      * question. The zero-latency live engine follows its coherent raster and
      * reports the disagreement; this test does not pretend otherwise. */
     printf("archival-only oracle disagreements: %" PRIu64 "\n", oracle_wrong);
-    printf("LIVE-AUTHORITY-GOLDEN: %s\n", live_pass ? "PASS" : "FAIL");
+    printf("V7-AUTHORITY-COMPATIBILITY: %s\n",
+           legacy_live_pass ? "PASS" : "FAIL (see retained old truths)");
+    printf("BOTTOM-PLACEMENT-GOLDEN: %s\n", bottom_pass ? "PASS" : "FAIL");
     free(unit);
     fclose(raw);
     fclose(truth);
-    return live_pass ? 0 : 1;
+    return bottom_pass ? 0 : 1;
 }
