@@ -78,7 +78,7 @@ def main() -> None:
                  f"   f2 edge {fld('bottom_raw_edge_f2')} target {fld('bottom_target_f2')} {'placed' if g(r,'bottom_placement_f2','0') not in ('0','') else 'HOLD:'+g(r,'bottom_hold_reason_f2','?')}"
                  f"   thr {g(r,'bottom_black_threshold_f1','.')}/{g(r,'bottom_black_threshold_f2','.')}")
             d.text((6, 40), b, font=font, fill=(255, 200, 120))
-        d.text((W - 262 - 120, B - 12), f"t={int(f)*1001/30000:8.3f}s", font=small, fill=(180, 180, 180))
+        d.text((W - 262 - 100, 4), f"t={int(f)*1001/30000:8.3f}s", font=small, fill=(180, 180, 180))   # top right of the text area, clear of every line
         # sparkline
         d.line([(sx0, py(0)), (sx0 + sw, py(0))], fill=(0, 120, 0), width=1)
         for lv in (-2, 2): d.line([(sx0, py(lv)), (sx0 + sw, py(lv))], fill=(40, 40, 40), width=1)
