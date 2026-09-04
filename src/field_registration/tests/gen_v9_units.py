@@ -19,7 +19,8 @@ def odd_parity(value):
 
 
 def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
-              f2_envelopes=(), f2_bleed_envelopes=(), dark=False,
+              f2_envelopes=(), f2_bleed_envelopes=(),
+              f2_short_envelopes=(), dark=False,
               letterbox=0, invalid=False,
               extra_valid=(), base_bottoms=(256, 518), bright_rows=(),
               top_overrides=(None, None), bottom_overrides=(None, None),
@@ -123,6 +124,21 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
             last = 40 + ((bin_ + 1) * 640) // 24
             y = 39 + (bin_ - 15) * 6
             ys[first:last] = [y] * (last - first)
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # The sole 45:00 short-bar variant retains the pulse and drop but has only
+    # bins 4-5 of the nominal 4-7 bar above threshold.
+    for row in f2_short_envelopes:
+        ys = [8] * PIXELS
+        for bin_ in (1, 4, 5):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [100] * (last - first)
+        for bin_ in range(15, 24):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [26] * (last - first)
         start = row * BYTES_PER_LINE
         raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
 
@@ -364,6 +380,12 @@ def main():
     add("field2-xds-right-bleed", (0, 2), begin=True,
         top_overrides=(None, 284), bottom_overrides=(None, 522),
         f2_bleed_envelopes=(282,),
+        extra_valid=((283, 0x14, 0x2c, False, 7),),
+        f2_reason="Field2EnvelopePlacement", f2_lock="Locked",
+        f2_zero="Envelope", f2_lock_top=282)
+    add("field2-xds-short-bar", (0, 2),
+        top_overrides=(None, 284), bottom_overrides=(None, 522),
+        f2_short_envelopes=(282,),
         extra_valid=((283, 0x14, 0x2c, False, 7),),
         f2_reason="Field2EnvelopePlacement", f2_lock="Locked",
         f2_zero="Envelope", f2_lock_top=282)

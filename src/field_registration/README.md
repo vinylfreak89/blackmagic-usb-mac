@@ -14,8 +14,9 @@ Non-null data re-encoded on the insert is never a displacement gauge: the
 sidecar retains its bytes and names whether live geometry corroborated or
 contradicted it. Field 2 additionally uses the frozen smeared-XDS discriminator
 documented in `CLAUDE.md` when parity cannot decode that field. Its invariant
-is the measured pulse/bar/drop structure in the left 40% plus a row mean below
-95; the right half is unconstrained because picture can bleed into it.
+is the measured pulse, at least two consecutive bright bins in the four-bin
+bar corridor, and the following two-bin drop in the left 40%, plus a row mean
+below 95. The right half is unconstrained because picture can bleed into it.
 
 A parity-valid row exactly one line below an insert carrying non-null data and
 agreeing aligned geometry is classified as station line-22/285 data. The sole
