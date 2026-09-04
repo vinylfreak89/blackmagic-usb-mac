@@ -33,12 +33,15 @@ whose fields are misregistered by a line the weave combs, and the per-pixel deci
 structure of the deinterlacer's own (bwdif and estdif produced false field inversions on fixture
 A). Their output mixes the signal's error with the deinterlacer's inventions, which is why the
 owner could not tell the two apart in early reviews and settled on NNEDI3 for every watch copy.
-Yadif kept one role: because it combs exactly where the two fields disagree, it is a stress
-indicator of *relative* inter-field misregistration, a presentation check and never registration
-truth. "Not good enough for yadif" below means the fields are still relatively misregistered often
-enough that a weaving deinterlacer combs, not that yadif is the target. Earlier versions of the
-record said "any deinterlacer combs", which put a class of deinterlacer artifacts on the signal's
-account; that conflation was half the confusion and is corrected throughout.
+So the two have different jobs. NNEDI3 is the diagnostic lens while the engine is being built:
+it cannot comb, so whatever moves in an NNEDI3 render is in the signal. A weaver is the intended
+end presentation once registration works: on static picture it outputs all 480 recorded lines
+with nothing interpolated, where NNEDI3 always predicts half of them, and its combing was the
+weaver doing the right thing to wrong input. "No combing under yadif" is therefore the
+presentation-level acceptance test for registration, and "not good enough for yadif" below was
+the right bar; yadif is never registration *truth*. Earlier versions of the record said "any
+deinterlacer combs", which put a class of deinterlacer artifacts on the signal's account; that
+conflation was half the confusion and is corrected throughout.
 
 ## The story, item by item
 

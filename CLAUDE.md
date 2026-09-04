@@ -1186,12 +1186,16 @@ delivery edge; wrong one at acquisition.
   exactly the physical jump. A motion-adaptive weaver (yadif, bwdif, estdif) interleaves the two
   fields where it judges the picture static, so a one-line inter-field misregistration combs, and
   its per-pixel decisions add structure of its own (bwdif and estdif produced false field
-  inversions on fixture A). Weaver output mixes the signal's error with the deinterlacer's
-  inventions and misled early reviews; **NNEDI3 is the review presentation** (weights: see
-  `experiments/README.md`). Yadif's one role is as a stress indicator of *relative* inter-field
-  misregistration ("not good enough for yadif" = the fields still disagree often enough that a
-  weaver combs); it is a presentation check only, never registration truth, and never how a
-  render is judged.
+  inversions on fixture A, almost certainly the weaver reacting to misregistered input; re-test
+  once v9 exists). Weaver output on misregistered fields mixes the signal's error with the
+  deinterlacer's inventions and misled early reviews, so **NNEDI3 is the diagnostic lens while the
+  engine is being built** (weights: see `experiments/README.md`): it cannot comb, so whatever
+  moves in an NNEDI3 render is in the signal. **A weaver (yadif, bwdif) is the intended end
+  presentation once registration works** (owner, 2026-09-04): on static picture it outputs all
+  480 recorded lines with nothing interpolated, where NNEDI3 always predicts half of them. "No
+  combing under yadif" is therefore the presentation-level acceptance test for registration, and
+  "not good enough for yadif" was the right bar; yadif is never registration truth, and the OBS
+  plugin's Yadif 2x default is the correct end state.
   **✅ v7 relative-only authority landed (main `abfa648`, 2026-09-04, three §14 rounds).** Codex's
   static-region comb estimator releases a held phase at unit rate when the raster returns; it is
   current-unit authority only (a golden proves a relative presentation never latches into later
@@ -1381,9 +1385,8 @@ delivery edge; wrong one at acquisition.
   accepted: OBS shows 720×480 square-pixel (stretched) until the scene item's transform is set to
   640×480 — 640×480 (not 720×540) because it leaves the 480 scan lines untouched and VHS
   horizontal resolution (~240 TVL) is oversampled at 720 anyway; the source defaults to Yadif 2x
-  TFF; OBS owns deinterlacing. ⚠️ Yadif is a weaving deinterlacer that combs and invents where
-  the fields disagree (deinterlacer rule, §7); whether the plugin should default to it, to OBS's
-  other modes, or to none is an open product decision for the owner.
+  TFF; OBS owns deinterlacing (Yadif is the intended end presentation once registration works;
+  deinterlacer rule, §7).
   **Recording-aligned sidecar (2026-09-04):** the frameserver gained runtime decision-log
   attach/detach (`fs_log_start`/`fs_log_stop`: exclusive open, checked writes with
   `log_write_errors`/`log_close_errors`, `fs_log_stop` reports a file with any failed row as
