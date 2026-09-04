@@ -5,10 +5,13 @@ LDLIBS ?= -lm
 
 .PHONY: all test test-asan test-tsan clean
 
-all: libsignalstate.a
+all: libsignalstate.a libsignalstate.dylib
 
 libsignalstate.a: signal_state.o
 	ar rcs $@ $^
+
+libsignalstate.dylib: signal_state.c signal_state.h ../unit_parser/unit_parser.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -dynamiclib signal_state.c -o $@ $(LDLIBS)
 
 signal_state.o: signal_state.c signal_state.h ../unit_parser/unit_parser.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c signal_state.c -o $@
@@ -32,5 +35,5 @@ test-tsan:
 	./tests/signal_state_tsan
 
 clean:
-	rm -f signal_state.o libsignalstate.a tests/signal_state_test \
+	rm -f signal_state.o libsignalstate.a libsignalstate.dylib tests/signal_state_test \
 		tests/signal_state_asan tests/signal_state_tsan

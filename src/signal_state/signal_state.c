@@ -51,6 +51,21 @@ size_t signal_state_alignment(void)
     return alignof(signal_state);
 }
 
+size_t signal_state_config_size(void)
+{
+    return sizeof(signal_state_config);
+}
+
+size_t signal_result_size(void)
+{
+    return sizeof(signal_result);
+}
+
+size_t signal_unit_video_observation_size(void)
+{
+    return sizeof(unit_video_observation);
+}
+
 signal_state_config signal_state_default_config(void)
 {
     signal_state_config config = {
