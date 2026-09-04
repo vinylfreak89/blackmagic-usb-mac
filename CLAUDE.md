@@ -1244,12 +1244,16 @@ delivery edge; wrong one at acquisition.
   the standard first VISIBLE line (SMPTE RP-202 / ATSC A/54A: 480i encodes lines 23–262 and
   286–525) is row 19 for field 1 and row 282 for field 2 — exactly where the census finds a
   correctly placed picture (field 2 top at 282 in 1,573/1,800 first-minute units and 1,800/1,800
-  in the EP slice; field 1 at 19 whenever the caption is on the insert). **The crop starts at
-  rows 17/280 = lines 21/284: two lines too high in both fields**, which is why every render so
-  far shows the caption insert at its top (VBI pulses visible even over the grey mute) and why a
-  displaced caption "crosses into the picture". Corrected starts 19/282 are proposed (owner
-  decision pending; blast radius: frame_publisher, capture_render, the registration constants,
-  goldens, census, docs). Consequences for the engine design: the recorded caption row minus 17
+  in the EP slice; field 1 at 19 whenever the caption is on the insert). **Two coordinates, kept
+  distinct (settled 2026-09-04 after a false alarm):** the CROP ORIGIN is rows 17/280 = lines
+  21/284 — the VBI-preserving analog-capture window (line 21 kept in the picture so captions
+  survive and can be decoded downstream; the 240-line window is lines 21–260/284–523, the two
+  lines dropped at the bottom being the deck-blanked head-switch band) — and the PICTURE ORIGIN
+  is rows 19/282 = lines 23/286, the standard first visible lines (SMPTE RP-202's 480-line
+  lattice is 23–262/286–525), which is where the engine measures the envelope and what "d = 0"
+  means. A caption insert visible on the first output row is therefore expected, not a defect;
+  a commit that moved the crop origin to 19/282 was reverted the same day. Consequences for the
+  engine design: the recorded caption row minus 17
   is a direct, content-independent readout of field 1's displacement whenever a caption exists;
   the picture envelope (top/bottom/height, VBI-type lines excluded by signature) is the gauge
   otherwise and for field 2 (no caption on this tape); "field 2 stays put" is physical — it sits at
