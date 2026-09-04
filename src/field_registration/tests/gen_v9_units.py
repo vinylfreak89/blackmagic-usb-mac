@@ -28,7 +28,8 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               field_luma=(None, None), dark_fields=(False, False),
               gap_rows=(), broad_bar_picture_rows=(),
               caption_false_picture_rows=(), content_phases=(0, 0),
-              content_shifts=(None, None), body_texture=(False, False)):
+              content_shifts=(None, None), body_texture=(False, False),
+              body_split_shifts=(None, None)):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -46,7 +47,7 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
             start = row * BYTES_PER_LINE
             raster[start + 1:start + BYTES_PER_LINE:2] = bytes([y]) * PIXELS
 
-    def fill_body_texture(row, field, basis, phase):
+    def fill_body_texture(row, field, basis, phase, split_basis=None):
         """Stable 2-D detail whose row mean is deliberately uninformative.
 
         A vertical move preserves every luma sample after translating the
@@ -54,8 +55,13 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
         a real 2-D matcher can.  This models the flat minima measured at
         35:00/37:01 rather than manufacturing evidence in the row average.
         """
-        seed = basis * (53 if field == 0 else 59) + phase
-        ys = bytes(48 + ((x * 37 + seed) & 127) for x in range(PIXELS))
+        scale = 53 if field == 0 else 59
+        seed = basis * scale + phase
+        split_seed = (split_basis * scale + phase
+                      if split_basis is not None else seed)
+        ys = bytes(48 + ((x * 37 + (seed if x < PIXELS // 2
+                                    else split_seed)) & 127)
+                   for x in range(PIXELS))
         start = row * BYTES_PER_LINE
         raster[start + 1:start + BYTES_PER_LINE:2] = ys
 
@@ -97,7 +103,9 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
             shift = d1 if content_shifts[0] is None else content_shifts[0]
             basis = row - shift
             if body_texture[0]:
-                fill_body_texture(row, 0, basis, phase1)
+                split = body_split_shifts[0]
+                fill_body_texture(row, 0, basis, phase1,
+                                  row - split[1] if split is not None else None)
             else:
                 fill(row, y if y is not None else 62 + ((basis * 13 + phase1) % 91))
     if not dark and not dark_fields[1]:
@@ -111,7 +119,9 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
             shift = d2 if content_shifts[1] is None else content_shifts[1]
             basis = row - shift
             if body_texture[1]:
-                fill_body_texture(row, 1, basis, phase2)
+                split = body_split_shifts[1]
+                fill_body_texture(row, 1, basis, phase2,
+                                  row - split[1] if split is not None else None)
             else:
                 fill(row, y if y is not None else 58 + ((basis * 11 + phase2) % 97))
 
@@ -238,6 +248,7 @@ def main():
             f2_zero="-", f1_lock_top=-999, f2_lock_top=-999, comb=-1,
             f1_raw_top=-999, f2_raw_top=-999,
             f1_body_shift=-999, f2_body_shift=-999,
+            f1_body_valid=-1, f2_body_valid=-1,
             **kwargs):
         counter = len(units)
         units.append(make_unit(counter, **kwargs))
@@ -245,7 +256,8 @@ def main():
                      expected[0], expected[1],
                      f1_reason, f2_reason, f1_lock, f2_lock, f1_zero, f2_zero,
                      f1_lock_top, f2_lock_top, comb, f1_raw_top, f2_raw_top))
-        rows[-1] += (f1_body_shift, f2_body_shift)
+        rows[-1] += (f1_body_shift, f2_body_shift,
+                     f1_body_valid, f2_body_valid)
 
     # Alignment and immediate parity authority.
     add("aligned-null-acquire-1", (0, 0), begin=True)
@@ -714,6 +726,22 @@ def main():
         body_texture=(True, False), f1_reason="GeometryLockDecides",
         f1_body_shift=0)
 
+    # Exact failure class measured at 05:00 units 440/441 and 01:26 units
+    # 39/40: half of the body supports the edge's one-line move while half
+    # supports no move.  A shallow/tied minimum is not testimony against the
+    # unambiguous top edge, so the witness must abstain and the top decides.
+    add("body-margin-anchor-plus1", (1, 0), begin=True,
+        picture=(1, 0), top_overrides=(20, None),
+        bottom_overrides=(250, None), content_phases=(0, 0),
+        content_shifts=(1, 0), body_texture=(True, False),
+        body_split_shifts=((1, 1), None))
+    add("body-margin-tie-top-zero", (0, 0),
+        picture=(0, 0), top_overrides=(19, None),
+        bottom_overrides=(249, None), content_phases=(0, 0),
+        content_shifts=(0, 0), body_texture=(True, False),
+        body_split_shifts=((0, 1), None),
+        f1_reason="GeometryLockDecides", f1_body_valid=0)
+
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
     with open(args.output, "wb") as out:
@@ -727,7 +755,7 @@ def main():
                     "f1_lock", "f2_lock", "f1_zero", "f2_zero",
                     "f1_lock_top", "f2_lock_top", "comb_safe",
                     "f1_raw_top", "f2_raw_top", "f1_body_shift",
-                    "f2_body_shift"))
+                    "f2_body_shift", "f1_body_valid", "f2_body_valid"))
         w.writerows(rows)
     print(f"wrote {len(units)} v9 units")
 
