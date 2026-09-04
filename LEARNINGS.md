@@ -278,8 +278,15 @@ presentation stage's own contribution before attributing an artifact to the stag
 tool that makes decisions is a source of artifacts, not a transparent lens. The corollary cuts
 the other way too: once the fields are registered the weaver is the better presentation (all 480
 recorded lines on static picture, nothing interpolated), so "no combing under yadif" is the
-acceptance bar for registration; NNEDI3 is the diagnostic lens, not the product. Second
-casualty found the same evening: the "OSD stays put while the picture moves" witness in
-CLAUDE.md §7, which had located the fault inside the deck's program path and ruled the Shuttle
-out, was an `estdif` render; frame by frame the OSD moves with the picture. A whole causal
-chain rested on one weaver artifact.
+acceptance bar for registration; NNEDI3 is the diagnostic lens, not the product.
+
+## Do not overturn a recorded measurement on a chat remark (2026-09-04)
+
+The owner said "the OSD did NOT stay put" and within minutes I had marked the §7 OSD witness
+falsified, rewritten the causal chain, and put the Shuttle back in play as the fault's origin.
+He then re-checked the raw full-raster render himself: the OSD is rigid; the picture behind it
+moves; what he had seen moving was the OSD in the CORRECTED render, where it must move by the
+applied shift. The recorded finding was right and my reversal was wrong. Lesson: a finding in
+this file has evidence behind it; a remark in chat is a prompt to re-derive from the raw data,
+not a result. Re-measure first, then edit the record, and say which render the observation
+came from (raw raster / corrected / which deinterlacer) every time.

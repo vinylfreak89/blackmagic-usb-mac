@@ -742,26 +742,21 @@ Consequences, all large:
   on the deck's own HDMI/TV output. So a single event can combine whole-field registration
   displacement **and** a within-field H-sync/chroma fault. Don't model it as one phenomenon.
 
-#### Where the fault lives — the OSD is the witness (FALSIFIED 2026-09-04, see below)
+#### Where the fault lives — the OSD is the witness (re-confirmed on the raw raster, 2026-09-04)
 
-> **⚠️ FALSIFIED by the owner's frame-by-frame review (2026-09-04 evening).** The "OSD stays
-> put" observation below was made through an `estdif` render — a weaving deinterlacer that
-> invents structure (deinterlacer rule, above) — and it was the deinterlacer's artifact. Stepped
-> frame by frame, **the OSD moves WITH the program picture**: different slivers of picture peek
-> out above and below it as the field shifts. So the whole deck output (program + OSD) shifts
-> together relative to the raster the Shuttle regenerates, and the argument that ruled the
-> Shuttle out as primary is void. Two mechanisms now fit equally: (a) the deck's output vertical
-> sync moves 1–2 lines relative to its own content (its TBC read-out / sync generator), or (b)
-> the Shuttle's vertical-sync detector triggers 1–2 lines early or late on a disturbed vertical
-> interval. Both move content and OSD together and leave the Shuttle's own lines 20/21 in place
-> (measured: those lines are Shuttle-generated relative to its detected sync, §6). Nothing in
-> this capture separates them. **Deciding test:** the §11 simultaneous HDMI + analog capture
-> (a second capture device on the deck's HDMI, aligned by audio): the same jump on HDMI at the
-> same instant ⇒ the deck; HDMI stable ⇒ the Shuttle's sync detection. The second-deck A/B also
-> separates tape from deck but not deck from Shuttle. Registration is unaffected either way —
-> the tape's line 21 against the regenerated line 21 measures the displacement whoever caused
-> it — but every sentence below that names the deck's program path as the fault's home is
-> superseded.
+> **Evidence status (2026-09-04 evening).** For about an hour this section was marked falsified
+> on a chat remark that "the OSD does not stay put"; the owner then re-checked the RAW
+> full-raster render frame by frame (`render_full_raster.py --raw`, no crop shift) and confirmed
+> the original observation: **the OSD itself does not move; the picture content behind it
+> does.** The earlier remark described the CORRECTED render, where the OSD must move by exactly
+> the applied correction because the crop window shifts to hold the picture still — expected,
+> and a usable acceptance check (OSD displacement in the corrected output == applied `d`). The
+> witness therefore stands, with better provenance than before (raw raster, not an `estdif`
+> render). Combined with the measurement that lines 20/21 are the Shuttle's, inserted relative
+> to its detected sync and rigid through the events (§6), the picture is: the Shuttle locks
+> correctly to a stable deck output raster, the deck composites its OSD into that raster, and
+> the program layer is displaced upstream of the OSD compositor. The Shuttle stays ruled out as
+> primary; tape versus deck remains open (second-deck A/B below).
 
 The deck's **OSD stays coherent at nominal raster coordinates while the program picture is
 displaced**, and correcting the whole field repairs the program picture but **tears the OSD**.
