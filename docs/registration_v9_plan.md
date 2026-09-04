@@ -451,3 +451,18 @@ Rules sent: the zero is a segment constant, re-anchored only on ≥ 3 consecutiv
 gauge readings; bounded to ±3 lines of the standard origin; calibration and drift only with a
 parity-placed field 1 and a field 2 actually placed on its zero; the target zero derived from
 the observed geometry, never from the current zero.
+
+**Whole-tape raw audits of `a683926` (2026-09-05 ~08:10 JST):** comb misregistered
+**3,691 → 2,485** (registered 78,908 → 80,422); follow field 1 engine-motion **837 → 1,238**,
+missed 2,104 → 2,013; field 2 engine-motion 32 → 146 (the calibration moving field 2). The
+regression is the margin rule's fallback: 550 of the 570 new engine-motion units have the body
+witness abstaining as tied and the crop then placed on the top alone (GeometryLockDecides 418)
+while the 2-D shift without margin reads 0 in 393 of them — a tied witness must not hand the
+crop to the top alone. Remaining misregistered classes: (4,2) under field-1 zero 22 — 717
+(round 6, item B); first recording (0,0) held by `TopBodyDisagree` with the top at line 24 in
+every unit, body still, comb disagreeing by one in 178 of 464 — runs that begin right after a
+unit whose witness was invalid (a cut), i.e. a wrong first placement or a missed move that the
+still body then preserves (114 runs, up to 15 units); ZeroConflict 270 (item C); (3,0) at the
+standard zero 82 (warm-up). Rule for round 7: the top and the comb check agreeing against a
+still or absent body is picture evidence and moves the crop; the top alone never does after
+the segment's first placement.
