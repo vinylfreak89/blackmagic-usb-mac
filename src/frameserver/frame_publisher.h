@@ -27,8 +27,13 @@ extern "C" {
 #define FP_UNIT_HEADER    48u
 #define FP_LINE_BYTES     1440u
 #define FP_SOURCE_LINES   525u
-#define FP_FIELD1_START   17
-#define FP_FIELD2_START   280
+// Crop start = the standard's first VISIBLE line of each field: SMPTE RP-202 / ATSC A/54A encode
+// lines 23-262 (field 1) and 286-525 (field 2) for 480i. In the Shuttle's unit the deck's line-21
+// (caption) insert is row 17 and the field-2 equivalent (line 284) is row 280, so line 23 is row 19
+// and line 286 is row 282. Starting at 17/280 (lines 21/284) put the caption line and the blank
+// line 22 at the top of every frame (measured 2026-09-04, CLAUDE.md §6).
+#define FP_FIELD1_START   19
+#define FP_FIELD2_START   282
 #define FP_FIELD_LINES    240
 #define FP_FRAME_WIDTH    720u
 #define FP_FRAME_HEIGHT   480u

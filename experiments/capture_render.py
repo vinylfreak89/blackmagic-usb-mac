@@ -46,8 +46,10 @@ NNEDI_WEIGHTS_BYTES = 13_574_928
 # bmusb's e801 metadata: height=480, extra_lines_top=17,
 # second_field_start=280, extra_lines_bottom=28.
 FIELD_LINES = 240
-FIELD1_START = 17
-FIELD2_START = 280
+# First VISIBLE line of each field per SMPTE RP-202 / ATSC A/54A (480i = lines 23-262 and 286-525):
+# unit row 17 is the deck's line-21 caption insert, so line 23 is row 19; field 2's line 286 is row 282.
+FIELD1_START = 19
+FIELD2_START = 282
 REGISTRATION_MIN = -6
 REGISTRATION_MAX = 6
 REGISTRATION_X_STEP = 4
