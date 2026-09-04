@@ -22,7 +22,8 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               f2_envelopes=(), dark=False, letterbox=0, invalid=False,
               extra_valid=(), base_bottoms=(256, 518), bright_rows=(),
               top_overrides=(None, None), bottom_overrides=(None, None),
-              weak_caption_rows=(), smeared_vbi_rows=()):
+              weak_caption_rows=(), smeared_vbi_rows=(),
+              field_luma=(None, None), dark_fields=(False, False)):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -67,19 +68,22 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
         waveform(280)
 
     d1, d2 = picture
-    if not dark:
+    if not dark and not dark_fields[0]:
         top1 = (19 + d1 + letterbox if top_overrides[0] is None
                 else top_overrides[0])
-        top2 = (282 + d2 + letterbox if top_overrides[1] is None
-                else top_overrides[1])
         bottom1 = (min(base_bottoms[0] + d1, 260)
                    if bottom_overrides[0] is None else bottom_overrides[0])
+        for row in range(top1, bottom1 + 1):
+            y = field_luma[0]
+            fill(row, y if y is not None else 62 + ((row * 13 + counter * 7) % 91))
+    if not dark and not dark_fields[1]:
+        top2 = (282 + d2 + letterbox if top_overrides[1] is None
+                else top_overrides[1])
         bottom2 = (min(base_bottoms[1] + d2, 522)
                    if bottom_overrides[1] is None else bottom_overrides[1])
-        for row in range(top1, bottom1 + 1):
-            fill(row, 62 + ((row * 13 + counter * 7) % 91))
         for row in range(top2, bottom2 + 1):
-            fill(row, 58 + ((row * 11 + counter * 5) % 97))
+            y = field_luma[1]
+            fill(row, y if y is not None else 58 + ((row * 11 + counter * 5) % 97))
 
     for field, spec in enumerate(captions):
         if spec is not None:
@@ -329,6 +333,42 @@ def main():
     add("bottom-band-return-hold-lock", (0, 0),
         bottom_overrides=(256, None), f1_reason="GeometryLockDecides",
         f1_lock="Locked")
+
+    # Root cause C: picture content never defines zero. Each segment starts
+    # locked to the standard picture origins (NTSC 23/286), so an immediately
+    # measurable field is placed on its first unit without AcquireOne.
+    add("standard-zero-origin-first-unit", (0, 0), begin=True,
+        f1_reason="GeometryLockDecides", f2_reason="GeometryLockDecides",
+        f1_lock="Locked", f2_lock="Locked", f1_zero="Standard",
+        f2_zero="Standard", f1_lock_top=19, f2_lock_top=282)
+    add("standard-zero-field2-plus1-first-unit", (0, 1), begin=True,
+        picture=(0, 1), f2_reason="GeometryLockDecides",
+        f2_lock="Locked", f2_zero="Standard", f2_lock_top=282)
+
+    # The 2:48.23 class: the raster begins one line low while the bottom
+    # flickers inside the deck's censored band. Top placement remains +1.
+    add("site-168-band-plus1", (1, 0), begin=True, picture=(1, 0),
+        bottom_overrides=(256, None), f1_reason="GeometryLockDecides",
+        f1_lock="Locked", f1_zero="Standard", f1_lock_top=19)
+    add("site-168-band-flicker", (1, 0), picture=(1, 0),
+        bottom_overrides=(258, None), f1_reason="GeometryLockDecides",
+        f1_lock="Locked", f1_zero="Standard", f1_lock_top=19)
+
+    # Root cause D: a dark program at Y=10 remains distinct from this field's
+    # Y=2 blanking floor. The absolute >12 test misses it; blank+4 finds it.
+    add("site-1273-dark-plus1", (1, 0), begin=True, picture=(1, 0),
+        field_luma=(10, None), f1_reason="GeometryLockDecides",
+        f1_lock="Locked", f1_zero="Standard", f1_lock_top=19)
+
+    # The 24:17.72 class is a real one-field dropout, not a dark picture.
+    # With no geometry at all that field honestly holds the segment default.
+    add("site-1457-field2-blank", (0, 0), begin=True,
+        dark_fields=(False, True), f2_reason="GeometryUnmeasurable",
+        f2_lock="Locked", f2_zero="Standard", f2_lock_top=282)
+    add("mute-black-remains-unmeasurable", (0, 0), begin=True, dark=True,
+        f1_reason="GeometryUnmeasurable", f2_reason="GeometryUnmeasurable",
+        f1_lock="Locked", f2_lock="Locked", f1_zero="Standard",
+        f2_zero="Standard", f1_lock_top=19, f2_lock_top=282)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
