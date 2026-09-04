@@ -913,6 +913,8 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
                                        picture_d != measured;
         const bool picture_internally_conflicted = body_position &&
             !picture_testimony && picture_d != measured;
+        const bool top_only_move = s->zero_source == FIELDREG_ZERO_PARITY &&
+            uncorroborated_top_move(s, m) && d->geometry_d == measured;
         if (measured == 1 && insert_nonnull && d->geometry_d == 0) {
             d->measured_d = 0;
             d->applied_d = 0;
@@ -939,6 +941,9 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
             record_invariant(s, m, picture_d, d);
         } else if (picture_internally_conflicted) {
             hold(s, d, FIELDREG_MODE_CAPTION_BODY_DISAGREE);
+        } else if (top_only_move) {
+            hold(s, d, FIELDREG_MODE_TOP_UNCORROBORATED);
+            d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
         } else if (!in_range(field, measured)) {
             if (!apply_body_geometry(s, m, field,
                                      FIELDREG_MODE_OUT_OF_RANGE_HOLD, d))

@@ -800,7 +800,7 @@ def main():
         body_texture=(True, False))
     add("parity-top-uncorroborated-hold", (2, 0), picture=(3, 0),
         captions=((3, 0x15, 0x2b), None), content_phases=(0, 0),
-        content_shifts=(3, 0), body_texture=(True, False),
+        content_shifts=(2, 0), body_texture=(True, False),
         body_split_shifts=((2, 3), None),
         f1_reason="TopUncorroborated", f1_body_valid=0)
 
