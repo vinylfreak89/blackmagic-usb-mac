@@ -264,3 +264,16 @@ each patched with the next. The direct signal (the tape's line 21 sitting on, or
 line 21) was on the first row of every render, cropped in as picture and looked at daily. Lesson:
 before building an estimator, name the paths, establish which is fixed and which moves, and
 measure the thing itself; a proxy is only admissible once the direct signal is proven absent.
+
+## A deinterlacer that makes its own decisions is a second signal source (2026-09-04)
+
+The record said "any motion-adaptive deinterlacer combs where the picture jumps", lumping
+NNEDI3 with yadif. They are opposites on a misregistered frame: NNEDI3 interpolates each field
+alone and shows exactly the physical jump; yadif/bwdif/estdif weave the two fields where they
+judge the picture static, so a one-line inter-field error combs AND their per-pixel decisions add
+structure that was never in the signal (false field inversions, on fixture A). Judging renders
+through a weaver put the deinterlacer's inventions on the signal's account and threw the owner
+off; he settled on NNEDI3 for review precisely because it invents nothing. Lesson: name the
+presentation stage's own contribution before attributing an artifact to the stage upstream; a
+tool that makes decisions is a source of artifacts, not a transparent lens. Yadif keeps one job:
+a stress indicator of relative inter-field misregistration, never the judge.
