@@ -91,6 +91,8 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_ZERO_CONFLICT,
     FIELDREG_MODE_ZERO_CANDIDATE,
     FIELDREG_MODE_ZERO_OUT_OF_BOUNDS,
+    FIELDREG_MODE_TOP_UNCORROBORATED,
+    FIELDREG_MODE_TOP_COMB_CORROBORATED,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -193,6 +195,7 @@ typedef struct fieldreg_field_state {
     int8_t clip_candidate_d;
     fieldreg_lock_state lock_state;
     bool height_known;
+    bool placement_initialized;
     uint8_t clip_candidate_count;
     uint8_t zero_candidate_count;
     fieldreg_zero_source zero_source;
