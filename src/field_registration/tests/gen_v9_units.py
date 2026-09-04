@@ -20,7 +20,8 @@ def odd_parity(value):
 
 def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               f2_envelopes=(), dark=False, letterbox=0, invalid=False,
-              extra_valid=(), base_bottoms=(256, 518), bright_rows=()):
+              extra_valid=(), base_bottoms=(256, 518), bright_rows=(),
+              top_overrides=(None, None), bottom_overrides=(None, None)):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -66,10 +67,14 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
 
     d1, d2 = picture
     if not dark:
-        top1 = 19 + d1 + letterbox
-        top2 = 282 + d2 + letterbox
-        bottom1 = min(base_bottoms[0] + d1, 260)
-        bottom2 = min(base_bottoms[1] + d2, 522)
+        top1 = (19 + d1 + letterbox if top_overrides[0] is None
+                else top_overrides[0])
+        top2 = (282 + d2 + letterbox if top_overrides[1] is None
+                else top_overrides[1])
+        bottom1 = (min(base_bottoms[0] + d1, 260)
+                   if bottom_overrides[0] is None else bottom_overrides[0])
+        bottom2 = (min(base_bottoms[1] + d2, 522)
+                   if bottom_overrides[1] is None else bottom_overrides[1])
         for row in range(top1, bottom1 + 1):
             fill(row, 62 + ((row * 13 + counter * 7) % 91))
         for row in range(top2, bottom2 + 1):
@@ -205,6 +210,50 @@ def main():
     add("insert-dropout-return", (0, 0),
         f1_reason="GeometryLockDecides", f2_reason="GeometryLockDecides",
         f1_lock="Locked", f2_lock="Locked", comb=1)
+
+    # Re-encoded non-null bytes on the Shuttle's insert are provenance only.
+    # A rigid +1 picture envelope remains a per-unit placement observation.
+    add("reencoded-rigid-acquire-1", (0, 0), begin=True)
+    add("reencoded-rigid-acquire-2", (0, 0))
+    add("reencoded-rigid-plus1", (1, 0), picture=(1, 0),
+        captions=((0, 0x14, 0x2c), None),
+        f1_reason="GeometryLockDecides", f1_lock="Locked", comb=1)
+
+    # Geometry acquired a content-dependent zero one line low. A parity-valid
+    # +2 line re-anchors it to the physical raster. Non-rigid content then
+    # holds that gold zero, while the next rigid +1 envelope is followed.
+    add("parity-reanchor-acquire-1", (0, 0), begin=True,
+        top_overrides=(20, None), bottom_overrides=(256, None))
+    add("parity-reanchor-acquire-2", (0, 0),
+        top_overrides=(20, None), bottom_overrides=(256, None))
+    add("parity-plus2-reanchors", (2, 0),
+        captions=((2, 0x14, 0x2c), None),
+        top_overrides=(21, None), bottom_overrides=(258, None),
+        f1_reason="Line21Placement", f1_lock="Locked")
+    add("gold-zero-nonrigid-hold", (2, 0),
+        top_overrides=(20, None), bottom_overrides=(255, None),
+        f1_reason="LockBroken", f1_lock="Locked")
+    add("gold-zero-rigid-plus1", (1, 0),
+        top_overrides=(20, None), bottom_overrides=(256, None),
+        f1_reason="GeometryLockDecides", f1_lock="Locked", comb=1)
+
+    # With C unknown, a top-only field-2 change ending at the ADC boundary is
+    # not sufficient to change placement, even before a clip candidate exists.
+    add("boundary-top-only-acquire-1", (0, 0), begin=True,
+        top_overrides=(None, 282), bottom_overrides=(None, 521))
+    add("boundary-top-only-acquire-2", (0, 0),
+        top_overrides=(None, 282), bottom_overrides=(None, 521))
+    add("boundary-top-only-hold", (0, 0),
+        top_overrides=(None, 283), bottom_overrides=(None, 522),
+        f2_reason="ClipUnknownHold", f2_lock="Locked")
+
+    # A content-acquired position cannot promise deinterlacing safety on an
+    # unmeasurable unit merely because both state machines remain Locked.
+    add("acquired-zero-acquire-1", (0, 0), begin=True)
+    add("acquired-zero-acquire-2", (0, 0))
+    add("acquired-zero-dark-hold", (0, 0), dark=True,
+        f1_reason="GeometryUnmeasurable", f2_reason="GeometryUnmeasurable",
+        f1_lock="Locked", f2_lock="Locked", comb=0)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 

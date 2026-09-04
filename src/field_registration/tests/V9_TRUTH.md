@@ -28,6 +28,17 @@ fixture cannot see:
 - a missing weak field-2 gauge cannot change placement while a shortened
   bottom has made the clip ceiling uncertain.
 
+Round-two additions pin the corrected gauge hierarchy:
+
+- non-null data re-encoded on the insert is provenance only; rigid geometry
+  still applies a `+1` placement;
+- parity `+2` re-anchors a content-acquired zero immediately, after which a
+  non-rigid envelope holds and a rigid `+1` envelope follows that gold zero;
+- a field-2 top-only change at the ADC boundary holds whenever the clip
+  ceiling is unknown, including before a clip candidate exists; and
+- two `Locked` state machines with content-acquired zeroes do not claim
+  `comb_safe` on an unmeasurable unit.
+
 `confidence` is deliberately binary in v9: `1` means at least one field has
 an accepted displacement observation, and `0` means neither does. It is not a
 probability and does not assign an invented intermediate score to a one-field
