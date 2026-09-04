@@ -243,3 +243,23 @@ named `ShortDeviceUnit`, keeps its captured prefix at its observed byte
 position, and receives diagnostic bars only for the undefined suffix; a
 missing counter period is named `AbsentDeviceUnit`. Those states break
 registration-estimator temporal continuity and remain explicit in the CSV.
+
+## Live frameserver review render
+
+Review copies used to judge the production registration path must come from
+the frameserver itself, not from `capture_render.py`: the signal classifier's
+segment/discontinuity actions are part of the live engine history. The live
+recipe streams both raw outputs through FIFOs into separate bounded video and
+audio encodes, then stream-copies them together; it never materializes the
+roughly 65 GB UYVY endpoint:
+
+```sh
+experiments/render_live.sh capture.tpc /non-synced/review-output
+```
+
+The result is a 720x480, SAR 8:9, 60000/1001 NNEDI bob with AAC, its schema-5
+frameserver sidecar, and a 720x580 overlay copy whose extra band leaves the
+picture unobscured. `render_live_gate.py` requires every exact unit to have
+been published, exactly two encoded frames per exact unit, and decodes a
+checksum-protected machine strip at ten deterministic random units to compare
+the burned ordinal, extended counter, and applied pair with the sidecar.
