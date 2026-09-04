@@ -15,14 +15,14 @@ def amp_gate(Y,rows):
     amp=np.hypot(A@_cos,A@_sin)*2/A.shape[1]
     return [r for r,a in zip(rows,amp) if a>=35]
 class Done(Exception): pass
-buf=bytearray(); st={'n':0}; w=csv.writer(open(OUT,'w',newline='')); w.writerow(['unit','counter','f1_lines','f1_bytes','f2_lines','f2_bytes','insert21','insert284'])
+buf=bytearray(); st={'n':0}
 def dec(Y,rows):
     L=[];B=[]
     for r in amp_gate(Y,rows):
         ok,b1,b2,_=decode(Y[r])
         if ok: L.append(str(r+4)); B.append(f"{b1:02x}{b2:02x}")
     return ' '.join(L), ' '.join(B)
-def emit(u):
+def emit(u,w):
     n=st['n']; st['n']+=1
     Y=np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,LINE)[:,1::2].astype(np.float32)
     ctr=int.from_bytes(u[4:6],'little')
@@ -30,16 +30,39 @@ def emit(u):
     f1=dec(Y,F1); f2=dec(Y,F2)
     w.writerow([n,ctr,f1[0],f1[1],f2[0],f2[1],(f"{i21[1]:02x}{i21[2]:02x}" if i21[0] else 'none'),(f"{i284[1]:02x}{i284[2]:02x}" if i284[0] else 'none')])
     if st['n']>=N: raise Done()
-def on_video(p):
+def valid_header_at(i):
+    return (len(buf) >= i+HDR and buf[i:i+4] == MARK and
+            buf[i+6:i+8] == b'\x01\xe8' and not any(buf[i+8:i+HDR]))
+def find_header(start):
+    i=buf.find(MARK,start)
+    while i>=0:
+        if len(buf) < i+HDR: return None
+        if valid_header_at(i): return i
+        i=buf.find(MARK,i+1)
+    return None
+def on_video(p,w):
     buf.extend(p)
     while True:
-        i=buf.find(MARK)
-        if i<0: return
+        i=find_header(0)
+        if i is None:
+            # Before synchronization retain enough bytes for the full fixed
+            # header to be split across packet boundaries.  Once a valid header
+            # is at zero the branch below retains the whole unit.
+            if not valid_header_at(0) and len(buf)>=HDR: del buf[:-(HDR-1)]
+            return
         if i>0: del buf[:i]
-        j=buf.find(MARK,4)
-        if j<0: return
-        if j==UNIT: emit(bytes(buf[:UNIT]))
+        j=find_header(4)
+        if j is None: return
+        current=int.from_bytes(buf[4:6],'little'); following=int.from_bytes(buf[j+4:j+6],'little')
+        step=(following-current)&0xffff
+        if step == 0 or step >= 0x8000:
+            raise RuntimeError(f"implausible e801 counter step {current}->{following}")
+        if j==UNIT: emit(bytes(buf[:UNIT]),w)
+        elif j>UNIT:
+            raise RuntimeError(f"e801 counter {current} spans {j} bytes (expected at most {UNIT})")
         del buf[:j]
-try: walk_tagged(CAP, on_video=on_video, progress=False)
-except Done: pass
+with open(OUT,'w',newline='') as output:
+    w=csv.writer(output); w.writerow(['unit','counter','f1_lines','f1_bytes','f2_lines','f2_bytes','insert21','insert284'])
+    try: walk_tagged(CAP, on_video=lambda p: on_video(p,w), progress=False)
+    except Done: pass
 print(f"wrote {OUT}: {st['n']} units")
