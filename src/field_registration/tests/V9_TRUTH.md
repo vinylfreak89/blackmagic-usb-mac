@@ -9,7 +9,8 @@ parity. The fixture covers:
 - immediate per-field `+1/+2/+3` placement, plateaus, returns, and clipping;
 - parity authority over dark/unmeasurable picture content;
 - the measured narrow field-2 XDS fallback, right-side bleed and short-bar
-  variant, plus a false-positive guard for left-heavy picture texture;
+  variant, plus false-positive guards for left-heavy picture texture and
+  consecutive picture rows that resemble the coarse weak-caption envelope;
 - rejection of parity-invalid vertical copies and hold on two valid candidates;
 - insert absence;
 - immediate standard-origin geometry placement, rigid per-unit movement, and

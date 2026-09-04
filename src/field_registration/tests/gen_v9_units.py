@@ -26,7 +26,8 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               top_overrides=(None, None), bottom_overrides=(None, None),
               weak_caption_rows=(), nonsignature_bar_rows=(),
               field_luma=(None, None), dark_fields=(False, False),
-              gap_rows=(), broad_bar_picture_rows=()):
+              gap_rows=(), broad_bar_picture_rows=(),
+              caption_false_picture_rows=()):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -178,6 +179,20 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
             first = 40 + (bin_ * 640) // 48
             last = 40 + ((bin_ + 1) * 640) // 48
             ys[first:last] = [80] * (last - first)
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # Actual 37:01 picture morphology: its coarse left-side bins resemble the
+    # old weak-caption heuristic, but their variance is much larger than the
+    # measured damaged-caption run-in. These are consecutive picture rows.
+    picture_bins = (31, 38, 42, 48, 50, 48, 46, 31, 31, 60, 124, 130,
+                    120, 80, 60, 50, 45, 40, 35, 30, 30, 30, 30, 30)
+    for row in caption_false_picture_rows:
+        ys = [30] * PIXELS
+        for bin_, value in enumerate(picture_bins):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [value] * (last - first)
         start = row * BYTES_PER_LINE
         raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
     return unit
@@ -418,6 +433,12 @@ def main():
         f2_envelopes=(282,),
         extra_valid=((283, 0x14, 0x2c, False, 7),),
         broad_bar_picture_rows=tuple(range(284, 290)),
+        f2_reason="Field2EnvelopePlacement", f2_raw_top=284)
+    add("field2-picture-not-caption-damage", (0, 2), begin=True,
+        top_overrides=(None, 284), bottom_overrides=(None, 522),
+        f2_envelopes=(282,),
+        extra_valid=((283, 0x14, 0x2c, False, 7),),
+        caption_false_picture_rows=(284, 285, 286),
         f2_reason="Field2EnvelopePlacement", f2_raw_top=284)
 
     # 37:01 field 1: loss of parity or of the recorded caption itself cannot

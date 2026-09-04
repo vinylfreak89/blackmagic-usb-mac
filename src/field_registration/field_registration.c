@@ -128,7 +128,12 @@ static bool caption_like_damage(const uint8_t *raster, int row)
     double dark = bins[18];
     for (int i = 19; i < 24; ++i)
         if (bins[i] < dark) dark = bins[i];
-    return run_mean > 35.0 && run_mean < 90.0 && variance < 64.0 &&
+    /* Damaged run-in lines measured at 37:01 retain a flat coarse-bin
+     * envelope (variance <= 18). Genuine consecutive picture rows at the
+     * same site begin at 30.8, so do not let the weak-caption fallback erase
+     * them from geometry. Full-amplitude run-in remains covered above by the
+     * CEA-608 carrier detector independently of this fallback. */
+    return run_mean > 35.0 && run_mean < 90.0 && variance < 20.0 &&
            pulse > 85.0 && mean < 95.0 && dark < 40.0;
 }
 
