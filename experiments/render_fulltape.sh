@@ -9,11 +9,13 @@ set -e
 CAP=$(cd "$(dirname "${1:?capture}")" && pwd)/$(basename "$1"); OUT=${2:?out_dir}; REPO=$(cd "$(dirname "$0")/.." && pwd)   # absolute: the script cds before rendering
 WEIGHTS="$HOME/Library/Application Support/blackmagic-usb-mac/nnedi3_weights.bin"
 mkdir -p "$OUT"; cd "$REPO/src/field_registration" && make -s libfieldreg.dylib >/dev/null
+cd "$REPO/src/signal_state" && make -s libsignalstate.dylib >/dev/null
 git -C "$REPO" rev-parse HEAD > "$OUT/engine_commit.txt"; date '+%F %T start' >> "$OUT/timing.txt"
 python3 "$REPO/experiments/capture_render.py" "$CAP" --input-format tagged \
   --render "$OUT/fulltape_render.mp4" --scratch-dir "$OUT/staging" --render-size 720x480 --render-sar 8:9 \
   --render-crf 12 --render-preset veryfast --adaptive-registration \
   --registration-library "$REPO/src/field_registration/libfieldreg.dylib" \
+  --signal-state-library "$REPO/src/signal_state/libsignalstate.dylib" \
   --deinterlacer nnedi --nnedi-weights "$WEIGHTS" \
   --tagged-start-unit 4 --decision-log "$OUT/fulltape_render_registration.csv" > "$OUT/render.log" 2>&1
 date '+%F %T end' >> "$OUT/timing.txt"; echo RENDER_DONE >> "$OUT/timing.txt"
