@@ -1232,6 +1232,30 @@ delivery edge; wrong one at acquisition.
   fixed and remapped from 19 (duplicating row 18 on negative offsets, dropping 19 on positive),
   and the full-raster preview duplicated below its window; `captures/fulltape_render.mp4` still
   carries the renderer duplication and is re-rendered after the engine work.
+  **VBI structure and the crop-start error — MEASURED 2026-09-04 (raw units, both recordings;
+  `experiments/picture_envelope_census.py` recognises caption/timing lines by signature):** unit row 16
+  (field 1) is the deck's FIXED timing line (narrow pulse far left, wide pulse right), byte-alike
+  across the tape and outside the crop until a negative offset pulls it in ("flicks into frame");
+  row 17 (and 280 for field 2) is the deck's FIXED line-21 insert — a null closed caption (clock
+  run-in + two pulses); the tape's RECORDED caption (run-in + data pulses) sits ON the insert when
+  the field is correctly placed and moves WITH the picture when displaced, always two rows above
+  the picture top (first minute: caption 17 / top 19 in 50/50 units, 19 / 21 in 38/38; EP slice
+  at 1,300 s: 17 / 19 in 500/500); row 18 between them is black line 22. So row 17 = line 21 and
+  the standard first VISIBLE line (SMPTE RP-202 / ATSC A/54A: 480i encodes lines 23–262 and
+  286–525) is row 19 for field 1 and row 282 for field 2 — exactly where the census finds a
+  correctly placed picture (field 2 top at 282 in 1,573/1,800 first-minute units and 1,800/1,800
+  in the EP slice; field 1 at 19 whenever the caption is on the insert). **The crop starts at
+  rows 17/280 = lines 21/284: two lines too high in both fields**, which is why every render so
+  far shows the caption insert at its top (VBI pulses visible even over the grey mute) and why a
+  displaced caption "crosses into the picture". Corrected starts 19/282 are proposed (owner
+  decision pending; blast radius: frame_publisher, capture_render, the registration constants,
+  goldens, census, docs). Consequences for the engine design: the recorded caption row minus 17
+  is a direct, content-independent readout of field 1's displacement whenever a caption exists;
+  the picture envelope (top/bottom/height, VBI-type lines excluded by signature) is the gauge
+  otherwise and for field 2 (no caption on this tape); "field 2 stays put" is physical — it sits at
+  line 286 in ~87% of first-minute units and 100% of the EP slice — and field 1's moves are rigid
+  whole-field-line shifts of caption + gap + picture together (parity test on raw units: per-field
+  model 202–0 over a whole-picture one-display-line shift).
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
   out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio
