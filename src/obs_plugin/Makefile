@@ -33,9 +33,9 @@ LDFLAGS = -bundle -F"$(OBS_APP)/Contents/Frameworks" -framework libobs "$(OBS_AP
 
 all: $(BUNDLE)
 
-$(BUNDLE): shuttle_source.c publish_copy.c publish_copy.h obsconfig.h Info.plist $(CORE)
+$(BUNDLE): shuttle_source.c publish_copy.c publish_copy.h publish_queue.c publish_queue.h obsconfig.h Info.plist $(CORE)
 	mkdir -p "$(BUILD_DIR)"; rm -rf $(BUNDLE); mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/locale
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) shuttle_source.c publish_copy.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) shuttle_source.c publish_copy.c publish_queue.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
 	cp Info.plist $(BUNDLE)/Contents/Info.plist
 	printf 'ShuttleSource="Blackmagic Intensity Shuttle (frameserver)"\n' > $(BUNDLE)/Contents/Resources/locale/en-US.ini
 	cp $(BUNDLE)/Contents/Resources/locale/en-US.ini $(BUNDLE)/Contents/Resources/locale/ja-JP.ini
@@ -43,8 +43,10 @@ $(BUNDLE): shuttle_source.c publish_copy.c publish_copy.h obsconfig.h Info.plist
 	codesign --force --sign - $(BUNDLE)
 	@echo "built $(BUNDLE)"; otool -L $(BUNDLE)/Contents/MacOS/$(PLUGIN) | grep -E 'libobs|libusb' || true
 
-test: publish_copy.c publish_copy.h tests_publish_copy.c
+test: publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_copy.c tests_publish_copy.c -o tests_publish_copy && ./tests_publish_copy
+	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue -lpthread && ./tests_publish_queue
+	$(CC) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue_tsan -lpthread && ./tests_publish_queue_tsan
 
 install: $(BUNDLE)
 	mkdir -p "$(INSTALL_DIR)"
@@ -56,4 +58,4 @@ uninstall:
 	rm -rf "$(INSTALL_DIR)/$(BUNDLE)"
 
 clean:
-	rm -rf $(BUNDLE) tests_publish_copy $(PLUGIN).plugin
+	rm -rf $(BUNDLE) tests_publish_copy tests_publish_queue tests_publish_queue_tsan $(PLUGIN).plugin

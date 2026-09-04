@@ -54,3 +54,5 @@ src/field_registration/tests/registration_trajectory.csv
 src/field_registration/tests/registration_trajectory.raw
 src/field_registration/libfieldreg.dylib
 src/obs_plugin/tests_publish_copy
+src/obs_plugin/tests_publish_queue
+src/obs_plugin/tests_publish_queue_tsan
