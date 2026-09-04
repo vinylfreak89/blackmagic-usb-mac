@@ -625,7 +625,7 @@ def main():
     add("false-anchor-single-hit", (2, 0), begin=True,
         captions=((2, 0x14, 0x2c), None),
         top_overrides=(27, None), bottom_overrides=(256, None),
-        f1_reason="AnchorUncorroborated", f1_zero="Standard",
+        f1_reason="ZeroCandidate", f1_zero="Standard",
         f1_lock_top=19)
     add("false-anchor-normal-1", (2, 0), picture=(2, 0),
         f1_reason="GeometryLockDecides", f1_zero="Standard",
@@ -654,8 +654,7 @@ def main():
         add(f"zero-candidate-alternating-{i + 1}", (2, 0), begin=i == 0,
             captions=((2, 0x14, 0x2c), None),
             top_overrides=(top, None), bottom_overrides=(256, None),
-            f1_reason="ZeroCandidate" if top == 20 else "Line21Placement",
-            f1_zero="Standard", f1_lock_top=19)
+            f1_zero="Standard" if i == 0 else "Parity", f1_lock_top=19)
     for i in range(3):
         add(f"zero-candidate-stable-{i + 1}", (2, 0), begin=i == 0,
             captions=((2, 0x14, 0x2c), None),
