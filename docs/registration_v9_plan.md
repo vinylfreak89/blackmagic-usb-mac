@@ -169,3 +169,14 @@ provisional trajectories, FIFO, backdating, learned position references. `static
    `AssumedAligned` and no jitter correction); (b) Codex's relative-only modal reference,
    named `PictureStartRelative`; (c) absolute 23/286, knowing it mis-places line-22 sources by
    one line. Claude recommends (a) for the first build and (b) as a measured follow-up.
+
+## Amendment: the candidate test is a CEA-608 decode with parity (measured 2026-09-04 night)
+
+The "complete waveform" candidate test in ruling 2 is replaced by an actual decode: a line is
+the tape's line 21 if and only if it decodes as CEA-608 with valid odd parity on both bytes
+(`experiments/cc608_decode.py`). On fixture A this leaves no ambiguity in field 1 at all:
+exactly one parity-valid line per unit in every window measured (first recording: line 21
+itself, d = 0; second recording: 23 or 24, d = +2 / +3, per unit), the vertical duplicates
+never pass, and `Line21Ambiguous` never fires there. Field 2's tape line does not decode on this
+tape (smeared XDS), so field 2 keeps the unique-608-like-candidate envelope rule with parity
+decode attempted first. Cost: one correlation and 19 samples per candidate line, negligible.
