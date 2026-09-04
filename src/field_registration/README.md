@@ -17,6 +17,8 @@ documented in `CLAUDE.md` when parity cannot decode that field. Its invariant
 is the measured pulse, at least two consecutive bright bins in the four-bin
 bar corridor, and the following two-bin drop in the left 40%, plus a row mean
 below 95. The right half is unconstrained because picture can bleed into it.
+A line with CEA-608 carrier energy is VBI but is never an XDS fallback
+candidate; this keeps the adjacent run-in fragment out of the fallback set.
 
 A parity-valid row exactly one line below an insert carrying non-null data and
 agreeing aligned geometry is classified as station line-22/285 data. The sole
