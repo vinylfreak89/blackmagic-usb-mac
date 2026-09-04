@@ -408,3 +408,21 @@ with a correctly placed field 1). Static comb calibrates that zero once per segm
 field 1 known-correct at calibration; afterwards field 2 tracks its own motion against it, and
 the comb runs only as a per-unit consistency check whose tie-break is the top edges under the
 witness-margin rule. Corrected brief dispatched as round 5b.
+
+## Round 5 result: `a683926` (witness margin + field-2 comb-zero calibration), verified 2026-09-05 07:45 JST
+
+Codex's slice table reproduced exactly in the detached checkout (goldens 138/138). Comb audit
+registered/flat/misregistered: 35:00 559/61/0, 37:01 322/6/0, 05:00 584/21/2, 35:38 47/23/8,
+01:26 71/6/1, 45:00 608/11/0. The 35:38 residue is the causal warm-up (three decisive static
+units after each segment start) and one unit the internal confidence test calls flat.
+**Damage state not built:** Codex's census at 62322–62326 found the Shuttle inserts decoding,
+tops measurable, body MAD 5.7–11.1, and the same torn morphology already at 62319–62321; no
+observable separates the site from both neighbour ranges, and no threshold was tuned to
+ordinals. Cost: engine 2.0 ms median / 2.65 ms p95 per unit (was 0.44; §11b budget 10 ms),
+state 168,088 bytes.
+
+**Whole tape, `2efc416` (before calibration):** follow audit field 1 engine-motion **837**
+(round-2 baseline 954, C/D 2,971), missed moves 2,104 (2,259), follows 6,065; field 2
+engine-motion 32, missed 3,078. Comb audit over 86,292 unit pairs: **78,908 registered, 3,693
+flat, 3,691 misregistered** (+1 ×2,038, +2 ×902, −1 ×691, others 60) — the whole-tape
+"combing under yadif" figure before calibration. The `a683926` whole-tape pass is running.
