@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { MAX_ROWS = 2048, MAX_SCENARIOS = 80, CSV_FIELDS = 11 };
+enum { MAX_ROWS = 2304, MAX_SCENARIOS = 112, CSV_FIELDS = 11 };
 
 typedef struct truth_row {
     size_t index;
@@ -349,6 +349,18 @@ int main(int argc, char **argv)
         "relative-guard-nominal",
         "bottom-censored-field1-plus5",
         "bottom-censored-static-card-guard",
+        "bottom-v8-field1-jitter",
+        "bottom-v8-plateau-plus1",
+        "bottom-v8-plateau-plus2",
+        "bottom-v8-field2-step",
+        "bottom-v8-dark-hold",
+        "bottom-v8-fade-hold",
+        "bottom-v8-fade-reacquire",
+        "bottom-v8-grey-mute",
+        "bottom-v8-program-after-grey",
+        "bottom-v8-large-jump-hold",
+        "bottom-v8-after-large-jump",
+        "bottom-v8-padding-plus3",
     };
     bool live_pass = stale_wrong == 0;
     for (size_t required = 0;

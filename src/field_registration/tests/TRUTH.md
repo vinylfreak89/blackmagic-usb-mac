@@ -125,3 +125,25 @@ asserts provenance: relative authority is present on the release and onset
 classes, the unknown-gauge class is labelled on every row, and a minimum that
 confirms an already committed phase remains a guard rather than being labelled
 as new relative-only authority.
+
+## v8 direct bottom-edge placement
+
+The `bottom-v8-*` cases encode the placement rule independently of the older
+evidence hierarchy. For each field, physical truth is the last raster line
+before a majority-black line. Once a segment target has been learned from
+measurable program, the crop moves by `raw_edge - target` on every measurable
+unit. The fixture requires unit-rate field-1 jitter, sustained +1/+2 plateaus,
+and an independent field-2 step to be followed.
+
+Dark/flat rasters, fades without a measurable program edge, and a one-unit
+edge excursion larger than three lines hold the preceding crop. A grey mute
+cannot teach the target; program following it learns a fresh target. Field 1
+may shift far enough that the crop reads the device's byte-exact padding; this
+is still a whole-window shift and never a duplicated source line.
+
+The older `bottom-censored-field1-plus5` trajectory expects an immediate +5
+decision from body-temporal evidence even though the physical bottom edge has
+already left the ADC raster. That truth is intentionally retained as a visible
+contract conflict: v8's direct-edge rule rejects a one-unit jump greater than
+three and cannot measure an edge which was not captured. It requires owner
+adjudication rather than silently redefining either truth.

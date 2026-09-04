@@ -47,6 +47,7 @@ class Step:
     alternating_card: bool = False
     force_scene_cut: bool = False
     fake_bottom_censor: bool = False
+    dark_false_edge: bool = False
 
 
 def trajectory() -> list[Step]:
@@ -221,6 +222,55 @@ def trajectory() -> list[Step]:
     add(12, "bottom-censored-static-card-guard", (0, 0), (0, 0),
         alternating_card=True, fake_bottom_censor=True,
         main_ranges=((0, 720),), secondary_ranges=())
+
+    # v8 direct-placement contract. Each scenario begins with ordinary
+    # program so the target row is learned from picture, never from mute.
+    out.append(Step("bottom-v8-reset", (0, 0), (0, 0), reset_before=True,
+                    main_ranges=((0, 720),), secondary_ranges=()))
+    add(12, "bottom-v8-learn-target", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+    for index in range(24):
+        phase = (1, 0) if index & 1 else (0, 0)
+        out.append(Step("bottom-v8-field1-jitter", phase, phase,
+                        main_ranges=((0, 720),), secondary_ranges=()))
+    add(8, "bottom-v8-plateau-plus1", (1, 0), (1, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+    add(8, "bottom-v8-plateau-plus2", (2, 0), (2, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+    add(8, "bottom-v8-field2-step", (2, 1), (2, 1),
+        main_ranges=((0, 720),), secondary_ranges=())
+    add(6, "bottom-v8-dark-hold", (2, 1), (2, 1), dark_false_edge=True,
+        main_ranges=((0, 720),), secondary_ranges=())
+    for gain in (0.5, 0.2, 0.0, 0.0, 0.2, 0.5):
+        out.append(Step("bottom-v8-fade-hold", (2, 1), (2, 1), gain=gain,
+                        main_ranges=((0, 720),), secondary_ranges=()))
+    add(8, "bottom-v8-fade-reacquire", (2, 1), (2, 1),
+        main_ranges=((0, 720),), secondary_ranges=())
+
+    out.append(Step("bottom-v8-grey-reset", None, (0, 0), reset_before=True,
+                    flat_y=96, vbi_present=True))
+    add(11, "bottom-v8-grey-mute", None, (0, 0), flat_y=96,
+        vbi_present=True)
+    add(12, "bottom-v8-program-after-grey", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+
+    out.append(Step("bottom-v8-cut-reset", (0, 0), (0, 0), reset_before=True,
+                    main_ranges=((0, 720),), secondary_ranges=()))
+    add(11, "bottom-v8-cut-baseline", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+    out.append(Step("bottom-v8-large-jump-hold", (4, 0), (0, 0),
+                    force_scene_cut=True, main_ranges=((0, 720),),
+                    secondary_ranges=()))
+    add(8, "bottom-v8-after-large-jump", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+
+    out.append(Step("bottom-v8-padding-reset", (0, 0), (0, 0),
+                    reset_before=True, main_ranges=((0, 720),),
+                    secondary_ranges=()))
+    add(11, "bottom-v8-padding-baseline", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+    add(8, "bottom-v8-padding-plus3", (3, 0), (3, 0),
+        clip_at_padding=True, main_ranges=((0, 720),), secondary_ranges=())
 
     # Only the right-hand secondary asset moves. The designated main picture
     # remains at the committed phase, so following the edge-only artifact is a
@@ -429,6 +479,17 @@ def make_unit(counter: int, index: int, step: Step,
         source = templates[(step.scene, phase, 0, 100)]
         for line in range(257, 261):
             raster[line][:] = source[-1]
+
+    if step.dark_false_edge:
+        # A broad internal bright row in an otherwise sub-black picture must
+        # not become a raster edge merely because it is the last nonblack row.
+        dark = bytes((128, 10)) * 720
+        bright = bytes((128, 72)) * 720
+        for top, bottom in ((base.F1_TOP, base.F1_BOTTOM),
+                            (base.F2_TOP, base.F2_BOTTOM)):
+            for line in range(top, bottom + 1):
+                raster[line][:] = dark
+            raster[bottom - 31][:] = bright
 
     header = bytearray(base.HEADER_BYTES)
     header[:4] = b"\x00\x00\xff\xff"
