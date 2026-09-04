@@ -25,6 +25,8 @@ fixture cannot see:
 - line-22 data is not mistaken for a one-line displacement, and a one-line
   parity/geometry disagreement is a named hold; and
 - a one-unit insert dropout holds without destroying either field lock.
+- a missing weak field-2 gauge cannot change placement while a shortened
+  bottom has made the clip ceiling uncertain.
 
 `confidence` is deliberately binary in v9: `1` means at least one field has
 an accepted displacement observation, and `0` means neither does. It is not a
