@@ -51,7 +51,7 @@ int main(int argc, char **argv){
         else if (!strcmp(argv[i], "--limit-units") && i + 1 < argc) g_limit = strtoull(argv[++i], NULL, 10);
         else if (argv[i][0] != '-') cfg.decision_log = argv[i];
     }
-    if (g_vdump || g_log) cfg.sink.on_frame = dump_frame;
+    if (g_vdump || g_log || g_limit) cfg.sink.on_frame = dump_frame;
     if (g_adump || g_log) cfg.audio_sink.on_block = dump_audio;
     frameserver *f = NULL;
     if (fs_open(&f, &cfg) != 0){ fprintf(stderr, "open failed\n"); return 1; }
