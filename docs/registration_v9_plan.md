@@ -363,3 +363,15 @@ its own top edge and its geometry candidate all see. Four defects, sent to Codex
 Tools added: `experiments/raw_panel.py` (four strips per unit, both fields' top and bottom, crop
 drawn in, NTSC line labels) and `experiments/held_vs_top_runs.py` (runs where the applied offset
 contradicts the engine's own top candidate). The whole-tape follow audit of `dc8a459` is running.
+
+**Second instrument, same verdict.** `experiments/relative_comb_audit.py` weaves the two
+published crops and measures comb energy on static pixels at field-2 re-weave shifts −3..+3; a
+registered pair has its minimum at 0. On `dc8a459`: 05:00 slice 549 registered / 23 flat /
+**35 misregistered**, 37:01 298 / 15 / 15, 35:00 536 / 77 / 7, 01:26 70 / 6 / 2. The
+misregistered units are exactly the follow audit's engine-motion units plus the held runs the
+follow audit cannot see: at 05:00 ordinals 475–488 (14 units) the tape's caption sits on line
+23, the engine's own top edge and geometry candidate say +2, and the crop is held at 0 by
+`CaptionBodyDisagree` because the 1-D witness read +3 on the first unit and the hold was then
+inherited (defects 1 and 2 above); at 37:01 the latched units 34, 43, 46. The comb audit is the
+acceptance instrument for "no combing under yadif": it sees persistent wrong holds, which a
+unit-to-unit follow audit scores as still.
