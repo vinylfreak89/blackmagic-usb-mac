@@ -398,3 +398,13 @@ per-segment parity calibration and the damage state:
 owner's original u062323), not 62308–62314. Two candidate damage metrics (row-to-row horizontal
 skew; per-row skew against the previous unit) do not separate it from its neighbours because the
 camera is moving; the observable is a measurement item for Codex before any state is built.
+
+**Correction from Codex (05:56 JST), accepted:** the applied difference `d1 − d2` is NOT the
+segment constant — field 1 jitters independently while field 2 holds +2, so `d1 − d2` takes +1
+and 0 within one segment (35:00: (3,2)×355, (2,2)×266). Freezing it would manufacture the
+crossing it is meant to remove. The segment constant is **field 2's zero** (its parity bias:
+the offset between field 2's content-derived geometry coordinate and the crop that registers it
+with a correctly placed field 1). Static comb calibrates that zero once per segment lock, with
+field 1 known-correct at calibration; afterwards field 2 tracks its own motion against it, and
+the comb runs only as a per-unit consistency check whose tie-break is the top edges under the
+witness-margin rule. Corrected brief dispatched as round 5b.
