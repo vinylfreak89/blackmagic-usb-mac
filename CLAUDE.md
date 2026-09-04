@@ -1244,16 +1244,22 @@ delivery edge; wrong one at acquisition.
   the standard first VISIBLE line (SMPTE RP-202 / ATSC A/54A: 480i encodes lines 23–262 and
   286–525) is row 19 for field 1 and row 282 for field 2 — exactly where the census finds a
   correctly placed picture (field 2 top at 282 in 1,573/1,800 first-minute units and 1,800/1,800
-  in the EP slice; field 1 at 19 whenever the caption is on the insert). **Two coordinates, kept
-  distinct (settled 2026-09-04 after a false alarm):** the CROP ORIGIN is rows 17/280 = lines
-  21/284 — the VBI-preserving analog-capture window (line 21 kept in the picture so captions
-  survive and can be decoded downstream; the 240-line window is lines 21–260/284–523, the two
-  lines dropped at the bottom being the deck-blanked head-switch band) — and the PICTURE ORIGIN
-  is rows 19/282 = lines 23/286, the standard first visible lines (SMPTE RP-202's 480-line
-  lattice is 23–262/286–525), which is where the engine measures the envelope and what "d = 0"
-  means. A caption insert visible on the first output row is therefore expected, not a defect;
-  a commit that moved the crop origin to 19/282 was reverted the same day. Consequences for the
-  engine design: the recorded caption row minus 17
+  in the EP slice; field 1 at 19 whenever the caption is on the insert). **Output geometry —
+  owner decision 2026-09-04 (after a same-day false alarm and reversal):** **720×480 is clean
+  aperture**: crop origin rows 19/282 = lines 23/286 (SMPTE RP-202's 480-line lattice 23–262 /
+  286–525); captions are not in the 480 render. **720×486 is an alternate output mode** (to be
+  added to the publisher and the OBS source): lines 21–263 / 283–525, captions kept in the
+  picture for downstream decoding. In both modes the PICTURE ORIGIN 19/282 is where registration
+  measures and what "d = 0" means. **The tape's real line 21 (seven-cycle run-in, start bit,
+  two parity bits) is the golden alignment reference: correctly placed, it sits exactly on the
+  deck's generated line 21 (unit row 17).** The first real caption seen off that row triggers a
+  one-time real-time re-lock of the raster, recorded in the registration sidecar; the picture
+  envelope is the secondary gauge (no caption, or an ambiguous one). Damage classes the caption
+  detector must survive: the tape's own vertical-interval pulses leaking into the picture as
+  thick bright bands when horizontal timing is far out of tolerance (also the "severe flagging"
+  bands seen on other tapes), and the EP recording's caption splitting across two lines/fields
+  with heavy horizontal skew — a split, duplicated or skewed caption is ambiguous, never a
+  reference. Consequences for the engine design: the recorded caption row minus 17
   is a direct, content-independent readout of field 1's displacement whenever a caption exists;
   the picture envelope (top/bottom/height, VBI-type lines excluded by signature) is the gauge
   otherwise and for field 2 (no caption on this tape); "field 2 stays put" is physical — it sits at
