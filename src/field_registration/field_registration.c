@@ -1079,9 +1079,18 @@ void fieldreg_begin_segment(field_registration *engine)
 
 void fieldreg_discontinuity(field_registration *engine)
 {
-    reset_field(&engine->field[0], false, 0);
-    reset_field(&engine->field[1], false, 1);
-    reset_parity(engine);
+    /* A byte hole breaks every comparison with the previous unit, but it is
+     * not a program boundary. Preserve learned segment zeros and calibrated
+     * parity; only begin_segment is allowed to discard those constants. */
+    engine->previous_luma_valid = false;
+    for (int field = 0; field < 2; ++field) {
+        engine->field[field].previous_measured_top = -1;
+        clear_zero_candidate(&engine->field[field]);
+    }
+    engine->comb_zero_candidate = INT16_MIN;
+    engine->comb_candidate_count = 0;
+    engine->comb_drift_shift = FIELDREG_UNKNOWN;
+    engine->comb_drift_count = 0;
 }
 
 static bool field1_calibration_reference(const field_measurement *m,
@@ -1208,7 +1217,11 @@ static void update_parity_calibration(field_registration *engine,
             out->comb_second_energy = comb.second_energy;
             out->comb_static_fraction = comb.static_fraction;
         }
-        if (!comb.measurable) {
+        if (comb.best_shift == FIELDREG_UNKNOWN) {
+            out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
+            engine->comb_drift_count = 0;
+            engine->comb_drift_shift = FIELDREG_UNKNOWN;
+        } else if (!comb.measurable) {
             out->comb_check = FIELDREG_COMB_FLAT;
             engine->comb_drift_count = 0;
             engine->comb_drift_shift = FIELDREG_UNKNOWN;
