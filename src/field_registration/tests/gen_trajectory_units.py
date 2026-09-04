@@ -60,15 +60,13 @@ def trajectory() -> list[Step]:
     # defect is invisible when every fallback happens to be raw (0,0).
     add(50, "locked-main-10", (1, 0), (1, 0))
 
-    # Accepted-phase hold regression.  The first +2 unit is rejected by the
-    # learned fast-edge check; the following same-geometry unit is then a
-    # support-1 continuation against the still-committed (1,0) fallback.  Both
-    # are abstentions, so neither may change presentation.  Flat, scene-cut,
-    # and heterogeneous follow-ups exercise the same invariant through other
-    # Unknown modes.  This is the measured SP-intro oscillation in synthetic
-    # form without teaching the oracle to suppress accepted motion.
-    add(1, "unknown-hold-edge-transient", (2, 0), (1, 0),
-        unsettled=True, main_ranges=((0, 720),), secondary_ranges=())
+    # Accepted-phase hold regression.  A support-1 partial-raster observation
+    # follows a stable (1,0) lock, then flat, scene-cut, and heterogeneous
+    # follow-ups exercise the same invariant through other Unknown modes.
+    # This is the measured SP-intro oscillation in synthetic form without
+    # teaching the oracle to suppress accepted motion.
+    add(1, "accepted-prime-20", (2, 0), (2, 0), unsettled=True,
+        main_ranges=((0, 720),), secondary_ranges=())
     add(1, "unknown-hold-support1-change", (2, 0), (1, 0),
         unsettled=True, main_ranges=((48, 248),), secondary_ranges=())
     add(1, "unknown-hold-flat", None, (1, 0), gain=0.0,

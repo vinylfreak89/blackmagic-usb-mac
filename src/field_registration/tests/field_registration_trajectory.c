@@ -30,6 +30,8 @@ typedef struct result_row {
     int baseline_d2;
     int decision_d1;
     int decision_d2;
+    int engine_applied_d1;
+    int engine_applied_d2;
     int applied_d1;
     int applied_d2;
     bool observation_known;
@@ -175,6 +177,8 @@ int main(int argc, char **argv)
         result->baseline_d2 = decision.baseline_d2;
         result->decision_d1 = decision.decision_d1;
         result->decision_d2 = decision.decision_d2;
+        result->engine_applied_d1 = decision.applied_d1;
+        result->engine_applied_d2 = decision.applied_d2;
         result->applied_d1 = decision.applied_d1;
         result->applied_d2 = decision.applied_d2;
         result->observation_known =
@@ -242,8 +246,8 @@ int main(int argc, char **argv)
             strncmp(fieldreg_mode_name(row->mode), "Unknown", 7) == 0;
         bool unknown_changed =
             unknown_mode &&
-            (row->applied_d1 != row->baseline_d1 ||
-             row->applied_d2 != row->baseline_d2);
+            (row->engine_applied_d1 != row->baseline_d1 ||
+             row->engine_applied_d2 != row->baseline_d2);
         if (unknown_changed) {
             ++unknown_applied_changes;
             printf("  UNKNOWN-HOLD violation row=%zu scenario=%s "
@@ -253,8 +257,8 @@ int main(int argc, char **argv)
                    row->baseline_d1, row->baseline_d2,
                    row->decision_d1, row->decision_d2,
                    row->observation_d1, row->observation_d2,
-                   row->observation_support, row->applied_d1,
-                   row->applied_d2);
+                   row->observation_support, row->engine_applied_d1,
+                   row->engine_applied_d2);
         }
         oracle_matches += oracle_match;
         oracle_wrong += !oracle_match;
@@ -394,7 +398,6 @@ int main(int argc, char **argv)
         "relative-guard-nominal",
         "bottom-censored-field1-plus5",
         "bottom-censored-static-card-guard",
-        "unknown-hold-edge-transient",
         "unknown-hold-flat",
         "unknown-hold-scene-cut",
         "unknown-hold-common-gauge",

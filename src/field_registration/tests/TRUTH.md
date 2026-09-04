@@ -131,9 +131,10 @@ as new relative-only authority.
 An `Unknown*` mode is an abstention.  Its `applied_d1/d2` must equal the
 committed `baseline_d1/d2`; a diagnostic `frame_observation`, including a
 support-1 observation, is not presentation authority when `decision_d1/d2` are
-Unknown.  The trajectory fixture establishes `(1,0)`, then supplies a rejected
-fast-edge change, a support-1 partial-raster continuation, flat content, a cut,
-and a heterogeneous raster before returning to the stable phase.  It also
+Unknown.  The trajectory fixture establishes `(1,0)`, accepts one strong `(2,0)`
+unit without committing it as fallback, then supplies a support-1 partial-raster
+continuation, flat content, a cut, and a heterogeneous raster before returning
+to the stable phase.  It also
 checks this invariant on every other Unknown row in the fixture, so dwell,
 spatial, common-gauge, scene-cut, and edge-transient abstentions share one
 policy rather than relying on mode-specific exceptions.
