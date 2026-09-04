@@ -14,15 +14,19 @@ def run_in_amp(row):
 def bins(row,nb=24): return np.array([row[k*W//nb:(k+1)*W//nb].mean() for k in range(nb)])
 sys.path.insert(0, __import__('os').path.dirname(__file__))
 from cc608_decode import decode as _cc_decode
-def vbi_kind(row):
-    # Strict on purpose: a rendered picture row must never be called a data line. Only a parity-valid CEA-608 decode
-    # or the exact timing-line signature counts; the earlier 'bar' signature fired on ordinary picture rows at the
-    # bottom of the frame (Codex, 2026-09-05: 320 of 331 findings on the disaster slice were picture).
+def vbi_kind(row, top=True):
+    # Top rows: any 503.5 kHz run-in energy (a caption, a run-in fragment), the timing line, or the smeared XDS bar
+    # is a data line that should never be in frame. Bottom rows: only a parity-valid decode counts — the crop's last
+    # rows are the deck's near-blank band, and the broad signatures fire on ordinary picture there (Codex, 2026-09-05:
+    # 320 of 331 findings on the disaster slice were bottom-row picture).
     b=bins(row)
+    if top:
+        if run_in_amp(row)>=35 and row.mean()<95 and b[18:].max()<45: return '608'
+        if b[0]>80 and b[18:21].max()>100 and b[2:17].max()<12 and row.mean()<60: return 'timing'
+        if row.mean()<95 and b[20:].max()<=40 and (b[:20]>60).sum()>=6 and b.min()<25: return 'bar'
+        return None
     ok,_,_,_=_cc_decode(np.asarray(row,dtype=np.uint8) if row.dtype!=np.uint8 else row)
-    if ok and row.mean()<95: return '608'
-    if b[0]>80 and b[18:21].max()>100 and b[2:17].max()<12 and row.mean()<60: return 'timing'
-    return None
+    return '608' if (ok and row.mean()<95) else None
 def vshift(a,b,rng=3):
     # vertical shift of picture b relative to a from column-averaged luma profiles of the picture body
     pa=a[24:456].mean(axis=1); pb=b[24:456].mean(axis=1); pa=pa-pa.mean(); pb=pb-pb.mean()
@@ -47,7 +51,7 @@ while unit < a.start_unit+a.units:
     F=np.frombuffer(buf,np.uint8).reshape(2,H,W).astype(np.float32)
     rec=[unit]
     for f in (0,1):
-        top=[vbi_kind(F[f][r]) for r in range(0,4)]; bot=[vbi_kind(F[f][r]) for r in range(476,480)]
+        top=[vbi_kind(F[f][r],True) for r in range(0,4)]; bot=[vbi_kind(F[f][r],False) for r in range(476,480)]
         kt=next((k for k in top if k),''); kb=next((k for k in bot if k),'')
         if kt or kb: data_units[(f+1,kt or kb)]+=1; datas.append((unit,f+1,kt or kb))
         s,c=(None,0.0) if prev[f] is None else vshift(prev[f],F[f])
