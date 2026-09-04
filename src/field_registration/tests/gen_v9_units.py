@@ -24,9 +24,9 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               letterbox=0, invalid=False,
               extra_valid=(), base_bottoms=(256, 518), bright_rows=(),
               top_overrides=(None, None), bottom_overrides=(None, None),
-              weak_caption_rows=(), smeared_vbi_rows=(),
+              weak_caption_rows=(), nonsignature_bar_rows=(),
               field_luma=(None, None), dark_fields=(False, False),
-              gap_rows=()):
+              gap_rows=(), broad_bar_picture_rows=()):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -157,15 +157,27 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
         start = row * BYTES_PER_LINE
         raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
 
-    # A smeared field-2 VBI fragment with only five hot bins.  It misses the
-    # frozen >=6-bin fallback discriminator by construction, but is still VBI
-    # rather than a picture line and must be excluded from geometry.
-    for row in smeared_vbi_rows:
+    # Left-heavy texture without the measured XDS pulse/bar/drop structure.
+    # The retired broad predicate called this VBI; the narrow contract must
+    # leave it available to picture geometry.
+    for row in nonsignature_bar_rows:
         ys = [2] * PIXELS
         for bin_ in range(5):
             first = 40 + (bin_ * 640) // 48
             last = 40 + ((bin_ + 1) * 640) // 48
             ys[first:last] = [90] * (last - first)
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # A real picture-row morphology from 37:01 that the retired broad bar
+    # predicate mistakes for VBI: bright structure in the left portion and a
+    # darker right side, but no XDS pulse/bar/drop signature.
+    for row in broad_bar_picture_rows:
+        ys = [30] * PIXELS
+        for bin_ in range(8, 16):
+            first = 40 + (bin_ * 640) // 48
+            last = 40 + ((bin_ + 1) * 640) // 48
+            ys[first:last] = [80] * (last - first)
         start = row * BYTES_PER_LINE
         raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
     return unit
@@ -182,12 +194,13 @@ def main():
     def add(scenario, expected, *, begin=False, ok=True, f1_reason="-",
             f2_reason="-", f1_lock="-", f2_lock="-", f1_zero="-",
             f2_zero="-", f1_lock_top=-999, f2_lock_top=-999, comb=-1,
+            f1_raw_top=-999, f2_raw_top=-999,
             **kwargs):
         counter = len(units)
         units.append(make_unit(counter, **kwargs))
         rows.append((counter, scenario, int(begin), int(ok), expected[0], expected[1],
                      f1_reason, f2_reason, f1_lock, f2_lock, f1_zero, f2_zero,
-                     f1_lock_top, f2_lock_top, comb))
+                     f1_lock_top, f2_lock_top, comb, f1_raw_top, f2_raw_top))
 
     # Alignment and immediate parity authority.
     add("aligned-null-acquire-1", (0, 0), begin=True)
@@ -355,11 +368,11 @@ def main():
         weak_caption_rows=(19,), f1_reason="GeometryLockDecides",
         f1_lock="Locked")
 
-    add("smeared-f2-acquire-1", (0, 0), begin=True)
-    add("smeared-f2-acquire-2", (0, 0))
-    add("smeared-f2-vbi-not-picture", (0, 2), picture=(0, 2),
-        smeared_vbi_rows=(282, 283), f2_reason="GeometryLockDecides",
-        f2_lock="Locked")
+    add("nonsignature-bar-context-1", (0, 0), begin=True)
+    add("nonsignature-bar-context-2", (0, 0))
+    add("nonsignature-bar-remains-picture", (0, 0), picture=(0, 2),
+        nonsignature_bar_rows=(282, 283), f2_reason="GeometryLockDecides",
+        f2_lock="Locked", f2_raw_top=282)
 
     # The deck's near-blank band is a censored boundary.  Its measured bottom
     # may flicker inside lines 260..264 / 522..526 without moving the raster.
@@ -396,6 +409,27 @@ def main():
         top_overrides=(20, None), gap_rows=(19,), field_luma=(90, None),
         f1_reason="GeometryLockDecides", f1_lock="Locked",
         f1_zero="Standard", f1_lock_top=19)
+
+    # 37:01 field 2: the XDS row and fragment precede picture whose genuine
+    # rows happen to match the retired broad bar heuristic. The measured top
+    # is NTSC line 288 (unit row 284), never line 294.
+    add("field2-picture-not-broad-bar", (0, 2), begin=True,
+        top_overrides=(None, 284), bottom_overrides=(None, 522),
+        f2_envelopes=(282,),
+        extra_valid=((283, 0x14, 0x2c, False, 7),),
+        broad_bar_picture_rows=tuple(range(284, 290)),
+        f2_reason="Field2EnvelopePlacement", f2_raw_top=284)
+
+    # 37:01 field 1: loss of parity or of the recorded caption itself cannot
+    # move a crop while the same measurable picture remains in place.
+    add("field1-caption-stable-decodable-a", (3, 0), begin=True,
+        picture=(3, 0), captions=((3, 0x14, 0x2c), None))
+    add("field1-caption-stable-damaged", (3, 0), picture=(3, 0),
+        weak_caption_rows=(20,), f1_reason="GeometryLockDecides")
+    add("field1-caption-stable-absent", (3, 0), picture=(3, 0),
+        f1_reason="GeometryLockDecides")
+    add("field1-caption-stable-decodable-b", (3, 0), picture=(3, 0),
+        captions=((3, 0x14, 0x2c), None), f1_reason="Line21Placement")
 
     # Root cause C: picture content never defines zero. Each segment starts
     # locked to the standard picture origins (NTSC 23/286), so an immediately
@@ -443,7 +477,8 @@ def main():
         w.writerow(("unit", "scenario", "begin_segment", "process_ok",
                     "applied_d1", "applied_d2", "f1_reason", "f2_reason",
                     "f1_lock", "f2_lock", "f1_zero", "f2_zero",
-                    "f1_lock_top", "f2_lock_top", "comb_safe"))
+                    "f1_lock_top", "f2_lock_top", "comb_safe",
+                    "f1_raw_top", "f2_raw_top"))
         w.writerows(rows)
     print(f"wrote {len(units)} v9 units")
 
