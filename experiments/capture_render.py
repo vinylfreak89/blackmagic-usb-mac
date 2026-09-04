@@ -1231,6 +1231,7 @@ class _CFieldDecision(ctypes.Structure):
         ("reason", ctypes.c_int), ("gauge", ctypes.c_int),
         ("insert_present", ctypes.c_bool),
         ("insert_byte1", ctypes.c_uint8), ("insert_byte2", ctypes.c_uint8),
+        ("insert_relation", ctypes.c_int),
         ("parity_candidate_count", ctypes.c_uint16),
         ("fallback_candidate_count", ctypes.c_uint16),
         ("gauge_row", ctypes.c_int16),
@@ -1239,6 +1240,7 @@ class _CFieldDecision(ctypes.Structure):
         ("raw_top", ctypes.c_int16), ("raw_bottom", ctypes.c_int16),
         ("raw_height", ctypes.c_int16), ("geometry_measurable", ctypes.c_bool),
         ("bottom_censored", ctypes.c_bool), ("lock_state", ctypes.c_int),
+        ("zero_source", ctypes.c_int),
         ("lock_id", ctypes.c_uint32), ("lock_top", ctypes.c_int16),
         ("lock_height", ctypes.c_int16), ("lock_height_known", ctypes.c_bool),
         ("clip_state", ctypes.c_int), ("clip_ceiling", ctypes.c_int16),
@@ -1317,6 +1319,10 @@ class CRegistrationEstimator:
         self.library.fieldreg_lock_state_name.restype = ctypes.c_char_p
         self.library.fieldreg_clip_state_name.argtypes = (ctypes.c_int,)
         self.library.fieldreg_clip_state_name.restype = ctypes.c_char_p
+        self.library.fieldreg_zero_source_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_zero_source_name.restype = ctypes.c_char_p
+        self.library.fieldreg_insert_relation_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_insert_relation_name.restype = ctypes.c_char_p
         self.library.fieldreg_init(self.state, ctypes.byref(self.config))
         self.confirmation_units = self.library.fieldreg_confirmation_units(
             self.state
@@ -1360,6 +1366,8 @@ class CRegistrationEstimator:
                     f"{item.insert_byte1:02x}{item.insert_byte2:02x}"
                     if item.insert_present else ""
                 ),
+                "insert_relation": self.library.fieldreg_insert_relation_name(
+                    item.insert_relation).decode("ascii"),
                 "parity_candidates": item.parity_candidate_count,
                 "fallback_candidates": item.fallback_candidate_count,
                 "gauge_line": item.gauge_row + 4 if item.gauge_row >= 0 else -1,
@@ -1376,6 +1384,7 @@ class CRegistrationEstimator:
                 "geometry_measurable": bool(item.geometry_measurable),
                 "bottom_censored": bool(item.bottom_censored),
                 "lock_state": self.library.fieldreg_lock_state_name(item.lock_state).decode("ascii"),
+                "zero_source": self.library.fieldreg_zero_source_name(item.zero_source).decode("ascii"),
                 "lock_id": item.lock_id,
                 "lock_top": item.lock_top + 4 if item.lock_top >= 0 else -1,
                 "lock_height": item.lock_height,
@@ -1828,10 +1837,10 @@ TPC_DECISION_COLUMNS = (
 # Schema 5 retains the transport/presentation columns consumed by the renderer
 # and replaces every v7 evidence column with the v9 per-field provenance.
 V9_FIELD_COLUMNS = (
-    "reason", "gauge", "insert_present", "insert_bytes",
+    "reason", "gauge", "insert_present", "insert_bytes", "insert_relation",
     "parity_candidates", "fallback_candidates", "gauge_line", "gauge_bytes",
     "gauge_amplitude", "geometry_d", "blank_mean", "raw_top", "raw_bottom", "raw_height",
-    "geometry_measurable", "bottom_censored", "lock_state", "lock_id",
+    "geometry_measurable", "bottom_censored", "lock_state", "zero_source", "lock_id",
     "lock_top", "lock_height", "lock_height_known", "clip_state",
     "clip_ceiling", "expected_bottom",
     "lines_lost", "invariant_residual",
@@ -1851,13 +1860,13 @@ TPC_DECISION_COLUMNS = (
 def _v9_field_row(field):
     return (
         field["reason"], field["gauge"], int(field["insert_present"]),
-        field["insert_bytes"], field["parity_candidates"],
+        field["insert_bytes"], field["insert_relation"], field["parity_candidates"],
         field["fallback_candidates"], field["gauge_line"], field["gauge_bytes"],
         f"{field['gauge_amplitude']:.3f}", field["geometry_d"],
         f"{field['blank_mean']:.3f}",
         field["raw_top"], field["raw_bottom"], field["raw_height"],
         int(field["geometry_measurable"]), int(field["bottom_censored"]),
-        field["lock_state"], field["lock_id"], field["lock_top"],
+        field["lock_state"], field["zero_source"], field["lock_id"], field["lock_top"],
         field["lock_height"], int(field["lock_height_known"]),
         field["clip_state"], field["clip_ceiling"], field["expected_bottom"],
         field["lines_lost"], field["invariant_residual"],

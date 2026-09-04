@@ -41,11 +41,23 @@ typedef enum fieldreg_clip_state {
     FIELDREG_CLIP_FITTED,
 } fieldreg_clip_state;
 
+typedef enum fieldreg_zero_source {
+    FIELDREG_ZERO_NONE = 0,
+    FIELDREG_ZERO_ACQUIRED,
+    FIELDREG_ZERO_PARITY,
+    FIELDREG_ZERO_ENVELOPE,
+} fieldreg_zero_source;
+
+typedef enum fieldreg_insert_relation {
+    FIELDREG_INSERT_RELATION_NONE = 0,
+    FIELDREG_INSERT_CORROBORATES,
+    FIELDREG_INSERT_CONTRADICTED,
+} fieldreg_insert_relation;
+
 typedef enum fieldreg_mode {
     FIELDREG_MODE_INVALID_UNIT = 0,
     FIELDREG_MODE_ACQUIRING,
     FIELDREG_MODE_LINE21_PLACEMENT,
-    FIELDREG_MODE_ALIGNED_CORROBORATED,
     FIELDREG_MODE_GEOMETRY_LOCK_DECIDES,
     FIELDREG_MODE_FIELD2_ENVELOPE_PLACEMENT,
     FIELDREG_MODE_INSERT_ABSENT,
@@ -53,7 +65,6 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_LOCK_BROKEN,
     FIELDREG_MODE_LINE21_AMBIGUOUS,
     FIELDREG_MODE_OUT_OF_RANGE_HOLD,
-    FIELDREG_MODE_INSERT_GEOMETRY_CONFLICT,
     FIELDREG_MODE_LINE22_DATA_PRESENT,
     FIELDREG_MODE_GAUGE_CONFLICT,
     FIELDREG_MODE_CLIP_UNKNOWN_HOLD,
@@ -63,7 +74,6 @@ typedef enum fieldreg_mode {
 typedef enum fieldreg_gauge_source {
     FIELDREG_GAUGE_NONE = 0,
     FIELDREG_GAUGE_CEA608_PARITY,
-    FIELDREG_GAUGE_INSERT_DATA,
     FIELDREG_GAUGE_GEOMETRY,
     FIELDREG_GAUGE_FIELD2_ENVELOPE,
     FIELDREG_GAUGE_LINE22_DATA,
@@ -84,6 +94,7 @@ typedef struct fieldreg_field_decision {
     bool insert_present;
     uint8_t insert_byte1;
     uint8_t insert_byte2;
+    fieldreg_insert_relation insert_relation;
     uint16_t parity_candidate_count;
     uint16_t fallback_candidate_count;
     int16_t gauge_row;
@@ -97,6 +108,7 @@ typedef struct fieldreg_field_decision {
     bool geometry_measurable;
     bool bottom_censored;
     fieldreg_lock_state lock_state;
+    fieldreg_zero_source zero_source;
     uint32_t lock_id;
     int16_t lock_top;
     int16_t lock_height;
@@ -140,6 +152,7 @@ typedef struct fieldreg_field_state {
     bool height_known;
     bool acquire_height_known;
     uint8_t clip_candidate_count;
+    fieldreg_zero_source zero_source;
     uint32_t lock_id;
 } fieldreg_field_state;
 
@@ -171,6 +184,8 @@ const char *fieldreg_mode_name(fieldreg_mode mode);
 const char *fieldreg_gauge_name(fieldreg_gauge_source source);
 const char *fieldreg_lock_state_name(fieldreg_lock_state state);
 const char *fieldreg_clip_state_name(fieldreg_clip_state state);
+const char *fieldreg_zero_source_name(fieldreg_zero_source source);
+const char *fieldreg_insert_relation_name(fieldreg_insert_relation relation);
 
 #ifdef __cplusplus
 }

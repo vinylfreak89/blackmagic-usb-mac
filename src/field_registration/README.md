@@ -10,18 +10,21 @@ The 720x480 clean-aperture output starts at unit rows 19/282 (NTSC lines
 268..524 (NTSC lines 12..266 and 272..528), for CEA-608. A parity-valid line
 away from the Shuttle's insert at rows 17/280 is the primary displacement
 gauge and applies immediately, except for the line-22 ambiguity below.
-Non-null re-encoded data on the insert corroborates `d=0`; it does not override
-a live geometry lock that measures a nonzero displacement. Field 2 additionally uses the frozen
+Non-null data re-encoded on the insert is never a displacement gauge: the
+sidecar retains its bytes and names whether live geometry corroborated or
+contradicted it. Field 2 additionally uses the frozen
 smeared-XDS discriminator documented in `CLAUDE.md` when parity cannot decode
 that field.
 
-A parity-valid row exactly one line below an insert carrying non-null data is
-classified as station line-22/285 data and leaves the field aligned. Without
-that discriminator, a one-line disagreement between an off-insert parity row
-and a live geometry lock is `GaugeConflict` and holds. The sidecar records both
-the parity row/bytes and `geometry_d`; a non-null insert opposed by a live
-nonzero geometry lock is `InsertGeometryConflict`. Which gauge should win a
-real conflict is pending owner ruling, so v9 never silently chooses either.
+A parity-valid row exactly one line below an insert carrying non-null data and
+agreeing aligned geometry is classified as station line-22/285 data. The sole
+`GaugeConflict` is the corresponding ambiguity beneath a null insert when a
+live lock reads zero. A parity displacement of two or more lines is never
+treated as line-22 data and applies unconditionally. Every physical parity or
+field-2 fallback reading re-anchors the lock top immediately; the old
+content-acquired zero is not retained. The sidecar records the parity row and
+bytes, `geometry_d`, and the resulting zero source. Precedence for other
+one-line gauge conflicts remains pending owner ruling.
 When a unique off-insert or field-2 fallback gauge exists, the picture-top
 scan begins below that gauge. This excludes bright/leaking VBI bands above a
 displaced line 21 from the geometry lock without trying to classify their
@@ -44,7 +47,8 @@ residual          = measured_bottom - expected_bottom
 Only residual zero permits an ungauged `GeometryLockDecides`, except that an
 ADC-boundary bottom is provisionally accepted while the clip ceiling remains
 unknown. A contradiction holds the last applied offset, names `LockBroken`,
-and starts a two-observation reacquisition at the unchanged presentation.
+and starts a two-observation reacquisition only when the zero itself was
+content-acquired. A parity/envelope zero survives secondary content changes.
 Dark/unmeasurable content holds without destroying a valid lock. A clip
 ceiling is learned only when two parity/fallback-gauged observations at
 different offsets saturate at the same bottom line; its candidate/count are separate
