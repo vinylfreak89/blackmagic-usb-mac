@@ -443,6 +443,7 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
 
     if (!m->insert_present) {
         hold(s, d, FIELDREG_MODE_INSERT_ABSENT);
+        record_invariant(s, m, s->last_applied, d);
     } else if (m->off_count > 1) {
         hold(s, d, FIELDREG_MODE_LINE21_AMBIGUOUS);
     } else if (m->off_count == 1) {
@@ -583,8 +584,23 @@ bool fieldreg_process(field_registration *engine,
     out->mode = out->field[0].reason == out->field[1].reason ?
                 out->field[0].reason : FIELDREG_MODE_MIXED_FIELD_DECISION;
     out->confidence = out->frame_observation_support > 0 ? 1.0 : 0.0;
-    out->comb_safe = engine->field[0].lock_state == FIELDREG_LOCK_LOCKED &&
-                     engine->field[1].lock_state == FIELDREG_LOCK_LOCKED;
+    const bool both_locked =
+        engine->field[0].lock_state == FIELDREG_LOCK_LOCKED &&
+        engine->field[1].lock_state == FIELDREG_LOCK_LOCKED;
+    const bool both_physically_gauged =
+        engine->field[0].zero_source != FIELDREG_ZERO_ACQUIRED &&
+        engine->field[1].zero_source != FIELDREG_ZERO_ACQUIRED;
+    const bool both_rigid_now =
+        out->field[0].geometry_measurable &&
+        out->field[1].geometry_measurable &&
+        out->field[0].geometry_d != FIELDREG_UNKNOWN &&
+        out->field[1].geometry_d != FIELDREG_UNKNOWN &&
+        out->field[0].expected_bottom >= 0 &&
+        out->field[1].expected_bottom >= 0 &&
+        out->field[0].invariant_residual == 0 &&
+        out->field[1].invariant_residual == 0;
+    out->comb_safe = both_locked &&
+                     (both_physically_gauged || both_rigid_now);
     return true;
 }
 
