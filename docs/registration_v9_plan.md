@@ -217,3 +217,15 @@ With these, the engine is: per field per unit, decode candidates with parity; ap
 immediately; maintain one lock (top, height, clip) per field and test the conservation
 equation every unit; re-lock when a gauged offset and the picture agree; name every state.
 No comb, no bands, no temporal search, no trajectories.
+
+## Acceptance test for the geometry lock (owner, 2026-09-04 night)
+
+The parity readings are sparse on the first recording (first 1,800 units: 64 units with data
+bytes at 21, 202 with a raw parity-valid caption at 23, the other 1,514 nulls-only or none), so
+the geometry lock carries most units there. That makes the first recording the test: run the
+engine with the geometry lock deciding, and at every unit where a parity reading exists compare
+the lock's answer with it — raw caption at 23 ⇒ the lock must say +2 for that unit; data bytes
+at 21 with nothing elsewhere ⇒ the lock must say 0. Agreements and disagreements are counted
+over the whole tape (the parity search is the truth set, thousands of units); a disagreement
+is a defect in the lock or its invariant, never in the reading. If the lock agrees with the
+readings wherever they exist, the secondary gauge is validated by the primary one on real tape.
