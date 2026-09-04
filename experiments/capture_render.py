@@ -1221,103 +1221,41 @@ class RegistrationEstimator:
 
 
 class _CFieldRegistrationConfig(ctypes.Structure):
+    _fields_ = (("reserved", ctypes.c_uint32),)
+
+
+class _CFieldDecision(ctypes.Structure):
     _fields_ = (
-        ("switch_margin", ctypes.c_double),
-        ("evidence_model", ctypes.c_int),
-        ("confirmation_units", ctypes.c_uint32),
-        ("minimum_support_units", ctypes.c_uint32),
-        ("maximum_buffered_units", ctypes.c_uint32),
+        ("measured_d", ctypes.c_int8), ("applied_d", ctypes.c_int8),
+        ("reason", ctypes.c_int), ("gauge", ctypes.c_int),
+        ("insert_present", ctypes.c_bool),
+        ("insert_byte1", ctypes.c_uint8), ("insert_byte2", ctypes.c_uint8),
+        ("parity_candidate_count", ctypes.c_uint16),
+        ("fallback_candidate_count", ctypes.c_uint16),
+        ("gauge_row", ctypes.c_int16),
+        ("gauge_byte1", ctypes.c_uint8), ("gauge_byte2", ctypes.c_uint8),
+        ("gauge_amplitude", ctypes.c_double), ("blank_mean", ctypes.c_double),
+        ("raw_top", ctypes.c_int16), ("raw_bottom", ctypes.c_int16),
+        ("raw_height", ctypes.c_int16), ("geometry_measurable", ctypes.c_bool),
+        ("bottom_censored", ctypes.c_bool), ("lock_state", ctypes.c_int),
+        ("lock_id", ctypes.c_uint32), ("lock_top", ctypes.c_int16),
+        ("lock_height", ctypes.c_int16), ("clip_ceiling", ctypes.c_int16),
+        ("expected_bottom", ctypes.c_int16), ("lines_lost", ctypes.c_int16),
+        ("invariant_residual", ctypes.c_int16),
     )
 
 
 class _CFieldRegistrationDecision(ctypes.Structure):
     _fields_ = (
-        ("decision_d1", ctypes.c_int8),
-        ("decision_d2", ctypes.c_int8),
-        ("applied_d1", ctypes.c_int8),
-        ("applied_d2", ctypes.c_int8),
-        ("baseline_d1", ctypes.c_int8),
-        ("baseline_d2", ctypes.c_int8),
+        ("decision_d1", ctypes.c_int8), ("decision_d2", ctypes.c_int8),
+        ("applied_d1", ctypes.c_int8), ("applied_d2", ctypes.c_int8),
+        ("baseline_d1", ctypes.c_int8), ("baseline_d2", ctypes.c_int8),
         ("frame_observation_d1", ctypes.c_int8),
         ("frame_observation_d2", ctypes.c_int8),
         ("frame_observation_support", ctypes.c_uint8),
-        ("frame_observation_motion_priority", ctypes.c_bool),
-        ("frame_observation_conflict", ctypes.c_bool),
-        ("mode", ctypes.c_int),
-        ("confidence", ctypes.c_double),
-        ("best_d1", ctypes.c_int8),
-        ("best_d2", ctypes.c_int8),
-        ("pending_d1", ctypes.c_int8),
-        ("pending_d2", ctypes.c_int8),
-        ("pending_count", ctypes.c_uint32),
-        ("pending_span", ctypes.c_uint32),
-        ("decision_backdate", ctypes.c_uint32),
-        ("trajectory_reset", ctypes.c_bool),
-        ("trajectory_locked", ctypes.c_bool),
-        ("best_relative", ctypes.c_int8),
-        ("selected_relative", ctypes.c_int8),
-        ("independent_evidence_margin", ctypes.c_double),
-        ("weave_margin", ctypes.c_double),
-        ("temporal_margin_f1", ctypes.c_double),
-        ("temporal_margin_f2", ctypes.c_double),
-        ("temporal_best_f1", ctypes.c_int8),
-        ("temporal_best_f2", ctypes.c_int8),
-        ("temporal_best_cost_f1", ctypes.c_double),
-        ("temporal_best_cost_f2", ctypes.c_double),
-        ("temporal_scene_cut", ctypes.c_bool),
-        ("transport_ok", ctypes.c_bool),
-        ("content_evidence_available", ctypes.c_bool),
-        ("top_f1_censored", ctypes.c_bool),
-        ("top_f2_censored", ctypes.c_bool),
-        ("global_envelope_authority", ctypes.c_bool),
-        ("observed_transport_f1", ctypes.c_int16),
-        ("observed_transport_f2", ctypes.c_int16),
-        ("picture_top_f1", ctypes.c_int16),
-        ("picture_top_f2", ctypes.c_int16),
-        ("picture_bottom_f1", ctypes.c_int16),
-        ("picture_bottom_f2", ctypes.c_int16),
-        ("learned_band_mode_f1", ctypes.c_int16),
-        ("learned_band_mode_f2", ctypes.c_int16),
-        ("learned_bottom_mode_f1", ctypes.c_int16),
-        ("learned_bottom_mode_f2", ctypes.c_int16),
-        ("learned_band_stability_f1", ctypes.c_double),
-        ("learned_band_stability_f2", ctypes.c_double),
-        ("learned_bottom_stability_f1", ctypes.c_double),
-        ("learned_bottom_stability_f2", ctypes.c_double),
-        ("dual_edge_agreement", ctypes.c_bool),
-        ("phase_vote_left", ctypes.c_int8),
-        ("phase_vote_center", ctypes.c_int8),
-        ("phase_vote_right", ctypes.c_int8),
-        ("phase_motion_left", ctypes.c_int8),
-        ("phase_motion_center", ctypes.c_int8),
-        ("phase_motion_right", ctypes.c_int8),
-        ("phase_priority_band", ctypes.c_int8),
-        ("phase_consensus", ctypes.c_int8),
-        ("phase_support", ctypes.c_uint8),
-        ("spatial_phase_conflict", ctypes.c_bool),
-        ("phase_window", ctypes.c_int8),
-        ("phase_window_count", ctypes.c_uint8),
-        ("phase_window_margin", ctypes.c_uint8),
-        ("fast_edge_d1", ctypes.c_int8),
-        ("fast_edge_d2", ctypes.c_int8),
-        ("fast_edge_support_f1", ctypes.c_uint8),
-        ("fast_edge_support_f2", ctypes.c_uint8),
-        ("fast_edge_spatial_conflict", ctypes.c_bool),
-        ("relative_only", ctypes.c_bool),
-        ("relative_only_gauge_unknown", ctypes.c_bool),
-        ("relative_only_gauge_source", ctypes.c_int),
-        ("relative_only_phase", ctypes.c_int8),
-        ("relative_only_best_energy", ctypes.c_double),
-        ("relative_only_runner_energy", ctypes.c_double),
-        ("relative_only_prior_energy", ctypes.c_double),
-        ("relative_only_margin", ctypes.c_double),
-        ("relative_only_ratio", ctypes.c_double),
-        ("relative_only_static_columns", ctypes.c_uint16),
-        ("relative_only_persistent_columns", ctypes.c_uint16),
-        ("relative_only_transport_gate", ctypes.c_bool),
-        ("relative_only_cut_gate", ctypes.c_bool),
-        ("bottom_f1_censored", ctypes.c_bool),
-        ("bottom_f2_censored", ctypes.c_bool),
+        ("mode", ctypes.c_int), ("confidence", ctypes.c_double),
+        ("transport_ok", ctypes.c_bool), ("comb_safe", ctypes.c_bool),
+        ("segment_id", ctypes.c_uint32), ("field", _CFieldDecision * 2),
     )
 
 
@@ -1354,24 +1292,9 @@ class CRegistrationEstimator:
             raise RuntimeError("field_registration decision ABI size mismatch")
 
         self.state = ctypes.create_string_buffer(self.library.fieldreg_state_size())
-        model_value = {
-            "top": self.TOP_ONLY,
-            "dual": self.DUAL_EDGE,
-            "phase": self.MOTION_PHASE,
-        }[evidence_model]
         self.evidence_model = evidence_model
         self.algorithm_version = self.library.fieldreg_algorithm_version()
-        if minimum_support_units is None:
-            minimum_support_units = confirmation_units
-        if maximum_buffered_units is None:
-            maximum_buffered_units = confirmation_units + 6
-        self.config = _CFieldRegistrationConfig(
-            switch_margin,
-            model_value,
-            confirmation_units,
-            minimum_support_units,
-            maximum_buffered_units,
-        )
+        self.config = _CFieldRegistrationConfig(0)
         self.library.fieldreg_init.argtypes = (
             ctypes.c_void_p,
             ctypes.POINTER(_CFieldRegistrationConfig),
@@ -1386,8 +1309,10 @@ class CRegistrationEstimator:
         self.library.fieldreg_process.restype = ctypes.c_bool
         self.library.fieldreg_mode_name.argtypes = (ctypes.c_int,)
         self.library.fieldreg_mode_name.restype = ctypes.c_char_p
-        self.library.fieldreg_relative_gauge_name.argtypes = (ctypes.c_int,)
-        self.library.fieldreg_relative_gauge_name.restype = ctypes.c_char_p
+        self.library.fieldreg_gauge_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_gauge_name.restype = ctypes.c_char_p
+        self.library.fieldreg_lock_state_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_lock_state_name.restype = ctypes.c_char_p
         self.library.fieldreg_init(self.state, ctypes.byref(self.config))
         self.confirmation_units = self.library.fieldreg_confirmation_units(
             self.state
@@ -1416,12 +1341,44 @@ class CRegistrationEstimator:
         ):
             raise RuntimeError("production field_registration rejected an exact e801 unit")
         mode = self.library.fieldreg_mode_name(result.mode).decode("ascii")
-        relative_gauge = self.library.fieldreg_relative_gauge_name(
-            result.relative_only_gauge_source
-        ).decode("ascii")
         decision = self._pair(result.decision_d1, result.decision_d2)
         applied = (result.applied_d1, result.applied_d2)
         self.selected = (result.baseline_d1, result.baseline_d2)
+        fields = []
+        for item in result.field:
+            fields.append({
+                "measured_d": item.measured_d,
+                "applied_d": item.applied_d,
+                "reason": self.library.fieldreg_mode_name(item.reason).decode("ascii"),
+                "gauge": self.library.fieldreg_gauge_name(item.gauge).decode("ascii"),
+                "insert_present": bool(item.insert_present),
+                "insert_bytes": (
+                    f"{item.insert_byte1:02x}{item.insert_byte2:02x}"
+                    if item.insert_present else ""
+                ),
+                "parity_candidates": item.parity_candidate_count,
+                "fallback_candidates": item.fallback_candidate_count,
+                "gauge_line": item.gauge_row + 4 if item.gauge_row >= 0 else -1,
+                "gauge_bytes": (
+                    f"{item.gauge_byte1:02x}{item.gauge_byte2:02x}"
+                    if item.gauge_row >= 0 and item.gauge == 1 else ""
+                ),
+                "gauge_amplitude": item.gauge_amplitude,
+                "blank_mean": item.blank_mean,
+                "raw_top": item.raw_top + 4 if item.raw_top >= 0 else -1,
+                "raw_bottom": item.raw_bottom + 4 if item.raw_bottom >= 0 else -1,
+                "raw_height": item.raw_height,
+                "geometry_measurable": bool(item.geometry_measurable),
+                "bottom_censored": bool(item.bottom_censored),
+                "lock_state": self.library.fieldreg_lock_state_name(item.lock_state).decode("ascii"),
+                "lock_id": item.lock_id,
+                "lock_top": item.lock_top + 4 if item.lock_top >= 0 else -1,
+                "lock_height": item.lock_height,
+                "clip_ceiling": item.clip_ceiling + 4 if item.clip_ceiling >= 0 else -1,
+                "expected_bottom": item.expected_bottom + 4 if item.expected_bottom >= 0 else -1,
+                "lines_lost": item.lines_lost,
+                "invariant_residual": item.invariant_residual,
+            })
         return {
             "decision": decision,
             "applied": applied,
@@ -1430,90 +1387,38 @@ class CRegistrationEstimator:
                 result.frame_observation_d1, result.frame_observation_d2
             ),
             "frame_observation_support": result.frame_observation_support,
-            "frame_observation_motion_priority": (
-                result.frame_observation_motion_priority
-            ),
-            "frame_observation_conflict": result.frame_observation_conflict,
             "mode": mode,
             "confidence": result.confidence,
-            "best_pair": (result.best_d1, result.best_d2),
-            "pending_pair": (result.pending_d1, result.pending_d2),
-            "pending_count": result.pending_count,
-            "pending_span": result.pending_span,
-            "decision_backdate": result.decision_backdate,
-            "trajectory_reset": result.trajectory_reset,
-            "trajectory_locked": result.trajectory_locked,
+            "best_pair": applied,
+            "pending_pair": applied,
+            "pending_count": 0,
+            "pending_span": 0,
+            "decision_backdate": 0,
+            "trajectory_reset": False,
+            "trajectory_locked": result.comb_safe,
             "confirmation_units": self.confirmation_units,
             "maximum_buffered_units": self.buffer_units,
-            "best_relative": result.best_relative,
-            "selected_relative": result.selected_relative,
-            "independent_evidence": result.independent_evidence_margin,
-            "weave_margin": result.weave_margin,
-            "temporal_margin1": result.temporal_margin_f1,
-            "temporal_margin2": result.temporal_margin_f2,
-            "temporal_best1": result.temporal_best_f1,
-            "temporal_best2": result.temporal_best_f2,
-            "temporal_best_cost1": result.temporal_best_cost_f1,
-            "temporal_best_cost2": result.temporal_best_cost_f2,
-            "temporal_scene_cut": result.temporal_scene_cut,
             "transport_ok": result.transport_ok,
-            "content_evidence_available": result.content_evidence_available,
-            "top_f1_censored": result.top_f1_censored,
-            "top_f2_censored": result.top_f2_censored,
-            "global_envelope_authority": result.global_envelope_authority,
-            "observed_f1": result.observed_transport_f1,
-            "observed_f2": result.observed_transport_f2,
-            "top1": result.picture_top_f1,
-            "top2": result.picture_top_f2,
-            "bottom1": result.picture_bottom_f1,
-            "bottom2": result.picture_bottom_f2,
-            "band_mode1": result.learned_band_mode_f1,
-            "band_mode2": result.learned_band_mode_f2,
-            "bottom_mode1": result.learned_bottom_mode_f1,
-            "bottom_mode2": result.learned_bottom_mode_f2,
-            "band_stability1": result.learned_band_stability_f1,
-            "band_stability2": result.learned_band_stability_f2,
-            "bottom_stability1": result.learned_bottom_stability_f1,
-            "bottom_stability2": result.learned_bottom_stability_f2,
-            "dual_edge_agreement": result.dual_edge_agreement,
-            "phase_vote_left": result.phase_vote_left,
-            "phase_vote_center": result.phase_vote_center,
-            "phase_vote_right": result.phase_vote_right,
-            "phase_motion_left": result.phase_motion_left,
-            "phase_motion_center": result.phase_motion_center,
-            "phase_motion_right": result.phase_motion_right,
-            "phase_priority_band": result.phase_priority_band,
-            "phase_consensus": result.phase_consensus,
-            "phase_support": result.phase_support,
-            "spatial_phase_conflict": result.spatial_phase_conflict,
-            "phase_window": result.phase_window,
-            "phase_window_count": result.phase_window_count,
-            "phase_window_margin": result.phase_window_margin,
-            "fast_edge_d1": result.fast_edge_d1,
-            "fast_edge_d2": result.fast_edge_d2,
-            "fast_edge_support_f1": result.fast_edge_support_f1,
-            "fast_edge_support_f2": result.fast_edge_support_f2,
-            "fast_edge_spatial_conflict": result.fast_edge_spatial_conflict,
-            "relative_only": result.relative_only,
-            "relative_only_gauge_unknown": result.relative_only_gauge_unknown,
-            "relative_only_gauge_source": relative_gauge,
-            "relative_only_phase": result.relative_only_phase,
-            "relative_only_best_energy": result.relative_only_best_energy,
-            "relative_only_runner_energy": result.relative_only_runner_energy,
-            "relative_only_prior_energy": result.relative_only_prior_energy,
-            "relative_only_margin": result.relative_only_margin,
-            "relative_only_ratio": result.relative_only_ratio,
-            "relative_only_static_columns": result.relative_only_static_columns,
-            "relative_only_persistent_columns": (
-                result.relative_only_persistent_columns
-            ),
-            "relative_only_transport_gate": result.relative_only_transport_gate,
-            "relative_only_cut_gate": result.relative_only_cut_gate,
-            "bottom_f1_censored": result.bottom_f1_censored,
-            "bottom_f2_censored": result.bottom_f2_censored,
-            "engine": (
-                f"field_registration-c-{self.evidence_model}-v{self.algorithm_version}"
-            ),
+            "comb_safe": bool(result.comb_safe),
+            "segment_id": result.segment_id,
+            "fields": fields,
+            # Compatibility values for the untagged damage-review path. They
+            # are not emitted by the schema-5 tagged sidecar.
+            "best_relative": applied[1] - applied[0],
+            "selected_relative": applied[1] - applied[0],
+            "independent_evidence": 0.0,
+            "weave_margin": 0.0,
+            "temporal_margin1": 0.0,
+            "temporal_margin2": 0.0,
+            "observed_f1": fields[0]["gauge_line"],
+            "observed_f2": fields[1]["gauge_line"],
+            "top1": fields[0]["raw_top"],
+            "top2": fields[1]["raw_top"],
+            "band_mode1": fields[0]["lock_top"],
+            "band_mode2": fields[1]["lock_top"],
+            "band_stability1": 1.0 if fields[0]["lock_state"] == "Locked" else 0.0,
+            "band_stability2": 1.0 if fields[1]["lock_state"] == "Locked" else 0.0,
+            "engine": f"field_registration-c-v{self.algorithm_version}",
         }
 
 
@@ -1913,6 +1818,41 @@ TPC_DECISION_COLUMNS = (
     "registration_engine",
 )
 
+# Schema 5 retains the transport/presentation columns consumed by the renderer
+# and replaces every v7 evidence column with the v9 per-field provenance.
+V9_FIELD_COLUMNS = (
+    "reason", "gauge", "insert_present", "insert_bytes",
+    "parity_candidates", "fallback_candidates", "gauge_line", "gauge_bytes",
+    "gauge_amplitude", "blank_mean", "raw_top", "raw_bottom", "raw_height",
+    "geometry_measurable", "bottom_censored", "lock_state", "lock_id",
+    "lock_top", "lock_height", "clip_ceiling", "expected_bottom",
+    "lines_lost", "invariant_residual",
+)
+TPC_DECISION_COLUMNS = (
+    "timeline_frame", "counter", "extended_counter", "unit_state",
+    "captured_video_bytes", "undefined_video_bytes", "decision_d1",
+    "decision_d2", "applied_d1", "applied_d2", "baseline_d1", "baseline_d2",
+    "mode", "confidence", "transport_ok", "comb_safe", "segment_id",
+    "presentation_policy",
+    *(f"f1_{name}" for name in V9_FIELD_COLUMNS),
+    *(f"f2_{name}" for name in V9_FIELD_COLUMNS),
+    "registration_engine", "schema_version",
+)
+
+
+def _v9_field_row(field):
+    return (
+        field["reason"], field["gauge"], int(field["insert_present"]),
+        field["insert_bytes"], field["parity_candidates"],
+        field["fallback_candidates"], field["gauge_line"], field["gauge_bytes"],
+        f"{field['gauge_amplitude']:.3f}", f"{field['blank_mean']:.3f}",
+        field["raw_top"], field["raw_bottom"], field["raw_height"],
+        int(field["geometry_measurable"]), int(field["bottom_censored"]),
+        field["lock_state"], field["lock_id"], field["lock_top"],
+        field["lock_height"], field["clip_ceiling"], field["expected_bottom"],
+        field["lines_lost"], field["invariant_residual"],
+    )
+
 
 def tagged_decision_row(
     index,
@@ -1944,6 +1884,21 @@ def tagged_decision_row(
             presentation_policy
         )
         return tuple(row)
+    if "fields" in registration:
+        fields = registration["fields"]
+        measured = tuple(
+            "" if field["measured_d"] == CRegistrationEstimator.UNKNOWN
+            else field["measured_d"] for field in fields
+        )
+        return (
+            index, counter, extended_counter, unit_state, captured_bytes,
+            VIDEO_UNIT_BYTES - captured_bytes, *measured, *applied,
+            *registration["baseline"], registration["mode"],
+            f"{registration['confidence']:.9f}", int(registration["transport_ok"]),
+            int(registration["comb_safe"]), registration["segment_id"],
+            presentation_policy, *_v9_field_row(fields[0]),
+            *_v9_field_row(fields[1]), registration["engine"], 5,
+        )
     decision = registration["decision"]
     best_d1, best_d2 = registration["best_pair"]
     pending_d1, pending_d2 = registration["pending_pair"]

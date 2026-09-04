@@ -220,10 +220,36 @@ static int log_header(FILE *L){
     return fprintf(L, "ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,"
                "interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,"
                "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,"
-               "relative_only,relative_only_gauge_unknown,relative_only_gauge_source,relative_only_phase,"
-               "relative_only_best_energy,relative_only_runner_energy,relative_only_prior_energy,relative_only_margin,relative_only_ratio,"
-               "relative_only_static_columns,relative_only_persistent_columns,relative_only_transport_gate,relative_only_cut_gate,"
-               "bottom_f1_censored,bottom_f2_censored,published,drop_reason,schema_version,preceding_ring_drops\n") < 0 ? -1 : 0;
+               "f1_reason,f1_gauge,f1_insert_present,f1_insert_bytes,f1_parity_candidates,f1_fallback_candidates,f1_gauge_line,f1_gauge_bytes,f1_gauge_amplitude,f1_blank_mean,f1_raw_top,f1_raw_bottom,f1_raw_height,f1_geometry_measurable,f1_bottom_censored,f1_lock_state,f1_lock_id,f1_lock_top,f1_lock_height,f1_clip_ceiling,f1_expected_bottom,f1_lines_lost,f1_invariant_residual,"
+               "f2_reason,f2_gauge,f2_insert_present,f2_insert_bytes,f2_parity_candidates,f2_fallback_candidates,f2_gauge_line,f2_gauge_bytes,f2_gauge_amplitude,f2_blank_mean,f2_raw_top,f2_raw_bottom,f2_raw_height,f2_geometry_measurable,f2_bottom_censored,f2_lock_state,f2_lock_id,f2_lock_top,f2_lock_height,f2_clip_ceiling,f2_expected_bottom,f2_lines_lost,f2_invariant_residual,"
+               "comb_safe,published,drop_reason,schema_version,preceding_ring_drops\n") < 0 ? -1 : 0;
+}
+
+static int log_field(FILE *L, const fieldreg_field_decision *d)
+{
+    const char *reason = d ? fieldreg_mode_name(d->reason) : "None";
+    const char *gauge = d ? fieldreg_gauge_name(d->gauge) : "None";
+    const char *lock = d ? fieldreg_lock_state_name(d->lock_state) : "Unlocked";
+    char insert_bytes[5] = "", gauge_bytes[5] = "";
+    if (d && d->insert_present)
+        snprintf(insert_bytes, sizeof insert_bytes, "%02x%02x", d->insert_byte1, d->insert_byte2);
+    if (d && d->gauge_row >= 0 && d->gauge == FIELDREG_GAUGE_CEA608_PARITY)
+        snprintf(gauge_bytes, sizeof gauge_bytes, "%02x%02x", d->gauge_byte1, d->gauge_byte2);
+    return fprintf(L, ",%s,%s,%d,%s,%u,%u,%d,%s,%.3f,%.3f,%d,%d,%d,%d,%d,%s,%u,%d,%d,%d,%d,%d,%d",
+                   reason, gauge, d && d->insert_present, insert_bytes,
+                   d ? d->parity_candidate_count : 0,
+                   d ? d->fallback_candidate_count : 0,
+                   d && d->gauge_row >= 0 ? d->gauge_row + 4 : -1, gauge_bytes,
+                   d ? d->gauge_amplitude : 0.0, d ? d->blank_mean : 0.0,
+                   d && d->raw_top >= 0 ? d->raw_top + 4 : -1,
+                   d && d->raw_bottom >= 0 ? d->raw_bottom + 4 : -1,
+                   d ? d->raw_height : -1, d && d->geometry_measurable,
+                   d && d->bottom_censored, lock, d ? d->lock_id : 0,
+                   d && d->lock_top >= 0 ? d->lock_top + 4 : -1,
+                   d ? d->lock_height : -1,
+                   d && d->clip_ceiling >= 0 ? d->clip_ceiling + 4 : -1,
+                   d && d->expected_bottom >= 0 ? d->expected_bottom + 4 : -1,
+                   d ? d->lines_lost : 0, d ? d->invariant_residual : 0);
 }
 static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
@@ -231,10 +257,14 @@ static void process_item(frameserver *f, const fs_item *it){
         f->st.ring_drops_logged+=it->preceding_ring_drops; f->st.ring_gap_rows++;
         pthread_mutex_lock(&f->log_m);
         if(f->log){
-            if(fprintf(f->log,"%llu,0,Hole,-1,Unclassified,0.000,Unknown,0.000,0,0,0,0,0,0,0,0,0,0,0,Immediate,None,0.000,"
-                           "0,0,None,-128,0.000,0.000,0.000,0.000,0.000000,0,0,0,0,0,0,0,RingFullTail,%u,%llu\n",
-                    (unsigned long long)it->obs.ordinal,FS_DECISION_LOG_SCHEMA,
-                    (unsigned long long)it->preceding_ring_drops) < 0){ f->st.log_write_errors++; f->log_file_errors++; }
+            int wr = fprintf(f->log,"%llu,0,Hole,-1,Unclassified,0.000,Unknown,0.000,0,0,,,,0,0,0,0,0,Immediate,None,0.000",
+                             (unsigned long long)it->obs.ordinal);
+            if (wr >= 0) wr = log_field(f->log, NULL);
+            if (wr >= 0) wr = log_field(f->log, NULL);
+            if (wr >= 0) wr = fprintf(f->log, ",0,0,RingFullTail,%u,%llu\n",
+                                      FS_DECISION_LOG_SCHEMA,
+                                      (unsigned long long)it->preceding_ring_drops);
+            if(wr < 0){ f->st.log_write_errors++; f->log_file_errors++; }
             else f->st.log_rows++;
             fs_test_after_log_row(f, f->log);
         }
@@ -280,7 +310,7 @@ static void process_item(frameserver *f, const fs_item *it){
         f->st.exact_units++;
         have_d = fieldreg_process(f->eng, unit, &d);
         if (have_d && classified)
-            signal_state_note_registration(f->sig, &sr, d.frame_observation_support > 0,
+            signal_state_note_registration(f->sig, &sr, d.frame_observation_support == 2,
                                            d.frame_observation_d1, d.frame_observation_d2,
                                            d.confidence, true,
                                            d.applied_d1, d.applied_d2);
@@ -300,8 +330,7 @@ static void process_item(frameserver *f, const fs_item *it){
     // fopen/fclose happen outside it (fs_log_start/fs_log_stop), so the worker never waits on I/O it did not issue.
     pthread_mutex_lock(&f->log_m);
     if (f->log){
-        int wr = fprintf(f->log, "%llu,%llu,%s,%d,%s,%.3f,%s,%.3f,%llu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s,%s,%.3f,"
-                        "%d,%d,%s,%d,%.3f,%.3f,%.3f,%.3f,%.6f,%u,%u,%d,%d,%d,%d,%d,%s,%u,%llu\n",
+        int wr = fprintf(f->log, "%llu,%llu,%s,%d,%s,%.3f,%s,%.3f,%llu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s,%s,%.3f",
             (unsigned long long)obs.ordinal, (unsigned long long)obs.counter_extended, transport_name(obs.transport), (int)obs.kind,
             classified ? signal_appearance_name(sr.appearance) : "Unclassified", classified ? sr.appearance_confidence : 0.0,
             classified ? signal_source_state_name(sr.source) : "Unknown", classified ? sr.source_confidence : 0.0,
@@ -310,23 +339,13 @@ static void process_item(frameserver *f, const fs_item *it){
             have_d ? d.applied_d1 : 0, have_d ? d.applied_d2 : 0,
             have_d ? d.baseline_d1 : 0, have_d ? d.baseline_d2 : 0,
             classified && sr.settled_phase_known, classified ? sr.settled_d1 : 0, classified ? sr.settled_d2 : 0,
-            "Immediate", have_d ? fieldreg_mode_name(d.mode) : "None", have_d ? d.confidence : 0.0,
-            have_d && d.relative_only, have_d && d.relative_only_gauge_unknown,
-            have_d ? fieldreg_relative_gauge_name(d.relative_only_gauge_source) : "None",
-            have_d ? d.relative_only_phase : FIELDREG_UNKNOWN,
-            have_d ? d.relative_only_best_energy : 0.0,
-            have_d ? d.relative_only_runner_energy : 0.0,
-            have_d ? d.relative_only_prior_energy : 0.0,
-            have_d ? d.relative_only_margin : 0.0,
-            have_d ? d.relative_only_ratio : 0.0,
-            have_d ? d.relative_only_static_columns : 0,
-            have_d ? d.relative_only_persistent_columns : 0,
-            have_d && d.relative_only_transport_gate,
-            have_d && d.relative_only_cut_gate,
-            have_d && d.bottom_f1_censored, have_d && d.bottom_f2_censored,
-            published,
-            it->drop == FS_DROP_POOL_FULL ? "PoolFull" : (!published && unit ? "PublisherFull" : "None"),FS_DECISION_LOG_SCHEMA,
-            (unsigned long long)rd);
+            "Immediate", have_d ? fieldreg_mode_name(d.mode) : "None", have_d ? d.confidence : 0.0);
+        if (wr >= 0) wr = log_field(f->log, have_d ? &d.field[0] : NULL);
+        if (wr >= 0) wr = log_field(f->log, have_d ? &d.field[1] : NULL);
+        if (wr >= 0) wr = fprintf(f->log, ",%d,%d,%s,%u,%llu\n",
+            have_d && d.comb_safe, published,
+            it->drop == FS_DROP_POOL_FULL ? "PoolFull" : (!published && unit ? "PublisherFull" : "None"),
+            FS_DECISION_LOG_SCHEMA, (unsigned long long)rd);
         if (wr < 0){ f->st.log_write_errors++; f->log_file_errors++; } else f->st.log_rows++;   // a failed row is never counted as written
         fs_test_after_log_row(f, f->log);
     }
