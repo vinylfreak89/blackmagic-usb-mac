@@ -19,7 +19,8 @@ def odd_parity(value):
 
 
 def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
-              f2_envelopes=(), dark=False, letterbox=0, invalid=False,
+              f2_envelopes=(), f2_bleed_envelopes=(), dark=False,
+              letterbox=0, invalid=False,
               extra_valid=(), base_bottoms=(256, 518), bright_rows=(),
               top_overrides=(None, None), bottom_overrides=(None, None),
               weak_caption_rows=(), smeared_vbi_rows=(),
@@ -94,11 +95,31 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
     for row, b1, b2, parity, cycles in extra_valid:
         waveform(row, b1, b2, parity=parity, run_cycles=cycles)
 
-    # The field-2 fallback: energy confined to the first 20 of 48 bins.
+    # The field-2 fallback's measured left-side structure: an early pulse,
+    # four-bin bar, then a two-bin drop. Its right half is not part of the
+    # signature because picture can bleed into it.
     for row in f2_envelopes:
         ys = [8] * PIXELS
-        for x in range(40, 40 + (640 * 8) // 48):
-            ys[x] = 100
+        for bin_ in (1, 4, 5, 6, 7):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [100] * (last - first)
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # Same XDS left structure, but with the real 45:00 failure class's
+    # unconstrained picture bleed rising across the right half.
+    for row in f2_bleed_envelopes:
+        ys = [8] * PIXELS
+        for bin_ in (1, 4, 5, 6, 7):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [100] * (last - first)
+        for bin_ in range(15, 24):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            y = 39 + (bin_ - 15) * 6
+            ys[first:last] = [y] * (last - first)
         start = row * BYTES_PER_LINE
         raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
 
@@ -333,6 +354,16 @@ def main():
     add("bottom-band-return-hold-lock", (0, 0),
         bottom_overrides=(256, None), f1_reason="GeometryLockDecides",
         f1_lock="Locked")
+
+    # The 45:00 field-2 class: XDS keeps its measured left signature while
+    # picture bleeds into the right half; the following row is a parity-invalid
+    # run-in fragment. Both rows are VBI, and picture begins at line 288 (+2).
+    add("field2-xds-right-bleed", (0, 2), begin=True,
+        top_overrides=(None, 284), bottom_overrides=(None, 522),
+        f2_bleed_envelopes=(282,),
+        extra_valid=((283, 0x14, 0x2c, False, 7),),
+        f2_reason="Field2EnvelopePlacement", f2_lock="Locked",
+        f2_zero="Envelope", f2_lock_top=282)
 
     # Root cause C: picture content never defines zero. Each segment starts
     # locked to the standard picture origins (NTSC 23/286), so an immediately

@@ -12,9 +12,10 @@ away from the Shuttle's insert at rows 17/280 is the primary displacement
 gauge and applies immediately, except for the line-22 ambiguity below.
 Non-null data re-encoded on the insert is never a displacement gauge: the
 sidecar retains its bytes and names whether live geometry corroborated or
-contradicted it. Field 2 additionally uses the frozen
-smeared-XDS discriminator documented in `CLAUDE.md` when parity cannot decode
-that field.
+contradicted it. Field 2 additionally uses the frozen smeared-XDS discriminator
+documented in `CLAUDE.md` when parity cannot decode that field. Its invariant
+is the measured pulse/bar/drop structure in the left 40% plus a row mean below
+95; the right half is unconstrained because picture can bleed into it.
 
 A parity-valid row exactly one line below an insert carrying non-null data and
 agreeing aligned geometry is classified as station line-22/285 data. The sole
