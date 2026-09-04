@@ -49,8 +49,11 @@ signal, is the reference the picture is jumping relative to?*
 ## v3 — the C engine and the 120-unit rolling mode (2026-08-30 → 09-01)
 
 - **Premise.** Port v2 to allocation-free C with the same anchors (padding ruler, VBI rows,
-  temporal registration), hysteresis and `Unknown`; a rolling majority over 120 units settles
-  the plateau.
+  temporal registration), hysteresis and `Unknown`. The 120-unit rolling majority that "settles
+  the plateau" was NOT in the first C port: `phase_history` first appears in `14fe5d5` (09-01),
+  together with ±6-line motion search in three bands and cut/fade abstention. Codex's account
+  splits these into two stages (first C engine, then motion/rolling); the git objects support
+  that split and this section originally conflated them.
 - **Record.** `f5b261b` "Add allocation-free C field registration engine" (21:00), `bf3f3bc`
   "independent edge evidence" (21:43), `0f29e37` "dual-edge veto and segment-gauge reset"
   (08-31 03:01), `0d807af` "Render tagged captures through the C registration engine",
@@ -200,5 +203,54 @@ first VBI probe demanded caption *data* and found line 21 in a tenth of the unit
 
 ## Reconciliation with Codex's account
 
-(Appended when Codex's independently sourced excavation lands; disagreements are listed rather
-than merged silently.)
+Codex wrote its own excavation from its rollout records and the git objects without reading this
+file (`docs/registration_archaeology_codex.md`, committed verbatim as `724a9cb`). The two accounts
+agree on every deciding measurement they both cite (the 274–285 wander as estimator noise, the
+147 forward-only rows, 10,547 → 1,021, 88 → 29 / 803 → 268, 80/198/69, 29 → 937 for pure
+bottom-only, 256 × 1,038 / 255 × 546, 202–0 in the parity test, 19/282). Where they differ:
+
+1. **Partition of the nine.** This file counts v1 (field-2 origin) · v2 (d1,d2) · v3 (C engine
+   + rolling) · v4 (FIFO) · v5 (lookback investigation, no engine) · v6 · v7 · v8 · v9. Codex
+   counts Python estimator · first C engine · motion/rolling v2 · FIFO v3/v4 · authority-first v6
+   · relative-only v7 · the `unknown-hold` experiment · bottom-edge v8 · v9 plan, and states that
+   no `v5` exists in repository naming. Both partitions reach nine; the git objects favour
+   Codex's split of the C engine from the rolling mode (`phase_history` is absent from `f5b261b`
+   and `0f29e37`, present in `14fe5d5`), and this file's v3 section has been corrected above.
+   "v5" here is a label for the investigation that decided v6, not a claim that an engine existed.
+2. **Where v1 starts.** Codex begins at `4f8b65b` (22:29, the first corrective crop, already
+   moving field 1); this file begins at `e811226` (22:15, the field-2-origin premise it
+   corrected 35 minutes later). Both are in git; no conflict, different choice of first commit.
+3. **The v6 sign-off.** This file said the owner's reading ("the remaining jumps bring new lines
+   in — recorded-signal instability, not raster position") was taken as final and "it was".
+   Codex calls that interpretation *overturned* by the 09-04 frame-by-frame review and the raw
+   parity/envelope measurements (rigid whole-field shifts of field 1, 202–0). Codex is right and
+   the sentence here was wrong: at least the rigid-shift class the engine abstained on is
+   registration-correctable. Some jumps may still be recorded signal; that is now a per-unit
+   question for v9's envelope, not a global verdict.
+4. **The `unknown-hold` detour (09-04 12:08–12:12, `7991fa9`, `f605bcd`, not merged).** Omitted
+   here; sourced by Codex. It was the direct cost of the counter-wrap false alarm: the sidecar's
+   2,475 phase changes on `Unknown*` rows were a real policy inconsistency, but freezing every
+   Unknown row worsened both presentation windows because Unknown usually meant "the proxy failed
+   while the raster moved". Accepted as an addition.
+5. **Why `bdac68b` was reverted.** The revert commit `2930095` carries no rationale. Codex's
+   rollout says it followed recognizing that line 21 belongs in a VBI-preserving window; Claude's
+   transcript records Codex telling the owner the render started at line 19. Git cannot decide
+   this; both recollections stand. It does not change the outcome (`7285d89`).
+6. **The 20/283 picture top.** Codex attributes the earlier 20/283 statement in `8f58f37` to a
+   line-number interpretation error; this file attributes it to the census skipping rows 17 and
+   19 by number. Both are true and sequential: the instrument (`0e349c5`) produced 20 by
+   censoring 19, and the research note then justified 20 as "the standard first active line".
+7. **v7 denominators.** Codex distinguishes 803/2,871 → 268/2,870 (first run) from
+   803/2,869 → 268/2,865 (record-aligned filtering) and warns not to merge them; this file quoted
+   only the numerators. Codex's precision is adopted.
+8. **Codex's UNSOURCED flags, checked.** The v9 labels `Line21Placement` /
+   `Line21OnlyPlacement` / `Line21EnvelopeConflict` and the priority order ARE sourced: they are in
+   `docs/registration_v9_plan.md` (`d61ee8e` on main), which Codex's worktree at `0fc4ade` did not
+   contain. The SP line-21 row-set counts `(17,) = 1,663`, `(17,19) = 85` and the EP `(17,) =
+   1,762` are, as Codex says, transcript-only: they come from `line21_probe.py` in Claude's
+   09-04 session over the first 1,800 units and the 1,300 s EP slice, and are recorded here with
+   that provenance. The whole-tape envelope census was still running when both accounts were
+   written; its result is reported separately when it lands.
+9. **Coverage.** Codex's §9 (what each instrument could and could not prove) has no counterpart
+   here and is the better reference for that question; the twelve v8 review findings across
+   three rounds and the owner's quoted directions are here only, from Claude's transcript.
