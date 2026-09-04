@@ -1316,7 +1316,18 @@ delivery edge; wrong one at acquisition.
   CaptionRelock fires from the run-in row or it never fires and the recording renders with its
   own leaked VBI at the top (owner ruling owed). Field-1 unit-to-unit moves: first recording
   rigid 2,643 / bottom-only 1,976 (256↔255, content reaching the near-blank rows) / top-only
-  843; second recording top-only 5,089 / bottom-only 2,750 / rigid 2,377 / mixed 1,463. Damage classes the caption
+  843; second recording top-only 5,089 / bottom-only 2,750 / rigid 2,377 / mixed 1,463.
+  **Horizontal phase of the second recording's line 21 (2,400 s window, 600 units, 48 bins per
+  line): NOT split at half a line.** The complete null-caption waveform (run-in bins 0–11,
+  start/parity pulses at bins 15–17) sits on row 20 in ~300 units or row 19 in ~108, at exactly
+  the deck insert's horizontal layout but ~2× its amplitude; the picture begins on the very next
+  row (line 22 is active video in this recording, no black line); and the row above the caption
+  often carries a burst-only waveform (run-in with no start/data). So the "split with skew" is
+  two adjacent VBI-type rows plus a missing black line 22, not a half-line timing error; a
+  half-line error would displace every line, and a TBC re-locks H per line anyway. Prior art for
+  captions landing on varying rows: FFmpeg `readeia608` (scans `scan_min..scan_max`, default
+  rows 0–29, reports the row it found) and ld-decode/vhs-decode `ld-process-vbi` (reads CC
+  "anywhere in the VBI space"). Neither uses the row as a registration reference; that is ours. Damage classes the caption
   detector must survive: the tape's own vertical-interval pulses leaking into the picture as
   thick bright bands when horizontal timing is far out of tolerance (also the "severe flagging"
   bands seen on other tapes), and the EP recording's caption splitting across two lines/fields
