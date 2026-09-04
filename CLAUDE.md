@@ -1414,6 +1414,31 @@ delivery edge; wrong one at acquisition.
   d1 = 0 measured, not assumed. Field 2: 284 decodes as nulls everywhere; the tape's smeared
   XDS at 286 and the run-in line at 287 never decode, so field 2 has no parity gauge in the
   second recording and keeps the envelope of its unique 608-like candidate (286 ⇒ +2).
+  **The Shuttle RE-ENCODES line 21/284 — measured 2026-09-04 night.** Across 1,500 first-
+  recording units, every unit whose line 21 decodes to the same two bytes has a byte-identical
+  waveform (per-pixel std 0.6, peak 118 — the same as the synthetic null), while the tape's own
+  caption passing through raw at line 23/24 of the second recording has std ≈ 4 and peak
+  151–169. So the device decodes CEA-608 at the standard line (21/284 only), re-inserts a clean
+  waveform with those bytes, and emits nulls when nothing decodes there; the decoded bytes
+  change every unit (a cycling station-ID text packet in the first recording), so the decoder
+  is not sticky. Consequences: **non-null bytes on line 21 prove the tape's line 21 was AT line
+  21 in that unit** (aligned, measured per unit); null bytes on 21 mean "nothing decodable
+  there" and cannot separate an aligned null caption from no caption service or a displacement
+  — then the off-line search decides; a displaced caption passes through raw and is never
+  cleaned. The owner's expectation of tape luma "hanging off" the regenerated line 21 cannot
+  occur at line 21 itself (it is synthetic), only on displaced lines. A full-field parity scan
+  (lines 12–266 and 272–528, 300 units each) found the tape's caption only at 21 (first
+  recording) or 23/24 (second); nothing at the bottom of either field in these windows;
+  picture lines pass parity by chance in ~2% of units with run-in amplitude 15–22 against
+  52–60 for real captions — `cc608_decode.py` now gates at 35.
+  **Owner's lock model (2026-09-04 night, to be confirmed by Codex):** the picture's start line
+  and the deck's clip line are constants per source (letterbox included); once a lock exists it
+  is the golden master until its own invariant fails, tested every unit: picture height
+  constant, and any lines lost below the deck's clip must equal the lines added at the top. If
+  the math fails the old lock is dead and acquisition restarts. Line-20/21 data appearing off
+  the regenerated lines, with the picture moved by the same amount, computes the offset and
+  sets a new lock. Line 21 stays gold; the picture geometry is the secondary. Until a lock is
+  settled (a tape bouncing from its first lock) no real-time decision is claimed.
   **Owner ruling (same evening):** multiple line-21-like rows or a partial waveform in a unit
   means the timing signal is too unstable to use — give up on line 21 for that unit; the leaked
   VBI framing pulses at the bottom of the field and picture-above-the-band are then a real fix
