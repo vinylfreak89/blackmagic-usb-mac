@@ -1431,7 +1431,16 @@ delivery edge; wrong one at acquisition.
   the raw whole-field parity search**, which finds a displaced caption at its true line
   regardless of what the Shuttle emitted at 21, because the device never blanks other lines.
   Null bytes on 21 cannot separate an aligned null caption from no caption service or a
-  displacement; a displaced caption passes through raw and is never cleaned. The owner's expectation of tape luma "hanging off" the regenerated line 21 cannot
+  displacement; a displaced caption passes through raw and is never cleaned.
+  **±1 IS inside the slicer's window — measured 2026-09-05 (v9 sidecar vs geometry, first 13k
+  units):** 91 units carry decoded caption data at 21, NO raw parity line anywhere in the field,
+  and a rigid +1 picture (top and bottom together, 24/261 against a 23/260 lock, bottom far from
+  the ADC boundary). So the device slices a caption one line off, re-encodes it at 21, and the
+  raw line is gone; only geometry witnesses that displacement. Consequence for v9: bytes at 21
+  are never a gauge (not even for "0"); with a live lock, geometry decides and the insert bytes
+  are logged as corroboration only; the parity truth set for acceptance uses off-insert lines
+  only (40,169 field-1 units, +2 ×23,492, +3 ×16,670). The SP intro's rigid ±1 class (199 moves
+  in the first minute) is this. The owner's expectation of tape luma "hanging off" the regenerated line 21 cannot
   occur at line 21 itself (it is synthetic), only on displaced lines. A full-field parity scan
   (lines 12–266 and 272–528, 300 units each) found the tape's caption only at 21 (first
   recording) or 23/24 (second); nothing at the bottom of either field in these windows;
