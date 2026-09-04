@@ -885,6 +885,20 @@ def main():
         discontinuity=True, dark=True,
         f1_reason="GeometryUnmeasurable", f1_zero="Parity", f1_lock_top=18)
 
+    # Comb may corroborate a changed top before the segment zero has frozen.
+    # It still cannot calibrate a zero without a parity-referenced field 1;
+    # here it is only the independent second witness required by the top.
+    add("uncalibrated-top-comb-anchor", (2, 0), begin=True,
+        picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+        comb_offsets=(2, 0), parity_state="Uncalibrated")
+    add("uncalibrated-top-comb-cut", (2, 0), picture=(3, 0),
+        bright_rows=(21,), comb_offsets=(3, 0), comb_phase=5,
+        parity_state="Uncalibrated")
+    add("uncalibrated-top-comb-recovers", (3, 0), picture=(3, 0),
+        comb_offsets=(3, 0), comb_phase=5,
+        f1_reason="TopCombCorroborated", parity_state="Uncalibrated",
+        comb_check="disagree")
+
     # Post-cut F class: the first changed-content unit exposes a transient old
     # top and leaves the crop at +2. On the following static unit, raw top +3
     # and comb shift -1 independently agree even though the body stands still;

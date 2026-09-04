@@ -1186,15 +1186,17 @@ static void update_parity_calibration(field_registration *engine,
                                                             &out->field[0]) &&
                               field2_placed_on_zero(engine, &m[1],
                                                     &out->field[1]);
-        comb_measurement comb = {0};
-        if (eligible)
-            comb = measure_static_comb(engine, raster, out->applied_d1,
-                                       out->applied_d2, -3, 3);
+        const comb_measurement comb = measure_static_comb(
+            engine, raster, out->applied_d1, out->applied_d2, -3, 3);
         if (comb.best_shift != FIELDREG_UNKNOWN) {
             out->comb_best_shift = comb.best_shift;
             out->comb_best_energy = comb.best_energy;
             out->comb_second_energy = comb.second_energy;
             out->comb_static_fraction = comb.static_fraction;
+        }
+        if (comb.measurable) {
+            out->comb_check = comb.best_shift == 0 ? FIELDREG_COMB_AGREE :
+                                                    FIELDREG_COMB_DISAGREE;
         }
         if (eligible && comb.measurable) {
             const int16_t target_top = (int16_t)(m[1].picture_top -
@@ -1221,7 +1223,7 @@ static void update_parity_calibration(field_registration *engine,
         } else {
             engine->comb_zero_candidate = INT16_MIN;
             engine->comb_candidate_count = 0;
-            if (eligible && comb.best_shift != FIELDREG_UNKNOWN)
+            if (!comb.measurable && comb.best_shift != FIELDREG_UNKNOWN)
                 out->comb_check = FIELDREG_COMB_FLAT;
         }
     } else {
@@ -1273,8 +1275,7 @@ static void apply_top_comb_corroboration(field_registration *engine,
                                          const field_measurement m[2],
                                          fieldreg_decision *out)
 {
-    if (out->parity_state != FIELDREG_PARITY_CALIBRATED ||
-        out->comb_check != FIELDREG_COMB_DISAGREE ||
+    if (out->comb_check != FIELDREG_COMB_DISAGREE ||
         out->comb_best_shift == FIELDREG_UNKNOWN)
         return;
     bool match[2] = {false, false};
