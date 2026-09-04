@@ -19,7 +19,8 @@ Review-round additions decide four lock-policy details that an applied-pair-only
 fixture cannot see:
 
 - a parity-gauged `+2/+3` alternation with a clipped bottom reaches and remains
-  `Locked`, with `comb_safe` true from its third unit;
+  `Locked`, with `comb_safe` true from its third unit, even when an unrelated
+  bright VBI band appears above the displaced line-21 gauge;
 - non-null insert data cannot reset a live nonzero geometry lock;
 - line-22 data is not mistaken for a one-line displacement, and a one-line
   parity/geometry disagreement is a named hold; and

@@ -20,7 +20,7 @@ def odd_parity(value):
 
 def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               f2_envelopes=(), dark=False, letterbox=0, invalid=False,
-              extra_valid=(), base_bottoms=(256, 518)):
+              extra_valid=(), base_bottoms=(256, 518), bright_rows=()):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -79,6 +79,8 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
         if spec is not None:
             d, b1, b2 = spec
             waveform((17 if field == 0 else 280) + d, b1, b2)
+    for row in bright_rows:
+        fill(row, 180)
     for row, b1, b2, parity, cycles in extra_valid:
         waveform(row, b1, b2, parity=parity, run_cycles=cycles)
 
@@ -158,6 +160,7 @@ def main():
         add(f"clipped-parity-lock-{i + 1}", (d1, 2), begin=i == 0,
             picture=(d1, 2), captions=((d1, 0x14, 0x2c), None),
             f2_envelopes=(282,), base_bottoms=(259, 518),
+            bright_rows=(19,) if d1 == 3 else (),
             f1_lock="Locked" if i >= 2 else "-",
             f2_lock="Locked" if i >= 2 else "-",
             comb=1 if i >= 2 else -1)
