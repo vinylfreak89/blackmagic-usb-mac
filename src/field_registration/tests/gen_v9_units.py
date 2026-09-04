@@ -165,6 +165,18 @@ def main():
             f2_lock="Locked" if i >= 2 else "-",
             comb=1 if i >= 2 else -1)
 
+    # Without C, one missing weak field-2 gauge cannot turn an ambiguous
+    # shortened bottom into a one-line placement change.
+    add("clip-gap-acquire-1", (0, 2), begin=True, picture=(0, 2),
+        f2_envelopes=(282,), base_bottoms=(256, 519))
+    add("clip-gap-acquire-2", (0, 2), picture=(0, 2),
+        f2_envelopes=(282,), base_bottoms=(256, 519))
+    add("clip-gap-fit-pending", (0, 2), picture=(0, 2),
+        f2_envelopes=(282,), base_bottoms=(256, 518))
+    add("clip-gap-hold", (0, 2), picture=(0, 1),
+        base_bottoms=(256, 519), f2_reason="ClipUnknownHold",
+        f2_lock="Locked")
+
     # Insert data is corroboration, not authority over a live geometry lock.
     add("insert-conflict-acquire-1", (0, 0), begin=True)
     add("insert-conflict-acquire-2", (0, 0))
