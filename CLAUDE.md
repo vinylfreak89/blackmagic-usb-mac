@@ -1514,7 +1514,19 @@ delivery edge; wrong one at acquisition.
   has no field-2 gauge). comb_safe 75,216/86,294. 7,032 applied transitions, 2,797 one-unit
   flips: 2,023 parity-placed (the caption line itself moved for one unit), 734 geometry-placed
   of which 692 rigid (top and bottom moved together) and ~40 top-only under a fitted clip.
-  Owner render pending (`experiments/render_fulltape.sh` at `e1c91f6`).
+  **`captures/fulltape_render.{mp4,_registration.csv}` re-rendered from v9 (2026-09-05 01:09,
+  `render_fulltape.sh` at `6be3103`, gate all PASS: clean `-xerror` decode, 2879.410 s and
+  86,297 sidecar rows identical to the v7 pair, 172,592 frames; published by SHA-256-verified
+  copy, old pair deleted).** Render sidecar: field 1 agrees with the parity truth 40,237/40,237
+  too; pairs (0,0) 23,134, (2,2) 20,702, (1,0) 18,361, (3,2) 13,484, (1,1) 2,404; 7,207
+  transitions, 2,791 one-unit flips; comb_safe 80,929/86,296. ⚠️ **OPEN — the render and the
+  live path disagree in ~8,400 units, almost all field 2 of the first recording, by one line:**
+  same engine, same units, both 40,237/40,237 against the truth, but the frameserver calls
+  `fieldreg_begin_segment` at every classifier relock (15 on this tape) while the offline
+  renderer calls it once at the start, so the content-acquired field-2 zero differs. The renderer
+  must make the live path's relock calls (run the same classifier) before its sidecar can be
+  called the live path's output. The renderer's arming detector also broke when the crop origin
+  moved (fixed `6be3103`; LEARNINGS).
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
   out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio
