@@ -52,6 +52,9 @@ locked field appear unlocked.
 applied offset. Neither buffers, backdates, drops, or repeats a unit. Until
 both field locks are valid, `comb_safe` is false; callers still emit the
 uncorrected/held frame and leave any presentation policy downstream.
+One missing Shuttle insert is an `InsertAbsent` hold and does not itself erase
+a lock; a real mute/unlock is already a signal-state segment boundary, while
+subsequent measurable geometry can independently invalidate a stale lock.
 
 ## Sidecar schema 5
 
