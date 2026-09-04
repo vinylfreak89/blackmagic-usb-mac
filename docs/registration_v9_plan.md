@@ -426,3 +426,28 @@ state 168,088 bytes.
 engine-motion 32, missed 3,078. Comb audit over 86,292 unit pairs: **78,908 registered, 3,693
 flat, 3,691 misregistered** (+1 ×2,038, +2 ×902, −1 ×691, others 60) — the whole-tape
 "combing under yadif" figure before calibration. The `a683926` whole-tape pass is running.
+
+## Round 5 whole-tape sidecar of `a683926` (2026-09-05 08:00 JST) — two zero defects, sent as round 6
+
+Paced replay 86,293/86,293, zero drops; parity Calibrated 83,705 / Uncalibrated 2,514 / Drift
+74; field-2 zero Comb 51,035 (first recording 43,671), Envelope 34,805, Standard 406.
+
+- **Runaway field-2 zero** at minute 43: the bias walks from 4 to 41 lines, one line every ~4
+  units — field 2 is held out of range so its crop never follows the zero, the comb at the held
+  crops keeps reading +1, Drift fires, and recalibration derives the next zero from the current
+  one (an integrator with no feedback); 852 units end with |bias| > 3. The comb's +1 there was
+  field 1's error (geometry-placed under a corrupted zero), mis-attributed to field 2.
+- **Single-unit zero re-anchor** (`seed_from_gauge`), both gauges, both fields: field 1's zero
+  flips 23↔22 320 times, always on a caption-placed unit whose measured top alternates between
+  caption+1 and caption+2 because this recording's line 22 carries flickering video; lock_top is
+  22 in 28,359 second-recording units. Every geometry-placed unit under the wrong zero is one
+  line off (the (4,2) class, 777 units; the first recording's one-too-low classes, 513). Field
+  2's envelope gauge re-anchors from a single picture-line hit the same way.
+- **ZeroConflict** (175 units, minutes 28–35): envelope zero one line high against a decisive
+  comb with field 1 parity-placed; under the picture-over-VBI rule the comb should win the zero.
+- A plain discontinuity discards the calibrated zero, against the plan's contract.
+
+Rules sent: the zero is a segment constant, re-anchored only on ≥ 3 consecutive identical
+gauge readings; bounded to ±3 lines of the standard origin; calibration and drift only with a
+parity-placed field 1 and a field 2 actually placed on its zero; the target zero derived from
+the observed geometry, never from the current zero.
