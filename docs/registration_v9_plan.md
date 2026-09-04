@@ -311,3 +311,19 @@ measurement, in the engine); (2) every hold state that can occur with usable geo
 state as provenance; InsertAbsent, GeometryUnmeasurable and discontinuity stay legitimate holds;
 ClipUnknownHold is dead and deleted; (3) the per-segment parity calibration by static comb;
 (4) the raster-damage state.
+
+## Whole-tape follow audit of the round-2 engine (baseline; raw raster; 2026-09-05 04:00 JST)
+
+`experiments/follow_audit.py` over all 86,293 units of the published v9 sidecar (content motion =
+both fields' bodies moving together with no applied change): field 1 — engine-motion **954**
+(Line21Placement 738, GeometryLockDecides 212), missed moves **2,259** (GeometryLockDecides 843,
+Line21Placement 768, LockBroken 482, Acquiring 145), correct follows 5,822, content motion 7,174;
+field 2 — engine-motion 95, missed moves 3,056, follows 21. Engine-motion concentrates in the
+second recording (30–50 min: 748 of 954). The ~1,500 Line21Placement rows where the caption and
+the picture body disagree in either direction (caption moved / picture still, and picture moved /
+caption still) are the VBI-versus-picture class the owner ruled on: **the picture wins the crop
+in both directions** — after the lock, the picture's own testimony (top edge + body witness)
+decides the crop whenever it is measurable; the caption places a unit only when the picture is
+not measurable, corroborates otherwise, and anchors the segment zero. That is the general form
+of the ruling and the next brief to Codex. The same audit is running on the C/D build for the
+before/after.
