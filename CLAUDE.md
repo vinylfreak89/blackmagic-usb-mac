@@ -1269,7 +1269,16 @@ delivery edge; wrong one at acquisition.
   corrects it every unit (jitter included), the per-lock learned HEIGHT serving validity, never
   position; ambiguous captions (duplicate, split, skewed, leaking band) never touch the lock or
   the crop; with no gauge at all, hold the last applied (0 at open). A caption on the insert is
-  logged as confirmation. Damage classes the caption
+  logged as confirmation. **"Line 21" means the BLANK waveform** (run-in + start + two null
+  bytes), present on every unit where the source had caption service — no caption data needed;
+  a displaced field shows TWO such rows (insert at 17, tape's at 17+d), an aligned one shows one
+  (measured: SP minute (17,19) in 85 units, 85/85 with picture displacement +2). **Secondary
+  alignment checks** (owner; never the primary gauge): the NEXT field's leaky line-21-like
+  waveform in the head-switch band at the bottom of the field (row 256 in aligned EP units);
+  picture content appearing ABOVE the deck's line-21 insert (rows 7–16 must never carry video);
+  and the black line 22 (row 18, Y ≈ 1.4 when aligned; the gap moves with the content). EP
+  damage measured at 1,300 s: 458/1,800 units carry ≥2 bright leaking-VBI band rows above the
+  picture, 138 carry one — bands, never line 21 or picture. Damage classes the caption
   detector must survive: the tape's own vertical-interval pulses leaking into the picture as
   thick bright bands when horizontal timing is far out of tolerance (also the "severe flagging"
   bands seen on other tapes), and the EP recording's caption splitting across two lines/fields
