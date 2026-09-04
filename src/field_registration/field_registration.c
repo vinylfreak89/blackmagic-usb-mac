@@ -401,7 +401,6 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
         d->geometry_d = (int8_t)(m->top - s->top);
 
     if (!m->insert_present) {
-        s->lock_state = FIELDREG_LOCK_UNLOCKED;
         hold(s, d, FIELDREG_MODE_INSERT_ABSENT);
     } else if (m->off_count > 1) {
         hold(s, d, FIELDREG_MODE_LINE21_AMBIGUOUS);
