@@ -10,6 +10,19 @@
 
 enum { SAMPLES = 10000 };
 
+typedef struct {
+    uint64_t calls;
+    uint64_t checksum;
+} bench_sink;
+
+static void consume_frame(void *opaque, const fp_frame *frame)
+{
+    bench_sink *sink = opaque;
+    sink->calls++;
+    sink->checksum += frame->counter_ext + (uint8_t)frame->d1 +
+                      (uint8_t)frame->d2;
+}
+
 static uint64_t now_ns(void)
 {
     struct timespec ts;
@@ -44,11 +57,10 @@ int main(int argc, char **argv)
     const size_t units = (size_t)length / FIELDREG_UNIT_BYTES;
     const size_t usable_units = units > 1 ? units - 1 : units; /* final golden is invalid-header */
     uint8_t *raw = malloc((size_t)length);
-    uint8_t *frame = malloc(FP_FRAME_HEIGHT * FP_LINE_BYTES);
     signal_state *signal = aligned_alloc(signal_state_alignment(), signal_state_size());
     uint64_t *engine_ns = malloc(SAMPLES * sizeof *engine_ns);
     uint64_t *worker_ns = malloc(SAMPLES * sizeof *worker_ns);
-    if (!raw || !frame || !signal || !engine_ns || !worker_ns || units == 0 ||
+    if (!raw || !signal || !engine_ns || !worker_ns || units == 0 ||
         fread(raw, 1, (size_t)length, f) != (size_t)length)
         return 2;
     fclose(f);
@@ -70,6 +82,13 @@ int main(int argc, char **argv)
     signal_state_config sc = signal_state_default_config();
     signal_state_init(signal, &sc);
     signal_state_begin_epoch(signal, 1);
+    bench_sink bench = {0};
+    fp_sink sink = { consume_frame, &bench };
+    fp_publisher *publisher = NULL;
+    if (fp_open(&publisher, 6, &sink) != 0) {
+        fprintf(stderr, "BENCH: fp_open failed\n");
+        return 2;
+    }
     for (int i = 0; i < SAMPLES; ++i) {
         const uint8_t *unit = raw + (size_t)(i % usable_units) * FIELDREG_UNIT_BYTES;
         unit_video_observation obs = {
@@ -94,14 +113,23 @@ int main(int argc, char **argv)
             decision.frame_observation_support == 2,
             decision.frame_observation_d1, decision.frame_observation_d2,
             decision.confidence, true, decision.applied_d1, decision.applied_d2);
-        fp_assemble(frame, unit, decision.applied_d1, decision.applied_d2);
+        if (fp_publish(publisher, unit, FIELDREG_UNIT_BYTES, (uint64_t)i,
+                       decision.applied_d1, decision.applied_d2,
+                       FP_TRANSPORT_COMPLETE, 0, 0) != 0)
+            return 2;
         worker_ns[i] = now_ns() - begin;
-        checksum += frame[(size_t)(i % FP_FRAME_HEIGHT) * FP_LINE_BYTES + 1];
     }
+    fp_stats publisher_stats;
+    fp_get_stats(publisher, &publisher_stats);
+    if (bench.calls != SAMPLES || publisher_stats.published != SAMPLES ||
+        publisher_stats.dropped_no_free_surface != 0)
+        return 2;
+    checksum += bench.checksum;
     report("FIELDREG-BENCH", engine_ns);
     report("WORKER-BENCH", worker_ns);
     printf("BENCH-SAMPLES %d checksum %llu\n", SAMPLES,
            (unsigned long long)checksum);
-    free(worker_ns); free(engine_ns); free(signal); free(frame); free(raw);
+    fp_close(publisher);
+    free(worker_ns); free(engine_ns); free(signal); free(raw);
     return 0;
 }
