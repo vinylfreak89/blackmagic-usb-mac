@@ -77,6 +77,7 @@ typedef struct {
     unsigned sidecar_part;                  /* 0 = first file of this recording; N>0 => .partN+1 (source restarted mid-recording) */
     int sidecar_attached;
     char *sidecar_partial, *sidecar_final;  /* growing scratch path, and the published name it gets at detach */
+    pthread_t publisher; int publisher_live; /* one outstanding asynchronous publication (joined before the next, and at destroy) */
     _Atomic uint64_t last_counter;          /* counter_ext of the last frame delivered to OBS */
 } shuttle_src;
 #define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; published by rename on the same filesystem, by verified copy otherwise */
@@ -179,19 +180,34 @@ static void sidecar_attach(shuttle_src *s){
  * deleted. "Published" means the destination filesystem acknowledged the bytes; on a write-back
  * cloud volume (LucidLink) that is cache-visible, and the volume's own upload counter says when it
  * is remote — the plugin cannot see that, so it does not claim it. */
-static void sidecar_publish(shuttle_src *s){
-    char *dircopy = bstrdup(s->sidecar_final); char *scratchcopy = bstrdup(s->sidecar_partial);
+/* The publication runs on its own thread: OBS frontend event callbacks execute on the UI thread,
+ * and nothing that touches storage belongs there. The job owns copies of both paths; the source
+ * keeps at most one publication in flight and joins it before starting another and at destroy. */
+typedef struct { char *partial, *final; } publish_job;
+static void *publisher_main(void *arg){
+    publish_job *j = arg;
+    pthread_setname_np("shuttle-sidecar-publish");
+    char *dircopy = bstrdup(j->final); char *scratchcopy = bstrdup(j->partial);
     int same = same_filesystem(dirname(scratchcopy), dirname(dircopy)); bfree(dircopy); bfree(scratchcopy);
     if (same){
-        if (renamex_np(s->sidecar_partial, s->sidecar_final, RENAME_EXCL) != 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish refused (%s); the complete file is left at %s", strerror(errno), s->sidecar_partial);
-        else blog(LOG_INFO, "[shuttle-source] sidecar published: %s", s->sidecar_final);
+        if (renamex_np(j->partial, j->final, RENAME_EXCL) != 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish refused (%s); the complete file is left at %s", strerror(errno), j->partial);
+        else blog(LOG_INFO, "[shuttle-source] sidecar published: %s", j->final);
     } else {
-        int rc = publish_by_copy(s->sidecar_partial, s->sidecar_final);
-        if (rc == -2) blog(LOG_ERROR, "[shuttle-source] sidecar publish by copy failed (%s) AND its staging file could not be removed: look for %s.partial-*; the complete file is at %s", strerror(errno), s->sidecar_final, s->sidecar_partial);
-        else if (rc < 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish by copy failed or did not verify (%s); the complete file is left at %s", strerror(errno), s->sidecar_partial);
-        else if (rc == 1) blog(LOG_WARNING, "[shuttle-source] sidecar published by verified copy: %s — the scratch copy was KEPT at %s (directory fsync or scratch removal failed: %s)", s->sidecar_final, s->sidecar_partial, strerror(errno));
-        else blog(LOG_INFO, "[shuttle-source] sidecar published by verified copy (different filesystem; cache-visible on a cloud volume): %s", s->sidecar_final);
+        int rc = publish_by_copy(j->partial, j->final);
+        if (rc == -2) blog(LOG_ERROR, "[shuttle-source] sidecar publish by copy failed (%s) AND its staging file could not be removed: look for %s.partial-*; the complete file is at %s", strerror(errno), j->final, j->partial);
+        else if (rc < 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish by copy failed or did not verify (%s); the complete file is left at %s", strerror(errno), j->partial);
+        else if (rc == 1) blog(LOG_WARNING, "[shuttle-source] sidecar published by verified copy: %s — the scratch copy was KEPT at %s (directory fsync or scratch removal failed: %s)", j->final, j->partial, strerror(errno));
+        else blog(LOG_INFO, "[shuttle-source] sidecar published by verified copy (different filesystem; cache-visible on a cloud volume): %s", j->final);
     }
+    bfree(j->partial); bfree(j->final); bfree(j);
+    return NULL;
+}
+static void publisher_join(shuttle_src *s){ if (s->publisher_live){ pthread_join(s->publisher, NULL); s->publisher_live = 0; } }
+static void sidecar_publish(shuttle_src *s){
+    publisher_join(s);                                  /* at most one in flight; the previous recording's publish is normally long done */
+    publish_job *j = bzalloc(sizeof *j); j->partial = bstrdup(s->sidecar_partial); j->final = bstrdup(s->sidecar_final);
+    if (pthread_create(&s->publisher, NULL, publisher_main, j) == 0) s->publisher_live = 1;
+    else { blog(LOG_ERROR, "[shuttle-source] could not start the sidecar publisher thread; publishing inline"); publisher_main(j); }
 }
 static void sidecar_detach(shuttle_src *s){
     if (!s->sidecar_attached) return;
@@ -300,7 +316,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
 static void shuttle_destroy(void *data){
     shuttle_src *s = data; if (!s) return;
     obs_frontend_remove_event_callback(frontend_event, s);
-    pthread_mutex_lock(&s->m); shuttle_stop(s); pthread_mutex_unlock(&s->m); pthread_mutex_destroy(&s->m);
+    pthread_mutex_lock(&s->m); shuttle_stop(s); publisher_join(s); pthread_mutex_unlock(&s->m); pthread_mutex_destroy(&s->m);
     bfree(s->sidecar_base); bfree(s->sidecar_partial); bfree(s->sidecar_final);
     bfree(s->vbuf); bfree(s->abuf); bfree(s);
     atomic_fetch_sub(&g_instances, 1);

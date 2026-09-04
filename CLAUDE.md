@@ -1299,10 +1299,9 @@ delivery edge; wrong one at acquisition.
   tests for every post-create step; "published" = the destination filesystem acknowledged the
   bytes, cache-visible on a write-back cloud volume), never truncating or replacing an existing
   sidecar, never published if incomplete; on a mid-recording source restart the log is closed by
-  `fs_stop` after the workers drain, so no delivered unit is ever unlogged. OPEN: publication
-  runs synchronously on OBS's frontend thread under the plugin's transition mutex, so a slow cloud
-  volume delays a recording stop or source restart by the copy time (an asynchronous publication
-  queue is the follow-up). Alignment is within
+  `fs_stop` after the workers drain, so no delivered unit is ever unlogged. Publication runs on
+  its own thread (OBS frontend event callbacks execute on the UI thread; nothing that touches
+  storage runs there), one in flight per source, joined at destroy. Alignment is within
   one unit (the counter of the last frame delivered before the event is logged; exact alignment
   needs an in-band frame counter). OPEN: a `.tpc` tee from inside the plugin (needs a
   runtime-attachable tagged sink in the capture core); a log writer thread if storage stalls are
