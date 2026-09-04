@@ -180,3 +180,37 @@ itself, d = 0; second recording: 23 or 24, d = +2 / +3, per unit), the vertical 
 never pass, and `Line21Ambiguous` never fires there. Field 2's tape line does not decode on this
 tape (smeared XDS), so field 2 keeps the unique-608-like-candidate envelope rule with parity
 decode attempted first. Cost: one correlation and 19 samples per candidate line, negligible.
+
+## The lock model, confirmed by Codex (2026-09-04 night) — supersedes ruling 2's fallback text
+
+Owner's model: the picture's start line and the deck's clip are constants per source (letterbox
+included); a lock is the golden master until its own invariant fails, tested every unit; line 21
+is gold, picture geometry is the secondary; no real-time claim until a lock settles. Codex's
+verdict: **model holds, with four changes**, all accepted:
+
+1. **Censored-height arithmetic.** With locked top `T`, uncensored height `H`, displacement `d`
+   and the last deck-passable line `C`: expected bottom = `min(T + H − 1 + d, C)`, lines lost
+   below = `max(0, T + H − 1 + d − C)`. `C` is fitted per source and field as the one saturation
+   line across repeated parity-gauged offsets, never from a single dark bottom; if no gauged
+   displacement ever reaches the clip, `C` stays unknown and censored height cannot invalidate
+   a lock. Only three geometry values are learned per field: source top, uncensored height,
+   optional clip ceiling.
+2. **Parity authority is immediate.** A parity-valid field-1 decode applies on that unit with
+   no settling delay: line 21 = 0, another line = its offset. Field 2, which has no parity
+   decode on fixture A, settles its unique-608-like-candidate reference (line 286 ⇒ +2) before
+   its registration is known; the units before it settles are named, not claimed.
+3. **"Neither" is subdivided and named:** non-null parity at 21 = `MeasuredAligned`;
+   parity-valid line elsewhere = `MeasuredDisplaced(d)`; null at 21 and nothing elsewhere =
+   the geometry lock decides, never evidence of alignment; orphan run-ins and leaking bands are
+   rejected by parity; insert absent = `InsertAbsent` hold, never geometry; dark / fade / snow
+   or a broken conservation equation = `GeometryUnmeasurable` / `LockBroken`; device-short
+   units are excluded before registration.
+4. **Comb-safe interlaced output is claimed only after both field locks are valid.** Until
+   then the sidecar says so and a presentation that needs the guarantee bobs field-isolated or
+   delays; the no-comb guarantee begins when both locks exist. Horizontal flagging and
+   chroma/line-phase damage stay outside this vertical model.
+
+With these, the engine is: per field per unit, decode candidates with parity; apply the reading
+immediately; maintain one lock (top, height, clip) per field and test the conservation
+equation every unit; re-lock when a gauged offset and the picture agree; name every state.
+No comb, no bands, no temporal search, no trajectories.
