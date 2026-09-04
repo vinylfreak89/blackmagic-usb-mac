@@ -853,6 +853,23 @@ def main():
             comb_check="agree" if i >= 3 else "-",
             parity_bias=2 if i >= 3 else 1)
 
+    # A byte discontinuity invalidates only comparisons with the missing
+    # previous unit. Segment constants survive; begin_segment is their reset.
+    add("discontinuity-preserves-comb", (2, 2), discontinuity=True,
+        picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+        bright_rows=(282, 283), comb_offsets=(2, 2),
+        f2_reason="GeometryLockDecides", f2_zero="Comb", f2_lock_top=280,
+        parity_state="Calibrated", comb_check="n.a.", parity_bias=2)
+    for i in range(3):
+        add(f"discontinuity-parity-zero-seed-{i + 1}", (2, 0),
+            begin=i == 0, captions=((2, 0x14, 0x2c), None),
+            top_overrides=(20, None), bottom_overrides=(256, None),
+            f1_zero="Parity" if i == 2 else "Standard",
+            f1_lock_top=18 if i == 2 else 19)
+    add("discontinuity-preserves-parity-zero", (2, 0),
+        discontinuity=True, dark=True,
+        f1_reason="GeometryUnmeasurable", f1_zero="Parity", f1_lock_top=18)
+
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
     with open(args.output, "wb") as out:
