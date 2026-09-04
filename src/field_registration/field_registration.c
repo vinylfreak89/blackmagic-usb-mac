@@ -37,6 +37,11 @@ enum {
     BODY_PROFILE_ROWS = 160,
     BODY_PROFILE_COLUMNS = 640,
     BODY_SEARCH_RADIUS = 3,
+    /* Units 440/441 at 05:00 measured MAD 9.78 versus 10.05 at the
+     * adjacent shift: a 3% tie that made the old witness override a clear
+     * picture edge.  Require a 20% win before body motion is testimony. */
+    BODY_MARGIN_NUMERATOR = 4,
+    BODY_MARGIN_DENOMINATOR = 5,
 };
 
 static uint16_t read_le16(const uint8_t *p)
@@ -86,6 +91,7 @@ static void measure_body(const uint8_t *raster, int field,
     m->body_implied_top = -1;
     if (s->previous_body_valid) {
         uint64_t best_cost = UINT64_MAX;
+        uint64_t costs[2 * BODY_SEARCH_RADIUS + 1];
         int best_shift = 0;
         for (int shift = -BODY_SEARCH_RADIUS;
              shift <= BODY_SEARCH_RADIUS; ++shift) {
@@ -100,6 +106,7 @@ static void measure_body(const uint8_t *raster, int field,
                     cost += (uint64_t)(delta < 0 ? -delta : delta);
                 }
             }
+            costs[shift + BODY_SEARCH_RADIUS] = cost;
             /* Match follow_audit.py: ascending shifts and the first strict
              * minimum wins. This also makes a flat minimum visible rather
              * than silently preferring zero. */
@@ -108,7 +115,16 @@ static void measure_body(const uint8_t *raster, int field,
                 best_shift = shift;
             }
         }
-        m->body_witness_valid = true;
+        const int best_index = best_shift + BODY_SEARCH_RADIUS;
+        uint64_t adjacent_cost = UINT64_MAX;
+        if (best_index > 0)
+            adjacent_cost = costs[best_index - 1];
+        if (best_index + 1 < 2 * BODY_SEARCH_RADIUS + 1 &&
+            costs[best_index + 1] < adjacent_cost)
+            adjacent_cost = costs[best_index + 1];
+        m->body_witness_valid = adjacent_cost != UINT64_MAX &&
+            best_cost * BODY_MARGIN_DENOMINATOR <=
+            adjacent_cost * BODY_MARGIN_NUMERATOR;
         m->body_shift = (int8_t)best_shift;
         m->body_mad = (double)best_cost /
                       (BODY_PROFILE_ROWS * BODY_PROFILE_COLUMNS);
