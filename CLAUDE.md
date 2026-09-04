@@ -1527,6 +1527,34 @@ delivery edge; wrong one at acquisition.
   must make the live path's relock calls (run the same classifier) before its sidecar can be
   called the live path's output. The renderer's arming detector also broke when the crop origin
   moved (fixed `6be3103`; LEARNINGS).
+  **Owner review of the v9 render (2026-09-05 01:30–02:30) — v9 as built FAILS the owner's
+  invariant, and the review artifacts were wrong too.** The invariant (owner): the regenerated
+  raster is identical in every unit and the tape's field position is directly readable every
+  unit (the TAPE's line 21 when visible, else the picture's first line), so the output picture
+  position is `measured − crop = 0` by construction and **can never bounce except during the
+  initial lock of a program segment**; any bounce is a wrong reading or a remembered value
+  substituted for a reading. Measured on the published render at the owner's sites (raw
+  525-line raster inspected): 35:33–35:59 = 229/784 units with a field-1 output jump and XDS in
+  frame; 2:48 field-1 `LockBroken` ×41 on a clean picture from line 24 (bottom-band flicker);
+  43:24 `LockBroken` ×762 with the picture from 26 (lock zero one line off); 7:45 field-2
+  `ClipUnknownHold` ×1,222 with the picture at the standard origin 286 (zero acquired from a dark
+  unit at 287); 21:13 `OutOfRangeHold` ×41 on a night scene at luma 10 (absolute threshold 12
+  called it blank; picture visibly from 24, held 0 = wrong). Honest holds: 24:17 one-field
+  dropout (field 2 all black); 24:20 snow/torn relock (but the classifier stayed ProgramLike).
+  Root causes handed to Codex with failing goldens: (A) VBI-type lines that fail parity or the
+  amplitude gate are taken as the picture top (damaged captions, the smeared XDS bar); (B)
+  bottom flicker inside the deck's near-blank band (lines 260–264 / 522–526) breaks locks; (C)
+  the lock zero is acquired from content instead of the standard origin — the golden rule says
+  assume locked at 23/286 until a gauge re-anchors; (D) absolute luma threshold. Whole-render
+  audit (`experiments/render_stability_audit.py`, detectors still noisy on NNEDI output):
+  1,759 units where the crop followed a moved "top" while the picture did not move (the engine
+  following a VBI/grey line), 34 crop changes on a still edge, 283 raw-top moves not followed.
+  **Review-copy rules (owner):** the review copy is produced from the LIVE frameserver output
+  with its own sidecar burned in over the ENTIRE tape (never an excerpt — a keyframe-cut
+  excerpt offset the band by 12 units and misled the review), never from `capture_render.py`;
+  no whole-tape re-render except for sanity checks; every non-locked state outside true signal
+  loss or a cut is audited against the raw raster before hand-over. The published v9 pair stays
+  as the sanity baseline; it is not accepted.
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
   out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio
