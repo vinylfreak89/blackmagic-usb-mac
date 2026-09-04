@@ -138,7 +138,7 @@ int main(int argc, char **argv){
     // log integrity: header + rows, columns as the contract names them
     FILE *L = fopen(logp, "r"); char line[2048]; unsigned rows = 0; int hdr_ok = 0, row_shape_ok = 1; unsigned header_fields = 0;
     while (fgets(line, sizeof line, L)){
-        if (rows == 0){ hdr_ok = strstr(line, "interval_id,unsettled,provisional_d1") != NULL && strstr(line, "f1_reason,f1_gauge,f1_insert_present") != NULL && strstr(line, "f2_lock_top,f2_lock_height,f2_clip_ceiling") != NULL; header_fields=csv_fields(line); }
+        if (rows == 0){ hdr_ok = strstr(line, "interval_id,unsettled,provisional_d1") != NULL && strstr(line, "f1_reason,f1_gauge,f1_insert_present") != NULL && strstr(line, "f1_gauge_amplitude,f1_geometry_d,f1_blank_mean") != NULL && strstr(line, "f2_lock_top,f2_lock_height,f2_lock_height_known,f2_clip_state,f2_clip_ceiling") != NULL; header_fields=csv_fields(line); }
         else if(csv_fields(line)!=header_fields) row_shape_ok=0;
         rows++;
     }
