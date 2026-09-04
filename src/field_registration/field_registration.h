@@ -67,8 +67,8 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_LINE22_DATA_PRESENT,
     FIELDREG_MODE_GAUGE_CONFLICT,
     FIELDREG_MODE_CAPTION_ONLY_MOTION,
+    FIELDREG_MODE_CAPTION_BODY_DISAGREE,
     FIELDREG_MODE_ANCHOR_UNCORROBORATED,
-    FIELDREG_MODE_CLIP_UNKNOWN_HOLD,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -103,11 +103,15 @@ typedef struct fieldreg_field_decision {
     uint8_t gauge_byte2;
     double gauge_amplitude;
     double blank_mean;
+    double body_mad;
     int16_t raw_top;
     int16_t raw_bottom;
     int16_t raw_height;
     bool geometry_measurable;
     bool bottom_censored;
+    bool body_witness_valid;
+    int8_t body_shift;
+    bool body_geometry_agrees;
     fieldreg_lock_state lock_state;
     fieldreg_zero_source zero_source;
     uint32_t lock_id;
@@ -153,6 +157,8 @@ typedef struct fieldreg_field_state {
     uint8_t clip_candidate_count;
     fieldreg_zero_source zero_source;
     uint32_t lock_id;
+    uint16_t previous_body_profile[160];
+    bool previous_body_valid;
 } fieldreg_field_state;
 
 /* Caller-owned, allocation-free hot-path state. The clip fit is deliberately

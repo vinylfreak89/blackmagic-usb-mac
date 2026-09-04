@@ -27,7 +27,8 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               weak_caption_rows=(), nonsignature_bar_rows=(),
               field_luma=(None, None), dark_fields=(False, False),
               gap_rows=(), broad_bar_picture_rows=(),
-              caption_false_picture_rows=()):
+              caption_false_picture_rows=(), content_phases=(0, 0),
+              content_shifts=(None, None)):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -77,17 +78,23 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
                 else top_overrides[0])
         bottom1 = (min(base_bottoms[0] + d1, 260)
                    if bottom_overrides[0] is None else bottom_overrides[0])
+        phase1 = counter * 7 if content_phases[0] is None else content_phases[0]
         for row in range(top1, bottom1 + 1):
             y = field_luma[0]
-            fill(row, y if y is not None else 62 + ((row * 13 + counter * 7) % 91))
+            shift = d1 if content_shifts[0] is None else content_shifts[0]
+            basis = row - shift
+            fill(row, y if y is not None else 62 + ((basis * 13 + phase1) % 91))
     if not dark and not dark_fields[1]:
         top2 = (282 + d2 + letterbox if top_overrides[1] is None
                 else top_overrides[1])
         bottom2 = (min(base_bottoms[1] + d2, 522)
                    if bottom_overrides[1] is None else bottom_overrides[1])
+        phase2 = counter * 5 if content_phases[1] is None else content_phases[1]
         for row in range(top2, bottom2 + 1):
             y = field_luma[1]
-            fill(row, y if y is not None else 58 + ((row * 11 + counter * 5) % 97))
+            shift = d2 if content_shifts[1] is None else content_shifts[1]
+            basis = row - shift
+            fill(row, y if y is not None else 58 + ((basis * 11 + phase2) % 97))
 
     for field, spec in enumerate(captions):
         if spec is not None:
@@ -206,16 +213,20 @@ def main():
     rows = []
     units = []
 
-    def add(scenario, expected, *, begin=False, ok=True, f1_reason="-",
+    def add(scenario, expected, *, begin=False, discontinuity=False, ok=True,
+            f1_reason="-",
             f2_reason="-", f1_lock="-", f2_lock="-", f1_zero="-",
             f2_zero="-", f1_lock_top=-999, f2_lock_top=-999, comb=-1,
             f1_raw_top=-999, f2_raw_top=-999,
+            f1_body_shift=-999, f2_body_shift=-999,
             **kwargs):
         counter = len(units)
         units.append(make_unit(counter, **kwargs))
-        rows.append((counter, scenario, int(begin), int(ok), expected[0], expected[1],
+        rows.append((counter, scenario, int(begin), int(discontinuity), int(ok),
+                     expected[0], expected[1],
                      f1_reason, f2_reason, f1_lock, f2_lock, f1_zero, f2_zero,
                      f1_lock_top, f2_lock_top, comb, f1_raw_top, f2_raw_top))
+        rows[-1] += (f1_body_shift, f2_body_shift)
 
     # Alignment and immediate parity authority.
     add("aligned-null-acquire-1", (0, 0), begin=True)
@@ -242,10 +253,11 @@ def main():
     add("invalid-vertical-duplicate-ignored", (2, 2), picture=(2, 2),
         captions=((2, 0x14, 0x2c), None), f2_envelopes=(282,),
         extra_valid=((20, 0x14, 0x2c, False, 7),))
-    add("two-valid-lines-hold", (2, 2), picture=(3, 2),
+    add("two-valid-lines-geometry", (3, 2), picture=(3, 2),
         extra_valid=((19, 0x14, 0x2c, True, 7),
-                     (20, 0x15, 0x2b, True, 7)))
-    add("insert-absent-hold", (2, 2), picture=(0, 0), insert=False)
+                     (20, 0x15, 0x2b, True, 7)),
+        f1_reason="Line21Ambiguous")
+    add("insert-absent-hold", (3, 2), picture=(0, 0), insert=False)
 
     # A real line-21 reading remains authoritative when picture geometry is dark or clipped.
     add("dark-line21-only", (3, 2), picture=(3, 2), dark=True,
@@ -335,9 +347,10 @@ def main():
     add("parity-plus2-reanchors", (2, 0),
         captions=((2, 0x14, 0x2c), None),
         top_overrides=(21, None), bottom_overrides=(258, None),
+        content_shifts=(1, 0),
         f1_reason="Line21Placement", f1_lock="Locked", f1_zero="Parity",
         f1_lock_top=19)
-    add("gold-zero-nonrigid-hold", (2, 0),
+    add("gold-zero-top-body-minus1", (1, 0),
         top_overrides=(20, None), bottom_overrides=(255, None),
         f1_reason="LockBroken", f1_lock="Locked")
     add("gold-zero-rigid-plus1", (1, 0),
@@ -456,22 +469,91 @@ def main():
     # picture envelope. Both edges then veto that caption for this unit only.
     add("caption-only-motion-anchor", (2, 0), begin=True, picture=(2, 0),
         captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
         f1_reason="Line21Placement", f1_lock_top=19)
     add("caption-only-motion-veto", (2, 0), picture=(2, 0),
         captions=((3, 0x15, 0x2b), None), base_bottoms=(250, 518),
-        f1_reason="CaptionOnlyMotion", f1_lock_top=19)
+        content_phases=(0, 0), content_shifts=(2, 0),
+        f1_reason="CaptionOnlyMotion", f1_lock_top=19, f1_body_shift=0)
     add("caption-and-edges-move", (3, 0), picture=(3, 0),
         captions=((3, 0x15, 0x2b), None), base_bottoms=(250, 518),
-        f1_reason="Line21Placement", f1_lock_top=19)
+        content_phases=(0, 0), content_shifts=(3, 0),
+        f1_reason="Line21Placement", f1_lock_top=19, f1_body_shift=1)
 
-    # A censored bottom cannot testify that the caption moved alone. The
-    # caption still places this unit, but one reading cannot re-anchor zero.
+    # A censored bottom is absence of evidence, not contrary evidence. A
+    # measurable still top plus a reliable still body can veto caption alone.
     add("caption-censored-anchor", (2, 0), begin=True, picture=(2, 0),
         captions=((2, 0x14, 0x2c), None), base_bottoms=(256, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
         f1_lock_top=19)
-    add("caption-move-censored-wins", (3, 0), picture=(2, 0),
+    add("caption-move-censored-veto", (2, 0), picture=(2, 0),
         captions=((3, 0x15, 0x2b), None), base_bottoms=(256, 518),
-        f1_reason="AnchorUncorroborated", f1_lock_top=19)
+        content_phases=(0, 0), content_shifts=(2, 0),
+        f1_reason="CaptionOnlyMotion", f1_lock_top=19, f1_body_shift=0)
+
+    # When caption and body move by different amounts, top plus body decide.
+    # If the top does not agree with that body-consistent placement, hold.
+    add("caption-body-disagree-anchor", (2, 0), begin=True, picture=(2, 0),
+        captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 0))
+    add("caption-body-disagree-place", (3, 0), picture=(3, 0),
+        captions=((4, 0x15, 0x2b), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        f1_reason="CaptionBodyDisagree", f1_body_shift=1)
+    add("caption-body-disagree-hold", (3, 0), picture=(2, 0),
+        captions=((4, 0x15, 0x2b), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        f1_reason="CaptionBodyDisagree", f1_body_shift=0)
+
+    # Ambiguous/conflicting VBI becomes provenance when top and body provide
+    # a coherent current-unit geometry placement.
+    add("ambiguous-geometry-anchor", (0, 0), begin=True,
+        base_bottoms=(250, 518), content_phases=(0, 0))
+    add("ambiguous-geometry-place", (1, 0), picture=(1, 0),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(1, 0),
+        extra_valid=((18, 0x14, 0x2c, True, 7),
+                     (19, 0x15, 0x2b, True, 7)),
+        f1_reason="Line21Ambiguous", f1_body_shift=1)
+
+    add("gauge-conflict-geometry-anchor", (1, 0), begin=True,
+        picture=(1, 0), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(1, 0))
+    add("gauge-conflict-geometry-place", (0, 0), picture=(0, 0),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(0, 0),
+        extra_valid=((18, 0x15, 0x2b, True, 7),),
+        f1_reason="GaugeConflict", f1_body_shift=-1)
+
+    # Bottom conservation can fail while top and body still prove a rigid
+    # move. That unit is placed without changing the settled lock geometry.
+    add("lock-broken-body-anchor", (0, 0), begin=True,
+        base_bottoms=(250, 518), content_phases=(0, 0))
+    add("lock-broken-body-place", (1, 0), picture=(1, 0),
+        bottom_overrides=(252, None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(1, 0),
+        f1_reason="LockBroken", f1_body_shift=1)
+    add("lock-broken-body-conflict-anchor", (0, 0), begin=True,
+        base_bottoms=(250, 518), content_phases=(0, 0))
+    add("lock-broken-body-conflict-hold", (0, 0), picture=(1, 0),
+        bottom_overrides=(252, None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(0, 0),
+        f1_reason="LockBroken", f1_body_shift=0)
+
+    # +10 is outside the old policy range but remains inside the source
+    # raster. A +1 body witness distinguishes it from a false top reading.
+    add("out-of-range-body-anchor", (9, 0), begin=True, picture=(9, 0),
+        base_bottoms=(240, 518), content_phases=(0, 0),
+        content_shifts=(9, 0))
+    add("out-of-range-body-place", (10, 0), picture=(10, 0),
+        base_bottoms=(240, 518), content_phases=(0, 0),
+        content_shifts=(10, 0), f1_reason="OutOfRangeHold", f1_body_shift=1)
+    add("out-of-range-body-conflict-anchor", (9, 0), begin=True,
+        picture=(9, 0), base_bottoms=(240, 518),
+        content_phases=(0, 0), content_shifts=(9, 0))
+    add("out-of-range-body-conflict-hold", (9, 0), picture=(10, 0),
+        base_bottoms=(240, 518), content_phases=(0, 0),
+        content_shifts=(9, 0), f1_reason="OutOfRangeHold", f1_body_shift=0)
 
     # A cold false parity hit can imply a bogus zero (NTSC line 29 here).
     # It places its own unit but may not poison following geometry. A second
@@ -535,6 +617,16 @@ def main():
         f1_lock="Locked", f2_lock="Locked", f1_zero="Standard",
         f2_zero="Standard", f1_lock_top=19, f2_lock_top=282)
 
+    # Transport discontinuity preserves the last presentation while clearing
+    # current-unit witnesses. With no new gauge or picture, that is an honest
+    # GeometryUnmeasurable hold rather than an inferred placement.
+    add("discontinuity-anchor", (2, 0), begin=True, picture=(2, 0),
+        captions=((2, 0x14, 0x2c), None))
+    add("discontinuity-unmeasurable-hold", (2, 0), discontinuity=True,
+        dark=True, f1_reason="GeometryUnmeasurable",
+        f2_reason="GeometryUnmeasurable", f1_lock="Locked",
+        f2_lock="Locked")
+
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
     with open(args.output, "wb") as out:
@@ -542,11 +634,13 @@ def main():
             out.write(unit)
     with open(args.truth, "w", newline="") as out:
         w = csv.writer(out)
-        w.writerow(("unit", "scenario", "begin_segment", "process_ok",
+        w.writerow(("unit", "scenario", "begin_segment", "discontinuity",
+                    "process_ok",
                     "applied_d1", "applied_d2", "f1_reason", "f2_reason",
                     "f1_lock", "f2_lock", "f1_zero", "f2_zero",
                     "f1_lock_top", "f2_lock_top", "comb_safe",
-                    "f1_raw_top", "f2_raw_top"))
+                    "f1_raw_top", "f2_raw_top", "f1_body_shift",
+                    "f2_body_shift"))
         w.writerows(rows)
     print(f"wrote {len(units)} v9 units")
 

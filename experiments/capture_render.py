@@ -1241,9 +1241,13 @@ class _CFieldDecision(ctypes.Structure):
         ("gauge_row", ctypes.c_int16),
         ("gauge_byte1", ctypes.c_uint8), ("gauge_byte2", ctypes.c_uint8),
         ("gauge_amplitude", ctypes.c_double), ("blank_mean", ctypes.c_double),
+        ("body_mad", ctypes.c_double),
         ("raw_top", ctypes.c_int16), ("raw_bottom", ctypes.c_int16),
         ("raw_height", ctypes.c_int16), ("geometry_measurable", ctypes.c_bool),
-        ("bottom_censored", ctypes.c_bool), ("lock_state", ctypes.c_int),
+        ("bottom_censored", ctypes.c_bool),
+        ("body_witness_valid", ctypes.c_bool), ("body_shift", ctypes.c_int8),
+        ("body_geometry_agrees", ctypes.c_bool),
+        ("lock_state", ctypes.c_int),
         ("zero_source", ctypes.c_int),
         ("lock_id", ctypes.c_uint32), ("lock_top", ctypes.c_int16),
         ("lock_height", ctypes.c_int16), ("lock_height_known", ctypes.c_bool),
@@ -1382,6 +1386,10 @@ class CRegistrationEstimator:
                 "gauge_amplitude": item.gauge_amplitude,
                 "geometry_d": item.geometry_d,
                 "blank_mean": item.blank_mean,
+                "body_witness_valid": bool(item.body_witness_valid),
+                "body_shift": item.body_shift,
+                "body_mad": item.body_mad,
+                "body_geometry_agrees": bool(item.body_geometry_agrees),
                 "raw_top": item.raw_top + 4 if item.raw_top >= 0 else -1,
                 "raw_bottom": item.raw_bottom + 4 if item.raw_bottom >= 0 else -1,
                 "raw_height": item.raw_height,
@@ -1423,7 +1431,7 @@ class CRegistrationEstimator:
             "segment_id": result.segment_id,
             "fields": fields,
             # Compatibility values for the untagged damage-review path. They
-            # are not emitted by the schema-5 tagged sidecar.
+            # are not emitted by the schema-6 tagged sidecar.
             "best_relative": applied[1] - applied[0],
             "selected_relative": applied[1] - applied[0],
             "independent_evidence": 0.0,
@@ -1838,12 +1846,13 @@ TPC_DECISION_COLUMNS = (
     "registration_engine",
 )
 
-# Schema 5 retains the transport/presentation columns consumed by the renderer
+# Schema 6 retains the transport/presentation columns consumed by the renderer
 # and replaces every v7 evidence column with the v9 per-field provenance.
 V9_FIELD_COLUMNS = (
     "reason", "gauge", "insert_present", "insert_bytes", "insert_relation",
     "parity_candidates", "fallback_candidates", "gauge_line", "gauge_bytes",
-    "gauge_amplitude", "geometry_d", "blank_mean", "raw_top", "raw_bottom", "raw_height",
+    "gauge_amplitude", "geometry_d", "blank_mean", "body_witness_valid",
+    "body_shift", "body_mad", "body_geometry_agrees", "raw_top", "raw_bottom", "raw_height",
     "geometry_measurable", "bottom_censored", "lock_state", "zero_source", "lock_id",
     "lock_top", "lock_height", "lock_height_known", "clip_state",
     "clip_ceiling", "expected_bottom",
@@ -1868,6 +1877,8 @@ def _v9_field_row(field):
         field["fallback_candidates"], field["gauge_line"], field["gauge_bytes"],
         f"{field['gauge_amplitude']:.3f}", field["geometry_d"],
         f"{field['blank_mean']:.3f}",
+        int(field["body_witness_valid"]), field["body_shift"],
+        f"{field['body_mad']:.3f}", int(field["body_geometry_agrees"]),
         field["raw_top"], field["raw_bottom"], field["raw_height"],
         int(field["geometry_measurable"]), int(field["bottom_censored"]),
         field["lock_state"], field["zero_source"], field["lock_id"], field["lock_top"],
@@ -1920,7 +1931,7 @@ def tagged_decision_row(
             f"{registration['confidence']:.9f}", int(registration["transport_ok"]),
             int(registration["comb_safe"]), registration["segment_id"],
             presentation_policy, *_v9_field_row(fields[0]),
-            *_v9_field_row(fields[1]), registration["engine"], 5,
+            *_v9_field_row(fields[1]), registration["engine"], 6,
         )
     decision = registration["decision"]
     best_d1, best_d2 = registration["best_pair"]

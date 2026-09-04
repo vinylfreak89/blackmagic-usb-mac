@@ -7,16 +7,17 @@ parity. The fixture covers:
 
 - coincident null and data line 21;
 - immediate per-field `+1/+2/+3` placement, plateaus, returns, and clipping;
-- a decoded caption moving from line 23 to 24 while both picture edges stay
+- a decoded caption moving from line 23 to 24 while picture top and body stay
   fixed (`CaptionOnlyMotion`), the matching rigid-move control, and the
-  censored-bottom control where caption authority remains;
+  censored-bottom case where a still top/body remain sufficient testimony;
 - cold false-parity anchor isolation, same-unit edge corroboration, and the
   second-consecutive-parity route to a changed segment zero;
 - parity authority over dark/unmeasurable picture content;
 - the measured narrow field-2 XDS fallback, right-side bleed and short-bar
   variant, plus false-positive guards for left-heavy picture texture and
   consecutive picture rows that resemble the coarse weak-caption envelope;
-- rejection of parity-invalid vertical copies and hold on two valid candidates;
+- rejection of parity-invalid vertical copies and geometry placement under
+  two valid candidates when top plus the one-unit body witness agree;
 - insert absence;
 - immediate standard-origin geometry placement, rigid per-unit movement, and
   conservation failure on a height/content change without redefining zero; and
@@ -53,6 +54,16 @@ from content; a field at either standard origin is placed from its first unit;
 one-line clip-band flicker cannot move that top decision; and picture at Y=10
 is measurable against a Y=2 blanking floor while mute/black remains
 unmeasurable.
+
+The round-three body-witness additions freeze the only bounded temporal
+measurement in v9: horizontal luma means over 160 picture rows are compared
+at shifts -3..+3 against the immediately previous unit, with MAD below 9
+required. They cover caption-only motion, caption/body disagreement, and
+geometry recovery under ambiguous line 21, gauge conflict, bottom
+conservation failure, and an otherwise out-of-policy-range top. Controls prove
+that a top/body disagreement still holds. A discontinuity clears this witness,
+keeps the last applied pair, and makes a pictureless next unit an explicitly
+unmeasurable hold.
 
 `confidence` is deliberately binary in v9: `1` means at least one field has
 an accepted displacement observation, and `0` means neither does. It is not a

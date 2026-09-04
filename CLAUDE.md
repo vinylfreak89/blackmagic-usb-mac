@@ -1555,6 +1555,31 @@ delivery edge; wrong one at acquisition.
   no whole-tape re-render except for sanity checks; every non-locked state outside true signal
   loss or a cut is audited against the raw raster before hand-over. The published v9 pair stays
   as the sanity baseline; it is not accepted.
+  **Round-three direct-position rule (2026-09-05, branch `render-live`):** a current picture top
+  is paired with one bounded previous-unit body witness: horizontal luma means over field rows
+  40..199 / 303..462, searched at integer shifts -3..+3, reliable only below MAD 9. A unique
+  caption that moves differently from a measurable top plus reliable body loses for that unit:
+  still body is `CaptionOnlyMotion`; a different reliable body move is
+  `CaptionBodyDisagree`, applied only when the top agrees. The same top/body testimony converts
+  `Line21Ambiguous`, `GaugeConflict`, `LockBroken`, and physically possible out-of-policy-range
+  observations from remembered holds into current-unit geometry placements while retaining the
+  original reason as provenance. `InsertAbsent`, genuinely unmeasurable geometry, and explicit
+  discontinuity remain holds. Sidecar schema 6 adds body validity, shift, MAD, and top/body
+  agreement per field. This is a position witness, not smoothing: it never learns zero, votes
+  over time, or changes the crop without a current top.
+  The first paced whole-tape pass of that rule published 86,293/86,293 exact units with zero
+  pool/ring/surface drops. The parity audit is necessarily partitioned under the owner-approved
+  exception rather than claiming unconditional parity agreement: field 1 applied 37,878 parity
+  readings and explicitly picture-vetoed 2,359; field 2 applied 17 and vetoed 8; zero reading
+  disagreed outside those named policy cases. Field-1 reasons were GeometryLockDecides 45,865,
+  Line21Placement 36,827, CaptionBodyDisagree 2,240 (41 geometry applications / 2,199 holds),
+  AnchorUncorroborated 1,016, InsertAbsent 137, CaptionOnlyMotion 86,
+  Line21Ambiguous 74 (32 applications / 42 holds), OutOfRangeHold 29, LockBroken 18
+  (5 applications / 13 holds), and GeometryUnmeasurable 1. On the 35:00 slice the same rule
+  reduced the raw follow audit's field-1 ENGINE-MOTION 33→11 but changed +3 placement from
+  358/621 to 288/621; that tradeoff is owner-directed picture-over-caption policy, not silently
+  called an improvement. The 45:00 field-2 regression stayed closed (+2 in 620/620). Cost:
+  engine 0.334/0.337 ms and full worker 0.560/0.568 ms median/p95.
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
   out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio
