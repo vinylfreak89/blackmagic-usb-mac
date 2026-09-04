@@ -204,8 +204,30 @@ relative_only_phase, relative_only_best_energy, relative_only_runner_energy,
 relative_only_prior_energy, relative_only_margin, relative_only_ratio,
 relative_only_static_columns, relative_only_persistent_columns,
 relative_only_transport_gate, relative_only_cut_gate,
-bottom_f1_censored, bottom_f2_censored
+bottom_f1_censored, bottom_f2_censored,
+bottom_raw_edge_f1, bottom_raw_edge_f2,
+bottom_target_f1, bottom_target_f2,
+bottom_blanking_level_f1, bottom_blanking_level_f2,
+bottom_black_threshold_f1, bottom_black_threshold_f2,
+bottom_measurable_f1, bottom_measurable_f2,
+bottom_placement_f1, bottom_placement_f2,
+bottom_hold_reason_f1, bottom_hold_reason_f2
 ```
+
+Schema 4 makes v8's direct placement auditable. `bottom_raw_edge_f*` is the
+last captured line not classified majority-black; `bottom_target_f*` is the
+per-acquisition constant learned from four consecutive, mutually consistent
+program-qualified units. On a measurable unit the direct placement is
+`raw_edge - target`. A strong non-cut-gated static-body `d2-d1` observation may
+refine the direct pair's relative phase while the bottom remains its absolute
+gauge; this is labelled `BottomEdgeRelativePlacement`. Otherwise the prior
+actually presented field placement is held and `bottom_hold_reason_f*` names
+target learning, structural transport,
+flat/dark content, noise, a scene cut, temporal contradiction, a >3-line edge
+jump, or range exhaustion. These fields are live observations; they are not a
+retroactive trajectory rewrite. An exact return to the frozen target is an
+explicit recovery outcome and cannot remain trapped behind the jump or
+temporal-contradiction guard.
 
 The log must distinguish live provisional presentation from a later finalized
 recording decision without rewriting the original observation.

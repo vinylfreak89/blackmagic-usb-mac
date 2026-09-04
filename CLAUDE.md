@@ -1232,6 +1232,24 @@ delivery edge; wrong one at acquisition.
   fixed and remapped from 19 (duplicating row 18 on negative offsets, dropping 19 on positive),
   and the full-raster preview duplicated below its window; `captures/fulltape_render.mp4` still
   carries the renderer duplication and is re-rendered after the engine work.
+  **Registration v8 validation (2026-09-04, branch `bottom-edge-v8`):** the allocation-free live
+  engine now learns a constant lower-picture target independently for each field from four
+  program-qualified units, measures black relative to that field's own near-blank rows, follows
+  accepted lower-boundary motion at unit rate, and holds dark/noisy/cut/out-of-range measurements.
+  A lower boundary is an absolute gauge but is not always the complete body phase: a deliberately
+  pure bottom-only prototype made the first-SP-window static-comb result catastrophically worse
+  (29 -> 937 bad measurable frames).  The accepted design therefore permits the existing strong,
+  non-cut-gated static-body estimator to refine only `d2-d1`; it cannot add common-mode motion and
+  is separately labelled in schema 4.  That version improves paced, zero-drop presentation from
+  29/1,822 -> 5/2,011 in the first 3,000 SP units and 268/2,869 -> 138/2,865 in the 2,400 s window.
+  On the owner's first-1,800-unit bottom-edge census, follow/under/over changes from 80/198/69 to
+  214/64/34; the fixed-threshold registered field-1 edge is 256 in 1,038 units and 255 in 546
+  (plus dark/grey outliers), making the evidence conflict explicit rather than falsely claiming
+  a constant visible bottom where body phase disagrees.  Whole-tape engine cost is 2.752 ms median
+  / 2.816 ms p95 per unit.  Ordinary truth remains 338/338 with 9/9 abstentions and zero opposite
+  corrections; every v8 bottom-placement class passes.  The retained v7 trajectory oracle is not
+  silently rewritten and disagrees on 177/1,556 rows because it encodes the superseded authority
+  policy.  No crop path duplicates or drops source lines; it always shifts the complete window.
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
   out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio

@@ -1,5 +1,6 @@
 #include "field_registration.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +12,21 @@ enum {
     PHASE_BANDS = 3,
     BAND_BIAS = 64,
     BAND_SLOTS = 129,
+    BOTTOM_TARGET_SAMPLES = 4,
+    BOTTOM_X_FIRST = 10, /* source pixel 40 after 4:1 luma reduction */
+    BOTTOM_X_AFTER = 170, /* source pixel 680 */
+    BOTTOM_BLACK_NUMERATOR = 3,
+    BOTTOM_BLACK_DENOMINATOR = 5,
+    BOTTOM_BLACK_MARGIN = 16,
+    BOTTOM_TILE_COLUMNS = 15,
+    BOTTOM_TILE_ROWS = 15,
+    BOTTOM_TILE_COUNT = BOTTOM_TILE_COLUMNS * BOTTOM_TILE_ROWS,
+    /* Match signal_state's planned overlay-aware boundary: content in less
+     * than 30% of broad tiles is a localized overlay, not program extent. */
+    BOTTOM_MIN_ACTIVE_TILES = 68,
+    BOTTOM_TILE_RANGE = 12,
+    BOTTOM_NOISE_LIMIT = 35,
+    BOTTOM_MAX_STEP = 3,
 };
 
 static const int phase_bounds[PHASE_BANDS][2] = {
@@ -65,6 +81,12 @@ static void unknown_decision(fieldreg_decision *out)
     out->fast_edge_d2 = FIELDREG_UNKNOWN;
     out->relative_only_phase = FIELDREG_UNKNOWN;
     out->relative_only_gauge_source = FIELDREG_RELATIVE_GAUGE_NONE;
+    out->bottom_raw_edge_f1 = -1;
+    out->bottom_raw_edge_f2 = -1;
+    out->bottom_target_f1 = -1;
+    out->bottom_target_f2 = -1;
+    out->bottom_hold_reason_f1 = FIELDREG_BOTTOM_HOLD_TARGET_LEARNING;
+    out->bottom_hold_reason_f2 = FIELDREG_BOTTOM_HOLD_TARGET_LEARNING;
 }
 
 fieldreg_config fieldreg_default_config(void)
@@ -146,6 +168,8 @@ void fieldreg_discontinuity(field_registration *engine)
     engine->motion_anchor_valid = false;
     engine->relative_only_active = false;
     engine->relative_gauge_unknown_active = false;
+    engine->bottom_last_raw_valid[0] = false;
+    engine->bottom_last_raw_valid[1] = false;
 }
 
 static void extract_luma(field_registration *engine, const uint8_t *unit)
@@ -258,6 +282,265 @@ static int picture_bottom(const bool hard[FIELDREG_RASTER_LINES],
             return line;
     }
     return -1;
+}
+
+typedef struct bottom_observation {
+    int edge;
+    uint8_t blanking_level;
+    uint8_t black_threshold;
+    bool program_extent;
+    bool noisy;
+} bottom_observation;
+
+static uint8_t histogram_quantile(const uint16_t histogram[256], unsigned count,
+                                  unsigned numerator, unsigned denominator)
+{
+    unsigned rank = count == 0 ? 0 : ((count - 1) * numerator) / denominator;
+    unsigned seen = 0;
+    for (unsigned value = 0; value < 256; ++value) {
+        seen += histogram[value];
+        if (seen > rank)
+            return (uint8_t)value;
+    }
+    return 255;
+}
+
+/* Measure the lower program boundary without assuming that program black is
+ * code 16. The black reference comes from the field's four source-carried
+ * near-blank rows; hard padding is deliberately outside this estimator. */
+static bottom_observation measure_bottom_edge(const field_registration *engine,
+                                              int field)
+{
+    int scan_first = field == 0 ? FIELDREG_FIELD1_START : FIELDREG_FIELD2_START;
+    int scan_last = field == 0 ? 260 : 522;
+    int blank_first = field == 0 ? 257 : 519;
+    uint16_t histogram[256] = {0};
+    unsigned blank_count = 0;
+    for (int line = blank_first; line <= scan_last; ++line) {
+        for (int x = BOTTOM_X_FIRST; x < BOTTOM_X_AFTER; ++x) {
+            ++histogram[engine->luma[line][x]];
+            ++blank_count;
+        }
+    }
+    uint8_t blanking = histogram_quantile(histogram, blank_count, 1, 4);
+    unsigned threshold = (unsigned)blanking + BOTTOM_BLACK_MARGIN;
+    if (threshold > 255)
+        threshold = 255;
+
+    uint8_t tile_min[BOTTOM_TILE_COUNT];
+    uint8_t tile_max[BOTTOM_TILE_COUNT];
+    memset(tile_min, 255, sizeof(tile_min));
+    memset(tile_max, 0, sizeof(tile_max));
+    uint64_t horizontal_energy = 0;
+    uint64_t horizontal_samples = 0;
+    for (int line = scan_first; line <= scan_last; ++line) {
+        uint8_t prior = engine->luma[line][BOTTOM_X_FIRST];
+        for (int x = BOTTOM_X_FIRST; x < BOTTOM_X_AFTER; ++x) {
+            uint8_t value = engine->luma[line][x];
+            int tile_y = (line - scan_first) * BOTTOM_TILE_ROWS /
+                         (scan_last - scan_first + 1);
+            int tile_x = (x - BOTTOM_X_FIRST) * BOTTOM_TILE_COLUMNS /
+                         (BOTTOM_X_AFTER - BOTTOM_X_FIRST);
+            int tile = tile_y * BOTTOM_TILE_COLUMNS + tile_x;
+            if (value < tile_min[tile])
+                tile_min[tile] = value;
+            if (value > tile_max[tile])
+                tile_max[tile] = value;
+            if (x != BOTTOM_X_FIRST) {
+                horizontal_energy += value > prior ? value - prior
+                                                   : prior - value;
+                ++horizontal_samples;
+            }
+            prior = value;
+        }
+    }
+    unsigned active_tiles = 0;
+    for (int tile = 0; tile < BOTTOM_TILE_COUNT; ++tile)
+        active_tiles +=
+            (unsigned)(tile_max[tile] - tile_min[tile] >= BOTTOM_TILE_RANGE);
+
+    int edge = -1;
+    unsigned samples = BOTTOM_X_AFTER - BOTTOM_X_FIRST;
+    unsigned black_required =
+        (samples * BOTTOM_BLACK_NUMERATOR + BOTTOM_BLACK_DENOMINATOR - 1) /
+        BOTTOM_BLACK_DENOMINATOR;
+    for (int line = scan_last; line >= scan_first; --line) {
+        unsigned black = 0;
+        for (int x = BOTTOM_X_FIRST; x < BOTTOM_X_AFTER; ++x)
+            black += engine->luma[line][x] <= threshold;
+        if (black < black_required) {
+            edge = line;
+            break;
+        }
+    }
+
+    bottom_observation result = {
+        .edge = edge,
+        .blanking_level = blanking,
+        .black_threshold = (uint8_t)threshold,
+        .program_extent = active_tiles >= BOTTOM_MIN_ACTIVE_TILES,
+        .noisy = horizontal_samples != 0 &&
+                 horizontal_energy / horizontal_samples > BOTTOM_NOISE_LIMIT,
+    };
+    return result;
+}
+
+static int median_four(const int16_t values[4])
+{
+    int sorted[4] = {values[0], values[1], values[2], values[3]};
+    for (int i = 1; i < 4; ++i) {
+        int value = sorted[i];
+        int j = i;
+        while (j > 0 && sorted[j - 1] > value) {
+            sorted[j] = sorted[j - 1];
+            --j;
+        }
+        sorted[j] = value;
+    }
+    return (sorted[1] + sorted[2] + 1) / 2;
+}
+
+static bool apply_bottom_field(field_registration *engine, int field,
+                               bottom_observation observation,
+                               bool transport_ok,
+                               bool scene_cut,
+                               int temporal_best,
+                               double temporal_margin,
+                               fieldreg_bottom_hold_reason *reason)
+{
+    int minimum = FIELDREG_MIN_OFFSET;
+    int maximum = field == 0 ? FIELDREG_FIELD1_MAX_OFFSET
+                             : FIELDREG_FIELD2_MAX_OFFSET;
+    *reason = FIELDREG_BOTTOM_HOLD_NONE;
+    if (!transport_ok) {
+        *reason = FIELDREG_BOTTOM_HOLD_TRANSPORT;
+        return false;
+    }
+    if (!observation.program_extent || observation.edge < 0) {
+        if (!engine->bottom_target_valid[field])
+            engine->bottom_target_sample_count[field] = 0;
+        *reason = FIELDREG_BOTTOM_HOLD_FLAT_OR_DARK;
+        return false;
+    }
+    if (observation.noisy) {
+        if (!engine->bottom_target_valid[field])
+            engine->bottom_target_sample_count[field] = 0;
+        *reason = FIELDREG_BOTTOM_HOLD_NOISY;
+        return false;
+    }
+    if (scene_cut && !engine->bottom_target_valid[field]) {
+        engine->bottom_target_sample_count[field] = 0;
+        *reason = FIELDREG_BOTTOM_HOLD_SCENE_CUT;
+        return false;
+    }
+    if (!engine->bottom_target_valid[field]) {
+        int nominal_bottom = field == 0 ? FIELDREG_ACTIVE_BOTTOM_F1
+                                        : FIELDREG_ACTIVE_BOTTOM_F2;
+        if (observation.edge < nominal_bottom - BOTTOM_MAX_STEP) {
+            *reason = FIELDREG_BOTTOM_HOLD_FLAT_OR_DARK;
+            return false;
+        }
+        unsigned count = engine->bottom_target_sample_count[field];
+        if (count > 0 &&
+            abs(observation.edge -
+                engine->bottom_target_samples[field][count - 1]) > 1) {
+            count = 0;
+            engine->bottom_target_sample_count[field] = 0;
+        }
+        if (count < BOTTOM_TARGET_SAMPLES) {
+            engine->bottom_target_samples[field][count] =
+                (int16_t)observation.edge;
+            engine->bottom_target_sample_count[field] = (uint8_t)(count + 1);
+        }
+        engine->bottom_last_raw[field] = (int16_t)observation.edge;
+        engine->bottom_last_raw_valid[field] = true;
+        if (engine->bottom_target_sample_count[field] < BOTTOM_TARGET_SAMPLES) {
+            *reason = FIELDREG_BOTTOM_HOLD_TARGET_LEARNING;
+            return false;
+        }
+        engine->bottom_target[field] =
+            (int16_t)median_four(engine->bottom_target_samples[field]);
+        engine->bottom_target_valid[field] = true;
+    }
+    int desired = observation.edge - engine->bottom_target[field];
+    /* A dark/cut excursion can leave last_raw at a censored interior line.
+     * Returning exactly to the frozen segment target is self-authenticating
+     * recovery and must not be rejected forever by the one-unit jump bound. */
+    if (desired != 0 && engine->bottom_last_raw_valid[field] &&
+        abs(observation.edge - engine->bottom_last_raw[field]) >
+            BOTTOM_MAX_STEP) {
+        *reason = FIELDREG_BOTTOM_HOLD_EDGE_JUMP;
+        return false;
+    }
+    if (desired < minimum || desired > maximum) {
+        *reason = FIELDREG_BOTTOM_HOLD_OUT_OF_RANGE;
+        return false;
+    }
+    int observed_step = engine->bottom_last_raw_valid[field]
+                            ? observation.edge - engine->bottom_last_raw[field]
+                            : 0;
+    bool temporal_supports_step = engine->bottom_last_raw_valid[field] &&
+                                  observed_step != 0 &&
+                                  temporal_margin >=
+                                      temporal_contradiction_margin &&
+                                  temporal_best == observed_step;
+    if (desired != 0 && scene_cut &&
+        desired != engine->bottom_applied[field] &&
+        !temporal_supports_step) {
+        *reason = FIELDREG_BOTTOM_HOLD_SCENE_CUT;
+        return false;
+    }
+    if (desired != 0 && engine->bottom_last_raw_valid[field] &&
+        observed_step != 0 &&
+        temporal_margin >= temporal_contradiction_margin &&
+        temporal_best != observed_step) {
+        *reason = FIELDREG_BOTTOM_HOLD_TEMPORAL_CONTRADICTION;
+        return false;
+    }
+    engine->bottom_applied[field] = (int8_t)desired;
+    engine->bottom_last_raw[field] = (int16_t)observation.edge;
+    engine->bottom_last_raw_valid[field] = true;
+    return true;
+}
+
+/* Keep the bottom measurements as the absolute gauge while satisfying an
+ * independently earned field-relative phase. There are few legal integer
+ * pairs, so an exhaustive fixed-bound search is simpler and deterministic.
+ * Distance from the direct-bottom pair is primary; the older evidence pair
+ * breaks representation ties (which field to move). */
+static bool constrain_bottom_relative(int bottom1, int bottom2,
+                                      int preferred1, int preferred2,
+                                      int relative, int *result1,
+                                      int *result2)
+{
+    bool found = false;
+    int best_bottom_cost = INT_MAX;
+    int best_preferred_cost = INT_MAX;
+    int best_magnitude = INT_MAX;
+    for (int d1 = FIELDREG_MIN_OFFSET;
+         d1 <= FIELDREG_FIELD1_MAX_OFFSET; ++d1) {
+        int d2 = d1 + relative;
+        if (d2 < FIELDREG_MIN_OFFSET || d2 > FIELDREG_FIELD2_MAX_OFFSET)
+            continue;
+        int bottom_cost = abs(d1 - bottom1) + abs(d2 - bottom2);
+        int preferred_cost =
+            abs(d1 - preferred1) + abs(d2 - preferred2);
+        int magnitude = abs(d1) + abs(d2);
+        if (!found || bottom_cost < best_bottom_cost ||
+            (bottom_cost == best_bottom_cost &&
+             preferred_cost < best_preferred_cost) ||
+            (bottom_cost == best_bottom_cost &&
+             preferred_cost == best_preferred_cost &&
+             magnitude < best_magnitude)) {
+            found = true;
+            best_bottom_cost = bottom_cost;
+            best_preferred_cost = preferred_cost;
+            best_magnitude = magnitude;
+            *result1 = d1;
+            *result2 = d2;
+        }
+    }
+    return found;
 }
 
 static bool spatial_picture_signal(const field_registration *engine, const bool *hard,
@@ -1036,6 +1319,8 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
         return false;
 
     extract_luma(engine, unit);
+    bottom_observation bottom_observation_f1 = measure_bottom_edge(engine, 0);
+    bottom_observation bottom_observation_f2 = measure_bottom_edge(engine, 1);
     bool hard[FIELDREG_RASTER_LINES];
     double mean[FIELDREG_RASTER_LINES];
     double sigma[FIELDREG_RASTER_LINES];
@@ -1965,8 +2250,94 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
         }
     }
 
-    out->baseline_d1 = engine->selected[0];
-    out->baseline_d2 = engine->selected[1];
+    int legacy_d1 = engine->selected[0];
+    int legacy_d2 = engine->selected[1];
+    int prior_presented_d1 = engine->previous_phase_valid
+                                 ? engine->previous_phase[0]
+                                 : legacy_d1;
+    int prior_presented_d2 = engine->previous_phase_valid
+                                 ? engine->previous_phase[1]
+                                 : legacy_d2;
+    int prior_bottom_applied1 = engine->bottom_applied[0];
+    int prior_bottom_applied2 = engine->bottom_applied[1];
+    fieldreg_bottom_hold_reason bottom_reason1;
+    fieldreg_bottom_hold_reason bottom_reason2;
+    bool bottom_placed1 = apply_bottom_field(
+        engine, 0, bottom_observation_f1, transport_ok, scene_cut,
+        temporal_best1, temporal_margin1, &bottom_reason1);
+    bool bottom_placed2 = apply_bottom_field(
+        engine, 1, bottom_observation_f2, transport_ok, scene_cut,
+        temporal_best2, temporal_margin2, &bottom_reason2);
+    bool bottom_changed =
+        prior_bottom_applied1 != engine->bottom_applied[0] ||
+        prior_bottom_applied2 != engine->bottom_applied[1];
+
+    /* Each field holds the last actually presented placement when its own
+     * boundary abstains. bottom_applied[] is only the direct-boundary gauge;
+     * it may lag a body-relative refinement and must not snap that refinement
+     * away on the next unmeasurable unit. */
+    int direct_d1 = bottom_placed1 ? engine->bottom_applied[0]
+                                   : prior_presented_d1;
+    int direct_d2 = bottom_placed2 ? engine->bottom_applied[1]
+                                   : prior_presented_d2;
+    int direct_relative = direct_d2 - direct_d1;
+    int legacy_relative = legacy_d2 - legacy_d1;
+    int prior_presented_relative =
+        prior_presented_d2 - prior_presented_d1;
+    int chosen_relative = direct_relative;
+    int preferred_d1 = direct_d1;
+    int preferred_d2 = direct_d2;
+    if (relative_only.valid && !registration_scene_cut &&
+        relative_only.persistent_columns >= FIELDREG_RELATIVE_STATIC_RUN) {
+        chosen_relative = relative_only.phase;
+        if (relative_only_authority) {
+            preferred_d1 = relative_d1;
+            preferred_d2 = relative_d2;
+        } else if (relative_only.phase == prior_presented_relative) {
+            /* The current body agrees with the immediately preceding
+             * presentation even when the lower envelope changes shape. */
+            preferred_d1 = prior_presented_d1;
+            preferred_d2 = prior_presented_d2;
+        } else if (relative_only.phase == legacy_relative) {
+            /* Two independent body estimators agree that the direct lower
+             * boundary under-reported relative phase. */
+            preferred_d1 = legacy_d1;
+            preferred_d2 = legacy_d2;
+        }
+    }
+    int presented_d1 = direct_d1;
+    int presented_d2 = direct_d2;
+    bool relative_refined =
+        chosen_relative != direct_relative &&
+        constrain_bottom_relative(direct_d1, direct_d2,
+                                  preferred_d1, preferred_d2,
+                                  chosen_relative,
+                                  &presented_d1, &presented_d2);
+
+    /* v8 uses the two lower boundaries as its absolute gauge. An independently
+     * earned body-relative phase may refine d2-d1 when the visible envelope
+     * under-reports a field displacement; it cannot add common-mode motion. */
+    out->applied_d1 = (int8_t)presented_d1;
+    out->applied_d2 = (int8_t)presented_d2;
+    out->baseline_d1 = (int8_t)presented_d1;
+    out->baseline_d2 = (int8_t)presented_d2;
+    out->decision_backdate = 0;
+    if (bottom_placed1 || bottom_placed2) {
+        out->decision_d1 = out->applied_d1;
+        out->decision_d2 = out->applied_d2;
+        out->mode = relative_refined
+                        ? FIELDREG_MODE_BOTTOM_EDGE_RELATIVE_PLACEMENT
+                        : FIELDREG_MODE_BOTTOM_EDGE_PLACEMENT;
+    } else {
+        out->decision_d1 = FIELDREG_UNKNOWN;
+        out->decision_d2 = FIELDREG_UNKNOWN;
+        out->mode = FIELDREG_MODE_UNKNOWN_BOTTOM_EDGE_HOLD;
+    }
+    if (scene_cut && !bottom_changed) {
+        out->decision_d1 = FIELDREG_UNKNOWN;
+        out->decision_d2 = FIELDREG_UNKNOWN;
+        out->mode = FIELDREG_MODE_UNKNOWN_SCENE_CUT_HOLD;
+    }
     out->frame_observation_d1 = (int8_t)frame_d1;
     out->frame_observation_d2 = (int8_t)frame_d2;
     out->frame_observation_support = frame_support;
@@ -1976,14 +2347,6 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
      * passed, an abstention falls back to the committed phase, never to the
      * last positive observation. This prevents a single contradicted sample
      * from latching indefinitely (the frame-8169 class). */
-    int held_d1 = engine->selected[0];
-    int held_d2 = engine->selected[1];
-    out->applied_d1 = phase_model && frame_d1 != FIELDREG_UNKNOWN
-                          ? (int8_t)frame_d1
-                          : (int8_t)held_d1;
-    out->applied_d2 = phase_model && frame_d2 != FIELDREG_UNKNOWN
-                          ? (int8_t)frame_d2
-                          : (int8_t)held_d2;
     engine->previous_phase[0] = out->applied_d1;
     engine->previous_phase[1] = out->applied_d2;
     engine->previous_phase_valid = transport_ok;
@@ -2071,6 +2434,26 @@ bool fieldreg_process(field_registration *engine, const uint8_t *unit,
     out->relative_only_cut_gate = !registration_scene_cut;
     out->bottom_f1_censored = bottom_censored1;
     out->bottom_f2_censored = bottom_censored2;
+    out->bottom_raw_edge_f1 = (int16_t)bottom_observation_f1.edge;
+    out->bottom_raw_edge_f2 = (int16_t)bottom_observation_f2.edge;
+    out->bottom_target_f1 = engine->bottom_target_valid[0]
+                                ? engine->bottom_target[0]
+                                : -1;
+    out->bottom_target_f2 = engine->bottom_target_valid[1]
+                                ? engine->bottom_target[1]
+                                : -1;
+    out->bottom_blanking_level_f1 = bottom_observation_f1.blanking_level;
+    out->bottom_blanking_level_f2 = bottom_observation_f2.blanking_level;
+    out->bottom_black_threshold_f1 = bottom_observation_f1.black_threshold;
+    out->bottom_black_threshold_f2 = bottom_observation_f2.black_threshold;
+    out->bottom_measurable_f1 = bottom_observation_f1.program_extent &&
+                                !bottom_observation_f1.noisy;
+    out->bottom_measurable_f2 = bottom_observation_f2.program_extent &&
+                                !bottom_observation_f2.noisy;
+    out->bottom_placement_f1 = bottom_placed1;
+    out->bottom_placement_f2 = bottom_placed2;
+    out->bottom_hold_reason_f1 = bottom_reason1;
+    out->bottom_hold_reason_f2 = bottom_reason2;
 
     /*
      * While an absolute dual-edge candidate is in dwell, retain the current
@@ -2197,8 +2580,29 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_STABLE_MOTION_PHASE: return "StableMotionPhase";
     case FIELDREG_MODE_CONVERGED_MOTION_PHASE: return "ConvergedMotionPhase";
     case FIELDREG_MODE_RELATIVE_ONLY: return "RelativeOnly";
+    case FIELDREG_MODE_BOTTOM_EDGE_PLACEMENT: return "BottomEdgePlacement";
+    case FIELDREG_MODE_BOTTOM_EDGE_RELATIVE_PLACEMENT:
+        return "BottomEdgeRelativePlacement";
+    case FIELDREG_MODE_UNKNOWN_BOTTOM_EDGE_HOLD: return "UnknownBottomEdgeHold";
     }
     return "InvalidMode";
+}
+
+const char *fieldreg_bottom_hold_reason_name(fieldreg_bottom_hold_reason reason)
+{
+    switch (reason) {
+    case FIELDREG_BOTTOM_HOLD_NONE: return "None";
+    case FIELDREG_BOTTOM_HOLD_TARGET_LEARNING: return "TargetLearning";
+    case FIELDREG_BOTTOM_HOLD_TRANSPORT: return "Transport";
+    case FIELDREG_BOTTOM_HOLD_FLAT_OR_DARK: return "FlatOrDark";
+    case FIELDREG_BOTTOM_HOLD_NOISY: return "Noisy";
+    case FIELDREG_BOTTOM_HOLD_SCENE_CUT: return "SceneCut";
+    case FIELDREG_BOTTOM_HOLD_TEMPORAL_CONTRADICTION:
+        return "TemporalContradiction";
+    case FIELDREG_BOTTOM_HOLD_EDGE_JUMP: return "EdgeJump";
+    case FIELDREG_BOTTOM_HOLD_OUT_OF_RANGE: return "OutOfRange";
+    }
+    return "Unknown";
 }
 
 const char *fieldreg_relative_gauge_name(fieldreg_relative_gauge_source source)

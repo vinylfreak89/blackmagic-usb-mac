@@ -158,10 +158,13 @@ int main(void)
         assert(decision.transport_ok);
         assert(decision.observed_transport_f1 == FIELDREG_FIELD1_START);
         assert(decision.observed_transport_f2 == FIELDREG_FIELD2_START);
-        if (counter < 8)
-            assert(decision.mode == FIELDREG_MODE_UNKNOWN_WARMUP_HOLD);
-        else
-            assert(decision.mode == FIELDREG_MODE_STABLE);
+        if (counter < 3) {
+            assert(decision.mode == FIELDREG_MODE_UNKNOWN_BOTTOM_EDGE_HOLD);
+            assert(decision.bottom_hold_reason_f1 ==
+                   FIELDREG_BOTTOM_HOLD_TARGET_LEARNING);
+        } else {
+            assert(decision.mode == FIELDREG_MODE_BOTTOM_EDGE_PLACEMENT);
+        }
     }
 
     /* Strong, coherent top+bottom evidence may correct a real one-unit jump. */
@@ -171,7 +174,10 @@ int main(void)
     assert(decision.picture_top_f1 == 20 && decision.picture_bottom_f1 == 257);
     assert(decision.dual_edge_agreement);
     assert(decision.applied_d1 == 1 && decision.applied_d2 == 0);
-    assert(decision.mode == FIELDREG_MODE_CONVERGED_RELATIVE_BAND);
+    assert(decision.mode == FIELDREG_MODE_BOTTOM_EDGE_PLACEMENT);
+    assert(decision.bottom_raw_edge_f1 == 257);
+    assert(decision.bottom_target_f1 == 256);
+    assert(decision.bottom_placement_f1);
 
     /* A source-carried top-line feature alone is not a registration event. */
     make_unit(unit, 13);
@@ -185,22 +191,37 @@ int main(void)
     set_line(unit, 258, 2, 128, 128);
     assert(fieldreg_process(&engine, unit, &decision));
     assert(!decision.dual_edge_agreement);
-    assert(decision.applied_d1 == 1 && decision.applied_d2 == 0);
-    assert(decision.mode == FIELDREG_MODE_UNKNOWN_BAND_DISAGREEMENT);
+    /* v8 obeys the measured bottom: restoring it exactly to the frozen target
+     * releases the prior crop even though the displaced top feature remains. */
+    assert(decision.applied_d1 == 0 && decision.applied_d2 == 0);
+    assert(decision.bottom_hold_reason_f1 == FIELDREG_BOTTOM_HOLD_NONE);
+
+    /* A censored/dark excursion can leave the last accepted raw edge far from
+     * the frozen target. Returning to the target must recover rather than
+     * latching the stale crop behind the one-unit jump guard. */
+    engine.bottom_last_raw[0] = FIELDREG_ACTIVE_BOTTOM_F1 - 4;
+    engine.bottom_last_raw_valid[0] = true;
+    engine.bottom_applied[0] = -4;
+    make_unit(unit, 14);
+    assert(fieldreg_process(&engine, unit, &decision));
+    make_unit(unit, 15);
+    assert(fieldreg_process(&engine, unit, &decision));
+    assert(decision.applied_d1 == 0 && decision.applied_d2 == 0);
+    assert(decision.bottom_hold_reason_f1 == FIELDREG_BOTTOM_HOLD_NONE);
 
     fieldreg_discontinuity(&engine);
     assert(!engine.previous_valid[0] && !engine.previous_valid[1]);
-    assert(engine.band_total[0][0] == 14 && engine.band_total[1][0] == 14);
-    assert(engine.band_total[0][1] == 14 && engine.band_total[1][1] == 14);
+    assert(engine.band_total[0][0] == 16 && engine.band_total[1][0] == 16);
+    assert(engine.band_total[0][1] == 16 && engine.band_total[1][1] == 16);
 
     /* A false content run before the real first-field fiducial must not move it. */
-    make_unit(unit, 14);
+    make_unit(unit, 16);
     set_line(unit, 10, 80, 96, 160);
     set_line(unit, 11, 72, 96, 160);
     assert(fieldreg_process(&engine, unit, &decision));
     assert(decision.transport_ok);
     assert(!decision.content_evidence_available);
-    assert(decision.applied_d1 == 1 && decision.applied_d2 == 0);
+    assert(decision.applied_d1 == 0 && decision.applied_d2 == 0);
 
     unit[6] = 0;
     assert(!fieldreg_process(&engine, unit, &decision));

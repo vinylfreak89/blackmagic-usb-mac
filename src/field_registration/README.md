@@ -19,14 +19,56 @@ presentation FIFO. An optional retroactive recording pass may consume the
 decision sidecar later; it is not part of the CMIO path.
 
 Call `fieldreg_begin_segment()` after acquisition/relock establishes a new
-source segment. It clears temporal history, pending decisions, and diagnostic
-band histograms. It does **not** redefine zero: offsets are always absolute in
-the device's transport-raster coordinates. Do not call it for ordinary program
-edits. The signal-state layer owns that distinction; registration geometry
-alone cannot prove whether a sustained new edge baseline is a real plateau or
-a newly acquired source segment.
+source segment. It clears temporal history, pending decisions, diagnostic band
+histograms, and the v8 placement targets. Do not call it for ordinary program
+edits. The signal-state layer owns that distinction.
 
 ## Evidence and policy
+
+Algorithm v8 makes the independently measured lower picture boundary the live
+placement authority. For each field and unit it finds the final captured line
+which is not majority-black over source pixels 40..679. "Black" is relative:
+the threshold is the lower quartile of that field's four source-carried
+near-blank rows plus 16 code values; it is not an assumption that program black
+is Y16. Four consecutive, mutually consistent program-qualified measurements
+establish a constant target row for the acquisition segment. A dark,
+unmeasurable, noisy, cut-gated, or greater-than-one-line-inconsistent sample
+restarts acquisition rather than contributing an isolated transition edge.
+Thereafter `applied = raw_edge - target` is presented at unit rate,
+independently for the two fields.
+
+The lower boundary is an absolute gauge, not always the complete field phase.
+When the existing capture-free-tested static-body estimator has a unique,
+non-cut-gated `d2-d1` minimum over at least 16 consecutive columns, v8
+constrains the direct pair to that relative phase. A fixed-bound integer search
+chooses the legal pair nearest the two direct bottom placements and uses the
+prior/legacy body pair only to decide which field represents an otherwise tied
+relative correction. This may repair a field body displaced by two lines when
+its visible bottom moved only one; it cannot manufacture common-mode motion.
+
+Program qualification requires broad spatial or vertical luma variation and
+rejects high-frequency snow. Thus a flat grey mute, a sub-black raster with a
+sparse overlay, and a wholly dark picture cannot teach or move the target. An
+unmeasurable field holds its own last applied offset. A one-unit raw-edge step
+larger than three lines is held and labelled rather than treated as
+registration. A strong same-parity temporal contradiction may veto a changed
+bottom landmark (the measured picture body did not move). An exact return to
+the frozen target bypasses both vetoes so a dark/censored excursion cannot
+latch a stale crop. Transition penalties and the older band hierarchy cannot
+veto a coherent bottom/body move.
+
+The target is a relative presentation gauge, not an assertion that source
+program always ends at device row 256/518. A segment acquired at a stable
+non-nominal row remains stable there. Positive shifts move the complete crop
+window into the Shuttle's captured padding where necessary; no source line is
+duplicated or dropped. The decision reports raw edges, target rows,
+measurability, adaptive blank/black levels, per-field placement authority, and
+a named hold reason. `BottomEdgePlacement` means at least one field supplied an
+accepted current-unit placement. `BottomEdgeRelativePlacement` additionally
+means that the static body refined the direct pair's relative phase.
+`UnknownBottomEdgeHold` means neither field supplied a placement and both
+retained their prior presented offsets. This scan is allocation-free and uses
+the luma buffer the legacy diagnostics already build.
 
 The exact device padding at lines 0-6, 261-269, and 523-524 establishes the
 transport ruler. VBI signatures validate the expected field origins. Neither
@@ -116,7 +158,7 @@ still-visible bottom edge may establish the absolute offset when relative and
 temporal evidence corroborate it; this makes upward offsets such as `-2`
 measurable without pretending the clipped top was observed.
 
-Algorithm v7 adds a deliberately narrow relative-only authority for units in
+Algorithm v7 added a deliberately narrow relative-only authority for units in
 which content-derived absolute edges abstain. It horizontally low-passes eight
 source pixels, admits only columns that are static against both previous
 same-parity fields, requires at least 16 contiguous usable columns, and searches
@@ -131,7 +173,7 @@ dwell. Because relative evidence cannot establish an absolute gauge, its pair
 is a current-unit presentation only: it never replaces the committed absolute
 lock that a later abstaining unit holds.
 
-A lower picture edge at the last ADC-output row before hard padding is likewise
+A lower picture edge at the last ADC-output row before hard padding was likewise
 censored rather than treated as an exact landmark. A format-bounded positive
 field-1 candidate may use that boundary only with matching picture-body
 same-parity motion; a stationary card with the same apparent boundary must not
@@ -159,6 +201,11 @@ envelopes `19..256` and `282..518`; it is not the general production default.
 `FIELDREG_EVIDENCE_TOP_ONLY` reproduces the original Python estimator and is
 retained only for golden-test compatibility. A valid line-21 payload is not an
 absolute anchor: TBC/reslicing can duplicate a fully valid VBI line.
+
+The pre-v8 evidence graph is retained for diagnostics, scene/temporal vetoes,
+and comparison sidecars. Its selected trajectory no longer supplies live
+`applied_d1/d2`, and `decision_backdate` is always zero in v8. Optional archival
+experiments may consume the raw provenance but are not part of live placement.
 
 ## Build and tests
 

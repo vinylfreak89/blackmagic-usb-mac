@@ -40,7 +40,7 @@ enum {
     FIELDREG_RELATIVE_SEARCH_MIN = -3,
     FIELDREG_RELATIVE_SEARCH_MAX = 3,
     FIELDREG_RELATIVE_STATIC_RUN = 16,
-    FIELDREG_ALGORITHM_VERSION = 7,
+    FIELDREG_ALGORITHM_VERSION = 8,
     FIELDREG_UNKNOWN = -128,
 };
 
@@ -64,7 +64,22 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_STABLE_MOTION_PHASE,
     FIELDREG_MODE_CONVERGED_MOTION_PHASE,
     FIELDREG_MODE_RELATIVE_ONLY,
+    FIELDREG_MODE_BOTTOM_EDGE_PLACEMENT,
+    FIELDREG_MODE_BOTTOM_EDGE_RELATIVE_PLACEMENT,
+    FIELDREG_MODE_UNKNOWN_BOTTOM_EDGE_HOLD,
 } fieldreg_mode;
+
+typedef enum fieldreg_bottom_hold_reason {
+    FIELDREG_BOTTOM_HOLD_NONE = 0,
+    FIELDREG_BOTTOM_HOLD_TARGET_LEARNING,
+    FIELDREG_BOTTOM_HOLD_TRANSPORT,
+    FIELDREG_BOTTOM_HOLD_FLAT_OR_DARK,
+    FIELDREG_BOTTOM_HOLD_NOISY,
+    FIELDREG_BOTTOM_HOLD_SCENE_CUT,
+    FIELDREG_BOTTOM_HOLD_TEMPORAL_CONTRADICTION,
+    FIELDREG_BOTTOM_HOLD_EDGE_JUMP,
+    FIELDREG_BOTTOM_HOLD_OUT_OF_RANGE,
+} fieldreg_bottom_hold_reason;
 
 typedef enum fieldreg_evidence_model {
     FIELDREG_EVIDENCE_TOP_ONLY = 0,
@@ -191,6 +206,26 @@ typedef struct fieldreg_decision {
     bool relative_only_cut_gate;
     bool bottom_f1_censored;
     bool bottom_f2_censored;
+
+    /* v8 direct-placement provenance. raw_edge is the final captured line
+     * which is not majority-black; target is frozen per acquisition segment.
+     * direct placement = raw_edge - target on measurable units. The final
+     * applied pair may additionally carry a labelled body-relative refinement.
+     * An unmeasurable field holds its own last presentation and names why. */
+    int16_t bottom_raw_edge_f1;
+    int16_t bottom_raw_edge_f2;
+    int16_t bottom_target_f1;
+    int16_t bottom_target_f2;
+    uint8_t bottom_blanking_level_f1;
+    uint8_t bottom_blanking_level_f2;
+    uint8_t bottom_black_threshold_f1;
+    uint8_t bottom_black_threshold_f2;
+    bool bottom_measurable_f1;
+    bool bottom_measurable_f2;
+    bool bottom_placement_f1;
+    bool bottom_placement_f2;
+    fieldreg_bottom_hold_reason bottom_hold_reason_f1;
+    fieldreg_bottom_hold_reason bottom_hold_reason_f2;
 } fieldreg_decision;
 
 /*
@@ -238,6 +273,17 @@ typedef struct field_registration {
     bool relative_gauge_unknown_active;
     bool relative_only_active;
 
+    /* Direct bottom-edge placement is deliberately independent per field.
+     * Four program-qualified observations establish the segment target;
+     * mute/flat content cannot move it. */
+    int16_t bottom_target[2];
+    int16_t bottom_target_samples[2][4];
+    uint8_t bottom_target_sample_count[2];
+    bool bottom_target_valid[2];
+    int16_t bottom_last_raw[2];
+    bool bottom_last_raw_valid[2];
+    int8_t bottom_applied[2];
+
     /* [field][top/bottom][left/center/right][signed line + 64]. */
     uint16_t spatial_edge_counts[2][2][3][129];
     uint16_t spatial_edge_total[2][2][3];
@@ -277,6 +323,7 @@ bool fieldreg_process(field_registration *engine,
 
 const char *fieldreg_mode_name(fieldreg_mode mode);
 const char *fieldreg_relative_gauge_name(fieldreg_relative_gauge_source source);
+const char *fieldreg_bottom_hold_reason_name(fieldreg_bottom_hold_reason reason);
 
 #ifdef __cplusplus
 }
