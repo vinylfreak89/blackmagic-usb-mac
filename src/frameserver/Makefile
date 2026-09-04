@@ -4,7 +4,7 @@ CFLAGS ?= -O2 -std=c11 -Wall -Wextra
 TESTFLAGS = -DFRAMESERVER_TEST_HOOKS
 CPPFLAGS ?= -I. -I../capture_core -I../unit_parser -I../signal_state -I../field_registration
 LIBS = $(shell pkg-config --libs libusb-1.0) -lpthread -lm -framework IOSurface -framework CoreFoundation
-CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/field_registration.c
+CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/field_registration.c ../field_registration/cea608.c
 SRCS = frame_publisher.c audio_publisher.c frameserver.c $(CORE)
 FIXTURE = ../unit_parser/tests/fixture.tpc
 FIXTURE_LONG = ../unit_parser/tests/fixture_plain.tpc   # 120 exact units, for the runtime-log window test
@@ -42,8 +42,17 @@ test-tsan: $(FIXTURE) $(FIXTURE_LONG)
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread $(TESTFLAGS) -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_tsan $(LIBS)
 	./tests/test_tsan $(FIXTURE) $(FIXTURE_LONG)
 
+../field_registration/tests/registration_v9.raw:
+	$(MAKE) -C ../field_registration tests/registration_v9.raw
+
+tests/worker_bench: tests/worker_bench.c frame_publisher.c frame_publisher.h ../signal_state/signal_state.c ../field_registration/field_registration.c ../field_registration/cea608.c
+	$(CC) $(CPPFLAGS) -O3 -std=c11 -Wall -Wextra tests/worker_bench.c frame_publisher.c ../signal_state/signal_state.c ../field_registration/field_registration.c ../field_registration/cea608.c -o $@ -lm -framework IOSurface -framework CoreFoundation
+
+bench: tests/worker_bench ../field_registration/tests/registration_v9.raw
+	./tests/worker_bench ../field_registration/tests/registration_v9.raw
+
 $(FIXTURE_LONG): ../unit_parser/tests/gen_unit_parser_capture.py
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
 
 clean:
-	rm -f frameserver_replay tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring
+	rm -f frameserver_replay tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring tests/worker_bench

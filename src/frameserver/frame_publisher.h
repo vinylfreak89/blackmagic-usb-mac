@@ -5,8 +5,8 @@
 // interlaced UYVY ('2vuy') frame in an IOSurface, top-field-first, rows interleaved
 // field1/field2, with a monotonic PTS derived from the extended unit counter.
 //
-// Field crops follow §7: field 1 is read from source lines 17+d1 .. 256+d1, field 2 from
-// 280+d2 .. 519+d2 (nominal 17/280). The crop is selection, never synthesis: a displaced
+// Field crops follow §7: field 1 is read from unit rows 19+d1 .. 258+d1, field 2 from
+// 282+d2 .. 521+d2 (NTSC lines 23/286 nominal). The crop is selection, never synthesis: a displaced
 // field's vacated edge is whatever the source carries there.
 //
 // Honesty rules (§8 property 7): the surface pool is bounded; a consumer holds a surface by

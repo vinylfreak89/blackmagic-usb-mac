@@ -1,17 +1,18 @@
 # Frameserver sidecar
 
 The frameserver publishes corrected interlaced UYVY units immediately and writes an optional CSV
-decision sidecar. Schema `3` has this exact header:
+decision sidecar. Schema `5` keeps the transport, signal-state, applied-pair,
+publication, and loss-accounting columns from schema 3. Between them it replaces
+the retired v7 evidence graph with two identical per-field groups:
 
 ```text
-ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,relative_only,relative_only_gauge_unknown,relative_only_gauge_source,relative_only_phase,relative_only_best_energy,relative_only_runner_energy,relative_only_prior_energy,relative_only_margin,relative_only_ratio,relative_only_static_columns,relative_only_persistent_columns,relative_only_transport_gate,relative_only_cut_gate,bottom_f1_censored,bottom_f2_censored,published,drop_reason,schema_version,preceding_ring_drops
+fN_reason,fN_gauge,fN_insert_present,fN_insert_bytes,fN_parity_candidates,fN_fallback_candidates,fN_gauge_line,fN_gauge_bytes,fN_gauge_amplitude,fN_blank_mean,fN_raw_top,fN_raw_bottom,fN_raw_height,fN_geometry_measurable,fN_bottom_censored,fN_lock_state,fN_lock_id,fN_lock_top,fN_lock_height,fN_clip_ceiling,fN_expected_bottom,fN_lines_lost,fN_invariant_residual
 ```
 
 `drop_reason` is `None`, `PoolFull`, `PublisherFull`, or `RingFullTail`.
-The `relative_only_*` columns preserve the static-region curvature decision,
-absolute-gauge provenance, winner energies/margins, spatial support, and gates.
-`bottom_f*_censored` distinguishes a measured boundary from a complete lower
-picture edge. Their semantics are specified by the registration contract.
+`fN_*_line`, top, bottom, lock-top, clip, and expected-bottom values use NTSC
+line numbers. The schema also records `comb_safe`: both independent geometry
+locks are valid. Exact semantics are in `../field_registration/README.md`.
 
 - A pool-full observation retains its own ordinary row, is unpublished, and says `PoolFull`.
 - Ring-full observations cannot reach the worker individually. Their count is attached to the
@@ -23,6 +24,6 @@ picture edge. Their semantics are specified by the registration contract.
 - `PublisherFull` means analysis completed but no output surface was available.
 
 These rules preserve the conservation relation between ingress observations, sidecar rows/ranges,
-and published or explicitly dropped units. The registration engine's semantic trajectory fields
-are defined in [`../field_registration/TRAJECTORY.md`](../field_registration/TRAJECTORY.md).
-Full raw evidence vectors and audio serving remain named P3 gaps.
+and published or explicitly dropped units. Registration has no live trajectory or FIFO in v9;
+the per-field lock and hold semantics are defined in
+[`../field_registration/README.md`](../field_registration/README.md).
