@@ -121,6 +121,8 @@ def main():
         captions=(None, (2, 0x15, 0x2b)))
     add("field2-envelope-plus2", (0, 2), picture=(0, 2), f2_envelopes=(282,))
     add("field2-envelope-none-hold", (0, 2), picture=(0, 2))
+    add("field2-envelope-double-hold", (0, 2), picture=(0, 2),
+        f2_envelopes=(282, 285))
 
     # A parity-invalid duplicate is ignored; two parity-valid off-insert lines are ambiguous.
     add("invalid-vertical-duplicate-ignored", (2, 2), picture=(2, 2),
