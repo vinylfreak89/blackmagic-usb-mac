@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""Per-unit, per-field picture bottom edge measured the owner's way — the last raster line whose
-luma is NOT mostly digital black — compared with the sidecar's applied offsets.
+"""Per-unit, per-field picture ENVELOPE: top edge, bottom edge and height (number of picture lines),
+measured the owner's way — a line is "black" when most of its luma samples are at or near black —
+compared with the sidecar's applied offsets. The top edge is the first non-black line scanning down
+from the field's transport start, skipping the device's VBI signature lines (17/19 and 280/282),
+so a picture top hidden inside the VBI band is reported as censored (top == first scanned row).
 
 For each exact unit: field 1 rows 17..260 and field 2 rows 280..522 are scanned bottom-up over the
 active width (x 40..680); a line is "black" when at least `--black-frac` of its luma samples are
@@ -28,18 +31,23 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("capture"); ap.add_argument("decisions"); ap.add_argument("out")
     ap.add_argument("--units", type=int, default=1800); ap.add_argument("--black-y", type=int, default=32); ap.add_argument("--black-frac", type=float, default=0.6)
+    ap.add_argument("--bins", type=int, default=300, help="units per time bin in the summary")
     a = ap.parse_args()
     dec = {}
     with open(a.decisions) as f:
         for r in csv.DictReader(f):
             if r.get("applied_d1", "") != "": dec[int(r["extended_counter"])] = (int(r["applied_d1"]), int(r["applied_d2"]), r.get("mode", ""))
-    out = open(a.out, "w"); w = csv.writer(out); w.writerow(["unit","counter","raw_e1","raw_e2","applied_d1","applied_d2","reg_e1","reg_e2","mode"])
+    out = open(a.out, "w"); w = csv.writer(out); w.writerow(["unit","counter","raw_t1","raw_e1","h1","raw_t2","raw_e2","h2","applied_d1","applied_d2","reg_e1","reg_e2","mode"])
     st = {"n": 0, "epoch": 0, "last": None}; buf = bytearray(); recs = []
-    def edge(ras, lo, hi):
+    VBI = {17, 19, 280, 282}
+    def envelope(ras, lo, hi):
+        """(top, bottom): first and last non-black line in lo..hi, skipping VBI signature lines; (-1,-1) if all black."""
         Y = ras[lo:hi+1, 81:1361:2].astype(np.int16)           # luma samples over x 40..680
         black = (Y <= a.black_y).mean(axis=1) >= a.black_frac    # per line: mostly black?
+        for k in range(hi - lo + 1):
+            if (lo + k) in VBI: black[k] = True                  # never let the device's VBI count as picture
         nb = np.where(~black)[0]
-        return (lo + int(nb[-1])) if len(nb) else -1
+        return ((lo + int(nb[0])), (lo + int(nb[-1]))) if len(nb) else (-1, -1)
     def emit(unit: bytes):
         c = int.from_bytes(unit[4:6], "little")
         if st["last"] is not None and c < st["last"] - 32768: st["epoch"] += 1
@@ -47,9 +55,10 @@ def main() -> None:
         if c not in dec: return
         d1, d2, mode = dec[c]
         ras = np.frombuffer(unit, np.uint8)[HDR:].reshape(LINES, LINE)
-        e1 = edge(ras, 17, 260); e2 = edge(ras, 280, 522)
+        t1, e1 = envelope(ras, 17, 260); t2, e2 = envelope(ras, 280, 522)
+        h1 = e1 - t1 + 1 if e1 >= 0 else 0; h2 = e2 - t2 + 1 if e2 >= 0 else 0
         r1 = e1 - d1 if e1 >= 0 else -1; r2 = e2 - d2 if e2 >= 0 else -1
-        w.writerow([st["n"], c, e1, e2, d1, d2, r1, r2, mode]); recs.append((e1, e2, d1, d2, r1, r2, mode))
+        w.writerow([st["n"], c, t1, e1, h1, t2, e2, h2, d1, d2, r1, r2, mode]); recs.append((e1, e2, d1, d2, r1, r2, mode, t1, t2, h1, h2))
         st["n"] += 1
         if st["n"] >= a.units: raise Done()
     def on_video(p):
@@ -68,6 +77,30 @@ def main() -> None:
     # summary
     meas = [r for r in recs if r[0] >= 0]
     print(f"units {len(recs)}, field-1 edge measurable {len(meas)}")
+    for f, ti, ei, hi_ in (("field 1", 7, 0, 9), ("field 2", 8, 1, 10)):
+        ok = [r for r in recs if r[ei] >= 0]
+        print(f"{f}: top histogram {dict(sorted(collections.Counter(r[ti] for r in ok).items()))}")
+        print(f"{f}: height (picture lines) histogram {dict(sorted(collections.Counter(r[hi_] for r in ok).items()))}")
+        # joint unit-to-unit moves of (top, bottom): rigid shift = equal deltas; height change = content/censoring
+        j = collections.Counter(); rigid = height = 0
+        for k in range(1, len(recs)):
+            p, q = recs[k-1], recs[k]
+            if p[ei] < 0 or q[ei] < 0: continue
+            dt, de = q[ti] - p[ti], q[ei] - p[ei]
+            if dt or de:
+                j[(dt, de)] += 1
+                if dt == de: rigid += 1
+                else: height += 1
+        print(f"{f}: unit-to-unit (Δtop, Δbottom) moves: rigid shifts {rigid}, height changes {height}; top pairs {j.most_common(8)}")
+        # per time bin: modal top/bottom/height, so a change of raster across the tape is visible
+        B = a.bins; bins = collections.defaultdict(list)
+        for k, r in enumerate(recs):
+            if r[ei] >= 0: bins[k // B].append((r[ti], r[ei], r[hi_]))
+        line = []
+        for b in sorted(bins):
+            v = bins[b]; mt = collections.Counter(x[0] for x in v).most_common(1)[0][0]; me = collections.Counter(x[1] for x in v).most_common(1)[0][0]; mh = collections.Counter(x[2] for x in v).most_common(1)[0][0]
+            line.append(f"{b*B}:{mt}/{me}/{mh}")
+        print(f"{f}: modal top/bottom/height per {B}-unit bin: " + " ".join(line))
     print("raw field-1 bottom edge histogram:", dict(sorted(collections.Counter(r[0] for r in meas).items())))
     print("registered field-1 bottom edge histogram:", dict(sorted(collections.Counter(r[4] for r in meas).items())))
     print("raw field-2 bottom edge histogram:", dict(sorted(collections.Counter(r[1] for r in recs if r[1] >= 0).items())))
