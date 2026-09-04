@@ -62,6 +62,12 @@ typedef struct comb_measurement {
     double static_fraction;
 } comb_measurement;
 
+typedef enum zero_observation_result {
+    ZERO_OBSERVATION_CANDIDATE = 0,
+    ZERO_OBSERVATION_READY,
+    ZERO_OBSERVATION_OUT_OF_BOUNDS,
+} zero_observation_result;
+
 static uint16_t read_le16(const uint8_t *p)
 {
     return (uint16_t)p[0] | (uint16_t)((uint16_t)p[1] << 8);
@@ -415,15 +421,21 @@ static void clear_zero_candidate(fieldreg_field_state *s)
 
 /* A zero is segment state. A gauge places its current unit immediately, but
  * a different base must repeat three times before it may move that state. */
-static bool observe_gauge_zero(fieldreg_field_state *s, int measured,
-                               fieldreg_zero_source source,
-                               int observed_top)
+static zero_observation_result observe_gauge_zero(
+    fieldreg_field_state *s, int field, int measured,
+    fieldreg_zero_source source, int observed_top)
 {
     const int base_top = observed_top - measured;
+    const int standard = field == 0 ? FIELDREG_PICTURE_ORIGIN_F1 :
+                                      FIELDREG_PICTURE_ORIGIN_F2;
+    if (abs(base_top - standard) > 3) {
+        clear_zero_candidate(s);
+        return ZERO_OBSERVATION_OUT_OF_BOUNDS;
+    }
     if (base_top == s->top) {
         clear_zero_candidate(s);
         s->zero_source = source;
-        return true;
+        return ZERO_OBSERVATION_READY;
     }
     if (s->zero_candidate == base_top &&
         s->zero_candidate_source == source) {
@@ -434,12 +446,12 @@ static bool observe_gauge_zero(fieldreg_field_state *s, int measured,
         s->zero_candidate_count = 1;
         s->zero_candidate_source = source;
     }
-    if (s->zero_candidate_count < 3) return false;
+    if (s->zero_candidate_count < 3) return ZERO_OBSERVATION_CANDIDATE;
     s->top = (int16_t)base_top;
     s->zero_source = source;
     clear_clip(s);
     clear_zero_candidate(s);
-    return true;
+    return ZERO_OBSERVATION_READY;
 }
 
 static void update_gauge_geometry(fieldreg_field_state *s,
@@ -922,13 +934,19 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
         } else {
             const int anchor_top = picture_testimony && picture_d == measured ?
                                    m->picture_top : m->top;
-            const bool anchor_ready = m->geometry_measurable &&
-                anchor_top >= 0 && observe_gauge_zero(
-                    s, measured, FIELDREG_ZERO_PARITY, anchor_top);
+            const zero_observation_result zero_result =
+                m->geometry_measurable && anchor_top >= 0 ?
+                observe_gauge_zero(s, field, measured,
+                                   FIELDREG_ZERO_PARITY, anchor_top) :
+                ZERO_OBSERVATION_CANDIDATE;
+            const bool anchor_ready =
+                zero_result == ZERO_OBSERVATION_READY;
             zero_observation = m->geometry_measurable && anchor_top >= 0;
             d->measured_d = (int8_t)measured;
             d->applied_d = (int8_t)measured;
-            d->reason = zero_observation && !anchor_ready ?
+            d->reason = zero_result == ZERO_OBSERVATION_OUT_OF_BOUNDS ?
+                        FIELDREG_MODE_ZERO_OUT_OF_BOUNDS :
+                        zero_observation && !anchor_ready ?
                         FIELDREG_MODE_ZERO_CANDIDATE :
                         FIELDREG_MODE_LINE21_PLACEMENT;
             d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
@@ -957,11 +975,15 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
                 comb_placement != measured;
             d->measured_d = (int8_t)measured;
             d->applied_d = (int8_t)measured;
-            const bool anchor_ready = comb_zero ||
-                observe_gauge_zero(s, measured, FIELDREG_ZERO_ENVELOPE,
-                                   m->top);
+            const zero_observation_result zero_result = comb_zero ?
+                ZERO_OBSERVATION_READY : observe_gauge_zero(
+                    s, field, measured, FIELDREG_ZERO_ENVELOPE, m->top);
+            const bool anchor_ready =
+                zero_result == ZERO_OBSERVATION_READY;
             zero_observation = true;
             d->reason = zero_conflict ? FIELDREG_MODE_ZERO_CONFLICT :
+                        zero_result == ZERO_OBSERVATION_OUT_OF_BOUNDS ?
+                        FIELDREG_MODE_ZERO_OUT_OF_BOUNDS :
                         !anchor_ready ? FIELDREG_MODE_ZERO_CANDIDATE :
                         FIELDREG_MODE_FIELD2_ENVELOPE_PLACEMENT;
             d->gauge = FIELDREG_GAUGE_FIELD2_ENVELOPE;
@@ -1062,13 +1084,27 @@ void fieldreg_discontinuity(field_registration *engine)
 static bool field1_calibration_reference(const field_measurement *m,
                                          const fieldreg_field_decision *d)
 {
-    if (d->gauge == FIELDREG_GAUGE_CEA608_PARITY &&
-        d->measured_d != FIELDREG_UNKNOWN)
-        return true;
-    return d->gauge == FIELDREG_GAUGE_GEOMETRY &&
+    (void)m;
+    return d->gauge == FIELDREG_GAUGE_CEA608_PARITY &&
            d->measured_d != FIELDREG_UNKNOWN &&
-           m->picture_position_valid && m->body_geometry_agrees &&
-           body_reliable(m);
+           d->applied_d == d->measured_d;
+}
+
+static bool field2_placed_on_zero(const field_registration *engine,
+                                  const field_measurement *m,
+                                  const fieldreg_field_decision *d)
+{
+    return m->picture_position_valid &&
+           d->measured_d != FIELDREG_UNKNOWN &&
+           d->applied_d == d->measured_d &&
+           d->applied_d == m->picture_top - engine->field[1].top;
+}
+
+static bool zero_within_bound(int field, int top)
+{
+    const int standard = field == 0 ? FIELDREG_PICTURE_ORIGIN_F1 :
+                                      FIELDREG_PICTURE_ORIGIN_F2;
+    return abs(top - standard) <= 3;
 }
 
 static void install_comb_zero(field_registration *engine,
@@ -1079,6 +1115,10 @@ static void install_comb_zero(field_registration *engine,
     fieldreg_field_decision *d = &out->field[1];
     const bool physical_zero = s->zero_source == FIELDREG_ZERO_PARITY ||
                                s->zero_source == FIELDREG_ZERO_ENVELOPE;
+    if (!zero_within_bound(1, target_top)) {
+        d->reason = FIELDREG_MODE_ZERO_OUT_OF_BOUNDS;
+        return;
+    }
     if (physical_zero && target_top != s->top) {
         d->reason = FIELDREG_MODE_ZERO_CONFLICT;
         return;
@@ -1119,7 +1159,8 @@ static void update_parity_calibration(field_registration *engine,
     if (engine->parity_state == FIELDREG_PARITY_UNCALIBRATED) {
         const bool eligible = field1_calibration_reference(&m[0],
                                                             &out->field[0]) &&
-                              m[1].picture_position_valid;
+                              field2_placed_on_zero(engine, &m[1],
+                                                    &out->field[1]);
         comb_measurement comb = {0};
         if (eligible)
             comb = measure_static_comb(engine, raster, out->applied_d1,
@@ -1131,8 +1172,8 @@ static void update_parity_calibration(field_registration *engine,
             out->comb_static_fraction = comb.static_fraction;
         }
         if (eligible && comb.measurable) {
-            const int16_t target_top = (int16_t)(engine->field[1].top -
-                                                  comb.best_shift);
+            const int16_t target_top = (int16_t)(m[1].picture_top -
+                (out->applied_d2 + comb.best_shift));
             if (engine->comb_zero_candidate == target_top) {
                 if (engine->comb_candidate_count < INT8_MAX)
                     ++engine->comb_candidate_count;
@@ -1142,7 +1183,9 @@ static void update_parity_calibration(field_registration *engine,
             }
             if (engine->comb_candidate_count >= COMB_CALIBRATION_UNITS) {
                 install_comb_zero(engine, &m[1], out, target_top);
-                if (out->field[1].reason != FIELDREG_MODE_ZERO_CONFLICT) {
+                if (out->field[1].reason != FIELDREG_MODE_ZERO_CONFLICT &&
+                    out->field[1].reason !=
+                        FIELDREG_MODE_ZERO_OUT_OF_BOUNDS) {
                     engine->parity_state = FIELDREG_PARITY_CALIBRATED;
                     out->comb_check = FIELDREG_COMB_AGREE;
                 } else {
@@ -1155,7 +1198,8 @@ static void update_parity_calibration(field_registration *engine,
             if (eligible && comb.best_shift != FIELDREG_UNKNOWN)
                 out->comb_check = FIELDREG_COMB_FLAT;
         }
-    } else {
+    } else if (field1_calibration_reference(&m[0], &out->field[0]) &&
+               field2_placed_on_zero(engine, &m[1], &out->field[1])) {
         const comb_measurement comb = measure_static_comb(
             engine, raster, out->applied_d1, out->applied_d2, -1, 1);
         if (comb.best_shift != FIELDREG_UNKNOWN) {
@@ -1174,8 +1218,8 @@ static void update_parity_calibration(field_registration *engine,
             engine->comb_drift_shift = FIELDREG_UNKNOWN;
         } else {
             out->comb_check = FIELDREG_COMB_DISAGREE;
-            const bool stable_field1 = out->field[0].measured_d !=
-                                       FIELDREG_UNKNOWN;
+            const bool stable_field1 = field1_calibration_reference(
+                &m[0], &out->field[0]);
             if (!stable_field1) {
                 engine->comb_drift_count = 0;
                 engine->comb_drift_shift = FIELDREG_UNKNOWN;
@@ -1189,6 +1233,10 @@ static void update_parity_calibration(field_registration *engine,
             if (engine->comb_drift_count >= COMB_DRIFT_UNITS)
                 engine->parity_state = FIELDREG_PARITY_DRIFT;
         }
+    } else {
+        out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
+        engine->comb_drift_count = 0;
+        engine->comb_drift_shift = FIELDREG_UNKNOWN;
     }
     out->parity_state = engine->parity_state;
     out->parity_bias = (int8_t)(FIELDREG_PICTURE_ORIGIN_F2 -

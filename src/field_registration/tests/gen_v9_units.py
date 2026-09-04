@@ -625,7 +625,7 @@ def main():
     add("false-anchor-single-hit", (2, 0), begin=True,
         captions=((2, 0x14, 0x2c), None),
         top_overrides=(27, None), bottom_overrides=(256, None),
-        f1_reason="ZeroCandidate", f1_zero="Standard",
+        f1_reason="ZeroOutOfBounds", f1_zero="Standard",
         f1_lock_top=19)
     add("false-anchor-normal-1", (2, 0), picture=(2, 0),
         f1_reason="GeometryLockDecides", f1_zero="Standard",
@@ -822,13 +822,13 @@ def main():
         add(f"zero-bound-field1-{i + 1}", (2, 0), begin=i == 0,
             captions=((2, 0x14, 0x2c), None),
             top_overrides=(27, None), bottom_overrides=(256, None),
-            f1_reason="ZeroOutOfBounds" if i == 2 else "ZeroCandidate",
+            f1_reason="ZeroOutOfBounds",
             f1_zero="Standard", f1_lock_top=19)
     for i in range(3):
         add(f"zero-bound-field2-{i + 1}", (0, 2), begin=i == 0,
             top_overrides=(None, 288), bottom_overrides=(None, 522),
             f2_envelopes=(282,),
-            f2_reason="ZeroOutOfBounds" if i == 2 else "ZeroCandidate",
+            f2_reason="ZeroOutOfBounds",
             f2_zero="Standard", f2_lock_top=282)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
