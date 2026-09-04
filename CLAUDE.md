@@ -1359,6 +1359,16 @@ delivery edge; wrong one at acquisition.
   does, and "the deck's TBC produces the stable raster" is now only supported by the OSD witness
   (§7), not by these lines. Whether the deck ALSO inserts a line 21 that the Shuttle overwrites
   is unmeasurable from this side.
+  **The Shuttle DOES lose lines 20/21/284 (owner observation, confirmed 2026-09-04 night):** in
+  the whole-tape capture, units 176–194 (5.87–6.47 s, 19 units — the deck's output relay muting
+  to 0 V at play start, the same 19-unit sub-blanking run first seen in the untagged capture)
+  are all-black rasters (Y 1.4) with **no timing line and no caption insert in either field**,
+  format still `0xe801`, bracketed by device-short units (755,824 B) at units 9, 14 and 195 —
+  the owner's "partial tears". With the deck powered off the inserts appeared in only 12 of 34
+  idle units. So the inserts are conditional on the decoder having sync, not unconditional, and
+  **"no waveform off the insert ⇒ aligned" is only valid when the insert itself is present**; an
+  absent insert is a signal-state fact (mute / no input), a hold, never a gauge. The earlier
+  "rigid through the events" wording above meant rigid while a signal is present.
   **Second recording, line-by-line (2,100 s window, 600 units; all NTSC lines).** Field 1: the
   tape's line 21 lands on **line 23** (jittering to 24 with the picture), a full CEA-608 waveform
   at ~2× the insert's amplitude, data-bearing in ~1/3 of units; the picture starts on the next
