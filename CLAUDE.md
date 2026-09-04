@@ -1253,14 +1253,23 @@ delivery edge; wrong one at acquisition.
   measures and what "d = 0" means. **The tape's real line 21 (seven-cycle run-in, start bit,
   two parity bits) is the golden alignment reference: correctly placed, it sits exactly on the
   deck's generated line 21 (unit row 17) — and that is also the definition of a PICTURE LOCK.**
-  Nothing is learned or re-locked: the reference is the deck's line 21 itself, fixed by the
-  raster (picture origin 19/282). A clean signal puts the recorded caption exactly on the insert,
-  invisible — that is d = 0, logged as a confirmation. A caption seen off the insert is a
-  MEASUREMENT of that unit's displacement (caption_row − 17), to agree with the envelope and be
-  corrected on the spot; a program sitting stably at +1 is a stable error and is corrected to 0
-  throughout. The picture envelope (compared to the fixed origin 19/282) is the secondary gauge
-  (no caption, an ambiguous one, and field 2); the only per-lock learned quantity is the
-  envelope HEIGHT, used for validity, never for position. Damage classes the caption
+  **Golden rule (owner, 2026-09-04):** if the recorded line 21 cannot be found anywhere else in
+  the field (search the whole field, top first, including the bottom — a badly wrapped vertical
+  interval can put it there), assume the picture is locked in the right place: reference = the
+  deck's line 21 (rows 17/280), picture origin 19/282; only a caption found elsewhere can change
+  that lock, which may produce one or two line jumps near the beginning of a recording — each
+  recorded as a sidecar event. Everything derives from the lock: field parity keeps both fields
+  aligned at the correct picture start (field 2 one display line below field 1), so field 2 is
+  placed from the same lock and its own envelope. Reconciled with the envelope: a unique caption
+  off the insert with the envelope displaced by the same amount is a per-unit displacement,
+  corrected on the spot, lock unchanged; a unique caption off the insert while the envelope sits
+  at the origin, consistently over a few units, means this recording's line 21 lives at a
+  nonstandard row — re-lock the caption reference to it once (CaptionRelock), picture untouched;
+  with no caption the envelope measures each unit's displacement from the fixed origin and
+  corrects it every unit (jitter included), the per-lock learned HEIGHT serving validity, never
+  position; ambiguous captions (duplicate, split, skewed, leaking band) never touch the lock or
+  the crop; with no gauge at all, hold the last applied (0 at open). A caption on the insert is
+  logged as confirmation. Damage classes the caption
   detector must survive: the tape's own vertical-interval pulses leaking into the picture as
   thick bright bands when horizontal timing is far out of tolerance (also the "severe flagging"
   bands seen on other tapes), and the EP recording's caption splitting across two lines/fields
