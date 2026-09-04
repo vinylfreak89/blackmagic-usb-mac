@@ -22,6 +22,10 @@ and a live geometry lock is `GaugeConflict` and holds. The sidecar records both
 the parity row/bytes and `geometry_d`; a non-null insert opposed by a live
 nonzero geometry lock is `InsertGeometryConflict`. Which gauge should win a
 real conflict is pending owner ruling, so v9 never silently chooses either.
+When a unique off-insert or field-2 fallback gauge exists, the picture-top
+scan begins below that gauge. This excludes bright/leaking VBI bands above a
+displaced line 21 from the geometry lock without trying to classify their
+waveform as picture content.
 
 When the insert contains null data and there is no primary gauge, v9 measures
 the picture top and bottom by row-mean luma (`mean(Y[x=40..679]) > 12`). A
@@ -46,6 +50,10 @@ ceiling is learned only when two parity/fallback-gauged observations at
 different offsets saturate at the same bottom line; its candidate/count are separate
 from the `UNLOCKED / ACQUIRE_ONE / LOCKED` state, so fitting never makes a
 locked field appear unlocked.
+The candidate is the greatest observed bottom and can be confirmed only at a
+different gauged offset, preventing dark bottom flicker from fitting multiple
+ceilings. While that ceiling is unresolved, an ungauged geometry proposal that
+would change the last direct placement is `ClipUnknownHold`.
 
 `fieldreg_begin_segment()` forgets both locks and starts the new segment at
 `d=0`. `fieldreg_discontinuity()` forgets the locks but preserves each last

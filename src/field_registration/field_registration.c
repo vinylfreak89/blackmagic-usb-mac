@@ -125,7 +125,18 @@ static void measure_field(const uint8_t *raster, int field,
         }
     }
 
-    for (int row = picture_first; row <= adc_last; ++row) {
+    int top_scan_first = picture_first;
+    if (m->off_count == 1)
+        top_scan_first = m->off_candidate.raster_row + 1;
+    else if (field == 1 && m->fallback_count == 1)
+        top_scan_first = m->fallback_row + 1;
+    if (top_scan_first < first) top_scan_first = first;
+    if (top_scan_first > adc_last) top_scan_first = adc_last;
+
+    /* Once a unique primary/fallback line identifies field timing, picture
+     * geometry starts below that line. Bright VBI damage above the gauge is
+     * neither caption nor picture and must not move the geometry lock. */
+    for (int row = top_scan_first; row <= adc_last; ++row) {
         if (!waveform[row - first] && means[row - first] > 12.0) {
             m->top = (int16_t)row;
             break;
@@ -238,15 +249,27 @@ static void seed_from_gauge(fieldreg_field_state *s,
         return;
     }
     if (s->lock_state == FIELDREG_LOCK_ACQUIRE_ONE) {
-        if (base_top != s->acquire_top ||
-            !merge_acquisition_height(s, m))
+        if (base_top != s->acquire_top)
             begin_acquisition(s, m, measured);
-        else finish_acquisition(s);
+        else {
+            /* A golden gauge settles position even when clipping makes the
+             * visible heights differ. Preserve the largest lower bound; only
+             * equal uncensored heights establish exact H. */
+            if (s->acquire_height_known && !m->bottom_at_adc_boundary &&
+                m->height != s->acquire_height)
+                s->acquire_height_known = false;
+            if (m->height > s->acquire_height)
+                s->acquire_height = m->height;
+            finish_acquisition(s);
+        }
         return;
     }
 
     if (base_top != s->top) {
-        begin_acquisition(s, m, measured);
+        /* The primary gauge still places this unit. A first-picture-line
+         * content change invalidates geometry as a fallback, not the live
+         * gauged lock; a later agreeing gauge can restore it. */
+        s->height_known = false;
         return;
     }
     if (!s->height_known) {
@@ -265,12 +288,19 @@ static void seed_from_gauge(fieldreg_field_state *s,
         const int expected = uncensored_bottom > s->clip_ceiling ?
                              s->clip_ceiling : uncensored_bottom;
         if (m->bottom == expected) return;
+        if (m->bottom < expected)
+            return; /* Shorter content cannot disprove a physical ceiling. */
+        s->height_known = false;
+        clear_clip(s);
+        return;
     } else if (m->bottom <= uncensored_bottom) {
         /* With a golden gauge and unknown C, a short visible envelope can be
          * clipping. Top placement remains authoritative until C is fitted. */
         return;
     }
-    begin_acquisition(s, m, measured);
+    /* A gauged envelope extending a lower bound increases H; it cannot
+     * contradict the independently measured position. */
+    s->height = m->height;
 }
 
 static void fit_clip(fieldreg_field_state *s, const field_measurement *m,
@@ -281,30 +311,20 @@ static void fit_clip(fieldreg_field_state *s, const field_measurement *m,
         return;
     const int base_top = s->lock_state == FIELDREG_LOCK_LOCKED ?
                          s->top : s->acquire_top;
-    const int height = s->lock_state == FIELDREG_LOCK_LOCKED ?
-                       s->height : s->acquire_height;
-    const bool height_known = s->lock_state == FIELDREG_LOCK_LOCKED ?
-                              s->height_known : s->acquire_height_known;
     if (m->top != base_top + measured) return;
-    const int predicted = base_top + height - 1 + measured;
-    if (!m->bottom_at_adc_boundary &&
-        (!height_known || m->bottom >= predicted)) {
-        s->clip_candidate = -1;
-        s->clip_candidate_d = FIELDREG_UNKNOWN;
-        s->clip_candidate_count = 0;
-        return;
-    }
-    if (s->clip_candidate == m->bottom &&
-        s->clip_candidate_d != measured) {
-        if (s->clip_candidate_count < UINT8_MAX) ++s->clip_candidate_count;
-        s->clip_candidate_d = (int8_t)measured;
-    } else {
+    if (s->clip_candidate < m->bottom) {
+        /* Track the greatest passable line. Darker/shorter content can only
+         * move the apparent bottom upward and must never fit a smaller C. */
         s->clip_candidate = m->bottom;
         s->clip_candidate_d = (int8_t)measured;
         s->clip_candidate_count = 1;
+    } else if (s->clip_candidate == m->bottom &&
+        s->clip_candidate_d != measured) {
+        if (s->clip_candidate_count < UINT8_MAX) ++s->clip_candidate_count;
+        s->clip_candidate_d = (int8_t)measured;
+        if (s->clip_candidate_count >= 2)
+            s->clip_ceiling = s->clip_candidate;
     }
-    if (s->clip_candidate_count >= 2)
-        s->clip_ceiling = s->clip_candidate;
 }
 
 static void record_invariant(const fieldreg_field_state *s,
@@ -350,12 +370,15 @@ static void decide_geometry(fieldreg_field_state *s,
         hold(s, d, FIELDREG_MODE_OUT_OF_RANGE_HOLD);
         return;
     }
+    if (measured != s->last_applied && s->clip_ceiling < 0 &&
+        s->clip_candidate_count > 0) {
+        hold(s, d, FIELDREG_MODE_CLIP_UNKNOWN_HOLD);
+        return;
+    }
     if (!s->height_known) {
-        if (m->height > s->height) s->height = m->height;
-        if (!m->bottom_at_adc_boundary) {
-            s->height = m->height;
-            s->height_known = true;
-        }
+        begin_acquisition(s, m, s->last_applied);
+        hold(s, d, FIELDREG_MODE_ACQUIRING);
+        return;
     }
     const int uncensored = s->top + s->height - 1 + measured;
     const int expected = s->clip_ceiling >= 0 && uncensored > s->clip_ceiling ?
@@ -591,6 +614,7 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_INSERT_GEOMETRY_CONFLICT: return "InsertGeometryConflict";
     case FIELDREG_MODE_LINE22_DATA_PRESENT: return "Line22DataPresent";
     case FIELDREG_MODE_GAUGE_CONFLICT: return "GaugeConflict";
+    case FIELDREG_MODE_CLIP_UNKNOWN_HOLD: return "ClipUnknownHold";
     case FIELDREG_MODE_MIXED_FIELD_DECISION: return "MixedFieldDecision";
     }
     return "Unknown";
