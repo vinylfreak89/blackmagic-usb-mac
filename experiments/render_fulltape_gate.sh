@@ -22,4 +22,6 @@ reasons=collections.Counter(r.get('f1_reason','?') for r in rows)
 print(f"  sidecar: {len(rows)} rows, {trans} applied-phase transitions, {blips} one-unit flips, comb_safe {safe}/{len(rows)}, pairs {collections.Counter(pairs).most_common(5)}")
 print(f"  field-1 reasons: {dict(reasons.most_common(6))}")
 PY
+grep -q OVERLAY_DONE $OUT/timing.txt && [ -f $OUT/fulltape_render_overlay.mp4 ]; chk $? "overlay copy exists for the entire tape"
+nov=$(ffprobe -v error -select_streams v -count_packets -show_entries stream=nb_read_packets -of csv=p=0 $OUT/fulltape_render_overlay.mp4 2>/dev/null); [ "$nov" = "$nfr" ]; chk $? "overlay frame count equals the render's ($nov vs $nfr)"
 echo "gate failures: $fails"; [ $fails = 0 ] && echo GATE_PASS || echo GATE_FAIL

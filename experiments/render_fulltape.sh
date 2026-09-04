@@ -17,3 +17,7 @@ python3 "$REPO/experiments/capture_render.py" "$CAP" --input-format tagged \
   --deinterlacer nnedi --nnedi-weights "$WEIGHTS" \
   --tagged-start-unit 4 --decision-log "$OUT/fulltape_render_registration.csv" > "$OUT/render.log" 2>&1
 date '+%F %T end' >> "$OUT/timing.txt"; echo RENDER_DONE >> "$OUT/timing.txt"
+# The review copy the owner watches always carries the sidecar burned in over the ENTIRE tape (owner, 2026-09-05);
+# the overlay tool refuses anything but the full render + full sidecar, so the band is aligned by construction.
+python3 "$REPO/experiments/overlay_sidecar.py" "$OUT/fulltape_render.mp4" "$OUT/fulltape_render_registration.csv" "$OUT/fulltape_render_overlay.mp4" > "$OUT/overlay.log" 2>&1
+date '+%F %T overlay end' >> "$OUT/timing.txt"; echo OVERLAY_DONE >> "$OUT/timing.txt"

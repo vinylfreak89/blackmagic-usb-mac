@@ -40,6 +40,12 @@ def main() -> None:
     probe = subprocess.run(["ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=width,height,sample_aspect_ratio","-of","csv=p=0",a.video],capture_output=True,text=True).stdout.strip().split(",")
     W, H = int(probe[0]), int(probe[1]); sar = probe[2] if len(probe) > 2 and probe[2] not in ("", "N/A", "0:1") else "1:1"
     rows = list(csv.DictReader(open(a.sidecar)))
+    # Alignment is by construction only when the video holds exactly two bobbed frames per sidecar row from the first
+    # row: an excerpt cut on a keyframe silently offsets every label (measured 2026-09-05: 25 extra frames = 12 units).
+    nfr = int(subprocess.run(["ffprobe","-v","error","-select_streams","v","-count_packets","-show_entries","stream=nb_read_packets","-of","csv=p=0",a.video],capture_output=True,text=True).stdout.strip() or 0)
+    if abs(nfr - 2 * len(rows)) > 2:
+        raise SystemExit(f"refusing to overlay: video has {nfr} frames but the sidecar has {len(rows)} rows (expected {2*len(rows)} frames); "
+                         f"overlay the FULL render with its full sidecar, never an excerpt")
     d1s = []
     for r in rows:
         try: d1s.append(int(g(r, "applied_d1", "0")))
