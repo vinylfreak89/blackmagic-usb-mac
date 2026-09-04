@@ -1484,6 +1484,35 @@ delivery edge; wrong one at acquisition.
   line 286 in ~87% of first-minute units and 100% of the EP slice — and field 1's moves are rigid
   whole-field-line shifts of caption + gap + picture together (parity test on raw units: per-field
   model 202–0 over a whole-picture one-display-line shift).
+- ✅ **P2 v9 — the line-21 engine (merged to main `e1c91f6`, 2026-09-05 early morning; Codex
+  wrote, Claude reviewed, two review rounds, 69/69 goldens, 18/18 API, 3/3 decoder).** Supersedes
+  every estimator above. Per field per unit: decode every line of the field (NTSC 12–266 /
+  272–528) as CEA-608 with parity (`cea608.c`, byte-exact against `experiments/cc608_decode.py`
+  on 3,600 slice units); exactly one parity-valid line off the regenerated 21/284 ⇒ applied
+  `d = line − 21` (`− 284`) at once (`Line21Placement`) and the lock's zero is re-anchored to
+  `top − d`; field 2 without parity uses the frozen smeared-XDS envelope candidate in lines
+  285–290 (`Field2EnvelopePlacement`); otherwise a geometry lock (top, uncensored height, optional
+  clip ceiling fitted from two gauged units saturating at one line) decides by the conservation
+  equation, rigid moves applied, top-only changes `LockBroken`/hold, boundary changes with an
+  unknown clip `ClipUnknownHold`; bytes at 21 are provenance only (`InsertCorroborates` /
+  `InsertContradicted`); more than one candidate `Line21Ambiguous`; insert absent `InsertAbsent`.
+  Lock zero provenance is named (`Parity` / `Envelope` / `Acquired`) and `comb_safe` requires both
+  fields locked and either both zeros physical or both rigid this unit. State 72 bytes,
+  allocation-free; engine 0.32 ms median / 0.33 p95 per unit, whole worker 0.54 / 0.55 ms
+  (§11b budget 10 ms). Sidecar schema 5 (per-field reason, gauge, line, bytes, geometry, raw
+  edges, lock, zero source, clip, residual, `comb_safe`).
+  **Whole-tape acceptance (experiments/line21_truth.py + v9_acceptance.py, 86,293 exact units,
+  0 drops):** field 1 agrees with **40,163 of 40,163** off-insert parity readings (0
+  disagreements; the round-1 engine had 122), field 2 25/25. Applied pairs: (0,0) 26,023, (2,2)
+  20,537, (1,0) 18,398, (3,2) 13,962, (3,0) 3,570, (2,0) 3,160 — the (1,0)/(2,0) mass in the
+  first recording matches the 2026-08-30 offline trace's (1,0) 19,265 / (2,0) 2,315
+  independently. Reasons, field 1: GeometryLockDecides 42,481, Line21Placement 40,163,
+  LockBroken 2,657, Acquiring 721, InsertAbsent 137, Line21Ambiguous 74. Zero source: field 1
+  Parity 82,883 / Acquired 3,410; field 2 Envelope 34,871 / Acquired 51,373 (the first recording
+  has no field-2 gauge). comb_safe 75,216/86,294. 7,032 applied transitions, 2,797 one-unit
+  flips: 2,023 parity-placed (the caption line itself moved for one unit), 734 geometry-placed
+  of which 692 rigid (top and bottom moved together) and ~40 top-only under a fitted clip.
+  Owner render pending (`experiments/render_fulltape.sh` at `e1c91f6`).
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
   out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio
