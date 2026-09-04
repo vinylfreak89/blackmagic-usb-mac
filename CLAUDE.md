@@ -1300,8 +1300,11 @@ delivery edge; wrong one at acquisition.
   bytes, cache-visible on a write-back cloud volume), never truncating or replacing an existing
   sidecar, never published if incomplete; on a mid-recording source restart the log is closed by
   `fs_stop` after the workers drain, so no delivered unit is ever unlogged. Publication runs on
-  its own thread (OBS frontend event callbacks execute on the UI thread; nothing that touches
-  storage runs there), one in flight per source, joined at destroy. Alignment is within
+  a persistent per-source thread with a job queue (OBS frontend event callbacks execute on the UI
+  thread — `OBSStudioAPI::on_event` is a synchronous loop called from `OBSBasic` — so a callback
+  only enqueues), drained at destroy, never inline. The recording's file name comes from
+  `obs_frontend_get_last_recording()` (set at recording start); `obs_frontend_get_current_record_output_path()`
+  is the configured directory, not the file — the first live test produced nameless sidecars. Alignment is within
   one unit (the counter of the last frame delivered before the event is logged; exact alignment
   needs an in-band frame counter). OPEN: a `.tpc` tee from inside the plugin (needs a
   runtime-attachable tagged sink in the capture core); a log writer thread if storage stalls are

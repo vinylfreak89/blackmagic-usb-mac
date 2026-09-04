@@ -77,7 +77,9 @@ typedef struct {
     unsigned sidecar_part;                  /* 0 = first file of this recording; N>0 => .partN+1 (source restarted mid-recording) */
     int sidecar_attached;
     char *sidecar_partial, *sidecar_final;  /* growing scratch path, and the published name it gets at detach */
-    pthread_t publisher; int publisher_live; /* one outstanding asynchronous publication (joined before the next, and at destroy) */
+    /* persistent publisher thread: frontend callbacks only enqueue; the queue is drained at destroy */
+    pthread_t publisher; int publisher_live; pthread_mutex_t pq_m; pthread_cond_t pq_c; int pq_init;
+    struct publish_job *pq_head, *pq_tail; int pq_quit;
     _Atomic uint64_t last_counter;          /* counter_ext of the last frame delivered to OBS */
 } shuttle_src;
 #define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; published by rename on the same filesystem, by verified copy otherwise */
@@ -135,9 +137,15 @@ static void on_end(void *ctx, enum cc_end r){ shuttle_src *s = ctx; s->end_reaso
     blog(LOG_INFO, "[shuttle-source] capture ended: reason %d", (int)r); }
 
 /* ---- recording-aligned sidecar (frontend events; every transition runs under s->m) ---- */
+/* The recording FILE. obs_frontend_get_current_record_output_path() is the configured output
+ * DIRECTORY (OBSBasic::GetCurrentOutputPath reads the FilePath/RecFilePath setting) — using it
+ * produced sidecars named just ".registration.csv". obs_frontend_get_last_recording() returns
+ * BasicOutputHandler::lastRecordingPath, which GetRecordingFilename() sets to the full file path
+ * when the recording starts (before the output runs) and updates on a file split, so it is the
+ * current recording's file at RECORDING_STARTED and at RECORDING_STOPPED (OBS 32.2.2 source). */
 static int recording_path(shuttle_src *s){
     bfree(s->sidecar_base); s->sidecar_base = NULL;
-    char *p = obs_frontend_get_current_record_output_path();        /* the active recording's file */
+    char *p = obs_frontend_get_last_recording();
     if (!p || !*p){ bfree(p); return -1; }
     s->sidecar_base = p; return 0;
 }
@@ -180,13 +188,14 @@ static void sidecar_attach(shuttle_src *s){
  * deleted. "Published" means the destination filesystem acknowledged the bytes; on a write-back
  * cloud volume (LucidLink) that is cache-visible, and the volume's own upload counter says when it
  * is remote — the plugin cannot see that, so it does not claim it. */
-/* The publication runs on its own thread: OBS frontend event callbacks execute on the UI thread,
- * and nothing that touches storage belongs there. The job owns copies of both paths; the source
- * keeps at most one publication in flight and joins it before starting another and at destroy. */
-typedef struct { char *partial, *final; } publish_job;
-static void *publisher_main(void *arg){
-    publish_job *j = arg;
-    pthread_setname_np("shuttle-sidecar-publish");
+/* Publication runs on a persistent per-source thread: OBS frontend event callbacks execute on the
+ * UI thread (OBSStudioAPI::on_event is a synchronous loop called from OBSBasic), so a callback only
+ * enqueues a job that owns copies of both paths and returns. The thread drains jobs in order; a
+ * stalled cloud volume delays later publications, never the UI. The queue is drained (not
+ * abandoned) at destroy. If the thread could not be created at source creation, publication is
+ * NOT done inline: the complete scratch file is left in place and its path is logged. */
+typedef struct publish_job { char *partial, *final; struct publish_job *next; } publish_job;
+static void publish_one(publish_job *j){
     char *dircopy = bstrdup(j->final); char *scratchcopy = bstrdup(j->partial);
     int same = same_filesystem(dirname(scratchcopy), dirname(dircopy)); bfree(dircopy); bfree(scratchcopy);
     if (same){
@@ -199,15 +208,39 @@ static void *publisher_main(void *arg){
         else if (rc == 1) blog(LOG_WARNING, "[shuttle-source] sidecar published by verified copy: %s — the scratch copy was KEPT at %s (directory fsync or scratch removal failed: %s)", j->final, j->partial, strerror(errno));
         else blog(LOG_INFO, "[shuttle-source] sidecar published by verified copy (different filesystem; cache-visible on a cloud volume): %s", j->final);
     }
-    bfree(j->partial); bfree(j->final); bfree(j);
-    return NULL;
 }
-static void publisher_join(shuttle_src *s){ if (s->publisher_live){ pthread_join(s->publisher, NULL); s->publisher_live = 0; } }
+static void *publisher_main(void *arg){
+    shuttle_src *s = arg;
+    pthread_setname_np("shuttle-sidecar-publish");
+    for (;;){
+        pthread_mutex_lock(&s->pq_m);
+        while (!s->pq_head && !s->pq_quit) pthread_cond_wait(&s->pq_c, &s->pq_m);
+        publish_job *j = s->pq_head; if (j){ s->pq_head = j->next; if (!s->pq_head) s->pq_tail = NULL; }
+        int quit = s->pq_quit && !j;
+        pthread_mutex_unlock(&s->pq_m);
+        if (quit) return NULL;
+        publish_one(j); bfree(j->partial); bfree(j->final); bfree(j);
+    }
+}
+static void publisher_start(shuttle_src *s){
+    if (pthread_mutex_init(&s->pq_m, NULL) || pthread_cond_init(&s->pq_c, NULL)) return;
+    s->pq_init = 1;
+    if (pthread_create(&s->publisher, NULL, publisher_main, s) == 0) s->publisher_live = 1;
+    else blog(LOG_ERROR, "[shuttle-source] could not start the sidecar publisher thread: sidecars will stay in scratch (paths are logged), never published inline");
+}
+static void publisher_stop(shuttle_src *s){   /* destroy only: drain every queued job, then join */
+    if (!s->pq_init) return;
+    if (s->publisher_live){ pthread_mutex_lock(&s->pq_m); s->pq_quit = 1; pthread_cond_signal(&s->pq_c); pthread_mutex_unlock(&s->pq_m); pthread_join(s->publisher, NULL); s->publisher_live = 0; }
+    for (publish_job *j = s->pq_head; j;){ publish_job *n = j->next; blog(LOG_ERROR, "[shuttle-source] sidecar left unpublished at %s (no publisher thread)", j->partial); bfree(j->partial); bfree(j->final); bfree(j); j = n; }
+    pthread_mutex_destroy(&s->pq_m); pthread_cond_destroy(&s->pq_c); s->pq_init = 0;
+}
 static void sidecar_publish(shuttle_src *s){
-    publisher_join(s);                                  /* at most one in flight; the previous recording's publish is normally long done */
+    if (!s->publisher_live){ blog(LOG_ERROR, "[shuttle-source] no publisher thread: complete sidecar left at %s (wanted %s)", s->sidecar_partial, s->sidecar_final); return; }
     publish_job *j = bzalloc(sizeof *j); j->partial = bstrdup(s->sidecar_partial); j->final = bstrdup(s->sidecar_final);
-    if (pthread_create(&s->publisher, NULL, publisher_main, j) == 0) s->publisher_live = 1;
-    else { blog(LOG_ERROR, "[shuttle-source] could not start the sidecar publisher thread; publishing inline"); publisher_main(j); }
+    pthread_mutex_lock(&s->pq_m);
+    if (s->pq_tail) s->pq_tail->next = j; else s->pq_head = j;
+    s->pq_tail = j; pthread_cond_signal(&s->pq_c);
+    pthread_mutex_unlock(&s->pq_m);
 }
 static void sidecar_detach(shuttle_src *s){
     if (!s->sidecar_attached) return;
@@ -300,6 +333,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     obs_source_set_deinterlace_field_order(source, OBS_DEINTERLACE_FIELD_ORDER_TOP);   /* measured TFF (CLAUDE.md §6) */
     obs_source_set_deinterlace_mode(source, OBS_DEINTERLACE_MODE_YADIF_2X);          /* default presentation; the user may change it (OBS owns deinterlacing) */
     pthread_mutex_init(&s->m, NULL);
+    publisher_start(s);
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
     /* Register for recording events BEFORE inspecting recording state, so a recording that starts
      * in between is seen by the callback rather than missed. Frontend events and this source's
@@ -316,7 +350,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
 static void shuttle_destroy(void *data){
     shuttle_src *s = data; if (!s) return;
     obs_frontend_remove_event_callback(frontend_event, s);
-    pthread_mutex_lock(&s->m); shuttle_stop(s); publisher_join(s); pthread_mutex_unlock(&s->m); pthread_mutex_destroy(&s->m);
+    pthread_mutex_lock(&s->m); shuttle_stop(s); pthread_mutex_unlock(&s->m); publisher_stop(s); pthread_mutex_destroy(&s->m);
     bfree(s->sidecar_base); bfree(s->sidecar_partial); bfree(s->sidecar_final);
     bfree(s->vbuf); bfree(s->abuf); bfree(s);
     atomic_fetch_sub(&g_instances, 1);

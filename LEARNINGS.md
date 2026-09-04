@@ -206,3 +206,14 @@ claims are made, and a review request must never rely on the author's descriptio
 reads the tree at the named revision. The mutual-review rule (CLAUDE.md §14) exists for exactly
 this failure.
 
+
+## A reviewer's suggested API is a claim, not a property (2026-09-04)
+
+Codex's review recommended `obs_frontend_get_current_record_output_path()` for the sidecar's
+file name; I adopted it because it read as more official than inspecting output settings, and
+shipped it without exercising a recording. It returns the configured output DIRECTORY, so every
+sidecar came out as `.registration.csv` with no base name — the owner found it on his first try.
+The fix came from reading OBS's source (`obs_frontend_get_last_recording()` holds the current
+file from recording start). Lesson: "a property I requested is not a property I have" applies to
+review suggestions too — when neither agent can run the real client, read the implementation of
+the API before trusting its name, and say explicitly that the path was never exercised.
