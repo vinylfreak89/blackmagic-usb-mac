@@ -75,6 +75,15 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
 The row also records the applied pair, whether both locks make the vertical
 registration claim (`comb_safe`), publication/drop accounting, and schema
 version. The offline renderer emits the same per-field engine provenance.
+`confidence` is binary: `1` means at least one field supplied an accepted
+observation, `0` means neither did. `fieldreg_confirmation_units() == 2`
+describes only geometry-lock acquisition; it is not a dwell or smoothing
+window, and gauged placement remains immediate.
+
+The signal-state API currently accepts only a complete `(d1,d2)` observation.
+Frameserver therefore marks `observation_known` only for support 2; support 1
+still updates the full applied pair through `applied_known`, but never feeds an
+unknown-field sentinel into signal-state's chatter counter.
 
 ## Deliberately absent
 

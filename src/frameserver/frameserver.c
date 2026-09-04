@@ -315,6 +315,11 @@ static void process_item(frameserver *f, const fs_item *it){
         f->st.exact_units++;
         have_d = fieldreg_process(f->eng, unit, &d);
         if (have_d && classified)
+            /* signal_state's observation API accepts a complete (d1,d2), not
+             * a field-validity mask. Partial v9 support remains real and is
+             * fully reflected by applied_known below; passing it as an
+             * observation would fabricate FIELDREG_UNKNOWN for one field and
+             * count that sentinel as phase chatter. */
             signal_state_note_registration(f->sig, &sr, d.frame_observation_support == 2,
                                            d.frame_observation_d1, d.frame_observation_d2,
                                            d.confidence, true,

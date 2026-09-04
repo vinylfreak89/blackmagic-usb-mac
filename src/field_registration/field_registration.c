@@ -568,8 +568,7 @@ bool fieldreg_process(field_registration *engine,
         (out->decision_d2 != FIELDREG_UNKNOWN);
     out->mode = out->field[0].reason == out->field[1].reason ?
                 out->field[0].reason : FIELDREG_MODE_MIXED_FIELD_DECISION;
-    out->confidence = out->frame_observation_support == 2 ? 1.0 :
-                      out->frame_observation_support == 1 ? 0.9 : 0.0;
+    out->confidence = out->frame_observation_support > 0 ? 1.0 : 0.0;
     out->comb_safe = engine->field[0].lock_state == FIELDREG_LOCK_LOCKED &&
                      engine->field[1].lock_state == FIELDREG_LOCK_LOCKED;
     return true;
