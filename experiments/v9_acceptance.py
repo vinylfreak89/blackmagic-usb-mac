@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-# v9 acceptance: compare a schema-5 frameserver decision log against the whole-tape parity truth set (line21_truth.py).
-# For every unit where the truth has a reading, the engine's applied d must equal it:
+# v9 acceptance: compare a schema-6 frameserver decision log against the whole-tape parity truth set (line21_truth.py).
+# For every unit where the truth has a reading, the engine's applied d must
+# equal it unless the sidecar explicitly records one of the owner-approved
+# current-picture vetoes:
 #   field 1: exactly one parity-valid line other than 21 => d1 = line-21
 #   field 2: exactly one parity-valid line other than 284 => d2 = line-284
+#   CaptionOnlyMotion / CaptionBodyDisagree: current top plus the one-unit body
+#   witness reject a caption-only or differently moving VBI line;
+#   Line21Ambiguous / GaugeConflict: caption evidence was discarded and current
+#   geometry either placed or explicitly held the unit.
 #   (non-null bytes on the regenerated 21/284 with nothing elsewhere are the device's own slicing decision — reported,
 #    never used as truth: measured 2026-09-05, rigid +1 picture shifts coexist with re-encoded data at 21)
 # Units are joined on the device counter (truth: raw 16-bit, unwrapped here; sidecar: counter_extended).
@@ -65,6 +71,10 @@ if len(lc) != len(set(lc)):
 common=sum(1 for c in lc[:2000] if c in T)
 if common < min(2000,len(lc))*0.9:
     raise SystemExit(f"counter join failed: only {common} of the first {min(2000,len(lc))} sidecar units have a truth row")
+picture_veto_reasons={
+    'CaptionOnlyMotion', 'CaptionBodyDisagree',
+    'Line21Ambiguous', 'GaugeConflict',
+}
 stats={1:collections.Counter(),2:collections.Counter()}; mism=[]
 for r in log:
     c=int(r['counter_extended'])
@@ -74,6 +84,10 @@ for r in log:
         if e is None: stats[f]['truth:'+why]+=1; continue
         a=int(r['applied_d%d'%f])
         if a==e: stats[f]['agree:'+why.split('@')[0]]+=1
+        elif r['f%d_reason'%f] in picture_veto_reasons:
+            # Preserve the exact rejection class in the acceptance output;
+            # a generic "veto" total would hide a policy regression.
+            stats[f]['picture-veto:'+r['f%d_reason'%f]]+=1
         else:
             stats[f]['DISAGREE:'+why.split('@')[0]]+=1
             if len(mism)<40: mism.append((r['ordinal'],c,f,e,a,r['f%d_reason'%f],why))

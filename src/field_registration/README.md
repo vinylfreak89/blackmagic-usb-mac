@@ -60,11 +60,16 @@ expected_bottom   = min(uncensored_bottom, C)  # when C is known
 residual          = measured_bottom - expected_bottom
 ```
 
-Only residual zero permits an ungauged `GeometryLockDecides`, except that a
-bottom in the deck's measured near-blank clip band is censored and leaves the
-top authoritative while the clip ceiling remains unknown. A contradiction
-holds the last applied offset and names `LockBroken`; picture content never
-redefines zero. A parity/envelope zero survives secondary content changes.
+Residual zero directly permits an ungauged `GeometryLockDecides`. When the
+bottom is absent, censored, contradictory, or the top lies outside the old
+policy range, a one-unit body witness can still prove current position: the
+engine compares this field's 160-row horizontal luma-mean profile with the
+previous unit at shifts -3..+3. If the minimum MAD is below 9 and its shift
+equals the top-derived displacement change, current geometry applies while
+the original `Line21Ambiguous`, `GaugeConflict`, `LockBroken`, or
+`OutOfRangeHold` reason remains as provenance. Otherwise the named hold is
+honest about the disagreement. Picture content never redefines zero. A
+parity/envelope zero survives secondary content changes.
 Dark/unmeasurable content holds without destroying a valid lock. A clip
 ceiling is learned only when two parity/fallback-gauged observations at
 different offsets saturate at the same bottom line; its candidate/count are separate
@@ -90,16 +95,20 @@ a lock; a real mute/unlock is already a signal-state segment boundary, while
 subsequent measurable geometry can independently invalidate a stale lock.
 
 Parity places its current unit immediately, with one bounded exception. If a
-unique decoded caption changes displacement while a fully visible top and
-bottom both conserve the settled envelope at the previous applied offset, the
-picture wins for that unit (`CaptionOnlyMotion`); a censored or unmeasurable
-edge cannot veto parity. A parity reading can move the segment zero only when
+unique decoded caption changes displacement while the measurable top and the
+one-unit body witness say the picture stayed at the previous applied offset,
+the picture wins for that unit (`CaptionOnlyMotion`). If the body moved by a
+different reliable amount and the top agrees with that amount, the body-
+consistent placement is applied as `CaptionBodyDisagree`; otherwise that
+disagreement holds. A censored or absent bottom supplies no contrary evidence;
+when fully measurable it must conserve the same body-consistent placement.
+A parity reading can move the segment zero only when
 that same fully visible envelope corroborates its implied base or the next
 consecutive parity unit implies the same base. Until then it still places the
 unit as `AnchorUncorroborated`, but leaves the zero and lock geometry intact.
 This one-unit anchor memory never delays or smooths crop placement.
 
-## Sidecar schema 5
+## Sidecar schema 6
 
 The frameserver retains its transport/signal columns and writes the following
 v9 provenance for each field. Values named `*_line` are NTSC line numbers
@@ -110,7 +119,9 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
 - parity/fallback candidate counts;
 - selected gauge line, decoded bytes, correlation amplitude, and the live
   lock's independent `geometry_d` reading;
-- blank-row mean, raw picture top/bottom/height, measurability and censoring;
+- blank-row mean, the one-unit body witness's validity, shift, MAD and
+  agreement with top geometry, plus raw picture top/bottom/height,
+  measurability and censoring;
 - lock state/id, `None`/`Standard`/`Parity`/`Envelope` zero source, frozen
   top/height, whether that height is uncensored,
   `ClipUnknown`/`ClipFitting`/`ClipFitted`, and the optional clip ceiling; and
@@ -131,9 +142,11 @@ unknown-field sentinel into signal-state's chatter counter.
 
 ## Deliberately absent
 
-No comb search, spatial bands, temporal correlation/veto, multi-candidate
-trajectory, dwell, chatter suppression, common-mode arbitration, learned
-position mode, FIFO, or backtracking remains in the live path. The old tools
+No comb search, spatial bands, multi-candidate trajectory, dwell, chatter
+suppression, common-mode arbitration, learned position mode, FIFO, or
+backtracking remains in the live path. The sole temporal measurement is the
+bounded previous-unit body profile above: it confirms a current top reading;
+it cannot smooth, vote, or redefine a lock. The old tools
 remain offline diagnostics only; `docs/registration_archaeology*.md` records
 why those models were retired.
 

@@ -265,7 +265,7 @@ observations and runs the same classifier, lifecycle actions, registration,
 publisher, and sidecar path. An optional third argument overrides the pace,
 but the gate rejects every run with an unpublished exact unit.
 
-The result is a 720x480, SAR 8:9, 60000/1001 NNEDI bob with AAC, its schema-5
+The result is a 720x480, SAR 8:9, 60000/1001 NNEDI bob with AAC, its schema-6
 frameserver sidecar, and a 720x580 overlay copy whose extra band leaves the
 picture unobscured. `render_live_gate.py` requires every exact unit to have
 been published, exactly two encoded frames per exact unit, and decodes a
@@ -274,7 +274,7 @@ the burned ordinal, extended counter, and applied pair with the sidecar.
 
 `render_stability_audit.py` audits the bobbed picture for VBI-like lines at its
 top/bottom boundaries and estimates same-field vertical motion between units.
-`audit_vs_sidecar.py` joins that CSV to the live schema-5 sidecar in emitted-unit
+`audit_vs_sidecar.py` joins that CSV to the live schema-6 sidecar in emitted-unit
 order. It distinguishes a crop change on an unchanged raw top (`ENGINE_CAUSED`)
 from content/metric motion with a stationary crop, and exits nonzero if either
 an output-boundary VBI signature or a non-reset engine-caused jump is present.

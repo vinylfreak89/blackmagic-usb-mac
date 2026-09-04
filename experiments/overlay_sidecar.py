@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Burn a v9 (schema 5) registration sidecar into a rendered review video as a metrics band.
+"""Burn a v9 (schema 6) registration sidecar into a rendered review video as a metrics band.
 
 The band is ADDED below (or above) the picture — the picture is never covered. One band image per
 unit (two bobbed frames): line 1 = unit, counter, unit state, applied (d1,d2), comb_safe; lines 2-5 =
@@ -83,8 +83,11 @@ def main() -> None:
             d.text((6, y), f"f{n} {reason}", font=font, fill=mode_colour(reason))
             x = 6 + d.textlength(f"f{n} {reason}", font=font) + 8
             gline = g(r, f"f{n}_gauge_line", "-1"); gb = g(r, f"f{n}_gauge_bytes", "")
+            body = (f" body {g(r, f'f{n}_body_shift', '.')}@"
+                    f"{g(r, f'f{n}_body_mad', '.')}")
             summary = (f"gauge {g(r, f'f{n}_gauge', '?')}{(' L' + gline) if gline not in ('-1', '') else ''}{(' ' + gb) if gb else ''}  "
-                       f"geo {g(r, f'f{n}_geometry_d', '.')} raw {g(r, f'f{n}_raw_top', '?')}/{g(r, f'f{n}_raw_bottom', '?')}")
+                       f"geo {g(r, f'f{n}_geometry_d', '.')}" + body +
+                       f" raw {g(r, f'f{n}_raw_top', '?')}/{g(r, f'f{n}_raw_bottom', '?')}")
             d.text((x, y), summary[:int((sx0 - x) / 5.6)], font=small,
                    fill=(200, 200, 200))   # never run into the sparkline
             hk = "K" if g(r, f"f{n}_lock_height_known", "0") in ("1", "True", "true") else "?"
