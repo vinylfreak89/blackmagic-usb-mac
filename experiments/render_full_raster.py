@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Render the ENTIRE 525-line raster (VBI, blanking and the hard-padding ruler included) of the
 first N units of a tagged capture as an NNEDI-bobbed 59.94p movie, with the published
-registration decisions applied inside each field: field 1's rows are shifted by applied_d1 and
-field 2's by applied_d2 (a line displaced down by +1 is pulled up one row; vacated rows are
-device black Y16/C128). Nothing is cropped, so where the raster itself moves is visible.
+registration decisions applied inside each field exactly as the frameserver's crop applies them:
+only the 240-row picture window (field rows 17..256) takes its rows from row+applied_d; VBI,
+blanking and the hard-padding ruler are never moved (vacated rows are device black Y16/C128).
+Nothing is cropped, so where the raster itself moves is visible against the fixed ruler.
 
     render_full_raster.py capture.cap6 decisions.csv out.mp4 --units 1800 [--weights W]
 """
@@ -34,12 +35,15 @@ def main() -> None:
         "-vf", f"format=yuv422p,nnedi=weights={a.weights}:field=tf:deint=all,setsar=8/9",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", a.crf, "-pix_fmt", "yuv420p", a.out], stdin=subprocess.PIPE)
     buf = bytearray(); state = {"n": 0, "skipped": 0, "nodec": 0}
+    WIN0, WIN1 = 17, 256   # the engine's crop window within a field (transport starts 17/280 -> field row 17, 240 lines)
     def shifted(field: bytes, nlines: int, d: int) -> bytes:
+        """Apply the decision the way the frameserver's crop does: only the 240-row picture window
+        moves (row r takes source row r+d); VBI, blanking and the hard-padding ruler stay put."""
         rows = [field[i*LINE:(i+1)*LINE] for i in range(nlines)]
-        out = []
-        for r in range(nlines):
+        out = list(rows)
+        for r in range(WIN0, WIN1 + 1):
             s = r + d
-            out.append(rows[s] if 0 <= s < nlines else BLACK)
+            out[r] = rows[s] if 0 <= s < nlines else BLACK
         return b"".join(out)
     def emit(unit: bytes) -> None:
         counter = int.from_bytes(unit[4:6], "little")
