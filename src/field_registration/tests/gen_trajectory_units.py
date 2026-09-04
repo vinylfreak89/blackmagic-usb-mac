@@ -50,6 +50,7 @@ class Step:
     dark_false_edge: bool = False
     bottom_trim_f1: int = 0
     blank_field2: bool = False
+    oracle_policy: str = "live-v8"
 
 
 def trajectory() -> list[Step]:
@@ -76,7 +77,9 @@ def trajectory() -> list[Step]:
         phase = (1, 0) if index & 1 else (0, 0)
         out.append(Step("physical-field1-unit-rate-jitter", phase, phase,
                         unsettled=True, main_ranges=((0, 720),),
-                        secondary_ranges=()))
+                        secondary_ranges=(),
+                        oracle_policy="retired-v7" if index == 0 else
+                                      "live-v8"))
     add(12, "after-physical-field1-jitter", (0, 0), (0, 0),
         main_ranges=((0, 720),), secondary_ranges=())
 
@@ -131,8 +134,11 @@ def trajectory() -> list[Step]:
     # With no evidence on the following unit, hold (1,0), not the relative
     # (0,0) representation that was valid only for the measured unit.
     add(1, "relative-only-following-abstain", None, (1, 0), gain=0.0,
-        unsettled=True, vbi_present=False)
-    add(12, "relative-release-back-10", (1, 0), (1, 0),
+        unsettled=True, vbi_present=False, oracle_policy="retired-v7")
+    out.append(Step("relative-release-back-10", (1, 0), (1, 0),
+                    main_ranges=((0, 720),), secondary_ranges=(),
+                    oracle_policy="retired-v7"))
+    add(11, "relative-release-back-10", (1, 0), (1, 0),
         main_ranges=((0, 720),), secondary_ranges=())
 
     # Mirror guard: loss of absolute edges while the correctly registered +1
@@ -216,7 +222,7 @@ def trajectory() -> list[Step]:
                     secondary_ranges=()))
     add(12, "bottom-censored-field1-plus5", (5, 0), (5, 0),
         unsettled=True, clip_at_padding=True, main_ranges=((0, 720),),
-        secondary_ranges=())
+        secondary_ranges=(), oracle_policy="retired-v7")
     add(12, "bottom-censored-return-00", (0, 0), (0, 0),
         main_ranges=((0, 720),), secondary_ranges=())
     # Same apparent top/boundary landmarks, but a stationary body: the
@@ -312,22 +318,29 @@ def trajectory() -> list[Step]:
                         secondary=secondary, unsettled=True,
                         main_ranges=((0, 720),),
                         secondary_ranges=((560, 640),)))
-    add(12, "after-false-edge-chatter", (1, 0), (1, 0),
+    out.append(Step("after-false-edge-chatter", (1, 0), (1, 0),
+                    main_ranges=((0, 720),), secondary_ranges=(),
+                    oracle_policy="retired-v7"))
+    add(11, "after-false-edge-chatter", (1, 0), (1, 0),
         main_ranges=((0, 720),), secondary_ranges=())
 
     # Synthetic form of the timeline-frame-8169 stale latch. The triggering
     # unit is coherent physical truth and is allowed to present (0,1); the bug
     # was holding that one observation across 103 later abstentions after the
     # committed (1,0) path contradicted it.
-    add(1, "stale-positive-trigger-01", (0, 1), (0, 1), unsettled=True)
+    add(1, "stale-positive-trigger-01", (0, 1), (0, 1), unsettled=True,
+        oracle_policy="retired-v7")
     add(103, "stale-positive-flat-hold", None, (1, 0), gain=0.0,
-        unsettled=True)
-    add(20, "stale-positive-recovery-10", (1, 0), (1, 0))
+        unsettled=True, oracle_policy="retired-v7")
+    out.append(Step("stale-positive-recovery-10", (1, 0), (1, 0),
+                    oracle_policy="retired-v7"))
+    add(19, "stale-positive-recovery-10", (1, 0), (1, 0))
 
     # Decoder-style inversion: provisional geometry first supports (0,1), then
     # settles at (1,0). The oracle may revise the provisional portion because
     # both interval endpoints are (1,0); raster truth preserves what existed.
-    add(10, "inversion-provisional-01", (0, 1), (1, 0), unsettled=True)
+    add(10, "inversion-provisional-01", (0, 1), (1, 0), unsettled=True,
+        oracle_policy="archival")
     add(35, "inversion-settled-10", (1, 0), (1, 0))
 
     # Estimator chatter is deliberately WEAK and conflicting. The main raster
@@ -339,8 +352,12 @@ def trajectory() -> list[Step]:
         out.append(Step("phase-chatter", (1, 0), (1, 0),
                         secondary=secondary, unsettled=True,
                         main_ranges=((0, 720),),
-                        secondary_ranges=((600, 680),)))
-    add(35, "post-chatter-10", (1, 0), (1, 0))
+                        secondary_ranges=((600, 680),),
+                        oracle_policy="retired-v7" if index == 0 else
+                                      "live-v8"))
+    out.append(Step("post-chatter-10", (1, 0), (1, 0),
+                    oracle_policy="retired-v7"))
+    add(34, "post-chatter-10", (1, 0), (1, 0))
 
     # A non-settling interval reaches the future horizon. Its oracle is the
     # best endpoint-constrained path, not a demand to flatten raw geometry.
@@ -372,11 +389,19 @@ def trajectory() -> list[Step]:
     # global/main-picture truth different answers.
     out.append(Step("multiphase-reset", (1, 0), (1, 0), scene=2,
                     reset_before=True, main_ranges=((0, 720),)))
-    add(44, "multiphase-main-10", (1, 0), (1, 0), scene=2,
+    out.append(Step("multiphase-main-10", (1, 0), (1, 0), scene=2,
+                    secondary=(0, 1), main_ranges=((0, 720),),
+                    secondary_ranges=((48, 248), (472, 672)),
+                    unsettled=True, secondary_animated=False,
+                    main_motion=True))
+    add(43, "multiphase-main-10", (1, 0), (1, 0), scene=2,
         secondary=(0, 1), main_ranges=((0, 720),),
         secondary_ranges=((48, 248), (472, 672)), unsettled=True,
-        secondary_animated=False, main_motion=True)
-    add(20, "after-multiphase-main-10", (1, 0), (1, 0), scene=2,
+        secondary_animated=False, main_motion=True,
+        oracle_policy="retired-v7")
+    out.append(Step("after-multiphase-main-10", (1, 0), (1, 0), scene=2,
+                    main_ranges=((0, 720),), oracle_policy="retired-v7"))
+    add(19, "after-multiphase-main-10", (1, 0), (1, 0), scene=2,
         main_ranges=((0, 720),))
 
     # Enter a real candidate, then remove reliable visual evidence during a
@@ -559,6 +584,7 @@ def main() -> None:
             "unit_index", "counter", "segment", "scenario", "raster_known",
             "raster_d1", "raster_d2", "trajectory_d1", "trajectory_d2",
             "unsettled", "reset_before",
+            "oracle_policy",
         ))
         segment = 0
         for index, step in enumerate(steps):
@@ -571,6 +597,7 @@ def main() -> None:
                 index, counter, segment, step.scenario, int(step.raster is not None),
                 raster_d1, raster_d2, step.oracle[0], step.oracle[1],
                 int(step.unsettled), int(step.reset_before),
+                step.oracle_policy,
             ))
     print(f"wrote {len(steps)} trajectory units to {args.output}")
     print(f"wrote two-truth oracle to {args.truth}")

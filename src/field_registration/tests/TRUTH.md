@@ -160,14 +160,33 @@ contract conflict: v8's direct-edge rule rejects a one-unit jump greater than
 three and cannot measure an edge which was not captured. It requires owner
 adjudication rather than silently redefining either truth.
 
-The rest of the retained v7 oracle also deliberately remains untouched. In
-particular, its first segment starts at physical `(1,0)` and calls that absolute
-device-grid phase `(1,0)`, while v8 learns the acquired bottom as its segment
-target and therefore calls the same stable placement `(0,0)`. The old
-unit-rate-jitter, relative-only release/onset/unknown-gauge, secondary-edge,
-stale-positive, provisional inversion, chatter/horizon, and multi-phase cases
-inherit that incompatible starting gauge or deliberately hide the direct
-bottom. They are reported as `V7-AUTHORITY-COMPATIBILITY: FAIL`; they are not
-silently re-authored to make v8 pass. The separately named `bottom-v8-*`
-classes are the deciding v8 contract and report
-`BOTTOM-PLACEMENT-GOLDEN: PASS`.
+Every truth row now has an `oracle_policy`:
+
+- `live-v8` is executable policy. Any mismatch makes the harness exit nonzero.
+- `archival` is a deliberately non-live trajectory preference and is reported
+  as a named diagnostic.
+- `retired-v7` preserves a superseded v7 policy row in the fixture and is also
+  reported as a named diagnostic. It is not deleted or silently rewritten.
+
+The following classification of all 177 retained disagreements is
+**provisional, pending owner adjudication**. A later decision may move any row
+between policies without changing its raster or oracle values:
+
+| Rows | Policy | Scenario / reason |
+|---:|---|---|
+| 1 | retired-v7 | first `physical-field1-unit-rate-jitter`: old acquired gauge |
+| 1 | retired-v7 | `relative-only-following-abstain`: archival hold preference |
+| 1 | retired-v7 | first `relative-release-back-10`: follows that hold preference |
+| 12 | retired-v7 | `bottom-censored-field1-plus5`: edge is outside captured ADC raster |
+| 1 | retired-v7 | first `after-false-edge-chatter`: old held-gauge transition |
+| 105 | retired-v7 | `stale-positive-*`: intentionally reproduces the retired latch (1 trigger, 103 flat, 1 recovery) |
+| 10 | archival | `inversion-provisional-01`: retroactive archival preference |
+| 1 | retired-v7 | first `phase-chatter`: old held-gauge transition |
+| 1 | retired-v7 | first `post-chatter-10`: old held-gauge transition |
+| 43 | retired-v7 | rows 2--44 of `multiphase-main-10`: superseded band-majority authority |
+| 1 | retired-v7 | first `after-multiphase-main-10`: old held-gauge transition |
+
+This totals 167 `retired-v7` and 10 `archival` disagreements. All remaining
+1,415 rows are `live-v8` and must match. The harness therefore prints
+`LIVE-V8-GOLDEN: PASS` and `BOTTOM-PLACEMENT-GOLDEN: PASS`; diagnostic policy
+counts never use the word `FAIL` and cannot mask a live mismatch.

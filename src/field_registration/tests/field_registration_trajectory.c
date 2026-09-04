@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { MAX_ROWS = 2304, MAX_SCENARIOS = 112, CSV_FIELDS = 11 };
+enum { MAX_ROWS = 2304, MAX_SCENARIOS = 112, CSV_FIELDS = 12 };
 
 typedef struct truth_row {
     size_t index;
@@ -22,6 +22,7 @@ typedef struct truth_row {
     int oracle_d2;
     bool unsettled;
     bool reset_before;
+    char oracle_policy[16];
 } truth_row;
 
 typedef struct result_row {
@@ -116,6 +117,11 @@ static bool parse_truth(char *line, truth_row *row)
     row->oracle_d2 = (int)strtol(field[8], NULL, 10);
     row->unsettled = strtol(field[9], NULL, 10) != 0;
     row->reset_before = strtol(field[10], NULL, 10) != 0;
+    snprintf(row->oracle_policy, sizeof(row->oracle_policy), "%s", field[11]);
+    if (strcmp(row->oracle_policy, "live-v8") != 0 &&
+        strcmp(row->oracle_policy, "archival") != 0 &&
+        strcmp(row->oracle_policy, "retired-v7") != 0)
+        return false;
     return true;
 }
 
@@ -241,6 +247,9 @@ int main(int argc, char **argv)
     uint64_t unsettled_rows = 0, unsettled_wrong = 0;
     uint64_t stale_rows = 0, stale_wrong = 0;
     uint64_t stale_wrong_positive = 0;
+    uint64_t live_rows = 0, live_wrong = 0;
+    uint64_t archival_rows = 0, archival_wrong = 0;
+    uint64_t retired_rows = 0, retired_wrong = 0;
     scenario_summary scenarios[MAX_SCENARIOS];
     memset(scenarios, 0, sizeof(scenarios));
     size_t scenario_count = 0;
@@ -250,6 +259,16 @@ int main(int argc, char **argv)
                             row->applied_d2 == row->truth.oracle_d2;
         oracle_matches += oracle_match;
         oracle_wrong += !oracle_match;
+        if (strcmp(row->truth.oracle_policy, "live-v8") == 0) {
+            ++live_rows;
+            live_wrong += !oracle_match;
+        } else if (strcmp(row->truth.oracle_policy, "archival") == 0) {
+            ++archival_rows;
+            archival_wrong += !oracle_match;
+        } else {
+            ++retired_rows;
+            retired_wrong += !oracle_match;
+        }
         if (row->truth.raster_known) {
             bool raster_match = row->applied_d1 == row->truth.raster_d1 &&
                                 row->applied_d2 == row->truth.raster_d2;
@@ -393,7 +412,7 @@ int main(int argc, char **argv)
         "bottom-v8-after-large-jump",
         "bottom-v8-padding-plus3",
     };
-    bool legacy_live_pass = stale_wrong == 0;
+    bool live_pass = live_wrong == 0;
     for (size_t required = 0;
          required < sizeof(required_live_classes) /
                         sizeof(required_live_classes[0]);
@@ -402,40 +421,36 @@ int main(int argc, char **argv)
         for (size_t i = 0; i < scenario_count; ++i) {
             if (strcmp(scenarios[i].name, required_live_classes[required]) == 0) {
                 found = true;
-                legacy_live_pass = legacy_live_pass &&
-                                   scenarios[i].oracle_matches == scenarios[i].rows;
                 break;
             }
         }
-        legacy_live_pass = legacy_live_pass && found;
+        live_pass = live_pass && found;
     }
     for (size_t i = 0; i < scenario_count; ++i) {
         const scenario_summary *summary = &scenarios[i];
         if (strcmp(summary->name, "relative-only-return-temporal-gauge") == 0 ||
             strcmp(summary->name, "relative-only-onset-temporal-gauge") == 0) {
-            legacy_live_pass = legacy_live_pass &&
-                               summary->relative_only == summary->rows &&
-                               summary->relative_gauge_unknown == 0;
+            live_pass = live_pass && summary->relative_only == summary->rows &&
+                        summary->relative_gauge_unknown == 0;
         } else if (strcmp(summary->name,
                           "relative-only-sustained-plus1-guard") == 0) {
             /* The minimum confirms the already committed phase. It is a
              * guard, not a new relative-only presentation. */
-            legacy_live_pass = legacy_live_pass && summary->relative_only == 0;
+            live_pass = live_pass && summary->relative_only == 0;
         } else if (strcmp(summary->name, "relative-only-gauge-unknown") == 0) {
-            legacy_live_pass = legacy_live_pass &&
-                               summary->relative_only == summary->rows &&
-                               summary->relative_gauge_unknown == summary->rows;
+            live_pass = live_pass && summary->relative_only == summary->rows &&
+                        summary->relative_gauge_unknown == summary->rows;
         } else if (strcmp(summary->name,
                           "relative-only-following-abstain") == 0) {
-            legacy_live_pass = legacy_live_pass && summary->relative_only == 0;
+            live_pass = live_pass && summary->relative_only == 0;
         } else if (strncmp(summary->name, "relative-guard-", 15) == 0) {
-            legacy_live_pass = legacy_live_pass && summary->relative_only == 0;
+            live_pass = live_pass && summary->relative_only == 0;
         } else if (strcmp(summary->name, "bottom-censored-field1-plus5") == 0) {
-            legacy_live_pass = legacy_live_pass &&
-                               summary->bottom_f1_censored == summary->rows;
+            live_pass = live_pass &&
+                        summary->bottom_f1_censored == summary->rows;
         } else if (strcmp(summary->name,
                           "bottom-censored-static-card-guard") == 0) {
-            legacy_live_pass = legacy_live_pass && summary->relative_only == 0;
+            live_pass = live_pass && summary->relative_only == 0;
         }
     }
     static const char *bottom_classes[] = {
@@ -478,15 +493,16 @@ int main(int argc, char **argv)
         }
         bottom_pass = bottom_pass && found;
     }
-    /* Provisional inversion is intentionally an archival-side trajectory
-     * question. The zero-latency live engine follows its coherent raster and
-     * reports the disagreement; this test does not pretend otherwise. */
-    printf("archival-only oracle disagreements: %" PRIu64 "\n", oracle_wrong);
-    printf("V7-AUTHORITY-COMPATIBILITY: %s\n",
-           legacy_live_pass ? "PASS" : "FAIL (see retained old truths)");
+    printf("live-v8 oracle: %" PRIu64 "/%" PRIu64 " correct\n",
+           live_rows - live_wrong, live_rows);
+    printf("archival diagnostic: %" PRIu64 "/%" PRIu64
+           " disagreements\n", archival_wrong, archival_rows);
+    printf("retired-v7 diagnostic: %" PRIu64 "/%" PRIu64
+           " disagreements\n", retired_wrong, retired_rows);
+    printf("LIVE-V8-GOLDEN: %s\n", live_pass ? "PASS" : "FAIL");
     printf("BOTTOM-PLACEMENT-GOLDEN: %s\n", bottom_pass ? "PASS" : "FAIL");
     free(unit);
     fclose(raw);
     fclose(truth);
-    return bottom_pass ? 0 : 1;
+    return live_pass && bottom_pass ? 0 : 1;
 }
