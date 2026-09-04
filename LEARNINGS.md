@@ -290,3 +290,14 @@ applied shift. The recorded finding was right and my reversal was wrong. Lesson:
 this file has evidence behind it; a remark in chat is a prompt to re-derive from the raw data,
 not a result. Re-measure first, then edit the record, and say which render the observation
 came from (raw raster / corrected / which deinterlacer) every time.
+
+## A renamed coordinate breaks every consumer that borrowed its name (2026-09-05)
+
+When the crop origin moved from rows 17/280 to 19/282, the tagged renderer's arming detector kept
+comparing the VBI fiducial it finds at rows 17/280 against `FIELD1_START`, because that constant had
+always happened to equal the fiducial. Every whole-tape render since then refused to arm, and the
+first symptom surfaced a day later as "the composite capture never arms", which I nearly filed as a
+capture quirk. The fix was a second constant with the coordinate's real name (`VBI_FIDUCIAL_F1`).
+Lesson: before changing a shared geometric constant, grep every comparison against it and ask which
+of them mean *this* coordinate and which merely reused the number; give the other meaning its own
+name in the same commit. Corollary of "two coordinates, one name".
