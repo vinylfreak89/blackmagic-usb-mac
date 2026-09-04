@@ -20,7 +20,7 @@ def odd_parity(value):
 
 def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               f2_envelopes=(), dark=False, letterbox=0, invalid=False,
-              extra_valid=()):
+              extra_valid=(), base_bottoms=(256, 518)):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -66,8 +66,10 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
 
     d1, d2 = picture
     if not dark:
-        top1, bottom1 = 19 + d1 + letterbox, min(256 + d1, 260)
-        top2, bottom2 = 282 + d2 + letterbox, min(518 + d2, 522)
+        top1 = 19 + d1 + letterbox
+        top2 = 282 + d2 + letterbox
+        bottom1 = min(base_bottoms[0] + d1, 260)
+        bottom2 = min(base_bottoms[1] + d2, 522)
         for row in range(top1, bottom1 + 1):
             fill(row, 62 + ((row * 13 + counter * 7) % 91))
         for row in range(top2, bottom2 + 1):
@@ -98,10 +100,12 @@ def main():
     rows = []
     units = []
 
-    def add(scenario, expected, *, begin=False, ok=True, **kwargs):
+    def add(scenario, expected, *, begin=False, ok=True, f1_reason="-",
+            f2_reason="-", f1_lock="-", f2_lock="-", comb=-1, **kwargs):
         counter = len(units)
         units.append(make_unit(counter, **kwargs))
-        rows.append((counter, scenario, int(begin), int(ok), expected[0], expected[1]))
+        rows.append((counter, scenario, int(begin), int(ok), expected[0], expected[1],
+                     f1_reason, f2_reason, f1_lock, f2_lock, comb))
 
     # Alignment and immediate parity authority.
     add("aligned-null-acquire-1", (0, 0), begin=True)
@@ -148,6 +152,45 @@ def main():
     add("geometry-reacquire-1", (-1, 0), picture=(0, 0), letterbox=8)
     add("geometry-reacquire-2", (-1, 0), picture=(0, 0), letterbox=8)
 
+    # A top-authoritative parity gauge must acquire and retain a lock even
+    # while the visible bottom is clipped and visible height alternates.
+    for i, d1 in enumerate((2, 3, 2, 3, 2, 3)):
+        add(f"clipped-parity-lock-{i + 1}", (d1, 2), begin=i == 0,
+            picture=(d1, 2), captions=((d1, 0x14, 0x2c), None),
+            f2_envelopes=(282,), base_bottoms=(259, 518),
+            f1_lock="Locked" if i >= 2 else "-",
+            f2_lock="Locked" if i >= 2 else "-",
+            comb=1 if i >= 2 else -1)
+
+    # Insert data is corroboration, not authority over a live geometry lock.
+    add("insert-conflict-acquire-1", (0, 0), begin=True)
+    add("insert-conflict-acquire-2", (0, 0))
+    add("insert-conflict-lock-plus1", (1, 0), picture=(1, 0))
+    add("insert-geometry-conflict-hold", (1, 0), picture=(1, 0),
+        captions=((0, 0x14, 0x2c), None),
+        f1_reason="InsertGeometryConflict", f1_lock="Locked")
+
+    # A valid service on line 22 is content, not a displaced line 21. A
+    # one-line disagreement between parity and a live geometry lock is held.
+    add("line22-acquire-1", (0, 0), begin=True)
+    add("line22-acquire-2", (0, 0))
+    add("line22-data-present", (0, 0), captions=((0, 0x14, 0x2c), None),
+        extra_valid=((18, 0x15, 0x2b, True, 7),),
+        f1_reason="Line22DataPresent", f1_lock="Locked")
+    add("line21-geometry-one-line-conflict", (0, 0),
+        extra_valid=((18, 0x15, 0x2b, True, 7),),
+        f1_reason="GaugeConflict", f1_lock="Locked")
+
+    # One insert dropout is a named hold, not destruction of a valid lock.
+    add("insert-dropout-acquire-1", (0, 0), begin=True)
+    add("insert-dropout-acquire-2", (0, 0))
+    add("insert-dropout-hold-lock", (0, 0), insert=False,
+        f1_reason="InsertAbsent", f2_reason="InsertAbsent",
+        f1_lock="Locked", f2_lock="Locked", comb=1)
+    add("insert-dropout-return", (0, 0),
+        f1_reason="GeometryLockDecides", f2_reason="GeometryLockDecides",
+        f1_lock="Locked", f2_lock="Locked", comb=1)
+
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
     with open(args.output, "wb") as out:
@@ -156,7 +199,8 @@ def main():
     with open(args.truth, "w", newline="") as out:
         w = csv.writer(out)
         w.writerow(("unit", "scenario", "begin_segment", "process_ok",
-                    "applied_d1", "applied_d2"))
+                    "applied_d1", "applied_d2", "f1_reason", "f2_reason",
+                    "f1_lock", "f2_lock", "comb_safe"))
         w.writerows(rows)
     print(f"wrote {len(units)} v9 units")
 
