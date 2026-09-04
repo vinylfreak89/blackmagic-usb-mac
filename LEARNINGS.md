@@ -231,3 +231,17 @@ the raw raster located the bug in minutes; the published render and its sidecar 
 Lesson: before drawing any conclusion from a new visualization or metric, prove it reproduces a
 result already known to be right (here: the published render on the same window). The owner's
 cross-check was the deciding test I should have run first.
+
+## Two coordinates that share a name confuse two agents and their owner (2026-09-04)
+
+The 480-line crop origin (17/280, the VBI-preserving analog-capture window that keeps line 21)
+and the picture origin (19/282, the standard's first visible line, where registration measures)
+were both called "the start" in code, docs and chat. When the owner asked which line should be
+visible, I answered with the clean-aperture standard alone and committed a crop change to 19/282
+within minutes; Codex, chatting with the owner in parallel, then "discovered" the render starting
+at line 19 and went looking for a bug that was my commit. Lessons: (1) when a question has two
+standard answers (486-line VBI-preserving vs 480-line clean aperture), give both with what each
+raster is for BEFORE touching a shared constant; (2) never change a shared geometric constant on
+main while the design is in conceptual review — propose it, get the word, then commit; (3) tell
+the other agent about any main commit immediately when the owner is driving both of us — a
+silent change on main becomes the other agent's phantom bug.
