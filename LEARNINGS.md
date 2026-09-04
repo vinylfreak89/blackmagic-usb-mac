@@ -217,3 +217,17 @@ The fix came from reading OBS's source (`obs_frontend_get_last_recording()` hold
 file from recording start). Lesson: "a property I requested is not a property I have" applies to
 review suggestions too — when neither agent can run the real client, read the implementation of
 the API before trusting its name, and say explicitly that the path was never exercised.
+
+## A new instrument is a hypothesis until checked against a known reference (2026-09-04)
+
+I built a full-raster preview to show the owner the whole 525-line raster with the published
+registration decisions applied. It keyed decisions by the 16-bit device counter, which wraps at
+65,536, so the tape's second half silently overwrote the first half's decisions and the first
+minute rendered with decisions from 37 minutes later. The picture jittered; I read that as engine
+chatter, measured a real but unrelated statistic in the sidecar, and briefed Codex on a defect
+"the owner sees". The owner compared my preview with the published render, which was steady, and
+asked why. Tracking the picture's top edge per field across the published render, my render and
+the raw raster located the bug in minutes; the published render and its sidecar agreed all along.
+Lesson: before drawing any conclusion from a new visualization or metric, prove it reproduces a
+result already known to be right (here: the published render on the same window). The owner's
+cross-check was the deciding test I should have run first.
