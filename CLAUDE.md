@@ -1549,6 +1549,28 @@ delivery edge; wrong one at acquisition.
   audit (`experiments/render_stability_audit.py`, detectors still noisy on NNEDI output):
   1,759 units where the crop followed a moved "top" while the picture did not move (the engine
   following a VBI/grey line), 34 crop changes on a still edge, 283 raw-top moves not followed.
+  **Round 3 progress (2026-09-05 02:00–04:00, branch `render-live`, not merged):** Codex landed
+  A (VBI-type lines excluded by signature regardless of decode; picture top = first of three
+  picture rows) and B (lines 260–264 / 522–526 censored: bottom flicker cannot break a lock) —
+  disaster-slice `LockBroken` 366 → 0 — then C/D (standard origin 23/286 as the zero from the
+  first unit, gauges re-anchor it, content never does; luma threshold relative to each field's
+  blanking): goldens 86/86, three slices 100% Locked and comb_safe, engine 0.50 ms. Claude's raw
+  audits on that build found: (1) the 45:00 field-2 regression (+2 ×620 → +1 ×69) is the XDS
+  bar with picture bleeding into its right half, so neither the envelope candidate nor the
+  exclusion fires (both demand bins 20–47 ≤ 40), line 286 becomes the geometry's top and the crop
+  lands on the run-in fragment at 287 — the bar's signature is its LEFT half only; (2) the tape's
+  flat grey line 22 (luma ≈ 7, above blank+4) is taken as the picture top when the caption is
+  invisible — a dim flat line under half the brightness of the three rows below is VBI ('gap'),
+  never a top; (3) 37:01 field 2 holds out of range on a dark scene (raw top 291–294); (4) OPEN
+  measurement: at 35:00, 33 parity-placed units moved the crop with the caption while the picture
+  body did not move by the same amount (20 on static content) — either the body measure is
+  confounded or the tape's caption line sometimes moves without the picture; if the latter is
+  real, the owner's rule is that the caption anchors the segment lock and the picture geometry is
+  tracked unit to unit (a design change, owner decision). Instruments: `experiments/follow_audit.py`
+  (raw-raster: at every applied change, did the picture body move by the same amount; content
+  motion = both fields' bodies together), `experiments/engine_audit.py` (crop vs measured top).
+  Process rule learned the hard way (owner): one Codex dispatch at a time, read the reply, rewrite
+  the next brief against it; never stack queued design turns.
   **Review-copy rules (owner):** the review copy is produced from the LIVE frameserver output
   with its own sidecar burned in over the ENTIRE tape (never an excerpt — a keyframe-cut
   excerpt offset the band by 12 units and misled the review), never from `capture_render.py`;
