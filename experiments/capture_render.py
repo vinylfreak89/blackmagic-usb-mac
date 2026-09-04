@@ -1227,6 +1227,7 @@ class _CFieldRegistrationConfig(ctypes.Structure):
 class _CFieldDecision(ctypes.Structure):
     _fields_ = (
         ("measured_d", ctypes.c_int8), ("applied_d", ctypes.c_int8),
+        ("geometry_d", ctypes.c_int8),
         ("reason", ctypes.c_int), ("gauge", ctypes.c_int),
         ("insert_present", ctypes.c_bool),
         ("insert_byte1", ctypes.c_uint8), ("insert_byte2", ctypes.c_uint8),
@@ -1367,6 +1368,7 @@ class CRegistrationEstimator:
                     if item.gauge_row >= 0 and item.gauge == 1 else ""
                 ),
                 "gauge_amplitude": item.gauge_amplitude,
+                "geometry_d": item.geometry_d,
                 "blank_mean": item.blank_mean,
                 "raw_top": item.raw_top + 4 if item.raw_top >= 0 else -1,
                 "raw_bottom": item.raw_bottom + 4 if item.raw_bottom >= 0 else -1,
@@ -1828,7 +1830,7 @@ TPC_DECISION_COLUMNS = (
 V9_FIELD_COLUMNS = (
     "reason", "gauge", "insert_present", "insert_bytes",
     "parity_candidates", "fallback_candidates", "gauge_line", "gauge_bytes",
-    "gauge_amplitude", "blank_mean", "raw_top", "raw_bottom", "raw_height",
+    "gauge_amplitude", "geometry_d", "blank_mean", "raw_top", "raw_bottom", "raw_height",
     "geometry_measurable", "bottom_censored", "lock_state", "lock_id",
     "lock_top", "lock_height", "lock_height_known", "clip_state",
     "clip_ceiling", "expected_bottom",
@@ -1851,7 +1853,8 @@ def _v9_field_row(field):
         field["reason"], field["gauge"], int(field["insert_present"]),
         field["insert_bytes"], field["parity_candidates"],
         field["fallback_candidates"], field["gauge_line"], field["gauge_bytes"],
-        f"{field['gauge_amplitude']:.3f}", f"{field['blank_mean']:.3f}",
+        f"{field['gauge_amplitude']:.3f}", field["geometry_d"],
+        f"{field['blank_mean']:.3f}",
         field["raw_top"], field["raw_bottom"], field["raw_height"],
         int(field["geometry_measurable"]), int(field["bottom_censored"]),
         field["lock_state"], field["lock_id"], field["lock_top"],

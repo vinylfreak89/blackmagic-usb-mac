@@ -9,10 +9,19 @@ The 720x480 clean-aperture output starts at unit rows 19/282 (NTSC lines
 23/286). The engine scans the complete captured fields, unit rows 8..262 and
 268..524 (NTSC lines 12..266 and 272..528), for CEA-608. A parity-valid line
 away from the Shuttle's insert at rows 17/280 is the primary displacement
-gauge and applies immediately. Non-null re-encoded data on the insert, with no
-valid line elsewhere, corroborates `d=0`. Field 2 additionally uses the frozen
+gauge and applies immediately, except for the line-22 ambiguity below.
+Non-null re-encoded data on the insert corroborates `d=0`; it does not override
+a live geometry lock that measures a nonzero displacement. Field 2 additionally uses the frozen
 smeared-XDS discriminator documented in `CLAUDE.md` when parity cannot decode
 that field.
+
+A parity-valid row exactly one line below an insert carrying non-null data is
+classified as station line-22/285 data and leaves the field aligned. Without
+that discriminator, a one-line disagreement between an off-insert parity row
+and a live geometry lock is `GaugeConflict` and holds. The sidecar records both
+the parity row/bytes and `geometry_d`; a non-null insert opposed by a live
+nonzero geometry lock is `InsertGeometryConflict`. Which gauge should win a
+real conflict is pending owner ruling, so v9 never silently chooses either.
 
 When the insert contains null data and there is no primary gauge, v9 measures
 the picture top and bottom by row-mean luma (`mean(Y[x=40..679]) > 12`). A
@@ -53,7 +62,8 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
 - reason and gauge;
 - insert presence and decoded bytes;
 - parity/fallback candidate counts;
-- selected gauge line, decoded bytes, and correlation amplitude;
+- selected gauge line, decoded bytes, correlation amplitude, and the live
+  lock's independent `geometry_d` reading;
 - blank-row mean, raw picture top/bottom/height, measurability and censoring;
 - lock state/id, frozen top/height, whether that height is uncensored,
   `ClipUnknown`/`ClipFitting`/`ClipFitted`, and the optional clip ceiling; and

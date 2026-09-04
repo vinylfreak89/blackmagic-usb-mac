@@ -53,6 +53,9 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_LOCK_BROKEN,
     FIELDREG_MODE_LINE21_AMBIGUOUS,
     FIELDREG_MODE_OUT_OF_RANGE_HOLD,
+    FIELDREG_MODE_INSERT_GEOMETRY_CONFLICT,
+    FIELDREG_MODE_LINE22_DATA_PRESENT,
+    FIELDREG_MODE_GAUGE_CONFLICT,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -62,6 +65,7 @@ typedef enum fieldreg_gauge_source {
     FIELDREG_GAUGE_INSERT_DATA,
     FIELDREG_GAUGE_GEOMETRY,
     FIELDREG_GAUGE_FIELD2_ENVELOPE,
+    FIELDREG_GAUGE_LINE22_DATA,
     FIELDREG_GAUGE_HOLD,
 } fieldreg_gauge_source;
 
@@ -73,6 +77,7 @@ typedef struct fieldreg_config {
 typedef struct fieldreg_field_decision {
     int8_t measured_d;
     int8_t applied_d;
+    int8_t geometry_d;
     fieldreg_mode reason;
     fieldreg_gauge_source gauge;
     bool insert_present;
