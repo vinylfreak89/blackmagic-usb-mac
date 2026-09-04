@@ -21,7 +21,8 @@ def odd_parity(value):
 def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               f2_envelopes=(), dark=False, letterbox=0, invalid=False,
               extra_valid=(), base_bottoms=(256, 518), bright_rows=(),
-              top_overrides=(None, None), bottom_overrides=(None, None)):
+              top_overrides=(None, None), bottom_overrides=(None, None),
+              weak_caption_rows=(), smeared_vbi_rows=()):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -94,6 +95,33 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
         ys = [8] * PIXELS
         for x in range(40, 40 + (640 * 8) // 48):
             ys[x] = 100
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # Parity-invalid, low-amplitude line-21 damage.  It deliberately falls
+    # below the decoder's amplitude gate while preserving the broad run-in /
+    # data-pulse envelope seen by the VBI rejection classifier.
+    for row in weak_caption_rows:
+        ys = [2] * PIXELS
+        for bin_ in range(6):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [50] * (last - first)
+        first = 40 + (8 * 640) // 24
+        last = 40 + (9 * 640) // 24
+        ys[first:last] = [90] * (last - first)
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # A smeared field-2 VBI fragment with only five hot bins.  It misses the
+    # frozen >=6-bin fallback discriminator by construction, but is still VBI
+    # rather than a picture line and must be excluded from geometry.
+    for row in smeared_vbi_rows:
+        ys = [2] * PIXELS
+        for bin_ in range(5):
+            first = 40 + (bin_ * 640) // 48
+            last = 40 + ((bin_ + 1) * 640) // 48
+            ys[first:last] = [90] * (last - first)
         start = row * BYTES_PER_LINE
         raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
     return unit
@@ -271,6 +299,34 @@ def main():
         f1_reason="GeometryUnmeasurable", f2_reason="GeometryUnmeasurable",
         f1_lock="Locked", f2_lock="Locked", f1_zero="Acquired",
         f2_zero="Acquired", comb=0)
+
+    # Damaged vertical-interval waveforms remain VBI even when they fail the
+    # strict decoder/fallback.  Geometry begins at the first three-line
+    # picture run, not at the damaged waveform.
+    add("weak-vbi-acquire-1", (0, 0), begin=True)
+    add("weak-vbi-acquire-2", (0, 0))
+    add("weak-caption-not-picture", (2, 0), picture=(2, 0),
+        weak_caption_rows=(19,), f1_reason="GeometryLockDecides",
+        f1_lock="Locked")
+
+    add("smeared-f2-acquire-1", (0, 0), begin=True)
+    add("smeared-f2-acquire-2", (0, 0))
+    add("smeared-f2-vbi-not-picture", (0, 2), picture=(0, 2),
+        smeared_vbi_rows=(282, 283), f2_reason="GeometryLockDecides",
+        f2_lock="Locked")
+
+    # The deck's near-blank band is a censored boundary.  Its measured bottom
+    # may flicker inside lines 260..264 / 522..526 without moving the raster.
+    add("bottom-band-acquire-1", (0, 0), begin=True,
+        bottom_overrides=(256, None))
+    add("bottom-band-acquire-2", (0, 0),
+        bottom_overrides=(256, None))
+    add("bottom-band-flicker-hold-lock", (0, 0),
+        bottom_overrides=(258, None), f1_reason="GeometryLockDecides",
+        f1_lock="Locked")
+    add("bottom-band-return-hold-lock", (0, 0),
+        bottom_overrides=(256, None), f1_reason="GeometryLockDecides",
+        f1_lock="Locked")
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
