@@ -12,11 +12,16 @@ _n=np.arange(10,230); _cos=np.cos(2*np.pi/CELL*_n); _sin=np.sin(2*np.pi/CELL*_n)
 def run_in_amp(row):
     a=row[10:230]-row[10:230].mean(); return float(np.hypot(a@_cos,a@_sin)*2/220)
 def bins(row,nb=24): return np.array([row[k*W//nb:(k+1)*W//nb].mean() for k in range(nb)])
+sys.path.insert(0, __import__('os').path.dirname(__file__))
+from cc608_decode import decode as _cc_decode
 def vbi_kind(row):
+    # Strict on purpose: a rendered picture row must never be called a data line. Only a parity-valid CEA-608 decode
+    # or the exact timing-line signature counts; the earlier 'bar' signature fired on ordinary picture rows at the
+    # bottom of the frame (Codex, 2026-09-05: 320 of 331 findings on the disaster slice were picture).
     b=bins(row)
-    if run_in_amp(row)>=35 and row.mean()<95: return '608'
-    if b[0]>80 and b[18:21].max()>100 and b[2:17].max()<40: return 'timing'
-    if row.mean()<95 and b[20:].max()<=40 and (b[:20]>60).sum()>=6 and b.min()<25: return 'bar'
+    ok,_,_,_=_cc_decode(np.asarray(row,dtype=np.uint8) if row.dtype!=np.uint8 else row)
+    if ok and row.mean()<95: return '608'
+    if b[0]>80 and b[18:21].max()>100 and b[2:17].max()<12 and row.mean()<60: return 'timing'
     return None
 def vshift(a,b,rng=3):
     # vertical shift of picture b relative to a from column-averaged luma profiles of the picture body
