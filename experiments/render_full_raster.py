@@ -39,15 +39,17 @@ def main() -> None:
         "-vf", f"format=yuv422p,nnedi=weights={a.weights}:field=tf:deint=all,setsar=8/9",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", a.crf, "-pix_fmt", "yuv420p", a.out], stdin=subprocess.PIPE)
     buf = bytearray(); state = {"n": 0, "skipped": 0, "nodec": 0, "epoch": 0, "last": None}
-    WIN0, WIN1 = 17, 256   # the engine's crop window within a field (transport starts 17/280 -> field row 17, 240 lines)
-    def shifted(field: bytes, nlines: int, d: int) -> bytes:
-        """Apply the decision the way the frameserver's crop does: only the 240-row picture window
-        moves (row r takes source row r+d); VBI, blanking and the hard-padding ruler stay put."""
+    WIN0 = 17   # first line of the crop window within a field (transport starts 17/280); the shift covers everything from here down to the padding
+    def shifted(field: bytes, nlines: int, d: int, pad0: int) -> bytes:
+        """Pure shift of the field's content from the crop window's first line down to the row
+        above the hard-padding ruler (row r takes source row r+d, or device black when that is
+        outside the shifted range) — never duplicating or dropping a line inside the range. Rows
+        above the window (top blanking) and the padding ruler itself stay where the device put them."""
         rows = [field[i*LINE:(i+1)*LINE] for i in range(nlines)]
         out = list(rows)
-        for r in range(WIN0, WIN1 + 1):
+        for r in range(WIN0, pad0):
             s = r + d
-            out[r] = rows[s] if 0 <= s < nlines else BLACK
+            out[r] = rows[s] if WIN0 <= s < pad0 else BLACK
         return b"".join(out)
     def emit(unit: bytes) -> None:
         counter = int.from_bytes(unit[4:6], "little")
@@ -57,7 +59,7 @@ def main() -> None:
         elif counter in dec: d1, d2 = dec[counter]
         else: state["nodec"] += 1; return
         raster = unit[HDR:]
-        f1 = shifted(raster[:F1*LINE], F1, d1); f2 = shifted(raster[F1*LINE:LINES*LINE], F2, d2) + BLACK   # 262 -> 263 rows
+        f1 = shifted(raster[:F1*LINE], F1, d1, 261); f2 = shifted(raster[F1*LINE:LINES*LINE], F2, d2, 523 - F1) + BLACK   # padding at 261 / 523; 262 -> 263 rows
         frame = bytearray(2 * F1 * LINE)
         for r in range(F1):
             frame[(2*r)*LINE:(2*r+1)*LINE] = f1[r*LINE:(r+1)*LINE]

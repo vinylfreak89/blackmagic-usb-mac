@@ -489,11 +489,11 @@ def unit_to_registered_480i(
 ) -> bytes:
     """Correct picture registration while preserving fixed transport/VBI slots.
 
-    The Shuttle's hard-padding and two-line VBI rulers do not move when the
-    source picture slips.  A correction therefore remaps only the independently
-    validated picture envelope inside each 240-line output slot; it must not
-    move the slot itself.  Vacated/uncaptured edge lines remain exactly as the
-    device delivered them rather than being synthesized.
+    The Shuttle's hard-padding ruler does not move when the source picture slips; the
+    correction is a pure shift of the 240-line crop window within the field (the same
+    operation as the frameserver's fp_assemble), so no line is ever duplicated or
+    synthesized. A vacated edge row is whatever the device delivered there (blanking or
+    padding black).
     """
     if len(unit) != VIDEO_UNIT_BYTES:
         raise ValueError(f"expected {VIDEO_UNIT_BYTES} bytes, got {len(unit)}")
@@ -501,28 +501,26 @@ def unit_to_registered_480i(
         RASTER_LINES, BYTES_PER_LINE
     )
 
-    def corrected_field(start, active_top, active_bottom, displacement):
-        stop = start + FIELD_LINES
-        source_top = active_top + displacement
-        source_bottom = active_bottom + displacement
-        # A crop may read INTO the Shuttle's hard-padding ruler (lines 0-6, 261-269, 523-524):
-        # that is device-generated legal black, not a substitution (CLAUDE.md §6, measured with
-        # no deck connected), and the frameserver's publisher does the same. It must never read
-        # past the padding into the other field's raster.
+    def corrected_field(start, displacement):
+        """Pure shift of the whole 240-line crop window, exactly as the frameserver's fp_assemble
+        does: output row k = source line start+displacement+k. Never duplicates or drops a line
+        inside the window (the previous partial remap kept rows 17-18 fixed and shifted from 19,
+        which duplicated row 18 on a negative offset and dropped row 19 on a positive one —
+        owner: "never duplicate, always shift; shifting into black is fine"). A crop may read
+        into the Shuttle's hard-padding ruler (device-generated black) but never past it into
+        the other field's raster."""
+        source_top = start + displacement
+        source_bottom = source_top + FIELD_LINES - 1
         low, high = (0, 269) if start == FIELD1_START else (261, RASTER_LINES - 1)
         if source_top < low or source_bottom > high:
             raise ValueError(
                 f"registered source interval {source_top}..{source_bottom} "
                 f"leaves this field's raster ({low}..{high})"
             )
-        field = raster[start:stop].copy()
-        field[active_top - start : active_bottom - start + 1] = raster[
-            source_top : source_bottom + 1
-        ]
-        return field
+        return raster[source_top : source_bottom + 1]
 
-    field1 = corrected_field(FIELD1_START, 19, 256, d1)
-    field2 = corrected_field(FIELD2_START, 282, 518, d2)
+    field1 = corrected_field(FIELD1_START, d1)
+    field2 = corrected_field(FIELD2_START, d2)
     frame = np.empty((FIELD_LINES * 2, BYTES_PER_LINE), np.uint8)
     if first_field == "bottom":
         frame[1::2] = field1
