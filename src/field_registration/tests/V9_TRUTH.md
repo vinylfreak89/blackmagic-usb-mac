@@ -15,6 +15,16 @@ parity. The fixture covers:
   failure on a height change, and re-acquisition without moving the crop; and
 - invalid transport rejection.
 
+Review-round additions decide four lock-policy details that an applied-pair-only
+fixture cannot see:
+
+- a parity-gauged `+2/+3` alternation with a clipped bottom reaches and remains
+  `Locked`, with `comb_safe` true from its third unit;
+- non-null insert data cannot reset a live nonzero geometry lock;
+- line-22 data is not mistaken for a one-line displacement, and a one-line
+  parity/geometry disagreement is a named hold; and
+- a one-unit insert dropout holds without destroying either field lock.
+
 The fixture deliberately landed before the v9 implementation. The old v7
 engine must fail it; that red result proves the test distinguishes the new
 contract rather than merely preserving prior output.
