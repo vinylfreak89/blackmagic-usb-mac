@@ -50,6 +50,10 @@ FIELD_LINES = 240
 # unit row 17 is the deck's line-21 caption insert, so line 23 is row 19; field 2's line 286 is row 282.
 FIELD1_START = 19
 FIELD2_START = 282
+# The device's VBI fiducial (its timing line + line-21 insert, NTSC lines 20/21 and 283/284) is a
+# TRANSPORT coordinate, distinct from the crop origin above: unit rows 17 / 280.
+VBI_FIDUCIAL_F1 = 17
+VBI_FIDUCIAL_F2 = 280
 REGISTRATION_MIN = -6
 REGISTRATION_MAX = 6
 REGISTRATION_X_STEP = 4
@@ -988,7 +992,7 @@ def _transport_geometry(raster: np.ndarray) -> tuple[bool, int | None, int | Non
 
     first = fiducial(0, 48)
     second = fiducial(250, 320)
-    return hard_ok and first == FIELD1_START and second == FIELD2_START, first, second
+    return hard_ok and first == VBI_FIDUCIAL_F1 and second == VBI_FIDUCIAL_F2, first, second
 
 
 def measure_interfield_registration(
