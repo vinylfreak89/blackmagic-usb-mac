@@ -37,17 +37,30 @@ def main() -> None:
     with open(a.decisions) as f:
         for r in csv.DictReader(f):
             if r.get("applied_d1", "") != "": dec[int(r["extended_counter"])] = (int(r["applied_d1"]), int(r["applied_d2"]), r.get("mode", ""))
-    out = open(a.out, "w"); w = csv.writer(out); w.writerow(["unit","counter","raw_t1","raw_e1","h1","raw_t2","raw_e2","h2","applied_d1","applied_d2","reg_e1","reg_e2","mode"])
+    out = open(a.out, "w"); w = csv.writer(out); w.writerow(["unit","counter","raw_t1","raw_e1","h1","cc1","raw_t2","raw_e2","h2","cc2","applied_d1","applied_d2","reg_e1","reg_e2","mode"])
     st = {"n": 0, "epoch": 0, "last": None}; buf = bytearray(); recs = []
-    VBI = {17, 19, 280, 282}
+    def caption_like(row):
+        """A closed-caption line (recorded, or the deck's null insert): a steady mid-level clock run-in over the
+        left quarter, data pulses after it, a mostly-dark right end, and a row mean well below picture level.
+        Recognised by signature, never by row number, so a displaced caption is not mistaken for the picture."""
+        b = [row[k*640//24:(k+1)*640//24].mean() for k in range(24)]
+        return 35 < np.mean(b[:6]) < 90 and np.std(b[:6]) < 8 and max(b[6:18]) > 85 and row.mean() < 95 and min(b[18:]) < 40
+    def pulse_like(row):
+        """The deck's fixed row-16-style timing line: one narrow pulse at the far left, one wider on the right, black between."""
+        b = [row[k*640//24:(k+1)*640//24].mean() for k in range(24)]
+        return b[0] > 80 and max(b[2:17]) < 12 and max(b[17:22]) > 100 and row.mean() < 60
     def envelope(ras, lo, hi):
-        """(top, bottom): first and last non-black line in lo..hi, skipping VBI signature lines; (-1,-1) if all black."""
-        Y = ras[lo:hi+1, 81:1361:2].astype(np.int16)           # luma samples over x 40..680
+        """(top, bottom, caption_row): first and last non-black PICTURE line in lo..hi (caption/timing lines excluded by
+        signature) and the row of the first caption-like line in the scan, or -1."""
+        Y = ras[lo:hi+1, 81:1361:2].astype(np.float32)          # luma samples over x 40..680
         black = (Y <= a.black_y).mean(axis=1) >= a.black_frac    # per line: mostly black?
-        for k in range(hi - lo + 1):
-            if (lo + k) in VBI: black[k] = True                  # never let the device's VBI count as picture
+        cap = -1
+        for k in range(min(12, hi - lo + 1)):                    # VBI-type lines only occur in the top dozen rows
+            if not black[k] and (caption_like(Y[k]) or pulse_like(Y[k])):
+                black[k] = True
+                if cap < 0 and caption_like(Y[k]): cap = lo + k
         nb = np.where(~black)[0]
-        return ((lo + int(nb[0])), (lo + int(nb[-1]))) if len(nb) else (-1, -1)
+        return ((lo + int(nb[0])), (lo + int(nb[-1])), cap) if len(nb) else (-1, -1, cap)
     def emit(unit: bytes):
         c = int.from_bytes(unit[4:6], "little")
         if st["last"] is not None and c < st["last"] - 32768: st["epoch"] += 1
@@ -55,10 +68,10 @@ def main() -> None:
         if c not in dec: return
         d1, d2, mode = dec[c]
         ras = np.frombuffer(unit, np.uint8)[HDR:].reshape(LINES, LINE)
-        t1, e1 = envelope(ras, 17, 260); t2, e2 = envelope(ras, 280, 522)
+        t1, e1, c1 = envelope(ras, 17, 260); t2, e2, c2 = envelope(ras, 280, 522)
         h1 = e1 - t1 + 1 if e1 >= 0 else 0; h2 = e2 - t2 + 1 if e2 >= 0 else 0
         r1 = e1 - d1 if e1 >= 0 else -1; r2 = e2 - d2 if e2 >= 0 else -1
-        w.writerow([st["n"], c, t1, e1, h1, t2, e2, h2, d1, d2, r1, r2, mode]); recs.append((e1, e2, d1, d2, r1, r2, mode, t1, t2, h1, h2))
+        w.writerow([st["n"], c, t1, e1, h1, c1, t2, e2, h2, c2, d1, d2, r1, r2, mode]); recs.append((e1, e2, d1, d2, r1, r2, mode, t1, t2, h1, h2, c1, c2))
         st["n"] += 1
         if st["n"] >= a.units: raise Done()
     def on_video(p):
@@ -101,6 +114,9 @@ def main() -> None:
             v = bins[b]; mt = collections.Counter(x[0] for x in v).most_common(1)[0][0]; me = collections.Counter(x[1] for x in v).most_common(1)[0][0]; mh = collections.Counter(x[2] for x in v).most_common(1)[0][0]
             line.append(f"{b*B}:{mt}/{me}/{mh}")
         print(f"{f}: modal top/bottom/height per {B}-unit bin: " + " ".join(line))
+        ci = 11 if ei == 0 else 12
+        cc = collections.Counter((r[ci], r[ti], r[ti] - r[ci]) for r in ok if r[ci] >= 0)
+        print(f"{f}: recorded caption row found in {sum(cc.values())} units; (caption row, top, top-caption): {cc.most_common(8)}")
     print("raw field-1 bottom edge histogram:", dict(sorted(collections.Counter(r[0] for r in meas).items())))
     print("registered field-1 bottom edge histogram:", dict(sorted(collections.Counter(r[4] for r in meas).items())))
     print("raw field-2 bottom edge histogram:", dict(sorted(collections.Counter(r[1] for r in recs if r[1] >= 0).items())))
