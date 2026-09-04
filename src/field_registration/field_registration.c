@@ -44,6 +44,32 @@ static double row_mean(const uint8_t *raster, int row)
     return (double)sum / 640.0;
 }
 
+static double row_variance(const uint8_t *raster, int row, double mean)
+{
+    const uint8_t *line = raster + (size_t)row * FIELDREG_BYTES_PER_LINE;
+    double sum = 0.0;
+    for (int x = 40; x < 680; ++x) {
+        const double delta = (double)line[x * 2 + 1] - mean;
+        sum += delta * delta;
+    }
+    return sum / 640.0;
+}
+
+static bool gap_like_line(const uint8_t *raster, int row, int first,
+                          int adc_last, const double *means,
+                          double picture_threshold)
+{
+    if (row + 3 > adc_last || means[row - first] <= picture_threshold)
+        return false;
+    const double below = (means[row + 1 - first] +
+                          means[row + 2 - first] +
+                          means[row + 3 - first]) / 3.0;
+    if (means[row - first] * 2.0 >= below) return false;
+    /* The tape's line-22 gap is both dim and flat. The variance guard keeps a
+     * genuinely dark, textured first picture row from being discarded. */
+    return row_variance(raster, row, means[row - first]) <= 16.0;
+}
+
 static double row_bins(const uint8_t *raster, int row, double *bins,
                        int bin_count)
 {
@@ -214,7 +240,10 @@ static void measure_field(const uint8_t *raster, int field,
     for (int row = top_scan_first; row + 2 <= adc_last; ++row) {
         if (!waveform[row - first] && means[row - first] > picture_threshold &&
             !waveform[row + 1 - first] && means[row + 1 - first] > picture_threshold &&
-            !waveform[row + 2 - first] && means[row + 2 - first] > picture_threshold) {
+            !waveform[row + 2 - first] && means[row + 2 - first] > picture_threshold &&
+            !gap_like_line(raster, row, first, adc_last, means, picture_threshold) &&
+            !gap_like_line(raster, row + 1, first, adc_last, means, picture_threshold) &&
+            !gap_like_line(raster, row + 2, first, adc_last, means, picture_threshold)) {
             m->top = (int16_t)row;
             break;
         }
