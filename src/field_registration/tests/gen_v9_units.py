@@ -634,15 +634,39 @@ def main():
         f1_reason="GeometryLockDecides", f1_zero="Standard",
         f1_lock_top=19)
 
-    add("two-parity-anchor-first", (2, 0), begin=True,
+    add("three-parity-anchor-first", (2, 0), begin=True,
         captions=((2, 0x14, 0x2c), None),
         top_overrides=(22, None), bottom_overrides=(256, None),
-        f1_reason="AnchorUncorroborated", f1_zero="Standard",
+        f1_reason="ZeroCandidate", f1_zero="Standard",
         f1_lock_top=19)
-    add("two-parity-anchor-second", (2, 0),
+    add("three-parity-anchor-second", (2, 0),
+        captions=((2, 0x14, 0x2c), None),
+        top_overrides=(22, None), bottom_overrides=(256, None),
+        f1_reason="ZeroCandidate", f1_zero="Standard", f1_lock_top=19)
+    add("three-parity-anchor-third", (2, 0),
         captions=((2, 0x14, 0x2c), None),
         top_overrides=(22, None), bottom_overrides=(256, None),
         f1_reason="Line21Placement", f1_zero="Parity", f1_lock_top=20)
+
+    # A segment zero is persistent state, not a copy of one unit's visible
+    # first line.  Alternating bases never settle; three equal gauge bases do.
+    for i, top in enumerate((20, 21, 20)):
+        add(f"zero-candidate-alternating-{i + 1}", (2, 0), begin=i == 0,
+            captions=((2, 0x14, 0x2c), None),
+            top_overrides=(top, None), bottom_overrides=(256, None),
+            f1_reason="ZeroCandidate" if top == 20 else "Line21Placement",
+            f1_zero="Standard", f1_lock_top=19)
+    for i in range(3):
+        add(f"zero-candidate-stable-{i + 1}", (2, 0), begin=i == 0,
+            captions=((2, 0x14, 0x2c), None),
+            top_overrides=(20, None), bottom_overrides=(256, None),
+            f1_reason="Line21Placement" if i == 2 else "ZeroCandidate",
+            f1_zero="Parity" if i == 2 else "Standard",
+            f1_lock_top=18 if i == 2 else 19)
+    add("zero-candidate-envelope-single", (0, 2), begin=True,
+        top_overrides=(None, 287), bottom_overrides=(None, 522),
+        f2_envelopes=(282,), f2_reason="ZeroCandidate",
+        f2_zero="Standard", f2_lock_top=282)
 
     # Root cause C: picture content never defines zero. Each segment starts
     # locked to the standard picture origins (NTSC 23/286), so an immediately
