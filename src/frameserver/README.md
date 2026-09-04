@@ -6,7 +6,7 @@ publication, and loss-accounting columns from schema 3. Between them it replaces
 the retired v7 evidence graph with two identical per-field groups:
 
 ```text
-fN_reason,fN_gauge,fN_insert_present,fN_insert_bytes,fN_parity_candidates,fN_fallback_candidates,fN_gauge_line,fN_gauge_bytes,fN_gauge_amplitude,fN_blank_mean,fN_raw_top,fN_raw_bottom,fN_raw_height,fN_geometry_measurable,fN_bottom_censored,fN_lock_state,fN_lock_id,fN_lock_top,fN_lock_height,fN_clip_ceiling,fN_expected_bottom,fN_lines_lost,fN_invariant_residual
+fN_reason,fN_gauge,fN_insert_present,fN_insert_bytes,fN_parity_candidates,fN_fallback_candidates,fN_gauge_line,fN_gauge_bytes,fN_gauge_amplitude,fN_blank_mean,fN_raw_top,fN_raw_bottom,fN_raw_height,fN_geometry_measurable,fN_bottom_censored,fN_lock_state,fN_lock_id,fN_lock_top,fN_lock_height,fN_lock_height_known,fN_clip_state,fN_clip_ceiling,fN_expected_bottom,fN_lines_lost,fN_invariant_residual
 ```
 
 `drop_reason` is `None`, `PoolFull`, `PublisherFull`, or `RingFullTail`.
