@@ -1251,6 +1251,10 @@ delivery edge; wrong one at acquisition.
   fixed and remapped from 19 (duplicating row 18 on negative offsets, dropping 19 on positive),
   and the full-raster preview duplicated below its window; `captures/fulltape_render.mp4` still
   carries the renderer duplication and is re-rendered after the engine work.
+  **Coordinate convention (owner, 2026-09-04): prose uses real NTSC line numbers, never Shuttle
+  unit rows.** Unit row r maps to NTSC line r + 4 in both fields (row 17 = line 21, row 19 =
+  line 23, row 256 = line 260; row 280 = line 284, row 282 = line 286, row 518 = line 522). Row
+  numbers belong in code and CSV columns only; every number spoken to the owner is a line.
   **VBI structure and the crop-start error — MEASURED 2026-09-04 (raw units, both recordings;
   `experiments/picture_envelope_census.py` recognises caption/timing lines by signature):** unit row 16
   (field 1) is the deck's FIXED timing line (narrow pulse far left, wide pulse right), byte-alike
