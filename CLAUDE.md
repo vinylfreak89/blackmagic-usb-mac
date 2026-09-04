@@ -1421,11 +1421,17 @@ delivery edge; wrong one at acquisition.
   151–169. So the device decodes CEA-608 at the standard line (21/284 only), re-inserts a clean
   waveform with those bytes, and emits nulls when nothing decodes there; the decoded bytes
   change every unit (a cycling station-ID text packet in the first recording), so the decoder
-  is not sticky. Consequences: **non-null bytes on line 21 prove the tape's line 21 was AT line
-  21 in that unit** (aligned, measured per unit); null bytes on 21 mean "nothing decodable
-  there" and cannot separate an aligned null caption from no caption service or a displacement
-  — then the off-line search decides; a displaced caption passes through raw and is never
-  cleaned. The owner's expectation of tape luma "hanging off" the regenerated line 21 cannot
+  is not sticky. Consequences (owner correction, same night: the Shuttle's bytes are the
+  Shuttle's DECISION about where line 21 was, not a measurement of ours): non-null bytes on
+  line 21 mean the slicer decoded a caption inside its own window; measured, that window does
+  NOT reach ±2 — in 1,300+ units across both recordings with the raw caption at 23/24, line 21
+  carried nulls every time (first 1,800 units: 202 units with a parity-valid raw caption at 23,
+  89 of them data-bearing, all with nulls at 21) — and ±1 is UNMEASURED (no unit with the raw
+  caption at 22 has been found). So the bytes at 21 are corroboration only; **the authority is
+  the raw whole-field parity search**, which finds a displaced caption at its true line
+  regardless of what the Shuttle emitted at 21, because the device never blanks other lines.
+  Null bytes on 21 cannot separate an aligned null caption from no caption service or a
+  displacement; a displaced caption passes through raw and is never cleaned. The owner's expectation of tape luma "hanging off" the regenerated line 21 cannot
   occur at line 21 itself (it is synthetic), only on displaced lines. A full-field parity scan
   (lines 12–266 and 272–528, 300 units each) found the tape's caption only at 21 (first
   recording) or 23/24 (second); nothing at the bottom of either field in these windows;

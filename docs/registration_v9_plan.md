@@ -199,7 +199,10 @@ verdict: **model holds, with four changes**, all accepted:
    no settling delay: line 21 = 0, another line = its offset. Field 2, which has no parity
    decode on fixture A, settles its unique-608-like-candidate reference (line 286 ⇒ +2) before
    its registration is known; the units before it settles are named, not claimed.
-3. **"Neither" is subdivided and named:** non-null parity at 21 = `MeasuredAligned`;
+3. **"Neither" is subdivided and named** (owner correction: the Shuttle's re-encoded bytes at
+   21 are the device's own slicing decision, corroboration only — the raw whole-field parity
+   search is the authority; the slicer's window is measured not to reach ±2 and is unmeasured
+   at ±1): non-null bytes at 21 with no parity-valid line elsewhere = `AlignedCorroborated`;
    parity-valid line elsewhere = `MeasuredDisplaced(d)`; null at 21 and nothing elsewhere =
    the geometry lock decides, never evidence of alignment; orphan run-ins and leaking bands are
    rejected by parity; insert absent = `InsertAbsent` hold, never geometry; dark / fade / snow
