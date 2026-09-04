@@ -807,6 +807,30 @@ def main():
             comb_check="agree" if i == 3 else "-",
             parity_bias=2 if i == 3 else 0)
 
+    # Comb calibration needs a known-correct field-1 reference. Geometry can
+    # be self-consistent around a corrupt zero, so it must never qualify even
+    # when the weave has a decisive minimum.
+    for i in range(4):
+        add(f"comb-reject-geometry-reference-{i + 1}", (3, 0),
+            begin=i == 0, picture=(3, 0), comb_offsets=(3, 2),
+            f1_reason="GeometryLockDecides", f2_zero="Standard",
+            f2_lock_top=282, parity_state="Uncalibrated", parity_bias=0)
+
+    # A corrupt line cannot walk either segment zero beyond the physical
+    # +/-3-line source bound, however consistently it repeats.
+    for i in range(3):
+        add(f"zero-bound-field1-{i + 1}", (2, 0), begin=i == 0,
+            captions=((2, 0x14, 0x2c), None),
+            top_overrides=(27, None), bottom_overrides=(256, None),
+            f1_reason="ZeroOutOfBounds" if i == 2 else "ZeroCandidate",
+            f1_zero="Standard", f1_lock_top=19)
+    for i in range(3):
+        add(f"zero-bound-field2-{i + 1}", (0, 2), begin=i == 0,
+            top_overrides=(None, 288), bottom_overrides=(None, 522),
+            f2_envelopes=(282,),
+            f2_reason="ZeroOutOfBounds" if i == 2 else "ZeroCandidate",
+            f2_zero="Standard", f2_lock_top=282)
+
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
     with open(args.output, "wb") as out:
