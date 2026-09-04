@@ -26,15 +26,19 @@ def main() -> None:
     ap.add_argument("--crf", default="12")
     ap.add_argument("--raw", action="store_true", help="apply no registration (d1=d2=0): the raster exactly as the device delivered it")
     a = ap.parse_args()
+    # Key decisions by the EXTENDED counter: the 16-bit device counter wraps at 65,536, so the
+    # second half of a long tape reuses the first half's values (keying by `counter` rendered the
+    # first minute with decisions from 37 minutes later). Units are read in order, so the same
+    # unwrap is applied to the units below.
     dec = {}
     with open(a.decisions) as f:
         for r in csv.DictReader(f):
-            if r.get("applied_d1", "") != "": dec[int(r["counter"])] = (int(r["applied_d1"]), int(r["applied_d2"]))
+            if r.get("applied_d1", "") != "": dec[int(r["extended_counter"])] = (int(r["applied_d1"]), int(r["applied_d2"]))
     ff = subprocess.Popen(["ffmpeg", "-hide_banner", "-loglevel", "warning", "-stats", "-y",
         "-f", "rawvideo", "-pixel_format", "uyvy422", "-video_size", f"720x{2*F1}", "-framerate", "30000/1001", "-i", "pipe:0",
         "-vf", f"format=yuv422p,nnedi=weights={a.weights}:field=tf:deint=all,setsar=8/9",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", a.crf, "-pix_fmt", "yuv420p", a.out], stdin=subprocess.PIPE)
-    buf = bytearray(); state = {"n": 0, "skipped": 0, "nodec": 0}
+    buf = bytearray(); state = {"n": 0, "skipped": 0, "nodec": 0, "epoch": 0, "last": None}
     WIN0, WIN1 = 17, 256   # the engine's crop window within a field (transport starts 17/280 -> field row 17, 240 lines)
     def shifted(field: bytes, nlines: int, d: int) -> bytes:
         """Apply the decision the way the frameserver's crop does: only the 240-row picture window
@@ -47,6 +51,8 @@ def main() -> None:
         return b"".join(out)
     def emit(unit: bytes) -> None:
         counter = int.from_bytes(unit[4:6], "little")
+        if state["last"] is not None and counter < state["last"] - 32768: state["epoch"] += 1   # 16-bit wrap
+        state["last"] = counter; counter += state["epoch"] << 16
         if a.raw: d1, d2 = 0, 0
         elif counter in dec: d1, d2 = dec[counter]
         else: state["nodec"] += 1; return
