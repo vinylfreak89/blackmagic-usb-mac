@@ -28,7 +28,7 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               field_luma=(None, None), dark_fields=(False, False),
               gap_rows=(), broad_bar_picture_rows=(),
               caption_false_picture_rows=(), content_phases=(0, 0),
-              content_shifts=(None, None)):
+              content_shifts=(None, None), body_texture=(False, False)):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -45,6 +45,19 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
         if 0 <= row < RASTER_LINES:
             start = row * BYTES_PER_LINE
             raster[start + 1:start + BYTES_PER_LINE:2] = bytes([y]) * PIXELS
+
+    def fill_body_texture(row, field, basis, phase):
+        """Stable 2-D detail whose row mean is deliberately uninformative.
+
+        A vertical move preserves every luma sample after translating the
+        row.  The old row-mean witness therefore cannot infer the move, while
+        a real 2-D matcher can.  This models the flat minima measured at
+        35:00/37:01 rather than manufacturing evidence in the row average.
+        """
+        seed = basis * (53 if field == 0 else 59) + phase
+        ys = bytes(48 + ((x * 37 + seed) & 127) for x in range(PIXELS))
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = ys
 
     def waveform(row, b1=0x80, b2=0x80, parity=True, run_cycles=7, phase0=20.0):
         if not 0 <= row < RASTER_LINES:
@@ -83,7 +96,10 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
             y = field_luma[0]
             shift = d1 if content_shifts[0] is None else content_shifts[0]
             basis = row - shift
-            fill(row, y if y is not None else 62 + ((basis * 13 + phase1) % 91))
+            if body_texture[0]:
+                fill_body_texture(row, 0, basis, phase1)
+            else:
+                fill(row, y if y is not None else 62 + ((basis * 13 + phase1) % 91))
     if not dark and not dark_fields[1]:
         top2 = (282 + d2 + letterbox if top_overrides[1] is None
                 else top_overrides[1])
@@ -94,7 +110,10 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
             y = field_luma[1]
             shift = d2 if content_shifts[1] is None else content_shifts[1]
             basis = row - shift
-            fill(row, y if y is not None else 58 + ((basis * 11 + phase2) % 97))
+            if body_texture[1]:
+                fill_body_texture(row, 1, basis, phase2)
+            else:
+                fill(row, y if y is not None else 58 + ((basis * 11 + phase2) % 97))
 
     for field, spec in enumerate(captions):
         if spec is not None:
@@ -626,6 +645,66 @@ def main():
         dark=True, f1_reason="GeometryUnmeasurable",
         f2_reason="GeometryUnmeasurable", f1_lock="Locked",
         f2_lock="Locked")
+
+    # The 37:01 latch sequence.  Horizontal detail moves rigidly while its
+    # row mean stays effectively flat: caption d=3, then picture d=2 for two
+    # units, then both return to d=3.  The second d=2 unit proves that a hold
+    # can never become the next position reference.
+    add("body2d-latch-anchor-d3", (3, 0), begin=True, picture=(3, 0),
+        captions=((3, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        body_texture=(True, False), f1_reason="Line21Placement")
+    add("body2d-latch-move-d2", (2, 0), picture=(2, 0),
+        captions=((3, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        body_texture=(True, False), f1_reason="CaptionBodyDisagree",
+        f1_body_shift=-1)
+    add("body2d-latch-stay-d2", (2, 0), picture=(2, 0),
+        captions=((3, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        body_texture=(True, False), f1_reason="CaptionBodyDisagree",
+        f1_body_shift=0)
+    add("body2d-latch-return-d3", (3, 0), picture=(3, 0),
+        captions=((3, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        body_texture=(True, False), f1_reason="Line21Placement",
+        f1_body_shift=1)
+
+    # Symmetric owner rule: an unchanged caption loses when top and body both
+    # say the field moved; the following unit must inherit that measured
+    # picture position, not the previous crop decision.
+    add("body2d-caption-static-anchor-d2", (2, 0), begin=True,
+        picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(2, 0), body_texture=(True, False))
+    add("body2d-caption-static-picture-d3", (3, 0), picture=(3, 0),
+        captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        body_texture=(True, False), f1_reason="CaptionBodyDisagree",
+        f1_body_shift=1)
+    add("body2d-caption-static-stays-d3", (3, 0), picture=(3, 0),
+        captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        body_texture=(True, False), f1_reason="CaptionBodyDisagree",
+        f1_body_shift=0)
+
+    # 05:00: first-line brightness changes the detected top while the entire
+    # picture body stands still.  Geometry must reject the flickering edge in
+    # both directions and keep the crop still.
+    add("body2d-top-flicker-anchor", (0, 0), begin=True,
+        top_overrides=(19, None), bottom_overrides=(250, None),
+        content_phases=(0, 0), content_shifts=(0, 0),
+        body_texture=(True, False))
+    add("body2d-top-flicker-down", (0, 0),
+        top_overrides=(20, None), bottom_overrides=(250, None),
+        content_phases=(0, 0), content_shifts=(0, 0),
+        body_texture=(True, False), f1_reason="TopBodyDisagree",
+        f1_body_shift=0)
+    add("body2d-top-flicker-up", (0, 0),
+        top_overrides=(19, None), bottom_overrides=(250, None),
+        content_phases=(0, 0), content_shifts=(0, 0),
+        body_texture=(True, False), f1_reason="GeometryLockDecides",
+        f1_body_shift=0)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 

@@ -56,14 +56,17 @@ is measurable against a Y=2 blanking floor while mute/black remains
 unmeasurable.
 
 The round-three body-witness additions freeze the only bounded temporal
-measurement in v9: horizontal luma means over 160 picture rows are compared
-at shifts -3..+3 against the immediately previous unit, with MAD below 9
-required. They cover caption-only motion, caption/body disagreement, and
-geometry recovery under ambiguous line 21, gauge conflict, bottom
-conservation failure, and an otherwise out-of-policy-range top. Controls prove
-that a top/body disagreement still holds. A discontinuity clears this witness,
-keeps the last applied pair, and makes a pictureless next unit an explicitly
-unmeasurable hold.
+measurement in v9: two-dimensional luma over 160 picture rows is compared at
+integer vertical shifts -3..+3 against the immediately previous unit, with
+MAD at most 25 required. The fixture's horizontally textured body has an
+intentionally flat row-mean profile, so a one-dimensional shortcut cannot
+pass. It covers both directions of caption/body disagreement, two-unit
+post-hold latch prevention, and a first-line-brightness flicker over a still
+body. Earlier controls also cover geometry recovery under ambiguous line 21,
+gauge conflict, bottom conservation failure, and an otherwise
+out-of-policy-range top. A discontinuity clears both the witness and its last
+measured position, keeps the last applied pair, and makes a pictureless next
+unit an explicitly unmeasurable hold.
 
 `confidence` is deliberately binary in v9: `1` means at least one field has
 an accepted displacement observation, and `0` means neither does. It is not a
