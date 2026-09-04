@@ -831,6 +831,28 @@ def main():
             f2_reason="ZeroOutOfBounds",
             f2_zero="Standard", f2_lock_top=282)
 
+    # A smeared-VBI envelope can install the wrong field-2 zero. Once a
+    # parity-referenced static weave decisively contradicts it for three
+    # units, picture comb wins once; the conflict must not repeat forever.
+    for i in range(3):
+        add(f"comb-overrides-envelope-seed-{i + 1}", (0, 1), begin=i == 0,
+            picture=(0, 0), f2_envelopes=(281,),
+            f2_reason="Field2EnvelopePlacement" if i == 2 else "ZeroCandidate",
+            f2_zero="Envelope" if i == 2 else "Standard",
+            f2_lock_top=281 if i == 2 else 282)
+    for i in range(5):
+        add(f"comb-overrides-envelope-static-{i + 1}",
+            (2, 2 if i >= 3 else 1), picture=(2, 0),
+            captions=((2, 0x14, 0x2c), None),
+            bright_rows=(282, 283), comb_offsets=(2, 2),
+            f2_reason=("ZeroConflict" if i == 3 else
+                       "GeometryLockDecides" if i == 4 else "-"),
+            f2_zero="Comb" if i >= 3 else "Envelope",
+            f2_lock_top=280 if i >= 3 else 281,
+            parity_state="Calibrated" if i >= 3 else "Uncalibrated",
+            comb_check="agree" if i >= 3 else "-",
+            parity_bias=2 if i >= 3 else 1)
+
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
     with open(args.output, "wb") as out:
