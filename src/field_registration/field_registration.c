@@ -379,8 +379,7 @@ static void decide_geometry(fieldreg_field_state *s,
     }
     if (measured != s->last_applied && s->clip_ceiling < 0 &&
         (m->bottom_at_adc_boundary ||
-         (s->clip_candidate_count > 0 &&
-          s->zero_source != FIELDREG_ZERO_PARITY))) {
+         (field == 1 && s->zero_source != FIELDREG_ZERO_PARITY))) {
         hold(s, d, FIELDREG_MODE_CLIP_UNKNOWN_HOLD);
         return;
     }
@@ -595,6 +594,8 @@ bool fieldreg_process(field_registration *engine,
         out->field[1].geometry_measurable &&
         out->field[0].geometry_d != FIELDREG_UNKNOWN &&
         out->field[1].geometry_d != FIELDREG_UNKNOWN &&
+        out->field[0].applied_d == out->field[0].geometry_d &&
+        out->field[1].applied_d == out->field[1].geometry_d &&
         out->field[0].expected_bottom >= 0 &&
         out->field[1].expected_bottom >= 0 &&
         out->field[0].invariant_residual == 0 &&

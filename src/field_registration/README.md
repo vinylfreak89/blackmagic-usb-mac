@@ -58,8 +58,11 @@ The candidate is the greatest observed bottom and can be confirmed only at a
 different gauged offset, preventing dark bottom flicker from fitting multiple
 ceilings. An ungauged proposal that would change placement holds whenever its
 bottom is at the ADC boundary and `C` is unknown. A pending clip candidate also
-holds changes from envelope/content-acquired zeroes; exact geometry beneath a
-parity zero remains usable away from the boundary. Each refusal is
+holds field-2 changes from envelope/content-acquired zeroes; because fixture
+A supplies no decodable field-2 parity and those zeroes do not establish its
+physical clip line, that hold applies even when the apparent bottom lies above
+the ADC-last line. Exact field-1 geometry beneath a parity zero remains usable
+away from the boundary. Each refusal is
 `ClipUnknownHold`.
 
 `fieldreg_begin_segment()` forgets both locks and starts the new segment at
@@ -68,7 +71,8 @@ applied offset. Neither buffers, backdates, drops, or repeats a unit.
 `comb_safe` requires both field locks and either physical zero sources
 (`Parity`/`Envelope`) for both fields or a current rigid, zero-residual
 geometry observation in both. A merely content-acquired zero therefore cannot
-promise deinterlacing safety through an unmeasurable unit. Callers still emit
+promise deinterlacing safety through an unmeasurable unit, nor when its
+measured geometry is being held instead of applied. Callers still emit
 every uncorrected/held frame and leave any presentation policy downstream.
 One missing Shuttle insert is an `InsertAbsent` hold and does not itself erase
 a lock; a real mute/unlock is already a signal-state segment boundary, while
