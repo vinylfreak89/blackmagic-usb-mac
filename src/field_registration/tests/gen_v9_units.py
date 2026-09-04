@@ -186,9 +186,9 @@ def main():
     add("insert-conflict-acquire-1", (0, 0), begin=True)
     add("insert-conflict-acquire-2", (0, 0))
     add("insert-conflict-lock-plus1", (1, 0), picture=(1, 0))
-    add("insert-geometry-conflict-hold", (1, 0), picture=(1, 0),
+    add("insert-data-rigid-geometry", (1, 0), picture=(1, 0),
         captions=((0, 0x14, 0x2c), None),
-        f1_reason="InsertGeometryConflict", f1_lock="Locked")
+        f1_reason="GeometryLockDecides", f1_lock="Locked")
 
     # A valid service on line 22 is content, not a displaced line 21. A
     # one-line disagreement between parity and a live geometry lock is held.

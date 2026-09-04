@@ -171,12 +171,14 @@ static void clear_clip(fieldreg_field_state *s)
 }
 
 static void begin_acquisition(fieldreg_field_state *s,
-                              const field_measurement *m, int applied)
+                              const field_measurement *m, int applied,
+                              fieldreg_zero_source zero_source)
 {
     s->acquire_top = (int16_t)(m->top - applied);
     s->acquire_height = m->height;
     s->acquire_height_known = !m->bottom_at_adc_boundary;
     clear_clip(s);
+    s->zero_source = zero_source;
     s->lock_state = FIELDREG_LOCK_ACQUIRE_ONE;
 }
 
@@ -222,6 +224,7 @@ static void copy_lock(const fieldreg_field_state *s,
                       fieldreg_field_decision *d)
 {
     d->lock_state = s->lock_state;
+    d->zero_source = s->zero_source;
     d->lock_id = s->lock_id;
     d->lock_top = s->top;
     d->lock_height = s->height;
@@ -240,17 +243,18 @@ static void hold(fieldreg_field_state *s, fieldreg_field_decision *d,
 }
 
 static void seed_from_gauge(fieldreg_field_state *s,
-                            const field_measurement *m, int measured)
+                            const field_measurement *m, int measured,
+                            fieldreg_zero_source zero_source)
 {
     if (!m->geometry_measurable) return;
     const int base_top = m->top - measured;
     if (s->lock_state == FIELDREG_LOCK_UNLOCKED) {
-        begin_acquisition(s, m, measured);
+        begin_acquisition(s, m, measured, zero_source);
         return;
     }
     if (s->lock_state == FIELDREG_LOCK_ACQUIRE_ONE) {
         if (base_top != s->acquire_top)
-            begin_acquisition(s, m, measured);
+            begin_acquisition(s, m, measured, zero_source);
         else {
             /* A golden gauge settles position even when clipping makes the
              * visible heights differ. Preserve the largest lower bound; only
@@ -260,18 +264,21 @@ static void seed_from_gauge(fieldreg_field_state *s,
                 s->acquire_height_known = false;
             if (m->height > s->acquire_height)
                 s->acquire_height = m->height;
+            s->zero_source = zero_source;
             finish_acquisition(s);
         }
         return;
     }
 
     if (base_top != s->top) {
-        /* The primary gauge still places this unit. A first-picture-line
-         * content change invalidates geometry as a fallback, not the live
-         * gauged lock; a later agreeing gauge can restore it. */
-        s->height_known = false;
+        /* A physical gauge replaces a content-acquired zero immediately.
+         * Keep H: the gauge identifies position, while a one-unit content
+         * edge difference is not evidence that the frozen geometry changed. */
+        s->top = (int16_t)base_top;
+        s->zero_source = zero_source;
         return;
     }
+    s->zero_source = zero_source;
     if (!s->height_known) {
         const int lower_bottom = s->top + s->height - 1 + measured;
         if (!m->bottom_at_adc_boundary && m->bottom >= lower_bottom) {
@@ -353,7 +360,7 @@ static void decide_geometry(fieldreg_field_state *s,
         return;
     }
     if (s->lock_state == FIELDREG_LOCK_UNLOCKED) {
-        begin_acquisition(s, m, s->last_applied);
+        begin_acquisition(s, m, s->last_applied, FIELDREG_ZERO_ACQUIRED);
         hold(s, d, FIELDREG_MODE_ACQUIRING);
         return;
     }
@@ -361,7 +368,7 @@ static void decide_geometry(fieldreg_field_state *s,
         if (acquisition_position_matches(s, m, s->last_applied) &&
             merge_acquisition_height(s, m))
             finish_acquisition(s);
-        else begin_acquisition(s, m, s->last_applied);
+        else begin_acquisition(s, m, s->last_applied, FIELDREG_ZERO_ACQUIRED);
         hold(s, d, FIELDREG_MODE_ACQUIRING);
         return;
     }
@@ -371,12 +378,13 @@ static void decide_geometry(fieldreg_field_state *s,
         return;
     }
     if (measured != s->last_applied && s->clip_ceiling < 0 &&
-        s->clip_candidate_count > 0) {
+        s->clip_candidate_count > 0 &&
+        s->zero_source != FIELDREG_ZERO_PARITY) {
         hold(s, d, FIELDREG_MODE_CLIP_UNKNOWN_HOLD);
         return;
     }
     if (!s->height_known) {
-        begin_acquisition(s, m, s->last_applied);
+        begin_acquisition(s, m, s->last_applied, s->zero_source);
         hold(s, d, FIELDREG_MODE_ACQUIRING);
         return;
     }
@@ -391,7 +399,10 @@ static void decide_geometry(fieldreg_field_state *s,
                                           m->bottom_at_adc_boundary &&
                                           m->bottom <= uncensored;
     if (d->invariant_residual != 0 && !unknown_clip_at_boundary) {
-        begin_acquisition(s, m, s->last_applied);
+        /* A parity/fallback zero is physical. A changed content envelope can
+         * invalidate this unit's geometry without redefining that zero. */
+        if (s->zero_source == FIELDREG_ZERO_ACQUIRED)
+            begin_acquisition(s, m, s->last_applied, FIELDREG_ZERO_ACQUIRED);
         hold(s, d, FIELDREG_MODE_LOCK_BROKEN);
         return;
     }
@@ -422,6 +433,12 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
     d->fallback_candidate_count = m->fallback_count;
     if (s->lock_state == FIELDREG_LOCK_LOCKED && m->geometry_measurable)
         d->geometry_d = (int8_t)(m->top - s->top);
+    if (m->insert_present &&
+        (m->insert_byte1 != 0x80 || m->insert_byte2 != 0x80) &&
+        d->geometry_d != FIELDREG_UNKNOWN)
+        d->insert_relation = d->geometry_d == 0 ?
+                             FIELDREG_INSERT_CORROBORATES :
+                             FIELDREG_INSERT_CONTRADICTED;
 
     if (!m->insert_present) {
         hold(s, d, FIELDREG_MODE_INSERT_ABSENT);
@@ -436,23 +453,16 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
         d->gauge_amplitude = m->off_candidate.amplitude;
         const bool insert_nonnull = m->insert_byte1 != 0x80 ||
                                     m->insert_byte2 != 0x80;
-        if (measured == 1 && insert_nonnull) {
-            if (d->geometry_d != FIELDREG_UNKNOWN && d->geometry_d != 0) {
-                hold(s, d, FIELDREG_MODE_GAUGE_CONFLICT);
-                d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
-            } else {
-                d->measured_d = 0;
-                d->applied_d = 0;
-                d->reason = FIELDREG_MODE_LINE22_DATA_PRESENT;
-                d->gauge = FIELDREG_GAUGE_LINE22_DATA;
-                s->last_applied = 0;
-                seed_from_gauge(s, m, 0);
-                fit_clip(s, m, 0);
-                record_invariant(s, m, 0, d);
-            }
-        } else if (d->geometry_d != FIELDREG_UNKNOWN &&
-                   (measured - d->geometry_d == 1 ||
-                    d->geometry_d - measured == 1)) {
+        if (measured == 1 && insert_nonnull && d->geometry_d == 0) {
+            d->measured_d = 0;
+            d->applied_d = 0;
+            d->reason = FIELDREG_MODE_LINE22_DATA_PRESENT;
+            d->gauge = FIELDREG_GAUGE_LINE22_DATA;
+            s->last_applied = 0;
+            record_invariant(s, m, 0, d);
+        } else if (measured == 1 && !insert_nonnull &&
+                   s->lock_state == FIELDREG_LOCK_LOCKED &&
+                   d->geometry_d == 0) {
             hold(s, d, FIELDREG_MODE_GAUGE_CONFLICT);
             d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
         } else if (!in_range(field, measured))
@@ -463,7 +473,7 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
             d->reason = FIELDREG_MODE_LINE21_PLACEMENT;
             d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
             s->last_applied = (int8_t)measured;
-            seed_from_gauge(s, m, measured);
+            seed_from_gauge(s, m, measured, FIELDREG_ZERO_PARITY);
             fit_clip(s, m, measured);
             record_invariant(s, m, measured, d);
         }
@@ -480,29 +490,9 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
             d->gauge = FIELDREG_GAUGE_FIELD2_ENVELOPE;
             d->gauge_row = m->fallback_row;
             s->last_applied = (int8_t)measured;
-            seed_from_gauge(s, m, measured);
+            seed_from_gauge(s, m, measured, FIELDREG_ZERO_ENVELOPE);
             fit_clip(s, m, measured);
             record_invariant(s, m, measured, d);
-        }
-    } else if (m->insert_byte1 != 0x80 || m->insert_byte2 != 0x80) {
-        d->gauge_row = field == 0 ? FIELDREG_INSERT_F1 : FIELDREG_INSERT_F2;
-        d->gauge_byte1 = m->insert_byte1;
-        d->gauge_byte2 = m->insert_byte2;
-        if (s->lock_state == FIELDREG_LOCK_LOCKED &&
-            (!m->geometry_measurable || d->geometry_d != 0)) {
-            hold(s, d, m->geometry_measurable ?
-                 FIELDREG_MODE_INSERT_GEOMETRY_CONFLICT :
-                 FIELDREG_MODE_GEOMETRY_UNMEASURABLE);
-            d->gauge = FIELDREG_GAUGE_INSERT_DATA;
-        } else {
-            d->measured_d = 0;
-            d->applied_d = 0;
-            d->reason = FIELDREG_MODE_ALIGNED_CORROBORATED;
-            d->gauge = FIELDREG_GAUGE_INSERT_DATA;
-            s->last_applied = 0;
-            seed_from_gauge(s, m, 0);
-            fit_clip(s, m, 0);
-            record_invariant(s, m, 0, d);
         }
     } else decide_geometry(s, m, field, d);
     copy_lock(s, d);
@@ -603,7 +593,6 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_INVALID_UNIT: return "InvalidUnit";
     case FIELDREG_MODE_ACQUIRING: return "Acquiring";
     case FIELDREG_MODE_LINE21_PLACEMENT: return "Line21Placement";
-    case FIELDREG_MODE_ALIGNED_CORROBORATED: return "AlignedCorroborated";
     case FIELDREG_MODE_GEOMETRY_LOCK_DECIDES: return "GeometryLockDecides";
     case FIELDREG_MODE_FIELD2_ENVELOPE_PLACEMENT: return "Field2EnvelopePlacement";
     case FIELDREG_MODE_INSERT_ABSENT: return "InsertAbsent";
@@ -611,7 +600,6 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_LOCK_BROKEN: return "LockBroken";
     case FIELDREG_MODE_LINE21_AMBIGUOUS: return "Line21Ambiguous";
     case FIELDREG_MODE_OUT_OF_RANGE_HOLD: return "OutOfRangeHold";
-    case FIELDREG_MODE_INSERT_GEOMETRY_CONFLICT: return "InsertGeometryConflict";
     case FIELDREG_MODE_LINE22_DATA_PRESENT: return "Line22DataPresent";
     case FIELDREG_MODE_GAUGE_CONFLICT: return "GaugeConflict";
     case FIELDREG_MODE_CLIP_UNKNOWN_HOLD: return "ClipUnknownHold";
@@ -625,7 +613,6 @@ const char *fieldreg_gauge_name(fieldreg_gauge_source source)
     switch (source) {
     case FIELDREG_GAUGE_NONE: return "None";
     case FIELDREG_GAUGE_CEA608_PARITY: return "CEA608Parity";
-    case FIELDREG_GAUGE_INSERT_DATA: return "InsertData";
     case FIELDREG_GAUGE_GEOMETRY: return "Geometry";
     case FIELDREG_GAUGE_FIELD2_ENVELOPE: return "Field2Envelope";
     case FIELDREG_GAUGE_LINE22_DATA: return "Line22Data";
@@ -650,6 +637,27 @@ const char *fieldreg_clip_state_name(fieldreg_clip_state state)
     case FIELDREG_CLIP_UNKNOWN: return "ClipUnknown";
     case FIELDREG_CLIP_FITTING: return "ClipFitting";
     case FIELDREG_CLIP_FITTED: return "ClipFitted";
+    }
+    return "Unknown";
+}
+
+const char *fieldreg_zero_source_name(fieldreg_zero_source source)
+{
+    switch (source) {
+    case FIELDREG_ZERO_NONE: return "None";
+    case FIELDREG_ZERO_ACQUIRED: return "Acquired";
+    case FIELDREG_ZERO_PARITY: return "Parity";
+    case FIELDREG_ZERO_ENVELOPE: return "Envelope";
+    }
+    return "Unknown";
+}
+
+const char *fieldreg_insert_relation_name(fieldreg_insert_relation relation)
+{
+    switch (relation) {
+    case FIELDREG_INSERT_RELATION_NONE: return "None";
+    case FIELDREG_INSERT_CORROBORATES: return "InsertCorroborates";
+    case FIELDREG_INSERT_CONTRADICTED: return "InsertContradicted";
     }
     return "Unknown";
 }
