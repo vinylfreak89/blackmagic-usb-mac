@@ -33,11 +33,17 @@ void cea608_decode_luma(const uint8_t row[CEA608_PIXELS_PER_LINE],
     }
     mean /= (double)(SEARCH_HI - SEARCH_LO);
     const double w = 2.0 * PI / CELL;
+    const double step_c = cos(w), step_s = sin(w);
+    double carrier_c = cos(w * SEARCH_LO);
+    double carrier_s = sin(w * SEARCH_LO);
     double c = 0.0, s = 0.0;
     for (int x = SEARCH_LO; x < SEARCH_HI; ++x) {
         const double value = (double)row[x] - mean;
-        c += value * cos(w * (double)x);
-        s += value * sin(w * (double)x);
+        c += value * carrier_c;
+        s += value * carrier_s;
+        const double next_c = carrier_c * step_c - carrier_s * step_s;
+        carrier_s = carrier_s * step_c + carrier_c * step_s;
+        carrier_c = next_c;
     }
     out->amplitude = hypot(c, s) * 2.0 / (SEARCH_HI - SEARCH_LO);
     if (out->amplitude < 35.0) return;
