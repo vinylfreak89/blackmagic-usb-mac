@@ -265,3 +265,26 @@ picture as blank — relative to the field's own blanking.
 **Review copies** come from the live frameserver's own output with its own sidecar burned in over
 the entire tape, never from `capture_render.py`, never an excerpt; every non-locked state outside
 true signal loss or a cut is audited against the raw 525-line raster before hand-over.
+
+## Round 3 measurements on `render-live` (2026-09-05, 03:00–05:00)
+
+- A/B/C/D landed (see CLAUDE.md §11). Whole-tape replay of the C/D build: parity 40,237/40,237,
+  field-1 `LockBroken` 2,657 → 19, field-2 1,713 → 11, `OutOfRangeHold` 59 → 35; transitions
+  7,032 → 10,510 and one-unit flips 2,797 → 4,068 (geometry now decides every unit — judged by the
+  raw follow audit, not by the count).
+- 45:00 field-2 regression closed: the XDS bar's signature is its LEFT half only (picture bleeds
+  into the right half); run-in fragments excluded by 503.5 kHz energy regardless of variance
+  (`09d59ee`, `945c6a3`, `a64003a`, `7de0b14`); field 2 +2 ×620, unique candidate 620/620.
+- The tape's grey line 22 (luma ≈ 7 above a picture at ≈ 90) is VBI type 'gap', never a top
+  (`30e1fa5`).
+- 37:01 field 2: Claude's dark-scene guess was FALSE (Codex measured lines 288–290 as picture at
+  33–65 against blanking 3.4); the OLD broad bar exclusion classified picture lines through 293
+  as VBI and pushed the top to 294 (+8, `OutOfRangeHold` 52/329). Fix in progress: the narrow
+  left-half signature for the exclusion too; no picture line may ever be excluded by a bar test.
+- **Caption vs picture, measured (Codex, low-MAD transitions only):** 35:00 — caption and body
+  moved together 180, body still 5, different 15, excluded 24; 45:00 — 9 / 0 / 0. So the tape's
+  caption line moves without the picture in roughly 2.5% of caption transitions on this tape.
+  **Owner decision pending:** follow the caption always (the picture bounces in those units), or
+  hold the crop when the picture's own top AND bottom edges are measurable and unchanged while the
+  caption moved (`CaptionOnlyMotion`, logged), which keeps the invariant at the cost of a
+  deterministic, bounded exception to "parity is never vetoed". Not implemented either way.
