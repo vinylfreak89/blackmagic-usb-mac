@@ -73,10 +73,15 @@ for r in log:
     for f,(e,why) in zip((1,2),T[c]):
         if e is None: stats[f]['truth:'+why]+=1; continue
         a=int(r['applied_d%d'%f])
+        reason=r.get('f%d_reason'%f,'')
         if a==e: stats[f]['agree:'+why.split('@')[0]]+=1
+        elif reason in ('CaptionOnlyMotion','CaptionBodyDisagree','AnchorUncorroborated'):
+            # the owner's ruling (2026-09-05): the picture's own testimony outranks a caption reading that
+            # contradicts it; these are named vetoes, explained by the sidecar, not disagreements
+            stats[f]['vetoed:'+reason]+=1
         else:
             stats[f]['DISAGREE:'+why.split('@')[0]]+=1
-            if len(mism)<40: mism.append((r['ordinal'],c,f,e,a,r['f%d_reason'%f],why))
+            if len(mism)<40: mism.append((r['ordinal'],c,f,e,a,reason,why))
 print(f"exact e801 sidecar rows {len(log)}, truth rows {len(truth)}, counter offset 0")
 for f in (1,2): print(f"field {f}: {dict(stats[f].most_common())}")
 for m in mism: print("  mismatch ordinal %s counter %d field %d expected %+d applied %+d reason %s (%s)"%m)
