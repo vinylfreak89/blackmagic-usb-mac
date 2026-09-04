@@ -17,6 +17,8 @@ def unwrap(seq):
     return out
 with open(truth_path, newline='') as f:
     truth=list(csv.DictReader(f))
+if not truth:
+    raise SystemExit("truth set is empty")
 ctr=unwrap([int(r['counter']) for r in truth])
 def expect(lines, bytes_, insert, ins_line, high):
     L=[int(x) for x in lines.split()] if lines else []
@@ -45,8 +47,16 @@ with open(log_path, newline='') as f:
     # COMPLETE alone is insufficient: the parser also calls a complete 0x0800
     # device-no-signal unit Complete.  Only kind 0 is an exact e801 raster and
     # therefore has a row in line21_truth.py's fixed-raster truth set.
-    log=[r for r in csv.DictReader(f)
+    all_log=list(csv.DictReader(f))
+    log=[r for r in all_log
          if r.get('transport')=='Complete' and r.get('kind')=='0']
+if not log:
+    raise SystemExit("sidecar has no exact e801 rows")
+bad_delivery=[r for r in log if r.get('published')!='1' or r.get('drop_reason')!='None']
+if bad_delivery:
+    r=bad_delivery[0]
+    raise SystemExit(f"exact unit was not published cleanly: ordinal {r['ordinal']} "
+                     f"published={r.get('published')} drop_reason={r.get('drop_reason')}")
 # the frameserver extends the device counter from its raw value and the truth set unwraps the same raw counter,
 # so the two agree directly; verify on the first rows rather than searching for an offset
 lc=[int(r['counter_extended']) for r in log]
