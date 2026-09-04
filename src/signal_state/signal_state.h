@@ -99,6 +99,10 @@ typedef struct signal_state_config {
 
 size_t signal_state_size(void);
 size_t signal_state_alignment(void);
+/* ABI guards for foreign-function adapters. */
+size_t signal_state_config_size(void);
+size_t signal_result_size(void);
+size_t signal_unit_video_observation_size(void);
 signal_state_config signal_state_default_config(void);
 void signal_state_init(signal_state *state, const signal_state_config *config);
 void signal_state_begin_epoch(signal_state *state, uint64_t epoch);
