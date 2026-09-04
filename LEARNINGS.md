@@ -275,5 +275,7 @@ structure that was never in the signal (false field inversions, on fixture A). J
 through a weaver put the deinterlacer's inventions on the signal's account and threw the owner
 off; he settled on NNEDI3 for review precisely because it invents nothing. Lesson: name the
 presentation stage's own contribution before attributing an artifact to the stage upstream; a
-tool that makes decisions is a source of artifacts, not a transparent lens. Yadif keeps one job:
-a stress indicator of relative inter-field misregistration, never the judge.
+tool that makes decisions is a source of artifacts, not a transparent lens. The corollary cuts
+the other way too: once the fields are registered the weaver is the better presentation (all 480
+recorded lines on static picture, nothing interpolated), so "no combing under yadif" is the
+acceptance bar for registration; NNEDI3 is the diagnostic lens, not the product.
