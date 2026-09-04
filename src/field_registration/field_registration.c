@@ -60,19 +60,21 @@ static double row_bins(const uint8_t *raster, int row, double *bins,
     return (double)total / 640.0;
 }
 
+static bool xds_left_structure(const uint8_t *raster, int row)
+{
+    double bins[24];
+    if (row_bins(raster, row, bins, 24) >= 95.0) return false;
+    if (bins[1] <= 60.0) return false;
+    for (int bin = 4; bin <= 7; ++bin)
+        if (bins[bin] <= 60.0) return false;
+    return bins[8] <= 40.0 && bins[9] <= 40.0;
+}
+
 static bool field2_envelope(const uint8_t *raster, int row)
 {
-    double bins[48];
-    if (row_bins(raster, row, bins, 48) >= 95.0) return false;
-    for (int bin = 20; bin < 48; ++bin)
-        if (bins[bin] > 40) return false;
-    int run = 0;
-    for (int bin = 0; bin < 20; ++bin) {
-        if (bins[bin] > 60) {
-            if (++run >= 6) return true;
-        } else run = 0;
-    }
-    return false;
+    /* Only the measured XDS structure in the left 40% is invariant. Picture
+     * can bleed into the right half, so it is deliberately unconstrained. */
+    return xds_left_structure(raster, row);
 }
 
 static bool caption_like_damage(const uint8_t *raster, int row)
@@ -114,6 +116,7 @@ static bool timing_like_damage(const uint8_t *raster, int row)
 
 static bool bar_like_damage(const uint8_t *raster, int row)
 {
+    if (xds_left_structure(raster, row)) return true;
     double bins[48];
     if (row_bins(raster, row, bins, 48) >= 95.0) return false;
     for (int i = 20; i < 48; ++i)
