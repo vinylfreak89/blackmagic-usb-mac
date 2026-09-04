@@ -19,7 +19,10 @@ def expect(lines, bytes_, insert, ins_line):
     L=[int(x) for x in lines.split()] if lines else []
     B=bytes_.split() if bytes_ else []
     off=[(l,b) for l,b in zip(L,B) if l!=ins_line]
-    if len(off)==1: return off[0][0]-ins_line, 'parity@%d'%off[0][0]
+    if len(off)==1:
+        d=off[0][0]-ins_line
+        if d < -6 or d > 9: return None, 'implausible'   # a picture line that passed parity by chance
+        return d, 'parity@%d'%off[0][0]
     if len(off)>1: return None, 'ambiguous'
     if insert!='none' and insert!='8080': return 0, 'insert-data'
     return None, 'none'
