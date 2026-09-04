@@ -23,7 +23,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from packet_capture_reader import walk_tagged
 UNIT = 756_048; HDR = 48; LINE = 1440; LINES = 525; MARK = b"\x00\x00\xff\xff"
-NOM1, NOM2 = 256, 518   # nominal bottom picture lines (CLAUDE.md §6: field-1 picture 20-256, field-2 282-518)
+NOM1, NOM2 = 258, 521   # standard crop bottoms (RP-202 lines 262/525 = rows 258/521); this deck blanks its last lines (head-switch band), so the measured picture bottom sits at 256/518
 
 class Done(Exception): pass
 

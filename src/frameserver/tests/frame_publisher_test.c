@@ -28,13 +28,13 @@ int main(void){
     uint8_t *u = make_unit();
     uint8_t *frame = malloc(FP_FRAME_HEIGHT * FP_LINE_BYTES);
 
-    // nominal crop: row 0 = line 17, row 1 = line 280, row 2 = 18, row 479 = 519
+    // nominal crop (SMPTE RP-202): row 0 = line 19 (standard line 23), row 1 = line 282 (line 286), row 2 = 20, row 479 = 521
     fp_assemble(frame, u, 0, 0);
-    CHECK(row_src_line(frame, 0) == 17 && row_src_line(frame, 1) == (280 & 0xFF), "nominal rows");
-    CHECK(row_src_line(frame, 2) == 18 && row_src_line(frame, 479) == (519 & 0xFF), "nominal tail rows");
-    // field-1 displaced +2: field 1 reads from 19.., field 2 unchanged (§7 correction direction)
+    CHECK(row_src_line(frame, 0) == 19 && row_src_line(frame, 1) == (282 & 0xFF), "nominal rows");
+    CHECK(row_src_line(frame, 2) == 20 && row_src_line(frame, 479) == (521 & 0xFF), "nominal tail rows");
+    // field-1 displaced +2: field 1 reads from 21.., field 2 unchanged (§7 correction direction)
     fp_assemble(frame, u, 2, 0);
-    CHECK(row_src_line(frame, 0) == 19 && row_src_line(frame, 1) == (280 & 0xFF), "d1=+2 moves only field 1");
+    CHECK(row_src_line(frame, 0) == 21 && row_src_line(frame, 1) == (282 & 0xFF), "d1=+2 moves only field 1");
     // negative d2 and clamping: d2=-300 must clamp so field 2 stays inside the raster
     fp_assemble(frame, u, 0, -300);
     CHECK(row_src_line(frame, 1) == 0, "d2 clamped to raster start (line 0)");
@@ -70,7 +70,7 @@ int main(void){
     CHECK(rc == 1 && st.dropped_no_free_surface == 1 && st.pool_in_use == 2, "drop when pool exhausted (rc=%d dropped=%llu in_use=%u)", rc, (unsigned long long)st.dropped_no_free_surface, st.pool_in_use);
     // held surface carries the assembled rows
     IOSurfaceLock(h1, kIOSurfaceLockReadOnly, NULL);
-    CHECK(((uint8_t *)IOSurfaceGetBaseAddress(h1))[0] == 17, "surface row 0 is source line 17");
+    CHECK(((uint8_t *)IOSurfaceGetBaseAddress(h1))[0] == 19, "surface row 0 is source line 19 (standard line 23)");
     IOSurfaceUnlock(h1, kIOSurfaceLockReadOnly, NULL);
     // release -> publishing resumes
     IOSurfaceDecrementUseCount(h1); IOSurfaceDecrementUseCount(h2);
