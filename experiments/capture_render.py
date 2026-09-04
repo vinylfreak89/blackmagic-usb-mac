@@ -1316,6 +1316,20 @@ class _CFieldRegistrationDecision(ctypes.Structure):
         ("relative_only_cut_gate", ctypes.c_bool),
         ("bottom_f1_censored", ctypes.c_bool),
         ("bottom_f2_censored", ctypes.c_bool),
+        ("bottom_raw_edge_f1", ctypes.c_int16),
+        ("bottom_raw_edge_f2", ctypes.c_int16),
+        ("bottom_target_f1", ctypes.c_int16),
+        ("bottom_target_f2", ctypes.c_int16),
+        ("bottom_blanking_level_f1", ctypes.c_uint8),
+        ("bottom_blanking_level_f2", ctypes.c_uint8),
+        ("bottom_black_threshold_f1", ctypes.c_uint8),
+        ("bottom_black_threshold_f2", ctypes.c_uint8),
+        ("bottom_measurable_f1", ctypes.c_bool),
+        ("bottom_measurable_f2", ctypes.c_bool),
+        ("bottom_placement_f1", ctypes.c_bool),
+        ("bottom_placement_f2", ctypes.c_bool),
+        ("bottom_hold_reason_f1", ctypes.c_int),
+        ("bottom_hold_reason_f2", ctypes.c_int),
     )
 
 
@@ -1386,6 +1400,8 @@ class CRegistrationEstimator:
         self.library.fieldreg_mode_name.restype = ctypes.c_char_p
         self.library.fieldreg_relative_gauge_name.argtypes = (ctypes.c_int,)
         self.library.fieldreg_relative_gauge_name.restype = ctypes.c_char_p
+        self.library.fieldreg_bottom_hold_reason_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_bottom_hold_reason_name.restype = ctypes.c_char_p
         self.library.fieldreg_init(self.state, ctypes.byref(self.config))
         self.confirmation_units = self.library.fieldreg_confirmation_units(
             self.state
@@ -1416,6 +1432,12 @@ class CRegistrationEstimator:
         mode = self.library.fieldreg_mode_name(result.mode).decode("ascii")
         relative_gauge = self.library.fieldreg_relative_gauge_name(
             result.relative_only_gauge_source
+        ).decode("ascii")
+        bottom_reason1 = self.library.fieldreg_bottom_hold_reason_name(
+            result.bottom_hold_reason_f1
+        ).decode("ascii")
+        bottom_reason2 = self.library.fieldreg_bottom_hold_reason_name(
+            result.bottom_hold_reason_f2
         ).decode("ascii")
         decision = self._pair(result.decision_d1, result.decision_d2)
         applied = (result.applied_d1, result.applied_d2)
@@ -1509,6 +1531,20 @@ class CRegistrationEstimator:
             "relative_only_cut_gate": result.relative_only_cut_gate,
             "bottom_f1_censored": result.bottom_f1_censored,
             "bottom_f2_censored": result.bottom_f2_censored,
+            "bottom_raw_edge_f1": result.bottom_raw_edge_f1,
+            "bottom_raw_edge_f2": result.bottom_raw_edge_f2,
+            "bottom_target_f1": result.bottom_target_f1,
+            "bottom_target_f2": result.bottom_target_f2,
+            "bottom_blanking_level_f1": result.bottom_blanking_level_f1,
+            "bottom_blanking_level_f2": result.bottom_blanking_level_f2,
+            "bottom_black_threshold_f1": result.bottom_black_threshold_f1,
+            "bottom_black_threshold_f2": result.bottom_black_threshold_f2,
+            "bottom_measurable_f1": result.bottom_measurable_f1,
+            "bottom_measurable_f2": result.bottom_measurable_f2,
+            "bottom_placement_f1": result.bottom_placement_f1,
+            "bottom_placement_f2": result.bottom_placement_f2,
+            "bottom_hold_reason_f1": bottom_reason1,
+            "bottom_hold_reason_f2": bottom_reason2,
             "engine": (
                 f"field_registration-c-{self.evidence_model}-v{self.algorithm_version}"
             ),
@@ -1908,6 +1944,20 @@ TPC_DECISION_COLUMNS = (
     "relative_only_cut_gate",
     "bottom_f1_censored",
     "bottom_f2_censored",
+    "bottom_raw_edge_f1",
+    "bottom_raw_edge_f2",
+    "bottom_target_f1",
+    "bottom_target_f2",
+    "bottom_blanking_level_f1",
+    "bottom_blanking_level_f2",
+    "bottom_black_threshold_f1",
+    "bottom_black_threshold_f2",
+    "bottom_measurable_f1",
+    "bottom_measurable_f2",
+    "bottom_placement_f1",
+    "bottom_placement_f2",
+    "bottom_hold_reason_f1",
+    "bottom_hold_reason_f2",
     "registration_engine",
 )
 
@@ -2066,6 +2116,20 @@ def tagged_decision_row(
         int(registration.get("relative_only_cut_gate", False)),
         int(registration.get("bottom_f1_censored", False)),
         int(registration.get("bottom_f2_censored", False)),
+        registration.get("bottom_raw_edge_f1", ""),
+        registration.get("bottom_raw_edge_f2", ""),
+        registration.get("bottom_target_f1", ""),
+        registration.get("bottom_target_f2", ""),
+        registration.get("bottom_blanking_level_f1", ""),
+        registration.get("bottom_blanking_level_f2", ""),
+        registration.get("bottom_black_threshold_f1", ""),
+        registration.get("bottom_black_threshold_f2", ""),
+        int(registration.get("bottom_measurable_f1", False)),
+        int(registration.get("bottom_measurable_f2", False)),
+        int(registration.get("bottom_placement_f1", False)),
+        int(registration.get("bottom_placement_f2", False)),
+        registration.get("bottom_hold_reason_f1", "None"),
+        registration.get("bottom_hold_reason_f2", "None"),
         registration.get("engine", "python-top-only"),
     )
     return row
@@ -3160,7 +3224,14 @@ def render_tagged(
             if adaptive_registration and unit_state == "Exact":
                 registration = estimator.decide(unit)
                 applied_d1, applied_d2 = registration["applied"]
-                if registration.get("frame_observation") is not None:
+                if registration.get("engine", "").endswith("-v8"):
+                    presentation_policy = (
+                        "BottomEdgePlaced"
+                        if registration.get("bottom_placement_f1")
+                        or registration.get("bottom_placement_f2")
+                        else "BottomEdgeHeld"
+                    )
+                elif registration.get("frame_observation") is not None:
                     presentation_policy = "CorrectedObserved"
                 elif registration["applied"] != registration.get(
                     "baseline", registration["applied"]

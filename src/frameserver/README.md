@@ -1,10 +1,10 @@
 # Frameserver sidecar
 
 The frameserver publishes corrected interlaced UYVY units immediately and writes an optional CSV
-decision sidecar. Schema `3` has this exact header:
+decision sidecar. Schema `4` has this exact header:
 
 ```text
-ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,relative_only,relative_only_gauge_unknown,relative_only_gauge_source,relative_only_phase,relative_only_best_energy,relative_only_runner_energy,relative_only_prior_energy,relative_only_margin,relative_only_ratio,relative_only_static_columns,relative_only_persistent_columns,relative_only_transport_gate,relative_only_cut_gate,bottom_f1_censored,bottom_f2_censored,published,drop_reason,schema_version,preceding_ring_drops
+ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,relative_only,relative_only_gauge_unknown,relative_only_gauge_source,relative_only_phase,relative_only_best_energy,relative_only_runner_energy,relative_only_prior_energy,relative_only_margin,relative_only_ratio,relative_only_static_columns,relative_only_persistent_columns,relative_only_transport_gate,relative_only_cut_gate,bottom_f1_censored,bottom_f2_censored,bottom_raw_edge_f1,bottom_raw_edge_f2,bottom_target_f1,bottom_target_f2,bottom_blanking_level_f1,bottom_blanking_level_f2,bottom_black_threshold_f1,bottom_black_threshold_f2,bottom_measurable_f1,bottom_measurable_f2,bottom_placement_f1,bottom_placement_f2,bottom_hold_reason_f1,bottom_hold_reason_f2,published,drop_reason,schema_version,preceding_ring_drops
 ```
 
 `drop_reason` is `None`, `PoolFull`, `PublisherFull`, or `RingFullTail`.
@@ -12,6 +12,8 @@ The `relative_only_*` columns preserve the static-region curvature decision,
 absolute-gauge provenance, winner energies/margins, spatial support, and gates.
 `bottom_f*_censored` distinguishes a measured boundary from a complete lower
 picture edge. Their semantics are specified by the registration contract.
+The `bottom_raw_edge_*`, target, adaptive black-level, measurability, placement,
+and hold-reason fields are the complete v8 live-placement provenance.
 
 - A pool-full observation retains its own ordinary row, is unpublished, and says `PoolFull`.
 - Ring-full observations cannot reach the worker individually. Their count is attached to the

@@ -32,7 +32,11 @@ def main() -> None:
     dec = {}
     with open(a.decisions) as f:
         for r in csv.DictReader(f):
-            if r.get("applied_d1", "") != "": dec[int(r["extended_counter"])] = (int(r["applied_d1"]), int(r["applied_d2"]), r.get("mode", ""))
+            counter = r.get("extended_counter", r.get("counter_extended", ""))
+            if counter != "" and r.get("applied_d1", "") != "":
+                dec[int(counter)] = (
+                    int(r["applied_d1"]), int(r["applied_d2"]),
+                    r.get("mode", r.get("evidence_mode", "")))
     out = open(a.out, "w"); w = csv.writer(out); w.writerow(["unit","counter","raw_e1","raw_e2","applied_d1","applied_d2","reg_e1","reg_e2","mode"])
     st = {"n": 0, "epoch": 0, "last": None}; buf = bytearray(); recs = []
     def edge(ras, lo, hi):

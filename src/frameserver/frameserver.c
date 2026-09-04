@@ -223,7 +223,10 @@ static int log_header(FILE *L){
                "relative_only,relative_only_gauge_unknown,relative_only_gauge_source,relative_only_phase,"
                "relative_only_best_energy,relative_only_runner_energy,relative_only_prior_energy,relative_only_margin,relative_only_ratio,"
                "relative_only_static_columns,relative_only_persistent_columns,relative_only_transport_gate,relative_only_cut_gate,"
-               "bottom_f1_censored,bottom_f2_censored,published,drop_reason,schema_version,preceding_ring_drops\n") < 0 ? -1 : 0;
+               "bottom_f1_censored,bottom_f2_censored,bottom_raw_edge_f1,bottom_raw_edge_f2,bottom_target_f1,bottom_target_f2,"
+               "bottom_blanking_level_f1,bottom_blanking_level_f2,bottom_black_threshold_f1,bottom_black_threshold_f2,"
+               "bottom_measurable_f1,bottom_measurable_f2,bottom_placement_f1,bottom_placement_f2,"
+               "bottom_hold_reason_f1,bottom_hold_reason_f2,published,drop_reason,schema_version,preceding_ring_drops\n") < 0 ? -1 : 0;
 }
 static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
@@ -301,7 +304,8 @@ static void process_item(frameserver *f, const fs_item *it){
     pthread_mutex_lock(&f->log_m);
     if (f->log){
         int wr = fprintf(f->log, "%llu,%llu,%s,%d,%s,%.3f,%s,%.3f,%llu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s,%s,%.3f,"
-                        "%d,%d,%s,%d,%.3f,%.3f,%.3f,%.3f,%.6f,%u,%u,%d,%d,%d,%d,%d,%s,%u,%llu\n",
+                        "%d,%d,%s,%d,%.3f,%.3f,%.3f,%.3f,%.6f,%u,%u,%d,%d,%d,%d,"
+                        "%d,%d,%d,%d,%u,%u,%u,%u,%d,%d,%d,%d,%s,%s,%d,%s,%u,%llu\n",
             (unsigned long long)obs.ordinal, (unsigned long long)obs.counter_extended, transport_name(obs.transport), (int)obs.kind,
             classified ? signal_appearance_name(sr.appearance) : "Unclassified", classified ? sr.appearance_confidence : 0.0,
             classified ? signal_source_state_name(sr.source) : "Unknown", classified ? sr.source_confidence : 0.0,
@@ -324,6 +328,20 @@ static void process_item(frameserver *f, const fs_item *it){
             have_d && d.relative_only_transport_gate,
             have_d && d.relative_only_cut_gate,
             have_d && d.bottom_f1_censored, have_d && d.bottom_f2_censored,
+            have_d ? d.bottom_raw_edge_f1 : -1,
+            have_d ? d.bottom_raw_edge_f2 : -1,
+            have_d ? d.bottom_target_f1 : -1,
+            have_d ? d.bottom_target_f2 : -1,
+            have_d ? d.bottom_blanking_level_f1 : 0,
+            have_d ? d.bottom_blanking_level_f2 : 0,
+            have_d ? d.bottom_black_threshold_f1 : 0,
+            have_d ? d.bottom_black_threshold_f2 : 0,
+            have_d && d.bottom_measurable_f1,
+            have_d && d.bottom_measurable_f2,
+            have_d && d.bottom_placement_f1,
+            have_d && d.bottom_placement_f2,
+            have_d ? fieldreg_bottom_hold_reason_name(d.bottom_hold_reason_f1) : "None",
+            have_d ? fieldreg_bottom_hold_reason_name(d.bottom_hold_reason_f2) : "None",
             published,
             it->drop == FS_DROP_POOL_FULL ? "PoolFull" : (!published && unit ? "PublisherFull" : "None"),FS_DECISION_LOG_SCHEMA,
             (unsigned long long)rd);

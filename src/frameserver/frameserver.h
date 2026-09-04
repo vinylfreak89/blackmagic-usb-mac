@@ -30,7 +30,7 @@ extern "C" {
 
 typedef struct frameserver frameserver;
 
-#define FS_DECISION_LOG_SCHEMA 3
+#define FS_DECISION_LOG_SCHEMA 4
 
 typedef struct {
     cc_config capture;          // device input or replay_path
