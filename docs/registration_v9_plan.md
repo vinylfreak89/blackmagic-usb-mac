@@ -229,3 +229,39 @@ at 21 with nothing elsewhere ⇒ the lock must say 0. Agreements and disagreemen
 over the whole tape (the parity search is the truth set, thousands of units); a disagreement
 is a defect in the lock or its invariant, never in the reading. If the lock agrees with the
 readings wherever they exist, the secondary gauge is validated by the primary one on real tape.
+
+## Round 3 (2026-09-05, after the owner's review of the first v9 render): the never-bounce invariant and the parity calibration
+
+**Invariant (owner).** The regenerated raster is identical in every unit; the tape's field position is
+directly readable every unit (the TAPE's line 21 when visible, else the picture's first line); the
+crop is set to the reading; so the output picture position is `measured − crop = 0` by construction
+and can never bounce except during the initial lock of a program segment. A bounce is always a
+wrong reading or a remembered value substituted for a reading. Holds are legitimate only where
+nothing is measurable: true signal loss, or the first units of a segment. Design test for every
+engine state: *if the tape moves while I am in this state, does my output move?* If yes, the state
+is allowed only where nothing is measurable.
+
+**Parity calibration (owner).** Which display row the source's picture begins on is a per-segment
+constant; picture geometry cannot distinguish "the source starts one display row lower" from
+"field 1 displaced +1", and that ambiguity is exactly a crossing (a relative offset of one line
+between the fields inverts the weave's parity; 42% of fixture A is crossed in the raw). Static-
+region comb measures the content's own interleave and resolves it. So: once per segment lock,
+measure the relative offset `r = d1 − d2` by static comb over the first units with static detail
+and freeze it. Field 1's absolute position comes from its caption (or its picture top against the
+standard origin); field 2's is field 1's minus `r`, cross-checked against field 2's own gauge when
+one exists; the common mode is the standard origin by the golden rule until a caption re-anchors
+it. From that point the picture geometry is known and where the first line of picture must sit is
+known; every later unit is an exact equality to track, and `r` is re-checked cheaply on static
+content, a persistent disagreement being a named fault that ends the segment, never a vote. This
+is not v7: comb is a one-time calibration and a consistency check, never a per-unit authority.
+
+**Root causes found in the first v9 render, all with failing goldens owed:** (A) VBI-type lines
+that fail parity or the amplitude gate counted as the picture top (damaged captions, the smeared
+XDS bar) — exclude by signature; (B) bottom flicker inside the deck's near-blank band (lines
+260–264 / 522–526) breaking locks — the band is censored; (C) the lock zero acquired from content
+instead of the standard origin — the golden rule; (D) an absolute luma threshold that reads a dark
+picture as blank — relative to the field's own blanking.
+
+**Review copies** come from the live frameserver's own output with its own sidecar burned in over
+the entire tape, never from `capture_render.py`, never an excerpt; every non-locked state outside
+true signal loss or a cut is audited against the raw 525-line raster before hand-over.
