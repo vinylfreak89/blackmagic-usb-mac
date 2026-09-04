@@ -1445,6 +1445,18 @@ delivery edge; wrong one at acquisition.
   the regenerated lines, with the picture moved by the same amount, computes the offset and
   sets a new lock. Line 21 stays gold; the picture geometry is the secondary. Until a lock is
   settled (a tape bouncing from its first lock) no real-time decision is claimed.
+  **Two design constants frozen from data for v9 (2026-09-04 night):** (1) the field-2
+  "608-like envelope" candidate (used only when no parity-valid field-2 line exists): row mean
+  < 95, 48-bin luma profile, every bin ≥ 20 at most 40, and a run of ≥ 6 consecutive bins > 60
+  within bins 0–19 — fires uniquely at line 286 in the second recording (200/200, 597/600,
+  529/600), never in the first recording (0/600), never on the commercial tape (0/400), once
+  in 2,000 field-1 units (two picture lines ⇒ ambiguous ⇒ hold). (2) Geometry edges by ROW MEAN
+  over blanking (> 12 against the 1.4 floor), not the census's per-line mostly-black rule: with
+  the row-mean rule field 1's top and bottom are still in 599/600 aligned units at 21:40 and in
+  all three second-recording windows, whereas the per-line rule flickered the bottom 256↔255 in
+  4% of units — which would have killed a strict conservation test every few seconds. On the
+  commercial tape the row-mean rule sees top-only moves with a still bottom in 44/400 units
+  (dark scene tops): content, lock broken ⇒ hold ⇒ re-acquire, the intended behaviour.
   **Owner ruling (same evening):** multiple line-21-like rows or a partial waveform in a unit
   means the timing signal is too unstable to use — give up on line 21 for that unit; the leaked
   VBI framing pulses at the bottom of the field and picture-above-the-band are then a real fix
