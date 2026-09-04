@@ -1,268 +1,324 @@
-# Registration engine archaeology — nine versions, one missed signal
+# Registration engine archaeology: nine versions, one missed signal
 
-Reconstructed 2026-09-04 from the git history (hashes and dates below are from `git log --all`),
-the CLAUDE.md narrative as it was written at each stage (section line numbers refer to the file
-at commit `9b5226f`), and the dated session transcripts of both agents. Times are JST. Anything not
-traceable to one of those is marked UNSOURCED. Codex's independent account from its own rollouts
-is reconciled in the last section.
+How the field-registration engine went through nine versions in six days (2026-08-29 to
+2026-09-04), how it derailed, and how it came back. Merged from two independent excavations,
+Claude's (from git, the CLAUDE.md narrative as written at each stage, and its session transcript)
+and Codex's (from git and its own rollout records); the few places they disagreed are listed at
+the end. Times are JST. Every number below is traceable to a commit, a surviving measurement file
+or a timestamped transcript line; the handful that are transcript-only say so.
 
-## The phenomenon everyone was chasing
+Attribution convention: **Owner** (Aaron) set the goals, reviewed every render, and asked the
+questions that changed direction. **Codex** wrote the C engine and all of its versions. **Claude**
+wrote the offline Python estimator, the instruments, the renderers and most of the documentation,
+and reviewed Codex's engine work. Each version was mutually reviewed before merge.
 
-The deck's output shows the picture "jumping" vertically by a line or two, and a motion-adaptive
-deinterlacer (yadif, NNEDI) combs wherever that happens. Nine versions of a registration engine
-tried to remove the jump. The question that was never asked until the ninth was: *where, in the
-signal, is the reference the picture is jumping relative to?*
+## The phenomenon
 
-## v1 — "field 2's origin drifts" (offline, 2026-08-29)
+The deck's output shows the picture "jumping" vertically by a line or two, and any motion-adaptive
+deinterlacer (yadif, NNEDI) combs wherever that happens. For nine versions the engine tried to
+remove the jump by inferring where the picture sat from the picture itself. The question that was
+not asked until the ninth was: *where, in the signal, is the reference the picture is jumping
+relative to?*
 
-- **Premise.** The unit's second field starts at a varying line; comb/weave scoring over a
-  window of candidate field-2 origins (274–285) finds the best interleave.
-- **Mechanism.** `capture_render.py` searched field-2 origin candidates by weave energy.
-- **Record.** `e811226` "Answer the core question: field flipping is a spatial field-origin slip"
-  (22:15); `4f8b65b` "crop field 1 at 17+d1" (22:29). CLAUDE.md §7 header "ANSWERED — it is a
-  spatial field-ORIGIN slip" (line 685) still reads as written that evening.
-- **Falsified the same night.** A field-origin census over 6,160 intact units of the untagged
-  capture: transport raster rigid (`f1_origin=17` 99.35 %, `f2_origin=280` 99.25 %); field 2's
-  picture translated 0 lines in 4,042/4,042 rigidly measurable units; **field 1's picture moves**
-  by 1–2 whole lines. "The 274–285 wander was estimator noise": comb can only constrain
-  `d2 − d1`, never an absolute origin (§7, the CORRECTED block at line 690; commit `564c0b9`
-  22:50; `11c3703` LEARNINGS "an estimator's best guess is not a measurement"). Transcript
-  13:51 UTC (22:51 JST): "the census killed its own premise — including the answer I gave you".
-- **What it got right.** The error is spatial and integer-line, not temporal/cadence.
-- **What it got wrong.** It measured an inter-field *relation* and reported it as an absolute
-  position. Correction direction was also backwards for a while (`e153b82`, Codex review, 23:33).
+## The story, item by item
 
-## v2 — the per-field (d1, d2) model (offline, 2026-08-30)
+### 1. "Field 2's origin drifts" (Claude, offline Python, 08-29 evening)
 
-- **Premise.** Each field's picture has its own signed integer offset inside a rigid raster;
-  neither field is a permanent anchor; comb constrains only `d2 − d1`; absolutes need temporal
-  same-parity registration, landmarks, or a learned stable segment; say `Unknown` otherwise.
-- **Mechanism.** `f936339` "per-field (d1,d2) model replaces the field-2-origin model" (15:49);
-  `ac1e59c` "apply offsets only when weave and landmark evidence agree" (16:12). CLAUDE.md
-  "General registration model" (line 773).
-- **Measurements.** Untagged capture resolves as `d1 ∈ {0,+1,+2}, d2 = 0` — "test data, not
-  policy" (line 783).
-- **Why it was still a proxy.** Position was inferred from the picture's own edges, comb and
-  temporal correlation; the deck's regenerated VBI lines (rows 16/17) were treated as a "transport
-  ruler" to skip by row number, never as a reference the content could be compared against.
+Comb/weave scoring over candidate field-2 origins (274–285) found the best interleave, and the
+first answer was "the second field starts at a varying line" (`e811226`, 22:15). A census of the
+6,160 intact units of the untagged capture killed that premise within 35 minutes (`564c0b9`,
+22:50): the transport raster is rigid (`f1_origin=17` 99.35%, `f2_origin=280` 99.25%), field 2's
+picture translated 0 lines in 4,042 of 4,042 rigidly measurable units, and it is **field 1's
+picture that moves** by 1–2 whole lines. The 274–285 "wander" was estimator noise: 42% of the
+off-263 picks had a median margin of 0.027 against 0.587 for confident picks. Comb can only ever
+constrain the difference `d2 − d1`, never an absolute position.
 
-## v3 — the C engine and the 120-unit rolling mode (2026-08-30 → 09-01)
+*Right:* the error is spatial and integer-line, not temporal order or cadence. *Wrong:* it reported
+an inter-field relation as an absolute position. Codex's review also caught that the correction
+direction was backwards for a while (`e153b82`, 23:33).
 
-- **Premise.** Port v2 to allocation-free C with the same anchors (padding ruler, VBI rows,
-  temporal registration), hysteresis and `Unknown`. The 120-unit rolling majority that "settles
-  the plateau" was NOT in the first C port: `phase_history` first appears in `14fe5d5` (09-01),
-  together with ±6-line motion search in three bands and cut/fade abstention. Codex's account
-  splits these into two stages (first C engine, then motion/rolling); the git objects support
-  that split and this section originally conflated them.
-- **Record.** `f5b261b` "Add allocation-free C field registration engine" (21:00), `bf3f3bc`
-  "independent edge evidence" (21:43), `0f29e37` "dual-edge veto and segment-gauge reset"
-  (08-31 03:01), `0d807af` "Render tagged captures through the C registration engine",
-  `14fe5d5` "motion-phase evidence; abstain on cuts and fades" (09-01 20:39).
-- **Measurements.** Full-tape golden 86,293/86,293 units and 56,441/56,441 confident decisions
-  matching the offline model; untagged census 4,042/4,042 applied offsets correct; 1.29 ms
-  median per unit (CLAUDE.md line 1068).
-- **Falsified.** "The rolling majority was proven to manufacture delayed plateaus" (line 1082):
-  a plateau that starts is followed only after the window's majority flips, tens of units late.
+### 2. The per-field (d1, d2) model (Claude, offline, 08-30 afternoon)
 
-## v4 — bounded FIFO, backdating, horizon (2026-09-02)
+Each field's picture gets its own signed integer offset inside the rigid raster; neither field is
+a permanent anchor; comb constrains `d2 − d1`, absolutes need same-parity temporal registration or
+landmarks; say `Unknown` otherwise (`f936339` 15:49, `ac1e59c` 16:12). Fixture A resolves as
+`d1 ∈ {0, +1, +2}, d2 = 0`, recorded as "test data, not policy". The whole-tape trace selected
+`(0,0)` 63,476 times, `(1,0)` 19,265, `(2,0)` 2,315, `(3,0)` 1,244, in 2,165 constant runs of
+which 1,282 lasted only 1–3 units, and that chatter was correctly labelled "an auditable correction
+trace, not deck-health ground truth". Still a proxy: position was inferred from the picture's own
+edges, comb and temporal correlation. The deck's regenerated VBI lines (unit rows 16 and 17) were
+treated as a "transport ruler" to skip by row number, never as something the content could be
+compared against.
 
-- **Premise.** Keep a caller-owned FIFO (30-unit confirmation, 36-unit hard horizon); a coherent
-  top+bottom candidate may correct a buffered unit; a settled fallback is backdated onto buffered
-  abstentions; hysteresis changes only the fallback.
-- **Record.** `56892df` "bounded FIFO replaces the 120-unit rolling mode; synthetic-truth golden"
-  (00:45); `2a4b23f` "Preserve registration phase across resets" (02:37) = the "Algorithm v4
-  horizon fix" (line 1117): two `RawAwaitingLock` transitions had snapped to (0,0) after reset
-  with no observation.
-- **Measurements.** Six-minute production proof: 54 finalized transitions, five 1–3-unit runs;
-  untagged golden 3,784/4,042 overall, 3,499/3,499 confident, 258 conservative under-corrections;
-  full v4 golden 86,293 units at 2.532 ms median, 464 hard resets with zero reset-induced phase
-  changes (lines 1100–1128).
-- **Why it was wrong anyway.** It answered "is a move real?" by waiting, which is illegal for a
-  live path: a published frame cannot be revised, so every unit spent waiting was a unit
-  presented with the wrong crop. The owner's overnight brief of 09-02 17:23 UTC asked exactly
-  this ("I think we might have overengineered"); the lookback investigation (`dd60843`,
-  `2cdf4f2`, 09-03 03:09–03:14) concluded the FIFO/backtracking belongs to an offline pass only.
+### 3. The C engine (Codex, 08-30 21:00 to 08-31 03:01)
 
-## v5 — the lookback investigation (2026-09-02/03; numbered here for continuity)
+An allocation-free port with the same anchors (`f5b261b`, `bf3f3bc`, `0f29e37`). Compatibility
+mode matched all 86,293 exact whole-tape units and all 56,441 confident offline decisions, and the
+independent census 4,042/4,042, at 1.29 ms per unit. The hardened form required coherent top and
+bottom landmarks and added a **differential veto**: a rigid-envelope candidate is refused when
+opposite same-parity motion says the dominant picture moved differently. Agreement fell to
+3,784/4,042 overall but stayed 3,499/3,499 on confident rows, with all 258 differences
+conservative under-corrections and no opposite correction; 2.58 ms per unit.
 
-- Two independent arms (an external analyst, Codex) audited the v3/v4 sidecars: 936/948 applied
-  transitions began on a matching current-unit observation, six were deliberate backdated locks,
-  two were reset snaps. Verdict (CLAUDE.md line 1147–1155): the dominant whole-tape failure was
-  *evidence authority*, not missing lookahead — a local two-of-three band majority overruled an
-  agreeing coherent full-width envelope. Transcript 09-02 19:21 UTC "Morning report … the
-  lookback verdict". No engine of its own; it decided v6.
+*Right:* edge disagreement made explicit; a live, deterministic hot path proven; "no opposite
+correction" established. *Wrong:* conservatism was already under-selection, and the 3,499/3,499
+score counted only the easy rows. The ambiguous rows it ignored were where the real movement lived.
 
-## v6 — authority-first, forward-only (2026-09-03)
+### 4. Motion phase and the 120-unit rolling mode (Codex, 09-01)
 
-- **Premise.** Zero presentation FIFO. A coherent full-width envelope plus relative consensus is
-  authoritative; coherent top+bottom motion in two broad bands plus same-parity temporal
-  corroboration follows per-unit jitter immediately; delta authority bounded to one line around
-  an absolute gauge.
-- **Record.** `1daad46` "make field registration authority-first" (13:10), `17bf744`, `890fa25`
-  "anchor unit-rate registration motion", `79ba2bc` "bound motion authority to an absolute
-  gauge"; merged and rendered as the watch copy the owner signed off (transcript 09-03 06:17 and
-  08:37 UTC; CLAUDE.md line 1205).
-- **Measurements.** Two-truth golden raster 1,017/1,017 (v4: 858), oracle 1,130/1,140;
-  full-tape strict coherent-envelope disagreement 10,547 → 1,021 of 55,329; 35–40 min
-  follow/hold 0/1,066 → 594/438; 1.466 ms median (line 1146).
-- **Owner sign-off, with the caveat that mattered.** "A large improvement"; the remaining jumps
-  bring *new* lines into the picture, i.e. recorded-signal instability, not raster position
-  (line 1205). Everyone read that as "done except the deck"; it was.
-- **Falsified on re-review.** A yadif test of the frameserver's output combed wherever the two
-  fields were misregistered; the "bottom landmark falls off the raster" hypothesis was refuted
-  (edge moves into rows 257/258); the residual was a *relative-only* class: raw need 0 while the
-  engine kept a held (1,0) through 3–19 units of abstention — 132 of 143 classifiable residuals
-  were over-corrections (line 1156–1180). Instrument: `static_comb_metric.py` (`71f2227`).
+`14fe5d5` (20:39) added ±6-line motion search in three bands, cut/fade abstention, and a
+120-unit `phase_history` whose majority supplied the presented phase. Whole-tape audit: 48
+baseline transitions; `(0,0)` 42,767 units, `(1,0)` 43,030, `(2,0)` 496; 5,353 fast edge
+candidates not applied. The cut/fade abstention survived; the rolling majority did not. It
+"manufactured delayed plateaus" (Codex's own words in the successor commit): a plateau that
+starts is followed only once the window's majority flips, tens of units late, and an old phase is
+retained after the raster returns.
 
-## v7 — relative-only authority (2026-09-03 → 09-04 01:xx, merged `abfa648`)
+### 5. The bounded FIFO, v3 and v4 (Codex, 09-02 00:45 and 02:37)
 
-- **Premise.** A static-region comb search (8-px low-pass, static mask, ≥16-column persistence,
-  reweave −3..+3) may *release* a held phase at unit rate when the raster returns; current-unit
-  authority only; gauge by differential field identity, minimum-crop when unknown.
-- **Record.** `66962f3`, `e7cb33c`, `220765c` "keep relative authority current-unit only"; two
-  threshold changes tuned against tape results were reverted before merge (Codex, transcript
-  09-03 15:29 UTC "BLOCKED … 1,025 vs 1,021").
-- **Measurements.** Misregistered static frames 88 → 29 (first 100 s), 17 → 13 (620 s),
-  803 → 268 (2,400 s credits); blip audit 87/97 correct follows, 5 noise (line 1181).
-- **Why it was still wrong.** Comb is content: it sees the *relation* between the fields and
-  nothing about where either field sits in the raster. The owner's frame-by-frame review with
-  the overlay (09-04 morning, line 1214): "severely under-selecting — almost all of its Unknown
-  decisions happen during real instability".
+`56892df` replaced the rolling mode with a caller-owned FIFO: a coherent current-unit observation
+may correct a buffered unit immediately, a separate fallback trajectory needs 30 units of
+confirmation under a 36-unit hard horizon, and settled fallbacks are backdated onto buffered
+abstentions only. `2a4b23f` (v4) fixed resets so they invalidate confidence but preserve the last
+presented phase; two `RawAwaitingLock` rows had snapped to `(0,0)` with no observation. The first
+synthetic golden had 347 units (338/338 unambiguous, 9/9 abstentions). A six-minute production
+proof went from 144 transitions and 70 short runs to 54 and five once a caller bug (rewriting
+buffered abstentions to raw at every horizon) was fixed. Full v4: 2.532 ms per unit, 464 hard
+resets with zero reset-induced phase changes. Forward-only presentation differed from the FIFO in
+exactly 147 rows at five plateau onsets.
 
-## v8 — bottom-edge placement plus comb refinement (2026-09-04, branch `bottom-edge-v8`)
+*Wrong anyway:* it answered "is a move real?" by waiting, which a live path cannot do. Every unit
+spent waiting was a unit presented with the wrong crop. The owner's overnight brief of 09-02
+already asked whether this was overengineered.
 
-- **Premise.** The owner's placement rule as an instrument: per field the crop's final line
-  should be the first mostly-black line under the picture; measure the bottom edge directly,
-  learn a per-segment target, apply `edge − target` at unit rate.
-- **Record.** `f9a8a1d`, `fb05f9e`, `5aea42e` "place fields from their lower picture boundary",
-  `20711c0`, `91e44b3`, `0fc4ade` (all 09-04). Instrument first: `bottom_edge_census.py`
-  (`13320a9`) — first minute: raw moved & crop followed 80, moved & held 198, changed & still 69.
-- **Measurements.** Pure bottom-only was falsified by the comb metric at 937/2,069 bad frames
-  (Codex's own trace); the accepted fusion (bottom = absolute gauge, comb refines `d2 − d1`) gave
-  29 → 5 (SP) and 268 → 138 (credits) and census 214/64/34 — but registered the field-1 bottom
-  at 256 in 1,038 units and 255 in 546, i.e. the comb overrode the owner's rule in a third of
-  the units. Cost 2.75 ms median. Twelve review findings across three rounds; the branch was
-  never merged.
-- **Why it was wrong.** Still a proxy: one edge of one field, then a content-derived relative
-  term to patch what the edge could not see. The owner: "you've settled on this bottom-edge
-  thing like it's gold … you have not measured the number of actual picture lines, where the
-  top line is and where the bottom line is".
+### 6. The lookback investigation (Claude and Codex, 09-02 night to 09-03 03:14)
 
-## Two false alarms on the same day (2026-09-04)
+Two independent audits of the v3/v4 sidecars, reconciled: 936 of 948 applied transitions began on
+a matching current-unit observation, six were deliberate backdated locks, two were reset snaps.
+The FIFO could revise abstentions but never a wrong positive: a lone `(0,1)` observation at
+frame 8169 latched for 104 units. And whole-tape, 10,547 of 55,329 coherent rows had a selected
+phase that contradicted both the full-width envelope and relative consensus, of which
+backtracking repaired about 1%. Verdict: the dominant failure was **evidence authority** (a local
+two-of-three band majority overruling an agreeing full-width envelope), not missing lookahead
+(`dd60843`, `2cdf4f2`, `2133d6b`). No engine of its own; it decided v6. There was never a "v5"
+in repository naming; this is the gap between v4 and v6.
 
-- **The counter-wrap preview.** A full-raster preview keyed decisions by the 16-bit device
-  counter; the tape's second half overwrote the first half's rows, the first minute rendered
-  with decisions from 37 minutes later, and the visible jitter was reported as engine chatter
-  (`f80b1f9` fix; LEARNINGS "validate a new instrument against a known reference"). Cost: a
-  wrong defect brief to Codex and an hour.
-- **Crop origin versus picture origin.** Sequence from both transcripts (UTC, 09-04): 08:29 the
-  owner tells Codex "we've been rendering from line 17 instead of line 19 this entire time" and
-  Codex calls it a foundational mistake; 08:33 the owner tells Claude the crop should come from
-  the standard, and Claude commits 19/282 (`bdac68b`, 08:35) answering with the clean aperture
-  alone; 08:36 the owner asks Codex whether analog renders normally show line 21 first, Codex
-  agrees ("17/280 is the VBI-preserving window; my 'foundational mistake' conclusion was wrong");
-  08:36:50 the owner: "but that's not the problem. OUR render is starting at line 19" (the effect
-  of `bdac68b`), and Codex withdraws the 19/282 change and proposes auditing the renderer for a
-  bug; 08:38 the owner to Claude: "you are confusing both me and yourselves"; 08:39 Claude reverts
-  `bdac68b` (`2930095`) to match Codex's VBI-preserving answer and tells Codex the line-19 render
-  was its own commit; 08:41–08:51 the owner asks about the 486-line raster and decides 720×480 =
-  clean aperture, 720×486 = alternate mode; `7285d89` restores 19/282 (08:51). The fault was
-  Claude's: three coordinate systems (unit rows 17/19, the standard's lines 21/23, the deck's
-  regenerated lines versus the tape's) all called "line N" without saying which, which is what
-  confused the owner. LEARNINGS "two coordinates, one name".
+### 7. Authority-first v6 (Codex, 09-03 12:48 to 14:15; owner sign-off 17:33)
 
-## The direct signal (2026-09-04 afternoon)
+Zero presentation FIFO, forward-only. A coherent full-width envelope plus relative consensus is
+authoritative; coherent top+bottom motion in two broad bands with same-parity corroboration is
+followed at unit rate; delta authority is bounded to one line around an absolute gauge; a stale
+positive can no longer latch (`1daad46` to `3b30718`). Two-truth golden: raster 1,017/1,017 (v4:
+858), oracle 1,130/1,140. Whole-tape strict-envelope disagreement 10,547 → 1,021 of 55,329;
+one-field transitions followed 850 → 2,939 of 4,128; at 35–40 min follow/hold 0/1,066 → 594/438;
+1.466 ms per unit.
 
-Dumping the luma of rows 12–26 of two units (transcript 09-04 ~09:00 UTC) showed what every
-render had displayed on its first row for six days: row 16 is the deck's fixed timing line; row
-17 is the deck's regenerated **line 21**, a null closed-caption waveform (seven-cycle run-in,
-start bit, two null bytes); the **tape's own line 21** rides exactly on it when the field is
-correctly placed and moves *with the picture* when it is displaced (first minute: caption 17 /
-picture top 19 in 50/50 units; 19 / 21 in 38/38; EP slice 17 / 19 in 500/500), always two rows
-above the picture with the black line 22 between. The picture origin 19/282 is the standard's
-first visible line (SMPTE RP-202: 23/286). Field 2 sits there in 1,573/1,800 first-minute units
-and 1,800/1,800 in the EP slice. The parity test on raw units (per-field model 202–0 over a
-whole-picture display-line shift) settled that field 1 alone moves, as a rigid whole-field
-shift (envelope census: 199 rigid moves, top and bottom together).
+The owner watched a full NNEDI copy and signed off: a large improvement, representative of a
+digitally captured VHS tape, and the remaining jumps "bring new lines into the picture", i.e.
+recorded-signal instability outside any integer engine (`089ea5b`). Both agents took that as
+"done except the deck". **It was not**: the 09-04 raw measurements (items 12 and 13) showed the
+engine abstaining on rigid whole-field shifts that are exactly what an integer engine corrects.
 
-## v9 — the agreed plan (`docs/registration_v9_plan.md`)
+### 8. Relative-only v7 (Claude's diagnosis 09-03 22:13; Codex's engine 22:19 to 09-04 01:15; merged `abfa648`)
 
-Golden rule: assume the picture is locked at the deck's line 21 unless the tape's line 21 is
-found anywhere else in the field; only that changes the lock; one or two jumps near the start of
-a recording are acceptable and recorded. Line 21 (blank waveform, no caption data required) is
-the primary gauge; the picture envelope (top, bottom, height, black relative to the field's own
-blanking, VBI-type lines excluded by signature) is the secondary; black line 22, the next field's
-leaky line 21 in the head-switch band, and video above the insert are confirmations. One unit
-of memory (no lookahead, FIFO or backtracking), field parity as an atomic invariant, whole
-UYVY lines moved, holds always named. Deleted: bands, phase voting, comb authority, temporal
+Claude's yadif test of the frameserver's own output combed wherever the two fields were
+misregistered. The "bottom landmark falls off the raster" hypothesis was refuted (the edge moves
+into rows 257/258, still measurable); the residual was a **relative-only class**: raw need 0
+while the engine held `(1,0)` through 3–19 units of abstention. Of 143 classifiable residual
+frames in the first 100 s, 132 were over-corrections. Instrument: `static_comb_metric.py`
+(`71f2227`).
+
+Codex wrote the goldens first (v6 scored 0/12 relative return, 0/15 gauge-unknown), then a
+static-region comb estimator (8-px low-pass, static mask, ≥16-column persistence, reweave −3..+3)
+that may *release* a held phase at unit rate as current-unit authority only; two threshold changes
+tuned against tape were reverted before merge. Paced, zero-drop measurements: misregistered static
+frames 88 → 29 (first 100 s), 17 → 13 (620 s), 803 → 268 (2,400 s credits window; the
+record-aligned denominators are 2,869 → 2,865). Credits blip audit: 87 of 97 one-unit flips were
+correct follows, 5 unmeasurable, 5 engine noise. Codex's engine-internal strict proxy *worsened*
+1,021 → 1,128 while every measured window improved, which killed it as an acceptance criterion.
+Cost 3.6 ms median. The whole-tape pair in `captures/` was re-rendered overnight with a gate
+(02:53).
+
+*Wrong anyway:* comb is content. It sees the relation between the fields and nothing about where
+either sits in the raster.
+
+### 9. The morning review and the first false alarm (Owner and Claude, 09-04 morning)
+
+The owner: "better, but still not good enough for yadif." Watching frame by frame with the
+sidecar overlaid (Claude's `overlay_sidecar.py`, built that morning): "the decision engine is
+definitely picking up on things, it's just severely under-selecting"; almost all of its Unknown
+decisions fall exactly where the raster is genuinely unstable.
+
+Two of Claude's own tools then misled everyone. The full-raster preview keyed decisions by the
+16-bit device counter, so after the wrap at 65,536 the second half of the tape overwrote the
+first half's rows and the first minute rendered with decisions from 37 minutes later; the visible
+jitter was reported to Codex as engine chatter. The owner's cross-check ("then why is the clip in
+Documents stable?") exposed it (`f80b1f9`, 12:00). Cost: Codex's `unknown-hold` branch (12:08 to
+12:12, `7991fa9`, `f605bcd`), which froze every Unknown row. The sidecar's 2,475 phase changes on
+Unknown rows were a real inconsistency, but the fix worsened both presentation windows because
+Unknown usually meant "the proxy failed while the raster moved". Not merged. Separately, two
+renderer defects were Claude's: `capture_render.py` kept rows 17–18 fixed and remapped from 19
+(duplicating row 18 on negative offsets, dropping 19 on positive), and the full-raster preview
+duplicated below its window. Both replaced with pure whole-window shifts (`3b94b51`, `4f8a4d3`).
+The owner's rule from this review: never duplicate lines, always shift the whole crop window,
+shifting into digitally degenerate black is acceptable.
+
+### 10. Bottom-edge v8 (Owner's rule; Claude's instrument 13:03; Codex's engine 13:16 to 15:14; never merged)
+
+The owner's placement rule, taken literally as an instrument: per field, the crop's final line
+should be the first mostly-black-luma line under the picture. Claude's `bottom_edge_census.py`
+(`13320a9`) measured v7 on the first 1,800 units: the raw edge moved and the crop followed 80
+times, moved and the crop held 198 times, and the crop changed on a still edge 69 times. Codex
+built goldens (v7 scored 0/6 dark hold, 0/8 fade reacquisition) and an engine that learns a
+per-segment lower target and applies `edge − target` at unit rate. A pure bottom-only prototype
+was catastrophic on the comb metric (29 → 937 bad frames), so the shipped form kept the v7 comb
+estimator to refine `d2 − d1`. Results: 29 → 5 (SP window), 268 → 138 (credits), census
+214/64/34, 2.75 ms. But the registered field-1 bottom landed at 256 in 1,038 units and 255 in
+546: the comb overrode the owner's rule in a third of the units. Twelve review findings across
+three rounds (Claude's transcript).
+
+The owner stopped it: "you've locked on to this bottom-edge thing. NO! You are operating on a
+false premise. You have not measured the number of actual picture lines, where the top line is
+and where the bottom line is." Still a proxy: one edge of one field, patched by a content-derived
+relative term.
+
+### 11. The conceptual reset (Owner, 09-04 afternoon)
+
+"Before either of you write another line of code, agree on the PROBLEM conceptually. Write back
+to me conceptually how it works. Don't iterate on the current engine. Tear it down and start
+fresh." And, on both agents accepting his instructions ("drop backtracking hysteresis") without
+understanding them: "the answers you are coming back with are really concerning the fuck out of
+me." Also: stop committing unreproducible experiments to main (an overlay commit referencing
+unmerged v8 columns was reverted).
+
+Claude measured the raw units instead of the engine. The envelope census (`0e349c5`, 16:52; top,
+bottom and height per field, both recordings): field 1 makes 199 rigid one-line moves in the
+first minute (100 up, 99 down, top and bottom together, height constant), field 2 makes zero;
+the EP slice at 1,300 s is rigid in both fields. A parity test on raw units: a per-field model
+beats a whole-picture one-display-line shift 202–0. The owner had said "Codex keeps saying field 2
+stays put, but it makes no sense"; now it was physical, and it explained why one field flipped
+while the other stayed. Claude's V-sync research note (`8f58f37`) answered the mechanics but
+carried the instrument's error: the census skipped rows 17 and 19 by number, reported the picture
+top as row 20, and the note rationalised 20/283 as "the standard's first active lines".
+
+### 12. The direct signal (Owner, Codex and Claude, 09-04 17:20 to 17:35)
+
+The owner, looking at the EP render: "there are multiple sets of timing signals in the VBI: 8
+short white pulses followed by 3 longer, two longer pulses above that." Then: "I thought it was
+weird that I saw VBI pulses in the mute renders." He asked Codex what the fixed pulses were
+according to the standard; Codex identified them as a **null CEA-608 line 21**: seven-cycle clock
+run-in, start bit, two null bytes (17:34). Claude dumped the luma of rows 12–26 of raw units
+(17:20): row 16 is the deck's fixed timing line; row 17 (280 for field 2) is the deck's
+regenerated line-21 insert, byte-alike across the tape; the **tape's own line 21 rides exactly on
+the insert when the field is correctly placed and moves with the picture when it is displaced**,
+always two rows above the picture top with the black line 22 between (first minute: caption 17 /
+top 19 in 50/50 units, 19 / 21 in 38/38; EP slice 17 / 19 in 500/500). Row 19 is the standard's
+first visible line (SMPTE RP-202: line 23), and field 2 sits at its equivalent 282 in 1,573 of
+1,800 first-minute units and 1,800 of 1,800 in the EP slice. The census was rewritten to
+recognise caption and timing lines by signature wherever they land (`1756fba`, 17:31). Line-21
+row sets on the SP first minute: `(17,)` 1,663 units, `(17,19)` 85, all 85 with picture
+displacement +2; EP `(17,)` 1,762 (Claude's `line21_probe.py`, transcript-only).
+
+Every render for six days had shown this on its first row. The crop started at row 17, so line 21
+and the black line 22 were inside every frame, reading as "content" to the engines and as
+"VBI to skip" to the instruments.
+
+### 13. The second false alarm: crop origin versus picture origin (17:29 to 17:51)
+
+This one was Claude's, and it confused the owner. The sequence, from both transcripts: 17:29 the
+owner tells Codex "we've been rendering from line 17 instead of line 19 this entire time" and
+Codex calls it a foundational mistake. 17:33 the owner tells Claude the crop should come from the
+standard, not from him; Claude commits a 19/282 crop origin two minutes later (`bdac68b`),
+answering with the clean aperture alone. 17:36 the owner asks Codex whether analog renders
+normally show line 21 first; Codex agrees and withdraws its "foundational mistake" (17/280 is the
+VBI-preserving window). 17:36:50 the owner: "but that's not the problem. OUR render is starting
+at line 19", the effect of Claude's commit; Codex withdraws the 19/282 idea and proposes auditing
+the renderer for a bug that does not exist. 17:38 the owner to Claude: "you are confusing both me
+and yourselves." 17:39 Claude reverts (`2930095`) to match Codex's answer and tells Codex the
+line-19 render was its own commit. 17:41 the owner: "so what's this about a 486 height thing
+then?" and, given both standard answers, decides: **720×480 is clean aperture** (crop rows
+19/282 = lines 23/286, captions out of the render); **720×486 is an alternate output mode** (lines
+21–263 / 283–525, captions kept). `7285d89` restores 19/282 at 17:51.
+
+The root fault: three coordinate systems, unit rows (17/19), the standard's line numbers
+(21/23), and the deck's regenerated lines versus the tape's, all called "line N" by Claude
+without saying which, plus a shared constant changed on main mid-discussion without telling the
+other agent. Recorded in `LEARNINGS.md` ("two coordinates, one name").
+
+### 14. The golden rule and the v9 plan (Owner's rule, 17:50 to 18:06; not implemented)
+
+The owner: "the real line 21 sits on top of the deck's generated line 21, and that is also a
+picture lock." "If we can't find line 21 anywhere else, even possibly on the bottom, assume it
+is locked in the right place, and only change that lock if we find otherwise. That's the golden
+rule." "Everything derives from that: field parity that keeps both fields aligned at the correct
+picture start." "We don't need actual captions; anything that looks like that blank line-21
+signal is valid." Secondary checks, never the primary gauge: leaky VBI framing data at the bottom
+of the field, picture jumping above the deck's line-21 band ("video should obviously never touch
+there"), and the black line 22 between.
+
+`docs/registration_v9_plan.md` (`d61ee8e`, 18:06) records the agreed design: line 21 primary
+(`d = row − 17`), the picture envelope secondary (top, bottom, height, black relative to the
+field's own blanking, VBI-type lines excluded by signature), one unit of memory, no lookahead or
+FIFO or backtracking, field parity as an atomic invariant, whole UYVY lines moved, every hold
+named, `CaptionRelock` only when a unique off-insert caption coexists with an envelope at the
+origin consistently, ambiguity classes (none, unique, duplicate, split, skewed, leaking band)
+that never touch the lock or the crop. Deleted: bands, phase voting, comb authority, temporal
 vetoes, candidate searches, dwell, chatter suppression, common-mode arbitration, provisional
-trajectories, learned position references. Still to be built and tested.
+trajectories, learned position references. Codex's plan drafts were corrected twice on the way
+(envelope primary → line 21 primary; a CaptionRelock model → the golden rule). Acceptance: every
+unique off-insert line 21 yields the matching displacement, registered top and bottom constant
+per segment whenever height is valid, zero crop changes on a still raster, the EP leaking bands
+(458 of 1,800 units with two or more, 138 with one) as negative controls, and static comb no worse
+than v8's 5/2,011 and 138/2,865 without being the truth source.
 
-## The through-line
+## Why it derailed
 
 Every unit carries three layered signals: the Shuttle's digital fill, the deck's regenerated
 raster (sync, its timing line, its line-21 insert), and the tape's content (its line 21, the
 black line 22, the picture). Registration error is the difference between the last two. Eight
-versions reconstructed that difference from the picture alone, through proxies that respond to
-content as much as to position, each patched with the next proxy; the direct comparison was
-never made because the deck's lines were "VBI" to skip by row number, and because the crop put
-line 21 *inside* the picture window where it read as content. The instruments were wrong in the
-same way: the census skipped rows 17 and 19 by number and so censored a picture top at 19; the
+versions reconstructed that difference from the picture alone, each through a proxy that responds
+to content as much as to position, each patched with the next proxy:
+
+- weave measured only `d2 − d1`;
+- band votes measured whichever local edge dominated;
+- same-parity temporal search measured content motion as well as raster motion;
+- the rolling mode and the FIFO turned uncertain measurements into presentation policy;
+- strict envelope coherence assumed the top and bottom content edges were one rigid body;
+- static comb measured relative registration on static detail only;
+- the bottom census took one content boundary for absolute raster position;
+- the full envelope improved that to top+bottom+height but still had to guess which rows were
+  picture and which were vertical-interval structure.
+
+The proxies were not useless: they proved the transport is rigid, the motion is per field and
+integer-line rather than cadence, corrections must move whole UYVY lines, and a live solution fits
+the budget. They failed wherever content was flat, dark, moving, layered or clipped, which is
+exactly where the engine said Unknown or picked the wrong authority. The instruments were wrong
+the same way: the census skipped rows 17 and 19 by number and censored a picture top at 19; the
 first VBI probe demanded caption *data* and found line 21 in a tenth of the units it was on.
+Meanwhile both agents kept following the owner's instructions word for word without the model
+behind them, which is what he objected to most.
 
-## Reconciliation with Codex's account
+The way back was not another proxy. It was the owner insisting on the concept before code,
+measuring the raw rows instead of the engine, and noticing that the "nuisance VBI" at the top of
+every render was the standard's own timing waveform, present on every unit, that says directly
+where field 1 is.
 
-Codex wrote its own excavation from its rollout records and the git objects without reading this
-file (`docs/registration_archaeology_codex.md`, committed verbatim as `724a9cb`). The two accounts
-agree on every deciding measurement they both cite (the 274–285 wander as estimator noise, the
-147 forward-only rows, 10,547 → 1,021, 88 → 29 / 803 → 268, 80/198/69, 29 → 937 for pure
-bottom-only, 256 × 1,038 / 255 × 546, 202–0 in the parity test, 19/282). Where they differ:
+## Where the two excavations differed
 
-1. **Partition of the nine.** This file counts v1 (field-2 origin) · v2 (d1,d2) · v3 (C engine
-   + rolling) · v4 (FIFO) · v5 (lookback investigation, no engine) · v6 · v7 · v8 · v9. Codex
-   counts Python estimator · first C engine · motion/rolling v2 · FIFO v3/v4 · authority-first v6
-   · relative-only v7 · the `unknown-hold` experiment · bottom-edge v8 · v9 plan, and states that
-   no `v5` exists in repository naming. Both partitions reach nine; the git objects favour
-   Codex's split of the C engine from the rolling mode (`phase_history` is absent from `f5b261b`
-   and `0f29e37`, present in `14fe5d5`), and this file's v3 section has been corrected above.
-   "v5" here is a label for the investigation that decided v6, not a claim that an engine existed.
-2. **Where v1 starts.** Codex begins at `4f8b65b` (22:29, the first corrective crop, already
-   moving field 1); this file begins at `e811226` (22:15, the field-2-origin premise it
-   corrected 35 minutes later). Both are in git; no conflict, different choice of first commit.
-3. **The v6 sign-off.** This file said the owner's reading ("the remaining jumps bring new lines
-   in — recorded-signal instability, not raster position") was taken as final and "it was".
-   Codex calls that interpretation *overturned* by the 09-04 frame-by-frame review and the raw
-   parity/envelope measurements (rigid whole-field shifts of field 1, 202–0). Codex is right and
-   the sentence here was wrong: at least the rigid-shift class the engine abstained on is
-   registration-correctable. Some jumps may still be recorded signal; that is now a per-unit
-   question for v9's envelope, not a global verdict.
-4. **The `unknown-hold` detour (09-04 12:08–12:12, `7991fa9`, `f605bcd`, not merged).** Omitted
-   here; sourced by Codex. It was the direct cost of the counter-wrap false alarm: the sidecar's
-   2,475 phase changes on `Unknown*` rows were a real policy inconsistency, but freezing every
-   Unknown row worsened both presentation windows because Unknown usually meant "the proxy failed
-   while the raster moved". Accepted as an addition.
-5. **Why `bdac68b` was reverted — settled from both transcripts.** The revert commit `2930095`
-   carries no rationale; the rollouts do. Codex's account (the revert followed recognizing that
-   line 21 belongs in a VBI-preserving window) is right: Codex gave the owner that answer at
-   08:36:48 UTC and Claude reverted at 08:39 to match it. Claude's first recollection ("Codex
-   found the render starting at line 19") was wrong: the OWNER reported the line-19 render to
-   Codex at 08:36:50, having seen the effect of Claude's own commit; Codex withdrew the change and
-   proposed a renderer audit. The full sequence is in the false-alarm section above.
-6. **The 20/283 picture top.** Codex attributes the earlier 20/283 statement in `8f58f37` to a
-   line-number interpretation error; this file attributes it to the census skipping rows 17 and
-   19 by number. Both are true and sequential: the instrument (`0e349c5`) produced 20 by
-   censoring 19, and the research note then justified 20 as "the standard first active line".
-7. **v7 denominators.** Codex distinguishes 803/2,871 → 268/2,870 (first run) from
-   803/2,869 → 268/2,865 (record-aligned filtering) and warns not to merge them; this file quoted
-   only the numerators. Codex's precision is adopted.
-8. **Codex's UNSOURCED flags, checked.** The v9 labels `Line21Placement` /
-   `Line21OnlyPlacement` / `Line21EnvelopeConflict` and the priority order ARE sourced: they are in
-   `docs/registration_v9_plan.md` (`d61ee8e` on main), which Codex's worktree at `0fc4ade` did not
-   contain. The SP line-21 row-set counts `(17,) = 1,663`, `(17,19) = 85` and the EP `(17,) =
-   1,762` are, as Codex says, transcript-only: they come from `line21_probe.py` in Claude's
-   09-04 session over the first 1,800 units and the 1,300 s EP slice, and are recorded here with
-   that provenance. The whole-tape envelope census was still running when both accounts were
-   written; its result is reported separately when it lands.
-9. **Coverage.** Codex's §9 (what each instrument could and could not prove) has no counterpart
-   here and is the better reference for that question; the twelve v8 review findings across
-   three rounds and the owner's quoted directions are here only, from Claude's transcript.
+Both accounts agreed on every deciding measurement. The differences, resolved:
+
+- **Partition.** Claude counted v1 to v8 plus v9 with a "v5" label for the lookback
+  investigation; Codex split the first C engine from the rolling mode and counted the
+  `unknown-hold` branch as a stage. Git supports Codex's split (`phase_history` appears in
+  `14fe5d5`, not in the first C port), adopted above.
+- **The v6 sign-off.** Claude's draft said the owner's "new lines, not raster" reading was
+  final. Codex called it overturned by the raw parity and envelope measurements. Codex was right.
+- **The `unknown-hold` detour** was missing from Claude's draft; Codex sourced it.
+- **The `bdac68b` revert.** Claude's draft said Codex "found" the line-19 render; the transcripts
+  show the owner reported it to Codex after seeing the effect of Claude's own commit. Corrected
+  in item 13.
+- **The 20/283 picture top.** Codex called it an interpretation error in the research note;
+  Claude called it the census censoring row 19. Both, in sequence.
+- **Sourcing.** Codex flagged the v9 labels as unsourced because its worktree lacked
+  `docs/registration_v9_plan.md`; they are on main. It was right that the line-21 row-set counts
+  (1,663 / 85 / 1,762) are transcript-only, and they are marked so above.
