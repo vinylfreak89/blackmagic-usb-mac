@@ -1359,6 +1359,23 @@ delivery edge; wrong one at acquisition.
   does, and "the deck's TBC produces the stable raster" is now only supported by the OSD witness
   (§7), not by these lines. Whether the deck ALSO inserts a line 21 that the Shuttle overwrites
   is unmeasurable from this side.
+  **Second recording, line-by-line (2,100 s window, 600 units; all NTSC lines).** Field 1: the
+  tape's line 21 lands on **line 23** (jittering to 24 with the picture), a full CEA-608 waveform
+  at ~2× the insert's amplitude, data-bearing in ~1/3 of units; the picture starts on the next
+  line (the source had active video on line 22). Where two adjacent lines carry caption energy,
+  the extra line is a complete 7-cycle run-in with no start bit and no data, horizontally in
+  phase — a vertical duplicate of the run-in, NOT a half-line horizontal split (a periodic
+  run-in cannot fix a lag by correlation; its envelope position does). Field 2: **line 286**
+  carries, in ~99% of units, a tape-borne signal (per-pixel std 2.9 across units vs 0.5 for the
+  Shuttle's inserts): a pulse at 2–4 µs, a ~50 IRE bar over 5.5–17.4 µs — exactly the run-in +
+  start-bit span of a caption line — and a ~5 IRE pedestal over the data span. Its shape does
+  NOT track field 1's caption (null vs data-bearing field-1 units give identical line 286: 23.3
+  vs 23.5; corr 0.07), so it is not field-1 leakage; it is the tape's own field-2 caption line
+  (284) displaced +2, smeared at the source. Not a bad record head: field 2's picture is as sharp
+  as field 1's (median field2/field1 horizontal-gradient ratio 0.99–1.00 in three second-
+  recording windows, 1.01 in the first recording). Line 287 carries the run-in fragment in ~25%.
+  Net: the second recording sits at **d1 = +2 (jitter to +3), d2 = +2**, both fields agreeing,
+  with the smeared line-286 envelope (bar edges at 5.5/17.4 µs) a stable field-2 gauge for it.
   **Owner ruling (same evening):** multiple line-21-like rows or a partial waveform in a unit
   means the timing signal is too unstable to use — give up on line 21 for that unit; the leaked
   VBI framing pulses at the bottom of the field and picture-above-the-band are then a real fix
