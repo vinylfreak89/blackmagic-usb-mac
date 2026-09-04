@@ -186,9 +186,12 @@ def main():
     add("geometry-acquire-2", (0, 0))
     add("geometry-rigid-plus1", (1, 0), picture=(1, 0))
     add("geometry-rigid-minus1", (-1, 0), picture=(-1, 0))
-    add("geometry-height-break", (-1, 0), picture=(0, 0), letterbox=8)
-    add("geometry-reacquire-1", (-1, 0), picture=(0, 0), letterbox=8)
-    add("geometry-reacquire-2", (-1, 0), picture=(0, 0), letterbox=8)
+    add("geometry-height-break", (-1, 0), picture=(0, 0), letterbox=8,
+        bottom_overrides=(248, None))
+    add("geometry-reacquire-1", (-1, 0), picture=(0, 0), letterbox=8,
+        bottom_overrides=(248, None))
+    add("geometry-reacquire-2", (-1, 0), picture=(0, 0), letterbox=8,
+        bottom_overrides=(248, None))
 
     # A top-authoritative parity gauge must acquire and retain a lock even
     # while the visible bottom is clipped and visible height alternates.
@@ -209,8 +212,8 @@ def main():
         f2_envelopes=(282,), base_bottoms=(256, 519))
     add("clip-gap-fit-pending", (0, 2), picture=(0, 2),
         f2_envelopes=(282,), base_bottoms=(256, 518))
-    add("clip-gap-hold", (0, 2), picture=(0, 1),
-        base_bottoms=(256, 519), f2_reason="ClipUnknownHold",
+    add("clip-gap-band-top-decides", (0, 1), picture=(0, 1),
+        base_bottoms=(256, 519), f2_reason="GeometryLockDecides",
         f2_lock="Locked")
 
     # Insert data is corroboration, not authority over a live geometry lock.
@@ -269,27 +272,26 @@ def main():
         top_overrides=(20, None), bottom_overrides=(256, None),
         f1_reason="GeometryLockDecides", f1_lock="Locked", comb=1)
 
-    # With C unknown, a top-only field-2 change ending at the ADC boundary is
-    # not sufficient to change placement, even before a clip candidate exists.
+    # Once the observed bottom is in the censored near-blank band, top position
+    # is the only available geometry coordinate and decides placement.
     add("boundary-top-only-acquire-1", (0, 0), begin=True,
         top_overrides=(None, 282), bottom_overrides=(None, 521))
     add("boundary-top-only-acquire-2", (0, 0),
         top_overrides=(None, 282), bottom_overrides=(None, 521))
-    add("boundary-top-only-hold", (0, 0),
+    add("boundary-top-only-placement", (0, 1),
         top_overrides=(None, 283), bottom_overrides=(None, 522),
-        f2_reason="ClipUnknownHold", f2_lock="Locked", f2_zero="Acquired")
+        f2_reason="GeometryLockDecides", f2_lock="Locked", f2_zero="Acquired")
 
-    # Fixture A's effective field-2 bottom is NTSC line 522, above the hard
-    # ADC-last line. With no physical zero and no fitted C, a seemingly rigid
-    # 287/523 -> 286/522 move is still not placement authority.
+    # Fixture A's near-blank band begins above the hard ADC-last line.  A rigid
+    # top move while its bottom remains in that censored band is placement.
     add("unknown-c-field2-acquire-1", (0, 0), begin=True,
         top_overrides=(None, 283), bottom_overrides=(None, 519))
     add("unknown-c-field2-acquire-2", (0, 0),
         top_overrides=(None, 283), bottom_overrides=(None, 519))
-    add("unknown-c-field2-hold", (0, 0),
+    add("unknown-c-field2-band-placement", (0, -1),
         top_overrides=(None, 282), bottom_overrides=(None, 518),
-        f2_reason="ClipUnknownHold", f2_lock="Locked", f2_zero="Acquired",
-        comb=0)
+        f2_reason="GeometryLockDecides", f2_lock="Locked", f2_zero="Acquired",
+        comb=1)
 
     # A content-acquired position cannot promise deinterlacing safety on an
     # unmeasurable unit merely because both state machines remain Locked.
