@@ -64,9 +64,12 @@ parity zero remains usable away from the boundary. Each refusal is
 
 `fieldreg_begin_segment()` forgets both locks and starts the new segment at
 `d=0`. `fieldreg_discontinuity()` forgets the locks but preserves each last
-applied offset. Neither buffers, backdates, drops, or repeats a unit. Until
-both field locks are valid, `comb_safe` is false; callers still emit the
-uncorrected/held frame and leave any presentation policy downstream.
+applied offset. Neither buffers, backdates, drops, or repeats a unit.
+`comb_safe` requires both field locks and either physical zero sources
+(`Parity`/`Envelope`) for both fields or a current rigid, zero-residual
+geometry observation in both. A merely content-acquired zero therefore cannot
+promise deinterlacing safety through an unmeasurable unit. Callers still emit
+every uncorrected/held frame and leave any presentation policy downstream.
 One missing Shuttle insert is an `InsertAbsent` hold and does not itself erase
 a lock; a real mute/unlock is already a signal-state segment boundary, while
 subsequent measurable geometry can independently invalidate a stale lock.
@@ -83,7 +86,8 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
 - selected gauge line, decoded bytes, correlation amplitude, and the live
   lock's independent `geometry_d` reading;
 - blank-row mean, raw picture top/bottom/height, measurability and censoring;
-- lock state/id, frozen top/height, whether that height is uncensored,
+- lock state/id, `None`/`Acquired`/`Parity`/`Envelope` zero source, frozen
+  top/height, whether that height is uncensored,
   `ClipUnknown`/`ClipFitting`/`ClipFitted`, and the optional clip ceiling; and
 - expected bottom, lost-line count, and invariant residual.
 

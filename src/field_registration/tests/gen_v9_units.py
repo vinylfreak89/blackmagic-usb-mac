@@ -108,11 +108,14 @@ def main():
     units = []
 
     def add(scenario, expected, *, begin=False, ok=True, f1_reason="-",
-            f2_reason="-", f1_lock="-", f2_lock="-", comb=-1, **kwargs):
+            f2_reason="-", f1_lock="-", f2_lock="-", f1_zero="-",
+            f2_zero="-", f1_lock_top=-999, f2_lock_top=-999, comb=-1,
+            **kwargs):
         counter = len(units)
         units.append(make_unit(counter, **kwargs))
         rows.append((counter, scenario, int(begin), int(ok), expected[0], expected[1],
-                     f1_reason, f2_reason, f1_lock, f2_lock, comb))
+                     f1_reason, f2_reason, f1_lock, f2_lock, f1_zero, f2_zero,
+                     f1_lock_top, f2_lock_top, comb))
 
     # Alignment and immediate parity authority.
     add("aligned-null-acquire-1", (0, 0), begin=True)
@@ -229,7 +232,8 @@ def main():
     add("parity-plus2-reanchors", (2, 0),
         captions=((2, 0x14, 0x2c), None),
         top_overrides=(21, None), bottom_overrides=(258, None),
-        f1_reason="Line21Placement", f1_lock="Locked")
+        f1_reason="Line21Placement", f1_lock="Locked", f1_zero="Parity",
+        f1_lock_top=19)
     add("gold-zero-nonrigid-hold", (2, 0),
         top_overrides=(20, None), bottom_overrides=(255, None),
         f1_reason="LockBroken", f1_lock="Locked")
@@ -245,7 +249,7 @@ def main():
         top_overrides=(None, 282), bottom_overrides=(None, 521))
     add("boundary-top-only-hold", (0, 0),
         top_overrides=(None, 283), bottom_overrides=(None, 522),
-        f2_reason="ClipUnknownHold", f2_lock="Locked")
+        f2_reason="ClipUnknownHold", f2_lock="Locked", f2_zero="Acquired")
 
     # A content-acquired position cannot promise deinterlacing safety on an
     # unmeasurable unit merely because both state machines remain Locked.
@@ -253,7 +257,8 @@ def main():
     add("acquired-zero-acquire-2", (0, 0))
     add("acquired-zero-dark-hold", (0, 0), dark=True,
         f1_reason="GeometryUnmeasurable", f2_reason="GeometryUnmeasurable",
-        f1_lock="Locked", f2_lock="Locked", comb=0)
+        f1_lock="Locked", f2_lock="Locked", f1_zero="Acquired",
+        f2_zero="Acquired", comb=0)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
@@ -264,7 +269,8 @@ def main():
         w = csv.writer(out)
         w.writerow(("unit", "scenario", "begin_segment", "process_ok",
                     "applied_d1", "applied_d2", "f1_reason", "f2_reason",
-                    "f1_lock", "f2_lock", "comb_safe"))
+                    "f1_lock", "f2_lock", "f1_zero", "f2_zero",
+                    "f1_lock_top", "f2_lock_top", "comb_safe"))
         w.writerows(rows)
     print(f"wrote {len(units)} v9 units")
 
