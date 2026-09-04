@@ -25,6 +25,11 @@ fixture cannot see:
   parity/geometry disagreement is a named hold; and
 - a one-unit insert dropout holds without destroying either field lock.
 
+`confidence` is deliberately binary in v9: `1` means at least one field has
+an accepted displacement observation, and `0` means neither does. It is not a
+probability and does not assign an invented intermediate score to a one-field
+observation.
+
 The fixture deliberately landed before the v9 implementation. The old v7
 engine must fail it; that red result proves the test distinguishes the new
 contract rather than merely preserving prior output.

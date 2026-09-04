@@ -62,6 +62,8 @@ int main(int argc, char **argv)
             }
             if (expected_comb >= 0)
                 match = match && decision.comb_safe == (expected_comb != 0);
+            match = match && decision.confidence ==
+                    (decision.frame_observation_support > 0 ? 1.0 : 0.0);
         }
         if (match) passed++;
         else fprintf(stderr,
