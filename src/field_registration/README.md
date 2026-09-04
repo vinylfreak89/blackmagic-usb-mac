@@ -89,9 +89,10 @@ censored: top position decides, and bottom flicker within the band can neither
 break the lock nor change the displacement.
 
 `fieldreg_begin_segment()` restores both standard-origin locks and starts the
-new segment at `d=0`. `fieldreg_discontinuity()` restores the standard-origin
-locks but preserves each last applied offset. Neither buffers, backdates,
-drops, or repeats a unit.
+new segment at `d=0`. `fieldreg_discontinuity()` preserves installed zeros,
+parity calibration, and each last applied offset; it invalidates only the
+previous-unit luma/position witnesses and unfinished consecutive evidence.
+Neither call buffers, backdates, drops, or repeats a unit.
 The remaining per-segment ambiguity is field 2's zero: picture geometry cannot
 distinguish a source whose second field begins one display line lower from an
 actual one-line crossing. Static picture detail resolves that zero once. The
@@ -99,10 +100,14 @@ engine applies an 8-pixel horizontal low-pass, retains same-parity pixels whose
 temporal delta is below six luma codes in both fields, and searches field-2
 re-weaves -3..+3. Three consecutive measurements with at least 3% static
 pixels, a unique minimum, and a 25% advantage over the second-best freeze the
-field-2 top; `zero_source=Comb`. Field 2 then continues to track its own top
-and body motion against that zero. Comb never supplies a per-unit displacement.
-An Envelope gauge must agree with an installed Comb zero; `ZeroConflict` names
-a disagreement without averaging the two.
+field-2 top; `zero_source=Comb`. Calibration requires field 1 to be placed by
+CEA-608 parity in that unit and field 2's measured picture position to be
+applied against its current zero. The candidate zero is derived from the raw
+field-2 picture top and the tested crop shift, never integrated from the old
+zero. Field 2 then continues to track its own top and body motion against that
+zero. Comb never supplies a per-unit displacement. When a decisive comb zero
+contradicts an Envelope zero, picture comb wins once and that installation row
+is `ZeroConflict`; subsequent Envelope observations cannot overwrite it.
 
 After calibration, only -1/0/+1 around the published crop is checked. One
 disagreement is provenance only. Eight consecutive measurable disagreements
@@ -122,11 +127,12 @@ different positions, the picture wins symmetrically: a still body is
 stood still or the caption stood still and picture moved. A censored or absent
 bottom supplies no contrary evidence; when fully measurable it must conserve
 the same body-consistent placement.
-A parity reading can move the segment zero only when
-that same fully visible envelope corroborates its implied base or the next
-consecutive parity unit implies the same base. Until then it still places the
-unit as `AnchorUncorroborated`, but leaves the zero and lock geometry intact.
-This one-unit anchor memory never delays or smooths crop placement.
+A parity or Envelope reading moves a segment zero only after three consecutive
+gauge-placed units imply the identical base. Until then it still places each
+unit as `ZeroCandidate`, leaving the zero and lock geometry intact. A candidate
+more than three source lines from the standard origin is immediately refused
+as `ZeroOutOfBounds`. This candidate memory never delays or smooths crop
+placement.
 
 ## Sidecar schema 8
 
@@ -184,5 +190,5 @@ make -C src/field_registration test
 
 The synthetic v9 golden landed first and scored 8/29 on v7; later red-first
 extensions exercise each measured defect. The current contract must score
-138/138, the decoder unit test 3/3, and the fixture agreement harness must
+169/169, the decoder unit test 3/3, and the fixture agreement harness must
 match `experiments/cc608_decode.py` line verdicts and bytes exactly.
