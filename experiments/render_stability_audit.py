@@ -35,7 +35,7 @@ cmd=["ffmpeg","-v","error","-ss",f"{t0:.6f}","-i",a.video,"-f","rawvideo","-pix_
 proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,bufsize=W*H*4)
 prev=[None,None]; unit=a.start_unit; data_units=collections.Counter(); jump_units=collections.Counter(); jumps=[]; datas=[]; cuts=0
 wr=csv.writer(open(a.csv,'w',newline='')) if a.csv else None
-if wr: wr.writerow(['unit','f1_data_top','f1_data_bottom','f2_data_top','f2_data_bottom','f1_shift','f1_corr','f2_shift','f2_corr'])
+if wr: wr.writerow(['unit','f1_data_top','f1_data_bottom','f1_shift','f1_corr','f2_data_top','f2_data_bottom','f2_shift','f2_corr'])
 while unit < a.start_unit+a.units:
     buf=proc.stdout.read(W*H*2)
     if len(buf)<W*H*2: break
