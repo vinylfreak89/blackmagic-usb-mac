@@ -13,10 +13,18 @@ typedef struct publish_queue publish_queue;
 typedef void (*pq_publish_fn)(void *ctx, const char *partial, const char *final);
 // capacity: maximum queued (not yet started) jobs. Returns 0, or -1 with errno (thread/primitive creation failed; nothing allocated remains).
 int  pq_open(publish_queue **out, size_t capacity, pq_publish_fn publish, void *ctx);
-int  pq_enqueue(publish_queue *q, const char *partial, const char *final);   // 0, or -1 (ENOSPC when full, ENOMEM)
+int  pq_enqueue(publish_queue *q, const char *partial, const char *final);   // 0, or -1 (ENOSPC when full, ECANCELED after pq_close began, ENOMEM)
 int  pq_reserved(publish_queue *q, const char *final);                       // 1 if a queued or in-progress job targets `final`
 size_t pq_pending(publish_queue *q);                                         // queued + in progress
-void pq_close(publish_queue *q);                                             // drain all, join, free (NULL-safe)
+// Two-phase shutdown, so the close can race producers safely:
+//   pq_close   — may run concurrently with pq_enqueue. From the moment it begins every enqueue is
+//                refused with ECANCELED (the caller keeps its scratch file); every job accepted
+//                before that is published before pq_close returns; the thread is joined. The queue
+//                object stays valid: late producers get ECANCELED, never a freed pointer.
+//   pq_destroy — frees the object; the caller must know all producers have stopped using the
+//                pointer (the plugin's destroy removes the frontend callback first). NULL-safe.
+void pq_close(publish_queue *q);
+void pq_destroy(publish_queue *q);
 // Test hooks (weak): make pthread primitive/thread creation fail.
 extern int (*pq_test_fail_init)(int which);   // which: 0 mutex, 1 condvar, 2 thread
 #endif

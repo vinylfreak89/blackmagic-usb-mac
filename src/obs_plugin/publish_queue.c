@@ -50,6 +50,7 @@ int pq_enqueue(publish_queue *q, const char *partial, const char *final){
     j->partial = strdup(partial); j->final = strdup(final);
     if (!j->partial || !j->final){ job_free(j); errno = ENOMEM; return -1; }
     pthread_mutex_lock(&q->m);
+    if (q->quit){ pthread_mutex_unlock(&q->m); job_free(j); errno = ECANCELED; return -1; }
     if (q->queued >= q->capacity){ pthread_mutex_unlock(&q->m); job_free(j); errno = ENOSPC; return -1; }
     if (q->tail) q->tail->next = j; else q->head = j;
     q->tail = j; q->queued++;
@@ -75,7 +76,13 @@ size_t pq_pending(publish_queue *q){
 
 void pq_close(publish_queue *q){
     if (!q) return;
-    pthread_mutex_lock(&q->m); q->quit = 1; pthread_cond_broadcast(&q->c); pthread_mutex_unlock(&q->m);
-    pthread_join(q->thread, NULL);              /* the thread exits only once the queue is empty: every job was published */
+    pthread_mutex_lock(&q->m);
+    int first = !q->quit; q->quit = 1; pthread_cond_broadcast(&q->c);
+    pthread_mutex_unlock(&q->m);
+    if (first) pthread_join(q->thread, NULL);   /* the thread exits only once the queue is empty: every accepted job was published */
+}
+void pq_destroy(publish_queue *q){
+    if (!q) return;
+    pq_close(q);                                /* idempotent: a destroy without a prior close still drains */
     pthread_cond_destroy(&q->c); pthread_mutex_destroy(&q->m); free(q);
 }

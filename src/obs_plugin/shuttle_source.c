@@ -329,7 +329,9 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
 static void shuttle_destroy(void *data){
     shuttle_src *s = data; if (!s) return;
     obs_frontend_remove_event_callback(frontend_event, s);
-    pthread_mutex_lock(&s->m); shuttle_stop(s); pthread_mutex_unlock(&s->m); pq_close(s->pq); s->pq = NULL; pthread_mutex_destroy(&s->m);   /* drains every queued sidecar before the code unloads */
+    pthread_mutex_lock(&s->m); shuttle_stop(s); pthread_mutex_unlock(&s->m);
+    pq_close(s->pq); pq_destroy(s->pq); s->pq = NULL;   /* drains every queued sidecar before the code unloads; the frontend callback (the only producer) was removed above */
+    pthread_mutex_destroy(&s->m);
     bfree(s->sidecar_base); bfree(s->sidecar_partial); bfree(s->sidecar_final);
     bfree(s->vbuf); bfree(s->abuf); bfree(s);
     atomic_fetch_sub(&g_instances, 1);
