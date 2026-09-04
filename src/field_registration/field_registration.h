@@ -118,6 +118,7 @@ typedef struct fieldreg_decision {
     int8_t frame_observation_d2;
     uint8_t frame_observation_support;
     fieldreg_mode mode;
+    /* Binary accepted-evidence flag, not a probability. */
     double confidence;
     bool transport_ok;
     bool comb_safe;
@@ -154,6 +155,8 @@ size_t fieldreg_state_size(void);
 size_t fieldreg_config_size(void);
 size_t fieldreg_decision_size(void);
 uint32_t fieldreg_algorithm_version(void);
+/* Two observations acquire a geometry-only lock; gauged placement is still
+ * immediate and the engine has no dwell window or buffered confirmation. */
 uint32_t fieldreg_confirmation_units(const field_registration *engine);
 uint32_t fieldreg_buffer_units(const field_registration *engine);
 void fieldreg_init(field_registration *engine, const fieldreg_config *config);
