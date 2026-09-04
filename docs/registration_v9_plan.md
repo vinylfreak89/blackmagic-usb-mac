@@ -375,3 +375,26 @@ follow audit cannot see: at 05:00 ordinals 475–488 (14 units) the tape's capti
 inherited (defects 1 and 2 above); at 37:01 the latched units 34, 43, 46. The comb audit is the
 acceptance instrument for "no combing under yadif": it sees persistent wrong holds, which a
 unit-to-unit follow audit scores as still.
+
+## Round 4 result: `2efc416` (2-D body witness anchored on the measured position), verified 2026-09-05 ~06:00 JST
+
+Codex implemented defects 1–4 (goldens 132/132; witness agreement with the audit 534/534). Six
+slices, field 1, follow audit (still/follow/missed/engine-motion) and comb audit
+(registered/flat/misregistered): 35:00 292/185/10/29 | 554/65/1; 37:01 240/78/5/1 | 321/7/0;
+05:00 521/53/16/9 | 572/23/12; 35:38 51/20/3/3 | 39/21/18; 01:26 66/9/2/0 | 60/9/9. The
+37:01 site is closed. Two classes remain, both measured on the raw and sent as round 5 with the
+per-segment parity calibration and the damage state:
+
+- **Field 2 without a gauge sits at the standard zero while field 1 is parity-placed at +3**
+  (35:38, 18 of 78 units misregistered by two lines). The per-segment relative offset
+  `r = d1 − d2`, frozen once by static comb at the segment lock, places field 2 from field 1
+  structurally; the comb consistency check names any later disagreement.
+- **A tied body witness overrides a measurable top** (05:00 units 441–451, 01:26 units 40–50:
+  the picture, bright over a black gap, moved up one line; the 2-D MAD at shifts 0 and −1 was
+  9.78 vs 10.05, a 3% tie on moving content, against a 2× margin on neighbouring units). A
+  witness is reliable only with a margin; tied, it abstains and the top decides.
+
+**Damage site corrected:** on the raw panel the wrecked raster is at ordinals 62322–62326 (the
+owner's original u062323), not 62308–62314. Two candidate damage metrics (row-to-row horizontal
+skew; per-row skew against the previous unit) do not separate it from its neighbours because the
+camera is moving; the observable is a measurement item for Codex before any state is built.
