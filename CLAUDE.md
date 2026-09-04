@@ -1399,6 +1399,21 @@ delivery edge; wrong one at acquisition.
   recording carries a genuine one-line inter-field error, which is exactly what makes a weaver
   comb there. Registration corrects it as (3,2). The 1,300 s window (first recording) is
   aligned: 0 in 3/3 measurable static units, captions on the inserts, tops 23/286.
+  **PARITY DECODES THE GAUGE — measured 2026-09-04 night (`experiments/cc608_decode.py`):**
+  decoding each candidate line as CEA-608 (run-in phase by correlation, start bits, 16 data
+  bits at 1.986 µs cells, odd parity per byte) turns "which line is the tape's line 21" into a
+  standards test with no ambiguity left. Second recording, field 1: **exactly one of lines 23/24
+  decodes with valid parity in every unit** — 30:38: 23 in 200/200; 35:00: 23 in 257, 24 in
+  343, never both, never neither; 45:00: 24 in 596, 23 in 4 — carrying real CC1 control codes
+  (0x94 0x2c EDM, 0x94 0x2f EOC, 0x94 0x20 RCL) between nulls; the vertically duplicated
+  run-in line never passes (wrong run-in length or no start bits). So d1 is read per unit
+  (+2 / +3) with no hold needed. First recording (21:40): **line 21 itself decodes with valid
+  parity in 298/300 and carries the tape's own bytes (0xd3 0x20, 0x8f 0xe6 … among nulls)** —
+  the tape's caption passes through AT line 21 when aligned, i.e. the regenerated line 21 is
+  the tape's waveform when one is present and a null otherwise; lines 22–24 never decode ⇒
+  d1 = 0 measured, not assumed. Field 2: 284 decodes as nulls everywhere; the tape's smeared
+  XDS at 286 and the run-in line at 287 never decode, so field 2 has no parity gauge in the
+  second recording and keeps the envelope of its unique 608-like candidate (286 ⇒ +2).
   **Owner ruling (same evening):** multiple line-21-like rows or a partial waveform in a unit
   means the timing signal is too unstable to use — give up on line 21 for that unit; the leaked
   VBI framing pulses at the bottom of the field and picture-above-the-band are then a real fix
