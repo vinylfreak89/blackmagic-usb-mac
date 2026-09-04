@@ -51,7 +51,9 @@ rejects high-frequency snow. Thus a flat grey mute, a sub-black raster with a
 sparse overlay, and a wholly dark picture cannot teach or move the target. An
 unmeasurable field holds its own last applied offset. A one-unit raw-edge step
 larger than three lines is held and labelled rather than treated as
-registration. A strong same-parity temporal contradiction may veto a changed
+registration. If that same measurable edge repeats, the second unit
+re-acquires it; a raw edge from before a mute therefore cannot reject a stable
+return forever. A strong same-parity temporal contradiction may veto a changed
 bottom landmark (the measured picture body did not move). An exact return to
 the frozen target bypasses both vetoes so a dark/censored excursion cannot
 latch a stale crop. Transition penalties and the older band hierarchy cannot

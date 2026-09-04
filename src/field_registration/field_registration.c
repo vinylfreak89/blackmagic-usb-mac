@@ -27,6 +27,7 @@ enum {
     BOTTOM_TILE_RANGE = 12,
     BOTTOM_NOISE_LIMIT = 35,
     BOTTOM_MAX_STEP = 3,
+    BOTTOM_REACQUIRE_UNITS = 2,
 };
 
 static const int phase_bounds[PHASE_BANDS][2] = {
@@ -413,22 +414,32 @@ static bool apply_bottom_field(field_registration *engine, int field,
                              : FIELDREG_FIELD2_MAX_OFFSET;
     *reason = FIELDREG_BOTTOM_HOLD_NONE;
     if (!transport_ok) {
+        engine->bottom_reacquire_count[field] = 0;
+        engine->bottom_reacquire_armed[field] = false;
         *reason = FIELDREG_BOTTOM_HOLD_TRANSPORT;
         return false;
     }
     if (!observation.program_extent || observation.edge < 0) {
+        engine->bottom_reacquire_count[field] = 0;
+        engine->bottom_reacquire_armed[field] =
+            engine->bottom_target_valid[field];
         if (!engine->bottom_target_valid[field])
             engine->bottom_target_sample_count[field] = 0;
         *reason = FIELDREG_BOTTOM_HOLD_FLAT_OR_DARK;
         return false;
     }
     if (observation.noisy) {
+        engine->bottom_reacquire_count[field] = 0;
+        engine->bottom_reacquire_armed[field] =
+            engine->bottom_target_valid[field];
         if (!engine->bottom_target_valid[field])
             engine->bottom_target_sample_count[field] = 0;
         *reason = FIELDREG_BOTTOM_HOLD_NOISY;
         return false;
     }
     if (scene_cut && !engine->bottom_target_valid[field]) {
+        engine->bottom_reacquire_count[field] = 0;
+        engine->bottom_reacquire_armed[field] = false;
         engine->bottom_target_sample_count[field] = 0;
         *reason = FIELDREG_BOTTOM_HOLD_SCENE_CUT;
         return false;
@@ -466,15 +477,39 @@ static bool apply_bottom_field(field_registration *engine, int field,
     /* A dark/cut excursion can leave last_raw at a censored interior line.
      * Returning exactly to the frozen segment target is self-authenticating
      * recovery and must not be rejected forever by the one-unit jump bound. */
-    if (desired != 0 && engine->bottom_last_raw_valid[field] &&
-        abs(observation.edge - engine->bottom_last_raw[field]) >
-            BOTTOM_MAX_STEP) {
-        *reason = FIELDREG_BOTTOM_HOLD_EDGE_JUMP;
-        return false;
-    }
     if (desired < minimum || desired > maximum) {
+        engine->bottom_reacquire_count[field] = 0;
         *reason = FIELDREG_BOTTOM_HOLD_OUT_OF_RANGE;
         return false;
+    }
+    bool edge_jump = desired != 0 && engine->bottom_last_raw_valid[field] &&
+                     abs(observation.edge - engine->bottom_last_raw[field]) >
+                         BOTTOM_MAX_STEP;
+    bool reacquired = false;
+    if (edge_jump && engine->bottom_reacquire_armed[field]) {
+        if (engine->bottom_reacquire_count[field] != 0 &&
+            engine->bottom_reacquire_edge[field] == observation.edge) {
+            if (engine->bottom_reacquire_count[field] < UINT8_MAX)
+                ++engine->bottom_reacquire_count[field];
+        } else {
+            engine->bottom_reacquire_edge[field] =
+                (int16_t)observation.edge;
+            engine->bottom_reacquire_count[field] = 1;
+        }
+        if (engine->bottom_reacquire_count[field] < BOTTOM_REACQUIRE_UNITS) {
+            *reason = FIELDREG_BOTTOM_HOLD_EDGE_JUMP;
+            return false;
+        }
+        /* One implausible unit remains a cut/dark-frame guard. Two
+         * consecutive measurable units at the same new edge establish a
+         * fresh current geometry even when last_raw predates a dark hold. */
+        reacquired = true;
+    } else if (edge_jump) {
+        engine->bottom_reacquire_count[field] = 0;
+        *reason = FIELDREG_BOTTOM_HOLD_EDGE_JUMP;
+        return false;
+    } else {
+        engine->bottom_reacquire_count[field] = 0;
     }
     int observed_step = engine->bottom_last_raw_valid[field]
                             ? observation.edge - engine->bottom_last_raw[field]
@@ -484,13 +519,14 @@ static bool apply_bottom_field(field_registration *engine, int field,
                                   temporal_margin >=
                                       temporal_contradiction_margin &&
                                   temporal_best == observed_step;
-    if (desired != 0 && scene_cut &&
+    if (!reacquired && desired != 0 && scene_cut &&
         desired != engine->bottom_applied[field] &&
         !temporal_supports_step) {
         *reason = FIELDREG_BOTTOM_HOLD_SCENE_CUT;
         return false;
     }
-    if (desired != 0 && engine->bottom_last_raw_valid[field] &&
+    if (!reacquired && desired != 0 &&
+        engine->bottom_last_raw_valid[field] &&
         observed_step != 0 &&
         temporal_margin >= temporal_contradiction_margin &&
         temporal_best != observed_step) {
@@ -500,6 +536,8 @@ static bool apply_bottom_field(field_registration *engine, int field,
     engine->bottom_applied[field] = (int8_t)desired;
     engine->bottom_last_raw[field] = (int16_t)observation.edge;
     engine->bottom_last_raw_valid[field] = true;
+    engine->bottom_reacquire_count[field] = 0;
+    engine->bottom_reacquire_armed[field] = false;
     return true;
 }
 

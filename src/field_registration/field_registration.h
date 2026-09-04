@@ -283,6 +283,9 @@ typedef struct field_registration {
     int16_t bottom_last_raw[2];
     bool bottom_last_raw_valid[2];
     int8_t bottom_applied[2];
+    int16_t bottom_reacquire_edge[2];
+    uint8_t bottom_reacquire_count[2];
+    bool bottom_reacquire_armed[2];
 
     /* [field][top/bottom][left/center/right][signed line + 64]. */
     uint16_t spatial_edge_counts[2][2][3][129];

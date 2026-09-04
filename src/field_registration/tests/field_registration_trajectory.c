@@ -446,6 +446,8 @@ int main(int argc, char **argv)
         "bottom-v8-fade-reacquire", "bottom-v8-grey-mute",
         "bottom-v8-program-after-grey", "bottom-v8-large-jump-hold",
         "bottom-v8-after-large-jump", "bottom-v8-padding-plus3",
+        "bottom-v8-post-hold-return-provisional",
+        "bottom-v8-post-hold-reacquire",
     };
     bool bottom_pass = true;
     for (size_t required = 0;
@@ -463,6 +465,11 @@ int main(int argc, char **argv)
                                   scenarios[i].bottom_flat_hold > 0;
                 if (strcmp(scenarios[i].name,
                            "bottom-v8-large-jump-hold") == 0)
+                    bottom_pass = bottom_pass &&
+                                  scenarios[i].bottom_jump_hold ==
+                                      scenarios[i].rows;
+                if (strcmp(scenarios[i].name,
+                           "bottom-v8-post-hold-return-provisional") == 0)
                     bottom_pass = bottom_pass &&
                                   scenarios[i].bottom_jump_hold ==
                                       scenarios[i].rows;

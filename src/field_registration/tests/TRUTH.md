@@ -147,6 +147,12 @@ cannot teach the target; program following it learns a fresh target. Field 1
 may shift far enough that the crop reads the device's byte-exact padding; this
 is still a whole-window shift and never a duplicated source line.
 
+`bottom-v8-post-hold-*` freezes the stale-direct-state failure independently
+of body-relative evidence.  After field 1 accepts +3, an unmeasurable dark
+interval is followed by twelve consistent -1 measurements while field 2 is
+absent.  The first return remains provisionally held at +3 and reports
+`EdgeJump`; the second must reacquire -1, and every later unit must remain -1.
+
 The older `bottom-censored-field1-plus5` trajectory expects an immediate +5
 decision from body-temporal evidence even though the physical bottom edge has
 already left the ADC raster. That truth is intentionally retained as a visible

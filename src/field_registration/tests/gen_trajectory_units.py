@@ -49,6 +49,7 @@ class Step:
     fake_bottom_censor: bool = False
     dark_false_edge: bool = False
     bottom_trim_f1: int = 0
+    blank_field2: bool = False
 
 
 def trajectory() -> list[Step]:
@@ -275,6 +276,25 @@ def trajectory() -> list[Step]:
     add(8, "bottom-v8-padding-plus3", (3, 0), (3, 0),
         clip_at_padding=True, main_ranges=((0, 720),), secondary_ranges=())
 
+    # Reacquisition after missing content must not compare forever against
+    # the last accepted raw edge.  Field 2 is deliberately absent, denying
+    # the body-relative estimator a way to mask a stale field-1 direct gauge.
+    out.append(Step("bottom-v8-post-hold-reset", (0, 0), (0, 0),
+                    reset_before=True, main_ranges=((0, 720),),
+                    secondary_ranges=(), blank_field2=True))
+    add(7, "bottom-v8-post-hold-baseline", (0, 0), (0, 0),
+        main_ranges=((0, 720),), secondary_ranges=(), blank_field2=True)
+    add(8, "bottom-v8-post-hold-plus3", (3, 0), (3, 0),
+        main_ranges=((0, 720),), secondary_ranges=(), blank_field2=True)
+    add(8, "bottom-v8-post-hold-dark", (3, 0), (3, 0),
+        dark_false_edge=True, main_ranges=((0, 720),), secondary_ranges=(),
+        blank_field2=True)
+    out.append(Step("bottom-v8-post-hold-return-provisional", (-1, 0),
+                    (3, 0), main_ranges=((0, 720),), secondary_ranges=(),
+                    blank_field2=True))
+    add(11, "bottom-v8-post-hold-reacquire", (-1, 0), (-1, 0),
+        main_ranges=((0, 720),), secondary_ranges=(), blank_field2=True)
+
     # Only the right-hand secondary asset moves. The designated main picture
     # remains at the committed phase, so following the edge-only artifact is a
     # policy error even if it is a plausible per-unit observation.
@@ -417,6 +437,8 @@ def make_unit(counter: int, index: int, step: Step,
             (0, base.F1_TOP, step.raster[0]),
             (1, base.F2_TOP, step.raster[1]),
         ):
+            if parity == 1 and step.blank_field2:
+                continue
             source = templates[(step.scene, phase, parity, 100)]
             for row, line in enumerate(source):
                 if row < step.main_top_trim:
