@@ -29,7 +29,8 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               gap_rows=(), broad_bar_picture_rows=(),
               caption_false_picture_rows=(), content_phases=(0, 0),
               content_shifts=(None, None), body_texture=(False, False),
-              body_split_shifts=(None, None), comb_offsets=None):
+              body_split_shifts=(None, None), comb_offsets=None,
+              comb_phase=0):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -131,7 +132,8 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
         # crop has nearly zero comb energy and every shifted weave does not.
         def comb_sample(index, x):
             horizontal = 8 if (x // 16) & 1 else -8
-            return 110 + round(35 * math.sin(2 * math.pi * index / 17)) + horizontal
+            return 110 + round(35 * math.sin(
+                2 * math.pi * (index + comb_phase) / 17)) + horizontal
 
         for field, start in enumerate((19 + comb_offsets[0],
                                        282 + comb_offsets[1])):
@@ -782,12 +784,12 @@ def main():
         bottom_overrides=(250, None), content_phases=(0, 0),
         content_shifts=(1, 0), body_texture=(True, False),
         body_split_shifts=((1, 1), None))
-    add("body-margin-tie-top-zero", (0, 0),
+    add("body-margin-tie-top-zero", (1, 0),
         picture=(0, 0), top_overrides=(19, None),
         bottom_overrides=(249, None), content_phases=(0, 0),
         content_shifts=(0, 0), body_texture=(True, False),
         body_split_shifts=((0, 1), None),
-        f1_reason="GeometryLockDecides", f1_body_valid=0)
+        f1_reason="TopUncorroborated", f1_body_valid=0)
 
     # 35:38 failure class: field 1 has a physical +3 line-21 gauge, while
     # field 2's first two VBI-contaminated rows make geometry say zero.  The
@@ -869,6 +871,23 @@ def main():
     add("discontinuity-preserves-parity-zero", (2, 0),
         discontinuity=True, dark=True,
         f1_reason="GeometryUnmeasurable", f1_zero="Parity", f1_lock_top=18)
+
+    # Post-cut F class: the first changed-content unit exposes a transient old
+    # top and leaves the crop at +2. On the following static unit, raw top +3
+    # and comb shift -1 independently agree even though the body stands still;
+    # that pair must repair the crop rather than preserve the bad memory.
+    for i in range(4):
+        add(f"top-comb-calibration-{i + 1}", (2, 0), begin=i == 0,
+            picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+            comb_offsets=(2, 0), parity_state=(
+                "Calibrated" if i == 3 else "Uncalibrated"))
+    add("top-comb-cut-old-top", (2, 0), picture=(3, 0),
+        bright_rows=(21,), comb_offsets=(3, 0), comb_phase=5)
+    add("top-comb-recovers-new-top", (3, 0), picture=(3, 0),
+        comb_offsets=(3, 0), comb_phase=5,
+        f1_reason="TopCombCorroborated", comb_check="disagree")
+    add("top-comb-stays-new-top", (3, 0), picture=(3, 0),
+        comb_offsets=(3, 0), comb_phase=5)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
