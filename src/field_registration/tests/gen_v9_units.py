@@ -29,7 +29,7 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               gap_rows=(), broad_bar_picture_rows=(),
               caption_false_picture_rows=(), content_phases=(0, 0),
               content_shifts=(None, None), body_texture=(False, False),
-              body_split_shifts=(None, None)):
+              body_split_shifts=(None, None), comb_offsets=None):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -124,6 +124,28 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
                                   row - split[1] if split is not None else None)
             else:
                 fill(row, y if y is not None else 58 + ((basis * 11 + phase2) % 97))
+
+    if comb_offsets is not None:
+        # A static interlaced raster with a unique smooth weave. Field 2 is
+        # the half-line sample between adjacent field-1 rows, so its correct
+        # crop has nearly zero comb energy and every shifted weave does not.
+        def comb_sample(index, x):
+            horizontal = 8 if (x // 16) & 1 else -8
+            return 110 + round(35 * math.sin(2 * math.pi * index / 17)) + horizontal
+
+        for field, start in enumerate((19 + comb_offsets[0],
+                                       282 + comb_offsets[1])):
+            for i in range(FIELD_LINES := 240):
+                row = start + i
+                if not 0 <= row < RASTER_LINES:
+                    continue
+                if field == 0:
+                    ys = bytes(comb_sample(i, x) for x in range(PIXELS))
+                else:
+                    ys = bytes((comb_sample(i, x) + comb_sample(i + 1, x)) // 2
+                               for x in range(PIXELS))
+                line = raster[row * BYTES_PER_LINE:(row + 1) * BYTES_PER_LINE]
+                line[1::2] = ys
 
     for field, spec in enumerate(captions):
         if spec is not None:
@@ -741,6 +763,20 @@ def main():
         content_shifts=(0, 0), body_texture=(True, False),
         body_split_shifts=((0, 1), None),
         f1_reason="GeometryLockDecides", f1_body_valid=0)
+
+    # 35:38 failure class: field 1 has a physical +3 line-21 gauge, while
+    # field 2's first two VBI-contaminated rows make geometry say zero.  The
+    # static weave uniquely says field 2's segment zero is two lines lower.
+    # Three consecutive qualifying comparisons calibrate that zero once.
+    for i in range(4):
+        add(f"comb-zero-calibration-{i + 1}", (3, 2 if i == 3 else 0),
+            begin=i == 0, picture=(3, 0),
+            captions=((3, 0x14, 0x2c), None),
+            bright_rows=(282, 283), content_phases=(0, 0),
+            comb_offsets=(3, 2),
+            f1_reason="Line21Placement",
+            f2_zero="Comb" if i == 3 else "-",
+            f2_lock_top=280 if i == 3 else -999)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
