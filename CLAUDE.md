@@ -1211,6 +1211,27 @@ delivery edge; wrong one at acquisition.
   shows line-21 content bleeding into the active picture, forbidden on a compliant broadcast —
   consistent with a generational copy at the source and/or EP-mode playback; also not a raster
   fault. Conclusion: not every jump is fixed, and the ones that remain are not registration.
+  **Owner review of the v7 render frame by frame with the sidecar overlaid (2026-09-04):** the
+  engine is severely UNDER-selecting — almost all of its Unknown/abstain decisions fall exactly
+  where the raster is genuinely unstable, i.e. where a decision is needed. Measured with the
+  owner's own placement rule as an instrument (`experiments/bottom_edge_census.py`: per field, the
+  picture's bottom edge = the last raster line whose luma is not mostly digital black), first
+  1,800 units of fixture A, field 1: raw edge at 256 in 1,299 units, 257 in 245, 255 in 42, 259
+  in 169 (deck-mute grey), a handful of dark-picture outliers; unit-to-unit the raw edge moved and
+  the crop followed 80 times, the raw edge moved and the crop HELD 198 times (UnknownSpatialPhase
+  104, StableMotionPhase 65, SceneCutHold 27), the crop changed while the raw edge stood still 69
+  times. Codex independently confirmed the field-1 picture top alternating between lines 20 and
+  21 unit to unit in the SP intro while field 2 stays at 282, and falsified the "hold through
+  abstentions" policy (0 Unknown-row changes but worse presentation in both windows). **Owner
+  direction (supersedes the evidence-authority framing above):** the goal is a stable raster;
+  never duplicate lines, always shift the whole crop window, shifting into digitally degenerate
+  black is acceptable; placement rule to design toward: per field, the crop's final line should
+  be the first mostly-black-luma line under the picture, measured directly per unit, with a
+  hold-last fallback when the edge is unmeasurable (flat/dark pictures). Two renderer defects
+  found in the same review were Claude's and are fixed: `capture_render.py` kept rows 17-18
+  fixed and remapped from 19 (duplicating row 18 on negative offsets, dropping 19 on positive),
+  and the full-raster preview duplicated below its window; `captures/fulltape_render.mp4` still
+  carries the renderer duplication and is re-rendered after the engine work.
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
   out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio
