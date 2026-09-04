@@ -2,17 +2,18 @@
 """Burn a v9 (schema 5) registration sidecar into a rendered review video as a metrics band.
 
 The band is ADDED below (or above) the picture — the picture is never covered. One band image per
-unit (two bobbed frames): line 1 = unit, counter, unit state, applied (d1,d2), comb_safe; lines 2-3 =
+unit (two bobbed frames): line 1 = unit, counter, unit state, applied (d1,d2), comb_safe; lines 2-5 =
 per field: reason (colour-coded: green = placed by a physical gauge, cyan = geometry lock decides,
 yellow = acquiring / clip-unknown / gauge-conflict hold, red = lock broken / ambiguous / out of range,
 grey = insert absent / geometry unmeasurable), gauge + line + decoded bytes, geometry d, raw
-top/bottom, lock state + zero source (Parity / Envelope / Acquired) and clip; plus a sparkline of
+top/bottom, lock state + zero source (Parity / Envelope / Acquired), clip state, and the
+conservation equation (expected bottom / lines lost / residual / censoring); plus a sparkline of
 applied_d1 over the surrounding ±90 units (3 s). All lines are NTSC line numbers as written by the
 renderer. Unit i spans [i, i+1) × 1001/30000 s.
 
 Band frames are drawn with PIL and composited by ffmpeg's `overlay` (no libass needed).
 
-    overlay_sidecar.py rendered.mp4 rendered_registration.csv out.mp4 [--band 84] [--top] [--crf 14]
+    overlay_sidecar.py rendered.mp4 rendered_registration.csv out.mp4 [--band 100] [--top] [--crf 14]
 """
 from __future__ import annotations
 import argparse, csv, subprocess
@@ -33,7 +34,7 @@ def mode_colour(reason: str):
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("video"); ap.add_argument("sidecar"); ap.add_argument("out")
-    ap.add_argument("--band", type=int, default=84); ap.add_argument("--top", action="store_true")
+    ap.add_argument("--band", type=int, default=100); ap.add_argument("--top", action="store_true")
     ap.add_argument("--crf", default="14"); ap.add_argument("--font", default="/System/Library/Fonts/Menlo.ttc")
     a = ap.parse_args()
     probe = subprocess.run(["ffprobe","-v","error","-select_streams","v:0","-show_entries","stream=width,height,sample_aspect_ratio","-of","csv=p=0",a.video],capture_output=True,text=True).stdout.strip().split(",")
@@ -58,18 +59,27 @@ def main() -> None:
         line1 = (f"u{int(f):06d} c{g(r,'counter','?'):>5} {g(r,'unit_state','')[:7]:7s} applied({g(r,'applied_d1','?')},{g(r,'applied_d2','?')})  "
                  f"{'comb-safe' if safe else 'NOT comb-safe'}")
         d.text((6, 4), line1, font=font, fill=(255, 255, 255) if safe else (255, 215, 0))
-        for n, y in ((1, 22), (2, 40)):
+        for n, y in ((1, 20), (2, 48)):
             reason = g(r, f"f{n}_reason", "?")
             d.text((6, y), f"f{n} {reason}", font=font, fill=mode_colour(reason))
             x = 6 + d.textlength(f"f{n} {reason}", font=font) + 8
             gline = g(r, f"f{n}_gauge_line", "-1"); gb = g(r, f"f{n}_gauge_bytes", "")
-            zero = g(r, f'f{n}_zero_source', '?')[:3]; lock = g(r, f'f{n}_lock_state', '?')[:3]
-            info = (f"{g(r, f'f{n}_gauge', '?')}{(' L' + gline) if gline not in ('-1', '') else ''}{(' ' + gb) if gb else ''} "
-                    f"geo{g(r, f'f{n}_geometry_d', '.')} raw {g(r, f'f{n}_raw_top', '?')}/{g(r, f'f{n}_raw_bottom', '?')} "
-                    f"{lock}/{zero} t{g(r, f'f{n}_lock_top', '?')} h{g(r, f'f{n}_lock_height', '?')} c{g(r, f'f{n}_clip_ceiling', '?')}")
+            summary = (f"gauge {g(r, f'f{n}_gauge', '?')}{(' L' + gline) if gline not in ('-1', '') else ''}{(' ' + gb) if gb else ''}  "
+                       f"geo {g(r, f'f{n}_geometry_d', '.')} raw {g(r, f'f{n}_raw_top', '?')}/{g(r, f'f{n}_raw_bottom', '?')}")
+            d.text((x, y), summary[:int((sx0 - x) / 5.6)], font=small,
+                   fill=(200, 200, 200))   # never run into the sparkline
+            hk = "K" if g(r, f"f{n}_lock_height_known", "0") in ("1", "True", "true") else "?"
+            cens = " CENS" if g(r, f"f{n}_bottom_censored", "0") in ("1", "True", "true") else ""
+            info = (f"lock {g(r, f'f{n}_lock_state', '?')}/{g(r, f'f{n}_zero_source', '?')} T{g(r, f'f{n}_lock_top', '?')} H{g(r, f'f{n}_lock_height', '?')}{hk} "
+                    f"C={g(r, f'f{n}_clip_state', '?')}@{g(r, f'f{n}_clip_ceiling', '?')} "
+                    f"E{g(r, f'f{n}_expected_bottom', '?')} L{g(r, f'f{n}_lines_lost', '?')} R{g(r, f'f{n}_invariant_residual', '?')}{cens}")
             ins = g(r, f"f{n}_insert_relation", "None")
-            if ins not in ("None", ""): info += " " + ("ins+" if "Corrob" in ins else "ins-")
-            d.text((x, y), info[:int((sx0 - x) / 5.6)], font=small, fill=(200, 200, 200))   # never run into the sparkline
+            ib = g(r, f"f{n}_insert_bytes", "")
+            pc = g(r, f"f{n}_parity_candidates", "0"); fc = g(r, f"f{n}_fallback_candidates", "0")
+            if ib or ins not in ("None", "") or pc != "0" or fc != "0":
+                info += f"  ins {ib or '-'} {ins} cand {pc}/{fc}"
+            d.text((6, y + 12), info[:int((sx0 - 6) / 5.6)], font=small,
+                   fill=(160, 160, 160))   # never run into the sparkline
         d.text((W - 262 - 100, 4), f"t={int(f)*1001/30000:8.3f}s", font=small, fill=(180, 180, 180))   # top right of the text area
         # sparkline
         d.line([(sx0, py(0)), (sx0 + sw, py(0))], fill=(0, 120, 0), width=1)
