@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 # Whole-tape line-21 truth set for the v9 acceptance test: per unit, which NTSC lines in each field decode as CEA-608
-# with valid parity (cc608_decode), with their bytes. Field 1 lines 19..30 and 256..266, field 2 lines 282..293 and
-# 519..528 (unit rows r = line-4). Output CSV: unit,counter,f1_lines,f1_bytes,f2_lines,f2_bytes,insert21,insert284
+# with valid parity (cc608_decode), with their bytes. Scans the FULL fields (lines 12-266 and 272-528, unit rows r =
+# line-4) with a vectorised run-in amplitude gate so only plausible lines reach the bit decoder. Output CSV: unit,counter,f1_lines,f1_bytes,f2_lines,f2_bytes,insert21,insert284
 import sys, csv, numpy as np
 sys.path.insert(0, __import__('os').path.dirname(__file__))
 from packet_capture_reader import walk_tagged
 from cc608_decode import decode
 UNIT=756_048; HDR=48; LINE=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 CAP=sys.argv[1]; OUT=sys.argv[2]; N=int(sys.argv[3]) if len(sys.argv)>3 else 10**9
-F1=list(range(15,27))+list(range(252,263)); F2=list(range(278,290))+list(range(515,525))
+F1=list(range(8,263)); F2=list(range(268,525))      # full fields: lines 12-266 and 272-528 (the engine scans the same)
+CELL=1.986e-6*13.5e6; _n=np.arange(10,230); _cos=np.cos(2*np.pi/CELL*_n); _sin=np.sin(2*np.pi/CELL*_n)
+def amp_gate(Y,rows):
+    A=Y[rows,10:230]; A=A-A.mean(axis=1,keepdims=True)
+    amp=np.hypot(A@_cos,A@_sin)*2/A.shape[1]
+    return [r for r,a in zip(rows,amp) if a>=35]
 class Done(Exception): pass
 buf=bytearray(); st={'n':0}; w=csv.writer(open(OUT,'w',newline='')); w.writerow(['unit','counter','f1_lines','f1_bytes','f2_lines','f2_bytes','insert21','insert284'])
 def dec(Y,rows):
     L=[];B=[]
-    for r in rows:
+    for r in amp_gate(Y,rows):
         ok,b1,b2,_=decode(Y[r])
         if ok: L.append(str(r+4)); B.append(f"{b1:02x}{b2:02x}")
     return ' '.join(L), ' '.join(B)
