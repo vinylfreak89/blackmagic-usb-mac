@@ -146,22 +146,6 @@ static bool timing_like_damage(const uint8_t *raster, int row)
            mean < 60.0;
 }
 
-static bool bar_like_damage(const uint8_t *raster, int row)
-{
-    if (xds_left_structure(raster, row)) return true;
-    double bins[48];
-    if (row_bins(raster, row, bins, 48) >= 95.0) return false;
-    for (int i = 20; i < 48; ++i)
-        if (bins[i] > 40.0) return false;
-    int run = 0;
-    for (int i = 0; i < 20; ++i) {
-        if (bins[i] > 60.0) {
-            if (++run >= 4) return true;
-        } else run = 0;
-    }
-    return false;
-}
-
 static bool top_interval_vbi_damage(const uint8_t *raster, int row, int field)
 {
     const int first = field == 0 ? 16 : 279; /* NTSC 20 / 283 */
@@ -169,7 +153,7 @@ static bool top_interval_vbi_damage(const uint8_t *raster, int row, int field)
     if (row < first || row > last) return false;
     return caption_like_damage(raster, row) ||
            timing_like_damage(raster, row) ||
-           bar_like_damage(raster, row);
+           xds_left_structure(raster, row);
 }
 
 static void measure_field(const uint8_t *raster, int field,
