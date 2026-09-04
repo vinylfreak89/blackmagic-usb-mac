@@ -7,7 +7,10 @@ set -euo pipefail
 
 CAP=${1:?capture.tpc}
 OUT=${2:?non-synced output directory}
-PACE_US=${3:-16000}
+# NNEDI is slower than the device on the validation host (~10 input units/s).
+# Replay is therefore intentionally slower than realtime; correctness requires
+# the live callback path to report zero sheds, not a wall-clock-rate encode.
+PACE_US=${3:-50000}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 CAP=$(cd "$(dirname "$CAP")" && pwd)/$(basename "$CAP")
 OUT=$(mkdir -p "$OUT" && cd "$OUT" && pwd)
@@ -101,10 +104,16 @@ ffmpeg -hide_banner -loglevel warning -y -i "$VSTAGE" -i "$ASTAGE" \
   > "$OUT/mux.log" 2>&1
 rm -f "$VSTAGE" "$ASTAGE"
 
-python3 "$REPO/experiments/overlay_sidecar.py" \
-  "$VIDEO" "$SIDECAR" "$OVERLAY" --crf 12 > "$OUT/overlay.log" 2>&1
-python3 "$REPO/experiments/render_live_gate.py" \
-  "$VIDEO" "$OVERLAY" "$SIDECAR" > "$OUT/gate.log" 2>&1
+if ! python3 "$REPO/experiments/overlay_sidecar.py" \
+  "$VIDEO" "$SIDECAR" "$OVERLAY" --crf 12 > "$OUT/overlay.log" 2>&1; then
+  cat "$OUT/overlay.log" >&2
+  exit 1
+fi
+if ! python3 "$REPO/experiments/render_live_gate.py" \
+  "$VIDEO" "$OVERLAY" "$SIDECAR" > "$OUT/gate.log" 2>&1; then
+  cat "$OUT/gate.log" >&2
+  exit 1
+fi
 cat "$OUT/gate.log"
 date '+%F %T end' >> "$OUT/timing.txt"
 print RENDER_LIVE_DONE >> "$OUT/timing.txt"

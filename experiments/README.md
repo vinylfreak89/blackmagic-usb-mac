@@ -257,6 +257,14 @@ roughly 65 GB UYVY endpoint:
 experiments/render_live.sh capture.tpc /non-synced/review-output
 ```
 
+The default 50 ms replay cadence is intentionally slower than hardware: NNEDI
+is not a realtime sink on the validation host, and allowing its FIFO to
+backpressure the synchronous replay callback would create honest HostLoss.
+This changes wall-clock rate only; the frameserver receives the same ordered
+observations and runs the same classifier, lifecycle actions, registration,
+publisher, and sidecar path. An optional third argument overrides the pace,
+but the gate rejects every run with an unpublished exact unit.
+
 The result is a 720x480, SAR 8:9, 60000/1001 NNEDI bob with AAC, its schema-5
 frameserver sidecar, and a 720x580 overlay copy whose extra band leaves the
 picture unobscured. `render_live_gate.py` requires every exact unit to have

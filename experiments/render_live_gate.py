@@ -41,6 +41,12 @@ def main() -> None:
     unpublished = [row for row in exact if row.get("published") != "1"]
     if unpublished:
         raise SystemExit(f"GATE FAIL: {len(unpublished)} exact units were not published")
+    ring_loss = sum(int(row.get("preceding_ring_drops") or 0) for row in all_rows)
+    drop_rows = [row for row in all_rows if row.get("drop_reason") not in (None, "", "None")]
+    if ring_loss or drop_rows:
+        raise SystemExit(
+            f"GATE FAIL: ring_drops={ring_loss} rows_with_drop_reason={len(drop_rows)}"
+        )
     expected_frames = 2 * len(exact)
     video_frames = frame_count(args.video)
     overlay_frames = frame_count(args.overlay)
