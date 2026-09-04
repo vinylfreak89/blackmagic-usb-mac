@@ -60,16 +60,23 @@ expected_bottom   = min(uncensored_bottom, C)  # when C is known
 residual          = measured_bottom - expected_bottom
 ```
 
-Residual zero directly permits an ungauged `GeometryLockDecides`. When the
-bottom is absent, censored, contradictory, or the top lies outside the old
-policy range, a one-unit body witness can still prove current position: the
-engine compares this field's 160-row horizontal luma-mean profile with the
-previous unit at shifts -3..+3. If the minimum MAD is below 9 and its shift
-equals the top-derived displacement change, current geometry applies while
-the original `Line21Ambiguous`, `GaugeConflict`, `LockBroken`, or
-`OutOfRangeHold` reason remains as provenance. Otherwise the named hold is
-honest about the disagreement. Picture content never redefines zero. A
-parity/envelope zero survives secondary content changes.
+Residual zero directly permits an ungauged `GeometryLockDecides`. A bounded
+one-unit body witness independently measures field motion: the engine compares
+the full 640-sample luma rows over NTSC lines 44..203 / 307..466 with the
+immediately previous unit at integer shifts -3..+3. A minimum MAD at most 25
+is measurable. This is a two-dimensional comparison; the earlier row-mean
+profile was falsified by flat minima on fixture A.
+
+The witness is anchored to the previous unit's measured picture top, never to
+`last_applied`. If current top and body motion agree, their current position is
+used even after a hold. If a top moves while a reliable body stands still, the
+top is a brightness/content flicker: `TopBodyDisagree` keeps the body-derived
+position. With no top, a still body or motion differing between the two fields
+can supply `BodyOnlyPlacement`; equal nonzero motion in both fields is an
+undecidable pan/common-mode case and `CommonModeBodyHold` is named. A unit with
+no accepted physical position invalidates the reference for the next unit, so
+a remembered crop can never latch into motion evidence. Picture content never
+redefines zero. A parity/envelope zero survives secondary content changes.
 Dark/unmeasurable content holds without destroying a valid lock. A clip
 ceiling is learned only when two parity/fallback-gauged observations at
 different offsets saturate at the same bottom line; its candidate/count are separate
@@ -95,20 +102,20 @@ a lock; a real mute/unlock is already a signal-state segment boundary, while
 subsequent measurable geometry can independently invalidate a stale lock.
 
 Parity places its current unit immediately, with one bounded exception. If a
-unique decoded caption changes displacement while the measurable top and the
-one-unit body witness say the picture stayed at the previous applied offset,
-the picture wins for that unit (`CaptionOnlyMotion`). If the body moved by a
-different reliable amount and the top agrees with that amount, the body-
-consistent placement is applied as `CaptionBodyDisagree`; otherwise that
-disagreement holds. A censored or absent bottom supplies no contrary evidence;
-when fully measurable it must conserve the same body-consistent placement.
+unique decoded caption and the measurable top plus 2-D body witness report
+different positions, the picture wins symmetrically: a still body is
+`CaptionOnlyMotion`, and a differently moving body is
+`CaptionBodyDisagree`. This applies whether the caption changed and picture
+stood still or the caption stood still and picture moved. A censored or absent
+bottom supplies no contrary evidence; when fully measurable it must conserve
+the same body-consistent placement.
 A parity reading can move the segment zero only when
 that same fully visible envelope corroborates its implied base or the next
 consecutive parity unit implies the same base. Until then it still places the
 unit as `AnchorUncorroborated`, but leaves the zero and lock geometry intact.
 This one-unit anchor memory never delays or smooths crop placement.
 
-## Sidecar schema 6
+## Sidecar schema 7
 
 The frameserver retains its transport/signal columns and writes the following
 v9 provenance for each field. Values named `*_line` are NTSC line numbers
@@ -119,9 +126,10 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
 - parity/fallback candidate counts;
 - selected gauge line, decoded bytes, correlation amplitude, and the live
   lock's independent `geometry_d` reading;
-- blank-row mean, the one-unit body witness's validity, shift, MAD and
-  agreement with top geometry, plus raw picture top/bottom/height,
-  measurability and censoring;
+- blank-row mean; the 2-D body witness's validity, shift and MAD; its previous
+  measured top, implied current top, top agreement, differential/common-mode
+  classification; the resolved current picture top and whether it came from
+  the body; plus raw picture top/bottom/height, measurability and censoring;
 - lock state/id, `None`/`Standard`/`Parity`/`Envelope` zero source, frozen
   top/height, whether that height is uncensored,
   `ClipUnknown`/`ClipFitting`/`ClipFitted`, and the optional clip ceiling; and
@@ -156,6 +164,7 @@ Build and run the deciding tests with:
 make -C src/field_registration test
 ```
 
-The synthetic v9 golden landed first and scored 8/29 on v7. The replacement
-must score 29/29, the decoder unit test 3/3, and the fixture agreement harness
-must match `experiments/cc608_decode.py` line verdicts and bytes exactly.
+The synthetic v9 golden landed first and scored 8/29 on v7; later red-first
+extensions exercise each measured defect. The current contract must score
+132/132, the decoder unit test 3/3, and the fixture agreement harness must
+match `experiments/cc608_decode.py` line verdicts and bytes exactly.

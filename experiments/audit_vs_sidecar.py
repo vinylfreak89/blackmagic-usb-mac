@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Join a rendered-picture audit to a live schema-6 registration sidecar.
+"""Join a rendered-picture audit to a live schema-7 registration sidecar.
 
 The live renderer emits one pair of bobbed frames for each Complete, published
 sidecar row, in that order. ``render_stability_audit.py`` numbers those pairs
@@ -37,7 +37,7 @@ def segment(row):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("audit_csv", help="CSV from render_stability_audit.py")
-    ap.add_argument("sidecar_csv", help="live frameserver schema-6 decision log")
+    ap.add_argument("sidecar_csv", help="live frameserver schema-7 decision log")
     ap.add_argument("output_csv", help="per-unit joined audit")
     args = ap.parse_args()
 

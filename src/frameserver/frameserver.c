@@ -220,8 +220,8 @@ static int log_header(FILE *L){
     return fprintf(L, "ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,"
                "interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,"
                "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,"
-               "f1_reason,f1_gauge,f1_insert_present,f1_insert_bytes,f1_insert_relation,f1_parity_candidates,f1_fallback_candidates,f1_gauge_line,f1_gauge_bytes,f1_gauge_amplitude,f1_geometry_d,f1_blank_mean,f1_body_witness_valid,f1_body_shift,f1_body_mad,f1_body_geometry_agrees,f1_raw_top,f1_raw_bottom,f1_raw_height,f1_geometry_measurable,f1_bottom_censored,f1_lock_state,f1_zero_source,f1_lock_id,f1_lock_top,f1_lock_height,f1_lock_height_known,f1_clip_state,f1_clip_ceiling,f1_expected_bottom,f1_lines_lost,f1_invariant_residual,"
-               "f2_reason,f2_gauge,f2_insert_present,f2_insert_bytes,f2_insert_relation,f2_parity_candidates,f2_fallback_candidates,f2_gauge_line,f2_gauge_bytes,f2_gauge_amplitude,f2_geometry_d,f2_blank_mean,f2_body_witness_valid,f2_body_shift,f2_body_mad,f2_body_geometry_agrees,f2_raw_top,f2_raw_bottom,f2_raw_height,f2_geometry_measurable,f2_bottom_censored,f2_lock_state,f2_zero_source,f2_lock_id,f2_lock_top,f2_lock_height,f2_lock_height_known,f2_clip_state,f2_clip_ceiling,f2_expected_bottom,f2_lines_lost,f2_invariant_residual,"
+               "f1_reason,f1_gauge,f1_insert_present,f1_insert_bytes,f1_insert_relation,f1_parity_candidates,f1_fallback_candidates,f1_gauge_line,f1_gauge_bytes,f1_gauge_amplitude,f1_geometry_d,f1_blank_mean,f1_body_witness_valid,f1_body_shift,f1_body_mad,f1_body_geometry_agrees,f1_body_reference_top,f1_body_implied_top,f1_body_differential,f1_body_common_mode,f1_picture_position_valid,f1_measured_picture_top,f1_picture_from_body,f1_raw_top,f1_raw_bottom,f1_raw_height,f1_geometry_measurable,f1_bottom_censored,f1_lock_state,f1_zero_source,f1_lock_id,f1_lock_top,f1_lock_height,f1_lock_height_known,f1_clip_state,f1_clip_ceiling,f1_expected_bottom,f1_lines_lost,f1_invariant_residual,"
+               "f2_reason,f2_gauge,f2_insert_present,f2_insert_bytes,f2_insert_relation,f2_parity_candidates,f2_fallback_candidates,f2_gauge_line,f2_gauge_bytes,f2_gauge_amplitude,f2_geometry_d,f2_blank_mean,f2_body_witness_valid,f2_body_shift,f2_body_mad,f2_body_geometry_agrees,f2_body_reference_top,f2_body_implied_top,f2_body_differential,f2_body_common_mode,f2_picture_position_valid,f2_measured_picture_top,f2_picture_from_body,f2_raw_top,f2_raw_bottom,f2_raw_height,f2_geometry_measurable,f2_bottom_censored,f2_lock_state,f2_zero_source,f2_lock_id,f2_lock_top,f2_lock_height,f2_lock_height_known,f2_clip_state,f2_clip_ceiling,f2_expected_bottom,f2_lines_lost,f2_invariant_residual,"
                "comb_safe,published,drop_reason,schema_version,preceding_ring_drops\n") < 0 ? -1 : 0;
 }
 
@@ -240,7 +240,12 @@ static int log_field(FILE *L, const fieldreg_field_decision *d)
         (d->gauge == FIELDREG_GAUGE_CEA608_PARITY ||
          d->gauge == FIELDREG_GAUGE_LINE22_DATA))
         snprintf(gauge_bytes, sizeof gauge_bytes, "%02x%02x", d->gauge_byte1, d->gauge_byte2);
-    return fprintf(L, ",%s,%s,%d,%s,%s,%u,%u,%d,%s,%.3f,%d,%.3f,%d,%d,%.3f,%d,%d,%d,%d,%d,%d,%s,%s,%u,%d,%d,%d,%s,%d,%d,%d,%d",
+    return fprintf(L,
+                   ",%s,%s,%d,%s,%s,%u,%u,%d,%s,%.3f,%d,%.3f"
+                   ",%d,%d,%.3f"
+                   ",%d,%d,%d,%d,%d,%d,%d,%d"
+                   ",%d,%d,%d,%d,%d"
+                   ",%s,%s,%u,%d,%d,%d,%s,%d,%d,%d,%d",
                    reason, gauge, d && d->insert_present, insert_bytes, insert_relation,
                    d ? d->parity_candidate_count : 0,
                    d ? d->fallback_candidate_count : 0,
@@ -252,6 +257,13 @@ static int log_field(FILE *L, const fieldreg_field_decision *d)
                    d && d->body_witness_valid ? d->body_shift : FIELDREG_UNKNOWN,
                    d ? d->body_mad : 0.0,
                    d && d->body_geometry_agrees,
+                   d && d->body_reference_top >= 0 ? d->body_reference_top + 4 : -1,
+                   d && d->body_implied_top >= 0 ? d->body_implied_top + 4 : -1,
+                   d && d->body_differential,
+                   d && d->body_common_mode,
+                   d && d->picture_position_valid,
+                   d && d->measured_picture_top >= 0 ? d->measured_picture_top + 4 : -1,
+                   d && d->picture_from_body,
                    d && d->raw_top >= 0 ? d->raw_top + 4 : -1,
                    d && d->raw_bottom >= 0 ? d->raw_bottom + 4 : -1,
                    d ? d->raw_height : -1, d && d->geometry_measurable,

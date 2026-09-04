@@ -69,6 +69,9 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_CAPTION_ONLY_MOTION,
     FIELDREG_MODE_CAPTION_BODY_DISAGREE,
     FIELDREG_MODE_ANCHOR_UNCORROBORATED,
+    FIELDREG_MODE_TOP_BODY_DISAGREE,
+    FIELDREG_MODE_BODY_ONLY_PLACEMENT,
+    FIELDREG_MODE_COMMON_MODE_BODY_HOLD,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -112,6 +115,15 @@ typedef struct fieldreg_field_decision {
     bool body_witness_valid;
     int8_t body_shift;
     bool body_geometry_agrees;
+    /* All nonnegative *_top values are source-raster rows here. Sidecar
+     * writers publish them as NTSC line numbers (row + 4). */
+    int16_t body_reference_top;
+    int16_t body_implied_top;
+    bool body_differential;
+    bool body_common_mode;
+    bool picture_position_valid;
+    int16_t measured_picture_top;
+    bool picture_from_body;
     fieldreg_lock_state lock_state;
     fieldreg_zero_source zero_source;
     uint32_t lock_id;
@@ -157,7 +169,10 @@ typedef struct fieldreg_field_state {
     uint8_t clip_candidate_count;
     fieldreg_zero_source zero_source;
     uint32_t lock_id;
-    uint16_t previous_body_profile[160];
+    /* Full active-width luma from NTSC lines 44..203 / 307..466.
+     * It is a true 2-D witness; row means were falsified on fixture A. */
+    uint8_t previous_body_luma[160 * 640];
+    int16_t previous_measured_top;
     bool previous_body_valid;
 } fieldreg_field_state;
 

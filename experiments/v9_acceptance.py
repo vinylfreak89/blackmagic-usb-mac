@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# v9 acceptance: compare a schema-6 frameserver decision log against the whole-tape parity truth set (line21_truth.py).
+# v9 acceptance: compare a schema-7 frameserver decision log against the whole-tape parity truth set (line21_truth.py).
 # For every unit where the truth has a reading, the engine's applied d must
 # equal it unless the sidecar explicitly records one of the owner-approved
 # current-picture vetoes:

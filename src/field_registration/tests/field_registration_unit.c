@@ -23,7 +23,10 @@ int main(void)
 {
     assert(fieldreg_algorithm_version() == 9);
     assert(fieldreg_state_size() == sizeof(field_registration));
-    assert(fieldreg_state_size() < 1024);
+    /* Two full-width 160x640 luma witnesses dominate this bound. The
+     * process path remains allocation-free; the falsified row-mean summary
+     * cannot be substituted merely to keep the old sub-1-KiB target. */
+    assert(fieldreg_state_size() < 256 * 1024);
     assert(fieldreg_config_size() == sizeof(fieldreg_config));
     assert(fieldreg_decision_size() == sizeof(fieldreg_decision));
     field_registration engine;
