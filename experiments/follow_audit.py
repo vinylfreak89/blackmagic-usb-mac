@@ -3,6 +3,7 @@
 # offset, did the field's picture BODY (rows well inside the picture, same field, previous unit) move by the same
 # amount? Body shift is the integer vertical shift (-3..+3) minimising the mean absolute difference of the field's
 # rows 40..200 (field 2: 303..463) against the previous unit; a scene cut (MAD floor > 25) is reported as unmeasurable.
+#   both fields' bodies shift by the same nonzero amount with no applied change -> content-motion (a camera tilt), ignored
 #   applied change == body shift  -> correct follow (output still)
 #   applied change != body shift  -> engine-caused output motion (the crop moved on a still picture, or by the wrong amount)
 # Also reports units where the body moved but the applied did not (missed moves).
@@ -44,7 +45,13 @@ def emit(u):
             elif da==s: v='follow'
             elif da==0: v='MISS'
             else: v='ENGINE-MOTION'
-            stats[(f+1,v)]+=1; rec+=[da,s,round(mad,1),v]
+            rec+=[da,s,round(mad,1),v]
+        # Content motion (a camera tilt, a subject moving up the frame) moves BOTH fields' bodies together and is not
+        # a raster event; it must not be scored as a miss or as engine motion. Measured 2026-09-05 at 40:26 (handheld
+        # shot) where every unit read as a MISS in both fields.
+        if rec[4]==rec[8] and rec[4]!=0 and rec[3]==0 and rec[7]==0:
+            rec[6]='content-motion'; rec[10]='content-motion'
+        for f in (0,1): stats[(f+1,rec[6 if f==0 else 10])]+=1
         rec+=[r['f1_reason'],r['f2_reason']]
         if any(x in ('follow','MISS','ENGINE-MOTION') for x in (rec[6],rec[10])): w.writerow(rec)
     st['prevY']=Y; st['previ']=i
