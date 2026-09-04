@@ -243,7 +243,10 @@ first visible line (SMPTE RP-202: line 23), and field 2 sits at its equivalent 2
 1,800 first-minute units and 1,800 of 1,800 in the EP slice. The census was rewritten to
 recognise caption and timing lines by signature wherever they land (`1756fba`, 17:31). Line-21
 row sets on the SP first minute: `(17,)` 1,663 units, `(17,19)` 85, all 85 with picture
-displacement +2; EP `(17,)` 1,762 (Claude's `line21_probe.py`, transcript-only).
+displacement +2; EP `(17,)` 1,762 (Claude's `line21_probe.py`, transcript-only). The whole-tape
+census that finished that evening (CLAUDE.md §6) added the decisive negative: the SP intro's
+majority picture top at row 20 has no line-21 waveform at row 18, so it is locked with a blank
+line 23, and any envelope-top gauge would have called the entire intro +1.
 
 Every render for six days had shown this on its first row. The crop started at row 17, so line 21
 and the black line 22 were inside every frame, reading as "content" to the engines and as

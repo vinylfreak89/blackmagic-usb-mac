@@ -1297,7 +1297,26 @@ delivery edge; wrong one at acquisition.
   picture content appearing ABOVE the deck's line-21 insert (rows 7–16 must never carry video);
   and the black line 22 (row 18, Y ≈ 1.4 when aligned; the gap moves with the content). EP
   damage measured at 1,300 s: 458/1,800 units carry ≥2 bright leaking-VBI band rows above the
-  picture, 138 carry one — bands, never line 21 or picture. Damage classes the caption
+  picture, 138 carry one — bands, never line 21 or picture.
+  **Whole-tape envelope census (2026-09-04, `picture_envelope_census.py` at `1756fba` over all
+  86,293 exact units; scratch CSV, regenerable in ~100 min).** The tape has two recordings with
+  a boundary at **1,461 s** (unit 43,800; last caption on the insert 1,457 s). *First recording:*
+  whenever a recorded caption is found it is on the insert (5,558 of 6,425) with the picture at
+  19/256 (or 255), except a rigid **+2 class: caption 19, top 21, bottom 257** (395 units) — the
+  bottom moved one line, not two, so **the deck clips field 1's bottom and height is NOT invariant
+  under displacement**; the SP intro's majority top-20/bottom-256 (17,503 units) carries no
+  line-21 waveform at row 18 (first-minute probe: row sets `(17,)` and `(17,19)` only), so it is
+  LOCKED with a blank line 23 in the content — an envelope-top gauge would have called the entire
+  intro +1; this is the strongest single case for the golden rule. Field 2: 282/518 in 23,302
+  of 24,000 intro units, **224 rigid moves in 86,293 (0.26%)**; its 282↔283 top flicker is
+  content. *Second recording (1,461 s–end):* captions **never on the insert**; found in 9,162
+  units at rows 19/20 with the picture top at 20–22 and the bottom fixed at 256 (field 2 at
+  284/518, height 235): caption→top gap 2 in ~1,300 units, gap 1 in ~3,500, caption BELOW the
+  top in 682 — the EP's split/skewed caption class, ambiguous by the plan's own rule, so either
+  CaptionRelock fires from the run-in row or it never fires and the recording renders with its
+  own leaked VBI at the top (owner ruling owed). Field-1 unit-to-unit moves: first recording
+  rigid 2,643 / bottom-only 1,976 (256↔255, content reaching the near-blank rows) / top-only
+  843; second recording top-only 5,089 / bottom-only 2,750 / rigid 2,377 / mixed 1,463. Damage classes the caption
   detector must survive: the tape's own vertical-interval pulses leaking into the picture as
   thick bright bands when horizontal timing is far out of tolerance (also the "severe flagging"
   bands seen on other tapes), and the EP recording's caption splitting across two lines/fields
