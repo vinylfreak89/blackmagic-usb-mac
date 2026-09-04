@@ -17,7 +17,9 @@ import csv,collections,sys
 rows=list(csv.DictReader(open('$OUT/fulltape_render_registration.csv')))
 pairs=[(r.get('applied_d1'),r.get('applied_d2')) for r in rows]
 trans=sum(1 for i in range(1,len(pairs)) if pairs[i]!=pairs[i-1]); blips=sum(1 for i in range(1,len(pairs)-1) if pairs[i]!=pairs[i-1] and pairs[i+1]==pairs[i-1])
-rel=sum(1 for r in rows if r.get('relative_only') in ('1','True','true'))
-print(f"  sidecar: {len(rows)} rows, {trans} applied-phase transitions, {blips} one-unit flips, {rel} relative-only rows, pairs {collections.Counter(pairs).most_common(5)}")
+safe=sum(1 for r in rows if r.get('comb_safe')=='1')
+reasons=collections.Counter(r.get('f1_reason','?') for r in rows)
+print(f"  sidecar: {len(rows)} rows, {trans} applied-phase transitions, {blips} one-unit flips, comb_safe {safe}/{len(rows)}, pairs {collections.Counter(pairs).most_common(5)}")
+print(f"  field-1 reasons: {dict(reasons.most_common(6))}")
 PY
 echo "gate failures: $fails"; [ $fails = 0 ] && echo GATE_PASS || echo GATE_FAIL
