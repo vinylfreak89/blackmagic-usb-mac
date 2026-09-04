@@ -155,12 +155,21 @@ signal, is the reference the picture is jumping relative to?*
   with decisions from 37 minutes later, and the visible jitter was reported as engine chatter
   (`f80b1f9` fix; LEARNINGS "validate a new instrument against a known reference"). Cost: a
   wrong defect brief to Codex and an hour.
-- **Crop origin versus picture origin.** Asked which top line should be visible, Claude answered
-  with the 480-line clean aperture alone and committed 19/282 (`bdac68b`); Codex, chatting with
-  the owner in parallel, then "found" the render starting at line 19 and withdrew the change
-  (`2930095`); the owner then decided 720×480 = clean aperture, 720×486 = alternate mode, and the
-  change was restored (`7285d89`). Cost: an hour and the owner's trust ("you are confusing both
-  me and yourselves"). LEARNINGS "two coordinates, one name".
+- **Crop origin versus picture origin.** Sequence from both transcripts (UTC, 09-04): 08:29 the
+  owner tells Codex "we've been rendering from line 17 instead of line 19 this entire time" and
+  Codex calls it a foundational mistake; 08:33 the owner tells Claude the crop should come from
+  the standard, and Claude commits 19/282 (`bdac68b`, 08:35) answering with the clean aperture
+  alone; 08:36 the owner asks Codex whether analog renders normally show line 21 first, Codex
+  agrees ("17/280 is the VBI-preserving window; my 'foundational mistake' conclusion was wrong");
+  08:36:50 the owner: "but that's not the problem. OUR render is starting at line 19" (the effect
+  of `bdac68b`), and Codex withdraws the 19/282 change and proposes auditing the renderer for a
+  bug; 08:38 the owner to Claude: "you are confusing both me and yourselves"; 08:39 Claude reverts
+  `bdac68b` (`2930095`) to match Codex's VBI-preserving answer and tells Codex the line-19 render
+  was its own commit; 08:41–08:51 the owner asks about the 486-line raster and decides 720×480 =
+  clean aperture, 720×486 = alternate mode; `7285d89` restores 19/282 (08:51). The fault was
+  Claude's: three coordinate systems (unit rows 17/19, the standard's lines 21/23, the deck's
+  regenerated lines versus the tape's) all called "line N" without saying which, which is what
+  confused the owner. LEARNINGS "two coordinates, one name".
 
 ## The direct signal (2026-09-04 afternoon)
 
@@ -232,10 +241,13 @@ bottom-only, 256 × 1,038 / 255 × 546, 202–0 in the parity test, 19/282). Whe
    2,475 phase changes on `Unknown*` rows were a real policy inconsistency, but freezing every
    Unknown row worsened both presentation windows because Unknown usually meant "the proxy failed
    while the raster moved". Accepted as an addition.
-5. **Why `bdac68b` was reverted.** The revert commit `2930095` carries no rationale. Codex's
-   rollout says it followed recognizing that line 21 belongs in a VBI-preserving window; Claude's
-   transcript records Codex telling the owner the render started at line 19. Git cannot decide
-   this; both recollections stand. It does not change the outcome (`7285d89`).
+5. **Why `bdac68b` was reverted — settled from both transcripts.** The revert commit `2930095`
+   carries no rationale; the rollouts do. Codex's account (the revert followed recognizing that
+   line 21 belongs in a VBI-preserving window) is right: Codex gave the owner that answer at
+   08:36:48 UTC and Claude reverted at 08:39 to match it. Claude's first recollection ("Codex
+   found the render starting at line 19") was wrong: the OWNER reported the line-19 render to
+   Codex at 08:36:50, having seen the effect of Claude's own commit; Codex withdrew the change and
+   proposed a renderer audit. The full sequence is in the false-alarm section above.
 6. **The 20/283 picture top.** Codex attributes the earlier 20/283 statement in `8f58f37` to a
    line-number interpretation error; this file attributes it to the census skipping rows 17 and
    19 by number. Both are true and sequential: the instrument (`0e349c5`) produced 20 by

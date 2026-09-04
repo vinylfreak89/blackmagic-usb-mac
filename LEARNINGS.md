@@ -238,8 +238,14 @@ The 480-line crop origin (17/280, the VBI-preserving analog-capture window that 
 and the picture origin (19/282, the standard's first visible line, where registration measures)
 were both called "the start" in code, docs and chat. When the owner asked which line should be
 visible, I answered with the clean-aperture standard alone and committed a crop change to 19/282
-within minutes; Codex, chatting with the owner in parallel, then "discovered" the render starting
-at line 19 and went looking for a bug that was my commit. Lessons: (1) when a question has two
+within minutes. The owner, chatting with Codex in parallel, saw the effect and told Codex "OUR
+render is starting at line 19"; Codex, which had just (correctly) agreed with him that analog
+captures normally show line 21 first, withdrew the change and went looking for a renderer bug that
+was my commit. I then reverted it to match, and the owner had to settle the question himself
+twenty minutes later (720x480 = clean aperture, 720x486 = alternate mode). The root fault was
+mine: I was using "line N" for three different coordinates — unit rows (17/19), the standard's
+line numbers (21/23), and the deck's regenerated lines versus the tape's — without saying which,
+and confusing the owner with it. Lessons: (1) when a question has two
 standard answers (486-line VBI-preserving vs 480-line clean aperture), give both with what each
 raster is for BEFORE touching a shared constant; (2) never change a shared geometric constant on
 main while the design is in conceptual review — propose it, get the word, then commit; (3) tell
