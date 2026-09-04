@@ -48,13 +48,13 @@ static bool field2_envelope(const uint8_t *raster, int row)
 {
     const uint8_t *line = raster + (size_t)row * FIELDREG_BYTES_PER_LINE;
     uint32_t total = 0;
-    uint16_t bins[48];
+    double bins[48];
     for (int bin = 0; bin < 48; ++bin) {
         const int first = 40 + (bin * 640) / 48;
         const int last = 40 + ((bin + 1) * 640) / 48;
         uint32_t sum = 0;
         for (int x = first; x < last; ++x) sum += line[x * 2 + 1];
-        bins[bin] = (uint16_t)(sum / (uint32_t)(last - first));
+        bins[bin] = (double)sum / (double)(last - first);
         total += sum;
     }
     if ((double)total / 640.0 >= 95.0) return false;
@@ -113,7 +113,11 @@ static void measure_field(const uint8_t *raster, int field,
                 if (m->off_count != UINT16_MAX) ++m->off_count;
             }
         }
-        if (field == 1 && row != insert && !decoded.parity_valid &&
+        /* The frozen smeared-XDS fallback is a top-interval classifier, not a
+         * whole-picture search: NTSC lines 285..290 (unit rows 281..286).
+         * Scanning the body admits picture texture by construction. */
+        if (field == 1 && row > insert && row <= insert + 6 &&
+            !decoded.parity_valid &&
             field2_envelope(raster, row)) {
             waveform[row - first] = true;
             if (m->fallback_count == 0) m->fallback_row = (int16_t)row;
@@ -251,6 +255,21 @@ static void fit_clip(fieldreg_field_state *s, const field_measurement *m,
         s->clip_ceiling = s->clip_candidate;
 }
 
+static void record_invariant(const fieldreg_field_state *s,
+                             const field_measurement *m, int measured,
+                             fieldreg_field_decision *d)
+{
+    if (s->lock_state != FIELDREG_LOCK_LOCKED || !m->geometry_measurable)
+        return;
+    const int uncensored = s->top + s->height - 1 + measured;
+    const int expected = s->clip_ceiling >= 0 && uncensored > s->clip_ceiling ?
+                         s->clip_ceiling : uncensored;
+    d->expected_bottom = (int16_t)expected;
+    d->lines_lost = (int16_t)(uncensored - expected);
+    d->bottom_censored = d->lines_lost > 0;
+    d->invariant_residual = (int16_t)(m->bottom - expected);
+}
+
 static void decide_geometry(fieldreg_field_state *s,
                             const field_measurement *m, int field,
                             fieldreg_field_decision *d)
@@ -301,6 +320,7 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
     memset(d, 0, sizeof *d);
     d->measured_d = FIELDREG_UNKNOWN;
     d->gauge_row = -1;
+    d->expected_bottom = -1;
     d->raw_top = m->top;
     d->raw_bottom = m->bottom;
     d->raw_height = m->height;
@@ -334,6 +354,7 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
             s->last_applied = (int8_t)measured;
             fit_clip(s, m, measured);
             seed_from_gauge(s, m, measured);
+            record_invariant(s, m, measured, d);
         }
     } else if (field == 1 && m->fallback_count > 1) {
         hold(s, d, FIELDREG_MODE_LINE21_AMBIGUOUS);
@@ -350,6 +371,7 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
             s->last_applied = (int8_t)measured;
             fit_clip(s, m, measured);
             seed_from_gauge(s, m, measured);
+            record_invariant(s, m, measured, d);
         }
     } else if (m->insert_byte1 != 0x80 || m->insert_byte2 != 0x80) {
         d->measured_d = 0;
@@ -362,6 +384,7 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
         s->last_applied = 0;
         fit_clip(s, m, 0);
         seed_from_gauge(s, m, 0);
+        record_invariant(s, m, 0, d);
     } else decide_geometry(s, m, field, d);
     copy_lock(s, d);
 }
