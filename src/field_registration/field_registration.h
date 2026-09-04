@@ -31,7 +31,6 @@ enum {
 
 typedef enum fieldreg_lock_state {
     FIELDREG_LOCK_UNLOCKED = 0,
-    FIELDREG_LOCK_ACQUIRE_ONE,
     FIELDREG_LOCK_LOCKED,
 } fieldreg_lock_state;
 
@@ -43,7 +42,7 @@ typedef enum fieldreg_clip_state {
 
 typedef enum fieldreg_zero_source {
     FIELDREG_ZERO_NONE = 0,
-    FIELDREG_ZERO_ACQUIRED,
+    FIELDREG_ZERO_STANDARD,
     FIELDREG_ZERO_PARITY,
     FIELDREG_ZERO_ENVELOPE,
 } fieldreg_zero_source;
@@ -143,14 +142,11 @@ typedef struct fieldreg_field_state {
     int16_t top;
     int16_t height;
     int16_t clip_ceiling;
-    int16_t acquire_top;
-    int16_t acquire_height;
     int16_t clip_candidate;
     int8_t last_applied;
     int8_t clip_candidate_d;
     fieldreg_lock_state lock_state;
     bool height_known;
-    bool acquire_height_known;
     uint8_t clip_candidate_count;
     fieldreg_zero_source zero_source;
     uint32_t lock_id;
@@ -169,8 +165,8 @@ size_t fieldreg_state_size(void);
 size_t fieldreg_config_size(void);
 size_t fieldreg_decision_size(void);
 uint32_t fieldreg_algorithm_version(void);
-/* Two observations acquire a geometry-only lock; gauged placement is still
- * immediate and the engine has no dwell window or buffered confirmation. */
+/* Geometry is compared with the standard zero immediately; no observation
+ * dwell or buffered confirmation exists. */
 uint32_t fieldreg_confirmation_units(const field_registration *engine);
 uint32_t fieldreg_buffer_units(const field_registration *engine);
 void fieldreg_init(field_registration *engine, const fieldreg_config *config);
