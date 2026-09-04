@@ -378,8 +378,9 @@ static void decide_geometry(fieldreg_field_state *s,
         return;
     }
     if (measured != s->last_applied && s->clip_ceiling < 0 &&
-        s->clip_candidate_count > 0 &&
-        s->zero_source != FIELDREG_ZERO_PARITY) {
+        (m->bottom_at_adc_boundary ||
+         (s->clip_candidate_count > 0 &&
+          s->zero_source != FIELDREG_ZERO_PARITY))) {
         hold(s, d, FIELDREG_MODE_CLIP_UNKNOWN_HOLD);
         return;
     }
