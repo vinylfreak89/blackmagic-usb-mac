@@ -118,13 +118,22 @@ provisional trajectories, FIFO, backdating, learned position references. `static
    field 2 sits at 284/518 for 25 minutes with its bottom fixed. Neither is a displacement. The
    envelope may only report a displacement when top and bottom move together (or the bottom is
    censored per item 1 and line 21 agrees).
-3. **The second recording (1,461 s–end) needs an owner ruling.** Its captions are never on the
-   insert; they sit at rows 19/20, split and skewed, with the picture right underneath (gap 1 in
-   ~3,500 units, gap 2 in ~1,300, caption below the detected top in 682). By the ambiguity rule
-   this is never a reference, so the lock stays at the deck's insert and the recording renders
-   with its own leaked VBI at the top of the frame — which is what the owner saw. Alternatives:
-   relock on the run-in row when it is consistent for N units even though the data rows are
-   split; or accept the leakage as recorded content. Not decided here.
+3. **The second recording (1,461 s–end) — RULED by the owner (2026-09-04 evening).** Its
+   captions are never on the insert; they sit at rows 19/20 with the picture right underneath
+   (gap 1 in ~3,500 units, gap 2 in ~1,300, caption below the detected top in 682), and the
+   line-21 waveform often spans two rows (run-in on both, start/data on one). Ruling: **if a unit
+   shows line-21-like waveforms on more than one row, or a partial waveform, give up on line 21
+   for that unit** — a timing signal that unstable cannot be a reference. The fallback fix
+   points are then promoted from "secondary checks" to a real gauge: the leaked VBI framing
+   pulses of the next field in the head-switch band at the bottom of the field, and picture
+   content appearing above the deck's line-21 band (video must never be there). Only after those
+   does the envelope apply, then hold-last. Open measurement before the goldens: the owner's
+   observation of the EP render differs from Claude's 600-unit window at 2,400 s — he sees the
+   waveform extend across both rows sometimes (usually when it carries real caption data, which
+   in a bob render appears every other field: CC1 data is on field 1, field 2's line 284 is
+   usually null) and not in the stable state, with an occasional unsplit line 21. Classify per
+   unit and per field across the whole second recording (rows found; run-in-only / null /
+   data-bearing; single or multi-row) before writing the ambiguity detector.
 4. **Field 2 is rigid on the whole tape:** 224 rigid moves in 86,293 units; the plan's "field 2
    from the same lock and its own envelope" stands, and its 282↔283 top flicker must be treated
    as content.

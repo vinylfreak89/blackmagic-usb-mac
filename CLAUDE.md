@@ -1327,7 +1327,14 @@ delivery edge; wrong one at acquisition.
   half-line error would displace every line, and a TBC re-locks H per line anyway. Prior art for
   captions landing on varying rows: FFmpeg `readeia608` (scans `scan_min..scan_max`, default
   rows 0–29, reports the row it found) and ld-decode/vhs-decode `ld-process-vbi` (reads CC
-  "anywhere in the VBI space"). Neither uses the row as a registration reference; that is ours. Damage classes the caption
+  "anywhere in the VBI space"). Neither uses the row as a registration reference; that is ours.
+  **Owner ruling (same evening):** multiple line-21-like rows or a partial waveform in a unit
+  means the timing signal is too unstable to use — give up on line 21 for that unit; the leaked
+  VBI framing pulses at the bottom of the field and picture-above-the-band are then a real fix
+  point, not just a check (v9 plan, amendment 3). The owner's EP-render observation (waveform
+  sometimes spanning both rows, usually when carrying caption data; occasionally unsplit) does
+  not match Claude's one 600-unit window; the whole second recording must be classified per
+  unit and per field before the detector is written. Damage classes the caption
   detector must survive: the tape's own vertical-interval pulses leaking into the picture as
   thick bright bands when horizontal timing is far out of tolerance (also the "severe flagging"
   bands seen on other tapes), and the EP recording's caption splitting across two lines/fields
