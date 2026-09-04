@@ -1304,7 +1304,12 @@ delivery edge; wrong one at acquisition.
   thread — `OBSStudioAPI::on_event` is a synchronous loop called from `OBSBasic` — so a callback
   only enqueues), drained at destroy, never inline. The recording's file name comes from
   `obs_frontend_get_last_recording()` (set at recording start); `obs_frontend_get_current_record_output_path()`
-  is the configured directory, not the file — the first live test produced nameless sidecars. Alignment is within
+  is the configured directory, not the file — the first live test produced nameless sidecars.
+  Scope decision: one sidecar per press of the record button, named after the recording's first
+  file (OBS's automatic file split emits no frontend event; per-split rotation via the output's
+  `file_changed` signal is a follow-up); standard and advanced file recorders supported, an FFmpeg
+  output to a URL gets none, auto-remux keeps the pre-remux name. The publisher is a bounded,
+  tested queue (`publish_queue.{c,h}`) with final-name reservation. Alignment is within
   one unit (the counter of the last frame delivered before the event is logged; exact alignment
   needs an in-band frame counter). OPEN: a `.tpc` tee from inside the plugin (needs a
   runtime-attachable tagged sink in the capture core); a log writer thread if storage stalls are
