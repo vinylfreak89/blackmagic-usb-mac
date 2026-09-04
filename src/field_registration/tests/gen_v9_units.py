@@ -791,6 +791,19 @@ def main():
         body_split_shifts=((0, 1), None),
         f1_reason="TopUncorroborated", f1_body_valid=0)
 
+    # Once parity has established the segment zero, a later caption and top
+    # can share the same damaged-line error. If the body abstains and comb is
+    # not decisive, those two correlated VBI readings may not move the crop.
+    add("parity-top-uncorroborated-anchor", (2, 0), begin=True,
+        picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        body_texture=(True, False))
+    add("parity-top-uncorroborated-hold", (2, 0), picture=(3, 0),
+        captions=((3, 0x15, 0x2b), None), content_phases=(0, 0),
+        content_shifts=(3, 0), body_texture=(True, False),
+        body_split_shifts=((2, 3), None),
+        f1_reason="TopUncorroborated", f1_body_valid=0)
+
     # 35:38 failure class: field 1 has a physical +3 line-21 gauge, while
     # field 2's first two VBI-contaminated rows make geometry say zero.  The
     # static weave uniquely says field 2's segment zero is two lines lower.
