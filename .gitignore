@@ -56,3 +56,7 @@ src/field_registration/libfieldreg.dylib
 src/obs_plugin/tests_publish_copy
 src/obs_plugin/tests_publish_queue
 src/obs_plugin/tests_publish_queue_tsan
+src/field_registration/tests/cea608_unit
+src/field_registration/tests/field_registration_v9
+src/field_registration/tests/registration_v9.csv
+src/field_registration/tests/registration_v9.raw
