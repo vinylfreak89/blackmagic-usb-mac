@@ -62,10 +62,11 @@ residual          = measured_bottom - expected_bottom
 
 Residual zero directly permits an ungauged `GeometryLockDecides`. A bounded
 one-unit body witness independently measures field motion: the engine compares
-the full 640-sample luma rows over NTSC lines 44..203 / 307..466 with the
-immediately previous unit at integer shifts -3..+3. A minimum MAD at most 25
-is measurable. This is a two-dimensional comparison; the earlier row-mean
-profile was falsified by flat minima on fixture A.
+320 evenly spaced luma samples (half horizontal resolution) over NTSC lines
+44..203 / 307..466 with the immediately previous unit at integer shifts
+-3..+3. A minimum MAD at most 25 is measurable only when it beats both
+adjacent shifts by at least 20%. The earlier row-mean profile and shallow 3%
+minima were falsified by flat/tied witnesses on fixture A.
 
 The witness is anchored to the previous unit's measured picture top, never to
 `last_applied`. If current top and body motion agree, their current position is
@@ -91,12 +92,24 @@ break the lock nor change the displacement.
 new segment at `d=0`. `fieldreg_discontinuity()` restores the standard-origin
 locks but preserves each last applied offset. Neither buffers, backdates,
 drops, or repeats a unit.
-`comb_safe` requires both field locks and either physical zero sources
-(`Parity`/`Envelope`) for both fields or a current rigid, zero-residual
-geometry observation in both. A standard-origin lock therefore cannot promise
-deinterlacing safety through an unmeasurable unit, nor when its measured
-geometry is being held instead of applied. Callers still emit
-every uncorrected/held frame and leave any presentation policy downstream.
+The remaining per-segment ambiguity is field 2's zero: picture geometry cannot
+distinguish a source whose second field begins one display line lower from an
+actual one-line crossing. Static picture detail resolves that zero once. The
+engine applies an 8-pixel horizontal low-pass, retains same-parity pixels whose
+temporal delta is below six luma codes in both fields, and searches field-2
+re-weaves -3..+3. Three consecutive measurements with at least 3% static
+pixels, a unique minimum, and a 25% advantage over the second-best freeze the
+field-2 top; `zero_source=Comb`. Field 2 then continues to track its own top
+and body motion against that zero. Comb never supplies a per-unit displacement.
+An Envelope gauge must agree with an installed Comb zero; `ZeroConflict` names
+a disagreement without averaging the two.
+
+After calibration, only -1/0/+1 around the published crop is checked. One
+disagreement is provenance only. Eight consecutive measurable disagreements
+with a stable field-1 placement report `parity_state=Drift` and restart
+calibration without changing that unit's crop. `comb_safe` requires both field
+locks and `parity_state=Calibrated`; uncalibrated geometry is emitted honestly
+but makes no deinterlacing-safety claim.
 One missing Shuttle insert is an `InsertAbsent` hold and does not itself erase
 a lock; a real mute/unlock is already a signal-state segment boundary, while
 subsequent measurable geometry can independently invalidate a stale lock.
@@ -115,7 +128,7 @@ consecutive parity unit implies the same base. Until then it still places the
 unit as `AnchorUncorroborated`, but leaves the zero and lock geometry intact.
 This one-unit anchor memory never delays or smooths crop placement.
 
-## Sidecar schema 7
+## Sidecar schema 8
 
 The frameserver retains its transport/signal columns and writes the following
 v9 provenance for each field. Values named `*_line` are NTSC line numbers
@@ -130,14 +143,17 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
   measured top, implied current top, top agreement, differential/common-mode
   classification; the resolved current picture top and whether it came from
   the body; plus raw picture top/bottom/height, measurability and censoring;
-- lock state/id, `None`/`Standard`/`Parity`/`Envelope` zero source, frozen
+- lock state/id, `None`/`Standard`/`Parity`/`Envelope`/`Comb` zero source, frozen
   top/height, whether that height is uncensored,
   `ClipUnknown`/`ClipFitting`/`ClipFitted`, and the optional clip ceiling; and
 - expected bottom, lost-line count, and invariant residual.
 
-The row also records the applied pair, whether both locks make the vertical
-registration claim (`comb_safe`), publication/drop accounting, and schema
-version. The offline renderer emits the same per-field engine provenance.
+The row also records `parity_state` (Uncalibrated/Calibrated/Drift),
+`comb_check` (agree/disagree/flat/n.a.), the best re-weave shift, installed
+field-2 parity bias, best/second energy and static fraction, the applied pair,
+whether both locks make the vertical-registration claim (`comb_safe`),
+publication/drop accounting, and schema version. The offline renderer emits
+the same per-field engine provenance.
 `confidence` is binary: `1` means at least one field supplied an accepted
 observation, `0` means neither did. `fieldreg_confirmation_units() == 1`
 records that standard-origin geometry placement is immediate; it is not a
@@ -150,9 +166,11 @@ unknown-field sentinel into signal-state's chatter counter.
 
 ## Deliberately absent
 
-No comb search, spatial bands, multi-candidate trajectory, dwell, chatter
+No per-unit comb authority, spatial bands, multi-candidate trajectory, dwell, chatter
 suppression, common-mode arbitration, learned position mode, FIFO, or
-backtracking remains in the live path. The sole temporal measurement is the
+backtracking remains in the live path. The bounded comb measurement above
+calibrates/checks a segment constant but cannot vote on a current crop. The
+other temporal measurement is the
 bounded previous-unit body profile above: it confirms a current top reading;
 it cannot smooth, vote, or redefine a lock. The old tools
 remain offline diagnostics only; `docs/registration_archaeology*.md` records
@@ -166,5 +184,5 @@ make -C src/field_registration test
 
 The synthetic v9 golden landed first and scored 8/29 on v7; later red-first
 extensions exercise each measured defect. The current contract must score
-132/132, the decoder unit test 3/3, and the fixture agreement harness must
+138/138, the decoder unit test 3/3, and the fixture agreement harness must
 match `experiments/cc608_decode.py` line verdicts and bytes exactly.

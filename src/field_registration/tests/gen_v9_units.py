@@ -271,6 +271,7 @@ def main():
             f1_raw_top=-999, f2_raw_top=-999,
             f1_body_shift=-999, f2_body_shift=-999,
             f1_body_valid=-1, f2_body_valid=-1,
+            parity_state="-", comb_check="-", parity_bias=-999,
             **kwargs):
         counter = len(units)
         units.append(make_unit(counter, **kwargs))
@@ -279,7 +280,8 @@ def main():
                      f1_reason, f2_reason, f1_lock, f2_lock, f1_zero, f2_zero,
                      f1_lock_top, f2_lock_top, comb, f1_raw_top, f2_raw_top))
         rows[-1] += (f1_body_shift, f2_body_shift,
-                     f1_body_valid, f2_body_valid)
+                     f1_body_valid, f2_body_valid,
+                     parity_state, comb_check, parity_bias)
 
     # Alignment and immediate parity authority.
     add("aligned-null-acquire-1", (0, 0), begin=True)
@@ -339,7 +341,7 @@ def main():
             bright_rows=(19,) if d1 == 3 else (),
             f1_lock="Locked" if i >= 2 else "-",
             f2_lock="Locked" if i >= 2 else "-",
-            comb=1 if i >= 2 else -1)
+            comb=0 if i >= 2 else -1)
 
     # Without C, one missing weak field-2 gauge cannot turn an ambiguous
     # shortened bottom into a one-line placement change.
@@ -377,10 +379,10 @@ def main():
     add("insert-dropout-acquire-2", (0, 0))
     add("insert-dropout-hold-lock", (0, 0), insert=False,
         f1_reason="InsertAbsent", f2_reason="InsertAbsent",
-        f1_lock="Locked", f2_lock="Locked", comb=1)
+        f1_lock="Locked", f2_lock="Locked", comb=0)
     add("insert-dropout-return", (0, 0),
         f1_reason="GeometryLockDecides", f2_reason="GeometryLockDecides",
-        f1_lock="Locked", f2_lock="Locked", comb=1)
+        f1_lock="Locked", f2_lock="Locked", comb=0)
 
     # Re-encoded non-null bytes on the Shuttle's insert are provenance only.
     # A rigid +1 picture envelope remains a per-unit placement observation.
@@ -388,7 +390,7 @@ def main():
     add("reencoded-rigid-acquire-2", (0, 0))
     add("reencoded-rigid-plus1", (1, 0), picture=(1, 0),
         captions=((0, 0x14, 0x2c), None),
-        f1_reason="GeometryLockDecides", f1_lock="Locked", comb=1)
+        f1_reason="GeometryLockDecides", f1_lock="Locked", comb=0)
 
     # Geometry is compared with the standard origin from the first unit. A
     # parity-valid +2 line then re-anchors that standard zero to the physical
@@ -435,7 +437,7 @@ def main():
         top_overrides=(None, 282), bottom_overrides=(None, 518),
         content_phases=(0, 0), content_shifts=(0, 0),
         f2_reason="GeometryLockDecides", f2_lock="Locked", f2_zero="Standard",
-        comb=1)
+        comb=0)
 
     # A standard-zero lock cannot promise deinterlacing safety on an
     # unmeasurable unit without a current rigid observation in both fields.
@@ -776,7 +778,11 @@ def main():
             comb_offsets=(3, 2),
             f1_reason="Line21Placement",
             f2_zero="Comb" if i == 3 else "-",
-            f2_lock_top=280 if i == 3 else -999)
+            f2_lock_top=280 if i == 3 else -999,
+            comb=1 if i == 3 else 0,
+            parity_state="Calibrated" if i == 3 else "Uncalibrated",
+            comb_check="agree" if i == 3 else "-",
+            parity_bias=2 if i == 3 else 0)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
@@ -791,7 +797,8 @@ def main():
                     "f1_lock", "f2_lock", "f1_zero", "f2_zero",
                     "f1_lock_top", "f2_lock_top", "comb_safe",
                     "f1_raw_top", "f2_raw_top", "f1_body_shift",
-                    "f2_body_shift", "f1_body_valid", "f2_body_valid"))
+                    "f2_body_shift", "f1_body_valid", "f2_body_valid",
+                    "parity_state", "comb_check", "parity_bias"))
         w.writerows(rows)
     print(f"wrote {len(units)} v9 units")
 

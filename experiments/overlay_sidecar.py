@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Burn a v9 (schema 7) registration sidecar into a rendered review video as a metrics band.
+"""Burn a v9 (schema 8) registration sidecar into a rendered review video as a metrics band.
 
 The band is ADDED below (or above) the picture — the picture is never covered. One band image per
 unit (two bobbed frames): line 1 = unit, counter, unit state, applied (d1,d2), comb_safe; lines 2-5 =
@@ -76,7 +76,9 @@ def main() -> None:
         unit_state = g(r, "transport" if live else "unit_state", "")
         safe = g(r, "comb_safe", "0") in ("1", "True", "true")
         line1 = (f"u{int(f):06d} c{counter:>5} {unit_state[:7]:7s} applied({g(r,'applied_d1','?')},{g(r,'applied_d2','?')})  "
-                 f"{'comb-safe' if safe else 'NOT comb-safe'}")
+                 f"{'comb-safe' if safe else 'NOT comb-safe'} "
+                 f"parity={g(r,'parity_state','?')}/{g(r,'comb_check','?')} "
+                 f"bias={g(r,'parity_bias','?')}")
         d.text((6, 4), line1, font=font, fill=(255, 255, 255) if safe else (255, 215, 0))
         for n, y in ((1, 20), (2, 48)):
             reason = g(r, f"f{n}_reason", "?")

@@ -14,6 +14,7 @@ enum {
     FIELDREG_HEADER_BYTES = 48,
     FIELDREG_RASTER_LINES = 525,
     FIELDREG_BYTES_PER_LINE = 1440,
+    FIELDREG_ACTIVE_LUMA_SAMPLES = 320,
     FIELDREG_FIELD_LINES = 240,
     /* 720x480 clean-aperture crop: NTSC lines 23 and 286. */
     FIELDREG_FIELD1_START = 19,
@@ -45,7 +46,21 @@ typedef enum fieldreg_zero_source {
     FIELDREG_ZERO_STANDARD,
     FIELDREG_ZERO_PARITY,
     FIELDREG_ZERO_ENVELOPE,
+    FIELDREG_ZERO_COMB,
 } fieldreg_zero_source;
+
+typedef enum fieldreg_parity_state {
+    FIELDREG_PARITY_UNCALIBRATED = 0,
+    FIELDREG_PARITY_CALIBRATED,
+    FIELDREG_PARITY_DRIFT,
+} fieldreg_parity_state;
+
+typedef enum fieldreg_comb_check {
+    FIELDREG_COMB_NOT_APPLICABLE = 0,
+    FIELDREG_COMB_AGREE,
+    FIELDREG_COMB_DISAGREE,
+    FIELDREG_COMB_FLAT,
+} fieldreg_comb_check;
 
 typedef enum fieldreg_insert_relation {
     FIELDREG_INSERT_RELATION_NONE = 0,
@@ -72,6 +87,8 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_TOP_BODY_DISAGREE,
     FIELDREG_MODE_BODY_ONLY_PLACEMENT,
     FIELDREG_MODE_COMMON_MODE_BODY_HOLD,
+    FIELDREG_MODE_FIELD2_COMB_CALIBRATION,
+    FIELDREG_MODE_ZERO_CONFLICT,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -82,6 +99,7 @@ typedef enum fieldreg_gauge_source {
     FIELDREG_GAUGE_FIELD2_ENVELOPE,
     FIELDREG_GAUGE_LINE22_DATA,
     FIELDREG_GAUGE_HOLD,
+    FIELDREG_GAUGE_STATIC_COMB,
 } fieldreg_gauge_source;
 
 /* v9 has no thresholds, dwell, FIFO, or tunable evidence model. */
@@ -152,6 +170,13 @@ typedef struct fieldreg_decision {
     double confidence;
     bool transport_ok;
     bool comb_safe;
+    fieldreg_parity_state parity_state;
+    fieldreg_comb_check comb_check;
+    int8_t comb_best_shift;
+    int8_t parity_bias;
+    double comb_best_energy;
+    double comb_second_energy;
+    double comb_static_fraction;
     uint32_t segment_id;
     fieldreg_field_decision field[2];
 } fieldreg_decision;
@@ -169,11 +194,7 @@ typedef struct fieldreg_field_state {
     uint8_t clip_candidate_count;
     fieldreg_zero_source zero_source;
     uint32_t lock_id;
-    /* Full active-width luma from NTSC lines 44..203 / 307..466.
-     * It is a true 2-D witness; row means were falsified on fixture A. */
-    uint8_t previous_body_luma[160 * 640];
     int16_t previous_measured_top;
-    bool previous_body_valid;
 } fieldreg_field_state;
 
 /* Caller-owned, allocation-free hot-path state. The clip fit is deliberately
@@ -181,6 +202,16 @@ typedef struct fieldreg_field_state {
 typedef struct field_registration {
     fieldreg_config config;
     fieldreg_field_state field[2];
+    /* Previous full-raster active-width luma supplies both the bounded body
+     * witness and the static-comb calibration without retaining input. */
+    uint8_t previous_luma[FIELDREG_RASTER_LINES *
+                          FIELDREG_ACTIVE_LUMA_SAMPLES];
+    bool previous_luma_valid;
+    fieldreg_parity_state parity_state;
+    int16_t comb_zero_candidate;
+    int8_t comb_candidate_count;
+    int8_t comb_drift_shift;
+    int8_t comb_drift_count;
     uint32_t segment_id;
 } field_registration;
 
@@ -206,6 +237,8 @@ const char *fieldreg_lock_state_name(fieldreg_lock_state state);
 const char *fieldreg_clip_state_name(fieldreg_clip_state state);
 const char *fieldreg_zero_source_name(fieldreg_zero_source source);
 const char *fieldreg_insert_relation_name(fieldreg_insert_relation relation);
+const char *fieldreg_parity_state_name(fieldreg_parity_state state);
+const char *fieldreg_comb_check_name(fieldreg_comb_check check);
 
 #ifdef __cplusplus
 }
