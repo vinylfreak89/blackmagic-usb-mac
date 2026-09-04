@@ -11,16 +11,18 @@ static int read_truth(FILE *f, unsigned *index, char scenario[96], int *begin,
                       char f1_zero[24], char f2_zero[24], int *f1_lock_top,
                       int *f2_lock_top, int *comb_safe, int *f1_raw_top,
                       int *f2_raw_top, int *f1_body_shift,
-                      int *f2_body_shift)
+                      int *f2_body_shift, int *f1_body_valid,
+                      int *f2_body_valid)
 {
     char line[768];
     if (!fgets(line, sizeof line, f)) return 0;
-    return sscanf(line, "%u,%95[^,],%d,%d,%d,%d,%d,%47[^,],%47[^,],%23[^,],%23[^,],%23[^,],%23[^,],%d,%d,%d,%d,%d,%d,%d",
+    return sscanf(line, "%u,%95[^,],%d,%d,%d,%d,%d,%47[^,],%47[^,],%23[^,],%23[^,],%23[^,],%23[^,],%d,%d,%d,%d,%d,%d,%d,%d,%d",
                   index, scenario, begin, discontinuity, ok, d1, d2,
                   f1_reason, f2_reason,
                   f1_lock, f2_lock, f1_zero, f2_zero, f1_lock_top,
                   f2_lock_top, comb_safe, f1_raw_top, f2_raw_top,
-                  f1_body_shift, f2_body_shift) == 20;
+                  f1_body_shift, f2_body_shift, f1_body_valid,
+                  f2_body_valid) == 22;
 }
 
 int main(int argc, char **argv)
@@ -44,7 +46,7 @@ int main(int argc, char **argv)
     char expected_reason[2][48], expected_lock[2][24], expected_zero[2][24];
     int begin, discontinuity, expected_ok, expected_d1, expected_d2,
         expected_lock_top[2], expected_comb, expected_raw_top[2],
-        expected_body_shift[2];
+        expected_body_shift[2], expected_body_valid[2];
     while (read_truth(truth, &index, scenario, &begin, &discontinuity,
                       &expected_ok,
                       &expected_d1, &expected_d2, expected_reason[0],
@@ -53,7 +55,8 @@ int main(int argc, char **argv)
                       &expected_lock_top[0], &expected_lock_top[1],
                       &expected_comb, &expected_raw_top[0],
                       &expected_raw_top[1], &expected_body_shift[0],
-                      &expected_body_shift[1])) {
+                      &expected_body_shift[1], &expected_body_valid[0],
+                      &expected_body_valid[1])) {
         if (fread(unit, 1, FIELDREG_UNIT_BYTES, raw) != FIELDREG_UNIT_BYTES) {
             fprintf(stderr, "short fixture at unit %u\n", index);
             return 2;
@@ -87,6 +90,9 @@ int main(int argc, char **argv)
                     match = match && decision.field[field].body_witness_valid &&
                                       decision.field[field].body_shift ==
                                       expected_body_shift[field];
+                if (expected_body_valid[field] >= 0)
+                    match = match && decision.field[field].body_witness_valid ==
+                                      (expected_body_valid[field] != 0);
             }
             if (expected_comb >= 0)
                 match = match && decision.comb_safe == (expected_comb != 0);
