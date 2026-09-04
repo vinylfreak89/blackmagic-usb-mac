@@ -18,7 +18,7 @@ typedef struct field_measurement {
     int16_t bottom;
     int16_t height;
     bool geometry_measurable;
-    bool bottom_at_adc_boundary;
+    bool bottom_censored;
 } field_measurement;
 
 static uint16_t read_le16(const uint8_t *p)
@@ -44,20 +44,26 @@ static double row_mean(const uint8_t *raster, int row)
     return (double)sum / 640.0;
 }
 
-static bool field2_envelope(const uint8_t *raster, int row)
+static double row_bins(const uint8_t *raster, int row, double *bins,
+                       int bin_count)
 {
     const uint8_t *line = raster + (size_t)row * FIELDREG_BYTES_PER_LINE;
     uint32_t total = 0;
-    double bins[48];
-    for (int bin = 0; bin < 48; ++bin) {
-        const int first = 40 + (bin * 640) / 48;
-        const int last = 40 + ((bin + 1) * 640) / 48;
+    for (int bin = 0; bin < bin_count; ++bin) {
+        const int first = 40 + (bin * 640) / bin_count;
+        const int last = 40 + ((bin + 1) * 640) / bin_count;
         uint32_t sum = 0;
         for (int x = first; x < last; ++x) sum += line[x * 2 + 1];
         bins[bin] = (double)sum / (double)(last - first);
         total += sum;
     }
-    if ((double)total / 640.0 >= 95.0) return false;
+    return (double)total / 640.0;
+}
+
+static bool field2_envelope(const uint8_t *raster, int row)
+{
+    double bins[48];
+    if (row_bins(raster, row, bins, 48) >= 95.0) return false;
     for (int bin = 20; bin < 48; ++bin)
         if (bins[bin] > 40) return false;
     int run = 0;
@@ -69,6 +75,68 @@ static bool field2_envelope(const uint8_t *raster, int row)
     return false;
 }
 
+static bool caption_like_damage(const uint8_t *raster, int row)
+{
+    double bins[24];
+    const double mean = row_bins(raster, row, bins, 24);
+    double run_mean = 0.0;
+    for (int i = 0; i < 6; ++i) run_mean += bins[i];
+    run_mean /= 6.0;
+    double variance = 0.0;
+    for (int i = 0; i < 6; ++i) {
+        const double delta = bins[i] - run_mean;
+        variance += delta * delta;
+    }
+    variance /= 6.0;
+    double pulse = bins[6];
+    for (int i = 7; i < 18; ++i)
+        if (bins[i] > pulse) pulse = bins[i];
+    double dark = bins[18];
+    for (int i = 19; i < 24; ++i)
+        if (bins[i] < dark) dark = bins[i];
+    return run_mean > 35.0 && run_mean < 90.0 && variance < 64.0 &&
+           pulse > 85.0 && mean < 95.0 && dark < 40.0;
+}
+
+static bool timing_like_damage(const uint8_t *raster, int row)
+{
+    double bins[24];
+    const double mean = row_bins(raster, row, bins, 24);
+    double middle = bins[2];
+    for (int i = 3; i < 17; ++i)
+        if (bins[i] > middle) middle = bins[i];
+    double right_pulse = bins[17];
+    for (int i = 18; i < 22; ++i)
+        if (bins[i] > right_pulse) right_pulse = bins[i];
+    return bins[0] > 80.0 && middle < 12.0 && right_pulse > 100.0 &&
+           mean < 60.0;
+}
+
+static bool bar_like_damage(const uint8_t *raster, int row)
+{
+    double bins[48];
+    if (row_bins(raster, row, bins, 48) >= 95.0) return false;
+    for (int i = 20; i < 48; ++i)
+        if (bins[i] > 40.0) return false;
+    int run = 0;
+    for (int i = 0; i < 20; ++i) {
+        if (bins[i] > 60.0) {
+            if (++run >= 4) return true;
+        } else run = 0;
+    }
+    return false;
+}
+
+static bool top_interval_vbi_damage(const uint8_t *raster, int row, int field)
+{
+    const int first = field == 0 ? 16 : 279; /* NTSC 20 / 283 */
+    const int last = field == 0 ? 26 : 289;  /* NTSC 30 / 293 */
+    if (row < first || row > last) return false;
+    return caption_like_damage(raster, row) ||
+           timing_like_damage(raster, row) ||
+           bar_like_damage(raster, row);
+}
+
 static void measure_field(const uint8_t *raster, int field,
                           field_measurement *m)
 {
@@ -77,6 +145,7 @@ static void measure_field(const uint8_t *raster, int field,
     const int insert = field == 0 ? FIELDREG_INSERT_F1 : FIELDREG_INSERT_F2;
     const int picture_first = field == 0 ? 18 : 281; /* NTSC 22 / 285 */
     const int adc_last = field == 0 ? 260 : 522;      /* NTSC 264 / 526 */
+    const int clip_band_first = field == 0 ? 256 : 518; /* NTSC 260 / 522 */
     const int blank_first = field == 0 ? 7 : 270;
     const int blank_last = field == 0 ? 16 : 279;
     bool waveform[257] = {false};
@@ -97,6 +166,8 @@ static void measure_field(const uint8_t *raster, int field,
         cea608_decode_result decoded;
         cea608_decode_luma(luma, &decoded);
         waveform[row - first] = decoded.run_in_present;
+        if (top_interval_vbi_damage(raster, row, field))
+            waveform[row - first] = true;
         means[row - first] = row_mean(raster, row);
         if (decoded.parity_valid) {
             if (row == insert) {
@@ -136,8 +207,10 @@ static void measure_field(const uint8_t *raster, int field,
     /* Once a unique primary/fallback line identifies field timing, picture
      * geometry starts below that line. Bright VBI damage above the gauge is
      * neither caption nor picture and must not move the geometry lock. */
-    for (int row = top_scan_first; row <= adc_last; ++row) {
-        if (!waveform[row - first] && means[row - first] > 12.0) {
+    for (int row = top_scan_first; row + 2 <= adc_last; ++row) {
+        if (!waveform[row - first] && means[row - first] > 12.0 &&
+            !waveform[row + 1 - first] && means[row + 1 - first] > 12.0 &&
+            !waveform[row + 2 - first] && means[row + 2 - first] > 12.0) {
             m->top = (int16_t)row;
             break;
         }
@@ -151,7 +224,7 @@ static void measure_field(const uint8_t *raster, int field,
     if (m->top >= 0 && m->bottom >= m->top) {
         m->height = (int16_t)(m->bottom - m->top + 1);
         m->geometry_measurable = true;
-        m->bottom_at_adc_boundary = m->bottom == adc_last;
+        m->bottom_censored = m->bottom >= clip_band_first;
     }
 }
 
@@ -176,7 +249,7 @@ static void begin_acquisition(fieldreg_field_state *s,
 {
     s->acquire_top = (int16_t)(m->top - applied);
     s->acquire_height = m->height;
-    s->acquire_height_known = !m->bottom_at_adc_boundary;
+    s->acquire_height_known = !m->bottom_censored;
     clear_clip(s);
     s->zero_source = zero_source;
     s->lock_state = FIELDREG_LOCK_ACQUIRE_ONE;
@@ -192,12 +265,12 @@ static bool acquisition_position_matches(const fieldreg_field_state *s,
 static bool merge_acquisition_height(fieldreg_field_state *s,
                                      const field_measurement *m)
 {
-    if (s->acquire_height_known && !m->bottom_at_adc_boundary &&
+    if (s->acquire_height_known && !m->bottom_censored &&
         m->height != s->acquire_height)
         return false;
     if (m->height > s->acquire_height)
         s->acquire_height = m->height;
-    if (!m->bottom_at_adc_boundary && m->height >= s->acquire_height) {
+    if (!m->bottom_censored && m->height >= s->acquire_height) {
         s->acquire_height = m->height;
         s->acquire_height_known = true;
     }
@@ -259,7 +332,7 @@ static void seed_from_gauge(fieldreg_field_state *s,
             /* A golden gauge settles position even when clipping makes the
              * visible heights differ. Preserve the largest lower bound; only
              * equal uncensored heights establish exact H. */
-            if (s->acquire_height_known && !m->bottom_at_adc_boundary &&
+            if (s->acquire_height_known && !m->bottom_censored &&
                 m->height != s->acquire_height)
                 s->acquire_height_known = false;
             if (m->height > s->acquire_height)
@@ -281,7 +354,7 @@ static void seed_from_gauge(fieldreg_field_state *s,
     s->zero_source = zero_source;
     if (!s->height_known) {
         const int lower_bottom = s->top + s->height - 1 + measured;
-        if (!m->bottom_at_adc_boundary && m->bottom >= lower_bottom) {
+        if (!m->bottom_censored && m->bottom >= lower_bottom) {
             s->height = m->height;
             s->height_known = true;
         } else if (m->height > s->height) {
@@ -347,7 +420,7 @@ static void record_invariant(const fieldreg_field_state *s,
     d->lines_lost = (int16_t)(uncensored > m->bottom ?
                               uncensored - m->bottom : 0);
     d->bottom_censored = d->lines_lost > 0 ||
-                         (!s->height_known && m->bottom_at_adc_boundary);
+                         m->bottom_censored;
     d->invariant_residual = (int16_t)(m->bottom - expected);
 }
 
@@ -378,14 +451,31 @@ static void decide_geometry(fieldreg_field_state *s,
         return;
     }
     if (measured != s->last_applied && s->clip_ceiling < 0 &&
-        (m->bottom_at_adc_boundary ||
-         (field == 1 && s->zero_source != FIELDREG_ZERO_PARITY))) {
+        !m->bottom_censored &&
+        field == 1 && s->zero_source != FIELDREG_ZERO_PARITY) {
         hold(s, d, FIELDREG_MODE_CLIP_UNKNOWN_HOLD);
         return;
     }
     if (!s->height_known) {
-        begin_acquisition(s, m, s->last_applied, s->zero_source);
-        hold(s, d, FIELDREG_MODE_ACQUIRING);
+        const int lower_bottom = s->top + s->height - 1 + measured;
+        if (!m->bottom_censored) {
+            if (m->bottom < lower_bottom) {
+                if (s->zero_source == FIELDREG_ZERO_ACQUIRED)
+                    begin_acquisition(s, m, s->last_applied,
+                                      FIELDREG_ZERO_ACQUIRED);
+                hold(s, d, FIELDREG_MODE_LOCK_BROKEN);
+                return;
+            }
+            s->height = (int16_t)(m->bottom - s->top - measured + 1);
+            s->height_known = true;
+        }
+        d->measured_d = (int8_t)measured;
+        d->applied_d = (int8_t)measured;
+        d->reason = FIELDREG_MODE_GEOMETRY_LOCK_DECIDES;
+        d->gauge = FIELDREG_GAUGE_GEOMETRY;
+        d->expected_bottom = m->bottom;
+        d->bottom_censored = m->bottom_censored;
+        s->last_applied = (int8_t)measured;
         return;
     }
     const int uncensored = s->top + s->height - 1 + measured;
@@ -394,11 +484,12 @@ static void decide_geometry(fieldreg_field_state *s,
     d->expected_bottom = (int16_t)expected;
     d->lines_lost = (int16_t)(uncensored - expected);
     d->invariant_residual = (int16_t)(m->bottom - expected);
-    d->bottom_censored = d->lines_lost > 0;
+    d->bottom_censored = d->lines_lost > 0 || m->bottom_censored;
     const bool unknown_clip_at_boundary = s->clip_ceiling < 0 &&
-                                          m->bottom_at_adc_boundary &&
+                                          m->bottom_censored &&
                                           m->bottom <= uncensored;
-    if (d->invariant_residual != 0 && !unknown_clip_at_boundary) {
+    if (d->invariant_residual != 0 && !unknown_clip_at_boundary &&
+        !m->bottom_censored) {
         /* A parity/fallback zero is physical. A changed content envelope can
          * invalidate this unit's geometry without redefining that zero. */
         if (s->zero_source == FIELDREG_ZERO_ACQUIRED)
