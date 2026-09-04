@@ -15,9 +15,12 @@ smeared-XDS discriminator documented in `CLAUDE.md` when parity cannot decode
 that field.
 
 When the insert contains null data and there is no primary gauge, v9 measures
-the picture top and bottom by row-mean luma (`mean(Y[x=40..679]) > 12`). A lock
-is acquired after two identical source-top/height observations at the current
-applied offset. Thereafter every unit must satisfy:
+the picture top and bottom by row-mean luma (`mean(Y[x=40..679]) > 12`). A
+geometry-only lock requires two identical source-top/height observations at
+the current applied offset. A parity/fallback-gauged lock instead treats
+`measured_top - d` as authoritative and may lock while its height is only a
+censored lower bound. The first credible uncensored observation fixes `H`;
+until then the sidecar reports `lock_height_known=0`.
 
 ```
 uncensored_bottom = T + H - 1 + d
@@ -25,11 +28,13 @@ expected_bottom   = min(uncensored_bottom, C)  # when C is known
 residual          = measured_bottom - expected_bottom
 ```
 
-Only residual zero permits `GeometryLockDecides`. A contradiction holds the
-last applied offset, names `LockBroken`, and starts a two-observation
-reacquisition at the unchanged presentation. Dark/unmeasurable content holds
-without destroying a valid lock. A clip ceiling is learned only from two
-repeated parity/fallback-gauged saturations; its candidate/count are separate
+Only residual zero permits an ungauged `GeometryLockDecides`, except that an
+ADC-boundary bottom is provisionally accepted while the clip ceiling remains
+unknown. A contradiction holds the last applied offset, names `LockBroken`,
+and starts a two-observation reacquisition at the unchanged presentation.
+Dark/unmeasurable content holds without destroying a valid lock. A clip
+ceiling is learned only when two parity/fallback-gauged observations at
+different offsets saturate at the same bottom line; its candidate/count are separate
 from the `UNLOCKED / ACQUIRE_ONE / LOCKED` state, so fitting never makes a
 locked field appear unlocked.
 
@@ -50,7 +55,8 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
 - parity/fallback candidate counts;
 - selected gauge line, decoded bytes, and correlation amplitude;
 - blank-row mean, raw picture top/bottom/height, measurability and censoring;
-- lock state/id, frozen top/height, optional clip ceiling; and
+- lock state/id, frozen top/height, whether that height is uncensored,
+  `ClipUnknown`/`ClipFitting`/`ClipFitted`, and the optional clip ceiling; and
 - expected bottom, lost-line count, and invariant residual.
 
 The row also records the applied pair, whether both locks make the vertical

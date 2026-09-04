@@ -35,6 +35,12 @@ typedef enum fieldreg_lock_state {
     FIELDREG_LOCK_LOCKED,
 } fieldreg_lock_state;
 
+typedef enum fieldreg_clip_state {
+    FIELDREG_CLIP_UNKNOWN = 0,
+    FIELDREG_CLIP_FITTING,
+    FIELDREG_CLIP_FITTED,
+} fieldreg_clip_state;
+
 typedef enum fieldreg_mode {
     FIELDREG_MODE_INVALID_UNIT = 0,
     FIELDREG_MODE_ACQUIRING,
@@ -88,6 +94,8 @@ typedef struct fieldreg_field_decision {
     uint32_t lock_id;
     int16_t lock_top;
     int16_t lock_height;
+    bool lock_height_known;
+    fieldreg_clip_state clip_state;
     int16_t clip_ceiling;
     int16_t expected_bottom;
     int16_t lines_lost;
@@ -120,7 +128,10 @@ typedef struct fieldreg_field_state {
     int16_t acquire_height;
     int16_t clip_candidate;
     int8_t last_applied;
+    int8_t clip_candidate_d;
     fieldreg_lock_state lock_state;
+    bool height_known;
+    bool acquire_height_known;
     uint8_t clip_candidate_count;
     uint32_t lock_id;
 } fieldreg_field_state;
@@ -150,6 +161,7 @@ bool fieldreg_process(field_registration *engine,
 const char *fieldreg_mode_name(fieldreg_mode mode);
 const char *fieldreg_gauge_name(fieldreg_gauge_source source);
 const char *fieldreg_lock_state_name(fieldreg_lock_state state);
+const char *fieldreg_clip_state_name(fieldreg_clip_state state);
 
 #ifdef __cplusplus
 }

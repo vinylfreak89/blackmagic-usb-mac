@@ -151,29 +151,60 @@ static bool in_range(int field, int d)
     return d >= FIELDREG_MIN_OFFSET && d <= high;
 }
 
-static void begin_acquisition(fieldreg_field_state *s, int top, int height,
-                              int applied)
+static void clear_clip(fieldreg_field_state *s)
 {
-    s->acquire_top = (int16_t)(top - applied);
-    s->acquire_height = (int16_t)height;
+    s->clip_ceiling = -1;
+    s->clip_candidate = -1;
+    s->clip_candidate_d = FIELDREG_UNKNOWN;
+    s->clip_candidate_count = 0;
+}
+
+static void begin_acquisition(fieldreg_field_state *s,
+                              const field_measurement *m, int applied)
+{
+    s->acquire_top = (int16_t)(m->top - applied);
+    s->acquire_height = m->height;
+    s->acquire_height_known = !m->bottom_at_adc_boundary;
+    clear_clip(s);
     s->lock_state = FIELDREG_LOCK_ACQUIRE_ONE;
 }
 
-static bool acquisition_matches(const fieldreg_field_state *s, int top,
-                                int height, int applied)
+static bool acquisition_position_matches(const fieldreg_field_state *s,
+                                         const field_measurement *m,
+                                         int applied)
 {
-    return top - applied == s->acquire_top && height == s->acquire_height;
+    return m->top - applied == s->acquire_top;
+}
+
+static bool merge_acquisition_height(fieldreg_field_state *s,
+                                     const field_measurement *m)
+{
+    if (s->acquire_height_known && !m->bottom_at_adc_boundary &&
+        m->height != s->acquire_height)
+        return false;
+    if (m->height > s->acquire_height)
+        s->acquire_height = m->height;
+    if (!m->bottom_at_adc_boundary && m->height >= s->acquire_height) {
+        s->acquire_height = m->height;
+        s->acquire_height_known = true;
+    }
+    return true;
 }
 
 static void finish_acquisition(fieldreg_field_state *s)
 {
     s->top = s->acquire_top;
     s->height = s->acquire_height;
-    s->clip_ceiling = -1;
-    s->clip_candidate = -1;
-    s->clip_candidate_count = 0;
+    s->height_known = s->acquire_height_known;
     s->lock_state = FIELDREG_LOCK_LOCKED;
     ++s->lock_id;
+}
+
+static fieldreg_clip_state clip_state(const fieldreg_field_state *s)
+{
+    if (s->clip_ceiling >= 0) return FIELDREG_CLIP_FITTED;
+    if (s->clip_candidate_count > 0) return FIELDREG_CLIP_FITTING;
+    return FIELDREG_CLIP_UNKNOWN;
 }
 
 static void copy_lock(const fieldreg_field_state *s,
@@ -183,6 +214,8 @@ static void copy_lock(const fieldreg_field_state *s,
     d->lock_id = s->lock_id;
     d->lock_top = s->top;
     d->lock_height = s->height;
+    d->lock_height_known = s->height_known;
+    d->clip_state = clip_state(s);
     d->clip_ceiling = s->clip_ceiling;
 }
 
@@ -201,54 +234,73 @@ static void seed_from_gauge(fieldreg_field_state *s,
     if (!m->geometry_measurable) return;
     const int base_top = m->top - measured;
     if (s->lock_state == FIELDREG_LOCK_UNLOCKED) {
-        s->acquire_top = (int16_t)base_top;
-        s->acquire_height = m->height;
-        s->lock_state = FIELDREG_LOCK_ACQUIRE_ONE;
+        begin_acquisition(s, m, measured);
         return;
     }
     if (s->lock_state == FIELDREG_LOCK_ACQUIRE_ONE) {
-        if (base_top == s->acquire_top && m->height == s->acquire_height)
-            finish_acquisition(s);
-        else {
-            s->acquire_top = (int16_t)base_top;
-            s->acquire_height = m->height;
+        if (base_top != s->acquire_top ||
+            !merge_acquisition_height(s, m))
+            begin_acquisition(s, m, measured);
+        else finish_acquisition(s);
+        return;
+    }
+
+    if (base_top != s->top) {
+        begin_acquisition(s, m, measured);
+        return;
+    }
+    if (!s->height_known) {
+        const int lower_bottom = s->top + s->height - 1 + measured;
+        if (!m->bottom_at_adc_boundary && m->bottom >= lower_bottom) {
+            s->height = m->height;
+            s->height_known = true;
+        } else if (m->height > s->height) {
+            s->height = m->height;
         }
         return;
     }
 
     const int uncensored_bottom = s->top + s->height - 1 + measured;
-    const int expected = s->clip_ceiling >= 0 &&
-                         uncensored_bottom > s->clip_ceiling ?
-                         s->clip_ceiling : uncensored_bottom;
-    if (m->top == s->top + measured && m->bottom < uncensored_bottom &&
-        s->clip_ceiling < 0 && s->clip_candidate_count > 0)
-        return; /* The separate two-sample clip fit is pending; lock stays live. */
-    if (m->top != s->top + measured || m->bottom != expected) {
-        /* Parity/fallback remains authoritative for this unit, but a geometry
-         * contradiction kills the old lock and seeds the replacement. */
-        s->acquire_top = (int16_t)base_top;
-        s->acquire_height = m->height;
-        s->lock_state = FIELDREG_LOCK_ACQUIRE_ONE;
+    if (s->clip_ceiling >= 0) {
+        const int expected = uncensored_bottom > s->clip_ceiling ?
+                             s->clip_ceiling : uncensored_bottom;
+        if (m->bottom == expected) return;
+    } else if (m->bottom <= uncensored_bottom) {
+        /* With a golden gauge and unknown C, a short visible envelope can be
+         * clipping. Top placement remains authoritative until C is fitted. */
+        return;
     }
+    begin_acquisition(s, m, measured);
 }
 
 static void fit_clip(fieldreg_field_state *s, const field_measurement *m,
                      int measured)
 {
-    if (s->lock_state != FIELDREG_LOCK_LOCKED ||
-        !m->geometry_measurable || m->top != s->top + measured ||
-        s->clip_ceiling >= 0)
+    if (s->lock_state == FIELDREG_LOCK_UNLOCKED ||
+        !m->geometry_measurable || s->clip_ceiling >= 0)
         return;
-    const int predicted = s->top + s->height - 1 + measured;
-    if (m->bottom >= predicted) {
+    const int base_top = s->lock_state == FIELDREG_LOCK_LOCKED ?
+                         s->top : s->acquire_top;
+    const int height = s->lock_state == FIELDREG_LOCK_LOCKED ?
+                       s->height : s->acquire_height;
+    const bool height_known = s->lock_state == FIELDREG_LOCK_LOCKED ?
+                              s->height_known : s->acquire_height_known;
+    if (m->top != base_top + measured) return;
+    const int predicted = base_top + height - 1 + measured;
+    if (!m->bottom_at_adc_boundary &&
+        (!height_known || m->bottom >= predicted)) {
         s->clip_candidate = -1;
+        s->clip_candidate_d = FIELDREG_UNKNOWN;
         s->clip_candidate_count = 0;
         return;
     }
-    if (s->clip_candidate == m->bottom) {
+    if (s->clip_candidate == m->bottom &&
+        s->clip_candidate_d != measured) {
         if (s->clip_candidate_count < UINT8_MAX) ++s->clip_candidate_count;
+        s->clip_candidate_d = (int8_t)measured;
     } else {
         s->clip_candidate = m->bottom;
+        s->clip_candidate_d = (int8_t)measured;
         s->clip_candidate_count = 1;
     }
     if (s->clip_candidate_count >= 2)
@@ -265,8 +317,10 @@ static void record_invariant(const fieldreg_field_state *s,
     const int expected = s->clip_ceiling >= 0 && uncensored > s->clip_ceiling ?
                          s->clip_ceiling : uncensored;
     d->expected_bottom = (int16_t)expected;
-    d->lines_lost = (int16_t)(uncensored - expected);
-    d->bottom_censored = d->lines_lost > 0;
+    d->lines_lost = (int16_t)(uncensored > m->bottom ?
+                              uncensored - m->bottom : 0);
+    d->bottom_censored = d->lines_lost > 0 ||
+                         (!s->height_known && m->bottom_at_adc_boundary);
     d->invariant_residual = (int16_t)(m->bottom - expected);
 }
 
@@ -279,14 +333,15 @@ static void decide_geometry(fieldreg_field_state *s,
         return;
     }
     if (s->lock_state == FIELDREG_LOCK_UNLOCKED) {
-        begin_acquisition(s, m->top, m->height, s->last_applied);
+        begin_acquisition(s, m, s->last_applied);
         hold(s, d, FIELDREG_MODE_ACQUIRING);
         return;
     }
     if (s->lock_state == FIELDREG_LOCK_ACQUIRE_ONE) {
-        if (acquisition_matches(s, m->top, m->height, s->last_applied))
+        if (acquisition_position_matches(s, m, s->last_applied) &&
+            merge_acquisition_height(s, m))
             finish_acquisition(s);
-        else begin_acquisition(s, m->top, m->height, s->last_applied);
+        else begin_acquisition(s, m, s->last_applied);
         hold(s, d, FIELDREG_MODE_ACQUIRING);
         return;
     }
@@ -295,6 +350,13 @@ static void decide_geometry(fieldreg_field_state *s,
         hold(s, d, FIELDREG_MODE_OUT_OF_RANGE_HOLD);
         return;
     }
+    if (!s->height_known) {
+        if (m->height > s->height) s->height = m->height;
+        if (!m->bottom_at_adc_boundary) {
+            s->height = m->height;
+            s->height_known = true;
+        }
+    }
     const int uncensored = s->top + s->height - 1 + measured;
     const int expected = s->clip_ceiling >= 0 && uncensored > s->clip_ceiling ?
                          s->clip_ceiling : uncensored;
@@ -302,8 +364,11 @@ static void decide_geometry(fieldreg_field_state *s,
     d->lines_lost = (int16_t)(uncensored - expected);
     d->invariant_residual = (int16_t)(m->bottom - expected);
     d->bottom_censored = d->lines_lost > 0;
-    if (d->invariant_residual != 0) {
-        begin_acquisition(s, m->top, m->height, s->last_applied);
+    const bool unknown_clip_at_boundary = s->clip_ceiling < 0 &&
+                                          m->bottom_at_adc_boundary &&
+                                          m->bottom <= uncensored;
+    if (d->invariant_residual != 0 && !unknown_clip_at_boundary) {
+        begin_acquisition(s, m, s->last_applied);
         hold(s, d, FIELDREG_MODE_LOCK_BROKEN);
         return;
     }
@@ -415,8 +480,9 @@ static void reset_field(fieldreg_field_state *s, bool reset_applied)
     const int8_t applied = reset_applied ? 0 : s->last_applied;
     const uint32_t lock_id = s->lock_id;
     memset(s, 0, sizeof *s);
-    s->top = s->height = s->clip_ceiling = -1;
-    s->acquire_top = s->acquire_height = s->clip_candidate = -1;
+    s->top = s->height = -1;
+    s->acquire_top = s->acquire_height = -1;
+    clear_clip(s);
     s->last_applied = applied;
     s->lock_id = lock_id;
     s->lock_state = FIELDREG_LOCK_UNLOCKED;
@@ -516,6 +582,16 @@ const char *fieldreg_lock_state_name(fieldreg_lock_state state)
     case FIELDREG_LOCK_UNLOCKED: return "Unlocked";
     case FIELDREG_LOCK_ACQUIRE_ONE: return "AcquireOne";
     case FIELDREG_LOCK_LOCKED: return "Locked";
+    }
+    return "Unknown";
+}
+
+const char *fieldreg_clip_state_name(fieldreg_clip_state state)
+{
+    switch (state) {
+    case FIELDREG_CLIP_UNKNOWN: return "ClipUnknown";
+    case FIELDREG_CLIP_FITTING: return "ClipFitting";
+    case FIELDREG_CLIP_FITTED: return "ClipFitted";
     }
     return "Unknown";
 }

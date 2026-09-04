@@ -1239,7 +1239,8 @@ class _CFieldDecision(ctypes.Structure):
         ("raw_height", ctypes.c_int16), ("geometry_measurable", ctypes.c_bool),
         ("bottom_censored", ctypes.c_bool), ("lock_state", ctypes.c_int),
         ("lock_id", ctypes.c_uint32), ("lock_top", ctypes.c_int16),
-        ("lock_height", ctypes.c_int16), ("clip_ceiling", ctypes.c_int16),
+        ("lock_height", ctypes.c_int16), ("lock_height_known", ctypes.c_bool),
+        ("clip_state", ctypes.c_int), ("clip_ceiling", ctypes.c_int16),
         ("expected_bottom", ctypes.c_int16), ("lines_lost", ctypes.c_int16),
         ("invariant_residual", ctypes.c_int16),
     )
@@ -1313,6 +1314,8 @@ class CRegistrationEstimator:
         self.library.fieldreg_gauge_name.restype = ctypes.c_char_p
         self.library.fieldreg_lock_state_name.argtypes = (ctypes.c_int,)
         self.library.fieldreg_lock_state_name.restype = ctypes.c_char_p
+        self.library.fieldreg_clip_state_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_clip_state_name.restype = ctypes.c_char_p
         self.library.fieldreg_init(self.state, ctypes.byref(self.config))
         self.confirmation_units = self.library.fieldreg_confirmation_units(
             self.state
@@ -1374,6 +1377,8 @@ class CRegistrationEstimator:
                 "lock_id": item.lock_id,
                 "lock_top": item.lock_top + 4 if item.lock_top >= 0 else -1,
                 "lock_height": item.lock_height,
+                "lock_height_known": bool(item.lock_height_known),
+                "clip_state": self.library.fieldreg_clip_state_name(item.clip_state).decode("ascii"),
                 "clip_ceiling": item.clip_ceiling + 4 if item.clip_ceiling >= 0 else -1,
                 "expected_bottom": item.expected_bottom + 4 if item.expected_bottom >= 0 else -1,
                 "lines_lost": item.lines_lost,
@@ -1825,7 +1830,8 @@ V9_FIELD_COLUMNS = (
     "parity_candidates", "fallback_candidates", "gauge_line", "gauge_bytes",
     "gauge_amplitude", "blank_mean", "raw_top", "raw_bottom", "raw_height",
     "geometry_measurable", "bottom_censored", "lock_state", "lock_id",
-    "lock_top", "lock_height", "clip_ceiling", "expected_bottom",
+    "lock_top", "lock_height", "lock_height_known", "clip_state",
+    "clip_ceiling", "expected_bottom",
     "lines_lost", "invariant_residual",
 )
 TPC_DECISION_COLUMNS = (
@@ -1849,7 +1855,8 @@ def _v9_field_row(field):
         field["raw_top"], field["raw_bottom"], field["raw_height"],
         int(field["geometry_measurable"]), int(field["bottom_censored"]),
         field["lock_state"], field["lock_id"], field["lock_top"],
-        field["lock_height"], field["clip_ceiling"], field["expected_bottom"],
+        field["lock_height"], int(field["lock_height_known"]),
+        field["clip_state"], field["clip_ceiling"], field["expected_bottom"],
         field["lines_lost"], field["invariant_residual"],
     )
 
