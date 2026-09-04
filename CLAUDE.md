@@ -1252,9 +1252,15 @@ delivery edge; wrong one at acquisition.
   picture for downstream decoding. In both modes the PICTURE ORIGIN 19/282 is where registration
   measures and what "d = 0" means. **The tape's real line 21 (seven-cycle run-in, start bit,
   two parity bits) is the golden alignment reference: correctly placed, it sits exactly on the
-  deck's generated line 21 (unit row 17).** The first real caption seen off that row triggers a
-  one-time real-time re-lock of the raster, recorded in the registration sidecar; the picture
-  envelope is the secondary gauge (no caption, or an ambiguous one). Damage classes the caption
+  deck's generated line 21 (unit row 17) — and that is also the definition of a PICTURE LOCK.**
+  Nothing is learned or re-locked: the reference is the deck's line 21 itself, fixed by the
+  raster (picture origin 19/282). A clean signal puts the recorded caption exactly on the insert,
+  invisible — that is d = 0, logged as a confirmation. A caption seen off the insert is a
+  MEASUREMENT of that unit's displacement (caption_row − 17), to agree with the envelope and be
+  corrected on the spot; a program sitting stably at +1 is a stable error and is corrected to 0
+  throughout. The picture envelope (compared to the fixed origin 19/282) is the secondary gauge
+  (no caption, an ambiguous one, and field 2); the only per-lock learned quantity is the
+  envelope HEIGHT, used for validity, never for position. Damage classes the caption
   detector must survive: the tape's own vertical-interval pulses leaking into the picture as
   thick bright bands when horizontal timing is far out of tolerance (also the "severe flagging"
   bands seen on other tapes), and the EP recording's caption splitting across two lines/fields
