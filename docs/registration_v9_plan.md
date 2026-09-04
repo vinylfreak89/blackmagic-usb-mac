@@ -104,3 +104,27 @@ Band hierarchy, spatial phase voting, relative comb authority, temporal searches
 multi-candidate selection, support dwell, chatter suppression, common-mode arbitration,
 provisional trajectories, FIFO, backdating, learned position references. `static_comb_metric.py`,
 `picture_envelope_census.py` and the overlay remain offline diagnostics and acceptance tests.
+
+## Amendments from the whole-tape envelope census (2026-09-04 evening, measured, not yet ruled on)
+
+1. **The bottom is censored under downward displacement.** In the 395 first-recording units with
+   the caption at row 19 (d = +2) the bottom sits at 257, not 258: the deck clips field 1 one line
+   above where the picture would end. So "rigid shift with unchanged height" fails on exactly the
+   displaced units. Rule to adopt: when the bottom sits at or beyond the clip row (256–258 for
+   field 1, 518 for field 2) it is censored; validity then comes from line 21 plus the top, and
+   the learned height is an upper bound, not an equality.
+2. **Top-only changes with a fixed bottom are content.** The SP intro's top-20/bottom-256
+   majority carries no line-21 waveform at row 18: locked, line 23 blank. The second recording's
+   field 2 sits at 284/518 for 25 minutes with its bottom fixed. Neither is a displacement. The
+   envelope may only report a displacement when top and bottom move together (or the bottom is
+   censored per item 1 and line 21 agrees).
+3. **The second recording (1,461 s–end) needs an owner ruling.** Its captions are never on the
+   insert; they sit at rows 19/20, split and skewed, with the picture right underneath (gap 1 in
+   ~3,500 units, gap 2 in ~1,300, caption below the detected top in 682). By the ambiguity rule
+   this is never a reference, so the lock stays at the deck's insert and the recording renders
+   with its own leaked VBI at the top of the frame — which is what the owner saw. Alternatives:
+   relock on the run-in row when it is consistent for N units even though the data rows are
+   split; or accept the leakage as recorded content. Not decided here.
+4. **Field 2 is rigid on the whole tape:** 224 rigid moves in 86,293 units; the plan's "field 2
+   from the same lock and its own envelope" stands, and its 282↔283 top flicker must be treated
+   as content.
