@@ -56,8 +56,11 @@ from the `UNLOCKED / ACQUIRE_ONE / LOCKED` state, so fitting never makes a
 locked field appear unlocked.
 The candidate is the greatest observed bottom and can be confirmed only at a
 different gauged offset, preventing dark bottom flicker from fitting multiple
-ceilings. While that ceiling is unresolved, an ungauged geometry proposal that
-would change the last direct placement is `ClipUnknownHold`.
+ceilings. An ungauged proposal that would change placement holds whenever its
+bottom is at the ADC boundary and `C` is unknown. A pending clip candidate also
+holds changes from envelope/content-acquired zeroes; exact geometry beneath a
+parity zero remains usable away from the boundary. Each refusal is
+`ClipUnknownHold`.
 
 `fieldreg_begin_segment()` forgets both locks and starts the new segment at
 `d=0`. `fieldreg_discontinuity()` forgets the locks but preserves each last
