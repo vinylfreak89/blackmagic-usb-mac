@@ -271,3 +271,10 @@ picture unobscured. `render_live_gate.py` requires every exact unit to have
 been published, exactly two encoded frames per exact unit, and decodes a
 checksum-protected machine strip at ten deterministic random units to compare
 the burned ordinal, extended counter, and applied pair with the sidecar.
+
+`render_stability_audit.py` audits the bobbed picture for VBI-like lines at its
+top/bottom boundaries and estimates same-field vertical motion between units.
+`audit_vs_sidecar.py` joins that CSV to the live schema-5 sidecar in emitted-unit
+order. It distinguishes a crop change on an unchanged raw top (`ENGINE_CAUSED`)
+from content/metric motion with a stationary crop, and exits nonzero if either
+an output-boundary VBI signature or a non-reset engine-caused jump is present.
