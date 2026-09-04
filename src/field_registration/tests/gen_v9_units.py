@@ -452,6 +452,53 @@ def main():
     add("field1-caption-stable-decodable-b", (3, 0), picture=(3, 0),
         captions=((3, 0x14, 0x2c), None), f1_reason="Line21Placement")
 
+    # A decoded caption may move independently of a settled, fully visible
+    # picture envelope. Both edges then veto that caption for this unit only.
+    add("caption-only-motion-anchor", (2, 0), begin=True, picture=(2, 0),
+        captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        f1_reason="Line21Placement", f1_lock_top=19)
+    add("caption-only-motion-veto", (2, 0), picture=(2, 0),
+        captions=((3, 0x15, 0x2b), None), base_bottoms=(250, 518),
+        f1_reason="CaptionOnlyMotion", f1_lock_top=19)
+    add("caption-and-edges-move", (3, 0), picture=(3, 0),
+        captions=((3, 0x15, 0x2b), None), base_bottoms=(250, 518),
+        f1_reason="Line21Placement", f1_lock_top=19)
+
+    # A censored bottom cannot testify that the caption moved alone. The
+    # caption still places this unit, but one reading cannot re-anchor zero.
+    add("caption-censored-anchor", (2, 0), begin=True, picture=(2, 0),
+        captions=((2, 0x14, 0x2c), None), base_bottoms=(256, 518),
+        f1_lock_top=19)
+    add("caption-move-censored-wins", (3, 0), picture=(2, 0),
+        captions=((3, 0x15, 0x2b), None), base_bottoms=(256, 518),
+        f1_reason="AnchorUncorroborated", f1_lock_top=19)
+
+    # A cold false parity hit can imply a bogus zero (NTSC line 29 here).
+    # It places its own unit but may not poison following geometry. A second
+    # consecutive reading or same-unit edge conservation is required to
+    # re-anchor the segment zero.
+    add("false-anchor-single-hit", (2, 0), begin=True,
+        captions=((2, 0x14, 0x2c), None),
+        top_overrides=(27, None), bottom_overrides=(256, None),
+        f1_reason="AnchorUncorroborated", f1_zero="Standard",
+        f1_lock_top=19)
+    add("false-anchor-normal-1", (2, 0), picture=(2, 0),
+        f1_reason="GeometryLockDecides", f1_zero="Standard",
+        f1_lock_top=19)
+    add("false-anchor-normal-2", (2, 0), picture=(2, 0),
+        f1_reason="GeometryLockDecides", f1_zero="Standard",
+        f1_lock_top=19)
+
+    add("two-parity-anchor-first", (2, 0), begin=True,
+        captions=((2, 0x14, 0x2c), None),
+        top_overrides=(22, None), bottom_overrides=(256, None),
+        f1_reason="AnchorUncorroborated", f1_zero="Standard",
+        f1_lock_top=19)
+    add("two-parity-anchor-second", (2, 0),
+        captions=((2, 0x14, 0x2c), None),
+        top_overrides=(22, None), bottom_overrides=(256, None),
+        f1_reason="Line21Placement", f1_zero="Parity", f1_lock_top=20)
+
     # Root cause C: picture content never defines zero. Each segment starts
     # locked to the standard picture origins (NTSC 23/286), so an immediately
     # measurable field is placed on its first unit without AcquireOne.

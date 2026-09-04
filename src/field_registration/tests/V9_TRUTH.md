@@ -7,6 +7,11 @@ parity. The fixture covers:
 
 - coincident null and data line 21;
 - immediate per-field `+1/+2/+3` placement, plateaus, returns, and clipping;
+- a decoded caption moving from line 23 to 24 while both picture edges stay
+  fixed (`CaptionOnlyMotion`), the matching rigid-move control, and the
+  censored-bottom control where caption authority remains;
+- cold false-parity anchor isolation, same-unit edge corroboration, and the
+  second-consecutive-parity route to a changed segment zero;
 - parity authority over dark/unmeasurable picture content;
 - the measured narrow field-2 XDS fallback, right-side bleed and short-bar
   variant, plus false-positive guards for left-heavy picture texture and

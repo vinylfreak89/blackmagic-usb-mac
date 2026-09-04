@@ -66,6 +66,8 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_OUT_OF_RANGE_HOLD,
     FIELDREG_MODE_LINE22_DATA_PRESENT,
     FIELDREG_MODE_GAUGE_CONFLICT,
+    FIELDREG_MODE_CAPTION_ONLY_MOTION,
+    FIELDREG_MODE_ANCHOR_UNCORROBORATED,
     FIELDREG_MODE_CLIP_UNKNOWN_HOLD,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
@@ -143,6 +145,7 @@ typedef struct fieldreg_field_state {
     int16_t height;
     int16_t clip_ceiling;
     int16_t clip_candidate;
+    int16_t parity_anchor_candidate;
     int8_t last_applied;
     int8_t clip_candidate_d;
     fieldreg_lock_state lock_state;
