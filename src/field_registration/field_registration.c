@@ -224,7 +224,7 @@ static void measure_field(const uint8_t *raster, int field,
          * whole-picture search: NTSC lines 285..290 (unit rows 281..286).
          * Scanning the body admits picture texture by construction. */
         if (field == 1 && row > insert && row <= insert + 6 &&
-            !decoded.parity_valid &&
+            !decoded.run_in_present && !decoded.parity_valid &&
             field2_envelope(raster, row)) {
             waveform[row - first] = true;
             if (m->fallback_count == 0) m->fallback_row = (int16_t)row;
