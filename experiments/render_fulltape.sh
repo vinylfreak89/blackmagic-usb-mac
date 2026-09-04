@@ -6,7 +6,7 @@
 # scratch directory (writer output rule); publish into captures/ only after the gate checks.
 #   render_fulltape.sh <capture.cap6> <out_dir>
 set -e
-CAP=${1:?capture}; OUT=${2:?out_dir}; REPO=$(cd "$(dirname "$0")/.." && pwd)
+CAP=$(cd "$(dirname "${1:?capture}")" && pwd)/$(basename "$1"); OUT=${2:?out_dir}; REPO=$(cd "$(dirname "$0")/.." && pwd)   # absolute: the script cds before rendering
 WEIGHTS="$HOME/Library/Application Support/blackmagic-usb-mac/nnedi3_weights.bin"
 mkdir -p "$OUT"; cd "$REPO/src/field_registration" && make -s libfieldreg.dylib >/dev/null
 git -C "$REPO" rev-parse HEAD > "$OUT/engine_commit.txt"; date '+%F %T start' >> "$OUT/timing.txt"
