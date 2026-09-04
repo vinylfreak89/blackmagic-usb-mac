@@ -64,21 +64,14 @@ def main() -> None:
         if g(r, "relative_only") in ("1", "True", "true"):
             rel = (f"REL phase {g(r,'relative_only_phase','?')} gauge {g(r,'relative_only_gauge_source','?')}"
                    f"{' UNKNOWN-GAUGE' if g(r,'relative_only_gauge_unknown') in ('1','True','true') else ''} margin {g(r,'relative_only_margin','?')} ratio {g(r,'relative_only_ratio','?')} static {g(r,'relative_only_static_columns','?')}")
-            d.text((6, 54 if (g(r, "bottom_raw_edge_f1") or g(r, "bottom_target_f1")) else 40), rel, font=font, fill=(0, 255, 255))
+            d.text((6, 40), rel, font=font, fill=(0, 255, 255))
         extra = []
         if g(r, "frame_observation_motion_priority", "0") not in ("0", ""): extra.append("motion-priority")
         if g(r, "frame_observation_conflict", "0") not in ("0", ""): extra.append("CONFLICT")
         if g(r, "bottom_f1_censored", "0") not in ("0", ""): extra.append("f1-bottom-censored")
         if g(r, "bottom_f2_censored", "0") not in ("0", ""): extra.append("f2-bottom-censored")
         if extra: d.text((x, 22), "  ".join(extra), font=font, fill=(255, 215, 0))
-        # v8 (schema 4) bottom-edge placement provenance, when the sidecar carries it
-        if g(r, "bottom_raw_edge_f1") or g(r, "bottom_target_f1"):
-            def fld(k, dflt="."): v = g(r, k, dflt); return v if v not in ("-1", "") else "."
-            b = (f"bottom f1 edge {fld('bottom_raw_edge_f1')} target {fld('bottom_target_f1')} {'placed' if g(r,'bottom_placement_f1','0') not in ('0','') else 'HOLD:'+g(r,'bottom_hold_reason_f1','?')}"
-                 f"   f2 edge {fld('bottom_raw_edge_f2')} target {fld('bottom_target_f2')} {'placed' if g(r,'bottom_placement_f2','0') not in ('0','') else 'HOLD:'+g(r,'bottom_hold_reason_f2','?')}"
-                 f"   thr {g(r,'bottom_black_threshold_f1','.')}/{g(r,'bottom_black_threshold_f2','.')}")
-            d.text((6, 40), b, font=font, fill=(255, 200, 120))
-        d.text((W - 262 - 100, 4), f"t={int(f)*1001/30000:8.3f}s", font=small, fill=(180, 180, 180))   # top right of the text area, clear of every line
+        d.text((W - 262 - 100, 4), f"t={int(f)*1001/30000:8.3f}s", font=small, fill=(180, 180, 180))   # top right of the text area
         # sparkline
         d.line([(sx0, py(0)), (sx0 + sw, py(0))], fill=(0, 120, 0), width=1)
         for lv in (-2, 2): d.line([(sx0, py(lv)), (sx0 + sw, py(lv))], fill=(40, 40, 40), width=1)
