@@ -1502,8 +1502,10 @@ delivery edge; wrong one at acquisition.
   (§11b budget 10 ms). Sidecar schema 5 (per-field reason, gauge, line, bytes, geometry, raw
   edges, lock, zero source, clip, residual, `comb_safe`).
   **Whole-tape acceptance (experiments/line21_truth.py + v9_acceptance.py, 86,293 exact units,
-  0 drops):** field 1 agrees with **40,163 of 40,163** off-insert parity readings (0
-  disagreements; the round-1 engine had 122), field 2 25/25. Applied pairs: (0,0) 26,023, (2,2)
+  0 drops):** field 1 agrees with **40,237 of 40,237** off-insert parity readings (0
+  disagreements; the round-1 engine had 122 of 40,163 — Codex's strict acceptance script then
+  recovered 74 readings that a chance picture hit had mislabelled ambiguous, and it now fails
+  closed on unpublished units, duplicate counters and any disagreement), field 2 25/25. Applied pairs: (0,0) 26,023, (2,2)
   20,537, (1,0) 18,398, (3,2) 13,962, (3,0) 3,570, (2,0) 3,160 — the (1,0)/(2,0) mass in the
   first recording matches the 2026-08-30 offline trace's (1,0) 19,265 / (2,0) 2,315
   independently. Reasons, field 1: GeometryLockDecides 42,481, Line21Placement 40,163,
