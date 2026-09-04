@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { MAX_ROWS = 2048, MAX_SCENARIOS = 80, CSV_FIELDS = 11 };
+enum { MAX_ROWS = 2048, MAX_SCENARIOS = 96, CSV_FIELDS = 11 };
 
 typedef struct truth_row {
     size_t index;
@@ -26,6 +26,10 @@ typedef struct truth_row {
 
 typedef struct result_row {
     truth_row truth;
+    int baseline_d1;
+    int baseline_d2;
+    int decision_d1;
+    int decision_d2;
     int applied_d1;
     int applied_d2;
     bool observation_known;
@@ -62,6 +66,10 @@ typedef struct scenario_summary {
     uint64_t relative_only;
     uint64_t relative_gauge_unknown;
     uint64_t bottom_f1_censored;
+    uint64_t unknown_rows;
+    uint64_t unknown_applied_changes;
+    uint64_t support1_observations;
+    uint64_t unknown_support1_observations;
 } scenario_summary;
 
 static void fail(const char *message)
@@ -163,6 +171,10 @@ int main(int argc, char **argv)
         result_row *result = &rows[count];
         memset(result, 0, sizeof(*result));
         result->truth = expected;
+        result->baseline_d1 = decision.baseline_d1;
+        result->baseline_d2 = decision.baseline_d2;
+        result->decision_d1 = decision.decision_d1;
+        result->decision_d2 = decision.decision_d2;
         result->applied_d1 = decision.applied_d1;
         result->applied_d2 = decision.applied_d2;
         result->observation_known =
@@ -218,6 +230,7 @@ int main(int argc, char **argv)
     uint64_t unsettled_rows = 0, unsettled_wrong = 0;
     uint64_t stale_rows = 0, stale_wrong = 0;
     uint64_t stale_wrong_positive = 0;
+    uint64_t unknown_applied_changes = 0;
     scenario_summary scenarios[MAX_SCENARIOS];
     memset(scenarios, 0, sizeof(scenarios));
     size_t scenario_count = 0;
@@ -225,6 +238,24 @@ int main(int argc, char **argv)
         result_row *row = &rows[i];
         bool oracle_match = row->applied_d1 == row->truth.oracle_d1 &&
                             row->applied_d2 == row->truth.oracle_d2;
+        bool unknown_mode =
+            strncmp(fieldreg_mode_name(row->mode), "Unknown", 7) == 0;
+        bool unknown_changed =
+            unknown_mode &&
+            (row->applied_d1 != row->baseline_d1 ||
+             row->applied_d2 != row->baseline_d2);
+        if (unknown_changed) {
+            ++unknown_applied_changes;
+            printf("  UNKNOWN-HOLD violation row=%zu scenario=%s "
+                   "mode=%s baseline=(%d,%d) decision=(%d,%d) "
+                   "observation=(%d,%d)/%u applied=(%d,%d)\n",
+                   i, row->truth.scenario, fieldreg_mode_name(row->mode),
+                   row->baseline_d1, row->baseline_d2,
+                   row->decision_d1, row->decision_d2,
+                   row->observation_d1, row->observation_d2,
+                   row->observation_support, row->applied_d1,
+                   row->applied_d2);
+        }
         oracle_matches += oracle_match;
         oracle_wrong += !oracle_match;
         if (row->truth.raster_known) {
@@ -289,6 +320,13 @@ int main(int argc, char **argv)
         summary->relative_only += row->relative_only;
         summary->relative_gauge_unknown += row->relative_gauge_unknown;
         summary->bottom_f1_censored += row->bottom_f1_censored;
+        summary->unknown_rows += unknown_mode;
+        summary->unknown_applied_changes += unknown_changed;
+        summary->support1_observations += row->observation_known &&
+                                          row->observation_support == 1;
+        summary->unknown_support1_observations +=
+            unknown_mode && row->observation_known &&
+            row->observation_support == 1;
     }
 
     printf("trajectory fixture: rows=%zu raster-known=%" PRIu64
@@ -304,6 +342,8 @@ int main(int argc, char **argv)
     printf("stale-latch class: wrong=%" PRIu64 "/%" PRIu64
            " positive-wrong=%" PRIu64 "\n", stale_wrong, stale_rows,
            stale_wrong_positive);
+    printf("unknown-mode applied changes: %" PRIu64 "\n",
+           unknown_applied_changes);
     puts("per-scenario current-engine scores:");
     for (size_t i = 0; i < scenario_count; ++i) {
         const scenario_summary *summary = &scenarios[i];
@@ -317,11 +357,16 @@ int main(int argc, char **argv)
         printf(" common-gauge=%" PRIu64 " transport-unknown=%" PRIu64
                " scene-hold=%" PRIu64 " resets=%" PRIu64
                " relative-only=%" PRIu64 " gauge-unknown=%" PRIu64
-               " bottom1-censored=%" PRIu64 "\n",
+               " bottom1-censored=%" PRIu64 " unknown=%" PRIu64
+               " unknown-changed=%" PRIu64 " support1=%" PRIu64
+               " unknown-support1=%" PRIu64 "\n",
                summary->common_mode_gauge, summary->transport_unknown,
                summary->scene_cut_hold, summary->trajectory_resets,
                summary->relative_only, summary->relative_gauge_unknown,
-               summary->bottom_f1_censored);
+               summary->bottom_f1_censored, summary->unknown_rows,
+               summary->unknown_applied_changes,
+               summary->support1_observations,
+               summary->unknown_support1_observations);
     }
 
     static const char *required_live_classes[] = {
@@ -349,8 +394,14 @@ int main(int argc, char **argv)
         "relative-guard-nominal",
         "bottom-censored-field1-plus5",
         "bottom-censored-static-card-guard",
+        "unknown-hold-edge-transient",
+        "unknown-hold-flat",
+        "unknown-hold-scene-cut",
+        "unknown-hold-common-gauge",
+        "unknown-hold-support1-change",
+        "unknown-hold-return",
     };
-    bool live_pass = stale_wrong == 0;
+    bool live_pass = stale_wrong == 0 && unknown_applied_changes == 0;
     for (size_t required = 0;
          required < sizeof(required_live_classes) /
                         sizeof(required_live_classes[0]);
@@ -391,6 +442,17 @@ int main(int argc, char **argv)
         } else if (strcmp(summary->name,
                           "bottom-censored-static-card-guard") == 0) {
             live_pass = live_pass && summary->relative_only == 0;
+        } else if (strcmp(summary->name,
+                          "unknown-hold-common-gauge") == 0) {
+            live_pass = live_pass && summary->unknown_rows != 0 &&
+                        summary->unknown_applied_changes == 0;
+        } else if (strcmp(summary->name,
+                          "unknown-hold-support1-change") == 0) {
+            live_pass = live_pass && summary->unknown_rows == summary->rows &&
+                        summary->unknown_applied_changes == 0 &&
+                        summary->unknown_support1_observations == summary->rows;
+        } else if (strncmp(summary->name, "unknown-hold-", 13) == 0) {
+            live_pass = live_pass && summary->unknown_applied_changes == 0;
         }
     }
     /* Provisional inversion is intentionally an archival-side trajectory

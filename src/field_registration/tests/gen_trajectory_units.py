@@ -60,6 +60,29 @@ def trajectory() -> list[Step]:
     # defect is invisible when every fallback happens to be raw (0,0).
     add(50, "locked-main-10", (1, 0), (1, 0))
 
+    # Accepted-phase hold regression.  The first +2 unit is rejected by the
+    # learned fast-edge check; the following same-geometry unit is then a
+    # support-1 continuation against the still-committed (1,0) fallback.  Both
+    # are abstentions, so neither may change presentation.  Flat, scene-cut,
+    # and heterogeneous follow-ups exercise the same invariant through other
+    # Unknown modes.  This is the measured SP-intro oscillation in synthetic
+    # form without teaching the oracle to suppress accepted motion.
+    add(1, "unknown-hold-edge-transient", (2, 0), (1, 0),
+        unsettled=True, main_ranges=((0, 720),), secondary_ranges=())
+    add(1, "unknown-hold-support1-change", (2, 0), (1, 0),
+        unsettled=True, main_ranges=((48, 248),), secondary_ranges=())
+    add(1, "unknown-hold-flat", None, (1, 0), gain=0.0,
+        unsettled=True, vbi_present=True)
+    add(1, "unknown-hold-scene-cut", (2, 0), (1, 0), scene=2,
+        unsettled=True, force_scene_cut=True,
+        main_ranges=((0, 720),), secondary_ranges=())
+    add(12, "unknown-hold-common-gauge", (1, 0), (1, 0),
+        unsettled=True, secondary=(0, 1), main_ranges=((0, 720),),
+        secondary_ranges=((48, 248), (472, 672)),
+        secondary_animated=False, main_motion=True)
+    add(1, "unknown-hold-return", (1, 0), (1, 0),
+        main_ranges=((0, 720),), secondary_ranges=())
+
     # A real one-unit displacement must remain representable by the future path
     # solver. Raster and policy truth intentionally agree here.
     add(1, "physical-single-20", (2, 0), (2, 0), unsettled=True)

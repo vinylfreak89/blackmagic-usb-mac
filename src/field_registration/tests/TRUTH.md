@@ -125,3 +125,22 @@ asserts provenance: relative authority is present on the release and onset
 classes, the unknown-gauge class is labelled on every row, and a minimum that
 confirms an already committed phase remains a guard rather than being labelled
 as new relative-only authority.
+
+## Accepted-decision hold invariant
+
+An `Unknown*` mode is an abstention.  Its `applied_d1/d2` must equal the
+committed `baseline_d1/d2`; a diagnostic `frame_observation`, including a
+support-1 observation, is not presentation authority when `decision_d1/d2` are
+Unknown.  The trajectory fixture establishes `(1,0)`, then supplies a rejected
+fast-edge change, a support-1 partial-raster continuation, flat content, a cut,
+and a heterogeneous raster before returning to the stable phase.  It also
+checks this invariant on every other Unknown row in the fixture, so dwell,
+spatial, common-gauge, scene-cut, and edge-transient abstentions share one
+policy rather than relying on mode-specific exceptions.
+
+Algorithm v7 fails this deciding invariant: 160 synthetic Unknown rows apply a
+pair different from their committed baseline.  The support-1 regression row
+reports `UnknownSceneCutHold`, an empty accepted decision, baseline `(1,0)`,
+frame observation `(2,0)/1`, and applied `(2,0)`.  That is the same policy bug
+as the independently measured capture rows even though the synthetic content
+reaches the abstention through a different gate.
