@@ -538,6 +538,14 @@ static bool body_reliable(const field_measurement *m)
     return m->body_witness_valid && m->body_mad <= 25.0;
 }
 
+static bool uncorroborated_top_move(const fieldreg_field_state *s,
+                                    const field_measurement *m)
+{
+    return s->placement_initialized && m->top >= 0 &&
+           m->body_implied_top < 0 &&
+           m->top - s->top != s->last_applied;
+}
+
 static void resolve_picture_positions(field_measurement m[2])
 {
     const bool reliable0 = body_reliable(&m[0]);
@@ -762,6 +770,10 @@ static void decide_geometry(fieldreg_field_state *s,
                             const field_measurement *m, int field,
                             fieldreg_field_decision *d)
 {
+    if (uncorroborated_top_move(s, m)) {
+        hold(s, d, FIELDREG_MODE_TOP_UNCORROBORATED);
+        return;
+    }
     if (m->picture_conflict && !m->picture_position_valid) {
         hold(s, d, FIELDREG_MODE_TOP_BODY_DISAGREE);
         return;
@@ -1207,8 +1219,7 @@ static void update_parity_calibration(field_registration *engine,
             if (eligible && comb.best_shift != FIELDREG_UNKNOWN)
                 out->comb_check = FIELDREG_COMB_FLAT;
         }
-    } else if (field1_calibration_reference(&m[0], &out->field[0]) &&
-               field2_placed_on_zero(engine, &m[1], &out->field[1])) {
+    } else {
         const comb_measurement comb = measure_static_comb(
             engine, raster, out->applied_d1, out->applied_d2, -1, 1);
         if (comb.best_shift != FIELDREG_UNKNOWN) {
@@ -1231,9 +1242,10 @@ static void update_parity_calibration(field_registration *engine,
             engine->comb_drift_shift = FIELDREG_UNKNOWN;
         } else {
             out->comb_check = FIELDREG_COMB_DISAGREE;
-            const bool stable_field1 = field1_calibration_reference(
-                &m[0], &out->field[0]);
-            if (!stable_field1) {
+            const bool drift_eligible = field1_calibration_reference(
+                &m[0], &out->field[0]) && field2_placed_on_zero(
+                    engine, &m[1], &out->field[1]);
+            if (!drift_eligible) {
                 engine->comb_drift_count = 0;
                 engine->comb_drift_shift = FIELDREG_UNKNOWN;
             } else if (engine->comb_drift_shift == comb.best_shift) {
@@ -1246,14 +1258,50 @@ static void update_parity_calibration(field_registration *engine,
             if (engine->comb_drift_count >= COMB_DRIFT_UNITS)
                 engine->parity_state = FIELDREG_PARITY_DRIFT;
         }
-    } else {
-        out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
-        engine->comb_drift_count = 0;
-        engine->comb_drift_shift = FIELDREG_UNKNOWN;
     }
     out->parity_state = engine->parity_state;
     out->parity_bias = (int8_t)(FIELDREG_PICTURE_ORIGIN_F2 -
                                 engine->field[1].top);
+}
+
+static void apply_top_comb_corroboration(field_registration *engine,
+                                         const field_measurement m[2],
+                                         fieldreg_decision *out)
+{
+    if (out->parity_state != FIELDREG_PARITY_CALIBRATED ||
+        out->comb_check != FIELDREG_COMB_DISAGREE ||
+        out->comb_best_shift == FIELDREG_UNKNOWN)
+        return;
+    bool match[2] = {false, false};
+    int candidate[2] = {FIELDREG_UNKNOWN, FIELDREG_UNKNOWN};
+    for (int field = 0; field < 2; ++field) {
+        const fieldreg_mode reason = out->field[field].reason;
+        if (m[field].top < 0 ||
+            (reason != FIELDREG_MODE_TOP_UNCORROBORATED &&
+             reason != FIELDREG_MODE_TOP_BODY_DISAGREE))
+            continue;
+        candidate[field] = m[field].top - engine->field[field].top;
+        if (!crop_offset_valid(field, candidate[field]) ||
+            candidate[field] == engine->field[field].last_applied)
+            continue;
+        const int delta = candidate[field] -
+                          engine->field[field].last_applied;
+        match[field] = out->comb_best_shift == (field == 0 ? -delta : delta);
+    }
+    /* Relative comb identifies a moved field only when exactly one current
+     * top explains its disagreement. Two matching candidates are ambiguous. */
+    if (match[0] == match[1]) return;
+    const int field = match[0] ? 0 : 1;
+    fieldreg_field_state *s = &engine->field[field];
+    fieldreg_field_decision *d = &out->field[field];
+    d->measured_d = (int8_t)candidate[field];
+    d->applied_d = (int8_t)candidate[field];
+    d->reason = FIELDREG_MODE_TOP_COMB_CORROBORATED;
+    d->gauge = FIELDREG_GAUGE_STATIC_COMB;
+    s->last_applied = d->applied_d;
+    s->previous_measured_top = m[field].top;
+    record_invariant(s, &m[field], candidate[field], d);
+    copy_lock(s, d);
 }
 
 bool fieldreg_process(field_registration *engine,
@@ -1281,6 +1329,11 @@ bool fieldreg_process(field_registration *engine,
     out->applied_d1 = out->field[0].applied_d;
     out->applied_d2 = out->field[1].applied_d;
     update_parity_calibration(engine, raster, m, out);
+    apply_top_comb_corroboration(engine, m, out);
+
+    for (int field = 0; field < 2; ++field)
+        if (out->field[field].measured_d != FIELDREG_UNKNOWN)
+            engine->field[field].placement_initialized = true;
 
     out->applied_d1 = out->baseline_d1 = out->field[0].applied_d;
     out->applied_d2 = out->baseline_d2 = out->field[1].applied_d;
@@ -1328,6 +1381,8 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_ZERO_CONFLICT: return "ZeroConflict";
     case FIELDREG_MODE_ZERO_CANDIDATE: return "ZeroCandidate";
     case FIELDREG_MODE_ZERO_OUT_OF_BOUNDS: return "ZeroOutOfBounds";
+    case FIELDREG_MODE_TOP_UNCORROBORATED: return "TopUncorroborated";
+    case FIELDREG_MODE_TOP_COMB_CORROBORATED: return "TopCombCorroborated";
     case FIELDREG_MODE_MIXED_FIELD_DECISION: return "MixedFieldDecision";
     }
     return "Unknown";
