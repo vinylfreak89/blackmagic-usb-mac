@@ -89,6 +89,8 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_COMMON_MODE_BODY_HOLD,
     FIELDREG_MODE_FIELD2_COMB_CALIBRATION,
     FIELDREG_MODE_ZERO_CONFLICT,
+    FIELDREG_MODE_ZERO_CANDIDATE,
+    FIELDREG_MODE_ZERO_OUT_OF_BOUNDS,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -186,13 +188,15 @@ typedef struct fieldreg_field_state {
     int16_t height;
     int16_t clip_ceiling;
     int16_t clip_candidate;
-    int16_t parity_anchor_candidate;
+    int16_t zero_candidate;
     int8_t last_applied;
     int8_t clip_candidate_d;
     fieldreg_lock_state lock_state;
     bool height_known;
     uint8_t clip_candidate_count;
+    uint8_t zero_candidate_count;
     fieldreg_zero_source zero_source;
+    fieldreg_zero_source zero_candidate_source;
     uint32_t lock_id;
     int16_t previous_measured_top;
 } fieldreg_field_state;

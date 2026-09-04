@@ -406,21 +406,46 @@ static void hold(fieldreg_field_state *s, fieldreg_field_decision *d,
     d->gauge = FIELDREG_GAUGE_HOLD;
 }
 
-static void seed_from_gauge(fieldreg_field_state *s,
-                            const field_measurement *m, int measured,
-                            fieldreg_zero_source zero_source,
-                            int observed_top)
+static void clear_zero_candidate(fieldreg_field_state *s)
 {
-    if (!m->geometry_measurable || observed_top < 0) return;
+    s->zero_candidate = INT16_MIN;
+    s->zero_candidate_count = 0;
+    s->zero_candidate_source = FIELDREG_ZERO_NONE;
+}
+
+/* A zero is segment state. A gauge places its current unit immediately, but
+ * a different base must repeat three times before it may move that state. */
+static bool observe_gauge_zero(fieldreg_field_state *s, int measured,
+                               fieldreg_zero_source source,
+                               int observed_top)
+{
     const int base_top = observed_top - measured;
-    if (base_top != s->top) {
-        /* A physical gauge may calibrate a source whose first picture line is
-         * not the standard origin. Picture content alone never does this. */
-        s->top = (int16_t)base_top;
-        s->zero_source = zero_source;
-        clear_clip(s);
+    if (base_top == s->top) {
+        clear_zero_candidate(s);
+        s->zero_source = source;
+        return true;
     }
-    s->zero_source = zero_source;
+    if (s->zero_candidate == base_top &&
+        s->zero_candidate_source == source) {
+        if (s->zero_candidate_count < UINT8_MAX)
+            ++s->zero_candidate_count;
+    } else {
+        s->zero_candidate = (int16_t)base_top;
+        s->zero_candidate_count = 1;
+        s->zero_candidate_source = source;
+    }
+    if (s->zero_candidate_count < 3) return false;
+    s->top = (int16_t)base_top;
+    s->zero_source = source;
+    clear_clip(s);
+    clear_zero_candidate(s);
+    return true;
+}
+
+static void update_gauge_geometry(fieldreg_field_state *s,
+                                  const field_measurement *m, int measured)
+{
+    if (!m->geometry_measurable) return;
     if (s->height < 0) {
         s->height = m->height;
         s->height_known = !m->bottom_censored;
@@ -663,18 +688,6 @@ static bool bottom_allows_caption(const fieldreg_field_state *s,
            m->bottom == expected;
 }
 
-static bool anchor_edges_agree(const fieldreg_field_state *s,
-                               const field_measurement *m, int base_top,
-                               int measured, int observed_top)
-{
-    if (s->height < 0 || !s->height_known || !m->geometry_measurable ||
-        m->bottom_censored || observed_top != base_top + measured)
-        return false;
-    const int expected = base_top + s->height - 1 + measured;
-    return (s->clip_ceiling < 0 || expected <= s->clip_ceiling) &&
-           m->bottom == expected;
-}
-
 static bool crop_offset_valid(int field, int measured)
 {
     const int start = field == 0 ? FIELDREG_FIELD1_START :
@@ -813,6 +826,7 @@ static void decide_geometry(fieldreg_field_state *s,
 static void decide_field(fieldreg_field_state *s, const field_measurement *m,
                          int field, fieldreg_field_decision *d)
 {
+    bool zero_observation = false;
     memset(d, 0, sizeof *d);
     d->measured_d = FIELDREG_UNKNOWN;
     d->geometry_d = FIELDREG_UNKNOWN;
@@ -840,8 +854,6 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
     d->insert_byte2 = m->insert_byte2;
     d->parity_candidate_count = m->off_count;
     d->fallback_candidate_count = m->fallback_count;
-    if (m->off_count != 1)
-        s->parity_anchor_candidate = INT16_MIN;
     if (s->lock_state == FIELDREG_LOCK_LOCKED &&
         m->picture_position_valid)
         d->geometry_d = (int8_t)(m->picture_top - s->top);
@@ -878,7 +890,6 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
         const bool picture_internally_conflicted = body_position &&
             !picture_testimony && picture_d != measured;
         if (measured == 1 && insert_nonnull && d->geometry_d == 0) {
-            s->parity_anchor_candidate = INT16_MIN;
             d->measured_d = 0;
             d->applied_d = 0;
             d->reason = FIELDREG_MODE_LINE22_DATA_PRESENT;
@@ -888,14 +899,12 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
         } else if (measured == 1 && !insert_nonnull &&
                    s->lock_state == FIELDREG_LOCK_LOCKED &&
                    d->geometry_d == 0) {
-            s->parity_anchor_candidate = INT16_MIN;
             if (!apply_body_geometry(s, m, field,
                                      FIELDREG_MODE_GAUGE_CONFLICT, d)) {
                 hold(s, d, FIELDREG_MODE_GAUGE_CONFLICT);
                 d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
             }
         } else if (picture_disagrees) {
-            s->parity_anchor_candidate = INT16_MIN;
             d->reason = m->body_shift == 0 ?
                         FIELDREG_MODE_CAPTION_ONLY_MOTION :
                         FIELDREG_MODE_CAPTION_BODY_DISAGREE;
@@ -905,44 +914,27 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
             s->last_applied = (int8_t)picture_d;
             record_invariant(s, m, picture_d, d);
         } else if (picture_internally_conflicted) {
-            s->parity_anchor_candidate = INT16_MIN;
             hold(s, d, FIELDREG_MODE_CAPTION_BODY_DISAGREE);
         } else if (!in_range(field, measured)) {
-            s->parity_anchor_candidate = INT16_MIN;
             if (!apply_body_geometry(s, m, field,
                                      FIELDREG_MODE_OUT_OF_RANGE_HOLD, d))
                 hold(s, d, FIELDREG_MODE_OUT_OF_RANGE_HOLD);
         } else {
-            bool anchor_ready = true;
-            bool anchor_uncorroborated = false;
             const int anchor_top = picture_testimony && picture_d == measured ?
                                    m->picture_top : m->top;
-            if (m->geometry_measurable) {
-                const int base_top = anchor_top - measured;
-                if (base_top == s->top) {
-                    s->parity_anchor_candidate = INT16_MIN;
-                } else if (anchor_edges_agree(s, m, base_top, measured,
-                                              anchor_top) ||
-                           s->parity_anchor_candidate == base_top) {
-                    s->parity_anchor_candidate = INT16_MIN;
-                } else {
-                    s->parity_anchor_candidate = (int16_t)base_top;
-                    anchor_ready = false;
-                    anchor_uncorroborated = true;
-                }
-            } else {
-                s->parity_anchor_candidate = INT16_MIN;
-            }
+            const bool anchor_ready = m->geometry_measurable &&
+                anchor_top >= 0 && observe_gauge_zero(
+                    s, measured, FIELDREG_ZERO_PARITY, anchor_top);
+            zero_observation = m->geometry_measurable && anchor_top >= 0;
             d->measured_d = (int8_t)measured;
             d->applied_d = (int8_t)measured;
-            d->reason = anchor_uncorroborated ?
-                        FIELDREG_MODE_ANCHOR_UNCORROBORATED :
+            d->reason = zero_observation && !anchor_ready ?
+                        FIELDREG_MODE_ZERO_CANDIDATE :
                         FIELDREG_MODE_LINE21_PLACEMENT;
             d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
             s->last_applied = (int8_t)measured;
             if (anchor_ready) {
-                seed_from_gauge(s, m, measured, FIELDREG_ZERO_PARITY,
-                                anchor_top);
+                update_gauge_geometry(s, m, measured);
                 fit_clip(s, m, measured, anchor_top);
             }
             record_invariant(s, m, measured, d);
@@ -965,18 +957,24 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
                 comb_placement != measured;
             d->measured_d = (int8_t)measured;
             d->applied_d = (int8_t)measured;
+            const bool anchor_ready = comb_zero ||
+                observe_gauge_zero(s, measured, FIELDREG_ZERO_ENVELOPE,
+                                   m->top);
+            zero_observation = true;
             d->reason = zero_conflict ? FIELDREG_MODE_ZERO_CONFLICT :
-                                        FIELDREG_MODE_FIELD2_ENVELOPE_PLACEMENT;
+                        !anchor_ready ? FIELDREG_MODE_ZERO_CANDIDATE :
+                        FIELDREG_MODE_FIELD2_ENVELOPE_PLACEMENT;
             d->gauge = FIELDREG_GAUGE_FIELD2_ENVELOPE;
             d->gauge_row = m->fallback_row;
             s->last_applied = (int8_t)measured;
-            if (!comb_zero)
-                seed_from_gauge(s, m, measured, FIELDREG_ZERO_ENVELOPE,
-                                m->top);
-            fit_clip(s, m, measured, m->top);
+            if (!comb_zero && anchor_ready)
+                update_gauge_geometry(s, m, measured);
+            if (anchor_ready) fit_clip(s, m, measured, m->top);
             record_invariant(s, m, measured, d);
         }
     } else decide_geometry(s, m, field, d);
+
+    if (!zero_observation) clear_zero_candidate(s);
 
     /* Motion for the next unit is anchored only to a position measured in
      * this unit. A held crop is presentation state, never evidence about
@@ -1019,7 +1017,7 @@ static void reset_field(fieldreg_field_state *s, bool reset_applied, int field)
     s->top = field == 0 ? FIELDREG_PICTURE_ORIGIN_F1 :
                           FIELDREG_PICTURE_ORIGIN_F2;
     clear_clip(s);
-    s->parity_anchor_candidate = INT16_MIN;
+    clear_zero_candidate(s);
     s->previous_measured_top = -1;
     s->last_applied = applied;
     s->lock_id = lock_id;
@@ -1267,6 +1265,8 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_COMMON_MODE_BODY_HOLD: return "CommonModeBodyHold";
     case FIELDREG_MODE_FIELD2_COMB_CALIBRATION: return "Field2CombCalibration";
     case FIELDREG_MODE_ZERO_CONFLICT: return "ZeroConflict";
+    case FIELDREG_MODE_ZERO_CANDIDATE: return "ZeroCandidate";
+    case FIELDREG_MODE_ZERO_OUT_OF_BOUNDS: return "ZeroOutOfBounds";
     case FIELDREG_MODE_MIXED_FIELD_DECISION: return "MixedFieldDecision";
     }
     return "Unknown";
