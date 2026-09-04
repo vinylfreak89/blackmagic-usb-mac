@@ -1376,6 +1376,19 @@ delivery edge; wrong one at acquisition.
   recording windows, 1.01 in the first recording). Line 287 carries the run-in fragment in ~25%.
   Net: the second recording sits at **d1 = +2 (jitter to +3), d2 = +2**, both fields agreeing,
   with the smeared line-286 envelope (bar edges at 5.5/17.4 µs) a stable field-2 gauge for it.
+  **Field 2 of the second recording carries TWO data lines, and the two fields' displacements
+  differ over the recording (measured 2026-09-04 night, raw units).** Line 286 = the tape's
+  line 284 at +2 (the smeared constant XDS-like bar); line 287 = the tape's line 285, a second
+  608-format waveform: full data bits in some units, run-in only in others (service unknown;
+  1998 US stations did carry data on 22/285). Raw inter-field registration on static content
+  (8-px low-pass, same-parity static mask, weave field 1 from line 23 against field 2 from 286
+  at relative shifts −3..+3): 1,838 s **0 in 199/199** units; 2,100 s 0 in 320, +1 in 256;
+  2,700 s **+1 in 546/593**. Complete-waveform rows agree: at 1,838 s (d1,d2) = (2,2); at
+  2,700 s field 1 at +3 with field 2 still +2. So field 1 moves (+2 ↔ +3) while field 2 holds
+  +2 — the same field that moves in the first recording — and for long stretches the second
+  recording carries a genuine one-line inter-field error, which is exactly what makes a weaver
+  comb there. Registration corrects it as (3,2). The 1,300 s window (first recording) is
+  aligned: 0 in 3/3 measurable static units, captions on the inserts, tops 23/286.
   **Owner ruling (same evening):** multiple line-21-like rows or a partial waveform in a unit
   means the timing signal is too unstable to use — give up on line 21 for that unit; the leaked
   VBI framing pulses at the bottom of the field and picture-above-the-band are then a real fix
