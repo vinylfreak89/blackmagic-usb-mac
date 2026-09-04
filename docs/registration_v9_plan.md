@@ -137,3 +137,35 @@ provisional trajectories, FIFO, backdating, learned position references. `static
 4. **Field 2 is rigid on the whole tape:** 224 rigid moves in 86,293 units; the plan's "field 2
    from the same lock and its own envelope" stands, and its 282↔283 top flicker must be treated
    as content.
+
+## Rulings of 2026-09-04 night (owner, after Codex's independent weigh-in)
+
+1. **Output geometry stays standard.** 720×480 = SMPTE RP-202 lines 23–262 / 286–525 (main
+   today). 720×486 = the SMPTE 125M/259M active area, lines 21–263 / 283–525, is the
+   preservation mode for anyone who wants lines 21–22 / 284–285 (captions, station data, a
+   station's picture on line 22) kept. The owner's 22/285-first idea was withdrawn in favour of
+   following the standard; Codex independently recommended the same. Commercial-tape check
+   (composite capture, 800 units): first line with content is 23/286 in 632 units and 23/287
+   (dark first field-2 line) in 156; lines 22 and 285 are blanking-level in every unit.
+2. **The engine is the simplest one.** Per field per unit: candidates = lines carrying a
+   COMPLETE 608-format waveform (run-in energy AND start-bit energy) off the regenerated line
+   21/284; a partial waveform (run-in only) is never a candidate. Exactly one candidate ⇒
+   `d = line − 21` (field 2: `− 284`), applied now, `Line21Placement`. None, with the insert
+   present ⇒ `AssumedAligned` (d = 0; a positive-looking label is forbidden — it is a default,
+   not a measurement). More than one ⇒ hold last applied, `Line21Ambiguous`. Insert absent ⇒
+   hold, `NoSyncReference` (mute / no input; the classifier's state). No bottom edge, no
+   envelope, no height, no comb, no learned position. Whole UYVY lines; parity kept.
+   Measured on the second recording with exactly that rule: field 2 unique +2 in 120/200
+   (30:38), 431/600 (35:00), 319/600 (45:00), the rest `multi` (286 with 287/288/289) ⇒ hold
+   at +2; field 1 unique +2/+3 in 182/200, 451/600, 271/600, the rest `multi` (23,24 in the
+   jitter units) ⇒ hold. The first recording (21:40): no off-insert candidate in 300/300 ⇒
+   `AssumedAligned`, correct.
+3. **Open, needs the owner's word before code:** the no-caption-service secondary. The owner
+   wants the first picture line usable as a lock when no 608 waveform exists anywhere; Codex
+   objects that an absolute 23/286 reference is wrong on a source with picture on line 22 (the
+   second recording) and on dark or letterboxed first lines, and proposes a segment-local modal
+   picture-start used only for relative motion — which is a learned position reference, a
+   class the plan deleted. Choices: (a) no secondary at all (caption-less tapes get
+   `AssumedAligned` and no jitter correction); (b) Codex's relative-only modal reference,
+   named `PictureStartRelative`; (c) absolute 23/286, knowing it mis-places line-22 sources by
+   one line. Claude recommends (a) for the first build and (b) as a measured follow-up.
