@@ -245,3 +245,16 @@ raster is for BEFORE touching a shared constant; (2) never change a shared geome
 main while the design is in conceptual review — propose it, get the word, then commit; (3) tell
 the other agent about any main commit immediately when the owner is driving both of us — a
 silent change on main becomes the other agent's phantom bug.
+
+## Identify the signaling paths before measuring their difference (2026-09-04)
+
+Every unit carries three layered signals: the Shuttle's digital fill, the deck's regenerated
+raster (sync, its timing line, its line-21 insert) and the tape's content (recorded line 21, the
+black line 22, the picture). Registration error is the difference between the last two. Five
+engine versions never separated them: the deck's lines were "VBI" to skip by row number, and the
+displacement was reconstructed from the picture alone through proxies that respond to content as
+much as to position — comb energy, single edges, temporal correlation, band votes, dwell counters —
+each patched with the next. The direct signal (the tape's line 21 sitting on, or off, the deck's
+line 21) was on the first row of every render, cropped in as picture and looked at daily. Lesson:
+before building an estimator, name the paths, establish which is fixed and which moves, and
+measure the thing itself; a proxy is only admissible once the direct signal is proven absent.
