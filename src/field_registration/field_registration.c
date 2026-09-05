@@ -1221,7 +1221,7 @@ static void update_parity_calibration(field_registration *engine,
         }
     } else {
         const comb_measurement comb = measure_static_comb(
-            engine, raster, out->applied_d1, out->applied_d2, -3, 3);
+            engine, raster, out->applied_d1, out->applied_d2, -1, 1);
         if (comb.best_shift != FIELDREG_UNKNOWN) {
             out->comb_best_shift = comb.best_shift;
             out->comb_best_energy = comb.best_energy;
@@ -1344,6 +1344,7 @@ static int choose_comb_correction_field(const field_registration *engine,
 }
 
 static void update_comb_relative_correction(field_registration *engine,
+                                            const uint8_t *raster,
                                             const field_measurement m[2],
                                             fieldreg_decision *out,
                                             bool crops_changed_after_comb)
@@ -1355,15 +1356,31 @@ static void update_comb_relative_correction(field_registration *engine,
         engine->comb_correction_candidate_count = 0;
         return;
     }
-    if (out->comb_check != FIELDREG_COMB_AGREE &&
-        out->comb_check != FIELDREG_COMB_DISAGREE)
+
+    const comb_measurement comb = measure_static_comb(
+        engine, raster, out->baseline_d1, out->baseline_d2, -3, 3);
+    if (comb.best_shift != FIELDREG_UNKNOWN) {
+        out->comb_best_shift = comb.best_shift;
+        out->comb_best_energy = comb.best_energy;
+        out->comb_second_energy = comb.second_energy;
+        out->comb_static_fraction = comb.static_fraction;
+    }
+    if (comb.best_shift == FIELDREG_UNKNOWN) {
+        out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
+    } else if (!comb.measurable) {
+        out->comb_check = FIELDREG_COMB_FLAT;
+    } else if (comb.best_shift == 0) {
+        out->comb_check = FIELDREG_COMB_AGREE;
+    } else {
+        out->comb_check = FIELDREG_COMB_DISAGREE;
+    }
+    if (!comb.measurable)
         return;
 
     /* best_shift is measured at the ordinary per-unit crops, before an
      * installed correction is overlaid. It is therefore an absolute desired
      * correction, never a delta to integrate into the previous correction. */
-    const int desired = out->comb_check == FIELDREG_COMB_AGREE ?
-                        0 : out->comb_best_shift;
+    const int desired = comb.best_shift;
     if (desired == engine->comb_correction) {
         engine->comb_correction_candidate = FIELDREG_UNKNOWN;
         engine->comb_correction_candidate_count = 0;
@@ -1440,7 +1457,7 @@ bool fieldreg_process(field_registration *engine,
     const bool crops_changed_after_comb = resolve_top_with_comb(engine, m, out);
     out->baseline_d1 = out->field[0].applied_d;
     out->baseline_d2 = out->field[1].applied_d;
-    update_comb_relative_correction(engine, m, out,
+    update_comb_relative_correction(engine, raster, m, out,
                                     crops_changed_after_comb);
     const bool correction_honored = apply_comb_relative_correction(engine,
                                                                     out);
