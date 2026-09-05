@@ -1,7 +1,7 @@
 # Frameserver sidecar
 
 The frameserver publishes corrected interlaced UYVY units immediately and writes an optional CSV
-decision sidecar. Schema `7` keeps the transport, signal-state, applied-pair,
+decision sidecar. Schema `9` keeps the transport, signal-state, applied-pair,
 publication, and loss-accounting columns from schema 3. Between them it replaces
 the retired v7 evidence graph with two identical per-field groups:
 
@@ -11,8 +11,10 @@ fN_reason,fN_gauge,fN_insert_present,fN_insert_bytes,fN_insert_relation,fN_parit
 
 `drop_reason` is `None`, `PoolFull`, `PublisherFull`, or `RingFullTail`.
 `fN_*_line`, top, bottom, lock-top, clip, and expected-bottom values use NTSC
-line numbers. The schema also records `comb_safe`: both independent geometry
-locks are valid. Exact semantics are in `../field_registration/README.md`.
+line numbers. The schema also records `comb_correction` and the ordinal where
+the current nonzero correction was installed; `-1` means none. `comb_safe`
+requires valid locks, calibrated parity, and an honored correction. Exact
+semantics are in `../field_registration/README.md`.
 
 - A pool-full observation retains its own ordinary row, is unpublished, and says `PoolFull`.
 - Ring-full observations cannot reach the worker individually. Their count is attached to the
