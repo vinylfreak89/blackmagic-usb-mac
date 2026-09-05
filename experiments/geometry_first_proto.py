@@ -76,6 +76,24 @@ def two_level(row):
     x=row[60:660]; lo=np.percentile(x,10); hi=np.percentile(x,90)
     if hi-lo<25: return False
     return ((np.abs(x-lo)<=6)|(np.abs(x-hi)<=6)).mean()>0.8
+def comb_relative(Y, d1, d2, lo=40, n=160, shifts=range(-3,4)):
+    """Relative field registration (owner's corroboration #2: field precedence within the geometry). Weave field 1 from
+    row 19+d1 and field 2 from row 282+d2+s and measure comb energy on horizontally smoothed rows over n frame rows
+    starting lo rows into the picture; return (s_best, ratio) with ratio = best/second-best energy. A weaver combs where
+    the two fields disagree by a line, so the minimum sits at the true relative placement; motion raises all shifts
+    together. DEFAULT decisive ratio 0.8."""
+    k=np.ones(SMOOTH,dtype=np.float32)/SMOOTH
+    S=np.apply_along_axis(lambda r: np.convolve(r,k,mode='valid'), 1, Y)
+    a=19+d1+lo//2; res=[]
+    for sft in shifts:
+        b=282+d2+sft+lo//2
+        f1=S[a:a+n//2]; f2=S[b:b+n//2]
+        if f2.shape!=f1.shape: res.append((sft,1e9)); continue
+        # comb: field-2 row k sits between field-1 rows k and k+1
+        e=np.abs(2*f2[:-1]-f1[:-1]-f1[1:]).mean()
+        res.append((sft,float(e)))
+    res.sort(key=lambda x:x[1]); best,second=res[0],res[1]
+    return best[0], (best[1]/second[1] if second[1]>1e-6 else 1.0)
 def measure_field(Y, F, prev_field, Yfull=None, Cfull=None):
     m, s = row_stats(Y)
     c, corr = continuity(Y, m, s)
@@ -191,6 +209,13 @@ def emit(u):
         d,reason,notes=decide(S[f],F,mm)
         stats[(f+1,reason)]+=1
         b=mm['body']; out.append((d,reason,';'.join(notes),mm['top'],mm['bottom'],mm['height'],(str(mm['hs_split'])+mm['hs_side']) if mm['hs_split'] is not None else '',mm['cap'][-1] if mm['cap'] else '',(mm['top'] if mm.get('black_top') else ''), b[0][0] if b else '', b[1][0] if b else ''))
+    # field 2 by relative comb when field 1 carries the absolute gauge (a caption) and field 2 does not
+    if out[0][7]!='' and out[1][7]=='' and prev is not None:   # out: (d, reason, notes, top, bottom, height, hs, cap, ...)
+        sft,ratio=comb_relative(Y,out[0][0],out[1][0])
+        if ratio<0.8 and sft!=0:
+            d2=out[1][0]+sft; S[1].d=d2; S[1].lock=True
+            o1=list(out[1]); o1[0]=d2; o1[1]='CombRelative'; o1[2]=(o1[2]+';' if o1[2] else '')+'comb %+d ratio %.2f'%(sft,ratio); out[1]=tuple(o1)
+            stats[(2,'CombRelative')]+=1
     rec+= [out[0][0],out[1][0]] + list(out[0][1:]) + list(out[1][1:]) + [1]
     w.writerow(rec); st['prev']=Y
 def on_video(p):
