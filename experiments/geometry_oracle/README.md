@@ -41,10 +41,11 @@ head-switch/padding transition makes its exact position unknowable.
   no confidence cutoff is fused into geometry.  Three independent top/middle/bottom band shifts
   and MADs expose a vertically mixed field without converting horizontal tearing into a vertical
   placement.
-- **Static comb:** at standard crops, field 2 is tested at relative shifts −3…+3 against the mean
-  of its neighboring field-1 lines, on pixels static against the preceding unit.  Best energy,
-  second energy, ratio, static fraction, and uniqueness are reported; no threshold converts this
-  into a placement decision.
+- **Static comb:** field 2 is tested at relative shifts −3…+3 against the mean of its neighboring
+  field-1 lines, on pixels static against the preceding unit.  Without a crop table this uses the
+  standard 23/286 starts for raw validation.  With `--published-crops`, both the current unit and
+  preceding unit use their own published starts.  Best energy, second energy, ratio, static
+  fraction, and uniqueness are reported; no threshold converts this into a placement decision.
 - **Field repeat:** byte identity of a field with the same field in the immediately preceding
   exact unit.  It is independent of low-MAD or visual similarity.
 
@@ -71,3 +72,15 @@ sides agree that these raw definitions match the reference raster.
 Cut `.tpc` slices begin/end inside USB transfers and therefore carry exactly three packet-index
 boundary errors.  The explicit slice option accepts only that exact diagnostic.  Full captures
 remain fail-closed on every provenance error.
+
+The optional published-crop file is a harness-owned adapter boundary, not an engine schema:
+
+```csv
+ordinal,published_f1_start,published_f2_start
+300,23,286
+301,23,286
+```
+
+Every exact unit processed must have exactly one crop row. Missing, duplicate, or out-of-raster
+starts abort the oracle. This keeps the independent comb measurement fail-closed while allowing
+either new engine to export decisions without coupling this code to engine internals.

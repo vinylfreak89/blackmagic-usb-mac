@@ -148,6 +148,8 @@ class UnitMeasurement:
     f2_band_shifts: str
     f2_band_mads: str
     f2_repeated: int
+    comb_crop_f1_line: int
+    comb_crop_f2_line: int
     comb_best_shift: int
     comb_best_energy: float
     comb_second_energy: float
@@ -410,16 +412,24 @@ def measure_comb(
     previous: np.ndarray | None,
     crop1: int = 19,
     crop2: int = 282,
+    previous_crop1: int | None = None,
+    previous_crop2: int | None = None,
 ) -> tuple[int, float, float, float, float, int]:
     if previous is None:
         return -128, math.nan, math.nan, math.nan, 0.0, 0
+    previous_crop1 = crop1 if previous_crop1 is None else previous_crop1
+    previous_crop2 = crop2 if previous_crop2 is None else previous_crop2
     energies: list[tuple[int, float, float]] = []
     f1 = _box8(y[crop1 : crop1 + 240, 40:680].astype(np.float32))
-    p1 = _box8(previous[crop1 : crop1 + 240, 40:680].astype(np.float32))
+    p1 = _box8(
+        previous[previous_crop1 : previous_crop1 + 240, 40:680].astype(np.float32)
+    )
     for shift in range(-3, 4):
         f2 = _box8(y[crop2 + shift : crop2 + shift + 240, 40:680].astype(np.float32))
         p2 = _box8(
-            previous[crop2 + shift : crop2 + shift + 240, 40:680].astype(np.float32)
+            previous[
+                previous_crop2 + shift : previous_crop2 + shift + 240, 40:680
+            ].astype(np.float32)
         )
         d1 = np.abs(f1 - p1)
         d2 = np.abs(f2 - p2)
@@ -466,8 +476,16 @@ def _event_for_ordinal(ordinal: int) -> tuple[str, int]:
 class Oracle:
     def __init__(self) -> None:
         self.previous: np.ndarray | None = None
+        self.previous_crops: tuple[int, int] | None = None
 
-    def measure(self, unit: bytes, ordinal: int, local_exact: int) -> UnitMeasurement:
+    def measure(
+        self,
+        unit: bytes,
+        ordinal: int,
+        local_exact: int,
+        crop1: int = 19,
+        crop2: int = 282,
+    ) -> UnitMeasurement:
         if len(unit) != UNIT_BYTES:
             raise ValueError(f"oracle received {len(unit)} bytes, expected {UNIT_BYTES}")
         counter, format_code = struct.unpack_from("<HH", unit, 4)
@@ -531,7 +549,15 @@ class Oracle:
                     repeated=repeated,
                 )
             )
-        comb = measure_comb(y, self.previous)
+        previous_crop1, previous_crop2 = self.previous_crops or (crop1, crop2)
+        comb = measure_comb(
+            y,
+            self.previous,
+            crop1,
+            crop2,
+            previous_crop1,
+            previous_crop2,
+        )
         event, no_placement = _event_for_ordinal(ordinal)
         f1, f2 = measured_fields
         values: dict[str, object] = {
@@ -545,6 +571,8 @@ class Oracle:
             values.update({prefix + key: value for key, value in asdict(field).items()})
         values.update(
             {
+                "comb_crop_f1_line": _line(crop1),
+                "comb_crop_f2_line": _line(crop2),
                 "comb_best_shift": comb[0],
                 "comb_best_energy": comb[1],
                 "comb_second_energy": comb[2],
@@ -554,6 +582,7 @@ class Oracle:
             }
         )
         self.previous = y.copy()
+        self.previous_crops = (crop1, crop2)
         return UnitMeasurement(**values)
 
 
@@ -645,18 +674,36 @@ def measure_file(
     base_ordinal: int = 0,
     selected: set[int] | None = None,
     allow_slice_boundary_provenance: bool = False,
+    published_crops: dict[int, tuple[int, int]] | None = None,
 ) -> int:
     oracle = Oracle()
     output.parent.mkdir(parents=True, exist_ok=True)
     count = 0
     max_selected = max(selected) if selected else None
     with output.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=[field.name for field in fields(UnitMeasurement)])
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[field.name for field in fields(UnitMeasurement)],
+            lineterminator="\n",
+        )
         writer.writeheader()
 
         def consume(unit: bytes, local_exact: int) -> None:
             nonlocal count
-            measurement = oracle.measure(unit, base_ordinal + local_exact, local_exact)
+            ordinal = base_ordinal + local_exact
+            if published_crops is not None:
+                if ordinal not in published_crops:
+                    raise RuntimeError(f"published-crop table has no row for ordinal {ordinal}")
+                crop1_line, crop2_line = published_crops[ordinal]
+                crop1, crop2 = crop1_line - 4, crop2_line - 4
+            else:
+                crop1, crop2 = 19, 282
+            if not (0 <= crop1 <= RASTER_LINES - 240 and 0 <= crop2 <= RASTER_LINES - 240):
+                raise RuntimeError(
+                    f"ordinal {ordinal}: published crops {crop1 + 4}/{crop2 + 4} "
+                    "do not fit the 525-line raster"
+                )
+            measurement = oracle.measure(unit, ordinal, local_exact, crop1, crop2)
             if selected is None or local_exact in selected:
                 writer.writerow(asdict(measurement))
                 count += 1
@@ -670,6 +717,25 @@ def measure_file(
     return count
 
 
+def load_published_crops(path: Path) -> dict[int, tuple[int, int]]:
+    result: dict[int, tuple[int, int]] = {}
+    with path.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        required = {"ordinal", "published_f1_start", "published_f2_start"}
+        missing = required - set(reader.fieldnames or ())
+        if missing:
+            raise RuntimeError(f"published-crop table missing columns: {sorted(missing)}")
+        for row in reader:
+            ordinal = int(row["ordinal"])
+            if ordinal in result:
+                raise RuntimeError(f"published-crop table duplicates ordinal {ordinal}")
+            result[ordinal] = (
+                int(row["published_f1_start"]),
+                int(row["published_f2_start"]),
+            )
+    return result
+
+
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("capture", type=Path)
@@ -681,6 +747,14 @@ def main(argv: Iterable[str] | None = None) -> int:
         action="store_true",
         help="accept only the known three packet-index boundary errors in a cut TPC slice",
     )
+    parser.add_argument(
+        "--published-crops",
+        type=Path,
+        help=(
+            "harness CSV with ordinal,published_f1_start,published_f2_start; "
+            "coordinates are NTSC lines"
+        ),
+    )
     args = parser.parse_args(argv)
     selected = parse_ranges(args.select) if args.select else None
     count = measure_file(
@@ -689,6 +763,9 @@ def main(argv: Iterable[str] | None = None) -> int:
         base_ordinal=args.base_ordinal,
         selected=selected,
         allow_slice_boundary_provenance=args.allow_slice_boundary_provenance,
+        published_crops=load_published_crops(args.published_crops)
+        if args.published_crops
+        else None,
     )
     print(f"oracle: wrote {count} rows to {args.output}")
     return 0
