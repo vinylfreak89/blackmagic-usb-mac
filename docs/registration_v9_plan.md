@@ -639,3 +639,9 @@ placement is confirmed by the comb where it can judge. v9 fixes the absolute-pla
 (the owner's never-bounce invariant) that v7/v8 could not measure; v8 combs less today only
 because round 8's residual relative class at minute 43 (715 units) is still open — round 10
 closes it. Both metrics are needed: the comb sees relative error, the caption sees absolute.
+Follow-up commit `094b3fb` (14:36 JST): the installed correction persists, but the field it
+moves is chosen per unit from current absolute testimony, so a parity-placed field 1 is never
+displaced by a correction installed on a caption-less unit. Codex's whole-tape pass from it:
+parity 40,208 + 26/3 vetoes + 0, bias 0..+1, correction −1..+2; a first cold-slice rerun at
+1 ms pacing shed ring/pool units and was discarded as invalid, rerun at the device cadence.
+Claude's verification retargeted to `094b3fb`.
