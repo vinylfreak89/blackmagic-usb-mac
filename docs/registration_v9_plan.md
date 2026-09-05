@@ -598,3 +598,7 @@ decode and tops stay measurable on the torn units) holds the saved geometry and 
 `DamageHold` in the sidecar; on the first clean units after a hold the new measurement is
 checked against the saved geometry, the crop readjusts once if they differ, and the sidecar
 records the jump and the difference — the one place the picture may move.
+
+**Owner (2026-09-05):** once the algorithm is right, take it through optimization rounds — but
+only after the watch copy has been verified correct. Order: round 10, round 11, live-path watch
+copy with the full-tape overlay, owner review, then optimization.
