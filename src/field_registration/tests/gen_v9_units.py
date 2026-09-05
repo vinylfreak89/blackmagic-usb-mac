@@ -1157,6 +1157,12 @@ def main():
         f1_hold_cause="TopDisagreesBodyStill", f1_saved_d=0,
         f1_hold_length=1)
 
+    # A dark row alone cannot authorize this gauge: active line-22 content can
+    # produce the same shape before caption evidence arrives.
+    add("gap-gauge-needs-caption-gate", (0, 0), begin=True, picture=(1, 1),
+        gap_rows=(19, 282), base_bottoms=(250, 518),
+        gap_state="Uncalibrated")
+
     # The tape-carried black line 22 is one row above picture in both fields.
     # One caption/gap agreement enables it for this source segment. The next
     # tied-body unit is then placed directly by that landmark, not memory.
