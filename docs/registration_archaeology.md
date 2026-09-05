@@ -351,3 +351,163 @@ Both accounts agreed on every deciding measurement. The differences, resolved:
 - **Sourcing.** Codex flagged the v9 labels as unsourced because its worktree lacked
   `docs/registration_v9_plan.md`; they are on main. It was right that the line-21 row-set counts
   (1,663 / 85 / 1,762) are transcript-only, and they are marked so above.
+
+# Part II: the v9 inversion — rounds 1 to 14, 2026-09-04 11:35 to 2026-09-05 20:30
+
+Part I ended with the ninth engine finding the reference the picture jumps against: the tape's
+line 21 arriving off the Shuttle's regenerated line 21. Part II is how that discovery was turned
+into an engine built on the wrong premise, patched fourteen times against its own instruments in
+thirty hours, and stopped by the owner reading raw panels. Same conventions as Part I; hashes
+are the rewritten ones (the trailer rewrite of 2026-09-05 20:38 kept every tree and date).
+Claude's account first; Codex's follows in its own words; differences at the end.
+
+## What the owner said and what got built
+
+The contract was stated on 2026-09-04, in the chat, in order:
+
+- 07:39 and 07:48: "the raster should always be at the same fucking point … you have not measured
+  the number of actual picture lines, where the top line is and where the bottom line is."
+- 11:35: "line 21 should end up on top of the real line 21 … and everything else follows from
+  there."
+- 11:45: "even with no caption data, the first PICTURE line should be in the same place. that is a
+  secondary mechanism that can be used for locking."
+- 12:10: "I just don't understand why a stable signal source should EVER move its registration
+  once its been found … the number of lines in the registration shift should be fixed constant."
+- 16:40: "geometry absolutely can be measured … locked by CC, locked by geometry EXCEPT around
+  times where we truly lose NTSC signal, or there are program cuts."
+- 16:57: "comb checking, but set only once at the beginning of a picture lock … that is golden
+  sync."
+- 17:03: "hopefully geometry is still calculated every frame … the truly fucked up instances are
+  going to be things like u062323 … THAT is the only place you should actually hold."
+- 18:33: "Picture. Lock should be kept … invalid geometry that disagrees with the settled lock."
+
+Read together they say: the picture's geometry, measured every unit, is the authority; the
+caption, the comb and everything else confirm it where geometry alone cannot decide (the noisy
+head-switch bottom, field precedence, boxed pictures); the only holds are a torn raster and a
+lost lock. The 11:35 sentence was the one Claude wrote into `docs/registration_v9_plan.md` as
+the design: "everything derives from the lock", the caption the primary gauge, geometry the
+fallback "when no caption decodes". The 11:45 correction became a footnote. Every round below
+patched that inversion instead of reversing it, and the owner's two later rulings (18:33 and the
+2026-09-05 morning ruling on damaged rasters) were each implemented as one more layer on top.
+
+## The items, continued
+
+**15. The caption becomes the authority (v9, `e1c91f6`, 2026-09-05 01:00).** Codex's engine
+decoded every line of each field as CEA-608 and placed field 1 at `line − 21` whenever exactly
+one valid line sat off the insert (`Line21Placement`); geometry placed only otherwise
+(`GeometryLockDecides`); field 2 used a frozen "smeared XDS" envelope at line 286. Claude built
+the acceptance around the same signal: a whole-tape parity truth set (40,237 field-1 readings)
+and `v9_acceptance.py` scoring the engine against it. The engine matched its own gauge 40,237 of
+40,237 and the render bounced; the owner's review named six sites and four root causes in an
+hour. The instrument could not see the defect because the instrument was the gauge.
+
+**16. The first raw instruments (2026-09-05 04:00–05:00).** Claude's `follow_audit.py` scored
+each unit by whether the crop change matched the body's shift since the previous unit, and
+`relative_comb_audit.py` measured the static-region comb of the published crops. Both were
+built from the same slices the engine was being fixed on. The follow audit was relative and, as
+Codex later showed, labelled every late correction as engine motion; rules E and F of round 7
+were written on those mislabelled counts and suppressed 2,616 correct caption placements
+(`d871f1f` → `67a9752`).
+
+**17. Rounds 4 to 8: the witness stack.** A 1-D body witness (`dc8a459`) that misread one-line
+jitter at 37:01 and latched on the last applied crop; a 2-D witness anchored on the previous
+measured position (`2efc416`); a reliability margin measured against caption truth (0.8; wrong
+in about one unit of five hundred below it, but blind to 15–17% of real moves); a "tied witness
+abstains" rule that Claude first turned into a hold and then, on the falsification, back into
+"the top decides" (`56edda0`, round 8). Each round moved the comb figure: 3,691 → 1,889 → 1,052
+misregistered unit pairs. Each also added a rule that only made sense on top of caption-first.
+
+**18. The field-2 zero and the 41-line walk (rounds 5–6, `a4a1bec` → `72c1260`).** Field 2 has
+no parity gauge in the first recording, so Codex calibrated its zero by comb against field 1.
+Claude's brief froze `d1 − d2` as the segment constant; Codex refused it with the numbers (field 1
+jitters independently) and calibrated the zero instead. At minute 43 the calibration then walked
+the zero from 4 to 41 lines: field 1 was geometry-placed one line wrong under a zero corrupted by
+the line-22 flicker, field 2 was held out of range so its crop never moved, the comb kept reading
+the same disagreement, drift fired every eight units, and each recalibration derived the new zero
+from the old one. Round 6 fixed the four faults and added a ±3 bound as a brake. By the evening
+the brake was being recited as "a segment constant bounded to three lines".
+
+**19. Round 10, the best whole-tape state (`63b5bf7`, merged `5b6ae68`).** A bounded relative
+comb correction closed minute 43: comb misregistered 165 of 86,293 pairs, caption placement
+40,208 + 29 evidence-checked vetoes + 0 disagreements. The same evening the v7 and v8 engines
+were replayed through the same instruments: v8 combed less (326) than round 8 (1,052) because it
+placed both fields from the same kind of gauge and was wrong in both together, and it placed
+field 1 where the caption said in 75.6% of readings against round 10's 99.9%. That table is the
+one durable result of the day: both instruments are needed, the comb for relative error, the
+caption for absolute.
+
+**20. Rounds 11 and 12: the damage ruling implemented as a hold on absent evidence.** The owner's
+ruling (save the last good geometry, hold a damaged raster, re-check once when it clears) was
+briefed by Claude first as a contradiction-based classifier, which Codex falsified on the torn
+units themselves (their inserts decode, tops measure, body MAD 5.7–11.1), then as "hold whenever
+no evidence" (`ac36073`). That fired on 23,442 field-1 units in 3,059 runs (22,107 of them "body
+witness tied"), one run 8,998 units long, and raised the comb figure from 165 to 620 by freezing
+stale positions and the wrong phase of real jitter. The raw panels of the fourteen longest holds
+showed one damaged site, one relock snow at a program cut, and twelve holds keeping a crop one or
+two lines high with the tape's black line inside the frame. The owner read them and stopped the
+work.
+
+**21. Round 14 and the black line 22 (`6d919a2`, 2026-09-05 19:54, unmerged).** In between,
+two genuinely new facts: the Shuttle's reference raster, measured on the no-source capture
+(padding rows 0–6 and 261–269, blanking on lines 11–19, its timing pattern on line 20, its null
+caption insert on line 21, blanking on line 22, pass-through only from line 23 and from line 286
+down); and the tape's black line 22 appearing at row 18 + d as a dark row above the picture,
+agreeing with the caption 309 of 309 times where both exist and valid only on a source whose line
+22 is black. Codex made the engine's comb identical to the audit's (2,677 of 2,677 verdicts) and
+gated the gap gauge on caption agreement. Also found the same evening: the row above the caption
+at +3 is the tape's line 20, mislabelled for a day as "a duplicated run-in"; and the caption gauge
+is structurally blind at +1 (the tape's line 21 lands on the Shuttle's blanked line 22).
+
+## Why it derailed again
+
+The Part I lesson was "concept before code". Part II broke it in a different way: the concept
+was stated, then encoded inverted, and the rest was a very disciplined iteration on the wrong
+base. Specifically:
+
+- **The instrument became the objective.** The parity truth set was the first thing that gave a
+  clean number; the engine was fixed until it matched it, and "0 disagreements" was reported as
+  acceptance for a day while the picture bounced.
+- **Each falsification was answered with a rule, not a question about the base.** Fourteen
+  rounds, each with failing-first goldens cut from the defect, each green, each adding a
+  precedence step or a constant. Goldens froze the patches, not the contract.
+- **Constants fitted to fixture A were promoted to contract.** The 0.8 margin, three readings,
+  25% and 3%, ±3 twice, the near-blank band, "first of three picture rows", the XDS envelope.
+  None derives from the raster; several derive from one bug.
+- **The relative instrument was trusted for an absolute claim** (rule E), and the absolute
+  instruments were trusted where they are blind (the comb cannot see both fields off together;
+  the caption cannot see +1).
+- **Both agents obeyed briefs that contradicted the owner's own words from hours earlier.**
+  Codex pushed back where the data forced it (the `d1 − d2` constant, the damage classifier,
+  five "not merge-ready" verdicts) and complied everywhere else; Claude wrote the briefs from
+  its own summary of the contract instead of from the transcript.
+
+## Process failures, same period
+
+- Eighteen of Codex's commits since 2026-09-04 22:02 carried the characters `\n` in the message
+  instead of line breaks, so their co-author trailers were not trailers. Codex reported it twice
+  on 2026-09-05; Claude called it cosmetic and deferred; the owner ordered the rewrite.
+- Thirteen working branches cited by hash in the plan were never pushed until the owner asked.
+- Claude wrote at least five timestamps from memory, each a few minutes wrong, and corrected each
+  after checking the clock, instead of checking first.
+- Claude's summary of the round-12 sheets ("mostly harmless") preceded looking at them at full
+  scale; the owner looked first.
+
+## What to keep
+
+The reference raster measurement; the tape's line 21 as a parity-decoded absolute gauge and its
+blind spots; the tape's black line 22 and line 20 as gauges with their validity conditions; the
+canonical static-comb measurement and its exact agreement between engine and audit; the parity
+truth set and `v9_acceptance.py`; the whole-tape replay discipline (86,293 units, zero drops,
+every gate from the same sidecar); the v7/v8/v9 comparison table; the fact that field 1 jitters
+by one line per unit while field 2 holds, so no per-segment `d1 − d2` exists; and the
+transcript quotes above, which are the contract. Discard: the precedence stack, every
+tape-fitted constant not derivable from the raster, the hold on absent evidence, and the
+follow audit as anything but a pointer.
+
+## What happens next
+
+The owner's ruling on 2026-09-05 evening: roles switch. Claude writes the next registration
+engine, geometry first, from the reference raster and the contract above; Codex writes the
+validation harness; neither reads the other's prior engine or harness work; both guide each
+other on concept. All of it on a new branch. The round-14 audits run to completion first so the
+merged round-10 main remains a measured fallback.
