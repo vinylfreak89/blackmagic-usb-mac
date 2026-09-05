@@ -19,9 +19,18 @@ def odd_parity(value):
 
 
 def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
-              f2_envelopes=(), dark=False, letterbox=0, invalid=False,
+              f2_envelopes=(), f2_bleed_envelopes=(),
+              f2_short_envelopes=(), dark=False,
+              letterbox=0, invalid=False,
               extra_valid=(), base_bottoms=(256, 518), bright_rows=(),
-              top_overrides=(None, None), bottom_overrides=(None, None)):
+              top_overrides=(None, None), bottom_overrides=(None, None),
+              weak_caption_rows=(), nonsignature_bar_rows=(),
+              field_luma=(None, None), dark_fields=(False, False),
+              gap_rows=(), broad_bar_picture_rows=(),
+              caption_false_picture_rows=(), content_phases=(0, 0),
+              content_shifts=(None, None), body_texture=(False, False),
+              body_split_shifts=(None, None), comb_offsets=None,
+              comb_phase=0, blank_rows=(), body_noise_right=False):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -38,6 +47,24 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
         if 0 <= row < RASTER_LINES:
             start = row * BYTES_PER_LINE
             raster[start + 1:start + BYTES_PER_LINE:2] = bytes([y]) * PIXELS
+
+    def fill_body_texture(row, field, basis, phase, split_basis=None):
+        """Stable 2-D detail whose row mean is deliberately uninformative.
+
+        A vertical move preserves every luma sample after translating the
+        row.  The old row-mean witness therefore cannot infer the move, while
+        a real 2-D matcher can.  This models the flat minima measured at
+        35:00/37:01 rather than manufacturing evidence in the row average.
+        """
+        scale = 53 if field == 0 else 59
+        seed = basis * scale + phase
+        split_seed = (split_basis * scale + phase
+                      if split_basis is not None else seed)
+        ys = bytes(48 + ((x * 37 + (seed if x < PIXELS // 2
+                                    else split_seed)) & 127)
+                   for x in range(PIXELS))
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = ys
 
     def waveform(row, b1=0x80, b2=0x80, parity=True, run_cycles=7, phase0=20.0):
         if not 0 <= row < RASTER_LINES:
@@ -66,19 +93,70 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
         waveform(280)
 
     d1, d2 = picture
-    if not dark:
+    if not dark and not dark_fields[0]:
         top1 = (19 + d1 + letterbox if top_overrides[0] is None
                 else top_overrides[0])
-        top2 = (282 + d2 + letterbox if top_overrides[1] is None
-                else top_overrides[1])
         bottom1 = (min(base_bottoms[0] + d1, 260)
                    if bottom_overrides[0] is None else bottom_overrides[0])
+        phase1 = counter * 7 if content_phases[0] is None else content_phases[0]
+        for row in range(top1, bottom1 + 1):
+            y = field_luma[0]
+            shift = d1 if content_shifts[0] is None else content_shifts[0]
+            basis = row - shift
+            if body_texture[0]:
+                split = body_split_shifts[0]
+                fill_body_texture(row, 0, basis, phase1,
+                                  row - split[1] if split is not None else None)
+            else:
+                fill(row, y if y is not None else 62 + ((basis * 13 + phase1) % 91))
+    if not dark and not dark_fields[1]:
+        top2 = (282 + d2 + letterbox if top_overrides[1] is None
+                else top_overrides[1])
         bottom2 = (min(base_bottoms[1] + d2, 522)
                    if bottom_overrides[1] is None else bottom_overrides[1])
-        for row in range(top1, bottom1 + 1):
-            fill(row, 62 + ((row * 13 + counter * 7) % 91))
+        phase2 = counter * 5 if content_phases[1] is None else content_phases[1]
         for row in range(top2, bottom2 + 1):
-            fill(row, 58 + ((row * 11 + counter * 5) % 97))
+            y = field_luma[1]
+            shift = d2 if content_shifts[1] is None else content_shifts[1]
+            basis = row - shift
+            if body_texture[1]:
+                split = body_split_shifts[1]
+                fill_body_texture(row, 1, basis, phase2,
+                                  row - split[1] if split is not None else None)
+            else:
+                fill(row, y if y is not None else 58 + ((basis * 11 + phase2) % 97))
+
+    if comb_offsets is not None:
+        # A static interlaced raster with a unique smooth weave. Field 2 is
+        # the half-line sample between adjacent field-1 rows, so its correct
+        # crop has nearly zero comb energy and every shifted weave does not.
+        def comb_sample(index, x):
+            horizontal = 8 if (x // 16) & 1 else -8
+            return 110 + round(35 * math.sin(
+                2 * math.pi * (index + comb_phase) / 17)) + horizontal
+
+        for field, start in enumerate((19 + comb_offsets[0],
+                                       282 + comb_offsets[1])):
+            for i in range(FIELD_LINES := 240):
+                row = start + i
+                if not 0 <= row < RASTER_LINES:
+                    continue
+                if field == 0:
+                    ys = bytes(comb_sample(i, x) for x in range(PIXELS))
+                else:
+                    ys = bytes((comb_sample(i, x) + comb_sample(i + 1, x)) // 2
+                               for x in range(PIXELS))
+                line = raster[row * BYTES_PER_LINE:(row + 1) * BYTES_PER_LINE]
+                line[1::2] = ys
+
+    # Test-only morphology: retain a static left half for the comb mask while
+    # changing the right half enough that the whole-body shift witness ties.
+    if body_noise_right:
+        for row in range(40, 200):
+            line = raster[row * BYTES_PER_LINE:(row + 1) * BYTES_PER_LINE]
+            line[721:BYTES_PER_LINE:2] = bytes(
+                48 + ((row * 19 + x * 31 + counter * 23) & 127)
+                for x in range(360))
 
     for field, spec in enumerate(captions):
         if spec is not None:
@@ -86,14 +164,106 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
             waveform((17 if field == 0 else 280) + d, b1, b2)
     for row in bright_rows:
         fill(row, 180)
+    for row in blank_rows:
+        fill(row, 2)
+    for row in gap_rows:
+        fill(row, 7)
     for row, b1, b2, parity, cycles in extra_valid:
         waveform(row, b1, b2, parity=parity, run_cycles=cycles)
 
-    # The field-2 fallback: energy confined to the first 20 of 48 bins.
+    # The field-2 fallback's measured left-side structure: an early pulse,
+    # four-bin bar, then a two-bin drop. Its right half is not part of the
+    # signature because picture can bleed into it.
     for row in f2_envelopes:
         ys = [8] * PIXELS
-        for x in range(40, 40 + (640 * 8) // 48):
-            ys[x] = 100
+        for bin_ in (1, 4, 5, 6, 7):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [100] * (last - first)
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # Same XDS left structure, but with the real 45:00 failure class's
+    # unconstrained picture bleed rising across the right half.
+    for row in f2_bleed_envelopes:
+        ys = [8] * PIXELS
+        for bin_ in (1, 4, 5, 6, 7):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [100] * (last - first)
+        for bin_ in range(15, 24):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            y = 39 + (bin_ - 15) * 6
+            ys[first:last] = [y] * (last - first)
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # The sole 45:00 short-bar variant retains the pulse and drop but has only
+    # bins 4-5 of the nominal 4-7 bar above threshold.
+    for row in f2_short_envelopes:
+        ys = [8] * PIXELS
+        for bin_ in (1, 4, 5):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [100] * (last - first)
+        for bin_ in range(15, 24):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [26] * (last - first)
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # Parity-invalid, low-amplitude line-21 damage.  It deliberately falls
+    # below the decoder's amplitude gate while preserving the broad run-in /
+    # data-pulse envelope seen by the VBI rejection classifier.
+    for row in weak_caption_rows:
+        ys = [2] * PIXELS
+        for bin_ in range(6):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [50] * (last - first)
+        first = 40 + (8 * 640) // 24
+        last = 40 + (9 * 640) // 24
+        ys[first:last] = [90] * (last - first)
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # Left-heavy texture without the measured XDS pulse/bar/drop structure.
+    # The retired broad predicate called this VBI; the narrow contract must
+    # leave it available to picture geometry.
+    for row in nonsignature_bar_rows:
+        ys = [2] * PIXELS
+        for bin_ in range(5):
+            first = 40 + (bin_ * 640) // 48
+            last = 40 + ((bin_ + 1) * 640) // 48
+            ys[first:last] = [90] * (last - first)
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # A real picture-row morphology from 37:01 that the retired broad bar
+    # predicate mistakes for VBI: bright structure in the left portion and a
+    # darker right side, but no XDS pulse/bar/drop signature.
+    for row in broad_bar_picture_rows:
+        ys = [30] * PIXELS
+        for bin_ in range(8, 16):
+            first = 40 + (bin_ * 640) // 48
+            last = 40 + ((bin_ + 1) * 640) // 48
+            ys[first:last] = [80] * (last - first)
+        start = row * BYTES_PER_LINE
+        raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
+
+    # Actual 37:01 picture morphology: its coarse left-side bins resemble the
+    # old weak-caption heuristic, but their variance is much larger than the
+    # measured damaged-caption run-in. These are consecutive picture rows.
+    picture_bins = (31, 38, 42, 48, 50, 48, 46, 31, 31, 60, 124, 130,
+                    120, 80, 60, 50, 45, 40, 35, 30, 30, 30, 30, 30)
+    for row in caption_false_picture_rows:
+        ys = [30] * PIXELS
+        for bin_, value in enumerate(picture_bins):
+            first = 40 + (bin_ * 640) // 24
+            last = 40 + ((bin_ + 1) * 640) // 24
+            ys[first:last] = [value] * (last - first)
         start = row * BYTES_PER_LINE
         raster[start + 1:start + BYTES_PER_LINE:2] = bytes(ys)
     return unit
@@ -107,15 +277,24 @@ def main():
     rows = []
     units = []
 
-    def add(scenario, expected, *, begin=False, ok=True, f1_reason="-",
+    def add(scenario, expected, *, begin=False, discontinuity=False, ok=True,
+            f1_reason="-",
             f2_reason="-", f1_lock="-", f2_lock="-", f1_zero="-",
             f2_zero="-", f1_lock_top=-999, f2_lock_top=-999, comb=-1,
+            f1_raw_top=-999, f2_raw_top=-999,
+            f1_body_shift=-999, f2_body_shift=-999,
+            f1_body_valid=-1, f2_body_valid=-1,
+            parity_state="-", comb_check="-", parity_bias=-999,
             **kwargs):
         counter = len(units)
         units.append(make_unit(counter, **kwargs))
-        rows.append((counter, scenario, int(begin), int(ok), expected[0], expected[1],
+        rows.append((counter, scenario, int(begin), int(discontinuity), int(ok),
+                     expected[0], expected[1],
                      f1_reason, f2_reason, f1_lock, f2_lock, f1_zero, f2_zero,
-                     f1_lock_top, f2_lock_top, comb))
+                     f1_lock_top, f2_lock_top, comb, f1_raw_top, f2_raw_top))
+        rows[-1] += (f1_body_shift, f2_body_shift,
+                     f1_body_valid, f2_body_valid,
+                     parity_state, comb_check, parity_bias)
 
     # Alignment and immediate parity authority.
     add("aligned-null-acquire-1", (0, 0), begin=True)
@@ -142,10 +321,11 @@ def main():
     add("invalid-vertical-duplicate-ignored", (2, 2), picture=(2, 2),
         captions=((2, 0x14, 0x2c), None), f2_envelopes=(282,),
         extra_valid=((20, 0x14, 0x2c, False, 7),))
-    add("two-valid-lines-hold", (2, 2), picture=(3, 2),
+    add("two-valid-lines-geometry", (3, 2), picture=(3, 2),
         extra_valid=((19, 0x14, 0x2c, True, 7),
-                     (20, 0x15, 0x2b, True, 7)))
-    add("insert-absent-hold", (2, 2), picture=(0, 0), insert=False)
+                     (20, 0x15, 0x2b, True, 7)),
+        f1_reason="Line21Ambiguous")
+    add("insert-absent-hold", (3, 2), picture=(0, 0), insert=False)
 
     # A real line-21 reading remains authoritative when picture geometry is dark or clipped.
     add("dark-line21-only", (3, 2), picture=(3, 2), dark=True,
@@ -158,9 +338,12 @@ def main():
     add("geometry-acquire-2", (0, 0))
     add("geometry-rigid-plus1", (1, 0), picture=(1, 0))
     add("geometry-rigid-minus1", (-1, 0), picture=(-1, 0))
-    add("geometry-height-break", (-1, 0), picture=(0, 0), letterbox=8)
-    add("geometry-reacquire-1", (-1, 0), picture=(0, 0), letterbox=8)
-    add("geometry-reacquire-2", (-1, 0), picture=(0, 0), letterbox=8)
+    add("geometry-height-break", (-1, 0), picture=(0, 0), letterbox=8,
+        bottom_overrides=(248, None))
+    add("geometry-reacquire-1", (-1, 0), picture=(0, 0), letterbox=8,
+        bottom_overrides=(248, None))
+    add("geometry-reacquire-2", (-1, 0), picture=(0, 0), letterbox=8,
+        bottom_overrides=(248, None))
 
     # A top-authoritative parity gauge must acquire and retain a lock even
     # while the visible bottom is clipped and visible height alternates.
@@ -171,7 +354,7 @@ def main():
             bright_rows=(19,) if d1 == 3 else (),
             f1_lock="Locked" if i >= 2 else "-",
             f2_lock="Locked" if i >= 2 else "-",
-            comb=1 if i >= 2 else -1)
+            comb=0 if i >= 2 else -1)
 
     # Without C, one missing weak field-2 gauge cannot turn an ambiguous
     # shortened bottom into a one-line placement change.
@@ -181,8 +364,8 @@ def main():
         f2_envelopes=(282,), base_bottoms=(256, 519))
     add("clip-gap-fit-pending", (0, 2), picture=(0, 2),
         f2_envelopes=(282,), base_bottoms=(256, 518))
-    add("clip-gap-hold", (0, 2), picture=(0, 1),
-        base_bottoms=(256, 519), f2_reason="ClipUnknownHold",
+    add("clip-gap-band-top-decides", (0, 1), picture=(0, 1),
+        base_bottoms=(256, 519), f2_reason="GeometryLockDecides",
         f2_lock="Locked")
 
     # Insert data is corroboration, not authority over a live geometry lock.
@@ -209,10 +392,10 @@ def main():
     add("insert-dropout-acquire-2", (0, 0))
     add("insert-dropout-hold-lock", (0, 0), insert=False,
         f1_reason="InsertAbsent", f2_reason="InsertAbsent",
-        f1_lock="Locked", f2_lock="Locked", comb=1)
+        f1_lock="Locked", f2_lock="Locked", comb=0)
     add("insert-dropout-return", (0, 0),
         f1_reason="GeometryLockDecides", f2_reason="GeometryLockDecides",
-        f1_lock="Locked", f2_lock="Locked", comb=1)
+        f1_lock="Locked", f2_lock="Locked", comb=0)
 
     # Re-encoded non-null bytes on the Shuttle's insert are provenance only.
     # A rigid +1 picture envelope remains a per-unit placement observation.
@@ -220,57 +403,541 @@ def main():
     add("reencoded-rigid-acquire-2", (0, 0))
     add("reencoded-rigid-plus1", (1, 0), picture=(1, 0),
         captions=((0, 0x14, 0x2c), None),
-        f1_reason="GeometryLockDecides", f1_lock="Locked", comb=1)
+        f1_reason="GeometryLockDecides", f1_lock="Locked", comb=0)
 
-    # Geometry acquired a content-dependent zero one line low. A parity-valid
-    # +2 line re-anchors it to the physical raster. Non-rigid content then
-    # holds that gold zero, while the next rigid +1 envelope is followed.
-    add("parity-reanchor-acquire-1", (0, 0), begin=True,
+    # Geometry is compared with the standard origin from the first unit. A
+    # parity-valid +2 line then re-anchors that standard zero to the physical
+    # raster. Non-rigid content holds; the next rigid +1 envelope is followed.
+    add("parity-reanchor-standard-1", (1, 0), begin=True,
         top_overrides=(20, None), bottom_overrides=(256, None))
-    add("parity-reanchor-acquire-2", (0, 0),
+    add("parity-reanchor-standard-2", (1, 0),
         top_overrides=(20, None), bottom_overrides=(256, None))
     add("parity-plus2-reanchors", (2, 0),
         captions=((2, 0x14, 0x2c), None),
         top_overrides=(21, None), bottom_overrides=(258, None),
+        content_shifts=(1, 0),
         f1_reason="Line21Placement", f1_lock="Locked", f1_zero="Parity",
         f1_lock_top=19)
-    add("gold-zero-nonrigid-hold", (2, 0),
+    add("gold-zero-top-body-minus1", (1, 0),
         top_overrides=(20, None), bottom_overrides=(255, None),
         f1_reason="LockBroken", f1_lock="Locked")
     add("gold-zero-rigid-plus1", (1, 0),
         top_overrides=(20, None), bottom_overrides=(256, None),
-        f1_reason="GeometryLockDecides", f1_lock="Locked", comb=1)
+        f1_reason="GeometryLockDecides", f1_lock="Locked", comb=0)
 
-    # With C unknown, a top-only field-2 change ending at the ADC boundary is
-    # not sufficient to change placement, even before a clip candidate exists.
+    # Once the observed bottom is in the censored near-blank band, top position
+    # is the only available geometry coordinate and decides placement.
     add("boundary-top-only-acquire-1", (0, 0), begin=True,
-        top_overrides=(None, 282), bottom_overrides=(None, 521))
+        top_overrides=(None, 282), bottom_overrides=(None, 521),
+        content_phases=(0, 0))
     add("boundary-top-only-acquire-2", (0, 0),
-        top_overrides=(None, 282), bottom_overrides=(None, 521))
-    add("boundary-top-only-hold", (0, 0),
+        top_overrides=(None, 282), bottom_overrides=(None, 521),
+        content_phases=(0, 0))
+    add("boundary-top-only-placement", (0, 1),
         top_overrides=(None, 283), bottom_overrides=(None, 522),
-        f2_reason="ClipUnknownHold", f2_lock="Locked", f2_zero="Acquired")
+        content_phases=(0, 0), content_shifts=(0, 1),
+        f2_reason="GeometryLockDecides", f2_lock="Locked", f2_zero="Standard")
 
-    # Fixture A's effective field-2 bottom is NTSC line 522, above the hard
-    # ADC-last line. With no physical zero and no fitted C, a seemingly rigid
-    # 287/523 -> 286/522 move is still not placement authority.
-    add("unknown-c-field2-acquire-1", (0, 0), begin=True,
-        top_overrides=(None, 283), bottom_overrides=(None, 519))
-    add("unknown-c-field2-acquire-2", (0, 0),
-        top_overrides=(None, 283), bottom_overrides=(None, 519))
-    add("unknown-c-field2-hold", (0, 0),
+    # Fixture A's near-blank band begins above the hard ADC-last line.  A rigid
+    # top move while its bottom remains in that censored band is placement.
+    add("unknown-c-field2-standard-plus1-1", (0, 1), begin=True,
+        top_overrides=(None, 283), bottom_overrides=(None, 519),
+        content_phases=(0, 0), content_shifts=(0, 1))
+    add("unknown-c-field2-standard-plus1-2", (0, 1),
+        top_overrides=(None, 283), bottom_overrides=(None, 519),
+        content_phases=(0, 0), content_shifts=(0, 1))
+    add("unknown-c-field2-band-return", (0, 0),
         top_overrides=(None, 282), bottom_overrides=(None, 518),
-        f2_reason="ClipUnknownHold", f2_lock="Locked", f2_zero="Acquired",
+        content_phases=(0, 0), content_shifts=(0, 0),
+        f2_reason="GeometryLockDecides", f2_lock="Locked", f2_zero="Standard",
         comb=0)
 
-    # A content-acquired position cannot promise deinterlacing safety on an
-    # unmeasurable unit merely because both state machines remain Locked.
-    add("acquired-zero-acquire-1", (0, 0), begin=True)
-    add("acquired-zero-acquire-2", (0, 0))
-    add("acquired-zero-dark-hold", (0, 0), dark=True,
+    # A standard-zero lock cannot promise deinterlacing safety on an
+    # unmeasurable unit without a current rigid observation in both fields.
+    add("standard-zero-measurable-1", (0, 0), begin=True)
+    add("standard-zero-measurable-2", (0, 0))
+    add("standard-zero-dark-hold", (0, 0), dark=True,
         f1_reason="GeometryUnmeasurable", f2_reason="GeometryUnmeasurable",
-        f1_lock="Locked", f2_lock="Locked", f1_zero="Acquired",
-        f2_zero="Acquired", comb=0)
+        f1_lock="Locked", f2_lock="Locked", f1_zero="Standard",
+        f2_zero="Standard", comb=0)
+
+    # Damaged vertical-interval waveforms remain VBI even when they fail the
+    # strict decoder/fallback.  Geometry begins at the first three-line
+    # picture run, not at the damaged waveform.
+    add("weak-vbi-acquire-1", (0, 0), begin=True)
+    add("weak-vbi-acquire-2", (0, 0))
+    add("weak-caption-not-picture", (2, 0), picture=(2, 0),
+        weak_caption_rows=(19,), f1_reason="GeometryLockDecides",
+        f1_lock="Locked")
+
+    add("nonsignature-bar-context-1", (0, 0), begin=True,
+        content_phases=(0, 0))
+    add("nonsignature-bar-context-2", (0, 0), content_phases=(0, 0))
+    add("nonsignature-bar-remains-picture", (0, 0), picture=(0, 0),
+        nonsignature_bar_rows=(282, 283), content_phases=(0, 0),
+        f2_reason="GeometryLockDecides",
+        f2_lock="Locked", f2_raw_top=282)
+
+    # The deck's near-blank band is a censored boundary.  Its measured bottom
+    # may flicker inside lines 260..264 / 522..526 without moving the raster.
+    add("bottom-band-acquire-1", (0, 0), begin=True,
+        bottom_overrides=(256, None))
+    add("bottom-band-acquire-2", (0, 0),
+        bottom_overrides=(256, None))
+    add("bottom-band-flicker-hold-lock", (0, 0),
+        bottom_overrides=(258, None), f1_reason="GeometryLockDecides",
+        f1_lock="Locked")
+    add("bottom-band-return-hold-lock", (0, 0),
+        bottom_overrides=(256, None), f1_reason="GeometryLockDecides",
+        f1_lock="Locked")
+
+    # The 45:00 field-2 class: XDS keeps its measured left signature while
+    # picture bleeds into the right half; the following row is a parity-invalid
+    # run-in fragment. Both rows are VBI, and picture begins at line 288 (+2).
+    add("field2-xds-right-bleed", (0, 2), begin=True,
+        top_overrides=(None, 284), bottom_overrides=(None, 522),
+        f2_bleed_envelopes=(282,),
+        extra_valid=((283, 0x14, 0x2c, False, 7),),
+        f2_reason="Field2EnvelopePlacement", f2_lock="Locked",
+        f2_zero="Envelope", f2_lock_top=282)
+    add("field2-xds-short-bar", (0, 2),
+        top_overrides=(None, 284), bottom_overrides=(None, 522),
+        f2_short_envelopes=(282,),
+        extra_valid=((283, 0x14, 0x2c, False, 7),),
+        f2_reason="Field2EnvelopePlacement", f2_lock="Locked",
+        f2_zero="Envelope", f2_lock_top=282)
+
+    # A flat, dim tape line 22 can sit just above much brighter picture while
+    # still clearing blank+4. It is a VBI gap, not the picture's first row.
+    add("field1-gap-line-before-picture", (1, 0), begin=True,
+        top_overrides=(20, None), gap_rows=(19,), field_luma=(90, None),
+        f1_reason="GeometryLockDecides", f1_lock="Locked",
+        f1_zero="Standard", f1_lock_top=19)
+
+    # 37:01 field 2: the XDS row and fragment precede picture whose genuine
+    # rows happen to match the retired broad bar heuristic. The measured top
+    # is NTSC line 288 (unit row 284), never line 294.
+    add("field2-picture-not-broad-bar", (0, 2), begin=True,
+        top_overrides=(None, 284), bottom_overrides=(None, 522),
+        f2_envelopes=(282,),
+        extra_valid=((283, 0x14, 0x2c, False, 7),),
+        broad_bar_picture_rows=tuple(range(284, 290)),
+        f2_reason="Field2EnvelopePlacement", f2_raw_top=284)
+    add("field2-picture-not-caption-damage", (0, 2), begin=True,
+        top_overrides=(None, 284), bottom_overrides=(None, 522),
+        f2_envelopes=(282,),
+        extra_valid=((283, 0x14, 0x2c, False, 7),),
+        caption_false_picture_rows=(284, 285, 286),
+        f2_reason="Field2EnvelopePlacement", f2_raw_top=284)
+
+    # 37:01 field 1: loss of parity or of the recorded caption itself cannot
+    # move a crop while the same measurable picture remains in place.
+    add("field1-caption-stable-decodable-a", (3, 0), begin=True,
+        picture=(3, 0), captions=((3, 0x14, 0x2c), None))
+    add("field1-caption-stable-damaged", (3, 0), picture=(3, 0),
+        weak_caption_rows=(20,), f1_reason="GeometryLockDecides")
+    add("field1-caption-stable-absent", (3, 0), picture=(3, 0),
+        f1_reason="GeometryLockDecides")
+    add("field1-caption-stable-decodable-b", (3, 0), picture=(3, 0),
+        captions=((3, 0x14, 0x2c), None), f1_reason="Line21Placement")
+
+    # A decoded caption may move independently of a settled, fully visible
+    # picture envelope. Both edges then veto that caption for this unit only.
+    add("caption-only-motion-anchor", (2, 0), begin=True, picture=(2, 0),
+        captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        f1_reason="Line21Placement", f1_lock_top=19)
+    add("caption-only-motion-veto", (2, 0), picture=(2, 0),
+        captions=((3, 0x15, 0x2b), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        f1_reason="CaptionOnlyMotion", f1_lock_top=19, f1_body_shift=0)
+    add("caption-and-edges-move", (3, 0), picture=(3, 0),
+        captions=((3, 0x15, 0x2b), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        f1_reason="Line21Placement", f1_lock_top=19, f1_body_shift=1)
+
+    # A censored bottom is absence of evidence, not contrary evidence. A
+    # measurable still top plus a reliable still body can veto caption alone.
+    add("caption-censored-anchor", (2, 0), begin=True, picture=(2, 0),
+        captions=((2, 0x14, 0x2c), None), base_bottoms=(256, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        f1_lock_top=19)
+    add("caption-move-censored-veto", (2, 0), picture=(2, 0),
+        captions=((3, 0x15, 0x2b), None), base_bottoms=(256, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        f1_reason="CaptionOnlyMotion", f1_lock_top=19, f1_body_shift=0)
+
+    # When caption and body move by different amounts, top plus body decide.
+    # If the top does not agree with that body-consistent placement, hold.
+    add("caption-body-disagree-anchor", (2, 0), begin=True, picture=(2, 0),
+        captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 0))
+    add("caption-body-disagree-place", (3, 0), picture=(3, 0),
+        captions=((4, 0x15, 0x2b), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        f1_reason="CaptionBodyDisagree", f1_body_shift=1)
+    add("caption-body-disagree-hold", (3, 0), picture=(2, 0),
+        captions=((4, 0x15, 0x2b), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        f1_reason="CaptionBodyDisagree", f1_body_shift=0)
+
+    # Ambiguous/conflicting VBI becomes provenance when top and body provide
+    # a coherent current-unit geometry placement.
+    add("ambiguous-geometry-anchor", (0, 0), begin=True,
+        base_bottoms=(250, 518), content_phases=(0, 0))
+    add("ambiguous-geometry-place", (1, 0), picture=(1, 0),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(1, 0),
+        extra_valid=((18, 0x14, 0x2c, True, 7),
+                     (19, 0x15, 0x2b, True, 7)),
+        f1_reason="Line21Ambiguous", f1_body_shift=1)
+
+    add("gauge-conflict-geometry-anchor", (1, 0), begin=True,
+        picture=(1, 0), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(1, 0))
+    add("gauge-conflict-geometry-place", (0, 0), picture=(0, 0),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(0, 0),
+        extra_valid=((18, 0x15, 0x2b, True, 7),),
+        f1_reason="GaugeConflict", f1_body_shift=-1)
+
+    # Bottom conservation can fail while top and body still prove a rigid
+    # move. That unit is placed without changing the settled lock geometry.
+    add("lock-broken-body-anchor", (0, 0), begin=True,
+        base_bottoms=(250, 518), content_phases=(0, 0))
+    add("lock-broken-body-place", (1, 0), picture=(1, 0),
+        bottom_overrides=(252, None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(1, 0),
+        f1_reason="LockBroken", f1_body_shift=1)
+    add("lock-broken-body-conflict-anchor", (0, 0), begin=True,
+        base_bottoms=(250, 518), content_phases=(0, 0))
+    add("lock-broken-body-conflict-hold", (0, 0), picture=(1, 0),
+        bottom_overrides=(252, None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(0, 0),
+        f1_reason="TopBodyDisagree", f1_body_shift=0)
+
+    # +10 is outside the old policy range but remains inside the source
+    # raster. A +1 body witness distinguishes it from a false top reading.
+    add("out-of-range-body-anchor", (9, 0), begin=True, picture=(9, 0),
+        base_bottoms=(240, 518), content_phases=(0, 0),
+        content_shifts=(9, 0))
+    add("out-of-range-body-place", (10, 0), picture=(10, 0),
+        base_bottoms=(240, 518), content_phases=(0, 0),
+        content_shifts=(10, 0), f1_reason="OutOfRangeHold", f1_body_shift=1)
+    add("out-of-range-body-conflict-anchor", (9, 0), begin=True,
+        picture=(9, 0), base_bottoms=(240, 518),
+        content_phases=(0, 0), content_shifts=(9, 0))
+    add("out-of-range-body-conflict-hold", (9, 0), picture=(10, 0),
+        base_bottoms=(240, 518), content_phases=(0, 0),
+        content_shifts=(9, 0), f1_reason="TopBodyDisagree", f1_body_shift=0)
+
+    # A cold false parity hit can imply a bogus zero (NTSC line 29 here).
+    # It places its own unit but may not poison following geometry. A second
+    # consecutive reading or same-unit edge conservation is required to
+    # re-anchor the segment zero.
+    add("false-anchor-single-hit", (2, 0), begin=True,
+        captions=((2, 0x14, 0x2c), None),
+        top_overrides=(27, None), bottom_overrides=(256, None),
+        f1_reason="ZeroOutOfBounds", f1_zero="Standard",
+        f1_lock_top=19)
+    add("false-anchor-normal-1", (2, 0), picture=(2, 0),
+        f1_reason="GeometryLockDecides", f1_zero="Standard",
+        f1_lock_top=19)
+    add("false-anchor-normal-2", (2, 0), picture=(2, 0),
+        f1_reason="GeometryLockDecides", f1_zero="Standard",
+        f1_lock_top=19)
+
+    add("three-parity-anchor-first", (2, 0), begin=True,
+        captions=((2, 0x14, 0x2c), None),
+        top_overrides=(22, None), bottom_overrides=(256, None),
+        f1_reason="ZeroCandidate", f1_zero="Standard",
+        f1_lock_top=19)
+    add("three-parity-anchor-second", (2, 0),
+        captions=((2, 0x14, 0x2c), None),
+        top_overrides=(22, None), bottom_overrides=(256, None),
+        f1_reason="ZeroCandidate", f1_zero="Standard", f1_lock_top=19)
+    add("three-parity-anchor-third", (2, 0),
+        captions=((2, 0x14, 0x2c), None),
+        top_overrides=(22, None), bottom_overrides=(256, None),
+        f1_reason="Line21Placement", f1_zero="Parity", f1_lock_top=20)
+
+    # A segment zero is persistent state, not a copy of one unit's visible
+    # first line.  Alternating bases never settle; three equal gauge bases do.
+    for i, top in enumerate((20, 21, 20)):
+        add(f"zero-candidate-alternating-{i + 1}", (2, 0), begin=i == 0,
+            captions=((2, 0x14, 0x2c), None),
+            top_overrides=(top, None), bottom_overrides=(256, None),
+            f1_zero="Standard" if i == 0 else "Parity", f1_lock_top=19)
+    for i in range(3):
+        add(f"zero-candidate-stable-{i + 1}", (2, 0), begin=i == 0,
+            captions=((2, 0x14, 0x2c), None),
+            top_overrides=(20, None), bottom_overrides=(256, None),
+            f1_reason="Line21Placement" if i == 2 else "ZeroCandidate",
+            f1_zero="Parity" if i == 2 else "Standard",
+            f1_lock_top=18 if i == 2 else 19)
+    add("zero-candidate-envelope-single", (0, 2), begin=True,
+        top_overrides=(None, 287), bottom_overrides=(None, 522),
+        f2_envelopes=(282,), f2_reason="ZeroCandidate",
+        f2_zero="Standard", f2_lock_top=282)
+
+    # Root cause C: picture content never defines zero. Each segment starts
+    # locked to the standard picture origins (NTSC 23/286), so an immediately
+    # measurable field is placed on its first unit without AcquireOne.
+    add("standard-zero-origin-first-unit", (0, 0), begin=True,
+        f1_reason="GeometryLockDecides", f2_reason="GeometryLockDecides",
+        f1_lock="Locked", f2_lock="Locked", f1_zero="Standard",
+        f2_zero="Standard", f1_lock_top=19, f2_lock_top=282)
+    add("standard-zero-field2-plus1-first-unit", (0, 1), begin=True,
+        picture=(0, 1), f2_reason="GeometryLockDecides",
+        f2_lock="Locked", f2_zero="Standard", f2_lock_top=282)
+
+    # The 2:48.23 class: the raster begins one line low while the bottom
+    # flickers inside the deck's censored band. Top placement remains +1.
+    add("site-168-band-plus1", (1, 0), begin=True, picture=(1, 0),
+        bottom_overrides=(256, None), f1_reason="GeometryLockDecides",
+        f1_lock="Locked", f1_zero="Standard", f1_lock_top=19)
+    add("site-168-band-flicker", (1, 0), picture=(1, 0),
+        bottom_overrides=(258, None), f1_reason="GeometryLockDecides",
+        f1_lock="Locked", f1_zero="Standard", f1_lock_top=19)
+
+    # Root cause D: a dark program at Y=10 remains distinct from this field's
+    # Y=2 blanking floor. The absolute >12 test misses it; blank+4 finds it.
+    add("site-1273-dark-plus1", (1, 0), begin=True, picture=(1, 0),
+        field_luma=(10, None), f1_reason="GeometryLockDecides",
+        f1_lock="Locked", f1_zero="Standard", f1_lock_top=19)
+
+    # The 24:17.72 class is a real one-field dropout, not a dark picture.
+    # With no geometry at all that field honestly holds the segment default.
+    add("site-1457-field2-blank", (0, 0), begin=True,
+        dark_fields=(False, True), f2_reason="GeometryUnmeasurable",
+        f2_lock="Locked", f2_zero="Standard", f2_lock_top=282)
+    add("mute-black-remains-unmeasurable", (0, 0), begin=True, dark=True,
+        f1_reason="GeometryUnmeasurable", f2_reason="GeometryUnmeasurable",
+        f1_lock="Locked", f2_lock="Locked", f1_zero="Standard",
+        f2_zero="Standard", f1_lock_top=19, f2_lock_top=282)
+
+    # Transport discontinuity preserves the last presentation while clearing
+    # current-unit witnesses. With no new gauge or picture, that is an honest
+    # GeometryUnmeasurable hold rather than an inferred placement.
+    add("discontinuity-anchor", (2, 0), begin=True, picture=(2, 0),
+        captions=((2, 0x14, 0x2c), None))
+    add("discontinuity-unmeasurable-hold", (2, 0), discontinuity=True,
+        dark=True, f1_reason="GeometryUnmeasurable",
+        f2_reason="GeometryUnmeasurable", f1_lock="Locked",
+        f2_lock="Locked")
+
+    # The 37:01 latch sequence.  Horizontal detail moves rigidly while its
+    # row mean stays effectively flat: caption d=3, then picture d=2 for two
+    # units, then both return to d=3.  The second d=2 unit proves that a hold
+    # can never become the next position reference.
+    add("body2d-latch-anchor-d3", (3, 0), begin=True, picture=(3, 0),
+        captions=((3, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        body_texture=(True, False), f1_reason="Line21Placement")
+    add("body2d-latch-move-d2", (2, 0), picture=(2, 0),
+        captions=((3, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        body_texture=(True, False), f1_reason="CaptionBodyDisagree",
+        f1_body_shift=-1)
+    add("body2d-latch-stay-d2", (2, 0), picture=(2, 0),
+        captions=((3, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        body_texture=(True, False), f1_reason="CaptionOnlyMotion",
+        f1_body_shift=0)
+    add("body2d-latch-return-d3", (3, 0), picture=(3, 0),
+        captions=((3, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        body_texture=(True, False), f1_reason="Line21Placement",
+        f1_body_shift=1)
+
+    # Symmetric owner rule: an unchanged caption loses when top and body both
+    # say the field moved; the following unit must inherit that measured
+    # picture position, not the previous crop decision.
+    add("body2d-caption-static-anchor-d2", (2, 0), begin=True,
+        picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(2, 0), body_texture=(True, False))
+    add("body2d-caption-static-picture-d3", (3, 0), picture=(3, 0),
+        captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        body_texture=(True, False), f1_reason="CaptionBodyDisagree",
+        f1_body_shift=1)
+    add("body2d-caption-static-stays-d3", (3, 0), picture=(3, 0),
+        captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        body_texture=(True, False), f1_reason="CaptionOnlyMotion",
+        f1_body_shift=0)
+
+    # 05:00: first-line brightness changes the detected top while the entire
+    # picture body stands still.  Geometry must reject the flickering edge in
+    # both directions and keep the crop still.
+    add("body2d-top-flicker-anchor", (0, 0), begin=True,
+        top_overrides=(19, None), bottom_overrides=(250, None),
+        content_phases=(0, 0), content_shifts=(0, 0),
+        body_texture=(True, False))
+    add("body2d-top-flicker-down", (0, 0),
+        top_overrides=(20, None), bottom_overrides=(250, None),
+        content_phases=(0, 0), content_shifts=(0, 0),
+        body_texture=(True, False), f1_reason="TopBodyDisagree",
+        f1_body_shift=0)
+    add("body2d-top-flicker-up", (0, 0),
+        top_overrides=(19, None), bottom_overrides=(250, None),
+        content_phases=(0, 0), content_shifts=(0, 0),
+        body_texture=(True, False), f1_reason="GeometryLockDecides",
+        f1_body_shift=0)
+
+    # Exact failure class measured at 05:00 units 440/441 and 01:26 units
+    # 39/40: half of the body supports the edge's one-line move while half
+    # supports no move.  A shallow/tied minimum is not testimony against the
+    # unambiguous top edge, so the witness must abstain and the top decides.
+    add("body-margin-anchor-plus1", (1, 0), begin=True,
+        picture=(1, 0), top_overrides=(20, None),
+        bottom_overrides=(250, None), content_phases=(0, 0),
+        content_shifts=(1, 0), body_texture=(True, False),
+        body_split_shifts=((1, 1), None))
+    add("body-margin-tie-top-zero", (0, 0),
+        picture=(0, 0), top_overrides=(19, None),
+        bottom_overrides=(249, None), content_phases=(0, 0),
+        content_shifts=(0, 0), body_texture=(True, False),
+        body_split_shifts=((0, 1), None),
+        f1_reason="TopOnly", f1_body_valid=0)
+
+    # Once parity has established the segment zero, a later caption and top
+    # can share the same damaged-line error. If the body abstains and comb is
+    # not decisive, those two correlated VBI readings may not move the crop.
+    add("parity-top-uncorroborated-anchor", (2, 0), begin=True,
+        picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        body_texture=(True, False))
+    add("parity-top-uncorroborated-hold", (3, 0), picture=(3, 0),
+        captions=((3, 0x15, 0x2b), None), content_phases=(0, 0),
+        content_shifts=(2, 0), body_texture=(True, False),
+        body_split_shifts=((2, 3), None),
+        f1_reason="Line21Placement", f1_body_valid=0)
+
+    # 35:38 failure class: field 1 has a physical +3 line-21 gauge, while
+    # field 2's first two VBI-contaminated rows make geometry say zero.  The
+    # static weave uniquely says field 2's segment zero is two lines lower.
+    # Three consecutive qualifying comparisons calibrate that zero once.
+    for i in range(4):
+        add(f"comb-zero-calibration-{i + 1}", (3, 2 if i == 3 else 0),
+            begin=i == 0, picture=(3, 0),
+            captions=((3, 0x14, 0x2c), None),
+            bright_rows=(282, 283), content_phases=(0, 0),
+            comb_offsets=(3, 2),
+            f1_reason="Line21Placement",
+            f2_zero="Comb" if i == 3 else "-",
+            f2_lock_top=280 if i == 3 else -999,
+            comb=1 if i == 3 else 0,
+            parity_state="Calibrated" if i == 3 else "Uncalibrated",
+            comb_check="agree" if i == 3 else "-",
+            parity_bias=2 if i == 3 else 0)
+
+    # Comb calibration needs a known-correct field-1 reference. Geometry can
+    # be self-consistent around a corrupt zero, so it must never qualify even
+    # when the weave has a decisive minimum.
+    for i in range(4):
+        add(f"comb-reject-geometry-reference-{i + 1}", (3, 0),
+            begin=i == 0, picture=(3, 0), comb_offsets=(3, 2),
+            f1_reason="GeometryLockDecides", f2_zero="Standard",
+            f2_lock_top=282, parity_state="Uncalibrated", parity_bias=0)
+
+    # A corrupt line cannot walk either segment zero beyond the physical
+    # +/-3-line source bound, however consistently it repeats.
+    for i in range(3):
+        add(f"zero-bound-field1-{i + 1}", (2, 0), begin=i == 0,
+            captions=((2, 0x14, 0x2c), None),
+            top_overrides=(27, None), bottom_overrides=(256, None),
+            f1_reason="ZeroOutOfBounds",
+            f1_zero="Standard", f1_lock_top=19)
+    for i in range(3):
+        add(f"zero-bound-field2-{i + 1}", (0, 2), begin=i == 0,
+            top_overrides=(None, 288), bottom_overrides=(None, 522),
+            f2_envelopes=(282,),
+            f2_reason="ZeroOutOfBounds",
+            f2_zero="Standard", f2_lock_top=282)
+
+    # A smeared-VBI envelope can install the wrong field-2 zero. Once a
+    # parity-referenced static weave decisively contradicts it for three
+    # units, picture comb wins once; the conflict must not repeat forever.
+    for i in range(3):
+        add(f"comb-overrides-envelope-seed-{i + 1}", (0, 1), begin=i == 0,
+            picture=(0, 0), f2_envelopes=(281,),
+            f2_reason="Field2EnvelopePlacement" if i == 2 else "ZeroCandidate",
+            f2_zero="Envelope" if i == 2 else "Standard",
+            f2_lock_top=281 if i == 2 else 282)
+    for i in range(5):
+        add(f"comb-overrides-envelope-static-{i + 1}",
+            (2, 2 if i >= 3 else 1), picture=(2, 0),
+            captions=((2, 0x14, 0x2c), None),
+            bright_rows=(282, 283), comb_offsets=(2, 2),
+            f2_reason=("ZeroConflict" if i == 3 else
+                       "GeometryLockDecides" if i == 4 else "-"),
+            f2_zero="Comb" if i >= 3 else "Envelope",
+            f2_lock_top=280 if i >= 3 else 281,
+            parity_state="Calibrated" if i >= 3 else "Uncalibrated",
+            comb_check="agree" if i >= 3 else "-",
+            parity_bias=2 if i >= 3 else 1)
+
+    # A byte discontinuity invalidates only comparisons with the missing
+    # previous unit. Segment constants survive; begin_segment is their reset.
+    add("discontinuity-preserves-comb", (2, 2), discontinuity=True,
+        picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+        bright_rows=(282, 283), comb_offsets=(2, 2),
+        f2_reason="GeometryLockDecides", f2_zero="Comb", f2_lock_top=280,
+        parity_state="Calibrated", comb_check="n.a.", parity_bias=2)
+    for i in range(3):
+        add(f"discontinuity-parity-zero-seed-{i + 1}", (2, 0),
+            begin=i == 0, captions=((2, 0x14, 0x2c), None),
+            top_overrides=(20, None), bottom_overrides=(256, None),
+            f1_zero="Parity" if i == 2 else "Standard",
+            f1_lock_top=18 if i == 2 else 19)
+    add("discontinuity-preserves-parity-zero", (2, 0),
+        discontinuity=True, dark=True,
+        f1_reason="GeometryUnmeasurable", f1_zero="Parity", f1_lock_top=18)
+
+    # Comb may corroborate a changed top before the segment zero has frozen.
+    # It still cannot calibrate a zero without a parity-referenced field 1;
+    # here it is only the independent second witness required by the top.
+    add("uncalibrated-top-comb-anchor", (2, 0), begin=True,
+        picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+        comb_offsets=(2, 0), parity_state="Uncalibrated")
+    add("uncalibrated-top-comb-cut", (2, 0), picture=(3, 0),
+        bright_rows=(21,), comb_offsets=(3, 0), comb_phase=5,
+        parity_state="Uncalibrated")
+    add("uncalibrated-top-comb-recovers", (3, 0), picture=(3, 0),
+        comb_offsets=(3, 0), comb_phase=5,
+        f1_reason="TopCombCorroborated", parity_state="Uncalibrated",
+        comb_check="disagree")
+
+    # Post-cut F class: the first changed-content unit exposes a transient old
+    # top and leaves the crop at +2. On the following static unit, raw top +3
+    # and comb shift -1 independently agree even though the body stands still;
+    # that pair must repair the crop rather than preserve the bad memory.
+    for i in range(4):
+        add(f"top-comb-calibration-{i + 1}", (2, 0), begin=i == 0,
+            picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+            comb_offsets=(2, 0), parity_state=(
+                "Calibrated" if i == 3 else "Uncalibrated"))
+    add("top-comb-cut-old-top", (2, 0), picture=(3, 0),
+        bright_rows=(21,), comb_offsets=(3, 0), comb_phase=5)
+    add("top-comb-recovers-new-top", (3, 0), picture=(3, 0),
+        comb_offsets=(3, 0), comb_phase=5,
+        f1_reason="TopCombCorroborated", comb_check="disagree")
+    add("top-comb-stays-new-top", (3, 0), picture=(3, 0),
+        comb_offsets=(3, 0), comb_phase=5)
+
+    # A tied body does not decide the move, but a static half-frame shows the
+    # current crop already has the correct weave.  The changed top is vetoed.
+    for i in range(4):
+        add(f"top-comb-veto-calibration-{i + 1}", (2, 0), begin=i == 0,
+            picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+            comb_offsets=(2, 0), parity_state=(
+                "Calibrated" if i == 3 else "Uncalibrated"))
+    add("top-comb-vetoes-false-top", (2, 0), picture=(3, 0),
+        comb_offsets=(2, 0), blank_rows=(21,), body_noise_right=True,
+        f1_reason="TopCombVetoed", f1_body_valid=0,
+        parity_state="Calibrated", comb_check="agree")
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
@@ -279,10 +946,14 @@ def main():
             out.write(unit)
     with open(args.truth, "w", newline="") as out:
         w = csv.writer(out)
-        w.writerow(("unit", "scenario", "begin_segment", "process_ok",
+        w.writerow(("unit", "scenario", "begin_segment", "discontinuity",
+                    "process_ok",
                     "applied_d1", "applied_d2", "f1_reason", "f2_reason",
                     "f1_lock", "f2_lock", "f1_zero", "f2_zero",
-                    "f1_lock_top", "f2_lock_top", "comb_safe"))
+                    "f1_lock_top", "f2_lock_top", "comb_safe",
+                    "f1_raw_top", "f2_raw_top", "f1_body_shift",
+                    "f2_body_shift", "f1_body_valid", "f2_body_valid",
+                    "parity_state", "comb_check", "parity_bias"))
         w.writerows(rows)
     print(f"wrote {len(units)} v9 units")
 
