@@ -847,3 +847,17 @@ load — the §11b concern made concrete. The audits of the incomplete run are i
 763 misregistered, gap gauge field 1 OFF+1 1,791 (round 10: 2,956), follow field 1 engine-motion
 5,215. Round 10 (`5b6ae68`, merged main) remains the only verified fallback base. A second
 round-14 pass at half pace on an idle machine is running for the record.
+
+**Round 14 half-pace record run (Claude, 2026-09-06 00:59 JST; `6d919a2`, idle machine, 8 ms
+pace, pool 128): clean — 86,293/86,293, zero drops.** Parity 40,217 + 18/2 vetoes + 0. Comb
+**55,315 registered / 30,352 flat / 622 misregistered** (round 10: 165; −1 ×388, +1 ×188). Gap
+gauge field 1: too high 277 (round 10: 319), too low 2,642 (2,956); field 2: too high 323 (367),
+too low 1,066 (1,197). Round 14 buys a small gain on the absolute classes with a large loss on
+the relative one. **Round 10 (`5b6ae68`) remains the fallback base.** Round 14 is not merged.
+
+**Owner refinement of the hold contract (2026-09-06 00:55):** a vertically torn picture is the
+same class as a lost lock — old geometry invalid, re-acquire from zero when the lock returns.
+Horizontal tearing is not a geometry event (Codex's damage census keyed on it, wrongly). Only
+dropout or RF noise that makes the bottom edge unstable is the "keep the previous decision and
+re-evaluate when it restabilises" case. The ruling on damage therefore reduces to something the
+raster decides; no owner ruling is needed per unit.
