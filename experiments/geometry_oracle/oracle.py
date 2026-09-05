@@ -66,9 +66,17 @@ class FieldMeasurement:
     top_status: str
     bottom_line: int
     bottom_valid: int
-    bottom_censored: int
-    visible_height: int
+    height: int
     height_valid: int
+    bottom_h_shift_px: int
+    bottom_h_mad: float
+    bottom_h_second_mad: float
+    bottom_h_ratio: float
+    cc_waveform_lines: str
+    cc_waveform_scores: str
+    cc_start_scores: str
+    cc_cell_ratios: str
+    cc_parity_lines: str
     line21_lines: str
     line21_bytes: str
     line21_unique_line: int
@@ -102,9 +110,17 @@ class UnitMeasurement:
     f1_top_status: str
     f1_bottom_line: int
     f1_bottom_valid: int
-    f1_bottom_censored: int
-    f1_visible_height: int
+    f1_height: int
     f1_height_valid: int
+    f1_bottom_h_shift_px: int
+    f1_bottom_h_mad: float
+    f1_bottom_h_second_mad: float
+    f1_bottom_h_ratio: float
+    f1_cc_waveform_lines: str
+    f1_cc_waveform_scores: str
+    f1_cc_start_scores: str
+    f1_cc_cell_ratios: str
+    f1_cc_parity_lines: str
     f1_line21_lines: str
     f1_line21_bytes: str
     f1_line21_unique_line: int
@@ -129,9 +145,17 @@ class UnitMeasurement:
     f2_top_status: str
     f2_bottom_line: int
     f2_bottom_valid: int
-    f2_bottom_censored: int
-    f2_visible_height: int
+    f2_height: int
     f2_height_valid: int
+    f2_bottom_h_shift_px: int
+    f2_bottom_h_mad: float
+    f2_bottom_h_second_mad: float
+    f2_bottom_h_ratio: float
+    f2_cc_waveform_lines: str
+    f2_cc_waveform_scores: str
+    f2_cc_start_scores: str
+    f2_cc_cell_ratios: str
+    f2_cc_parity_lines: str
     f2_line21_lines: str
     f2_line21_bytes: str
     f2_line21_unique_line: int
@@ -218,14 +242,22 @@ def _is_gap(
     return float(gradients[index]) <= flat_gate and contrast >= contrast_gate
 
 
-def measure_envelope(y: np.ndarray, spec: FieldSpec) -> dict[str, object]:
+def measure_envelope(
+    y: np.ndarray, spec: FieldSpec, vbi_rows: set[int] | None = None
+) -> dict[str, object]:
     means, _stds, gradients, active, blank, _gates = measure_row_activity(y, spec)
     blank_mean, blank_noise, blank_gradient = map(float, blank)
 
+    picture_active = active.copy()
+    for row in vbi_rows or ():
+        index = row - spec.pass_lo
+        if 0 <= index < len(picture_active):
+            picture_active[index] = False
+
     run_starts = [
         i
-        for i in range(0, len(active) - 2)
-        if bool(active[i] and active[i + 1] and active[i + 2])
+        for i in range(0, len(picture_active) - 2)
+        if bool(picture_active[i] and picture_active[i + 1] and picture_active[i + 2])
     ]
     active_top_index = run_starts[0] if run_starts else -1
     top_index = active_top_index
@@ -236,26 +268,23 @@ def measure_envelope(y: np.ndarray, spec: FieldSpec) -> dict[str, object]:
     gap_indexes = [
         i
         for i in range(min(12, len(means) - 2))
-        if _is_gap(i, means, gradients, active, blank_gradient, blank_noise)
+        if _is_gap(i, means, gradients, picture_active, blank_gradient, blank_noise)
     ]
     gap_index = gap_indexes[-1] if len(gap_indexes) == 1 else -1
     if gap_index >= 0:
         top_index = gap_index + 1
 
-    bottom_index = -1
-    for i in range(len(active) - 1, 1, -1):
-        if bool(active[i] and active[i - 1] and active[i - 2]):
-            bottom_index = i
-            break
+    # The bottom is the last picture-bearing row measured in this unit.  It is
+    # not censored by a fixture-derived head-switch corridor: horizontally
+    # disturbed rows remain picture when their activity predicate says so.
+    bottom_indexes = np.flatnonzero(picture_active)
+    bottom_index = int(bottom_indexes[-1]) if bottom_indexes.size else -1
 
     top_row = spec.pass_lo + top_index if top_index >= 0 else -1
     bottom_row = spec.pass_lo + bottom_index if bottom_index >= 0 else -1
-    # The last five pass-through lines abut the head-switch/padding transition.
-    # Their activity establishes only a lower bound, never an exact bottom.
-    bottom_censored = int(bottom_row >= spec.pass_hi - 4) if bottom_row >= 0 else 0
-    bottom_valid = int(bottom_row >= 0 and not bottom_censored)
+    bottom_valid = int(bottom_row >= 0)
     top_valid = int(top_row >= 0)
-    visible_height = bottom_row - top_row + 1 if top_row >= 0 and bottom_row >= top_row else -1
+    height = bottom_row - top_row + 1 if top_row >= 0 and bottom_row >= top_row else -1
     return {
         "blank_mean": blank_mean,
         "blank_noise": blank_noise,
@@ -265,12 +294,155 @@ def measure_envelope(y: np.ndarray, spec: FieldSpec) -> dict[str, object]:
         "top_status": "measured" if top_valid else "unmeasurable",
         "bottom_row": bottom_row,
         "bottom_valid": bottom_valid,
-        "bottom_censored": bottom_censored,
-        "visible_height": visible_height,
+        "height": height,
         "height_valid": int(top_valid and bottom_valid),
         "gap_row": spec.pass_lo + gap_index if gap_index >= 0 else -1,
         "gap_valid": int(gap_index >= 0),
     }
+
+
+@dataclass(frozen=True)
+class CEA608Waveform:
+    row: int
+    runin_score: float
+    start_score: float
+    cell_ratio: float
+
+
+_WAVE_PHASES = np.arange(175.0, 231.0, 0.5)
+_WAVE_HALF_CELL = CELL_PIXELS / 2.0
+_WAVE_EDGE_CENTRES = np.rint(
+    _WAVE_PHASES[:, None] - (13 - np.arange(14)[None, :]) * _WAVE_HALF_CELL
+).astype(np.intp)
+_WAVE_EDGE_INDEX = np.clip(
+    _WAVE_EDGE_CENTRES[:, :, None] + np.arange(-4, 5)[None, None, :],
+    0,
+    LUMA_SAMPLES - 2,
+)
+_WAVE_EDGE_SIGNS = np.where(np.arange(14) % 2 == 0, 1.0, -1.0)
+
+
+def scan_cea608_waveforms(y: np.ndarray, spec: FieldSpec) -> list[CEA608Waveform]:
+    """Find top-interval 608 waveforms without using decoded-byte parity.
+
+    The 14 alternating edges of the seven-cycle 503.5 kHz clock run-in are
+    searched at the 13.5 MHz sampling rate with phase and local skew tolerance.
+    Edge amplitude is relative to this field's measured blank-to-picture range.
+    Start-bit and data-cell-grid strengths are reported independently.  A
+    vertically smeared waveform is represented by its strongest row, rather
+    than allowing the smear to erase the first real picture row below it.
+    """
+    means, _stds, _gradients, _active, blank, _gates = measure_row_activity(y, spec)
+    blank_mean, blank_noise, _blank_gradient = map(float, blank)
+    picture_level = float(
+        np.percentile(y[spec.pass_lo : spec.pass_hi + 1, 40:680], 90.0)
+    )
+    amplitude_reference = max(picture_level - blank_mean, 8.0 * blank_noise)
+    edge_gate = max(4.0 * blank_noise, 0.06 * amplitude_reference)
+    scan_lo = spec.insert_row
+    scan_hi = min(spec.field_hi, spec.pass_lo + 13)
+    candidates: list[CEA608Waveform] = []
+    rows = y[scan_lo:scan_hi].astype(np.float64, copy=False)
+    smooth = rows.copy()
+    smooth[:, 1:-1] = (
+        0.25 * rows[:, :-2] + 0.5 * rows[:, 1:-1] + 0.25 * rows[:, 2:]
+    )
+    derivatives = np.diff(smooth, axis=1)
+    sampled = derivatives[:, _WAVE_EDGE_INDEX]
+    strengths = np.maximum(
+        0.0,
+        sampled * _WAVE_EDGE_SIGNS[None, None, :, None],
+    ).max(axis=3)
+    scores = strengths.mean(axis=2) / amplitude_reference
+    hits = (strengths >= edge_gate).sum(axis=2)
+    best_indexes = np.argmax(scores + hits * 1.0e-9, axis=1)
+
+    for local, row in enumerate(range(scan_lo, scan_hi)):
+        best_index = int(best_indexes[local])
+        best_score = float(scores[local, best_index])
+        best_end = float(_WAVE_PHASES[best_index])
+        best_hits = int(hits[local, best_index])
+        if best_hits < 5 or best_score < 0.05:
+            continue
+
+        derivative = derivatives[local]
+
+        def signed_edge(position: float, sign: float) -> float:
+            centre = int(round(position))
+            lo = max(0, centre - 5)
+            hi = min(len(derivative), centre + 6)
+            return max(0.0, float(np.max(sign * derivative[lo:hi])))
+
+        start_rise = signed_edge(best_end + 2.0 * CELL_PIXELS, 1.0)
+        start_fall = signed_edge(best_end + 3.0 * CELL_PIXELS, -1.0)
+        start_score = min(start_rise, start_fall) / amplitude_reference
+        grid_energy: list[float] = []
+        off_grid_energy: list[float] = []
+        position = best_end + 3.0 * CELL_PIXELS
+        while position < LUMA_SAMPLES - 8:
+            centre = int(round(position))
+            grid_energy.extend(abs(derivative[index]) for index in range(centre - 3, centre + 4))
+            off = int(round(position + CELL_PIXELS / 2.0))
+            if off + 3 < len(derivative):
+                off_grid_energy.extend(
+                    abs(derivative[index]) for index in range(off - 3, off + 4)
+                )
+            position += CELL_PIXELS
+        grid = float(np.mean(grid_energy)) if grid_energy else 0.0
+        off_grid = float(np.mean(off_grid_energy)) if off_grid_energy else 0.0
+        cell_ratio = grid / off_grid if off_grid > 0.0 else math.inf
+        candidates.append(CEA608Waveform(row, best_score, start_score, cell_ratio))
+
+    # Collapse vertical smear to the row carrying the strongest periodic clock.
+    selected: list[CEA608Waveform] = []
+    for candidate in candidates:
+        if all(
+            candidate.runin_score > other.runin_score
+            for other in candidates
+            if other.row != candidate.row and abs(other.row - candidate.row) <= 1
+        ):
+            selected.append(candidate)
+    insert = [item for item in selected if item.row == spec.insert_row]
+    off_insert = [item for item in selected if item.row != spec.insert_row]
+    # Picture texture can accidentally resemble a short periodic sequence.  In
+    # the top interval, the tape-carried VBI waveform is the first independent
+    # waveform below the regenerated insert; later isolated matches are not
+    # promoted through already-established picture.
+    return insert + off_insert[:1]
+
+
+def measure_bottom_h_phase(
+    y: np.ndarray, top_row: int, bottom_row: int
+) -> tuple[int, float, float, float]:
+    """Measure horizontal displacement of the bottom row against nearby picture.
+
+    This is diagnostic evidence only.  The bottom remains valid picture even
+    when the best horizontal shift is nonzero or the match is weak.
+    """
+    if top_row < 0 or bottom_row - top_row < 3:
+        return -128, math.nan, math.nan, math.nan
+    reference_rows = y[max(top_row, bottom_row - 3) : bottom_row, 40:680]
+    if not reference_rows.size:
+        return -128, math.nan, math.nan, math.nan
+    reference = np.median(reference_rows.astype(np.float32), axis=0)
+    target = y[bottom_row, 40:680].astype(np.float32)
+    kernel = np.ones(8, dtype=np.float32) / 8.0
+    reference = np.convolve(reference, kernel, mode="valid")
+    target = np.convolve(target, kernel, mode="valid")
+    scores: list[tuple[int, float]] = []
+    for shift in range(-32, 33):
+        if shift >= 0:
+            current = target[shift:]
+            prior = reference[: len(reference) - shift or None]
+        else:
+            current = target[: len(target) + shift]
+            prior = reference[-shift:]
+        scores.append((shift, float(np.mean(np.abs(current - prior)))))
+    ordered = sorted(scores, key=lambda item: (item[1], abs(item[0]), item[0]))
+    best_shift, best = ordered[0]
+    second = ordered[1][1]
+    ratio = best / second if second > 0.0 else (0.0 if best == 0.0 else math.inf)
+    return best_shift, best, second, ratio
 
 
 _RUN_LO = 10
@@ -499,7 +671,9 @@ class Oracle:
         y = raster[:, 1::2]
         measured_fields: list[FieldMeasurement] = []
         for spec in FIELD_SPECS:
-            envelope = measure_envelope(y, spec)
+            waveforms = scan_cea608_waveforms(y, spec)
+            waveform_rows = {item.row for item in waveforms}
+            envelope = measure_envelope(y, spec, waveform_rows)
             captions = scan_cea608(y, spec)
             off_insert = [item for item in captions if item[0] != spec.insert_row]
             unique = off_insert[0] if len(off_insert) == 1 else None
@@ -509,6 +683,9 @@ class Oracle:
                 envelope["height_valid"] = 0
             body = measure_body(y, self.previous, spec)
             band_shifts, band_mads = measure_bands(y, self.previous, spec)
+            bottom_h = measure_bottom_h_phase(
+                y, int(envelope["top_row"]), int(envelope["bottom_row"])
+            )
             repeated = int(
                 self.previous is not None
                 and np.array_equal(
@@ -526,9 +703,23 @@ class Oracle:
                     top_status=str(envelope["top_status"]),
                     bottom_line=_line(int(envelope["bottom_row"])),
                     bottom_valid=int(envelope["bottom_valid"]),
-                    bottom_censored=int(envelope["bottom_censored"]),
-                    visible_height=int(envelope["visible_height"]),
+                    height=int(envelope["height"]),
                     height_valid=int(envelope["height_valid"]),
+                    bottom_h_shift_px=bottom_h[0],
+                    bottom_h_mad=bottom_h[1],
+                    bottom_h_second_mad=bottom_h[2],
+                    bottom_h_ratio=bottom_h[3],
+                    cc_waveform_lines=" ".join(str(_line(item.row)) for item in waveforms),
+                    cc_waveform_scores=" ".join(
+                        f"{item.runin_score:.6f}" for item in waveforms
+                    ),
+                    cc_start_scores=" ".join(
+                        f"{item.start_score:.6f}" for item in waveforms
+                    ),
+                    cc_cell_ratios=" ".join(
+                        f"{item.cell_ratio:.6f}" for item in waveforms
+                    ),
+                    cc_parity_lines=" ".join(str(_line(item[0])) for item in captions),
                     line21_lines=" ".join(str(_line(item[0])) for item in captions),
                     line21_bytes=" ".join(
                         f"{item[1]:02x}{item[2]:02x}" for item in captions
