@@ -196,8 +196,8 @@ The row also records the segment-gated tape-gap state
 (`Uncalibrated`/`Enabled`/`Rejected`) and caption-agreement count. The gap is
 the last row with mean luma at most 10 before two picture rows above 12, within
 source lines 22..33, and is bounded to displacement 0..3 from line 22. It may
-place only after a displaced tape gap is directly observed or a unique field-1
-CEA-608 line agrees with it; one disagreement rejects it until signal relock.
+place only after a unique field-1 CEA-608 line agrees with it; one disagreement
+rejects it until signal relock.
 This prevents a source carrying active video on line 22 from treating the
 Shuttle's fixed black line as tape motion.
 
