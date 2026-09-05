@@ -711,7 +711,7 @@ misregistered: 35:00 0, 37:01 0, 05:00 2 (the two expected late corrections), 35
 load round 10 is 2.95 ms and round 12 2.97 ms engine median (+0.02 ms). Codex's definitive
 whole-tape pass is running; Claude's verification of `a1a91c8` started (eight slices + tape).
 
-**Round 12 slice findings (Claude, 17:55 JST; `a1a91c8` not merged).** Codex's whole tape:
+**Round 12 slice findings (Claude, 17:51 JST; `a1a91c8` not merged).** Codex's whole tape:
 parity 40,221 + 15 + 1 + 0 (17 former vetoes became agreements, 4 the other way), torn passage
 fixed (62322–62326 fixed at (2,2); the saved pair before it was (2,2)/(2,3), not the (3,2) the
 brief assumed), field-1 `SavedGeometryHold` 23,442 (TiedBody 22,107) with a maximum run of 8,998
