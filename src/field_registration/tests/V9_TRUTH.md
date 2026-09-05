@@ -99,3 +99,9 @@ it. A tied or absent body with no decisive comb cannot: the published crop
 holds the saved geometry. The first later evidence row is named
 `SavedGeometryConfirmed` when it returns to the saved crop and
 `SavedGeometryReplaced` when it makes one signed move to a new crop.
+
+Round 14 pins three acceptance details before implementation: static-comb
+uses all 640 active samples after a true eight-pixel box filter; three equal
+comb readings cannot install a correction while reliable field bodies move
+differentially; and a reliable still-body contradiction is named
+`TopDisagreesBodyStill`, not conflated with a tied witness.
