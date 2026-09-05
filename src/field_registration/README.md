@@ -123,7 +123,9 @@ that shift as one bounded, absolute relative correction; it is never added to
 the preceding correction. Field 1 parity makes field 2 the moved field.
 Otherwise the field whose current picture top points in the correction's
 direction moves; when neither identifies it, field 2 is the deterministic
-choice. The correction survives flat/unmeasurable units, body-corroborated
+choice. This equivalent field assignment is made per unit, so a later
+parity-placed field 1 is never displaced by an earlier field choice. The
+correction survives flat/unmeasurable units, body-corroborated
 motion, and byte discontinuities. Three decisive zero-shift readings clear it;
 only `fieldreg_begin_segment()` clears it immediately. Its measurement always
 uses the uncorrected crops, so later identical evidence corroborates rather

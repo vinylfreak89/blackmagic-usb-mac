@@ -1068,7 +1068,6 @@ static void reset_parity(field_registration *engine)
     engine->comb_zero_candidate = INT16_MIN;
     engine->comb_candidate_count = 0;
     engine->comb_correction = 0;
-    engine->comb_correction_field = 0;
     engine->comb_correction_candidate = FIELDREG_UNKNOWN;
     engine->comb_correction_candidate_count = 0;
     engine->previous_luma_valid = false;
@@ -1345,7 +1344,6 @@ static int choose_comb_correction_field(const field_registration *engine,
 
 static void update_comb_relative_correction(field_registration *engine,
                                             const uint8_t *raster,
-                                            const field_measurement m[2],
                                             fieldreg_decision *out,
                                             bool crops_changed_after_comb)
 {
@@ -1397,23 +1395,23 @@ static void update_comb_relative_correction(field_registration *engine,
         return;
 
     engine->comb_correction = (int8_t)desired;
-    engine->comb_correction_field = desired == 0 ? 0 :
-        (int8_t)(choose_comb_correction_field(engine, m, out, desired) + 1);
     engine->comb_correction_candidate = FIELDREG_UNKNOWN;
     engine->comb_correction_candidate_count = 0;
 }
 
 static bool apply_comb_relative_correction(const field_registration *engine,
+                                           const field_measurement m[2],
                                            fieldreg_decision *out)
 {
     out->comb_correction = engine->comb_correction;
     out->comb_correction_field = 0;
-    if (engine->comb_correction == 0 ||
-        engine->comb_correction_field < 1 ||
-        engine->comb_correction_field > 2)
-        return engine->comb_correction == 0;
+    if (engine->comb_correction == 0) return true;
 
-    const int field = engine->comb_correction_field - 1;
+    /* The correction persists, but its equivalent field assignment follows
+     * current absolute testimony. In particular, a parity-placed field 1 is
+     * never displaced because a caption-less installation unit chose it. */
+    const int field = choose_comb_correction_field(
+        engine, m, out, engine->comb_correction);
     const int delta = field == 0 ? -engine->comb_correction :
                                    engine->comb_correction;
     const int target = out->field[field].applied_d + delta;
@@ -1457,9 +1455,9 @@ bool fieldreg_process(field_registration *engine,
     const bool crops_changed_after_comb = resolve_top_with_comb(engine, m, out);
     out->baseline_d1 = out->field[0].applied_d;
     out->baseline_d2 = out->field[1].applied_d;
-    update_comb_relative_correction(engine, raster, m, out,
+    update_comb_relative_correction(engine, raster, out,
                                     crops_changed_after_comb);
-    const bool correction_honored = apply_comb_relative_correction(engine,
+    const bool correction_honored = apply_comb_relative_correction(engine, m,
                                                                     out);
 
     for (int field = 0; field < 2; ++field)

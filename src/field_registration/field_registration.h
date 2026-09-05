@@ -226,7 +226,6 @@ typedef struct field_registration {
     int16_t comb_zero_candidate;
     int8_t comb_candidate_count;
     int8_t comb_correction;
-    int8_t comb_correction_field;
     int8_t comb_correction_candidate;
     int8_t comb_correction_candidate_count;
     uint32_t segment_id;
