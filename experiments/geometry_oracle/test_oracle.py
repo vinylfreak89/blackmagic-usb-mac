@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import unittest
 import struct
+import tempfile
+from pathlib import Path
 
 import numpy as np
 
@@ -16,6 +18,7 @@ from oracle import (
     RASTER_LINES,
     UNIT_BYTES,
     _event_for_ordinal,
+    load_published_crops,
     measure_body,
     measure_envelope,
 )
@@ -87,6 +90,14 @@ class GeometryOracleTest(unittest.TestCase):
         self.assertEqual(first.f2_repeated, 0)
         self.assertEqual(second.f1_repeated, 1)
         self.assertEqual(second.f2_repeated, 1)
+
+    def test_published_crop_contract_uses_ntsc_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "crops.csv"
+            path.write_text(
+                "ordinal,published_f1_start,published_f2_start\n300,25,288\n"
+            )
+            self.assertEqual(load_published_crops(path), {300: (25, 288)})
 
 
 if __name__ == "__main__":
