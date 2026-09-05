@@ -72,7 +72,12 @@ The witness is anchored to the previous unit's measured picture top, never to
 `last_applied`. If current top and body motion agree, their current position is
 used even after a hold. If a top moves while a reliable body stands still, the
 top is a brightness/content flicker: `TopBodyDisagree` keeps the body-derived
-position. With no top, a still body or motion differing between the two fields
+position. After a segment's first placement, a changed top may not move the
+crop by itself. If the body witness abstains it is `TopUncorroborated`; a
+decisive static-comb disagreement that independently implies the same
+one-field move may resolve it as `TopCombCorroborated`. This corroboration is
+allowed before the segment's field-2 zero has frozen, but cannot by itself
+calibrate or drift that zero. With no top, a still body or motion differing between the two fields
 can supply `BodyOnlyPlacement`; equal nonzero motion in both fields is an
 undecidable pan/common-mode case and `CommonModeBodyHold` is named. A unit with
 no accepted physical position invalidates the reference for the next unit, so
@@ -105,7 +110,7 @@ CEA-608 parity in that unit and field 2's measured picture position to be
 applied against its current zero. The candidate zero is derived from the raw
 field-2 picture top and the tested crop shift, never integrated from the old
 zero. Field 2 then continues to track its own top and body motion against that
-zero. Comb never supplies a per-unit displacement. When a decisive comb zero
+zero. Comb never supplies a per-unit displacement by itself. When a decisive comb zero
 contradicts an Envelope zero, picture comb wins once and that installation row
 is `ZeroConflict`; subsequent Envelope observations cannot overwrite it.
 
@@ -119,7 +124,10 @@ One missing Shuttle insert is an `InsertAbsent` hold and does not itself erase
 a lock; a real mute/unlock is already a signal-state segment boundary, while
 subsequent measurable geometry can independently invalidate a stale lock.
 
-Parity places its current unit immediately, with one bounded exception. If a
+Parity places its current unit immediately, with bounded picture-testimony
+exceptions. If an established parity zero's caption and top move together but
+the body abstains, `TopUncorroborated` holds until the body or the independent
+comb check corroborates that move. If a
 unique decoded caption and the measurable top plus 2-D body witness report
 different positions, the picture wins symmetrically: a still body is
 `CaptionOnlyMotion`, and a differently moving body is
@@ -190,5 +198,17 @@ make -C src/field_registration test
 
 The synthetic v9 golden landed first and scored 8/29 on v7; later red-first
 extensions exercise each measured defect. The current contract must score
-169/169, the decoder unit test 3/3, and the fixture agreement harness must
+181/181, the decoder unit test 3/3, and the fixture agreement harness must
 match `experiments/cc608_decode.py` line verdicts and bytes exactly.
+
+### E/F experiment status (2026-09-05)
+
+The top-corroboration experiment is deliberately not merge-ready. Its focused
+F slice succeeds: a cold uncalibrated comb measurement corroborates the top by
+the third unit and changes that slice from 23 misregistered units to zero.
+But the full-tape paced replay reports 5,654 field-1 `TopUncorroborated` rows
+and the parity oracle falls from exact agreement to 2,616 field-1 plus five
+field-2 disagreements. On the 05:00 slice, permitting an unfrozen comb to
+corroborate a top raises `ENGINE-MOTION` from the supplied baseline 11 to 19.
+Those falsifying results require a better reliability rule before this branch
+can replace main; passing the synthetic contract alone is not acceptance.
