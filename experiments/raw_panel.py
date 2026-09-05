@@ -18,12 +18,15 @@ for i,(k,_) in enumerate(rows_s): by16[k&0xffff].append(i)
 need=set()
 for o in want: need.update((o-1,o,o+1))
 byord={int(r['ordinal']):i for i,(_,r) in enumerate(rows_s)}
-grab={}; _last=[None]; buf=bytearray()
+import os
+grab={}; _last=[int(os.environ['RAW_PANEL_START'])] if os.environ.get('RAW_PANEL_START') else [None]; buf=bytearray()   # RAW_PANEL_START: whole-tape ordinal near the slice start, to disambiguate the 16-bit counter join
 def emit(u):
     c=int.from_bytes(u[4:6],'little'); cands=by16.get(c)
     if not cands: return
     ref=_last[0] if _last[0] is not None else 0
-    i=min(cands,key=lambda x:abs(x-ref)); _last[0]=i
+    i=min(cands,key=lambda x:abs(x-ref))
+    if _last[0] is not None and abs(i-_last[0])>200: return
+    _last[0]=i
     o=int(rows_s[i][1]['ordinal'])
     if o in need: grab[o]=(rows_s[i][1], np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,LINE)[:,1::2].copy())
 def on_video(p):
