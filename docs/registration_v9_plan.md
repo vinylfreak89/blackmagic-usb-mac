@@ -670,3 +670,19 @@ signature is "no measurable picture testimony at all while the top changes" — 
 unmeasurable (MAD > 25), comb flat — and round 8's `TopOnly` (flat comb ⇒ the top decides)
 is exactly what moved field 2 on the torn units; the top alone must never place when the body
 is unmeasurable. That is the round-12 rule, being checked on the round-10 sidecar first.
+
+**Round 12 rule, from the round-10 sidecar (16:50 JST).** In whole-tape context the torn passage
+62313–62328 sits between caption placements at (3,2); inside it the body witness is tied on every
+unit (valid 0, MAD 5–11), the comb is flat, and the tops flip 23↔25 / 286↔289 — the engine
+follows them by `TopOnly` and geometry-on-a-tied-body, which is the bounce the owner saw. The
+same `TopOnly` excursions occur between captions elsewhere (62303, 62306: single-unit 2-line
+bounces). Whole tape, field 1: 966 `TopOnly` moves; the comb is flat on 702 by construction, so
+neither absolute instrument can score them; judged by the next caption within 30 units, 69 were
+WRONG (the caption returns to the saved geometry) and 11 RIGHT. So the owner's ruling is made
+operational without a damage detector: the signature is absent evidence. Evidence placements
+(parity, envelope, comb calibration/correction, comb-corroborated top, geometry with a reliable
+body) write the saved good geometry; a unit with no evidence holds it (`SavedGeometryHold` with
+a cause); the first evidence unit after a hold compares against it and moves once if different
+(`SavedGeometryReplaced` with the signed jump). `TopOnly` is removed. Expected cost: real
+tied-body moves (05:00 units 64, 67) are corrected one unit late by comb corroboration.
+Dispatched as round 12 on top of round 10.
