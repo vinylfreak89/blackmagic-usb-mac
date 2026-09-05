@@ -51,7 +51,8 @@ for cls in A.classes.split(','):
         if Y is None: d.text((4,y+2),f"ordinal {o}: unit with counter {rr['counter']} not in the cut (have {have[:3]}..)",fill=(255,80,80)); y+=TITLE+6; continue
         pub=int(r['published_start'])-4; rt=int(r['reference_top'])-4
         cc=rr.get(f'f{f}_cc_waveform_lines','') ; par=rr.get(f'f{f}_cc_parity_lines','')
-        d.text((4,y+2),f"ordinal {o} ({o*1001/30000:.1f}s) field {f} {auth} delta {delta}: engine crop line {pub+4} (blue), reference top {rt+4} (red), ref status {rr.get(f'f{f}_top_status','')}, waveform lines {cc} parity {par}",fill=(255,255,255)); y+=TITLE
+        stat=lambda rw: f"{Y[rw,40:680].mean():.0f}/{Y[rw,40:680].std():.0f}"
+        d.text((4,y+2),f"ordinal {o} ({o*1001/30000:.1f}s) field {f} {auth} delta {delta}: engine crop line {pub+4} (blue, luma {stat(pub)}), reference top {rt+4} (red, luma {stat(rt)}), ref status {rr.get(f'f{f}_top_status','')}, waveform {cc} parity {par}",fill=(255,255,255)); y+=TITLE
         img.paste(Image.fromarray(np.repeat(Y[R0:R1],VS,axis=0)),(LAB,y))
         for k,row in enumerate(range(R0,R1)):
             d.text((2,y+k*VS-1),f"{row+4}",fill=(140,140,140)); d.line([(LAB-3,y+k*VS),(LAB+W,y+k*VS)],fill=(50,50,50))

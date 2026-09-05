@@ -155,7 +155,7 @@ def measure_field(Y, F, prev_field, Yfull=None, Cfull=None):
     if top is not None and any(kind.get(r)=='torn' for r in range(F['insert']+1, top+12)): top=None
     if flat_raster: top=None
     top_level_ratio=(m[top]/max(m[top+1],1.0)) if top is not None else None
-    return dict(top=top, top_rec=top_rec, cap=cap, gap=gap, black_top=black_top, flat=flat_raster, top_level_ratio=top_level_ratio, kind=kind, bottom=bottom, hs_split=hs[0], hs_side=hs[1], body=body, ntorn=ntorn,
+    return dict(top=top, top_rec=top_rec, cap=cap, gap=gap, black_top=black_top, flat=flat_raster, top_level_ratio=top_level_ratio, kind=kind, top_mean=(float(m[top]) if top is not None else None), blank_mean=float(yb), bottom=bottom, hs_split=hs[0], hs_side=hs[1], body=body, ntorn=ntorn,
                 height=(bottom-top+1) if (top is not None and bottom is not None) else None)
 
 class FieldState:
@@ -205,9 +205,14 @@ def decide(fs, F, mm, signal_ok=True):
             # black band above the picture: the lock decides when it can; at acquisition a single black row is read
             # as the tape's black line 22 (fixture A's captions validated that reading 309/309, DEFAULT), a deeper
             # band as picture (golden rule: assume the recorded region is the picture until a gauge says otherwise)
-            if fs.lock and d_rec<=fs.d<=d_pic:
+            # a single black row directly above a PICTURE-LEVEL row is the tape's black line 22 (measured on the first
+            # recording: black row luma 5-8 / std 3-5 over a picture row at 102-164; the composite's black first line
+            # sat over a dark grey band at 10-18): read it, never hold through it. DEFAULT picture level blank+40.
+            if d_pic-d_rec==1 and mm['top_mean']>mm['blank_mean']+40:
+                d=d_pic; notes.append('BlackTopGap')
+            elif fs.lock and d_rec<=fs.d<=d_pic:
                 notes.append('BlackBand(held %d..%d)'%(d_rec,d_pic)); return fs.d, 'Geometry', notes
-            if d_pic-d_rec==1: d=d_pic; notes.append('BlackTopGap')
+            elif d_pic-d_rec==1: d=d_pic; notes.append('BlackTopGap')
             else: d=d_rec; notes.append('BlackBandAsPicture(%d..%d)'%(d_rec,d_pic))
         else: d=d_pic
     if not fs.lock:
