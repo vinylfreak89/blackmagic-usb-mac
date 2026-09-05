@@ -55,7 +55,7 @@ def emit(u):
         if rec[4]==rec[8] and rec[4]!=0 and rec[3]==0 and rec[7]==0 and rec[5]<=25 and rec[9]<=25:
             rec[6]='content-motion'; rec[10]='content-motion'
         for f in (0,1): stats[(f+1,rec[6 if f==0 else 10])]+=1
-        rec+=[r['f1_reason'],r['f2_reason']]
+        rec+=[r.get('f1_reason',''),r.get('f2_reason','')]   # pre-v9 sidecars carry no per-field reason
         if any(x in ('follow','MISS','ENGINE-MOTION') for x in (rec[6],rec[10])): w.writerow(rec)
     st['prevY']=Y; st['previ']=i; st['prevord']=int(r['ordinal'])
 def on_video(p):
