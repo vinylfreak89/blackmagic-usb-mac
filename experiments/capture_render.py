@@ -1261,6 +1261,16 @@ class _CFieldDecision(ctypes.Structure):
         ("clip_state", ctypes.c_int), ("clip_ceiling", ctypes.c_int16),
         ("expected_bottom", ctypes.c_int16), ("lines_lost", ctypes.c_int16),
         ("invariant_residual", ctypes.c_int16),
+        ("saved_good_valid", ctypes.c_bool),
+        ("saved_good_top", ctypes.c_int16),
+        ("saved_good_bottom", ctypes.c_int16),
+        ("saved_good_height", ctypes.c_int16),
+        ("saved_good_bottom_censored", ctypes.c_bool),
+        ("saved_good_applied_d", ctypes.c_int8),
+        ("saved_good_gauge", ctypes.c_int),
+        ("saved_good_ordinal", ctypes.c_uint64),
+        ("damage_hold_length", ctypes.c_uint32),
+        ("damage_jump", ctypes.c_int8),
     )
 
 
@@ -1440,6 +1450,24 @@ class CRegistrationEstimator:
                 "expected_bottom": item.expected_bottom + 4 if item.expected_bottom >= 0 else -1,
                 "lines_lost": item.lines_lost,
                 "invariant_residual": item.invariant_residual,
+                "saved_good_valid": bool(item.saved_good_valid),
+                "saved_good_top": (
+                    item.saved_good_top + 4 if item.saved_good_top >= 0 else -1
+                ),
+                "saved_good_bottom": (
+                    item.saved_good_bottom + 4
+                    if item.saved_good_bottom >= 0 else -1
+                ),
+                "saved_good_height": item.saved_good_height,
+                "saved_good_bottom_censored": bool(
+                    item.saved_good_bottom_censored
+                ),
+                "saved_good_applied_d": item.saved_good_applied_d,
+                "saved_good_gauge": self.library.fieldreg_gauge_name(
+                    item.saved_good_gauge).decode("ascii"),
+                "saved_good_ordinal": item.saved_good_ordinal,
+                "damage_hold_length": item.damage_hold_length,
+                "damage_jump": item.damage_jump,
             })
         return {
             "decision": decision,
@@ -1891,8 +1919,9 @@ TPC_DECISION_COLUMNS = (
     "registration_engine",
 )
 
-# Schema 8 retains the transport/presentation columns consumed by the renderer
-# and replaces every v7 evidence column with the v9 per-field provenance.
+# Schema 10 retains the transport/presentation columns consumed by the renderer
+# and extends v9 provenance with the evidence-backed saved geometry and damage
+# hold/clear event record.
 V9_FIELD_COLUMNS = (
     "reason", "gauge", "insert_present", "insert_bytes", "insert_relation",
     "parity_candidates", "fallback_candidates", "gauge_line", "gauge_bytes",
@@ -1905,6 +1934,10 @@ V9_FIELD_COLUMNS = (
     "lock_top", "lock_height", "lock_height_known", "clip_state",
     "clip_ceiling", "expected_bottom",
     "lines_lost", "invariant_residual",
+    "saved_good_valid", "saved_good_top", "saved_good_bottom",
+    "saved_good_height", "saved_good_bottom_censored",
+    "saved_good_applied_d", "saved_good_gauge", "saved_good_ordinal",
+    "damage_hold_length", "damage_jump",
 )
 TPC_DECISION_COLUMNS = (
     "timeline_frame", "counter", "extended_counter", "unit_state",
@@ -1939,6 +1972,12 @@ def _v9_field_row(field):
         field["lock_height"], int(field["lock_height_known"]),
         field["clip_state"], field["clip_ceiling"], field["expected_bottom"],
         field["lines_lost"], field["invariant_residual"],
+        int(field["saved_good_valid"]), field["saved_good_top"],
+        field["saved_good_bottom"], field["saved_good_height"],
+        int(field["saved_good_bottom_censored"]),
+        field["saved_good_applied_d"], field["saved_good_gauge"],
+        field["saved_good_ordinal"], field["damage_hold_length"],
+        field["damage_jump"],
     )
 
 
@@ -1991,7 +2030,7 @@ def tagged_decision_row(
             f"{registration['comb_static_fraction']:.6f}",
             registration["segment_id"], presentation_policy,
             *_v9_field_row(fields[0]),
-            *_v9_field_row(fields[1]), registration["engine"], 8,
+            *_v9_field_row(fields[1]), registration["engine"], 10,
         )
     decision = registration["decision"]
     best_d1, best_d2 = registration["best_pair"]

@@ -285,6 +285,10 @@ def main():
             f1_body_shift=-999, f2_body_shift=-999,
             f1_body_valid=-1, f2_body_valid=-1,
             parity_state="-", comb_check="-", parity_bias=-999,
+            program_like=False,
+            f1_saved_d=-999, f2_saved_d=-999,
+            f1_damage_length=-1, f2_damage_length=-1,
+            f1_damage_jump=-999, f2_damage_jump=-999,
             **kwargs):
         counter = len(units)
         units.append(make_unit(counter, **kwargs))
@@ -294,7 +298,10 @@ def main():
                      f1_lock_top, f2_lock_top, comb, f1_raw_top, f2_raw_top))
         rows[-1] += (f1_body_shift, f2_body_shift,
                      f1_body_valid, f2_body_valid,
-                     parity_state, comb_check, parity_bias)
+                     parity_state, comb_check, parity_bias,
+                     int(program_like), f1_saved_d, f2_saved_d,
+                     f1_damage_length, f2_damage_length,
+                     f1_damage_jump, f2_damage_jump)
 
     # Alignment and immediate parity authority.
     add("aligned-null-acquire-1", (0, 0), begin=True)
@@ -980,28 +987,39 @@ def main():
     add("saved-good-parity-anchor", (2, 0), begin=True, picture=(2, 0),
         captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(2, 0),
-        body_texture=(True, False), f1_reason="Line21Placement")
+        body_texture=(True, False), f1_reason="Line21Placement",
+        program_like=True, f1_saved_d=2, f1_damage_length=0,
+        f1_damage_jump=0)
     add("saved-good-top-only-does-not-save", (1, 0), picture=(1, 0),
         base_bottoms=(250, 518), content_phases=(0, 0),
         content_shifts=(1, 0), body_texture=(True, False),
         body_split_shifts=((1, 2), None), f1_reason="TopOnly",
-        f1_body_valid=0)
+        f1_body_valid=0, program_like=True, f1_saved_d=2,
+        f1_damage_length=0, f1_damage_jump=0)
     add("saved-good-damage-holds-anchor-a", (2, 0), picture=(3, 0),
-        base_bottoms=(250, 518), content_phases=(0, 0),
+        base_bottoms=(250, 518), bottom_overrides=(252, None),
+        content_phases=(0, 0),
         content_shifts=(2, 0), body_texture=(True, False),
-        f1_reason="DamageHold", f1_body_shift=1)
+        f1_reason="DamageHold", program_like=True, f1_saved_d=2,
+        f1_damage_length=1, f1_damage_jump=0)
     add("saved-good-damage-holds-anchor-b", (2, 0), picture=(3, 0),
-        base_bottoms=(250, 518), content_phases=(0, 0),
+        base_bottoms=(250, 518), bottom_overrides=(252, None),
+        content_phases=(0, 0),
         content_shifts=(2, 0), body_texture=(True, False),
-        f1_reason="DamageHold", f1_body_shift=1)
+        f1_reason="DamageHold", program_like=True, f1_saved_d=2,
+        f1_damage_length=2, f1_damage_jump=0)
     add("saved-good-parity-clears-plus1", (3, 0), picture=(3, 0),
         captions=((3, 0x15, 0x2b), None), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(3, 0),
-        body_texture=(True, False), f1_reason="DamageCleared")
+        body_texture=(True, False), f1_reason="DamageCleared",
+        program_like=True, f1_saved_d=3, f1_damage_length=2,
+        f1_damage_jump=1)
     add("saved-good-clear-is-one-row", (3, 0), picture=(3, 0),
         captions=((3, 0x15, 0x2b), None), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(3, 0),
-        body_texture=(True, False), f1_reason="Line21Placement")
+        body_texture=(True, False), f1_reason="Line21Placement",
+        program_like=True, f1_saved_d=3, f1_damage_length=0,
+        f1_damage_jump=0)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
@@ -1017,7 +1035,10 @@ def main():
                     "f1_lock_top", "f2_lock_top", "comb_safe",
                     "f1_raw_top", "f2_raw_top", "f1_body_shift",
                     "f2_body_shift", "f1_body_valid", "f2_body_valid",
-                    "parity_state", "comb_check", "parity_bias"))
+                    "parity_state", "comb_check", "parity_bias",
+                    "program_like", "f1_saved_d", "f2_saved_d",
+                    "f1_damage_length", "f2_damage_length",
+                    "f1_damage_jump", "f2_damage_jump"))
         w.writerows(rows)
     print(f"wrote {len(units)} v9 units")
 

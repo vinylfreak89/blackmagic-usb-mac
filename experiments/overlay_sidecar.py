@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Burn a v9 (schema 9) registration sidecar into a rendered review video as a metrics band.
+"""Burn a v9 (schema 9/10) registration sidecar into a rendered review video as a metrics band.
 
 The band is ADDED below (or above) the picture — the picture is never covered. One band image per
 unit (two bobbed frames): line 1 = unit, counter, unit state, applied (d1,d2), comb_safe; lines 2-5 =
@@ -25,6 +25,8 @@ def g(r, k, d=""):
 
 def mode_colour(reason: str):
     m = reason.lower()
+    if "damagecleared" in m: return (0, 230, 0)
+    if "damagehold" in m: return (255, 80, 80)
     if "placement" in m or "line22data" in m: return (0, 230, 0)
     if "geometrylock" in m: return (0, 255, 255)
     if "acquiring" in m or "clipunknown" in m or "gaugeconflict" in m: return (255, 215, 0)
@@ -106,6 +108,11 @@ def main() -> None:
             pc = g(r, f"f{n}_parity_candidates", "0"); fc = g(r, f"f{n}_fallback_candidates", "0")
             if ib or ins not in ("None", "") or pc != "0" or fc != "0":
                 info += f"  ins {ib or '-'} {ins} cand {pc}/{fc}"
+            if reason in ("DamageHold", "DamageCleared"):
+                info += (f"  damage n={g(r, f'f{n}_damage_hold_length', '0')}"
+                         f" jump={g(r, f'f{n}_damage_jump', '0')}"
+                         f" saved={g(r, f'f{n}_saved_good_applied_d', '?')}"
+                         f"@u{g(r, f'f{n}_saved_good_ordinal', '?')}")
             d.text((6, y + 12), info[:int((sx0 - 6) / 5.6)], font=small,
                    fill=(160, 160, 160))   # never run into the sparkline
         d.text((W - 262 - 100, 4), f"t={i*1001/30000:8.3f}s", font=small, fill=(180, 180, 180))   # top right of the text area
