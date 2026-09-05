@@ -1261,6 +1261,14 @@ class _CFieldDecision(ctypes.Structure):
         ("clip_state", ctypes.c_int), ("clip_ceiling", ctypes.c_int16),
         ("expected_bottom", ctypes.c_int16), ("lines_lost", ctypes.c_int16),
         ("invariant_residual", ctypes.c_int16),
+        ("saved_geometry_valid", ctypes.c_bool),
+        ("saved_top", ctypes.c_int16), ("saved_bottom", ctypes.c_int16),
+        ("saved_height", ctypes.c_int16),
+        ("saved_bottom_censored", ctypes.c_bool),
+        ("saved_applied_d", ctypes.c_int8),
+        ("saved_gauge", ctypes.c_int), ("saved_ordinal", ctypes.c_uint64),
+        ("hold_cause", ctypes.c_int), ("saved_hold_length", ctypes.c_uint32),
+        ("geometry_jump", ctypes.c_int8),
     )
 
 
@@ -1349,6 +1357,8 @@ class CRegistrationEstimator:
         self.library.fieldreg_parity_state_name.restype = ctypes.c_char_p
         self.library.fieldreg_comb_check_name.argtypes = (ctypes.c_int,)
         self.library.fieldreg_comb_check_name.restype = ctypes.c_char_p
+        self.library.fieldreg_hold_cause_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_hold_cause_name.restype = ctypes.c_char_p
         self.library.fieldreg_init(self.state, ctypes.byref(self.config))
         self.confirmation_units = self.library.fieldreg_confirmation_units(
             self.state
@@ -1440,6 +1450,21 @@ class CRegistrationEstimator:
                 "expected_bottom": item.expected_bottom + 4 if item.expected_bottom >= 0 else -1,
                 "lines_lost": item.lines_lost,
                 "invariant_residual": item.invariant_residual,
+                "saved_geometry_valid": bool(item.saved_geometry_valid),
+                "saved_top": item.saved_top + 4 if item.saved_top >= 0 else -1,
+                "saved_bottom": (
+                    item.saved_bottom + 4 if item.saved_bottom >= 0 else -1
+                ),
+                "saved_height": item.saved_height,
+                "saved_bottom_censored": bool(item.saved_bottom_censored),
+                "saved_applied_d": item.saved_applied_d,
+                "saved_gauge": self.library.fieldreg_gauge_name(
+                    item.saved_gauge).decode("ascii"),
+                "saved_ordinal": item.saved_ordinal,
+                "hold_cause": self.library.fieldreg_hold_cause_name(
+                    item.hold_cause).decode("ascii"),
+                "saved_hold_length": item.saved_hold_length,
+                "geometry_jump": item.geometry_jump,
             })
         return {
             "decision": decision,
@@ -1891,8 +1916,8 @@ TPC_DECISION_COLUMNS = (
     "registration_engine",
 )
 
-# Schema 8 retains the transport/presentation columns consumed by the renderer
-# and replaces every v7 evidence column with the v9 per-field provenance.
+# Schema 10 retains the transport/presentation columns consumed by the renderer
+# and extends v9 with evidence-backed saved-geometry provenance.
 V9_FIELD_COLUMNS = (
     "reason", "gauge", "insert_present", "insert_bytes", "insert_relation",
     "parity_candidates", "fallback_candidates", "gauge_line", "gauge_bytes",
@@ -1905,6 +1930,9 @@ V9_FIELD_COLUMNS = (
     "lock_top", "lock_height", "lock_height_known", "clip_state",
     "clip_ceiling", "expected_bottom",
     "lines_lost", "invariant_residual",
+    "saved_geometry_valid", "saved_top", "saved_bottom", "saved_height",
+    "saved_bottom_censored", "saved_applied_d", "saved_gauge",
+    "saved_ordinal", "hold_cause", "saved_hold_length", "geometry_jump",
 )
 TPC_DECISION_COLUMNS = (
     "timeline_frame", "counter", "extended_counter", "unit_state",
@@ -1939,6 +1967,11 @@ def _v9_field_row(field):
         field["lock_height"], int(field["lock_height_known"]),
         field["clip_state"], field["clip_ceiling"], field["expected_bottom"],
         field["lines_lost"], field["invariant_residual"],
+        int(field["saved_geometry_valid"]), field["saved_top"],
+        field["saved_bottom"], field["saved_height"],
+        int(field["saved_bottom_censored"]), field["saved_applied_d"],
+        field["saved_gauge"], field["saved_ordinal"], field["hold_cause"],
+        field["saved_hold_length"], field["geometry_jump"],
     )
 
 
@@ -1991,7 +2024,7 @@ def tagged_decision_row(
             f"{registration['comb_static_fraction']:.6f}",
             registration["segment_id"], presentation_policy,
             *_v9_field_row(fields[0]),
-            *_v9_field_row(fields[1]), registration["engine"], 8,
+            *_v9_field_row(fields[1]), registration["engine"], 10,
         )
     decision = registration["decision"]
     best_d1, best_d2 = registration["best_pair"]

@@ -74,8 +74,8 @@ used even after a hold. If a top moves while a reliable body stands still, the
 top is a brightness/content flicker: `TopBodyDisagree` keeps the body-derived
 position. If the body witness abstains on a changed geometry top, a measurable
 comb check is the second witness: the matching move is
-`TopCombCorroborated`, while a contradiction is `TopCombVetoed`. A flat or
-unavailable comb has no testimony, so the measured top applies as `TopOnly`.
+`TopCombCorroborated`, while a contradiction has no placement testimony.
+A flat or unavailable comb likewise supplies no testimony.
 This check is allowed before the segment's field-2 zero has frozen, but cannot
 by itself calibrate or drift that zero. With no top, a still body or motion differing between the two fields
 can supply `BodyOnlyPlacement`; equal nonzero motion in both fields is an
@@ -98,6 +98,17 @@ new segment at `d=0`. `fieldreg_discontinuity()` preserves installed zeros,
 parity calibration, and each last applied offset; it invalidates only the
 previous-unit luma/position witnesses and unfinished consecutive evidence.
 Neither call buffers, backdates, drops, or repeats a unit.
+
+The crop published through missing testimony comes from a separate per-field
+saved-geometry snapshot, never from the most recent presentation decision.
+Only `Line21Placement`, `Field2EnvelopePlacement`,
+`Field2CombCalibration`, `TopCombCorroborated`,
+`CombRelativeCorrection`, or a reliable body-and-top-agreeing
+`GeometryLockDecides` replaces that snapshot. Tied/unmeasurable body evidence,
+a comb veto, or an out-of-range top produces `SavedGeometryHold`. The next
+evidence row is `SavedGeometryConfirmed` at the same crop or
+`SavedGeometryReplaced` at a new crop, with the completed hold length and one
+signed `geometry_jump`.
 The remaining per-segment ambiguity is field 2's zero: picture geometry cannot
 distinguish a source whose second field begins one display line lower from an
 actual one-line crossing. Static picture detail resolves that zero once. The
@@ -151,7 +162,7 @@ more than three source lines from the standard origin is immediately refused
 as `ZeroOutOfBounds`. This candidate memory never delays or smooths crop
 placement.
 
-## Sidecar schema 9
+## Sidecar schema 10
 
 The frameserver retains its transport/signal columns and writes the following
 v9 provenance for each field. Values named `*_line` are NTSC line numbers
@@ -170,6 +181,9 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
   top/height, whether that height is uncensored,
   `ClipUnknown`/`ClipFitting`/`ClipFitted`, and the optional clip ceiling; and
 - expected bottom, lost-line count, and invariant residual.
+- saved-geometry validity, top/bottom/height and censoring, applied crop,
+  placing gauge and transport ordinal; plus the current hold cause/length and
+  a clearing row's signed geometry jump.
 
 The row also records `parity_state` (Uncalibrated/Calibrated; `Drift` remains
 an ABI name but is not produced by this policy),

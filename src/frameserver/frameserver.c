@@ -222,8 +222,8 @@ static int log_header(FILE *L){
     return fprintf(L, "ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,"
                "interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,"
                "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,"
-               "f1_reason,f1_gauge,f1_insert_present,f1_insert_bytes,f1_insert_relation,f1_parity_candidates,f1_fallback_candidates,f1_gauge_line,f1_gauge_bytes,f1_gauge_amplitude,f1_geometry_d,f1_blank_mean,f1_body_witness_valid,f1_body_shift,f1_body_mad,f1_body_geometry_agrees,f1_body_reference_top,f1_body_implied_top,f1_body_differential,f1_body_common_mode,f1_picture_position_valid,f1_measured_picture_top,f1_picture_from_body,f1_raw_top,f1_raw_bottom,f1_raw_height,f1_geometry_measurable,f1_bottom_censored,f1_lock_state,f1_zero_source,f1_lock_id,f1_lock_top,f1_lock_height,f1_lock_height_known,f1_clip_state,f1_clip_ceiling,f1_expected_bottom,f1_lines_lost,f1_invariant_residual,"
-               "f2_reason,f2_gauge,f2_insert_present,f2_insert_bytes,f2_insert_relation,f2_parity_candidates,f2_fallback_candidates,f2_gauge_line,f2_gauge_bytes,f2_gauge_amplitude,f2_geometry_d,f2_blank_mean,f2_body_witness_valid,f2_body_shift,f2_body_mad,f2_body_geometry_agrees,f2_body_reference_top,f2_body_implied_top,f2_body_differential,f2_body_common_mode,f2_picture_position_valid,f2_measured_picture_top,f2_picture_from_body,f2_raw_top,f2_raw_bottom,f2_raw_height,f2_geometry_measurable,f2_bottom_censored,f2_lock_state,f2_zero_source,f2_lock_id,f2_lock_top,f2_lock_height,f2_lock_height_known,f2_clip_state,f2_clip_ceiling,f2_expected_bottom,f2_lines_lost,f2_invariant_residual,"
+               "f1_reason,f1_gauge,f1_insert_present,f1_insert_bytes,f1_insert_relation,f1_parity_candidates,f1_fallback_candidates,f1_gauge_line,f1_gauge_bytes,f1_gauge_amplitude,f1_geometry_d,f1_blank_mean,f1_body_witness_valid,f1_body_shift,f1_body_mad,f1_body_geometry_agrees,f1_body_reference_top,f1_body_implied_top,f1_body_differential,f1_body_common_mode,f1_picture_position_valid,f1_measured_picture_top,f1_picture_from_body,f1_raw_top,f1_raw_bottom,f1_raw_height,f1_geometry_measurable,f1_bottom_censored,f1_lock_state,f1_zero_source,f1_lock_id,f1_lock_top,f1_lock_height,f1_lock_height_known,f1_clip_state,f1_clip_ceiling,f1_expected_bottom,f1_lines_lost,f1_invariant_residual,f1_saved_geometry_valid,f1_saved_top,f1_saved_bottom,f1_saved_height,f1_saved_bottom_censored,f1_saved_applied_d,f1_saved_gauge,f1_saved_ordinal,f1_hold_cause,f1_saved_hold_length,f1_geometry_jump,"
+               "f2_reason,f2_gauge,f2_insert_present,f2_insert_bytes,f2_insert_relation,f2_parity_candidates,f2_fallback_candidates,f2_gauge_line,f2_gauge_bytes,f2_gauge_amplitude,f2_geometry_d,f2_blank_mean,f2_body_witness_valid,f2_body_shift,f2_body_mad,f2_body_geometry_agrees,f2_body_reference_top,f2_body_implied_top,f2_body_differential,f2_body_common_mode,f2_picture_position_valid,f2_measured_picture_top,f2_picture_from_body,f2_raw_top,f2_raw_bottom,f2_raw_height,f2_geometry_measurable,f2_bottom_censored,f2_lock_state,f2_zero_source,f2_lock_id,f2_lock_top,f2_lock_height,f2_lock_height_known,f2_clip_state,f2_clip_ceiling,f2_expected_bottom,f2_lines_lost,f2_invariant_residual,f2_saved_geometry_valid,f2_saved_top,f2_saved_bottom,f2_saved_height,f2_saved_bottom_censored,f2_saved_applied_d,f2_saved_gauge,f2_saved_ordinal,f2_hold_cause,f2_saved_hold_length,f2_geometry_jump,"
                "parity_state,comb_check,comb_best_shift,parity_bias,comb_best_energy,comb_second_energy,comb_static_fraction,comb_correction,comb_correction_install_ordinal,comb_safe,published,drop_reason,schema_version,preceding_ring_drops\n") < 0 ? -1 : 0;
 }
 
@@ -235,6 +235,8 @@ static int log_field(FILE *L, const fieldreg_field_decision *d)
     const char *lock = d ? fieldreg_lock_state_name(d->lock_state) : "Unlocked";
     const char *zero = d ? fieldreg_zero_source_name(d->zero_source) : "None";
     const char *clip = d ? fieldreg_clip_state_name(d->clip_state) : "ClipUnknown";
+    const char *saved_gauge = d ? fieldreg_gauge_name(d->saved_gauge) : "None";
+    const char *hold_cause = d ? fieldreg_hold_cause_name(d->hold_cause) : "None";
     char insert_bytes[5] = "", gauge_bytes[5] = "";
     if (d && d->insert_present)
         snprintf(insert_bytes, sizeof insert_bytes, "%02x%02x", d->insert_byte1, d->insert_byte2);
@@ -247,7 +249,8 @@ static int log_field(FILE *L, const fieldreg_field_decision *d)
                    ",%d,%d,%.3f"
                    ",%d,%d,%d,%d,%d,%d,%d,%d"
                    ",%d,%d,%d,%d,%d"
-                   ",%s,%s,%u,%d,%d,%d,%s,%d,%d,%d,%d",
+                   ",%s,%s,%u,%d,%d,%d,%s,%d,%d,%d,%d"
+                   ",%d,%d,%d,%d,%d,%d,%s,%llu,%s,%u,%d",
                    reason, gauge, d && d->insert_present, insert_bytes, insert_relation,
                    d ? d->parity_candidate_count : 0,
                    d ? d->fallback_candidate_count : 0,
@@ -274,7 +277,16 @@ static int log_field(FILE *L, const fieldreg_field_decision *d)
                    d ? d->lock_height : -1, d && d->lock_height_known, clip,
                    d && d->clip_ceiling >= 0 ? d->clip_ceiling + 4 : -1,
                    d && d->expected_bottom >= 0 ? d->expected_bottom + 4 : -1,
-                   d ? d->lines_lost : 0, d ? d->invariant_residual : 0);
+                   d ? d->lines_lost : 0, d ? d->invariant_residual : 0,
+                   d && d->saved_geometry_valid,
+                   d && d->saved_top >= 0 ? d->saved_top + 4 : -1,
+                   d && d->saved_bottom >= 0 ? d->saved_bottom + 4 : -1,
+                   d ? d->saved_height : -1,
+                   d && d->saved_bottom_censored,
+                   d ? d->saved_applied_d : 0, saved_gauge,
+                   (unsigned long long)(d ? d->saved_ordinal : 0),
+                   hold_cause, d ? d->saved_hold_length : 0,
+                   d ? d->geometry_jump : 0);
 }
 static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
@@ -340,7 +352,10 @@ static void process_item(frameserver *f, const fs_item *it){
     }
     if (unit){
         f->st.exact_units++;
-        have_d = fieldreg_process(f->eng, unit, &d);
+        const fieldreg_process_context registration_context = {
+            .ordinal = obs.ordinal,
+        };
+        have_d = fieldreg_process_ex(f->eng, unit, &registration_context, &d);
         if (have_d && d.comb_correction != f->last_comb_correction) {
             f->last_comb_correction = d.comb_correction;
             f->comb_correction_install_ordinal = d.comb_correction == 0 ?

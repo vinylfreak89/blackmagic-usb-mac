@@ -401,6 +401,15 @@ static void copy_lock(const fieldreg_field_state *s,
     d->lock_height_known = s->height_known;
     d->clip_state = clip_state(s);
     d->clip_ceiling = s->clip_ceiling;
+    d->saved_geometry_valid = s->saved.valid;
+    d->saved_top = s->saved.top;
+    d->saved_bottom = s->saved.bottom;
+    d->saved_height = s->saved.height;
+    d->saved_bottom_censored = s->saved.bottom_censored;
+    d->saved_applied_d = s->saved.applied_d;
+    d->saved_gauge = s->saved.gauge;
+    d->saved_ordinal = s->saved.ordinal;
+    d->saved_hold_length = s->saved_hold_length;
 }
 
 static void hold(fieldreg_field_state *s, fieldreg_field_decision *d,
@@ -536,6 +545,124 @@ static void record_invariant(const fieldreg_field_state *s,
 static bool body_reliable(const field_measurement *m)
 {
     return m->body_witness_valid && m->body_mad <= 25.0;
+}
+
+static bool saved_geometry_evidence(const fieldreg_field_decision *d,
+                                    const field_measurement *m)
+{
+    switch (d->reason) {
+    case FIELDREG_MODE_LINE21_PLACEMENT:
+    case FIELDREG_MODE_FIELD2_ENVELOPE_PLACEMENT:
+    case FIELDREG_MODE_FIELD2_COMB_CALIBRATION:
+    case FIELDREG_MODE_TOP_COMB_CORROBORATED:
+    case FIELDREG_MODE_COMB_RELATIVE_CORRECTION:
+        return true;
+    case FIELDREG_MODE_GEOMETRY_LOCK_DECIDES:
+        return body_reliable(m) && m->body_geometry_agrees;
+    default:
+        return false;
+    }
+}
+
+static bool needs_saved_geometry_hold(const fieldreg_field_decision *d,
+                                      const field_measurement *m)
+{
+    switch (d->reason) {
+    case FIELDREG_MODE_TOP_UNCORROBORATED:
+    case FIELDREG_MODE_TOP_COMB_VETOED:
+    case FIELDREG_MODE_OUT_OF_RANGE_HOLD:
+    case FIELDREG_MODE_GEOMETRY_UNMEASURABLE:
+    case FIELDREG_MODE_LOCK_BROKEN:
+    case FIELDREG_MODE_COMMON_MODE_BODY_HOLD:
+        return true;
+    case FIELDREG_MODE_TOP_BODY_DISAGREE:
+    case FIELDREG_MODE_CAPTION_BODY_DISAGREE:
+    case FIELDREG_MODE_LINE21_AMBIGUOUS:
+    case FIELDREG_MODE_GAUGE_CONFLICT:
+        return d->gauge == FIELDREG_GAUGE_HOLD;
+    case FIELDREG_MODE_GEOMETRY_LOCK_DECIDES:
+        return !body_reliable(m) || !m->body_geometry_agrees;
+    default:
+        return false;
+    }
+}
+
+static fieldreg_hold_cause saved_hold_cause(
+    const fieldreg_field_decision *d, const field_measurement *m)
+{
+    if (d->reason == FIELDREG_MODE_TOP_COMB_VETOED)
+        return FIELDREG_HOLD_COMB_VETOED;
+    if (d->reason == FIELDREG_MODE_OUT_OF_RANGE_HOLD ||
+        d->reason == FIELDREG_MODE_ZERO_OUT_OF_BOUNDS)
+        return FIELDREG_HOLD_OUT_OF_RANGE;
+    if (m->body_shift == FIELDREG_UNKNOWN || m->body_mad > 25.0)
+        return FIELDREG_HOLD_BODY_UNMEASURABLE;
+    return FIELDREG_HOLD_TIED_BODY;
+}
+
+static void save_geometry(fieldreg_field_state *s,
+                          const field_measurement *m,
+                          const fieldreg_field_decision *d,
+                          uint64_t ordinal)
+{
+    s->saved.valid = true;
+    s->saved.applied_d = d->applied_d;
+    s->saved.gauge = d->gauge;
+    s->saved.ordinal = ordinal;
+    s->saved.top = m->picture_position_valid ? m->picture_top : m->top;
+    s->saved.bottom = m->bottom;
+    s->saved.height = m->height;
+    s->saved.bottom_censored = m->bottom_censored;
+}
+
+static void apply_saved_geometry_hold(fieldreg_field_state *s,
+                                      fieldreg_field_decision *d,
+                                      fieldreg_hold_cause cause)
+{
+    if (s->saved_hold_length != UINT32_MAX) ++s->saved_hold_length;
+    d->measured_d = FIELDREG_UNKNOWN;
+    d->applied_d = s->saved.valid ? s->saved.applied_d : s->last_applied;
+    d->reason = FIELDREG_MODE_SAVED_GEOMETRY_HOLD;
+    d->gauge = FIELDREG_GAUGE_HOLD;
+    d->hold_cause = cause;
+    d->geometry_jump = 0;
+    copy_lock(s, d);
+}
+
+static void finish_saved_geometry_decision(fieldreg_field_state *s,
+                                           const fieldreg_field_state *before,
+                                           const field_measurement *m,
+                                           fieldreg_field_decision *d,
+                                           uint64_t ordinal)
+{
+    const bool evidence = saved_geometry_evidence(d, m);
+    if (before->saved.valid && !evidence &&
+        (before->saved_hold_length > 0 ||
+         needs_saved_geometry_hold(d, m))) {
+        const fieldreg_hold_cause cause = saved_hold_cause(d, m);
+        *s = *before;
+        apply_saved_geometry_hold(s, d, cause);
+        return;
+    }
+    if (!evidence) {
+        copy_lock(s, d);
+        return;
+    }
+
+    const uint32_t completed_hold = before->saved_hold_length;
+    const int previous_good = before->saved.valid ? before->saved.applied_d :
+                                                    before->last_applied;
+    const int jump = d->applied_d - previous_good;
+    s->saved_hold_length = 0;
+    save_geometry(s, m, d, ordinal);
+    if (completed_hold > 0) {
+        d->reason = jump == 0 ? FIELDREG_MODE_SAVED_GEOMETRY_CONFIRMED :
+                                FIELDREG_MODE_SAVED_GEOMETRY_REPLACED;
+        d->geometry_jump = (int8_t)jump;
+    }
+    copy_lock(s, d);
+    if (completed_hold > 0)
+        d->saved_hold_length = completed_hold;
 }
 
 static bool uncorroborated_top_move(const fieldreg_field_state *s,
@@ -1056,6 +1183,10 @@ static void reset_field(fieldreg_field_state *s, bool reset_applied, int field)
     clear_clip(s);
     clear_zero_candidate(s);
     s->previous_measured_top = -1;
+    s->saved.top = -1;
+    s->saved.bottom = -1;
+    s->saved.height = -1;
+    s->saved.applied_d = 0;
     s->last_applied = applied;
     s->lock_id = lock_id;
     s->lock_state = FIELDREG_LOCK_LOCKED;
@@ -1300,11 +1431,6 @@ static bool resolve_top_with_comb(field_registration *engine,
             out->comb_check == FIELDREG_COMB_DISAGREE) {
             d->reason = FIELDREG_MODE_TOP_COMB_VETOED;
             d->gauge = FIELDREG_GAUGE_STATIC_COMB;
-        } else if (candidate[field] != FIELDREG_UNKNOWN) {
-            apply_resolved_top(engine, m, field, candidate[field],
-                               FIELDREG_MODE_TOP_ONLY,
-                               FIELDREG_GAUGE_GEOMETRY, out);
-            changed = true;
         }
     }
     return changed;
@@ -1427,11 +1553,15 @@ static bool apply_comb_relative_correction(const field_registration *engine,
     return true;
 }
 
-bool fieldreg_process(field_registration *engine,
-                      const uint8_t unit[FIELDREG_UNIT_BYTES],
-                      fieldreg_decision *out)
+bool fieldreg_process_ex(field_registration *engine,
+                         const uint8_t unit[FIELDREG_UNIT_BYTES],
+                         const fieldreg_process_context *context,
+                         fieldreg_decision *out)
 {
     if (!engine || !out || !valid_unit(unit)) return false;
+    const uint64_t ordinal = context ? context->ordinal :
+                                      engine->process_ordinal;
+    ++engine->process_ordinal;
     memset(out, 0, sizeof *out);
     out->decision_d1 = out->decision_d2 = FIELDREG_UNKNOWN;
     out->frame_observation_d1 = out->frame_observation_d2 = FIELDREG_UNKNOWN;
@@ -1446,6 +1576,9 @@ bool fieldreg_process(field_registration *engine,
     measure_body(raster, 1, engine->previous_luma,
                  engine->previous_luma_valid, &engine->field[1], &m[1]);
     resolve_picture_positions(m);
+    const fieldreg_field_state before[2] = {
+        engine->field[0], engine->field[1]
+    };
     decide_field(&engine->field[0], &m[0], 0, &out->field[0]);
     decide_field(&engine->field[1], &m[1], 1, &out->field[1]);
 
@@ -1459,6 +1592,10 @@ bool fieldreg_process(field_registration *engine,
                                     crops_changed_after_comb);
     const bool correction_honored = apply_comb_relative_correction(engine, m,
                                                                     out);
+
+    for (int field = 0; field < 2; ++field)
+        finish_saved_geometry_decision(&engine->field[field], &before[field],
+                                       &m[field], &out->field[field], ordinal);
 
     for (int field = 0; field < 2; ++field)
         if (out->field[field].measured_d != FIELDREG_UNKNOWN)
@@ -1484,6 +1621,13 @@ bool fieldreg_process(field_registration *engine,
                      correction_honored;
     copy_current_luma(engine, raster);
     return true;
+}
+
+bool fieldreg_process(field_registration *engine,
+                      const uint8_t unit[FIELDREG_UNIT_BYTES],
+                      fieldreg_decision *out)
+{
+    return fieldreg_process_ex(engine, unit, NULL, out);
 }
 
 const char *fieldreg_mode_name(fieldreg_mode mode)
@@ -1514,8 +1658,10 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_TOP_UNCORROBORATED: return "TopUncorroborated";
     case FIELDREG_MODE_TOP_COMB_CORROBORATED: return "TopCombCorroborated";
     case FIELDREG_MODE_TOP_COMB_VETOED: return "TopCombVetoed";
-    case FIELDREG_MODE_TOP_ONLY: return "TopOnly";
     case FIELDREG_MODE_COMB_RELATIVE_CORRECTION: return "CombRelativeCorrection";
+    case FIELDREG_MODE_SAVED_GEOMETRY_HOLD: return "SavedGeometryHold";
+    case FIELDREG_MODE_SAVED_GEOMETRY_CONFIRMED: return "SavedGeometryConfirmed";
+    case FIELDREG_MODE_SAVED_GEOMETRY_REPLACED: return "SavedGeometryReplaced";
     case FIELDREG_MODE_MIXED_FIELD_DECISION: return "MixedFieldDecision";
     }
     return "Unknown";
@@ -1585,6 +1731,18 @@ const char *fieldreg_comb_check_name(fieldreg_comb_check check)
     case FIELDREG_COMB_FLAT: return "flat";
     }
     return "unknown";
+}
+
+const char *fieldreg_hold_cause_name(fieldreg_hold_cause cause)
+{
+    switch (cause) {
+    case FIELDREG_HOLD_NONE: return "None";
+    case FIELDREG_HOLD_TIED_BODY: return "TiedBody";
+    case FIELDREG_HOLD_BODY_UNMEASURABLE: return "BodyUnmeasurable";
+    case FIELDREG_HOLD_COMB_VETOED: return "CombVetoed";
+    case FIELDREG_HOLD_OUT_OF_RANGE: return "OutOfRange";
+    }
+    return "Unknown";
 }
 
 const char *fieldreg_insert_relation_name(fieldreg_insert_relation relation)

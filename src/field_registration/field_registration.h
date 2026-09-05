@@ -62,6 +62,14 @@ typedef enum fieldreg_comb_check {
     FIELDREG_COMB_FLAT,
 } fieldreg_comb_check;
 
+typedef enum fieldreg_hold_cause {
+    FIELDREG_HOLD_NONE = 0,
+    FIELDREG_HOLD_TIED_BODY,
+    FIELDREG_HOLD_BODY_UNMEASURABLE,
+    FIELDREG_HOLD_COMB_VETOED,
+    FIELDREG_HOLD_OUT_OF_RANGE,
+} fieldreg_hold_cause;
+
 typedef enum fieldreg_insert_relation {
     FIELDREG_INSERT_RELATION_NONE = 0,
     FIELDREG_INSERT_CORROBORATES,
@@ -94,8 +102,10 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_TOP_UNCORROBORATED,
     FIELDREG_MODE_TOP_COMB_CORROBORATED,
     FIELDREG_MODE_TOP_COMB_VETOED,
-    FIELDREG_MODE_TOP_ONLY,
     FIELDREG_MODE_COMB_RELATIVE_CORRECTION,
+    FIELDREG_MODE_SAVED_GEOMETRY_HOLD,
+    FIELDREG_MODE_SAVED_GEOMETRY_CONFIRMED,
+    FIELDREG_MODE_SAVED_GEOMETRY_REPLACED,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -113,6 +123,12 @@ typedef enum fieldreg_gauge_source {
 typedef struct fieldreg_config {
     uint32_t reserved;
 } fieldreg_config;
+
+typedef struct fieldreg_process_context {
+    /* Live transport ordinal. The compatibility wrapper supplies an
+     * engine-local exact-unit ordinal. */
+    uint64_t ordinal;
+} fieldreg_process_context;
 
 typedef struct fieldreg_field_decision {
     int8_t measured_d;
@@ -160,6 +176,17 @@ typedef struct fieldreg_field_decision {
     int16_t expected_bottom;
     int16_t lines_lost;
     int16_t invariant_residual;
+    bool saved_geometry_valid;
+    int16_t saved_top;
+    int16_t saved_bottom;
+    int16_t saved_height;
+    bool saved_bottom_censored;
+    int8_t saved_applied_d;
+    fieldreg_gauge_source saved_gauge;
+    uint64_t saved_ordinal;
+    fieldreg_hold_cause hold_cause;
+    uint32_t saved_hold_length;
+    int8_t geometry_jump;
 } fieldreg_field_decision;
 
 typedef struct fieldreg_decision {
@@ -210,6 +237,17 @@ typedef struct fieldreg_field_state {
     fieldreg_zero_source zero_candidate_source;
     uint32_t lock_id;
     int16_t previous_measured_top;
+    struct {
+        bool valid;
+        int16_t top;
+        int16_t bottom;
+        int16_t height;
+        bool bottom_censored;
+        int8_t applied_d;
+        fieldreg_gauge_source gauge;
+        uint64_t ordinal;
+    } saved;
+    uint32_t saved_hold_length;
 } fieldreg_field_state;
 
 /* Caller-owned, allocation-free hot-path state. The clip fit is deliberately
@@ -229,6 +267,7 @@ typedef struct field_registration {
     int8_t comb_correction_candidate;
     int8_t comb_correction_candidate_count;
     uint32_t segment_id;
+    uint64_t process_ordinal;
 } field_registration;
 
 fieldreg_config fieldreg_default_config(void);
@@ -246,6 +285,10 @@ void fieldreg_discontinuity(field_registration *engine);
 bool fieldreg_process(field_registration *engine,
                       const uint8_t unit[FIELDREG_UNIT_BYTES],
                       fieldreg_decision *out);
+bool fieldreg_process_ex(field_registration *engine,
+                         const uint8_t unit[FIELDREG_UNIT_BYTES],
+                         const fieldreg_process_context *context,
+                         fieldreg_decision *out);
 
 const char *fieldreg_mode_name(fieldreg_mode mode);
 const char *fieldreg_gauge_name(fieldreg_gauge_source source);
@@ -255,6 +298,7 @@ const char *fieldreg_zero_source_name(fieldreg_zero_source source);
 const char *fieldreg_insert_relation_name(fieldreg_insert_relation relation);
 const char *fieldreg_parity_state_name(fieldreg_parity_state state);
 const char *fieldreg_comb_check_name(fieldreg_comb_check check);
+const char *fieldreg_hold_cause_name(fieldreg_hold_cause cause);
 
 #ifdef __cplusplus
 }
