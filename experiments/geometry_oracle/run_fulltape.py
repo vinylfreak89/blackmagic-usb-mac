@@ -39,6 +39,8 @@ def census(path: Path, elapsed_seconds: float) -> list[str]:
                 "gap": 0,
                 "bottom_exact": 0,
                 "height_valid": 0,
+                "last_recorded": 0,
+                "flat_raster": 0,
                 "repeat": 0,
             }
         )
@@ -85,6 +87,8 @@ def census(path: Path, elapsed_seconds: float) -> list[str]:
                 totals[field]["gap"] += int(row[prefix + "gap_valid"])
                 totals[field]["bottom_exact"] += int(row[prefix + "bottom_valid"])
                 totals[field]["height_valid"] += int(row[prefix + "height_valid"])
+                totals[field]["last_recorded"] += int(row[prefix + "last_recorded_valid"])
+                totals[field]["flat_raster"] += int(row[prefix + "flat_raster"])
                 totals[field]["repeat"] += int(row[prefix + "repeated"])
 
     failures = []
@@ -125,8 +129,8 @@ def census(path: Path, elapsed_seconds: float) -> list[str]:
         "the exact-unit span remain visible as ordinal holes rather than shifting event labels.",
         "",
         "| Field | Measurable top | Any 608 waveform | Any parity-decoded 608 | Unique off-insert tape 608 | "
-        "Black-gap line | Exact bottom | Exact height | Exact repeat |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "Black-gap line | Exact bottom | Exact height | Last recorded | Flat raster | Exact repeat |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for field in (1, 2):
         item = totals[field]
@@ -135,6 +139,7 @@ def census(path: Path, elapsed_seconds: float) -> list[str]:
             f"{item['line21_any']:,} | "
             f"{item['line21_unique_off_insert']:,} | {item['gap']:,} | "
             f"{item['bottom_exact']:,} | {item['height_valid']:,} | "
+            f"{item['last_recorded']:,} | {item['flat_raster']:,} | "
             f"{item['repeat']:,} |"
         )
     lines.extend(["", "## Top-status census", ""])

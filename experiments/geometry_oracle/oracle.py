@@ -72,6 +72,15 @@ class FieldMeasurement:
     bottom_h_mad: float
     bottom_h_second_mad: float
     bottom_h_ratio: float
+    last_recorded_line: int
+    last_recorded_valid: int
+    last_recorded_chroma_deviation: float
+    regenerated_chroma_gate: float
+    flat_raster: int
+    body_horizontal_p90: float
+    body_vertical_p90: float
+    flat_horizontal_gate: float
+    flat_vertical_gate: float
     cc_waveform_lines: str
     cc_waveform_scores: str
     cc_start_scores: str
@@ -116,6 +125,15 @@ class UnitMeasurement:
     f1_bottom_h_mad: float
     f1_bottom_h_second_mad: float
     f1_bottom_h_ratio: float
+    f1_last_recorded_line: int
+    f1_last_recorded_valid: int
+    f1_last_recorded_chroma_deviation: float
+    f1_regenerated_chroma_gate: float
+    f1_flat_raster: int
+    f1_body_horizontal_p90: float
+    f1_body_vertical_p90: float
+    f1_flat_horizontal_gate: float
+    f1_flat_vertical_gate: float
     f1_cc_waveform_lines: str
     f1_cc_waveform_scores: str
     f1_cc_start_scores: str
@@ -151,6 +169,15 @@ class UnitMeasurement:
     f2_bottom_h_mad: float
     f2_bottom_h_second_mad: float
     f2_bottom_h_ratio: float
+    f2_last_recorded_line: int
+    f2_last_recorded_valid: int
+    f2_last_recorded_chroma_deviation: float
+    f2_regenerated_chroma_gate: float
+    f2_flat_raster: int
+    f2_body_horizontal_p90: float
+    f2_body_vertical_p90: float
+    f2_flat_horizontal_gate: float
+    f2_flat_vertical_gate: float
     f2_cc_waveform_lines: str
     f2_cc_waveform_scores: str
     f2_cc_start_scores: str
@@ -307,6 +334,7 @@ class CEA608Waveform:
     runin_score: float
     start_score: float
     cell_ratio: float
+    data_low_fraction: float
 
 
 _WAVE_PHASES = np.arange(175.0, 231.0, 0.5)
@@ -328,17 +356,23 @@ def scan_cea608_waveforms(y: np.ndarray, spec: FieldSpec) -> list[CEA608Waveform
     The 14 alternating edges of the seven-cycle 503.5 kHz clock run-in are
     searched at the 13.5 MHz sampling rate with phase and local skew tolerance.
     Edge amplitude is relative to this field's measured blank-to-picture range.
-    Start-bit and data-cell-grid strengths are reported independently.  A
+    Start-bit and data-cell-grid strengths are reported independently.  The
+    data span must also return close to the field's own blank level for at
+    least 20% of its samples; that is the minimum structural evidence for the
+    low cells in the start/data/parity train and rejects picture texture that
+    happens to contain a short 503.5 kHz-like run.  A
     vertically smeared waveform is represented by its strongest row, rather
     than allowing the smear to erase the first real picture row below it.
     """
-    means, _stds, _gradients, _active, blank, _gates = measure_row_activity(y, spec)
+    means, _stds, _gradients, active, blank, _gates = measure_row_activity(y, spec)
     blank_mean, blank_noise, _blank_gradient = map(float, blank)
     picture_level = float(
         np.percentile(y[spec.pass_lo : spec.pass_hi + 1, 40:680], 90.0)
     )
     amplitude_reference = max(picture_level - blank_mean, 8.0 * blank_noise)
     edge_gate = max(4.0 * blank_noise, 0.06 * amplitude_reference)
+    sustained = np.flatnonzero(active[:-2] & active[1:-1] & active[2:])
+    raw_active_top = spec.pass_lo + int(sustained[0]) if sustained.size else spec.field_hi
     scan_lo = spec.insert_row
     scan_hi = min(spec.field_hi, spec.pass_lo + 13)
     candidates: list[CEA608Waveform] = []
@@ -358,6 +392,13 @@ def scan_cea608_waveforms(y: np.ndarray, spec: FieldSpec) -> list[CEA608Waveform
     best_indexes = np.argmax(scores + hits * 1.0e-9, axis=1)
 
     for local, row in enumerate(range(scan_lo, scan_hi)):
+        # Once three sustained picture-like rows establish the raw top, later
+        # periodic texture is picture, not a VBI candidate.  The row beginning
+        # that sustained run is itself picture.  A smeared two-row VBI pair can
+        # make the run begin one row before the waveform, so the single row
+        # immediately after it remains eligible.
+        if row == raw_active_top or row > raw_active_top + 1:
+            continue
         best_index = int(best_indexes[local])
         best_score = float(scores[local, best_index])
         best_end = float(_WAVE_PHASES[best_index])
@@ -391,7 +432,20 @@ def scan_cea608_waveforms(y: np.ndarray, spec: FieldSpec) -> list[CEA608Waveform
         grid = float(np.mean(grid_energy)) if grid_energy else 0.0
         off_grid = float(np.mean(off_grid_energy)) if off_grid_energy else 0.0
         cell_ratio = grid / off_grid if off_grid > 0.0 else math.inf
-        candidates.append(CEA608Waveform(row, best_score, start_score, cell_ratio))
+        data = y[row, 220:680].astype(np.float64, copy=False)
+        low_gate = blank_mean + 0.25 * amplitude_reference
+        data_low_fraction = float(np.mean(data < low_gate))
+        if data_low_fraction < 0.20:
+            continue
+        candidates.append(
+            CEA608Waveform(
+                row,
+                best_score,
+                start_score,
+                cell_ratio,
+                data_low_fraction,
+            )
+        )
 
     # Collapse vertical smear to the row carrying the strongest periodic clock.
     selected: list[CEA608Waveform] = []
@@ -404,11 +458,10 @@ def scan_cea608_waveforms(y: np.ndarray, spec: FieldSpec) -> list[CEA608Waveform
             selected.append(candidate)
     insert = [item for item in selected if item.row == spec.insert_row]
     off_insert = [item for item in selected if item.row != spec.insert_row]
-    # Picture texture can accidentally resemble a short periodic sequence.  In
-    # the top interval, the tape-carried VBI waveform is the first independent
-    # waveform below the regenerated insert; later isolated matches are not
-    # promoted through already-established picture.
-    return insert + off_insert[:1]
+    # Keep every structural candidate.  Consumers may only promote an
+    # off-insert waveform when it is unique; truncating this list would turn an
+    # ambiguous field into a false unique authority.
+    return insert + off_insert
 
 
 def measure_bottom_h_phase(
@@ -443,6 +496,58 @@ def measure_bottom_h_phase(
     second = ordered[1][1]
     ratio = best / second if second > 0.0 else (0.0 if best == 0.0 else math.inf)
     return best_shift, best, second, ratio
+
+
+def measure_chroma_deviation(raster: np.ndarray) -> np.ndarray:
+    """Return per-row mean absolute chroma distance from regenerated neutral."""
+    u = raster[:, 0::4].astype(np.float32)
+    v = raster[:, 2::4].astype(np.float32)
+    return (np.abs(u - 128.0).mean(axis=1) + np.abs(v - 128.0).mean(axis=1)) / 2.0
+
+
+def measure_last_recorded(
+    deviation: np.ndarray, spec: FieldSpec
+) -> tuple[int, int, float, float]:
+    """Locate the last decoder-originated row from chroma offset/noise.
+
+    Regenerated blanking is the per-field reference. Decoder-originated rows
+    retain chroma offset or analog noise even when their luma is black.
+    """
+    regenerated = deviation[spec.blank_lo : spec.blank_hi]
+    centre = float(np.median(regenerated))
+    noise = max(
+        0.05,
+        1.4826 * float(np.median(np.abs(regenerated - centre))),
+    )
+    gate = centre + 6.0 * noise
+    candidates = np.flatnonzero(
+        deviation[spec.pass_lo : spec.pass_hi + 1] > gate
+    )
+    if not candidates.size:
+        return -1, 0, math.nan, gate
+    row = spec.pass_lo + int(candidates[-1])
+    return row, 1, float(deviation[row]), gate
+
+
+def measure_flat_raster(y: np.ndarray, spec: FieldSpec) -> tuple[int, float, float, float, float]:
+    """Conservatively classify a spatially flat field against its own blanking."""
+    body = _box8(y[spec.body_lo : spec.body_hi, 40:680].astype(np.float32))
+    blank = _box8(y[spec.blank_lo : spec.blank_hi, 40:680].astype(np.float32))
+    body_horizontal = np.abs(np.diff(body, axis=1)).ravel()
+    body_vertical = np.abs(np.diff(body, axis=0)).ravel()
+    blank_horizontal = np.abs(np.diff(blank, axis=1)).ravel()
+    blank_vertical = np.abs(np.diff(blank, axis=0)).ravel()
+
+    def reading_and_gate(values: np.ndarray, reference: np.ndarray) -> tuple[float, float]:
+        reading = float(np.percentile(values, 90.0))
+        centre = float(np.median(reference))
+        gate = float(np.percentile(reference, 90.0)) + 6.0 * _robust_noise(reference)
+        return reading, max(gate, centre)
+
+    horizontal, horizontal_gate = reading_and_gate(body_horizontal, blank_horizontal)
+    vertical, vertical_gate = reading_and_gate(body_vertical, blank_vertical)
+    flat = int(horizontal <= horizontal_gate and vertical <= vertical_gate)
+    return flat, horizontal, vertical, horizontal_gate, vertical_gate
 
 
 _RUN_LO = 10
@@ -669,15 +774,24 @@ class Oracle:
             RASTER_LINES, LINE_BYTES
         )
         y = raster[:, 1::2]
+        chroma_deviation = measure_chroma_deviation(raster)
         measured_fields: list[FieldMeasurement] = []
         for spec in FIELD_SPECS:
+            captions = scan_cea608(y, spec)
             waveforms = scan_cea608_waveforms(y, spec)
             waveform_rows = {item.row for item in waveforms}
-            envelope = measure_envelope(y, spec, waveform_rows)
-            captions = scan_cea608(y, spec)
+            parity_rows = {item[0] for item in captions}
+            envelope = measure_envelope(y, spec, waveform_rows | parity_rows)
             off_insert = [item for item in captions if item[0] != spec.insert_row]
+            off_insert_waveforms = [
+                item for item in waveforms if item.row != spec.insert_row
+            ]
             unique = off_insert[0] if len(off_insert) == 1 else None
-            if unique is not None and envelope["top_row"] < unique[0] + 2:
+            if len(off_insert_waveforms) > 1:
+                envelope["top_status"] = "vbi_ambiguous"
+                envelope["top_valid"] = 0
+                envelope["height_valid"] = 0
+            elif unique is not None and envelope["top_row"] < unique[0] + 2:
                 envelope["top_status"] = "vbi_ambiguous"
                 envelope["top_valid"] = 0
                 envelope["height_valid"] = 0
@@ -686,6 +800,8 @@ class Oracle:
             bottom_h = measure_bottom_h_phase(
                 y, int(envelope["top_row"]), int(envelope["bottom_row"])
             )
+            recorded = measure_last_recorded(chroma_deviation, spec)
+            flat = measure_flat_raster(y, spec)
             repeated = int(
                 self.previous is not None
                 and np.array_equal(
@@ -709,6 +825,15 @@ class Oracle:
                     bottom_h_mad=bottom_h[1],
                     bottom_h_second_mad=bottom_h[2],
                     bottom_h_ratio=bottom_h[3],
+                    last_recorded_line=_line(recorded[0]),
+                    last_recorded_valid=recorded[1],
+                    last_recorded_chroma_deviation=recorded[2],
+                    regenerated_chroma_gate=recorded[3],
+                    flat_raster=flat[0],
+                    body_horizontal_p90=flat[1],
+                    body_vertical_p90=flat[2],
+                    flat_horizontal_gate=flat[3],
+                    flat_vertical_gate=flat[4],
                     cc_waveform_lines=" ".join(str(_line(item.row)) for item in waveforms),
                     cc_waveform_scores=" ".join(
                         f"{item.runin_score:.6f}" for item in waveforms
