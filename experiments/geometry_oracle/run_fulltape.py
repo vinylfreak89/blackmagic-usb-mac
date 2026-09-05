@@ -33,6 +33,9 @@ def census(path: Path, elapsed_seconds: float) -> list[str]:
         field: Counter(
             {
                 "top_measurable": 0,
+                "recorded_top": 0,
+                "picture_top": 0,
+                "black_band": 0,
                 "line21_any": 0,
                 "cc_waveform_any": 0,
                 "line21_unique_off_insert": 0,
@@ -77,6 +80,9 @@ def census(path: Path, elapsed_seconds: float) -> list[str]:
                 prefix = f"f{field}_"
                 top_status[field][row[prefix + "top_status"]] += 1
                 totals[field]["top_measurable"] += int(row[prefix + "top_valid"])
+                totals[field]["recorded_top"] += int(row[prefix + "recorded_top_valid"])
+                totals[field]["picture_top"] += int(row[prefix + "picture_top_valid"])
+                totals[field]["black_band"] += int(row[prefix + "black_band_valid"])
                 totals[field]["line21_any"] += int(bool(row[prefix + "line21_lines"].strip()))
                 totals[field]["cc_waveform_any"] += int(
                     bool(row[prefix + "cc_waveform_lines"].strip())
@@ -128,16 +134,18 @@ def census(path: Path, elapsed_seconds: float) -> list[str]:
         "Four device-short periods precede the first exact unit. The three short periods inside",
         "the exact-unit span remain visible as ordinal holes rather than shifting event labels.",
         "",
-        "| Field | Measurable top | Any 608 waveform | Any parity-decoded 608 | Unique off-insert tape 608 | "
-        "Black-gap line | Exact bottom | Exact height | Last recorded | Flat raster | Exact repeat |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Field | Recorded top | Picture top | Any 608 waveform | Any parity-decoded 608 | "
+        "Unique off-insert tape 608 | Black band | Exact bottom | Exact height | Last recorded | "
+        "Flat raster | Exact repeat |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for field in (1, 2):
         item = totals[field]
         lines.append(
-            f"| {field} | {item['top_measurable']:,} | {item['cc_waveform_any']:,} | "
+            f"| {field} | {item['recorded_top']:,} | {item['picture_top']:,} | "
+            f"{item['cc_waveform_any']:,} | "
             f"{item['line21_any']:,} | "
-            f"{item['line21_unique_off_insert']:,} | {item['gap']:,} | "
+            f"{item['line21_unique_off_insert']:,} | {item['black_band']:,} | "
             f"{item['bottom_exact']:,} | {item['height_valid']:,} | "
             f"{item['last_recorded']:,} | {item['flat_raster']:,} | "
             f"{item['repeat']:,} |"

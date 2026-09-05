@@ -13,9 +13,15 @@ unit from that unit's raster.
 
 ## Independent measurements
 
-- **Top edge:** `active_top_line` is the first of three consecutive active rows in a field's
-  pass-through region; it is retained so the raw activity decision is auditable.  `top_line`
-  excludes a uniquely measured flat black gap immediately before the picture.
+- **Top edges:** `active_top_line` is the first of three consecutive active rows in a field's
+  pass-through region and remains as an auditable raw channel. `recorded_top_line` is the first
+  such sustained row whose chroma offset/noise identifies it as decoder-originated rather than
+  regenerated. A detected 608 waveform cannot become either top. `picture_top_line` is normally
+  the recorded top. When the leading recorded row(s) are black—luma within 12 codes of the
+  field's blanking and row standard deviation below 8—and are directly followed by sustained
+  non-black picture, the CSV reports both `black_band_start_line` and
+  `black_band_picture_start_line`; picture top is the latter. The compatibility `top_line` field
+  is an alias of `picture_top_line`.
   Activity is measured relative to that field's own blanking rows using row mean, spatial spread,
   and horizontal gradient.  A unique flat dark transition immediately before two active rows is
   identified separately as tape line 22 and excluded from the picture.  If a decoded tape line 21
@@ -49,10 +55,11 @@ unit from that unit's raster.
   waveform is represented by its strongest row. `cc_parity_lines` separately reports rows whose
   two bytes decode with odd parity; parity is not required to classify a row as VBI. The legacy
   `line21_*` columns retain the parity-decoded tape landmark and implied RP-202 top.
-- **Black line 22:** the unique flat row in the first twelve pass-through rows followed by two
-  active rows and separated from them by more than the measured blanking noise.  Its absolute
-  luma is not fixed.  The coincident Shuttle line 22 is outside the scan and supplies no tape
-  evidence.
+- **Black line 22:** only a black band anchored at the measured recorded-region onset can be tape
+  line 22. The older search across the first twelve pass-through rows was rejected because it
+  could call a dim row inside real picture a gap. The band and picture edges are both retained;
+  the row alone does not claim whether a source used that line as black or active picture. The
+  coincident Shuttle line 22 is outside the pass-through scan and supplies no tape evidence.
 - **Same-field temporal witness:** integer vertical shift −3…+3 minimizing MAD over a safe
   160-line body after an eight-pixel horizontal box filter.  The CSV reports the best and
   second-best MAD, their ratio, uniqueness, and an adaptively measured static-pixel fraction;
@@ -134,3 +141,5 @@ off-insert waveform implies picture on the following line; when the independentl
 tape gap is immediately after that waveform, picture begins two lines after it instead. Outputs
 are `summary.md`, a per-field `verdicts.csv`, and exhaustive
 `disagreements.csv`/`forbidden.csv` files. Existing output directories are never overwritten.
+Geometry verdicts use `picture_top_line`; every verdict row also carries the recorded top and
+black-band edges so their distinction remains auditable.

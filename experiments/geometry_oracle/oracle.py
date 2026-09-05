@@ -34,6 +34,8 @@ LUMA_SAMPLES = 720
 MARKER = b"\x00\x00\xff\xff"
 FORMAT_NTSC_UYVY = 0xE801
 CELL_PIXELS = 1.986e-6 * 13.5e6
+BLACK_LEVEL_DISTANCE = 12.0
+BLACK_STD_LIMIT = 8.0
 
 
 @dataclass(frozen=True)
@@ -61,6 +63,13 @@ class FieldMeasurement:
     blank_mean: float
     blank_noise: float
     active_top_line: int
+    recorded_top_line: int
+    recorded_top_valid: int
+    picture_top_line: int
+    picture_top_valid: int
+    black_band_start_line: int
+    black_band_picture_start_line: int
+    black_band_valid: int
     top_line: int
     top_valid: int
     top_status: str
@@ -114,6 +123,13 @@ class UnitMeasurement:
     f1_blank_mean: float
     f1_blank_noise: float
     f1_active_top_line: int
+    f1_recorded_top_line: int
+    f1_recorded_top_valid: int
+    f1_picture_top_line: int
+    f1_picture_top_valid: int
+    f1_black_band_start_line: int
+    f1_black_band_picture_start_line: int
+    f1_black_band_valid: int
     f1_top_line: int
     f1_top_valid: int
     f1_top_status: str
@@ -158,6 +174,13 @@ class UnitMeasurement:
     f2_blank_mean: float
     f2_blank_noise: float
     f2_active_top_line: int
+    f2_recorded_top_line: int
+    f2_recorded_top_valid: int
+    f2_picture_top_line: int
+    f2_picture_top_valid: int
+    f2_black_band_start_line: int
+    f2_black_band_picture_start_line: int
+    f2_black_band_valid: int
     f2_top_line: int
     f2_top_valid: int
     f2_top_status: str
@@ -252,28 +275,26 @@ def measure_row_activity(y: np.ndarray, spec: FieldSpec) -> tuple[np.ndarray, ..
     )
 
 
-def _is_gap(
+def _is_recorded_black(
     index: int,
     means: np.ndarray,
-    gradients: np.ndarray,
-    active: np.ndarray,
-    blank_gradient: float,
-    blank_noise: float,
+    stds: np.ndarray,
+    blank_mean: float,
 ) -> bool:
-    if index + 2 >= len(means) or not active[index + 1] or not active[index + 2]:
-        return False
-    following = min(float(means[index + 1]), float(means[index + 2]))
-    contrast = following - float(means[index])
-    flat_gate = max(2.0, 4.0 * blank_gradient)
-    contrast_gate = max(8.0, 6.0 * blank_noise)
-    return float(gradients[index]) <= flat_gate and contrast >= contrast_gate
+    return (
+        abs(float(means[index]) - blank_mean) <= BLACK_LEVEL_DISTANCE
+        and float(stds[index]) < BLACK_STD_LIMIT
+    )
 
 
 def measure_envelope(
-    y: np.ndarray, spec: FieldSpec, vbi_rows: set[int] | None = None
+    y: np.ndarray,
+    spec: FieldSpec,
+    vbi_rows: set[int] | None = None,
+    recorded_rows: np.ndarray | None = None,
 ) -> dict[str, object]:
-    means, _stds, gradients, active, blank, _gates = measure_row_activity(y, spec)
-    blank_mean, blank_noise, blank_gradient = map(float, blank)
+    means, stds, _gradients, active, blank, _gates = measure_row_activity(y, spec)
+    blank_mean, blank_noise, _blank_gradient = map(float, blank)
 
     picture_active = active.copy()
     for row in vbi_rows or ():
@@ -281,25 +302,44 @@ def measure_envelope(
         if 0 <= index < len(picture_active):
             picture_active[index] = False
 
-    run_starts = [
+    active_run_starts = [
         i
         for i in range(0, len(picture_active) - 2)
         if bool(picture_active[i] and picture_active[i + 1] and picture_active[i + 2])
     ]
-    active_top_index = run_starts[0] if run_starts else -1
-    top_index = active_top_index
-
-    # A tape-carried black line 22 is the last flat, dark transition directly
-    # before two picture-bearing rows.  The fixed Shuttle row is outside this
-    # pass-through scan and therefore cannot impersonate tape evidence.
-    gap_indexes = [
-        i
-        for i in range(min(12, len(means) - 2))
-        if _is_gap(i, means, gradients, picture_active, blank_gradient, blank_noise)
+    active_top_index = active_run_starts[0] if active_run_starts else -1
+    if recorded_rows is not None and len(recorded_rows) != len(picture_active):
+        raise ValueError("recorded-row mask length does not match pass-through region")
+    recorded_run_starts = [
+        index
+        for index in active_run_starts
+        if recorded_rows is None or bool(recorded_rows[index])
     ]
-    gap_index = gap_indexes[-1] if len(gap_indexes) == 1 else -1
-    if gap_index >= 0:
-        top_index = gap_index + 1
+    recorded_top_index = recorded_run_starts[0] if recorded_run_starts else -1
+
+    # Only the leading recorded row(s) can be the tape's black line 22.  The
+    # old scan searched the first twelve lines and could reinterpret a dim row
+    # inside real picture as a gap.  Preserve both measured edges: onset of the
+    # recorded band and onset of non-black picture.
+    picture_top_index = recorded_top_index
+    black_band_index = -1
+    if recorded_top_index >= 0 and _is_recorded_black(
+        recorded_top_index, means, stds, blank_mean
+    ):
+        candidate = recorded_top_index
+        while candidate < len(means) and _is_recorded_black(
+            candidate, means, stds, blank_mean
+        ):
+            candidate += 1
+        if (
+            candidate + 1 < len(means)
+            and picture_active[candidate]
+            and picture_active[candidate + 1]
+        ):
+            black_band_index = recorded_top_index
+            picture_top_index = candidate
+        else:
+            picture_top_index = -1
 
     # The bottom is the last picture-bearing row measured in this unit.  It is
     # not censored by a fixture-derived head-switch corridor: horizontally
@@ -307,24 +347,43 @@ def measure_envelope(
     bottom_indexes = np.flatnonzero(picture_active)
     bottom_index = int(bottom_indexes[-1]) if bottom_indexes.size else -1
 
-    top_row = spec.pass_lo + top_index if top_index >= 0 else -1
+    recorded_top_row = (
+        spec.pass_lo + recorded_top_index if recorded_top_index >= 0 else -1
+    )
+    picture_top_row = (
+        spec.pass_lo + picture_top_index if picture_top_index >= 0 else -1
+    )
     bottom_row = spec.pass_lo + bottom_index if bottom_index >= 0 else -1
     bottom_valid = int(bottom_row >= 0)
-    top_valid = int(top_row >= 0)
-    height = bottom_row - top_row + 1 if top_row >= 0 and bottom_row >= top_row else -1
+    top_valid = int(picture_top_row >= 0)
+    height = (
+        bottom_row - picture_top_row + 1
+        if picture_top_row >= 0 and bottom_row >= picture_top_row
+        else -1
+    )
     return {
         "blank_mean": blank_mean,
         "blank_noise": blank_noise,
         "active_top_row": spec.pass_lo + active_top_index if active_top_index >= 0 else -1,
-        "top_row": top_row,
+        "recorded_top_row": recorded_top_row,
+        "recorded_top_valid": int(recorded_top_row >= 0),
+        "picture_top_row": picture_top_row,
+        "picture_top_valid": top_valid,
+        "black_band_start_row": (
+            spec.pass_lo + black_band_index if black_band_index >= 0 else -1
+        ),
+        "black_band_picture_start_row": picture_top_row if black_band_index >= 0 else -1,
+        "black_band_valid": int(black_band_index >= 0),
+        # Compatibility aliases: all verdict logic uses picture_top explicitly.
+        "top_row": picture_top_row,
         "top_valid": top_valid,
         "top_status": "measured" if top_valid else "unmeasurable",
         "bottom_row": bottom_row,
         "bottom_valid": bottom_valid,
         "height": height,
         "height_valid": int(top_valid and bottom_valid),
-        "gap_row": spec.pass_lo + gap_index if gap_index >= 0 else -1,
-        "gap_valid": int(gap_index >= 0),
+        "gap_row": spec.pass_lo + black_band_index if black_band_index >= 0 else -1,
+        "gap_valid": int(black_band_index >= 0),
     }
 
 
@@ -505,6 +564,20 @@ def measure_chroma_deviation(raster: np.ndarray) -> np.ndarray:
     return (np.abs(u - 128.0).mean(axis=1) + np.abs(v - 128.0).mean(axis=1)) / 2.0
 
 
+def measure_recorded_rows(
+    deviation: np.ndarray, spec: FieldSpec
+) -> tuple[np.ndarray, float]:
+    """Classify decoder-originated pass-through rows from chroma offset/noise."""
+    regenerated = deviation[spec.blank_lo : spec.blank_hi]
+    centre = float(np.median(regenerated))
+    noise = max(
+        0.05,
+        1.4826 * float(np.median(np.abs(regenerated - centre))),
+    )
+    gate = centre + 6.0 * noise
+    return deviation[spec.pass_lo : spec.pass_hi + 1] > gate, gate
+
+
 def measure_last_recorded(
     deviation: np.ndarray, spec: FieldSpec
 ) -> tuple[int, int, float, float]:
@@ -513,16 +586,8 @@ def measure_last_recorded(
     Regenerated blanking is the per-field reference. Decoder-originated rows
     retain chroma offset or analog noise even when their luma is black.
     """
-    regenerated = deviation[spec.blank_lo : spec.blank_hi]
-    centre = float(np.median(regenerated))
-    noise = max(
-        0.05,
-        1.4826 * float(np.median(np.abs(regenerated - centre))),
-    )
-    gate = centre + 6.0 * noise
-    candidates = np.flatnonzero(
-        deviation[spec.pass_lo : spec.pass_hi + 1] > gate
-    )
+    recorded, gate = measure_recorded_rows(deviation, spec)
+    candidates = np.flatnonzero(recorded)
     if not candidates.size:
         return -1, 0, math.nan, gate
     row = spec.pass_lo + int(candidates[-1])
@@ -781,7 +846,10 @@ class Oracle:
             waveforms = scan_cea608_waveforms(y, spec)
             waveform_rows = {item.row for item in waveforms}
             parity_rows = {item[0] for item in captions}
-            envelope = measure_envelope(y, spec, waveform_rows | parity_rows)
+            recorded_rows, _recorded_gate = measure_recorded_rows(chroma_deviation, spec)
+            envelope = measure_envelope(
+                y, spec, waveform_rows | parity_rows, recorded_rows
+            )
             off_insert = [item for item in captions if item[0] != spec.insert_row]
             off_insert_waveforms = [
                 item for item in waveforms if item.row != spec.insert_row
@@ -814,6 +882,15 @@ class Oracle:
                     blank_mean=float(envelope["blank_mean"]),
                     blank_noise=float(envelope["blank_noise"]),
                     active_top_line=_line(int(envelope["active_top_row"])),
+                    recorded_top_line=_line(int(envelope["recorded_top_row"])),
+                    recorded_top_valid=int(envelope["recorded_top_valid"]),
+                    picture_top_line=_line(int(envelope["picture_top_row"])),
+                    picture_top_valid=int(envelope["picture_top_valid"]),
+                    black_band_start_line=_line(int(envelope["black_band_start_row"])),
+                    black_band_picture_start_line=_line(
+                        int(envelope["black_band_picture_start_row"])
+                    ),
+                    black_band_valid=int(envelope["black_band_valid"]),
                     top_line=_line(int(envelope["top_row"])),
                     top_valid=int(envelope["top_valid"]),
                     top_status=str(envelope["top_status"]),

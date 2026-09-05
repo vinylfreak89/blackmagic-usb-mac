@@ -28,6 +28,7 @@ from oracle import (
     measure_envelope,
     measure_flat_raster,
     measure_last_recorded,
+    measure_recorded_rows,
     measure_row_activity,
     scan_cea608_waveforms,
 )
@@ -53,6 +54,8 @@ class GeometryOracleTest(unittest.TestCase):
         y = raster()
         y[21:250, 40:680] = 80
         measured = measure_envelope(y, FIELD_SPECS[0])
+        self.assertEqual(measured["recorded_top_row"], 21)
+        self.assertEqual(measured["picture_top_row"], 21)
         self.assertEqual(measured["top_row"], 21)
         self.assertEqual(measured["bottom_row"], 249)
         self.assertEqual(measured["height_valid"], 1)
@@ -63,8 +66,31 @@ class GeometryOracleTest(unittest.TestCase):
         y[21:255, 40:680] = 90
         measured = measure_envelope(y, FIELD_SPECS[0])
         self.assertEqual(measured["active_top_row"], 20)
+        self.assertEqual(measured["recorded_top_row"], 20)
+        self.assertEqual(measured["black_band_start_row"], 20)
+        self.assertEqual(measured["black_band_picture_start_row"], 21)
+        self.assertEqual(measured["picture_top_row"], 21)
         self.assertEqual(measured["gap_row"], 20)
         self.assertEqual(measured["top_row"], 21)
+
+    def test_dim_row_inside_picture_is_not_reinterpreted_as_gap(self) -> None:
+        y = raster()
+        y[19:255, 40:680] = 90
+        y[21, 40:680] = 25
+        measured = measure_envelope(y, FIELD_SPECS[0])
+        self.assertEqual(measured["recorded_top_row"], 19)
+        self.assertEqual(measured["picture_top_row"], 19)
+        self.assertEqual(measured["black_band_valid"], 0)
+
+    def test_recorded_mask_rejects_regenerated_activity_before_picture(self) -> None:
+        y = raster()
+        y[19:255, 40:680] = 90
+        recorded = np.ones(FIELD_SPECS[0].pass_hi - FIELD_SPECS[0].pass_lo + 1, dtype=bool)
+        recorded[0] = False
+        measured = measure_envelope(y, FIELD_SPECS[0], recorded_rows=recorded)
+        self.assertEqual(measured["active_top_row"], 19)
+        self.assertEqual(measured["recorded_top_row"], 20)
+        self.assertEqual(measured["picture_top_row"], 20)
 
     def test_last_active_head_switch_row_is_measured_picture(self) -> None:
         y = raster()
@@ -94,6 +120,11 @@ class GeometryOracleTest(unittest.TestCase):
         self.assertEqual(row, 258)
         self.assertEqual(valid, 1)
         self.assertGreater(deviation, gate)
+        recorded, same_gate = measure_recorded_rows(
+            measure_chroma_deviation(packed), FIELD_SPECS[0]
+        )
+        self.assertEqual(int(recorded.sum()), 240)
+        self.assertEqual(gate, same_gate)
 
     def test_flat_raster_is_relative_to_own_blanking(self) -> None:
         y = raster()
