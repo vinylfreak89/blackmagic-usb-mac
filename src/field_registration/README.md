@@ -200,6 +200,9 @@ place only after a unique field-1 CEA-608 line agrees with it; one disagreement
 rejects it until signal relock.
 This prevents a source carrying active video on line 22 from treating the
 Shuttle's fixed black line as tape motion.
+Authorizing the gauge clears any relative comb correction inferred from the
+older provisional crops; comb may establish a new correction against the
+physical-gauge baseline after its ordinary three-reading guard.
 
 The row also records `parity_state` (Uncalibrated/Calibrated; `Drift` remains
 an ABI name but is not produced by this policy). `comb_input_*` is the

@@ -1721,7 +1721,18 @@ bool fieldreg_process_ex(field_registration *engine,
     field_measurement m[2];
     measure_field(raster, 0, &m[0]);
     measure_field(raster, 1, &m[1]);
+    const fieldreg_gap_state gap_before = engine->gap_state;
     update_gap_gate(engine, m);
+    if (gap_before != FIELDREG_GAP_ENABLED &&
+        engine->gap_state == FIELDREG_GAP_ENABLED) {
+        /* A relative correction is defined against the ordinary crops that
+         * existed when it was inferred. Authorizing a physical gap gauge can
+         * change either crop on this unit; discard that stale overlay and let
+         * the canonical comb re-establish one from the new baseline. */
+        engine->comb_correction = 0;
+        engine->comb_correction_candidate = FIELDREG_UNKNOWN;
+        engine->comb_correction_candidate_count = 0;
+    }
     measure_body(raster, 0, engine->previous_luma,
                  engine->previous_luma_valid, &engine->field[0], &m[0]);
     measure_body(raster, 1, engine->previous_luma,
