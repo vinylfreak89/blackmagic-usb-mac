@@ -1577,6 +1577,54 @@ delivery edge; wrong one at acquisition.
   no whole-tape re-render except for sanity checks; every non-locked state outside true signal
   loss or a cut is audited against the raw raster before hand-over. The published v9 pair stays
   as the sanity baseline; it is not accepted.
+  **✅ v9 rounds 4–8 (`render-live` `490877b`, merged to main `cb1b4ed` 2026-09-05, Codex wrote, Claude measured on
+  the raw raster; docs/registration_v9_plan.md carries the round-by-round record).** After the
+  owner's review of the first v9 render, every remaining bounce was measured on the 525-line
+  raster with two raw instruments — `experiments/follow_audit.py` (unit-to-unit body shift vs
+  applied crop; relative, indicative only: a late correction scores as engine motion) and
+  `experiments/relative_comb_audit.py` (static-region comb of the PUBLISHED crops per unit;
+  absolute; the acceptance figure together with the parity truth join `v9_acceptance.py`) —
+  and fixed with failing-first goldens (122 → 186). What changed in the engine, in order:
+  a 2-D body witness (rows 40–199 / 303–462, integer shifts −3..+3, reliable only when
+  MAD(best)/MAD(second) ≤ 0.8 — measured against caption truth: a reading below 0.8 is wrong in
+  ~1 of 500 units, but 15–17% of true moves lie above it, so a tied witness ABSTAINS and never
+  becomes a hold) anchored on the previous unit's measured position, never on the last applied
+  crop (a wrong hold no longer latches); the picture wins over the caption in both directions
+  when a reliable witness contradicts it (`CaptionOnlyMotion` / `CaptionBodyDisagree`, ~30
+  units on the tape, each recorded with its body evidence); a top edge that moves against a
+  reliable still body never moves the crop (first-visible-line flicker); on a tied body a
+  measurable comb decides (`TopCombCorroborated` / `TopCombVetoed`) and a flat comb leaves the
+  top to place (`TopOnly`); the segment zero is a constant re-anchored only on three
+  consecutive identical gauge readings and bounded to the standard origin ±3 (this recording's
+  line 22 carries flickering video, which had flipped field 1's zero 23↔22 320 times); field 2's
+  zero, which has no parity gauge in the first recording, is calibrated once per segment by
+  static comb against a parity-placed field 1 with field 2 actually on its zero, from observed
+  geometry (an earlier version integrated from the current zero and walked 4 → 41 lines at
+  minute 43), comb thereafter a consistency check only, eight stable disagreements → `Drift` →
+  recalibrate; a byte hole keeps installed zeros. Two rules were falsified on the tape and
+  reversed: "d1 − d2 is a segment constant" (field 1 jitters independently; the constant is
+  field 2's zero) and "the top alone never moves the crop" (it suppressed 2,616 caption
+  placements). Whole tape at `490877b`: 86,293/86,293, zero drops; parity acceptance field 1
+  40,208 agree + 29 evidence-checked vetoes + 0 disagreements, field 2 24 + 1 + 0; comb
+  misregistered **1,052** of 86,293 unit pairs (`a683926` 1,889; `2efc416` ~3,700 by the old
+  rule) with 30,213 flat; Calibrated 82,051, bias 0/+1/+2 only; engine 1.35 ms median /
+  1.37 p95 per unit, state 168,096 bytes. **Not built:** a raster-damage state — Codex's census
+  at the owner's torn units (ordinals 62322–62326) found the Shuttle inserts decoding, tops
+  measurable, body MAD 5.7–11.1 and the same morphology in the neighbours; no observable
+  separates them, so no threshold was tuned to ordinals (owner decision owed). **Instrument
+  review (Codex, ten findings, seven fixed):** one static mask at the previous unit's own crops,
+  uniqueness required for "registered", fail-closed readers, gated content-motion,
+  complete-coverage and evidence-checked vetoes in the acceptance.
+  **Open after the merge (round 9):** one class remains, minute 43 (715 of 1,798 units one
+  line off): with no caption for ~1,740 units both fields' measured tops sit one line below
+  what their zeros predict, because this recording's blank lines 22 and 285 carry intermittent
+  video and the picture top is one line ambiguous; `d = top − zero` inherits it whatever the
+  zero. Claude's body-primary tracking proposal was falsified by Codex's offline simulation
+  (accumulated reliable body shifts drift to (34,36): the witness proves a content match, not
+  raster displacement). Accepted design, in progress: a bounded RELATIVE crop correction
+  installed after three decisive static-comb readings, computed from the current crops, never
+  an incremented zero, persisted across flat units, cleared on signal-lock loss.
+
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
   out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio
