@@ -862,7 +862,7 @@ dropout or RF noise that makes the bottom edge unstable is the "keep the previou
 re-evaluate when it restabilises" case. The ruling on damage therefore reduces to something the
 raster decides; no owner ruling is needed per unit.
 
-## The 34:14–34:43 passage classified on the raw (2026-09-06 02:20 JST, owner and Claude)
+## The 34:14–34:43 passage classified on the raw (2026-09-06 01:43 JST, owner and Claude)
 
 Every unit from 61,586 to 62,440 looked at or measured (per-band vertical shifts, field-1 vs
 field-2 horizontal offset, left-blanking width). Findings, all NTSC lines:
