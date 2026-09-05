@@ -1,13 +1,17 @@
 # Registration engine archaeology
 
-Part I: how the field-registration engine went through nine versions in six days (2026-08-29 to
-2026-09-04), how it derailed, and how it came back. Part II: how the ninth engine was then built
-on the inverted premise and patched fourteen times in thirty hours before the owner stopped it
-(2026-09-05). Merged from two independent excavations,
-Claude's (from git, the CLAUDE.md narrative as written at each stage, and its session transcript)
-and Codex's (from git and its own rollout records); the few places they disagreed are listed at
-the end. Times are JST. Every number below is traceable to a commit, a surviving measurement file
-or a timestamped transcript line; the handful that are transcript-only say so.
+Two parts. Part I: nine engine versions in six days, one missed signal. Part II: the ninth
+engine built on the inverted premise and patched fourteen times in thirty hours before the owner
+stopped it. Each part is merged from two independent excavations, Claude's (from git, the
+CLAUDE.md narrative as written at each stage, and its session transcript) and Codex's (from git
+and its own rollout records); the places they disagreed are listed at the end of each part.
+Times are JST. Every number below is traceable to a commit, a surviving measurement file or a
+timestamped transcript line; the handful that are transcript-only say so.
+
+# Part I: nine versions, one missed signal — 2026-08-29 to 2026-09-04
+
+How the field-registration engine went through nine versions in six days, how it derailed, and
+how it came back.
 
 Attribution convention: **Owner** (Aaron) set the goals, reviewed every render, and asked the
 questions that changed direction. **Codex** wrote the C engine and all of its versions. **Claude**
