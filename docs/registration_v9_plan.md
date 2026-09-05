@@ -696,3 +696,17 @@ flat / 165 misregistered** (round 8: 1,052; v8: 326; +1 ×118, −1 ×32, +2 ×1
 field 1 engine-motion 1,190 / missed 2,031, field 2 181 / 2,998. Seven slices identical to
 Codex's table (minute-43 cold slice 295/20/3). Merged into main as `7254d58`, goldens 194/194
 on main. The one- to three-unit calibration latency of the three-reading rule is accepted.
+
+## Round 12 in progress (Codex, branch `round12-saved-geometry`, head `a1a91c8`, 17:38 JST)
+
+Red contract 194/205 → green; `TopOnly` removed from the vocabulary; tied/unmeasurable and
+comb-vetoed paths hold the last evidence snapshot (schema 10: saved crop, hold cause, run
+length, signed confirmation/replacement jump). Two regressions Codex caught itself on partial
+whole-tape logs and fixed red-to-green (212/212): parity placements whose display mode was
+`ZeroCandidate` were being turned into saved holds (evidence must be classified by gauge, not by
+mode name), and a reliable picture veto arriving during a hold was being hidden as a hold (it
+must clear the hold, update the good geometry and keep its veto name). Slices, comb
+misregistered: 35:00 0, 37:01 0, 05:00 2 (the two expected late corrections), 35:38 6, 01:26 9,
+45:00 0, minute-43 0, torn slice 0. The round-11 cost anomaly was contention: under identical
+load round 10 is 2.95 ms and round 12 2.97 ms engine median (+0.02 ms). Codex's definitive
+whole-tape pass is running; Claude's verification of `a1a91c8` started (eight slices + tape).
