@@ -91,3 +91,11 @@ zero. Three consecutive decisive `+1` static-comb readings install exactly
 one `+1` correction on field 2 when field 1 is parity-placed. Repeated `+1`
 readings cannot accumulate it. The correction survives a content/byte
 discontinuity, while `fieldreg_begin_segment()` (signal relock) clears it.
+
+Round 12 makes the last evidence-backed geometry distinct from presentation
+history. Parity, the field-2 envelope, reliable body-plus-top geometry, static
+comb corroboration/calibration, and a bounded relative correction may replace
+it. A tied or absent body with no decisive comb cannot: the published crop
+holds the saved geometry. The first later evidence row is named
+`SavedGeometryConfirmed` when it returns to the saved crop and
+`SavedGeometryReplaced` when it makes one signed move to a new crop.
