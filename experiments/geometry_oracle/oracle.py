@@ -173,7 +173,8 @@ def _box8(image: np.ndarray) -> np.ndarray:
     return image[:, :width].reshape(image.shape[0], width // 8, 8).mean(axis=2)
 
 
-def _row_metrics(y: np.ndarray, spec: FieldSpec) -> tuple[np.ndarray, ...]:
+def measure_row_activity(y: np.ndarray, spec: FieldSpec) -> tuple[np.ndarray, ...]:
+    """Return independent level/spread/gradient activity channels for a field."""
     active = y[spec.pass_lo : spec.pass_hi + 1, 40:680].astype(np.float32)
     blank = y[spec.blank_lo : spec.blank_hi, 40:680].astype(np.float32)
     blank_mean = float(np.median(blank))
@@ -196,6 +197,7 @@ def _row_metrics(y: np.ndarray, spec: FieldSpec) -> tuple[np.ndarray, ...]:
         gradients,
         is_active,
         np.array([blank_mean, blank_noise, blank_gradient], dtype=np.float32),
+        np.array([mean_gate, spread_gate, gradient_gate], dtype=np.float32),
     )
 
 
@@ -217,7 +219,7 @@ def _is_gap(
 
 
 def measure_envelope(y: np.ndarray, spec: FieldSpec) -> dict[str, object]:
-    means, _stds, gradients, active, blank = _row_metrics(y, spec)
+    means, _stds, gradients, active, blank, _gates = measure_row_activity(y, spec)
     blank_mean, blank_noise, blank_gradient = map(float, blank)
 
     run_starts = [
@@ -590,6 +592,32 @@ class StopWalk(Exception):
     pass
 
 
+class CounterOrdinal:
+    """Map sparse exact-unit counters to transport ordinals, including short holes."""
+
+    def __init__(self, base_ordinal: int = 0) -> None:
+        self.base_ordinal = base_ordinal
+        self.first_counter: int | None = None
+        self.previous_counter: int | None = None
+        self.counter_extended = 0
+
+    def observe(self, raw_counter: int, local_exact: int) -> int:
+        if self.first_counter is None:
+            self.first_counter = raw_counter
+            self.counter_extended = raw_counter
+        else:
+            assert self.previous_counter is not None
+            delta = (raw_counter - self.previous_counter) & 0xFFFF
+            if delta == 0 or delta >= 0x8000:
+                raise RuntimeError(
+                    f"counter is not strictly forward at exact unit {local_exact}: "
+                    f"{self.previous_counter}->{raw_counter}"
+                )
+            self.counter_extended += delta
+        self.previous_counter = raw_counter
+        return self.base_ordinal + self.counter_extended - self.first_counter
+
+
 def _plausible_header(buffer: bytearray, offset: int) -> bool:
     return (
         offset >= 0
@@ -675,11 +703,13 @@ def measure_file(
     selected: set[int] | None = None,
     allow_slice_boundary_provenance: bool = False,
     published_crops: dict[int, tuple[int, int]] | None = None,
+    ordinal_from_counter: bool = False,
 ) -> int:
     oracle = Oracle()
     output.parent.mkdir(parents=True, exist_ok=True)
     count = 0
     max_selected = max(selected) if selected else None
+    transport_ordinals = CounterOrdinal(base_ordinal)
     with output.open("w", newline="") as handle:
         writer = csv.DictWriter(
             handle,
@@ -690,7 +720,11 @@ def measure_file(
 
         def consume(unit: bytes, local_exact: int) -> None:
             nonlocal count
-            ordinal = base_ordinal + local_exact
+            raw_counter = struct.unpack_from("<H", unit, 4)[0]
+            if ordinal_from_counter:
+                ordinal = transport_ordinals.observe(raw_counter, local_exact)
+            else:
+                ordinal = base_ordinal + local_exact
             if published_crops is not None:
                 if ordinal not in published_crops:
                     raise RuntimeError(f"published-crop table has no row for ordinal {ordinal}")
@@ -755,6 +789,14 @@ def main(argv: Iterable[str] | None = None) -> int:
             "coordinates are NTSC lines"
         ),
     )
+    parser.add_argument(
+        "--ordinal-from-counter",
+        action="store_true",
+        help=(
+            "derive transport ordinal from the unwrapped 16-bit counter so device-short "
+            "periods remain visible as ordinal holes"
+        ),
+    )
     args = parser.parse_args(argv)
     selected = parse_ranges(args.select) if args.select else None
     count = measure_file(
@@ -766,6 +808,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         published_crops=load_published_crops(args.published_crops)
         if args.published_crops
         else None,
+        ordinal_from_counter=args.ordinal_from_counter,
     )
     print(f"oracle: wrote {count} rows to {args.output}")
     return 0
