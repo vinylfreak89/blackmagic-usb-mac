@@ -12,6 +12,8 @@ from pathlib import Path
 
 FIELDS = (1, 2)
 INSERT_LINES = {1: 21, 2: 284}
+STANDARD_STARTS = {1: 23, 2: 286}
+MAX_REPORTED_DISPLACEMENT = 12
 REFERENCE_REQUIRED = {
     "ordinal",
     "event",
@@ -24,6 +26,8 @@ REFERENCE_REQUIRED = {
         "top_valid",
         "top_status",
         "flat_raster",
+        "gap_line",
+        "gap_valid",
     )),
 }
 CROP_REQUIRED = {"ordinal", "published_f1_start", "published_f2_start"}
@@ -47,6 +51,7 @@ class ScoreResult:
     flat_none_counts: dict[int, int]
     transitions: dict[int, int]
     transitions_with_reference_change: dict[int, int]
+    out_of_raster: dict[int, int]
 
 
 def _read_unique(path: Path, required: set[str], label: str) -> dict[int, dict[str, str]]:
@@ -73,7 +78,16 @@ def _waveform_top(row: dict[str, str], field: int) -> int | None:
     text = row[f"f{field}_cc_waveform_lines"].strip()
     lines = [int(value) for value in text.split()] if text else []
     off_insert = [value for value in lines if value != INSERT_LINES[field]]
-    return off_insert[0] + 2 if len(off_insert) == 1 else None
+    if len(off_insert) != 1:
+        return None
+    waveform = off_insert[0]
+    # A black recorded line directly after the waveform is tape line 22, so
+    # RP-202 picture begins two lines later.  Without that intervening gap the
+    # waveform itself is recorded line 22/285 data and picture begins on the
+    # immediately following line.
+    if int(row[f"f{field}_gap_valid"]) and int(row[f"f{field}_gap_line"]) == waveform + 1:
+        return waveform + 2
+    return waveform + 1
 
 
 def authority_for(row: dict[str, str], field: int) -> Authority:
@@ -124,10 +138,12 @@ def score(
                     f"ordinal {ordinal} field {field}: non-integer crop "
                     f"{raw_crop[f'published_f{field}_start']!r}"
                 ) from error
-            raster_row = crop - 4
-            if not 0 <= raster_row <= 525 - 240:
+            displacement = crop - STANDARD_STARTS[field]
+            if abs(displacement) > MAX_REPORTED_DISPLACEMENT:
                 raise RuntimeError(
-                    f"ordinal {ordinal} field {field}: crop line {crop} does not fit 240 lines"
+                    f"ordinal {ordinal} field {field}: crop line {crop} is absurd "
+                    f"(displacement {displacement:+d}, limit "
+                    f"±{MAX_REPORTED_DISPLACEMENT})"
                 )
     if output_dir.exists():
         raise FileExistsError(output_dir)
@@ -141,6 +157,7 @@ def score(
     flat_none_counts = {1: 0, 2: 0}
     transitions = {1: 0, 2: 0}
     transitions_with_reference_change = {1: 0, 2: 0}
+    out_of_raster = {1: 0, 2: 0}
     forbidden_rows: list[dict[str, object]] = []
     verdict_rows: list[dict[str, object]] = []
     previous_crop: dict[int, int] = {}
@@ -161,6 +178,9 @@ def score(
             )
         for field in FIELDS:
             crop = int(raw_crop[f"published_f{field}_start"])
+            raster_row = crop - 4
+            crop_out_of_raster = not 0 <= raster_row <= 525 - 240
+            out_of_raster[field] += int(crop_out_of_raster)
             authority = authority_for(raw_reference, field)
             changed = field in previous_crop and crop != previous_crop[field]
             reference_changed = (
@@ -212,6 +232,7 @@ def score(
                     "published_changed": int(changed),
                     "reference_changed": int(reference_changed),
                     "flat_raster": raw_reference[f"f{field}_flat_raster"],
+                    "out_of_raster": int(crop_out_of_raster),
                 }
             )
             previous_crop[field] = crop
@@ -248,6 +269,7 @@ def score(
         flat_none_counts=flat_none_counts,
         transitions=transitions,
         transitions_with_reference_change=transitions_with_reference_change,
+        out_of_raster=out_of_raster,
     )
     _write_summary(output_dir / "summary.md", result)
     return result
@@ -284,15 +306,16 @@ def _write_summary(path: Path, result: ScoreResult) -> None:
             "## Abstentions and transitions",
             "",
             "| Field | None | None on independently flat raster | Crop changes inside none | "
-            "Published transitions | With simultaneous reference-top change |",
-            "|---:|---:|---:|---:|---:|---:|",
+            "Published transitions | With simultaneous reference-top change | Out of raster |",
+            "|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for field in FIELDS:
         lines.append(
             f"| {field} | {result.none_counts[field]:,} | {result.flat_none_counts[field]:,} | "
             f"{result.none_crop_changes[field]:,} | {result.transitions[field]:,} | "
-            f"{result.transitions_with_reference_change[field]:,} |"
+            f"{result.transitions_with_reference_change[field]:,} | "
+            f"{result.out_of_raster[field]:,} |"
         )
     path.write_text("\n".join(lines) + "\n")
 

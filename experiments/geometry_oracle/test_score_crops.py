@@ -20,6 +20,8 @@ REFERENCE_FIELDS = (
     "f1_top_valid",
     "f1_top_status",
     "f1_flat_raster",
+    "f1_gap_line",
+    "f1_gap_valid",
     "f2_line21_unique_line",
     "f2_line21_implied_top",
     "f2_cc_waveform_lines",
@@ -27,6 +29,8 @@ REFERENCE_FIELDS = (
     "f2_top_valid",
     "f2_top_status",
     "f2_flat_raster",
+    "f2_gap_line",
+    "f2_gap_valid",
 )
 
 
@@ -42,6 +46,8 @@ def reference_row(ordinal: int) -> dict[str, object]:
         "f1_top_valid": 1,
         "f1_top_status": "measured",
         "f1_flat_raster": 0,
+        "f1_gap_line": -1,
+        "f1_gap_valid": 0,
         "f2_line21_unique_line": -1,
         "f2_line21_implied_top": -1,
         "f2_cc_waveform_lines": "284",
@@ -49,6 +55,8 @@ def reference_row(ordinal: int) -> dict[str, object]:
         "f2_top_valid": 1,
         "f2_top_status": "measured",
         "f2_flat_raster": 0,
+        "f2_gap_line": -1,
+        "f2_gap_valid": 0,
     }
 
 
@@ -87,12 +95,33 @@ class ScoreCropsTest(unittest.TestCase):
             )
             result = score(ref_path, crop_path, root / "result")
             self.assertEqual(result.histograms[(1, "caption")]["0"], 1)
-            self.assertEqual(result.histograms[(2, "waveform")]["-1"], 1)
+            self.assertEqual(result.histograms[(2, "waveform")]["0"], 1)
             self.assertEqual(result.none_counts[1], 1)
             self.assertEqual(result.flat_none_counts[1], 1)
             self.assertEqual(result.none_crop_changes[1], 1)
             self.assertEqual(result.forbidden_units, 1)
-            self.assertEqual(len(result.disagreements), 1)
+            self.assertEqual(len(result.disagreements), 0)
+
+    def test_waveform_top_accounts_for_an_intervening_black_line(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            reference = [reference_row(0)]
+            reference[0]["f2_cc_waveform_lines"] = "284 287"
+            reference[0]["f2_gap_line"] = 288
+            reference[0]["f2_gap_valid"] = 1
+            crops = [
+                {"ordinal": 0, "published_f1_start": 23, "published_f2_start": 289},
+            ]
+            ref_path = root / "reference.csv"
+            crop_path = root / "crops.csv"
+            self.write_csv(ref_path, REFERENCE_FIELDS, reference)
+            self.write_csv(
+                crop_path,
+                ("ordinal", "published_f1_start", "published_f2_start"),
+                crops,
+            )
+            result = score(ref_path, crop_path, root / "result")
+            self.assertEqual(result.histograms[(2, "waveform")]["0"], 1)
 
     def test_missing_and_duplicate_ordinals_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -127,8 +156,19 @@ class ScoreCropsTest(unittest.TestCase):
                     {"ordinal": 1, "published_f1_start": 290, "published_f2_start": 286},
                 ],
             )
-            with self.assertRaisesRegex(RuntimeError, "does not fit 240 lines"):
-                score(ref_path, crop_path, root / "out_of_raster")
+            with self.assertRaisesRegex(RuntimeError, "is absurd"):
+                score(ref_path, crop_path, root / "absurd")
+
+            self.write_csv(
+                crop_path,
+                ("ordinal", "published_f1_start", "published_f2_start"),
+                [
+                    {"ordinal": 0, "published_f1_start": 23, "published_f2_start": 286},
+                    {"ordinal": 1, "published_f1_start": 23, "published_f2_start": 290},
+                ],
+            )
+            result = score(ref_path, crop_path, root / "out_of_raster")
+            self.assertEqual(result.out_of_raster, {1: 0, 2: 1})
 
 
 if __name__ == "__main__":

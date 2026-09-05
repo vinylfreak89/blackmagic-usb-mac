@@ -107,13 +107,17 @@ ordinal,published_f1_start,published_f2_start
 301,23,286
 ```
 
-Every exact unit processed must have exactly one crop row. Missing, duplicate, or out-of-raster
-starts abort the oracle. This keeps the independent comb measurement fail-closed while allowing
-either new engine to export decisions without coupling this code to engine internals.
+Every exact unit processed must have exactly one crop row. Missing and duplicate ordinals abort
+the scorer. A crop up to 12 lines from the standard 23/286 start is scored normally even when its
+240-line read reaches the legal hard-padding ruler; it is counted as `out_of_raster`. Larger
+displacements and non-integer starts abort as malformed. This keeps the independent measurement
+fail-closed without confusing a reportable engine decision with malformed input.
 
-For the full fixture capture, `--ordinal-from-counter` keeps the dense `local_exact` index while
-deriving `ordinal` from the unwrapped transport counter. Device-short periods therefore appear as
-ordinal holes instead of shifting the known relock/event annotations.
+For the full fixture capture, `--ordinal-from-counter` defines `ordinal` as the unwrapped device
+unit counter minus the counter of the first exact unit. Device-short units consume ordinals;
+leading endpoint fragments do not. Thus the shorts at counters 4515, 4520, and 4701 are ordinal
+holes 4, 9, and 190 rather than shifts in the known relock/event annotations. `local_exact` remains
+the dense index of exact units actually processed.
 
 `activity_probe.py` exposes the level, within-row spread, and horizontal-gradient predicates
 individually at the review sites. The combined `active` result is their logical OR; the probe
@@ -122,9 +126,11 @@ exists so a flat dim row cannot be described merely by that combined result.
 ## Crop verdict layer
 
 `score_crops.py` joins the frozen oracle and the published-crop table by transport ordinal. It
-rejects missing, extra, or duplicate ordinals, missing schema columns, and crops that cannot fit a
-240-line field in the raw raster. Owner-annotated garbage/snow/mute/relock units are written to
-`forbidden.csv` and excluded from scoring. Authority is selected independently per field in the
-fixed order parity-decoded caption, off-insert waveform, measured geometry, then none. Outputs are
-`summary.md`, a per-field `verdicts.csv`, and exhaustive `disagreements.csv`/`forbidden.csv` files.
-Existing output directories are never overwritten.
+rejects missing, extra, or duplicate ordinals, missing schema columns, non-integer starts, and
+starts more than 12 lines from 23/286. Owner-annotated garbage/snow/mute/relock units are written
+to `forbidden.csv` and excluded from scoring. Authority is selected independently per field in the
+fixed order parity-decoded caption, off-insert waveform, measured geometry, then none. A unique
+off-insert waveform implies picture on the following line; when the independently measured black
+tape gap is immediately after that waveform, picture begins two lines after it instead. Outputs
+are `summary.md`, a per-field `verdicts.csv`, and exhaustive
+`disagreements.csv`/`forbidden.csv` files. Existing output directories are never overwritten.
