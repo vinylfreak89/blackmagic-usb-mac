@@ -1241,9 +1241,20 @@ class _CFieldDecision(ctypes.Structure):
         ("gauge_row", ctypes.c_int16),
         ("gauge_byte1", ctypes.c_uint8), ("gauge_byte2", ctypes.c_uint8),
         ("gauge_amplitude", ctypes.c_double), ("blank_mean", ctypes.c_double),
+        ("body_mad", ctypes.c_double),
         ("raw_top", ctypes.c_int16), ("raw_bottom", ctypes.c_int16),
         ("raw_height", ctypes.c_int16), ("geometry_measurable", ctypes.c_bool),
-        ("bottom_censored", ctypes.c_bool), ("lock_state", ctypes.c_int),
+        ("bottom_censored", ctypes.c_bool),
+        ("body_witness_valid", ctypes.c_bool), ("body_shift", ctypes.c_int8),
+        ("body_geometry_agrees", ctypes.c_bool),
+        ("body_reference_top", ctypes.c_int16),
+        ("body_implied_top", ctypes.c_int16),
+        ("body_differential", ctypes.c_bool),
+        ("body_common_mode", ctypes.c_bool),
+        ("picture_position_valid", ctypes.c_bool),
+        ("measured_picture_top", ctypes.c_int16),
+        ("picture_from_body", ctypes.c_bool),
+        ("lock_state", ctypes.c_int),
         ("zero_source", ctypes.c_int),
         ("lock_id", ctypes.c_uint32), ("lock_top", ctypes.c_int16),
         ("lock_height", ctypes.c_int16), ("lock_height_known", ctypes.c_bool),
@@ -1263,6 +1274,11 @@ class _CFieldRegistrationDecision(ctypes.Structure):
         ("frame_observation_support", ctypes.c_uint8),
         ("mode", ctypes.c_int), ("confidence", ctypes.c_double),
         ("transport_ok", ctypes.c_bool), ("comb_safe", ctypes.c_bool),
+        ("parity_state", ctypes.c_int), ("comb_check", ctypes.c_int),
+        ("comb_best_shift", ctypes.c_int8), ("parity_bias", ctypes.c_int8),
+        ("comb_best_energy", ctypes.c_double),
+        ("comb_second_energy", ctypes.c_double),
+        ("comb_static_fraction", ctypes.c_double),
         ("segment_id", ctypes.c_uint32), ("field", _CFieldDecision * 2),
     )
 
@@ -1327,6 +1343,10 @@ class CRegistrationEstimator:
         self.library.fieldreg_zero_source_name.restype = ctypes.c_char_p
         self.library.fieldreg_insert_relation_name.argtypes = (ctypes.c_int,)
         self.library.fieldreg_insert_relation_name.restype = ctypes.c_char_p
+        self.library.fieldreg_parity_state_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_parity_state_name.restype = ctypes.c_char_p
+        self.library.fieldreg_comb_check_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_comb_check_name.restype = ctypes.c_char_p
         self.library.fieldreg_init(self.state, ctypes.byref(self.config))
         self.confirmation_units = self.library.fieldreg_confirmation_units(
             self.state
@@ -1382,6 +1402,26 @@ class CRegistrationEstimator:
                 "gauge_amplitude": item.gauge_amplitude,
                 "geometry_d": item.geometry_d,
                 "blank_mean": item.blank_mean,
+                "body_witness_valid": bool(item.body_witness_valid),
+                "body_shift": item.body_shift,
+                "body_mad": item.body_mad,
+                "body_geometry_agrees": bool(item.body_geometry_agrees),
+                "body_reference_top": (
+                    item.body_reference_top + 4
+                    if item.body_reference_top >= 0 else -1
+                ),
+                "body_implied_top": (
+                    item.body_implied_top + 4
+                    if item.body_implied_top >= 0 else -1
+                ),
+                "body_differential": bool(item.body_differential),
+                "body_common_mode": bool(item.body_common_mode),
+                "picture_position_valid": bool(item.picture_position_valid),
+                "measured_picture_top": (
+                    item.measured_picture_top + 4
+                    if item.measured_picture_top >= 0 else -1
+                ),
+                "picture_from_body": bool(item.picture_from_body),
                 "raw_top": item.raw_top + 4 if item.raw_top >= 0 else -1,
                 "raw_bottom": item.raw_bottom + 4 if item.raw_bottom >= 0 else -1,
                 "raw_height": item.raw_height,
@@ -1420,10 +1460,19 @@ class CRegistrationEstimator:
             "maximum_buffered_units": self.buffer_units,
             "transport_ok": result.transport_ok,
             "comb_safe": bool(result.comb_safe),
+            "parity_state": self.library.fieldreg_parity_state_name(
+                result.parity_state).decode("ascii"),
+            "comb_check": self.library.fieldreg_comb_check_name(
+                result.comb_check).decode("ascii"),
+            "comb_best_shift": result.comb_best_shift,
+            "parity_bias": result.parity_bias,
+            "comb_best_energy": result.comb_best_energy,
+            "comb_second_energy": result.comb_second_energy,
+            "comb_static_fraction": result.comb_static_fraction,
             "segment_id": result.segment_id,
             "fields": fields,
             # Compatibility values for the untagged damage-review path. They
-            # are not emitted by the schema-5 tagged sidecar.
+            # are not emitted by the schema-7 tagged sidecar.
             "best_relative": applied[1] - applied[0],
             "selected_relative": applied[1] - applied[0],
             "independent_evidence": 0.0,
@@ -1838,12 +1887,16 @@ TPC_DECISION_COLUMNS = (
     "registration_engine",
 )
 
-# Schema 5 retains the transport/presentation columns consumed by the renderer
+# Schema 8 retains the transport/presentation columns consumed by the renderer
 # and replaces every v7 evidence column with the v9 per-field provenance.
 V9_FIELD_COLUMNS = (
     "reason", "gauge", "insert_present", "insert_bytes", "insert_relation",
     "parity_candidates", "fallback_candidates", "gauge_line", "gauge_bytes",
-    "gauge_amplitude", "geometry_d", "blank_mean", "raw_top", "raw_bottom", "raw_height",
+    "gauge_amplitude", "geometry_d", "blank_mean", "body_witness_valid",
+    "body_shift", "body_mad", "body_geometry_agrees", "body_reference_top",
+    "body_implied_top", "body_differential", "body_common_mode",
+    "picture_position_valid", "measured_picture_top", "picture_from_body",
+    "raw_top", "raw_bottom", "raw_height",
     "geometry_measurable", "bottom_censored", "lock_state", "zero_source", "lock_id",
     "lock_top", "lock_height", "lock_height_known", "clip_state",
     "clip_ceiling", "expected_bottom",
@@ -1853,7 +1906,9 @@ TPC_DECISION_COLUMNS = (
     "timeline_frame", "counter", "extended_counter", "unit_state",
     "captured_video_bytes", "undefined_video_bytes", "decision_d1",
     "decision_d2", "applied_d1", "applied_d2", "baseline_d1", "baseline_d2",
-    "mode", "confidence", "transport_ok", "comb_safe", "segment_id",
+    "mode", "confidence", "transport_ok", "comb_safe", "parity_state",
+    "comb_check", "comb_best_shift", "parity_bias", "comb_best_energy",
+    "comb_second_energy", "comb_static_fraction", "segment_id",
     "presentation_policy",
     *(f"f1_{name}" for name in V9_FIELD_COLUMNS),
     *(f"f2_{name}" for name in V9_FIELD_COLUMNS),
@@ -1868,6 +1923,12 @@ def _v9_field_row(field):
         field["fallback_candidates"], field["gauge_line"], field["gauge_bytes"],
         f"{field['gauge_amplitude']:.3f}", field["geometry_d"],
         f"{field['blank_mean']:.3f}",
+        int(field["body_witness_valid"]), field["body_shift"],
+        f"{field['body_mad']:.3f}", int(field["body_geometry_agrees"]),
+        field["body_reference_top"], field["body_implied_top"],
+        int(field["body_differential"]), int(field["body_common_mode"]),
+        int(field["picture_position_valid"]), field["measured_picture_top"],
+        int(field["picture_from_body"]),
         field["raw_top"], field["raw_bottom"], field["raw_height"],
         int(field["geometry_measurable"]), int(field["bottom_censored"]),
         field["lock_state"], field["zero_source"], field["lock_id"], field["lock_top"],
@@ -1918,9 +1979,15 @@ def tagged_decision_row(
             VIDEO_UNIT_BYTES - captured_bytes, *measured, *applied,
             *registration["baseline"], registration["mode"],
             f"{registration['confidence']:.9f}", int(registration["transport_ok"]),
-            int(registration["comb_safe"]), registration["segment_id"],
-            presentation_policy, *_v9_field_row(fields[0]),
-            *_v9_field_row(fields[1]), registration["engine"], 5,
+            int(registration["comb_safe"]),
+            registration["parity_state"], registration["comb_check"],
+            registration["comb_best_shift"], registration["parity_bias"],
+            f"{registration['comb_best_energy']:.3f}",
+            f"{registration['comb_second_energy']:.3f}",
+            f"{registration['comb_static_fraction']:.6f}",
+            registration["segment_id"], presentation_policy,
+            *_v9_field_row(fields[0]),
+            *_v9_field_row(fields[1]), registration["engine"], 8,
         )
     decision = registration["decision"]
     best_d1, best_d2 = registration["best_pair"]

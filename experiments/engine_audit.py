@@ -11,7 +11,7 @@
 # and compares the engine's crop start (23 + applied_d1 / 286 + applied_d2) with the measured picture top.
 # Output CSV per unit; summary: mismatches (crop != measured top) by field, jumps (applied changed while the measured
 # top did not, or vice versa), by 5-minute bin; runs of mismatches; damaged units.
-# Usage: engine_audit.py <capture.cap6> <sidecar.csv> <out.csv>  (sidecar = frameserver schema-5 log or renderer log)
+# Usage: engine_audit.py <capture.cap6> <sidecar.csv> <out.csv>  (sidecar = frameserver schema-7 log or renderer log)
 import sys, csv, collections, numpy as np
 sys.path.insert(0, __import__('os').path.dirname(__file__))
 from packet_capture_reader import walk_tagged
