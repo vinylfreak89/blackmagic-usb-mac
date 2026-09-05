@@ -110,16 +110,25 @@ CEA-608 parity in that unit and field 2's measured picture position to be
 applied against its current zero. The candidate zero is derived from the raw
 field-2 picture top and the tested crop shift, never integrated from the old
 zero. Field 2 then continues to track its own top and body motion against that
-zero. Comb never supplies a per-unit displacement by itself. When a decisive comb zero
+zero. Comb does not vote on a crop from one unit. When a decisive comb zero
 contradicts an Envelope zero, picture comb wins once and that installation row
 is `ZeroConflict`; subsequent Envelope observations cannot overwrite it.
 
-After calibration, only -1/0/+1 around the published crop is checked. One
-disagreement is provenance only. Eight consecutive measurable disagreements
-with a stable field-1 placement report `parity_state=Drift` and restart
-calibration without changing that unit's crop. `comb_safe` requires both field
-locks and `parity_state=Calibrated`; uncalibrated geometry is emitted honestly
-but makes no deinterlacing-safety claim.
+Whenever a previous unit is available, the engine searches -3..+3 around the
+ordinary per-unit crops. This correction path is independent of zero
+calibration: the deciding minute-43 slice has no caption with which to
+calibrate a cold replay. Three successive decisive readings of the same
+nonzero shift install
+that shift as one bounded, absolute relative correction; it is never added to
+the preceding correction. Field 1 parity makes field 2 the moved field.
+Otherwise the field whose current picture top points in the correction's
+direction moves; when neither identifies it, field 2 is the deterministic
+choice. The correction survives flat/unmeasurable units, body-corroborated
+motion, and byte discontinuities. Three decisive zero-shift readings clear it;
+only `fieldreg_begin_segment()` clears it immediately. Its measurement always
+uses the uncorrected crops, so later identical evidence corroborates rather
+than accumulates it. `comb_safe` requires both field locks, calibrated parity,
+and a correction that can be honored within the crop bounds.
 One missing Shuttle insert is an `InsertAbsent` hold and does not itself erase
 a lock; a real mute/unlock is already a signal-state segment boundary, while
 subsequent measurable geometry can independently invalidate a stale lock.
@@ -140,7 +149,7 @@ more than three source lines from the standard origin is immediately refused
 as `ZeroOutOfBounds`. This candidate memory never delays or smooths crop
 placement.
 
-## Sidecar schema 8
+## Sidecar schema 9
 
 The frameserver retains its transport/signal columns and writes the following
 v9 provenance for each field. Values named `*_line` are NTSC line numbers
@@ -160,9 +169,11 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
   `ClipUnknown`/`ClipFitting`/`ClipFitted`, and the optional clip ceiling; and
 - expected bottom, lost-line count, and invariant residual.
 
-The row also records `parity_state` (Uncalibrated/Calibrated/Drift),
+The row also records `parity_state` (Uncalibrated/Calibrated; `Drift` remains
+an ABI name but is not produced by this policy),
 `comb_check` (agree/disagree/flat/n.a.), the best re-weave shift, installed
-field-2 parity bias, best/second energy and static fraction, the applied pair,
+field-2 parity bias, best/second energy and static fraction, the installed
+`comb_correction` and its live installation ordinal, the applied pair,
 whether both locks make the vertical-registration claim (`comb_safe`),
 publication/drop accounting, and schema version. The offline renderer emits
 the same per-field engine provenance.
@@ -178,11 +189,12 @@ unknown-field sentinel into signal-state's chatter counter.
 
 ## Deliberately absent
 
-No per-unit comb authority, spatial bands, multi-candidate trajectory, dwell, chatter
+No one-unit comb authority, spatial bands, multi-candidate trajectory, dwell, chatter
 suppression, common-mode arbitration, learned position mode, FIFO, or
 backtracking remains in the live path. The bounded comb measurement above
-calibrates/checks a segment constant and can corroborate or veto an independent
-geometry-top reading, but cannot move a crop by itself. The
+calibrates/checks a segment constant, can corroborate or veto an independent
+geometry-top reading, and can install a relative crop correction only after
+three decisive matching readings. The
 other temporal measurement is the
 bounded previous-unit body profile above: it confirms a current top reading;
 it cannot smooth, vote, or redefine a lock. The old tools
@@ -211,3 +223,7 @@ unexplained disagreements. Across the six measured slices, absolute comb
 misregistration falls from d871f1f's 33 units to 10. Unit-to-unit
 `ENGINE-MOTION` remains diagnostic only: it calls a correct one-unit-late repair
 motion even when the resulting crop is absolutely registered.
+
+Field 2 remains bounded to the validated `+3` crop. A physically possible
+`+4` registration requires an explicit padding-extension path; that is a named
+follow-up, not an implicit relaxation of the crop limit.
