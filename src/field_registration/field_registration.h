@@ -96,6 +96,8 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_TOP_COMB_VETOED,
     FIELDREG_MODE_TOP_ONLY,
     FIELDREG_MODE_COMB_RELATIVE_CORRECTION,
+    FIELDREG_MODE_DAMAGE_HOLD,
+    FIELDREG_MODE_DAMAGE_CLEARED,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -113,6 +115,14 @@ typedef enum fieldreg_gauge_source {
 typedef struct fieldreg_config {
     uint32_t reserved;
 } fieldreg_config;
+
+typedef struct fieldreg_process_context {
+    /* The live caller supplies its transport ordinal and classifier result.
+     * The legacy fieldreg_process wrapper uses an engine-local exact-unit
+     * ordinal and leaves program_like false. */
+    uint64_t ordinal;
+    bool program_like;
+} fieldreg_process_context;
 
 typedef struct fieldreg_field_decision {
     int8_t measured_d;
@@ -160,6 +170,16 @@ typedef struct fieldreg_field_decision {
     int16_t expected_bottom;
     int16_t lines_lost;
     int16_t invariant_residual;
+    bool saved_good_valid;
+    int16_t saved_good_top;
+    int16_t saved_good_bottom;
+    int16_t saved_good_height;
+    bool saved_good_bottom_censored;
+    int8_t saved_good_applied_d;
+    fieldreg_gauge_source saved_good_gauge;
+    uint64_t saved_good_ordinal;
+    uint32_t damage_hold_length;
+    int8_t damage_jump;
 } fieldreg_field_decision;
 
 typedef struct fieldreg_decision {
@@ -210,6 +230,23 @@ typedef struct fieldreg_field_state {
     fieldreg_zero_source zero_candidate_source;
     uint32_t lock_id;
     int16_t previous_measured_top;
+    struct {
+        bool valid;
+        int16_t top;
+        int16_t bottom;
+        int16_t height;
+        bool bottom_censored;
+        int8_t applied_d;
+        fieldreg_gauge_source gauge;
+        uint64_t ordinal;
+    } saved_good;
+    bool damage_active;
+    int8_t damage_clear_candidate_d;
+    uint8_t damage_clear_candidate_count;
+    int16_t damage_clear_candidate_top;
+    int16_t damage_clear_candidate_bottom;
+    int16_t damage_clear_candidate_height;
+    uint32_t damage_hold_length;
 } fieldreg_field_state;
 
 /* Caller-owned, allocation-free hot-path state. The clip fit is deliberately
@@ -229,6 +266,7 @@ typedef struct field_registration {
     int8_t comb_correction_candidate;
     int8_t comb_correction_candidate_count;
     uint32_t segment_id;
+    uint64_t process_ordinal;
 } field_registration;
 
 fieldreg_config fieldreg_default_config(void);
@@ -246,6 +284,10 @@ void fieldreg_discontinuity(field_registration *engine);
 bool fieldreg_process(field_registration *engine,
                       const uint8_t unit[FIELDREG_UNIT_BYTES],
                       fieldreg_decision *out);
+bool fieldreg_process_ex(field_registration *engine,
+                         const uint8_t unit[FIELDREG_UNIT_BYTES],
+                         const fieldreg_process_context *context,
+                         fieldreg_decision *out);
 
 const char *fieldreg_mode_name(fieldreg_mode mode);
 const char *fieldreg_gauge_name(fieldreg_gauge_source source);

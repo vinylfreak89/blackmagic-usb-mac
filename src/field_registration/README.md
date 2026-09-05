@@ -151,7 +151,26 @@ more than three source lines from the standard origin is immediately refused
 as `ZeroOutOfBounds`. This candidate memory never delays or smooths crop
 placement.
 
-## Sidecar schema 9
+## Saved-good geometry and damage lifecycle
+
+Each field retains one evidence-backed geometry snapshot: measured top,
+bottom/height and censoring, applied crop, gauge, and live transport ordinal.
+Only `Line21Placement`, body-corroborated `GeometryLockDecides`,
+`TopCombCorroborated`, `Field2EnvelopePlacement`,
+`CombRelativeCorrection`, and `DamageCleared` replace it. Holds, `TopOnly`,
+and contradictory observations never do.
+
+While signal-state still classifies the raster as `ProgramLike`, an
+irreconcilable top/body or unfitted-height contradiction, a missing Shuttle
+insert, or a settled-comb contradiction enters `DamageHold`. The crop returns
+to the saved evidence-backed value and all zero, clip, parity, body-profile,
+and comb-correction learning is frozen. A parity gauge clears immediately.
+Geometry-only recovery requires two identical measurable envelopes; the clear
+row is `DamageCleared` and records the completed hold length and its one signed
+crop jump. The context-free API does not infer raster damage because it has no
+signal-state distinction between damaged program and a content cut.
+
+## Sidecar schema 10
 
 The frameserver retains its transport/signal columns and writes the following
 v9 provenance for each field. Values named `*_line` are NTSC line numbers
@@ -170,6 +189,9 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
   top/height, whether that height is uncensored,
   `ClipUnknown`/`ClipFitting`/`ClipFitted`, and the optional clip ceiling; and
 - expected bottom, lost-line count, and invariant residual.
+- the saved-good validity, top/bottom/height and bottom censoring, applied crop,
+  gauge, and transport ordinal; plus `damage_hold_length` and signed
+  `damage_jump` (nonzero only on a `DamageCleared` row).
 
 The row also records `parity_state` (Uncalibrated/Calibrated; `Drift` remains
 an ABI name but is not produced by this policy),

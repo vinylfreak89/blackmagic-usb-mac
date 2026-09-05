@@ -401,6 +401,15 @@ static void copy_lock(const fieldreg_field_state *s,
     d->lock_height_known = s->height_known;
     d->clip_state = clip_state(s);
     d->clip_ceiling = s->clip_ceiling;
+    d->saved_good_valid = s->saved_good.valid;
+    d->saved_good_top = s->saved_good.top;
+    d->saved_good_bottom = s->saved_good.bottom;
+    d->saved_good_height = s->saved_good.height;
+    d->saved_good_bottom_censored = s->saved_good.bottom_censored;
+    d->saved_good_applied_d = s->saved_good.applied_d;
+    d->saved_good_gauge = s->saved_good.gauge;
+    d->saved_good_ordinal = s->saved_good.ordinal;
+    d->damage_hold_length = s->damage_hold_length;
 }
 
 static void hold(fieldreg_field_state *s, fieldreg_field_decision *d,
@@ -716,6 +725,153 @@ static bool crop_offset_valid(int field, int measured)
     const int high = FIELDREG_RASTER_LINES - FIELDREG_FIELD_LINES - start;
     return measured >= low && measured <= high &&
            measured >= INT8_MIN && measured <= INT8_MAX;
+}
+
+static void clear_damage_candidate(fieldreg_field_state *s)
+{
+    s->damage_clear_candidate_d = FIELDREG_UNKNOWN;
+    s->damage_clear_candidate_count = 0;
+    s->damage_clear_candidate_top = -1;
+    s->damage_clear_candidate_bottom = -1;
+    s->damage_clear_candidate_height = -1;
+}
+
+static bool field_damage_signature(const fieldreg_field_state *before,
+                                   const field_measurement *m,
+                                   const fieldreg_field_decision *d,
+                                   bool program_like)
+{
+    /* A program cut is allowed to change its envelope.  Damage semantics are
+     * entered only when the live classifier says a program raster should be
+     * coherent; the context-free API retains the original per-unit policy. */
+    if (!program_like) return false;
+    if (d->reason == FIELDREG_MODE_TOP_BODY_DISAGREE &&
+        !m->picture_position_valid)
+        return true;
+    if (d->reason == FIELDREG_MODE_LOCK_BROKEN &&
+        d->measured_d == FIELDREG_UNKNOWN)
+        return true;
+    if (program_like && d->reason == FIELDREG_MODE_INSERT_ABSENT)
+        return true;
+
+    /* Height alone is not a contradiction: picture content, letterbox, and
+     * the deck's censored bottom all change the visible envelope. A height
+     * change enters damage only through the engine's existing LockBroken
+     * result above, where the fitted conservation model says no legal move
+     * explains it. */
+    (void)before;
+    return false;
+}
+
+static bool decision_saves_good(const fieldreg_field_decision *d,
+                                const field_measurement *m)
+{
+    switch (d->reason) {
+    case FIELDREG_MODE_LINE21_PLACEMENT:
+    case FIELDREG_MODE_FIELD2_ENVELOPE_PLACEMENT:
+    case FIELDREG_MODE_TOP_COMB_CORROBORATED:
+    case FIELDREG_MODE_COMB_RELATIVE_CORRECTION:
+    case FIELDREG_MODE_DAMAGE_CLEARED:
+        return true;
+    case FIELDREG_MODE_GEOMETRY_LOCK_DECIDES:
+        return m->body_geometry_agrees;
+    default:
+        return false;
+    }
+}
+
+static void save_good_geometry(fieldreg_field_state *s,
+                               const field_measurement *m,
+                               const fieldreg_field_decision *d,
+                               uint64_t ordinal)
+{
+    if (!decision_saves_good(d, m)) return;
+    const bool had_saved = s->saved_good.valid;
+    const int previous_applied = s->saved_good.applied_d;
+    const int delta = d->applied_d - previous_applied;
+    s->saved_good.valid = true;
+    if (m->picture_position_valid || m->geometry_measurable) {
+        s->saved_good.top = m->picture_position_valid ? m->picture_top :
+                                                       m->top;
+        s->saved_good.bottom = m->bottom;
+        s->saved_good.height = m->height;
+        s->saved_good.bottom_censored = m->bottom_censored;
+    } else if (had_saved) {
+        /* A parity gauge can place a dark unit without visible edges. Move
+         * the last trusted envelope by that physical displacement instead
+         * of replacing it with an invalid (-1) geometry. */
+        if (s->saved_good.top >= 0)
+            s->saved_good.top = (int16_t)(s->saved_good.top + delta);
+        if (s->saved_good.bottom >= 0 &&
+            !s->saved_good.bottom_censored)
+            s->saved_good.bottom = (int16_t)(s->saved_good.bottom + delta);
+    } else {
+        s->saved_good.top = (int16_t)(s->top + d->applied_d);
+        s->saved_good.bottom = -1;
+        s->saved_good.height = -1;
+        s->saved_good.bottom_censored = true;
+    }
+    s->saved_good.applied_d = d->applied_d;
+    s->saved_good.gauge = d->gauge;
+    s->saved_good.ordinal = ordinal;
+}
+
+static void emit_damage_hold(fieldreg_field_state *s,
+                             fieldreg_field_decision *d,
+                             bool reset_candidate)
+{
+    s->damage_active = true;
+    if (reset_candidate) clear_damage_candidate(s);
+    if (s->damage_hold_length != UINT32_MAX) ++s->damage_hold_length;
+    const int applied = s->saved_good.valid ? s->saved_good.applied_d :
+                                              s->last_applied;
+    s->last_applied = (int8_t)applied;
+    d->measured_d = FIELDREG_UNKNOWN;
+    d->applied_d = (int8_t)applied;
+    d->reason = FIELDREG_MODE_DAMAGE_HOLD;
+    d->gauge = FIELDREG_GAUGE_HOLD;
+    d->damage_jump = 0;
+    copy_lock(s, d);
+}
+
+static bool direct_parity_clear(const fieldreg_field_decision *d)
+{
+    return d->gauge == FIELDREG_GAUGE_CEA608_PARITY &&
+           d->measured_d != FIELDREG_UNKNOWN &&
+           d->reason != FIELDREG_MODE_ZERO_OUT_OF_BOUNDS &&
+           d->reason != FIELDREG_MODE_CAPTION_ONLY_MOTION &&
+           d->reason != FIELDREG_MODE_CAPTION_BODY_DISAGREE;
+}
+
+static bool geometry_clear_candidate(const field_measurement *m,
+                                     const fieldreg_field_decision *d)
+{
+    return m->picture_position_valid && m->geometry_measurable &&
+           d->measured_d != FIELDREG_UNKNOWN &&
+           d->reason != FIELDREG_MODE_TOP_BODY_DISAGREE &&
+           d->reason != FIELDREG_MODE_CAPTION_BODY_DISAGREE &&
+           d->reason != FIELDREG_MODE_LOCK_BROKEN;
+}
+
+static bool same_clear_geometry(const fieldreg_field_state *s,
+                                const field_measurement *m,
+                                int candidate)
+{
+    return s->damage_clear_candidate_d == candidate &&
+           s->damage_clear_candidate_top == m->picture_top &&
+           s->damage_clear_candidate_bottom == m->bottom &&
+           s->damage_clear_candidate_height == m->height;
+}
+
+static void remember_clear_geometry(fieldreg_field_state *s,
+                                    const field_measurement *m,
+                                    int candidate)
+{
+    s->damage_clear_candidate_d = (int8_t)candidate;
+    s->damage_clear_candidate_top = m->picture_top;
+    s->damage_clear_candidate_bottom = m->bottom;
+    s->damage_clear_candidate_height = m->height;
+    s->damage_clear_candidate_count = 1;
 }
 
 static bool body_confirms_geometry(const fieldreg_field_state *s,
@@ -1056,6 +1212,14 @@ static void reset_field(fieldreg_field_state *s, bool reset_applied, int field)
     clear_clip(s);
     clear_zero_candidate(s);
     s->previous_measured_top = -1;
+    s->saved_good.top = -1;
+    s->saved_good.bottom = -1;
+    s->saved_good.height = -1;
+    s->saved_good.applied_d = 0;
+    s->damage_clear_candidate_d = FIELDREG_UNKNOWN;
+    s->damage_clear_candidate_top = -1;
+    s->damage_clear_candidate_bottom = -1;
+    s->damage_clear_candidate_height = -1;
     s->last_applied = applied;
     s->lock_id = lock_id;
     s->lock_state = FIELDREG_LOCK_LOCKED;
@@ -1427,11 +1591,69 @@ static bool apply_comb_relative_correction(const field_registration *engine,
     return true;
 }
 
-bool fieldreg_process(field_registration *engine,
-                      const uint8_t unit[FIELDREG_UNIT_BYTES],
-                      fieldreg_decision *out)
+static void clear_damage(fieldreg_field_state *s,
+                         const field_measurement *m,
+                         fieldreg_field_decision *d,
+                         uint32_t hold_length)
+{
+    const int previous_good = s->saved_good.valid ?
+                              s->saved_good.applied_d : s->last_applied;
+    const int applied = d->applied_d;
+    const fieldreg_gauge_source gauge = d->gauge;
+    s->damage_active = false;
+    s->damage_hold_length = 0;
+    clear_damage_candidate(s);
+    d->reason = FIELDREG_MODE_DAMAGE_CLEARED;
+    d->gauge = gauge;
+    d->damage_hold_length = hold_length;
+    d->damage_jump = (int8_t)(applied - previous_good);
+    if (m->picture_position_valid)
+        s->previous_measured_top = m->picture_top;
+    copy_lock(s, d);
+    /* copy_lock reports the current (cleared) state.  The clearing row also
+     * retains the completed hold's length and its one signed crop move. */
+    d->damage_hold_length = hold_length;
+    d->damage_jump = (int8_t)(applied - previous_good);
+}
+
+static bool comb_damage_signature(const field_registration *engine,
+                                  const field_measurement m[2],
+                                  const fieldreg_decision *out,
+                                  int previous_correction)
+{
+    if (previous_correction == 0 ||
+        out->comb_check != FIELDREG_COMB_DISAGREE ||
+        out->comb_best_shift == FIELDREG_UNKNOWN ||
+        out->comb_best_shift == previous_correction)
+        return false;
+
+    /* A comb result cannot legally select a field when both fields provide
+     * reliable, internally consistent testimony that their bodies and tops
+     * stayed put.  Treat three such readings (the correction install point)
+     * as contradictory raster evidence, not as a new segment constant. */
+    if (engine->comb_correction != out->comb_best_shift)
+        return false;
+    for (int field = 0; field < 2; ++field) {
+        if (!body_reliable(&m[field]) || m[field].body_shift != 0 ||
+            !m[field].picture_position_valid ||
+            engine->field[field].previous_measured_top < 0 ||
+            m[field].picture_top !=
+                engine->field[field].previous_measured_top)
+            return false;
+    }
+    return true;
+}
+
+bool fieldreg_process_ex(field_registration *engine,
+                         const uint8_t unit[FIELDREG_UNIT_BYTES],
+                         const fieldreg_process_context *context,
+                         fieldreg_decision *out)
 {
     if (!engine || !out || !valid_unit(unit)) return false;
+    const uint64_t ordinal = context ? context->ordinal :
+                                      engine->process_ordinal;
+    const bool program_like = context && context->program_like;
+    ++engine->process_ordinal;
     memset(out, 0, sizeof *out);
     out->decision_d1 = out->decision_d2 = FIELDREG_UNKNOWN;
     out->frame_observation_d1 = out->frame_observation_d2 = FIELDREG_UNKNOWN;
@@ -1446,19 +1668,135 @@ bool fieldreg_process(field_registration *engine,
     measure_body(raster, 1, engine->previous_luma,
                  engine->previous_luma_valid, &engine->field[1], &m[1]);
     resolve_picture_positions(m);
+
+    const fieldreg_field_state before[2] = {
+        engine->field[0], engine->field[1]
+    };
+    const fieldreg_parity_state parity_before = engine->parity_state;
+    const int16_t comb_zero_before = engine->comb_zero_candidate;
+    const int8_t comb_count_before = engine->comb_candidate_count;
+    const int8_t correction_before = engine->comb_correction;
+    const int8_t correction_candidate_before =
+        engine->comb_correction_candidate;
+    const int8_t correction_count_before =
+        engine->comb_correction_candidate_count;
+
     decide_field(&engine->field[0], &m[0], 0, &out->field[0]);
     decide_field(&engine->field[1], &m[1], 1, &out->field[1]);
 
-    out->applied_d1 = out->field[0].applied_d;
-    out->applied_d2 = out->field[1].applied_d;
-    update_parity_calibration(engine, raster, m, out);
-    const bool crops_changed_after_comb = resolve_top_with_comb(engine, m, out);
-    out->baseline_d1 = out->field[0].applied_d;
-    out->baseline_d2 = out->field[1].applied_d;
-    update_comb_relative_correction(engine, raster, out,
-                                    crops_changed_after_comb);
-    const bool correction_honored = apply_comb_relative_correction(engine, m,
-                                                                    out);
+    bool damage[2] = {false, false};
+    const bool damage_lifecycle = before[0].damage_active ||
+                                  before[1].damage_active;
+    bool correction_honored = true;
+    if (!damage_lifecycle) {
+        out->applied_d1 = out->field[0].applied_d;
+        out->applied_d2 = out->field[1].applied_d;
+        update_parity_calibration(engine, raster, m, out);
+        const bool crops_changed_after_comb =
+            resolve_top_with_comb(engine, m, out);
+        out->baseline_d1 = out->field[0].applied_d;
+        out->baseline_d2 = out->field[1].applied_d;
+        update_comb_relative_correction(engine, raster, out,
+                                        crops_changed_after_comb);
+        correction_honored = apply_comb_relative_correction(engine, m, out);
+        damage[0] = field_damage_signature(&before[0], &m[0],
+                                           &out->field[0], program_like);
+        damage[1] = field_damage_signature(&before[1], &m[1],
+                                           &out->field[1], program_like);
+        if (program_like &&
+            comb_damage_signature(engine, m, out, correction_before)) {
+            damage[0] = damage[1] = true;
+            engine->parity_state = parity_before;
+            engine->comb_zero_candidate = comb_zero_before;
+            engine->comb_candidate_count = comb_count_before;
+            engine->comb_correction = correction_before;
+            engine->comb_correction_candidate =
+                correction_candidate_before;
+            engine->comb_correction_candidate_count =
+                correction_count_before;
+        }
+    } else {
+        out->baseline_d1 = out->field[0].applied_d;
+        out->baseline_d2 = out->field[1].applied_d;
+        out->parity_state = engine->parity_state;
+        out->parity_bias = (int8_t)(FIELDREG_PICTURE_ORIGIN_F2 -
+                                    engine->field[1].top);
+        out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
+        out->comb_best_shift = FIELDREG_UNKNOWN;
+        correction_honored = apply_comb_relative_correction(engine, m, out);
+    }
+
+    bool damage_held = false;
+    for (int field = 0; field < 2; ++field) {
+        fieldreg_field_state *s = &engine->field[field];
+        fieldreg_field_decision *d = &out->field[field];
+        if (damage[field]) {
+            *s = before[field];
+            emit_damage_hold(s, d, true);
+            damage_held = true;
+            continue;
+        }
+        if (!before[field].damage_active)
+            continue;
+
+        const uint32_t completed_length = before[field].damage_hold_length;
+        if (direct_parity_clear(d)) {
+            clear_damage(s, &m[field], d, completed_length);
+            continue;
+        }
+        if (geometry_clear_candidate(&m[field], d)) {
+            const int candidate = d->measured_d;
+            if (same_clear_geometry(&before[field], &m[field], candidate) &&
+                before[field].damage_clear_candidate_count >= 1) {
+                clear_damage(s, &m[field], d, completed_length);
+                continue;
+            }
+            *s = before[field];
+            remember_clear_geometry(s, &m[field], candidate);
+            emit_damage_hold(s, d, false);
+            damage_held = true;
+            continue;
+        }
+        *s = before[field];
+        emit_damage_hold(s, d, true);
+        damage_held = true;
+    }
+
+    /* Any damage lifecycle suppresses all segment learning.  A clear may
+     * use the current field's direct evidence, but zero/parity/correction
+     * candidates observed alongside a torn field are rolled back. */
+    if (damage_lifecycle || damage[0] || damage[1]) {
+        engine->parity_state = parity_before;
+        engine->comb_zero_candidate = comb_zero_before;
+        engine->comb_candidate_count = comb_count_before;
+        engine->comb_correction = correction_before;
+        engine->comb_correction_candidate = correction_candidate_before;
+        engine->comb_correction_candidate_count = correction_count_before;
+        out->parity_state = engine->parity_state;
+        out->parity_bias = (int8_t)(FIELDREG_PICTURE_ORIGIN_F2 -
+                                    engine->field[1].top);
+        out->comb_correction = engine->comb_correction;
+    }
+
+    for (int field = 0; field < 2; ++field) {
+        save_good_geometry(&engine->field[field], &m[field],
+                           &out->field[field], ordinal);
+        copy_lock(&engine->field[field], &out->field[field]);
+        if (out->field[field].reason == FIELDREG_MODE_DAMAGE_CLEARED) {
+            out->field[field].damage_hold_length =
+                before[field].damage_hold_length;
+            out->field[field].damage_jump = (int8_t)(
+                out->field[field].applied_d -
+                (before[field].saved_good.valid ?
+                 before[field].saved_good.applied_d :
+                 before[field].last_applied));
+        }
+    }
+
+    if (out->field[0].reason == FIELDREG_MODE_DAMAGE_HOLD)
+        out->baseline_d1 = out->field[0].applied_d;
+    if (out->field[1].reason == FIELDREG_MODE_DAMAGE_HOLD)
+        out->baseline_d2 = out->field[1].applied_d;
 
     for (int field = 0; field < 2; ++field)
         if (out->field[field].measured_d != FIELDREG_UNKNOWN)
@@ -1481,9 +1819,17 @@ bool fieldreg_process(field_registration *engine,
         engine->field[1].lock_state == FIELDREG_LOCK_LOCKED;
     out->comb_safe = both_locked &&
                      engine->parity_state == FIELDREG_PARITY_CALIBRATED &&
-                     correction_honored;
-    copy_current_luma(engine, raster);
+                     correction_honored && !damage_held;
+    if (!damage_held)
+        copy_current_luma(engine, raster);
     return true;
+}
+
+bool fieldreg_process(field_registration *engine,
+                      const uint8_t unit[FIELDREG_UNIT_BYTES],
+                      fieldreg_decision *out)
+{
+    return fieldreg_process_ex(engine, unit, NULL, out);
 }
 
 const char *fieldreg_mode_name(fieldreg_mode mode)
@@ -1516,6 +1862,8 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_TOP_COMB_VETOED: return "TopCombVetoed";
     case FIELDREG_MODE_TOP_ONLY: return "TopOnly";
     case FIELDREG_MODE_COMB_RELATIVE_CORRECTION: return "CombRelativeCorrection";
+    case FIELDREG_MODE_DAMAGE_HOLD: return "DamageHold";
+    case FIELDREG_MODE_DAMAGE_CLEARED: return "DamageCleared";
     case FIELDREG_MODE_MIXED_FIELD_DECISION: return "MixedFieldDecision";
     }
     return "Unknown";
