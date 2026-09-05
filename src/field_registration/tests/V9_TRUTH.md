@@ -7,12 +7,20 @@ parity. The fixture covers:
 
 - coincident null and data line 21;
 - immediate per-field `+1/+2/+3` placement, plateaus, returns, and clipping;
+- a decoded caption moving from line 23 to 24 while picture top and body stay
+  fixed (`CaptionOnlyMotion`), the matching rigid-move control, and the
+  censored-bottom case where a still top/body remain sufficient testimony;
+- cold false-parity anchor isolation, same-unit edge corroboration, and the
+  second-consecutive-parity route to a changed segment zero;
 - parity authority over dark/unmeasurable picture content;
-- the measured field-2 smeared-XDS fallback and its no-candidate hold;
-- rejection of parity-invalid vertical copies and hold on two valid candidates;
+- the measured narrow field-2 XDS fallback, right-side bleed and short-bar
+  variant, plus false-positive guards for left-heavy picture texture and
+  consecutive picture rows that resemble the coarse weak-caption envelope;
+- rejection of parity-invalid vertical copies and geometry placement under
+  two valid candidates when top plus the one-unit body witness agree;
 - insert absence;
-- two-unit geometry-lock acquisition, rigid per-unit movement, conservation
-  failure on a height change, and re-acquisition without moving the crop; and
+- immediate standard-origin geometry placement, rigid per-unit movement, and
+  conservation failure on a height/content change without redefining zero; and
 - invalid transport rejection.
 
 Review-round additions decide four lock-policy details that an applied-pair-only
@@ -32,20 +40,48 @@ Round-two additions pin the corrected gauge hierarchy:
 
 - non-null data re-encoded on the insert is provenance only; rigid geometry
   still applies a `+1` placement;
-- parity `+2` re-anchors a content-acquired zero immediately, after which a
-  non-rigid envelope holds and a rigid `+1` envelope follows that gold zero;
-- a field-2 top-only change at the ADC boundary holds whenever the clip
-  ceiling is unknown, including before a clip candidate exists; and
-- the measured fixture-A field-2 287/523 to 286/522 envelope change likewise
-  holds because its content-acquired zero has no fitted physical ceiling; and
-- two `Locked` state machines with content-acquired zeroes do not claim
+- parity `+2` re-anchors the standard zero immediately when the gauged picture
+  origin proves that source geometry differs, after which a non-rigid envelope
+  holds and a rigid `+1` envelope follows that gold zero;
+- standard-origin geometry applies immediately, including a top move whose
+  bottom is censored by the deck's near-blank clip band; and
+- two `Locked` state machines with only standard zeroes do not claim
   `comb_safe` on an unmeasurable unit.
+
+The root-C/D additions pin the remaining direct-placement rules: each segment
+starts at the standard line-23/286 picture zero rather than learning position
+from content; a field at either standard origin is placed from its first unit;
+one-line clip-band flicker cannot move that top decision; and picture at Y=10
+is measurable against a Y=2 blanking floor while mute/black remains
+unmeasurable.
+
+The round-three body-witness additions freeze the only bounded temporal
+measurement in v9: two-dimensional luma over 160 picture rows is compared at
+integer vertical shifts -3..+3 against the immediately previous unit, with
+MAD at most 25 required. The fixture's horizontally textured body has an
+intentionally flat row-mean profile, so a one-dimensional shortcut cannot
+pass. It covers both directions of caption/body disagreement, two-unit
+post-hold latch prevention, and a first-line-brightness flicker over a still
+body. Earlier controls also cover geometry recovery under ambiguous line 21,
+gauge conflict, bottom conservation failure, and an otherwise
+out-of-policy-range top. A discontinuity clears both the witness and its last
+measured position, keeps the last applied pair, and makes a pictureless next
+unit an explicitly unmeasurable hold.
 
 `confidence` is deliberately binary in v9: `1` means at least one field has
 an accepted displacement observation, and `0` means neither does. It is not a
 probability and does not assign an invented intermediate score to a one-field
 observation.
 
-The fixture deliberately landed before the v9 implementation. The old v7
-engine must fail it; that red result proves the test distinguishes the new
-contract rather than merely preserving prior output.
+The fixture deliberately landed before each implementation step. The original
+v9 engine scored 126/132 on the 2-D additions; that red result proves these
+cases distinguish the corrected contract rather than merely preserve prior
+output.
+
+The round-8 cases separate abstention from contradiction. A parity gauge is
+not vetoed by a tied or absent body witness. For geometry, a tied body leaves
+comb to corroborate or veto the changed top when comb is measurable; flat or
+unavailable comb leaves the top authoritative and names the decision
+`TopOnly`. A half-static synthetic field proves the veto without allowing comb
+to move a crop independently. These additions fail 183/186 before the engine
+change and pass 186/186 after it.
