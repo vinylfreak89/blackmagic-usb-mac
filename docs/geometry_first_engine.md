@@ -163,3 +163,27 @@ Slice results at `be08bba` (applied pairs, units): 01:26 (1,0) 44 / (0,0) 30 / (
 alternation is the caption moving with the picture; the crop lands two lines under it every unit (panel-confirmed).
 Not yet handled: snow and torn rasters are the signal-state layer's call (the frameserver's classifier), not
 geometry's; the prototype only holds on flat rasters and torn top strips.
+
+### 7a. Same day, later (07:50 JST, `e25f09b`), from the first harness comparison and its raw-row adjudication
+
+- **A single black row directly above a picture-level row is the tape's black line 22, read every unit and never held
+  through.** Codex's row means refuted my panel reading of the be08bba one-above class: line 23 flat black (luma 5,
+  std 3–4) over a picture row at 102–164 is the +1 case, and a lock at 0 had been allowed to resolve it. The lock
+  resolves a black band only when the rows under it are themselves dark (a black first picture line over a grey
+  band, the commercial tape's dark scenes). DEFAULT picture level: blanking + 40.
+- **A readable caption places the field when the picture edge is hidden** (398 of 404 whole-tape caption
+  disagreements were EdgeHidden holds with a caption in view).
+- **A field-2 parity row directly under a recorded waveform is the tape's line 285**, so the picture begins one row
+  under it, not two (its 284 is the smeared bar above). The level-ratio version of this rule broke minute 43, where
+  line 22 carries intermittent full-level video, and was replaced by the structural one.
+- **The per-segment "line 22 carries video" state adds a line only when the row above the top is not a waveform or a
+  torn row**; in the 34:39 damage slice a waveform above the picture had made it add a line to a top that was already
+  the picture.
+- **The relative comb only chooses among a black band's admissible candidates**; unconstrained it moved field 2 to
+  −1 (below the recorded region) in 73 units at 05:00.
+- **A flat raster holds** (body median smoothed correlation < 0.3 and row difference < 1.0: the deck's mute, a
+  pause, a fade).
+- **Ordinal = unwrapped device counter − first exact unit's counter**, the harness's numbering; a walker count sat five
+  high (leading fragments) and was silently unjoinable.
+- Adjudication panels carry the two candidate rows' luma mean/std in the label: an 8× panel of a dark row can look
+  textured, and did.
