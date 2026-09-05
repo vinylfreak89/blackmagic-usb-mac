@@ -602,3 +602,16 @@ records the jump and the difference — the one place the picture may move.
 **Owner (2026-09-05):** once the algorithm is right, take it through optimization rounds — but
 only after the watch copy has been verified correct. Order: round 10, round 11, live-path watch
 copy with the full-tape overlay, owner review, then optimization.
+
+## Round 10 in progress (2026-09-05 14:30 JST): bounded comb relative correction
+
+Codex: red golden `b16b2f4` (install once on the third decisive reading, no accumulation,
+survives a discontinuity, cleared only by begin_segment), implementation `d697f4e`, then a
+regression it caught itself on the first whole-tape oracle — widening the engine's existing
+per-unit comb check from ±1 to ±3 changed the top-veto semantics and converted 63 parity
+placements into picture vetoes — fixed at `11d6378` (the ±3 search serves only the three-sample
+correction state; the per-unit ±1 check is untouched), goldens 194/194. Slices: comb
+misregistered 0/0/1/6/1/0 on the six established windows and 3 cold-start units on the
+minute-43 slice (the correction installs on its third decisive reading and holds (4,3) for the
+remaining 303 units). Codex's final whole-tape pass from `11d6378` is running; Claude's
+verification (seven slices, whole tape, acceptance, both audits) targets `11d6378`.
