@@ -34,9 +34,10 @@ def census(path: Path, elapsed_seconds: float) -> list[str]:
             {
                 "top_measurable": 0,
                 "line21_any": 0,
+                "cc_waveform_any": 0,
                 "line21_unique_off_insert": 0,
                 "gap": 0,
-                "bottom_censored": 0,
+                "bottom_exact": 0,
                 "height_valid": 0,
                 "repeat": 0,
             }
@@ -75,11 +76,14 @@ def census(path: Path, elapsed_seconds: float) -> list[str]:
                 top_status[field][row[prefix + "top_status"]] += 1
                 totals[field]["top_measurable"] += int(row[prefix + "top_valid"])
                 totals[field]["line21_any"] += int(bool(row[prefix + "line21_lines"].strip()))
+                totals[field]["cc_waveform_any"] += int(
+                    bool(row[prefix + "cc_waveform_lines"].strip())
+                )
                 totals[field]["line21_unique_off_insert"] += int(
                     row[prefix + "line21_unique_line"] != "-1"
                 )
                 totals[field]["gap"] += int(row[prefix + "gap_valid"])
-                totals[field]["bottom_censored"] += int(row[prefix + "bottom_censored"])
+                totals[field]["bottom_exact"] += int(row[prefix + "bottom_valid"])
                 totals[field]["height_valid"] += int(row[prefix + "height_valid"])
                 totals[field]["repeat"] += int(row[prefix + "repeated"])
 
@@ -120,16 +124,17 @@ def census(path: Path, elapsed_seconds: float) -> list[str]:
         "Four device-short periods precede the first exact unit. The three short periods inside",
         "the exact-unit span remain visible as ordinal holes rather than shifting event labels.",
         "",
-        "| Field | Measurable top | Any decoded 608 row | Unique off-insert tape 608 | "
-        "Black-gap line | Censored bottom | Exact height | Exact repeat |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Field | Measurable top | Any 608 waveform | Any parity-decoded 608 | Unique off-insert tape 608 | "
+        "Black-gap line | Exact bottom | Exact height | Exact repeat |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for field in (1, 2):
         item = totals[field]
         lines.append(
-            f"| {field} | {item['top_measurable']:,} | {item['line21_any']:,} | "
+            f"| {field} | {item['top_measurable']:,} | {item['cc_waveform_any']:,} | "
+            f"{item['line21_any']:,} | "
             f"{item['line21_unique_off_insert']:,} | {item['gap']:,} | "
-            f"{item['bottom_censored']:,} | {item['height_valid']:,} | "
+            f"{item['bottom_exact']:,} | {item['height_valid']:,} | "
             f"{item['repeat']:,} |"
         )
     lines.extend(["", "## Top-status census", ""])
@@ -149,10 +154,15 @@ def main() -> int:
     parser.add_argument("capture", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("summary", type=Path)
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="replace this oracle's existing reference and summary after a definition change",
+    )
     args = parser.parse_args()
     if not args.capture.is_file():
         raise FileNotFoundError(args.capture)
-    if args.output.exists() or args.summary.exists():
+    if (args.output.exists() or args.summary.exists()) and not args.replace:
         raise FileExistsError("refusing to overwrite an existing reference or summary")
     scratch = Path("/private/tmp/geometry_oracle_fulltape.partial.csv")
     if scratch.exists():

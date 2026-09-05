@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from oracle import (
+    CELL_PIXELS,
     CounterOrdinal,
     FIELD_SPECS,
     FORMAT_NTSC_UYVY,
@@ -19,10 +20,13 @@ from oracle import (
     RASTER_LINES,
     UNIT_BYTES,
     _event_for_ordinal,
+    decode_cea608,
     load_published_crops,
     measure_body,
+    measure_bottom_h_phase,
     measure_envelope,
     measure_row_activity,
+    scan_cea608_waveforms,
 )
 
 
@@ -52,13 +56,42 @@ class GeometryOracleTest(unittest.TestCase):
         self.assertEqual(measured["gap_row"], 20)
         self.assertEqual(measured["top_row"], 21)
 
-    def test_head_switch_bottom_is_censored(self) -> None:
+    def test_last_active_head_switch_row_is_measured_picture(self) -> None:
         y = raster()
-        y[19:260, 40:680] = 70
+        y[19:261, 40:680] = 70
         measured = measure_envelope(y, FIELD_SPECS[0])
-        self.assertEqual(measured["bottom_censored"], 1)
-        self.assertEqual(measured["bottom_valid"], 0)
-        self.assertEqual(measured["height_valid"], 0)
+        self.assertEqual(measured["bottom_row"], 260)
+        self.assertEqual(measured["bottom_valid"], 1)
+        self.assertEqual(measured["height_valid"], 1)
+
+    def test_bottom_horizontal_phase_is_reported_without_invalidating_edge(self) -> None:
+        y = raster()
+        pattern = np.tile(np.arange(80, dtype=np.uint8), 8)[:640]
+        y[19:259, 40:680] = pattern
+        y[259, 44:680] = pattern[:636]
+        shift, mad, second, ratio = measure_bottom_h_phase(y, 19, 259)
+        self.assertEqual(shift, 4)
+        self.assertLess(mad, second)
+        self.assertLess(ratio, 1.0)
+
+    def test_waveform_is_detected_without_valid_byte_parity(self) -> None:
+        y = raster()
+        spec = FIELD_SPECS[1]
+        y[284:520, 40:680] = 80
+        row = 283
+        x = np.full(720, 8, dtype=np.uint8)
+        start = 24
+        half = CELL_PIXELS / 2.0
+        for sample in range(720):
+            if start <= sample < start + 7.0 * CELL_PIXELS:
+                x[sample] = 72 if int((sample - start) / half) % 2 == 0 else 8
+        y[row] = x
+        waveforms = scan_cea608_waveforms(y, spec)
+        self.assertEqual([item.row for item in waveforms], [row])
+        ok, *_ = decode_cea608(y[row])
+        self.assertFalse(ok)
+        measured = measure_envelope(y, spec, {item.row for item in waveforms})
+        self.assertEqual(measured["top_row"], 284)
 
     def test_body_shift_sign(self) -> None:
         previous = raster()

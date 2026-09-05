@@ -66,8 +66,8 @@ def main() -> int:
                 len(top_608),
                 gap_608_agree,
                 len(gap_608),
-                sum(int(row["f1_bottom_censored"]) for row in rows),
-                sum(int(row["f2_bottom_censored"]) for row in rows),
+                sum(int(row["f1_bottom_valid"]) for row in rows),
+                sum(int(row["f2_bottom_valid"]) for row in rows),
             )
         )
         lines.append(
@@ -96,7 +96,7 @@ def main() -> int:
             "## Independent-channel agreement",
             "",
             "| Site | Geometry top = 608-implied top | Gap-implied top = 608-implied top | "
-            "F1/F2 censored bottoms |",
+            "F1/F2 exact bottoms |",
             "|---|---:|---:|---:|",
         ]
     )
