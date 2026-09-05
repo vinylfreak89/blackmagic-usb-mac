@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from oracle import (
+    CounterOrdinal,
     FIELD_SPECS,
     FORMAT_NTSC_UYVY,
     HEADER_BYTES,
@@ -21,6 +22,7 @@ from oracle import (
     load_published_crops,
     measure_body,
     measure_envelope,
+    measure_row_activity,
 )
 
 
@@ -98,6 +100,23 @@ class GeometryOracleTest(unittest.TestCase):
                 "ordinal,published_f1_start,published_f2_start\n300,25,288\n"
             )
             self.assertEqual(load_published_crops(path), {300: (25, 288)})
+
+    def test_transport_ordinal_preserves_short_and_wrap_holes(self) -> None:
+        ordinal = CounterOrdinal()
+        self.assertEqual(ordinal.observe(65_534, 0), 0)
+        self.assertEqual(ordinal.observe(65_535, 1), 1)
+        self.assertEqual(ordinal.observe(1, 2), 3)
+        self.assertEqual(ordinal.observe(2, 3), 4)
+
+    def test_flat_dim_row_is_active_by_level_alone(self) -> None:
+        y = np.full((RASTER_LINES, 720), 2, dtype=np.uint8)
+        spec = FIELD_SPECS[0]
+        y[spec.pass_lo, :] = 30
+        means, stds, gradients, active, _blank, _gates = measure_row_activity(y, spec)
+        self.assertEqual(float(stds[0]), 0.0)
+        self.assertEqual(float(gradients[0]), 0.0)
+        self.assertGreater(float(means[0]), 20.0)
+        self.assertTrue(bool(active[0]))
 
 
 if __name__ == "__main__":
