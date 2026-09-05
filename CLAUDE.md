@@ -1872,6 +1872,19 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   and the other reviews that *implementation* — the code, not only the decision — before merge.
   If one agent is mid-review of the other's branch, let that review finish before pushing more
   commits under it; then swap roles on the next round.
+- **Premise checks are the agents' job; no round without one (owner, 2026-09-05/06, after the
+  v9 inversion — `docs/registration_archaeology.md` Part II).** Before any engine change, restate
+  the contract from the owner's own words and the measured reference raster and show that the
+  change follows from them; a rule or constant that cannot be derived from the raster geometry
+  and the contract is a fitted default and is labelled so, never contract. A round whose
+  acceptance moves one instrument up and another down stops and reopens the premise instead of
+  adding a rule. The raw 525-line panels of every non-locked decision are looked at before any
+  number is reported. None of this needs a human: the contract and the raster are in writing.
+  An owner ruling is asked for only when the contract is silent on what the OUTPUT should do
+  (a deliverable preference, e.g. what the picture does while the raster is torn), never on what
+  the signal is, and it is brought with the measured alternatives and a recommendation. Also
+  from the same day: review a commit's message bytes as well as its tree; push every branch the
+  docs cite; write timestamps only from a checked clock.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).
