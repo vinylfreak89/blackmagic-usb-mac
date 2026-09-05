@@ -482,3 +482,20 @@ Envelope 2,104, Standard 4,101; bias 0 ×49,688, +1 ×23,604, +2 ×13,001, none 
 stricter reference reduces calibration coverage: 05:00 calibrated 325/608 instead of 601/608).
 Not merge-ready by either agent: the round-7 classes (tied-witness fallback, top+comb against a
 still body) and the 35:38 warm-up remain, and the damage discriminator is unresolved.
+
+## Round 7 result: `d871f1f` — a falsification (Codex, 2026-09-05 09:20 JST)
+
+Claude's slice verification of `7e10fee` reproduced Codex's table exactly (whole tape running).
+Round 7 implemented "the top alone never moves the crop": geometry tops need a body or comb
+witness (`TopUncorroborated`), and — beyond the brief — parity-placed tops too
+(`53e93e7 corroborate parity-top motion`); an unfrozen comb may corroborate a top. Result: the
+F golden slice (0:57) goes 23 → 0 misregistered and the crop reaches +1 by the third unit, but
+the whole tape loses **2,616 parity-truth placements** (field 1 37,524 agree, 97 vetoes, 2,616
+disagree, nearly all `TopUncorroborated`), 35:00 missed moves rise 7 → 53, 37:01 4 → 30, and
+the uncalibrated comb witness itself produces 19 false moves at 05:00 (engine-motion 11 → 19).
+Comb `n.a.` explained and fixed: the current-unit comb measurement had been gated on the
+calibration-reference eligibility (field 1 parity-placed and field 2 on its zero), which must
+gate only calibration and drift. Merge-ready: no, by both agents. Lesson: a caption placement
+is a gauge reading, not a top; the picture may veto it when the picture is measurable, but a
+tied or absent witness is not a veto. Claude is measuring the 19 false comb moves before the
+next brief.
