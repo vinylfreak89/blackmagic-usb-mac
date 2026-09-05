@@ -15,6 +15,7 @@ enum {
     FIELDREG_RASTER_LINES = 525,
     FIELDREG_BYTES_PER_LINE = 1440,
     FIELDREG_ACTIVE_LUMA_SAMPLES = 320,
+    FIELDREG_COMB_LUMA_SAMPLES = 640,
     FIELDREG_FIELD_LINES = 240,
     /* 720x480 clean-aperture crop: NTSC lines 23 and 286. */
     FIELDREG_FIELD1_START = 19,
@@ -66,6 +67,8 @@ typedef enum fieldreg_hold_cause {
     FIELDREG_HOLD_NONE = 0,
     FIELDREG_HOLD_TIED_BODY,
     FIELDREG_HOLD_BODY_UNMEASURABLE,
+    FIELDREG_HOLD_TOP_DISAGREES_BODY_STILL,
+    FIELDREG_HOLD_TOP_DISAGREES_BODY_MOTION,
     FIELDREG_HOLD_COMB_VETOED,
     FIELDREG_HOLD_OUT_OF_RANGE,
 } fieldreg_hold_cause;
@@ -205,6 +208,13 @@ typedef struct fieldreg_decision {
     bool transport_ok;
     bool comb_safe;
     fieldreg_parity_state parity_state;
+    /* Decision evidence at the provisional crops. */
+    fieldreg_comb_check comb_input_check;
+    int8_t comb_input_best_shift;
+    double comb_input_best_energy;
+    double comb_input_second_energy;
+    double comb_input_static_fraction;
+    /* Acceptance reading recomputed at this unit's published crops. */
     fieldreg_comb_check comb_check;
     int8_t comb_best_shift;
     int8_t parity_bias;
@@ -258,8 +268,10 @@ typedef struct field_registration {
     /* Previous full-raster active-width luma supplies both the bounded body
      * witness and the static-comb calibration without retaining input. */
     uint8_t previous_luma[FIELDREG_RASTER_LINES *
-                          FIELDREG_ACTIVE_LUMA_SAMPLES];
+                          FIELDREG_COMB_LUMA_SAMPLES];
     bool previous_luma_valid;
+    int8_t previous_published_d1;
+    int8_t previous_published_d2;
     fieldreg_parity_state parity_state;
     int16_t comb_zero_candidate;
     int8_t comb_candidate_count;

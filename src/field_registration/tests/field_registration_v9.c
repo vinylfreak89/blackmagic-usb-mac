@@ -140,7 +140,7 @@ int main(int argc, char **argv)
         }
         if (match) passed++;
         else fprintf(stderr,
-                     "V9-MISMATCH unit=%u scenario=%s expected=%d:(%d,%d) actual=%d:(%d,%d) mode=%s f1=%s/%s f2=%s/%s comb=%d\n",
+                     "V9-MISMATCH unit=%u scenario=%s expected=%d:(%d,%d) actual=%d:(%d,%d) mode=%s f1=%s/%s f2=%s/%s comb=%d check=%s expected_check=%s\n",
                      index, scenario, expected_ok, expected_d1, expected_d2,
                      actual_ok, decision.applied_d1, decision.applied_d2,
                      actual_ok ? fieldreg_mode_name(decision.mode) : "Rejected",
@@ -148,7 +148,9 @@ int main(int argc, char **argv)
                      actual_ok ? fieldreg_lock_state_name(decision.field[0].lock_state) : "Rejected",
                      actual_ok ? fieldreg_mode_name(decision.field[1].reason) : "Rejected",
                      actual_ok ? fieldreg_lock_state_name(decision.field[1].lock_state) : "Rejected",
-                     actual_ok ? decision.comb_safe : 0);
+                     actual_ok ? decision.comb_safe : 0,
+                     actual_ok ? fieldreg_comb_check_name(decision.comb_check) : "Rejected",
+                     expected_comb_check);
         total++;
     }
     free(unit);

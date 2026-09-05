@@ -123,11 +123,12 @@ static void measure_body(const uint8_t *raster, int field,
             uint64_t cost = 0;
             for (int row = 0; row < BODY_PROFILE_ROWS; ++row) {
                 const uint8_t *previous = previous_luma +
-                    (size_t)(base + row) * BODY_PROFILE_COLUMNS;
+                    (size_t)(base + row) * FIELDREG_COMB_LUMA_SAMPLES;
                 const uint8_t *next = current +
                     (row + BODY_SEARCH_RADIUS + shift) * BODY_PROFILE_COLUMNS;
                 for (int column = 0; column < BODY_PROFILE_COLUMNS; ++column) {
-                    const int delta = (int)previous[column] - (int)next[column];
+                    const int delta = (int)previous[column * 2] -
+                                      (int)next[column];
                     cost += (uint64_t)(delta < 0 ? -delta : delta);
                 }
             }
@@ -589,6 +590,7 @@ static bool needs_saved_geometry_hold(const fieldreg_field_decision *d,
     case FIELDREG_MODE_COMMON_MODE_BODY_HOLD:
         return true;
     case FIELDREG_MODE_TOP_BODY_DISAGREE:
+        return m->picture_conflict;
     case FIELDREG_MODE_CAPTION_BODY_DISAGREE:
     case FIELDREG_MODE_LINE21_AMBIGUOUS:
     case FIELDREG_MODE_GAUGE_CONFLICT:
@@ -610,6 +612,12 @@ static fieldreg_hold_cause saved_hold_cause(
         return FIELDREG_HOLD_OUT_OF_RANGE;
     if (m->body_shift == FIELDREG_UNKNOWN || m->body_mad > 25.0)
         return FIELDREG_HOLD_BODY_UNMEASURABLE;
+    if (!m->body_witness_valid)
+        return FIELDREG_HOLD_TIED_BODY;
+    if (m->body_shift == 0)
+        return FIELDREG_HOLD_TOP_DISAGREES_BODY_STILL;
+    if (m->picture_conflict)
+        return FIELDREG_HOLD_TOP_DISAGREES_BODY_MOTION;
     return FIELDREG_HOLD_TIED_BODY;
 }
 
@@ -738,26 +746,26 @@ static void resolve_picture_positions(field_measurement m[2])
 }
 
 static void line_box_sums_current(const uint8_t *raster, int row,
-                                  uint16_t out[BODY_PROFILE_COLUMNS])
+                                  uint16_t out[FIELDREG_COMB_LUMA_SAMPLES])
 {
     const uint8_t *line = raster + (size_t)row * FIELDREG_BYTES_PER_LINE;
     unsigned sum = 0;
-    for (int x = 0; x < BODY_PROFILE_COLUMNS; ++x) {
-        sum += line[(40 + x * 2) * 2 + 1];
-        if (x >= 4) sum -= line[(40 + (x - 4) * 2) * 2 + 1];
+    for (int x = 0; x < FIELDREG_COMB_LUMA_SAMPLES; ++x) {
+        sum += line[(40 + x) * 2 + 1];
+        if (x >= 8) sum -= line[(40 + x - 8) * 2 + 1];
         out[x] = (uint16_t)sum;
     }
 }
 
 static void line_box_sums_previous(const field_registration *engine, int row,
-                                   uint16_t out[BODY_PROFILE_COLUMNS])
+                                   uint16_t out[FIELDREG_COMB_LUMA_SAMPLES])
 {
     const uint8_t *line = engine->previous_luma +
-                          (size_t)row * BODY_PROFILE_COLUMNS;
+                          (size_t)row * FIELDREG_COMB_LUMA_SAMPLES;
     unsigned sum = 0;
-    for (int x = 0; x < BODY_PROFILE_COLUMNS; ++x) {
+    for (int x = 0; x < FIELDREG_COMB_LUMA_SAMPLES; ++x) {
         sum += line[x];
-        if (x >= 4) sum -= line[x - 4];
+        if (x >= 8) sum -= line[x - 8];
         out[x] = (uint16_t)sum;
     }
 }
@@ -774,40 +782,72 @@ static comb_measurement measure_static_comb(const field_registration *engine,
     if (!engine->previous_luma_valid) return result;
     const int a1 = FIELDREG_FIELD1_START + d1;
     const int a2 = FIELDREG_FIELD2_START + d2;
+    const int p1 = FIELDREG_FIELD1_START + engine->previous_published_d1;
+    const int p2 = FIELDREG_FIELD2_START + engine->previous_published_d2;
     if (a1 < 0 || a1 + FIELDREG_FIELD_LINES > FIELDREG_RASTER_LINES)
         return result;
+    if (a2 < 0 || a2 + FIELDREG_FIELD_LINES > FIELDREG_RASTER_LINES ||
+        p1 < 0 || p1 + FIELDREG_FIELD_LINES > FIELDREG_RASTER_LINES ||
+        p2 < 0 || p2 + FIELDREG_FIELD_LINES > FIELDREG_RASTER_LINES)
+        return result;
 
+    uint64_t costs[2 * BODY_SEARCH_RADIUS + 1] = {0};
+    bool shift_valid[2 * BODY_SEARCH_RADIUS + 1] = {false};
     for (int shift = first_shift; shift <= last_shift; ++shift) {
         const int f2 = a2 + shift;
-        if (f2 < 0 || f2 + FIELDREG_FIELD_LINES > FIELDREG_RASTER_LINES)
-            continue;
-        uint64_t cost = 0;
-        uint64_t count = 0;
-        for (int row = 0; row + 1 < FIELDREG_FIELD_LINES; ++row) {
-            uint16_t c1a[BODY_PROFILE_COLUMNS], p1a[BODY_PROFILE_COLUMNS];
-            uint16_t c1b[BODY_PROFILE_COLUMNS], p1b[BODY_PROFILE_COLUMNS];
-            uint16_t c2[BODY_PROFILE_COLUMNS], p2[BODY_PROFILE_COLUMNS];
-            line_box_sums_current(raster, a1 + row, c1a);
-            line_box_sums_previous(engine, a1 + row, p1a);
-            line_box_sums_current(raster, a1 + row + 1, c1b);
-            line_box_sums_previous(engine, a1 + row + 1, p1b);
-            line_box_sums_current(raster, f2 + row, c2);
-            line_box_sums_previous(engine, f2 + row, p2);
-            for (int x = 0; x < BODY_PROFILE_COLUMNS; ++x) {
-                const int t1a = (int)c1a[x] - (int)p1a[x];
-                const int t1b = (int)c1b[x] - (int)p1b[x];
-                const int t2 = (int)c2[x] - (int)p2[x];
-                if (abs(t1a) >= 24 || abs(t1b) >= 24 || abs(t2) >= 24)
-                    continue;
-                int delta = 2 * (int)c2[x] - (int)c1a[x] - (int)c1b[x];
-                cost += (uint64_t)(delta < 0 ? -delta : delta);
-                ++count;
+        if (f2 >= 0 && f2 + FIELDREG_FIELD_LINES <= FIELDREG_RASTER_LINES)
+            shift_valid[shift + BODY_SEARCH_RADIUS] = true;
+    }
+    uint64_t count = 0;
+    for (int row = 0; row + 1 < FIELDREG_FIELD_LINES; ++row) {
+        uint16_t c1a[FIELDREG_COMB_LUMA_SAMPLES];
+        uint16_t c1b[FIELDREG_COMB_LUMA_SAMPLES];
+        uint16_t p1a[FIELDREG_COMB_LUMA_SAMPLES];
+        uint16_t p1b[FIELDREG_COMB_LUMA_SAMPLES];
+        uint16_t c2a[FIELDREG_COMB_LUMA_SAMPLES];
+        uint16_t c2b[FIELDREG_COMB_LUMA_SAMPLES];
+        uint16_t p2a[FIELDREG_COMB_LUMA_SAMPLES];
+        uint16_t p2b[FIELDREG_COMB_LUMA_SAMPLES];
+        uint16_t candidate[2 * BODY_SEARCH_RADIUS + 1]
+                          [FIELDREG_COMB_LUMA_SAMPLES];
+        line_box_sums_current(raster, a1 + row, c1a);
+        line_box_sums_current(raster, a1 + row + 1, c1b);
+        line_box_sums_previous(engine, p1 + row, p1a);
+        line_box_sums_previous(engine, p1 + row + 1, p1b);
+        line_box_sums_current(raster, a2 + row, c2a);
+        line_box_sums_current(raster, a2 + row + 1, c2b);
+        line_box_sums_previous(engine, p2 + row, p2a);
+        line_box_sums_previous(engine, p2 + row + 1, p2b);
+        for (int shift = first_shift; shift <= last_shift; ++shift) {
+            if (shift_valid[shift + BODY_SEARCH_RADIUS])
+                line_box_sums_current(raster, a2 + shift + row,
+                    candidate[shift + BODY_SEARCH_RADIUS]);
+        }
+        for (int x = 0; x < FIELDREG_COMB_LUMA_SAMPLES; ++x) {
+            if (abs((int)c1a[x] - (int)p1a[x]) >= 48 ||
+                abs((int)c1b[x] - (int)p1b[x]) >= 48 ||
+                abs((int)c2a[x] - (int)p2a[x]) >= 48 ||
+                abs((int)c2b[x] - (int)p2b[x]) >= 48)
+                continue;
+            ++count;
+            for (int shift = first_shift; shift <= last_shift; ++shift) {
+                if (!shift_valid[shift + BODY_SEARCH_RADIUS]) continue;
+                const int delta =
+                    2 * (int)candidate[shift + BODY_SEARCH_RADIUS][x] -
+                    (int)c1a[x] - (int)c1b[x];
+                costs[shift + BODY_SEARCH_RADIUS] +=
+                    (uint64_t)(delta < 0 ? -delta : delta);
             }
         }
-        if (count == 0) continue;
-        const double fraction = (double)count /
-            ((FIELDREG_FIELD_LINES - 1) * BODY_PROFILE_COLUMNS);
-        const double energy = (double)cost / (8.0 * (double)count);
+    }
+    if (count == 0) return result;
+    const double fraction = (double)count /
+        ((FIELDREG_FIELD_LINES - 1) * FIELDREG_COMB_LUMA_SAMPLES);
+    for (int shift = first_shift; shift <= last_shift; ++shift) {
+        if (!shift_valid[shift + BODY_SEARCH_RADIUS]) continue;
+        const double energy =
+            (double)costs[shift + BODY_SEARCH_RADIUS] /
+            (16.0 * (double)count);
         if (energy < result.best_energy) {
             result.second_energy = result.best_energy;
             result.best_energy = energy;
@@ -819,6 +859,7 @@ static comb_measurement measure_static_comb(const field_registration *engine,
     }
     result.measurable = result.best_shift != FIELDREG_UNKNOWN &&
         isfinite(result.second_energy) &&
+        result.second_energy > 0.0 &&
         result.static_fraction >=
             (double)COMB_STATIC_NUMERATOR / COMB_STATIC_DENOMINATOR &&
         result.best_energy <= 0.75 * result.second_energy;
@@ -830,11 +871,11 @@ static void copy_current_luma(field_registration *engine,
 {
     for (int row = 0; row < FIELDREG_RASTER_LINES; ++row) {
         uint8_t *dst = engine->previous_luma +
-                       (size_t)row * BODY_PROFILE_COLUMNS;
+                       (size_t)row * FIELDREG_COMB_LUMA_SAMPLES;
         const uint8_t *line = raster +
                               (size_t)row * FIELDREG_BYTES_PER_LINE;
-        for (int x = 0; x < BODY_PROFILE_COLUMNS; ++x)
-            dst[x] = line[(40 + x * 2) * 2 + 1];
+        for (int x = 0; x < FIELDREG_COMB_LUMA_SAMPLES; ++x)
+            dst[x] = line[(40 + x) * 2 + 1];
     }
     engine->previous_luma_valid = true;
 }
@@ -1316,8 +1357,8 @@ static void update_parity_calibration(field_registration *engine,
                                       const field_measurement m[2],
                                       fieldreg_decision *out)
 {
-    out->comb_best_shift = FIELDREG_UNKNOWN;
-    out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
+    out->comb_input_best_shift = FIELDREG_UNKNOWN;
+    out->comb_input_check = FIELDREG_COMB_NOT_APPLICABLE;
 
     if (engine->parity_state == FIELDREG_PARITY_UNCALIBRATED) {
         const bool eligible = field1_calibration_reference(&m[0],
@@ -1328,14 +1369,14 @@ static void update_parity_calibration(field_registration *engine,
         const comb_measurement comb = measure_static_comb(
             engine, raster, out->applied_d1, out->applied_d2, -3, 3);
         if (comb.best_shift != FIELDREG_UNKNOWN) {
-            out->comb_best_shift = comb.best_shift;
-            out->comb_best_energy = comb.best_energy;
-            out->comb_second_energy = comb.second_energy;
-            out->comb_static_fraction = comb.static_fraction;
+            out->comb_input_best_shift = comb.best_shift;
+            out->comb_input_best_energy = comb.best_energy;
+            out->comb_input_second_energy = comb.second_energy;
+            out->comb_input_static_fraction = comb.static_fraction;
         }
         if (comb.measurable) {
-            out->comb_check = comb.best_shift == 0 ? FIELDREG_COMB_AGREE :
-                                                    FIELDREG_COMB_DISAGREE;
+            out->comb_input_check = comb.best_shift == 0 ?
+                FIELDREG_COMB_AGREE : FIELDREG_COMB_DISAGREE;
         }
         if (eligible && comb.measurable) {
             const int16_t target_top = (int16_t)(m[1].picture_top -
@@ -1354,34 +1395,34 @@ static void update_parity_calibration(field_registration *engine,
                     engine->parity_state = FIELDREG_PARITY_CALIBRATED;
                     engine->comb_zero_candidate = INT16_MIN;
                     engine->comb_candidate_count = 0;
-                    out->comb_check = FIELDREG_COMB_AGREE;
+                    out->comb_input_check = FIELDREG_COMB_AGREE;
                 } else {
-                    out->comb_check = FIELDREG_COMB_DISAGREE;
+                    out->comb_input_check = FIELDREG_COMB_DISAGREE;
                 }
             }
         } else {
             engine->comb_zero_candidate = INT16_MIN;
             engine->comb_candidate_count = 0;
             if (!comb.measurable && comb.best_shift != FIELDREG_UNKNOWN)
-                out->comb_check = FIELDREG_COMB_FLAT;
+                out->comb_input_check = FIELDREG_COMB_FLAT;
         }
     } else {
         const comb_measurement comb = measure_static_comb(
             engine, raster, out->applied_d1, out->applied_d2, -1, 1);
         if (comb.best_shift != FIELDREG_UNKNOWN) {
-            out->comb_best_shift = comb.best_shift;
-            out->comb_best_energy = comb.best_energy;
-            out->comb_second_energy = comb.second_energy;
-            out->comb_static_fraction = comb.static_fraction;
+            out->comb_input_best_shift = comb.best_shift;
+            out->comb_input_best_energy = comb.best_energy;
+            out->comb_input_second_energy = comb.second_energy;
+            out->comb_input_static_fraction = comb.static_fraction;
         }
         if (comb.best_shift == FIELDREG_UNKNOWN) {
-            out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
+            out->comb_input_check = FIELDREG_COMB_NOT_APPLICABLE;
         } else if (!comb.measurable) {
-            out->comb_check = FIELDREG_COMB_FLAT;
+            out->comb_input_check = FIELDREG_COMB_FLAT;
         } else if (comb.best_shift == 0) {
-            out->comb_check = FIELDREG_COMB_AGREE;
+            out->comb_input_check = FIELDREG_COMB_AGREE;
         } else {
-            out->comb_check = FIELDREG_COMB_DISAGREE;
+            out->comb_input_check = FIELDREG_COMB_DISAGREE;
         }
     }
     out->parity_state = engine->parity_state;
@@ -1426,8 +1467,8 @@ static bool resolve_top_with_comb(field_registration *engine,
             continue;
         const int delta = candidate[field] -
                           engine->field[field].last_applied;
-        match[field] = out->comb_check == FIELDREG_COMB_DISAGREE &&
-            out->comb_best_shift == (field == 0 ? -delta : delta);
+        match[field] = out->comb_input_check == FIELDREG_COMB_DISAGREE &&
+            out->comb_input_best_shift == (field == 0 ? -delta : delta);
     }
     /* Relative comb identifies a moved field only when exactly one current
      * top explains its disagreement. Two matching candidates are ambiguous. */
@@ -1443,8 +1484,8 @@ static bool resolve_top_with_comb(field_registration *engine,
         fieldreg_field_decision *d = &out->field[field];
         if (d->reason != FIELDREG_MODE_TOP_UNCORROBORATED)
             continue;
-        if (out->comb_check == FIELDREG_COMB_AGREE ||
-            out->comb_check == FIELDREG_COMB_DISAGREE) {
+        if (out->comb_input_check == FIELDREG_COMB_AGREE ||
+            out->comb_input_check == FIELDREG_COMB_DISAGREE) {
             d->reason = FIELDREG_MODE_TOP_COMB_VETOED;
             d->gauge = FIELDREG_GAUGE_STATIC_COMB;
         }
@@ -1486,6 +1527,7 @@ static int choose_comb_correction_field(const field_registration *engine,
 
 static void update_comb_relative_correction(field_registration *engine,
                                             const uint8_t *raster,
+                                            const field_measurement m[2],
                                             fieldreg_decision *out,
                                             bool crops_changed_after_comb)
 {
@@ -1497,22 +1539,33 @@ static void update_comb_relative_correction(field_registration *engine,
         return;
     }
 
+    /* A persistent relative offset is meaningful only while both fields say
+     * they made the same physical move. Differential unit-rate jitter is not
+     * a segment bias; it resets pending install/clear evidence without
+     * erasing a correction that was already established. */
+    if (!body_reliable(&m[0]) || !body_reliable(&m[1]) ||
+        m[0].body_shift != m[1].body_shift) {
+        engine->comb_correction_candidate = FIELDREG_UNKNOWN;
+        engine->comb_correction_candidate_count = 0;
+        return;
+    }
+
     const comb_measurement comb = measure_static_comb(
         engine, raster, out->baseline_d1, out->baseline_d2, -3, 3);
     if (comb.best_shift != FIELDREG_UNKNOWN) {
-        out->comb_best_shift = comb.best_shift;
-        out->comb_best_energy = comb.best_energy;
-        out->comb_second_energy = comb.second_energy;
-        out->comb_static_fraction = comb.static_fraction;
+        out->comb_input_best_shift = comb.best_shift;
+        out->comb_input_best_energy = comb.best_energy;
+        out->comb_input_second_energy = comb.second_energy;
+        out->comb_input_static_fraction = comb.static_fraction;
     }
     if (comb.best_shift == FIELDREG_UNKNOWN) {
-        out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
+        out->comb_input_check = FIELDREG_COMB_NOT_APPLICABLE;
     } else if (!comb.measurable) {
-        out->comb_check = FIELDREG_COMB_FLAT;
+        out->comb_input_check = FIELDREG_COMB_FLAT;
     } else if (comb.best_shift == 0) {
-        out->comb_check = FIELDREG_COMB_AGREE;
+        out->comb_input_check = FIELDREG_COMB_AGREE;
     } else {
-        out->comb_check = FIELDREG_COMB_DISAGREE;
+        out->comb_input_check = FIELDREG_COMB_DISAGREE;
     }
     if (!comb.measurable)
         return;
@@ -1604,7 +1657,7 @@ bool fieldreg_process_ex(field_registration *engine,
     const bool crops_changed_after_comb = resolve_top_with_comb(engine, m, out);
     out->baseline_d1 = out->field[0].applied_d;
     out->baseline_d2 = out->field[1].applied_d;
-    update_comb_relative_correction(engine, raster, out,
+    update_comb_relative_correction(engine, raster, m, out,
                                     crops_changed_after_comb);
     const bool correction_honored = apply_comb_relative_correction(engine, m,
                                                                     out);
@@ -1619,6 +1672,20 @@ bool fieldreg_process_ex(field_registration *engine,
 
     out->applied_d1 = out->field[0].applied_d;
     out->applied_d2 = out->field[1].applied_d;
+    const comb_measurement published_comb = measure_static_comb(
+        engine, raster, out->applied_d1, out->applied_d2, -3, 3);
+    out->comb_best_shift = published_comb.best_shift;
+    out->comb_best_energy = published_comb.best_energy;
+    out->comb_second_energy = published_comb.second_energy;
+    out->comb_static_fraction = published_comb.static_fraction;
+    if (published_comb.best_shift == FIELDREG_UNKNOWN)
+        out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
+    else if (!published_comb.measurable)
+        out->comb_check = FIELDREG_COMB_FLAT;
+    else if (published_comb.best_shift == 0)
+        out->comb_check = FIELDREG_COMB_AGREE;
+    else
+        out->comb_check = FIELDREG_COMB_DISAGREE;
     out->decision_d1 = out->field[0].measured_d;
     out->decision_d2 = out->field[1].measured_d;
     out->frame_observation_d1 = out->decision_d1;
@@ -1635,6 +1702,8 @@ bool fieldreg_process_ex(field_registration *engine,
     out->comb_safe = both_locked &&
                      engine->parity_state == FIELDREG_PARITY_CALIBRATED &&
                      correction_honored;
+    engine->previous_published_d1 = out->applied_d1;
+    engine->previous_published_d2 = out->applied_d2;
     copy_current_luma(engine, raster);
     return true;
 }
@@ -1755,6 +1824,10 @@ const char *fieldreg_hold_cause_name(fieldreg_hold_cause cause)
     case FIELDREG_HOLD_NONE: return "None";
     case FIELDREG_HOLD_TIED_BODY: return "TiedBody";
     case FIELDREG_HOLD_BODY_UNMEASURABLE: return "BodyUnmeasurable";
+    case FIELDREG_HOLD_TOP_DISAGREES_BODY_STILL:
+        return "TopDisagreesBodyStill";
+    case FIELDREG_HOLD_TOP_DISAGREES_BODY_MOTION:
+        return "TopDisagreesBodyMotion";
     case FIELDREG_HOLD_COMB_VETOED: return "CombVetoed";
     case FIELDREG_HOLD_OUT_OF_RANGE: return "OutOfRange";
     }
