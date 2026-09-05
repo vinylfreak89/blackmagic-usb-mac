@@ -580,4 +580,5 @@ signal-lock loss; a content cut invalidates the body profile but not the source'
 reference. Field-2 `+4` stays out of range: the raw comb says the needed correction at minute
 43 is `d2 = 3`, and a 240-line crop from `+4` needs one row beyond the 525-line buffer (a
 separately named padding-extension path, later). Merge: `render-live` `490877b` merged into
-main via Codex's tested merge commit `339b83a` (all suites pass on the merged tree).
+main via Codex's tested merge commit `339b83a` (all suites pass on the merged tree), landed as
+`cb1b4ed` because main had moved by one experiments commit; goldens 186/186 on main.
