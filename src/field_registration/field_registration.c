@@ -1612,6 +1612,14 @@ static void update_comb_relative_correction(field_registration *engine,
                                             fieldreg_decision *out,
                                             bool crops_changed_after_comb)
 {
+    if (engine->gap_state == FIELDREG_GAP_ENABLED) {
+        /* The authorized tape gap is an absolute per-field landmark. Keep
+         * comb as a diagnostic at those crops; it may not install a relative
+         * fallback that overrides the physical readings. */
+        engine->comb_correction_candidate = FIELDREG_UNKNOWN;
+        engine->comb_correction_candidate_count = 0;
+        return;
+    }
     if (crops_changed_after_comb ||
         out->field[1].reason == FIELDREG_MODE_FIELD2_COMB_CALIBRATION ||
         out->field[1].reason == FIELDREG_MODE_ZERO_CONFLICT) {
