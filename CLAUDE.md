@@ -1325,7 +1325,14 @@ delivery edge; wrong one at acquisition.
   under displacement**; the SP intro's majority top-20/bottom-256 (17,503 units) carries no
   line-21 waveform at row 18 (first-minute probe: row sets `(17,)` and `(17,19)` only), so it is
   LOCKED with a blank line 23 in the content — an envelope-top gauge would have called the entire
-  intro +1; this is the strongest single case for the golden rule. Field 2: 282/518 in 23,302
+  intro +1; this is the strongest single case for the golden rule. **CORRECTED 2026-09-05:** the
+  tape's own black line 22 (Y ≈ 4–7, above the 1.4 blanking) sits at row 19 in those units, the
+  comb audit registers the fields at (1,0) and not at (0,0), and wherever a caption exists the
+  gap reading agrees with it 309/309 — the intro IS displaced +1; the "blank line 23" was the
+  tape's line 22 seen one line low. Row 18 is always black (regenerated, like the inserts); the
+  tape's dark line at row 18 + d is a per-unit displacement gauge for any recording whose line
+  22 is black, gated per segment by agreement with its captions (the second recording carries
+  video on 22 and reads 0 there). Field 2: 282/518 in 23,302
   of 24,000 intro units, **224 rigid moves in 86,293 (0.26%)**; its 282↔283 top flicker is
   content. *Second recording (1,461 s–end):* captions **never on the insert**; found in 9,162
   units at rows 19/20 with the picture top at 20–22 and the bottom fixed at 256 (field 2 at
