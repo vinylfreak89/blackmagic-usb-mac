@@ -833,6 +833,35 @@ def main():
             comb_check="agree" if i == 3 else "-",
             parity_bias=2 if i == 3 else 0)
 
+    # Round 10: a settled zero is not rewritten when later static evidence
+    # finds a relative error. Three consecutive +1 readings install one
+    # bounded correction on field 2 (field 1 is parity-placed), and later +1
+    # readings must not integrate it to +2. A content/byte discontinuity
+    # clears only in-progress comparison; signal relock clears the installed
+    # correction with the rest of the segment state.
+    for i in range(6):
+        corrected = i >= 3
+        add(f"comb-relative-plus1-{i + 1}", (4, 3 if corrected else 2),
+            picture=(4, 0), captions=((4, 0x14, 0x2c), None),
+            bright_rows=(284,), comb_offsets=(4, 3),
+            f1_reason="Line21Placement",
+            f2_reason="CombRelativeCorrection" if corrected else "-",
+            f2_zero="Comb", f2_lock_top=280,
+            parity_state="Calibrated", parity_bias=2)
+    add("comb-relative-survives-cut", (4, 3), discontinuity=True,
+        picture=(4, 0), captions=((4, 0x14, 0x2c), None),
+        bright_rows=(284,), comb_offsets=(4, 3),
+        f1_reason="Line21Placement",
+        f2_reason="CombRelativeCorrection", f2_zero="Comb",
+        f2_lock_top=280, parity_state="Calibrated", comb_check="n.a.",
+        parity_bias=2)
+    add("comb-relative-signal-relock-clears", (4, 2), begin=True,
+        picture=(4, 0), captions=((4, 0x14, 0x2c), None),
+        bright_rows=(284,), comb_offsets=(4, 3),
+        f1_reason="Line21Placement", f2_reason="GeometryLockDecides",
+        f2_zero="Standard", f2_lock_top=282,
+        parity_state="Uncalibrated", comb_check="n.a.", parity_bias=0)
+
     # Comb calibration needs a known-correct field-1 reference. Geometry can
     # be self-consistent around a corrupt zero, so it must never qualify even
     # when the weave has a decisive minimum.
