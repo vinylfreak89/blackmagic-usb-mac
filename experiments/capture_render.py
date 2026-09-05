@@ -1238,6 +1238,8 @@ class _CFieldDecision(ctypes.Structure):
         ("insert_relation", ctypes.c_int),
         ("parity_candidate_count", ctypes.c_uint16),
         ("fallback_candidate_count", ctypes.c_uint16),
+        ("gap_row", ctypes.c_int16), ("gap_d", ctypes.c_int8),
+        ("gap_measurable", ctypes.c_bool),
         ("gauge_row", ctypes.c_int16),
         ("gauge_byte1", ctypes.c_uint8), ("gauge_byte2", ctypes.c_uint8),
         ("gauge_amplitude", ctypes.c_double), ("blank_mean", ctypes.c_double),
@@ -1283,6 +1285,8 @@ class _CFieldRegistrationDecision(ctypes.Structure):
         ("mode", ctypes.c_int), ("confidence", ctypes.c_double),
         ("transport_ok", ctypes.c_bool), ("comb_safe", ctypes.c_bool),
         ("parity_state", ctypes.c_int),
+        ("gap_state", ctypes.c_int),
+        ("gap_agreement_count", ctypes.c_uint16),
         ("comb_input_check", ctypes.c_int),
         ("comb_input_best_shift", ctypes.c_int8),
         ("comb_input_best_energy", ctypes.c_double),
@@ -1363,6 +1367,8 @@ class CRegistrationEstimator:
         self.library.fieldreg_parity_state_name.restype = ctypes.c_char_p
         self.library.fieldreg_comb_check_name.argtypes = (ctypes.c_int,)
         self.library.fieldreg_comb_check_name.restype = ctypes.c_char_p
+        self.library.fieldreg_gap_state_name.argtypes = (ctypes.c_int,)
+        self.library.fieldreg_gap_state_name.restype = ctypes.c_char_p
         self.library.fieldreg_hold_cause_name.argtypes = (ctypes.c_int,)
         self.library.fieldreg_hold_cause_name.restype = ctypes.c_char_p
         self.library.fieldreg_init(self.state, ctypes.byref(self.config))
@@ -1412,6 +1418,9 @@ class CRegistrationEstimator:
                     item.insert_relation).decode("ascii"),
                 "parity_candidates": item.parity_candidate_count,
                 "fallback_candidates": item.fallback_candidate_count,
+                "gap_line": item.gap_row + 4 if item.gap_row >= 0 else -1,
+                "gap_d": item.gap_d,
+                "gap_measurable": bool(item.gap_measurable),
                 "gauge_line": item.gauge_row + 4 if item.gauge_row >= 0 else -1,
                 "gauge_bytes": (
                     f"{item.gauge_byte1:02x}{item.gauge_byte2:02x}"
@@ -1495,6 +1504,9 @@ class CRegistrationEstimator:
             "comb_safe": bool(result.comb_safe),
             "parity_state": self.library.fieldreg_parity_state_name(
                 result.parity_state).decode("ascii"),
+            "gap_state": self.library.fieldreg_gap_state_name(
+                result.gap_state).decode("ascii"),
+            "gap_agreement_count": result.gap_agreement_count,
             "comb_input_check": self.library.fieldreg_comb_check_name(
                 result.comb_input_check).decode("ascii"),
             "comb_input_best_shift": result.comb_input_best_shift,
@@ -1928,11 +1940,12 @@ TPC_DECISION_COLUMNS = (
     "registration_engine",
 )
 
-# Schema 10 retains the transport/presentation columns consumed by the renderer
-# and extends v9 with evidence-backed saved-geometry provenance.
+# Schema 12 retains the transport/presentation columns consumed by the renderer
+# and extends v9 with the gated tape-line-22 gap measurement.
 V9_FIELD_COLUMNS = (
     "reason", "gauge", "insert_present", "insert_bytes", "insert_relation",
-    "parity_candidates", "fallback_candidates", "gauge_line", "gauge_bytes",
+    "parity_candidates", "fallback_candidates", "gap_line", "gap_d",
+    "gap_measurable", "gauge_line", "gauge_bytes",
     "gauge_amplitude", "geometry_d", "blank_mean", "body_witness_valid",
     "body_shift", "body_mad", "body_geometry_agrees", "body_reference_top",
     "body_implied_top", "body_differential", "body_common_mode",
@@ -1951,6 +1964,7 @@ TPC_DECISION_COLUMNS = (
     "captured_video_bytes", "undefined_video_bytes", "decision_d1",
     "decision_d2", "applied_d1", "applied_d2", "baseline_d1", "baseline_d2",
     "mode", "confidence", "transport_ok", "comb_safe", "parity_state",
+    "gap_state", "gap_agreement_count",
     "comb_input_check", "comb_input_best_shift", "comb_input_best_energy",
     "comb_input_second_energy", "comb_input_static_fraction",
     "comb_check", "comb_published_best_shift", "parity_bias",
@@ -1967,7 +1981,8 @@ def _v9_field_row(field):
     return (
         field["reason"], field["gauge"], int(field["insert_present"]),
         field["insert_bytes"], field["insert_relation"], field["parity_candidates"],
-        field["fallback_candidates"], field["gauge_line"], field["gauge_bytes"],
+        field["fallback_candidates"], field["gap_line"], field["gap_d"],
+        int(field["gap_measurable"]), field["gauge_line"], field["gauge_bytes"],
         f"{field['gauge_amplitude']:.3f}", field["geometry_d"],
         f"{field['blank_mean']:.3f}",
         int(field["body_witness_valid"]), field["body_shift"],
@@ -2032,7 +2047,9 @@ def tagged_decision_row(
             *registration["baseline"], registration["mode"],
             f"{registration['confidence']:.9f}", int(registration["transport_ok"]),
             int(registration["comb_safe"]),
-            registration["parity_state"], registration["comb_input_check"],
+            registration["parity_state"], registration["gap_state"],
+            registration["gap_agreement_count"],
+            registration["comb_input_check"],
             registration["comb_input_best_shift"],
             f"{registration['comb_input_best_energy']:.3f}",
             f"{registration['comb_input_second_energy']:.3f}",
@@ -2044,7 +2061,7 @@ def tagged_decision_row(
             f"{registration['comb_static_fraction']:.6f}",
             registration["segment_id"], presentation_policy,
             *_v9_field_row(fields[0]),
-            *_v9_field_row(fields[1]), registration["engine"], 11,
+            *_v9_field_row(fields[1]), registration["engine"], 12,
         )
     decision = registration["decision"]
     best_d1, best_d2 = registration["best_pair"]

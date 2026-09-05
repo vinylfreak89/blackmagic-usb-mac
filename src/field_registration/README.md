@@ -162,7 +162,7 @@ more than three source lines from the standard origin is immediately refused
 as `ZeroOutOfBounds`. This candidate memory never delays or smooths crop
 placement.
 
-## Sidecar schema 11
+## Sidecar schema 12
 
 The frameserver retains its transport/signal columns and writes the following
 v9 provenance for each field. Values named `*_line` are NTSC line numbers
@@ -171,6 +171,7 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
 - reason and gauge;
 - insert presence and decoded bytes;
 - parity/fallback candidate counts;
+- the measured tape-line-22 gap line/displacement/validity;
 - selected gauge line, decoded bytes, correlation amplitude, and the live
   lock's independent `geometry_d` reading;
 - blank-row mean; the 2-D body witness's validity, shift and MAD; its previous
@@ -190,6 +191,15 @@ Hold causes distinguish a reliable still-body contradiction
 abstaining/tied witness (`TiedBody`), an unmeasurable witness, a comb veto, and
 an out-of-range reading. A tied witness is never used as shorthand for a
 reliable zero-shift observation.
+
+The row also records the segment-gated tape-gap state
+(`Uncalibrated`/`Enabled`/`Rejected`) and caption-agreement count. The gap is
+the last row with mean luma at most 10 before two picture rows above 12, within
+source lines 22..33, and is bounded to displacement 0..3 from line 22. It may
+place only after a displaced tape gap is directly observed or a unique field-1
+CEA-608 line agrees with it; one disagreement rejects it until signal relock.
+This prevents a source carrying active video on line 22 from treating the
+Shuttle's fixed black line as tape motion.
 
 The row also records `parity_state` (Uncalibrated/Calibrated; `Drift` remains
 an ABI name but is not produced by this policy). `comb_input_*` is the
