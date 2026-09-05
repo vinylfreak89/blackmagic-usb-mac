@@ -527,3 +527,18 @@ TopOnly 966, TopCombVetoed 159, TopCombCorroborated 118. Engine 1.35 ms median /
 Codex: merge-ready for the round-8 changes; the raster-damage state remains deferred (no
 discriminator). Claude's gate: the whole-tape comb audit against `a683926`'s 2,485 and the
 parity acceptance by my own script; then a Codex review of my instruments.
+
+**Codex's review of Claude's instruments (2026-09-05 10:18 JST), ten findings, seven fixed on
+main:** the comb audit sampled the previous unit at the current crop and built a different
+static mask per candidate shift (now one mask at the previous unit's own published crops);
+"registered" bypassed the uniqueness test (now both verdicts need a unique minimum with a 25%
+drop, so many units move to `flat`: 37:01 322/6/0 → 246/82/0, 05:00 584/21/2 → 446/160/1); the
+readers failed open on a truncated walk and compared exact units across a short unit (now fail
+with exit 2 unless every exact sidecar row was audited; pairs need consecutive ordinals);
+content-motion was ungated (now MAD ≤ 25 in both fields); the parity acceptance did not require
+complete coverage, truncated mismatched lists through `zip`, and trusted vetoes by label
+(`AnchorUncorroborated` wrongly exempt) — now key sets must be equal, lengths asserted, and a
+veto counts only with the sidecar's body evidence. Documented, not fixed: the comb metric is a
+weave-continuity proxy, not a yadif output measurement; the low-16-bit counter join is safe only
+for a sidecar produced by the same capture walk. Both agents' acceptance rules give the same
+figures on the round-8 sidecar (40,208 + 26 + 3 + 0).
