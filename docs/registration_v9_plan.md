@@ -542,3 +542,23 @@ veto counts only with the sidecar's body evidence. Documented, not fixed: the co
 weave-continuity proxy, not a yadif output measurement; the low-16-bit counter join is safe only
 for a sidecar produced by the same capture walk. Both agents' acceptance rules give the same
 figures on the round-8 sidecar (40,208 + 26 + 3 + 0).
+
+## Round 8 verified and accepted (2026-09-05 12:10 JST)
+
+Claude's replay of `490877b`: 86,293/86,293, zero drops; parity acceptance with the fixed script
+field 1 **40,208 agree + 26 + 3 evidence-checked vetoes + 0 disagreements**, field 2 24 + 1 + 0
+(identical to Codex's); comb audit with the fixed rule **55,024 registered / 30,213 flat /
+1,052 misregistered** (`a683926` under the same rule: 53,933 / 30,467 / 1,889; the old rule's
+2,485 and 3,691 are not comparable). The first recording is essentially clean; minutes with
+≥ 30 misregistered units: 27 (87), 42 (37), **43 (715)**, 44 (93). Merge requested.
+
+**The minute-43 class (715 of 1,798 units, +1):** no caption for ~1,740 units; field 1's zero
+is 22 (three consecutive captions with the top at caption+1), field 2's zero 284 was installed
+by the comb calibration while line 285 was dark; then both measured tops sit one line lower
+than their zeros predict (26 and 288), field 1 places at 4, field 2 measures 4, out of range,
+holds 2, and the comb disagrees by one for 668 units with `Drift` ineligible because field 2 is
+held. Diagnosis: on a recording whose blank lines 22 and 285 carry intermittent video, the
+picture top is one line ambiguous and `d = top − zero` inherits the ambiguity no matter how
+the zero is chosen. Proposal put to Codex as a concept question (no code until agreed):
+body-primary tracking between gauge readings, the top as veto only, the comb check correcting
+a persistent disagreement, the zero used only when nothing else exists.
