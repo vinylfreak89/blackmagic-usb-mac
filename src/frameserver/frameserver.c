@@ -65,6 +65,8 @@ struct frameserver {
     _Atomic uint64_t eligible_ingress;     // fixed-raster-eligible observations seen at ingress (denominator)
     uint64_t ring_drops_pending;           // producer-owned: attached only to a later item
     uint64_t ring_drop_first_ordinal;
+    int8_t last_comb_correction;
+    uint64_t comb_correction_install_ordinal;
 };
 
 #ifdef FRAMESERVER_TEST_HOOKS
@@ -222,7 +224,7 @@ static int log_header(FILE *L){
                "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,"
                "f1_reason,f1_gauge,f1_insert_present,f1_insert_bytes,f1_insert_relation,f1_parity_candidates,f1_fallback_candidates,f1_gauge_line,f1_gauge_bytes,f1_gauge_amplitude,f1_geometry_d,f1_blank_mean,f1_body_witness_valid,f1_body_shift,f1_body_mad,f1_body_geometry_agrees,f1_body_reference_top,f1_body_implied_top,f1_body_differential,f1_body_common_mode,f1_picture_position_valid,f1_measured_picture_top,f1_picture_from_body,f1_raw_top,f1_raw_bottom,f1_raw_height,f1_geometry_measurable,f1_bottom_censored,f1_lock_state,f1_zero_source,f1_lock_id,f1_lock_top,f1_lock_height,f1_lock_height_known,f1_clip_state,f1_clip_ceiling,f1_expected_bottom,f1_lines_lost,f1_invariant_residual,"
                "f2_reason,f2_gauge,f2_insert_present,f2_insert_bytes,f2_insert_relation,f2_parity_candidates,f2_fallback_candidates,f2_gauge_line,f2_gauge_bytes,f2_gauge_amplitude,f2_geometry_d,f2_blank_mean,f2_body_witness_valid,f2_body_shift,f2_body_mad,f2_body_geometry_agrees,f2_body_reference_top,f2_body_implied_top,f2_body_differential,f2_body_common_mode,f2_picture_position_valid,f2_measured_picture_top,f2_picture_from_body,f2_raw_top,f2_raw_bottom,f2_raw_height,f2_geometry_measurable,f2_bottom_censored,f2_lock_state,f2_zero_source,f2_lock_id,f2_lock_top,f2_lock_height,f2_lock_height_known,f2_clip_state,f2_clip_ceiling,f2_expected_bottom,f2_lines_lost,f2_invariant_residual,"
-               "parity_state,comb_check,comb_best_shift,parity_bias,comb_best_energy,comb_second_energy,comb_static_fraction,comb_safe,published,drop_reason,schema_version,preceding_ring_drops\n") < 0 ? -1 : 0;
+               "parity_state,comb_check,comb_best_shift,parity_bias,comb_best_energy,comb_second_energy,comb_static_fraction,comb_correction,comb_correction_install_ordinal,comb_safe,published,drop_reason,schema_version,preceding_ring_drops\n") < 0 ? -1 : 0;
 }
 
 static int log_field(FILE *L, const fieldreg_field_decision *d)
@@ -284,7 +286,10 @@ static void process_item(frameserver *f, const fs_item *it){
                              (unsigned long long)it->obs.ordinal);
             if (wr >= 0) wr = log_field(f->log, NULL);
             if (wr >= 0) wr = log_field(f->log, NULL);
-            if (wr >= 0) wr = fprintf(f->log, ",Uncalibrated,n.a.,-128,0,0.000,0.000,0.000,0,0,RingFullTail,%u,%llu\n",
+            if (wr >= 0) wr = fprintf(f->log, ",Uncalibrated,n.a.,-128,0,0.000,0.000,0.000,%d,%lld,0,0,RingFullTail,%u,%llu\n",
+                                      f->last_comb_correction,
+                                      f->comb_correction_install_ordinal == UINT64_MAX ?
+                                      -1LL : (long long)f->comb_correction_install_ordinal,
                                       FS_DECISION_LOG_SCHEMA,
                                       (unsigned long long)it->preceding_ring_drops);
             if(wr < 0){ f->st.log_write_errors++; f->log_file_errors++; }
@@ -320,7 +325,11 @@ static void process_item(frameserver *f, const fs_item *it){
     // bytes: holes, short and unframed units carry the discontinuity the engine must see before
     // the next exact unit, and they never have a retained raster.
     if (classified){
-        if (sr.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT){ fieldreg_begin_segment(f->eng); f->st.begin_segment_calls++; }
+        if (sr.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT){
+            fieldreg_begin_segment(f->eng); f->st.begin_segment_calls++;
+            f->last_comb_correction = 0;
+            f->comb_correction_install_ordinal = UINT64_MAX;
+        }
         else if (sr.actions & SIGNAL_ACTION_REGISTRATION_DISCONTINUITY){ fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++; }
     }
     if (it->drop == FS_DROP_POOL_FULL){
@@ -332,6 +341,11 @@ static void process_item(frameserver *f, const fs_item *it){
     if (unit){
         f->st.exact_units++;
         have_d = fieldreg_process(f->eng, unit, &d);
+        if (have_d && d.comb_correction != f->last_comb_correction) {
+            f->last_comb_correction = d.comb_correction;
+            f->comb_correction_install_ordinal = d.comb_correction == 0 ?
+                                                  UINT64_MAX : obs.ordinal;
+        }
         if (have_d && classified)
             /* signal_state's observation API accepts a complete (d1,d2), not
              * a field-validity mask. Partial v9 support remains real and is
@@ -370,7 +384,7 @@ static void process_item(frameserver *f, const fs_item *it){
             "Immediate", have_d ? fieldreg_mode_name(d.mode) : "None", have_d ? d.confidence : 0.0);
         if (wr >= 0) wr = log_field(f->log, have_d ? &d.field[0] : NULL);
         if (wr >= 0) wr = log_field(f->log, have_d ? &d.field[1] : NULL);
-        if (wr >= 0) wr = fprintf(f->log, ",%s,%s,%d,%d,%.3f,%.3f,%.6f,%d,%d,%s,%u,%llu\n",
+        if (wr >= 0) wr = fprintf(f->log, ",%s,%s,%d,%d,%.3f,%.3f,%.6f,%d,%lld,%d,%d,%s,%u,%llu\n",
             have_d ? fieldreg_parity_state_name(d.parity_state) : "Uncalibrated",
             have_d ? fieldreg_comb_check_name(d.comb_check) : "n.a.",
             have_d ? d.comb_best_shift : FIELDREG_UNKNOWN,
@@ -378,6 +392,9 @@ static void process_item(frameserver *f, const fs_item *it){
             have_d ? d.comb_best_energy : 0.0,
             have_d ? d.comb_second_energy : 0.0,
             have_d ? d.comb_static_fraction : 0.0,
+            have_d ? d.comb_correction : f->last_comb_correction,
+            f->comb_correction_install_ordinal == UINT64_MAX ?
+            -1LL : (long long)f->comb_correction_install_ordinal,
             have_d && d.comb_safe, published,
             it->drop == FS_DROP_POOL_FULL ? "PoolFull" : (!published && unit ? "PublisherFull" : "None"),
             FS_DECISION_LOG_SCHEMA, (unsigned long long)rd);
@@ -430,6 +447,7 @@ static void count_sink(void *ctx, const fp_frame *fr){ (void)ctx; (void)fr; }
 int fs_open(frameserver **out, const fs_config *cfg){
     if (!out || !cfg) return -1;
     frameserver *f = calloc(1, sizeof *f); if (!f) return -1;
+    f->comb_correction_install_ordinal = UINT64_MAX;
     f->cfg = *cfg;
     if(pthread_mutex_init(&f->m,NULL)) goto sync_fail;
     f->m_init=1;

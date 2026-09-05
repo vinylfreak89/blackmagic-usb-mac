@@ -46,10 +46,10 @@ enum {
     BODY_MARGIN_NUMERATOR = 4,
     BODY_MARGIN_DENOMINATOR = 5,
     /* Three independent static comparisons reject a one-unit content
-     * coincidence while acquiring a segment's field-2 zero. Eight later
-     * contradictions are long enough to distinguish a plateau from noise. */
+     * coincidence both when acquiring a segment's field-2 zero and when
+     * installing or clearing a bounded relative crop correction. */
     COMB_CALIBRATION_UNITS = 3,
-    COMB_DRIFT_UNITS = 8,
+    COMB_CORRECTION_UNITS = 3,
     COMB_STATIC_NUMERATOR = 3,
     COMB_STATIC_DENOMINATOR = 100,
 };
@@ -1067,8 +1067,9 @@ static void reset_parity(field_registration *engine)
     engine->parity_state = FIELDREG_PARITY_UNCALIBRATED;
     engine->comb_zero_candidate = INT16_MIN;
     engine->comb_candidate_count = 0;
-    engine->comb_drift_shift = FIELDREG_UNKNOWN;
-    engine->comb_drift_count = 0;
+    engine->comb_correction = 0;
+    engine->comb_correction_candidate = FIELDREG_UNKNOWN;
+    engine->comb_correction_candidate_count = 0;
     engine->previous_luma_valid = false;
 }
 
@@ -1101,8 +1102,8 @@ void fieldreg_discontinuity(field_registration *engine)
     }
     engine->comb_zero_candidate = INT16_MIN;
     engine->comb_candidate_count = 0;
-    engine->comb_drift_shift = FIELDREG_UNKNOWN;
-    engine->comb_drift_count = 0;
+    engine->comb_correction_candidate = FIELDREG_UNKNOWN;
+    engine->comb_correction_candidate_count = 0;
 }
 
 static bool field1_calibration_reference(const field_measurement *m,
@@ -1170,17 +1171,13 @@ static void update_parity_calibration(field_registration *engine,
 {
     out->comb_best_shift = FIELDREG_UNKNOWN;
     out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
-    if (engine->parity_state == FIELDREG_PARITY_DRIFT) {
-        engine->parity_state = FIELDREG_PARITY_UNCALIBRATED;
-        engine->comb_zero_candidate = INT16_MIN;
-        engine->comb_candidate_count = 0;
-    }
 
     if (engine->parity_state == FIELDREG_PARITY_UNCALIBRATED) {
         const bool eligible = field1_calibration_reference(&m[0],
                                                             &out->field[0]) &&
                               field2_placed_on_zero(engine, &m[1],
-                                                    &out->field[1]);
+                                                    &out->field[1]) &&
+                              engine->comb_correction == 0;
         const comb_measurement comb = measure_static_comb(
             engine, raster, out->applied_d1, out->applied_d2, -3, 3);
         if (comb.best_shift != FIELDREG_UNKNOWN) {
@@ -1232,33 +1229,12 @@ static void update_parity_calibration(field_registration *engine,
         }
         if (comb.best_shift == FIELDREG_UNKNOWN) {
             out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
-            engine->comb_drift_count = 0;
-            engine->comb_drift_shift = FIELDREG_UNKNOWN;
         } else if (!comb.measurable) {
             out->comb_check = FIELDREG_COMB_FLAT;
-            engine->comb_drift_count = 0;
-            engine->comb_drift_shift = FIELDREG_UNKNOWN;
         } else if (comb.best_shift == 0) {
             out->comb_check = FIELDREG_COMB_AGREE;
-            engine->comb_drift_count = 0;
-            engine->comb_drift_shift = FIELDREG_UNKNOWN;
         } else {
             out->comb_check = FIELDREG_COMB_DISAGREE;
-            const bool drift_eligible = field1_calibration_reference(
-                &m[0], &out->field[0]) && field2_placed_on_zero(
-                    engine, &m[1], &out->field[1]);
-            if (!drift_eligible) {
-                engine->comb_drift_count = 0;
-                engine->comb_drift_shift = FIELDREG_UNKNOWN;
-            } else if (engine->comb_drift_shift == comb.best_shift) {
-                if (engine->comb_drift_count < INT8_MAX)
-                    ++engine->comb_drift_count;
-            } else {
-                engine->comb_drift_shift = comb.best_shift;
-                engine->comb_drift_count = 1;
-            }
-            if (engine->comb_drift_count >= COMB_DRIFT_UNITS)
-                engine->parity_state = FIELDREG_PARITY_DRIFT;
         }
     }
     out->parity_state = engine->parity_state;
@@ -1284,10 +1260,11 @@ static void apply_resolved_top(field_registration *engine,
     copy_lock(s, d);
 }
 
-static void resolve_top_with_comb(field_registration *engine,
+static bool resolve_top_with_comb(field_registration *engine,
                                   const field_measurement m[2],
                                   fieldreg_decision *out)
 {
+    bool changed = false;
     bool match[2] = {false, false};
     int candidate[2] = {FIELDREG_UNKNOWN, FIELDREG_UNKNOWN};
     for (int field = 0; field < 2; ++field) {
@@ -1312,6 +1289,7 @@ static void resolve_top_with_comb(field_registration *engine,
         apply_resolved_top(engine, m, field, candidate[field],
                            FIELDREG_MODE_TOP_COMB_CORROBORATED,
                            FIELDREG_GAUGE_STATIC_COMB, out);
+        changed = true;
     }
 
     for (int field = 0; field < 2; ++field) {
@@ -1326,8 +1304,127 @@ static void resolve_top_with_comb(field_registration *engine,
             apply_resolved_top(engine, m, field, candidate[field],
                                FIELDREG_MODE_TOP_ONLY,
                                FIELDREG_GAUGE_GEOMETRY, out);
+            changed = true;
         }
     }
+    return changed;
+}
+
+static bool same_direction(int value, int direction)
+{
+    return (value < 0 && direction < 0) ||
+           (value > 0 && direction > 0);
+}
+
+static int choose_comb_correction_field(const field_registration *engine,
+                                        const field_measurement m[2],
+                                        const fieldreg_decision *out,
+                                        int correction)
+{
+    /* A parity-placed field 1 is the known absolute reference. */
+    if (out->field[0].gauge == FIELDREG_GAUGE_CEA608_PARITY &&
+        out->field[0].measured_d != FIELDREG_UNKNOWN &&
+        out->field[0].applied_d == out->field[0].measured_d)
+        return 1;
+
+    bool points[2] = {false, false};
+    for (int field = 0; field < 2; ++field) {
+        if (m[field].top < 0) continue;
+        const int testimony = m[field].top - engine->field[field].top;
+        const int delta = testimony - out->field[field].applied_d;
+        const int needed = field == 0 ? -correction : correction;
+        points[field] = same_direction(delta, needed);
+    }
+    if (points[0] != points[1]) return points[0] ? 0 : 1;
+
+    /* Neither (or both) absolute testimony identifies the moving field. The
+     * caption-less field 2 is the deliberately specified deterministic tie. */
+    return 1;
+}
+
+static void update_comb_relative_correction(field_registration *engine,
+                                            const uint8_t *raster,
+                                            fieldreg_decision *out,
+                                            bool crops_changed_after_comb)
+{
+    if (crops_changed_after_comb ||
+        out->field[1].reason == FIELDREG_MODE_FIELD2_COMB_CALIBRATION ||
+        out->field[1].reason == FIELDREG_MODE_ZERO_CONFLICT) {
+        engine->comb_correction_candidate = FIELDREG_UNKNOWN;
+        engine->comb_correction_candidate_count = 0;
+        return;
+    }
+
+    const comb_measurement comb = measure_static_comb(
+        engine, raster, out->baseline_d1, out->baseline_d2, -3, 3);
+    if (comb.best_shift != FIELDREG_UNKNOWN) {
+        out->comb_best_shift = comb.best_shift;
+        out->comb_best_energy = comb.best_energy;
+        out->comb_second_energy = comb.second_energy;
+        out->comb_static_fraction = comb.static_fraction;
+    }
+    if (comb.best_shift == FIELDREG_UNKNOWN) {
+        out->comb_check = FIELDREG_COMB_NOT_APPLICABLE;
+    } else if (!comb.measurable) {
+        out->comb_check = FIELDREG_COMB_FLAT;
+    } else if (comb.best_shift == 0) {
+        out->comb_check = FIELDREG_COMB_AGREE;
+    } else {
+        out->comb_check = FIELDREG_COMB_DISAGREE;
+    }
+    if (!comb.measurable)
+        return;
+
+    /* best_shift is measured at the ordinary per-unit crops, before an
+     * installed correction is overlaid. It is therefore an absolute desired
+     * correction, never a delta to integrate into the previous correction. */
+    const int desired = comb.best_shift;
+    if (desired == engine->comb_correction) {
+        engine->comb_correction_candidate = FIELDREG_UNKNOWN;
+        engine->comb_correction_candidate_count = 0;
+        return;
+    }
+    if (engine->comb_correction_candidate == desired) {
+        if (engine->comb_correction_candidate_count < INT8_MAX)
+            ++engine->comb_correction_candidate_count;
+    } else {
+        engine->comb_correction_candidate = (int8_t)desired;
+        engine->comb_correction_candidate_count = 1;
+    }
+    if (engine->comb_correction_candidate_count < COMB_CORRECTION_UNITS)
+        return;
+
+    engine->comb_correction = (int8_t)desired;
+    engine->comb_correction_candidate = FIELDREG_UNKNOWN;
+    engine->comb_correction_candidate_count = 0;
+}
+
+static bool apply_comb_relative_correction(const field_registration *engine,
+                                           const field_measurement m[2],
+                                           fieldreg_decision *out)
+{
+    out->comb_correction = engine->comb_correction;
+    out->comb_correction_field = 0;
+    if (engine->comb_correction == 0) return true;
+
+    /* The correction persists, but its equivalent field assignment follows
+     * current absolute testimony. In particular, a parity-placed field 1 is
+     * never displaced because a caption-less installation unit chose it. */
+    const int field = choose_comb_correction_field(
+        engine, m, out, engine->comb_correction);
+    const int delta = field == 0 ? -engine->comb_correction :
+                                   engine->comb_correction;
+    const int target = out->field[field].applied_d + delta;
+    if (!crop_offset_valid(field, target)) return false;
+
+    /* Deliberately leave state.last_applied at the ordinary placement. The
+     * correction is a separate segment bias; folding it into remembered
+     * placement is the integrator defect this design removes. */
+    out->field[field].applied_d = (int8_t)target;
+    out->field[field].reason = FIELDREG_MODE_COMB_RELATIVE_CORRECTION;
+    out->field[field].gauge = FIELDREG_GAUGE_STATIC_COMB;
+    out->comb_correction_field = (int8_t)(field + 1);
+    return true;
 }
 
 bool fieldreg_process(field_registration *engine,
@@ -1355,14 +1452,20 @@ bool fieldreg_process(field_registration *engine,
     out->applied_d1 = out->field[0].applied_d;
     out->applied_d2 = out->field[1].applied_d;
     update_parity_calibration(engine, raster, m, out);
-    resolve_top_with_comb(engine, m, out);
+    const bool crops_changed_after_comb = resolve_top_with_comb(engine, m, out);
+    out->baseline_d1 = out->field[0].applied_d;
+    out->baseline_d2 = out->field[1].applied_d;
+    update_comb_relative_correction(engine, raster, out,
+                                    crops_changed_after_comb);
+    const bool correction_honored = apply_comb_relative_correction(engine, m,
+                                                                    out);
 
     for (int field = 0; field < 2; ++field)
         if (out->field[field].measured_d != FIELDREG_UNKNOWN)
             engine->field[field].placement_initialized = true;
 
-    out->applied_d1 = out->baseline_d1 = out->field[0].applied_d;
-    out->applied_d2 = out->baseline_d2 = out->field[1].applied_d;
+    out->applied_d1 = out->field[0].applied_d;
+    out->applied_d2 = out->field[1].applied_d;
     out->decision_d1 = out->field[0].measured_d;
     out->decision_d2 = out->field[1].measured_d;
     out->frame_observation_d1 = out->decision_d1;
@@ -1377,7 +1480,8 @@ bool fieldreg_process(field_registration *engine,
         engine->field[0].lock_state == FIELDREG_LOCK_LOCKED &&
         engine->field[1].lock_state == FIELDREG_LOCK_LOCKED;
     out->comb_safe = both_locked &&
-                     engine->parity_state == FIELDREG_PARITY_CALIBRATED;
+                     engine->parity_state == FIELDREG_PARITY_CALIBRATED &&
+                     correction_honored;
     copy_current_luma(engine, raster);
     return true;
 }
@@ -1411,6 +1515,7 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_TOP_COMB_CORROBORATED: return "TopCombCorroborated";
     case FIELDREG_MODE_TOP_COMB_VETOED: return "TopCombVetoed";
     case FIELDREG_MODE_TOP_ONLY: return "TopOnly";
+    case FIELDREG_MODE_COMB_RELATIVE_CORRECTION: return "CombRelativeCorrection";
     case FIELDREG_MODE_MIXED_FIELD_DECISION: return "MixedFieldDecision";
     }
     return "Unknown";

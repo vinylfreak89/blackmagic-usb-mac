@@ -85,3 +85,9 @@ unavailable comb leaves the top authoritative and names the decision
 `TopOnly`. A half-static synthetic field proves the veto without allowing comb
 to move a crop independently. These additions fail 183/186 before the engine
 change and pass 186/186 after it.
+
+Round 10 separates a bounded relative crop correction from every learned
+zero. Three consecutive decisive `+1` static-comb readings install exactly
+one `+1` correction on field 2 when field 1 is parity-placed. Repeated `+1`
+readings cannot accumulate it. The correction survives a content/byte
+discontinuity, while `fieldreg_begin_segment()` (signal relock) clears it.
