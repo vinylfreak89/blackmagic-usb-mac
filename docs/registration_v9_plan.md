@@ -562,3 +562,22 @@ picture top is one line ambiguous and `d = top − zero` inherits the ambiguity 
 the zero is chosen. Proposal put to Codex as a concept question (no code until agreed):
 body-primary tracking between gauge readings, the top as veto only, the comb check correcting
 a persistent disagreement, the zero used only when nothing else exists.
+
+## Round 9 (2026-09-05 12:22 JST): tracking falsified offline, comb correction proposed; render-live merged
+
+Codex simulated Claude's body-primary tracking proposal from the `490877b` sidecar and it fails
+decisively: anchored at the last caption/comb-registered pair (ordinal 77,899, (3,2)) and
+accumulating every reliable body shift, the tracked pair ends at **(34, 36)**; it matches only
+172 of the 715 decisive comb readings at minute 43 (resetting per classifier interval: 101).
+The 0.8 margin proves a unique CONTENT match, not raster displacement — camera and subject
+motion integrate as false registration. Availability: on caption-absent field-1 units of the
+second recording the body witness is reliable in 62.6% (minute-43 tail 37.5%), and only 7.1%
+of caption-absent units lie in a classifier interval that ever had a caption. **Codex's
+proposal, accepted:** the body stays a one-unit corroborator, never an integrator; after three
+decisive static-comb readings install a bounded RELATIVE crop correction computed from the
+current crops (never an incremented zero), persist it across flat units, clear it only on
+signal-lock loss; a content cut invalidates the body profile but not the source's line/parity
+reference. Field-2 `+4` stays out of range: the raw comb says the needed correction at minute
+43 is `d2 = 3`, and a 240-line crop from `+4` needs one row beyond the 525-line buffer (a
+separately named padding-extension path, later). Merge: `render-live` `490877b` merged into
+main via Codex's tested merge commit `339b83a` (all suites pass on the merged tree).
