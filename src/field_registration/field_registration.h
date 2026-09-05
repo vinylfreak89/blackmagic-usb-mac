@@ -14,6 +14,7 @@ enum {
     FIELDREG_HEADER_BYTES = 48,
     FIELDREG_RASTER_LINES = 525,
     FIELDREG_BYTES_PER_LINE = 1440,
+    FIELDREG_ACTIVE_LUMA_SAMPLES = 320,
     FIELDREG_FIELD_LINES = 240,
     /* 720x480 clean-aperture crop: NTSC lines 23 and 286. */
     FIELDREG_FIELD1_START = 19,
@@ -31,7 +32,6 @@ enum {
 
 typedef enum fieldreg_lock_state {
     FIELDREG_LOCK_UNLOCKED = 0,
-    FIELDREG_LOCK_ACQUIRE_ONE,
     FIELDREG_LOCK_LOCKED,
 } fieldreg_lock_state;
 
@@ -43,10 +43,24 @@ typedef enum fieldreg_clip_state {
 
 typedef enum fieldreg_zero_source {
     FIELDREG_ZERO_NONE = 0,
-    FIELDREG_ZERO_ACQUIRED,
+    FIELDREG_ZERO_STANDARD,
     FIELDREG_ZERO_PARITY,
     FIELDREG_ZERO_ENVELOPE,
+    FIELDREG_ZERO_COMB,
 } fieldreg_zero_source;
+
+typedef enum fieldreg_parity_state {
+    FIELDREG_PARITY_UNCALIBRATED = 0,
+    FIELDREG_PARITY_CALIBRATED,
+    FIELDREG_PARITY_DRIFT,
+} fieldreg_parity_state;
+
+typedef enum fieldreg_comb_check {
+    FIELDREG_COMB_NOT_APPLICABLE = 0,
+    FIELDREG_COMB_AGREE,
+    FIELDREG_COMB_DISAGREE,
+    FIELDREG_COMB_FLAT,
+} fieldreg_comb_check;
 
 typedef enum fieldreg_insert_relation {
     FIELDREG_INSERT_RELATION_NONE = 0,
@@ -67,7 +81,20 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_OUT_OF_RANGE_HOLD,
     FIELDREG_MODE_LINE22_DATA_PRESENT,
     FIELDREG_MODE_GAUGE_CONFLICT,
-    FIELDREG_MODE_CLIP_UNKNOWN_HOLD,
+    FIELDREG_MODE_CAPTION_ONLY_MOTION,
+    FIELDREG_MODE_CAPTION_BODY_DISAGREE,
+    FIELDREG_MODE_ANCHOR_UNCORROBORATED,
+    FIELDREG_MODE_TOP_BODY_DISAGREE,
+    FIELDREG_MODE_BODY_ONLY_PLACEMENT,
+    FIELDREG_MODE_COMMON_MODE_BODY_HOLD,
+    FIELDREG_MODE_FIELD2_COMB_CALIBRATION,
+    FIELDREG_MODE_ZERO_CONFLICT,
+    FIELDREG_MODE_ZERO_CANDIDATE,
+    FIELDREG_MODE_ZERO_OUT_OF_BOUNDS,
+    FIELDREG_MODE_TOP_UNCORROBORATED,
+    FIELDREG_MODE_TOP_COMB_CORROBORATED,
+    FIELDREG_MODE_TOP_COMB_VETOED,
+    FIELDREG_MODE_TOP_ONLY,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -78,6 +105,7 @@ typedef enum fieldreg_gauge_source {
     FIELDREG_GAUGE_FIELD2_ENVELOPE,
     FIELDREG_GAUGE_LINE22_DATA,
     FIELDREG_GAUGE_HOLD,
+    FIELDREG_GAUGE_STATIC_COMB,
 } fieldreg_gauge_source;
 
 /* v9 has no thresholds, dwell, FIFO, or tunable evidence model. */
@@ -102,11 +130,24 @@ typedef struct fieldreg_field_decision {
     uint8_t gauge_byte2;
     double gauge_amplitude;
     double blank_mean;
+    double body_mad;
     int16_t raw_top;
     int16_t raw_bottom;
     int16_t raw_height;
     bool geometry_measurable;
     bool bottom_censored;
+    bool body_witness_valid;
+    int8_t body_shift;
+    bool body_geometry_agrees;
+    /* All nonnegative *_top values are source-raster rows here. Sidecar
+     * writers publish them as NTSC line numbers (row + 4). */
+    int16_t body_reference_top;
+    int16_t body_implied_top;
+    bool body_differential;
+    bool body_common_mode;
+    bool picture_position_valid;
+    int16_t measured_picture_top;
+    bool picture_from_body;
     fieldreg_lock_state lock_state;
     fieldreg_zero_source zero_source;
     uint32_t lock_id;
@@ -135,6 +176,13 @@ typedef struct fieldreg_decision {
     double confidence;
     bool transport_ok;
     bool comb_safe;
+    fieldreg_parity_state parity_state;
+    fieldreg_comb_check comb_check;
+    int8_t comb_best_shift;
+    int8_t parity_bias;
+    double comb_best_energy;
+    double comb_second_energy;
+    double comb_static_fraction;
     uint32_t segment_id;
     fieldreg_field_decision field[2];
 } fieldreg_decision;
@@ -143,17 +191,19 @@ typedef struct fieldreg_field_state {
     int16_t top;
     int16_t height;
     int16_t clip_ceiling;
-    int16_t acquire_top;
-    int16_t acquire_height;
     int16_t clip_candidate;
+    int16_t zero_candidate;
     int8_t last_applied;
     int8_t clip_candidate_d;
     fieldreg_lock_state lock_state;
     bool height_known;
-    bool acquire_height_known;
+    bool placement_initialized;
     uint8_t clip_candidate_count;
+    uint8_t zero_candidate_count;
     fieldreg_zero_source zero_source;
+    fieldreg_zero_source zero_candidate_source;
     uint32_t lock_id;
+    int16_t previous_measured_top;
 } fieldreg_field_state;
 
 /* Caller-owned, allocation-free hot-path state. The clip fit is deliberately
@@ -161,6 +211,16 @@ typedef struct fieldreg_field_state {
 typedef struct field_registration {
     fieldreg_config config;
     fieldreg_field_state field[2];
+    /* Previous full-raster active-width luma supplies both the bounded body
+     * witness and the static-comb calibration without retaining input. */
+    uint8_t previous_luma[FIELDREG_RASTER_LINES *
+                          FIELDREG_ACTIVE_LUMA_SAMPLES];
+    bool previous_luma_valid;
+    fieldreg_parity_state parity_state;
+    int16_t comb_zero_candidate;
+    int8_t comb_candidate_count;
+    int8_t comb_drift_shift;
+    int8_t comb_drift_count;
     uint32_t segment_id;
 } field_registration;
 
@@ -169,8 +229,8 @@ size_t fieldreg_state_size(void);
 size_t fieldreg_config_size(void);
 size_t fieldreg_decision_size(void);
 uint32_t fieldreg_algorithm_version(void);
-/* Two observations acquire a geometry-only lock; gauged placement is still
- * immediate and the engine has no dwell window or buffered confirmation. */
+/* Geometry is compared with the standard zero immediately; no observation
+ * dwell or buffered confirmation exists. */
 uint32_t fieldreg_confirmation_units(const field_registration *engine);
 uint32_t fieldreg_buffer_units(const field_registration *engine);
 void fieldreg_init(field_registration *engine, const fieldreg_config *config);
@@ -186,6 +246,8 @@ const char *fieldreg_lock_state_name(fieldreg_lock_state state);
 const char *fieldreg_clip_state_name(fieldreg_clip_state state);
 const char *fieldreg_zero_source_name(fieldreg_zero_source source);
 const char *fieldreg_insert_relation_name(fieldreg_insert_relation relation);
+const char *fieldreg_parity_state_name(fieldreg_parity_state state);
+const char *fieldreg_comb_check_name(fieldreg_comb_check check);
 
 #ifdef __cplusplus
 }
