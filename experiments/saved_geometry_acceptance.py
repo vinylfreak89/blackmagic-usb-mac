@@ -20,15 +20,17 @@ def main():
     errors = []
 
     if args.fixture == "w300":
-        for ordinal in (8990 + 64, 8990 + 67):
+        # Slice sidecars number replay observations locally.  The source's
+        # whole-tape start (8990) belongs only to raw-audit time labelling.
+        for ordinal in (64, 67):
             row = rows.get(ordinal)
             if not row or row["f1_reason"] != "SavedGeometryHold":
                 errors.append(f"u{ordinal}: expected f1 SavedGeometryHold")
-        row = rows.get(8990 + 68)
+        row = rows.get(68)
         if not row or row["f1_reason"] != "SavedGeometryReplaced":
-            errors.append("u9058: expected f1 SavedGeometryReplaced")
+            errors.append("u68: expected f1 SavedGeometryReplaced")
         elif row["f1_gauge"] != "StaticComb" or row["f1_geometry_jump"] != "1":
-            errors.append("u9058: expected StaticComb replacement jump +1")
+            errors.append("u68: expected StaticComb replacement jump +1")
     else:
         # A cold cut cannot prove the pre-slice saved pair. It can still prove
         # that any saved-geometry lifecycle emitted by the slice is coherent.
