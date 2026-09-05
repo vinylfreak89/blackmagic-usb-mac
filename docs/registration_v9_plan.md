@@ -764,3 +764,13 @@ units that round 8 placed late and round 12 holds. Steered into Codex's landmark
 tape_gap = the last dark row before the picture in rows 18..24, d1 = tape_gap − 18, valid when
 unique and when the segment's gap gauge agrees with its captions where both exist; the second
 recording (video on line 22) has no gap but has captions nearly everywhere.
+**Gap gauge validated against the caption truth (Claude, 18:28 JST):** rule = the last dark row
+(row mean ≤ 10) before the first two picture rows (> 12) in rows 18..29, d1 = row − 18. Where a
+caption exists in the first recording the two agree **263/263** (first 100 s) and **46/46**
+(05:00), all at d = 2. Without a caption the gauge reads +1 in 2,065 of ~3,000 first-100-s units
+and 0 in 445 (None 198; > 2 in 5 dark units — bound it to 0..3); at 05:00 +1 in 438, 0 in 122 —
+so the SP intro sits at +1, as round 10's (1,0) placements and the comb audit say, and the
+2026-09-04 census reading of the intro as "locked with a blank line 23" was wrong. On the
+second recording a naive gap reading returns 0 in 621/621 units where the truth is +2/+3 (line
+22 carries video): the gauge must be gated per segment by agreement with its captions. Both
+facts steered into Codex's round-14 measurement.
