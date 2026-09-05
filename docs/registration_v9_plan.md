@@ -728,3 +728,25 @@ differential per-unit jitter. Flicker (05:00, 01:26) wants the tied-body top NOT
 jitter (37:01, minute 43) wants it TO place; the discriminator is the body's verdict on the
 top's moves in the surrounding reliable units. Sent to Codex as an analysis turn (comb
 reconciliation; the discriminator measured on the sidecars) before any code.
+
+## Round 13 analysis (Codex, 18:14 JST) — accepted
+
+(A) The engine's comb and the audit's differ: per-shift masks vs one mask, only the energy row
+tested static vs both adjacent field-2 rows, previous unit at the current crop vs its own
+published crops, and the logged reading taken at the provisional `baseline_d` before saved
+geometry and the installed correction — which explains much of minute 43. Reconciliation:
+the C code reproduces the audit exactly, with two sidecar readings (`comb_input_*` at the
+provisional crops as decision evidence; `comb_check` recomputed at the published crops,
+identical to the acceptance audit). Hold causes to be named truthfully (nine of the fourteen
+01:26 hold units had a reliable, still body: `TopDisagreesBodyStill`, not `TiedBody`).
+(B) A learned "top reliability" history does NOT separate real jitter from first-line
+flicker: at the best window (N = 16, ≥ 90% corroborated) it accepts 8 of 10 RIGHT top-only
+placements but also 43 of 69 WRONG ones; 37:01, minute 43 and 01:26 all show 100%
+corroborated histories. Rejected. Codex's replacement: a physical landmark — locate the tape's
+black gap line independently and require it to translate with the picture top (a rigid move
+shifts both; a first-line brightness flicker moves the thresholded top while the gap stays);
+where neither landmark nor comb is available, `SavedGeometryHold` is the honest result.
+Comb-correction installation guards: three readings of the same nonzero shift, reliable bodies
+in both fields, no differential body motion across each transition. Round 14 dispatched:
+reconciliation, guards and cause names as code; the landmark measured on the raw first (05:00
+unit 440→441 is the case that could falsify it).
