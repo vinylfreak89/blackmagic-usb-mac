@@ -567,6 +567,11 @@ static bool saved_geometry_evidence(const fieldreg_field_decision *d,
         return true;
     case FIELDREG_MODE_GEOMETRY_LOCK_DECIDES:
         return body_reliable(m) && m->body_geometry_agrees;
+    case FIELDREG_MODE_CAPTION_ONLY_MOTION:
+    case FIELDREG_MODE_CAPTION_BODY_DISAGREE:
+        return d->gauge == FIELDREG_GAUGE_GEOMETRY &&
+               d->measured_d != FIELDREG_UNKNOWN &&
+               body_reliable(m) && m->picture_position_valid;
     default:
         return false;
     }
@@ -661,13 +666,16 @@ static void finish_saved_geometry_decision(fieldreg_field_state *s,
     const int previous_good = before->saved.valid ? before->saved.applied_d :
                                                     before->last_applied;
     const int jump = d->applied_d - previous_good;
+    const bool named_picture_veto =
+        d->reason == FIELDREG_MODE_CAPTION_ONLY_MOTION ||
+        d->reason == FIELDREG_MODE_CAPTION_BODY_DISAGREE;
     s->saved_hold_length = 0;
     save_geometry(s, m, d, ordinal);
-    if (completed_hold > 0) {
+    if (completed_hold > 0 && !named_picture_veto) {
         d->reason = jump == 0 ? FIELDREG_MODE_SAVED_GEOMETRY_CONFIRMED :
                                 FIELDREG_MODE_SAVED_GEOMETRY_REPLACED;
-        d->geometry_jump = (int8_t)jump;
     }
+    if (completed_hold > 0) d->geometry_jump = (int8_t)jump;
     copy_lock(s, d);
     if (completed_hold > 0)
         d->saved_hold_length = completed_hold;

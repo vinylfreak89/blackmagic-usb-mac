@@ -585,10 +585,11 @@ def main():
         captions=((4, 0x15, 0x2b), None), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(3, 0),
         f1_reason="CaptionBodyDisagree", f1_body_shift=1)
-    add("caption-body-disagree-hold", (2, 0), picture=(2, 0),
+    add("caption-body-disagree-hold", (3, 0), picture=(2, 0),
         captions=((4, 0x15, 0x2b), None), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(3, 0),
-        f1_reason="SavedGeometryHold", f1_body_shift=0)
+        f1_reason="SavedGeometryHold", f1_body_shift=0,
+        f1_saved_d=3)
 
     # Ambiguous/conflicting VBI becomes provenance when top and body provide
     # a coherent current-unit geometry placement.
@@ -1074,6 +1075,27 @@ def main():
         top_overrides=(20, None), bottom_overrides=(250, None),
         f1_reason="SavedGeometryReplaced", f1_saved_d=2,
         f1_geometry_jump=1, f1_hold_length=1)
+
+    # A reliable picture veto is also current-unit evidence.  When it follows
+    # a blind run, retain the named veto required by parity acceptance while
+    # closing the saved hold and recording its clearing metadata.
+    add("saved-geometry-veto-anchor", (2, 0), begin=True,
+        picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(2, 0), body_texture=(True, False), f1_saved_d=2)
+    add("saved-geometry-veto-dark", (2, 0), dark=True,
+        f1_reason="SavedGeometryHold", f1_hold_cause="BodyUnmeasurable",
+        f1_saved_d=2, f1_hold_length=1)
+    add("saved-geometry-veto-clean-prime", (2, 0), picture=(2, 0),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(2, 0), body_texture=(True, False),
+        f1_reason="SavedGeometryHold", f1_hold_cause="BodyUnmeasurable",
+        f1_saved_d=2, f1_hold_length=2)
+    add("saved-geometry-veto-clears", (2, 0), picture=(2, 0),
+        captions=((3, 0x15, 0x2b), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        body_texture=(True, False), f1_reason="CaptionOnlyMotion",
+        f1_saved_d=2, f1_geometry_jump=0, f1_hold_length=2)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
