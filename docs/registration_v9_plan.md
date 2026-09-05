@@ -543,7 +543,7 @@ weave-continuity proxy, not a yadif output measurement; the low-16-bit counter j
 for a sidecar produced by the same capture walk. Both agents' acceptance rules give the same
 figures on the round-8 sidecar (40,208 + 26 + 3 + 0).
 
-## Round 8 verified and accepted (2026-09-05 12:10 JST)
+## Round 8 verified and accepted (2026-09-05 12:06 JST)
 
 Claude's replay of `490877b`: 86,293/86,293, zero drops; parity acceptance with the fixed script
 field 1 **40,208 agree + 26 + 3 evidence-checked vetoes + 0 disagreements**, field 2 24 + 1 + 0
