@@ -625,7 +625,7 @@ constant offset (+2 for both); round 8 needs none.
 
 | engine | comb misregistered / flat / registered (86,293 pairs) | field-1 agreement with the tape's caption (40,237 readings) | applied-pair transitions / one-unit flips |
 |---|---|---|---|
-| v7 | (running) | 31,092 (77.3%) | — |
+| v7 | 1,851 / 35,405 / 49,027 | 31,092 (77.3%) | follow audit: field 1 engine-motion 2,059 / missed 3,527; field 2 engine-motion 84 |
 | v8 | **326** / 35,372 / 50,591 | 30,403 (75.6%): 7,018 of the 16,670 +3 excursions missed | 11,544 / 3,921 (follow audit: field 1 engine-motion 2,525 / missed 2,973; field 2 engine-motion 3,091 — round 8: 1,181 / 2,023; 116) |
 | v9 round 8 | 1,052 / 30,213 / 55,024 | **40,208 (99.9%)** | 7,614 / 2,974 |
 
