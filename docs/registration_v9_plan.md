@@ -710,3 +710,21 @@ misregistered: 35:00 0, 37:01 0, 05:00 2 (the two expected late corrections), 35
 45:00 0, minute-43 0, torn slice 0. The round-11 cost anomaly was contention: under identical
 load round 10 is 2.95 ms and round 12 2.97 ms engine median (+0.02 ms). Codex's definitive
 whole-tape pass is running; Claude's verification of `a1a91c8` started (eight slices + tape).
+
+**Round 12 slice findings (Claude, 17:55 JST; `a1a91c8` not merged).** Codex's whole tape:
+parity 40,221 + 15 + 1 + 0 (17 former vetoes became agreements, 4 the other way), torn passage
+fixed (62322–62326 fixed at (2,2); the saved pair before it was (2,2)/(2,3), not the (3,2) the
+brief assumed), field-1 `SavedGeometryHold` 23,442 (TiedBody 22,107) with a maximum run of 8,998
+units, engine 2.97 ms median under load (round 10 2.95 under the same load; the round-11 4.24 was
+contention). Two regressions on the slices, traced on the sidecars: **(A) 01:26** — a real
+one-line displacement entered and left under a tied witness (units 57 and 72) and the hold kept
+the stale position for 15 units while the body, reliable and still, could not prove a move; the
+audit's comb calls seven of those units misregistered but the engine's comb_check reads flat on
+all of them, so the comb corroboration never fired — the two comb implementations disagree.
+**(B) minute 43 cold** — the raster jitters by a line each unit with the body agreeing whenever
+it is reliable; on tied units the hold freezes whichever jitter phase the last evidence unit
+was in (40 misregistered vs round 10's 3), and the persistent comb correction cannot follow
+differential per-unit jitter. Flicker (05:00, 01:26) wants the tied-body top NOT to place;
+jitter (37:01, minute 43) wants it TO place; the discriminator is the body's verdict on the
+top's moves in the surrounding reliable units. Sent to Codex as an analysis turn (comb
+reconciliation; the discriminator measured on the sidecars) before any code.
