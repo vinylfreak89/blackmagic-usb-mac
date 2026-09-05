@@ -582,3 +582,19 @@ reference. Field-2 `+4` stays out of range: the raw comb says the needed correct
 separately named padding-extension path, later). Merge: `render-live` `490877b` merged into
 main via Codex's tested merge commit `339b83a` (all suites pass on the merged tree), landed as
 `cb1b4ed` because main had moved by one experiments commit; goldens 186/186 on main.
+
+## Owner ruling on damaged rasters (2026-09-05, after the night's rounds)
+
+"The previous good geometry should be saved each frame, not overwritten. Damaged rasters should
+not be corrected but held at that geometry. Once the damage clears, the new geometry should be
+checked against the old geometry and the position readjusted accordingly."
+
+Engine consequences (to Codex after round 10): a per-field **saved good geometry** (top, bottom,
+height, applied offset, the gauge that placed it) written only by units that placed on evidence,
+never by a hold or a damaged unit — distinct from `last_applied`; a damaged unit (readings that
+contradict each other: top against a reliable body, height change without a clip explanation,
+undecidable comb — the only damage signature measured so far, since the Shuttle's inserts still
+decode and tops stay measurable on the torn units) holds the saved geometry and is named
+`DamageHold` in the sidecar; on the first clean units after a hold the new measurement is
+checked against the saved geometry, the crop readjusts once if they differ, and the sidecar
+records the jump and the difference — the one place the picture may move.
