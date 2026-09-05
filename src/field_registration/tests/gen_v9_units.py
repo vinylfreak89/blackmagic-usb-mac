@@ -795,12 +795,12 @@ def main():
         bottom_overrides=(250, None), content_phases=(0, 0),
         content_shifts=(1, 0), body_texture=(True, False),
         body_split_shifts=((1, 1), None))
-    add("body-margin-tie-top-zero", (0, 0),
+    add("body-margin-tie-top-zero", (1, 0),
         picture=(0, 0), top_overrides=(19, None),
         bottom_overrides=(249, None), content_phases=(0, 0),
         content_shifts=(0, 0), body_texture=(True, False),
         body_split_shifts=((0, 1), None),
-        f1_reason="TopOnly", f1_body_valid=0)
+        f1_reason="SavedGeometryHold", f1_body_valid=0)
 
     # Once parity has established the segment zero, a later caption and top
     # can share the same damaged-line error. If the body abstains and comb is
@@ -969,8 +969,54 @@ def main():
                 "Calibrated" if i == 3 else "Uncalibrated"))
     add("top-comb-vetoes-false-top", (2, 0), picture=(3, 0),
         comb_offsets=(2, 0), blank_rows=(21,), body_noise_right=True,
-        f1_reason="TopCombVetoed", f1_body_valid=0,
+        f1_reason="SavedGeometryHold", f1_body_valid=0,
         parity_state="Calibrated", comb_check="agree")
+
+    # Round 12: only an evidence-backed placement may replace saved geometry.
+    # With both direct gauges present, (3,2) is the saved pair. Five units
+    # then expose flickering tops while the body matcher ties and static comb
+    # is flat; none may move either crop. A returning gauge either confirms
+    # the saved pair or replaces it exactly once.
+    add("saved-geometry-confirm-anchor", (3, 2), begin=True,
+        picture=(3, 2), captions=((3, 0x14, 0x2c), None),
+        f2_envelopes=(282,), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 2),
+        body_texture=(True, True), f1_reason="Line21Placement",
+        f2_reason="Field2EnvelopePlacement")
+    for i, picture in enumerate(((1, 0), (3, 2), (1, 0), (3, 2), (1, 0))):
+        add(f"saved-geometry-confirm-hold-{i + 1}", (3, 2),
+            picture=picture, base_bottoms=(250, 518),
+            content_phases=(0, 0), content_shifts=(3, 2),
+            body_texture=(True, True),
+            body_split_shifts=((3, 1), (2, 0)),
+            f1_reason="SavedGeometryHold", f2_reason="SavedGeometryHold",
+            f1_body_valid=0, f2_body_valid=0)
+    add("saved-geometry-confirmed", (3, 2), picture=(3, 2),
+        captions=((3, 0x14, 0x2c), None), f2_envelopes=(282,),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(3, 2), body_texture=(True, True),
+        f1_reason="SavedGeometryConfirmed",
+        f2_reason="SavedGeometryConfirmed")
+
+    add("saved-geometry-replace-anchor", (3, 2), begin=True,
+        picture=(3, 2), captions=((3, 0x14, 0x2c), None),
+        f2_envelopes=(282,), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 2),
+        body_texture=(True, True))
+    for i in range(2):
+        add(f"saved-geometry-replace-hold-{i + 1}", (3, 2),
+            picture=(1, 0), base_bottoms=(250, 518),
+            content_phases=(0, 0), content_shifts=(3, 2),
+            body_texture=(True, True),
+            body_split_shifts=((3, 1), (2, 0)),
+            f1_reason="SavedGeometryHold", f2_reason="SavedGeometryHold",
+            f1_body_valid=0, f2_body_valid=0)
+    add("saved-geometry-replaced-minus1", (2, 2), picture=(2, 2),
+        captions=((2, 0x15, 0x2b), None), f2_envelopes=(282,),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(2, 2), body_texture=(True, True),
+        f1_reason="SavedGeometryReplaced",
+        f2_reason="SavedGeometryConfirmed")
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
