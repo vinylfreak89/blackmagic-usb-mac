@@ -645,3 +645,15 @@ displaced by a correction installed on a caption-less unit. Codex's whole-tape p
 parity 40,208 + 26/3 vetoes + 0, bias 0..+1, correction −1..+2; a first cold-slice rerun at
 1 ms pacing shed ring/pool units and was discarded as invalid, rerun at the device cadence.
 Claude's verification retargeted to `094b3fb`.
+
+**Round 10 final (Codex, 15:39 JST; branch `round10-comb-relative` head `2f8bb86`, tree-identical
+to the reported `094b3fb`):** goldens 190/194 → 194/194; whole tape 86,293/86,293, zero drops;
+parity 40,208 + 26/3 vetoes + 0; Calibrated 80,329; bias 0..+1; relative correction −1..+2
+(0 ×83,410, +1 ×1,657, +2 ×864, −1 ×362; 22 distinct installations); comb_safe 80,329. Minute
+43 in continuous context: 296 registered / 21 flat / **1 misregistered** (ordinal 77,902, the
+unit before the correction installs on its third decisive reading at 77,903); cold slice 3.
+Slices (comb): 35:00 348/272/0, 37:01 246/82/0, 05:00 446/160/1, 35:38 44/28/6, 01:26 27/50/1,
+45:00 294/325/0. Codex marks the branch not merge-ready over the literal zero-misregistration
+slice criterion; Claude accepts the one- to three-unit calibration latency as the cost of the
+three-reading rule (no backdating on the live path). Claude's whole-tape verification is running;
+round 11 (damage ruling) dispatched on top of the branch.
