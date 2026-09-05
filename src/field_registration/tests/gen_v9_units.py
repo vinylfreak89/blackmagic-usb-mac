@@ -1187,6 +1187,22 @@ def main():
         picture=(2, 2), captions=((2, 0x14, 0x2c), None),
         bright_rows=(20, 283), f2_envelopes=(282,), gap_state="Rejected")
 
+    # A relative correction inferred before a physical landmark becomes
+    # available is relative to the old provisional crops. Authorizing the
+    # gap changes those crops, so the stale overlay must be cleared and may
+    # be re-learned from the new baseline if still necessary.
+    for i in range(4):
+        corrected = i >= 3
+        add(f"gap-clears-relative-correction-{i + 1}",
+            (2, 1 if corrected else 0), begin=i == 0, picture=(2, 0),
+            comb_offsets=(2, 1),
+            f2_reason="CombRelativeCorrection" if corrected else "-",
+            parity_state="Uncalibrated")
+    add("gap-clears-relative-correction-authorized", (2, 1),
+        picture=(2, 1), captions=((2, 0x14, 0x2c), None),
+        gap_rows=(20, 282), comb_offsets=(2, 1), gap_state="Enabled",
+        f1_reason="Line21Placement", f2_reason="Line22GapPlacement")
+
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
     with open(args.output, "wb") as out:
