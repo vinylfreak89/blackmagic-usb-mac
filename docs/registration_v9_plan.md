@@ -824,3 +824,12 @@ writes the geometry-first engine from the reference raster and the owner's words
 writes the validation harness, neither reading the other's prior engine/harness work; (3) the
 round-14 audits run to completion so the merged round-10 main stays a measured fallback. Every
 constant in the new engine derives from the raster or is labelled a tape-fitted default.
+
+**Gap-gauge placement audit, whole tape (22:27 JST; `gap_gauge_audit.py`, valid only where the
+source's line 22 is black — the OFF+2/OFF+3 masses are the second recording, where the naive gap
+reads 0 against a caption truth of +2/+3 and must be ignored).** First-recording-relevant
+classes, field 1: round 10 OFF+1 2,956 / OFF−1 319 / agree 46,312; round 12 OFF+1 3,813 /
+OFF−1 885 / agree 44,825. Field 2 OFF+1: round 10 1,197, round 12 608. So the black-line-inside-
+the-crop class the owner saw in the round-12 sheets is measurable, is present in round 10 as
+well (about 3,000 field-1 units one line high), and round 12 made it worse. Round-14 figures
+follow when its verification lands; all three are the fallback-base record, not acceptance.
