@@ -119,3 +119,47 @@ off-by-n / abstain per field); output moves only at units 300/301 and 43,737/43,
 two relocks) and at real boxing changes; field precedence constant within a lock; no placement on
 the snow/mute units 43,686–43,736; every hold named with its cause. Then the live-path watch copy
 with the sidecar burned in, for the owner.
+
+## 7. Revision from the raw panels (2026-09-06 05:30 JST, prototype `experiments/geometry_first_proto.py` at `be08bba`)
+
+Every rule below replaced one in §3–§4 after a class panel (`experiments/class_panels.py`, raw rows of the units in
+each decision class) contradicted the metric that had proposed it. Constants are labelled RASTER (measured on the
+regenerated raster), STANDARD, or DEFAULT (fitted, to be replaced by a per-source measurement).
+
+- **Rows are RECORDED or REGENERATED, decided against the unit's own blanking rows.** The Shuttle's regenerated rows
+  (blanking, the two inserts, row 18) are chroma 128 exactly with sub-unit spread in every unit; every row that came
+  through the analog decoder, black content included (luma 2–9), carries the decoder's chroma offset and noise
+  (125–127). Thresholds are multiples of the blanking rows' own row-to-row spread (RASTER), never fixed levels. This
+  makes the recorded region's first row measurable on black scenes and flat walls, where every luma-level test failed.
+- **The top is the first recorded row that continues into the picture for two links** (row→row+1 and row+1→row+2,
+  on 8-px horizontally smoothed rows, by correlation or by a difference at noise level). A VBI waveform (the tape's
+  line-20 pulses, a parity-failed caption, the smeared XDS bar, the data line) never continues into the picture, but
+  adjacent waveforms resemble EACH OTHER (measured: XDS bar vs run-in fragment, pulses vs caption), hence two links.
+  Parity-valid captions are recognised as such (`cea608`); nothing else about a VBI row is assumed.
+- **Recorded black above the picture is a BAND with two edges** (band start, picture start), reported as such; one
+  raster cannot say whether it is the tape's blanking lines (field displaced by the band's height) or a black picture
+  top. The caption decides when present (picture = caption+2, STANDARD); else the lock holds when it lies inside the
+  band; else a single black row is read as the tape's black line 22 (fixture A's captions validated that 309/309,
+  DEFAULT) and a deeper band as picture (golden rule: the recorded region is the picture until a gauge says otherwise).
+- **Line 22 is never rendered (STANDARD RP-202).** A caption one row above the picture start marks that row as line
+  22 whether it is black (gap) or attenuated video; only the video case sets the per-segment state used when no
+  caption is visible. (A double count between the gap and video paths on the intro was the first panel-found bug.)
+- **Field 2 without a gauge takes the relative static comb only among the admissible candidates of its black band.**
+  A comb minimum cannot separate a displaced field from a source-side inter-field error; unconstrained it moved field
+  2 to −1 at 05:00, below the recorded region, which is geometrically impossible.
+- **The bottom is the last recorded row** (the deck's clip line: 262/525 on both fixtures, so height = 240 − d), no
+  corridor of any width; the head-switch partial line under the last full picture line is reported with its split
+  column and is picture. The commercial tape's picture runs to 262/525 and fixture A's to 260/522 plus the partial
+  line: per source, measured per unit.
+- **A flat raster holds.** Body median smoothed correlation 0.00 and row difference 0.1–0.3 (deck mute, pause, fade)
+  against 0.90–0.95 / 1–11 on pictures (DEFAULT 0.3 / 1.0): no edge exists to measure.
+- **Removed:** the three-consecutive-continuous-rows requirement (a content edge inside the first rows broke it),
+  `bottom_uncertain` and the `hs` corridor constants, the luma-only `DARK` picture test, and the `runin`/`ccenv`/`bar`
+  heuristics (the two-link rule and the regenerated/recorded split make them unnecessary).
+
+Slice results at `be08bba` (applied pairs, units): 01:26 (1,0) 44 / (0,0) 30 / (2,0) 5; 05:00 (1,0) 373 / (0,0) 199 /
+(2,0) 34; 35:00 (3,2) 357 / (2,2) 263; 37:01 (3,2) 244 / (2,2) 82; 45:00 (3,2) 614 / (2,2) 6; minute 43 (3,2) 306 of
+319; commercial tape (0,0) 896 of 920 with every transition inside the first 47 units (rewind tail). The 35:00 +2/+3
+alternation is the caption moving with the picture; the crop lands two lines under it every unit (panel-confirmed).
+Not yet handled: snow and torn rasters are the signal-state layer's call (the frameserver's classifier), not
+geometry's; the prototype only holds on flat rasters and torn top strips.
