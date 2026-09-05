@@ -751,7 +751,7 @@ in both fields, no differential body motion across each transition. Round 14 dis
 reconciliation, guards and cause names as code; the landmark measured on the raw first (05:00
 unit 440→441 is the case that could falsify it).
 
-**The tape's black line 22 is a per-unit displacement gauge (Claude, raw, 18:20 JST).** Rows
+**The tape's black line 22 is a per-unit displacement gauge (Claude, raw, 18:17 JST).** Rows
 16..26 at 01:26 and 05:00: row 18 is black in EVERY unit (the regenerated line 22, like the
 inserts); the TAPE's black line 22 (Y ≈ 4–7, above the 1.4 blanking, below any picture) sits at
 row 18 + d: at row 20 below the caption when the field is at +2 (01:26 units 55–56: `22 24 1 57
