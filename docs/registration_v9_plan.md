@@ -908,3 +908,20 @@ must produce nothing of the kind. Owner's conclusion: on this tape the only relo
 the program transitions. A whole-tape splice scan (one band of a field still matching the
 previous unit while another band is a new picture) is running to find the others (one expected
 near 24:20).
+
+## The program transition at 24:17–24:20, measured (2026-09-06 01:57 JST)
+
+Per-unit luma and unit-to-unit change, both fields, units 43,589–43,787: the first recording
+holds steady to 43,685 (24:17.62); **43,686 has field 1 bright garbage (mean Y 175) and field 2
+black (Y 1.4)** — the recorder stopping; 43,687 both black; **43,689–43,707 snow** (std 31–50,
+unit-to-unit MAD 25–46) with **field 1 repeated verbatim in 43,696, 43,702 and 43,707** (MAD 1
+against the previous unit while field 2 changes — the deck's TBC repeating a field during
+relock, the old "every other frame held" signature); **43,708–43,736 the deck's grey mute**
+(Y 120, std 14, identical unit to unit; 0.95 s); **43,737 the second recording arrives in field 2
+first** (F2 mean 50 while F1 is still grey), 43,738 in both fields, settling by 43,745; motion in
+the picture's middle band from 24:20.06 is content. Owner's reading confirmed: 24:20 comes in
+clean (grey mute → picture, no tear), 24:17 leaves less cleanly (one garbage unit, black, 0.6 s
+of snow with field repeats) but not broken. Classification: 43,686–43,736 is signal loss / deck
+mute for the classifier (no registration there; the earlier classifier called the snow
+ProgramLike — a known defect the harness must expose); 43,737 is a program start ⇒ re-acquire.
+On this tape the relocks needed are exactly the two program transitions (unit 300 and 43,737).
