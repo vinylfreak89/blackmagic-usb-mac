@@ -914,9 +914,10 @@ near 24:20).
 Per-unit luma and unit-to-unit change, both fields, units 43,589–43,787: the first recording
 holds steady to 43,685 (24:17.62); **43,686 has field 1 bright garbage (mean Y 175) and field 2
 black (Y 1.4)** — the recorder stopping; 43,687 both black; **43,689–43,707 snow** (std 31–50,
-unit-to-unit MAD 25–46) with **field 1 repeated verbatim in 43,696, 43,702 and 43,707** (MAD 1
-against the previous unit while field 2 changes — the deck's TBC repeating a field during
-relock, the old "every other frame held" signature); **43,708–43,736 the deck's grey mute**
+unit-to-unit MAD 25–46) with **field 1 near-repeated in 43,696, 43,702 and 43,707** (body MAD
+0.36–0.40 against the previous unit while field 2 changes — the deck's TBC holding a field
+during relock, the old "every other frame held" signature; NOT byte-identical: Codex's oracle
+measured the raw and found zero exact repeats, correcting Claude's "verbatim" of 2026-09-06); **43,708–43,736 the deck's grey mute**
 (Y 120, std 14, identical unit to unit; 0.95 s); **43,737 the second recording arrives in field 2
 first** (F2 mean 50 while F1 is still grey), 43,738 in both fields, settling by 43,745; motion in
 the picture's middle band from 24:20.06 is content. Owner's reading confirmed: 24:20 comes in
