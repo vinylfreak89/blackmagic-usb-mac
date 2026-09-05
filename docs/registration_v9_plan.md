@@ -500,7 +500,7 @@ is a gauge reading, not a top; the picture may veto it when the picture is measu
 tied or absent witness is not a veto. Claude is measuring the 19 false comb moves before the
 next brief.
 
-**Round 7 post-mortem, measured (2026-09-05 ~10:00 JST).** The 19 "false" comb-corroborated
+**Round 7 post-mortem, measured (2026-09-05 09:30 JST).** The 19 "false" comb-corroborated
 moves at 05:00 are late CORRECT moves: the raster moved one line at a unit where the body
 witness was tied (margins 12% and 18%), the engine held (`TopUncorroborated`), and the comb
 corroborated the still-displaced top one unit later. A unit-to-unit follow audit labels the
