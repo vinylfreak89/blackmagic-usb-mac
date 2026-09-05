@@ -1,7 +1,9 @@
-# Registration engine archaeology: nine versions, one missed signal
+# Registration engine archaeology
 
-How the field-registration engine went through nine versions in six days (2026-08-29 to
-2026-09-04), how it derailed, and how it came back. Merged from two independent excavations,
+Part I: how the field-registration engine went through nine versions in six days (2026-08-29 to
+2026-09-04), how it derailed, and how it came back. Part II: how the ninth engine was then built
+on the inverted premise and patched fourteen times in thirty hours before the owner stopped it
+(2026-09-05). Merged from two independent excavations,
 Claude's (from git, the CLAUDE.md narrative as written at each stage, and its session transcript)
 and Codex's (from git and its own rollout records); the few places they disagreed are listed at
 the end. Times are JST. Every number below is traceable to a commit, a surviving measurement file

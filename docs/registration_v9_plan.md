@@ -812,3 +812,15 @@ the first offender are unchanged, e.g. `e1c91f6`, `dc8a459`, `2efc416`):
 `2f8bb86 → 63b5bf7`, `a683926 → a4a1bec`, `af6ff63 → 1a660cf`, `7e10fee → 72c1260`,
 `d871f1f → 67a9752`, `a1a91c8 → ac36073`, `e310f47 → 7fa4a64`, `3aacdc7 → 6d919a2`.
 Codex's worktree on `round12-saved-geometry` follows the rewritten branch (head `6d919a2`).
+
+## STOP-WORK and role switch (owner, 2026-09-05 evening)
+
+The v9 engine, rounds 1–14, inverted the contract: geometry is the authority, everything else
+confirms it; holds only on a torn raster (keep the previous decision, re-evaluate on
+restabilising) or a lost lock (invalidate, restart at zero); line 22 never renders. No further
+rounds on this base. Sequence: (1) archaeology Part II in `docs/registration_archaeology.md`
+(one document; Codex's own account merged with attribution); (2) a new branch on which Claude
+writes the geometry-first engine from the reference raster and the owner's words, and Codex
+writes the validation harness, neither reading the other's prior engine/harness work; (3) the
+round-14 audits run to completion so the merged round-10 main stays a measured fallback. Every
+constant in the new engine derives from the raster or is labelled a tape-fitted default.
