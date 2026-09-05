@@ -615,3 +615,27 @@ misregistered 0/0/1/6/1/0 on the six established windows and 3 cold-start units 
 minute-43 slice (the correction installs on its third decisive reading and holds (4,3) for the
 remaining 303 units). Codex's final whole-tape pass from `11d6378` is running; Claude's
 verification (seven slices, whole tape, acceptance, both audits) targets `11d6378`.
+
+## v7 and v8 on the same instruments (2026-09-05 15:00 JST), answering the owner's question
+
+Whole-tape replays of v7 (`abfa648`) and v8 (`bottom-edge-v8` at `0fc4ade`) through the
+fixed comb audit and the parity acceptance. Both older engines use the pre-RP-202 crop origin
+(rows 17/280), so their field-1 placement is compared to the caption truth after the best
+constant offset (+2 for both); round 8 needs none.
+
+| engine | comb misregistered / flat / registered (86,293 pairs) | field-1 agreement with the tape's caption (40,237 readings) | applied-pair transitions / one-unit flips |
+|---|---|---|---|
+| v7 | (running) | 31,092 (77.3%) | — |
+| v8 | **326** / 35,372 / 50,591 | 30,403 (75.6%): 7,018 of the 16,670 +3 excursions missed | 11,544 / 3,921 |
+| v9 round 8 | 1,052 / 30,213 / 55,024 | **40,208 (99.9%)** | 7,614 / 2,974 |
+
+Reading: v8 places both fields from the same kind of gauge (bottom edges), so they stay
+mutually consistent — where v8 is one line off the caption it is usually one line off in BOTH
+fields (its (0,−1) ≡ (2,1) in round-8 coordinates carries the same weave as round 8's (3,2)),
+which the comb audit cannot see and the caption can: the whole picture sits a line high and
+jumps when v8 later moves. On the 35:00 slice, units whose caption puts field 1 at +3 register
+at (3,2) in 129 of 129 measurable units and never at (2,2) or (3,3), so round 8's absolute
+placement is confirmed by the comb where it can judge. v9 fixes the absolute-placement class
+(the owner's never-bounce invariant) that v7/v8 could not measure; v8 combs less today only
+because round 8's residual relative class at minute 43 (715 units) is still open — round 10
+closes it. Both metrics are needed: the comb sees relative error, the caption sees absolute.
