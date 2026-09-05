@@ -30,15 +30,25 @@ unit from that unit's raster.
   rows after an eight-pixel low-pass; its MAD, runner-up MAD, and ratio expose whether that phase
   reading is discriminating without invalidating the bottom.
 - **Height:** inclusive measured top-to-bottom height, valid whenever both edges are measurable.
+- **Last recorded row:** independently locates the decoder-originated/regenerated boundary from
+  chroma deviation relative to the same field's regenerated blanking. `last_recorded_line` does
+  not replace the content bottom and does not assume either fixture has a particular clip line.
+- **Flat raster:** `flat_raster` is a conservative spatial classification: the 90th-percentile
+  horizontal and vertical differences of the eight-pixel-low-passed body must both remain below
+  gates derived from that field's regenerated blanking. The raw energies and gates are retained.
+  No independent snow classifier is asserted: the measured snow onset overlaps noisy program in
+  spatial and temporal statistics, while the owner-specified snow/mute event remains forbidden.
 - **Picture:** a sustained set of rows distinguishable from the field's own blanking by luma
   level, spatial spread, or horizontal texture.  This includes dark and boxed program material;
   it does not assume studio black is any fixed code value.
 - **CEA-608 waveform and parity:** `cc_waveform_lines` measures a seven-cycle 503.5 kHz run-in at
   the 13.5 MHz sample clock with tolerant phase/local skew and amplitude relative to the field's
-  own blank-to-picture range. Start-bit and data-cell-grid strengths are reported separately. A
-  vertically smeared waveform is represented by its strongest row. `cc_parity_lines` separately
-  reports rows whose two bytes decode with odd parity; parity is not required to classify a row as
-  VBI. The legacy `line21_*` columns retain the parity-decoded tape landmark and implied RP-202 top.
+  own blank-to-picture range. Start-bit and data-cell-grid strengths are reported separately, and
+  the cell span must contain the low-level occupancy required by a 608 start/data/parity train.
+  Every independent candidate is retained so ambiguity remains visible; a vertically smeared
+  waveform is represented by its strongest row. `cc_parity_lines` separately reports rows whose
+  two bytes decode with odd parity; parity is not required to classify a row as VBI. The legacy
+  `line21_*` columns retain the parity-decoded tape landmark and implied RP-202 top.
 - **Black line 22:** the unique flat row in the first twelve pass-through rows followed by two
   active rows and separated from them by more than the measured blanking noise.  Its absolute
   luma is not fixed.  The coincident Shuttle line 22 is outside the scan and supplies no tape
@@ -76,6 +86,9 @@ python3 experiments/geometry_oracle/run_fulltape.py \
   captures/fulltape.cap6 \
   experiments/geometry_oracle/reports/fulltape_geometry.csv \
   experiments/geometry_oracle/reports/fulltape_census.md
+python3 experiments/geometry_oracle/score_crops.py \
+  experiments/geometry_oracle/reports/fulltape_geometry.csv \
+  crops.csv /private/tmp/geometry_crop_verdict
 ```
 
 The first deliverable is the oracle and its owner-site measurement tables.  Engine verdict logic,
@@ -105,3 +118,13 @@ ordinal holes instead of shifting the known relock/event annotations.
 `activity_probe.py` exposes the level, within-row spread, and horizontal-gradient predicates
 individually at the review sites. The combined `active` result is their logical OR; the probe
 exists so a flat dim row cannot be described merely by that combined result.
+
+## Crop verdict layer
+
+`score_crops.py` joins the frozen oracle and the published-crop table by transport ordinal. It
+rejects missing, extra, or duplicate ordinals, missing schema columns, and crops that cannot fit a
+240-line field in the raw raster. Owner-annotated garbage/snow/mute/relock units are written to
+`forbidden.csv` and excluded from scoring. Authority is selected independently per field in the
+fixed order parity-decoded caption, off-insert waveform, measured geometry, then none. Outputs are
+`summary.md`, a per-field `verdicts.csv`, and exhaustive `disagreements.csv`/`forbidden.csv` files.
+Existing output directories are never overwritten.
