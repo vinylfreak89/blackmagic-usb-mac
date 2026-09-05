@@ -774,3 +774,18 @@ so the SP intro sits at +1, as round 10's (1,0) placements and the comb audit sa
 second recording a naive gap reading returns 0 in 621/621 units where the truth is +2/+3 (line
 22 carries video): the gauge must be gated per segment by agreement with its captions. Both
 facts steered into Codex's round-14 measurement.
+
+## Round 14 in progress (Codex, 19:19 JST; branch `round12-saved-geometry`, head `e310f47`)
+
+Red goldens `ffb626c` (218/220) → 226/226. **Canonical comb:** the engine now reproduces
+`relative_comb_audit.py` exactly — 2,677/2,677 jointly computed slice verdicts identical (nine
+`n.a.` rows where a signal-state reset cleared the engine's previous raster). **Gap gauge**
+implemented as a field-1 gauge behind a segment gate: Codex's first census found that letting a
+displaced dark row enable the gate by itself transiently enabled it in the second recording
+before a caption rejected it, so self-enablement was removed with its own red golden — only
+caption agreement authorizes gap placement, one disagreement rejects it until relock. Bounded
+results before the final pass: 01:26 re-places on the first caption-less unit (57); 05:00 units
+64 and 67 place immediately; second-recording slices reject the gate and keep their caption /
+envelope placements. Comb-correction installation guards and truthful hold causes landed. The
+strict caption-authorized build's whole-tape pass is Codex's final report; Claude's verification
+of `e310f47` starts when the round-12 audits finish.
