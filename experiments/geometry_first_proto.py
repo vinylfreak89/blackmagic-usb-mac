@@ -154,7 +154,8 @@ def measure_field(Y, F, prev_field, Yfull=None, Cfull=None):
         o=F['origin']; body=(vs(o+10,o+110), vs(o+130,o+230))
     if top is not None and any(kind.get(r)=='torn' for r in range(F['insert']+1, top+12)): top=None
     if flat_raster: top=None
-    return dict(top=top, top_rec=top_rec, cap=cap, gap=gap, black_top=black_top, flat=flat_raster, bottom=bottom, hs_split=hs[0], hs_side=hs[1], body=body, ntorn=ntorn,
+    top_level_ratio=(m[top]/max(m[top+1],1.0)) if top is not None else None
+    return dict(top=top, top_rec=top_rec, cap=cap, gap=gap, black_top=black_top, flat=flat_raster, top_level_ratio=top_level_ratio, kind=kind, bottom=bottom, hs_split=hs[0], hs_side=hs[1], body=body, ntorn=ntorn,
                 height=(bottom-top+1) if (top is not None and bottom is not None) else None)
 
 class FieldState:
@@ -178,11 +179,18 @@ def decide(fs, F, mm, signal_ok=True):
         # STANDARD: the caption is line 21 and the picture begins on line 23; line 22 (black or attenuated video) is
         # never rendered. The row under the caption tells the per-segment state used when no caption is visible.
         c=mm['cap'][-1]; d=c+2-F['origin']
-        if top==c+1: fs.line22_video=True; notes.append('Line22Video')
-        else: fs.line22_video=False
+        if F is F2 and mm['kind'].get(c-1)=='vbi':
+            # field 2 of a recording whose line 284 is a smeared bar and whose line 285 carries the decodable 608 row
+            # (fixture A's second recording, measured): a parity-valid row directly under a recorded waveform is line
+            # 285, so the picture begins one row under it. DEFAULT structural rule, not a level test.
+            d=c+1-F['origin']; notes.append('CaptionIsLine285')
+        if top==c+1 and d==c+2-F['origin']: fs.line22_video=True; notes.append('Line22Video')
+        elif top==c+2: fs.line22_video=False
         if d_pic!=d: notes.append('PicTopOff(%+d)'%(d_pic-d))
     else:
-        if fs.line22_video: d_pic+=1; notes.append('Line22VideoAssumed')   # the attenuated line 22 is continuous with the picture
+        # the segment's line 22 carries attenuated video: the measured top is that line only if it IS attenuated
+        # against the row below (measured 60-80 %); a waveform, black or full-level row above the top is not it
+        if fs.line22_video and mm['kind'].get(top-1) not in ('vbi','torn'): d_pic+=1; notes.append('Line22VideoAssumed')   # not when a waveform/torn row sits directly above the top: that top is the picture itself
         if d_rec<d_pic:
             # black band above the picture: the lock decides when it can; at acquisition a single black row is read
             # as the tape's black line 22 (fixture A's captions validated that reading 309/309, DEFAULT), a deeper
