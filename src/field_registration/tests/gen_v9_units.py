@@ -30,7 +30,7 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               caption_false_picture_rows=(), content_phases=(0, 0),
               content_shifts=(None, None), body_texture=(False, False),
               body_split_shifts=(None, None), comb_offsets=None,
-              comb_phase=0):
+              comb_phase=0, blank_rows=(), body_noise_right=False):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -149,12 +149,23 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
                 line = raster[row * BYTES_PER_LINE:(row + 1) * BYTES_PER_LINE]
                 line[1::2] = ys
 
+    # Test-only morphology: retain a static left half for the comb mask while
+    # changing the right half enough that the whole-body shift witness ties.
+    if body_noise_right:
+        for row in range(40, 200):
+            line = raster[row * BYTES_PER_LINE:(row + 1) * BYTES_PER_LINE]
+            line[721:BYTES_PER_LINE:2] = bytes(
+                48 + ((row * 19 + x * 31 + counter * 23) & 127)
+                for x in range(360))
+
     for field, spec in enumerate(captions):
         if spec is not None:
             d, b1, b2 = spec
             waveform((17 if field == 0 else 280) + d, b1, b2)
     for row in bright_rows:
         fill(row, 180)
+    for row in blank_rows:
+        fill(row, 2)
     for row in gap_rows:
         fill(row, 7)
     for row, b1, b2, parity, cycles in extra_valid:
@@ -784,12 +795,12 @@ def main():
         bottom_overrides=(250, None), content_phases=(0, 0),
         content_shifts=(1, 0), body_texture=(True, False),
         body_split_shifts=((1, 1), None))
-    add("body-margin-tie-top-zero", (1, 0),
+    add("body-margin-tie-top-zero", (0, 0),
         picture=(0, 0), top_overrides=(19, None),
         bottom_overrides=(249, None), content_phases=(0, 0),
         content_shifts=(0, 0), body_texture=(True, False),
         body_split_shifts=((0, 1), None),
-        f1_reason="TopUncorroborated", f1_body_valid=0)
+        f1_reason="TopOnly", f1_body_valid=0)
 
     # Once parity has established the segment zero, a later caption and top
     # can share the same damaged-line error. If the body abstains and comb is
@@ -798,11 +809,11 @@ def main():
         picture=(2, 0), captions=((2, 0x14, 0x2c), None),
         content_phases=(0, 0), content_shifts=(2, 0),
         body_texture=(True, False))
-    add("parity-top-uncorroborated-hold", (2, 0), picture=(3, 0),
+    add("parity-top-uncorroborated-hold", (3, 0), picture=(3, 0),
         captions=((3, 0x15, 0x2b), None), content_phases=(0, 0),
         content_shifts=(2, 0), body_texture=(True, False),
         body_split_shifts=((2, 3), None),
-        f1_reason="TopUncorroborated", f1_body_valid=0)
+        f1_reason="Line21Placement", f1_body_valid=0)
 
     # 35:38 failure class: field 1 has a physical +3 line-21 gauge, while
     # field 2's first two VBI-contaminated rows make geometry say zero.  The
@@ -915,6 +926,18 @@ def main():
         f1_reason="TopCombCorroborated", comb_check="disagree")
     add("top-comb-stays-new-top", (3, 0), picture=(3, 0),
         comb_offsets=(3, 0), comb_phase=5)
+
+    # A tied body does not decide the move, but a static half-frame shows the
+    # current crop already has the correct weave.  The changed top is vetoed.
+    for i in range(4):
+        add(f"top-comb-veto-calibration-{i + 1}", (2, 0), begin=i == 0,
+            picture=(2, 0), captions=((2, 0x14, 0x2c), None),
+            comb_offsets=(2, 0), parity_state=(
+                "Calibrated" if i == 3 else "Uncalibrated"))
+    add("top-comb-vetoes-false-top", (2, 0), picture=(3, 0),
+        comb_offsets=(2, 0), blank_rows=(21,), body_noise_right=True,
+        f1_reason="TopCombVetoed", f1_body_valid=0,
+        parity_state="Calibrated", comb_check="agree")
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
