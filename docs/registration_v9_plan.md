@@ -789,3 +789,9 @@ results before the final pass: 01:26 re-places on the first caption-less unit (5
 envelope placements. Comb-correction installation guards and truthful hold causes landed. The
 strict caption-authorized build's whole-tape pass is Codex's final report; Claude's verification
 of `e310f47` starts when the round-12 audits finish.
+**Round 12 (`a1a91c8`) whole tape, Claude (19:37 JST):** parity 40,221 + 15 + 1 + 0 as Codex
+reported; comb **54,737 registered / 30,932 flat / 620 misregistered** (round 10: 165) — the
+hold-on-absent-evidence rule fixed the torn passage but froze stale positions and the wrong
+phase of real jitter across the tape (+1 ×489, −1 ×58, −2 ×54, +2 ×19); follow field 1
+engine-motion 1,039 / missed 2,884. Not merged; superseded on the same branch by round 14 (gap
+gauge, canonical comb), whose verification is running.
