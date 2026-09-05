@@ -750,3 +750,17 @@ Comb-correction installation guards: three readings of the same nonzero shift, r
 in both fields, no differential body motion across each transition. Round 14 dispatched:
 reconciliation, guards and cause names as code; the landmark measured on the raw first (05:00
 unit 440→441 is the case that could falsify it).
+
+**The tape's black line 22 is a per-unit displacement gauge (Claude, raw, 18:20 JST).** Rows
+16..26 at 01:26 and 05:00: row 18 is black in EVERY unit (the regenerated line 22, like the
+inserts); the TAPE's black line 22 (Y ≈ 4–7, above the 1.4 blanking, below any picture) sits at
+row 18 + d: at row 20 below the caption when the field is at +2 (01:26 units 55–56: `22 24 1 57
+4 136`), at row 19 when at +1 (01:26 units 57–71 `22 24 1 4 134`; 05:00 units 64, 67, 440 `22
+23 1 4 139`), coincident with row 18 when aligned (05:00 unit 441 `22 24 1 136`). So the 05:00
+"first-line brightness flicker" of round 4 was WRONG: those were one-line moves the body
+witness was blind to, and the comb agreed. In the first recording, where captions are scarce
+and line 22 is black on the tape, this gauge reads d1 every unit — including the tied-body
+units that round 8 placed late and round 12 holds. Steered into Codex's landmark measurement:
+tape_gap = the last dark row before the picture in rows 18..24, d1 = tape_gap − 18, valid when
+unique and when the segment's gap gauge agrees with its captions where both exist; the second
+recording (video on line 22) has no gap but has captions nearly everywhere.
