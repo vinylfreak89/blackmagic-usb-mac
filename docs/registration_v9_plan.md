@@ -796,7 +796,7 @@ phase of real jitter across the tape (+1 ×489, −1 ×58, −2 ×54, +2 ×19); 
 engine-motion 1,039 / missed 2,884. Not merged; superseded on the same branch by round 14 (gap
 gauge, canonical comb), whose verification is running.
 
-## History rewrite: commit-message trailers (2026-09-05 20:45 JST, owner order)
+## History rewrite: commit-message trailers (2026-09-05 20:38 JST, owner order)
 
 Eighteen of Codex's commits since 2026-09-04 22:02 carried the two characters `\n` in the
 message body instead of line breaks (a shell string that never interpreted the escape), so
