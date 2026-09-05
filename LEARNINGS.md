@@ -301,3 +301,16 @@ capture quirk. The fix was a second constant with the coordinate's real name (`V
 Lesson: before changing a shared geometric constant, grep every comparison against it and ask which
 of them mean *this* coordinate and which merely reused the number; give the other meaning its own
 name in the same commit. Corollary of "two coordinates, one name".
+
+## A unit-to-unit follow audit cannot tell a late correction from a false move (2026-09-05)
+
+The raw follow audit scores each unit by whether the crop change equals the body's shift since
+the previous unit. When the engine misses a one-line move (a tied witness) and corrects it a unit
+later, the correction lands on a unit whose body did not move and is scored as engine-caused
+motion, while the missed unit is scored as a miss — two errors reported for one late decision,
+and the correction itself reads as a defect. Round 7 briefed a rule ("the top alone never moves
+the crop") on exactly those mislabeled counts; on the tape it suppressed 2,616 correct caption
+placements. The absolute instruments — the static-comb registration of the published crops per
+unit and the parity acceptance against the caption truth — score the state, not the transition,
+and are the acceptance figures. A relative audit is a pointer to where to look, never the
+verdict.

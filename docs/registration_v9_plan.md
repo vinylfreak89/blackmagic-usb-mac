@@ -499,3 +499,16 @@ gate only calibration and drift. Merge-ready: no, by both agents. Lesson: a capt
 is a gauge reading, not a top; the picture may veto it when the picture is measurable, but a
 tied or absent witness is not a veto. Claude is measuring the 19 false comb moves before the
 next brief.
+
+**Round 7 post-mortem, measured (2026-09-05 ~10:00 JST).** The 19 "false" comb-corroborated
+moves at 05:00 are late CORRECT moves: the raster moved one line at a unit where the body
+witness was tied (margins 12% and 18%), the engine held (`TopUncorroborated`), and the comb
+corroborated the still-displaced top one unit later. A unit-to-unit follow audit labels the
+late correction "engine-motion" and cannot tell it from a false move; **the comb audit and the
+parity acceptance are the deciding instruments; follow-audit engine-motion counts are
+indicative only.** Witness margin against caption truth (35:00, 37:01): a reading with
+MAD(best)/MAD(second) ≤ 0.8 is wrong in about 1 of 500 units, so 0.8 is the right reliability
+threshold — but 32 of 175 and 15 of 61 true moves lie above it, so abstention is frequent and
+must not become a hold. Rule E is reversed: a parity placement applies unless a reliable
+witness contradicts it; on a tied body the comb decides when measurable and otherwise the top
+does. Sent as round 8.
