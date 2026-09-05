@@ -1154,6 +1154,27 @@ def main():
         f1_hold_cause="TopDisagreesBodyStill", f1_saved_d=0,
         f1_hold_length=1)
 
+    # The tape-carried black line 22 is one row above picture in both fields.
+    # One caption/gap agreement enables it for this source segment. The next
+    # tied-body unit is then placed directly by that landmark, not memory.
+    add("gap-gauge-segment-anchor", (2, 2), begin=True, picture=(2, 2),
+        captions=((2, 0x14, 0x2c), None), gap_rows=(20, 283),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(2, 2), body_texture=(True, True))
+    add("gap-gauge-tied-body-placement", (1, 1), picture=(1, 1),
+        gap_rows=(19, 282), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 2),
+        body_texture=(True, True),
+        body_split_shifts=((2, 1), (2, 1)),
+        f1_reason="Line22GapPlacement", f2_reason="Line22GapPlacement")
+
+    # On the second recording line 22 carries video. Its regenerated line-22
+    # zero conflicts with the +2 caption and must reject the gap gauge for the
+    # segment rather than fabricate an aligned placement.
+    add("gap-gauge-reject-video-line22", (2, 2), begin=True,
+        picture=(2, 2), captions=((2, 0x14, 0x2c), None),
+        bright_rows=(20, 283), f2_envelopes=(282,))
+
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
     with open(args.output, "wb") as out:

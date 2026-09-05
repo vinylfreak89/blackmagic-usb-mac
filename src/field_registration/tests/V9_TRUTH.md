@@ -105,3 +105,10 @@ uses all 640 active samples after a true eight-pixel box filter; three equal
 comb readings cannot install a correction while reliable field bodies move
 differentially; and a reliable still-body contradiction is named
 `TopDisagreesBodyStill`, not conflated with a tied witness.
+
+The physical-landmark extension enables the tape-carried black line 22 only
+after it agrees with an off-insert caption in the same source segment (or is
+itself displaced below the regenerated black line). Once enabled, its bounded
+0..3 displacement places tied-body units directly. A source whose line 22
+carries video instead produces an immediate caption/gap conflict and can never
+enable this gauge.
