@@ -44,6 +44,7 @@ def emit(u):
     shifts=[s for s in range(-3,4) if 0<=a2+s and a2+s+H<=LINES]
     ok = 0<=a1 and a1+H<=LINES and 0 in shifts
     consecutive = st['prev'] is not None and st['previ']==i-1 and int(r['ordinal'])==st['prevord']+1
+    if consecutive and (st['preva1']+H>LINES or st['preva2']+H>LINES or st['preva1']<0 or st['preva2']<0): ok=False   # previous crop ran off the raster: not comparable
     stats['audited']+=1
     if consecutive and ok:
         P,pa1,pa2=st['prev'],st['preva1'],st['preva2']
