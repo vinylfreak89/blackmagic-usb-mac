@@ -31,7 +31,8 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               content_shifts=(None, None), body_texture=(False, False),
               body_texture_mod=128,
               body_split_shifts=(None, None), comb_offsets=None,
-              comb_phase=0, blank_rows=(), body_noise_right=False):
+              comb_phase=0, blank_rows=(), body_noise_right=False,
+              comb_odd_only=False, post_comb_body_shifts=(None, None)):
     unit = bytearray(UNIT_BYTES)
     unit[:4] = b"\x00\x00\xff\xff"
     struct.pack_into("<H", unit, 4, counter & 0xffff)
@@ -149,6 +150,28 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
                                for x in range(PIXELS))
                 line = raster[row * BYTES_PER_LINE:(row + 1) * BYTES_PER_LINE]
                 line[1::2] = ys
+
+        if comb_odd_only:
+            # The old live comb sampled only every other active pixel. Put
+            # all vertical weave detail on the omitted phase: the canonical
+            # 640-sample/8-pixel audit remains decisive, while the shortcut
+            # sees a flat constant field.
+            for start in (19 + comb_offsets[0], 282 + comb_offsets[1]):
+                for row in range(start, start + 240):
+                    if not 0 <= row < RASTER_LINES:
+                        continue
+                    line = raster[row * BYTES_PER_LINE:(row + 1) * BYTES_PER_LINE]
+                    line[81:1361:4] = bytes([110]) * 320
+
+    # Test-only differential body motion layered over a still, decisive comb
+    # pattern. The untouched lower 80 rows retain the comb verdict while the
+    # body witness independently proves that the fields moved differently.
+    for field, shift in enumerate(post_comb_body_shifts):
+        if shift is None:
+            continue
+        first = 40 if field == 0 else 303
+        for row in range(first, first + 160):
+            fill_body_texture(row, field, row - shift, 0)
 
     # Test-only morphology: retain a static left half for the comb mask while
     # changing the right half enough that the whole-body shift witness ties.
@@ -1096,6 +1119,36 @@ def main():
         content_phases=(0, 0), content_shifts=(2, 0),
         body_texture=(True, False), f1_reason="CaptionOnlyMotion",
         f1_saved_d=2, f1_geometry_jump=0, f1_hold_length=2)
+
+    # Round 14: the acceptance comb is full-width. Detail deliberately placed
+    # only on the pixel phase omitted by the retired half-width shortcut must
+    # still produce a decisive registered verdict.
+    add("comb-full-width-phase-anchor", (0, 0), begin=True,
+        picture=(0, 0), comb_offsets=(0, 0), comb_odd_only=True)
+    add("comb-full-width-phase-verdict", (0, 0), picture=(0, 0),
+        comb_offsets=(0, 0), comb_odd_only=True, comb_check="agree")
+
+    # Three identical comb disagreements cannot install a correction while
+    # the reliable field bodies say the fields moved differentially. The
+    # lower picture rows keep the comb reading decisive; the 160-row witness
+    # region carries the independent per-field motion.
+    for i, f1_shift in enumerate((0, 1, 0, 1)):
+        add(f"comb-differential-install-guard-{i + 1}", (0, 0),
+            begin=i == 0, picture=(0, 0), comb_offsets=(0, 2),
+            post_comb_body_shifts=(f1_shift, 0),
+            f2_reason="GeometryLockDecides")
+
+    # A reliable still body contradicting a changed top is not a tied-body
+    # abstention. Both remain holds, but their provenance must be distinct.
+    add("hold-cause-still-anchor", (0, 0), begin=True, picture=(0, 0),
+        base_bottoms=(250, 518), content_shifts=(0, 0),
+        body_texture=(True, False), captions=((0, 0x14, 0x2c), None))
+    add("hold-cause-top-disagrees-still-body", (0, 0), picture=(1, 0),
+        base_bottoms=(250, 518), content_shifts=(0, 0),
+        body_texture=(True, False), f1_reason="SavedGeometryHold",
+        f1_body_shift=0, f1_body_valid=1,
+        f1_hold_cause="TopDisagreesBodyStill", f1_saved_d=0,
+        f1_hold_length=1)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
