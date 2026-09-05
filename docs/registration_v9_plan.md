@@ -861,3 +861,36 @@ Horizontal tearing is not a geometry event (Codex's damage census keyed on it, w
 dropout or RF noise that makes the bottom edge unstable is the "keep the previous decision and
 re-evaluate when it restabilises" case. The ruling on damage therefore reduces to something the
 raster decides; no owner ruling is needed per unit.
+
+## The 34:14–34:43 passage classified on the raw (2026-09-06 02:20 JST, owner and Claude)
+
+Every unit from 61,586 to 62,440 looked at or measured (per-band vertical shifts, field-1 vs
+field-2 horizontal offset, left-blanking width). Findings, all NTSC lines:
+- **34:15–34:17: a mistracking noise bar** 50–60 lines tall across the middle of both fields,
+  lines inside it torn sideways and dropout-compensated, picture above and below intact and
+  steady; it drifts downward over the following minute (one head partly off the track, the
+  head-to-track phase sliding). Horizontal class; geometry intact.
+- **34:36–34:37: a fast camera tilt** (whole picture moving ≥ 6 lines per unit in both fields)
+  with the bar across the middle. Claude first read the band disagreements as a frame-store slip
+  and retracted it: normal movement plus noise, per the owner.
+- **34:38.8–34:39.0 and 34:39.94–34:40.01: the first 6–12 picture lines of FIELD 1 only** are
+  torn horizontally (content starting at column 0, black fill at the right) in units 62,303,
+  62,306, 62,336–62,338; field 2 intact; no vertical offset between or within fields (field 1 vs
+  field 2 horizontal offset 0–1 px through the passage; the 12-px left bar is normal blanking).
+- **34:39.6–34:40.8: the bar reaches the head-switch aftermath** at the top of both fields (first
+  30–40 lines torn, body steady) and then the head-switch point at the bottom of field 1.
+- **34:42: fast hand motion** — band shifts of different magnitude are subject parallax.
+- **The "vertical tear" seen in the renders at 34:40 was the engine's:** the round-10 sidecar
+  moves field 1 from +1 to +3 and field 2 from +3 to +2 in unit 62,336, then bounces, because
+  the torn top strip made the top edge unreadable. Two fields cropped at offsets changing in
+  opposite directions and interleaved is a vertical tear in the output. The tape's picture never
+  moved.
+- **No genuine vertical tear (an intra-field seam with the picture offset above and below it)
+  has been found on fixture A yet.** A whole-tape seam scan (upper vs lower picture band moving
+  by different amounts with both bodies otherwise stable) is running; candidates are reviewed
+  on the raw before anything is called a tear. The relock snow at ~24:17 is signal loss, a
+  different class.
+Contract consequence: horizontal line damage — a migrating bar, torn top strips, head-switch
+aftermath — never touches geometry; where it covers the edge a measurement needs, keep the
+previous decision and re-evaluate. The lost-lock class (re-acquire from zero, re-run parity
+calibration) is reserved for a raster whose body is discontinuous.
