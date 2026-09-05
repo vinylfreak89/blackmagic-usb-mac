@@ -171,6 +171,16 @@ def decide(fs, F, mm, signal_ok=True):
     if not signal_ok: fs.lock=False; notes.append('SignalLoss')
     if top is None:
         if mm.get('flat'): notes.append('FlatRaster')
+        if mm['cap'] and not mm.get('flat'):
+            # the picture edge is hidden (torn top strip) but the caption is readable: the caption places the field
+            # (STANDARD: picture = caption+2). Whole-tape parity check on be08bba: 398 of 40,169 caption units were
+            # held one or two lines off exactly here.
+            d=mm['cap'][-1]+2-F['origin']
+            if F is F2 and mm['kind'].get(mm['cap'][-1]-1)=='vbi': d-=1
+            notes.append('CaptionPlaces')
+            if not fs.lock: fs.lock=True; reason='Acquired'
+            else: reason='GeometryMoved' if d!=fs.d else 'Geometry'
+            fs.d=d; return d, reason, notes
         return fs.d, ('EdgeHidden' if fs.lock else 'LockLost'), notes
     d_pic = top - F['origin']                                   # first non-black picture row
     d_rec = (mm['top_rec'] if mm.get('top_rec') is not None else top) - F['origin']   # first recorded row (black band start)
