@@ -220,9 +220,14 @@ def decide(fs, F, mm, signal_ok=True):
 w=csv.writer(open(OUT,'w',newline=''))
 cols=['ordinal','counter_extended','transport','kind','applied_d1','applied_d2','f1_reason','f1_notes','f1_top','f1_bottom','f1_height','f1_hs_split','f1_cap','f1_gap','f1_body_up','f1_body_lo','f2_reason','f2_notes','f2_top','f2_bottom','f2_height','f2_hs_split','f2_cap','f2_gap','f2_body_up','f2_body_lo','published']
 w.writerow(cols)
-st=dict(n=0,t=0,prev=None); S=[FieldState(),FieldState()]; buf=bytearray(); stats=collections.Counter()
+st=dict(n=0,ext=None,first=None,prev=None); S=[FieldState(),FieldState()]; buf=bytearray(); stats=collections.Counter()
 def emit(u):
-    c16=int.from_bytes(u[4:6],'little'); o=START+st['t']; st['n']+=1; st['t']+=1   # ordinal = transport ordinal (short units count)
+    c16=int.from_bytes(u[4:6],'little')
+    # ordinal = the device's own unit counter, unwrapped, relative to the first exact unit (the harness reference numbers
+    # units the same way: device-short units consume ordinals, the leading fragments do not). Never a walker count.
+    if st['ext'] is None: st['ext']=c16; st['first']=c16
+    else: st['ext']+= (c16-(st['ext']&0xffff))&0xffff
+    o=START+st['ext']-st['first']; st['n']+=1
     raw=np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,LINE)
     Yall=raw[:,1::2].astype(np.float32)   # full 720-sample luma rows (for the 608 decoder and the blanking test)
     Call=raw[:,0::2].astype(np.float32)   # interleaved Cb/Cr samples: regenerated rows are exactly 128, recorded rows are not
@@ -257,7 +262,6 @@ def on_video(p):
         j=buf.find(MARK,4)
         if j<0: return
         if j==UNIT: emit(bytes(buf[:UNIT]))
-        else: st['t']+=1                      # device-short or other unit: advances the transport ordinal, never published
         del buf[:j]
 try: walk_tagged(CAP, on_video=on_video, progress=False)
 except RuntimeError as e: print('walk ended:',str(e)[:100])
