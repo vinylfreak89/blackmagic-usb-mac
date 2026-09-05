@@ -795,3 +795,20 @@ hold-on-absent-evidence rule fixed the torn passage but froze stale positions an
 phase of real jitter across the tape (+1 ×489, −1 ×58, −2 ×54, +2 ×19); follow field 1
 engine-motion 1,039 / missed 2,884. Not merged; superseded on the same branch by round 14 (gap
 gauge, canonical comb), whose verification is running.
+
+## History rewrite: commit-message trailers (2026-09-05 20:45 JST, owner order)
+
+Eighteen of Codex's commits since 2026-09-04 22:02 carried the two characters `\n` in the
+message body instead of line breaks (a shell string that never interpreted the escape), so
+Git did not parse their `Co-authored-by` trailer. Found by scanning every commit's message
+bytes; Claude's reviews had read code and numbers, never the message bytes — a review gap,
+now on the merge checklist. Fixed with `git filter-branch --msg-filter` over every non-backup
+branch: trees byte-identical to the backups on all 14 branches, author and committer dates and
+subjects identical (main and round12 diffed line by line), zero offenders remaining on any
+working branch. Backups kept as `backup/<branch>-pre-trailer-fix` until the owner releases
+them. Cited hashes in this document and CLAUDE.md map as follows (old → new; commits before
+the first offender are unchanged, e.g. `e1c91f6`, `dc8a459`, `2efc416`):
+`490877b → 56edda0`, `339b83a → 92963f3`, `cb1b4ed → fb582c9`, `7254d58 → 5b6ae68`,
+`2f8bb86 → 63b5bf7`, `a683926 → a4a1bec`, `af6ff63 → 1a660cf`, `7e10fee → 72c1260`,
+`d871f1f → 67a9752`, `a1a91c8 → ac36073`, `e310f47 → 7fa4a64`, `3aacdc7 → 6d919a2`.
+Codex's worktree on `round12-saved-geometry` follows the rewritten branch (head `6d919a2`).
