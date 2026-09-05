@@ -63,6 +63,12 @@ typedef enum fieldreg_comb_check {
     FIELDREG_COMB_FLAT,
 } fieldreg_comb_check;
 
+typedef enum fieldreg_gap_state {
+    FIELDREG_GAP_UNCALIBRATED = 0,
+    FIELDREG_GAP_ENABLED,
+    FIELDREG_GAP_REJECTED,
+} fieldreg_gap_state;
+
 typedef enum fieldreg_hold_cause {
     FIELDREG_HOLD_NONE = 0,
     FIELDREG_HOLD_TIED_BODY,
@@ -109,6 +115,7 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_SAVED_GEOMETRY_HOLD,
     FIELDREG_MODE_SAVED_GEOMETRY_CONFIRMED,
     FIELDREG_MODE_SAVED_GEOMETRY_REPLACED,
+    FIELDREG_MODE_LINE22_GAP_PLACEMENT,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -120,6 +127,7 @@ typedef enum fieldreg_gauge_source {
     FIELDREG_GAUGE_LINE22_DATA,
     FIELDREG_GAUGE_HOLD,
     FIELDREG_GAUGE_STATIC_COMB,
+    FIELDREG_GAUGE_LINE22_GAP,
 } fieldreg_gauge_source;
 
 /* v9 has no thresholds, dwell, FIFO, or tunable evidence model. */
@@ -145,6 +153,9 @@ typedef struct fieldreg_field_decision {
     fieldreg_insert_relation insert_relation;
     uint16_t parity_candidate_count;
     uint16_t fallback_candidate_count;
+    int16_t gap_row;
+    int8_t gap_d;
+    bool gap_measurable;
     int16_t gauge_row;
     uint8_t gauge_byte1;
     uint8_t gauge_byte2;
@@ -208,6 +219,8 @@ typedef struct fieldreg_decision {
     bool transport_ok;
     bool comb_safe;
     fieldreg_parity_state parity_state;
+    fieldreg_gap_state gap_state;
+    uint16_t gap_agreement_count;
     /* Decision evidence at the provisional crops. */
     fieldreg_comb_check comb_input_check;
     int8_t comb_input_best_shift;
@@ -273,6 +286,8 @@ typedef struct field_registration {
     int8_t previous_published_d1;
     int8_t previous_published_d2;
     fieldreg_parity_state parity_state;
+    fieldreg_gap_state gap_state;
+    uint16_t gap_agreement_count;
     int16_t comb_zero_candidate;
     int8_t comb_candidate_count;
     int8_t comb_correction;
@@ -310,6 +325,7 @@ const char *fieldreg_zero_source_name(fieldreg_zero_source source);
 const char *fieldreg_insert_relation_name(fieldreg_insert_relation relation);
 const char *fieldreg_parity_state_name(fieldreg_parity_state state);
 const char *fieldreg_comb_check_name(fieldreg_comb_check check);
+const char *fieldreg_gap_state_name(fieldreg_gap_state state);
 const char *fieldreg_hold_cause_name(fieldreg_hold_cause cause);
 
 #ifdef __cplusplus

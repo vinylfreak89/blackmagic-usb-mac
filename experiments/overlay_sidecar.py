@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Burn a v9 (schema 9/10/11) registration sidecar into a rendered review video as a metrics band.
+"""Burn a v9 (schema 9 through 12) registration sidecar into a rendered review video as a metrics band.
 
 The band is ADDED below (or above) the picture — the picture is never covered. One band image per
 unit (two bobbed frames): line 1 = unit, counter, unit state, applied (d1,d2), comb_safe; lines 2-5 =
@@ -80,6 +80,7 @@ def main() -> None:
         line1 = (f"u{int(f):06d} c{counter:>5} {unit_state[:7]:7s} applied({g(r,'applied_d1','?')},{g(r,'applied_d2','?')})  "
                  f"{'comb-safe' if safe else 'NOT comb-safe'} "
                  f"parity={g(r,'parity_state','?')}/{g(r,'comb_check','?')} "
+                 f"gap={g(r,'gap_state','?')}/{g(r,'gap_agreement_count','0')} "
                  f"bias={g(r,'parity_bias','?')} "
                  f"corr={g(r,'comb_correction','0')}@{g(r,'comb_correction_install_ordinal','-1')}")
         d.text((6, 4), line1, font=font, fill=(255, 255, 255) if safe else (255, 215, 0))
@@ -108,6 +109,9 @@ def main() -> None:
             pc = g(r, f"f{n}_parity_candidates", "0"); fc = g(r, f"f{n}_fallback_candidates", "0")
             if ib or ins not in ("None", "") or pc != "0" or fc != "0":
                 info += f"  ins {ib or '-'} {ins} cand {pc}/{fc}"
+            if g(r, f"f{n}_gap_measurable", "0") in ("1", "True", "true"):
+                info += (f"  gap L{g(r, f'f{n}_gap_line', '?')}"
+                         f" d{g(r, f'f{n}_gap_d', '?')}")
             if reason.startswith("SavedGeometry"):
                 info += (f"  saved={g(r, f'f{n}_saved_applied_d', '?')}"
                          f"@u{g(r, f'f{n}_saved_ordinal', '?')}"

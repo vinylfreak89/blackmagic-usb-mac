@@ -309,6 +309,7 @@ def main():
             f1_body_shift=-999, f2_body_shift=-999,
             f1_body_valid=-1, f2_body_valid=-1,
             parity_state="-", comb_check="-", parity_bias=-999,
+            gap_state="-",
             f1_hold_cause="-", f2_hold_cause="-",
             f1_saved_d=-999, f2_saved_d=-999,
             f1_geometry_jump=-999, f2_geometry_jump=-999,
@@ -323,6 +324,7 @@ def main():
         rows[-1] += (f1_body_shift, f2_body_shift,
                      f1_body_valid, f2_body_valid,
                      parity_state, comb_check, parity_bias,
+                     gap_state,
                      f1_hold_cause, f2_hold_cause,
                      f1_saved_d, f2_saved_d,
                      f1_geometry_jump, f2_geometry_jump,
@@ -543,7 +545,8 @@ def main():
     # still clearing blank+4. It is a VBI gap, not the picture's first row.
     add("field1-gap-line-before-picture", (1, 0), begin=True,
         top_overrides=(20, None), gap_rows=(19,), field_luma=(90, None),
-        f1_reason="GeometryLockDecides", f1_lock="Locked",
+        f1_reason="Line22GapPlacement", f2_reason="Line22GapPlacement",
+        f1_lock="Locked",
         f1_zero="Standard", f1_lock_top=19)
 
     # 37:01 field 2: the XDS row and fragment precede picture whose genuine
@@ -1160,20 +1163,22 @@ def main():
     add("gap-gauge-segment-anchor", (2, 2), begin=True, picture=(2, 2),
         captions=((2, 0x14, 0x2c), None), gap_rows=(20, 283),
         base_bottoms=(250, 518), content_phases=(0, 0),
-        content_shifts=(2, 2), body_texture=(True, True))
+        content_shifts=(2, 2), body_texture=(True, True),
+        gap_state="Enabled")
     add("gap-gauge-tied-body-placement", (1, 1), picture=(1, 1),
         gap_rows=(19, 282), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(2, 2),
         body_texture=(True, True),
         body_split_shifts=((2, 1), (2, 1)),
-        f1_reason="Line22GapPlacement", f2_reason="Line22GapPlacement")
+        f1_reason="Line22GapPlacement", f2_reason="Line22GapPlacement",
+        gap_state="Enabled")
 
     # On the second recording line 22 carries video. Its regenerated line-22
     # zero conflicts with the +2 caption and must reject the gap gauge for the
     # segment rather than fabricate an aligned placement.
     add("gap-gauge-reject-video-line22", (2, 2), begin=True,
         picture=(2, 2), captions=((2, 0x14, 0x2c), None),
-        bright_rows=(20, 283), f2_envelopes=(282,))
+        bright_rows=(20, 283), f2_envelopes=(282,), gap_state="Rejected")
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
@@ -1190,6 +1195,7 @@ def main():
                     "f1_raw_top", "f2_raw_top", "f1_body_shift",
                     "f2_body_shift", "f1_body_valid", "f2_body_valid",
                     "parity_state", "comb_check", "parity_bias",
+                    "gap_state",
                     "f1_hold_cause", "f2_hold_cause",
                     "f1_saved_d", "f2_saved_d",
                     "f1_geometry_jump", "f2_geometry_jump",

@@ -1,7 +1,7 @@
 # Frameserver sidecar
 
 The frameserver publishes corrected interlaced UYVY units immediately and writes an optional CSV
-decision sidecar. Schema `10` keeps the transport, signal-state, applied-pair,
+decision sidecar. Schema `12` keeps the transport, signal-state, applied-pair,
 publication, and loss-accounting columns from schema 3. Between them it replaces
 the retired v7 evidence graph with two identical per-field groups:
 
@@ -11,7 +11,7 @@ fN_reason,fN_gauge,fN_insert_present,fN_insert_bytes,fN_insert_relation,fN_parit
 
 `drop_reason` is `None`, `PoolFull`, `PublisherFull`, or `RingFullTail`.
 `fN_*_line`, top, bottom, lock-top, clip, and expected-bottom values use NTSC
-line numbers, including saved top/bottom. The schema also records
+line numbers, including the gated tape-line-22 gap and saved top/bottom. The schema also records
 `comb_correction` and the ordinal where
 the current nonzero correction was installed; `-1` means none. `comb_safe`
 requires valid locks, calibrated parity, and an honored correction. Exact

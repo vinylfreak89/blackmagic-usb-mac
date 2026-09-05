@@ -14,6 +14,9 @@ typedef struct field_measurement {
     uint16_t off_count;
     int16_t fallback_row;
     uint16_t fallback_count;
+    int16_t gap_row;
+    uint16_t gap_count;
+    bool gap_measurable;
     double blank_mean;
     int16_t top;
     int16_t bottom;
@@ -289,6 +292,7 @@ static void measure_field(const uint8_t *raster, int field,
     double means[257] = {0.0};
     memset(m, 0, sizeof *m);
     m->fallback_row = -1;
+    m->gap_row = -1;
     m->top = m->bottom = m->height = -1;
 
     for (int row = blank_first; row <= blank_last; ++row)
@@ -356,6 +360,25 @@ static void measure_field(const uint8_t *raster, int field,
             break;
         }
     }
+    /* The regenerated black line 22 is fixed at insert+1. On sources that
+     * preserve a black tape line 22, the last dark row immediately before
+     * two picture rows translates with the tape. Keep the measurement
+     * independent of the picture-top classifier and bound it to the observed
+     * 0..3-line displacement; segment gating decides whether it is a gauge. */
+    const int gap_origin = insert + 1;
+    const int gap_last = gap_origin + 11;
+    for (int row = gap_origin; row <= gap_last && row + 2 <= last; ++row) {
+        const bool tape_dark = row == gap_origin ||
+            means[row - first] > m->blank_mean + 1.0;
+        if (tape_dark && means[row - first] <= 10.0 &&
+            means[row + 1 - first] > 12.0 &&
+            means[row + 2 - first] > 12.0) {
+            m->gap_row = (int16_t)row;
+            if (m->gap_count != UINT16_MAX) ++m->gap_count;
+        }
+    }
+    m->gap_measurable = m->gap_count == 1 && m->gap_row >= gap_origin &&
+                        m->gap_row <= gap_origin + 3;
     for (int row = adc_last; row >= picture_first; --row) {
         if (!waveform[row - first] && means[row - first] > picture_threshold) {
             m->bottom = (int16_t)row;
@@ -374,6 +397,39 @@ static bool in_range(int field, int d)
     const int high = field == 0 ? FIELDREG_FIELD1_MAX_OFFSET :
                                   FIELDREG_FIELD2_MAX_OFFSET;
     return d >= FIELDREG_MIN_OFFSET && d <= high;
+}
+
+static int gap_displacement(const field_measurement *m, int field)
+{
+    if (!m->gap_measurable) return FIELDREG_UNKNOWN;
+    const int origin = field == 0 ? FIELDREG_INSERT_F1 + 1 :
+                                    FIELDREG_INSERT_F2 + 1;
+    return m->gap_row - origin;
+}
+
+static void update_gap_gate(field_registration *engine,
+                            const field_measurement m[2])
+{
+    if (engine->gap_state == FIELDREG_GAP_REJECTED) return;
+    const int gap_d = gap_displacement(&m[0], 0);
+    if (m[0].off_count == 1) {
+        const int caption_d = m[0].off_candidate.raster_row -
+                              FIELDREG_INSERT_F1;
+        if (gap_d == FIELDREG_UNKNOWN) return;
+        if (caption_d == gap_d) {
+            if (engine->gap_agreement_count != UINT16_MAX)
+                ++engine->gap_agreement_count;
+            engine->gap_state = FIELDREG_GAP_ENABLED;
+        } else {
+            engine->gap_state = FIELDREG_GAP_REJECTED;
+            engine->gap_agreement_count = 0;
+        }
+        return;
+    }
+    /* A second dark row below the fixed regenerated line is direct evidence
+     * that the tape-carried gap moved. A coincident zero without a caption is
+     * not enough to distinguish black line 22 from active source video. */
+    if (gap_d > 0) engine->gap_state = FIELDREG_GAP_ENABLED;
 }
 
 static void clear_clip(fieldreg_field_state *s)
@@ -565,6 +621,7 @@ static bool saved_geometry_evidence(const fieldreg_field_decision *d,
     case FIELDREG_MODE_FIELD2_COMB_CALIBRATION:
     case FIELDREG_MODE_TOP_COMB_CORROBORATED:
     case FIELDREG_MODE_COMB_RELATIVE_CORRECTION:
+    case FIELDREG_MODE_LINE22_GAP_PLACEMENT:
         return true;
     case FIELDREG_MODE_GEOMETRY_LOCK_DECIDES:
         return body_reliable(m) && m->body_geometry_agrees;
@@ -950,6 +1007,20 @@ static bool apply_picture_position(fieldreg_field_state *s,
     return true;
 }
 
+static void apply_gap_placement(fieldreg_field_state *s,
+                                const field_measurement *m, int field,
+                                fieldreg_field_decision *d)
+{
+    const int measured = gap_displacement(m, field);
+    d->measured_d = (int8_t)measured;
+    d->applied_d = (int8_t)measured;
+    d->reason = FIELDREG_MODE_LINE22_GAP_PLACEMENT;
+    d->gauge = FIELDREG_GAUGE_LINE22_GAP;
+    d->gauge_row = m->gap_row;
+    s->last_applied = (int8_t)measured;
+    record_invariant(s, m, measured, d);
+}
+
 static void decide_geometry(fieldreg_field_state *s,
                             const field_measurement *m, int field,
                             fieldreg_field_decision *d)
@@ -1032,7 +1103,8 @@ static void decide_geometry(fieldreg_field_state *s,
 }
 
 static void decide_field(fieldreg_field_state *s, const field_measurement *m,
-                         int field, fieldreg_field_decision *d)
+                         int field, bool gap_enabled,
+                         fieldreg_field_decision *d)
 {
     bool zero_observation = false;
     memset(d, 0, sizeof *d);
@@ -1062,6 +1134,9 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
     d->insert_byte2 = m->insert_byte2;
     d->parity_candidate_count = m->off_count;
     d->fallback_candidate_count = m->fallback_count;
+    d->gap_row = m->gap_row;
+    d->gap_d = (int8_t)gap_displacement(m, field);
+    d->gap_measurable = m->gap_measurable;
     if (s->lock_state == FIELDREG_LOCK_LOCKED &&
         m->picture_position_valid)
         d->geometry_d = (int8_t)(m->picture_top - s->top);
@@ -1076,7 +1151,9 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
         hold(s, d, FIELDREG_MODE_INSERT_ABSENT);
         record_invariant(s, m, s->last_applied, d);
     } else if (m->off_count > 1) {
-        if (!apply_body_geometry(s, m, field,
+        if (gap_enabled && m->gap_measurable) {
+            apply_gap_placement(s, m, field, d);
+        } else if (!apply_body_geometry(s, m, field,
                                  FIELDREG_MODE_LINE21_AMBIGUOUS, d))
             hold(s, d, FIELDREG_MODE_LINE21_AMBIGUOUS);
     } else if (m->off_count == 1) {
@@ -1154,7 +1231,9 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
             record_invariant(s, m, measured, d);
         }
     } else if (field == 1 && m->fallback_count > 1) {
-        if (!apply_body_geometry(s, m, field,
+        if (gap_enabled && m->gap_measurable) {
+            apply_gap_placement(s, m, field, d);
+        } else if (!apply_body_geometry(s, m, field,
                                  FIELDREG_MODE_LINE21_AMBIGUOUS, d))
             hold(s, d, FIELDREG_MODE_LINE21_AMBIGUOUS);
     } else if (field == 1 && m->fallback_count == 1) {
@@ -1193,6 +1272,8 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
             if (anchor_ready) fit_clip(s, m, measured, m->top);
             record_invariant(s, m, d->applied_d, d);
         }
+    } else if (gap_enabled && m->gap_measurable) {
+        apply_gap_placement(s, m, field, d);
     } else decide_geometry(s, m, field, d);
 
     if (!zero_observation) clear_zero_candidate(s);
@@ -1259,6 +1340,8 @@ static void reset_parity(field_registration *engine)
     engine->comb_correction_candidate = FIELDREG_UNKNOWN;
     engine->comb_correction_candidate_count = 0;
     engine->previous_luma_valid = false;
+    engine->gap_state = FIELDREG_GAP_UNCALIBRATED;
+    engine->gap_agreement_count = 0;
 }
 
 void fieldreg_init(field_registration *engine, const fieldreg_config *config)
@@ -1640,6 +1723,7 @@ bool fieldreg_process_ex(field_registration *engine,
     field_measurement m[2];
     measure_field(raster, 0, &m[0]);
     measure_field(raster, 1, &m[1]);
+    update_gap_gate(engine, m);
     measure_body(raster, 0, engine->previous_luma,
                  engine->previous_luma_valid, &engine->field[0], &m[0]);
     measure_body(raster, 1, engine->previous_luma,
@@ -1648,8 +1732,12 @@ bool fieldreg_process_ex(field_registration *engine,
     const fieldreg_field_state before[2] = {
         engine->field[0], engine->field[1]
     };
-    decide_field(&engine->field[0], &m[0], 0, &out->field[0]);
-    decide_field(&engine->field[1], &m[1], 1, &out->field[1]);
+    decide_field(&engine->field[0], &m[0], 0,
+                 engine->gap_state == FIELDREG_GAP_ENABLED,
+                 &out->field[0]);
+    decide_field(&engine->field[1], &m[1], 1,
+                 engine->gap_state == FIELDREG_GAP_ENABLED,
+                 &out->field[1]);
 
     out->applied_d1 = out->field[0].applied_d;
     out->applied_d2 = out->field[1].applied_d;
@@ -1696,6 +1784,8 @@ bool fieldreg_process_ex(field_registration *engine,
     out->mode = out->field[0].reason == out->field[1].reason ?
                 out->field[0].reason : FIELDREG_MODE_MIXED_FIELD_DECISION;
     out->confidence = out->frame_observation_support > 0 ? 1.0 : 0.0;
+    out->gap_state = engine->gap_state;
+    out->gap_agreement_count = engine->gap_agreement_count;
     const bool both_locked =
         engine->field[0].lock_state == FIELDREG_LOCK_LOCKED &&
         engine->field[1].lock_state == FIELDREG_LOCK_LOCKED;
@@ -1747,6 +1837,7 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_SAVED_GEOMETRY_HOLD: return "SavedGeometryHold";
     case FIELDREG_MODE_SAVED_GEOMETRY_CONFIRMED: return "SavedGeometryConfirmed";
     case FIELDREG_MODE_SAVED_GEOMETRY_REPLACED: return "SavedGeometryReplaced";
+    case FIELDREG_MODE_LINE22_GAP_PLACEMENT: return "Line22GapPlacement";
     case FIELDREG_MODE_MIXED_FIELD_DECISION: return "MixedFieldDecision";
     }
     return "Unknown";
@@ -1762,6 +1853,7 @@ const char *fieldreg_gauge_name(fieldreg_gauge_source source)
     case FIELDREG_GAUGE_LINE22_DATA: return "Line22Data";
     case FIELDREG_GAUGE_HOLD: return "Hold";
     case FIELDREG_GAUGE_STATIC_COMB: return "StaticComb";
+    case FIELDREG_GAUGE_LINE22_GAP: return "Line22Gap";
     }
     return "Unknown";
 }
@@ -1816,6 +1908,16 @@ const char *fieldreg_comb_check_name(fieldreg_comb_check check)
     case FIELDREG_COMB_FLAT: return "flat";
     }
     return "unknown";
+}
+
+const char *fieldreg_gap_state_name(fieldreg_gap_state state)
+{
+    switch (state) {
+    case FIELDREG_GAP_UNCALIBRATED: return "Uncalibrated";
+    case FIELDREG_GAP_ENABLED: return "Enabled";
+    case FIELDREG_GAP_REJECTED: return "Rejected";
+    }
+    return "Unknown";
 }
 
 const char *fieldreg_hold_cause_name(fieldreg_hold_cause cause)
