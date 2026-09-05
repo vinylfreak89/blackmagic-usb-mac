@@ -426,10 +426,8 @@ static void update_gap_gate(field_registration *engine,
         }
         return;
     }
-    /* A second dark row below the fixed regenerated line is direct evidence
-     * that the tape-carried gap moved. A coincident zero without a caption is
-     * not enough to distinguish black line 22 from active source video. */
-    if (gap_d > 0) engine->gap_state = FIELDREG_GAP_ENABLED;
+    /* A dark row alone cannot distinguish tape line 22 from source content.
+     * Remain uncalibrated until a unique caption authorizes the gauge. */
 }
 
 static void clear_clip(fieldreg_field_state *s)

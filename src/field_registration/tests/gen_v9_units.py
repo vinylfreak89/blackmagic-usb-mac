@@ -545,7 +545,7 @@ def main():
     # still clearing blank+4. It is a VBI gap, not the picture's first row.
     add("field1-gap-line-before-picture", (1, 0), begin=True,
         top_overrides=(20, None), gap_rows=(19,), field_luma=(90, None),
-        f1_reason="Line22GapPlacement", f2_reason="Line22GapPlacement",
+        f1_reason="GeometryLockDecides", f2_reason="GeometryLockDecides",
         f1_lock="Locked",
         f1_zero="Standard", f1_lock_top=19)
 
@@ -1159,8 +1159,9 @@ def main():
 
     # A dark row alone cannot authorize this gauge: active line-22 content can
     # produce the same shape before caption evidence arrives.
-    add("gap-gauge-needs-caption-gate", (0, 0), begin=True, picture=(1, 1),
+    add("gap-gauge-needs-caption-gate", (1, 1), begin=True, picture=(1, 1),
         gap_rows=(19, 282), base_bottoms=(250, 518),
+        f1_reason="GeometryLockDecides", f2_reason="GeometryLockDecides",
         gap_state="Uncalibrated")
 
     # The tape-carried black line 22 is one row above picture in both fields.
