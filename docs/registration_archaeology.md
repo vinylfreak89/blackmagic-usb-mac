@@ -506,6 +506,94 @@ transcript quotes above, which are the contract. Discard: the precedence stack, 
 tape-fitted constant not derivable from the raster, the hold on absent evidence, and the
 follow audit as anything but a pointer.
 
+
+## Codex's account (its own words, 2026-09-05 evening)
+
+Written from its own transcript and commits without re-reading Claude's briefs or Part I.
+
+### Where my implementation departed from geometry first
+
+The geometry-first contract was simple: measure each field’s active picture top, bottom, and height every unit; place that measured geometry; use line 21, line 22, static comb, and temporal picture evidence only to confirm ambiguous geometry. I did not preserve that hierarchy.
+
+The first clean-sheet v9 implementation, culminating around `8336b78`, treated decoded CEA-608 line 21 as the strongest placement authority. A parity-valid line away from the regenerated insert directly selected that field’s displacement. Geometry became the fallback when no caption decoded. This seemed justified because the decoder found a uniquely parity-valid field-1 line across the measured windows, and replay placement agreed exactly with the available parity truth. At 35:00 it placed all 621 caption-bearing units correctly; at 45:00 it reproduced the +2/+3 pattern; the first recording initially appeared correctly held at zero.
+
+That success concealed the inversion. The parity acceptance measured whether the engine followed its caption authority, not whether the resulting picture geometry was stable or correct. The whole-tape acceptance later reported 40,163/40,163 field-1 parity agreements and 25/25 field-2 agreements, yet the owner’s render still visibly bounced and admitted VBI/XDS lines.
+
+The next rounds deepened the inversion. When captions and geometry disagreed, `be7691a` added `CaptionOnlyMotion`, allowing picture evidence to veto captions—but only after the caption had already been made primary. `dc8a459` added a temporal body witness. `2efc416` replaced its weak one-dimensional profile with a two-dimensional comparison. Later rounds added comb corroboration, zero calibration, saved geometry, and gap authority. Each repaired a measured failure of the preceding hierarchy without restoring geometry to the top of that hierarchy.
+
+By round 12, `a1a91c8` held a saved “good” crop whenever caption, body, comb, or geometry did not provide enough evidence under the accumulated rules. That was contrary to the original contract: measurable geometry should have placed the unit, while only genuine raster damage or signal loss justified a hold. I had built an evidence-voting engine whose default was memory, rather than a geometry engine whose confirmations only resolved specific uncertainty.
+
+### Fixture-fitted rules and constants
+
+Several constants were defensible as experimental thresholds, but I allowed them to become engine semantics.
+
+The CEA-608 detector used measured run-in timing, amplitude, and odd parity. The 35-level amplitude threshold came from fixture-A caption lines. The field-2 XDS-like discriminator—row mean below 95, energy confined to the left portion, and a six-bin bright run—was frozen from five slices. It correctly found line 286 in 200/200 units at 30:38, 597/600 at 35:00, and 529/600 at 45:00, but it described this recording’s smeared XDS appearance rather than a general raster invariant.
+
+The picture scan accumulated several fixture-specific exclusions: damaged-caption signatures, timing pulses, XDS bars, run-in fragments, a three-consecutive-picture-row rule, and a relative blanking threshold. These fixed real failures, including the 37:01 case where a damaged caption was mistaken for picture and the 45:00 field-2 case where XDS entered the output. They were useful measurements, but I let the classification machinery obscure the simpler question: where did the picture geometry actually begin and end?
+
+The bottom-edge policy fitted the Shuttle’s near-blank region around lines 260–264 and 522–526. Clip fitting required repeated observations. “Two agreeing samples,” censored-height lower bounds, and top-only conservation rules arose from fixture-A bottom flicker and were not derived from the raster format.
+
+The physical-range bound of ±3 began as an emergency brake after field 2’s calibrated zero walked from a bias of 4 to 41. It prevented another runaway, but later briefs treated it like a source property. It was neither: the tape demonstrated a possible +4 path, and the bound existed because the zero algorithm could integrate its own error.
+
+The body witness accumulated MAD gates of 9 and 25, followed by the reliability ratio `best <= 0.8 × adjacent`. The 0.8 ratio was supported by caption transitions—roughly one false nonzero witness below that ratio among about 500 tested still transitions—but it remained a fixture-trained confidence threshold. It should never have become a substitute for direct geometry.
+
+Static comb used an eight-pixel horizontal low-pass, temporal difference below 6, at least 3% static pixels, a 25% energy advantage, three consecutive calibration readings, and eight readings for drift. These thresholds made the live and offline comb instruments agree, but the engine then used comb to calibrate field-2 zero and later to install persistent relative corrections. That exceeded comb’s intended role of settling field precedence and confirming ambiguous geometry once per lock.
+
+Finally, the line-22 gap gauge used mean luma at most 10, followed by two rows above 12, bounded to displacement 0…3. It agreed with captions in 2,166/2,166 enabled whole-tape cases. It was disastrously wrong on the second recording, where line 22 carried video: 35,689 caption/gap disagreements. I added a segment-level caption-agreement gate, then disabled comb correction while that gap gauge was active. That produced a coherent fixture result, but it was another tape-specific authority stack.
+
+### Where I pushed back—and where I should have
+
+I did stop when measurements falsified a requested design.
+
+The clearest case was the proposal to freeze `r = d1 − d2` as a segment constant. At 35:00, the measured pairs were `(3,2)` 355 times and `(2,2)` 266 times in the same segment. Field 1 moved independently while field 2 stayed put; freezing their difference would have manufactured misregistration. I rejected that premise, and the design was corrected to treat field-2 zero separately.
+
+I also stopped the first damage-classifier implementation. At ordinals 62322–62326, proposed skew and dropout metrics did not separate the visibly torn raster from neighboring moving content. Rather than tune a threshold to those ordinal numbers, I reported the classifier falsified and did not claim a detector.
+
+I rejected body-primary dead reckoning after simulation showed it latched missed moves between caption readings. I repeatedly marked branches not merge-ready when slice or whole-tape evidence contradicted them, including the round-3 geometry failures and the final round-14 performance and commit-history defects.
+
+I should have pushed back much earlier. Nine conceptual revisions around line 21, reference learning, and relocking were evidence that the authority model was unstable. When “line 21 is gold” became “parity is never vetoed,” I should have asked whether a metadata waveform could ever outrank directly measurable active-picture geometry. When `ClipUnknownHold`, `LockBroken`, `OutOfRangeHold`, and saved-geometry holds appeared on units with visible picture, I should have identified that as a contract violation rather than refining the hold taxonomy.
+
+I also should have stopped when static comb returned as a crop-moving mechanism. We had already learned from v7 that comb was dangerous as a per-unit authority. Calling it a three-reading calibration or a persistent correction did not change the fundamental risk.
+
+### How the briefs steered the implementation wrong
+
+The briefs repeatedly and explicitly elevated secondary evidence. I was told that line 21 was “THE golden reference,” that parity was never vetoed by geometry, and that a unique off-insert waveform should place even a dark or flat unit. Later briefs required caption-based re-anchoring, field-2 XDS envelope authority, static-comb zero calibration, persistent comb-relative correction, and saved-geometry holds.
+
+Some briefs contradicted earlier ones: there was first no caption relock, then a caption relock; first a fixed standard reference, then learned zeros; first `d1−d2` as the segment constant, then its measured rejection; first tied body meant the top decided, then tied body meant hold, then comb decided. The 17/280 versus 19/282 crop-origin confusion also consumed a cycle before crop geometry and picture geometry were separated correctly.
+
+Those instructions genuinely steered the work. But I remained responsible for integrating them. I treated each new brief as a local specification to implement instead of checking it against the original geometry-first invariant. The mutual failure was that the briefs supplied increasingly specific mechanisms while I supplied increasingly competent implementations of the wrong hierarchy.
+
+### The commit-message defect
+
+Eighteen of my commits contained literal `\n` characters in their message bodies. I produced them by passing escaped newline text through a command path that did not interpret the escapes as actual line breaks. The subject looked normal in ordinary one-line history, and the required co-author text was visibly present, so I failed to inspect Git’s parsed trailers.
+
+The defect persisted because my verification concentrated on trees, tests, replays, and sidecars. I did not run a trailer parser over every new commit. When I finally used `%(trailers:key=Co-authored-by)`, six recent commits showed no parsed trailer. I attempted to rebuild those unreported commit objects with correct messages, but the safety layer rejected the history rewrite as affecting already reported commits. The owner subsequently rewrote the affected history. The prevention is mechanical: create messages with real paragraphs, then verify the parsed trailer immediately after every commit.
+
+### What should survive
+
+The instrumentation should survive: the byte-for-byte CEA-608 decoder comparison, `line21_truth.py`, counter-safe `v9_acceptance.py`, `relative_comb_audit.py`, `follow_audit.py` with its late-correction limitation documented, the edge/envelope census, raw panels, live-path replay, schema-rich sidecars, and failing-first synthetic goldens. These tools exposed the engine’s mistakes rather than merely endorsing it.
+
+Several raster facts also survived: the Shuttle regenerated timing and insert lines relative to detected sync; field 1 and field 2 could move independently by whole field lines; the tape’s line 21 moved with recorded content while the Shuttle could re-encode decoded bytes at its insert; line 22 could be black or carry program/data depending on the source; dark program levels had to be measured relative to blanking; and the deck/Shuttle clipped the lower picture edge, making bottom geometry noisy but not irrelevant.
+
+I would discard the v9 authority hierarchy, learned position zeros, caption-driven crop decisions, field-2 tape-specific XDS authority, persistent comb-relative corrections, saved-geometry holds for ordinary ambiguity, the ±3 “constant,” and the accumulated voting states. I would retain their tests as adversarial cases for the next geometry-first engine.
+
+## Where the two accounts of Part II differed
+
+- **Who did the history rewrite.** Codex's text says the owner rewrote the affected history; the
+  owner ordered it and Claude ran it (`git filter-branch --msg-filter`, trees and dates verified
+  against backups). Corrected here, not in Codex's text.
+- **The parity figure.** Codex cites 40,163/40,163 for the first v9 acceptance and Claude
+  40,237/40,237; both are real — 40,163 was the round-1 count, and Codex's stricter acceptance
+  script then recovered 74 readings mislabelled ambiguous, giving 40,237. Both accounts agree the
+  number measured the engine against its own gauge.
+- **Where the inversion began.** Codex dates it to its first clean-sheet implementation
+  (`8336b78`) and describes it as its own hierarchy choice; Claude dates it to the plan text
+  written from the owner's 11:35 sentence. Both are true: the plan asked for it and the engine
+  did it. Neither checked it against the 11:45 correction or the evening statements.
+- **Pushback.** Both list the same three refusals (`d1 − d2`, the damage classifier, dead
+  reckoning) and the same missing one: nobody asked, when holds appeared on units with visible
+  picture, whether the base was wrong.
+
 ## What happens next
 
 The owner's ruling on 2026-09-05 evening: roles switch. Claude writes the next registration
