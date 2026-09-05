@@ -1,0 +1,698 @@
+#!/usr/bin/env python3
+"""Independent raw-raster measurements for the geometry-first harness.
+
+This module deliberately has no dependency on the registration engine or on an
+engine decision log.  Measurements are kept separate: picture envelope, CEA-608,
+black line 22, same-field temporal motion, static comb, and exact field repeats.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import math
+import struct
+import sys
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
+from typing import Callable, Iterable
+
+import numpy as np
+
+EXPERIMENTS = Path(__file__).resolve().parents[1]
+if str(EXPERIMENTS) not in sys.path:
+    sys.path.insert(0, str(EXPERIMENTS))
+
+from packet_capture_reader import walk_tagged  # noqa: E402
+
+
+UNIT_BYTES = 756_048
+HEADER_BYTES = 48
+RASTER_LINES = 525
+LINE_BYTES = 1_440
+LUMA_SAMPLES = 720
+MARKER = b"\x00\x00\xff\xff"
+FORMAT_NTSC_UYVY = 0xE801
+CELL_PIXELS = 1.986e-6 * 13.5e6
+
+
+@dataclass(frozen=True)
+class FieldSpec:
+    number: int
+    field_lo: int
+    field_hi: int
+    blank_lo: int
+    blank_hi: int
+    pass_lo: int
+    pass_hi: int
+    insert_row: int
+    body_lo: int
+    body_hi: int
+
+
+FIELD_SPECS = (
+    FieldSpec(1, 0, 270, 7, 16, 19, 260, 17, 40, 200),
+    FieldSpec(2, 270, 525, 270, 279, 282, 522, 280, 303, 463),
+)
+
+
+@dataclass
+class FieldMeasurement:
+    blank_mean: float
+    blank_noise: float
+    active_top_line: int
+    top_line: int
+    top_valid: int
+    top_status: str
+    bottom_line: int
+    bottom_valid: int
+    bottom_censored: int
+    visible_height: int
+    height_valid: int
+    line21_lines: str
+    line21_bytes: str
+    line21_unique_line: int
+    line21_implied_top: int
+    gap_line: int
+    gap_valid: int
+    gap_implied_top: int
+    body_shift: int
+    body_mad: float
+    body_second_mad: float
+    body_ratio: float
+    body_unique: int
+    static_fraction: float
+    band_shifts: str
+    band_mads: str
+    repeated: int
+
+
+@dataclass
+class UnitMeasurement:
+    ordinal: int
+    local_exact: int
+    counter: int
+    event: str
+    no_placement_expected: int
+    f1_blank_mean: float
+    f1_blank_noise: float
+    f1_active_top_line: int
+    f1_top_line: int
+    f1_top_valid: int
+    f1_top_status: str
+    f1_bottom_line: int
+    f1_bottom_valid: int
+    f1_bottom_censored: int
+    f1_visible_height: int
+    f1_height_valid: int
+    f1_line21_lines: str
+    f1_line21_bytes: str
+    f1_line21_unique_line: int
+    f1_line21_implied_top: int
+    f1_gap_line: int
+    f1_gap_valid: int
+    f1_gap_implied_top: int
+    f1_body_shift: int
+    f1_body_mad: float
+    f1_body_second_mad: float
+    f1_body_ratio: float
+    f1_body_unique: int
+    f1_static_fraction: float
+    f1_band_shifts: str
+    f1_band_mads: str
+    f1_repeated: int
+    f2_blank_mean: float
+    f2_blank_noise: float
+    f2_active_top_line: int
+    f2_top_line: int
+    f2_top_valid: int
+    f2_top_status: str
+    f2_bottom_line: int
+    f2_bottom_valid: int
+    f2_bottom_censored: int
+    f2_visible_height: int
+    f2_height_valid: int
+    f2_line21_lines: str
+    f2_line21_bytes: str
+    f2_line21_unique_line: int
+    f2_line21_implied_top: int
+    f2_gap_line: int
+    f2_gap_valid: int
+    f2_gap_implied_top: int
+    f2_body_shift: int
+    f2_body_mad: float
+    f2_body_second_mad: float
+    f2_body_ratio: float
+    f2_body_unique: int
+    f2_static_fraction: float
+    f2_band_shifts: str
+    f2_band_mads: str
+    f2_repeated: int
+    comb_best_shift: int
+    comb_best_energy: float
+    comb_second_energy: float
+    comb_ratio: float
+    comb_static_fraction: float
+    comb_valid: int
+
+
+def _line(row: int) -> int:
+    return row + 4 if row >= 0 else -1
+
+
+def _robust_noise(values: np.ndarray) -> float:
+    centre = float(np.median(values))
+    return max(0.25, 1.4826 * float(np.median(np.abs(values - centre))))
+
+
+def _box8(image: np.ndarray) -> np.ndarray:
+    """Eight-pixel horizontal box low-pass, sampled once per box."""
+    width = image.shape[1] - image.shape[1] % 8
+    return image[:, :width].reshape(image.shape[0], width // 8, 8).mean(axis=2)
+
+
+def _row_metrics(y: np.ndarray, spec: FieldSpec) -> tuple[np.ndarray, ...]:
+    active = y[spec.pass_lo : spec.pass_hi + 1, 40:680].astype(np.float32)
+    blank = y[spec.blank_lo : spec.blank_hi, 40:680].astype(np.float32)
+    blank_mean = float(np.median(blank))
+    blank_noise = _robust_noise(blank)
+    blank_gradient = float(np.median(np.abs(np.diff(blank, axis=1))))
+    means = active.mean(axis=1)
+    stds = active.std(axis=1)
+    gradients = np.abs(np.diff(active, axis=1)).mean(axis=1)
+    mean_gate = max(2.5, 6.0 * blank_noise)
+    spread_gate = max(2.0, 4.0 * blank_noise)
+    gradient_gate = max(1.0, 3.0 * blank_gradient)
+    is_active = (
+        (np.abs(means - blank_mean) > mean_gate)
+        | (stds > spread_gate)
+        | (gradients > gradient_gate)
+    )
+    return (
+        means,
+        stds,
+        gradients,
+        is_active,
+        np.array([blank_mean, blank_noise, blank_gradient], dtype=np.float32),
+    )
+
+
+def _is_gap(
+    index: int,
+    means: np.ndarray,
+    gradients: np.ndarray,
+    active: np.ndarray,
+    blank_gradient: float,
+    blank_noise: float,
+) -> bool:
+    if index + 2 >= len(means) or not active[index + 1] or not active[index + 2]:
+        return False
+    following = min(float(means[index + 1]), float(means[index + 2]))
+    contrast = following - float(means[index])
+    flat_gate = max(2.0, 4.0 * blank_gradient)
+    contrast_gate = max(8.0, 6.0 * blank_noise)
+    return float(gradients[index]) <= flat_gate and contrast >= contrast_gate
+
+
+def measure_envelope(y: np.ndarray, spec: FieldSpec) -> dict[str, object]:
+    means, _stds, gradients, active, blank = _row_metrics(y, spec)
+    blank_mean, blank_noise, blank_gradient = map(float, blank)
+
+    run_starts = [
+        i
+        for i in range(0, len(active) - 2)
+        if bool(active[i] and active[i + 1] and active[i + 2])
+    ]
+    active_top_index = run_starts[0] if run_starts else -1
+    top_index = active_top_index
+
+    # A tape-carried black line 22 is the last flat, dark transition directly
+    # before two picture-bearing rows.  The fixed Shuttle row is outside this
+    # pass-through scan and therefore cannot impersonate tape evidence.
+    gap_indexes = [
+        i
+        for i in range(min(12, len(means) - 2))
+        if _is_gap(i, means, gradients, active, blank_gradient, blank_noise)
+    ]
+    gap_index = gap_indexes[-1] if len(gap_indexes) == 1 else -1
+    if gap_index >= 0:
+        top_index = gap_index + 1
+
+    bottom_index = -1
+    for i in range(len(active) - 1, 1, -1):
+        if bool(active[i] and active[i - 1] and active[i - 2]):
+            bottom_index = i
+            break
+
+    top_row = spec.pass_lo + top_index if top_index >= 0 else -1
+    bottom_row = spec.pass_lo + bottom_index if bottom_index >= 0 else -1
+    # The last five pass-through lines abut the head-switch/padding transition.
+    # Their activity establishes only a lower bound, never an exact bottom.
+    bottom_censored = int(bottom_row >= spec.pass_hi - 4) if bottom_row >= 0 else 0
+    bottom_valid = int(bottom_row >= 0 and not bottom_censored)
+    top_valid = int(top_row >= 0)
+    visible_height = bottom_row - top_row + 1 if top_row >= 0 and bottom_row >= top_row else -1
+    return {
+        "blank_mean": blank_mean,
+        "blank_noise": blank_noise,
+        "active_top_row": spec.pass_lo + active_top_index if active_top_index >= 0 else -1,
+        "top_row": top_row,
+        "top_valid": top_valid,
+        "top_status": "measured" if top_valid else "unmeasurable",
+        "bottom_row": bottom_row,
+        "bottom_valid": bottom_valid,
+        "bottom_censored": bottom_censored,
+        "visible_height": visible_height,
+        "height_valid": int(top_valid and bottom_valid),
+        "gap_row": spec.pass_lo + gap_index if gap_index >= 0 else -1,
+        "gap_valid": int(gap_index >= 0),
+    }
+
+
+_RUN_LO = 10
+_RUN_HI = 230
+_RUN_N = np.arange(_RUN_LO, _RUN_HI, dtype=np.float64)
+_RUN_W = 2.0 * np.pi / CELL_PIXELS
+_RUN_COS = np.cos(_RUN_W * _RUN_N)
+_RUN_SIN = np.sin(_RUN_W * _RUN_N)
+
+
+def decode_cea608(row: np.ndarray) -> tuple[bool, int, int, float]:
+    x = row.astype(np.float64, copy=False)
+    segment = x[_RUN_LO:_RUN_HI]
+    segment = segment - segment.mean()
+    c = float(segment @ _RUN_COS)
+    s = float(segment @ _RUN_SIN)
+    amplitude = math.hypot(c, s) * 2.0 / len(segment)
+    if amplitude < 35.0:
+        return False, -1, -1, amplitude
+    phase = math.atan2(s, c)
+    peaks = [
+        (phase + 2.0 * np.pi * k) / _RUN_W
+        for k in range(-2, 40)
+        if _RUN_LO
+        <= (phase + 2.0 * np.pi * k) / _RUN_W
+        < _RUN_HI + 24 * CELL_PIXELS
+    ]
+    high = float(x[_RUN_LO:_RUN_HI].max())
+    low = float(x[_RUN_LO:_RUN_HI].min())
+    threshold = (high + low) / 2.0
+
+    def value(position: float) -> float:
+        centre = int(round(position))
+        lo = max(0, centre - 2)
+        hi = min(len(x), centre + 3)
+        return float(x[lo:hi].mean()) if hi > lo else low
+
+    bits = [int(value(position) > threshold) for position in peaks]
+    try:
+        first = bits.index(1)
+    except ValueError:
+        return False, -1, -1, amplitude
+    end = first
+    while end < len(bits) and bits[end] == 1:
+        end += 1
+    if not 5 <= end - first <= 9 or end + 19 > len(bits):
+        return False, -1, -1, amplitude
+    if bits[end : end + 3] != [0, 0, 1]:
+        return False, -1, -1, amplitude
+    data = bits[end + 3 : end + 19]
+    byte1 = sum(data[i] << i for i in range(8))
+    byte2 = sum(data[8 + i] << i for i in range(8))
+    odd = lambda value_: value_.bit_count() % 2 == 1
+    return odd(byte1) and odd(byte2), byte1, byte2, amplitude
+
+
+def scan_cea608(y: np.ndarray, spec: FieldSpec) -> list[tuple[int, int, int, float]]:
+    rows = y[spec.field_lo : spec.field_hi, :,].astype(np.float64, copy=False)
+    segment = rows[:, _RUN_LO:_RUN_HI]
+    segment = segment - segment.mean(axis=1, keepdims=True)
+    c = segment @ _RUN_COS
+    s = segment @ _RUN_SIN
+    amplitudes = np.hypot(c, s) * 2.0 / segment.shape[1]
+    result = []
+    for local in np.flatnonzero(amplitudes >= 35.0):
+        row = spec.field_lo + int(local)
+        ok, byte1, byte2, amplitude = decode_cea608(y[row])
+        if ok:
+            result.append((row, byte1, byte2, amplitude))
+    return result
+
+
+def measure_body(
+    y: np.ndarray, previous: np.ndarray | None, spec: FieldSpec
+) -> tuple[int, float, float, float, int, float]:
+    if previous is None:
+        return -128, math.nan, math.nan, math.nan, 0, 0.0
+    current_lp = _box8(y[spec.body_lo : spec.body_hi, 40:680].astype(np.float32))
+    previous_lp = _box8(previous[spec.body_lo : spec.body_hi, 40:680].astype(np.float32))
+    scores: list[tuple[int, float]] = []
+    for shift in range(-3, 4):
+        if shift >= 0:
+            current_part = current_lp[shift:]
+            previous_part = previous_lp[: len(previous_lp) - shift or None]
+        else:
+            current_part = current_lp[: len(current_lp) + shift]
+            previous_part = previous_lp[-shift:]
+        scores.append((shift, float(np.mean(np.abs(current_part - previous_part)))))
+    ordered = sorted(scores, key=lambda item: (item[1], abs(item[0]), item[0]))
+    best_shift, best = ordered[0]
+    second = ordered[1][1]
+    ratio = best / second if second > 0 else (0.0 if best == 0 else math.inf)
+
+    aligned_current = current_lp[max(0, best_shift) : len(current_lp) + min(0, best_shift)]
+    aligned_previous = previous_lp[max(0, -best_shift) : len(previous_lp) - max(0, best_shift)]
+    delta = np.abs(aligned_current - aligned_previous)
+    low_half = delta[delta <= np.median(delta)]
+    centre = float(np.median(low_half)) if low_half.size else 0.0
+    scale = _robust_noise(low_half) if low_half.size else 0.25
+    static_threshold = centre + 3.0 * scale
+    static_fraction = float(np.mean(delta <= static_threshold))
+    unique = int(ordered[0][1] < ordered[1][1])
+    return best_shift, best, second, ratio, unique, static_fraction
+
+
+def _region_shift(
+    y: np.ndarray, previous: np.ndarray | None, lo: int, hi: int
+) -> tuple[int, float]:
+    if previous is None:
+        return -128, math.nan
+    current_lp = _box8(y[lo:hi, 40:680].astype(np.float32))
+    previous_lp = _box8(previous[lo:hi, 40:680].astype(np.float32))
+    scores = []
+    for shift in range(-3, 4):
+        if shift >= 0:
+            current_part = current_lp[shift:]
+            previous_part = previous_lp[: len(previous_lp) - shift or None]
+        else:
+            current_part = current_lp[: len(current_lp) + shift]
+            previous_part = previous_lp[-shift:]
+        scores.append((shift, float(np.mean(np.abs(current_part - previous_part)))))
+    return min(scores, key=lambda item: (item[1], abs(item[0]), item[0]))
+
+
+def measure_bands(
+    y: np.ndarray, previous: np.ndarray | None, spec: FieldSpec
+) -> tuple[str, str]:
+    if spec.number == 1:
+        ranges = ((40, 115), (115, 190), (190, 255))
+    else:
+        ranges = ((303, 375), (375, 447), (447, 518))
+    readings = [_region_shift(y, previous, lo, hi) for lo, hi in ranges]
+    return (
+        " ".join(str(item[0]) for item in readings),
+        " ".join("nan" if math.isnan(item[1]) else f"{item[1]:.3f}" for item in readings),
+    )
+
+
+def measure_comb(
+    y: np.ndarray,
+    previous: np.ndarray | None,
+    crop1: int = 19,
+    crop2: int = 282,
+) -> tuple[int, float, float, float, float, int]:
+    if previous is None:
+        return -128, math.nan, math.nan, math.nan, 0.0, 0
+    energies: list[tuple[int, float, float]] = []
+    f1 = _box8(y[crop1 : crop1 + 240, 40:680].astype(np.float32))
+    p1 = _box8(previous[crop1 : crop1 + 240, 40:680].astype(np.float32))
+    for shift in range(-3, 4):
+        f2 = _box8(y[crop2 + shift : crop2 + shift + 240, 40:680].astype(np.float32))
+        p2 = _box8(
+            previous[crop2 + shift : crop2 + shift + 240, 40:680].astype(np.float32)
+        )
+        d1 = np.abs(f1 - p1)
+        d2 = np.abs(f2 - p2)
+        pooled = np.concatenate((d1.ravel(), d2.ravel()))
+        lower = pooled[pooled <= np.median(pooled)]
+        centre = float(np.median(lower)) if lower.size else 0.0
+        threshold = centre + 3.0 * (_robust_noise(lower) if lower.size else 0.25)
+        mask = (
+            (d2[:-1] <= threshold)
+            & (d1[:-1] <= threshold)
+            & (d1[1:] <= threshold)
+        )
+        fraction = float(mask.mean())
+        if not np.any(mask):
+            energy = math.inf
+        else:
+            predicted = (f1[:-1] + f1[1:]) / 2.0
+            energy = float(np.mean(np.abs(f2[:-1] - predicted)[mask]))
+        energies.append((shift, energy, fraction))
+    ordered = sorted(energies, key=lambda item: (item[1], abs(item[0]), item[0]))
+    best_shift, best, fraction = ordered[0]
+    second = ordered[1][1]
+    ratio = best / second if math.isfinite(second) and second > 0 else math.nan
+    valid = int(math.isfinite(best) and ordered[0][1] < ordered[1][1])
+    return best_shift, best, second, ratio, fraction, valid
+
+
+def _event_for_ordinal(ordinal: int) -> tuple[str, int]:
+    if ordinal in (300, 43_737):
+        return "Relock", 1
+    if ordinal == 43_686:
+        return "Garbage", 1
+    if ordinal == 43_687:
+        return "Black", 1
+    if ordinal == 43_688:
+        return "PreSnow", 1
+    if 43_689 <= ordinal <= 43_707:
+        return "Snow", 1
+    if 43_708 <= ordinal <= 43_736:
+        return "Mute", 1
+    return "Program", 0
+
+
+class Oracle:
+    def __init__(self) -> None:
+        self.previous: np.ndarray | None = None
+
+    def measure(self, unit: bytes, ordinal: int, local_exact: int) -> UnitMeasurement:
+        if len(unit) != UNIT_BYTES:
+            raise ValueError(f"oracle received {len(unit)} bytes, expected {UNIT_BYTES}")
+        counter, format_code = struct.unpack_from("<HH", unit, 4)
+        if format_code != FORMAT_NTSC_UYVY:
+            raise ValueError(f"unit {ordinal}: format 0x{format_code:04x}, expected 0xe801")
+        raster = np.frombuffer(unit, dtype=np.uint8, offset=HEADER_BYTES).reshape(
+            RASTER_LINES, LINE_BYTES
+        )
+        y = raster[:, 1::2]
+        measured_fields: list[FieldMeasurement] = []
+        for spec in FIELD_SPECS:
+            envelope = measure_envelope(y, spec)
+            captions = scan_cea608(y, spec)
+            off_insert = [item for item in captions if item[0] != spec.insert_row]
+            unique = off_insert[0] if len(off_insert) == 1 else None
+            if unique is not None and envelope["top_row"] < unique[0] + 2:
+                envelope["top_status"] = "vbi_ambiguous"
+                envelope["top_valid"] = 0
+                envelope["height_valid"] = 0
+            body = measure_body(y, self.previous, spec)
+            band_shifts, band_mads = measure_bands(y, self.previous, spec)
+            repeated = int(
+                self.previous is not None
+                and np.array_equal(
+                    y[spec.field_lo : spec.field_hi],
+                    self.previous[spec.field_lo : spec.field_hi],
+                )
+            )
+            measured_fields.append(
+                FieldMeasurement(
+                    blank_mean=float(envelope["blank_mean"]),
+                    blank_noise=float(envelope["blank_noise"]),
+                    active_top_line=_line(int(envelope["active_top_row"])),
+                    top_line=_line(int(envelope["top_row"])),
+                    top_valid=int(envelope["top_valid"]),
+                    top_status=str(envelope["top_status"]),
+                    bottom_line=_line(int(envelope["bottom_row"])),
+                    bottom_valid=int(envelope["bottom_valid"]),
+                    bottom_censored=int(envelope["bottom_censored"]),
+                    visible_height=int(envelope["visible_height"]),
+                    height_valid=int(envelope["height_valid"]),
+                    line21_lines=" ".join(str(_line(item[0])) for item in captions),
+                    line21_bytes=" ".join(
+                        f"{item[1]:02x}{item[2]:02x}" for item in captions
+                    ),
+                    line21_unique_line=_line(unique[0]) if unique else -1,
+                    line21_implied_top=_line(unique[0] + 2) if unique else -1,
+                    gap_line=_line(int(envelope["gap_row"])),
+                    gap_valid=int(envelope["gap_valid"]),
+                    gap_implied_top=_line(int(envelope["gap_row"]) + 1)
+                    if envelope["gap_valid"]
+                    else -1,
+                    body_shift=body[0],
+                    body_mad=body[1],
+                    body_second_mad=body[2],
+                    body_ratio=body[3],
+                    body_unique=body[4],
+                    static_fraction=body[5],
+                    band_shifts=band_shifts,
+                    band_mads=band_mads,
+                    repeated=repeated,
+                )
+            )
+        comb = measure_comb(y, self.previous)
+        event, no_placement = _event_for_ordinal(ordinal)
+        f1, f2 = measured_fields
+        values: dict[str, object] = {
+            "ordinal": ordinal,
+            "local_exact": local_exact,
+            "counter": counter,
+            "event": event,
+            "no_placement_expected": no_placement,
+        }
+        for prefix, field in (("f1_", f1), ("f2_", f2)):
+            values.update({prefix + key: value for key, value in asdict(field).items()})
+        values.update(
+            {
+                "comb_best_shift": comb[0],
+                "comb_best_energy": comb[1],
+                "comb_second_energy": comb[2],
+                "comb_ratio": comb[3],
+                "comb_static_fraction": comb[4],
+                "comb_valid": comb[5],
+            }
+        )
+        self.previous = y.copy()
+        return UnitMeasurement(**values)
+
+
+class StopWalk(Exception):
+    pass
+
+
+def _plausible_header(buffer: bytearray, offset: int) -> bool:
+    return (
+        offset >= 0
+        and len(buffer) >= offset + 8
+        and buffer[offset : offset + 4] == MARKER
+        and struct.unpack_from("<H", buffer, offset + 6)[0] == FORMAT_NTSC_UYVY
+    )
+
+
+def walk_exact_units(
+    path: Path,
+    consumer: Callable[[bytes, int], None],
+    *,
+    stop_after: int | None = None,
+    allow_slice_boundary_provenance: bool = False,
+) -> None:
+    buffer = bytearray()
+    exact_index = 0
+
+    def on_video(payload: bytes) -> None:
+        nonlocal exact_index
+        buffer.extend(payload)
+        while True:
+            marker = buffer.find(MARKER)
+            if marker < 0:
+                if len(buffer) > UNIT_BYTES:
+                    del buffer[:-3]
+                return
+            if marker:
+                del buffer[:marker]
+            if len(buffer) < 8:
+                return
+            if not _plausible_header(buffer, 0):
+                del buffer[:4]
+                continue
+            if len(buffer) < UNIT_BYTES + 8:
+                return
+            if _plausible_header(buffer, UNIT_BYTES):
+                consumer(bytes(buffer[:UNIT_BYTES]), exact_index)
+                exact_index += 1
+                del buffer[:UNIT_BYTES]
+                if stop_after is not None and exact_index > stop_after:
+                    raise StopWalk()
+                continue
+            next_marker = buffer.find(MARKER, 4)
+            while next_marker >= 0 and not _plausible_header(buffer, next_marker):
+                next_marker = buffer.find(MARKER, next_marker + 4)
+            if next_marker < 0:
+                return
+            del buffer[:next_marker]
+
+    try:
+        walk_tagged(path, on_video=on_video, progress=False)
+    except StopWalk:
+        return
+    except RuntimeError as error:
+        if allow_slice_boundary_provenance and str(error) == (
+            "tpc provenance validation failed: 0x83 packet-index errors=3"
+        ):
+            print(f"oracle: accepted explicit slice-boundary warning: {error}", file=sys.stderr)
+            return
+        raise
+
+
+def parse_ranges(text: str) -> set[int]:
+    selected: set[int] = set()
+    for part in text.split(","):
+        if not part:
+            continue
+        if "-" in part:
+            lo, hi = (int(value) for value in part.split("-", 1))
+            selected.update(range(lo, hi + 1))
+        else:
+            selected.add(int(part))
+    return selected
+
+
+def measure_file(
+    path: Path,
+    output: Path,
+    *,
+    base_ordinal: int = 0,
+    selected: set[int] | None = None,
+    allow_slice_boundary_provenance: bool = False,
+) -> int:
+    oracle = Oracle()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    count = 0
+    max_selected = max(selected) if selected else None
+    with output.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=[field.name for field in fields(UnitMeasurement)])
+        writer.writeheader()
+
+        def consume(unit: bytes, local_exact: int) -> None:
+            nonlocal count
+            measurement = oracle.measure(unit, base_ordinal + local_exact, local_exact)
+            if selected is None or local_exact in selected:
+                writer.writerow(asdict(measurement))
+                count += 1
+
+        walk_exact_units(
+            path,
+            consume,
+            stop_after=max_selected,
+            allow_slice_boundary_provenance=allow_slice_boundary_provenance,
+        )
+    return count
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("capture", type=Path)
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--base-ordinal", type=int, default=0)
+    parser.add_argument("--select", help="local exact-unit ranges, e.g. 30-47,60")
+    parser.add_argument(
+        "--allow-slice-boundary-provenance",
+        action="store_true",
+        help="accept only the known three packet-index boundary errors in a cut TPC slice",
+    )
+    args = parser.parse_args(argv)
+    selected = parse_ranges(args.select) if args.select else None
+    count = measure_file(
+        args.capture,
+        args.output,
+        base_ordinal=args.base_ordinal,
+        selected=selected,
+        allow_slice_boundary_provenance=args.allow_slice_boundary_provenance,
+    )
+    print(f"oracle: wrote {count} rows to {args.output}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
