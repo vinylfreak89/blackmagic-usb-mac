@@ -770,10 +770,6 @@ static void decide_geometry(fieldreg_field_state *s,
                             const field_measurement *m, int field,
                             fieldreg_field_decision *d)
 {
-    if (uncorroborated_top_move(s, m)) {
-        hold(s, d, FIELDREG_MODE_TOP_UNCORROBORATED);
-        return;
-    }
     if (m->picture_conflict && !m->picture_position_valid) {
         hold(s, d, FIELDREG_MODE_TOP_BODY_DISAGREE);
         return;
@@ -838,6 +834,10 @@ static void decide_geometry(fieldreg_field_state *s,
         if (!apply_body_geometry(s, m, field,
                                  FIELDREG_MODE_LOCK_BROKEN, d))
             hold(s, d, FIELDREG_MODE_LOCK_BROKEN);
+        return;
+    }
+    if (uncorroborated_top_move(s, m)) {
+        hold(s, d, FIELDREG_MODE_TOP_UNCORROBORATED);
         return;
     }
     d->measured_d = (int8_t)measured;
@@ -913,8 +913,6 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
                                        picture_d != measured;
         const bool picture_internally_conflicted = body_position &&
             !picture_testimony && picture_d != measured;
-        const bool top_only_move = s->zero_source == FIELDREG_ZERO_PARITY &&
-            uncorroborated_top_move(s, m) && d->geometry_d == measured;
         if (measured == 1 && insert_nonnull && d->geometry_d == 0) {
             d->measured_d = 0;
             d->applied_d = 0;
@@ -941,9 +939,6 @@ static void decide_field(fieldreg_field_state *s, const field_measurement *m,
             record_invariant(s, m, picture_d, d);
         } else if (picture_internally_conflicted) {
             hold(s, d, FIELDREG_MODE_CAPTION_BODY_DISAGREE);
-        } else if (top_only_move) {
-            hold(s, d, FIELDREG_MODE_TOP_UNCORROBORATED);
-            d->gauge = FIELDREG_GAUGE_CEA608_PARITY;
         } else if (!in_range(field, measured)) {
             if (!apply_body_geometry(s, m, field,
                                      FIELDREG_MODE_OUT_OF_RANGE_HOLD, d))
@@ -1271,13 +1266,28 @@ static void update_parity_calibration(field_registration *engine,
                                 engine->field[1].top);
 }
 
-static void apply_top_comb_corroboration(field_registration *engine,
-                                         const field_measurement m[2],
-                                         fieldreg_decision *out)
+static void apply_resolved_top(field_registration *engine,
+                               const field_measurement m[2], int field,
+                               int candidate, fieldreg_mode reason,
+                               fieldreg_gauge_source gauge,
+                               fieldreg_decision *out)
 {
-    if (out->comb_check != FIELDREG_COMB_DISAGREE ||
-        out->comb_best_shift == FIELDREG_UNKNOWN)
-        return;
+    fieldreg_field_state *s = &engine->field[field];
+    fieldreg_field_decision *d = &out->field[field];
+    d->measured_d = (int8_t)candidate;
+    d->applied_d = (int8_t)candidate;
+    d->reason = reason;
+    d->gauge = gauge;
+    s->last_applied = d->applied_d;
+    s->previous_measured_top = m[field].top;
+    record_invariant(s, &m[field], candidate, d);
+    copy_lock(s, d);
+}
+
+static void resolve_top_with_comb(field_registration *engine,
+                                  const field_measurement m[2],
+                                  fieldreg_decision *out)
+{
     bool match[2] = {false, false};
     int candidate[2] = {FIELDREG_UNKNOWN, FIELDREG_UNKNOWN};
     for (int field = 0; field < 2; ++field) {
@@ -1292,22 +1302,32 @@ static void apply_top_comb_corroboration(field_registration *engine,
             continue;
         const int delta = candidate[field] -
                           engine->field[field].last_applied;
-        match[field] = out->comb_best_shift == (field == 0 ? -delta : delta);
+        match[field] = out->comb_check == FIELDREG_COMB_DISAGREE &&
+            out->comb_best_shift == (field == 0 ? -delta : delta);
     }
     /* Relative comb identifies a moved field only when exactly one current
      * top explains its disagreement. Two matching candidates are ambiguous. */
-    if (match[0] == match[1]) return;
-    const int field = match[0] ? 0 : 1;
-    fieldreg_field_state *s = &engine->field[field];
-    fieldreg_field_decision *d = &out->field[field];
-    d->measured_d = (int8_t)candidate[field];
-    d->applied_d = (int8_t)candidate[field];
-    d->reason = FIELDREG_MODE_TOP_COMB_CORROBORATED;
-    d->gauge = FIELDREG_GAUGE_STATIC_COMB;
-    s->last_applied = d->applied_d;
-    s->previous_measured_top = m[field].top;
-    record_invariant(s, &m[field], candidate[field], d);
-    copy_lock(s, d);
+    if (match[0] != match[1]) {
+        const int field = match[0] ? 0 : 1;
+        apply_resolved_top(engine, m, field, candidate[field],
+                           FIELDREG_MODE_TOP_COMB_CORROBORATED,
+                           FIELDREG_GAUGE_STATIC_COMB, out);
+    }
+
+    for (int field = 0; field < 2; ++field) {
+        fieldreg_field_decision *d = &out->field[field];
+        if (d->reason != FIELDREG_MODE_TOP_UNCORROBORATED)
+            continue;
+        if (out->comb_check == FIELDREG_COMB_AGREE ||
+            out->comb_check == FIELDREG_COMB_DISAGREE) {
+            d->reason = FIELDREG_MODE_TOP_COMB_VETOED;
+            d->gauge = FIELDREG_GAUGE_STATIC_COMB;
+        } else if (candidate[field] != FIELDREG_UNKNOWN) {
+            apply_resolved_top(engine, m, field, candidate[field],
+                               FIELDREG_MODE_TOP_ONLY,
+                               FIELDREG_GAUGE_GEOMETRY, out);
+        }
+    }
 }
 
 bool fieldreg_process(field_registration *engine,
@@ -1335,7 +1355,7 @@ bool fieldreg_process(field_registration *engine,
     out->applied_d1 = out->field[0].applied_d;
     out->applied_d2 = out->field[1].applied_d;
     update_parity_calibration(engine, raster, m, out);
-    apply_top_comb_corroboration(engine, m, out);
+    resolve_top_with_comb(engine, m, out);
 
     for (int field = 0; field < 2; ++field)
         if (out->field[field].measured_d != FIELDREG_UNKNOWN)
@@ -1389,6 +1409,8 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_ZERO_OUT_OF_BOUNDS: return "ZeroOutOfBounds";
     case FIELDREG_MODE_TOP_UNCORROBORATED: return "TopUncorroborated";
     case FIELDREG_MODE_TOP_COMB_CORROBORATED: return "TopCombCorroborated";
+    case FIELDREG_MODE_TOP_COMB_VETOED: return "TopCombVetoed";
+    case FIELDREG_MODE_TOP_ONLY: return "TopOnly";
     case FIELDREG_MODE_MIXED_FIELD_DECISION: return "MixedFieldDecision";
     }
     return "Unknown";
