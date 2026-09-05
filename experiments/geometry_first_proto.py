@@ -208,15 +208,19 @@ def emit(u):
         mm=measure_field(Y,F,pf,Yall,Call)
         d,reason,notes=decide(S[f],F,mm)
         stats[(f+1,reason)]+=1
-        b=mm['body']; out.append((d,reason,';'.join(notes),mm['top'],mm['bottom'],mm['height'],(str(mm['hs_split'])+mm['hs_side']) if mm['hs_split'] is not None else '',mm['cap'][-1] if mm['cap'] else '',(mm['top'] if mm.get('black_top') else ''), b[0][0] if b else '', b[1][0] if b else ''))
+        b=mm['body']; out.append((d,reason,';'.join(notes),mm['top'],mm['bottom'],mm['height'],(str(mm['hs_split'])+mm['hs_side']) if mm['hs_split'] is not None else '',mm['cap'][-1] if mm['cap'] else '',(mm['top'] if mm.get('black_top') else ''), b[0][0] if b else '', b[1][0] if b else '', mm.get('top_rec')))
     # field 2 by relative comb when field 1 carries the absolute gauge (a caption) and field 2 does not
-    if out[0][7]!='' and out[1][7]=='' and prev is not None:   # out: (d, reason, notes, top, bottom, height, hs, cap, ...)
+    # field 2 by relative comb ONLY among the geometrically admissible candidates of an ambiguous black band
+    # (band start .. picture start); a comb minimum cannot distinguish a displaced field from a source-side inter-field
+    # error, so it never moves an unambiguously measured edge (05:00: it had moved field 2 to -1, below the recorded region)
+    if out[1][7]=='' and out[1][3] is not None and out[1][11] is not None and out[1][11]<out[1][3] and prev is not None:
+        d_lo=out[1][11]-F2['origin']; d_hi=out[1][3]-F2['origin']
         sft,ratio=comb_relative(Y,out[0][0],out[1][0])
-        if ratio<0.8 and sft!=0:
+        if ratio<0.8 and sft!=0 and d_lo<=out[1][0]+sft<=d_hi and out[1][1] not in ('EdgeHidden','LockLost'):
             d2=out[1][0]+sft; S[1].d=d2; S[1].lock=True
             o1=list(out[1]); o1[0]=d2; o1[1]='CombRelative'; o1[2]=(o1[2]+';' if o1[2] else '')+'comb %+d ratio %.2f'%(sft,ratio); out[1]=tuple(o1)
             stats[(2,'CombRelative')]+=1
-    rec+= [out[0][0],out[1][0]] + list(out[0][1:]) + list(out[1][1:]) + [1]
+    rec+= [out[0][0],out[1][0]] + list(out[0][1:-1]) + list(out[1][1:-1]) + [1]   # the trailing top_rec is internal, not a sidecar column
     w.writerow(rec); st['prev']=Y
 def on_video(p):
     buf.extend(p)
