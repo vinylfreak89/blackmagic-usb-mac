@@ -8,8 +8,8 @@ units and writes measurements only; it does not decide whether an engine placeme
 
 All reported edge and landmark coordinates are NTSC line numbers (`unit row + 4`).  Field 1's
 pass-through region is lines 23–264 and field 2's is lines 286–526.  The standard crop origins are
-23 and 286.  A bottom in the final five pass-through lines is reported as censored because the
-head-switch/padding transition makes its exact position unknowable.
+23 and 286.  No fixed top or bottom corridor is presumed: both picture edges are measured in every
+unit from that unit's raster.
 
 ## Independent measurements
 
@@ -20,21 +20,25 @@ head-switch/padding transition makes its exact position unknowable.
   and horizontal gradient.  A unique flat dark transition immediately before two active rows is
   identified separately as tape line 22 and excluded from the picture.  If a decoded tape line 21
   overlaps the proposed start, geometry reports `vbi_ambiguous` rather than silently using the
-  caption to move the edge.
-- **Bottom edge:** the last of three consecutive active rows.  A result in the five-line
-  head-switch corridor is a visible lower bound (`bottom_censored=1`), not an exact edge.
-  “Censored” describes an observational boundary, not five lines of presumed head-switch damage.
-  On fixture A, recorded black with analog/chroma noise occupies line 262 and lines 523–525 while
-  picture commonly reaches lines 260/261.  A one-line measured wander inside this corridor is the
-  tape's blanking edge; it still cannot establish an uncensored bottom beyond the Shuttle boundary.
-- **Height:** inclusive top-to-bottom height, valid only when both edges are exact.  A censored
-  bottom still reports `visible_height`, but never a valid height.
+  caption to move the edge. A top-interval row carrying the 503.5 kHz CEA-608 waveform is excluded
+  even when tape damage prevents its bytes from satisfying odd parity.
+- **Bottom edge:** the last row satisfying the same field-relative picture-activity test. An active
+  row remains picture when it is horizontally disturbed by head switching; no row-number corridor
+  excludes it. Fixture A commonly ends at lines 260/522, while the commercial composite capture
+  reaches lines 262/525. Those are source measurements, not constants. `bottom_h_shift_px` reports
+  the best horizontal shift of the bottom row against the median of the preceding three picture
+  rows after an eight-pixel low-pass; its MAD, runner-up MAD, and ratio expose whether that phase
+  reading is discriminating without invalidating the bottom.
+- **Height:** inclusive measured top-to-bottom height, valid whenever both edges are measurable.
 - **Picture:** a sustained set of rows distinguishable from the field's own blanking by luma
   level, spatial spread, or horizontal texture.  This includes dark and boxed program material;
   it does not assume studio black is any fixed code value.
-- **Tape line 21:** every whole-field row that independently decodes as two odd-parity CEA-608
-  bytes after a 503.5 kHz run-in and start bits.  A sole decoded row away from the Shuttle insert
-  reports an independent implied RP-202 top two lines below it.
+- **CEA-608 waveform and parity:** `cc_waveform_lines` measures a seven-cycle 503.5 kHz run-in at
+  the 13.5 MHz sample clock with tolerant phase/local skew and amplitude relative to the field's
+  own blank-to-picture range. Start-bit and data-cell-grid strengths are reported separately. A
+  vertically smeared waveform is represented by its strongest row. `cc_parity_lines` separately
+  reports rows whose two bytes decode with odd parity; parity is not required to classify a row as
+  VBI. The legacy `line21_*` columns retain the parity-decoded tape landmark and implied RP-202 top.
 - **Black line 22:** the unique flat row in the first twelve pass-through rows followed by two
   active rows and separated from them by more than the measured blanking noise.  Its absolute
   luma is not fixed.  The coincident Shuttle line 22 is outside the scan and supplies no tape

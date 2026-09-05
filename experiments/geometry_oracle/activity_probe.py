@@ -20,6 +20,7 @@ from oracle import (
     measure_envelope,
     measure_row_activity,
     scan_cea608,
+    scan_cea608_waveforms,
     walk_exact_units,
 )
 
@@ -61,7 +62,11 @@ FIELDS = (
     "active_by_spread",
     "active_by_gradient",
     "active",
-    "cea608_valid",
+    "cc_waveform",
+    "cc_runin_score",
+    "cc_start_score",
+    "cc_cell_ratio",
+    "cc_parity",
 )
 
 
@@ -97,11 +102,15 @@ def main() -> int:
             counter = struct.unpack_from("<H", unit, 4)[0]
             profiles = {}
             decoded = {}
+            waveforms = {}
             envelopes = {}
             for spec in FIELD_SPECS:
                 profiles[spec.number] = measure_row_activity(y, spec)
                 decoded[spec.number] = scan_cea608(y, spec)
-                envelopes[spec.number] = measure_envelope(y, spec)
+                waveforms[spec.number] = scan_cea608_waveforms(y, spec)
+                envelopes[spec.number] = measure_envelope(
+                    y, spec, {item.row for item in waveforms[spec.number]}
+                )
 
             f1 = FIELD_SPECS[0]
             off_insert = [item for item in decoded[1] if item[0] != f1.insert_row]
@@ -126,6 +135,10 @@ def main() -> int:
                 by_spread = float(stds[index]) > spread_gate
                 by_gradient = float(gradients[index]) > gradient_gate
                 decoded_rows = {item[0] for item in decoded[spec.number]}
+                waveform_by_row = {
+                    item.row: item for item in waveforms[spec.number]
+                }
+                waveform = waveform_by_row.get(row)
                 top_row = int(envelopes[spec.number]["top_row"])
                 top_valid = int(envelopes[spec.number]["top_valid"])
                 top_status = str(envelopes[spec.number]["top_status"])
@@ -164,7 +177,17 @@ def main() -> int:
                         "active_by_spread": int(by_spread),
                         "active_by_gradient": int(by_gradient),
                         "active": int(active[index]),
-                        "cea608_valid": int(row in decoded_rows),
+                        "cc_waveform": int(waveform is not None),
+                        "cc_runin_score": f"{waveform.runin_score:.6f}"
+                        if waveform
+                        else "nan",
+                        "cc_start_score": f"{waveform.start_score:.6f}"
+                        if waveform
+                        else "nan",
+                        "cc_cell_ratio": f"{waveform.cell_ratio:.6f}"
+                        if waveform
+                        else "nan",
+                        "cc_parity": int(row in decoded_rows),
                     }
                 )
 
@@ -181,8 +204,8 @@ def main() -> int:
         "Each predicate is reported independently; `active` is their logical OR.",
         "Coordinates are NTSC line numbers.",
         "",
-        "| Site | Field | Role | Units | Level | Spread | Gradient | Active | 608-valid |",
-        "|---|---:|---|---:|---:|---:|---:|---:|---:|",
+        "| Site | Field | Role | Units | Level | Spread | Gradient | Active | 608-waveform | 608-parity |",
+        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     keys = sorted({(str(row["site"]), int(row["field"]), str(row["role"])) for row in rows})
     for site, field, role in keys:
@@ -197,7 +220,8 @@ def main() -> int:
             f"{sum(int(row['active_by_spread']) for row in selected)} | "
             f"{sum(int(row['active_by_gradient']) for row in selected)} | "
             f"{sum(int(row['active']) for row in selected)} | "
-            f"{sum(int(row['cea608_valid']) for row in selected)} |"
+            f"{sum(int(row['cc_waveform']) for row in selected)} | "
+            f"{sum(int(row['cc_parity']) for row in selected)} |"
         )
     combinations = Counter(
         (
