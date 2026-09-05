@@ -833,3 +833,14 @@ OFF−1 885 / agree 44,825. Field 2 OFF+1: round 10 1,197, round 12 608. So the 
 the-crop class the owner saw in the round-12 sheets is measurable, is present in round 10 as
 well (about 3,000 field-1 units one line high), and round 12 made it worse. Round-14 figures
 follow when its verification lands; all three are the fallback-base record, not acceptance.
+
+**Round 14 (`6d919a2`) verification, Claude (22:51 JST): NOT a valid acceptance run.** Goldens
+235/235 and all eight slices reproduce Codex's table (comb misregistered 0/0/1/5/1/0, minute-43
+cold 25, torn 0). But the whole-tape paced replay in my checkout, run while three other whole-tape
+audits shared the machine, dropped **4,154 units at the pool and 153 at the ring** (published
+81,986 of 86,293; the acceptance failed closed on the first `PoolFull` row). Round 14's worker
+cost (Codex: 6.4 ms median / 10.06 ms p95) no longer keeps up with a 4 ms transfer pace under
+load — the §11b concern made concrete. The audits of the incomplete run are indicative only: comb
+763 misregistered, gap gauge field 1 OFF+1 1,791 (round 10: 2,956), follow field 1 engine-motion
+5,215. Round 10 (`5b6ae68`, merged main) remains the only verified fallback base. A second
+round-14 pass at half pace on an idle machine is running for the record.
