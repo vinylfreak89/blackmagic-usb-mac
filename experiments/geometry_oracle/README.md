@@ -23,6 +23,10 @@ head-switch/padding transition makes its exact position unknowable.
   caption to move the edge.
 - **Bottom edge:** the last of three consecutive active rows.  A result in the five-line
   head-switch corridor is a visible lower bound (`bottom_censored=1`), not an exact edge.
+  “Censored” describes an observational boundary, not five lines of presumed head-switch damage.
+  On fixture A, recorded black with analog/chroma noise occupies line 262 and lines 523–525 while
+  picture commonly reaches lines 260/261.  A one-line measured wander inside this corridor is the
+  tape's blanking edge; it still cannot establish an uncensored bottom beyond the Shuttle boundary.
 - **Height:** inclusive top-to-bottom height, valid only when both edges are exact.  A censored
   bottom still reports `visible_height`, but never a valid height.
 - **Picture:** a sustained set of rows distinguishable from the field's own blanking by luma
@@ -63,6 +67,11 @@ python3 experiments/geometry_oracle/validate_sites.py
 python3 experiments/geometry_oracle/summarize_sites.py \
   experiments/geometry_oracle/reports/sites \
   experiments/geometry_oracle/reports/owner_sites.md
+python3 experiments/geometry_oracle/activity_probe.py
+python3 experiments/geometry_oracle/run_fulltape.py \
+  captures/fulltape.cap6 \
+  experiments/geometry_oracle/reports/fulltape_geometry.csv \
+  experiments/geometry_oracle/reports/fulltape_census.md
 ```
 
 The first deliverable is the oracle and its owner-site measurement tables.  Engine verdict logic,
@@ -84,3 +93,11 @@ ordinal,published_f1_start,published_f2_start
 Every exact unit processed must have exactly one crop row. Missing, duplicate, or out-of-raster
 starts abort the oracle. This keeps the independent comb measurement fail-closed while allowing
 either new engine to export decisions without coupling this code to engine internals.
+
+For the full fixture capture, `--ordinal-from-counter` keeps the dense `local_exact` index while
+deriving `ordinal` from the unwrapped transport counter. Device-short periods therefore appear as
+ordinal holes instead of shifting the known relock/event annotations.
+
+`activity_probe.py` exposes the level, within-row spread, and horizontal-gradient predicates
+individually at the review sites. The combined `active` result is their logical OR; the probe
+exists so a flat dim row cannot be described merely by that combined result.
