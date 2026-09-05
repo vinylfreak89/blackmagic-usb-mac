@@ -77,3 +77,11 @@ The fixture deliberately landed before each implementation step. The original
 v9 engine scored 126/132 on the 2-D additions; that red result proves these
 cases distinguish the corrected contract rather than merely preserve prior
 output.
+
+The round-8 cases separate abstention from contradiction. A parity gauge is
+not vetoed by a tied or absent body witness. For geometry, a tied body leaves
+comb to corroborate or veto the changed top when comb is measurable; flat or
+unavailable comb leaves the top authoritative and names the decision
+`TopOnly`. A half-static synthetic field proves the veto without allowing comb
+to move a crop independently. These additions fail 183/186 before the engine
+change and pass 186/186 after it.
