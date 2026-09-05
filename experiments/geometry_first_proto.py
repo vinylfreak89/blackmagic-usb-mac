@@ -98,6 +98,12 @@ def measure_field(Y, F, prev_field, Yfull=None, Cfull=None):
     m, s = row_stats(Y)
     c, corr = continuity(Y, m, s)
     rec, yb, ybs = recorded_mask(Yfull, Cfull, F)
+    # a flat raster (deck mute, fade, paused blank) has no picture structure: rows neither correlate nor differ; no edge
+    # can be measured on it. MEASURED 2026-09-06 (commercial tape pause/rewind tail): body median smoothed corr 0.00,
+    # smoothed row difference 0.1-0.3; pictures 0.90-0.95 / 1-11. DEFAULT thresholds 0.3 and 1.0.
+    o=F['origin']; body_corr=float(np.median(corr[o+10:o+200]))
+    body_mad=float(np.median(np.abs(Y[o+10:o+199]-Y[o+11:o+200]).mean(1)))
+    flat_raster = body_corr<0.3 and body_mad<1.0
     kind = {}; ntorn=0; top=None; top_rec=None; cap=[]
     def blackish(r): return m[r] < yb+12 and s[r] < 8      # DEFAULT: recorded black measures Y 2-9 std 1-5 against blanking 1.4
     for r in range(F['insert']+1, F['last']):
@@ -147,7 +153,8 @@ def measure_field(Y, F, prev_field, Yfull=None, Cfull=None):
             return best
         o=F['origin']; body=(vs(o+10,o+110), vs(o+130,o+230))
     if top is not None and any(kind.get(r)=='torn' for r in range(F['insert']+1, top+12)): top=None
-    return dict(top=top, top_rec=top_rec, cap=cap, gap=gap, black_top=black_top, bottom=bottom, hs_split=hs[0], hs_side=hs[1], body=body, ntorn=ntorn,
+    if flat_raster: top=None
+    return dict(top=top, top_rec=top_rec, cap=cap, gap=gap, black_top=black_top, flat=flat_raster, bottom=bottom, hs_split=hs[0], hs_side=hs[1], body=body, ntorn=ntorn,
                 height=(bottom-top+1) if (top is not None and bottom is not None) else None)
 
 class FieldState:
@@ -162,6 +169,7 @@ def decide(fs, F, mm, signal_ok=True):
         if (u_m<8 and l_m>30) or (l_m<8 and u_m>30): fs.lock=False; notes.append('Splice')
     if not signal_ok: fs.lock=False; notes.append('SignalLoss')
     if top is None:
+        if mm.get('flat'): notes.append('FlatRaster')
         return fs.d, ('EdgeHidden' if fs.lock else 'LockLost'), notes
     d_pic = top - F['origin']                                   # first non-black picture row
     d_rec = (mm['top_rec'] if mm.get('top_rec') is not None else top) - F['origin']   # first recorded row (black band start)
