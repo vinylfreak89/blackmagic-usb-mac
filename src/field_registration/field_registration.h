@@ -95,6 +95,7 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_TOP_COMB_CORROBORATED,
     FIELDREG_MODE_TOP_COMB_VETOED,
     FIELDREG_MODE_TOP_ONLY,
+    FIELDREG_MODE_COMB_RELATIVE_CORRECTION,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -180,6 +181,11 @@ typedef struct fieldreg_decision {
     fieldreg_comb_check comb_check;
     int8_t comb_best_shift;
     int8_t parity_bias;
+    /* Absolute, bounded correction relative to the ordinary per-unit crops.
+     * A positive value moves field 2 down (or field 1 up) by this many lines. */
+    int8_t comb_correction;
+    /* 0 when inactive/not applicable; otherwise the one-based moved field. */
+    int8_t comb_correction_field;
     double comb_best_energy;
     double comb_second_energy;
     double comb_static_fraction;
@@ -219,8 +225,9 @@ typedef struct field_registration {
     fieldreg_parity_state parity_state;
     int16_t comb_zero_candidate;
     int8_t comb_candidate_count;
-    int8_t comb_drift_shift;
-    int8_t comb_drift_count;
+    int8_t comb_correction;
+    int8_t comb_correction_candidate;
+    int8_t comb_correction_candidate_count;
     uint32_t segment_id;
 } field_registration;
 
