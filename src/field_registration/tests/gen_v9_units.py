@@ -867,7 +867,9 @@ def main():
             f2_lock_top=280 if i == 3 else -999,
             comb=1 if i == 3 else 0,
             parity_state="Calibrated" if i == 3 else "Uncalibrated",
-            comb_check="agree" if i == 3 else "-",
+            # The provisional +2 disagreement installed the zero; at the
+            # corrected published crops this transition is content-flat.
+            comb_check="flat" if i == 3 else "-",
             parity_bias=2 if i == 3 else 0)
 
     # Round 10: a settled zero is not rewritten when later static evidence
@@ -980,7 +982,7 @@ def main():
     add("uncalibrated-top-comb-recovers", (3, 0), picture=(3, 0),
         comb_offsets=(3, 0), comb_phase=5,
         f1_reason="SavedGeometryReplaced", parity_state="Uncalibrated",
-        comb_check="disagree")
+        comb_check="agree")
 
     # Post-cut F class: the first changed-content unit exposes a transient old
     # top and leaves the crop at +2. On the following static unit, raw top +3
@@ -996,7 +998,7 @@ def main():
     add("top-comb-recovers-new-top", (3, 0), picture=(3, 0),
         comb_offsets=(3, 0), comb_phase=5,
         f1_reason="SavedGeometryReplaced", f2_reason="SavedGeometryConfirmed",
-        comb_check="disagree")
+        comb_check="agree")
     add("top-comb-stays-new-top", (3, 0), picture=(3, 0),
         comb_offsets=(3, 0), comb_phase=5)
 
@@ -1140,9 +1142,11 @@ def main():
 
     # A reliable still body contradicting a changed top is not a tied-body
     # abstention. Both remain holds, but their provenance must be distinct.
-    add("hold-cause-still-anchor", (0, 0), begin=True, picture=(0, 0),
-        base_bottoms=(250, 518), content_shifts=(0, 0),
-        body_texture=(True, False), captions=((0, 0x14, 0x2c), None))
+    for i in range(3):
+        add(f"hold-cause-still-anchor-{i + 1}", (0, 0),
+            begin=i == 0, picture=(0, 0), base_bottoms=(250, 518),
+            content_shifts=(0, 0), body_texture=(True, False),
+            captions=((0, 0x14, 0x2c), None))
     add("hold-cause-top-disagrees-still-body", (0, 0), picture=(1, 0),
         base_bottoms=(250, 518), content_shifts=(0, 0),
         body_texture=(True, False), f1_reason="SavedGeometryHold",

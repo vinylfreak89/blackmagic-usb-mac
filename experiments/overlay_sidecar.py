@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Burn a v9 (schema 9/10) registration sidecar into a rendered review video as a metrics band.
+"""Burn a v9 (schema 9/10/11) registration sidecar into a rendered review video as a metrics band.
 
 The band is ADDED below (or above) the picture — the picture is never covered. One band image per
 unit (two bobbed frames): line 1 = unit, counter, unit state, applied (d1,d2), comb_safe; lines 2-5 =

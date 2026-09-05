@@ -162,7 +162,7 @@ more than three source lines from the standard origin is immediately refused
 as `ZeroOutOfBounds`. This candidate memory never delays or smooths crop
 placement.
 
-## Sidecar schema 10
+## Sidecar schema 11
 
 The frameserver retains its transport/signal columns and writes the following
 v9 provenance for each field. Values named `*_line` are NTSC line numbers
@@ -185,10 +185,20 @@ v9 provenance for each field. Values named `*_line` are NTSC line numbers
   placing gauge and transport ordinal; plus the current hold cause/length and
   a clearing row's signed geometry jump.
 
+Hold causes distinguish a reliable still-body contradiction
+(`TopDisagreesBodyStill`) from a reliable moving-body contradiction, an
+abstaining/tied witness (`TiedBody`), an unmeasurable witness, a comb veto, and
+an out-of-range reading. A tied witness is never used as shorthand for a
+reliable zero-shift observation.
+
 The row also records `parity_state` (Uncalibrated/Calibrated; `Drift` remains
-an ABI name but is not produced by this policy),
-`comb_check` (agree/disagree/flat/n.a.), the best re-weave shift, installed
-field-2 parity bias, best/second energy and static fraction, the installed
+an ABI name but is not produced by this policy). `comb_input_*` is the
+decision-time reading at the provisional crops. `comb_check` and the
+`comb_published_*` shift/energy/static-fraction columns are a separate
+acceptance reading recomputed at the final crops against the preceding unit's
+own published crops. Both use the canonical full-width eight-pixel box filter
+and a single static mask for all candidate shifts. The row then records the
+installed field-2 parity bias, the installed
 `comb_correction` and its live installation ordinal, the applied pair,
 whether both locks make the vertical-registration claim (`comb_safe`),
 publication/drop accounting, and schema version. The offline renderer emits
