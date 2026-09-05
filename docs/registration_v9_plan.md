@@ -894,3 +894,17 @@ Contract consequence: horizontal line damage — a migrating bar, torn top strip
 aftermath — never touches geometry; where it covers the edge a measurement needs, keep the
 previous decision and re-evaluate. The lost-lock class (re-acquire from zero, re-run parity
 calibration) is reserved for a raster whose body is discontinuous.
+
+## The first genuine vertical tear on fixture A: the recording splice at unit 300 (2026-09-06 01:52 JST)
+
+Unit 300 (10.01 s), field 1: rows 0–~150 are the outgoing recording, rows ~170–262 the incoming
+one, and rows 150–170 are torn sideways where the switch happened mid-field; field 2 of the same
+unit and everything from 301 on are the incoming recording; the deck's OSD sits at the same
+place in both halves and both fields (its compositor is on the regenerated raster, which did not
+move). This is the program transition — the lost-lock class by construction: the two halves of
+field 1 share no geometry, nothing in that unit places anything, and the incoming recording's
+geometry is acquired fresh from 301. It is the golden for that class; the 34:14–34:43 passage
+must produce nothing of the kind. Owner's conclusion: on this tape the only relocks needed are
+the program transitions. A whole-tape splice scan (one band of a field still matching the
+previous unit while another band is a new picture) is running to find the others (one expected
+near 24:20).
