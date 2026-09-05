@@ -24,7 +24,10 @@ from oracle import (
     load_published_crops,
     measure_body,
     measure_bottom_h_phase,
+    measure_chroma_deviation,
     measure_envelope,
+    measure_flat_raster,
+    measure_last_recorded,
     measure_row_activity,
     scan_cea608_waveforms,
 )
@@ -36,6 +39,13 @@ def raster() -> np.ndarray:
     y[261:270] = 16
     y[523:] = 16
     return y
+
+
+def uyvy(y: np.ndarray) -> np.ndarray:
+    result = np.empty((RASTER_LINES, LINE_BYTES), dtype=np.uint8)
+    result[:, 0::2] = 128
+    result[:, 1::2] = y
+    return result
 
 
 class GeometryOracleTest(unittest.TestCase):
@@ -74,11 +84,34 @@ class GeometryOracleTest(unittest.TestCase):
         self.assertLess(mad, second)
         self.assertLess(ratio, 1.0)
 
+    def test_last_recorded_row_uses_chroma_not_picture_activity(self) -> None:
+        packed = uyvy(raster())
+        packed[19:259, 0::4] = 126
+        packed[19:259, 2::4] = 127
+        row, valid, deviation, gate = measure_last_recorded(
+            measure_chroma_deviation(packed), FIELD_SPECS[0]
+        )
+        self.assertEqual(row, 258)
+        self.assertEqual(valid, 1)
+        self.assertGreater(deviation, gate)
+
+    def test_flat_raster_is_relative_to_own_blanking(self) -> None:
+        y = raster()
+        y[40:200, 40:680] = 50
+        flat, *_ = measure_flat_raster(y, FIELD_SPECS[0])
+        self.assertEqual(flat, 1)
+        y[40:200, 40:680] = np.tile(np.arange(80, dtype=np.uint8), 8)[:640]
+        flat, *_ = measure_flat_raster(y, FIELD_SPECS[0])
+        self.assertEqual(flat, 0)
+
     def test_waveform_is_detected_without_valid_byte_parity(self) -> None:
         y = raster()
         spec = FIELD_SPECS[1]
         y[284:520, 40:680] = 80
         row = 283
+        # The observed smeared field-2 service occupies two rows: a left-side
+        # bar followed by the parity-invalid waveform row.
+        y[row - 1, 40:260] = 70
         x = np.full(720, 8, dtype=np.uint8)
         start = 24
         half = CELL_PIXELS / 2.0
@@ -88,10 +121,23 @@ class GeometryOracleTest(unittest.TestCase):
         y[row] = x
         waveforms = scan_cea608_waveforms(y, spec)
         self.assertEqual([item.row for item in waveforms], [row])
+        self.assertGreaterEqual(waveforms[0].data_low_fraction, 0.20)
         ok, *_ = decode_cea608(y[row])
         self.assertFalse(ok)
         measured = measure_envelope(y, spec, {item.row for item in waveforms})
         self.assertEqual(measured["top_row"], 284)
+
+    def test_picture_texture_is_not_promoted_to_608_waveform(self) -> None:
+        y = raster()
+        spec = FIELD_SPECS[1]
+        y[283:520, 40:680] = 100
+        row = 283
+        # A short clock-like patch inside an otherwise active picture row does
+        # not contain the required low cells across the 608 data span.
+        half = CELL_PIXELS / 2.0
+        for sample in range(40, 40 + int(7.0 * CELL_PIXELS)):
+            y[row, sample] = 160 if int((sample - 40) / half) % 2 == 0 else 40
+        self.assertEqual(scan_cea608_waveforms(y, spec), [])
 
     def test_body_shift_sign(self) -> None:
         previous = raster()
