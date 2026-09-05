@@ -1792,6 +1792,26 @@ delivery edge; wrong one at acquisition.
      real colour program decoded. Taken over an audio-grade RCA lead (not 75 Ω), so it proves the
      path and the framing, **not** chroma quality — the S-Video-vs-composite chroma A/B still needs
      a proper 75 Ω cable and the same passage on both inputs.
+  5. **`Vスタビライズ` is the deck's line TBC and its only TBC switch (measured 2026-09-06):**
+     with it off, the head-switch demodulator peaks and the floating horizontal timing step
+     return, which no vertical-only function could restore; the frame TBC and dropout compensator
+     are always on, so §7's "TBC on" was never a setting. Owed: (a) the V-stabilize state the
+     whole-tape capture and every `captures/*.tpc` were made in (until known, every bottom-band
+     fact is a fact about one deck setting, never a gauge); (b) two ≤30 s tagged captures of a
+     displaced passage (SP intro +1, 35:00 +2/+3), V-stabilize on and off — if the field-1
+     displacements change with it off, the line TBC's sync regeneration is the site.
+     **Field-1 displacement is recording-borne, not a playback fault (measured 2026-09-06,
+     `captures/composite_program_30s.tpc`, 920 units, same deck and setting):** raw fields
+     registered at the nominal crops in every measurable unit (static comb 205 registered, 714
+     flat, 0 misregistered), bottoms rigid at lines 262 (711, 263 in 3) and 525 (805, one 524),
+     top moves symmetric between fields and all on dark scene tops. The same fault reproduces on
+     a second JVC line TBC, so §7's tape-vs-deck question resolves to: weak field-1 sync on the
+     SP (first) recording, placed a line or two off by the line TBC's sync regeneration. This is
+     an SP-recording statement only: the EP recording's errors are small, in both fields, and
+     consistent with EP tracking on the weak-RF recorder that also produced its noise bands
+     (owner, 2026-09-06); its field-1 +2↔+3 jitter is not evidence of a bad field. Also: this tape's
+     picture runs to 262/525 against fixture A's 260/522 — the bottom edge is a per-source
+     constant, never a raster one.
   No over-the-air analog exists in Japan since 2011/2012 (cable digi-ana ended 2015), and dead-air
   tapes through this deck yield TBC-locked snow identical to the relock windows already captured.
 - Throughout: **all testing via deterministic replay** (whole_tape.tpc + untagged_capture + libusb_replay_shim +
