@@ -671,7 +671,7 @@ unmeasurable (MAD > 25), comb flat — and round 8's `TopOnly` (flat comb ⇒ th
 is exactly what moved field 2 on the torn units; the top alone must never place when the body
 is unmeasurable. That is the round-12 rule, being checked on the round-10 sidecar first.
 
-**Round 12 rule, from the round-10 sidecar (16:50 JST).** In whole-tape context the torn passage
+**Round 12 rule, from the round-10 sidecar (16:35 JST).** In whole-tape context the torn passage
 62313–62328 sits between caption placements at (3,2); inside it the body witness is tied on every
 unit (valid 0, MAD 5–11), the comb is flat, and the tops flip 23↔25 / 286↔289 — the engine
 follows them by `TopOnly` and geometry-on-a-tied-body, which is the bounce the owner saw. The
