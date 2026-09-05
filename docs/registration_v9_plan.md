@@ -512,3 +512,18 @@ threshold — but 32 of 175 and 15 of 61 true moves lie above it, so abstention 
 must not become a hold. Rule E is reversed: a parity placement applies unless a reliable
 witness contradicts it; on a tied body the comb decides when measurable and otherwise the top
 does. Sent as round 8.
+
+## Round 8 result: `490877b` (Codex, 2026-09-05 10:10 JST; Claude's whole-tape verification running)
+
+Parity gate removed; on a tied body a measurable comb decides (`TopCombCorroborated` /
+`TopCombVetoed`) and a flat comb leaves the top to place (`TopOnly`); F kept. Goldens 183/186 →
+186/186; the 05:00 sequence 63–68 places 64 and 67 at +1 by the top with no hold. Slices, comb
+misregistered: 35:00 0, 37:01 0, 05:00 2, 35:38 7, 01:26 1, 45:00 0 (total 10; `d871f1f` 33;
+`a683926` 12). Codex's whole tape: 86,293/86,293, zero drops; parity acceptance field 1 40,208
+agree + 29 named vetoes + 0 disagreements, field 2 24 + 1 + 0; Calibrated 82,051 / Uncalibrated
+4,239 / Drift 3; bias 0 ×49,688, +1 ×22,027, +2 ×14,578, none beyond ±3. Field-1 reasons:
+GeometryLockDecides 43,469, Line21Placement 39,007, TopBodyDisagree 1,153, ZeroCandidate 1,077,
+TopOnly 966, TopCombVetoed 159, TopCombCorroborated 118. Engine 1.35 ms median / 1.37 p95.
+Codex: merge-ready for the round-8 changes; the raster-damage state remains deferred (no
+discriminator). Claude's gate: the whole-tape comb audit against `a683926`'s 2,485 and the
+parity acceptance by my own script; then a Codex review of my instruments.
