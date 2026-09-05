@@ -926,3 +926,19 @@ of snow with field repeats) but not broken. Classification: 43,686–43,736 is s
 mute for the classifier (no registration there; the earlier classifier called the snow
 ProgramLike — a known defect the harness must expose); 43,737 is a program start ⇒ re-acquire.
 On this tape the relocks needed are exactly the two program transitions (unit 300 and 43,737).
+
+## Line 22 in the second recording, measured row by row (2026-09-06 02:45 JST)
+
+35:00, twelve sampled units, rows under the decoded caption (mean / within-row std / mean
+horizontal gradient): the row at caption+1 (the tape's line 22) carries **attenuated picture**
+in the first ~350 units (mean 85–121, std 14–45, 60–80% of the level of the rows below) and a
+**flat dim pedestal** in the later units (mean 20–22, std 2); the row at caption+2 (line 23) is
+the first full-level picture row in every sampled unit, and is typically the brightest (140–175,
+the source's vertical-blanking edge overshoot). So "this recording carries video on line 22" is
+true only in part and per unit — line 22 is where the source's vertical blanking ramps into
+picture — and the first RP-202 line is caption+2 in both cases, exactly as the standard says. For
+the engine: with a caption the top is caption+2 regardless of line 22's content; without one, a
+luma-only threshold (Claude's prototype, DARK ≤ 9.4) calls an attenuated line 22 "picture" and
+lands one line high unless corrected, while a texture/level rule that looks for the first
+full-level row (the plateau) lands on line 23 directly — the definition to converge on with
+Codex's oracle (its activity rule reports geometry top == caption+2 in 419/419 units here).
