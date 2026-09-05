@@ -1060,6 +1060,21 @@ def main():
         f1_geometry_jump=-1, f2_geometry_jump=0,
         f1_hold_length=2, f2_hold_length=2)
 
+    # A parity gauge remains evidence even when its display mode is
+    # ZeroCandidate: zero re-anchoring provenance must not turn an
+    # authoritative per-unit placement into a saved-geometry hold.
+    add("saved-geometry-parity-candidate-anchor", (1, 0), begin=True,
+        picture=(1, 0), captions=((1, 0x14, 0x2c), None),
+        f1_reason="Line21Placement", f1_saved_d=1)
+    add("saved-geometry-parity-candidate-hold", (1, 0), dark=True,
+        f1_reason="SavedGeometryHold", f1_hold_cause="BodyUnmeasurable",
+        f1_saved_d=1, f1_hold_length=1)
+    add("saved-geometry-parity-candidate-replaces", (2, 0),
+        captions=((2, 0x14, 0x2c), None),
+        top_overrides=(20, None), bottom_overrides=(250, None),
+        f1_reason="SavedGeometryReplaced", f1_saved_d=2,
+        f1_geometry_jump=1, f1_hold_length=1)
+
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
     with open(args.output, "wb") as out:

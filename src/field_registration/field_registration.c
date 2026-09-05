@@ -550,6 +550,14 @@ static bool body_reliable(const field_measurement *m)
 static bool saved_geometry_evidence(const fieldreg_field_decision *d,
                                     const field_measurement *m)
 {
+    /* ZeroCandidate describes whether the segment zero moved; the bounded
+     * physical gauge still placed this unit.  ZeroOutOfBounds is deliberately
+     * excluded: its own crop is emitted, but it is not saved as known-good. */
+    if (d->reason == FIELDREG_MODE_ZERO_CANDIDATE &&
+        d->measured_d != FIELDREG_UNKNOWN &&
+        (d->gauge == FIELDREG_GAUGE_CEA608_PARITY ||
+         d->gauge == FIELDREG_GAUGE_FIELD2_ENVELOPE))
+        return true;
     switch (d->reason) {
     case FIELDREG_MODE_LINE21_PLACEMENT:
     case FIELDREG_MODE_FIELD2_ENVELOPE_PLACEMENT:
