@@ -1202,6 +1202,11 @@ def main():
         picture=(2, 1), captions=((2, 0x14, 0x2c), None),
         gap_rows=(20, 282), comb_offsets=(2, 1), gap_state="Enabled",
         f1_reason="Line21Placement", f2_reason="Line22GapPlacement")
+    for i in range(4):
+        add(f"gap-blocks-relative-reinstall-{i + 1}", (2, 1),
+            picture=(2, 1), gap_rows=(20, 282), comb_offsets=(2, 2),
+            gap_state="Enabled", f1_reason="Line22GapPlacement",
+            f2_reason="Line22GapPlacement")
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
