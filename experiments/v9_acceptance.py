@@ -23,6 +23,7 @@ ctr=unwrap([int(r['counter']) for r in truth])
 def expect(lines, bytes_, insert, ins_line, high):
     L=[int(x) for x in lines.split()] if lines else []
     B=bytes_.split() if bytes_ else []
+    if len(L)!=len(B): raise SystemExit("truth row has %d lines but %d byte pairs"%(len(L),len(B)))   # never truncate silently
     raw_off=[(l,b) for l,b in zip(L,B) if l!=ins_line]
     # A valid-parity picture line well outside the engine's physical crop range
     # is not a second line-21 candidate.  Discard it before deciding uniqueness;
@@ -65,6 +66,22 @@ if len(lc) != len(set(lc)):
 common=sum(1 for c in lc[:2000] if c in T)
 if common < min(2000,len(lc))*0.9:
     raise SystemExit(f"counter join failed: only {common} of the first {min(2000,len(lc))} sidecar units have a truth row")
+# complete coverage: every truth counter must be present exactly once in the sidecar (a deleted sidecar row must
+# fail, Codex review 2026-09-05 finding 7); the truth set is the list of exact units, so the key sets must be equal
+missing=sorted(set(T)-set(lc))
+if missing:
+    raise SystemExit(f"{len(missing)} truth counters have no exact sidecar row (first: {missing[:5]})")
+if len(lc)!=len(T):
+    raise SystemExit(f"sidecar has {len(lc)} exact rows but the truth set has {len(T)}")
+def veto_supported(r, f, reason, e, a):
+    # A named picture veto is accepted only when the sidecar's own picture testimony supports it (finding 8):
+    # CaptionOnlyMotion needs a reliable still body; CaptionBodyDisagree needs a reliable body that moved by an
+    # amount different from the caption's implied move.  Missing schema-8 columns fail closed.
+    valid=r.get('f%d_body_witness_valid'%f); shift=r.get('f%d_body_shift'%f)
+    if valid!='1' or shift in (None,'','-128'): return False
+    if reason=='CaptionOnlyMotion': return int(shift)==0
+    if reason=='CaptionBodyDisagree': return int(shift)!=0
+    return False
 stats={1:collections.Counter(),2:collections.Counter()}; mism=[]
 for r in log:
     c=int(r['counter_extended'])
@@ -75,9 +92,11 @@ for r in log:
         a=int(r['applied_d%d'%f])
         reason=r.get('f%d_reason'%f,'')
         if a==e: stats[f]['agree:'+why.split('@')[0]]+=1
-        elif reason in ('CaptionOnlyMotion','CaptionBodyDisagree','AnchorUncorroborated'):
+        elif reason in ('CaptionOnlyMotion','CaptionBodyDisagree') and veto_supported(r,f,reason,e,a):
             # the owner's ruling (2026-09-05): the picture's own testimony outranks a caption reading that
-            # contradicts it; these are named vetoes, explained by the sidecar, not disagreements
+            # contradicts it; a named veto counts only with the picture evidence recorded in the sidecar
+            # (AnchorUncorroborated is NOT a veto: that state places its unit by parity and only declines to
+            # re-anchor the zero)
             stats[f]['vetoed:'+reason]+=1
         else:
             stats[f]['DISAGREE:'+why.split('@')[0]]+=1

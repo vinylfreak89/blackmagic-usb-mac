@@ -34,5 +34,5 @@ for f in (1, 2):
     longest = sorted(runs, key=lambda x: -x['n'])[:12]
     for x in longest:
         if x['n'] >= min_run:
-            print('  ord %d..%d (ctr %d, %.1fs) n=%d geometry_d=%+d applied=%+d reasons=%s' %
-                  (x['start'], x['end'], x['c'], x['c'] * 1001 / 30000, x['n'], x['key'][0], x['key'][1], dict(x['reasons'])))
+            print('  ord %d..%d (ctr %d, %.1fs from ordinal 0) n=%d geometry_d=%+d applied=%+d reasons=%s' %
+                  (x['start'], x['end'], x['c'], x['start'] * 1001 / 30000, x['n'], x['key'][0], x['key'][1], dict(x['reasons'])))
