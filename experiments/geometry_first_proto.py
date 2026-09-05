@@ -76,70 +76,33 @@ def two_level(row):
     x=row[60:660]; lo=np.percentile(x,10); hi=np.percentile(x,90)
     if hi-lo<25: return False
     return ((np.abs(x-lo)<=6)|(np.abs(x-hi)<=6)).mean()>0.8
-SMOOTH=8      # DEFAULT: horizontal box filter (px) applied before comparing adjacent rows; tape noise averages out, structure stays
-SM_MAD=7.0    # DEFAULT: smoothed pointwise difference under which two rows continue each other. MEASURED 2026-09-06: adjacent
-              # recorded rows of flat/dark content 3.4-6.6 (commercial dark tops, 05:00 wall), VBI row vs neighbour >= 22.
-def continuity(Y, m, s):
-    """c[r] = 1 if rows r and r+1 belong to one two-dimensional picture, judged on horizontally smoothed rows: correlated
-    across the line (smoothed corr >= CORR; measured 0.61-0.72 on a noisy flat wall where raw corr sat at 0.49-0.55,
-    VBI-vs-picture pairs <= 0.40), or pointwise close (SM_MAD; dark noisy rows have no structure to correlate but differ
-    by noise alone). A VBI row is a one-dimensional waveform and satisfies neither against the picture under it."""
-    k=np.ones(SMOOTH,dtype=np.float32)/SMOOTH
-    S=np.apply_along_axis(lambda r: np.convolve(r,k,mode='valid'), 1, Y)
-    ms=S.mean(1); A=S-ms[:,None]; ss=(A*A).sum(1); num=(A[:-1]*A[1:]).sum(1); den=np.sqrt(ss[:-1]*ss[1:]); den[den<1e-6]=1e-6
-    corr=num/den
-    mad=np.abs(S[:-1]-S[1:]).mean(1)
-    c=np.zeros(len(m),bool); c[:-1]=(corr>=CORR)|(mad<SM_MAD)
-    return c, np.concatenate([corr,[0.0]])
-def hs_partial(rowfull):
-    """The head-switch line: picture on one side of a wandering split column, recorded black on the other. Returns
-    (split_column, side) with side 'L' when the black run touches the left edge, 'R' the right, else None.
-    DEFAULT black level 20 (recorded black measures ~11 on both fixtures, Shuttle blanking 1.4)."""
-    blk=rowfull<=20; n=len(rowfull)
-    L=0
-    while L<n and blk[L]: L+=1
-    R=0
-    while R<n and blk[n-1-R]: R+=1
-    if 0.1*n<L<0.95*n and L>=R: return L,'L'
-    if 0.1*n<R<0.95*n: return n-R,'R'
-    return None,None
-BLANK_ROWS={17:(7,16),280:(270,279)}   # RASTER: Shuttle-regenerated blanking rows per field (lines 11-19 / 274-282), keyed by insert row
-def recorded_mask(Yfull, Cfull, F):
-    """Per unit, per field: a row is RECORDED (came through the analog decoder) when its luma or chroma statistics differ
-    from the unit's own regenerated blanking rows; regenerated rows (blanking, inserts, row 18) are chroma 128 exactly
-    with sub-unit spread, recorded rows carry the decoder's chroma offset/noise even on black content
-    (MEASURED 2026-09-06: blanking C 128.2-128.4 std 0.5-0.7; recorded black Y 2-9 with C 125-127 std 1.4-2.4 on the
-    commercial tape, C 125.1 std 14 on fixture A's black line 22). Thresholds are multiples of the blanking rows' own
-    spread within the unit, not fixed levels."""
-    a,b=BLANK_ROWS[F['insert']]
-    Yb=Yfull[a:b,40:680]; Cb=Cfull[a:b,40:680]
-    ym,ys=Yb.mean(),max(Yb.std(),0.3); cm,cs=Cb.mean(),max(Cb.std(),0.3)
-    Y=Yfull[:,40:680]; C=Cfull[:,40:680]
-    rec=(np.abs(C.mean(1)-cm)>4*cs+0.5)|(C.std(1)>4*cs)|(Y.mean(1)>ym+4*ys+1.0)
-    return rec, ym, ys
 def measure_field(Y, F, prev_field, Yfull=None, Cfull=None):
     m, s = row_stats(Y)
     c, corr = continuity(Y, m, s)
     rec, yb, ybs = recorded_mask(Yfull, Cfull, F)
-    kind = {}; ntorn=0; top=None; cap=[]
+    kind = {}; ntorn=0; top=None; top_rec=None; cap=[]
+    def blackish(r): return m[r] < yb+12 and s[r] < 8      # DEFAULT: recorded black measures Y 2-9 std 1-5 against blanking 1.4
     for r in range(F['insert']+1, F['last']):
         if r < F['origin']+40 and torn(Yfull[r]): kind[r]='torn'; ntorn+=1; continue
         if not rec[r]: kind[r]='regen'; continue
-        if r < F['origin']+8:
-            ok,b1,b2,info=cc608(Yfull[r])
-            if ok: kind[r]='cc608'; cap.append(r); continue
-            runin=isinstance(info,str) and (info.startswith('start bits') or info.startswith('run-in'))
-            if (runin or two_level(Y[r])) and not c[r]: kind[r]='vbi'; continue   # a one-dimensional waveform, discontinuous with the picture under it
+        if top is None and r < F['origin']+8:
+            if cc608(Yfull[r])[0]: kind[r]='cc608'; cap.append(r); continue
+            if blackish(r):
+                # recorded black above the picture: the tape's blanking lines (VBI, when the field is displaced) or a
+                # black picture top -- undecidable from one raster; both edges are reported and decide() chooses
+                kind[r]='black'
+                if top_rec is None: top_rec=r
+                continue
+            # the picture is continuous row after row; a VBI waveform (line-20 pulses, a parity-failed caption, the
+            # smeared XDS bar, the data line) is not, but adjacent waveforms can resemble each other, so the top must
+            # continue for two links
+            if not (c[r] and c[r+1]): kind[r]='vbi'; continue
         kind[r]='picture'
         if top is None: top=r
-    # the geometry: the picture is the recorded region; its first row is the top. One ambiguity remains, the black first
-    # row: the tape's black line 22 (picture starts one lower) or a picture whose first line is black. Flagged, decided
-    # in decide() by the caption, the lock, or the fixture-validated gap reading.
-    gap=None; black_top=False; top_black=False
-    if top is not None:
-        def blackish(r): return m[r] < yb+12 and s[r] < 8      # DEFAULT: recorded black measures Y 2-9 std 1-5 against blanking 1.4
-        top_black=blackish(top)
-        if top_black and not c[top]: black_top=True
+        if top_rec is None: top_rec=r
+    # gap = the black band above the picture (None when the picture starts at the first recorded row)
+    gap=None; black_top=False
+    if top is not None and top_rec is not None and top_rec<top: gap=top_rec; black_top=True
     # bottom edge: last recorded row (the source's recorded blanking at the bottom is content too); head-switch partial
     # line: one-sided black run in any of the last four recorded rows, reported with its split column
     bottom=None; hs=(None,None)
@@ -166,7 +129,7 @@ def measure_field(Y, F, prev_field, Yfull=None, Cfull=None):
             return best
         o=F['origin']; body=(vs(o+10,o+110), vs(o+130,o+230))
     if top is not None and any(kind.get(r)=='torn' for r in range(F['insert']+1, top+12)): top=None
-    return dict(top=top, cap=cap, gap=gap, black_top=black_top, top_black=top_black, bottom=bottom, hs_split=hs[0], hs_side=hs[1], body=body, ntorn=ntorn,
+    return dict(top=top, top_rec=top_rec, cap=cap, gap=gap, black_top=black_top, bottom=bottom, hs_split=hs[0], hs_side=hs[1], body=body, ntorn=ntorn,
                 height=(bottom-top+1) if (top is not None and bottom is not None) else None)
 
 class FieldState:
@@ -182,28 +145,27 @@ def decide(fs, F, mm, signal_ok=True):
     if not signal_ok: fs.lock=False; notes.append('SignalLoss')
     if top is None:
         return fs.d, ('EdgeHidden' if fs.lock else 'LockLost'), notes
-    d_top = top - F['origin']
-    d=d_top; handled=False
-    if mm.get('black_top') and not mm['cap']:
-        # a black first recorded row: the tape's black line 22 above the picture (d_top+1) or a picture whose first line
-        # is black (d_top). The lock decides when it can; otherwise the gap reading, which fixture A's captions
-        # validated 309/309 (DEFAULT until a per-segment black-line-22 gauge exists).
-        if fs.lock and fs.d in (d_top, d_top+1):
-            notes.append('BlackTop(held)'); return fs.d, 'Geometry', notes   # consistent with the lock: a geometry decision constrained by it, not a hidden edge
-        d=d_top+1; notes.append('BlackTopGap'); handled=True
-    # line-22 rule (STANDARD RP-202: line 22 is never rendered). A caption two rows above the top confirms the top; a
-    # caption ONE row above the top means the top row is line 22 -> crop one lower. Whether that line 22 carries the
-    # tape's black (gap) or attenuated video decides the per-segment state used when no caption is visible.
+    d_pic = top - F['origin']                                   # first non-black picture row
+    d_rec = (mm['top_rec'] if mm.get('top_rec') is not None else top) - F['origin']   # first recorded row (black band start)
+    d=d_pic
     if mm['cap']:
-        c=mm['cap'][-1]; d_cap=c-F['insert']
-        if top==c+1:
-            d=d_top+1
-            if mm.get('top_black'): fs.line22_video=False; notes.append('Line22Black')
-            else: fs.line22_video=True; notes.append('Line22Video')
-        elif top==c+2:
-            fs.line22_video=False
-        if d!=d_cap: notes.append('VbiDisagrees(cap %+d)'%d_cap)
-    elif not handled and fs.line22_video: d=d_top+1; notes.append('Line22VideoAssumed')
+        # STANDARD: the caption is line 21 and the picture begins on line 23; line 22 (black or attenuated video) is
+        # never rendered. The row under the caption tells the per-segment state used when no caption is visible.
+        c=mm['cap'][-1]; d=c+2-F['origin']
+        if top==c+1: fs.line22_video=True; notes.append('Line22Video')
+        else: fs.line22_video=False
+        if d_pic!=d: notes.append('PicTopOff(%+d)'%(d_pic-d))
+    else:
+        if fs.line22_video: d_pic+=1; notes.append('Line22VideoAssumed')   # the attenuated line 22 is continuous with the picture
+        if d_rec<d_pic:
+            # black band above the picture: the lock decides when it can; at acquisition a single black row is read
+            # as the tape's black line 22 (fixture A's captions validated that reading 309/309, DEFAULT), a deeper
+            # band as picture (golden rule: assume the recorded region is the picture until a gauge says otherwise)
+            if fs.lock and d_rec<=fs.d<=d_pic:
+                notes.append('BlackBand(held %d..%d)'%(d_rec,d_pic)); return fs.d, 'Geometry', notes
+            if d_pic-d_rec==1: d=d_pic; notes.append('BlackTopGap')
+            else: d=d_rec; notes.append('BlackBandAsPicture(%d..%d)'%(d_rec,d_pic))
+        else: d=d_pic
     if not fs.lock:
         fs.lock=True; reason='Acquired'; notes.append('jump %+d'%(d-fs.d))
     elif d!=fs.d: reason='GeometryMoved'
