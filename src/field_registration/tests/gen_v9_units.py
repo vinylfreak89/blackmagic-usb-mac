@@ -29,6 +29,7 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
               gap_rows=(), broad_bar_picture_rows=(),
               caption_false_picture_rows=(), content_phases=(0, 0),
               content_shifts=(None, None), body_texture=(False, False),
+              body_texture_mod=128,
               body_split_shifts=(None, None), comb_offsets=None,
               comb_phase=0, blank_rows=(), body_noise_right=False):
     unit = bytearray(UNIT_BYTES)
@@ -61,7 +62,7 @@ def make_unit(counter, picture=(0, 0), insert=True, captions=(None, None),
         split_seed = (split_basis * scale + phase
                       if split_basis is not None else seed)
         ys = bytes(48 + ((x * 37 + (seed if x < PIXELS // 2
-                                    else split_seed)) & 127)
+                                    else split_seed)) % body_texture_mod)
                    for x in range(PIXELS))
         start = row * BYTES_PER_LINE
         raster[start + 1:start + BYTES_PER_LINE:2] = ys
@@ -285,6 +286,10 @@ def main():
             f1_body_shift=-999, f2_body_shift=-999,
             f1_body_valid=-1, f2_body_valid=-1,
             parity_state="-", comb_check="-", parity_bias=-999,
+            f1_hold_cause="-", f2_hold_cause="-",
+            f1_saved_d=-999, f2_saved_d=-999,
+            f1_geometry_jump=-999, f2_geometry_jump=-999,
+            f1_hold_length=-999, f2_hold_length=-999,
             **kwargs):
         counter = len(units)
         units.append(make_unit(counter, **kwargs))
@@ -294,7 +299,11 @@ def main():
                      f1_lock_top, f2_lock_top, comb, f1_raw_top, f2_raw_top))
         rows[-1] += (f1_body_shift, f2_body_shift,
                      f1_body_valid, f2_body_valid,
-                     parity_state, comb_check, parity_bias)
+                     parity_state, comb_check, parity_bias,
+                     f1_hold_cause, f2_hold_cause,
+                     f1_saved_d, f2_saved_d,
+                     f1_geometry_jump, f2_geometry_jump,
+                     f1_hold_length, f2_hold_length)
 
     # Alignment and immediate parity authority.
     add("aligned-null-acquire-1", (0, 0), begin=True)
@@ -394,7 +403,7 @@ def main():
         f1_reason="InsertAbsent", f2_reason="InsertAbsent",
         f1_lock="Locked", f2_lock="Locked", comb=0)
     add("insert-dropout-return", (0, 0),
-        f1_reason="GeometryLockDecides", f2_reason="GeometryLockDecides",
+        f1_reason="SavedGeometryHold", f2_reason="SavedGeometryHold",
         f1_lock="Locked", f2_lock="Locked", comb=0)
 
     # Re-encoded non-null bytes on the Shuttle's insert are provenance only.
@@ -418,12 +427,12 @@ def main():
         content_shifts=(1, 0),
         f1_reason="Line21Placement", f1_lock="Locked", f1_zero="Parity",
         f1_lock_top=19)
-    add("gold-zero-top-body-minus1", (1, 0),
+    add("gold-zero-top-body-minus1", (2, 0),
         top_overrides=(20, None), bottom_overrides=(255, None),
-        f1_reason="LockBroken", f1_lock="Locked")
-    add("gold-zero-rigid-plus1", (1, 0),
+        f1_reason="SavedGeometryHold", f1_lock="Locked")
+    add("gold-zero-rigid-plus1", (2, 0),
         top_overrides=(20, None), bottom_overrides=(256, None),
-        f1_reason="GeometryLockDecides", f1_lock="Locked", comb=0)
+        f1_reason="SavedGeometryHold", f1_lock="Locked", comb=0)
 
     # Once the observed bottom is in the censored near-blank band, top position
     # is the only available geometry coordinate and decides placement.
@@ -457,7 +466,7 @@ def main():
     add("standard-zero-measurable-1", (0, 0), begin=True)
     add("standard-zero-measurable-2", (0, 0))
     add("standard-zero-dark-hold", (0, 0), dark=True,
-        f1_reason="GeometryUnmeasurable", f2_reason="GeometryUnmeasurable",
+        f1_reason="SavedGeometryHold", f2_reason="SavedGeometryHold",
         f1_lock="Locked", f2_lock="Locked", f1_zero="Standard",
         f2_zero="Standard", comb=0)
 
@@ -576,10 +585,10 @@ def main():
         captions=((4, 0x15, 0x2b), None), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(3, 0),
         f1_reason="CaptionBodyDisagree", f1_body_shift=1)
-    add("caption-body-disagree-hold", (3, 0), picture=(2, 0),
+    add("caption-body-disagree-hold", (2, 0), picture=(2, 0),
         captions=((4, 0x15, 0x2b), None), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(3, 0),
-        f1_reason="CaptionBodyDisagree", f1_body_shift=0)
+        f1_reason="SavedGeometryHold", f1_body_shift=0)
 
     # Ambiguous/conflicting VBI becomes provenance when top and body provide
     # a coherent current-unit geometry placement.
@@ -722,7 +731,7 @@ def main():
     add("discontinuity-anchor", (2, 0), begin=True, picture=(2, 0),
         captions=((2, 0x14, 0x2c), None))
     add("discontinuity-unmeasurable-hold", (2, 0), discontinuity=True,
-        dark=True, f1_reason="GeometryUnmeasurable",
+        dark=True, f1_reason="SavedGeometryHold",
         f2_reason="GeometryUnmeasurable", f1_lock="Locked",
         f2_lock="Locked")
 
@@ -792,15 +801,19 @@ def main():
     # unambiguous top edge, so the witness must abstain and the top decides.
     add("body-margin-anchor-plus1", (1, 0), begin=True,
         picture=(1, 0), top_overrides=(20, None),
+        captions=((1, 0x14, 0x2c), None),
         bottom_overrides=(250, None), content_phases=(0, 0),
         content_shifts=(1, 0), body_texture=(True, False),
+        body_texture_mod=64,
         body_split_shifts=((1, 1), None))
     add("body-margin-tie-top-zero", (1, 0),
         picture=(0, 0), top_overrides=(19, None),
         bottom_overrides=(249, None), content_phases=(0, 0),
         content_shifts=(0, 0), body_texture=(True, False),
+        body_texture_mod=64,
         body_split_shifts=((0, 1), None),
-        f1_reason="SavedGeometryHold", f1_body_valid=0)
+        f1_reason="SavedGeometryHold", f1_body_valid=0,
+        f1_hold_cause="TiedBody", f1_saved_d=1, f1_hold_length=1)
 
     # Once parity has established the segment zero, a later caption and top
     # can share the same damaged-line error. If the body abstains and comb is
@@ -845,7 +858,8 @@ def main():
             picture=(4, 0), captions=((4, 0x14, 0x2c), None),
             bright_rows=(284,), comb_offsets=(4, 3),
             f1_reason="Line21Placement",
-            f2_reason="CombRelativeCorrection" if corrected else "-",
+            f2_reason=("SavedGeometryReplaced" if i == 2 else
+                       "CombRelativeCorrection" if corrected else "-"),
             f2_zero="Comb", f2_lock_top=280,
             parity_state="Calibrated", parity_bias=2)
     add("comb-relative-survives-cut", (4, 3), discontinuity=True,
@@ -917,7 +931,7 @@ def main():
     add("discontinuity-preserves-comb", (2, 2), discontinuity=True,
         picture=(2, 0), captions=((2, 0x14, 0x2c), None),
         bright_rows=(282, 283), comb_offsets=(2, 2),
-        f2_reason="GeometryLockDecides", f2_zero="Comb", f2_lock_top=280,
+        f2_reason="SavedGeometryHold", f2_zero="Comb", f2_lock_top=280,
         parity_state="Calibrated", comb_check="n.a.", parity_bias=2)
     for i in range(3):
         add(f"discontinuity-parity-zero-seed-{i + 1}", (2, 0),
@@ -927,7 +941,8 @@ def main():
             f1_lock_top=18 if i == 2 else 19)
     add("discontinuity-preserves-parity-zero", (2, 0),
         discontinuity=True, dark=True,
-        f1_reason="GeometryUnmeasurable", f1_zero="Parity", f1_lock_top=18)
+        f1_reason="SavedGeometryHold", f2_reason="SavedGeometryHold",
+        f1_zero="Parity", f1_lock_top=18)
 
     # Comb may corroborate a changed top before the segment zero has frozen.
     # It still cannot calibrate a zero without a parity-referenced field 1;
@@ -940,7 +955,7 @@ def main():
         parity_state="Uncalibrated")
     add("uncalibrated-top-comb-recovers", (3, 0), picture=(3, 0),
         comb_offsets=(3, 0), comb_phase=5,
-        f1_reason="TopCombCorroborated", parity_state="Uncalibrated",
+        f1_reason="SavedGeometryReplaced", parity_state="Uncalibrated",
         comb_check="disagree")
 
     # Post-cut F class: the first changed-content unit exposes a transient old
@@ -956,7 +971,8 @@ def main():
         bright_rows=(21,), comb_offsets=(3, 0), comb_phase=5)
     add("top-comb-recovers-new-top", (3, 0), picture=(3, 0),
         comb_offsets=(3, 0), comb_phase=5,
-        f1_reason="TopCombCorroborated", comb_check="disagree")
+        f1_reason="SavedGeometryReplaced", f2_reason="SavedGeometryConfirmed",
+        comb_check="disagree")
     add("top-comb-stays-new-top", (3, 0), picture=(3, 0),
         comb_offsets=(3, 0), comb_phase=5)
 
@@ -970,6 +986,7 @@ def main():
     add("top-comb-vetoes-false-top", (2, 0), picture=(3, 0),
         comb_offsets=(2, 0), blank_rows=(21,), body_noise_right=True,
         f1_reason="SavedGeometryHold", f1_body_valid=0,
+        f1_hold_cause="CombVetoed", f1_saved_d=2, f1_hold_length=1,
         parity_state="Calibrated", comb_check="agree")
 
     # Round 12: only an evidence-backed placement may replace saved geometry.
@@ -981,42 +998,67 @@ def main():
         picture=(3, 2), captions=((3, 0x14, 0x2c), None),
         f2_envelopes=(282,), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(3, 2),
-        body_texture=(True, True), f1_reason="Line21Placement",
-        f2_reason="Field2EnvelopePlacement")
+        body_texture=(True, True), body_texture_mod=64,
+        f1_reason="Line21Placement",
+        f2_reason="Field2EnvelopePlacement", f1_saved_d=3, f2_saved_d=2)
+    tied_halves = (((3, 2), (2, 1)), ((2, 2), (1, 1)),
+                   ((2, 1), (1, 0)), ((1, 1), (0, 0)),
+                   ((1, 0), (0, -1)))
     for i, picture in enumerate(((1, 0), (3, 2), (1, 0), (3, 2), (1, 0))):
+        halves = tied_halves[i]
         add(f"saved-geometry-confirm-hold-{i + 1}", (3, 2),
             picture=picture, base_bottoms=(250, 518),
-            content_phases=(0, 0), content_shifts=(3, 2),
+            content_phases=(0, 0),
+            content_shifts=(halves[0][0], halves[1][0]),
             body_texture=(True, True),
-            body_split_shifts=((3, 1), (2, 0)),
+            body_texture_mod=64,
+            body_split_shifts=halves,
             f1_reason="SavedGeometryHold", f2_reason="SavedGeometryHold",
-            f1_body_valid=0, f2_body_valid=0)
+            f1_body_valid=0, f2_body_valid=0,
+            f1_hold_cause="TiedBody", f2_hold_cause="TiedBody",
+            f1_saved_d=3, f2_saved_d=2,
+            f1_hold_length=i + 1, f2_hold_length=i + 1)
     add("saved-geometry-confirmed", (3, 2), picture=(3, 2),
         captions=((3, 0x14, 0x2c), None), f2_envelopes=(282,),
         base_bottoms=(250, 518), content_phases=(0, 0),
         content_shifts=(3, 2), body_texture=(True, True),
+        body_texture_mod=64,
         f1_reason="SavedGeometryConfirmed",
-        f2_reason="SavedGeometryConfirmed")
+        f2_reason="SavedGeometryConfirmed", f1_saved_d=3, f2_saved_d=2,
+        f1_geometry_jump=0, f2_geometry_jump=0,
+        f1_hold_length=5, f2_hold_length=5)
 
     add("saved-geometry-replace-anchor", (3, 2), begin=True,
         picture=(3, 2), captions=((3, 0x14, 0x2c), None),
         f2_envelopes=(282,), base_bottoms=(250, 518),
         content_phases=(0, 0), content_shifts=(3, 2),
-        body_texture=(True, True))
+        body_texture=(True, True), body_texture_mod=64,
+        f1_saved_d=3, f2_saved_d=2)
+    replace_halves = (((3, 2), (2, 1)), ((2, 2), (1, 1)))
     for i in range(2):
+        halves = replace_halves[i]
         add(f"saved-geometry-replace-hold-{i + 1}", (3, 2),
             picture=(1, 0), base_bottoms=(250, 518),
-            content_phases=(0, 0), content_shifts=(3, 2),
+            content_phases=(0, 0),
+            content_shifts=(halves[0][0], halves[1][0]),
             body_texture=(True, True),
-            body_split_shifts=((3, 1), (2, 0)),
+            body_texture_mod=64,
+            body_split_shifts=halves,
             f1_reason="SavedGeometryHold", f2_reason="SavedGeometryHold",
-            f1_body_valid=0, f2_body_valid=0)
+            f1_body_valid=0, f2_body_valid=0,
+            f1_hold_cause="TiedBody", f2_hold_cause="TiedBody",
+            f1_saved_d=3, f2_saved_d=2,
+            f1_hold_length=i + 1, f2_hold_length=i + 1)
     add("saved-geometry-replaced-minus1", (2, 2), picture=(2, 2),
         captions=((2, 0x15, 0x2b), None), f2_envelopes=(282,),
         base_bottoms=(250, 518), content_phases=(0, 0),
-        content_shifts=(2, 2), body_texture=(True, True),
+        content_shifts=(1, 1), body_texture=(True, True),
+        body_texture_mod=64,
+        body_split_shifts=((1, 2), (1, 2)),
         f1_reason="SavedGeometryReplaced",
-        f2_reason="SavedGeometryConfirmed")
+        f2_reason="SavedGeometryConfirmed", f1_saved_d=2, f2_saved_d=2,
+        f1_geometry_jump=-1, f2_geometry_jump=0,
+        f1_hold_length=2, f2_hold_length=2)
 
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
@@ -1032,7 +1074,11 @@ def main():
                     "f1_lock_top", "f2_lock_top", "comb_safe",
                     "f1_raw_top", "f2_raw_top", "f1_body_shift",
                     "f2_body_shift", "f1_body_valid", "f2_body_valid",
-                    "parity_state", "comb_check", "parity_bias"))
+                    "parity_state", "comb_check", "parity_bias",
+                    "f1_hold_cause", "f2_hold_cause",
+                    "f1_saved_d", "f2_saved_d",
+                    "f1_geometry_jump", "f2_geometry_jump",
+                    "f1_hold_length", "f2_hold_length"))
         w.writerows(rows)
     print(f"wrote {len(units)} v9 units")
 
