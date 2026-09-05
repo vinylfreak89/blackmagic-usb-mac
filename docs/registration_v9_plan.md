@@ -657,3 +657,16 @@ Slices (comb): 35:00 348/272/0, 37:01 246/82/0, 05:00 446/160/1, 35:38 44/28/6, 
 slice criterion; Claude accepts the one- to three-unit calibration latency as the cost of the
 three-reading rule (no backdating on the live path). Claude's whole-tape verification is running;
 round 11 (damage ruling) dispatched on top of the branch.
+
+## Round 11 falsified as specified (Codex, 16:31 JST; branch `round11-damage-hold`, `293c499`/`84274f9`)
+
+The contradiction-based damage classifier does not fire on the torn units 62322–62326 (their
+measurements are ABSENT, not contradictory: body witness unmeasurable, comb flat, inserts
+present; field 2 moved 0 → 2 → 2 → 2 → 0 by `TopOnly`) and fires falsely on clean units
+(05:00 `DamageHold` 14 / `DamageCleared` 6 on field 1, comb misregistered 1 → 5; 01:26
+2/1). Codex stopped before the whole tape. Engine cost on that branch 4.24 ms median (round
+10: ~1.4) — unexplained, to be asked. Claude's reading of the same evidence: the damage
+signature is "no measurable picture testimony at all while the top changes" — body
+unmeasurable (MAD > 25), comb flat — and round 8's `TopOnly` (flat comb ⇒ the top decides)
+is exactly what moved field 2 on the torn units; the top alone must never place when the body
+is unmeasurable. That is the round-12 rule, being checked on the round-10 sidecar first.
