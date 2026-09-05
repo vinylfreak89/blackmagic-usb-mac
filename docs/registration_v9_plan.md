@@ -628,6 +628,7 @@ constant offset (+2 for both); round 8 needs none.
 | v7 | 1,851 / 35,405 / 49,027 | 31,092 (77.3%) | follow audit: field 1 engine-motion 2,059 / missed 3,527; field 2 engine-motion 84 |
 | v8 | **326** / 35,372 / 50,591 | 30,403 (75.6%): 7,018 of the 16,670 +3 excursions missed | 11,544 / 3,921 (follow audit: field 1 engine-motion 2,525 / missed 2,973; field 2 engine-motion 3,091 — round 8: 1,181 / 2,023; 116) |
 | v9 round 8 | 1,052 / 30,213 / 55,024 | **40,208 (99.9%)** | 7,614 / 2,974 |
+| v9 round 10 (`2f8bb86`, merged `7254d58`) | **165** / 30,073 / 56,051 | **40,208 (99.9%)** | follow audit: field 1 engine-motion 1,190 / missed 2,031; field 2 181 |
 
 Reading: v8 places both fields from the same kind of gauge (bottom edges), so they stay
 mutually consistent — where v8 is one line off the caption it is usually one line off in BOTH
@@ -686,3 +687,12 @@ a cause); the first evidence unit after a hold compares against it and moves onc
 (`SavedGeometryReplaced` with the signed jump). `TopOnly` is removed. Expected cost: real
 tied-body moves (05:00 units 64, 67) are corrected one unit late by comb corroboration.
 Dispatched as round 12 on top of round 10.
+
+## Round 10 verified and merged (2026-09-05 17:35 JST)
+
+Claude's replay of `094b3fb` (tree-identical to `2f8bb86`): 86,293/86,293, zero drops; parity
+acceptance 40,208 + 26 + 3 + 0 (field 2 24 + 1 + 0); comb audit **56,051 registered / 30,073
+flat / 165 misregistered** (round 8: 1,052; v8: 326; +1 ×118, −1 ×32, +2 ×11, others 4); follow
+field 1 engine-motion 1,190 / missed 2,031, field 2 181 / 2,998. Seven slices identical to
+Codex's table (minute-43 cold slice 295/20/3). Merged into main as `7254d58`, goldens 194/194
+on main. The one- to three-unit calibration latency of the three-reading rule is accepted.

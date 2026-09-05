@@ -1624,6 +1624,18 @@ delivery edge; wrong one at acquisition.
   raster displacement). Accepted design, in progress: a bounded RELATIVE crop correction
   installed after three decisive static-comb readings, computed from the current crops, never
   an incremented zero, persisted across flat units, cleared on signal-lock loss.
+  **✅ Round 10 merged (`7254d58`, 2026-09-05 17:35 JST):** the bounded relative comb correction
+  (three decisive static-comb readings install a relative crop bias from the current crops,
+  never an incremented zero; the field it moves is chosen per unit from current absolute
+  testimony so a caption-placed field 1 is never displaced; persists across flat units and
+  discontinuities, cleared by begin_segment). Whole tape, both agents: parity 40,208 + 29
+  evidence-checked vetoes + 0; comb misregistered **165** of 86,293 pairs (round 8: 1,052; the
+  v8 bottom-edge engine on the same instrument: 326, but with field 1 at the caption's position
+  in only 75.6% of readings — both instruments are needed, the comb sees relative error and the
+  caption absolute). Minute 43 is closed except the unit before the correction installs. Engine
+  ~1.4 ms median. **Open:** the owner's damage ruling (saved good geometry, hold on absent
+  evidence, one re-check on clearing) — round 12, in progress; round 11's contradiction-based
+  damage classifier was falsified (the torn units show absent testimony, not contradiction).
 
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
