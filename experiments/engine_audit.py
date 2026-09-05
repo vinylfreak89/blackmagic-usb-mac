@@ -53,9 +53,12 @@ def picture_top(Y, Yfull, lo, hi, blank):
         t=vbi_type(Y[r],Yfull[r])
         if t: types[r]=t; r+=1
         else: break
-    # first of three consecutive picture rows at or below r
+    # first of three consecutive picture rows at or below r, where the first row is not a dim precursor of a much
+    # brighter block (the tape's flat grey line 22 sits at ~7 above a picture at ~90 and is not picture)
     for s in range(r,hi-2):
-        if all(Y[s+k].mean()>blank+4 and not vbi_type(Y[s+k],Yfull[s+k]) for k in range(3)): return s, types
+        if all(Y[s+k].mean()>blank+4 and not vbi_type(Y[s+k],Yfull[s+k]) for k in range(3)):
+            if Y[s].mean() < 0.5*Y[s+1:s+4].mean(axis=1).mean(): types[s]='gap'; continue
+            return s, types
     return None, types
 def damage(Yb):
     # rows deviating from both neighbours by >40 over >25% of the width
