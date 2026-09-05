@@ -91,3 +91,9 @@ zero. Three consecutive decisive `+1` static-comb readings install exactly
 one `+1` correction on field 2 when field 1 is parity-placed. Repeated `+1`
 readings cannot accumulate it. The correction survives a content/byte
 discontinuity, while `fieldreg_begin_segment()` (signal relock) clears it.
+
+Round 11 separates presentation history from the last evidence-backed good
+geometry. A `TopOnly` move cannot overwrite a saved parity placement;
+contradictory units hold that saved placement, and the next parity-backed
+clean unit emits exactly one `DamageCleared` transition at the signed crop
+difference.

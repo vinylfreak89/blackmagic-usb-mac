@@ -972,6 +972,37 @@ def main():
         f1_reason="TopCombVetoed", f1_body_valid=0,
         parity_state="Calibrated", comb_check="agree")
 
+    # Round 11: the last crop is presentation history, not the last geometry
+    # that was safe enough to trust.  A TopOnly unit may move last_applied but
+    # must not replace the parity-placed saved geometry.  Contradictory units
+    # then hold that saved +2 geometry, and a later parity reading clears the
+    # damage exactly once at +3 (a signed +1 jump from the saved geometry).
+    add("saved-good-parity-anchor", (2, 0), begin=True, picture=(2, 0),
+        captions=((2, 0x14, 0x2c), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(2, 0),
+        body_texture=(True, False), f1_reason="Line21Placement")
+    add("saved-good-top-only-does-not-save", (1, 0), picture=(1, 0),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(1, 0), body_texture=(True, False),
+        body_split_shifts=((1, 2), None), f1_reason="TopOnly",
+        f1_body_valid=0)
+    add("saved-good-damage-holds-anchor-a", (2, 0), picture=(3, 0),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(2, 0), body_texture=(True, False),
+        f1_reason="DamageHold", f1_body_shift=1)
+    add("saved-good-damage-holds-anchor-b", (2, 0), picture=(3, 0),
+        base_bottoms=(250, 518), content_phases=(0, 0),
+        content_shifts=(2, 0), body_texture=(True, False),
+        f1_reason="DamageHold", f1_body_shift=1)
+    add("saved-good-parity-clears-plus1", (3, 0), picture=(3, 0),
+        captions=((3, 0x15, 0x2b), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        body_texture=(True, False), f1_reason="DamageCleared")
+    add("saved-good-clear-is-one-row", (3, 0), picture=(3, 0),
+        captions=((3, 0x15, 0x2b), None), base_bottoms=(250, 518),
+        content_phases=(0, 0), content_shifts=(3, 0),
+        body_texture=(True, False), f1_reason="Line21Placement")
+
     add("invalid-device-short-surrogate", (0, 0), begin=True, ok=False, invalid=True)
 
     with open(args.output, "wb") as out:
