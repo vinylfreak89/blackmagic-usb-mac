@@ -22,8 +22,13 @@ REFERENCE_REQUIRED = {
         "line21_unique_line",
         "line21_implied_top",
         "cc_waveform_lines",
-        "top_line",
-        "top_valid",
+        "recorded_top_line",
+        "recorded_top_valid",
+        "picture_top_line",
+        "picture_top_valid",
+        "black_band_start_line",
+        "black_band_picture_start_line",
+        "black_band_valid",
         "top_status",
         "flat_raster",
         "gap_line",
@@ -97,10 +102,10 @@ def authority_for(row: dict[str, str], field: int) -> Authority:
     if waveform is not None:
         return Authority("waveform", waveform)
     if (
-        int(row[f"f{field}_top_valid"])
+        int(row[f"f{field}_picture_top_valid"])
         and row[f"f{field}_top_status"] != "vbi_ambiguous"
     ):
-        return Authority("geometry", int(row[f"f{field}_top_line"]))
+        return Authority("geometry", int(row[f"f{field}_picture_top_line"]))
     return Authority("none", None)
 
 
@@ -232,6 +237,15 @@ def score(
                     "published_changed": int(changed),
                     "reference_changed": int(reference_changed),
                     "flat_raster": raw_reference[f"f{field}_flat_raster"],
+                    "recorded_top": raw_reference[f"f{field}_recorded_top_line"],
+                    "picture_top": raw_reference[f"f{field}_picture_top_line"],
+                    "black_band_start": raw_reference[
+                        f"f{field}_black_band_start_line"
+                    ],
+                    "black_band_picture_start": raw_reference[
+                        f"f{field}_black_band_picture_start_line"
+                    ],
+                    "black_band_valid": raw_reference[f"f{field}_black_band_valid"],
                     "out_of_raster": int(crop_out_of_raster),
                 }
             )

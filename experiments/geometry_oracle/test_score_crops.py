@@ -16,8 +16,13 @@ REFERENCE_FIELDS = (
     "f1_line21_unique_line",
     "f1_line21_implied_top",
     "f1_cc_waveform_lines",
-    "f1_top_line",
-    "f1_top_valid",
+    "f1_recorded_top_line",
+    "f1_recorded_top_valid",
+    "f1_picture_top_line",
+    "f1_picture_top_valid",
+    "f1_black_band_start_line",
+    "f1_black_band_picture_start_line",
+    "f1_black_band_valid",
     "f1_top_status",
     "f1_flat_raster",
     "f1_gap_line",
@@ -25,8 +30,13 @@ REFERENCE_FIELDS = (
     "f2_line21_unique_line",
     "f2_line21_implied_top",
     "f2_cc_waveform_lines",
-    "f2_top_line",
-    "f2_top_valid",
+    "f2_recorded_top_line",
+    "f2_recorded_top_valid",
+    "f2_picture_top_line",
+    "f2_picture_top_valid",
+    "f2_black_band_start_line",
+    "f2_black_band_picture_start_line",
+    "f2_black_band_valid",
     "f2_top_status",
     "f2_flat_raster",
     "f2_gap_line",
@@ -42,8 +52,13 @@ def reference_row(ordinal: int) -> dict[str, object]:
         "f1_line21_unique_line": -1,
         "f1_line21_implied_top": -1,
         "f1_cc_waveform_lines": "21",
-        "f1_top_line": 23,
-        "f1_top_valid": 1,
+        "f1_recorded_top_line": 23,
+        "f1_recorded_top_valid": 1,
+        "f1_picture_top_line": 23,
+        "f1_picture_top_valid": 1,
+        "f1_black_band_start_line": -1,
+        "f1_black_band_picture_start_line": -1,
+        "f1_black_band_valid": 0,
         "f1_top_status": "measured",
         "f1_flat_raster": 0,
         "f1_gap_line": -1,
@@ -51,8 +66,13 @@ def reference_row(ordinal: int) -> dict[str, object]:
         "f2_line21_unique_line": -1,
         "f2_line21_implied_top": -1,
         "f2_cc_waveform_lines": "284",
-        "f2_top_line": 286,
-        "f2_top_valid": 1,
+        "f2_recorded_top_line": 286,
+        "f2_recorded_top_valid": 1,
+        "f2_picture_top_line": 286,
+        "f2_picture_top_valid": 1,
+        "f2_black_band_start_line": -1,
+        "f2_black_band_picture_start_line": -1,
+        "f2_black_band_valid": 0,
         "f2_top_status": "measured",
         "f2_flat_raster": 0,
         "f2_gap_line": -1,
@@ -74,7 +94,7 @@ class ScoreCropsTest(unittest.TestCase):
             reference[0]["f1_line21_unique_line"] = 22
             reference[0]["f1_line21_implied_top"] = 24
             reference[1]["f2_cc_waveform_lines"] = "284 287"
-            reference[2]["f1_top_valid"] = 0
+            reference[2]["f1_picture_top_valid"] = 0
             reference[2]["f1_top_status"] = "unmeasurable"
             reference[2]["f1_flat_raster"] = 1
             reference[3]["no_placement_expected"] = 1
@@ -107,6 +127,11 @@ class ScoreCropsTest(unittest.TestCase):
             root = Path(directory)
             reference = [reference_row(0)]
             reference[0]["f2_cc_waveform_lines"] = "284 287"
+            reference[0]["f2_recorded_top_line"] = 288
+            reference[0]["f2_picture_top_line"] = 289
+            reference[0]["f2_black_band_start_line"] = 288
+            reference[0]["f2_black_band_picture_start_line"] = 289
+            reference[0]["f2_black_band_valid"] = 1
             reference[0]["f2_gap_line"] = 288
             reference[0]["f2_gap_valid"] = 1
             crops = [
@@ -122,6 +147,12 @@ class ScoreCropsTest(unittest.TestCase):
             )
             result = score(ref_path, crop_path, root / "result")
             self.assertEqual(result.histograms[(2, "waveform")]["0"], 1)
+            with (root / "result" / "verdicts.csv").open(newline="") as handle:
+                verdicts = list(csv.DictReader(handle))
+            field2 = next(row for row in verdicts if row["field"] == "2")
+            self.assertEqual(field2["recorded_top"], "288")
+            self.assertEqual(field2["picture_top"], "289")
+            self.assertEqual(field2["black_band_start"], "288")
 
     def test_missing_and_duplicate_ordinals_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
