@@ -25,21 +25,6 @@ from cc608_decode import decode as cc608
 UNIT=756_048; HDR=48; LINE=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('out'); ap.add_argument('--repair',action='store_true',help='fields paired one later (V-stabilize-off capture): field 1 = this unit slot 2, field 2 = next unit slot 1')
 ap.add_argument('--units',default=''); ap.add_argument('--only',action='store_true',help='process only the --units (test mode)'); A=ap.parse_args(); VERB={int(x) for x in A.units.split(',') if x}
-Ys=[]; buf=bytearray()
-CTR=[]
-def emit(u): CTR.append(int.from_bytes(u[4:6],'little')); Ys.append(np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,LINE))
-def on_video(p):
-    buf.extend(p)
-    while True:
-        i=buf.find(MARK)
-        if i<0: return
-        if i>0: del buf[:i]
-        j=buf.find(MARK,4)
-        if j<0: return
-        if j==UNIT: emit(bytes(buf[:UNIT]))
-        del buf[:j]
-try: walk_tagged(A.cap,on_video=on_video,progress=False)
-except RuntimeError as e: print('walk ended:',str(e)[:60])
 SLOT={1:(16,279),2:(279,525)}     # unit rows of each slot (line 20.. / 283..); blank reference rows 7..15 / 270..278
 def field_arrays(R,slot):
     a,b=SLOT[slot]; Y=R[a:b,1::2].astype(np.float32); C=np.stack([R[a:b,0::4],R[a:b,2::4]],axis=1).astype(np.float32)
@@ -96,12 +81,13 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None):
             blank_run=int((e[1::2]-e[0::2]).max())
     return dict(blank_run=blank_run,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
 w=csv.writer(open(A.out,'w',newline='')); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b','S_tests','band_tests'])
-n=len(Ys)-(1 if A.repair else 0)
 PED={1:None,2:None}   # the carried pedestal per field
-for u in range(n):
-    if A.only and u not in VERB: continue
+CTR={}
+def process_unit(u,RU,RN):
+    """one unit: RU = this unit's raster, RN = the next unit's (needed only with --repair)"""
+    if A.only and u not in VERB: return
     for f in (1,2):
-        R=Ys[u] if (f==1 or not A.repair) else Ys[u+1]; slot=(2 if (f==1 and A.repair) else (1 if (f==2 and A.repair) else f))
+        R=RU if (f==1 or not A.repair) else RN; slot=(2 if (f==1 and A.repair) else (1 if (f==2 and A.repair) else f))
         Y,C,by_m,sig_b,c_b=field_arrays(R,slot); base=20 if slot==1 else 283   # line = row + base (slot numbering)
         ym=Y.mean(axis=1); thr=by_m+6*sig_b
         # a recorded row carries tape noise the regenerated rows do not: chroma noise above 2x the blank's, OR luma above
@@ -147,10 +133,16 @@ for u in range(n):
             if r+1>=Y.shape[0]: return 0.0
             a=Y[r,24:696]-Y[r,24:696].mean(); b=Y[r+1,24:696]-Y[r+1,24:696].mean(); d=float(np.sqrt((a*a).sum()*(b*b).sum()))
             return float((a*b).sum()/d) if d>0 else 0.0
-        def vbi_type(r): return float(Y[r,24:696].std())>=4*sig_n and corr_below(r)<0.5
+        def textured(r): return float(Y[r,24:696].std())>=4*sig_n
+        def vbi_type(r): return textured(r) and corr_below(r)<0.5
         def picture_row(r):
             if not rec[r] or cc608(Y[r])[0] or vbi_type(r): return False
-            if bright(r): return True     # a bright row is picture whether textured or flat (a flat grey field is picture: commercial unit 800, luma 17-20, std 1.3)
+            if bright(r):
+                # a bright textured row is picture; a bright FLAT row is picture when the row below is flat too (a flat
+                # grey field: commercial unit 800, luma 17-20, std 1.3 on every row) and VBI when the row below is
+                # textured (the EP recording's isolated dim row before the picture: counter 2066 line 25 at 18.1/2.7
+                # before line 26 at 107/65 — the harness's turn-10 witnesses at counters 2066, 2303, 2410)
+                return textured(r) or (r+1<Y.shape[0] and rec[r+1] and not textured(r+1))
             return r+1<Y.shape[0] and rec[r+1] and not bright(r+1) and not cc608(Y[r+1])[0]
         # the top begins a run of three picture rows (a lone waveform row before a black row is VBI: a damaged caption,
         # the tape's line 20 data)
@@ -213,4 +205,25 @@ for u in range(n):
                 why=''.join(k for k,v in (('W',abs(ft['wlag'])>=2 and ft['wr']<=0.90),('T',torn(ft)),('F',flat(ft,r)),('R',ft['lead_run']>M_run+8),('D',ft['dip_absent']),('B',blanked(ft))) if v)
                 why2=''.join(k for k,v in (('W',abs(f2['wlag'])>=2 and f2['wr']<=0.90),('T',torn(f2)),('F',flat(f2,r)),('R',f2['lead_run']>M_run+8),('D',f2['dip_absent']),('B',blanked(f2))) if v) if f2 else '-'
                 print(f'    L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,40:680].std()):4.1f} lagmed {ft["lagmed"]} n {ft["n"]} dm {ft["dm"]:5.1f} dsig {ft["dsig"]:5.1f} wlag {ft["wlag"]} r {ft["wr"]:.2f} spike {ft["spike"]:5.0f}@{ft["x"]} w{ft["width"]} run {ft["lead_run"]} band {int(band_row(r))} [{why}|{why2}] peak {int(peak(ft,r))}')
+# the walk: units are processed as they arrive, holding at most two rasters (the capture is never loaded whole — a
+# 608-unit capture is 460 MB per process and four of them drove the host into swap, 2026-09-07)
+buf=bytearray(); pend=[]; N=[0]
+def emit(u):
+    c=int.from_bytes(u[4:6],'little'); R=np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,LINE); i=N[0]; N[0]+=1; CTR[i]=c
+    if not A.repair: process_unit(i,R,None); return
+    pend.append((i,R))
+    if len(pend)==2: process_unit(pend[0][0],pend[0][1],pend[1][1]); del pend[0]
+def on_video(p):
+    buf.extend(p)
+    while True:
+        i=buf.find(MARK)
+        if i<0: return
+        if i>0: del buf[:i]
+        j=buf.find(MARK,4)
+        if j<0: return
+        if j==UNIT: emit(bytes(buf[:UNIT]))
+        del buf[:j]
+try: walk_tagged(A.cap,on_video=on_video,progress=False)
+except RuntimeError as e: print('walk ended:',str(e)[:60])
+n=N[0]-(1 if A.repair else 0)
 print('units',n,'->',A.out)
