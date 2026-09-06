@@ -360,3 +360,38 @@ segment lag of 0–1 with mean |diff| 8–17; the first other-head row has media
 35–80; the RF peak is a spike ≥ 4× the row's mean |diff| (105–160 raw) at the same sample in both passes on an
 otherwise aligned row, with the next row torn from that sample on; the on pass ends the band with a flat pedestal
 row (std < 1.1).
+
+### 10.1 Engine measurement under contract v3 (experiments/switch_geometry.py, 2026-09-07 04:00–05:45 JST)
+
+Per field of every unit, from the unit's own regenerated rows; the same code on every capture:
+- **blank**: the field's blanking rows (lines 11–19 / 274–282): luma level and noise σ_b, chroma noise c_b.
+- **recorded**: chroma noise > 2 c_b (measured gap: blank rows ≤ 1.48×, recorded ≥ 2.02×).
+- **pedestal** (recorded black): the field's lowest flat recorded row above the blank (the other head's black in
+  the band) when it has one, else the last pedestal seen on the source, else the blank.
+- **top**: the first recorded row that begins a run of three picture rows — above the pedestal by more than 3 σ_b,
+  textured (std ≥ 4 σ_b), not a CEA-608 waveform. Verified on the raw rows at SP units 4, 20, 75, 78, 86, 105, 106,
+  200 (the tape's black line 22 at luma 4–8 and a damaged caption at 23 are skipped).
+- **S**, the first row belonging entirely to the other head: the band is contiguous at the clip, so the scan runs
+  upward from the last recorded row while a row is (a) time-shifted as a whole against the row above or the row two
+  above — whole-row best lag ≥ 2 samples with SAD(best)/SAD(0) ≤ 0.90 over the two rows' common content span (the
+  blind check's envelope: picture rows |lag| ≤ 1.2, r ≥ 0.94 on 71 full-content rows), or (b) torn — median segment
+  lag and mean row difference both beyond the body rows' own maxima, or (c) a pedestal row, or (d) a leading blank
+  run longer than the picture's own H-dip by 8 samples, or (e) without the H-dip (content at sample 0). The switch
+  itself lies in S or S−1 (the partial line); S−1's evidence (a narrow spike on a flat background, its rank against
+  the picture's own narrow specks, its whole-row lag/ratio) is recorded, never resolved by a threshold.
+- **picture bottom** = top + 239 clipped at the last recorded row; **band** = S..last recorded; reliable = top..S−1.
+Results: SP pass, verified units 20/78/105/106/200: S = 261/259/262/261/261 (field 1) and 523/523/522/522/523
+(field 2) = the raw rows; blind subagent (own detector) on 15 sampled units: 13/15 + 2 definitional (field 1),
+15/15 (field 2). Against Codex's contract-v3 reference (e6a5542/35e5979): top 608/608 and 604/608 (the four: line
+286 at luma 3.8–6.0 is the tape's black line 22, engine 287 is right); S within one row of switch_first_line in
+608/608 both fields. Stabilized render from the record: the bottom bar moves only where the top moves (67 = 67 and
+8 = 8); residual picture shifts in the output 5 + 6 units, of which 75/76/79/102/105 are one field moving one line
+under a clamped top (the body shift decisive in that field only) and the rest alternate fields at consecutive units
+(content motion). A carried offset from the body alone moves the jump instead of removing it (tried, not adopted):
+the resolution is the comb (§10.4), which Codex's harness now measures (turn 7: registration unchanged at all 63
+measurable fixed-top switch moves on the SP pass).
+Known limits: on the V-stabilize-off pass the picture carries rows as torn as the band's (a horizontal tear at lines
+323–336 of unit 20) and the other head's rows settle to match each other, so the band is found only by contiguity,
+the two-above test, the missing H-dip and the whole-row shift; S at the verified units 524/523/523/523/523 against
+the rows' 523. Thresholds that remain constants: 2 samples / 0.90 (the blind check's envelope), 8 samples over the
+H-dip, 3 σ_b above the pedestal, 4 σ_b for texture, 2 c_b for recorded — each stated with the measurement behind it.
