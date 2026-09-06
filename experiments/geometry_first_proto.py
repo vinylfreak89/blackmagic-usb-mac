@@ -69,6 +69,19 @@ def recorded_mask(Yfull, Cfull, F):
     Y=Yfull[:,40:680]; C=Cfull[:,40:680]
     rec=(np.abs(C.mean(1)-cm)>max(0.8,6*cmr))|(C.std(1)>3*cs)|(Y.mean(1)>ym+max(1.5,6*ymr))
     return rec, ym, Yb.std()
+def two_level_frac(row):
+    x=row[60:660]; lo=np.percentile(x,10); hi=np.percentile(x,90)
+    if hi-lo<25: return 0.0
+    return float(((np.abs(x-lo)<=6)|(np.abs(x-hi)<=6)).mean())
+def cc_envelope(rowfull):
+    """The smeared XDS bar (the second recording's line 284 at +2): bright over the run-in/start span, flat pedestal
+    after it (MEASURED 35:00: left 91 / right 23 std 3). DEFAULT thresholds 30 / 8."""
+    L=rowfull[60:250].mean(); R=rowfull[300:700]
+    return (L-R.mean())>30 and R.std()<8
+def runin_amp(rowfull):
+    """503.5 kHz run-in amplitude over the standard run-in window (STANDARD layout), as cc608_decode measures it."""
+    x=rowfull.astype(np.float64); lo,hi=10,230; seg=x[lo:hi]-x[lo:hi].mean(); n=np.arange(lo,hi); w=2*np.pi/(1.986e-6*13.5e6)
+    return float(np.hypot((seg*np.cos(w*n)).sum(),(seg*np.sin(w*n)).sum())*2/len(seg))
 def two_level(row):
     """A step or cell waveform (the smeared XDS bar, a 608 data line, a run-in fragment): more than 80% of the active
     samples lie within +-6 of one of two luma levels at least 25 apart. Picture rows rarely do, and a picture row that
@@ -119,10 +132,12 @@ def measure_field(Y, F, prev_field, Yfull=None, Cfull=None):
                 kind[r]='black'
                 if top_rec is None: top_rec=r
                 continue
-            # the picture is continuous row after row; a VBI waveform (line-20 pulses, a parity-failed caption, the
-            # smeared XDS bar, the data line) is not, but adjacent waveforms can resemble each other, so the top must
-            # continue for two links
-            if not (c[r] and c[r+1]): kind[r]='vbi'; continue
+            # a VBI row is a one-dimensional WAVEFORM that does not continue into the row below it. Discontinuity alone
+            # is not enough (MEASURED 2026-09-06 on the whole-tape adjudication: textured first picture rows at 18-22
+            # min correlate 0.4 with the row below and were rejected), so the row must also look like a waveform:
+            # two-level cells (data line p10 0.50 vs picture p90 0.43 -> DEFAULT 0.45), the smeared XDS envelope, or a
+            # 503.5 kHz run-in (data line median 18, picture <= 10 -> DEFAULT 15). Anything else recorded is picture.
+            if not c[r] and (two_level_frac(Y[r])>=0.45 or cc_envelope(Yfull[r]) or runin_amp(Yfull[r])>=15.0): kind[r]='vbi'; continue
         kind[r]='picture'
         if top is None: top=r
         if top_rec is None: top_rec=r
@@ -171,6 +186,7 @@ def decide(fs, F, mm, signal_ok=True):
         (u_s,u_m),(l_s,l_m)=mm['body']
         if (u_m<8 and l_m>30) or (l_m<8 and u_m>30): fs.lock=False; notes.append('Splice')
     if not signal_ok: fs.lock=False; notes.append('SignalLoss')
+    if not fs.lock: fs.line22_video=False; fs.l22_seen=0     # a segment state dies with the lock
     if top is not None and abs(top-F['origin'])>12: notes.append('TopOutOfRange(%+d)'%(top-F['origin'])); top=None   # DEFAULT bound 12: no recorded displacement approaches it; beyond it the raster is torn/snow/mute
     if top is None:
         if mm.get('flat'): notes.append('FlatRaster')
@@ -197,13 +213,15 @@ def decide(fs, F, mm, signal_ok=True):
             # (fixture A's second recording, measured): a parity-valid row directly under a recorded waveform is line
             # 285, so the picture begins one row under it. DEFAULT structural rule, not a level test.
             d=c+1-F['origin']; notes.append('CaptionIsLine285')
-        if top==c+1 and d==c+2-F['origin']: fs.line22_video=True; notes.append('Line22Video')
-        elif top==c+2: fs.line22_video=False
+        if top==c+1 and d==c+2-F['origin']:
+            fs.l22_seen=getattr(fs,'l22_seen',0)+1; notes.append('Line22Video')
+            if fs.l22_seen>=2: fs.line22_video=True          # two consecutive captioned units, never one chance parity hit
+        elif top==c+2: fs.line22_video=False; fs.l22_seen=0
         if d_pic!=d: notes.append('PicTopOff(%+d)'%(d_pic-d))
     else:
         # the segment's line 22 carries attenuated video: the measured top is that line only if it IS attenuated
         # against the row below (measured 60-80 %); a waveform, black or full-level row above the top is not it
-        if fs.line22_video and mm['kind'].get(top-1) not in ('vbi','torn'): d_pic+=1; notes.append('Line22VideoAssumed')   # not when a waveform/torn row sits directly above the top: that top is the picture itself
+        assume = fs.line22_video and mm['kind'].get(top-1) not in ('vbi','torn')   # not when a waveform/torn row sits directly above the top: that top is the picture itself
         if d_rec<d_pic:
             # black band above the picture: the lock decides when it can; at acquisition a single black row is read
             # as the tape's black line 22 (fixture A's captions validated that reading 309/309, DEFAULT), a deeper
@@ -218,6 +236,7 @@ def decide(fs, F, mm, signal_ok=True):
             elif d_pic-d_rec==1: d=d_pic; notes.append('BlackTopGap')
             else: d=d_rec; notes.append('BlackBandAsPicture(%d..%d)'%(d_rec,d_pic))
         else: d=d_pic
+        if assume: d+=1; notes.append('Line22VideoAssumed')    # applied AFTER the band test: it must never manufacture a band
     if not fs.lock:
         fs.lock=True; reason='Acquired'; notes.append('jump %+d'%(d-fs.d))
     elif d!=fs.d: reason='GeometryMoved'
