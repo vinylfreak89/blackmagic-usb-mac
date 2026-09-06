@@ -294,3 +294,13 @@ review render carries two markers, the picture bottom (red) and the band bottom 
 whose fields were recorded misregistered cannot be corrected by any frame TBC; only measuring the expected geometry
 and every departure from it can, which is this engine's job. The v3 engine's switch lock (`geometry_v3_decide.py`)
 is therefore correct only for sources whose switch is steady (the commercial tape) and is superseded for fixture A.
+
+**Pairing phase is per capture, measured 2026-09-07 02:40 JST.** The owner re-captured the SP passage with
+V-stabilize off (`/private/tmp/hw-session/sp_vstab_off_45s.tpc`, transport complete; slice `sp_vstab_off_slice.tpc`,
+608 units, content-aligned to `w_300s.tpc`). Pooled field-body comparison at units 20/150/300/600: the new unit's
+field-1 SLOT is the original's field 2 of the previous unit (MAD 2.6–3.0, against 7–12 for any other pairing) and its
+field-2 slot is the original's field 1 of the same unit (2.4–2.8). The Shuttle grouped the same field sequence one
+field later, so "field 1" and "field 2" name transport slots whose parity differs between these two captures of the
+same tape. Every per-field constant (switch side and position, VBI lines, top origin) must be measured per capture on
+the slot's own content, never carried by slot name from another capture; the review render's bottom row was
+re-paired (this unit's field-2 slot beside the next unit's field-1 slot) to compare the same recorded fields.
