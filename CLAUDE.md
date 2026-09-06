@@ -1952,5 +1952,20 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   changes from shift zero at unit 102 to +1 while both measured tops and switches stay fixed.
   Full seven-energy vectors and deciding rows are in
   `experiments/geometry_oracle/reports/turn8_raw_row_audit.md`.
+
+  **Body/comb residual audit (2026-09-07):** none of SP units 75 field 2, 76 field 1,
+  79 field 1, 102 field 1, or 105 field 2 showed an inter-field comb shift that followed
+  the nominated same-slot body displacement at that unit and returned afterward. Unit 76
+  field 1 was not top-clamped: top/switch/body all moved -1 from unit 75 to 76, and the
+  published crop already follows it. Units 79 and 102 field 1 are content motion; unit 103,
+  not 102, is the separate +1 comb-registration departure with both field bodies and all
+  top/switch coordinates fixed. Units 75 and 105 field 2 remain insufficient to establish
+  a clamped move because the comb does not change and the other field's geometry moves.
+  Therefore this audit adds no crop displacement. On the EP slice all 458 measurable comb
+  readings minimize at zero and agree with geometry; 163 are unmeasurable and the
+  disagreement list is empty. Every measurable fixed-top switch transition retains its
+  prior comb registration: field 1 has 2 unchanged and 10 unmeasurable; field 2 has 137
+  unchanged and 52 unmeasurable. Exact vectors, boundary rows, and unit lists are in
+  `experiments/geometry_oracle/reports/turn9_body_comb_audit.md` and `comb_summary.md`.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).

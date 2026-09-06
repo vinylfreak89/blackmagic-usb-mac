@@ -178,6 +178,10 @@ field-prefixed comb column families.
 band, the two comb-ordering questions, the isolated SP registration departure, and the four-unit
 SP field-2 top correction.
 
+`reports/turn9_body_comb_audit.md` cross-checks the five nominated SP body shifts against
+their neighbouring seven-shift comb vectors and raw top/switch rows. It also records the EP
+top/switch/band/comb census and the fixed-top switch-transition result.
+
 The commercial capture uses counter-based review ordinals: first exact unit 211, with device-short
 ordinals 213, 214, and 216 absent. The owner-provided stable-picture boundary at 551 is deliberately
 an external test assertion in `build_invariant_report.py`, never a builder input. Only `observed`
