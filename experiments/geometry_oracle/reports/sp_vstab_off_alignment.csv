@@ -1,0 +1,11 @@
+new_ordinal,new_slot,source_ordinal,source_field,best_dx,best_dy,pooled_body_mad,status
+20,1,19,2,0,1,2.4389544025157233,phase witness
+20,2,20,1,0,-1,2.372936320754717,phase witness
+77,1,76,2,0,0,2.404921875,held-frame ambiguous; excluded from phase decision
+77,2,77,1,0,-1,8.793946540880503,held-frame ambiguous; excluded from phase decision
+150,1,149,2,0,1,2.6955385220125785,phase witness
+150,2,150,1,0,0,2.80091796875,phase witness
+300,1,299,2,0,1,3.022444968553459,phase witness
+300,2,300,1,0,-1,2.9145440251572325,phase witness
+600,1,599,2,0,1,2.817944182389937,phase witness
+600,2,600,1,0,-1,2.7660966981132074,phase witness
