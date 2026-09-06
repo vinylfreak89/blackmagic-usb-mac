@@ -45,7 +45,7 @@ def field_arrays(R,slot):
     a,b=SLOT[slot]; Y=R[a:b,1::2].astype(np.float32); C=np.stack([R[a:b,0::4],R[a:b,2::4]],axis=1).astype(np.float32)
     bl=R[a-9:a-1]; by=bl[:,1::2].astype(np.float32); bc=np.stack([bl[:,0::4],bl[:,2::4]],axis=1).astype(np.float32)
     return Y,C,float(by.mean()),float(max(by.std(),0.5)),float(max(bc.std(),0.3))
-def rowfeat(row,prev,sig_b,ped_lvl):
+def rowfeat(row,prev,sig_b,ped_lvl,by_m=None):
     lags=[]
     for a in range(30,690-55+1,55):
         b=a+55
@@ -81,7 +81,20 @@ def rowfeat(row,prev,sig_b,ped_lvl):
     # the horizontal-blanking dip: a timed line begins with samples at the blank level (1..3); the other head's line,
     # with V-stabilize off, starts with content at sample 0 (its blanking is elsewhere in the line)
     dip_absent = float(row[0:7].min())>ped_lvl
-    return dict(lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
+    # blanking inside the row: the longest run of samples (24..696) at the decoder's blank level (within 6 sigma_b of
+    # the field's own blank rows). The other head's line arrives with its horizontal blanking interval somewhere inside
+    # the row (owner: the head switch always lands timing in the horizontal blanking region); a timed picture row has
+    # its blanking outside the 720 samples. Its length is bounded by NTSC: longer than a sync pulse alone (4.7 us = 64
+    # samples) and shorter than any blanking interval could be (200 samples = 14.8 us; H blanking is 10.9 us). Census
+    # (commercial, 920 units): band rows 834/954 and 1259/1323 carry one, the row before the switch 0/531 and 0/535;
+    # picture rows carry one in 0.4% and never within 4 rows of the switch (the scan from the clip is contiguous).
+    blank_run=0
+    if by_m is not None:
+        m=np.abs(row[24:696]-by_m)<=6*sig_b
+        if m.any():
+            e=np.flatnonzero(np.diff(np.concatenate(([0],m.astype(np.int8),[0]))))
+            blank_run=int((e[1::2]-e[0::2]).max())
+    return dict(blank_run=blank_run,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
 w=csv.writer(open(A.out,'w',newline='')); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b'])
 n=len(Ys)-(1 if A.repair else 0)
 PED={1:None,2:None}   # the carried pedestal per field
@@ -134,8 +147,8 @@ for u in range(n):
         if top is None or len(recrows)<60: w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2)]); continue
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
-        feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl) for r in range(top+1,last_rec+1)}
-        feats2={r:rowfeat(Y[r],Y[r-2],sig_b,ped_lvl) for r in range(top+2,last_rec+1)}   # against the row two above: a settled other-head row matches its predecessor but not the picture
+        feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl,by_m) for r in range(top+1,last_rec+1)}
+        feats2={r:rowfeat(Y[r],Y[r-2],sig_b,ped_lvl,by_m) for r in range(top+2,last_rec+1)}   # against the row two above: a settled other-head row matches its predecessor but not the picture
         body=[feats[r] for r in range(top+20,min(top+200,last_rec-10)) if feats[r]['lagmed'] is not None]
         # the field's own variance: the body rows' own maxima (nothing inside the picture exceeds them by definition)
         M_lag=max(ft['lagmed'] for ft in body) if body else 1.0; M_dm=max(ft['dm'] for ft in body) if body else 20.0
@@ -150,7 +163,8 @@ for u in range(n):
         # and the intruded-blanking row
         def torn(ft): return ft['lagmed'] is not None and ft['lagmed']>M_lag and ft['dm']>M_dm
         M_dip=sum(1 for ft in body if ft['dip_absent'])   # picture rows never lack the dip; reported
-        def shifted(ft,r): return (abs(ft['wlag'])>=2 and ft['wr']<=0.90) or torn(ft) or flat(ft,r) or ft['lead_run']>M_run+8 or ft['dip_absent']   # (the upward scan from the clip keeps a dip-less row inside the picture from ever being taken as the band)
+        def blanked(ft): return 64<=ft['blank_run']<=200   # the other head's horizontal blanking inside the row
+        def shifted(ft,r): return (abs(ft['wlag'])>=2 and ft['wr']<=0.90) or torn(ft) or flat(ft,r) or ft['lead_run']>M_run+8 or ft['dip_absent'] or blanked(ft)   # (the upward scan from the clip keeps a dip-less row inside the picture from ever being taken as the band)
         def peak(ft,r): return ft['spike']>M_spk and ft['spike']>ft['dm']+5*ft['dsig'] and ft['width']<=12 and ft['above_range']<ft['spike']/2 and not shifted(ft,r)
         # S = the first row from the body downward that is time-shifted / intruded beyond the field's own spread (the
         # first row that belongs entirely to the other head). The switch lands either inside S-1 (a partial line) or at
@@ -177,7 +191,7 @@ for u in range(n):
             sys.stdout.flush(); print(f'unit {u} field {f}: top L{top+base} switch {("L%d"%(sw+base)) if sw is not None else "none"} ({how}) peak_x {px} reliable {reliable} band {band} last_rec L{last_rec+base} | body max lag {M_lag} dm {M_dm:.1f} lead_run {M_run} narrow-spike {M_spk:.0f}')
             for r in range(max(top+20,last_rec-9),last_rec+1):
                 ft=feats[r]; f2=feats2.get(r)
-                why=''.join(k for k,v in (('W',abs(ft['wlag'])>=2 and ft['wr']<=0.90),('T',torn(ft)),('F',flat(ft,r)),('R',ft['lead_run']>M_run+8),('D',ft['dip_absent'])) if v)
-                why2=''.join(k for k,v in (('W',abs(f2['wlag'])>=2 and f2['wr']<=0.90),('T',torn(f2)),('F',flat(f2,r)),('R',f2['lead_run']>M_run+8),('D',f2['dip_absent'])) if v) if f2 else '-'
+                why=''.join(k for k,v in (('W',abs(ft['wlag'])>=2 and ft['wr']<=0.90),('T',torn(ft)),('F',flat(ft,r)),('R',ft['lead_run']>M_run+8),('D',ft['dip_absent']),('B',blanked(ft))) if v)
+                why2=''.join(k for k,v in (('W',abs(f2['wlag'])>=2 and f2['wr']<=0.90),('T',torn(f2)),('F',flat(f2,r)),('R',f2['lead_run']>M_run+8),('D',f2['dip_absent']),('B',blanked(f2))) if v) if f2 else '-'
                 print(f'    L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,40:680].std()):4.1f} lagmed {ft["lagmed"]} n {ft["n"]} dm {ft["dm"]:5.1f} dsig {ft["dsig"]:5.1f} wlag {ft["wlag"]} r {ft["wr"]:.2f} spike {ft["spike"]:5.0f}@{ft["x"]} w{ft["width"]} run {ft["lead_run"]} band {int(band_row(r))} [{why}|{why2}] peak {int(peak(ft,r))}')
 print('units',n,'->',A.out)
