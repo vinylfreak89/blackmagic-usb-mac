@@ -74,10 +74,12 @@ def two_level_frac(row):
     if hi-lo<25: return 0.0
     return float(((np.abs(x-lo)<=6)|(np.abs(x-hi)<=6)).mean())
 def cc_envelope(rowfull):
-    """The smeared XDS bar (the second recording's line 284 at +2): bright over the run-in/start span, flat pedestal
-    after it (MEASURED 35:00: left 91 / right 23 std 3). DEFAULT thresholds 30 / 8."""
-    L=rowfull[60:250].mean(); R=rowfull[300:700]
-    return (L-R.mean())>30 and R.std()<8
+    """The smeared XDS bar (the second recording's line 284 at +2). Its signature is its LEFT half only: a bright flat
+    plateau at full-row samples 150-240 (MEASURED on the 48-bin full-row profile at 35:00: 122-133 in every unit, std
+    ~3) and a dark pedestal from sample 270 on (2-30). The right half varies with picture bleeding into it (45:00),
+    which is why a whole-line flatness test failed there. DEFAULT: plateau > pedestal + 50, plateau std < 15."""
+    P=rowfull[150:240]; D=rowfull[270:400]
+    return (P.mean()-D.mean())>50 and P.std()<15
 def runin_amp(rowfull):
     """503.5 kHz run-in amplitude over the standard run-in window (STANDARD layout), as cc608_decode measures it."""
     x=rowfull.astype(np.float64); lo,hi=10,230; seg=x[lo:hi]-x[lo:hi].mean(); n=np.arange(lo,hi); w=2*np.pi/(1.986e-6*13.5e6)
