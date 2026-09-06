@@ -8,21 +8,21 @@
 - method: cv_inspected: 605, direct: 3
 - status: censored: 486, inferred: 119, observed: 3
 - picture top: 23: 122, 24: 438, 25: 48
-- first switch row: 259: 7, 260: 119, 261: 433, 262: 49
-- last reliable row: 258: 7, 259: 119, 260: 433, 261: 49
-- band length: 2: 4, 3: 590, 4: 14
+- first switch row: 259: 8, 260: 120, 261: 431, 262: 49
+- last reliable row: 258: 8, 259: 120, 260: 431, 261: 49
+- band length: 2: 4, 3: 588, 4: 15, 5: 1
 - closure status: observed: 608
 - RF presence: absent: 161, disappeared: 64, present: 121, reappeared: 262
 
 ### Field 2
 
 - units: 608
-- method: cv_inspected: 541, direct: 67
-- status: censored: 4, inferred: 537, observed: 67
+- method: cv_inspected: 537, direct: 71
+- status: censored: 4, inferred: 533, observed: 71
 - picture top: 286: 604, 287: 4
-- first switch row: 522: 511, 523: 92, 524: 5
-- last reliable row: 521: 511, 522: 92, 523: 5
-- band length: 2: 1, 3: 96, 4: 511
+- first switch row: 522: 492, 523: 110, 524: 6
+- last reliable row: 521: 492, 522: 110, 523: 6
+- band length: 2: 2, 3: 114, 4: 492
 - closure status: observed: 608
 - RF presence: absent: 161, disappeared: 263, present: 120, reappeared: 64
 
@@ -33,10 +33,10 @@
 - units: 621
 - method: cv_inspected: 621
 - status: censored: 621
-- picture top: 25: 263, 26: 358
-- first switch row: 259: 9, 260: 260, 261: 352
-- last reliable row: 258: 9, 259: 260, 260: 352
-- band length: 5: 609, 6: 9, 7: 3
+- picture top: 24: 207, 25: 275, 26: 139
+- first switch row: 259: 4, 260: 263, 261: 354
+- last reliable row: 258: 4, 259: 263, 260: 354
+- band length: 4: 421, 5: 198, 6: 1, 7: 1
 - closure status: observed: 621
 - RF presence: absent: 529, disappeared: 25, present: 14, reappeared: 53
 
@@ -46,9 +46,9 @@
 - method: cv_inspected: 621
 - status: censored: 621
 - picture top: 288: 621
-- first switch row: 522: 451, 523: 170
-- last reliable row: 521: 451, 522: 170
-- band length: 5: 170, 6: 451
+- first switch row: 522: 270, 523: 351
+- last reliable row: 521: 270, 522: 351
+- band length: 5: 351, 6: 270
 - closure status: observed: 621
 - RF presence: absent: 527, disappeared: 55, present: 12, reappeared: 27
 
@@ -57,24 +57,24 @@
 ### Field 1
 
 - units: 608
-- method: cv_inspected: 517, direct: 91
-- status: censored: 2, inferred: 515, observed: 91
+- method: cv_inspected: 22, direct: 586
+- status: censored: 2, inferred: 20, observed: 586
 - picture top: 23: 606, 24: 2
-- first switch row: 259: 5, 260: 354, 261: 243, 262: 6
-- last reliable row: 258: 5, 259: 354, 260: 243, 261: 6
-- band length: 1: 6, 2: 243, 3: 354, 4: 3, 5: 2
+- first switch row: 259: 7, 260: 388, 261: 208, 262: 5
+- last reliable row: 258: 7, 259: 388, 260: 208, 261: 5
+- band length: 1: 5, 2: 208, 3: 388, 4: 5, 5: 2
 - closure status: observed: 608
 - RF presence: absent: 163, disappeared: 281, present: 85, reappeared: 79
 
 ### Field 2
 
 - units: 608
-- method: cv_inspected: 529, direct: 79
-- status: inferred: 529, observed: 79
+- method: cv_inspected: 56, direct: 552
+- status: inferred: 56, observed: 552
 - picture top: 286: 608
-- first switch row: 522: 23, 523: 489, 524: 91, 525: 5
-- last reliable row: 521: 23, 522: 489, 523: 91, 524: 5
-- band length: 1: 5, 2: 91, 3: 489, 4: 23
+- first switch row: 522: 23, 523: 482, 524: 97, 525: 6
+- last reliable row: 521: 23, 522: 482, 523: 97, 524: 6
+- band length: 1: 6, 2: 97, 3: 482, 4: 23
 - closure status: observed: 608
 - RF presence: absent: 165, disappeared: 77, present: 87, reappeared: 279
 
@@ -83,23 +83,23 @@
 ### Field 1
 
 - units: 919
-- method: cv_inspected: 528, direct: 3, unmeasurable: 388
-- status: censored: 44, inferred: 484, observed: 3, unmeasurable: 388
-- picture top: -1: 388, 23: 487, 24: 13, 25: 31
-- first switch row: -1: 388, 258: 1, 259: 78, 260: 270, 261: 174, 262: 8
-- last reliable row: -1: 388, 257: 1, 258: 78, 259: 270, 260: 174, 261: 8
-- band length: -1: 388, 1: 5, 2: 164, 3: 258, 4: 74, 5: 25, 6: 5
-- closure status: observed: 531, unmeasurable: 388
-- RF presence: absent: 471, disappeared: 47, present: 6, reappeared: 7, unmeasurable: 388
+- method: cv_inspected: 122, direct: 482, unmeasurable: 315
+- status: censored: 47, inferred: 75, observed: 482, unmeasurable: 315
+- picture top: -1: 315, 23: 557, 24: 14, 25: 33
+- first switch row: -1: 315, 258: 2, 259: 19, 260: 398, 261: 165, 262: 20
+- last reliable row: -1: 315, 257: 2, 258: 19, 259: 398, 260: 165, 261: 20
+- band length: -1: 315, 1: 15, 2: 157, 3: 383, 4: 17, 5: 28, 6: 4
+- closure status: observed: 604, unmeasurable: 315
+- RF presence: absent: 544, disappeared: 47, present: 6, reappeared: 7, unmeasurable: 315
 
 ### Field 2
 
 - units: 919
-- method: cv_inspected: 464, direct: 71, unmeasurable: 384
-- status: inferred: 464, observed: 71, unmeasurable: 384
-- picture top: -1: 384, 286: 535
-- first switch row: -1: 384, 521: 2, 522: 288, 523: 216, 524: 19, 525: 10
-- last reliable row: -1: 384, 520: 2, 521: 288, 522: 216, 523: 19, 524: 10
-- band length: -1: 384, 1: 10, 2: 19, 3: 216, 4: 288, 5: 2
-- closure status: observed: 535, unmeasurable: 384
-- RF presence: absent: 473, disappeared: 9, present: 4, reappeared: 49, unmeasurable: 384
+- method: cv_inspected: 254, direct: 356, unmeasurable: 309
+- status: inferred: 254, observed: 356, unmeasurable: 309
+- picture top: -1: 309, 286: 610
+- first switch row: -1: 309, 521: 1, 522: 294, 523: 267, 524: 21, 525: 27
+- last reliable row: -1: 309, 520: 1, 521: 294, 522: 267, 523: 21, 524: 27
+- band length: -1: 309, 1: 27, 2: 21, 3: 267, 4: 294, 5: 1
+- closure status: observed: 610, unmeasurable: 309
+- RF presence: absent: 548, disappeared: 9, present: 4, reappeared: 49, unmeasurable: 309

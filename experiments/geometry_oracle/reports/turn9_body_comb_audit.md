@@ -72,16 +72,19 @@ unmeasurable. The per-field histograms are:
 
 | field | picture top | first switch row | band length | closure | RF presence |
 |---:|:---|:---|:---|:---|:---|
-| 1 | L25:263; L26:358 | L259:9; L260:260; L261:352 | 5:609; 6:9; 7:3 | observed:621 | absent:529; disappeared:25; present:14; reappeared:53 |
-| 2 | L288:621 | L522:451; L523:170 | 5:170; 6:451 | observed:621 | absent:527; disappeared:55; present:12; reappeared:27 |
+| 1 | L24:207; L25:275; L26:139 | L259:4; L260:263; L261:354 | 4:421; 5:198; 6:1; 7:1 | observed:621 | absent:529; disappeared:25; present:14; reappeared:53 |
+| 2 | L288:621 | L522:270; L523:351 | 5:351; 6:270 | observed:621 | absent:527; disappeared:55; present:12; reappeared:27 |
 
-Comb is observed at 458 units and unmeasurable at 163. All 458 observations have
-shift zero and agree with the zero-shift geometry; the disagreement unit list is
-empty.
+Comb is observed at 330 units and unmeasurable at 291. Of the observations, 107
+have shift zero and agree with zero-shift geometry; 223 have shift -1 and
+disagree. The complete disagreement list and raw-row witnesses are in
+`comb_summary.md`. This changed when the field-1 top correction admitted the
+previously excluded first picture row; it is measurement output, not a forced
+zero-shift result.
 
 For fixed-top switch transitions, every measurable transition retains its preceding
-comb registration. Field 1 has 12 transitions: 2 measurable/unchanged and 10
-unmeasurable. Field 2 has 189: 137 measurable/unchanged and 52 unmeasurable. The
+comb registration. Field 1 has 8 transitions: 1 measurable/unchanged and 7
+unmeasurable. Field 2 has 189: 82 measurable/unchanged and 107 unmeasurable. The
 complete unit lists by field, switch displacement, and measurability, with three
 raw-row witnesses per populated cell, are in `comb_summary.md`.
 
