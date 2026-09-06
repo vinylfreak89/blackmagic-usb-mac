@@ -395,3 +395,10 @@ Known limits: on the V-stabilize-off pass the picture carries rows as torn as th
 the two-above test, the missing H-dip and the whole-row shift; S at the verified units 524/523/523/523/523 against
 the rows' 523. Thresholds that remain constants: 2 samples / 0.90 (the blind check's envelope), 8 samples over the
 H-dip, 3 σ_b above the pedestal, 4 σ_b for texture, 2 c_b for recorded — each stated with the measurement behind it.
+Additions 06:30 JST: a dark recorded first band is picture and a lone dark row before a bright one is the tape's
+black line 22 (the owner's round-4 ruling, re-established by Codex on the commercial rows: L23–L27 recorded at luma
+4–10, L28 the bright onset); the top lies within the first four recorded rows (the tape's VBI can occupy at most lines
+20–22 of the pass-through region) or the picture's top is unmeasurable (black top), never a brightness edge deeper in
+the field; the picture bottom clips at the Shuttle's pass-through end (262/525, §2), because the chroma-recorded last
+row falls short of it on dark units. Engine commit 632b110; Codex reference 82f177b. SP tops unchanged (8/8 verified
+units); commercial dark-topped units 447/497/650/700/900 now 23.
