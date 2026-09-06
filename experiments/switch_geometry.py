@@ -78,6 +78,7 @@ def rowfeat(row,prev,sig_b,ped_lvl):
     return dict(lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr)
 w=csv.writer(open(A.out,'w',newline='')); w.writerow(['unit','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b'])
 n=len(Ys)-(1 if A.repair else 0)
+PED={1:None,2:None}   # the carried pedestal per field
 for u in range(n):
     if A.only and u not in VERB: continue
     for f in (1,2):
@@ -91,14 +92,19 @@ for u in range(n):
         # the tape's own black (its line 22, and recorded black under the picture) sits at the pedestal or below it;
         # the pedestal is the field's own: the lowest flat recorded row above the blank (the band's other-head black,
         # std < 4 sigma_b), else the blank itself. A picture row is above the pedestal by more than the blank noise.
+        # recorded black (the pedestal): the field's own flat recorded row when it has one (the other head's black in
+        # the band); otherwise the last pedestal seen on this source (a per-source constant measured when available,
+        # never assumed); otherwise the blank
         flat_rec=[float(ym[r]) for r in recrows if ym[r]>thr and float(Y[r,40:680].std())<4*sig_b]
-        ped=min(flat_rec) if flat_rec else by_m
+        if flat_rec: PED[f]=min(flat_rec)
+        ped=PED[f] if PED[f] is not None else by_m
         def picture_row(r): return ym[r]>max(thr,ped+3*sig_b) and float(Y[r,40:680].std())>=4*sig_b and not cc608(Y[r])[0]
-        top=next((r for r in recrows if picture_row(r)),None)
+        # the top begins a run of picture rows (a lone picture-like row followed by a black or VBI row is VBI: a
+        # damaged caption, the tape's line 20 data)
+        top=next((r for r in recrows if picture_row(r) and picture_row(r+1) and picture_row(r+2)),None)
         if top is None or len(recrows)<60: w.writerow([u,f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2)]); continue
         last_rec=recrows[-1]
-        flat_rec=[float(ym[r]) for r in recrows if ym[r]>thr and float(Y[r,40:680].std())<4*sig_b]
-        ped_lvl=(min(flat_rec) if flat_rec else by_m)+6*sig_b
+        ped_lvl=ped+6*sig_b
         feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl) for r in range(top+1,last_rec+1)}
         body=[feats[r] for r in range(top+20,min(top+200,last_rec-10)) if feats[r]['lagmed'] is not None]
         # the field's own variance: the body rows' own maxima (nothing inside the picture exceeds them by definition)
