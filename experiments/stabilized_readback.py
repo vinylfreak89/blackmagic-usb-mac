@@ -23,17 +23,19 @@ Usage: stabilized_readback.py <render.mov> [--manifest <frames.csv>] [--corr 0.7
 import sys, os, csv, argparse, subprocess, numpy as np
 ap=argparse.ArgumentParser(); ap.add_argument('render'); ap.add_argument('--manifest'); ap.add_argument('--corr',type=float,default=0.7)
 ap.add_argument('--grad',type=float,default=0.5); ap.add_argument('--max-list',type=int,default=40); ap.add_argument('--out')
+ap.add_argument('--vscale',type=int,default=0,help='rows per raster line in the render (0 = infer from the height: 243 x vscale)')
 A=ap.parse_args()
 W=720; INFO=200; FIRST={1:20,2:283}
 pr=subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height,nb_frames','-of','csv=p=0',A.render],capture_output=True,text=True,check=True)
 width,height,nb=[x for x in pr.stdout.strip().split(',')]; width=int(width); H=int(height); nb=int(nb) if nb.isdigit() else -1
 assert width==2*W+INFO, f'unexpected width {width}: not a field_pair_review render'
+VS=A.vscale or (H//243 if H%243==0 else 1); assert H==243*VS, f'height {H} is not 243 x {VS}'
+H0=H; H=243   # all row arithmetic below is in raster rows; the frame is reduced by taking one pixel row per raster row
 man=None; mpath=A.manifest or (A.render+'.frames.csv')
 if os.path.exists(mpath):
     man=list(csv.DictReader(open(mpath)))
     if nb>=0 and len(man)!=nb: print(f'WARNING manifest rows {len(man)} != video frames {nb}; joining by frame index anyway')
-ff=subprocess.Popen(['ffmpeg','-v','error','-i',A.render,'-f','rawvideo','-pix_fmt','rgb24','-'],stdout=subprocess.PIPE)
-FS=width*H*3
+ff=subprocess.Popen(['ffmpeg','-v','error','-i',A.render,'-f','rawvideo','-pix_fmt','rgb24','-'],stdout=subprocess.PIPE); FS=width*H0*3
 def red_rows(p):
     r=p[:,:,0].astype(np.int16); gb=np.maximum(p[:,:,1],p[:,:,2]).astype(np.int16)
     frac=((r-gb)>=100).mean(axis=1)            # the renderer draws R=255, G=B=Y//3: redness >= 170 on every column before compression
@@ -50,7 +52,7 @@ S={f:dict(top_moved=[],bot_moved=[],nred=[],shift=[],above=[],below=[],man_misma
 while True:
     b=ff.stdout.read(FS)
     if len(b)<FS: break
-    fr=np.frombuffer(b,np.uint8).reshape(H,width,3)
+    fr=np.frombuffer(b,np.uint8).reshape(H0,width,3)[VS//2::VS]   # the middle pixel row of each doubled raster row
     m=man[k] if (man and k<len(man)) else None
     ordinal=m['ordinal'] if m else str(k); counter=m['counter'] if m else ''
     for f in (1,2):

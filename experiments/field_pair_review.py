@@ -11,7 +11,7 @@ standard picture start (20, 21, 22) at rows 0..2 and the picture at row 3 when t
 Every frame carries its transport ordinal, device counter, and the reference values used, so any frame can be checked
 against the reference CSV. Join is by device counter (16-bit) sequentially from --start-ordinal; a unit whose counter
 does not match the next reference row aborts (fail closed).
-Usage: field_pair_review.py <capture> <reference.csv> <out.mp4> --mode raw|stabilized [--start-ordinal N] [--max-units N]"""
+Usage: field_pair_review.py <capture> <reference.csv> <out.mov> --mode raw|stabilized [--start-ordinal N] [--max-units N] [--vscale 2]"""
 import sys, os, csv, argparse, subprocess, numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
 from packet_capture_reader import walk_tagged
@@ -23,11 +23,13 @@ H=243; W=720; INFO=200   # info column appended to the RIGHT of the two fields; 
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('ref'); ap.add_argument('out')
 ap.add_argument('--mode',choices=['raw','stabilized'],required=True); ap.add_argument('--start-ordinal',type=int,default=0); ap.add_argument('--max-units',type=int,default=0)
 ap.add_argument('--profile',type=int,default=3,help='ProRes profile: 3 = HQ (slices), 0 = proxy (whole tape, ~4 GB)')
-A=ap.parse_args()
+ap.add_argument('--codec',choices=['prores','x264'],default='prores',help='x264: libx264 crf 14, yuv420p (row pairs align with doubled raster rows when --vscale 2), .mp4')
+ap.add_argument('--vscale',type=int,default=1,help='duplicate every raster row this many times (owner: 2 -> 1440x486 reads more easily); bars scale with it')
+A=ap.parse_args(); VS=A.vscale
 ref=list(csv.DictReader(open(A.ref)))
 # sequential join: start at the reference row whose ordinal is nearest --start-ordinal, then advance one row per exact unit
-ff=subprocess.Popen(['ffmpeg','-hide_banner','-loglevel','error','-y','-f','rawvideo','-pix_fmt','rgb24','-s',f'{2*W+INFO}x{H}','-r','30000/1001','-i','-',
-    '-vf','setsar=8/9','-c:v','prores_ks','-profile:v',str(A.profile),'-pix_fmt','yuv422p10le',A.out],stdin=subprocess.PIPE)   # ProRes HQ: keeps the odd 243-line height exactly, plays natively on macOS
+ff=subprocess.Popen(['ffmpeg','-hide_banner','-loglevel','error','-y','-f','rawvideo','-pix_fmt','rgb24','-s',f'{2*W+INFO}x{H*VS}','-r','30000/1001','-i','-',
+    '-vf','setsar=8/9']+(['-c:v','prores_ks','-profile:v',str(A.profile),'-pix_fmt','yuv422p10le'] if A.codec=='prores' else ['-c:v','libx264','-crf','14','-preset','slow','-pix_fmt','yuv420p','-movflags','+faststart'])+[A.out],stdin=subprocess.PIPE)   # ProRes HQ: keeps the odd 243-line height exactly, plays natively on macOS
 n=[0]; hold={1:0,2:0}; buf=bytearray(); skipped=[]
 manifest=open(A.out+'.frames.csv','w'); manifest.write('frame,ordinal,counter,f1_top,f1_bot,f1_shift,f2_top,f2_bot,f2_shift\n')   # read-back joins frames to units by this file, never by OCR
 bycounter={}
@@ -71,13 +73,13 @@ def emit(u):
         if top is None or top<=0: top=None
         rgb,d=field_view(Y,f,top,bot,A.mode); frame[:,(f-1)*W:f*W]=rgb; man+= [top if top else -1, bot if (bot and bot>0) else -1, d]
         txt.append(f"ref top {top if top else '?'} | ref bottom {bot if (bot and bot>0) else '?'} | shift {d:+d}")
-    im=Image.fromarray(frame); dr=ImageDraw.Draw(im); x0=2*W+6
-    dr.rectangle([2*W,0,2*W+INFO-1,H-1],fill=(28,28,28))
+    im=Image.fromarray(np.repeat(frame,VS,axis=0)); dr=ImageDraw.Draw(im); x0=2*W+6; HH=H*VS
+    dr.rectangle([2*W,0,2*W+INFO-1,HH-1],fill=(28,28,28))
     dr.text((x0,6),f"unit {r['ordinal']}",fill=(0,255,255)); dr.text((x0,20),f"ctr {c16}  {A.mode}",fill=(200,200,200))
     for k,f in enumerate((1,2)):
         y0=44+k*64; dr.text((x0,y0),f"FIELD {f}",fill=(255,255,255))
         for q,line in enumerate(txt[k].split(' | ')): dr.text((x0,y0+14+q*14),line,fill=(255,200,200))
-    dr.text((x0,H-40),"rows: lines 20-262",fill=(120,120,120)); dr.text((x0,H-26),"      / 283-525",fill=(120,120,120)); dr.text((x0,H-12),"red = ref top/bottom",fill=(255,80,80))
+    dr.text((x0,HH-40),"rows: lines 20-262",fill=(120,120,120)); dr.text((x0,HH-26),"      / 283-525",fill=(120,120,120)); dr.text((x0,HH-12),"red = ref top/bottom",fill=(255,80,80))
     ff.stdin.write(np.asarray(im).tobytes())
     manifest.write(','.join(str(x) for x in [n[0]-1, r['ordinal'], c16]+man)+'\n')
     if A.max_units and n[0]>=A.max_units: raise StopIteration

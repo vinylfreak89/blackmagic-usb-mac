@@ -28,7 +28,7 @@ for n,fr in units.items():
         for f in state: state[f]=dict(lock=False,d=0,bottom=None)
     out={}
     for f,r in (('1',r1),('2',r2)):
-        S=state[f]; top=int(r['top']); bot=int(r['bottom_band']); reason=''   # the picture's bottom is the last timed row (the strict edge-inside bottom stops at dark rows inside the picture)
+        S=state[f]; top=int(r['top']); bot=int(r['bottom']); reason=''   # the contract's bottom: the last line whose edges are inside the body's variance (measured from below since f5a5d9b+)
         measurable = top>0 and bot>0
         if not S['lock']:
             # ABSOLUTE confirmation (contract §8): a clean textured edge stable over 5 consecutive still units (DEFAULT

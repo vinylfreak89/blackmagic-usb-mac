@@ -9,7 +9,7 @@ head-switch band is the lines below the body whose edge falls outside it (left o
 at all (blank / recorded black under the pedestal) are not picture.
   top     first line at or above the body whose edges are picture-like, scanning up from the body until a line is
           not (the first non-picture-like line above stops the scan)
-  bottom  last picture-like line scanning down from the body (the first line outside the range stops the scan)
+  bottom  the LAST picture-like line of the field, scanning up from the clip line (a dark row inside the picture never ends it)
   shift   brute-force vertical shift of the body against the previous unit's same field (-6..+6, all 640 columns,
           220 rows), with best and second-best MAD; no threshold here, the decision layer owns decisiveness
   flat    mean absolute row-to-row difference of the body (a mute/flat raster has none)
@@ -52,16 +52,15 @@ def emit(u):
             timed=lambda r: left[r]>=0 and (dlo-1.0)<=dip[r]<=(dhi+1.0) and rowstd[r]>3.0
             inside=lambda r: left[r]>=0 and llo<=left[r]<=lhi and rlo<=right[r]<=rhi   # edges only; the dip gates the bottom, never the top
             outward=lambda r: left[r]>=0 and (left[r]<llo or right[r]>rhi)
-            # two bottoms, both reported: strict = last row that is timed AND whose edges are inside the body's
-            # variance; band = last row that is timed (the switch line's inward edge does not end it). A row with no
-            # content or no dip ends both.
-            bottom=b1-1; bottom_band=b1-1; strict_done=False
-            for r in range(b1,F['last']):
-                if not timed(r): break
-                bottom_band=r
-                if not strict_done and inside(r) and timed(r): bottom=r
-                else: strict_done=True
-            if bottom_band==b1-1: bottom=bottom_band=-1     # the scan never left the body: no picture below it to measure (dark scene), unmeasurable, never an edge
+            # §8 point 4: the bottom is the LAST line whose edges sit within the body's variance. Found by scanning UP
+            # from the clip line: a dark row inside the picture (no edge) cannot end the picture, only what lies below
+            # the last picture line does (recorded black, the deck's blanking: no edge; the head-switch band: an edge
+            # outside the variance). bottom_band = the last timed row from below (the switch line's inward edge does
+            # not end it), reported beside it. A scan that never reaches below the body is unmeasurable, never an edge.
+            bottom=-1; bottom_band=-1
+            for r in range(F['last']-1,b1-1,-1):
+                if bottom_band<0 and timed(r): bottom_band=r
+                if inside(r) and timed(r): bottom=r; break
             # lock-time top: the first row above the body whose edges are inside the body's range AND whose content
             # continues into the row below (a picture row); its texture is reported as the lock confidence
             top=b0
