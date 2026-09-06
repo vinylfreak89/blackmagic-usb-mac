@@ -148,6 +148,11 @@ compatibility alias. Chroma-only survival cannot extend either marker. `dp` and
 `switch_displacement` compare the preceding unit's same raster slot only when both coordinates
 exist.
 
+An RF transient candidate retains its row, sample, strength, ratio, and before/after segment lags.
+Its RF status is `observed` only when the complete supplied definition is met, including next-row
+lag at most two samples before the transient and at least four after it; otherwise the candidate is
+`inferred` and its failing measurements remain in `rf_evidence`.
+
 The commercial capture uses counter-based review ordinals: first exact unit 211, with device-short
 ordinals 213, 214, and 216 absent. The owner-provided stable-picture boundary at 551 is deliberately
 an external test assertion in `build_invariant_report.py`, never a builder input. Only `observed`

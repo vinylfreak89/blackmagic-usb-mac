@@ -911,6 +911,29 @@ def _inspect_switch(
         next_after_lag = int(round(_median_abs_lag(after))) if after else -128
         _unused_lag, next_before_mad = _best_segment_lag(rf_row, next_row, 40, rf.peak_x)
         _unused_lag, next_after_mad = _best_segment_lag(rf_row, next_row, rf.peak_x, 680)
+    rf_definition_complete = (
+        rf is not None
+        and 0 <= next_before_lag <= 2
+        and next_after_lag >= 4
+    )
+    rf_status = (
+        "observed"
+        if rf_definition_complete
+        else "inferred"
+        if rf is not None
+        else "unmeasurable"
+    )
+    rf_evidence = (
+        f"L{rf.line} x={rf.peak_x} strength={rf.peak_strength:.3f} "
+        f"ratio={rf.peak_ratio:.3f} aligned lag={rf.median_lag}; "
+        f"next L{rf_onset} diff={rf_pair[1].mean_abs_diff:.3f} "
+        f"lag={rf_pair[1].median_lag}; segments before/after="
+        f"{next_before_lag}/{next_after_lag} "
+        f"MAD={_fmt(next_before_mad)}/{_fmt(next_after_mad)}; "
+        f"definition={'complete' if rf_definition_complete else 'incomplete'}"
+        if rf is not None and rf_pair is not None
+        else "no qualifying aligned-row RF transient followed by a torn row"
+    )
     return SwitchReading(
         line=line,
         status=status,
@@ -943,17 +966,8 @@ def _inspect_switch(
         rf_aligned_lag=aligned_lag,
         rf_next_before_lag=next_before_lag,
         rf_next_after_lag=next_after_lag,
-        rf_status="observed" if rf else "unmeasurable",
-        rf_evidence=(
-            f"L{rf.line} x={rf.peak_x} strength={rf.peak_strength:.3f} "
-            f"ratio={rf.peak_ratio:.3f} aligned lag={rf.median_lag}; "
-            f"next L{rf_onset} diff={rf_pair[1].mean_abs_diff:.3f} "
-            f"lag={rf_pair[1].median_lag}; segments before/after="
-            f"{next_before_lag}/{next_after_lag} "
-            f"MAD={_fmt(next_before_mad)}/{_fmt(next_after_mad)}"
-            if rf and rf_pair
-            else "no qualifying aligned-row RF transient followed by a torn row"
-        ),
+        rf_status=rf_status,
+        rf_evidence=rf_evidence,
         direct_candidate=line - 1 if line >= 0 else -1,
         evidence=reason,
     )
