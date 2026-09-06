@@ -104,10 +104,20 @@ for u in range(n):
         flat_rec=[float(ym[r]) for r in recrows if ym[r]>thr and float(Y[r,40:680].std())<4*sig_b]
         if flat_rec: PED[f]=min(flat_rec)
         ped=PED[f] if PED[f] is not None else by_m
-        def picture_row(r): return ym[r]>max(thr,ped+3*sig_b) and float(Y[r,40:680].std())>=4*sig_b and not cc608(Y[r])[0]
-        # the top begins a run of picture rows (a lone picture-like row followed by a black or VBI row is VBI: a
-        # damaged caption, the tape's line 20 data)
-        top=next((r for r in recrows if picture_row(r) and picture_row(r+1) and picture_row(r+2)),None)
+        # a picture row is recorded and not a CEA-608 waveform; a DARK recorded row (at or below the pedestal) is
+        # picture when the row below it is dark too (the picture's own dark first band, owner ruling 2026-09-06) and
+        # VBI when the row below it is bright (the tape's black line 22 standing alone before the picture)
+        bright=lambda r: ym[r]>max(thr,ped+3*sig_b)
+        def picture_row(r):
+            if not rec[r] or cc608(Y[r])[0]: return False
+            if bright(r): return float(Y[r,40:680].std())>=4*sig_b
+            return r+1<Y.shape[0] and rec[r+1] and not bright(r+1) and not cc608(Y[r+1])[0]
+        # the top begins a run of three picture rows (a lone waveform row before a black row is VBI: a damaged caption,
+        # the tape's line 20 data)
+        # the top lies within the first four recorded rows: the tape's VBI can occupy at most lines 20-22 of the pass-
+        # through region (§2), three rows; a picture whose first picture-like row is deeper than that has a black top and
+        # its top is unmeasurable, not a brightness edge
+        top=next((r for r in recrows[:4] if picture_row(r) and picture_row(r+1) and picture_row(r+2)),None)
         if top is None or len(recrows)<60: w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2)]); continue
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
