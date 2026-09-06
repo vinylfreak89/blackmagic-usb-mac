@@ -21,6 +21,7 @@ Usage: switch_geometry.py <capture> <out.csv> [--repair] [--units a,b,c (verbose
 import sys, os, csv, argparse, numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
 from packet_capture_reader import walk_tagged
+from cc608_decode import decode as cc608
 UNIT=756_048; HDR=48; LINE=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('out'); ap.add_argument('--repair',action='store_true',help='fields paired one later (V-stabilize-off capture): field 1 = this unit slot 2, field 2 = next unit slot 1')
 ap.add_argument('--units',default=''); ap.add_argument('--only',action='store_true',help='process only the --units (test mode)'); A=ap.parse_args(); VERB={int(x) for x in A.units.split(',') if x}
@@ -73,7 +74,16 @@ for u in range(n):
         Y,C,by_m,sig_b,c_b=field_arrays(R,slot); base=20 if slot==1 else 283   # line = row + base (slot numbering)
         rec=(C.std(axis=(1,2))/c_b)>2.0; ym=Y.mean(axis=1); thr=by_m+6*sig_b
         recrows=[r for r in range(3,Y.shape[0]) if rec[r]]                      # rows 0..2 = lines 20/21/22 regenerated
-        top=next((r for r in recrows if ym[r]>thr),None)
+        # top = the first recorded row that carries picture: above the blank, not flat (the tape's black line 22 sits
+        # at luma 4-7 with std < 4 sigma_b: a VBI row, never a top), and not a CEA-608 waveform (the tape's line 21 or
+        # 20 pushed into the pass-through region by a displacement)
+        # the tape's own black (its line 22, and recorded black under the picture) sits at the pedestal or below it;
+        # the pedestal is the field's own: the lowest flat recorded row above the blank (the band's other-head black,
+        # std < 4 sigma_b), else the blank itself. A picture row is above the pedestal by more than the blank noise.
+        flat_rec=[float(ym[r]) for r in recrows if ym[r]>thr and float(Y[r,40:680].std())<4*sig_b]
+        ped=min(flat_rec) if flat_rec else by_m
+        def picture_row(r): return ym[r]>max(thr,ped+3*sig_b) and float(Y[r,40:680].std())>=4*sig_b and not cc608(Y[r])[0]
+        top=next((r for r in recrows if picture_row(r)),None)
         if top is None or len(recrows)<60: w.writerow([u,f,-1,-1,'no-picture',-1,'',0,0,-1,'',-1,-1,-1,-1,round(by_m,2),round(sig_b,2)]); continue
         last_rec=recrows[-1]
         feats={r:rowfeat(Y[r],Y[r-1],sig_b) for r in range(top+1,last_rec+1)}
