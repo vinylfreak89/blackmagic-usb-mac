@@ -72,10 +72,15 @@ def rowfeat(row,prev,sig_b,ped_lvl):
     lo,hi=max(0,x-8),min(720,x+9); above_range=float(prev[lo:hi].max()-prev[lo:hi].min())
     # leading flat run: from sample 3 (past any sync-like spike at 0..2), the samples staying within 3 sigma_b of the
     # level at sample 3..8, ended by a step of >= 6 sigma_b; its length in samples
-    lvl=float(row[3:9].mean()); run=3
-    while run<719 and abs(float(row[run])-lvl)<=3*sig_b: run+=1
-    run=run-3 if (run<719 and float(row[run])-lvl>=6*sig_b) else 0
-    return dict(lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr)
+    # the run's level: the median of samples 6..40 (past any sync-like spike at the row start); the run extends while
+    # samples stay within 6x the blank noise of it (a pedestal row's noise is ~2x the blank's); it ends at a step up
+    lvl=float(np.median(row[6:40])); run=6
+    while run<719 and abs(float(row[run])-lvl)<=6*sig_b: run+=1
+    run=run-6 if (run<719 and float(row[run])-lvl>=6*sig_b) else 0
+    # the horizontal-blanking dip: a timed line begins with samples at the blank level (1..3); the other head's line,
+    # with V-stabilize off, starts with content at sample 0 (its blanking is elsewhere in the line)
+    dip_absent = float(row[0:7].min())>ped_lvl
+    return dict(lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
 w=csv.writer(open(A.out,'w',newline='')); w.writerow(['unit','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b'])
 n=len(Ys)-(1 if A.repair else 0)
 PED={1:None,2:None}   # the carried pedestal per field
@@ -106,6 +111,7 @@ for u in range(n):
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
         feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl) for r in range(top+1,last_rec+1)}
+        feats2={r:rowfeat(Y[r],Y[r-2],sig_b,ped_lvl) for r in range(top+2,last_rec+1)}   # against the row two above: a settled other-head row matches its predecessor but not the picture
         body=[feats[r] for r in range(top+20,min(top+200,last_rec-10)) if feats[r]['lagmed'] is not None]
         # the field's own variance: the body rows' own maxima (nothing inside the picture exceeds them by definition)
         M_lag=max(ft['lagmed'] for ft in body) if body else 1.0; M_dm=max(ft['dm'] for ft in body) if body else 20.0
@@ -119,7 +125,8 @@ for u in range(n):
         # but whose segment lags and row difference exceed anything the picture's own rows show; plus the pedestal row
         # and the intruded-blanking row
         def torn(ft): return ft['lagmed'] is not None and ft['lagmed']>M_lag and ft['dm']>M_dm
-        def shifted(ft,r): return (abs(ft['wlag'])>=2 and ft['wr']<=0.90) or torn(ft) or flat(ft,r) or ft['lead_run']>M_run+8
+        M_dip=sum(1 for ft in body if ft['dip_absent'])   # picture rows never lack the dip; reported
+        def shifted(ft,r): return (abs(ft['wlag'])>=2 and ft['wr']<=0.90) or torn(ft) or flat(ft,r) or ft['lead_run']>M_run+8 or ft['dip_absent']   # (the upward scan from the clip keeps a dip-less row inside the picture from ever being taken as the band)
         def peak(ft,r): return ft['spike']>M_spk and ft['spike']>ft['dm']+5*ft['dsig'] and ft['width']<=12 and ft['above_range']<ft['spike']/2 and not shifted(ft,r)
         # S = the first row from the body downward that is time-shifted / intruded beyond the field's own spread (the
         # first row that belongs entirely to the other head). The switch lands either inside S-1 (a partial line) or at
@@ -131,8 +138,9 @@ for u in range(n):
         # the band is contiguous at the bottom of the field: scan UP from the last recorded row while rows are shifted
         # or pedestal; S = the top of that run (picture rows with motion can also show a whole-row lag, but they are not
         # contiguous with the clip)
+        def band_row(r): return shifted(feats[r],r) or (r in feats2 and shifted(feats2[r],r))
         r=last_rec
-        while r>top+20 and shifted(feats[r],r): r-=1
+        while r>top+20 and band_row(r): r-=1
         if r<last_rec: sw=r+1; how='shifted'
         if sw is not None and sw-1 in feats:
             pf=feats[sw-1]; spk_rank=(pf['spike']/M_spk) if M_spk>0 else 0.0
