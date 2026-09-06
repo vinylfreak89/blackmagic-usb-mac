@@ -402,3 +402,10 @@ black line 22 (the owner's round-4 ruling, re-established by Codex on the commer
 the field; the picture bottom clips at the Shuttle's pass-through end (262/525, §2), because the chroma-recorded last
 row falls short of it on dark units. Engine commit 632b110; Codex reference 82f177b. SP tops unchanged (8/8 verified
 units); commercial dark-topped units 447/497/650/700/900 now 23.
+**Comb at the residual units (Codex turn 9, 17ea6df).** At SP units 75, 79, 102, 105, where the engine's stabilized
+output still moved because one field's body shifted decisively while its top held, the inter-field comb stays at
+shift 0 (seven-shift energies minimal at 0 in units 74–80 and 101–106; unit 76 is a rigid −1 carried by both records;
+unit 103 a genuine +1 with every coordinate fixed). The body moved and the weave did not: content motion. The crop must
+not follow a body shift without a comb change; the clamped-top case of §10.5 is absent from the SP slice and, where
+it occurs, shows as a comb change under a fixed top. EP pass: 458 measurable comb readings, all 0; 139 fixed-top
+switch transitions, none changed the registration.
