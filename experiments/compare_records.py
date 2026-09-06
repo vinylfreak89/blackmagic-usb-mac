@@ -6,8 +6,16 @@ Prints histograms of the differences and lists the units outside them. Usage: co
 (--repair-slots: the engine ran with --repair (fields re-paired one later); the reference's slot 1 = engine field 2 of the previous unit, slot 2 = engine field 1)"""
 import sys, csv, collections, argparse
 ap=argparse.ArgumentParser(); ap.add_argument('sg'); ap.add_argument('ref'); ap.add_argument('--repair-slots',action='store_true'); A=ap.parse_args()
-E={(int(r['unit']),r['field']):r for r in csv.DictReader(open(A.sg))}
 R={int(r['ordinal']):r for r in csv.DictReader(open(A.ref))}
+# join on the device counter, never on the engine's exact-unit index: on a capture with device-short or skipped units
+# the engine's index and the reference's counter-based ordinal diverge (commercial: 213 units apart)
+ORD={int(r['counter']):o for o,r in R.items()}
+E={}; unjoined=0
+for r in csv.DictReader(open(A.sg)):
+    o=ORD.get(int(r['counter']))
+    if o is None: unjoined+=1; continue
+    E[(o,r['field'])]=r
+print(f'joined {len(E)//2} engine units by counter; engine units with no reference counter: {unjoined}')
 def refcols(r,f):
     return dict(top=int(r.get(f'f{f}_picture_top_line',-1) or -1), sw=int(r.get(f'f{f}_switch_first_line', r.get(f'f{f}_switch_line',-1)) or -1), bot=int(r.get(f'f{f}_bottom_line',-1) or -1))
 for f in ('1','2'):
