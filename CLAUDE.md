@@ -1886,5 +1886,19 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   from the same day: review a commit's message bytes as well as its tree; push every branch the
   docs cite; write timestamps only from a checked clock.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
+- **The bounded geometry-v2 raw reference is frozen in
+  `experiments/geometry_oracle/reports/reference_*.csv` (2026-09-07).** It covers every exact
+  unit of the SP slice (608), EP slice (621), and commercial capture (919), with both fields'
+  picture top, last in-variance bottom, first partial head-switch line, last decoder-originated
+  line, method, and raw-row luma evidence for every CV-inspected field. The commercial reference
+  uses the numbered review render's counter-based ordinal: first exact unit 211; device-short
+  holes 213, 214, 216. Ordinals 233–550 contain no measurable picture in either field. From
+  ordinal 551 through 1132, all 582 exact units measure one stable geometry: field 1 top/bottom
+  23/260 and field 2 286/522. The scalar edge candidate is retained separately in every row;
+  its stable-region disagreements (175 field 1, 91 field 2) were resolved on magnified raw outer
+  edges, frozen in `reports/reference_cv_decisions.csv`, and labelled `cv_inspected`, never
+  silently normalized. The numbered stabilized
+  review renders are `/private/tmp/hw-session/codex_ref_{w_300s,w_2100s,composite}_stab.mov`;
+  complete decode and frame-count checks returned 608/621/919 frames respectively.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).

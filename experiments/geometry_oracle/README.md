@@ -130,6 +130,36 @@ the dense index of exact units actually processed.
 individually at the review sites. The combined `active` result is their logical OR; the probe
 exists so a flat dim row cannot be described merely by that combined result.
 
+## Bounded raw-reviewed references
+
+`build_reference.py` produces the final per-exact-unit references for the SP recording, EP
+recording, and commercial tape. The top is the first picture row after raw VBI-type rows. The
+bottom is the last row whose two outer active edges remain inside that field's measured horizontal
+edge behavior; the following partial head-switch row and the last decoder-originated row are
+reported separately. Ambiguous scalar readings were inspected on magnified raw-row panels and
+are frozen independently in `reports/reference_cv_decisions.csv`; their candidate-row luma is in
+`f1_note`/`f2_note`. The builder fails if an ambiguous measurement lacks a decision or if the
+decision inventory contains an unused row. A no-picture raster is `-1` in both fields.
+
+The commercial capture uses the counter-based ordinals burned into the numbered review render.
+Its first exact unit is ordinal 211; device-short ordinals 213, 214, and 216 are absent. The
+stable-picture invariant from ordinal 551 through 1132 is confirmed by the committed inventory
+test: field 1 is 23/260 and field 2 is 286/522 in all 582 exact units. Each scalar bottom candidate
+is retained in `f1_direct_bottom_candidate`/`f2_direct_bottom_candidate`, so every raw-review
+resolution remains auditable rather than being hidden by a stabilized result.
+
+```sh
+python3 experiments/geometry_oracle/build_reference.py \
+  /private/tmp/hw-session/w_300s.tpc \
+  experiments/geometry_oracle/reports/reference_w_300s.csv --profile w_300s
+python3 experiments/geometry_oracle/build_reference.py \
+  /private/tmp/hw-session/w_2100s.tpc \
+  experiments/geometry_oracle/reports/reference_w_2100s.csv --profile w_2100s
+python3 experiments/geometry_oracle/build_reference.py \
+  captures/composite_program_30s.tpc \
+  experiments/geometry_oracle/reports/reference_composite.csv --profile composite
+```
+
 ## Crop verdict layer
 
 `score_crops.py` joins the frozen oracle and the published-crop table by transport ordinal. It
