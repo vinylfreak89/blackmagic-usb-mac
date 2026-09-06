@@ -409,3 +409,37 @@ unit 103 a genuine +1 with every coordinate fixed). The body moved and the weave
 not follow a body shift without a comb change; the clamped-top case of §10.5 is absent from the SP slice and, where
 it occurs, shows as a comb change under a fixed top. EP pass: 458 measurable comb readings, all 0; 139 fixed-top
 switch transitions, none changed the registration.
+
+### 10.1.2 Engine rules added 2026-09-07 morning (commits 805434d … fb390d9), each from raw rows looked at first
+
+- **The pedestal is the flat run contiguous with the clip.** A pedestal row (the other head's black) is flat AND at that
+  level. A flat dark picture above the band is picture (EP counter 1913: lines 253–260 at luma 26, std 1–2, above the
+  band's pedestal 13); a flat grey field has no pedestal of its own (commercial counter 6842). Before this, S ran up
+  to line 250 through the flat picture.
+- **A recorded row carries tape noise in chroma OR luma above the blank;** the Shuttle's padding (Y16/C128, zero
+  variance in both) is excluded explicitly. A flat grey field with chroma noise only 1.7× the blank's (commercial
+  counter 6842, luma 17–20 from line 23) is recorded.
+- **Blanking inside the row is a band signature.** The other head's line carries its horizontal blanking interval —
+  luma 1–2 at the blank's own noise — in the middle of the row (samples ~60–200), where a timed row never has one;
+  its length is bounded by NTSC (64 samples = a sync pulse, 200 = more than any H blanking interval). Census
+  against the harness reference (commercial, 920 units): band rows 834/954 (f1) and 1259/1323 (f2) carry one, the row
+  before the switch 0/531 and 0/535, picture rows 0.4% and never within 4 rows of the switch. On the SP recording the
+  intruding run sits at the pedestal (luma ~11) and no band row carries a blank-level run: the two captures show the
+  same physics at two levels, and the engine keeps both tests. Codex's harness arrived at the same signature
+  independently ("internal blank run x82–145 at Y1.391", turn 10).
+- **VBI-type rows fail to correlate with the row below.** Adjacent picture lines correlate (measured r 0.87–0.99); the
+  EP recording's smeared XDS bar (line 286), its run-in fragments (287) and its caption rows correlate at 0.01–0.36.
+  The test applies only to rows with texture ≥ 4× the field's own noise (median std of adjacent-row differences /√2
+  over the middle rows), so a dark band with texture at the noise (commercial lines 23–24, std 3–6 against noise 2)
+  is left to the brightness rules. The bound 0.5 is a fitted default. Codex's harness uses a different signature
+  (localized left-side structure, flat remainder, no continuation as a whole-width row) and reaches the same 288 in
+  621/621 EP units; correlation is corroboration there, not the classifier.
+- **A bright flat row is picture when the row below is flat too, VBI when the row below is textured.** The flat grey
+  field (every row flat) is picture from line 23; the EP recording's isolated dim row before the picture (counter
+  2066: line 25 at 18.1/2.7 before line 26 at 107/65; also 2303, 2410 — the harness's witnesses) is VBI.
+- **The engine streams** (two rasters in memory) and flushes its record per unit. Whole-capture numbers for these
+  rules: run C (0fc3461), recorded in the 2026-09-07 report.
+- **The owner's commercial-tape rule as a test** (`experiments/stable_interval_check.py`, counter ≥ 6593): the top
+  must be constant where measurable; S within one row of its mode. Codex's rows (turn 10) show the first-full-other-
+  head row itself moving between 260 and 261 at counters 6645, 6688, 6714, 6738 with the top fixed at 23: the
+  picture is stable, the switch position is not — the test's one-row allowance is physics, not tolerance.
