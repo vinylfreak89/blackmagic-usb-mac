@@ -101,7 +101,14 @@ for u in range(n):
         # recorded black (the pedestal): the field's own flat recorded row when it has one (the other head's black in
         # the band); otherwise the last pedestal seen on this source (a per-source constant measured when available,
         # never assumed); otherwise the blank
-        flat_rec=[float(ym[r]) for r in recrows if ym[r]>thr and float(Y[r,40:680].std())<4*sig_b]
+        # the pedestal is the other head's black: the run of flat recorded rows contiguous with the clip (the band's
+        # bottom), never any flat row of the field — a flat dark picture (EP unit 3: lines 253-260 at luma 26, std 1-2,
+        # above the band's pedestal 13) is picture, and a flat grey field (commercial unit 800, luma 17-20, std 1.3) has
+        # no pedestal of its own
+        flat_rec=[]
+        for r in reversed(recrows):
+            if ym[r]>thr and float(Y[r,40:680].std())<4*sig_b: flat_rec.append(float(ym[r]))
+            else: break
         if flat_rec: PED[f]=min(flat_rec)
         ped=PED[f] if PED[f] is not None else by_m
         # a picture row is recorded and not a CEA-608 waveform; a DARK recorded row (at or below the pedestal) is
@@ -130,7 +137,7 @@ for u in range(n):
         narrow=[ft['spike'] for ft in body if ft['width']<=12 and ft['above_range']<ft['spike']/2]; M_spk=max(narrow) if narrow else 0.0   # the picture's own narrow specks
         body_r=min(ft['wr'] for ft in body) if body else 1.0; body_lag=max(abs(ft['wlag']) for ft in body) if body else 1   # the field's own envelope, reported
         M_lag=max(ft['lagmed'] for ft in body) if body else 1.0; M_dm=max(ft['dm'] for ft in body) if body else 20.0
-        def flat(ft,r): return float(Y[r,40:680].std())<4*sig_b and ym[r]>thr                                 # a pedestal row (the other head's black)
+        def flat(ft,r): return float(Y[r,40:680].std())<4*sig_b and ym[r]>thr and ym[r]<=ped+6*sig_b           # a pedestal row (the other head's black): flat AT the pedestal, not any flat row
         # the other head's rows come in two shapes: a uniform whole-row time shift (the blind check's envelope: picture
         # |lag| <= 1.2, r >= 0.94), or a torn row whose lag varies along the line (no single lag fits, r stays near 1)
         # but whose segment lags and row difference exceed anything the picture's own rows show; plus the pedestal row
@@ -163,5 +170,8 @@ for u in range(n):
         if u in VERB:
             sys.stdout.flush(); print(f'unit {u} field {f}: top L{top+base} switch {("L%d"%(sw+base)) if sw is not None else "none"} ({how}) peak_x {px} reliable {reliable} band {band} last_rec L{last_rec+base} | body max lag {M_lag} dm {M_dm:.1f} lead_run {M_run} narrow-spike {M_spk:.0f}')
             for r in range(max(top+20,last_rec-9),last_rec+1):
-                ft=feats[r]; print(f'    L{r+base}: lagmed {ft["lagmed"]} n {ft["n"]} dm {ft["dm"]:5.1f} dsig {ft["dsig"]:5.1f} spike {ft["spike"]:5.0f}@{ft["x"]} w{ft["width"]} shifted {int(shifted(ft,r))} run {ft["lead_run"]} above_rng {ft["above_range"]:.0f} peak {int(peak(ft,r))}')
+                ft=feats[r]; f2=feats2.get(r)
+                why=''.join(k for k,v in (('W',abs(ft['wlag'])>=2 and ft['wr']<=0.90),('T',torn(ft)),('F',flat(ft,r)),('R',ft['lead_run']>M_run+8),('D',ft['dip_absent'])) if v)
+                why2=''.join(k for k,v in (('W',abs(f2['wlag'])>=2 and f2['wr']<=0.90),('T',torn(f2)),('F',flat(f2,r)),('R',f2['lead_run']>M_run+8),('D',f2['dip_absent'])) if v) if f2 else '-'
+                print(f'    L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,40:680].std()):4.1f} lagmed {ft["lagmed"]} n {ft["n"]} dm {ft["dm"]:5.1f} dsig {ft["dsig"]:5.1f} wlag {ft["wlag"]} r {ft["wr"]:.2f} spike {ft["spike"]:5.0f}@{ft["x"]} w{ft["width"]} run {ft["lead_run"]} band {int(band_row(r))} [{why}|{why2}] peak {int(peak(ft,r))}')
 print('units',n,'->',A.out)
