@@ -135,6 +135,13 @@ class ReferenceMeasurementTest(unittest.TestCase):
             self.assertEqual(int(off[unit]["f2_switch_first_line"]), 523)
             self.assertEqual(int(off[unit]["f2_bottom_line"]), 522)
             self.assertEqual(int(off[unit]["f2_hs_bottom_line"]), 525)
+            for row, prefix in ((on[unit], "f1_"), (off[unit], "f2_")):
+                self.assertGreaterEqual(int(row[prefix + "rf_next_after_lag"]), 4)
+                # The supplied <=2 before-x gate does not reproduce on these
+                # raw rows, so the transient remains measured but qualified.
+                if int(row[prefix + "rf_next_before_lag"]) > 2:
+                    self.assertEqual(row[prefix + "rf_status"], "inferred")
+                    self.assertIn("definition=incomplete", row[prefix + "rf_evidence"])
 
     def test_commercial_acceptance_is_external_and_observed_only(self) -> None:
         rows = read_reference("composite")

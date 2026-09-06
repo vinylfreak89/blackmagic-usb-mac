@@ -1898,6 +1898,9 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   aliases `hs_bottom_line` for old consumers. Chroma-only survival cannot extend the band.
   Flat/no-picture fields are `unmeasurable`; a hold policy is noted but no coordinate is
   substituted. Numeric `dp`/switch displacement exists only when both same-slot coordinates do.
+  RF candidates keep their measured row/sample even when a sub-gate fails, but `rf_status` is
+  `observed` only when the full before/after-lag definition is satisfied; incomplete evidence is
+  explicitly `inferred` rather than silently accepted.
 
   The commercial reference uses counter-based review ordinals: first exact unit 211, with
   device-short holes 213, 214, and 216. The owner's stable-picture statement from ordinal 551 is
