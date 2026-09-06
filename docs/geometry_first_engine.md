@@ -325,3 +325,38 @@ head-switch position in the ON pass therefore moves with the dropped-line count,
 Consequences: the raw pass is the geometric reference for what the tape holds; the ON pass is what a user of this
 deck gets, and the engine's job on it is exactly the per-unit displacement the TBC introduced. A row-to-row
 departure test reads the OFF pass's pre-switch skew as the switch (harness reference two lines early at units 20/200).
+
+## 10. Contract v3 — the owner's model of 2026-09-07 03:09–03:35 JST (verbatim in
+## `/private/tmp/hw-session/briefs/owner_verbatim_transcript.md`, extracted from the session transcript by script;
+## Codex's independent read agreed on every point but one, its turn 4)
+
+Per field per unit, measured from the unit's own regenerated rows with the same code on every capture:
+1. **Blanking bounds** the geometry above and below; the picture is the rows between, and a field closes to its
+   expected 240 lines (top + 239), whether or not all of them are visible in the Shuttle's raster.
+2. **The reliable geometry is the top of the picture to the row before the head switch.** Measured at units 20,
+   105 and 200: 237 rows in both the V-stabilize-on and -off passes, so the count survives the TBC.
+3. **The head switch is one of: discontinuous horizontal skew, an RF peak in the luma, or both** (plus an AGC level
+   mismatch where present). The peak carries the tear with it, so its horizontal position on the line is measured
+   when present; it drifts slowly, never jumps from one side to the other; the TBC can smooth it away and render the
+   partial line as picture, and then the band's row count is what survives. The head switch is optional (not every
+   source is VHS): "not applicable" is distinct from "unmeasurable".
+4. **The band is the unreliable part of the geometry**: how much of it is blanked by the switch versus the end of the
+   picture is the number of band rows, and that number is confirmed by secondary signals (comb between the fields,
+   VBI, captions), ideally more than one. The band count alone never moves anything.
+5. **Raster clipping**: a whole field can mistime and fall out of the Shuttle's raster; cues present one frame and
+   absent the next mean they shifted away, near-certain when the top shifts too. Open: the top stable with the band
+   gone. Codex's audit: in the on pass every switch-past-clip transition (24) came with a top move; the owner has no
+   model for the stable-top case; Codex disagrees that it is a field shift by itself; Claude's proposal is the
+   per-field body shift against the previous unit compared between the two fields (a pan moves both, a field shift
+   moves one) with the comb changing at the same unit.
+Per-unit record (Codex's list, accepted): measured top with its VBI/caption/blanking evidence; expected bottom
+top + 239 with clipping status; first switch row (skew, peak, AGC, or combination); last reliable row = switch − 1;
+last visible picture-bearing band row; first blank row and raster limit; band length incl. censored rows; RF peak
+row, x, strength, presence/disappearance and continuity from the preceding field; skew and AGC evidence;
+comb/VBI/caption confirmations with observed / inferred / censored / unmeasurable / not-applicable status;
+independent dp and switch displacement, never turning a missing observation into motion.
+Measured row signatures (2026-09-07 04:00, verified units, both passes): picture rows match the row above at a
+segment lag of 0–1 with mean |diff| 8–17; the first other-head row has median segment lag ≥ 10 and mean |diff|
+35–80; the RF peak is a spike ≥ 4× the row's mean |diff| (105–160 raw) at the same sample in both passes on an
+otherwise aligned row, with the next row torn from that sample on; the on pass ends the band with a flat pedestal
+row (std < 1.1).
