@@ -90,7 +90,13 @@ for u in range(n):
     for f in (1,2):
         R=Ys[u] if (f==1 or not A.repair) else Ys[u+1]; slot=(2 if (f==1 and A.repair) else (1 if (f==2 and A.repair) else f))
         Y,C,by_m,sig_b,c_b=field_arrays(R,slot); base=20 if slot==1 else 283   # line = row + base (slot numbering)
-        rec=(C.std(axis=(1,2))/c_b)>2.0; ym=Y.mean(axis=1); thr=by_m+6*sig_b
+        ym=Y.mean(axis=1); thr=by_m+6*sig_b
+        # a recorded row carries tape noise the regenerated rows do not: chroma noise above 2x the blank's, OR luma above
+        # the blank (a flat grey field's rows, luma 17-20 with chroma noise only 1.7x the blank's — commercial unit 800 —
+        # are recorded); the Shuttle's hard padding (Y16 C128, zero variance in both) is neither
+        ystd=Y[:,40:680].std(axis=1); cstd=C.std(axis=(1,2))
+        padding=(ystd==0)&(cstd==0)
+        rec=(~padding)&((cstd/c_b>2.0)|(ym>thr)|(ystd>=4*sig_b))
         recrows=[r for r in range(3,Y.shape[0]) if rec[r]]                      # rows 0..2 = lines 20/21/22 regenerated
         # top = the first recorded row that carries picture: above the blank, not flat (the tape's black line 22 sits
         # at luma 4-7 with std < 4 sigma_b: a VBI row, never a top), and not a CEA-608 waveform (the tape's line 21 or
