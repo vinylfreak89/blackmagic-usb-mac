@@ -95,7 +95,7 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None):
             e=np.flatnonzero(np.diff(np.concatenate(([0],m.astype(np.int8),[0]))))
             blank_run=int((e[1::2]-e[0::2]).max())
     return dict(blank_run=blank_run,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
-w=csv.writer(open(A.out,'w',newline='')); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b'])
+w=csv.writer(open(A.out,'w',newline='')); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b','S_tests','band_tests'])
 n=len(Ys)-(1 if A.repair else 0)
 PED={1:None,2:None}   # the carried pedestal per field
 for u in range(n):
@@ -158,7 +158,7 @@ for u in range(n):
         # through region (§2), three rows; a picture whose first picture-like row is deeper than that has a black top and
         # its top is unmeasurable, not a brightness edge
         top=next((r for r in recrows[:4] if picture_row(r) and picture_row(r+1) and picture_row(r+2)),None)
-        if top is None or len(recrows)<60: w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2)]); continue
+        if top is None or len(recrows)<60: w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','']); continue
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
         feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl,by_m) for r in range(top+1,last_rec+1)}
@@ -191,6 +191,11 @@ for u in range(n):
         # or pedestal; S = the top of that run (picture rows with motion can also show a whole-row lag, but they are not
         # contiguous with the clip)
         def band_row(r): return shifted(feats[r],r) or (r in feats2 and shifted(feats2[r],r))
+        def tests(r):
+            ft=feats[r]; f2=feats2.get(r)
+            a=''.join(k for k,v in (('W',abs(ft['wlag'])>=2 and ft['wr']<=0.90),('T',torn(ft)),('F',flat(ft,r)),('R',ft['lead_run']>M_run+8),('D',ft['dip_absent']),('B',blanked(ft))) if v)
+            b=''.join(k for k,v in (('W',abs(f2['wlag'])>=2 and f2['wr']<=0.90),('T',torn(f2)),('F',flat(f2,r)),('R',f2['lead_run']>M_run+8),('D',f2['dip_absent']),('B',blanked(f2))) if v) if f2 else ''
+            return a+('/2'+b if b else '')
         r=last_rec
         while r>top+20 and band_row(r): r-=1
         if r<last_rec: sw=r+1; how='shifted'
@@ -200,7 +205,7 @@ for u in range(n):
             ev=f"spike {pf['spike']:.0f}@{pf['x']} w{pf['width']} rank {spk_rank:.2f} narrowflat {int(narrow_flat)} wlag {pf['wlag']} r {pf['wr']:.2f}"
             if narrow_flat and spk_rank>=1.0: px=pf['x']; how='shifted+peak_above'
         reliable=(sw-top) if sw is not None else (last_rec-top+1); band=(last_rec-sw+1) if sw is not None else 0
-        w.writerow([u,CTR[u],f,top+base,(sw+base) if sw is not None else -1,how,px,ev,reliable,band,last_rec+base,reliable+band,(feats[sw]['wlag'] if sw is not None else ''),(round(feats[sw]['wr'],2) if sw is not None else ''),body_lag,round(body_r,2),M_run,round(M_spk,0),round(by_m,2),round(sig_b,2)])
+        w.writerow([u,CTR[u],f,top+base,(sw+base) if sw is not None else -1,how,px,ev,reliable,band,last_rec+base,reliable+band,(feats[sw]['wlag'] if sw is not None else ''),(round(feats[sw]['wr'],2) if sw is not None else ''),body_lag,round(body_r,2),M_run,round(M_spk,0),round(by_m,2),round(sig_b,2),(tests(sw) if sw is not None else ''),('|'.join(f'{r+base}:{tests(r)}' for r in range(sw,last_rec+1)) if sw is not None else '')])
         if u in VERB:
             sys.stdout.flush(); print(f'unit {u} field {f}: top L{top+base} switch {("L%d"%(sw+base)) if sw is not None else "none"} ({how}) peak_x {px} reliable {reliable} band {band} last_rec L{last_rec+base} | body max lag {M_lag} dm {M_dm:.1f} lead_run {M_run} narrow-spike {M_spk:.0f}')
             for r in range(max(top+20,last_rec-9),last_rec+1):
