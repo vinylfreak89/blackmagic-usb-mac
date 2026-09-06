@@ -19,6 +19,7 @@ import sys, os, csv, argparse, numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
 from packet_capture_reader import walk_tagged
 UNIT=756_048; HDR=48; LINE=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
+PEDESTAL=11.0   # recorded black on both tapes (~11; DEFAULT until measured at lock)
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('out'); ap.add_argument('--ratio',type=float,default=1.75); A=ap.parse_args()
 # unit rows (line = row + 4): pass-through region rows 19..260 / 282..522 by the reference raster; the search spans the
 # whole non-padding region so a displaced recorded region is still found
@@ -41,8 +42,17 @@ def emit(u):
             ok=(left[b0:b1]>=0)&(right[b0:b1]>=0); nbe=int(ok.sum())
             RUN=100; dY=np.abs(np.diff(Y,axis=0)); lrun=dY[:,10:10+RUN].mean(axis=1); rrun=dY[:,710-RUN:710].mean(axis=1)
             lref=max(float(lrun[b0-1:b1-1].max()),0.25); rref=max(float(rrun[b0-1:b1-1].max()),0.25)
+            # BAND ROW SIGNATURE (verified on zoomed rows 2026-09-07, both fields): after the switch the other head's
+            # LINE START lands at the row's edge, so band rows begin with a ~137-sample run at its blanking/black and
+            # depart from the row above over that run; the partial line does not (its departure is inside the row).
+            # The side is a deck constant (LEFT on this deck for both fields; the owner: it can be either side — the
+            # side is a per-source constant to be measured at lock, DEFAULT left). Level is not used: the other
+            # head's run may sit at blanking or at pedestal, and on grey content the partial line's far region sits
+            # at pedestal too, which is what made a level test read the partial line as band.
+            BAND_SIDE='left'
+            run=lrun if BAND_SIDE=='left' else rrun; ref=lref if BAND_SIDE=='left' else rref
             for r in range(b1,rec_last+1):
-                if lrun[r-1]>lref or rrun[r-1]>rref: band_first=r; break
+                if run[r-1]>ref: band_first=r; break
             if nbe>=20:
                 bl=left[b0:b1][ok]; br=right[b0:b1][ok]; llo,lhi,rlo,rhi=int(bl.min()),int(bl.max()),int(br.min()),int(br.max())
                 for r in range(rec_last,b1-1,-1):

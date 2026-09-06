@@ -25,10 +25,10 @@ ap=argparse.ArgumentParser(); ap.add_argument('render'); ap.add_argument('--mani
 ap.add_argument('--grad',type=float,default=0.5); ap.add_argument('--max-list',type=int,default=40); ap.add_argument('--out')
 ap.add_argument('--vscale',type=int,default=0,help='rows per raster line in the render (0 = infer from the height: 243 x vscale)')
 A=ap.parse_args()
-W=720; INFO=200; FIRST={1:20,2:283}
+W=720; FIRST={1:20,2:283}
 pr=subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height,nb_frames','-of','csv=p=0',A.render],capture_output=True,text=True,check=True)
 width,height,nb=[x for x in pr.stdout.strip().split(',')]; width=int(width); H=int(height); nb=int(nb) if nb.isdigit() else -1
-assert width==2*W+INFO, f'unexpected width {width}: not a field_pair_review render'
+INFO=width-2*W; assert INFO in (200,230), f'unexpected width {width}: not a field_pair_review render'
 VS=A.vscale or (H//243 if H%243==0 else 1); assert H==243*VS, f'height {H} is not 243 x {VS}'
 H0=H; H=243   # all row arithmetic below is in raster rows; the frame is reduced by taking one pixel row per raster row
 man=None; mpath=A.manifest or (A.render+'.frames.csv')
