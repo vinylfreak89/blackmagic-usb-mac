@@ -26,7 +26,8 @@ UNIT=756_048; HDR=48; LINE=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('out'); ap.add_argument('--repair',action='store_true',help='fields paired one later (V-stabilize-off capture): field 1 = this unit slot 2, field 2 = next unit slot 1')
 ap.add_argument('--units',default=''); ap.add_argument('--only',action='store_true',help='process only the --units (test mode)'); A=ap.parse_args(); VERB={int(x) for x in A.units.split(',') if x}
 Ys=[]; buf=bytearray()
-def emit(u): Ys.append(np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,LINE))
+CTR=[]
+def emit(u): CTR.append(int.from_bytes(u[4:6],'little')); Ys.append(np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,LINE))
 def on_video(p):
     buf.extend(p)
     while True:
@@ -81,7 +82,7 @@ def rowfeat(row,prev,sig_b,ped_lvl):
     # with V-stabilize off, starts with content at sample 0 (its blanking is elsewhere in the line)
     dip_absent = float(row[0:7].min())>ped_lvl
     return dict(lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
-w=csv.writer(open(A.out,'w',newline='')); w.writerow(['unit','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b'])
+w=csv.writer(open(A.out,'w',newline='')); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b'])
 n=len(Ys)-(1 if A.repair else 0)
 PED={1:None,2:None}   # the carried pedestal per field
 for u in range(n):
@@ -107,7 +108,7 @@ for u in range(n):
         # the top begins a run of picture rows (a lone picture-like row followed by a black or VBI row is VBI: a
         # damaged caption, the tape's line 20 data)
         top=next((r for r in recrows if picture_row(r) and picture_row(r+1) and picture_row(r+2)),None)
-        if top is None or len(recrows)<60: w.writerow([u,f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2)]); continue
+        if top is None or len(recrows)<60: w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2)]); continue
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
         feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl) for r in range(top+1,last_rec+1)}
@@ -148,7 +149,7 @@ for u in range(n):
             ev=f"spike {pf['spike']:.0f}@{pf['x']} w{pf['width']} rank {spk_rank:.2f} narrowflat {int(narrow_flat)} wlag {pf['wlag']} r {pf['wr']:.2f}"
             if narrow_flat and spk_rank>=1.0: px=pf['x']; how='shifted+peak_above'
         reliable=(sw-top) if sw is not None else (last_rec-top+1); band=(last_rec-sw+1) if sw is not None else 0
-        w.writerow([u,f,top+base,(sw+base) if sw is not None else -1,how,px,ev,reliable,band,last_rec+base,reliable+band,(feats[sw]['wlag'] if sw is not None else ''),(round(feats[sw]['wr'],2) if sw is not None else ''),body_lag,round(body_r,2),M_run,round(M_spk,0),round(by_m,2),round(sig_b,2)])
+        w.writerow([u,CTR[u],f,top+base,(sw+base) if sw is not None else -1,how,px,ev,reliable,band,last_rec+base,reliable+band,(feats[sw]['wlag'] if sw is not None else ''),(round(feats[sw]['wr'],2) if sw is not None else ''),body_lag,round(body_r,2),M_run,round(M_spk,0),round(by_m,2),round(sig_b,2)])
         if u in VERB:
             sys.stdout.flush(); print(f'unit {u} field {f}: top L{top+base} switch {("L%d"%(sw+base)) if sw is not None else "none"} ({how}) peak_x {px} reliable {reliable} band {band} last_rec L{last_rec+base} | body max lag {M_lag} dm {M_dm:.1f} lead_run {M_run} narrow-spike {M_spk:.0f}')
             for r in range(max(top+20,last_rec-9),last_rec+1):
