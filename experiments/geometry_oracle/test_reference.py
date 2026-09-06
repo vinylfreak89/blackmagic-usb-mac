@@ -4,249 +4,168 @@ from __future__ import annotations
 import csv
 import unittest
 from collections import Counter
+from dataclasses import fields
 from pathlib import Path
 
 import numpy as np
 
+from build_invariant_report import build as build_invariant_report
 from build_reference import (
-    COMPOSITE_MISSING_EXACT,
-    PROFILES,
-    ReferenceRow,
-    _longest_true_run,
-    _partial_predecessor,
+    CAPTURES,
+    CSV_COLUMNS,
+    FIELD_COLUMNS,
+    METHODS,
+    STATUSES,
+    CaptureSpec,
+    _first_edge_departure,
     validate,
 )
-from motion_audit import _read_previous_changes
 
 
-def synthetic_raster() -> np.ndarray:
-    y = np.full((525, 720), 1, dtype=np.uint8)
-    ramp = np.linspace(40, 140, 696, dtype=np.uint8)
-    for lo, hi in ((19, 259), (282, 522)):
-        y[lo:hi, 12:708] = ramp
-    return y
+ROOT = Path(__file__).parent / "reports"
 
 
-def composite_row(ordinal: int) -> ReferenceRow:
-    unknown = 233 <= ordinal <= 550
-    return ReferenceRow(
-        ordinal=ordinal,
-        counter=6042 + ordinal,
-        f1_picture_top_line=-1 if unknown else 23,
-        f1_bottom_line=-1 if unknown else 259,
-        f1_hs_partial_line=-1 if unknown else 262,
-        f1_last_recorded_line=-1 if unknown else 262,
-        f1_method="unmeasurable" if unknown else "direct",
-        f1_note="test",
-        f1_direct_bottom_candidate=-1 if unknown else 259,
-        f2_picture_top_line=-1 if unknown else 286,
-        f2_bottom_line=-1 if unknown else 521,
-        f2_hs_partial_line=-1 if unknown else 525,
-        f2_last_recorded_line=-1 if unknown else 525,
-        f2_method="unmeasurable" if unknown else "direct",
-        f2_note="test",
-        f2_direct_bottom_candidate=-1 if unknown else 521,
-        applied_d1=0,
-        applied_d2=0,
-    )
+def read_reference(name: str) -> list[dict[str, str]]:
+    with (ROOT / f"reference_{name}.csv").open(newline="") as handle:
+        return list(csv.DictReader(handle))
 
 
 class ReferenceMeasurementTest(unittest.TestCase):
-    def test_split_row_marks_predecessor_as_switch_onset(self) -> None:
-        y = synthetic_raster()
-        y[256, 350:] = 10  # L260 is split.
-        y[257] = 10  # L261 is the main discontinuity.
-        partial, fraction, run, *_edge = _partial_predecessor(y, 1, 261)
-        self.assertTrue(partial)
-        self.assertGreater(fraction, 0.35)
-        self.assertGreater(run, 64)
-
-    def test_longest_true_run(self) -> None:
-        mask = np.asarray([False, True, True, False, True, True, True, False])
-        self.assertEqual(_longest_true_run(mask), 3)
-
-    def test_new_capture_uses_profile_not_per_unit_answers(self) -> None:
-        self.assertIn("sp_vstab_off", PROFILES)
-        self.assertFalse(
-            (
-                Path(__file__).parent
-                / "reports"
-                / "reference_cv_decisions.csv"
-            ).exists()
-        )
-
-    def test_superseded_change_scope_is_transition_only(self) -> None:
-        root = Path(__file__).parent / "reports"
-        changes = _read_previous_changes(root / "superseded_marker_changes.csv")
-        self.assertEqual(len(changes), 516)
+    def test_capture_specs_cannot_carry_geometry_answers(self) -> None:
         self.assertEqual(
-            Counter((capture, field) for capture, _ordinal, field in changes),
-            Counter(
-                {
-                    ("w_300s", 1): 62,
-                    ("w_300s", 2): 46,
-                    ("w_2100s", 1): 240,
-                    ("w_2100s", 2): 168,
-                }
+            [item.name for item in fields(CaptureSpec)],
+            ["label", "expected_count", "ordinal_origin"],
+        )
+        self.assertEqual(set(CAPTURES), {"w_300s", "w_2100s", "sp_vstab_off", "composite"})
+
+    def test_edge_departure_uses_field_body_variance(self) -> None:
+        y = np.ones((525, 720), dtype=np.uint8)
+        y[19:260, 12:708] = 100
+        y[256] = 1
+        y[256, 32:708] = 100  # NTSC L260: left edge moves by 20 samples.
+        line, evidence = _first_edge_departure(y, 1, range(259, 263))
+        self.assertEqual(line, 260)
+        self.assertIn("edges=", evidence)
+
+    def test_committed_references_obey_contract(self) -> None:
+        for name, specification in CAPTURES.items():
+            rows = read_reference(name)
+            self.assertEqual(len(rows), specification.expected_count)
+            self.assertEqual(list(rows[0]), CSV_COLUMNS)
+            validate(rows, name)
+            for field in (1, 2):
+                prefix = f"f{field}_"
+                self.assertLessEqual(
+                    set(row[prefix + "method"] for row in rows), METHODS
+                )
+                self.assertLessEqual(
+                    set(row[prefix + "status"] for row in rows), STATUSES
+                )
+                self.assertEqual(rows[0][prefix + "dp"], "not-applicable")
+                self.assertEqual(
+                    rows[0][prefix + "switch_displacement"], "not-applicable"
+                )
+                for index, row in enumerate(rows):
+                    status = row[prefix + "status"]
+                    if row[prefix + "method"] != "direct":
+                        self.assertIn("row Y(mean/std)", row[prefix + "note"])
+                    if status == "unmeasurable":
+                        self.assertEqual(int(row[prefix + "switch_first_line"]), -1)
+                        self.assertEqual(int(row[prefix + "bottom_line"]), -1)
+                        continue
+                    top = int(row[prefix + "picture_top_line"])
+                    switch = int(row[prefix + "switch_first_line"])
+                    self.assertEqual(int(row[prefix + "expected_bottom_line"]), top + 239)
+                    self.assertEqual(int(row[prefix + "bottom_line"]), switch - 1)
+                    self.assertEqual(int(row[prefix + "last_reliable_line"]), switch - 1)
+                    self.assertEqual(int(row[prefix + "closure_line_count"]), 240)
+                    self.assertIn("row Y(mean/std)", row[prefix + "note"])
+                    if index:
+                        previous = rows[index - 1]
+                        prior_top = int(previous[prefix + "picture_top_line"])
+                        prior_switch = int(previous[prefix + "switch_first_line"])
+                        expected_dp = (
+                            str(top - prior_top) if prior_top >= 0 else "unmeasurable"
+                        )
+                        expected_ds = (
+                            str(switch - prior_switch)
+                            if prior_switch >= 0
+                            else "unmeasurable"
+                        )
+                        self.assertEqual(row[prefix + "dp"], expected_dp)
+                        self.assertEqual(row[prefix + "switch_displacement"], expected_ds)
+
+    def test_raw_adjudicated_sp_and_ep_boundaries(self) -> None:
+        sp = {int(row["ordinal"]): row for row in read_reference("w_300s")}
+        self.assertEqual(
+            [int(sp[unit]["f1_switch_first_line"]) for unit in (77, 78, 79)],
+            [261, 259, 260],
+        )
+        self.assertEqual(
+            [int(sp[unit]["f2_switch_first_line"]) for unit in (74, 75, 76)],
+            [523, 522, 524],
+        )
+        self.assertEqual(
+            (
+                int(sp[104]["f1_picture_top_line"]),
+                int(sp[104]["f1_switch_first_line"]),
+                int(sp[105]["f1_picture_top_line"]),
+                int(sp[105]["f1_switch_first_line"]),
             ),
+            (23, 259, 25, 262),
+        )
+        ep = {int(row["ordinal"]): row for row in read_reference("w_2100s")}
+        self.assertEqual(
+            {int(ep[unit]["f2_switch_first_line"]) for unit in (3, 4, 5)},
+            {523},
         )
 
-    def test_composite_validation_accepts_manifest_gaps_and_invariant(self) -> None:
-        rows = [
-            composite_row(value)
-            for value in range(211, 1133)
-            if value not in COMPOSITE_MISSING_EXACT
-        ]
-        validate(rows, "composite")
+    def test_rf_transient_repeats_at_same_sample_across_passes(self) -> None:
+        on = {int(row["ordinal"]): row for row in read_reference("w_300s")}
+        off = {int(row["ordinal"]): row for row in read_reference("sp_vstab_off")}
+        for unit, x in ((20, 124), (200, 252)):
+            self.assertEqual(
+                (int(on[unit]["f1_rf_peak_line"]), int(on[unit]["f1_rf_peak_x"])),
+                (260, x),
+            )
+            self.assertEqual(
+                (int(off[unit]["f2_rf_peak_line"]), int(off[unit]["f2_rf_peak_x"])),
+                (522, x),
+            )
+            self.assertEqual(int(off[unit]["f2_switch_first_line"]), 523)
+            self.assertEqual(int(off[unit]["f2_bottom_line"]), 522)
+            self.assertEqual(int(off[unit]["f2_hs_bottom_line"]), 525)
 
-    def test_composite_validation_rejects_stable_picture_motion(self) -> None:
-        rows = [
-            composite_row(value)
-            for value in range(211, 1133)
-            if value not in COMPOSITE_MISSING_EXACT
-        ]
-        row = next(item for item in rows if item.ordinal == 700)
-        row.f1_bottom_line = 258
-        with self.assertRaisesRegex(RuntimeError, "stable invariant"):
-            validate(rows, "composite")
-
-    def test_committed_reference_inventory(self) -> None:
-        root = Path(__file__).parent / "reports"
-        expected = {
-            "w_300s": {
-                "rows": 608,
-                1: (
-                    {"direct": 577, "cv_inspected": 31},
-                    {23: 122, 24: 438, 25: 48},
-                    {258: 7, 259: 119, 260: 433, 261: 49},
-                ),
-                2: ({"direct": 565, "cv_inspected": 43}, {286: 608}, {521: 511, 522: 92, 523: 5}),
-            },
-            "w_2100s": {
-                "rows": 621,
-                1: (
-                    {"direct": 599, "cv_inspected": 22},
-                    {25: 263, 26: 358},
-                    {258: 9, 259: 260, 260: 352},
-                ),
-                2: ({"direct": 433, "cv_inspected": 188}, {288: 621}, {521: 451, 522: 170}),
-            },
-            "sp_vstab_off": {
-                "rows": 608,
-                1: ({"direct": 574, "cv_inspected": 34}, {23: 608}, {259: 353, 260: 243, 261: 12}),
-                2: (
-                    {"direct": 485, "cv_inspected": 123},
-                    {286: 608},
-                    {521: 1, 522: 482, 523: 91, 524: 34},
-                ),
-            },
-            "composite": {
-                "rows": 919,
-                1: (
-                    {"direct": 112, "cv_inspected": 489, "unmeasurable": 318},
-                    {-1: 318, 23: 601},
-                    {-1: 318, 257: 1, 259: 582, 260: 13, 261: 5},
-                ),
-                2: (
-                    {"direct": 189, "cv_inspected": 412, "unmeasurable": 318},
-                    {-1: 318, 286: 601},
-                    {-1: 318, 521: 583, 523: 15, 524: 3},
-                ),
-            },
-        }
-        for name, inventory in expected.items():
-            with (root / f"reference_{name}.csv").open(newline="") as handle:
-                rows = list(csv.DictReader(handle))
-            self.assertEqual(len(rows), inventory["rows"])
+    def test_commercial_acceptance_is_external_and_observed_only(self) -> None:
+        rows = read_reference("composite")
+        indexed = {int(row["ordinal"]): row for row in rows}
+        for unit in (550, 551):
             for field in (1, 2):
-                methods = Counter(row[f"f{field}_method"] for row in rows)
-                tops = Counter(int(row[f"f{field}_picture_top_line"]) for row in rows)
-                bottoms = Counter(int(row[f"f{field}_bottom_line"]) for row in rows)
-                self.assertEqual(methods, Counter(inventory[field][0]))
-                self.assertEqual(tops, Counter(inventory[field][1]))
-                self.assertEqual(bottoms, Counter(inventory[field][2]))
-                for row in rows:
-                    if row[f"f{field}_method"] == "cv_inspected":
-                        self.assertIn("row Y(mean/std)", row[f"f{field}_note"])
-
-        with (root / "reference_composite.csv").open(newline="") as handle:
-            stable = [row for row in csv.DictReader(handle) if int(row["ordinal"]) >= 551]
-        self.assertEqual(len(stable), 582)
-        for field, top, bottom, band in ((1, 23, 259, 262), (2, 286, 521, 525)):
+                self.assertEqual(indexed[unit][f"f{field}_status"], "unmeasurable")
+                self.assertEqual(int(indexed[unit][f"f{field}_picture_top_line"]), -1)
+        stable = [row for row in rows if int(row["ordinal"]) >= 551]
+        expected = {1: (23, 260, 3), 2: (286, 522, 4)}
+        for field in (1, 2):
+            observed = [row for row in stable if row[f"f{field}_status"] == "observed"]
+            self.assertTrue(observed)
             self.assertEqual(
                 Counter(
                     (
                         int(row[f"f{field}_picture_top_line"]),
-                        int(row[f"f{field}_bottom_line"]),
-                        int(row[f"f{field}_hs_partial_line"]),
+                        int(row[f"f{field}_switch_first_line"]),
+                        int(row[f"f{field}_band_length"]),
                     )
-                    for row in stable
+                    for row in observed
                 ),
-                Counter({(top, bottom, band): 582}),
+                Counter({expected[field]: len(observed)}),
             )
-
-        with (root / "reference_sp_vstab_off.csv").open(newline="") as handle:
-            off = {int(row["ordinal"]): row for row in csv.DictReader(handle)}
-        for ordinal in (20, 200):
-            self.assertEqual(int(off[ordinal]["f2_bottom_line"]), 522)
-            self.assertEqual(int(off[ordinal]["f2_hs_partial_line"]), 525)
-            self.assertIn("switch onset=L523", off[ordinal]["f2_note"])
-
-    def test_motion_audit_cited_cases_and_previous_readout_counts(self) -> None:
-        root = Path(__file__).parent / "reports"
-        expected_readouts = {"w_300s": {1: 20, 2: 19}, "w_2100s": {1: 37, 2: 120}}
-        indexed: dict[tuple[str, int, int], dict[str, str]] = {}
-        for name, fields_expected in expected_readouts.items():
-            with (root / f"motion_{name}.csv").open(newline="") as handle:
-                rows = list(csv.DictReader(handle))
-            for field, count in fields_expected.items():
-                actual = sum(
-                    row["previous_change_kind"] == "readout_change"
-                    for row in rows
-                    if int(row["field"]) == field
-                )
-                self.assertEqual(actual, count)
-            for row in rows:
-                indexed[(name, int(row["field"]), int(row["ordinal"]))] = row
-
-        self.assertEqual(
-            (
-                indexed[("w_300s", 1, 78)]["dp"],
-                indexed[("w_300s", 1, 78)]["ds"],
-            ),
-            ("0", "-2"),
-        )
-        self.assertEqual(
-            (
-                indexed[("w_300s", 1, 105)]["dp"],
-                indexed[("w_300s", 1, 105)]["ds"],
-            ),
-            ("2", "none"),
-        )
-        self.assertEqual(
-            (
-                indexed[("w_300s", 1, 440)]["dp"],
-                indexed[("w_300s", 1, 440)]["ds"],
-            ),
-            ("-1", "-1"),
-        )
-        for ordinal in (3, 4, 5):
-            self.assertEqual(
-                indexed[("w_2100s", 2, ordinal)]["previous_change_kind"],
-                "readout_change",
-            )
-        for ordinal in (144, 145):
-            self.assertEqual(
-                indexed[("w_2100s", 1, ordinal)]["previous_change_kind"],
-                "readout_change",
-            )
+        report = build_invariant_report(ROOT / "reference_composite.csv")
+        self.assertIn("external acceptance knowledge", report)
+        self.assertIn("unmeasurable", report)
 
     def test_vstab_off_field_phase_report(self) -> None:
-        root = Path(__file__).parent / "reports"
-        path = root / "sp_vstab_off_alignment.csv"
-        with path.open(newline="") as handle:
-            rows = list(csv.DictReader(handle))
-        witnesses = [row for row in rows if row["status"] == "phase witness"]
+        with (ROOT / "sp_vstab_off_alignment.csv").open(newline="") as handle:
+            witnesses = [row for row in csv.DictReader(handle) if row["status"] == "phase witness"]
         self.assertEqual(len(witnesses), 8)
         for row in witnesses:
             ordinal = int(row["new_ordinal"])
@@ -255,12 +174,31 @@ class ReferenceMeasurementTest(unittest.TestCase):
             self.assertEqual(int(row["source_ordinal"]), ordinal - 1 if slot == 1 else ordinal)
             self.assertLess(float(row["pooled_body_mad"]), 3.1)
 
-        membership = root / "sp_vstab_off_slice_membership.csv"
-        with membership.open(newline="") as handle:
-            members = list(csv.DictReader(handle))
-        self.assertEqual([int(row["slice_ordinal"]) for row in members], [0, 300, 607])
-        self.assertEqual({int(row["counter_ordinal_offset"]) for row in members}, {135})
-        self.assertEqual({int(row["byte_identical"]) for row in members}, {1})
+        off = read_reference("sp_vstab_off")
+        self.assertTrue(all("slot 1 carries SP field 2" in row["f1_note"] for row in off))
+        self.assertTrue(all("slot 2 carries SP field 1" in row["f2_note"] for row in off))
+
+    def test_schema_contains_every_v3_measurement_family(self) -> None:
+        for required in (
+            "top_blanking_evidence",
+            "expected_bottom_line",
+            "switch_first_line",
+            "last_reliable_line",
+            "hs_bottom_line",
+            "first_blank_line",
+            "raster_limit_line",
+            "band_length",
+            "rf_peak_x",
+            "rf_next_before_lag",
+            "rf_next_after_lag",
+            "skew_evidence",
+            "agc_evidence",
+            "comb_confirmation",
+            "closure_status",
+            "dp",
+            "switch_displacement",
+        ):
+            self.assertIn(required, FIELD_COLUMNS)
 
 
 if __name__ == "__main__":

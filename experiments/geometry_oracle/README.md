@@ -132,28 +132,28 @@ exists so a flat dim row cannot be described merely by that combined result.
 
 ## Bounded raw-reviewed references
 
-`build_reference.py` produces the per-exact-unit references for the SP recording, EP recording,
-the SP recording with V-stabilize off, and the commercial tape. The top is the first picture row
-after raw VBI-type rows. The builder measures the switch onset independently from the picture:
-three horizontal regions locate the first displaced row, even when a later black run has greater
-contrast; split-row and outer-edge tests decide whether its predecessor is already partial.
-Source profiles contain calibration, not per-unit answers. Weak, flat, split, or conflicting
-results are marked `cv_inspected`, with the raw candidate-row luma in `f1_note`/`f2_note`. A
-no-picture raster is `-1` in both fields.
+`build_reference.py` produces the contract-v3 per-exact-unit records for the SP recording, EP
+recording, the SP recording with V-stabilize off, and the commercial tape through one measurement
+path. Capture specifications contain transport identity only: count, label, and ordinal origin.
+No capture supplies a top, switch row, stable interval, or per-unit answer. Flat/no-picture fields
+are `unmeasurable`; the hold policy is documented but no coordinate is substituted.
 
-`bottom_line` is the last complete picture line: `min(picture end, switch onset - 1)`.
-`hs_partial_line` retains its consumer-facing column name but means the bottom of the full
-head-switch band. When the switch reaches the decoder's clip row, the visible partial row still
-limits `bottom_line`, but no full band row survives and `hs_partial_line` is `-1`.
-`last_recorded_line` remains an independent decoder-row measurement; a chroma-noise row below
-the band cannot extend `hs_partial_line`.
+Each field records the measured picture top and its blanking/VBI/caption evidence, expected bottom
+(`top + 239`), raster clipping, first switch row, last reliable row (`switch - 1`), last visible
+picture-bearing band row, first blank row, raster limit, and the visible plus censored band count.
+RF transient, discontinuous aperture-edge/skew, AGC, comb, VBI, and caption evidence have separate
+columns and statuses. `bottom_line` aliases the last reliable row for the review renderer;
+`hs_bottom_line` is the last visible picture-bearing band row, and `hs_partial_line` is its exact
+compatibility alias. Chroma-only survival cannot extend either marker. `dp` and
+`switch_displacement` compare the preceding unit's same raster slot only when both coordinates
+exist.
 
-The commercial capture uses the counter-based ordinals burned into the numbered review render.
-Its first exact unit is ordinal 211; device-short ordinals 213, 214, and 216 are absent. The
-stable-picture invariant from ordinal 551 through 1132 is confirmed by the committed inventory
-test: field 1 top/bottom is 23/259 and field 2 is 286/521 in all 582 exact units. The band bottoms
-are 262/525. Each independent raw candidate is retained in
-`f1_direct_bottom_candidate`/`f2_direct_bottom_candidate`.
+The commercial capture uses counter-based review ordinals: first exact unit 211, with device-short
+ordinals 213, 214, and 216 absent. The owner-provided stable-picture boundary at 551 is deliberately
+an external test assertion in `build_invariant_report.py`, never a builder input. Only `observed`
+fields test that invariant; every unmeasurable or inferred field is listed rather than counted as
+agreement. The observed field-1 record is top/switch/band length 23/260/3, and field 2 is
+286/522/4.
 
 ```sh
 python3 experiments/geometry_oracle/build_reference.py \
@@ -170,26 +170,20 @@ python3 experiments/geometry_oracle/build_reference.py \
   experiments/geometry_oracle/reports/reference_composite.csv --profile composite
 ```
 
-`motion_audit.py` records picture displacement (`dp`) and switch displacement/state (`ds`)
-against the preceding unit independently. A numeric `ds` exists only when both switch lines are
-visible. `none` means the current switch reached the clip, and `unmeasurable` means the preceding
-switch was clipped, so no numeric difference can be recovered. The three capture CSVs and the
-generated `reports/motion_summary.md` contain the joint histograms, complete nonzero unit lists,
-three raw-row witnesses per populated cell, and the audit of every changed marker in the
-superseded references. `reports/superseded_marker_changes.csv` freezes only the transition scope
-needed to reproduce that audit; it is not a geometry reference. `field_alignment.py` records the
-half-frame pairing of the V-stabilize-off slice without comparing like-numbered raster slots;
+`motion_audit.py` expands the reference's independently measured `dp` and switch displacement into
+one row per transition and field. A missing current or preceding coordinate is `unmeasurable`,
+never numeric motion. `build_motion_report.py` writes the joint histograms, complete unit lists for
+every cell other than `(0,0)`, and three raw-row witnesses per populated cell. `field_alignment.py`
+records the V-stabilize-off half-frame pairing without comparing like-numbered raster slots;
 `slice_membership.py` verifies selected slice units byte-for-byte against the longer capture.
 
-The reproducible transition audit uses the frozen superseded-change scope, not the deleted
-per-unit answer table:
+The reproducible transition audit consumes the generated reference itself:
 
 ```sh
 python3 experiments/geometry_oracle/motion_audit.py \
-  /private/tmp/hw-session/w_300s.tpc \
+  experiments/geometry_oracle/reports/reference_w_300s.csv \
   experiments/geometry_oracle/reports/motion_w_300s.csv \
-  --profile w_300s \
-  --previous-changes experiments/geometry_oracle/reports/superseded_marker_changes.csv
+  --capture w_300s
 ```
 
 ## Crop verdict layer
