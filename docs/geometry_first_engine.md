@@ -227,16 +227,27 @@ else is confirmation.
    crop on their own.
 3. The picture body shift against the previous unit of the same field: the integer shift in −3..+3 that best matches
    the body (same-parity temporal correlation), with a decisiveness ratio; when not decisive the body abstains.
-4. Height = clip − top + 1. Per source it is a constant (240 for an RP-202 source); a change in height with the clip
-   fixed is lines lost at the top, i.e. displacement.
+4. The bottom: every picture line has a left and a right active edge that sit within the field's own horizontal
+   variance (timing is never perfect); the head-switch band is the lines whose edge falls outside that variance,
+   left or right, on every VHS and on any source with a switch point. The last line whose edges are within the
+   normal variance is the bottom. Recorded black under the picture on fixture A was a special case, not the rule.
+5. The conserved quantity is the line ACCOUNT, not the height: visible picture lines + lines added above the picture
+   + lines lost into the deck's blanking at the bottom = constant. Add X black lines at the top and the picture moved
+   down X and is X shorter; remove X and it moved up X; this holds past the raster bounds; nothing deletes lines from
+   the middle of a field except a vertical tear.
 
 **Decision, per field per unit**
-- Body shift 0 and height unchanged → the field did not move. The crop stays, whatever any classifier says about the
-  top row.
-- Body shifted by s, top moved by s, height changed by −s → the field slipped by s. Move this field's crop by s to
-  bring it back. The other field is untouched.
-- Top moved but the body did not → a line above the picture changed content (line 22 video, a data line coming into
-  view). Ignore.
+- No lock is claimed without confirmation: comb agreement between the fields, or clean, significant luma at the
+  measured edge. Without it the picture stays at standard placement (23/286) and the sidecar says there was not
+  enough to lock on. Once locked, with no signal loss since, tracking from the previous unit takes over.
+- Body shift 0 and the account unchanged → the field did not move. The crop stays, whatever any classifier says
+  about the top row.
+- Body shifted by s, top moved by s, the account shows s lines added above (or lost below) → the field slipped by
+  s. Move this field's crop by s to bring it back. The other field is untouched.
+- The row directly above the picture that sometimes carries data and sometimes a faint copy of the line below is
+  decided by geometry, never by classifying the row: if the bottom did not move, the top change is a garbage row
+  from the signal chain and the field did not move; if the bottom moved too, the field shifted. The bottom is the
+  tie-breaker.
 - Both fields' bodies shifted together with no height change → picture content moved (a tilt). Ignore.
 - Comb parity (the fields' relative placement) is established once per lock and is a confirmation from then on. It
   never moves a field by itself.
@@ -249,7 +260,9 @@ else is confirmation.
 - A raster whose edges cannot be measured at all is Unknown, held, and labelled; never a substituted number.
 
 **No thresholds** except the decisiveness ratio of the shift measurement, stated with its measurement, and the
-per-source constants (clip line, height, comb parity) measured at lock. Any other number in the code is a defect.
+per-source constants (clip line, horizontal-edge variance, the line account, comb parity) measured at lock. Any
+other number in the code is a defect. Tests are dumb and brute force: picture visible is the top, picture gone is the
+bottom; black is the hard case and every not-sure class is worked through, never thresholded away.
 
 **Output per field per unit:** applied d (crop start = 23 + d1 / 286 + d2), the body shift and its ratio, the top,
 clip and height, the confirmations seen (caption line, comb), the reason. Scored against the harness's raw-confirmed
