@@ -267,3 +267,30 @@ bottom; black is the hard case and every not-sure class is worked through, never
 **Output per field per unit:** applied d (crop start = 23 + d1 / 286 + d2), the body shift and its ratio, the top,
 clip and height, the confirmations seen (caption line, comb), the reason. Scored against the harness's raw-confirmed
 fixture rows before any whole-tape claim.
+
+## 9. Measured 2026-09-07 (owner review of the reference renders + raw rows): the head switch is not picture geometry
+
+Raw rows of the SP recording (`/private/tmp/hw-session/w_300s.tpc`, zoomed panels `zoom_SP_f1_u77-79.png`,
+`zoom_SP_f2_u74-76.png`; per row: luma mean/std, left/right active edge, |difference to the row above| per third
+against the body's own):
+- **Field 1, units 77 → 78 → 79:** the picture's top stays at line 23 and lines 254–258 carry the same content in all
+  three; the switch (the partial line, whose middle/right thirds depart) sits inside line 261, then 259, then 260,
+  with the other head's pedestal rows under it. **Field 2, units 74 → 76:** top fixed at 286, switch inside 523,
+  522, 524. The band moves by one or two lines unit to unit while the picture does not.
+- **Commercial tape, units 551–1132:** the switch stays inside 260 / 522 in every measurable unit (its own recorder).
+- **SP unit 439 → 440 → 451:** the whole field 1 moves up one line and back (top 24 → 23, switch 261 → 260, band with
+  it): a rigid one-line displacement in which top and switch move together.
+- A row of chroma noise can sit below the band (commercial pre-551 units, line 263: chroma std 3.08 against the
+  0.5 blank); chroma alone therefore overstates the band bottom by one line there (owner observation, confirmed).
+- Where the switch lands at or past the clip line no band is visible in that unit (owner: "certain fields have no
+  detectable head switch").
+
+Consequences (owner, 2026-09-07, amending §8): the head switch is a separate physical event (drum phase) whose
+position relative to the picture jitters on this recording, so it is **not** a per-source constant to lock and **not**
+a witness of the picture's vertical position by itself; the account "bottom moved by X ⇒ top moved by X" does not
+hold across a switch move. The picture's position under lock is the top and the body; the picture's bottom is
+`min(last picture line, switch line − 1)` measured per unit and legitimately moves when the switch cuts higher; the
+review render carries two markers, the picture bottom (red) and the band bottom (yellow), both per unit. A recording
+whose fields were recorded misregistered cannot be corrected by any frame TBC; only measuring the expected geometry
+and every departure from it can, which is this engine's job. The v3 engine's switch lock (`geometry_v3_decide.py`)
+is therefore correct only for sources whose switch is steady (the commercial tape) and is superseded for fixture A.
