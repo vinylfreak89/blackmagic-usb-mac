@@ -107,10 +107,12 @@ def measure_field(Y, F, prev_field, Yfull=None, Cfull=None):
     kind = {}; ntorn=0; top=None; top_rec=None; cap=[]
     def blackish(r): return m[r] < yb+12 and s[r] < 8      # DEFAULT: recorded black measures Y 2-9 std 1-5 against blanking 1.4
     for r in range(F['insert']+1, F['last']):
+        # a parity-valid caption is recognised before the torn test: an H-torn row cannot pass parity, and a caption
+        # row whose left samples are bright must not be lost as torn (393 whole-tape units held with a caption in view)
+        if top is None and r < F['origin']+8 and rec[r] and cc608(Yfull[r])[0]: kind[r]='cc608'; cap.append(r); continue
         if r < F['origin']+40 and torn(Yfull[r]): kind[r]='torn'; ntorn+=1; continue
         if not rec[r]: kind[r]='regen'; continue
         if top is None and r < F['origin']+8:
-            if cc608(Yfull[r])[0]: kind[r]='cc608'; cap.append(r); continue
             if blackish(r):
                 # recorded black above the picture: the tape's blanking lines (VBI, when the field is displaced) or a
                 # black picture top -- undecidable from one raster; both edges are reported and decide() chooses
@@ -169,6 +171,7 @@ def decide(fs, F, mm, signal_ok=True):
         (u_s,u_m),(l_s,l_m)=mm['body']
         if (u_m<8 and l_m>30) or (l_m<8 and u_m>30): fs.lock=False; notes.append('Splice')
     if not signal_ok: fs.lock=False; notes.append('SignalLoss')
+    if top is not None and abs(top-F['origin'])>12: notes.append('TopOutOfRange(%+d)'%(top-F['origin'])); top=None   # DEFAULT bound 12: no recorded displacement approaches it; beyond it the raster is torn/snow/mute
     if top is None:
         if mm.get('flat'): notes.append('FlatRaster')
         if mm['cap'] and not mm.get('flat'):
