@@ -46,7 +46,10 @@ def emit(u):
             # The dip's level, against the body's own variance, is the per-row test; the threshold edges are not.
             dip=Y[:,0:7].mean(axis=1); bd=dip[b0:b1]; dmu,dsd=float(bd.mean()),float(max(bd.std(),0.5))
             dlo,dhi=float(bd.min()),float(bd.max())          # the body's own dip range (measured per unit, not a spread model)
-            timed=lambda r: left[r]>=0 and (dlo-1.0)<=dip[r]<=(dhi+1.0)
+            # a row with no texture is not picture ('I see no picture anymore'): recorded black under the picture
+            # measures std 0.7-1.1, the Shuttle's blank 0.5, picture rows >= 8 (MEASURED 2026-09-06); DEFAULT floor 3.0
+            rowstd=Y[:,40:680].std(axis=1)
+            timed=lambda r: left[r]>=0 and (dlo-1.0)<=dip[r]<=(dhi+1.0) and rowstd[r]>3.0
             inside=lambda r: left[r]>=0 and llo<=left[r]<=lhi and rlo<=right[r]<=rhi   # edges only; the dip gates the bottom, never the top
             outward=lambda r: left[r]>=0 and (left[r]<llo or right[r]>rhi)
             # two bottoms, both reported: strict = last row that is timed AND whose edges are inside the body's
@@ -58,6 +61,7 @@ def emit(u):
                 bottom_band=r
                 if not strict_done and inside(r) and timed(r): bottom=r
                 else: strict_done=True
+            if bottom_band==b1-1: bottom=bottom_band=-1     # the scan never left the body: no picture below it to measure (dark scene), unmeasurable, never an edge
             # lock-time top: the first row above the body whose edges are inside the body's range AND whose content
             # continues into the row below (a picture row); its texture is reported as the lock confidence
             top=b0
