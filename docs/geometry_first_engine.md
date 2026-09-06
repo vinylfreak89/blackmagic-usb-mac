@@ -211,3 +211,46 @@ ordinals that decide it (Codex is turning them into `experiments/geometry_oracle
 9. One H-torn row or a flat body suppresses a measurable edge (62,322–62,326, 64,097).
 10. Not fail-closed on a provenance error (partial sidecar kept). 11. `counter_extended` is wrapped; every row is
     labelled Complete/published regardless of signal state.
+
+## 8. Contract v2 — the owner's model, written back (2026-09-06 21:08 JST, before any code)
+
+One question per field per unit: **where does the picture start, and did it move since the last unit.** Everything
+else is confirmation.
+
+**Measured every unit, per field, from the raw raster and the unit's own regenerated rows**
+1. The recorded region: first and last row that came through the analog decoder (chroma/luma against the unit's own
+   blanking rows). The last recorded row is the deck's clip line, a per-source constant measured at lock, never assumed
+   (262/525 on both fixtures).
+2. The picture top: the first picture row inside the recorded region. Rows above it that are VBI (the tape's line 20
+   data, its line 21 caption, its line 22 whatever it carries) are skipped. They are recognised by confirmation
+   signals (parity, waveform shape) and by the fact that the picture body does not include them; they never move the
+   crop on their own.
+3. The picture body shift against the previous unit of the same field: the integer shift in −3..+3 that best matches
+   the body (same-parity temporal correlation), with a decisiveness ratio; when not decisive the body abstains.
+4. Height = clip − top + 1. Per source it is a constant (240 for an RP-202 source); a change in height with the clip
+   fixed is lines lost at the top, i.e. displacement.
+
+**Decision, per field per unit**
+- Body shift 0 and height unchanged → the field did not move. The crop stays, whatever any classifier says about the
+  top row.
+- Body shifted by s, top moved by s, height changed by −s → the field slipped by s. Move this field's crop by s to
+  bring it back. The other field is untouched.
+- Top moved but the body did not → a line above the picture changed content (line 22 video, a data line coming into
+  view). Ignore.
+- Both fields' bodies shifted together with no height change → picture content moved (a tilt). Ignore.
+- Comb parity (the fields' relative placement) is established once per lock and is a confirmation from then on. It
+  never moves a field by itself.
+- Captions are confirmation. A caption may place the very first unit of a segment, when there is no previous field to
+  compare against; a caption that disagrees with measured geometry is logged, geometry wins.
+- Segment events (splice, signal loss, relock) come from the signal-state layer as explicit inputs. On one, the old
+  geometry is invalid: back to standard placement (23/286) and re-acquire. Never inferred from a body-half heuristic.
+- Damage that hides the edge (torn strip, dropout, noise band, flat raster) holds the last good geometry; when it
+  clears, the new geometry is checked against the old and adjusted once.
+- A raster whose edges cannot be measured at all is Unknown, held, and labelled; never a substituted number.
+
+**No thresholds** except the decisiveness ratio of the shift measurement, stated with its measurement, and the
+per-source constants (clip line, height, comb parity) measured at lock. Any other number in the code is a defect.
+
+**Output per field per unit:** applied d (crop start = 23 + d1 / 286 + d2), the body shift and its ratio, the top,
+clip and height, the confirmations seen (caption line, comb), the reason. Scored against the harness's raw-confirmed
+fixture rows before any whole-tape claim.
