@@ -134,9 +134,23 @@ for u in range(n):
         # picture when the row below it is dark too (the picture's own dark first band, owner ruling 2026-09-06) and
         # VBI when the row below it is bright (the tape's black line 22 standing alone before the picture)
         bright=lambda r: ym[r]>max(thr,ped+3*sig_b)
+        # the picture's own vertical redundancy: adjacent picture lines correlate; a VBI-type row (caption, run-in
+        # fragment, the smeared XDS bar of the EP recording — EP unit 57: lines 286/287 correlate with the row below at
+        # r 0.15-0.36 while the picture lines correlate at 0.96-0.99) does not. The test needs signal above the tape
+        # noise: the field's own noise is the median over its middle rows of std(row - row above)/sqrt(2); a row whose
+        # texture is under 4x that (the commercial tape's dark band, std 3-6 against noise 2) is undecidable by
+        # correlation and is left to the brightness rules (the owner's dark-band ruling). The correlation bound 0.5 is
+        # a fitted default, not contract: measured VBI rows 0.01-0.36, picture rows 0.87-0.99.
+        mid=[r for r in range(40,200) if rec[r] and rec[r-1]]
+        sig_n=float(np.median([float((Y[r,24:696]-Y[r-1,24:696]).std()) for r in mid]))/np.sqrt(2) if len(mid)>=20 else 4*sig_b
+        def corr_below(r):
+            if r+1>=Y.shape[0]: return 0.0
+            a=Y[r,24:696]-Y[r,24:696].mean(); b=Y[r+1,24:696]-Y[r+1,24:696].mean(); d=float(np.sqrt((a*a).sum()*(b*b).sum()))
+            return float((a*b).sum()/d) if d>0 else 0.0
+        def vbi_type(r): return float(Y[r,24:696].std())>=4*sig_n and corr_below(r)<0.5
         def picture_row(r):
-            if not rec[r] or cc608(Y[r])[0]: return False
-            if bright(r): return float(Y[r,40:680].std())>=4*sig_b
+            if not rec[r] or cc608(Y[r])[0] or vbi_type(r): return False
+            if bright(r): return True     # a bright row is picture whether textured or flat (a flat grey field is picture: commercial unit 800, luma 17-20, std 1.3)
             return r+1<Y.shape[0] and rec[r+1] and not bright(r+1) and not cc608(Y[r+1])[0]
         # the top begins a run of three picture rows (a lone waveform row before a black row is VBI: a damaged caption,
         # the tape's line 20 data)
