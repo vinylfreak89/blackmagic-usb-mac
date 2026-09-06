@@ -32,7 +32,11 @@ for u in sorted(by):
             elif dtop!=0 and dtop==s_this: off[f]=0
         prev_top[f]=top
         atop=top+off[f] if top>0 else top
-        bottom=min(atop+239,last) if (atop>0 and last>0) else -1
+        # the clip is the Shuttle's pass-through end (line 262 / 525, the reference raster of docs §2), a device
+        # constant: the chroma-recorded last row falls short of it on dark units (the decoder's chroma noise drops with
+        # the signal), which is a measurement limit, not geometry
+        CLIP=262 if f=='1' else 525
+        bottom=min(atop+239,CLIP) if atop>0 else -1
         out+=[atop,bottom,S if S>0 else -1,S]
     w.writerow(out)
 print('rows',len(by),'->',sys.argv[2],'| body corrections applied',corrected)
