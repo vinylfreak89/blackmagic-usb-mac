@@ -42,6 +42,7 @@ class CombReading:
     static_fraction: float
     static_pixels: int
     texture: float
+    energies: tuple[float, ...]
     status: str
     registration: str
     geometry_agreement: str
@@ -82,12 +83,13 @@ def _geometry_available(fields: tuple[FieldGeometry, FieldGeometry]) -> bool:
     )
 
 
-def _unmeasurable(
+def unmeasurable_comb(
     reason: str,
     *,
     static_fraction: float = 0.0,
     static_pixels: int = 0,
     texture: float = math.nan,
+    energies: tuple[float, ...] = (),
 ) -> CombReading:
     return CombReading(
         shift="unmeasurable",
@@ -97,6 +99,7 @@ def _unmeasurable(
         static_fraction=static_fraction,
         static_pixels=static_pixels,
         texture=texture,
+        energies=energies,
         status="unmeasurable",
         registration="unmeasurable",
         geometry_agreement="unmeasurable",
@@ -104,24 +107,34 @@ def _unmeasurable(
     )
 
 
-def measure_interfield_comb(
-    y: np.ndarray,
-    previous_y: np.ndarray | None,
+def measure_interfield_comb_planes(
+    first_y: np.ndarray,
+    second_y: np.ndarray,
+    previous_first_y: np.ndarray | None,
+    previous_second_y: np.ndarray | None,
     current: tuple[FieldGeometry, FieldGeometry],
     previous: tuple[FieldGeometry, FieldGeometry] | None,
+    *,
+    first_label: str = "field-1",
+    second_label: str = "field-2",
+    expected_shift: int = 0,
 ) -> CombReading:
-    """Measure which field-2 row weaves between successive field-1 rows.
+    """Measure which second-parity row weaves between first-parity rows.
 
-    For candidate shift ``s``, field-2 line ``top2+s+i`` is compared with the
-    mean of field-1 lines ``top1+i`` and ``top1+i+1``.  Static pixels require
+    For candidate shift ``s``, second-parity line ``top2+s+i`` is compared with
+    the mean of first-parity lines ``top1+i`` and ``top1+i+1``. Static pixels require
     both parities to agree with the preceding unit at their own measured tops.
     """
-    if previous_y is None or previous is None:
-        return _unmeasurable("no preceding same-parity raster for the static mask")
+    if previous_first_y is None or previous_second_y is None or previous is None:
+        return unmeasurable_comb("no preceding same-parity raster for the static mask")
     if not _geometry_available(current):
-        return _unmeasurable("current top/band geometry is unavailable or does not close to 240")
+        return unmeasurable_comb(
+            "current top/band geometry is unavailable or does not close to 240"
+        )
     if not _geometry_available(previous):
-        return _unmeasurable("preceding top/band geometry is unavailable or does not close to 240")
+        return unmeasurable_comb(
+            "preceding top/band geometry is unavailable or does not close to 240"
+        )
 
     f1, f2 = current
     p1, p2 = previous
@@ -134,25 +147,31 @@ def measure_interfield_comb(
     first = max(0, -min(SHIFTS))
     stop = min(n1 - 1, pn1 - 1, n2 - max(SHIFTS), pn2 - max(SHIFTS))
     if stop - first < 32:
-        return _unmeasurable("the visible picture rows do not support all relative shifts")
+        return unmeasurable_comb(
+            "the visible picture rows do not support all relative shifts"
+        )
 
     current_f1 = _box8(
-        y[f1.top - 4 + first : f1.top - 4 + stop + 1, 40:680].astype(np.float32)
+        first_y[
+            f1.top - 4 + first : f1.top - 4 + stop + 1, 40:680
+        ].astype(np.float32)
     )
     previous_f1 = _box8(
-        previous_y[p1.top - 4 + first : p1.top - 4 + stop + 1, 40:680].astype(np.float32)
+        previous_first_y[
+            p1.top - 4 + first : p1.top - 4 + stop + 1, 40:680
+        ].astype(np.float32)
     )
     current_f2: dict[int, np.ndarray] = {}
     previous_f2: dict[int, np.ndarray] = {}
     for shift in SHIFTS:
         current_f2[shift] = _box8(
-            y[
+            second_y[
                 f2.top - 4 + first + shift : f2.top - 4 + stop + shift,
                 40:680,
             ].astype(np.float32)
         )
         previous_f2[shift] = _box8(
-            previous_y[
+            previous_second_y[
                 p2.top - 4 + first + shift : p2.top - 4 + stop + shift,
                 40:680,
             ].astype(np.float32)
@@ -204,47 +223,59 @@ def measure_interfield_comb(
         )
         for shift in SHIFTS
     ]
+    energies = tuple(value for _shift, value in readings)
     ordered = sorted(readings, key=lambda item: (item[1], abs(item[0]), item[0]))
     best = ordered[0]
     second = ordered[1]
     shift, best_energy = best
-    ratio = best_energy / second[1] if math.isfinite(second[1]) and second[1] > 0 else math.nan
+    ratio = (
+        best_energy / second[1]
+        if math.isfinite(second[1]) and second[1] > 0
+        else math.nan
+    )
     energy_margin = second[1] - best_energy
     if static_pixels < MIN_STATIC_PIXELS or static_fraction < MIN_STATIC_FRACTION:
-        return _unmeasurable(
+        return unmeasurable_comb(
             f"moving content: static pixels={static_pixels} fraction={static_fraction:.6f}",
             static_fraction=static_fraction,
             static_pixels=static_pixels,
             texture=texture,
+            energies=energies,
         )
     if texture < MIN_TEXTURE:
-        return _unmeasurable(
+        return unmeasurable_comb(
             f"flat content: texture={texture:.6f}",
             static_fraction=static_fraction,
             static_pixels=static_pixels,
             texture=texture,
+            energies=energies,
         )
-    if not math.isfinite(ratio) or ratio > MAX_DECISIVE_RATIO or energy_margin < MIN_ENERGY_MARGIN:
-        return _unmeasurable(
+    if (
+        not math.isfinite(ratio)
+        or ratio > MAX_DECISIVE_RATIO
+        or energy_margin < MIN_ENERGY_MARGIN
+    ):
+        return unmeasurable_comb(
             f"indecisive comb: best/second={best_energy:.6f}/{second[1]:.6f} "
             f"ratio={ratio:.6f} margin={energy_margin:.6f}; "
             f"static pixels={static_pixels} fraction={static_fraction:.6f} texture={texture:.6f}",
             static_fraction=static_fraction,
             static_pixels=static_pixels,
             texture=texture,
+            energies=energies,
         )
 
-    geometry_agreement = "agrees" if shift == 0 else "disagrees"
+    geometry_agreement = "agrees" if shift == expected_shift else "disagrees"
     registration = (
-        f"field-2 L{f2.top + shift}+i sits between "
-        f"field-1 L{f1.top}+i and L{f1.top + 1}+i"
+        f"{second_label} L{f2.top + shift}+i sits between "
+        f"{first_label} L{f1.top}+i and L{f1.top + 1}+i"
     )
     evidence = (
         f"shift={shift} energy={best_energy:.6f}/{second[1]:.6f} ratio={ratio:.6f} "
         f"static pixels={static_pixels} fraction={static_fraction:.6f} texture={texture:.6f}; "
         f"geometry f1 top/switch/band/closure=L{f1.top}/L{f1.switch}/"
         f"{f1.band_length}/{f1.closure_count}, f2=L{f2.top}/L{f2.switch}/"
-        f"{f2.band_length}/{f2.closure_count}; expected shift=0"
+        f"{f2.band_length}/{f2.closure_count}; expected shift={expected_shift}"
     )
     return CombReading(
         shift=shift,
@@ -254,8 +285,26 @@ def measure_interfield_comb(
         static_fraction=static_fraction,
         static_pixels=static_pixels,
         texture=texture,
+        energies=energies,
         status="observed",
         registration=registration,
         geometry_agreement=geometry_agreement,
         evidence=evidence,
+    )
+
+
+def measure_interfield_comb(
+    y: np.ndarray,
+    previous_y: np.ndarray | None,
+    current: tuple[FieldGeometry, FieldGeometry],
+    previous: tuple[FieldGeometry, FieldGeometry] | None,
+) -> CombReading:
+    """Measure ordinary within-unit field-1/field-2 registration."""
+    return measure_interfield_comb_planes(
+        y,
+        y,
+        previous_y,
+        previous_y,
+        current,
+        previous,
     )
