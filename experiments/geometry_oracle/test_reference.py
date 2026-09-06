@@ -9,7 +9,9 @@ from pathlib import Path
 
 import numpy as np
 
+from build_comb_report import build as build_comb_report
 from build_invariant_report import build as build_invariant_report
+from comb_confirmation import FieldGeometry, measure_interfield_comb
 from build_reference import (
     CAPTURES,
     CSV_COLUMNS,
@@ -31,6 +33,43 @@ def read_reference(name: str) -> list[dict[str, str]]:
 
 
 class ReferenceMeasurementTest(unittest.TestCase):
+    @staticmethod
+    def _comb_fixture(
+        shift: int = 0,
+    ) -> tuple[np.ndarray, tuple[FieldGeometry, FieldGeometry]]:
+        rng = np.random.default_rng(4)
+        y = np.ones((525, 720), dtype=np.uint8)
+        source = rng.integers(20, 220, (241, 680), dtype=np.uint8)
+        source = (0.7 * source + 0.3 * np.roll(source, 1, axis=0)).astype(np.uint8)
+        y[19:259, 20:700] = source[:240]
+        predicted = ((source[:239].astype(float) + source[1:240]) / 2).astype(np.uint8)
+        start = 282 + shift
+        y[start : start + len(predicted), 20:700] = predicted
+        geometry = (
+            FieldGeometry(23, 260, 259, 262, 3, 240, "observed"),
+            FieldGeometry(286, 522, 521, 525, 4, 240, "observed"),
+        )
+        return y, geometry
+
+    def test_comb_registration_uses_measured_picture_tops(self) -> None:
+        y, geometry = self._comb_fixture()
+        reading = measure_interfield_comb(y, y.copy(), geometry, geometry)
+        self.assertEqual((reading.status, reading.shift), ("observed", 0))
+        self.assertEqual(reading.geometry_agreement, "agrees")
+        self.assertIn("field-2 L286+i", reading.registration)
+
+        shifted, geometry = self._comb_fixture(1)
+        reading = measure_interfield_comb(shifted, shifted.copy(), geometry, geometry)
+        self.assertEqual((reading.status, reading.shift), ("observed", 1))
+        self.assertEqual(reading.geometry_agreement, "disagrees")
+
+    def test_flat_comb_is_unmeasurable_without_a_shift(self) -> None:
+        _y, geometry = self._comb_fixture()
+        flat = np.full((525, 720), 80, dtype=np.uint8)
+        reading = measure_interfield_comb(flat, flat.copy(), geometry, geometry)
+        self.assertEqual((reading.status, reading.shift), ("unmeasurable", "unmeasurable"))
+        self.assertIn("flat content", reading.evidence)
+
     def test_capture_specs_cannot_carry_geometry_answers(self) -> None:
         self.assertEqual(
             [item.name for item in fields(CaptureSpec)],
@@ -65,6 +104,7 @@ class ReferenceMeasurementTest(unittest.TestCase):
                 self.assertEqual(
                     rows[0][prefix + "switch_displacement"], "not-applicable"
                 )
+                self.assertEqual(rows[0][prefix + "comb_shift"], "unmeasurable")
                 for index, row in enumerate(rows):
                     status = row[prefix + "status"]
                     if row[prefix + "method"] != "direct":
@@ -94,6 +134,16 @@ class ReferenceMeasurementTest(unittest.TestCase):
                         )
                         self.assertEqual(row[prefix + "dp"], expected_dp)
                         self.assertEqual(row[prefix + "switch_displacement"], expected_ds)
+
+                    self.assertEqual(row[prefix + "comb_shift"], row["f1_comb_shift"])
+                    if row[prefix + "comb_status"] == "unmeasurable":
+                        self.assertEqual(row[prefix + "comb_shift"], "unmeasurable")
+                    else:
+                        self.assertIn(int(row[prefix + "comb_shift"]), range(-3, 4))
+                        self.assertIn(
+                            row[prefix + "comb_geometry_agreement"],
+                            {"agrees", "disagrees"},
+                        )
 
     def test_raw_adjudicated_sp_and_ep_boundaries(self) -> None:
         sp = {int(row["ordinal"]): row for row in read_reference("w_300s")}
@@ -137,11 +187,8 @@ class ReferenceMeasurementTest(unittest.TestCase):
             self.assertEqual(int(off[unit]["f2_hs_bottom_line"]), 525)
             for row, prefix in ((on[unit], "f1_"), (off[unit], "f2_")):
                 self.assertGreaterEqual(int(row[prefix + "rf_next_after_lag"]), 4)
-                # The supplied <=2 before-x gate does not reproduce on these
-                # raw rows, so the transient remains measured but qualified.
-                if int(row[prefix + "rf_next_before_lag"]) > 2:
-                    self.assertEqual(row[prefix + "rf_status"], "inferred")
-                    self.assertIn("definition=incomplete", row[prefix + "rf_evidence"])
+                self.assertEqual(row[prefix + "rf_status"], "inferred")
+                self.assertIn("before-x gate withdrawn", row[prefix + "rf_evidence"])
 
     def test_commercial_acceptance_is_external_and_observed_only(self) -> None:
         rows = read_reference("composite")
@@ -200,12 +247,59 @@ class ReferenceMeasurementTest(unittest.TestCase):
             "rf_next_after_lag",
             "skew_evidence",
             "agc_evidence",
+            "comb_shift",
+            "comb_best_energy",
+            "comb_second_energy",
+            "comb_ratio",
+            "comb_static_fraction",
+            "comb_static_pixels",
+            "comb_texture",
+            "comb_status",
+            "comb_registration",
+            "comb_geometry_agreement",
             "comb_confirmation",
             "closure_status",
             "dp",
             "switch_displacement",
         ):
             self.assertIn(required, FIELD_COLUMNS)
+
+    def test_comb_report_is_reproducible_and_has_no_numeric_unmeasurable_shift(self) -> None:
+        named = [
+            (name, ROOT / f"reference_{name}.csv")
+            for name in ("w_300s", "w_2100s", "sp_vstab_off", "composite")
+        ]
+        generated = build_comb_report(named).rstrip() + "\n"
+        self.assertEqual(generated, (ROOT / "comb_summary.md").read_text())
+        for _name, path in named:
+            with path.open(newline="") as handle:
+                rows = csv.DictReader(handle)
+                self.assertTrue(
+                    all(
+                        row["f1_comb_shift"] == "unmeasurable"
+                        for row in rows
+                        if row["f1_comb_status"] == "unmeasurable"
+                    )
+                )
+
+    def test_measurable_sp_fixed_top_switch_moves_do_not_change_comb(self) -> None:
+        rows = read_reference("w_300s")
+        for field in (1, 2):
+            prefix = f"f{field}_"
+            changed: list[int] = []
+            for previous, current in zip(rows, rows[1:]):
+                if current[prefix + "dp"] != "0":
+                    continue
+                displacement = int(current[prefix + "switch_displacement"])
+                if abs(displacement) not in {1, 2}:
+                    continue
+                if (
+                    previous["f1_comb_status"] == "observed"
+                    and current["f1_comb_status"] == "observed"
+                    and previous["f1_comb_shift"] != current["f1_comb_shift"]
+                ):
+                    changed.append(int(current["ordinal"]))
+            self.assertEqual(changed, [])
 
 
 if __name__ == "__main__":

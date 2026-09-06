@@ -1898,9 +1898,9 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   aliases `hs_bottom_line` for old consumers. Chroma-only survival cannot extend the band.
   Flat/no-picture fields are `unmeasurable`; a hold policy is noted but no coordinate is
   substituted. Numeric `dp`/switch displacement exists only when both same-slot coordinates do.
-  RF candidates keep their measured row/sample even when a sub-gate fails, but `rf_status` is
-  `observed` only when the full before/after-lag definition is satisfied; incomplete evidence is
-  explicitly `inferred` rather than silently accepted.
+  RF candidates keep their measured row/sample and after-x tear evidence. The before-x lag gate
+  was withdrawn because the tear can begin before the transient sample; RF evidence alone remains
+  `inferred` rather than being promoted to an observed head-switch identification.
 
   The commercial reference uses counter-based review ordinals: first exact unit 211, with
   device-short holes 213, 214, and 216. The owner's stable-picture statement from ordinal 551 is
@@ -1912,5 +1912,30 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   phased against the first SP slice: slot 1 carries the preceding unit's field 2, and slot 2 the
   current unit's field 1; the notes retain that parity. The generated displacement report lists
   every nonzero `(dp,ds)` cell and three raw-row witnesses per populated cell.
+
+  Contract-v3 comb confirmation is source-blind and uses each unit's measured tops. Relative
+  field-2 shifts -3 through +3 are scored only through each field's last reliable row
+  (`switch-1`), on one common same-parity static mask against the preceding unit; flat, moving,
+  indecisive, missing-predecessor, or unavailable-geometry units are `unmeasurable` and carry no
+  numeric shift. The record preserves best/second energy,
+  decisiveness, mask size/fraction, texture, the explicit field-row mapping, and the two fields'
+  top/switch/band/closure evidence. On the current SP reference, every measurable fixed-top
+  switch transition keeps the same comb registration (field 1: 16; field 2: 47); three and seven
+  further transitions respectively are unmeasurable. This supports switch-band motion without
+  whole-picture displacement in those measured transitions.
+
+  The bounded comb census is: SP 591 observed / 17 unmeasurable (shift 0: 590, shift +1: unit
+  103); EP 458 / 163 (all 458 shift 0); V-stabilize-off SP 598 / 10 (shift 0: 542, shift +1:
+  56); commercial tape 348 / 571 (shift 0: 214, shift +3: 134). The commercial +3 class is
+  units 217-225 and 635-759; the latter lies inside the externally known stable-picture range
+  and therefore flags a geometry/reference disagreement rather than accepted motion. Complete
+  unit lists, decisiveness histograms, and raw-row witnesses are in
+  `experiments/geometry_oracle/reports/comb_summary.md`.
+
+  **Pending SP top-census correction (raw-row audit, 2026-09-07):** field-2 units 87, 258, 439,
+  and 467 have the tape's black line 22 at NTSC L286 (mean 3.8-6.0, standard deviation 3-4) and
+  picture beginning at L287, while the current reference says L286. Their comb samples currently
+  report no registration change across a `dp=0, ds=+2` transition, but must be recomputed from
+  the corrected top in the next census; do not use those four units as settled witnesses yet.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).

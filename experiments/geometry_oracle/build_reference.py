@@ -21,13 +21,13 @@ from typing import Iterable
 
 import numpy as np
 
+from comb_confirmation import SHIFTS, FieldGeometry, measure_interfield_comb
 from oracle import (
     FIELD_SPECS,
     HEADER_BYTES,
     LINE_BYTES,
     RASTER_LINES,
     measure_chroma_deviation,
-    measure_comb,
     measure_flat_raster,
     measure_last_recorded,
     measure_row_activity,
@@ -123,9 +123,15 @@ FIELD_COLUMNS = [
     "agc_status",
     "agc_evidence",
     "comb_shift",
+    "comb_best_energy",
+    "comb_second_energy",
     "comb_ratio",
     "comb_static_fraction",
+    "comb_static_pixels",
+    "comb_texture",
     "comb_status",
+    "comb_registration",
+    "comb_geometry_agreement",
     "comb_confirmation",
     "closure_line_count",
     "closure_status",
@@ -911,18 +917,11 @@ def _inspect_switch(
         next_after_lag = int(round(_median_abs_lag(after))) if after else -128
         _unused_lag, next_before_mad = _best_segment_lag(rf_row, next_row, 40, rf.peak_x)
         _unused_lag, next_after_mad = _best_segment_lag(rf_row, next_row, rf.peak_x, 680)
-    rf_definition_complete = (
-        rf is not None
-        and 0 <= next_before_lag <= 2
-        and next_after_lag >= 4
-    )
-    rf_status = (
-        "observed"
-        if rf_definition_complete
-        else "inferred"
-        if rf is not None
-        else "unmeasurable"
-    )
+    # The before-x lag sub-gate was withdrawn after a raw-row counterexample:
+    # the tear can begin before the transient's x. Keep the transient and
+    # after-x tear as measured evidence, but do not promote that combination
+    # to an observed head-switch identification by itself.
+    rf_status = "inferred" if rf is not None else "unmeasurable"
     rf_evidence = (
         f"L{rf.line} x={rf.peak_x} strength={rf.peak_strength:.3f} "
         f"ratio={rf.peak_ratio:.3f} aligned lag={rf.median_lag}; "
@@ -930,7 +929,7 @@ def _inspect_switch(
         f"lag={rf_pair[1].median_lag}; segments before/after="
         f"{next_before_lag}/{next_after_lag} "
         f"MAD={_fmt(next_before_mad)}/{_fmt(next_after_mad)}; "
-        f"definition={'complete' if rf_definition_complete else 'incomplete'}"
+        "before-x gate withdrawn; RF status=inferred"
         if rf is not None and rf_pair is not None
         else "no qualifying aligned-row RF transient followed by a torn row"
     )
@@ -1013,7 +1012,6 @@ class ReferenceBuilder:
         y: np.ndarray,
         packed: np.ndarray,
         field: int,
-        comb: tuple[int, float, float, float, float, int],
     ) -> FieldResult:
         spec = FIELD_SPECS[field - 1]
         previous = self.previous.get(field)
@@ -1054,8 +1052,10 @@ class ReferenceBuilder:
                     "skew_evidence": "flat/no-picture field",
                     "agc_status": "unmeasurable",
                     "agc_evidence": "flat/no-picture field",
-                    "comb_status": "observed" if comb[5] else "unmeasurable",
-                    "comb_confirmation": f"shift={comb[0]} ratio={_fmt(comb[3])}; geometry unavailable",
+                    "comb_status": "unmeasurable",
+                    "comb_registration": "unmeasurable",
+                    "comb_geometry_agreement": "unmeasurable",
+                    "comb_confirmation": "pending inter-field measurement",
                     "closure_status": "unmeasurable",
                     "closure_reason": "flat/no-picture field; no geometry substituted",
                     "status": "unmeasurable",
@@ -1120,11 +1120,10 @@ class ReferenceBuilder:
                     "agc_level_step": switch.agc_level_step,
                     "agc_status": switch.agc_status,
                     "agc_evidence": switch.agc_evidence,
-                    "comb_shift": comb[0],
-                    "comb_ratio": comb[3],
-                    "comb_static_fraction": comb[4],
-                    "comb_status": "observed" if comb[5] else "unmeasurable",
-                    "comb_confirmation": "switch unavailable",
+                    "comb_status": "unmeasurable",
+                    "comb_registration": "unmeasurable",
+                    "comb_geometry_agreement": "unmeasurable",
+                    "comb_confirmation": "pending inter-field measurement",
                     "closure_status": "unmeasurable",
                     "closure_reason": switch.evidence,
                     "last_recorded_line": -1,
@@ -1271,14 +1270,10 @@ class ReferenceBuilder:
             "agc_level_step": switch.agc_level_step,
             "agc_status": switch.agc_status,
             "agc_evidence": switch.agc_evidence,
-            "comb_shift": comb[0],
-            "comb_ratio": comb[3],
-            "comb_static_fraction": comb[4],
-            "comb_status": "observed" if comb[5] else "unmeasurable",
-            "comb_confirmation": (
-                f"shift={comb[0]} energy={_fmt(comb[1])}/{_fmt(comb[2])} "
-                f"ratio={_fmt(comb[3])} static={comb[4]:.3f}"
-            ),
+            "comb_status": "unmeasurable",
+            "comb_registration": "unmeasurable",
+            "comb_geometry_agreement": "unmeasurable",
+            "comb_confirmation": "pending inter-field measurement",
             "closure_line_count": closure_count,
             "closure_status": closure_status,
             "closure_reason": closure_reason,
@@ -1301,23 +1296,10 @@ class ReferenceBuilder:
             RASTER_LINES, LINE_BYTES
         )
         y = packed[:, 1::2]
-        # Comb is a confirmation signal, so measure it in the fixed decoder
-        # slots.  Following a selected top near the lower raster edge would
-        # give unequal arrays and, worse, make the confirmation depend on the
-        # hypothesis it is meant to test.
-        fixed_crops = [STANDARD_TOPS[field] - 4 for field in FIELDS]
-        comb = measure_comb(
-            y,
-            self.previous_y,
-            fixed_crops[0],
-            fixed_crops[1],
-            fixed_crops[0],
-            fixed_crops[1],
-        )
         row: dict[str, object] = {"ordinal": ordinal, "counter": counter}
         current: dict[int, FieldResult] = {}
         for field in FIELDS:
-            result = self._measure_field(y, packed, field, comb)
+            result = self._measure_field(y, packed, field)
             current[field] = result
             if self.capture_name == "sp_vstab_off":
                 carried = (
@@ -1326,10 +1308,56 @@ class ReferenceBuilder:
                     else "slot 2 carries SP field 1 of this unit"
                 )
                 result.values["note"] = f"{carried}; {result.values['note']}"
-            row.update({f"f{field}_{key}": value for key, value in result.values.items()})
             self.previous_rf_line = result.rf_peak_line
             self.previous_rf_x = result.rf_peak_x
             self.have_preceding_field = True
+
+        def geometry(results: dict[int, FieldResult]) -> tuple[FieldGeometry, FieldGeometry]:
+            fields: list[FieldGeometry] = []
+            for field in FIELDS:
+                values = results[field].values
+                fields.append(
+                    FieldGeometry(
+                        top=int(values.get("picture_top_line", -1)),
+                        switch=int(values.get("switch_first_line", -1)),
+                        bottom=int(values.get("bottom_line", -1)),
+                        band_bottom=int(values.get("hs_bottom_line", -1)),
+                        band_length=int(values.get("band_length", -1)),
+                        closure_count=int(values.get("closure_line_count", -1)),
+                        closure_status=str(values.get("closure_status", "unmeasurable")),
+                    )
+                )
+            return fields[0], fields[1]
+
+        previous_geometry = geometry(self.previous) if len(self.previous) == 2 else None
+        comb = measure_interfield_comb(
+            y,
+            self.previous_y,
+            geometry(current),
+            previous_geometry,
+        )
+        for field in FIELDS:
+            current[field].values.update(
+                {
+                    "comb_shift": comb.shift,
+                    "comb_best_energy": comb.best_energy,
+                    "comb_second_energy": comb.second_energy,
+                    "comb_ratio": comb.ratio,
+                    "comb_static_fraction": comb.static_fraction,
+                    "comb_static_pixels": comb.static_pixels,
+                    "comb_texture": comb.texture,
+                    "comb_status": comb.status,
+                    "comb_registration": comb.registration,
+                    "comb_geometry_agreement": comb.geometry_agreement,
+                    "comb_confirmation": comb.evidence,
+                }
+            )
+            row.update(
+                {
+                    f"f{field}_{key}": value
+                    for key, value in current[field].values.items()
+                }
+            )
         row["applied_d1"] = (
             current[1].top_line - STANDARD_TOPS[1] if current[1].top_line >= 0 else 0
         )
@@ -1380,6 +1408,50 @@ def validate(rows: list[dict[str, object]], capture_name: str) -> None:
                 raise RuntimeError(f"ordinal {row['ordinal']} field {field}: band aliases differ")
             if int(row[prefix + "closure_line_count"]) != 240:
                 raise RuntimeError(f"ordinal {row['ordinal']} field {field}: closure is not 240")
+        comb_keys = (
+            "comb_shift",
+            "comb_best_energy",
+            "comb_second_energy",
+            "comb_ratio",
+            "comb_static_fraction",
+            "comb_static_pixels",
+            "comb_texture",
+            "comb_status",
+            "comb_registration",
+            "comb_geometry_agreement",
+            "comb_confirmation",
+        )
+        def same_comb_value(left: object, right: object) -> bool:
+            try:
+                if math.isnan(float(left)) and math.isnan(float(right)):
+                    return True
+            except (TypeError, ValueError):
+                pass
+            return left == right
+
+        if any(
+            not same_comb_value(row[f"f1_{key}"], row[f"f2_{key}"])
+            for key in comb_keys
+        ):
+            raise RuntimeError(f"ordinal {row['ordinal']}: inter-field comb record differs by field")
+        comb_status = str(row["f1_comb_status"])
+        comb_shift = str(row["f1_comb_shift"])
+        if comb_status == "unmeasurable":
+            if comb_shift != "unmeasurable":
+                raise RuntimeError(f"ordinal {row['ordinal']}: unmeasurable comb has a shift")
+        elif comb_status == "observed":
+            if int(comb_shift) not in SHIFTS or str(row["f1_comb_geometry_agreement"]) not in {
+                "agrees",
+                "disagrees",
+            }:
+                raise RuntimeError(f"ordinal {row['ordinal']}: invalid observed comb")
+            if not all(
+                math.isfinite(float(row[f"f1_{key}"]))
+                for key in ("comb_best_energy", "comb_second_energy", "comb_ratio")
+            ):
+                raise RuntimeError(f"ordinal {row['ordinal']}: observed comb lacks energies")
+        else:
+            raise RuntimeError(f"ordinal {row['ordinal']}: invalid comb status {comb_status}")
 
 
 def summarize(rows: list[dict[str, object]]) -> str:

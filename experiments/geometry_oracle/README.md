@@ -149,9 +149,21 @@ compatibility alias. Chroma-only survival cannot extend either marker. `dp` and
 exist.
 
 An RF transient candidate retains its row, sample, strength, ratio, and before/after segment lags.
-Its RF status is `observed` only when the complete supplied definition is met, including next-row
-lag at most two samples before the transient and at least four after it; otherwise the candidate is
-`inferred` and its failing measurements remain in `rf_evidence`.
+The former before-x lag gate was withdrawn because a tear can begin before the transient's sample.
+The transient plus after-x tear remains useful evidence, but its RF status is `inferred`: it is not
+promoted to an observed head-switch identification by itself.
+
+The contract-v3 comb confirmation uses each unit's measured field tops, stops at each field's
+last reliable row (`switch - 1`), and evaluates relative field-2 shifts -3 through +3. A single
+same-parity static mask is formed against the preceding unit at the published geometry and shared
+by all seven candidates, so candidates cannot win by selecting different pixels. The measured
+shift says which field-2 row sits between two adjacent field-1 rows; shift zero agrees with the
+two 240-line geometry closures. Best and second energy,
+their ratio, static-pixel count/fraction, texture, the resulting line mapping, and the top/switch/
+band evidence are retained. Flat, moving, indecisive, missing-predecessor, and unavailable-
+geometry units are `unmeasurable` and carry the literal shift `unmeasurable`, never a number.
+Because this is one relationship between the two fields, the identical reading is stored in both
+field-prefixed comb column families.
 
 The commercial capture uses counter-based review ordinals: first exact unit 211, with device-short
 ordinals 213, 214, and 216 absent. The owner-provided stable-picture boundary at 551 is deliberately
@@ -173,6 +185,12 @@ python3 experiments/geometry_oracle/build_reference.py \
 python3 experiments/geometry_oracle/build_reference.py \
   captures/composite_program_30s.tpc \
   experiments/geometry_oracle/reports/reference_composite.csv --profile composite
+python3 experiments/geometry_oracle/build_comb_report.py \
+  experiments/geometry_oracle/reports/comb_summary.md \
+  w_300s=experiments/geometry_oracle/reports/reference_w_300s.csv \
+  w_2100s=experiments/geometry_oracle/reports/reference_w_2100s.csv \
+  sp_vstab_off=experiments/geometry_oracle/reports/reference_sp_vstab_off.csv \
+  composite=experiments/geometry_oracle/reports/reference_composite.csv
 ```
 
 `motion_audit.py` expands the reference's independently measured `dp` and switch displacement into
