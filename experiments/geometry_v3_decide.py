@@ -18,14 +18,14 @@ for r in rows: units.setdefault(r['unit'],{})[r['field']]=r
 PEDESTAL=11.0   # recorded black on both tapes sits at ~11 (measured: the band rows' left run and recorded black under the picture); a per-source constant, DEFAULT until measured at lock
 W=10            # lock window: the last W eligible readings; lock when >= 60% of them lie within one line of their mode (DEFAULT; ~1/3 s)
 st={f:dict(lock=-1,hist=[],rec=None) for f in ('1','2')}; stats=collections.Counter()
-w=csv.writer(open(A.out,'w',newline='')); w.writerow(['ordinal','counter','applied_d1','applied_d2','f1_picture_top_line','f1_bottom_line','f1_reason','f2_picture_top_line','f2_bottom_line','f2_reason','f1_hs_partial_line','f2_hs_partial_line','f1_band_first','f1_lock','f2_band_first','f2_lock','f1_shift','f2_shift','f1_body_med','f2_body_med'])
+w=csv.writer(open(A.out,'w',newline='')); w.writerow(['ordinal','counter','applied_d1','applied_d2','f1_picture_top_line','f1_bottom_line','f1_reason','f2_picture_top_line','f2_bottom_line','f2_reason','f1_hs_bottom_line','f2_hs_bottom_line','f1_hs_partial_line','f2_hs_partial_line','f1_band_first','f1_lock','f2_band_first','f2_lock','f1_shift','f2_shift','f1_body_med','f2_body_med'])
 def eligible(r):
     """the owner's lock condition: significant, non-dirty luma — the body's median luma above recorded black by more
     than three times the body's own row noise. A sub-black or pedestal-level raster (fade, dark card) never locks."""
     return r['body_med']!='' and float(r['body_med'])>=PEDESTAL+3*float(r['body_ystd'])
 def mode(v): return collections.Counter(v).most_common(1)[0][0]
 for unit,fr in units.items():
-    out={}
+    out={}; rl1=int(fr['1']['rec_last']); rl2=int(fr['2']['rec_last'])   # the band's bottom = the last recorded row of each field, measured per unit
     for f in ('1','2'):
         r=fr[f]; S=st[f]; top=int(r['top']); sw=int(r['band_first']); rl=int(r['rec_last']); rf=int(r['rec_first']); reason=''
         if top<=0: top=ORIGIN[f]; reason='NoRecordedRegion'
@@ -53,5 +53,5 @@ for unit,fr in units.items():
         bottom=(S['lock']-1) if S['lock']>0 else -1   # the partial line = the last line inside the edge variance (reference convention)
         d=top-ORIGIN[f]
         stats[(f,reason.split('(')[0])]+=1; out[f]=(d,top,bottom,reason,sw,S['lock'],r['shift'],r['body_med'])
-    w.writerow([unit,fr['1']['counter'],out['1'][0],out['2'][0],out['1'][1],out['1'][2],out['1'][3],out['2'][1],out['2'][2],out['2'][3],out['1'][5],out['2'][5],out['1'][4],out['1'][5],out['2'][4],out['2'][5],out['1'][6],out['2'][6],out['1'][7],out['2'][7]])
+    w.writerow([unit,fr['1']['counter'],out['1'][0],out['2'][0],out['1'][1],out['1'][2],out['1'][3],out['2'][1],out['2'][2],out['2'][3],(rl1 if st['1']['lock']>0 else -1),(rl2 if st['2']['lock']>0 else -1),out['1'][5],out['2'][5],out['1'][4],out['1'][5],out['2'][4],out['2'][5],out['1'][6],out['2'][6],out['1'][7],out['2'][7]])
 for f in ('1','2'): print('field',f,{k[1]:v for k,v in sorted(stats.items()) if k[0]==f})

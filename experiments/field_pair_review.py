@@ -17,8 +17,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 from packet_capture_reader import walk_tagged
 from PIL import Image, ImageDraw
 UNIT=756_048; HDR=48; LINE=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
-F={1:dict(origin_line=23, first_line=20, top='f1_picture_top_line', bot='f1_bottom_line', hs='f1_hs_partial_line', clip='f1_last_recorded_line'),
-   2:dict(origin_line=286, first_line=283, top='f2_picture_top_line', bot='f2_bottom_line', hs='f2_hs_partial_line', clip='f2_last_recorded_line')}
+F={1:dict(origin_line=23, first_line=20, top='f1_picture_top_line', bot='f1_bottom_line', hs='f1_hs_bottom_line', clip='f1_last_recorded_line'),
+   2:dict(origin_line=286, first_line=283, top='f2_picture_top_line', bot='f2_bottom_line', hs='f2_hs_bottom_line', clip='f2_last_recorded_line')}
 H=243; W=720; INFO=230   # info column appended to the RIGHT of the two fields; no text ever covers a raster row
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('ref'); ap.add_argument('out')
 ap.add_argument('--mode',choices=['raw','stabilized'],required=True); ap.add_argument('--start-ordinal',type=int,default=0); ap.add_argument('--max-units',type=int,default=0)
@@ -57,7 +57,7 @@ def field_view(Y, f, top, bot, mode, hs=None):
         rt=(top-Fd['first_line'])-d; rb=(bot-Fd['first_line'])-d if (bot is not None and bot>0) else None
         if 0<=rt<H: rgb[rt,:,0]=255; rgb[rt,:,1]//=3; rgb[rt,:,2]//=3
         if rb is not None and 0<=rb<H: rgb[rb,:,0]=255; rgb[rb,:,1]//=3; rgb[rb,:,2]//=3
-        # head-switch marker (owner, 2026-09-07: two bands, one for the head switch, one for the actual bottom): YELLOW
+        # head-switch band BOTTOM marker (owner, 2026-09-07): YELLOW
         rh=(hs-Fd['first_line'])-d if (hs is not None and hs>0) else None
         if rh is not None and 0<=rh<H and rh!=rb: rgb[rh,:,0]=255; rgb[rh,:,1]=255; rgb[rh,:,2]//=3
     return rgb, d
@@ -80,18 +80,21 @@ def emit(u):
     Y=np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,LINE)[:,1::2].astype(np.float32)
     frame=np.zeros((H,2*W+INFO,3),np.uint8); txt=[]; man=[]
     for f in (1,2):
-        top=val(r,F[f]['top']); bot=val(r,F[f]['bot']); hs=val(r,F[f]['hs']) if F[f]['hs'] in r else None
+        top=val(r,F[f]['top']); bot=val(r,F[f]['bot'])
+        # YELLOW = the BOTTOM of the head-switch band (owner, 2026-09-07): the last row the other head delivers; a reference
+        # carries it as hs_bottom_line, else its last recorded line
+        hs=val(r,F[f]['hs']) if F[f]['hs'] in r else (val(r,F[f]['clip']) if F[f]['clip'] in r else None)
         if top is None or top<=0: top=None
         rgb,d=field_view(Y,f,top,bot,A.mode,hs); frame[:,(f-1)*W:f*W]=rgb; man+= [top if top else -1, bot if (bot and bot>0) else -1, d]
         mo=body_motion(Y,f); motxt=('moved %+d vs prev (r %.2f)'%mo if (mo and mo[1]<=0.8) else ('still vs prev (r %.2f)'%mo[1] if mo else 'first unit'))
-        txt.append(f"ref top {top if top else '?'} | ref bottom {bot if (bot and bot>0) else '?'} | head switch {hs if (hs and hs>0) else '?'} | displaced {d:+d} (crop {-d:+d}) | {motxt}")
+        txt.append(f"ref top {top if top else '?'} | ref bottom {bot if (bot and bot>0) else '?'} | head-switch bottom {hs if (hs and hs>0) else '?'} | displaced {d:+d} (crop {-d:+d}) | {motxt}")
     im=Image.fromarray(np.repeat(frame,VS,axis=0)); dr=ImageDraw.Draw(im); x0=2*W+6; HH=H*VS
     dr.rectangle([2*W,0,2*W+INFO-1,HH-1],fill=(28,28,28))
     dr.text((x0,6),f"unit {r['ordinal']}",fill=(0,255,255)); dr.text((x0,20),f"ctr {c16}  {A.mode}",fill=(200,200,200))
     for k,f in enumerate((1,2)):
         y0=44+k*100; dr.text((x0,y0),f"FIELD {f}",fill=(255,255,255))
         for q,line in enumerate(txt[k].split(' | ')): dr.text((x0,y0+14+q*14),line,fill=(255,200,200))
-    dr.text((x0,HH-40),"rows: lines 20-262",fill=(120,120,120)); dr.text((x0,HH-26),"      / 283-525",fill=(120,120,120)); dr.text((x0,HH-12),"red = top/bottom  yellow = head switch",fill=(255,80,80))
+    dr.text((x0,HH-40),"rows: lines 20-262",fill=(120,120,120)); dr.text((x0,HH-26),"      / 283-525",fill=(120,120,120)); dr.text((x0,HH-12),"red = top/bottom  yellow = band bottom",fill=(255,80,80))
     ff.stdin.write(np.asarray(im).tobytes())
     manifest.write(','.join(str(x) for x in [n[0]-1, r['ordinal'], c16]+man)+'\n')
     if A.max_units and n[0]>=A.max_units: raise StopIteration
