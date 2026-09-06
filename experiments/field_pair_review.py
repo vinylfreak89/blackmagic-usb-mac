@@ -54,7 +54,11 @@ def emit(u):
     # not carry (device-short, fragment) is skipped with a log line, never silently dropped or misaligned
     global bycounter
     cands=bycounter.get(c16,[])
-    near=[i for i in cands if i>=pos and i-pos<=64]
+    if n[0]==0 and cands:
+        # first unit of a slice: the reference row with this counter nearest --start-ordinal (the 16-bit counter wraps)
+        near=[min(cands,key=lambda i:abs(int(ref[i]['ordinal'])-A.start_ordinal))]; print('joined at reference ordinal',ref[near[0]]['ordinal'])
+    else:
+        near=[i for i in cands if i>=pos and i-pos<=64]
     if not near:
         skipped.append(c16); return
     pos=near[0]; r=ref[pos]
