@@ -20,6 +20,7 @@ from build_reference import (
     STATUSES,
     CaptureSpec,
     _first_edge_departure,
+    _inspect_top,
     validate,
 )
 
@@ -73,9 +74,67 @@ class ReferenceMeasurementTest(unittest.TestCase):
     def test_capture_specs_cannot_carry_geometry_answers(self) -> None:
         self.assertEqual(
             [item.name for item in fields(CaptureSpec)],
-            ["label", "expected_count", "ordinal_origin"],
+            ["label", "expected_count", "ordinal_origin", "half_field_phase"],
         )
         self.assertEqual(set(CAPTURES), {"w_300s", "w_2100s", "sp_vstab_off", "composite"})
+
+    def test_recorded_dark_first_band_is_picture(self) -> None:
+        y = np.ones((525, 720), dtype=np.uint8)
+        texture = (np.arange(640, dtype=np.uint16) % 17).astype(np.uint8)
+        y[19:24, 40:680] = 8 + texture % 7
+        y[24:250, 40:680] = 90 + texture % 31
+        recorded = np.zeros(244, dtype=bool)
+        recorded[:231] = True
+        reading = _inspect_top(
+            y,
+            1,
+            -1,
+            False,
+            recorded,
+            1.5,
+            (-128, float("nan"), float("nan"), float("nan"), 0, 0.0),
+            1,
+        )
+        self.assertEqual((reading.line, reading.status), (23, "observed"))
+        self.assertIn("dark band is picture", reading.evidence)
+
+    def test_single_recorded_black_row_does_not_become_a_dark_band(self) -> None:
+        y = np.ones((525, 720), dtype=np.uint8)
+        texture = (np.arange(640, dtype=np.uint16) % 31).astype(np.uint8)
+        y[19, 40:680] = 5 + texture % 3
+        y[20:250, 40:680] = 90 + texture % 41
+        recorded = np.zeros(244, dtype=bool)
+        recorded[:231] = True
+        reading = _inspect_top(
+            y,
+            1,
+            24,
+            False,
+            recorded,
+            1.5,
+            (0, 1.0, 2.0, 0.5, 1, 0.5),
+            1,
+        )
+        self.assertEqual(reading.line, 24)
+
+    def test_same_slot_body_shift_places_missing_field2_first_line(self) -> None:
+        y = np.ones((525, 720), dtype=np.uint8)
+        texture = (np.arange(640, dtype=np.uint16) % 53).astype(np.uint8)
+        y[282, 40:680] = 4 + texture % 5
+        y[283:520, 40:680] = 90 + texture % 61
+        recorded = np.ones(244, dtype=bool)
+        reading = _inspect_top(
+            y,
+            2,
+            286,
+            False,
+            recorded,
+            1.5,
+            (1, 6.0, 7.0, 6.0 / 7.0, 1, 0.5),
+            2,
+        )
+        self.assertEqual((reading.line, reading.status), (287, "observed"))
+        self.assertIn("same-slot body shift=+1", reading.evidence)
 
     def test_edge_departure_uses_field_body_variance(self) -> None:
         y = np.ones((525, 720), dtype=np.uint8)
@@ -217,6 +276,79 @@ class ReferenceMeasurementTest(unittest.TestCase):
         self.assertIn("external acceptance knowledge", report)
         self.assertIn("unmeasurable", report)
 
+        dark_band = [row for row in rows if 635 <= int(row["ordinal"]) <= 759]
+        self.assertEqual(len(dark_band), 125)
+        self.assertEqual(
+            {int(row["f1_picture_top_line"]) for row in dark_band},
+            {23},
+        )
+        for row in dark_band:
+            energies = {
+                int(item.split(":", 1)[0]): float(item.split(":", 1)[1])
+                for item in row["f1_comb_energies"].split(",")
+            }
+            self.assertEqual(min(energies, key=energies.get), 0)
+
+    def test_sp_top_and_comb_raw_row_adjudications(self) -> None:
+        rows = {int(row["ordinal"]): row for row in read_reference("w_300s")}
+        corrected = {
+            unit
+            for unit, row in rows.items()
+            if int(row["f2_picture_top_line"]) == 287
+        }
+        self.assertEqual(corrected, {87, 258, 439, 467})
+
+        before = rows[102]
+        isolated = rows[103]
+        self.assertEqual(
+            (
+                isolated["f1_picture_top_line"],
+                isolated["f1_switch_first_line"],
+                isolated["f2_picture_top_line"],
+                isolated["f2_switch_first_line"],
+            ),
+            (
+                before["f1_picture_top_line"],
+                before["f1_switch_first_line"],
+                before["f2_picture_top_line"],
+                before["f2_switch_first_line"],
+            ),
+        )
+        self.assertEqual(
+            (before["f1_comb_shift"], isolated["f1_comb_shift"]),
+            ("0", "1"),
+        )
+
+    def test_off_pass_questioned_comb_stretches_remain_one_line_departures(self) -> None:
+        rows = {int(row["ordinal"]): row for row in read_reference("sp_vstab_off")}
+        questioned = {
+            89,
+            *range(99, 103),
+            *range(108, 113),
+            *range(129, 132),
+            *range(135, 138),
+            143,
+            144,
+            *range(146, 150),
+            152,
+            *range(158, 163),
+            *range(166, 169),
+            *range(170, 178),
+            *range(181, 188),
+            191,
+            *range(196, 199),
+            *range(208, 211),
+            221,
+            580,
+            581,
+        }
+        self.assertEqual(len(questioned), 56)
+        for unit in questioned:
+            row = rows[unit]
+            self.assertEqual(row["f1_comb_expected_shift"], "1")
+            self.assertEqual(row["f1_comb_shift"], "0")
+            self.assertEqual(row["f1_comb_geometry_agreement"], "disagrees")
+
     def test_vstab_off_field_phase_report(self) -> None:
         with (ROOT / "sp_vstab_off_alignment.csv").open(newline="") as handle:
             witnesses = [row for row in csv.DictReader(handle) if row["status"] == "phase witness"]
@@ -231,6 +363,22 @@ class ReferenceMeasurementTest(unittest.TestCase):
         off = read_reference("sp_vstab_off")
         self.assertTrue(all("slot 1 carries SP field 2" in row["f1_note"] for row in off))
         self.assertTrue(all("slot 2 carries SP field 1" in row["f2_note"] for row in off))
+        self.assertTrue(
+            all(row["f1_comb_expected_shift"] == "1" for row in off)
+        )
+        self.assertTrue(
+            all(
+                "slot-2/current + slot-1/following" in row["f1_comb_partner"]
+                for row in off
+            )
+        )
+        for row in off:
+            if row["f1_comb_status"] != "observed":
+                continue
+            expected_agreement = (
+                "agrees" if row["f1_comb_shift"] == "1" else "disagrees"
+            )
+            self.assertEqual(row["f1_comb_geometry_agreement"], expected_agreement)
 
     def test_schema_contains_every_v3_measurement_family(self) -> None:
         for required in (
@@ -254,7 +402,10 @@ class ReferenceMeasurementTest(unittest.TestCase):
             "comb_static_fraction",
             "comb_static_pixels",
             "comb_texture",
+            "comb_energies",
+            "comb_expected_shift",
             "comb_status",
+            "comb_partner",
             "comb_registration",
             "comb_geometry_agreement",
             "comb_confirmation",

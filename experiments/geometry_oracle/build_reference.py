@@ -21,15 +21,24 @@ from typing import Iterable
 
 import numpy as np
 
-from comb_confirmation import SHIFTS, FieldGeometry, measure_interfield_comb
+from comb_confirmation import (
+    SHIFTS,
+    CombReading,
+    FieldGeometry,
+    measure_interfield_comb,
+    measure_interfield_comb_planes,
+    unmeasurable_comb,
+)
 from oracle import (
     FIELD_SPECS,
     HEADER_BYTES,
     LINE_BYTES,
     RASTER_LINES,
     measure_chroma_deviation,
+    measure_body,
     measure_flat_raster,
     measure_last_recorded,
+    measure_recorded_rows,
     measure_row_activity,
     scan_cea608,
     scan_cea608_waveforms,
@@ -57,12 +66,16 @@ class CaptureSpec:
     label: str
     expected_count: int
     ordinal_origin: int = 0
+    half_field_phase: bool = False
 
 
 CAPTURES = {
     "w_300s": CaptureSpec("SP recording", 608),
     "w_2100s": CaptureSpec("EP recording", 621),
-    "sp_vstab_off": CaptureSpec("SP recording, V-stabilize off", 608),
+    # The slice begins one field later than the comparison slice: its slot 1
+    # is the preceding source field 2 and slot 2 is source field 1. This is a
+    # transport pairing fact, not a top or bottom calibration.
+    "sp_vstab_off": CaptureSpec("SP recording, V-stabilize off", 608, 0, True),
     # The first exact unit is frame 211 in the external review manifest. This
     # changes only the join key; it supplies no picture decision.
     "composite": CaptureSpec("commercial tape", 919, 211),
@@ -129,7 +142,10 @@ FIELD_COLUMNS = [
     "comb_static_fraction",
     "comb_static_pixels",
     "comb_texture",
+    "comb_energies",
+    "comb_expected_shift",
     "comb_status",
+    "comb_partner",
     "comb_registration",
     "comb_geometry_agreement",
     "comb_confirmation",
@@ -297,6 +313,10 @@ def _inspect_top(
     field: int,
     previous_top: int,
     flat: bool,
+    recorded_rows: np.ndarray,
+    recorded_gate: float,
+    body_motion: tuple[int, float, float, float, int, float],
+    source_field: int,
 ) -> TopReading:
     """Use one signal-derived top path for every source."""
     spec = FIELD_SPECS[field - 1]
@@ -358,15 +378,35 @@ def _inspect_top(
                 if float(means[line - pass_first]) > midpoint
             ]
             if level_lines:
-                top = level_lines[0]
-                # A delayed luma onset establishes the first visible bright
-                # row, but cannot prove that preceding dark rows are not
-                # picture. Preserve the coordinate while saying so.
-                status = "observed" if top == pass_first else "inferred"
-                reason = (
-                    f"first picture-level onset L{top}; "
-                    f"blank/body midpoint={midpoint:.3f}"
+                bright_top = level_lines[0]
+                dark_band = list(range(pass_first, bright_top))
+                recorded_dark_band = (
+                    len(dark_band) >= 3
+                    and all(
+                        bool(recorded_rows[line - pass_first])
+                        for line in dark_band
+                    )
                 )
+                if recorded_dark_band:
+                    # The recorded-region boundary, not brightness, defines
+                    # the picture top.  Requiring a run distinguishes a dark
+                    # first picture band from an isolated recorded VBI-black
+                    # row immediately before an otherwise normal picture.
+                    top = pass_first
+                    reason = (
+                        f"recorded non-VBI dark band L{pass_first}-L{bright_top - 1} "
+                        f"precedes picture-level onset L{bright_top}; "
+                        f"chroma gate={recorded_gate:.3f}; dark band is picture"
+                    )
+                else:
+                    top = bright_top
+                    # A delayed luma onset without a recorded dark band does
+                    # not itself place the boundary.
+                    status = "observed" if top == pass_first else "inferred"
+                    reason = (
+                        f"first picture-level onset L{top}; "
+                        f"blank/body midpoint={midpoint:.3f}"
+                    )
             elif active_lines[0] == pass_first and (
                 float(stds[0]) >= 4.0
                 or abs(float(means[0]) - blank_mean) >= 4.0 * blank_noise
@@ -399,11 +439,36 @@ def _inspect_top(
             status = "inferred"
             reason = "first edge weak; inferred standard pass-through origin"
     else:
+        means, stds, _gradients, active, _blank, _gates = measure_row_activity(y, spec)
         line287_wave = 287 in off_waveform
         break_at_287 = _correlation(y[283], y[284]) < 0.40
         body_resumes = _correlation(y[284], y[285]) > 0.70
         vbi_pair = line287_wave and break_at_287 and body_resumes
-        if previous_top == 288:
+        body_shift, body_best, body_second, body_ratio, body_unique, body_static = body_motion
+        first_mean = float(means[0])
+        first_std = float(stds[0])
+        next_mean = float(means[1])
+        next_std = float(stds[1])
+        first_line_missing = (
+            source_field == 2
+            and previous_top >= 0
+            and body_shift == 1
+            and bool(body_unique)
+            and first_std < 6.0
+            and next_std > 15.0
+            and next_mean - first_mean > 40.0
+            and pass_first not in set(off_waveform) | set(off_caption)
+        )
+        if first_line_missing:
+            top = pass_first + 1
+            reason = (
+                f"first pass-through row L{pass_first} is recorded dark, not picture "
+                f"(Y={first_mean:.3f}/{first_std:.3f}); picture begins L{top} "
+                f"(Y={next_mean:.3f}/{next_std:.3f}); same-slot body shift=+1 "
+                f"energy={body_best:.3f}/{body_second:.3f} ratio={body_ratio:.3f} "
+                f"static={body_static:.3f}"
+            )
+        elif previous_top == 288:
             top = 288
             status = "observed" if vbi_pair else "inferred"
             reason = "field-2 VBI lock ends at L287" if vbi_pair else "held field-2 VBI lock"
@@ -415,7 +480,6 @@ def _inspect_top(
             top = 288
             reason = "waveform L287 ends a two-row VBI region; picture continuity resumes L288"
         else:
-            _means, _stds, _gradients, active, _blank, _gates = measure_row_activity(y, spec)
             if bool(active[0]):
                 top = 286
                 reason = "first field-2 pass-through row has picture activity"
@@ -978,6 +1042,63 @@ def _motion(current: int, previous: int, has_previous: bool) -> str:
     return str(current - previous) if current >= 0 and previous >= 0 else "unmeasurable"
 
 
+def _geometry(
+    results: dict[int, FieldResult],
+) -> tuple[FieldGeometry, FieldGeometry]:
+    fields: list[FieldGeometry] = []
+    for field in FIELDS:
+        values = results[field].values
+        fields.append(
+            FieldGeometry(
+                top=int(values.get("picture_top_line", -1)),
+                switch=int(values.get("switch_first_line", -1)),
+                bottom=int(values.get("bottom_line", -1)),
+                band_bottom=int(values.get("hs_bottom_line", -1)),
+                band_length=int(values.get("band_length", -1)),
+                closure_count=int(values.get("closure_line_count", -1)),
+                closure_status=str(values.get("closure_status", "unmeasurable")),
+            )
+        )
+    return fields[0], fields[1]
+
+
+def _comb_values(
+    comb: CombReading, partner: str, expected_shift: int
+) -> dict[str, object]:
+    energies = (
+        ",".join(
+            f"{shift}:{energy:.6f}"
+            for shift, energy in zip(SHIFTS, comb.energies)
+        )
+        if comb.energies
+        else ""
+    )
+    return {
+        "comb_shift": comb.shift,
+        "comb_best_energy": comb.best_energy,
+        "comb_second_energy": comb.second_energy,
+        "comb_ratio": comb.ratio,
+        "comb_static_fraction": comb.static_fraction,
+        "comb_static_pixels": comb.static_pixels,
+        "comb_texture": comb.texture,
+        "comb_energies": energies,
+        "comb_expected_shift": expected_shift,
+        "comb_status": comb.status,
+        "comb_partner": partner,
+        "comb_registration": comb.registration,
+        "comb_geometry_agreement": comb.geometry_agreement,
+        "comb_confirmation": comb.evidence,
+    }
+
+
+def _apply_comb_to_row(
+    row: dict[str, object], comb: CombReading, partner: str, expected_shift: int
+) -> None:
+    values = _comb_values(comb, partner, expected_shift)
+    for field in FIELDS:
+        row.update({f"f{field}_{key}": value for key, value in values.items()})
+
+
 class ReferenceBuilder:
     def __init__(self, capture_name: str) -> None:
         self.capture_name = capture_name
@@ -986,7 +1107,10 @@ class ReferenceBuilder:
         self.previous_counter: int | None = None
         self.counter_extended = 0
         self.previous_y: np.ndarray | None = None
+        self.previous_previous_y: np.ndarray | None = None
         self.previous: dict[int, FieldResult] = {}
+        self.previous_previous: dict[int, FieldResult] = {}
+        self.pending_row: dict[str, object] | None = None
         self.previous_rf_line = -1
         self.previous_rf_x = -1
         self.have_preceding_field = False
@@ -1023,7 +1147,19 @@ class ReferenceBuilder:
         coherence, vertical_mad = _picture_coherence(y, field)
         has_structure = coherence >= 0.20 or vertical_mad >= 2.0
         flat = bool(flat_values[0]) or not has_structure
-        top = _inspect_top(y, field, previous_top, flat)
+        chroma_deviation = measure_chroma_deviation(packed)
+        recorded_rows, recorded_gate = measure_recorded_rows(chroma_deviation, spec)
+        body_motion = measure_body(y, self.previous_y, spec)
+        top = _inspect_top(
+            y,
+            field,
+            previous_top,
+            flat,
+            recorded_rows,
+            recorded_gate,
+            body_motion,
+            3 - field if self.specification.half_field_phase else field,
+        )
         raster_limit = RASTER_LIMITS[field]
 
         if top.line < 0:
@@ -1169,7 +1305,7 @@ class ReferenceBuilder:
         ]
         first_blank = following[0] if following else scan_last + 1
         last_row, last_valid, _deviation, _gate = measure_last_recorded(
-            measure_chroma_deviation(packed), spec
+            chroma_deviation, spec
         )
         last_recorded = last_row + 4 if last_valid else -1
 
@@ -1301,7 +1437,7 @@ class ReferenceBuilder:
         for field in FIELDS:
             result = self._measure_field(y, packed, field)
             current[field] = result
-            if self.capture_name == "sp_vstab_off":
+            if self.specification.half_field_phase:
                 carried = (
                     "slot 1 carries SP field 2 of the preceding unit"
                     if field == 1
@@ -1312,46 +1448,7 @@ class ReferenceBuilder:
             self.previous_rf_x = result.rf_peak_x
             self.have_preceding_field = True
 
-        def geometry(results: dict[int, FieldResult]) -> tuple[FieldGeometry, FieldGeometry]:
-            fields: list[FieldGeometry] = []
-            for field in FIELDS:
-                values = results[field].values
-                fields.append(
-                    FieldGeometry(
-                        top=int(values.get("picture_top_line", -1)),
-                        switch=int(values.get("switch_first_line", -1)),
-                        bottom=int(values.get("bottom_line", -1)),
-                        band_bottom=int(values.get("hs_bottom_line", -1)),
-                        band_length=int(values.get("band_length", -1)),
-                        closure_count=int(values.get("closure_line_count", -1)),
-                        closure_status=str(values.get("closure_status", "unmeasurable")),
-                    )
-                )
-            return fields[0], fields[1]
-
-        previous_geometry = geometry(self.previous) if len(self.previous) == 2 else None
-        comb = measure_interfield_comb(
-            y,
-            self.previous_y,
-            geometry(current),
-            previous_geometry,
-        )
         for field in FIELDS:
-            current[field].values.update(
-                {
-                    "comb_shift": comb.shift,
-                    "comb_best_energy": comb.best_energy,
-                    "comb_second_energy": comb.second_energy,
-                    "comb_ratio": comb.ratio,
-                    "comb_static_fraction": comb.static_fraction,
-                    "comb_static_pixels": comb.static_pixels,
-                    "comb_texture": comb.texture,
-                    "comb_status": comb.status,
-                    "comb_registration": comb.registration,
-                    "comb_geometry_agreement": comb.geometry_agreement,
-                    "comb_confirmation": comb.evidence,
-                }
-            )
             row.update(
                 {
                     f"f{field}_{key}": value
@@ -1364,8 +1461,70 @@ class ReferenceBuilder:
         row["applied_d2"] = (
             current[2].top_line - STANDARD_TOPS[2] if current[2].top_line >= 0 else 0
         )
+
+        if self.specification.half_field_phase:
+            # This transport unit contains source field 2 from the preceding
+            # source pair followed by source field 1 from the current pair.
+            # Leave the current row explicitly pending, then finalize the
+            # preceding row when its following slot-1 field arrives.
+            _apply_comb_to_row(
+                row,
+                unmeasurable_comb("no following source-field slot is available yet"),
+                "source pair: slot-2/current + slot-1/following unit",
+                1,
+            )
+            if self.pending_row is not None:
+                current_pair_geometry = (
+                    _geometry(self.previous)[1],
+                    _geometry(current)[0],
+                )
+                previous_pair_geometry = (
+                    (
+                        _geometry(self.previous_previous)[1],
+                        _geometry(self.previous)[0],
+                    )
+                    if len(self.previous_previous) == 2
+                    else None
+                )
+                comb = measure_interfield_comb_planes(
+                    self.previous_y,
+                    y,
+                    self.previous_previous_y,
+                    self.previous_y,
+                    current_pair_geometry,
+                    previous_pair_geometry,
+                    first_label="slot-2/current source field-1",
+                    second_label="slot-1/following source field-2",
+                    expected_shift=1,
+                )
+                _apply_comb_to_row(
+                    self.pending_row,
+                    comb,
+                    "source pair: slot-2/current + slot-1/following unit",
+                    1,
+                )
+        else:
+            previous_geometry = (
+                _geometry(self.previous) if len(self.previous) == 2 else None
+            )
+            comb = measure_interfield_comb(
+                y,
+                self.previous_y,
+                _geometry(current),
+                previous_geometry,
+            )
+            _apply_comb_to_row(
+                row,
+                comb,
+                "within transport unit: field-1 + field-2",
+                0,
+            )
+
+        self.previous_previous = self.previous
+        self.previous_previous_y = self.previous_y
         self.previous = current
         self.previous_y = y.copy()
+        self.pending_row = row
         return row
 
 
@@ -1416,7 +1575,10 @@ def validate(rows: list[dict[str, object]], capture_name: str) -> None:
             "comb_static_fraction",
             "comb_static_pixels",
             "comb_texture",
+            "comb_energies",
+            "comb_expected_shift",
             "comb_status",
+            "comb_partner",
             "comb_registration",
             "comb_geometry_agreement",
             "comb_confirmation",
@@ -1450,6 +1612,19 @@ def validate(rows: list[dict[str, object]], capture_name: str) -> None:
                 for key in ("comb_best_energy", "comb_second_energy", "comb_ratio")
             ):
                 raise RuntimeError(f"ordinal {row['ordinal']}: observed comb lacks energies")
+            expected_shift = int(row["f1_comb_expected_shift"])
+            expected_agreement = (
+                "agrees" if int(comb_shift) == expected_shift else "disagrees"
+            )
+            if row["f1_comb_geometry_agreement"] != expected_agreement:
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']}: comb agreement contradicts expected shift"
+                )
+            energy_items = str(row["f1_comb_energies"]).split(",")
+            if len(energy_items) != len(SHIFTS):
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']}: observed comb lacks seven energies"
+                )
         else:
             raise RuntimeError(f"ordinal {row['ordinal']}: invalid comb status {comb_status}")
 

@@ -153,17 +153,30 @@ The former before-x lag gate was withdrawn because a tear can begin before the t
 The transient plus after-x tear remains useful evidence, but its RF status is `inferred`: it is not
 promoted to an observed head-switch identification by itself.
 
+The top detector treats a consecutive chroma-confirmed recorded, non-VBI dark band as picture;
+brightness only locates the later luma onset. An isolated recorded black row is not promoted to
+a band. Same-slot body displacement plus the raw first-row transition identifies the four SP
+field-2 units whose picture begins at L287. Source-field parity is part of the measured transport
+mapping, so the same luma pattern in the half-field-phased capture is not confused with the same
+VBI row.
+
 The contract-v3 comb confirmation uses each unit's measured field tops, stops at each field's
-last reliable row (`switch - 1`), and evaluates relative field-2 shifts -3 through +3. A single
+last reliable row (`switch - 1`), and evaluates relative shifts -3 through +3. A single
 same-parity static mask is formed against the preceding unit at the published geometry and shared
 by all seven candidates, so candidates cannot win by selecting different pixels. The measured
-shift says which field-2 row sits between two adjacent field-1 rows; shift zero agrees with the
-two 240-line geometry closures. Best and second energy,
+shift says which second named parity row sits between two adjacent first named parity rows.
+Ordinary field-1/field-2 ordering expects zero. The V-stabilize-off slice is source-paired as
+slot 2 of the current unit then slot 1 of the following unit; that reverses raster parity and
+expects +1. The partner, expected shift, all seven energies, best/second energy,
 their ratio, static-pixel count/fraction, texture, the resulting line mapping, and the top/switch/
 band evidence are retained. Flat, moving, indecisive, missing-predecessor, and unavailable-
 geometry units are `unmeasurable` and carry the literal shift `unmeasurable`, never a number.
 Because this is one relationship between the two fields, the identical reading is stored in both
 field-prefixed comb column families.
+
+`reports/turn8_raw_row_audit.md` records the deciding line measurements for the commercial dark
+band, the two comb-ordering questions, the isolated SP registration departure, and the four-unit
+SP field-2 top correction.
 
 The commercial capture uses counter-based review ordinals: first exact unit 211, with device-short
 ordinals 213, 214, and 216 absent. The owner-provided stable-picture boundary at 551 is deliberately

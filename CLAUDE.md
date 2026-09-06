@@ -1890,7 +1890,8 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   `experiments/geometry_oracle/reports/reference_*.csv` (revised 2026-09-07).** One source-blind
   measurement path covers every exact unit of the SP slice (608), EP slice (621), the same SP
   passage with deck V-stabilize off (608), and the commercial capture (919). Capture descriptors
-  contain only transport count, label, and ordinal origin—never geometry or a stable boundary.
+  contain only transport count, label, ordinal origin, and independently measured half-field
+  transport phase—never a top, switch, bottom, or stable boundary.
   Per field the record carries top plus blanking/VBI/caption evidence, expected bottom `top+239`,
   clipping, first switch row with separate skew/RF/AGC evidence, last reliable row `switch-1`,
   last visible picture-bearing band row, first blank, raster limit, visible/censored band count,
@@ -1913,29 +1914,43 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   current unit's field 1; the notes retain that parity. The generated displacement report lists
   every nonzero `(dp,ds)` cell and three raw-row witnesses per populated cell.
 
-  Contract-v3 comb confirmation is source-blind and uses each unit's measured tops. Relative
-  field-2 shifts -3 through +3 are scored only through each field's last reliable row
+  Contract-v3 comb confirmation uses each unit's measured tops. Relative shifts -3 through +3
+  are scored only through each field's last reliable row
   (`switch-1`), on one common same-parity static mask against the preceding unit; flat, moving,
   indecisive, missing-predecessor, or unavailable-geometry units are `unmeasurable` and carry no
-  numeric shift. The record preserves best/second energy,
-  decisiveness, mask size/fraction, texture, the explicit field-row mapping, and the two fields'
-  top/switch/band/closure evidence. On the current SP reference, every measurable fixed-top
-  switch transition keeps the same comb registration (field 1: 16; field 2: 47); three and seven
-  further transitions respectively are unmeasurable. This supports switch-band motion without
-  whole-picture displacement in those measured transitions.
+  numeric shift. The record preserves the field partner, its ordering-dependent expected shift,
+  all seven energies, best/second energy, decisiveness, mask size/fraction, texture, the explicit
+  field-row mapping, and the two fields' top/switch/band/closure evidence. Ordinary field-1 then
+  field-2 raster order expects zero. The V-stabilize-off source pair is slot 2 of the current unit
+  then slot 1 of the following unit; because this reverses raster parity, it expects +1. On the
+  corrected SP reference, every measurable fixed-top switch transition keeps the same comb
+  registration (field 1: 16; field 2: 39); three and seven further transitions respectively are
+  unmeasurable. The field-2 count was 47 before the four L287 top corrections; their entry/exit
+  transitions are no longer `dp=0`. This supports switch-band motion without whole-picture
+  displacement in the remaining measured transitions.
 
   The bounded comb census is: SP 591 observed / 17 unmeasurable (shift 0: 590, shift +1: unit
-  103); EP 458 / 163 (all 458 shift 0); V-stabilize-off SP 598 / 10 (shift 0: 542, shift +1:
-  56); commercial tape 348 / 571 (shift 0: 214, shift +3: 134). The commercial +3 class is
-  units 217-225 and 635-759; the latter lies inside the externally known stable-picture range
-  and therefore flags a geometry/reference disagreement rather than accepted motion. Complete
+  103); EP 458 / 163 (all 458 shift 0); V-stabilize-off SP source pairs 571 / 37 (expected +1:
+  455; departures 0: 115 and +2: 1); commercial tape 327 / 592 (shift 0: 318, shift +3: 9 at
+  units 217-225). The former commercial +3 run at 635-759 was a reference error: raw L23-L27 is
+  a chroma-confirmed recorded, non-VBI dark first picture band and L28 is only the brighter luma
+  onset. With top corrected from L28 to L23, every one of the 125 energy vectors minimizes at
+  zero (104 decisive, 21 unmeasurable). Complete
   unit lists, decisiveness histograms, and raw-row witnesses are in
   `experiments/geometry_oracle/reports/comb_summary.md`.
 
-  **Pending SP top-census correction (raw-row audit, 2026-09-07):** field-2 units 87, 258, 439,
-  and 467 have the tape's black line 22 at NTSC L286 (mean 3.8-6.0, standard deviation 3-4) and
-  picture beginning at L287, while the current reference says L286. Their comb samples currently
-  report no registration change across a `dp=0, ds=+2` transition, but must be recomputed from
-  the corrected top in the next census; do not use those four units as settled witnesses yet.
+  **Raw-row top correction (2026-09-07):** SP field-2 units 87, 258, 439, and 467 have the tape's
+  black line 22 at NTSC L286 (mean 3.8-6.0, standard deviation 3-4) and picture beginning at L287.
+  The rebuilt census is L286 in 604 units and L287 in those four. The source-blind cue is a +1
+  same-slot body displacement together with a dark L286 and structured L287; source parity comes
+  from the capture's independently measured transport phase, not a per-unit lookup.
+
+  **Comb premise audit (2026-09-07):** the 56 V-stabilize-off units formerly scored +1 in
+  within-transport-slot ordering. Pairing the actual source fields moves all 56 minima to zero,
+  but that ordering's normal raster-parity expectation is +1, so the one-line departure remains:
+  it is recorded/playback inter-field displacement, not a partner artifact. SP unit 103 likewise
+  changes from shift zero at unit 102 to +1 while both measured tops and switches stay fixed.
+  Full seven-energy vectors and deciding rows are in
+  `experiments/geometry_oracle/reports/turn8_raw_row_audit.md`.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).

@@ -18,11 +18,11 @@
 
 - units: 608
 - method: cv_inspected: 541, direct: 67
-- status: inferred: 541, observed: 67
-- picture top: 286: 608
+- status: censored: 4, inferred: 537, observed: 67
+- picture top: 286: 604, 287: 4
 - first switch row: 522: 511, 523: 92, 524: 5
 - last reliable row: 521: 511, 522: 92, 523: 5
-- band length: 2: 5, 3: 92, 4: 511
+- band length: 2: 1, 3: 96, 4: 511
 - closure status: observed: 608
 - RF presence: absent: 161, disappeared: 263, present: 120, reappeared: 64
 
@@ -84,11 +84,11 @@
 
 - units: 919
 - method: cv_inspected: 528, direct: 3, unmeasurable: 388
-- status: censored: 171, inferred: 357, observed: 3, unmeasurable: 388
-- picture top: -1: 388, 23: 360, 24: 13, 25: 31, 27: 1, 28: 125, 29: 1
+- status: censored: 44, inferred: 484, observed: 3, unmeasurable: 388
+- picture top: -1: 388, 23: 487, 24: 13, 25: 31
 - first switch row: -1: 388, 258: 1, 259: 78, 260: 270, 261: 174, 262: 8
 - last reliable row: -1: 388, 257: 1, 258: 78, 259: 270, 260: 174, 261: 8
-- band length: -1: 388, 1: 5, 2: 164, 3: 135, 4: 70, 5: 25, 6: 5, 7: 1, 8: 121, 9: 5
+- band length: -1: 388, 1: 5, 2: 164, 3: 258, 4: 74, 5: 25, 6: 5
 - closure status: observed: 531, unmeasurable: 388
 - RF presence: absent: 471, disappeared: 47, present: 6, reappeared: 7, unmeasurable: 388
 

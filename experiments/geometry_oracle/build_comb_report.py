@@ -23,7 +23,22 @@ def _raw_rows(note: str) -> str:
     return note.split(marker, 1)[1] if marker in note else note
 
 
-def _witness(row: dict[str, str]) -> str:
+def _witness(row: dict[str, str], rows: list[dict[str, str]]) -> str:
+    if "slot-1/following" in row["f1_comb_partner"]:
+        index = {item["ordinal"]: position for position, item in enumerate(rows)}[
+            row["ordinal"]
+        ]
+        if index + 1 >= len(rows):
+            return f"u{row['ordinal']}: following source-field slot unavailable"
+        following = rows[index + 1]
+        return (
+            f"u{row['ordinal']}: first slot-2 top/switch/band "
+            f"L{row['f2_picture_top_line']}/L{row['f2_switch_first_line']}/"
+            f"{row['f2_band_length']}; second following slot-1 "
+            f"L{following['f1_picture_top_line']}/L{following['f1_switch_first_line']}/"
+            f"{following['f1_band_length']}; {_raw_rows(row['f2_note'])}; "
+            f"{_raw_rows(following['f1_note'])}"
+        )
     return (
         f"u{row['ordinal']}: f1 top/switch/band L{row['f1_picture_top_line']}/"
         f"L{row['f1_switch_first_line']}/{row['f1_band_length']}; "
@@ -64,6 +79,8 @@ def _capture_section(capture: str, rows: list[dict[str, str]]) -> list[str]:
         f"## {LABELS[capture]}",
         "",
         f"- units: {len(rows)}",
+        f"- field partner: {rows[0]['f1_comb_partner']}",
+        f"- expected shift in that ordering: {rows[0]['f1_comb_expected_shift']}",
         f"- comb status: {_histogram(status)}",
         f"- observed relative shift: {_histogram(shifts) if shifts else 'none'}",
         f"- geometry agreement: {_histogram(agreement)}",
@@ -85,7 +102,7 @@ def _capture_section(capture: str, rows: list[dict[str, str]]) -> list[str]:
             output.append(
                 f"| {shift} | {matching[0]['f1_comb_geometry_agreement']} | {len(matching)} | "
                 f"{','.join(row['ordinal'] for row in matching)} | "
-                f"{'<br>'.join(_witness(row) for row in matching[:3])} |"
+                f"{'<br>'.join(_witness(row, rows) for row in matching[:3])} |"
             )
     output.extend(
         [
@@ -105,7 +122,7 @@ def _capture_section(capture: str, rows: list[dict[str, str]]) -> list[str]:
         output.append(
             f"| {reason} | {len(matching)} | "
             f"{','.join(row['ordinal'] for row in matching)} | "
-            f"{'<br>'.join(_witness(row) for row in matching[:3])} |"
+            f"{'<br>'.join(_witness(row, rows) for row in matching[:3])} |"
         )
     output.extend(
         [
@@ -127,26 +144,25 @@ def _capture_section(capture: str, rows: list[dict[str, str]]) -> list[str]:
             output.append(
                 f"| {shift} | {len(matching)} | "
                 f"{','.join(row['ordinal'] for row in matching)} | "
-                f"{'<br>'.join(_witness(row) for row in matching[:3])} |"
+                f"{'<br>'.join(_witness(row, rows) for row in matching[:3])} |"
             )
     output.append("")
     output.extend(
         [
             "### Per-unit disagreement rows",
             "",
-            "| unit | shift | deciding geometry and comb evidence | field-1 raw rows | field-2 raw rows |",
-            "|---:|---:|:---|:---|:---|",
+            "| unit | shift | deciding geometry and comb evidence | paired raw rows |",
+            "|---:|---:|:---|:---|",
         ]
     )
     all_disagreements = [row for matching in disagreements.values() for row in matching]
     if not all_disagreements:
-        output.append("| — | — | — | — | — |")
+        output.append("| — | — | — | — |")
     else:
         for row in sorted(all_disagreements, key=lambda item: int(item["ordinal"])):
             output.append(
                 f"| {row['ordinal']} | {row['f1_comb_shift']} | "
-                f"{row['f1_comb_confirmation']} | {_raw_rows(row['f1_note'])} | "
-                f"{_raw_rows(row['f2_note'])} |"
+                f"{row['f1_comb_confirmation']} | {_witness(row, rows)} |"
             )
     output.append("")
     return output
@@ -213,15 +229,10 @@ def build(named_inputs: list[tuple[str, Path]]) -> str:
     output = [
         "# Contract-v3 inter-field comb confirmation",
         "",
-        "Shift `s` means field-2 line `top2+s+i` sits between field-1 lines "
-        "`top1+i` and `top1+i+1`. A 240-line geometry closure therefore expects shift zero. "
+        "Shift `s` means the second named parity's line `top2+s+i` sits between the first "
+        "named parity's lines `top1+i` and `top1+i+1`. Ordinary field-1 then field-2 "
+        "ordering expects zero; reversed raster-parity ordering expects +1. "
         "Flat, moving, and indecisive pairs are unmeasurable and carry no numeric shift.",
-        "",
-        "Known pending census correction: SP field-2 units 87, 258, 439, and 467 have the "
-        "tape's black line 22 at L286 (mean 3.8-6.0, standard deviation 3-4) and picture from "
-        "L287, while this reference revision still reports top L286. Their comb entries are "
-        "retained for reproducibility but are not settled witnesses until recomputed from the "
-        "corrected top. This raw-row audit fact is not a builder input.",
         "",
     ]
     for capture, path in named_inputs:
