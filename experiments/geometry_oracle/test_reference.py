@@ -433,24 +433,52 @@ class ReferenceMeasurementTest(unittest.TestCase):
                     )
                 )
 
-    def test_measurable_sp_fixed_top_switch_moves_do_not_change_comb(self) -> None:
-        rows = read_reference("w_300s")
-        for field in (1, 2):
-            prefix = f"f{field}_"
-            changed: list[int] = []
-            for previous, current in zip(rows, rows[1:]):
-                if current[prefix + "dp"] != "0":
-                    continue
-                displacement = int(current[prefix + "switch_displacement"])
-                if abs(displacement) not in {1, 2}:
-                    continue
-                if (
-                    previous["f1_comb_status"] == "observed"
-                    and current["f1_comb_status"] == "observed"
-                    and previous["f1_comb_shift"] != current["f1_comb_shift"]
-                ):
-                    changed.append(int(current["ordinal"]))
-            self.assertEqual(changed, [])
+    def test_measurable_fixed_top_switch_moves_do_not_change_comb(self) -> None:
+        census: dict[tuple[str, int], tuple[int, int]] = {}
+        for capture in ("w_300s", "w_2100s"):
+            rows = read_reference(capture)
+            for field in (1, 2):
+                prefix = f"f{field}_"
+                changed: list[int] = []
+                measurable = 0
+                unmeasurable = 0
+                for previous, current in zip(rows, rows[1:]):
+                    if current[prefix + "dp"] != "0":
+                        continue
+                    displacement = int(current[prefix + "switch_displacement"])
+                    if abs(displacement) not in {1, 2}:
+                        continue
+                    if (
+                        previous["f1_comb_status"] == "observed"
+                        and current["f1_comb_status"] == "observed"
+                    ):
+                        measurable += 1
+                        if previous["f1_comb_shift"] != current["f1_comb_shift"]:
+                            changed.append(int(current["ordinal"]))
+                    else:
+                        unmeasurable += 1
+                self.assertEqual(changed, [], f"{capture} field {field}")
+                census[(capture, field)] = (measurable, unmeasurable)
+
+        self.assertEqual(
+            census,
+            {
+                ("w_300s", 1): (16, 3),
+                ("w_300s", 2): (39, 7),
+                ("w_2100s", 1): (2, 10),
+                ("w_2100s", 2): (137, 52),
+            },
+        )
+
+        ep = read_reference("w_2100s")
+        self.assertEqual(
+            [
+                int(row["ordinal"])
+                for row in ep
+                if row["f1_comb_geometry_agreement"] == "disagrees"
+            ],
+            [],
+        )
 
 
 if __name__ == "__main__":

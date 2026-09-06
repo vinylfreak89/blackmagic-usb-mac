@@ -168,9 +168,11 @@ def _capture_section(capture: str, rows: list[dict[str, str]]) -> list[str]:
     return output
 
 
-def _sp_switch_section(rows: list[dict[str, str]]) -> list[str]:
+def _fixed_top_switch_section(
+    capture: str, rows: list[dict[str, str]]
+) -> list[str]:
     output = [
-        "## SP fixed-top switch changes",
+        f"## {LABELS[capture]} fixed-top switch changes",
         "",
         "This table includes transitions with `dp=0` and `ds` equal to ±1 or ±2. "
         "Comb change compares the current and preceding unit only when both comb readings are measurable.",
@@ -240,7 +242,8 @@ def build(named_inputs: list[tuple[str, Path]]) -> str:
             rows = list(csv.DictReader(handle))
         loaded[capture] = rows
         output.extend(_capture_section(capture, rows))
-    output.extend(_sp_switch_section(loaded["w_300s"]))
+    for capture in ("w_300s", "w_2100s"):
+        output.extend(_fixed_top_switch_section(capture, loaded[capture]))
     return "\n".join(output)
 
 
@@ -255,8 +258,13 @@ def main(argv: Iterable[str] | None = None) -> int:
         if not separator or capture not in LABELS:
             parser.error(f"expected known capture=path, got {item!r}")
         named.append((capture, Path(filename)))
-    if "w_300s" not in {capture for capture, _path in named}:
-        parser.error("SP recording reference is required for the fixed-top switch audit")
+    missing_switch_audits = {"w_300s", "w_2100s"} - {
+        capture for capture, _path in named
+    }
+    if missing_switch_audits:
+        parser.error(
+            "SP and EP references are required for the fixed-top switch audit"
+        )
     args.output.write_text(build(named).rstrip() + "\n")
     print(f"comb report: wrote {args.output}")
     return 0
