@@ -44,7 +44,7 @@ def field_arrays(R,slot):
     a,b=SLOT[slot]; Y=R[a:b,1::2].astype(np.float32); C=np.stack([R[a:b,0::4],R[a:b,2::4]],axis=1).astype(np.float32)
     bl=R[a-9:a-1]; by=bl[:,1::2].astype(np.float32); bc=np.stack([bl[:,0::4],bl[:,2::4]],axis=1).astype(np.float32)
     return Y,C,float(by.mean()),float(max(by.std(),0.5)),float(max(bc.std(),0.3))
-def rowfeat(row,prev,sig_b):
+def rowfeat(row,prev,sig_b,ped_lvl):
     lags=[]
     for a in range(30,690-55+1,55):
         b=a+55
@@ -55,6 +55,17 @@ def rowfeat(row,prev,sig_b):
     while l>0 and d[l-1]>=half: l-=1
     while r<719 and d[r+1]>=half: r+=1
     al=[abs(v) for v in lags]; med=float(np.median(lags)) if len(lags)>=3 else None
+    # whole-row alignment (blind-check method, 2026-09-07): over the row's textured span, SAD at every lag -24..24; r =
+    # SAD(best)/SAD(0). Picture rows: |lag| <= 1.2 and r >= 0.94 (measured on 71 full-content rows); the other head's
+    # rows: r 0.39-0.89 at |lag| >= 2. A ratio, so independent of the picture's contrast.
+    # the span = where BOTH rows carry texture (a partial line has content over part of the row only)
+    # the span = where BOTH rows carry content above the field's own pedestal (a partial line has content over part
+    # of the row only; the pedestal's own noise must not extend the span)
+    cont=(row>ped_lvl)&(prev>ped_lvl); span=np.nonzero(cont[24:696])[0]
+    wlag=0; wr=1.0
+    if len(span)>=60:
+        a=24+int(span[0]); b=24+int(span[-1])+1
+        sads=[(float(np.abs(row[a:b]-prev[a+t:b+t]).mean()),t) for t in range(-24,25)]; best=min(sads,key=lambda x:x[0]); wlag=best[1]; wr=best[0]/max(sads[24][0],1e-6)
     uniform = med is not None and abs(med)>=2 and sum(1 for v in lags if abs(v-med)<=2)>=2*len(lags)/3   # a whole-row time shift: the other head (the subagent's rule); flagging inside the picture varies along the row
     # the row above's own horizontal structure at the spike: a vertical picture edge there makes a narrow |diff| spike
     # from one-sample jitter; the RF transient sits where the row above is locally flat
@@ -64,8 +75,8 @@ def rowfeat(row,prev,sig_b):
     lvl=float(row[3:9].mean()); run=3
     while run<719 and abs(float(row[run])-lvl)<=3*sig_b: run+=1
     run=run-3 if (run<719 and float(row[run])-lvl>=6*sig_b) else 0
-    return dict(lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run)
-w=csv.writer(open(A.out,'w',newline='')); w.writerow(['unit','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','M_lag','M_dm','M_run','M_spk','blank_y','sig_b'])
+    return dict(lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr)
+w=csv.writer(open(A.out,'w',newline='')); w.writerow(['unit','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b'])
 n=len(Ys)-(1 if A.repair else 0)
 for u in range(n):
     if A.only and u not in VERB: continue
@@ -84,15 +95,25 @@ for u in range(n):
         ped=min(flat_rec) if flat_rec else by_m
         def picture_row(r): return ym[r]>max(thr,ped+3*sig_b) and float(Y[r,40:680].std())>=4*sig_b and not cc608(Y[r])[0]
         top=next((r for r in recrows if picture_row(r)),None)
-        if top is None or len(recrows)<60: w.writerow([u,f,-1,-1,'no-picture',-1,'',0,0,-1,'',-1,-1,-1,-1,round(by_m,2),round(sig_b,2)]); continue
+        if top is None or len(recrows)<60: w.writerow([u,f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2)]); continue
         last_rec=recrows[-1]
-        feats={r:rowfeat(Y[r],Y[r-1],sig_b) for r in range(top+1,last_rec+1)}
+        flat_rec=[float(ym[r]) for r in recrows if ym[r]>thr and float(Y[r,40:680].std())<4*sig_b]
+        ped_lvl=(min(flat_rec) if flat_rec else by_m)+6*sig_b
+        feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl) for r in range(top+1,last_rec+1)}
         body=[feats[r] for r in range(top+20,min(top+200,last_rec-10)) if feats[r]['lagmed'] is not None]
         # the field's own variance: the body rows' own maxima (nothing inside the picture exceeds them by definition)
         M_lag=max(ft['lagmed'] for ft in body) if body else 1.0; M_dm=max(ft['dm'] for ft in body) if body else 20.0
         M_run=max(ft['lead_run'] for ft in body) if body else 8       # the picture rows' own leading blank run (the H-blanking dip)
         narrow=[ft['spike'] for ft in body if ft['width']<=12 and ft['above_range']<ft['spike']/2]; M_spk=max(narrow) if narrow else 0.0   # the picture's own narrow specks
-        def shifted(ft,r): return (ft['lagmed'] is not None and ft['lagmed']>M_lag and ft['dm']>M_dm) or ft['lead_run']>M_run+8   # time-shifted beyond the picture's own spread, or the other head's blanking intruding at the row start
+        body_r=min(ft['wr'] for ft in body) if body else 1.0; body_lag=max(abs(ft['wlag']) for ft in body) if body else 1   # the field's own envelope, reported
+        M_lag=max(ft['lagmed'] for ft in body) if body else 1.0; M_dm=max(ft['dm'] for ft in body) if body else 20.0
+        def flat(ft,r): return float(Y[r,40:680].std())<4*sig_b and ym[r]>thr                                 # a pedestal row (the other head's black)
+        # the other head's rows come in two shapes: a uniform whole-row time shift (the blind check's envelope: picture
+        # |lag| <= 1.2, r >= 0.94), or a torn row whose lag varies along the line (no single lag fits, r stays near 1)
+        # but whose segment lags and row difference exceed anything the picture's own rows show; plus the pedestal row
+        # and the intruded-blanking row
+        def torn(ft): return ft['lagmed'] is not None and ft['lagmed']>M_lag and ft['dm']>M_dm
+        def shifted(ft,r): return (abs(ft['wlag'])>=2 and ft['wr']<=0.90) or torn(ft) or flat(ft,r) or ft['lead_run']>M_run+8
         def peak(ft,r): return ft['spike']>M_spk and ft['spike']>ft['dm']+5*ft['dsig'] and ft['width']<=12 and ft['above_range']<ft['spike']/2 and not shifted(ft,r)
         # S = the first row from the body downward that is time-shifted / intruded beyond the field's own spread (the
         # first row that belongs entirely to the other head). The switch lands either inside S-1 (a partial line) or at
@@ -101,16 +122,19 @@ for u in range(n):
         # (its height relative to the picture's own narrow specks) and/or the row's alignment departing in its later
         # segments.
         sw=None; how='none'; px=-1; ev=''
-        rows=list(range(top+20,last_rec+1))
-        for i,r in enumerate(rows):
-            if shifted(feats[r],r): sw=r; how='shifted'; break
+        # the band is contiguous at the bottom of the field: scan UP from the last recorded row while rows are shifted
+        # or pedestal; S = the top of that run (picture rows with motion can also show a whole-row lag, but they are not
+        # contiguous with the clip)
+        r=last_rec
+        while r>top+20 and shifted(feats[r],r): r-=1
+        if r<last_rec: sw=r+1; how='shifted'
         if sw is not None and sw-1 in feats:
             pf=feats[sw-1]; spk_rank=(pf['spike']/M_spk) if M_spk>0 else 0.0
             narrow_flat = pf['width']<=12 and pf['above_range']<pf['spike']/2 and pf['spike']>pf['dm']+5*pf['dsig']
-            ev=f"spike {pf['spike']:.0f}@{pf['x']} w{pf['width']} rank {spk_rank:.2f} narrowflat {int(narrow_flat)} lagmed {pf['lagmed']}"
+            ev=f"spike {pf['spike']:.0f}@{pf['x']} w{pf['width']} rank {spk_rank:.2f} narrowflat {int(narrow_flat)} wlag {pf['wlag']} r {pf['wr']:.2f}"
             if narrow_flat and spk_rank>=1.0: px=pf['x']; how='shifted+peak_above'
         reliable=(sw-top) if sw is not None else (last_rec-top+1); band=(last_rec-sw+1) if sw is not None else 0
-        w.writerow([u,f,top+base,(sw+base) if sw is not None else -1,how,px,ev,reliable,band,last_rec+base,reliable+band,M_lag,round(M_dm,1),M_run,round(M_spk,0),round(by_m,2),round(sig_b,2)])
+        w.writerow([u,f,top+base,(sw+base) if sw is not None else -1,how,px,ev,reliable,band,last_rec+base,reliable+band,(feats[sw]['wlag'] if sw is not None else ''),(round(feats[sw]['wr'],2) if sw is not None else ''),body_lag,round(body_r,2),M_run,round(M_spk,0),round(by_m,2),round(sig_b,2)])
         if u in VERB:
             sys.stdout.flush(); print(f'unit {u} field {f}: top L{top+base} switch {("L%d"%(sw+base)) if sw is not None else "none"} ({how}) peak_x {px} reliable {reliable} band {band} last_rec L{last_rec+base} | body max lag {M_lag} dm {M_dm:.1f} lead_run {M_run} narrow-spike {M_spk:.0f}')
             for r in range(max(top+20,last_rec-9),last_rec+1):
