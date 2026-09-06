@@ -304,3 +304,24 @@ field later, so "field 1" and "field 2" name transport slots whose parity differ
 same tape. Every per-field constant (switch side and position, VBI lines, top origin) must be measured per capture on
 the slot's own content, never carried by slot name from another capture; the review render's bottom row was
 re-paired (this unit's field-2 slot beside the next unit's field-1 slot) to compare the same recorded fields.
+
+**The field-1 displacement of the SP recording is made by the deck's line TBC, not carried by the tape — measured
+2026-09-07 03:10 JST on the same recorded field in both passes.** Raw rows (`zoom_ON_f1_u20_200.png`,
+`zoom_OFF_slot2_u20_200.png`, `zoom_OFF_slot2_u78_105.png`, `zoom_SP_f1_u105-107.png`):
+- V-stabilize ON (fixture A, `w_300s`): unit 20 field 1 has the tape's black line 22 on line 23 (luma 1.6) and the
+  picture from 24; unit 200 the same (5.5 / picture from 24); unit 105 has the tape's caption on 23, black on 24,
+  picture from 25. The harness reference reads the top at 24 in 438 of 608 units and 25 in 48.
+- V-stabilize OFF (`sp_vstab_off_slice`, same recorded field): the picture starts on its standard line in every one of
+  the 608 units (reference: 0 top changes in either slot), with nothing of the tape's VBI visible above it; unit 105
+  instead shows a severe horizontal tear over its first rows, which the ON pass shows as a clean, two-line-lower field.
+- Bottom: OFF unit 20 carries picture content through line 524 with the other head's black run beginning at 525 and
+  the rows before the switch horizontally skewed; ON unit 20 ends the picture at 260 with the partial switch line at
+  261 and a pedestal row at 262. The field is one line lower and one line shorter with the TBC on.
+Reading: the line TBC cannot time the torn rows at the top of field 1 and drops them, shifting the rest of the field
+down by that count (one line in most units, two where the tear is worse) and clipping the bottom by as much; the
+trigger (weak field-1 H-timing at the top, recording-borne, present on two decks) is on the tape, the vertical
+displacement is the deck's. §11's "field-1 displacement is recording-borne" stands only for the trigger. The
+head-switch position in the ON pass therefore moves with the dropped-line count, which is the "switch jitter" of §9.
+Consequences: the raw pass is the geometric reference for what the tape holds; the ON pass is what a user of this
+deck gets, and the engine's job on it is exactly the per-unit displacement the TBC introduced. A row-to-row
+departure test reads the OFF pass's pre-switch skew as the switch (harness reference two lines early at units 20/200).
