@@ -1795,11 +1795,9 @@ delivery edge; wrong one at acquisition.
   5. **`Vスタビライズ` is the deck's line TBC and its only TBC switch (measured 2026-09-06):**
      with it off, the head-switch demodulator peaks and the floating horizontal timing step
      return, which no vertical-only function could restore; the frame TBC and dropout compensator
-     are always on, so §7's "TBC on" was never a setting. Owed: (a) the V-stabilize state the
-     whole-tape capture and every `captures/*.tpc` were made in (until known, every bottom-band
-     fact is a fact about one deck setting, never a gauge); (b) two ≤30 s tagged captures of a
-     displaced passage (SP intro +1, 35:00 +2/+3), V-stabilize on and off — if the field-1
-     displacements change with it off, the line TBC's sync regeneration is the site.
+     are always on, so §7's "TBC on" was never a setting. Nothing is owed on it (owner, 2026-09-06
+     evening): a V-stabilize-off capture was an offer of interest, not a requirement; all it
+     changes is the head-switch band's peaks and the horizontal damage where it is bad.
      **Field-1 displacement is recording-borne, not a playback fault (measured 2026-09-06,
      `captures/composite_program_30s.tpc`, 920 units, same deck and setting):** raw fields
      registered at the nominal crops in every measurable unit (static comb 205 registered, 714
