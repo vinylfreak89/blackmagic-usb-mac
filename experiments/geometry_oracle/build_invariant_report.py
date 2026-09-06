@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize the commercial stable-lock invariant and raw disagreements."""
+"""Apply the external commercial stable-picture acceptance assertion."""
 
 from __future__ import annotations
 
@@ -11,33 +11,55 @@ from typing import Iterable
 
 
 def _histogram(rows: list[dict[str, str]], key: str) -> str:
-    values = Counter(int(row[key]) for row in rows)
-    return ", ".join(f"L{line}: {count}" for line, count in sorted(values.items()))
+    values = Counter(row[key] for row in rows)
+    return ", ".join(f"{value}: {count}" for value, count in sorted(values.items()))
 
 
 def build(reference: Path) -> str:
     with reference.open(newline="") as handle:
         stable = [row for row in csv.DictReader(handle) if int(row["ordinal"]) >= 551]
-    output = ["# Commercial-tape stable-lock invariant", ""]
+    output = [
+        "# Commercial-tape stable-picture acceptance assertion",
+        "",
+        "The 551 boundary is external acceptance knowledge. It is not supplied to the builder. "
+        "Only fields whose overall status is `observed` test the invariant; unmeasurable and "
+        "inferred fields are listed and are not counted as agreement.",
+        "",
+    ]
     for field in (1, 2):
-        candidate = f"f{field}_direct_bottom_candidate"
-        bottom = f"f{field}_bottom_line"
-        disagreements = [row for row in stable if row[candidate] != row[bottom]]
+        prefix = f"f{field}_"
+        observed = [row for row in stable if row[prefix + "status"] == "observed"]
+        unmeasurable = [
+            row["ordinal"] for row in stable if row[prefix + "status"] == "unmeasurable"
+        ]
+        inferred = [
+            row["ordinal"]
+            for row in stable
+            if row[prefix + "status"] in {"inferred", "censored"}
+        ]
+        keys = (
+            "picture_top_line",
+            "switch_first_line",
+            "band_length",
+            "closure_status",
+        )
+        if not observed:
+            raise RuntimeError(f"field {field}: no observed unit at or after 551")
+        for key in keys:
+            if len({row[prefix + key] for row in observed}) != 1:
+                raise RuntimeError(f"field {field}: observed {key} violates stable assertion")
         output.extend(
             [
                 f"## Field {field}",
                 "",
-                f"- exact units: {len(stable)}",
-                f"- picture top: {_histogram(stable, f'f{field}_picture_top_line')}",
-                f"- picture bottom: {_histogram(stable, bottom)}",
-                f"- band bottom: {_histogram(stable, f'f{field}_hs_partial_line')}",
-                f"- independent per-unit bottom candidates: {_histogram(stable, candidate)}",
-                f"- raw per-unit candidate disagreements: {len(disagreements)} — "
-                + ",".join(row["ordinal"] for row in disagreements),
-                "- resolution: the continuous-lock pooled raw-row displacement "
-                "calibration fixes the geometry; every disagreeing row is `cv_inspected`, "
-                "and its raw three-third "
-                "scores, split/edge evidence, and row luma remain in that field's reference note.",
+                f"- exact units in assertion range: {len(stable)}",
+                f"- observed: {len(observed)}; first observed unit: {observed[0]['ordinal']}",
+                f"- observed top: {_histogram(observed, prefix + 'picture_top_line')}",
+                f"- observed switch row: {_histogram(observed, prefix + 'switch_first_line')}",
+                f"- observed band length: {_histogram(observed, prefix + 'band_length')}",
+                f"- observed closure: {_histogram(observed, prefix + 'closure_status')}",
+                f"- unmeasurable ({len(unmeasurable)}): {','.join(unmeasurable)}",
+                f"- inferred/censored ({len(inferred)}): {','.join(inferred)}",
                 "",
             ]
         )

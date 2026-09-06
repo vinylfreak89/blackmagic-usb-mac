@@ -1886,29 +1886,28 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   from the same day: review a commit's message bytes as well as its tree; push every branch the
   docs cite; write timestamps only from a checked clock.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
-- **The bounded geometry-v2 raw reference is generated in
-  `experiments/geometry_oracle/reports/reference_*.csv` (revised 2026-09-07).** It covers every
-  exact unit of the SP slice (608), EP slice (621), the same SP passage with deck V-stabilize off
-  (608), and the commercial capture (919). Picture motion and switch-line motion are independent.
-  `bottom_line` is the last complete picture row, `min(picture end, switch onset - 1)`;
-  `hs_partial_line` retains its schema name but means the last complete row delivered by the
-  other head. If the switch reaches the decoder clip row, the visible partial row limits the
-  picture bottom but no full band row remains, so `hs_partial_line=-1`. `last_recorded_line` is
-  independent and cannot extend the band merely because chroma noise survives below it. Source
-  profiles hold calibration only; raw three-third first-displacement, split-row, and outer-edge
-  measurements produce every per-unit decision. A later black run cannot replace the first
-  displaced switch row. The old per-unit `reference_cv_decisions.csv`
-  lookup was deleted.
+- **The bounded contract-v3 raw reference is generated in
+  `experiments/geometry_oracle/reports/reference_*.csv` (revised 2026-09-07).** One source-blind
+  measurement path covers every exact unit of the SP slice (608), EP slice (621), the same SP
+  passage with deck V-stabilize off (608), and the commercial capture (919). Capture descriptors
+  contain only transport count, label, and ordinal origin—never geometry or a stable boundary.
+  Per field the record carries top plus blanking/VBI/caption evidence, expected bottom `top+239`,
+  clipping, first switch row with separate skew/RF/AGC evidence, last reliable row `switch-1`,
+  last visible picture-bearing band row, first blank, raster limit, visible/censored band count,
+  comb confirmation, and closure. `bottom_line` aliases last reliable and `hs_partial_line`
+  aliases `hs_bottom_line` for old consumers. Chroma-only survival cannot extend the band.
+  Flat/no-picture fields are `unmeasurable`; a hold policy is noted but no coordinate is
+  substituted. Numeric `dp`/switch displacement exists only when both same-slot coordinates do.
 
-  The commercial reference uses the numbered review render's counter-based ordinal: first exact
-  unit 211; device-short holes 213, 214, 216. Ordinals 233–550 contain no measurable picture in
-  either field. From ordinal 551 through 1132, all 582 exact units measure one stable geometry:
-  field 1 top/bottom/band-bottom 23/259/262 and field 2 286/521/525. The earlier stabilized
-  renders named `codex_ref_*_stab.mov` predate these bottom semantics and are superseded. The
-  V-stabilize-off slice is half-frame phased against the first SP slice: its slot 1 carries the
-  preceding unit's field 2, and its slot 2 carries the current unit's field 1. The CSV retains
-  raster-slot NTSC line numbers and names the carried parity in each note. Independent `(dp,ds)`
-  motion audits, all nonzero unit lists, raw-row witnesses, and every prior readout-only change
-  are in `experiments/geometry_oracle/reports/motion_summary.md`.
+  The commercial reference uses counter-based review ordinals: first exact unit 211, with
+  device-short holes 213, 214, and 216. The owner's stable-picture statement from ordinal 551 is
+  external acceptance knowledge in `build_invariant_report.py`, not builder input. Units such as
+  550 and 551 that are indistinguishable at the noise floor are classified alike. Only fields
+  whose full status is `observed` test the invariant; unmeasurable and inferred fields are listed,
+  not counted as agreement. That observed subset has one geometry per field: top/switch/band
+  length 23/260/3 in field 1 and 286/522/4 in field 2. The V-stabilize-off slice is half-frame
+  phased against the first SP slice: slot 1 carries the preceding unit's field 2, and slot 2 the
+  current unit's field 1; the notes retain that parity. The generated displacement report lists
+  every nonzero `(dp,ds)` cell and three raw-row witnesses per populated cell.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).
