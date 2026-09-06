@@ -29,6 +29,7 @@ ref=list(csv.DictReader(open(A.ref)))
 ff=subprocess.Popen(['ffmpeg','-hide_banner','-loglevel','error','-y','-f','rawvideo','-pix_fmt','rgb24','-s',f'{2*W+INFO}x{H}','-r','30000/1001','-i','-',
     '-vf','setsar=8/9','-c:v','prores_ks','-profile:v',str(A.profile),'-pix_fmt','yuv422p10le',A.out],stdin=subprocess.PIPE)   # ProRes HQ: keeps the odd 243-line height exactly, plays natively on macOS
 n=[0]; hold={1:0,2:0}; buf=bytearray(); skipped=[]
+manifest=open(A.out+'.frames.csv','w'); manifest.write('frame,ordinal,counter,f1_top,f1_bot,f1_shift,f2_top,f2_bot,f2_shift\n')   # read-back joins frames to units by this file, never by OCR
 bycounter={}
 for _i,_r in enumerate(ref): bycounter.setdefault(int(_r['counter'])&0xffff,[]).append(_i)
 pos=0
@@ -64,11 +65,11 @@ def emit(u):
     pos=near[0]; r=ref[pos]
     pos+=1; n[0]+=1
     Y=np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,LINE)[:,1::2]
-    frame=np.zeros((H,2*W+INFO,3),np.uint8); txt=[]
+    frame=np.zeros((H,2*W+INFO,3),np.uint8); txt=[]; man=[]
     for f in (1,2):
         top=val(r,F[f]['top']); bot=val(r,F[f]['bot'])
         if top is None or top<=0: top=None
-        rgb,d=field_view(Y,f,top,bot,A.mode); frame[:,(f-1)*W:f*W]=rgb
+        rgb,d=field_view(Y,f,top,bot,A.mode); frame[:,(f-1)*W:f*W]=rgb; man+= [top if top else -1, bot if (bot and bot>0) else -1, d]
         txt.append(f"ref top {top if top else '?'} | ref bottom {bot if (bot and bot>0) else '?'} | shift {d:+d}")
     im=Image.fromarray(frame); dr=ImageDraw.Draw(im); x0=2*W+6
     dr.rectangle([2*W,0,2*W+INFO-1,H-1],fill=(28,28,28))
@@ -78,6 +79,7 @@ def emit(u):
         for q,line in enumerate(txt[k].split(' | ')): dr.text((x0,y0+14+q*14),line,fill=(255,200,200))
     dr.text((x0,H-40),"rows: lines 20-262",fill=(120,120,120)); dr.text((x0,H-26),"      / 283-525",fill=(120,120,120)); dr.text((x0,H-12),"red = ref top/bottom",fill=(255,80,80))
     ff.stdin.write(np.asarray(im).tobytes())
+    manifest.write(','.join(str(x) for x in [n[0]-1, r['ordinal'], c16]+man)+'\n')
     if A.max_units and n[0]>=A.max_units: raise StopIteration
 def on_video(p):
     buf.extend(p)
@@ -92,4 +94,4 @@ def on_video(p):
 try: walk_tagged(A.cap, on_video=on_video, progress=False)
 except StopIteration: pass
 except RuntimeError as e: print('walk ended:',str(e)[:100])
-ff.stdin.close(); ff.wait(); print('frames',n[0],'->',A.out,'ffmpeg rc',ff.returncode,'| capture units not in the reference (skipped):',len(skipped),skipped[:10])
+ff.stdin.close(); ff.wait(); manifest.close(); print('frames',n[0],'->',A.out,'ffmpeg rc',ff.returncode,'| capture units not in the reference (skipped):',len(skipped),skipped[:10])
