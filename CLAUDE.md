@@ -1897,8 +1897,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   last visible picture-bearing band row, first blank, raster limit, visible/censored band count,
   comb confirmation, and closure. `bottom_line` aliases last reliable and `hs_partial_line`
   aliases `hs_bottom_line` for old consumers. Chroma-only survival cannot extend the band.
-  Flat/no-picture fields are `unmeasurable`; a hold policy is noted but no coordinate is
-  substituted. Numeric `dp`/switch displacement exists only when both same-slot coordinates do.
+  A spatially flat field remains measurable when its recorded region has a clear level boundary
+  from raster blanking; flat fields without that boundary and no-picture fields are
+  `unmeasurable`. A hold policy is noted but no coordinate is substituted. Numeric `dp`/switch
+  displacement exists only when both same-slot coordinates do.
   RF candidates keep their measured row/sample and after-x tear evidence. The before-x lag gate
   was withdrawn because the tear can begin before the transient sample; RF evidence alone remains
   `inferred` rather than being promoted to an observed head-switch identification.
@@ -1908,8 +1910,9 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   external acceptance knowledge in `build_invariant_report.py`, not builder input. Units such as
   550 and 551 that are indistinguishable at the noise floor are classified alike. Only fields
   whose full status is `observed` test the invariant; unmeasurable and inferred fields are listed,
-  not counted as agreement. That observed subset has one geometry per field: top/switch/band
-  length 23/260/3 in field 1 and 286/522/4 in field 2. The V-stabilize-off slice is half-frame
+  not counted as agreement. Direct raw-row measurement now separates the acceptance result:
+  observed picture top is stable at L23 in field 1 and L286 in field 2, while switch row and band
+  length are not constant and explicitly fail the assertion. The V-stabilize-off slice is half-frame
   phased against the first SP slice: slot 1 carries the preceding unit's field 2, and slot 2 the
   current unit's field 1; the notes retain that parity. The generated displacement report lists
   every nonzero `(dp,ds)` cell and three raw-row witnesses per populated cell.
@@ -1924,13 +1927,12 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   field-2 raster order expects zero. The V-stabilize-off source pair is slot 2 of the current unit
   then slot 1 of the following unit; because this reverses raster parity, it expects +1. On the
   corrected SP reference, every measurable fixed-top switch transition keeps the same comb
-  registration (field 1: 16; field 2: 39); three and seven further transitions respectively are
-  unmeasurable. The field-2 count was 47 before the four L287 top corrections; their entry/exit
-  transitions are no longer `dp=0`. This supports switch-band motion without whole-picture
-  displacement in the remaining measured transitions.
+  registration (field 1: 17; field 2: 52); three and eight further transitions respectively are
+  unmeasurable. This supports switch-band motion without whole-picture displacement in the
+  remaining measured transitions.
 
   The bounded comb census is: SP 591 observed / 17 unmeasurable (shift 0: 590, shift +1: unit
-  103); EP 458 / 163 (all 458 shift 0); V-stabilize-off SP source pairs 571 / 37 (expected +1:
+  103); EP 330 / 291 (shift 0: 107, shift -1: 223); V-stabilize-off SP source pairs 571 / 37 (expected +1:
   455; departures 0: 115 and +2: 1); commercial tape 327 / 592 (shift 0: 318, shift +3: 9 at
   units 217-225). The former commercial +3 run at 635-759 was a reference error: raw L23-L27 is
   a chroma-confirmed recorded, non-VBI dark first picture band and L28 is only the brighter luma
@@ -1961,11 +1963,29 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   not 102, is the separate +1 comb-registration departure with both field bodies and all
   top/switch coordinates fixed. Units 75 and 105 field 2 remain insufficient to establish
   a clamped move because the comb does not change and the other field's geometry moves.
-  Therefore this audit adds no crop displacement. On the EP slice all 458 measurable comb
-  readings minimize at zero and agree with geometry; 163 are unmeasurable and the
-  disagreement list is empty. Every measurable fixed-top switch transition retains its
-  prior comb registration: field 1 has 2 unchanged and 10 unmeasurable; field 2 has 137
-  unchanged and 52 unmeasurable. Exact vectors, boundary rows, and unit lists are in
+  Therefore this audit adds no crop displacement. After the EP field-1 top correction, 107
+  measurable comb readings minimize at zero, 223 at -1, and 291 are unmeasurable; the -1
+  readings are retained as measurements rather than forced to the geometry expectation.
+  Every measurable fixed-top switch transition retains its prior comb registration: field 1
+  has 1 unchanged and 7 unmeasurable; field 2 has 82 unchanged and 107 unmeasurable. Exact
+  vectors, boundary rows, and unit lists are in
   `experiments/geometry_oracle/reports/turn9_body_comb_audit.md` and `comb_summary.md`.
+
+  **EP-top and commercial-switch raw adjudication (2026-09-07):** the EP field-1 rule that
+  unconditionally placed picture two lines after a detected caption was false. A structured
+  picture row can immediately follow the caption; counters 1913, 1967, and 2010 decide the
+  corrected L25/L24/L24 readings. The common path now skips that row only when it is another
+  detected waveform or an isolated low-structure row before a brighter, structured body. EP
+  field 2 remains L288: L286 is a localized bar/pulse, L287 is a run-in waveform with a flat
+  remainder, and neither continues as full-width picture structure. On the commercial tape,
+  spatial flatness is not absence when the pass-through region has a clear level boundary from
+  raster blanking; counters 6863-6875 retain observed coordinates despite low texture. Flat
+  fields without that independently visible boundary remain unmeasurable. The first row entirely
+  from the other head is directly exposed by the other head's horizontal
+  blanking in the middle of the raster row. The detector anchors to that row and includes its
+  predecessor only with independent partial/skew/AGC evidence. Across stable-interval observed
+  fields, top remains constant, but switch row is L259/L260/L261 in field 1 and L522/L523 in
+  field 2; the stable switch/band assertion is therefore falsified. Deciding rows and the full
+  census are in `experiments/geometry_oracle/reports/turn10_row_disagreements.md`.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).

@@ -135,8 +135,10 @@ exists so a flat dim row cannot be described merely by that combined result.
 `build_reference.py` produces the contract-v3 per-exact-unit records for the SP recording, EP
 recording, the SP recording with V-stabilize off, and the commercial tape through one measurement
 path. Capture specifications contain transport identity only: count, label, and ordinal origin.
-No capture supplies a top, switch row, stable interval, or per-unit answer. Flat/no-picture fields
-are `unmeasurable`; the hold policy is documented but no coordinate is substituted.
+No capture supplies a top, switch row, stable interval, or per-unit answer. A spatially flat field
+is measurable when its recorded region has a clear level boundary from raster blanking; flat fields
+without that boundary and no-picture fields are `unmeasurable`. The hold policy is documented but
+no coordinate is substituted.
 
 Each field records the measured picture top and its blanking/VBI/caption evidence, expected bottom
 (`top + 239`), raster clipping, first switch row, last reliable row (`switch - 1`), last visible
@@ -182,12 +184,18 @@ SP field-2 top correction.
 their neighbouring seven-shift comb vectors and raw top/switch rows. It also records the EP
 top/switch/band/comb census and the fixed-top switch-transition result.
 
+`reports/turn10_row_disagreements.md` adjudicates the EP top rows and the commercial-tape
+head-switch boundary directly from the raster. It documents the caption-following first-picture-row
+fix, the EP field-2 VBI signature, the mid-row blanking cue from the other head, and the resulting
+commercial stable-interval falsification.
+
 The commercial capture uses counter-based review ordinals: first exact unit 211, with device-short
 ordinals 213, 214, and 216 absent. The owner-provided stable-picture boundary at 551 is deliberately
 an external test assertion in `build_invariant_report.py`, never a builder input. Only `observed`
 fields test that invariant; every unmeasurable or inferred field is listed rather than counted as
-agreement. The observed field-1 record is top/switch/band length 23/260/3, and field 2 is
-286/522/4.
+agreement. The observed picture top passes: field 1 is L23 and field 2 is L286. Direct raw-row
+measurement falsifies constancy of the switch and band length, and the invariant report records
+those failures instead of treating them as agreement.
 
 ```sh
 python3 experiments/geometry_oracle/build_reference.py \

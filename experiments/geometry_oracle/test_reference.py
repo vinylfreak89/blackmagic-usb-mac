@@ -6,6 +6,7 @@ import unittest
 from collections import Counter
 from dataclasses import fields
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -19,8 +20,10 @@ from build_reference import (
     METHODS,
     STATUSES,
     CaptureSpec,
+    _flat_picture_boundary,
     _first_edge_departure,
     _inspect_top,
+    _middle_blanking_row,
     validate,
 )
 
@@ -117,6 +120,60 @@ class ReferenceMeasurementTest(unittest.TestCase):
         )
         self.assertEqual(reading.line, 24)
 
+    def test_picture_can_begin_one_line_after_a_caption(self) -> None:
+        y = np.ones((525, 720), dtype=np.uint8)
+        texture = (np.arange(640, dtype=np.uint16) % 71).astype(np.uint8)
+        y[19, 40:680] = 20 + texture % 47
+        y[20, 40:680] = 55 + texture % 23
+        y[21:250, 40:680] = 78 + texture % 61
+        recorded = np.ones(244, dtype=bool)
+        with (
+            patch("build_reference.scan_cea608", return_value=[(19, 0, 0, 80.0)]),
+            patch("build_reference.scan_cea608_waveforms", return_value=[]),
+        ):
+            reading = _inspect_top(
+                y,
+                1,
+                -1,
+                False,
+                recorded,
+                1.5,
+                (-128, float("nan"), float("nan"), float("nan"), 0, 0.0),
+                1,
+            )
+        self.assertEqual(reading.line, 24)
+        self.assertIn("picture row immediately follows", reading.evidence)
+
+    def test_isolated_blank_row_after_caption_is_not_picture(self) -> None:
+        y = np.ones((525, 720), dtype=np.uint8)
+        texture = (np.arange(640, dtype=np.uint16) % 71).astype(np.uint8)
+        y[19, 40:680] = 20 + texture % 47
+        y[20, 40:680] = 4 + texture % 3
+        y[21:250, 40:680] = 78 + texture % 61
+        recorded = np.ones(244, dtype=bool)
+        with (
+            patch("build_reference.scan_cea608", return_value=[(19, 0, 0, 80.0)]),
+            patch("build_reference.scan_cea608_waveforms", return_value=[]),
+        ):
+            reading = _inspect_top(
+                y,
+                1,
+                -1,
+                False,
+                recorded,
+                1.5,
+                (-128, float("nan"), float("nan"), float("nan"), 0, 0.0),
+                1,
+            )
+        self.assertEqual(reading.line, 25)
+        self.assertIn("isolated low-structure row", reading.evidence)
+
+    def test_flat_picture_level_is_distinct_from_raster_blank(self) -> None:
+        y = np.ones((525, 720), dtype=np.uint8)
+        y[19:259, 40:680] = 20
+        self.assertTrue(_flat_picture_boundary(y, 1))
+        self.assertFalse(_flat_picture_boundary(np.ones_like(y), 1))
+
     def test_same_slot_body_shift_places_missing_field2_first_line(self) -> None:
         y = np.ones((525, 720), dtype=np.uint8)
         texture = (np.arange(640, dtype=np.uint16) % 53).astype(np.uint8)
@@ -144,6 +201,15 @@ class ReferenceMeasurementTest(unittest.TestCase):
         line, evidence = _first_edge_departure(y, 1, range(259, 263))
         self.assertEqual(line, 260)
         self.assertIn("edges=", evidence)
+
+    def test_middle_blanking_finds_other_head_inside_a_row(self) -> None:
+        y = np.ones((525, 720), dtype=np.uint8)
+        y[19:260] = 80
+        y[256:259] = 80
+        y[256, 60:200] = 1
+        line, evidence = _middle_blanking_row(y, 1, range(259, 263))
+        self.assertEqual(line, 260)
+        self.assertIn("internal blank", evidence)
 
     def test_committed_references_obey_contract(self) -> None:
         for name, specification in CAPTURES.items():
@@ -225,6 +291,14 @@ class ReferenceMeasurementTest(unittest.TestCase):
         )
         ep = {int(row["ordinal"]): row for row in read_reference("w_2100s")}
         self.assertEqual(
+            [int(ep[unit]["f1_picture_top_line"]) for unit in (3, 57, 100)],
+            [25, 24, 24],
+        )
+        self.assertEqual(
+            [ep[unit]["f1_caption_confirmation"] for unit in (3, 57, 100)],
+            ["agrees", "agrees", "agrees"],
+        )
+        self.assertEqual(
             {int(ep[unit]["f2_switch_first_line"]) for unit in (3, 4, 5)},
             {523},
         )
@@ -257,24 +331,18 @@ class ReferenceMeasurementTest(unittest.TestCase):
                 self.assertEqual(indexed[unit][f"f{field}_status"], "unmeasurable")
                 self.assertEqual(int(indexed[unit][f"f{field}_picture_top_line"]), -1)
         stable = [row for row in rows if int(row["ordinal"]) >= 551]
-        expected = {1: (23, 260, 3), 2: (286, 522, 4)}
+        expected_top = {1: 23, 2: 286}
         for field in (1, 2):
             observed = [row for row in stable if row[f"f{field}_status"] == "observed"]
             self.assertTrue(observed)
             self.assertEqual(
-                Counter(
-                    (
-                        int(row[f"f{field}_picture_top_line"]),
-                        int(row[f"f{field}_switch_first_line"]),
-                        int(row[f"f{field}_band_length"]),
-                    )
-                    for row in observed
-                ),
-                Counter({expected[field]: len(observed)}),
+                {int(row[f"f{field}_picture_top_line"]) for row in observed},
+                {expected_top[field]},
             )
         report = build_invariant_report(ROOT / "reference_composite.csv")
         self.assertIn("external acceptance knowledge", report)
         self.assertIn("unmeasurable", report)
+        self.assertIn("switch_first_line=FAIL", report)
 
         dark_band = [row for row in rows if 635 <= int(row["ordinal"]) <= 759]
         self.assertEqual(len(dark_band), 125)
@@ -288,6 +356,19 @@ class ReferenceMeasurementTest(unittest.TestCase):
                 for item in row["f1_comb_energies"].split(",")
             }
             self.assertEqual(min(energies, key=energies.get), 0)
+
+        self.assertEqual(
+            [int(indexed[unit]["f1_switch_first_line"]) for unit in (623, 630, 700, 800, 861)],
+            [260, 260, 260, 260, 260],
+        )
+        self.assertIn("mid_blank", indexed[630]["f1_switch_cues"])
+        self.assertEqual(
+            (
+                int(indexed[828]["f1_picture_top_line"]),
+                int(indexed[828]["f2_picture_top_line"]),
+            ),
+            (23, 286),
+        )
 
     def test_sp_top_and_comb_raw_row_adjudications(self) -> None:
         rows = {int(row["ordinal"]): row for row in read_reference("w_300s")}
@@ -463,21 +544,17 @@ class ReferenceMeasurementTest(unittest.TestCase):
         self.assertEqual(
             census,
             {
-                ("w_300s", 1): (16, 3),
-                ("w_300s", 2): (39, 7),
-                ("w_2100s", 1): (2, 10),
-                ("w_2100s", 2): (137, 52),
+                ("w_300s", 1): (17, 3),
+                ("w_300s", 2): (52, 8),
+                ("w_2100s", 1): (1, 7),
+                ("w_2100s", 2): (82, 107),
             },
         )
 
         ep = read_reference("w_2100s")
         self.assertEqual(
-            [
-                int(row["ordinal"])
-                for row in ep
-                if row["f1_comb_geometry_agreement"] == "disagrees"
-            ],
-            [],
+            Counter(row["f1_comb_geometry_agreement"] for row in ep),
+            Counter({"agrees": 107, "disagrees": 223, "unmeasurable": 291}),
         )
 
 

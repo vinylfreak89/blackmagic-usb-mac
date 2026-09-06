@@ -45,9 +45,10 @@ def build(reference: Path) -> str:
         )
         if not observed:
             raise RuntimeError(f"field {field}: no observed unit at or after 551")
-        for key in keys:
-            if len({row[prefix + key] for row in observed}) != 1:
-                raise RuntimeError(f"field {field}: observed {key} violates stable assertion")
+        outcomes = {
+            key: "PASS" if len({row[prefix + key] for row in observed}) == 1 else "FAIL"
+            for key in keys
+        }
         output.extend(
             [
                 f"## Field {field}",
@@ -58,6 +59,8 @@ def build(reference: Path) -> str:
                 f"- observed switch row: {_histogram(observed, prefix + 'switch_first_line')}",
                 f"- observed band length: {_histogram(observed, prefix + 'band_length')}",
                 f"- observed closure: {_histogram(observed, prefix + 'closure_status')}",
+                "- assertion results: "
+                + "; ".join(f"{key}={outcomes[key]}" for key in keys),
                 f"- unmeasurable ({len(unmeasurable)}): {','.join(unmeasurable)}",
                 f"- inferred/censored ({len(inferred)}): {','.join(inferred)}",
                 "",

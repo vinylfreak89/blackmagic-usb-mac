@@ -308,6 +308,24 @@ def _known_top_confidence(y: np.ndarray, field: int, top: int) -> bool:
     return jump >= 1.5 or float(row.std()) >= 4.0
 
 
+def _flat_picture_boundary(y: np.ndarray, field: int) -> bool:
+    """Distinguish a flat recorded region from a uniformly blank raster."""
+    spec = FIELD_SPECS[field - 1]
+    blank_rows = y[spec.blank_lo : spec.blank_hi, 40:680].astype(np.float64)
+    blank_level = float(np.median(blank_rows))
+    blank_noise = max(
+        0.25,
+        1.4826 * float(np.median(np.abs(blank_rows - np.median(blank_rows)))),
+    )
+    level_gate = max(4.0, 8.0 * blank_noise)
+    first_pass_level = float(np.mean(y[spec.pass_lo, 40:680]))
+    body_level = float(np.median(y[spec.body_lo : spec.body_hi, 40:680]))
+    return (
+        first_pass_level - blank_level >= level_gate
+        and body_level - blank_level >= level_gate
+    )
+
+
 def _inspect_top(
     y: np.ndarray,
     field: int,
@@ -357,8 +375,35 @@ def _inspect_top(
     pass_last = spec.pass_hi + 4
     in_pass_caption = [line for line in off_caption if pass_first <= line <= pass_last]
     if field == 1 and len(in_pass_caption) == 1:
-        top = in_pass_caption[0] + 2
-        reason = f"in-pass caption L{in_pass_caption[0]}; picture geometry follows by two lines"
+        caption_line = in_pass_caption[0]
+        candidate = caption_line + 1
+        current = y[candidate - 4, 40:680].astype(np.float64)
+        following = y[candidate - 3, 40:680].astype(np.float64)
+        current_mean = float(current.mean())
+        current_std = float(current.std())
+        following_mean = float(following.mean())
+        following_std = float(following.std())
+        correlation = _correlation(y[candidate - 4], y[candidate - 3])
+        isolated_low_structure = (
+            current_std < 6.0
+            and following_std > max(6.0, 2.0 * current_std)
+            and following_mean - current_mean > 10.0
+        )
+        if candidate in set(off_waveform) | set(off_caption) or isolated_low_structure:
+            top = candidate + 1
+            reason = (
+                f"in-pass caption L{caption_line}; isolated low-structure row "
+                f"L{candidate} Y={current_mean:.3f}/{current_std:.3f} "
+                f"correlation={correlation:.3f}; picture begins L{top} "
+                f"Y={following_mean:.3f}/{following_std:.3f}"
+            )
+        else:
+            top = candidate
+            reason = (
+                f"in-pass caption L{caption_line}; picture row immediately follows "
+                f"at L{top} Y={current_mean:.3f}/{current_std:.3f} "
+                f"correlation to L{top + 1}={correlation:.3f}"
+            )
     elif field == 1:
         excluded = set(off_waveform) | set(off_caption)
         means, _stds, _gradients, active, _blank, _gates = measure_row_activity(y, spec)
@@ -492,9 +537,13 @@ def _inspect_top(
                 status = "inferred"
                 reason = "dark first row has no VBI cue; inferred raster-slot origin"
 
-    caption_implied = in_pass_caption[0] + 2 if len(in_pass_caption) == 1 else -1
+    caption_implied = in_pass_caption[0] if len(in_pass_caption) == 1 else -1
     caption_confirmation = (
-        "agrees" if caption_implied == top else "disagrees" if caption_implied >= 0 else "absent"
+        "agrees"
+        if caption_implied >= 0 and top in {caption_implied + 1, caption_implied + 2}
+        else "disagrees"
+        if caption_implied >= 0
+        else "absent"
     )
     vbi_confirmation = "below VBI" if all(line < top for line in off_waveform) else (
         "disagrees" if off_waveform else "absent"
@@ -783,6 +832,43 @@ def _first_edge_departure(
     )
 
 
+def _middle_blanking_row(
+    y: np.ndarray, field: int, lines: Iterable[int]
+) -> tuple[int, str]:
+    """Find other-head horizontal blanking delivered inside a raster row."""
+    spec = FIELD_SPECS[field - 1]
+    blank = y[spec.blank_lo : spec.blank_hi, 40:680].astype(np.float64)
+    blank_mean = float(np.median(blank))
+    blank_noise = max(
+        0.25,
+        1.4826 * float(np.median(np.abs(blank - np.median(blank)))),
+    )
+    threshold = blank_mean + max(3.0, 8.0 * blank_noise)
+    width = 64
+    for line in lines:
+        row = y[line - 4].astype(np.float64)
+        above = y[line - 5].astype(np.float64)
+        rolling = np.convolve(row[20:241], np.ones(width) / width, mode="valid")
+        local = int(np.argmin(rolling))
+        start = 20 + local
+        stop = start + width
+        low = float(rolling[local])
+        above_level = float(np.mean(above[start:stop]))
+        following_level = float(np.median(row[220:680]))
+        if (
+            low <= threshold
+            and above_level > threshold + 3.0
+            and following_level > threshold + 3.0
+        ):
+            return (
+                line,
+                f"L{line} internal blank x={start}-{stop - 1} "
+                f"Y={low:.3f}; above={above_level:.3f} "
+                f"following={following_level:.3f}; gate={threshold:.3f}",
+            )
+    return -1, f"no internal horizontal blanking run; gate={threshold:.3f}"
+
+
 def _cue_rows(y: np.ndarray, field: int, expected_bottom: int) -> list[RowCue]:
     spec = FIELD_SPECS[field - 1]
     raster_limit = RASTER_LIMITS[field]
@@ -907,6 +993,9 @@ def _inspect_switch(
     edge_line, edge_evidence = _first_edge_departure(
         y, field, (item.line for item in structural_cues)
     )
+    middle_blank_line, middle_blank_evidence = _middle_blanking_row(
+        y, field, (item.line for item in structural_cues)
+    )
 
     maximums = np.asarray([max(item.thirds) for item in structural_cues])
     peak_index = int(np.argmax(maximums))
@@ -925,25 +1014,56 @@ def _inspect_switch(
         right_median,
         right_tolerance,
     ) = _partial_predecessor(y, field, peak.line)
-    structural_onset = peak.line - 1 if predecessor_is_partial else peak.line
+    structural_onset = peak.line - 1 if structural_partial else peak.line
 
-    # A coherent tear can precede the largest transition, which is often only
-    # the later black/pedestal run.  It is independently required in two image
-    # thirds before it is allowed to advance the boundary.
-    earlier = [item.line for item in generic if item.line < structural_onset]
-    if earlier:
-        structural_onset = min(earlier)
+    if middle_blank_line >= 0:
+        (
+            _anchor_partial,
+            anchor_structural_partial,
+            _anchor_fraction,
+            _anchor_run,
+            *_anchor_edges,
+        ) = _partial_predecessor(y, field, middle_blank_line)
+        predecessor = next(
+            (item for item in cues if item.line == middle_blank_line - 1), None
+        )
+        direct_predecessor = bool(
+            anchor_structural_partial
+            or (
+                predecessor is not None
+                and (
+                    predecessor.skew
+                    or predecessor.agc
+                    or max(predecessor.thirds) >= 3.0
+                )
+            )
+        )
+        structural_onset = (
+            middle_blank_line - 1 if direct_predecessor else middle_blank_line
+        )
+    else:
+        direct_predecessor = False
+        # A coherent tear can precede the largest transition, which is often only
+        # the later black/pedestal run.  It is independently required in two image
+        # thirds before it is allowed to advance the boundary.
+        earlier = [item.line for item in skew if item.line < structural_onset]
+        if earlier:
+            structural_onset = min(earlier)
     candidates = [structural_onset]
     if rf_onset >= 0:
         candidates.append(rf_onset)
     line = min(candidates) if candidates else -1
     strong_peak = float(maximums[peak_index]) >= 3.0 and margin >= 0.75
-    directly_read = strong_peak and (
-        not predecessor_is_partial or structural_partial
+    directly_read = middle_blank_line >= 0 or (
+        strong_peak and (not predecessor_is_partial or structural_partial)
     )
     if line >= 0:
         selected = next(item for item in cues if item.line == line)
-        status = "observed" if directly_read and edge_line == line else "inferred"
+        status = (
+            "observed"
+            if middle_blank_line >= 0 or (directly_read and edge_line == line)
+            else "inferred"
+        )
         reason = (
             f"switch candidate L{line}; peak=L{peak.line} margin={margin:.3f}; thirds="
             + ",".join(f"{value:.3f}" for value in selected.thirds)
@@ -952,6 +1072,7 @@ def _inspect_switch(
             + f"edges={left_position}/{right_position} "
             + f"body={left_median:.1f}+/-{left_tolerance:.1f}/"
             + f"{right_median:.1f}+/-{right_tolerance:.1f}"
+            + f"; {middle_blank_evidence}"
         )
     else:
         status = "unmeasurable"
@@ -966,6 +1087,10 @@ def _inspect_switch(
         names.append("rf_peak")
     if agc_item is not None:
         names.append("agc")
+    if middle_blank_line >= 0:
+        names.append("mid_blank")
+    if direct_predecessor:
+        names.append("partial")
     aligned_lag = rf.median_lag if rf else -128
     next_before_lag = -128
     next_after_lag = -128
@@ -1146,7 +1271,12 @@ class ReferenceBuilder:
         flat_values = measure_flat_raster(y, spec)
         coherence, vertical_mad = _picture_coherence(y, field)
         has_structure = coherence >= 0.20 or vertical_mad >= 2.0
-        flat = bool(flat_values[0]) or not has_structure
+        structure_flat = bool(flat_values[0]) or not has_structure
+        flat_picture_boundary = _flat_picture_boundary(y, field)
+        # Spatial flatness does not mean absence. A flat field whose recorded
+        # region has a clear level boundary against raster blanking remains
+        # measurable. Only a flat field without that boundary is ambiguous.
+        flat = structure_flat and not flat_picture_boundary
         chroma_deviation = measure_chroma_deviation(packed)
         recorded_rows, recorded_gate = measure_recorded_rows(chroma_deviation, spec)
         body_motion = measure_body(y, self.previous_y, spec)
