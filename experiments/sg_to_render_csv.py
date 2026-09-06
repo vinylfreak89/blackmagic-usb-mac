@@ -9,7 +9,7 @@ an offset on that field's applied top (bounded to ±3, reset when the top itself
 is the confirmation this rule still needs   (counters: a CSV with unit|ordinal and counter columns for the same capture; the renderer joins by the 16-bit device counter)"""
 import sys, csv
 import argparse
-ap=argparse.ArgumentParser(); ap.add_argument('sg'); ap.add_argument('out'); ap.add_argument('counters'); ap.add_argument('--body-correct'); A=ap.parse_args(); sys.argv=[sys.argv[0],A.sg,A.out,A.counters]
+ap=argparse.ArgumentParser(); ap.add_argument('sg'); ap.add_argument('out'); ap.add_argument('counters'); ap.add_argument('--body-correct'); ap.add_argument('--repair-slots',action='store_true',help='the engine ran with --repair (fields paired one later): render slot 1 of unit u from engine field 2 of unit u-1, slot 2 from engine field 1 of unit u'); A=ap.parse_args(); sys.argv=[sys.argv[0],A.sg,A.out,A.counters]
 rows=list(csv.DictReader(open(sys.argv[1]))); by={}
 BS={int(r['unit']):r for r in csv.DictReader(open(A.body_correct))} if A.body_correct else {}
 off={'1':0,'2':0}; prev_top={'1':None,'2':None}; corrected=0
@@ -22,7 +22,7 @@ for u in sorted(by):
     if u not in cnt: continue
     out=[u,cnt[u]]
     for f in ('1','2'):
-        r=by[u].get(f); top=int(r['top']) if r else -1; last=int(r['last_rec']) if r else -1; S=int(r['S_first_shifted']) if r else -1
+        r=(by.get(u-1,{}).get('2') if f=='1' else by[u].get('1')) if A.repair_slots else by[u].get(f); top=int(r['top']) if r else -1; last=int(r['last_rec']) if r else -1; S=int(r['S_first_shifted']) if r else -1
         if BS and u in BS and top>0:
             b=BS[u]; o='2' if f=='1' else '1'
             def dec(k): return b[f'f{k}_shift']!='' and float(b[f'f{k}_ratio'])<=0.8 and int(b[f'f{k}_shift'])!=0
