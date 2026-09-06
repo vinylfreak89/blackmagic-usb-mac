@@ -19,17 +19,19 @@ from PIL import Image, ImageDraw
 UNIT=756_048; HDR=48; LINE=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 F={1:dict(origin_line=23, first_line=20, top='f1_picture_top_line', bot='f1_bottom_line', clip='f1_last_recorded_line'),
    2:dict(origin_line=286, first_line=283, top='f2_picture_top_line', bot='f2_bottom_line', clip='f2_last_recorded_line')}
-H=243; W=720
+H=243; W=720; INFO=200   # info column appended to the RIGHT of the two fields; no text ever covers a raster row
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('ref'); ap.add_argument('out')
 ap.add_argument('--mode',choices=['raw','stabilized'],required=True); ap.add_argument('--start-ordinal',type=int,default=0); ap.add_argument('--max-units',type=int,default=0)
 ap.add_argument('--profile',type=int,default=3,help='ProRes profile: 3 = HQ (slices), 0 = proxy (whole tape, ~4 GB)')
 A=ap.parse_args()
 ref=list(csv.DictReader(open(A.ref)))
 # sequential join: start at the reference row whose ordinal is nearest --start-ordinal, then advance one row per exact unit
-pos=min(range(len(ref)), key=lambda i: abs(int(ref[i]['ordinal'])-A.start_ordinal))
-ff=subprocess.Popen(['ffmpeg','-hide_banner','-loglevel','error','-y','-f','rawvideo','-pix_fmt','rgb24','-s',f'{2*W}x{H}','-r','30000/1001','-i','-',
+ff=subprocess.Popen(['ffmpeg','-hide_banner','-loglevel','error','-y','-f','rawvideo','-pix_fmt','rgb24','-s',f'{2*W+INFO}x{H}','-r','30000/1001','-i','-',
     '-vf','setsar=8/9','-c:v','prores_ks','-profile:v',str(A.profile),'-pix_fmt','yuv422p10le',A.out],stdin=subprocess.PIPE)   # ProRes HQ: keeps the odd 243-line height exactly, plays natively on macOS
-n=[0]; hold={1:0,2:0}; buf=bytearray()
+n=[0]; hold={1:0,2:0}; buf=bytearray(); skipped=[]
+bycounter={}
+for _i,_r in enumerate(ref): bycounter.setdefault(int(_r['counter'])&0xffff,[]).append(_i)
+pos=0
 def val(r,k):
     try: return int(r[k])
     except: return None
@@ -48,27 +50,29 @@ def field_view(Y, f, top, bot, mode):
 def emit(u):
     global pos
     c16=int.from_bytes(u[4:6],'little')
-    if pos>=len(ref): raise SystemExit('reference exhausted')
-    if n[0]==0:
-        # first unit: locate the reference row with this counter nearest --start-ordinal (within 2000 rows), then go sequential
-        cands=[i for i in range(max(0,pos-2000),min(len(ref),pos+2000)) if int(ref[i]['counter'])&0xffff==c16]
-        if not cands: raise SystemExit(f'first unit counter {c16} not found within 2000 rows of ordinal {A.start_ordinal}')
-        pos=min(cands,key=lambda i:abs(i-pos)); print('joined at reference ordinal',ref[pos]['ordinal'])
-    r=ref[pos]
-    if int(r['counter'])&0xffff!=c16: raise SystemExit(f'counter mismatch at reference ordinal {r["ordinal"]}: unit {c16} vs reference {r["counter"]} (join broken, aborting)')
+    # join by device counter: the reference carries exact units only; a capture unit whose counter the reference does
+    # not carry (device-short, fragment) is skipped with a log line, never silently dropped or misaligned
+    global bycounter
+    cands=bycounter.get(c16,[])
+    near=[i for i in cands if i>=pos and i-pos<=64]
+    if not near:
+        skipped.append(c16); return
+    pos=near[0]; r=ref[pos]
     pos+=1; n[0]+=1
     Y=np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,LINE)[:,1::2]
-    frame=np.zeros((H,2*W,3),np.uint8); txt=[]
+    frame=np.zeros((H,2*W+INFO,3),np.uint8); txt=[]
     for f in (1,2):
         top=val(r,F[f]['top']); bot=val(r,F[f]['bot'])
         if top is None or top<=0: top=None
         rgb,d=field_view(Y,f,top,bot,A.mode); frame[:,(f-1)*W:f*W]=rgb
-        txt.append(f"F{f} top {top if top else '?'} bot {bot if (bot and bot>0) else '?'} d{d:+d}")
-    im=Image.fromarray(frame); dr=ImageDraw.Draw(im)
-    # bottom-left: mode and the reference values; bottom-right of EACH field: the unit number (transport ordinal) so a
-    # frame can be named exactly when disputing it
-    dr.text((4,H-12),f"{A.mode} | {txt[0]}",fill=(255,255,0)); dr.text((W+4,H-12),txt[1],fill=(255,255,0))
-    for f in (1,2): dr.text((f*W-118,H-12),f"F{f} unit {r['ordinal']}",fill=(0,255,255))
+        txt.append(f"ref top {top if top else '?'} | ref bottom {bot if (bot and bot>0) else '?'} | shift {d:+d}")
+    im=Image.fromarray(frame); dr=ImageDraw.Draw(im); x0=2*W+6
+    dr.rectangle([2*W,0,2*W+INFO-1,H-1],fill=(28,28,28))
+    dr.text((x0,6),f"unit {r['ordinal']}",fill=(0,255,255)); dr.text((x0,20),f"ctr {c16}  {A.mode}",fill=(200,200,200))
+    for k,f in enumerate((1,2)):
+        y0=44+k*64; dr.text((x0,y0),f"FIELD {f}",fill=(255,255,255))
+        for q,line in enumerate(txt[k].split(' | ')): dr.text((x0,y0+14+q*14),line,fill=(255,200,200))
+    dr.text((x0,H-40),"rows: lines 20-262",fill=(120,120,120)); dr.text((x0,H-26),"      / 283-525",fill=(120,120,120)); dr.text((x0,H-12),"red = ref top/bottom",fill=(255,80,80))
     ff.stdin.write(np.asarray(im).tobytes())
     if A.max_units and n[0]>=A.max_units: raise StopIteration
 def on_video(p):
@@ -84,4 +88,4 @@ def on_video(p):
 try: walk_tagged(A.cap, on_video=on_video, progress=False)
 except StopIteration: pass
 except RuntimeError as e: print('walk ended:',str(e)[:100])
-ff.stdin.close(); ff.wait(); print('frames',n[0],'->',A.out,'ffmpeg rc',ff.returncode)
+ff.stdin.close(); ff.wait(); print('frames',n[0],'->',A.out,'ffmpeg rc',ff.returncode,'| capture units not in the reference (skipped):',len(skipped),skipped[:10])
