@@ -187,3 +187,27 @@ geometry's; the prototype only holds on flat rasters and torn top strips.
   high (leading fragments) and was silently unjoinable.
 - Adjudication panels carry the two candidate rows' luma mean/std in the label: an 8× panel of a dark row can look
   textured, and did.
+
+### 7b. Review agenda for the next round (Codex's code-and-intent review of `5c3ffc3`, 2026-09-06 10:20 JST)
+
+The prototype at `80a65af` is not accepted. Two whole-tape runs were scored against Codex's blind-built reference and
+adjudicated on raw rows; the review then named the structural faults the rows confirm. Each item below carries the
+ordinals that decide it (Codex is turning them into `experiments/geometry_oracle/reports/review_fixtures.csv` with a
+`--fixtures` scorer flag):
+
+1. Relative comb as a per-unit actuator bounces field 2 on an unchanged raster (66,422–66,424). Precedence settles once
+   per lock on demonstrably static pixels; later checks report, never move.
+2. No signal/relock input: snow at 43,686–43,736 gets placed; the body-half splice test false-fires (63,330–63,331).
+   Explicit events: relock at 300 and 43,737; forbid the mute; report the near-repeats 43,696/43,702/43,707.
+3. Bottom and height do not participate in the decision (top-only engine); active vs recorded bottom to be settled on
+   the raw rows (fixture A ~260/522 active vs 262/525 recorded; commercial tape 262/525 both).
+4. Damaged VBI rows accepted as picture (66,421; 63,053) — the standard run-in/start/cell 608 waveform test,
+   independent of parity, replaces the fitted shape tests; hard-edged picture rows must survive it.
+5. Captions override measurable geometry (62,713/62,717/62,723): geometry wins; a caption resolves the line-22 band
+   or a hidden edge only, and disagreements are logged.
+6. A lock inside a black band can preserve a wrong acquisition indefinitely (294–299, 420).
+7. `line22_video` is a fitted state; derive the category from simultaneous caption plus complete geometry (63,506).
+8. `recorded_mask` trusts nine blanking rows a torn strip could contaminate (no fixture exists yet).
+9. One H-torn row or a flat body suppresses a measurable edge (62,322–62,326, 64,097).
+10. Not fail-closed on a provenance error (partial sidecar kept). 11. `counter_extended` is wrapped; every row is
+    labelled Complete/published regardless of signal state.
