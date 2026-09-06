@@ -22,12 +22,13 @@ F={1:dict(origin_line=23, first_line=20, top='f1_picture_top_line', bot='f1_bott
 H=243; W=720
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('ref'); ap.add_argument('out')
 ap.add_argument('--mode',choices=['raw','stabilized'],required=True); ap.add_argument('--start-ordinal',type=int,default=0); ap.add_argument('--max-units',type=int,default=0)
+ap.add_argument('--profile',type=int,default=3,help='ProRes profile: 3 = HQ (slices), 0 = proxy (whole tape, ~4 GB)')
 A=ap.parse_args()
 ref=list(csv.DictReader(open(A.ref)))
 # sequential join: start at the reference row whose ordinal is nearest --start-ordinal, then advance one row per exact unit
 pos=min(range(len(ref)), key=lambda i: abs(int(ref[i]['ordinal'])-A.start_ordinal))
 ff=subprocess.Popen(['ffmpeg','-hide_banner','-loglevel','error','-y','-f','rawvideo','-pix_fmt','rgb24','-s',f'{2*W}x{H}','-r','30000/1001','-i','-',
-    '-vf','setsar=8/9','-c:v','prores_ks','-profile:v','3','-pix_fmt','yuv422p10le',A.out],stdin=subprocess.PIPE)   # ProRes HQ: keeps the odd 243-line height exactly, plays natively on macOS
+    '-vf','setsar=8/9','-c:v','prores_ks','-profile:v',str(A.profile),'-pix_fmt','yuv422p10le',A.out],stdin=subprocess.PIPE)   # ProRes HQ: keeps the odd 243-line height exactly, plays natively on macOS
 n=[0]; hold={1:0,2:0}; buf=bytearray()
 def val(r,k):
     try: return int(r[k])
