@@ -1,0 +1,151 @@
+ordinal,field,expected_picture_top_line,expected_event,finding,note
+294,1,24,place,6,raw picture start confirmed; recorded_top=L23; picture_top=L24; L23=4.197/3.561 L24=158.595/17.307 L25=110.044/38.813
+295,1,24,place,6,raw picture start confirmed; recorded_top=L23; picture_top=L24; L23=4.311/3.578 L24=133.173/34.126 L25=129.675/35.524
+296,1,24,place,6,raw picture start confirmed; recorded_top=L23; picture_top=L24; L23=4.614/3.926 L24=157.981/17.830 L25=110.916/37.431
+297,1,24,place,6,raw picture start confirmed; recorded_top=L23; picture_top=L24; L23=3.467/3.326 L24=159.637/13.778 L25=111.536/38.587
+298,1,24,place,6,raw picture start confirmed; recorded_top=L23; picture_top=L24; L23=2.692/2.368 L24=160.780/16.683 L25=110.938/37.077
+299,1,24,place,6,raw picture start confirmed; recorded_top=L23; picture_top=L24; L23=4.387/3.511 L24=161.223/14.540 L25=115.333/38.109
+300,1,24,relock,2,raw relock; old geometry invalid; recorded_top=L23; picture_top=L24; L23=5.206/3.894 L24=160.777/17.433 L25=108.736/37.889
+300,2,287,relock,2,raw relock; old geometry invalid; recorded_top=L286; picture_top=L287; L286=3.928/3.426 L287=157.688/15.944 L288=109.345/38.708
+420,1,23,place,6,raw picture start confirmed; recorded_top=L23; picture_top=L23; L22=1.403/0.491 L23=154.059/21.053 L24=154.706/19.735
+43686,1,25,forbid,2,raw Garbage; placement forbidden; recorded_top=L25; picture_top=L25; L24=25.655/36.334 L25=35.411/42.750 L26=24.566/39.200
+43686,2,315,forbid,2,raw Garbage; placement forbidden; recorded_top=L315; picture_top=L315; L314=34.694/40.604 L315=98.791/53.649 L316=86.222/58.950
+43687,1,25,forbid,2,raw Black; placement forbidden; recorded_top=L25; picture_top=L25; L24=43.883/51.385 L25=39.534/48.479 L26=50.722/56.737
+43687,2,288,forbid,2,raw Black; placement forbidden; recorded_top=L288; picture_top=L288; L287=43.956/51.375 L288=39.614/48.549 L289=50.736/56.742
+43688,1,25,forbid,2,raw PreSnow; placement forbidden; recorded_top=L25; picture_top=L25; L24=43.978/51.415 L25=39.619/48.587 L26=50.639/56.683
+43688,2,315,forbid,2,raw PreSnow; placement forbidden; recorded_top=L315; picture_top=L315; L314=37.136/45.039 L315=91.570/53.679 L316=89.517/54.374
+43689,1,25,forbid,2,raw Snow; placement forbidden; recorded_top=L25; picture_top=L25; L24=35.417/45.625 L25=17.809/31.876 L26=36.342/43.982
+43689,2,288,forbid,2,raw Snow; placement forbidden; recorded_top=L288; picture_top=L288; L287=28.359/40.048 L288=39.467/46.646 L289=38.747/46.857
+43690,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=44.244/47.247 L53=88.636/55.892 L54=90.713/53.461
+43690,2,288,forbid,2,raw Snow; placement forbidden; recorded_top=L288; picture_top=L288; L287=33.686/46.104 L288=25.220/36.453 L289=36.041/49.377
+43691,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=22.955/38.549 L53=89.025/55.906 L54=92.836/53.268
+43691,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=26.395/36.824 L315=84.009/59.008 L316=89.416/55.609
+43692,1,25,forbid,2,raw Snow; placement forbidden; recorded_top=L25; picture_top=L25; L24=35.130/46.853 L25=30.747/39.302 L26=37.539/47.571
+43692,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=31.336/42.506 L315=93.078/55.753 L316=92.041/54.278
+43693,1,25,forbid,2,raw Snow; placement forbidden; recorded_top=L25; picture_top=L25; L24=30.894/39.762 L25=34.777/40.089 L26=40.614/51.702
+43693,2,288,forbid,2,raw Snow; placement forbidden; recorded_top=L288; picture_top=L288; L287=31.025/39.804 L288=34.763/40.040 L289=40.661/51.802
+43694,1,25,forbid,2,raw Snow; placement forbidden; recorded_top=L25; picture_top=L25; L24=30.928/39.730 L25=34.638/40.043 L26=40.647/51.774
+43694,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=34.903/40.855 L315=97.739/50.032 L316=94.664/53.874
+43695,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=21.645/33.743 L53=87.453/56.485 L54=92.703/54.414
+43695,2,288,forbid,2,raw Snow; placement forbidden; recorded_top=L288; picture_top=L288; L287=29.822/41.600 L288=45.797/57.318 L289=27.314/34.135
+43696,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=27.652/41.815 L53=92.414/54.477 L54=99.200/48.634; repeat report only; same-field previous MAD=34.487900
+43696,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=31.239/38.934 L315=85.811/58.039 L316=87.248/56.348
+43697,1,25,forbid,2,raw Snow; placement forbidden; recorded_top=L25; picture_top=L25; L24=33.509/46.843 L25=30.956/47.601 L26=27.908/39.465
+43697,2,304,forbid,2,raw Snow; placement forbidden; recorded_top=L304; picture_top=L304; L303=24.358/37.907 L304=29.355/39.504 L305=17.980/30.844
+43698,1,25,forbid,2,raw Snow; placement forbidden; recorded_top=L25; picture_top=L25; L24=22.761/34.489 L25=31.656/38.299 L26=36.241/46.343
+43698,2,288,forbid,2,raw Snow; placement forbidden; recorded_top=L288; picture_top=L288; L287=22.778/34.494 L288=31.556/38.261 L289=36.188/46.265
+43699,1,25,forbid,2,raw Snow; placement forbidden; recorded_top=L25; picture_top=L25; L24=22.881/34.568 L25=31.603/38.349 L26=36.263/46.344
+43699,2,298,forbid,2,raw Snow; placement forbidden; recorded_top=L298; picture_top=L298; L297=42.227/55.316 L298=34.952/44.039 L299=41.433/47.677
+43700,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.239/0.626 L53=124.414/20.532 L54=124.375/20.527
+43700,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.575/0.620 L315=124.963/20.590 L316=124.773/20.563
+43701,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.537/0.690 L53=124.756/20.224 L54=124.830/20.158
+43701,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.448/0.618 L315=124.869/20.210 L316=124.872/20.196
+43702,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.833/0.713 L53=124.894/20.302 L54=124.828/20.312; repeat report only; same-field previous MAD=0.670746
+43702,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.500/0.664 L315=124.562/20.343 L316=124.578/20.443
+43703,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.525/0.651 L53=124.759/20.348 L54=124.611/20.398
+43703,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.820/0.716 L315=124.941/20.244 L316=124.834/20.304
+43704,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.709/0.687 L53=124.875/20.280 L54=124.745/20.351
+43704,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.891/0.696 L315=124.894/20.350 L316=124.791/20.266
+43705,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.441/0.649 L53=124.586/20.346 L54=124.566/20.341
+43705,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.464/0.684 L315=124.714/20.289 L316=124.641/20.397
+43706,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.539/0.648 L53=124.594/20.297 L54=124.620/20.346
+43706,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.509/0.696 L315=124.762/20.237 L316=124.694/20.229
+43707,1,53,forbid,2,raw Snow; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.627/0.687 L53=124.713/20.213 L54=124.625/20.260; repeat report only; same-field previous MAD=0.642953
+43707,2,315,forbid,2,raw Snow; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.745/0.737 L315=124.878/20.234 L316=124.905/20.202
+43708,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.581/0.698 L53=124.534/20.294 L54=124.569/20.195
+43708,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.617/0.688 L315=124.728/20.322 L316=124.706/20.391
+43709,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.602/0.656 L53=124.716/20.377 L54=124.625/20.322
+43709,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.747/0.695 L315=124.675/20.306 L316=124.678/20.327
+43710,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.875/0.689 L53=124.995/20.325 L54=124.758/20.292
+43710,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.827/0.707 L315=124.819/20.361 L316=124.852/20.366
+43711,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.689/0.702 L53=125.039/20.248 L54=125.025/20.276
+43711,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.861/0.688 L315=124.894/20.283 L316=124.864/20.450
+43712,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.970/0.694 L53=124.858/20.317 L54=124.906/20.256
+43712,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.205/0.683 L315=125.030/20.332 L316=125.003/20.356
+43713,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.866/0.710 L53=124.870/20.392 L54=124.848/20.297
+43713,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.037/0.672 L315=124.887/20.367 L316=124.817/20.363
+43714,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.802/0.696 L53=124.672/20.430 L54=124.912/20.419
+43714,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.002/0.704 L315=124.953/20.331 L316=125.003/20.241
+43715,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.919/0.720 L53=124.908/20.313 L54=124.842/20.361
+43715,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.992/0.702 L315=124.936/20.270 L316=125.022/20.254
+43716,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.925/0.708 L53=125.081/20.218 L54=125.172/20.230
+43716,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.930/0.700 L315=124.889/20.275 L316=124.906/20.331
+43717,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.648/0.652 L53=124.970/20.220 L54=125.042/20.285
+43717,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.094/0.725 L315=125.134/20.346 L316=125.088/20.308
+43718,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=122.036/0.689 L53=124.988/20.281 L54=124.978/20.238
+43718,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.197/0.665 L315=125.266/20.293 L316=125.261/20.258
+43719,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=122.128/0.668 L53=125.377/20.186 L54=125.295/20.184
+43719,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.131/0.699 L315=125.230/20.240 L316=125.172/20.232
+43720,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=122.352/0.630 L53=125.117/20.313 L54=125.195/20.248
+43720,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.312/0.644 L315=125.514/20.394 L316=125.395/20.251
+43721,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=122.155/0.668 L53=125.442/20.453 L54=125.508/20.412
+43721,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.323/0.676 L315=125.300/20.572 L316=125.400/20.581
+43722,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=122.158/0.672 L53=125.392/20.591 L54=125.277/20.428
+43722,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.222/0.633 L315=125.591/20.509 L316=125.473/20.564
+43723,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=122.314/0.700 L53=125.403/20.511 L54=125.498/20.497
+43723,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.061/0.710 L315=125.397/20.600 L316=125.428/20.545
+43724,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.786/0.702 L53=125.269/20.583 L54=125.267/20.613
+43724,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.020/0.685 L315=125.377/20.476 L316=125.347/20.373
+43725,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.947/0.727 L53=125.344/20.436 L54=125.308/20.463
+43725,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.194/0.689 L315=125.436/20.477 L316=125.606/20.579
+43726,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=122.027/0.712 L53=125.484/20.532 L54=125.287/20.511
+43726,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.723/0.676 L315=125.159/20.511 L316=125.116/20.598
+43727,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.739/0.686 L53=125.223/20.595 L54=125.389/20.561
+43727,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=122.012/0.685 L315=125.445/20.485 L316=125.366/20.466
+43728,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=122.044/0.704 L53=125.233/20.616 L54=125.280/20.524
+43728,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=121.856/0.712 L315=125.133/20.546 L316=125.189/20.510
+43729,1,53,forbid,2,raw Mute; placement forbidden; recorded_top=L53; picture_top=L53; L52=121.992/0.674 L53=125.278/20.563 L54=125.308/20.537
+43729,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=34.242/46.919 L315=107.058/42.611 L316=107.048/42.629
+43730,1,23,forbid,2,raw Mute; placement forbidden; recorded_top=L23; picture_top=L23; L22=1.383/0.486 L23=19.698/11.581 L24=17.545/9.588
+43730,2,315,forbid,2,raw Mute; placement forbidden; recorded_top=L315; picture_top=L315; L314=51.628/46.293 L315=110.105/37.873 L316=109.748/38.661
+43731,1,25,forbid,2,raw Mute; placement forbidden; recorded_top=L25; picture_top=L25; L24=22.956/10.987 L25=28.483/21.498 L26=27.411/9.007
+43731,2,287,forbid,2,raw Mute; placement forbidden; recorded_top=L287; picture_top=L287; L286=66.894/59.400 L287=20.331/5.805 L288=27.139/6.236
+43732,1,24,forbid,2,raw Mute; placement forbidden; recorded_top=L23; picture_top=L24; L23=6.309/3.977 L24=63.942/58.789 L25=65.741/59.167
+43732,2,288,forbid,2,raw Mute; placement forbidden; recorded_top=L288; picture_top=L288; L287=59.659/56.419 L288=5.353/10.251 L289=4.414/9.852
+43733,1,25,forbid,2,raw Mute; placement forbidden; recorded_top=L25; picture_top=L25; L24=59.188/58.248 L25=24.547/8.280 L26=24.566/6.134
+43733,2,286,forbid,2,raw Mute; placement forbidden; recorded_top=L286; picture_top=L286; L285=1.400/0.490 L286=22.770/5.498 L287=28.123/6.508
+43734,1,25,forbid,2,raw Mute; placement forbidden; recorded_top=L25; picture_top=L25; L24=21.794/15.883 L25=28.281/11.618 L26=29.069/8.369
+43734,2,287,forbid,2,raw Mute; placement forbidden; recorded_top=L287; picture_top=L287; L286=69.580/58.565 L287=25.523/6.619 L288=32.370/7.725
+43735,1,24,forbid,2,raw Mute; placement forbidden; recorded_top=L23; picture_top=L24; L23=11.336/2.327 L24=45.230/45.251 L25=30.036/42.476
+43735,2,287,forbid,2,raw Mute; placement forbidden; recorded_top=L286; picture_top=L287; L286=11.598/2.298 L287=45.500/45.384 L288=30.186/42.596
+43736,1,24,forbid,2,raw Mute; placement forbidden; recorded_top=L23; picture_top=L24; L23=11.486/2.256 L24=45.361/45.326 L25=29.969/42.545
+43736,2,286,forbid,2,raw Mute; placement forbidden; recorded_top=L286; picture_top=L286; L285=1.380/0.485 L286=27.967/5.599 L287=33.025/6.500
+43737,1,23,relock,2,raw relock; old geometry invalid; recorded_top=L23; picture_top=L23; L22=1.388/0.487 L23=26.531/6.444 L24=33.847/7.112
+43737,2,288,relock,2,raw relock; old geometry invalid; recorded_top=L288; picture_top=L288; L287=20.853/36.279 L288=33.683/6.309 L289=33.978/5.767
+61025,1,24,hold_previous,11,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L24; picture_top=L24; L23=33.408/46.274 L24=30.917/16.000 L25=36.477/22.806; first 16-bit wrap; raw counter=0"
+61025,2,288,place,11,raw picture start confirmed; recorded_top=L288; picture_top=L288; L287=64.528/59.038 L288=35.597/21.501 L289=35.259/18.472; first 16-bit wrap; raw counter=0
+62322,1,23,place,8,raw picture start confirmed; recorded_top=L23; picture_top=L23; L22=1.380/0.485 L23=11.161/8.005 L24=43.920/44.054
+62322,1,23,place,9,raw picture start confirmed; recorded_top=L23; picture_top=L23; L22=1.380/0.485 L23=11.161/8.005 L24=43.920/44.054
+62322,2,287,hold_previous,8,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L287; picture_top=L287; L286=31.978/45.148 L287=76.002/25.985 L288=98.495/32.774"
+62322,2,287,hold_previous,9,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L287; picture_top=L287; L286=31.978/45.148 L287=76.002/25.985 L288=98.495/32.774"
+62323,1,24,place,8,raw picture start confirmed; recorded_top=L23; picture_top=L24; L23=10.217/5.392 L24=42.241/43.914 L25=22.569/34.789
+62323,1,24,place,9,raw picture start confirmed; recorded_top=L23; picture_top=L24; L23=10.217/5.392 L24=42.241/43.914 L25=22.569/34.789
+62323,2,287,hold_previous,8,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L287; picture_top=L287; L286=34.156/45.533 L287=77.250/26.659 L288=95.900/31.120"
+62323,2,287,hold_previous,9,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L287; picture_top=L287; L286=34.156/45.533 L287=77.250/26.659 L288=95.900/31.120"
+62324,1,24,place,8,raw picture start confirmed; recorded_top=L23; picture_top=L24; L23=11.350/6.306 L24=42.744/42.765 L25=27.577/41.371
+62324,1,24,place,9,raw picture start confirmed; recorded_top=L23; picture_top=L24; L23=11.350/6.306 L24=42.744/42.765 L25=27.577/41.371
+62324,2,287,place,8,raw picture start confirmed; recorded_top=L286; picture_top=L287; L286=11.402/6.136 L287=43.020/42.996 L288=26.431/39.997
+62324,2,287,place,9,raw picture start confirmed; recorded_top=L286; picture_top=L287; L286=11.402/6.136 L287=43.020/42.996 L288=26.431/39.997
+62325,1,25,hold_previous,8,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L25; picture_top=L25; L24=34.255/45.449 L25=81.994/24.798 L26=103.211/28.869"
+62325,1,25,hold_previous,9,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L25; picture_top=L25; L24=34.255/45.449 L25=81.994/24.798 L26=103.211/28.869"
+62325,2,288,place,8,raw picture start confirmed; recorded_top=L288; picture_top=L288; L287=27.258/40.289 L288=106.648/26.677 L289=107.275/24.787
+62325,2,288,place,9,raw picture start confirmed; recorded_top=L288; picture_top=L288; L287=27.258/40.289 L288=106.648/26.677 L289=107.275/24.787
+62326,1,25,hold_previous,8,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L25; picture_top=L25; L24=31.553/44.903 L25=76.803/27.165 L26=104.072/33.874"
+62326,1,25,hold_previous,9,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L25; picture_top=L25; L24=31.553/44.903 L25=76.803/27.165 L26=104.072/33.874"
+62326,2,288,hold_previous,8,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L288; picture_top=L288; L287=31.580/44.827 L288=76.880/27.115 L289=104.291/33.764"
+62326,2,288,hold_previous,9,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L288; picture_top=L288; L287=31.580/44.827 L288=76.880/27.115 L289=104.291/33.764"
+62713,1,25,hold_previous,5,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L25; picture_top=L25; L24=34.353/47.735 L25=70.902/54.702 L26=93.262/80.105"
+62717,1,25,place,5,raw picture start confirmed; recorded_top=L25; picture_top=L25; L24=69.898/53.232 L25=92.741/80.550 L26=88.947/75.875
+62723,1,25,place,5,raw picture start confirmed; recorded_top=L25; picture_top=L25; L24=66.188/49.074 L25=88.156/76.791 L26=85.108/73.699
+63053,2,288,place,4,raw picture start confirmed; recorded_top=L288; picture_top=L288; L287=26.061/41.499 L288=153.536/26.648 L289=148.355/26.189
+63330,1,25,hold_previous,2,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L25; picture_top=L25; L24=35.778/49.330 L25=22.934/3.196 L26=31.883/6.675"
+63330,2,288,place,2,raw picture start confirmed; recorded_top=L288; picture_top=L288; L287=81.597/65.985 L288=30.717/6.876 L289=32.817/5.813
+63331,1,24,hold_previous,2,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L24; picture_top=L24; L23=35.192/49.593 L24=21.698/2.875 L25=34.967/11.988"
+63331,2,288,place,2,raw picture start confirmed; recorded_top=L288; picture_top=L288; L287=69.228/64.655 L288=37.766/15.434 L289=40.494/14.192
+63506,1,25,hold_previous,7,"oracle vbi_ambiguous; candidate retained, hold confirmed; recorded_top=L25; picture_top=L25; L24=32.908/45.788 L25=19.861/1.889 L26=117.445/44.862"
+64097,1,23,place,9,raw picture start confirmed; recorded_top=L23; picture_top=L23; L22=1.381/0.486 L23=31.180/1.704 L24=24.794/1.794
+64097,2,286,place,9,raw picture start confirmed; recorded_top=L286; picture_top=L286; L285=1.383/0.486 L286=28.459/1.823 L287=26.541/1.792
+66421,1,26,place,4,raw picture start confirmed; recorded_top=L25; picture_top=L26; L25=7.636/1.883 L26=71.470/5.842 L27=70.294/4.920
+66422,2,288,place,1,raw picture start confirmed; recorded_top=L286; picture_top=L288; L287=5.384/2.807 L288=71.409/5.722 L289=70.877/4.892
+66423,2,288,place,1,raw picture start confirmed; recorded_top=L286; picture_top=L288; L287=5.141/2.738 L288=70.558/5.741 L289=71.027/4.909
+66424,2,288,place,1,raw picture start confirmed; recorded_top=L286; picture_top=L288; L287=5.006/2.802 L288=71.380/5.709 L289=71.787/4.650

@@ -143,3 +143,38 @@ are `summary.md`, a per-field `verdicts.csv`, and exhaustive
 `disagreements.csv`/`forbidden.csv` files. Existing output directories are never overwritten.
 Geometry verdicts use `picture_top_line`; every verdict row also carries the recorded top and
 black-band edges so their distinction remains auditable.
+
+## Mutual-review fixtures
+
+`reports/review_fixtures.csv` freezes the raw-raster examples found during the first mutual
+review of the geometry-first prototype. Each row names a transport ordinal, field, raw-confirmed
+`picture_top_line`, expected crop event, review finding, and the luma mean/standard deviation of
+the candidate row and its two neighbors. It is regenerated directly from the capture and frozen
+oracle rather than transcribed from an engine sidecar:
+
+```sh
+python3 experiments/geometry_oracle/build_review_fixtures.py \
+  captures/fulltape.cap6 \
+  experiments/geometry_oracle/reports/fulltape_geometry.csv \
+  experiments/geometry_oracle/reports/review_fixtures.csv
+```
+
+The fixture events have crop-level meanings. `place` requires the published start to equal the
+raw picture top. `hold_previous` requires the preceding exact unit's published crop. `forbid` and
+`relock` require the standard 23/286 crop because the contract invalidates registration during
+signal loss and on the relock unit. The three-column crop adapter cannot prove an engine's
+internal reason name; a separate sidecar review must do that.
+
+Score just these fixtures while still using the full crop CSV for predecessor lookups:
+
+```sh
+python3 experiments/geometry_oracle/score_crops.py \
+  experiments/geometry_oracle/reports/fulltape_geometry.csv \
+  crops.csv /private/tmp/review_fixture_verdict \
+  --fixtures experiments/geometry_oracle/reports/review_fixtures.csv
+```
+
+Every fixture ordinal must occur in both the reference and crop table; missing rows, duplicate
+fixture identities, changed frozen tops, invalid event names, and fixture/reference event
+conflicts abort. A nonzero command exit means at least one fixture failed. The per-row output is
+`fixture_verdicts.csv`; `fixture_summary.md` groups pass/fail counts by review finding.

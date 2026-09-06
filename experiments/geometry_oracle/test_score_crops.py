@@ -4,9 +4,10 @@ from __future__ import annotations
 import csv
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
-from score_crops import score
+from score_crops import score, score_fixtures
 
 
 REFERENCE_FIELDS = (
@@ -200,6 +201,171 @@ class ScoreCropsTest(unittest.TestCase):
             )
             result = score(ref_path, crop_path, root / "out_of_raster")
             self.assertEqual(result.out_of_raster, {1: 0, 2: 1})
+
+    def test_review_fixtures_score_event_observables(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            reference = [reference_row(value) for value in range(5)]
+            reference[1]["f1_picture_top_line"] = 24
+            reference[2]["f1_picture_top_valid"] = 0
+            reference[2]["f1_top_status"] = "vbi_ambiguous"
+            reference[3]["event"] = "Mute"
+            reference[3]["no_placement_expected"] = 1
+            reference[4]["event"] = "Relock"
+            reference[4]["no_placement_expected"] = 1
+            crops = [
+                {"ordinal": 0, "published_f1_start": 23, "published_f2_start": 286},
+                {"ordinal": 1, "published_f1_start": 24, "published_f2_start": 286},
+                {"ordinal": 2, "published_f1_start": 24, "published_f2_start": 286},
+                {"ordinal": 3, "published_f1_start": 23, "published_f2_start": 286},
+                {"ordinal": 4, "published_f1_start": 23, "published_f2_start": 286},
+            ]
+            fixtures = [
+                {
+                    "ordinal": 1,
+                    "field": 1,
+                    "expected_picture_top_line": 24,
+                    "expected_event": "place",
+                    "finding": 1,
+                    "note": "place",
+                },
+                {
+                    "ordinal": 2,
+                    "field": 1,
+                    "expected_picture_top_line": 23,
+                    "expected_event": "hold_previous",
+                    "finding": 2,
+                    "note": "hold",
+                },
+                {
+                    "ordinal": 3,
+                    "field": 1,
+                    "expected_picture_top_line": 23,
+                    "expected_event": "forbid",
+                    "finding": 2,
+                    "note": "forbid",
+                },
+                {
+                    "ordinal": 4,
+                    "field": 2,
+                    "expected_picture_top_line": 286,
+                    "expected_event": "relock",
+                    "finding": 3,
+                    "note": "relock",
+                },
+            ]
+            ref_path = root / "reference.csv"
+            crop_path = root / "crops.csv"
+            fixture_path = root / "fixtures.csv"
+            self.write_csv(ref_path, REFERENCE_FIELDS, reference)
+            self.write_csv(
+                crop_path,
+                ("ordinal", "published_f1_start", "published_f2_start"),
+                crops,
+            )
+            self.write_csv(
+                fixture_path,
+                (
+                    "ordinal",
+                    "field",
+                    "expected_picture_top_line",
+                    "expected_event",
+                    "finding",
+                    "note",
+                ),
+                fixtures,
+            )
+            result = score_fixtures(
+                ref_path, crop_path, fixture_path, root / "fixture_result"
+            )
+            self.assertEqual((result.rows, result.passed, result.failed), (4, 4, 0))
+            self.assertEqual(result.findings["2"]["pass"], 2)
+
+    def test_review_fixtures_fail_closed_on_missing_crop_and_changed_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ref_path = root / "reference.csv"
+            crop_path = root / "crops.csv"
+            fixture_path = root / "fixtures.csv"
+            self.write_csv(ref_path, REFERENCE_FIELDS, [reference_row(0)])
+            self.write_csv(
+                crop_path,
+                ("ordinal", "published_f1_start", "published_f2_start"),
+                [{"ordinal": 1, "published_f1_start": 23, "published_f2_start": 286}],
+            )
+            fixture = {
+                "ordinal": 0,
+                "field": 1,
+                "expected_picture_top_line": 23,
+                "expected_event": "place",
+                "finding": 1,
+                "note": "fixture",
+            }
+            self.write_csv(
+                fixture_path,
+                (
+                    "ordinal",
+                    "field",
+                    "expected_picture_top_line",
+                    "expected_event",
+                    "finding",
+                    "note",
+                ),
+                [fixture],
+            )
+            with self.assertRaisesRegex(RuntimeError, "fixture ordinals missing"):
+                score_fixtures(ref_path, crop_path, fixture_path, root / "missing")
+
+            self.write_csv(
+                crop_path,
+                ("ordinal", "published_f1_start", "published_f2_start"),
+                [{"ordinal": 0, "published_f1_start": 23, "published_f2_start": 286}],
+            )
+            fixture["expected_picture_top_line"] = 24
+            self.write_csv(
+                fixture_path,
+                (
+                    "ordinal",
+                    "field",
+                    "expected_picture_top_line",
+                    "expected_event",
+                    "finding",
+                    "note",
+                ),
+                [fixture],
+            )
+            with self.assertRaisesRegex(RuntimeError, "does not match reference"):
+                score_fixtures(ref_path, crop_path, fixture_path, root / "changed")
+
+    def test_committed_review_fixture_inventory(self) -> None:
+        path = Path(__file__).parent / "reports" / "review_fixtures.csv"
+        with path.open(newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        self.assertEqual(len(rows), 150)
+        self.assertEqual(
+            Counter(row["finding"] for row in rows),
+            Counter({"1": 3, "2": 110, "4": 2, "5": 3, "6": 7,
+                     "7": 1, "8": 10, "9": 12, "11": 2}),
+        )
+        identities = {
+            (int(row["ordinal"]), int(row["field"]), row["finding"]): row
+            for row in rows
+        }
+        for ordinal in range(43_686, 43_737):
+            for field in (1, 2):
+                self.assertEqual(
+                    identities[(ordinal, field, "2")]["expected_event"], "forbid"
+                )
+        for ordinal in (300, 43_737):
+            for field in (1, 2):
+                self.assertEqual(
+                    identities[(ordinal, field, "2")]["expected_event"], "relock"
+                )
+        for ordinal in (43_696, 43_702, 43_707):
+            self.assertIn("repeat report only", identities[(ordinal, 1, "2")]["note"])
+            self.assertNotIn("repeat report only", identities[(ordinal, 2, "2")]["note"])
+        for row in rows:
+            self.assertRegex(row["note"], r"L\d+=\d+\.\d{3}/\d+\.\d{3}")
 
 
 if __name__ == "__main__":

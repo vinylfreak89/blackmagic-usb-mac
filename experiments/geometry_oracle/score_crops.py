@@ -36,6 +36,15 @@ REFERENCE_REQUIRED = {
     )),
 }
 CROP_REQUIRED = {"ordinal", "published_f1_start", "published_f2_start"}
+FIXTURE_REQUIRED = {
+    "ordinal",
+    "field",
+    "expected_picture_top_line",
+    "expected_event",
+    "finding",
+    "note",
+}
+FIXTURE_EVENTS = {"place", "hold_previous", "forbid", "relock"}
 
 
 @dataclass(frozen=True)
@@ -59,6 +68,15 @@ class ScoreResult:
     out_of_raster: dict[int, int]
 
 
+@dataclass
+class FixtureScoreResult:
+    rows: int
+    passed: int
+    failed: int
+    findings: dict[str, Counter[str]]
+    verdicts: list[dict[str, object]]
+
+
 def _read_unique(path: Path, required: set[str], label: str) -> dict[int, dict[str, str]]:
     rows: dict[int, dict[str, str]] = {}
     with path.open(newline="") as handle:
@@ -77,6 +95,63 @@ def _read_unique(path: Path, required: set[str], label: str) -> dict[int, dict[s
     if not rows:
         raise RuntimeError(f"{label} contains no rows")
     return rows
+
+
+def _read_fixtures(path: Path) -> list[dict[str, str]]:
+    fixtures: list[dict[str, str]] = []
+    seen: set[tuple[int, int, str]] = set()
+    with path.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        missing = FIXTURE_REQUIRED - set(reader.fieldnames or ())
+        if missing:
+            raise RuntimeError(f"fixtures missing columns: {sorted(missing)}")
+        for row in reader:
+            try:
+                ordinal = int(row["ordinal"])
+                field = int(row["field"])
+                int(row["expected_picture_top_line"])
+            except ValueError as error:
+                raise RuntimeError(
+                    "fixtures contain a non-integer ordinal, field, or expected top"
+                ) from error
+            if field not in FIELDS:
+                raise RuntimeError(f"fixture ordinal {ordinal}: invalid field {field}")
+            event = row["expected_event"]
+            if event not in FIXTURE_EVENTS:
+                raise RuntimeError(
+                    f"fixture ordinal {ordinal} field {field}: invalid event {event!r}"
+                )
+            key = (ordinal, field, row["finding"])
+            if key in seen:
+                raise RuntimeError(
+                    f"fixtures duplicate ordinal {ordinal}, field {field}, "
+                    f"finding {row['finding']!r}"
+                )
+            seen.add(key)
+            fixtures.append(row)
+    if not fixtures:
+        raise RuntimeError("fixtures contain no rows")
+    return fixtures
+
+
+def _validate_crops(crops: dict[int, dict[str, str]]) -> None:
+    """Reject malformed or physically absurd crops in every scoring mode."""
+    for ordinal, raw_crop in crops.items():
+        for field in FIELDS:
+            try:
+                crop = int(raw_crop[f"published_f{field}_start"])
+            except ValueError as error:
+                raise RuntimeError(
+                    f"ordinal {ordinal} field {field}: non-integer crop "
+                    f"{raw_crop[f'published_f{field}_start']!r}"
+                ) from error
+            displacement = crop - STANDARD_STARTS[field]
+            if abs(displacement) > MAX_REPORTED_DISPLACEMENT:
+                raise RuntimeError(
+                    f"ordinal {ordinal} field {field}: crop line {crop} is absurd "
+                    f"(displacement {displacement:+d}, limit "
+                    f"±{MAX_REPORTED_DISPLACEMENT})"
+                )
 
 
 def _waveform_top(row: dict[str, str], field: int) -> int | None:
@@ -134,22 +209,7 @@ def score(
             f"missing crops={absent_crops[:20]} ({len(absent_crops)} total); "
             f"missing reference={absent_reference[:20]} ({len(absent_reference)} total)"
         )
-    for ordinal, raw_crop in crops.items():
-        for field in FIELDS:
-            try:
-                crop = int(raw_crop[f"published_f{field}_start"])
-            except ValueError as error:
-                raise RuntimeError(
-                    f"ordinal {ordinal} field {field}: non-integer crop "
-                    f"{raw_crop[f'published_f{field}_start']!r}"
-                ) from error
-            displacement = crop - STANDARD_STARTS[field]
-            if abs(displacement) > MAX_REPORTED_DISPLACEMENT:
-                raise RuntimeError(
-                    f"ordinal {ordinal} field {field}: crop line {crop} is absurd "
-                    f"(displacement {displacement:+d}, limit "
-                    f"±{MAX_REPORTED_DISPLACEMENT})"
-                )
+    _validate_crops(crops)
     if output_dir.exists():
         raise FileExistsError(output_dir)
     output_dir.mkdir(parents=True)
@@ -289,6 +349,141 @@ def score(
     return result
 
 
+def score_fixtures(
+    reference_path: Path,
+    crops_path: Path,
+    fixtures_path: Path,
+    output_dir: Path,
+) -> FixtureScoreResult:
+    """Score review fixtures using only crop-level behavior the adapter exposes."""
+    reference = _read_unique(reference_path, REFERENCE_REQUIRED, "reference")
+    crops = _read_unique(crops_path, CROP_REQUIRED, "crops")
+    fixtures = _read_fixtures(fixtures_path)
+    _validate_crops(crops)
+    fixture_ordinals = {int(row["ordinal"]) for row in fixtures}
+    missing_reference = sorted(fixture_ordinals - set(reference))
+    missing_crops = sorted(fixture_ordinals - set(crops))
+    if missing_reference or missing_crops:
+        raise RuntimeError(
+            "fixture ordinals missing: "
+            f"reference={missing_reference[:20]} ({len(missing_reference)} total); "
+            f"crops={missing_crops[:20]} ({len(missing_crops)} total)"
+        )
+
+    previous_crop_ordinal: dict[int, int | None] = {}
+    previous: int | None = None
+    for ordinal in sorted(crops):
+        previous_crop_ordinal[ordinal] = previous
+        previous = ordinal
+
+    if output_dir.exists():
+        raise FileExistsError(output_dir)
+    output_dir.mkdir(parents=True)
+
+    verdicts: list[dict[str, object]] = []
+    findings: dict[str, Counter[str]] = defaultdict(Counter)
+    for fixture in sorted(
+        fixtures,
+        key=lambda row: (int(row["ordinal"]), int(row["field"]), row["finding"]),
+    ):
+        ordinal = int(fixture["ordinal"])
+        field = int(fixture["field"])
+        event = fixture["expected_event"]
+        expected_top = int(fixture["expected_picture_top_line"])
+        raw_reference = reference[ordinal]
+        reference_top = int(raw_reference[f"f{field}_picture_top_line"])
+        if expected_top != reference_top:
+            raise RuntimeError(
+                f"fixture ordinal {ordinal} field {field}: expected top {expected_top} "
+                f"does not match reference picture top {reference_top}"
+            )
+        forbidden = bool(int(raw_reference["no_placement_expected"]))
+        if event == "forbid" and not forbidden:
+            raise RuntimeError(
+                f"fixture ordinal {ordinal} field {field}: forbid disagrees with reference"
+            )
+        if event == "relock" and raw_reference["event"] != "Relock":
+            raise RuntimeError(
+                f"fixture ordinal {ordinal} field {field}: relock disagrees with reference"
+            )
+        if event in {"place", "hold_previous"} and forbidden:
+            raise RuntimeError(
+                f"fixture ordinal {ordinal} field {field}: {event} is placement-forbidden"
+            )
+
+        crop = int(crops[ordinal][f"published_f{field}_start"])
+        previous_ordinal = previous_crop_ordinal[ordinal]
+        previous_crop = (
+            int(crops[previous_ordinal][f"published_f{field}_start"])
+            if previous_ordinal is not None
+            else None
+        )
+        if event == "place":
+            expected_crop = expected_top
+            basis = "picture_top"
+        elif event == "hold_previous":
+            if previous_crop is None:
+                raise RuntimeError(
+                    f"fixture ordinal {ordinal} field {field}: no preceding crop for hold"
+                )
+            expected_crop = previous_crop
+            basis = f"previous_exact_ordinal_{previous_ordinal}"
+        else:
+            # The three-column crop adapter cannot prove an internal "did not
+            # place" reason.  At crop level, the contract's observable is that
+            # lost-lock geometry returns to the standard origin.
+            expected_crop = STANDARD_STARTS[field]
+            basis = "standard_zero"
+        passed = crop == expected_crop
+        outcome = "pass" if passed else "fail"
+        findings[fixture["finding"]][outcome] += 1
+        verdicts.append(
+            {
+                **fixture,
+                "reference_event": raw_reference["event"],
+                "reference_top_status": raw_reference[f"f{field}_top_status"],
+                "published_start": crop,
+                "expected_crop": expected_crop,
+                "expected_crop_basis": basis,
+                "delta": crop - expected_crop,
+                "result": outcome,
+            }
+        )
+
+    fields = list(verdicts[0])
+    with (output_dir / "fixture_verdicts.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(verdicts)
+    result = FixtureScoreResult(
+        rows=len(verdicts),
+        passed=sum(row["result"] == "pass" for row in verdicts),
+        failed=sum(row["result"] == "fail" for row in verdicts),
+        findings=dict(findings),
+        verdicts=verdicts,
+    )
+    lines = [
+        "# Review-fixture crop verdict",
+        "",
+        f"- Fixture rows: **{result.rows:,}**",
+        f"- Passed: **{result.passed:,}**",
+        f"- Failed: **{result.failed:,}**",
+        "",
+        "| Finding | Rows | Pass | Fail | Result |",
+        "|---:|---:|---:|---:|---|",
+    ]
+    for finding, counts in sorted(
+        result.findings.items(), key=lambda item: int(item[0])
+    ):
+        total = counts["pass"] + counts["fail"]
+        lines.append(
+            f"| {finding} | {total} | {counts['pass']} | {counts['fail']} | "
+            f"{'FAIL' if counts['fail'] else 'PASS'} |"
+        )
+    (output_dir / "fixture_summary.md").write_text("\n".join(lines) + "\n")
+    return result
+
+
 def _write_summary(path: Path, result: ScoreResult) -> None:
     lines = [
         "# Geometry-first crop verdict",
@@ -339,7 +534,21 @@ def main() -> int:
     parser.add_argument("reference", type=Path)
     parser.add_argument("crops", type=Path)
     parser.add_argument("output_dir", type=Path)
+    parser.add_argument(
+        "--fixtures",
+        type=Path,
+        help="score only the machine-readable review fixtures",
+    )
     args = parser.parse_args()
+    if args.fixtures is not None:
+        result = score_fixtures(
+            args.reference, args.crops, args.fixtures, args.output_dir
+        )
+        print(
+            f"fixture verdict: {result.rows} rows, {result.passed} pass, "
+            f"{result.failed} fail -> {args.output_dir}"
+        )
+        return int(result.failed != 0)
     result = score(args.reference, args.crops, args.output_dir)
     print(
         f"crop verdict: {result.exact_units} exact, {result.forbidden_units} forbidden, "
