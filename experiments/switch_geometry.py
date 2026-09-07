@@ -291,13 +291,15 @@ def process_unit(u,RU,RN):
         clip_u=next((r for r in range(last_rec,top,-1) if not blanklvl(r)),last_rec)
         CLIP[f].add(clip_u-min(D[f],0)); clip_c=CLIP[f].top()[0]             # a field sitting high shows its clip |d| rows up (contract, clip line)
         if T is not None:
-            blank_under=sum(1 for r in range(T,last_rec+1) if blanklvl(r))
+            pad_start=next((r for r in range(T,Y.shape[0]) if padding[r]),Y.shape[0])   # the Shuttle's padding bounds the pass-through region
+            blank_under=sum(1 for r in range(T,pad_start) if blanklvl(r))    # blank rows between the band and the padding
             n_sw=clip_c-T+1                                                  # the band's extent: the top switch line to the clip
             c_vis=sum(1 for r in range(T,min(clip_c,last_rec)+1) if not blanklvl(r))   # the visible switch lines (timed or pedestal-black)
         else: blank_under=0; n_sw=0; c_vis=0
         # feed the comparators with this unit's signature readings (running count, fixed arrays; owner ruling four)
         Hc0=H[f].top()[0]
-        if T is not None: CSW[f].add(c_vis)                                  # c: the visible switch lines every unit (owner: "stay constant or decrease"; more is reported)
+        lost=max(0,(3+D[f])+239-clip_c) if T is not None else 0               # lines past the clip (closure)
+        if T is not None: CSW[f].add(c_vis+lost)                             # c: the visible switch lines plus the lines lost past the clip (a positive offset must not read c as c - d)
         m.update(d=None,T=T,Hu=Hu,n_sw=n_sw,n_below=n_below,blank_under=blank_under,c_vis=c_vis,sw=sw,how=how,px=px,ev=ev,feats=feats,tests=tests,M_spk=M_spk,last_rec=last_rec,clip_c=clip_c,clip_u=clip_u)
         # THE ACCOUNT (contract rule 9): the signature top and the switch line against the geometry's expectation (the
         # previous decision) and the comparators
@@ -309,7 +311,7 @@ def process_unit(u,RU,RN):
             # the seed (contract: d from the bands above, or 0 with the top at 23 — the owner's basis assumption — or the caption's d)
             d0=d_cap if d_cap is not None else max(top-3,0)
             D[f]=d0; H[f].add(T-(3+d0)); case='seed'+('-cap' if d_cap is not None else '')
-            if d_cap is None and top==3 and blank_under>0: hid=-blank_under; case+=f';hidden{hid:+d}?'   # blank rows under the band at the seed: the hidden-top candidate, put to the comb (owner, 15:40)
+            if d_cap is None and top==3 and blank_under>0: hid=-blank_under; m['hid_range']=True; case+=f';hidden-1..{hid:+d}?'   # blank rows under the band at the seed: candidates -1..-(rows), put to the comb (owner, 15:40)
         else:
             exp_top=3+D[f]; exp_T=exp_top+Hc0; dt=top-exp_top; dT=T-exp_T
             # rule 9, the cases in order; the first that fits decides
@@ -318,6 +320,7 @@ def process_unit(u,RU,RN):
             elif top==3 and dT<dt:
                 hid=D[f]+dT; case=f'hidden{hid:+d}?'                          # the top pinned at 23: the switch line's move is the field's (d = V - H), applied only when the comb confirms it
             elif dT==0: case=f'rowabove{dt:+d}'; rowabove=dt                 # the row above the picture: the field did not move (unless the settled comb says so)
+            elif dt!=0 and abs(dT-dt)==1: D[f]+=dt; case=f'rigid{dt:+d}+travel{dT-dt:+d}'   # the field moved by the top (the reliable edge) with one row of the reading's travel
             elif dt==0 and abs(dT)==1: case=f'travel{dT:+d}'                  # the switch-line reading's travel (the partial line, the peak)
             elif dt==0: case=f'switch{dT:+d}!'                                # more than the travel: reported loudly, held
             else: case=f'geom{dt:+d}/{dT:+d}!'                                # different amounts: reported loudly, held
@@ -366,10 +369,16 @@ def process_unit(u,RU,RN):
             m=M[f]; o=3-f
             if m['hid'] is not None:
                 # confirmed only when the comb CHANGES: decisive nonzero at the held crop and decisive zero at the candidate
-                # (a move shared by both fields reads zero at both placements and stays held — contract, the comb)
+                # (a move shared by both fields reads zero at both placements and stays held — contract, the comb);
+                # at the seed the candidates run from -1 down to -(blank rows under the band)
                 s0,r0,_=comb_at(M[1]['d'],M[2]['d'])
-                cand={f:m['hid'],o:M[o]['d']}; s,r,_=comb_at(cand[1],cand[2])
-                if decisive(s0,r0) and s0!=0 and decisive(s,r) and s==0: D[f]=m['hid']; m['d']=D[f]; H[f].add(m['T']-(3+D[f])); m['case']+=';comb-confirmed!'
+                cands=list(range(D[f]-1,m['hid']-1,-1)) if m.get('hid_range') else [m['hid']]
+                hit=None
+                if decisive(s0,r0) and s0!=0:
+                    for hd in cands:
+                        cand={f:hd,o:M[o]['d']}; s,r,_=comb_at(cand[1],cand[2])
+                        if decisive(s,r) and s==0: hit=hd; break
+                if hit is not None: D[f]=hit; m['d']=D[f]; H[f].add(m['T']-(3+D[f])); m['case']+=f';comb-confirmed{hit:+d}!'
                 else: m['case']+=(';held-travel' if abs(m['hid']-D[f])==1 else ';held!')
             if m['rowabove'] is not None and LOCKST[f]=='locked':
                 s0,r0,_=comb_at(M[1]['d'],M[2]['d'])
@@ -385,7 +394,7 @@ def process_unit(u,RU,RN):
         Hc,Hn,Hn2=H[f].top(); Cc,Cn,Cn2=CSW[f].top(); l22,ln,ln2=L22[f].top()
         # the lock: a comparator plus one confirmation — a caption placing the field at the account's d, or the comb
         # reading zero at the placed crops (a comb-only lock is a lock at the account's reading; recorded as such)
-        cap_ok = m['d_cap'] is not None and m['d_cap']==d
+        cap_ok = (m['d_cap'] is not None and m['d_cap']==d) or (m['d_cap'] is None and m['insert_data'] and abs(d)<=1)   # a raw caption at the account's d, or the insert's bytes with no raw caption at |d| <= 1 (the tape's line 21 inside the Shuttle's window)
         comb_ok = decisive(comb_s,comb_r) and comb_s==0
         comb_bad = decisive(comb_s,comb_r) and comb_s!=0
         if LOCKST[f]!='locked' and Hc is not None and (cap_ok or comb_ok): LOCKST[f]='locked'; CONF[f]=('caption' if cap_ok else 'comb')
