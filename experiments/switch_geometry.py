@@ -314,12 +314,15 @@ def process_unit(u,RU,RN):
         total=(n_sw+d) if T is not None else None
         BAND[f].add(n_sw if T is not None else None); HEIGHT[f].add(total)
         bc,bn,bn2=BAND[f].top(); hc,hn,hn2=HEIGHT[f].top(); l22,ln,ln2=L22[f].top()
-        # class against the source's switch-line count: visible + d equal to it, or one less (the partial line), is the travel;
-        # more is band+ (the switch read on a picture row); less is short (rows under the band grew: a high field, comb-confirmed)
+        # class against the field's switch-line count: extent + d equal to it, or one less (the partial line), is the travel;
+        # more is band+ (the switch read on a picture row); less is short (rows under the band grew)
         cls='' if hc is None or T is None else ('travel' if hc-1<=total<=hc else ('band+' if total>hc else 'short'))
+        # a clamped top (the top at line 23 with the band's extent beyond the count): the picture sits high, d = count - extent
+        # (contract, definition of d), a reading the comb must confirm before it is applied
+        d_clamp=(hc-n_sw) if (hc is not None and T is not None and d==0 and n_sw>hc) else None
         # the comb: the relative vertical shift of the two crops that minimises the weave's comb energy on static picture
         # (static = both fields' rows unchanged against the previous unit within the noise); computed once both fields are measured
-        m['d']=d; m['T']=T; m['h']=h; m['n_sw']=n_sw; m['n_below']=n_below; m['lost']=lost; m['sw']=sw; m['how']=how; m['px']=px; m['ev']=ev
+        m['d']=d; m['d_clamp']=d_clamp; m['T']=T; m['h']=h; m['n_sw']=n_sw; m['n_below']=n_below; m['lost']=lost; m['sw']=sw; m['how']=how; m['px']=px; m['ev']=ev
         m['feats']=feats; m['tests']=tests; m['M_spk']=M_spk; m['last_rec']=last_rec; m['cls']=cls; m['comp']=(bc,bn,bn2,hc,hn,hn2,l22,ln,ln2)
     comb_s=None; comb_r=None; static_frac=0.0
     if all(f in M and M[f].get('T') is not None or (f in M and 'd' in M[f]) for f in (1,2)) and 'd' in M[1] and 'd' in M[2]:
@@ -360,11 +363,13 @@ def process_unit(u,RU,RN):
         comb_bad = (comb_s is not None and comb_s!=0 and comb_r is not None and comb_r<=0.8)
         if LOCKST[f]!='locked' and bc is not None and (cap_ok or comb_ok): LOCKST[f]='locked'
         st=LOCKST[f]
+        dc=m.get('d_clamp')
+        if dc is not None and comb_s is not None and comb_s==dc and comb_r is not None and comb_r<=0.8: d=dc; m['d']=d   # the high-field reading, confirmed by the comb at that shift
         applied = d if st=='locked' else 0
         DAPPLIED[f]=applied
         events=[]
         if m['cls']=='band+': events.append('band+')
-        if m['cls']=='short': events.append('short')
+        if m['cls']=='short': events.append('short' if m.get('d_clamp') is None else f"clamped{m['d_clamp']:+d}")
         tot=(m['n_sw']+m['d']) if m['T'] is not None else None
         if hc is not None and tot is not None and tot!=hc: events.append(f'lines{tot-hc:+d}'+('p' if m['px']>=0 else 'a'))   # the switch-line count (visible + d) against the source's: the partial line's one row is the travel
         if comb_bad: events.append(f'comb{comb_s:+d}')
