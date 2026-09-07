@@ -1826,8 +1826,9 @@ delivery edge; wrong one at acquisition.
      an SP-recording statement only: the EP recording's errors are small, in both fields, and
      consistent with EP tracking on the weak-RF recorder that also produced its noise bands
      (owner, 2026-09-06); its field-1 +2↔+3 jitter is not evidence of a bad field. Also: this tape's
-     picture runs to 262/525 against fixture A's 260/522 — the bottom edge is a per-source
-     constant, never a raster one. (A V-stabilize-off capture was nevertheless taken 2026-09-07 as
+     picture runs to 262/525 against fixture A's 260/522 — the last recorded row (the deck's clip line)
+     is measured per source, never assumed from the raster; the picture bottom itself is measured per
+     unit as the row above the head-switch line (contract rule 3), not a luma or recorded-black rule. (A V-stabilize-off capture was nevertheless taken 2026-09-07 as
      acceptance capture 4; the Shuttle pairs its fields one later than the V-stabilize-on pass —
      contract section 2.)
   No over-the-air analog exists in Japan since 2011/2012 (cable digi-ana ended 2015), and dead-air

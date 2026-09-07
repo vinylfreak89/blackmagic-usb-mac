@@ -35,7 +35,7 @@ instrument; no whole-tape run and no cost measurement existed on the experiment.
 - **Claude owns the test harness**: the references built from the raw rows, the scoring of every engine record by
   device counter, the invariants, the renders and their machine read-backs, and the acceptance verdicts. Claude's
   tools live under `experiments/` on the harness branch; the Python engine `experiments/switch_geometry.py` is
-  carried as a second, blind instrument for the harness, never as the product.
+  carried as a second, independent instrument for the harness, never as the product.
 - **Mutual review is back** (CLAUDE.md §14, the owner 2026-09-05: "same rule applies as before with y'all both code
   reviewing each other"): every engine change is reviewed by Claude for code and intent in whole-system context
   before merge; every harness change is reviewed by Codex the same way. A mismatch is decided by a deterministic
@@ -57,12 +57,16 @@ instrument; no whole-tape run and no cost measurement existed on the experiment.
 `docs/geometry_first_engine.md` (identical on both branches). Sections: 1 the owner's rules verbatim; 2 what the
 captures show; 3 definitions; 4 rules; 5 the record; 6 what the engine does not have; 7 reserved; 8 acceptance; 9 open.
 The owner's answers to the five questions Claude asked at 19:2x are in the transcript and bind the reading of the
-contract (Claude's summary, to be confirmed by both agents at extreme confidence before any code): the geometry's
-constants are fixed values taken at the confirmed unit, changes reported, not learned; a caption places the
-segment's first unit and afterwards geometry wins, a disagreement logged; "237" is 240 minus the source's
-switch-line count and d is a signed offset; the rewind is unlocked because nothing confirms it, and snow and
-relocks come from the signal-state layer; the comparator's "fixed number" is its array of eight slots, counts never
-decrement.
+contract. Claude's summary, corrected after Codex's read (turn 1) and the owner's 20:56 ruling: the switch-line
+count is the lock's constant, taken at the confirmed unit and kept until a reset, a change reported, never re-learned
+(owner, 20:56: "the comparator was at line 22. you extended it to the head switch (wrongly) on your own"); the only
+running-count comparator is the level of the tape's line 22 (12:52); a caption may CONFIRM the segment's first unit
+(the lock's confirmation) and never places a unit against measurable geometry, a disagreement logged, geometry wins;
+"237" is 240 minus the source's switch-line count and d is a signed offset (the 16:03 interpretation the owner agreed
+to, in `/private/tmp/hw-session/briefs/antecedents_1253_1603.md`); the rewind is unlocked because nothing confirms
+it; snow and relocks are the signal-state layer's events, and the offline record is produced by the replay path that
+runs that layer (`frameserver_replay`), so it needs no separate input; the comparator's "fixed number" is its array
+of eight slots, counts never decrement. Still open for the owner: see the consolidated question list.
 
 ## 4. Worktrees and branches
 
@@ -180,7 +184,7 @@ them drift".
    two fields at the reference's own placement, and the measurability class (observed / unmeasurable / not
    applicable) — never a substituted number. Starting points: Codex's committed builder
    `experiments/geometry_oracle/build_reference.py` and `reports/reference_*.csv` at `84446cd`, and Claude's Python
-   instrument `experiments/switch_geometry.py` as a second, blind reading; every column's raw-row derivation is
+   instrument `experiments/switch_geometry.py` as a second, independent reading; every column's raw-row derivation is
    stated in the reference report, and every constant is a standard, a stated measurement on the captures, or
    labelled a defect. The invariant tests: capture 1's stable interval from counter 6593 (`stable_interval_check.py`,
    an external assertion, never a builder input); the fixture-A invariants of contract section 8 for the whole tape

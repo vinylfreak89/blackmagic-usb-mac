@@ -1,8 +1,10 @@
 # Geometry-first registration engine — the contract
 
-The single current contract for the registration engine and its validation harness, edited in place. Claude writes
-the engine (`experiments/switch_geometry.py`), Codex the harness (`experiments/geometry_oracle/`, branch
-`geometry-first-harness`); neither reads the other's code. Line numbers are NTSC lines; unit row r is line r+4.
+The single current contract for the registration engine and its validation harness, edited in place only by both
+agents' agreement (HANDBACK.md §2). Codex writes the engine (`src/field_registration/`, C, branch `v10-engine`),
+Claude the harness (`experiments/`, branch `v10-harness`); each reviews the other's code and intent (CLAUDE.md §14;
+the owner, 2026-09-07 20:10: "The roles reverse again ... Codex will go back to owning the code, you owning the test
+harness"). Line numbers are NTSC lines; unit row r is line r+4.
 Every number is a standard (NTSC, SMPTE RP-202, CEA-608), a measurement on the captures (stated with its value), or a
 memory capacity; any other number in the code is a defect.
 
@@ -285,8 +287,8 @@ no top-reliability history, no windows, no thresholds that are not a stated meas
 
 ## 8. Acceptance
 
-Two blind instruments, the engine's record and Codex's reference, from the same raw rows and this contract, joined
-by device counter. Counted per capture per field: the top; S against the reference's first-full-other-head row
+Two independent instruments — the engine's record (Codex) and the harness's reference (Claude), independently
+implemented and mutually reviewed, never fused — from the same raw rows and this contract, joined by device counter. Counted per capture per field: the top; S against the reference's first-full-other-head row
 (exact where the reference exposes one) and against its earliest switch-band row (within the one-row partial
 ambiguity); the band count under the lock; the comb on the engine's crops. A disagreement between the two instruments
 about what a row IS (a measurement error in one of them) is decided on the raw rows by both agents and listed with
@@ -301,8 +303,8 @@ watch copy is the live path's output with its record burned in. No work product 
 
 Owner, verbatim (2026-09-07 15:15): "any true disagreement (such as comb not matching) should be reported loudly for
 me to examine unit by unit in the test harness (Codex's job). please present a single frame rendered (and shifted)
-bwdif image in that case." So every true disagreement — the engine's crop against the settled comb, the two
-instruments against each other on a unit — is reported by the harness (Codex produces the report and the frames)
+bwdif image in that case." [The harness was Codex's at 15:15 and is Claude's since 20:10.] So every true disagreement — the engine's crop against the settled comb, the two
+instruments against each other on a unit — is reported by the harness (Claude produces the report and the frames)
 and handed to the owner, who examines them one by one: per unit, one rendered frame — the two fields' 240-row crops
 as the engine placed them, woven into a 720×480 frame, deinterlaced with bwdif (one frame per unit, top field first),
 labelled with the unit, its counter, both crop origins and the comb's reading. Neither agent adjudicates these.
