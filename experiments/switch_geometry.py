@@ -92,6 +92,7 @@ PED={1:None,2:None}   # the carried pedestal per field
 # claimed (the commercial tape's rewind passage: no-lock, not coordinates). LOCK_N = 8 is a fitted default (a quarter
 # second), labelled so. Per unit under the lock: switch line = top + height; band rows = clip − switch + 1; the
 # height_change column carries the observed S − top minus the lock with the peak's presence (p) or absence (a).
+CTR={}
 LOCK_N=8
 LOCK={1:dict(state='acquiring',h=None,hist=[],miss=0),2:dict(state='acquiring',h=None,hist=[],miss=0)}
 def lock_update(f,obs):
