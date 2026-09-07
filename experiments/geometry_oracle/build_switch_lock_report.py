@@ -113,8 +113,10 @@ def build(
             band_observations = Counter(
                 row[prefix + "band_row_count_observation"] for row in rows
             )
-            last_locked = next(
-                row for row in reversed(rows) if row[prefix + "lock_state"] == "locked"
+            final_segment = next(
+                row
+                for row in reversed(rows)
+                if int(row[prefix + "band_row_count_comparator_count"]) > 0
             )
             output.extend(
                 [
@@ -123,16 +125,16 @@ def build(
                     f"- field lock: {_histogram(field_locks)}",
                     f"- observed S..clip band rows: {_histogram(band_observations)}",
                     "- final segment band comparator/count/runner-up: "
-                    f"{last_locked[prefix + 'band_row_count_comparator']}/"
-                    f"{last_locked[prefix + 'band_row_count_comparator_count']}/"
-                    f"{last_locked[prefix + 'band_row_count_runner_up_count']}",
+                    f"{final_segment[prefix + 'band_row_count_comparator']}/"
+                    f"{final_segment[prefix + 'band_row_count_comparator_count']}/"
+                    f"{final_segment[prefix + 'band_row_count_runner_up_count']}",
                     "- final segment switch height/projected line: "
-                    f"{last_locked[prefix + 'switch_height_comparator']}/"
-                    f"{last_locked[prefix + 'switch_line_from_height_comparator']}",
+                    f"{final_segment[prefix + 'switch_height_comparator']}/"
+                    f"{final_segment[prefix + 'switch_line_from_height_comparator']}",
                     "- final segment first-row comparator/count/runner-up: "
-                    f"{last_locked[prefix + 'first_row_state_comparator']}/"
-                    f"{last_locked[prefix + 'first_row_state_comparator_count']}/"
-                    f"{last_locked[prefix + 'first_row_state_runner_up_count']}",
+                    f"{final_segment[prefix + 'first_row_state_comparator']}/"
+                    f"{final_segment[prefix + 'first_row_state_comparator_count']}/"
+                    f"{final_segment[prefix + 'first_row_state_runner_up_count']}",
                     f"- asymmetric band classes: {_histogram(classes)}",
                     "- first-row observations: "
                     f"{_histogram(Counter(row[prefix + 'first_row_state_observation'] for row in rows))}",
