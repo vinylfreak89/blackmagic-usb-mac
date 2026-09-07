@@ -985,14 +985,11 @@ def _write_stable(
                 runs.append((start, previous, previous - start + 1))
                 start = previous = counter
         longest = max(runs, key=lambda item: item[2]) if runs else None
-        rejected_signature = [
+        temporal_corrections = [
             row
             for row in field2_rows
-            if _reference_value(row, row.raw_field, "signature_top_line") == 287
-            and _reference_value(
-                row, row.raw_field, "picture_top_under_lock_line"
-            )
-            == 286
+            if "temporal row identity"
+            in str(row.reference[f"f{row.raw_field}_note"])
         ]
         out += [
             "### Field-2 dark-first-row audit",
@@ -1006,11 +1003,11 @@ def _write_stable(
                 else "none."
             ),
             "",
-            f"The reference signature test nominated line 287 in "
-            f"{len(rejected_signature)} units, but the account retained line 286 in "
-            "all of them because the bottom geometry did not move. Verdict: line 286 "
-            "is the dark first picture row; the provisional grey-line classification "
-            "does not move the crop.",
+            f"The within-unit signature test nominated line 287 in "
+            f"{len(temporal_corrections)} units. Temporal row-identity stabilization "
+            "rejects that nomination, so both the final signature and the account "
+            "retain line 286. Verdict: line 286 is the dark first picture row; the "
+            "provisional grey-line classification does not move the crop.",
             "",
             "Deciding rows:",
             "",

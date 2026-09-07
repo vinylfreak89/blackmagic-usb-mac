@@ -3416,6 +3416,13 @@ class ReferenceBuilder:
                     for key, value in current[field].values.items()
                 }
             )
+            spec = FIELD_SPECS[field - 1]
+            row[f"_f{field}_first_row_mean"] = float(
+                np.mean(y[spec.pass_lo, 24:696])
+            )
+            row[f"_f{field}_second_row_mean"] = float(
+                np.mean(y[spec.pass_lo + 1, 24:696])
+            )
         row["applied_d1"] = (
             current[1].top_line - STANDARD_TOPS[1] if current[1].top_line >= 0 else 0
         )
@@ -3487,6 +3494,85 @@ class ReferenceBuilder:
         self.previous_y = y.copy()
         self.pending_row = row
         return row
+
+
+def stabilize_temporal_picture_identity(rows: list[dict[str, object]]) -> None:
+    """Reject a grey-line lookalike when it moves with the picture below.
+
+    The grey-line test is deliberately local to one unit.  A dark first picture
+    line can satisfy it during a fade even though its level tracks the following
+    picture row across the whole run.  This second, source-blind pass uses that
+    temporal identity evidence.  It changes only long, consecutive one-line
+    candidates; short events retain the per-unit VBI reading for the account.
+    """
+    for field in FIELDS:
+        prefix = f"f{field}_"
+        standard = STANDARD_TOPS[field]
+        first_key = f"_f{field}_first_row_mean"
+        second_key = f"_f{field}_second_row_mean"
+        index = 0
+        while index < len(rows):
+            end = index + 1
+            while end < len(rows) and int(rows[end]["counter"]) == (
+                (int(rows[end - 1]["counter"]) + 1) & 0xFFFF
+            ):
+                end += 1
+            segment = rows[index:end]
+            first = np.asarray([float(item[first_key]) for item in segment])
+            second = np.asarray([float(item[second_key]) for item in segment])
+            correlation = (
+                float(np.corrcoef(first, second)[0, 1])
+                if len(segment) >= 3
+                and float(np.std(first)) > 1.0e-9
+                and float(np.std(second)) > 1.0e-9
+                else math.nan
+            )
+            if math.isfinite(correlation) and correlation >= 0.90:
+                evidence = (
+                    f"temporal row identity over {len(segment)} consecutive units: "
+                    f"L{standard}/L{standard + 1} mean-luma correlation="
+                    f"{correlation:.6f}; L{standard} is picture and supersedes "
+                    "the within-unit grey-line candidate"
+                )
+                for item in segment:
+                    signature_top = int(item[prefix + "signature_top_line"])
+                    if (
+                        signature_top <= standard
+                        or _integer_lines(item.get(prefix + "caption_lines", ""))
+                        or _integer(item.get(prefix + "xds_line")) >= 0
+                    ):
+                        continue
+                    item[prefix + "signature_top_line"] = standard
+                    item[prefix + "top_status"] = "inferred"
+                    vbi_lines = [
+                        line
+                        for line in _integer_lines(item[prefix + "vbi_lines"])
+                        if not standard <= line < signature_top
+                    ]
+                    item[prefix + "vbi_lines"] = ",".join(map(str, vbi_lines))
+                    item[prefix + "vbi_status"] = (
+                        "observed" if vbi_lines else "not-applicable"
+                    )
+                    item[prefix + "vbi_confirmation"] = evidence
+                    item[prefix + "note"] = evidence + "; " + str(item[prefix + "note"])
+            index = end
+
+    for field in FIELDS:
+        prefix = f"f{field}_"
+        previous_top = -1
+        previous_counter = -1
+        for row in rows:
+            top = int(row[prefix + "signature_top_line"])
+            contiguous = (
+                previous_counter >= 0
+                and int(row["counter"]) == ((previous_counter + 1) & 0xFFFF)
+            )
+            row[prefix + "dp"] = _motion(top, previous_top, contiguous)
+            previous_top = top
+            previous_counter = int(row["counter"])
+        for row in rows:
+            row.pop(f"_f{field}_first_row_mean", None)
+            row.pop(f"_f{field}_second_row_mean", None)
 
 
 def validate(rows: list[dict[str, object]], capture_name: str) -> None:
@@ -3773,6 +3859,7 @@ def build(
     state = ContractState(capture_name)
     for row in rows:
         state.apply(row)
+    stabilize_temporal_picture_identity(rows)
     validate(rows, capture_name)
     output.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(

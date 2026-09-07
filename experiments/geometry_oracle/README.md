@@ -227,11 +227,14 @@ ordinals 213, 214, and 216 absent. The owner-provided stable-picture boundary at
 an external test assertion in `build_invariant_report.py`, never a builder input. Units with an
 acquired field lock (`locked` or a reported `hold`) and measurable edges test that invariant;
 everything else is listed rather than counted as agreement. `signature_top_line` preserves the
-per-unit VBI classifier's candidate, while `picture_top_line` and
+VBI-signature result after temporal row-identity stabilization, while `picture_top_line` and
 `picture_top_under_lock_line` carry the account's decided/rendered top. This distinction is
 required where an isolated dark row resembles line 22 but the bottom geometry says the picture
-did not move. Across all 582 stable units the placed tops are L23/L286; field 2's provisional L287
-signature in 174 units is retained as disagreement evidence and never moves the crop.
+did not move. A candidate row whose mean luma tracks the following row at correlation at least
+0.9 across a counter-contiguous segment of at least three units is picture, not a grey-line-22
+signature. Across all 582 stable units both the stabilized signatures and placed tops are
+L23/L286; the field-2 within-unit candidate at L287 in 174 units remains in each row's note as
+superseded evidence and never moves the crop.
 
 ```sh
 python3 experiments/geometry_oracle/build_reference.py \
