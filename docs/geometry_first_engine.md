@@ -507,3 +507,28 @@ Codex turn 12 (c4beaaa): not accepted on any capture; the reference gained `firs
 engine's S is one row early where the partial line carries the other head's blanking (commercial ~86 stable units):
 the next definitional refinement is that a partial row's leading segment still aligns with the row above at zero
 lag and a full other-head row's does not. Full record: the 2026-09-07 report (docs/reports).
+
+### 10.6 Contract v3 amendments — owner rulings of 2026-09-07 afternoon, verbatim (binding on engine and reference)
+
+> The head switch band should not move. The horizontal line carrying the peak either moving into the other field or
+> disappearing off the edge should maintain that as the head switch line even if it has a fully stable line of picture.
+> I explained this last night.
+
+> Secondly one thing I realized as I was falling asleep, blank lines at the bottom of the picture could be indicative
+> that the entire picture is shifted up. Therefore, the SP capture should actually show the blanking caption and VBI
+> lines by pulling the picture into the correct position. If lines come in from the overwritten blanking area, then
+> that means the entire field might be shifted up during the "normal position of the tape" which explains why field 1
+> always gets a +1. In reality field 2 should probably be getting a continuous -1 if I had to guess.
+
+> As to your other questions, why is the engine measuring garbage in the rewind section. As there is not a stable VBI
+> yet, why isn't that measured as no stable lock?
+
+Consequences: (1) the switch line is a per-source constant — the line carrying the peak, the tear's crossing into the
+other field, or its falling off the edge — held through units whose line is otherwise stable picture; the per-unit
+"first row entirely the other head" (S) is evidence for acquiring and checking the lock, never the record's switch
+line. (2) With the switch line fixed, the band-row count between it and the clip is the vertical position gauge of
+each field; measured at run E: SP field 1 two rows (427/606), field 2 three or four (597/608); EP 2 vs 3–4;
+commercial 2 vs 3 — field 2's band one row longer on all three tapes; whether that is a field-2 shift (the owner's
+guess: −1, the tape's line 286 fallen into the Shuttle's overwritten 285) or the raster's own half-line geometry is
+to be decided on rows (Codex turn 13). (3) A lock state per source — acquiring / locked / no-lock — and no geometry
+claimed without a lock: the commercial tape's rewind passage is no-lock, not coordinates.
