@@ -203,7 +203,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 1. Geometry is the authority; every other signal confirms or contradicts and is recorded, never acted on alone.
 2. The head switch's position moves with the picture; its height is fixed; the top switch line is the only variable
    one (the area of travel); the switch lines below it stay constant or decrease; a height change for any other
-   reason than the peak disappearing is reported.
+   reason than the peak disappearing is reported loudly and the geometry is held — it is not a reset, since only
+   snow-like signal or a vertical tear is a lost lock (owner, 04:29; both agents at extreme confidence, 2026-09-07
+   15:50).
 3. The line account is conserved; the picture bottom is the row above the switch line; lines past the clip are lost.
 4. Locks are comparators by running count in fixed arrays; counts never decrement; the most frequent value is the
    comparator and is replaced by a value whose count passes it; no magic numbers, no per-source constants typed in.
@@ -219,8 +221,16 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    is settled once per lock; boxed pictures are centred; black level is never assumed.
 9. Blank lines under the picture could indicate that the field sits high and need confirmation against the comb
    (owner); the band count alone never moves anything; new luma at the top alone never moves anything either. The
-   offset is the count of bands above the picture, with the picture-line count as its check (height minus bands
-   above) and the settled comb as confirmation; most important is agreement (owner).
+   offset is the count of bands above the picture, read every unit, with the picture-line count as its check
+   (height minus bands above) and the settled comb as confirmation; most important is agreement (owner). Black rows
+   under the band that the deck's TBC makes are constant for a source and sit inside the band comparator; a change
+   against it is the evidence, confirmed by the comb. After a displacement is applied the settled comb stands and
+   must agree again at the moved crop; if it does not, that is a true disagreement for the owner. A single field
+   falling out of the raster is a displacement of that field, tracked and confirmed, not a reset. Switch lines past
+   the clip are counted by the account: the switch-line count is fixed for a source, so lines missing at the bottom
+   with the height unchanged fell past the clip. (Interpretations resolved from the owner's words by both agents at
+   extreme confidence, 2026-09-07 15:50; the deciding quotes are in the harness report
+   interpretation_resolution_a80c7e6.md.)
 10. Not applicable (no head switch on the source) is distinct from unmeasurable.
 
 ## 5. Measured every unit, per field (what the record must carry)
@@ -267,8 +277,9 @@ labelled with the unit, its counter, both crop origins and the comb's reading. N
 
 ## 9. Open
 
-1. A height change with the peak present: reported only, or also a reset?
+1. An upward displacement whose top is hidden by the Shuttle's overwrite (offset −1): detection and the record are
+   agreed (the height one less than the comparator with the top at 23, blank rows under the band, the comb
+   confirming); what the output does is not: "line 23 remains the top line always" against a crop origin of 22,
+   which would render the Shuttle's blank row. Both agents below extreme confidence; the owner decides.
 2. The V-stabilize-off pass's flagged first lines (120 units): held under the lock, or the top read through the
    flagging?
-3. The hidden-top confirmation of section 3 (the top landed in the Shuttle's blanking): the bands-above/bands-below
-   account with the settled comb is the rule; the measurement is to be built and shown.
