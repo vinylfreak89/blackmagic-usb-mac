@@ -81,7 +81,7 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None,sig_n=0.0):
             k=int((e[1::2]-e[0::2]).argmax()); blank_run=int(e[1::2][k]-e[0::2][k]); blank_x=24+int(e[0::2][k])   # where along the row the other head's blanking begins
     return dict(blank_run=blank_run,blank_x=blank_x,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
 # the record is flushed per unit (Python 3.14 buffers 128 KiB, ~600 rows, before the first write)
-OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','d','T','S','switch_lines','below','lost','height','how','peak_x','partial_evidence','caption_line','insert_data','line22','l22_level','comb_shift','comb_ratio','comb_static','lock_state','band_class','applied','band_comparator','band_counts','height_comparator','height_counts','events','band_tests','disc_x','blank_y','sig_b'])
+OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','d','T','S','switch_lines','below','lost','height','how','peak_x','partial_evidence','caption_line','insert_data','line22','l22_level','comb_shift','comb_ratio','comb_static','lock_state','band_class','applied','band_comparator','band_counts','switch_total_comparator','switch_total_counts','events','band_tests','disc_x','blank_y','sig_b'])
 PED={1:None,2:None}   # the carried pedestal per field
 # LOCKS BY RUNNING COUNT (owner, 2026-09-07: "No magic numbers. It should be derived and stabilized. ie, check the number
 # of times that level has appeared. If it's appeared more often than any other level, then it becomes the comparator
@@ -308,12 +308,15 @@ def process_unit(u,RU,RN):
             n_sw=clip_row-T+1                                                 # the switch band: the top switch line to the clip (the TBC's blacked switch lines included)
             n_below=sum(1 for r in range(T,last_rec+1) if r in feats and flat(feats[r],r))   # its black rows (pedestal), reported: blank under the picture is comb-confirmed evidence, never an actuator
             lost=0
-        h=(T-3) if T is not None else None                                    # the height: rows from line 23 to the row before the switch line
-        # comparators (running count, fixed arrays): the switch-line count and the height
-        BAND[f].add(n_sw if T is not None else None); HEIGHT[f].add(h)
+        h=(T-3) if T is not None else None                                    # the rows from line 23 to the row before the switch line = 237 + d when the switch moves with the picture
+        # comparators (running count, fixed arrays): the source's switch-line count = visible switch lines + d (the lines
+        # past the clip are the offset's), and the switch-line count itself as seen; the height is NOT a constant
+        total=(n_sw+d) if T is not None else None
+        BAND[f].add(n_sw if T is not None else None); HEIGHT[f].add(total)
         bc,bn,bn2=BAND[f].top(); hc,hn,hn2=HEIGHT[f].top(); l22,ln,ln2=L22[f].top()
-        # band class against the switch-line comparator: equal or one less = the travel; more = band+; less = short (rows under the band grew)
-        cls='' if bc is None or T is None else ('travel' if bc-1<=n_sw<=bc else ('band+' if n_sw>bc else 'short'))
+        # class against the source's switch-line count: visible + d equal to it, or one less (the partial line), is the travel;
+        # more is band+ (the switch read on a picture row); less is short (rows under the band grew: a high field, comb-confirmed)
+        cls='' if hc is None or T is None else ('travel' if hc-1<=total<=hc else ('band+' if total>hc else 'short'))
         # the comb: the relative vertical shift of the two crops that minimises the weave's comb energy on static picture
         # (static = both fields' rows unchanged against the previous unit within the noise); computed once both fields are measured
         m['d']=d; m['T']=T; m['h']=h; m['n_sw']=n_sw; m['n_below']=n_below; m['lost']=lost; m['sw']=sw; m['how']=how; m['px']=px; m['ev']=ev
@@ -362,7 +365,8 @@ def process_unit(u,RU,RN):
         events=[]
         if m['cls']=='band+': events.append('band+')
         if m['cls']=='short': events.append('short')
-        if hc is not None and m['h'] is not None and m['h']!=hc: events.append(f'height{m["h"]-hc:+d}'+('p' if m['px']>=0 else 'a'))
+        tot=(m['n_sw']+m['d']) if m['T'] is not None else None
+        if hc is not None and tot is not None and tot!=hc: events.append(f'lines{tot-hc:+d}'+('p' if m['px']>=0 else 'a'))   # the switch-line count (visible + d) against the source's: the partial line's one row is the travel
         if comb_bad: events.append(f'comb{comb_s:+d}')
         if m['n_below']>0: events.append(f'below{m["n_below"]}')
         disc='|'.join(f"{r+base}:{m['feats'][r]['blank_x']}/{(6+m['feats'][r]['lead_run']) if m['feats'][r]['lead_run']>0 else -1}/{m['feats'][r]['x'] if m['feats'][r]['spike']>m['M_spk'] else -1}" for r in ((sw-1,sw,sw+1) if sw is not None else ()) if r in m['feats'])
