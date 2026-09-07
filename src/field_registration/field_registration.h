@@ -27,7 +27,7 @@ enum {
     FIELDREG_FIELD1_MAX_OFFSET = 9,
     FIELDREG_FIELD2_MAX_OFFSET = 3,
     FIELDREG_UNKNOWN = -128,
-    FIELDREG_ALGORITHM_VERSION = 9,
+    FIELDREG_ALGORITHM_VERSION = 10,
 };
 
 typedef enum fieldreg_lock_state {
@@ -68,9 +68,17 @@ typedef enum fieldreg_insert_relation {
     FIELDREG_INSERT_CONTRADICTED,
 } fieldreg_insert_relation;
 
+typedef enum fieldreg_confirmation {
+    FIELDREG_CONFIRM_NOT_APPLICABLE = 0,
+    FIELDREG_CONFIRM_AGREES,
+    FIELDREG_CONFIRM_DISAGREES,
+    FIELDREG_CONFIRM_AMBIGUOUS,
+} fieldreg_confirmation;
+
 typedef enum fieldreg_mode {
     FIELDREG_MODE_INVALID_UNIT = 0,
     FIELDREG_MODE_ACQUIRING,
+    FIELDREG_MODE_GEOMETRY_PLACEMENT,
     FIELDREG_MODE_LINE21_PLACEMENT,
     FIELDREG_MODE_GEOMETRY_LOCK_DECIDES,
     FIELDREG_MODE_FIELD2_ENVELOPE_PLACEMENT,
@@ -124,6 +132,7 @@ typedef struct fieldreg_field_decision {
     uint8_t insert_byte1;
     uint8_t insert_byte2;
     fieldreg_insert_relation insert_relation;
+    fieldreg_confirmation caption_confirmation;
     uint16_t parity_candidate_count;
     uint16_t fallback_candidate_count;
     int16_t gauge_row;
@@ -253,6 +262,7 @@ const char *fieldreg_lock_state_name(fieldreg_lock_state state);
 const char *fieldreg_clip_state_name(fieldreg_clip_state state);
 const char *fieldreg_zero_source_name(fieldreg_zero_source source);
 const char *fieldreg_insert_relation_name(fieldreg_insert_relation relation);
+const char *fieldreg_confirmation_name(fieldreg_confirmation confirmation);
 const char *fieldreg_parity_state_name(fieldreg_parity_state state);
 const char *fieldreg_comb_check_name(fieldreg_comb_check check);
 
