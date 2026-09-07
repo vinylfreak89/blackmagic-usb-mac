@@ -76,6 +76,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 > Whenever you don't have extreme confidence in something go back to the design. If your understanding is
 > contradictory, understand why; don't just assume the contract is right.
 
+> [On the hidden upward top, 16:20:] If the source has real picture on line 22 that originated correctly on line 22
+> it should get dropped. If it's line 23 shifted to line 22, that should become the first line of the 480 line render.
+
 > [On damage:] There are only two true program splits across this tape. Anything that's not snow-like or a vertical
 > tear (cross-program or true tear) should be indicative of continuing program and therefore previous geometry (not
 > position) holds through the damage. [On snow:] Snow units mean the lock is gone. Everything resets — both fields at
@@ -203,9 +206,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   or true), a counter discontinuity, a signal-state relock or splice, the Shuttle's regenerated rows absent; a unit
   event, both fields.
 - **Crop**: line 23 (286) is always the output's top line (owner); the crop takes the picture's first line to it, so
-  its origin in the raster is 23 + d (286 + d); VBI is never rendered; extra black at the bottom is acceptable; rows
-  past the clip read as legal black (owner, 2026-09-03); a letterboxed picture is centred; before a lock, standard
-  placement. **Displacement sign**: positive is lower in the raster.
+  its origin in the raster is 23 + d (286 + d) for every sign of d: at −1 the origin is raster line 22, which the
+  Shuttle has overwritten with blanking, so the render's first line is that blank row standing in for the lost line
+  (owner, 16:20: "if it's line 23 shifted to line 22, that should become the first line of the 480 line render"); a
+  source whose own line 22 carries picture keeps its origin at 23 and that line is dropped ("VBI never rendered").
+  Extra black at the bottom is acceptable; rows past the clip read as legal black (owner, 2026-09-03); a letterboxed
+  picture is centred; before a lock, standard placement. **Displacement sign**: positive is lower in the raster.
 - **Comb**: the relative vertical shift between the two fields' crops that minimises the comb energy of their weave on
   static, detailed picture; measured first at standard placement, it confirms a lock when it reads zero at the placed
   crops; thereafter it stands, confirming or vetoing each move (a veto is reported, never acted on by either agent).
@@ -300,9 +306,5 @@ labelled with the unit, its counter, both crop origins and the comb's reading. N
 
 ## 9. Open
 
-1. An upward displacement whose top is hidden by the Shuttle's overwrite (offset −1): detection and the record are
-   agreed (the height one less than the comparator with the top at 23, blank rows under the band, the comb
-   confirming); what the output does is not: "line 23 remains the top line always" against a crop origin of 22,
-   which would render the Shuttle's blank row. Both agents below extreme confidence; the owner decides.
-2. The V-stabilize-off pass's flagged first lines (120 units): held under the lock, or the top read through the
+1. The V-stabilize-off pass's flagged first lines (120 units): held under the lock, or the top read through the
    flagging?

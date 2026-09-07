@@ -40,8 +40,7 @@ for u in sorted(by):
         CLIP=262 if f=='1' else 525
         state=(r.get('lock_state','') if r else '')
         if state and state!='locked': atop=-1                      # no lock, no geometry (contract rule 5)
-        origin0=23 if f=='1' else 286
-        if atop>0 and atop<origin0: atop=origin0                   # a high field (d < 0): the crop origin never goes above line 23 (owner: line 23 remains the top line; VBI never rendered) — interim until the owner rules on the output (contract §9 item 1)
+        # a high field (d < 0): the crop origin is 23 + d, raster line 22 (the Shuttle's blank) standing in for the lost line (owner, 2026-09-07 16:20)
         # the picture bottom is the row above the top switch line (contract, closure); rows past the clip are lost
         bottom=(min(atop+239,(T-1) if T>0 else CLIP) if atop>0 else -1)
         out+=[atop,bottom,CLIP,(T if T>0 else S)]
