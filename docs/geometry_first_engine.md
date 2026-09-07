@@ -21,19 +21,18 @@ segment's initial lock and after such a re-acquisition.
 
 **The model (2026-09-06 evening, written back and accepted).** One question per field per unit: where does the
 picture start, and did it move since the last unit. The conserved quantity is the line account, not the height:
-visible picture lines + lines added above the picture + lines lost into the deck's blanking at the bottom = constant;
-add X black lines at the top and the picture moved down X and is X shorter, remove X and it moved up X, and this holds
-past the raster bounds — nothing deletes lines from the middle of a field except a vertical tear. No lock is claimed
-without confirmation (comb agreement between the fields, or clean, significant luma at the measured edge); without
-it the picture stays at standard placement (23/286) and the record says there was not enough to lock on. Body shift
-0 and the account unchanged: the field did not move, the crop stays whatever any classifier says about the top row.
-Both fields' bodies shifted together with no height change: picture content moved, ignore. The row directly above
-the picture that sometimes carries data and sometimes a faint copy of the line below is decided by geometry, never
-by classifying the row: if the bottom did not move the field did not move. Captions are confirmation; a caption may
-place the very first unit of a segment; a caption that disagrees with measured geometry is logged, geometry wins.
-Segment events (splice, signal loss, relock) come from the signal-state layer as explicit inputs; never inferred
-from a body-half heuristic. A raster whose edges cannot be measured at all is Unknown, held and labelled, never a
-substituted number. Tests are dumb and brute force: picture visible is the top, picture gone is the bottom; black is
+the number of bands above the picture and the number of bands below it; a field moved when the bands above it grew
+by X and the bands below it shrank by X (or the reverse), and this holds past the raster bounds — nothing deletes
+lines from the middle of a field except a vertical tear. A picture movement seen in both fields is content, not
+displacement; new lines of luma appearing at the top alone never mean the picture moved, unless that shift causes a
+comb disagreement on the settled comb. No lock is claimed without at least one confirmation that the geometry is
+correct — combing, captions, or both; without it the picture stays at standard placement (23/286) and the record
+says there was not enough to lock on. The row directly above the picture that sometimes carries data and sometimes
+a faint copy of the line below is decided by geometry, never by classifying the row: if the bands below did not
+change, the field did not move. Captions are confirmation; a caption may place the very first unit of a segment; a
+caption that disagrees with measured geometry is logged, geometry wins. Segment events (splice, signal loss, relock)
+come from the signal-state layer as explicit inputs; never inferred from a body-half heuristic. A raster whose edges
+cannot be measured at all is Unknown, held and labelled, never a substituted number. Tests are dumb and brute force: picture visible is the top, picture gone is the bottom; black is
 the hard case and every not-sure class is worked through, never thresholded away.
 
 **The head switch (2026-09-07 03:09–03:35, the owner's transcript, `briefs/owner_verbatim_transcript.md`).**
@@ -49,14 +48,12 @@ than one; the band count alone never moves anything. A whole field can mistime a
 cues present one frame and absent the next mean they shifted away, near-certain when the top shifts too.
 
 **2026-09-07 afternoon, verbatim.**
-> The head switch band should not move. The horizontal line carrying the peak either moving into the other field or
-> disappearing off the edge should maintain that as the head switch line even if it has a fully stable line of picture.
+> The horizontal line carrying the peak either moving into the other field or disappearing off the edge should
+> maintain that as the head switch line even if it has a fully stable line of picture. [Clarified later the same day:]
+> its height should be fixed, or which is the top line shouldn't move — not the band itself, which absolutely can move
+> if the whole picture does.
 
-> Blank lines at the bottom of the picture could be indicative that the entire picture is shifted up. Therefore, the
-> SP capture should actually show the blanking caption and VBI lines by pulling the picture into the correct position.
-> If lines come in from the overwritten blanking area, then that means the entire field might be shifted up during the
-> "normal position of the tape" which explains why field 1 always gets a +1. In reality field 2 should probably be
-> getting a continuous -1 if I had to guess.
+> Blank lines at the bottom of the picture could be indicative that the entire picture is shifted up.
 
 > Why is the engine measuring garbage in the rewind section. As there is not a stable VBI yet, why isn't that measured
 > as no stable lock?
@@ -78,6 +75,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 
 > Whenever you don't have extreme confidence in something go back to the design. If your understanding is
 > contradictory, understand why; don't just assume the contract is right.
+
+> [On damage:] There are only two true program splits across this tape. Anything that's not snow-like or a vertical
+> tear (cross-program or true tear) should be indicative of continuing program and therefore previous geometry (not
+> position) holds through the damage. [On snow:] Snow units mean the lock is gone. Everything resets — both fields at
+> the same time. [On the body shift:] It is not a fixed −3..+3; it is whatever is required. Cross-correlation between
+> the two fields might be needed, but is probably overkill — a maybe.
 
 
 ## 2. What the captures show (measured)
@@ -156,8 +159,18 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - **Comparator**: the value seen most often since the last reset, held in a fixed array of eight slots (owner: "8
   sounds fine"); equal counts do not change the ordering (owner).
 - **Source lock**: exists only after at least one confirmation that the geometry is correct — combing, captions, or
-  both (owner). **Lock-like loss**: a counter discontinuity, a signal-state relock or splice, a vertical tear, the
-  Shuttle's regenerated rows absent.
+  both (owner) — with the Shuttle's regenerated rows present (**stable VBI**: the timing pattern and the insert on
+  lines 20/21 (283/284) and line 22 (285) blank). **Lock-like loss**: snow-like signal, a vertical tear (cross-program
+  or true), a counter discontinuity, a signal-state relock or splice, the Shuttle's regenerated rows absent; a unit
+  event, both fields.
+- **Crop**: 240 rows per field from the placed top (23 + d / 286 + d); rows past the clip read as legal black (owner,
+  2026-09-03); before a lock, standard placement. **Displacement sign**: positive is lower in the raster.
+- **Comb**: the relative vertical shift between the two fields' crops that minimises the comb energy of their weave on
+  static picture; settled once per lock; thereafter a disagreement is the arbiter of rule 9.
+- **Body shift**: the vertical shift of a field's picture body against the previous unit of the same field, over
+  whatever range is required (never a fixed one); a maybe, not an authority.
+- **Comparator order**: the first observed value leads; a replacement enters at the bottom; equal counts do not change
+  the ordering.
 
 ## 4. Rules (the owner's, from section 1; the engine implements, the harness checks)
 
@@ -168,14 +181,18 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 3. The line account is conserved; the picture bottom is the row above the switch line; lines past the clip are lost.
 4. Locks are comparators by running count in fixed arrays; counts never decrement; the most frequent value is the
    comparator and is replaced by a value whose count passes it; no magic numbers, no per-source constants typed in.
-5. A change of geometry — loss of source lock or a lock-like loss — resets everything immediately; without a
-   stable VBI there is no lock and no geometry is claimed (the rewind passage).
-6. Dropout or RF noise that hides an edge keeps the previous decision and re-evaluates when it clears; horizontal
-   tearing is not a geometry event; a vertical tear is a lost lock.
+5. A change of geometry — loss of source lock or a lock-like loss — resets everything immediately, both fields at
+   once (there is no snow in one field only); without a stable VBI there is no lock and no geometry is claimed.
+6. Damage that is not snow-like and not a vertical tear (cross-program or true) is continuing program: the previous
+   geometry — the comparators and the lock — holds through it, and the previous crop stays (the output picture does
+   not move); the unit's own position is recorded Unknown and re-measured when the edge returns. Horizontal tearing
+   is not a geometry event. Snow-like signal or a vertical tear is a lost lock: everything resets, both fields at once.
 7. Line 22 never renders.
 8. The output picture never moves except at a segment's initial lock and after a re-acquisition; field precedence
    is settled once per lock; boxed pictures are centred; black level is never assumed.
-9. Blank lines under the picture are evidence that the field sits high; the band count alone never moves anything.
+9. Blank lines under the picture are evidence that the field sits high; the band count alone never moves anything;
+   new luma at the top alone never moves anything either — the count of bands above against the count below, with the
+   settled comb as arbiter, decides a displacement.
 10. Not applicable (no head switch on the source) is distinct from unmeasurable.
 
 ## 5. Measured every unit, per field (what the record must carry)
@@ -183,14 +200,15 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 The recorded region; the picture top with the VBI rows above it and their signatures; the caption line when
 visible; the switch line and the signatures that carried it; the RF peak's line and position along the line when
 present; the height and the band count; the comparators with their counts and the runner-up's counts; the lock
-state and every hold or reset with its cause; the body shift and comb as confirmations. Provenance errors fail
+state and every hold or reset with its cause; the caption and the comb (the engine's own, for its lock) as
+confirmations, the body shift if used. Provenance errors fail
 closed.
 
 ## 6. The engine deliberately does not have
 
 No zero re-anchoring, no learned numeric offsets, no evidence-voting hierarchy, no body-witness veto of a measurable
-top, no persistent comb correction, no saved-geometry hold on absent evidence, no top-reliability history, no
-windows, no thresholds that are not a stated measurement. Each was measured to fit fixture A rather than the raster.
+top, no persistent comb correction, no held position through damage (the geometry holds, the position is Unknown),
+no top-reliability history, no windows, no thresholds that are not a stated measurement. Each was measured to fit fixture A rather than the raster.
 
 ## 7. (reserved)
 
@@ -213,5 +231,5 @@ watch copy is the live path's output with its record burned in. No work product 
 1. A height change with the peak present: reported only, or also a reset?
 2. The V-stabilize-off pass's flagged first lines (120 units): held under the lock, or the top read through the
    flagging?
-3. How to measure the hidden-top confirmation of section 3 (new luma at line 23; every band's luma shifting one row
-   down).
+3. The hidden-top confirmation of section 3 (the top landed in the Shuttle's blanking): the bands-above/bands-below
+   account with the settled comb is the rule; the measurement is to be built and shown.
