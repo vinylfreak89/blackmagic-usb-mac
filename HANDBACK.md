@@ -90,7 +90,9 @@ main stays the measured fallback (round 10) until v10 passes the whole tape.
 only, dropping `*.csv` and `*.webp` from their whole history at the owner's instruction). Author, email, both dates,
 messages and every `Co-authored-by` trailer survive; every hash on the v10 line before that time changed, and
 filter-repo also remapped hashes quoted INSIDE commit messages — so three messages that meant the frozen harness tip
-`84446cd` now name its v10-line copy `4714d70` (same tree, author and dates). The frozen branches are untouched and
+`84446cd` now name its v10-line copy `4714d70`. Not the same tree: `84446cd` has 2,775 paths and tree `c89df51f`, `4714d70`
+has 151 and tree `28fc774d`, the 2,624 removed paths being exactly the generated `.csv` and `.webp`; every shared
+path is byte-identical, and the author, both dates, the message and the trailers are preserved. The frozen branches are untouched and
 are the reference for anything before v10. LEARNINGS.md carries why a rewrite re-hashes the other agent's commits.
 
 Codex works from its original thread, with its writes in the v10 engine worktree; Claude creates no Codex threads.
