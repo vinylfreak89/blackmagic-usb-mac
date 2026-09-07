@@ -299,18 +299,23 @@ def process_unit(u,RU,RN):
         # feed the comparators with this unit's signature readings (running count, fixed arrays; owner ruling four)
         Hc0=H[f].top()[0]
         lost=max(0,(3+D[f])+239-clip_c) if T is not None else 0               # lines past the clip (closure)
-        if T is not None: CSW[f].add(c_vis+lost)                             # c: the visible switch lines plus the lines lost past the clip (a positive offset must not read c as c - d)
         m.update(d=None,T=T,Hu=Hu,n_sw=n_sw,n_below=n_below,blank_under=blank_under,c_vis=c_vis,sw=sw,how=how,px=px,ev=ev,feats=feats,tests=tests,M_spk=M_spk,last_rec=last_rec,clip_c=clip_c,clip_u=clip_u)
         # THE ACCOUNT (contract rule 9): the signature top and the switch line against the geometry's expectation (the
         # previous decision) and the comparators
         d_cap=(m['cap_row']-1) if m['cap_row'] is not None else None       # the tape's line 21 at row r: d = r - 1 (row 1 = line 21)
         case=''; hid=None; rowabove=None
-        if T is None:
-            case='noS'                                                        # no switch line measured: the account cannot run; the geometry holds
+        if T is None and Hc0 is not None:
+            # no switch-line reading: the band has left the raster past the clip (or the source has none); the top is the only edge
+            exp_top=3+D[f]; dt=top-exp_top
+            if dt>0: D[f]+=dt; case=f'rigid{dt:+d}-bandpast'
+            elif dt==0: case='noS'
+            else: case=f'noS{dt:+d}!'                                         # the band gone with the top moving up: reported loudly, held
+        elif T is None:
+            case='noS'                                                        # no switch line on the segment's first unit: nothing to seed from
         elif Hc0 is None:
             # the seed (contract: d from the bands above, or 0 with the top at 23 — the owner's basis assumption — or the caption's d)
             d0=d_cap if d_cap is not None else max(top-3,0)
-            D[f]=d0; H[f].add(T-(3+d0)); case='seed'+('-cap' if d_cap is not None else '')
+            D[f]=d0; H[f].add(T-(3+d0)); CSW[f].add(c_vis+max(0,(3+d0)+239-clip_c)); case='seed'+('-cap' if d_cap is not None else '')   # H and c: the segment's constants from the seed
             if d_cap is None and top==3 and blank_under>0: hid=-blank_under; m['hid_range']=True; case+=f';hidden-1..{hid:+d}?'   # blank rows under the band at the seed: candidates -1..-(rows), put to the comb (owner, 15:40)
         else:
             exp_top=3+D[f]; exp_T=exp_top+Hc0; dt=top-exp_top; dT=T-exp_T
@@ -324,16 +329,14 @@ def process_unit(u,RU,RN):
             elif dt==0 and abs(dT)==1: case=f'travel{dT:+d}'                  # the switch-line reading's travel (the partial line, the peak)
             elif dt==0: case=f'switch{dT:+d}!'                                # more than the travel: reported loudly, held
             else: case=f'geom{dt:+d}/{dT:+d}!'                                # different amounts: reported loudly, held
-            if hid is None: H[f].add((Hc0-(top-(3+D[f]))) if top>3 else Hc0)   # H fed by the top's evidence only: the switch line's identity minus the signature top; its reading's travel never feeds H (owner: the peak gone keeps the switch line)
-            Hc1=H[f].top()[0]
-            if Hc1!=Hc0: D[f]=T-Hc1-3; case+=f';H{Hc0}->{Hc1}'               # a comparator replaced re-places the crop (owner ruling four)
+            # H and c are constants from the seed: nothing feeds them here (owner: "its height should be fixed")
             if d_cap is not None and d_cap!=D[f]:
-                if LOCKST[f]!='locked' or abs(d_cap-D[f])==1:                 # before a lock the caption re-seeds (the model); under one, a caption one row off re-identifies the rows: line 22 is the row below it, the picture starts after (owner, 16:20)
-                    D[f]=d_cap; H[f]=RunMode(); H[f].add(T-(3+d_cap)); CSW[f]=RunMode(); case+=';reseed-cap!'
+                if LOCKST[f]!='locked' or CONF[f]!='caption' or abs(d_cap-D[f])==1:   # a raw caption is absolute: it re-seeds a lock the insert or the comb confirmed; under a caption lock, one row off re-identifies the rows (owner, 16:20)
+                    D[f]=d_cap; H[f]=RunMode(); H[f].add(T-(3+d_cap)); CSW[f]=RunMode(); CSW[f].add(c_vis+max(0,(3+d_cap)+239-clip_c)); case+=';reseed-cap!'
                 else: case+=f';cap{d_cap:+d}!'                                 # logged and reported, geometry wins (the model)
-        Cc=CSW[f].top()[0]
-        if Cc is not None and c_vis>Cc+1: case+=f';c_vis{c_vis-Cc:+d}!'      # visible switch lines beyond c + 1 (the travel): reported loudly
-        elif Cc is not None and c_vis!=Cc: case+=f';c{c_vis-Cc:+d}'
+        Cc=CSW[f].top()[0]; c_read=c_vis+max(0,(3+D[f])+239-clip_c) if T is not None else None
+        if Cc is not None and c_read is not None and c_read>Cc+1: case+=f';c{c_read-Cc:+d}!'   # the count beyond c + 1 (the travel): reported loudly
+        elif Cc is not None and c_read is not None and c_read!=Cc: case+=f';c{c_read-Cc:+d}'
         m['d']=D[f]; m['case']=case; m['hid']=hid; m['rowabove']=rowabove; m['d_cap']=d_cap
     # the comb at a placement (d1,d2): the relative vertical shift of the two crops that minimises the weave's comb
     # energy on static, detailed picture, at the capture's field precedence (the transport order; --repair is the
@@ -378,7 +381,7 @@ def process_unit(u,RU,RN):
                     for hd in cands:
                         cand={f:hd,o:M[o]['d']}; s,r,_=comb_at(cand[1],cand[2])
                         if decisive(s,r) and s==0: hit=hd; break
-                if hit is not None: D[f]=hit; m['d']=D[f]; H[f].add(m['T']-(3+D[f])); m['case']+=f';comb-confirmed{hit:+d}!'
+                if hit is not None: D[f]=hit; m['d']=D[f]; H[f]=RunMode(); H[f].add(m['T']-(3+D[f])); m['case']+=f';comb-confirmed{hit:+d}!'   # a confirmed hidden top corrects the seed's H
                 else: m['case']+=(';held-travel' if abs(m['hid']-D[f])==1 else ';held!')
             if m['rowabove'] is not None and LOCKST[f]=='locked':
                 s0,r0,_=comb_at(M[1]['d'],M[2]['d'])
@@ -397,7 +400,8 @@ def process_unit(u,RU,RN):
         cap_ok = (m['d_cap'] is not None and m['d_cap']==d) or (m['d_cap'] is None and m['insert_data'] and abs(d)<=1)   # a raw caption at the account's d, or the insert's bytes with no raw caption at |d| <= 1 (the tape's line 21 inside the Shuttle's window)
         comb_ok = decisive(comb_s,comb_r) and comb_s==0
         comb_bad = decisive(comb_s,comb_r) and comb_s!=0
-        if LOCKST[f]!='locked' and Hc is not None and (cap_ok or comb_ok): LOCKST[f]='locked'; CONF[f]=('caption' if cap_ok else 'comb')
+        if LOCKST[f]!='locked' and Hc is not None and (cap_ok or comb_ok): LOCKST[f]='locked'; CONF[f]=('caption' if (m['d_cap'] is not None and m['d_cap']==d) else ('insert' if cap_ok else 'comb'))
+        elif LOCKST[f]=='locked' and CONF[f]!='caption' and m['d_cap'] is not None and m['d_cap']==d: CONF[f]='caption'   # a raw caption upgrades the lock's confirmation
         st=LOCKST[f]
         applied = d if st=='locked' else 0
         DAPPLIED[f]=applied
