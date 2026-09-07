@@ -367,6 +367,10 @@ def process_unit(u,RU,RN):
         if n<40 or 3+d1<0 or 3+d2<0: return None,None,0.0
         A1=Y1[3+d1:3+d1+n,24:696]; A2=Y2[3+d2:3+d2+n,24:696]
         st1=np.abs(A1-PREV[1][3+d1:3+d1+n,24:696])<=4*M[1]['sig_n']; st2=np.abs(A2-PREV[2][3+d2:3+d2+n,24:696])<=4*M[2]['sig_n']
+        # field precedence: the field whose origin is line 23 (the transport's slot 1) sits above; under --repair that is
+        # the engine's field 2 (the next unit's slot 1), so the weave order swaps — the comb cannot tell a swapped
+        # precedence from a one-line displacement (contract, the comb)
+        if A.repair: A1,A2=A2,A1; st1,st2=st2,st1
         det=np.abs(A1[:-1]-A1[1:])>4*M[1]['sig_n']; det=np.concatenate((det,det[-1:]),axis=0)
         static=st1&st2&det; sf=float(static.mean())
         if static.sum()<0.03*static.size: return None,None,sf                   # 3%: the harness's own aperture
