@@ -80,7 +80,8 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None,sig_n=0.0):
             e=np.flatnonzero(np.diff(np.concatenate(([0],m.astype(np.int8),[0]))))
             blank_run=int((e[1::2]-e[0::2]).max())
     return dict(blank_run=blank_run,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
-OUT=open(A.out,'w',newline=''); w=csv.writer(OUT)   # flushed per unit: Python 3.14 buffers 128 KiB, ~600 rows, before the first write; w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b','S_tests','band_tests'])
+# the record is flushed per unit (Python 3.14 buffers 128 KiB, ~600 rows, before the first write)
+OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b','S_tests','band_tests'])
 PED={1:None,2:None}   # the carried pedestal per field
 CTR={}
 def process_unit(u,RU,RN):
