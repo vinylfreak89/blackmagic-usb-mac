@@ -557,33 +557,3 @@ commercial 2 vs 3 — field 2's band one row longer on all three tapes; whether 
 guess: −1, the tape's line 286 fallen into the Shuttle's overwritten 285) or the raster's own half-line geometry is
 to be decided on rows (Codex turn 13). (3) A lock state per source — acquiring / locked / no-lock — and no geometry
 claimed without a lock: the commercial tape's rewind passage is no-lock, not coordinates.
-
-### 10.7 Audit of every rule and constant in switch_geometry.py (2026-09-07 13:05 JST), with its derivation and my confidence
-
-| rule / constant | derived from | confidence | what would falsify it |
-|---|---|---|---|
-| recorded row: chroma noise > 2× blank's, or luma above blank + 6σ_b, or luma std ≥ 4σ_b; padding = zero variance | the Shuttle's regenerated rows carry no tape noise (measured: blank 1.48×, recorded 2.02× on the commercial) | moderate: the 2× sits between measured populations of one tape | a recorded black row under 2× on another tape |
-| blank noise σ_b from lines 11–19, floor 0.5 | the device's own blank rows | high | — |
-| top = first run of 3 picture rows within the first 4 recorded rows | the tape's VBI (lines 20–22) can occupy at most 3 rows of the pass-through region | high (contract) | a source with picture above line 23 |
-| VBI row: CEA-608 waveform decodes | the standard | high | — |
-| VBI row: textured and uncorrelated (< 0.5) with both neighbours at best lag ±24 | adjacent picture lines correlate; measured VBI 0.01–0.36, picture 0.87–0.99 | moderate: 0.5 and ±24 are fitted; the rule stands down when the field's own rows correlate < 0.5 | a picture row at a horizontal edge torn beyond 24 samples (the raw pass's flagged lines: known miss) |
-| noise σ_n = median std of adjacent-sample differences /√2 | VHS luma is band-limited near 3 MHz | moderate: not an independent noise measurement | a source whose fine horizontal detail reaches the sampling rate |
-| textured = row std ≥ 4σ_n | signal must exceed noise for correlation to mean anything | low: 4 is a guess, unmeasured | — |
-| flat row before a textured row = VBI; before a flat row = picture | the EP's isolated dim line; the flat grey field | moderate | a picture whose first line is flat and second textured |
-| black line 22 = a lone sub-black flat row (below pedestal − 3σ_b) | on a tape with setup the black line sits below the picture's black | high for the level; the first-row comparator decides lone vs picture per source | a tape whose black line 22 sits at black |
-| first-row comparator 'black22' needs std < 4σ_n + 2σ_b | flatness of a black line | low: an ad-hoc sum, unmeasured | — |
-| pedestal = flat run contiguous with the clip | the other head's black is what the band shows at its bottom | high | a band without a flat row (then the blank stands in) |
-| band row: blanking inside the row, length 64..200 samples | sync pulse 4.7 µs .. more than any H blanking interval | high for the bounds (NTSC constants); census 834/954 band rows, 0/531 rows before the switch | — |
-| band row: leading run at black > body's own + 8 | the other head's blanking at the row's start | moderate: +8 is a margin | — |
-| band row: dip absent (row[0:7] all above pedestal) | a timed row starts in blanking | high | — |
-| band row: time-base step: whole-row lag ≥ 2, ratio ≤ 0.90, same lag two rows up | a step is a step; a slant doubles | moderate: 2 and 0.90 fitted (measured picture ≥ 0.94, other head 0.39–0.89 on one tape) | — |
-| band row: torn beyond the body's own maxima (one-above pass only) | the field's own variance | moderate | — |
-| S = top of the contiguous band run from the clip | contiguity with the clip | high (definition) | — |
-| band comparator: fixed array of 8 slots, increment-only, evict least-counted when full | owner rulings 4–6 | high (8 is a capacity) | — |
-| travel = count == comparator or comparator − 1; band+ above; dropped/fell-out below | owner ruling 3 | high | — |
-| switch line under the lock = top + 240 − comparator | the 240-line closure | high | — |
-| lock reset on no picture, non-Shuttle VBI rows (line 20/21 std < 20, line 22 not blank), counter gap | owner ruling 6 | moderate: the 20 is a presence margin against measured 40–54 vs 0.5 | — |
-| the RF peak: narrow spike above the picture's own narrow specks on a flat background | measured on two tapes | moderate | picture edges with 1-sample jitter (known) |
-
-Low-confidence entries (two) are the ones to replace or measure before anything else; moderate ones carry their fitted
-number in the code with the word "fitted".
