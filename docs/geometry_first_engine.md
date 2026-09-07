@@ -2,7 +2,8 @@
 
 The single current contract for the registration engine and its validation harness, edited in place. Claude writes
 the engine (`experiments/switch_geometry.py`), Codex the harness (`experiments/geometry_oracle/`, branch
-`geometry-first-harness`); neither reads the other's code. Line numbers are NTSC lines; unit row r is line r+4.
+`geometry-first-harness`); neither reads the other's code. Line numbers are NTSC lines; unit row r is line r+4 (rows past line 525 are the
+Shuttle's, named by the same mapping).
 Every number is a standard (NTSC, SMPTE RP-202, CEA-608), a measurement on the captures (stated with its value), a
 memory capacity, a measurement aperture named as such, a test point inside a measured gap (stated with the gap), or
 a fitted default labelled as such; any other number in the code is a defect. "Variation" and "spread" are the
@@ -71,7 +72,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 > the comparator and replaces the previous comparator which the number of times it has appeared.
 
 > You also need to keep a fixed number. If it falls below that number it drops out and the entire array shifts. No
-> dynamic memory allocation (in the real C engine). [And:] Why are you ever decrementing counts.
+> dynamic memory allocation (in the real C engine). [And:] Why are you ever decrementing counts. [And, on the
+> array's size:] Number I will leave up to you. 8 sounds fine. Equal counts do not change ordering.
 
 > A change of geometry (a loss of source lock or lock like loss) resets everything immediately.
 
@@ -169,7 +171,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   decoder's gate, 35, a test point inside the measured gap — captions 52–60, chance picture hits 15–22 — with the
   row flat beyond it), the tape's
   line-20 timing pattern (correlation at least 0.8 with the Shuttle's regenerated line 20, an aperture), the smeared
-  XDS bar (its envelope measured on the EP recording, the test frozen 2026-09-04 as fitted defaults, labelled:
+  XDS bar (the one per-source signature: its envelope measured on the EP recording, the test frozen 2026-09-04 as
+  fitted defaults, labelled:
   48-bin luma profile, row mean under 95, bins 20–47 at most 40, a run of at least six bins over 60 within bins
   0–19; the tape's line 284, so it places field 2 as a caption places field 1 — d = its row − 284 — and confirms its
   lock the same way: it is that field's caption line), the tape's line
@@ -208,7 +211,11 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   (23 + d) + 1 and c := 0) and the regenerated rows present; H, c and d are per field; after Unknown or
   held units the expectation is the last applied decision. The rules name fields by origin — the 23-field and the 286-field;
   the capture's pairing input (the harness's per-capture measurement, section 2) says which transport slots of
-  which units form a frame, and the record names each field by its slot. Every line number in the rules has its field-2 analogue (23 → 286, 22 →
+  which units form a frame (on the V-stabilize-off capture, slot 2 of a unit with slot 1 of the next: a frame woven
+  from two units), and the record names each field by its slot; the rules' line numbers are the origin's (a
+  286-field in slot 1 is still the 286-field). The switch-line reading that seeds H is the reading as defined (the
+  partial line where it departs, else S); a seed unit read the other way seeds H one off for the segment, which the
+  comb reports. Every line number in the rules has its field-2 analogue (23 → 286, 22 →
   285, 21 → 284, 20 → 283, the clip 262 → 525). The output weaves each field at its own crop,
   one locked and one at standard placement included. A seed
   whose H is high by one (the row above read as picture on the first unit) has no correction without a raw caption
@@ -328,8 +335,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   Shuttle's decode, labelled a choice; at |d| ≥ 2 the raw caption is the confirmation. The lock is per
   field: a caption
   confirms its field, a decisive comb zero confirms both fields' relative placement; each field's output leaves standard
-  placement at its own lock. **Lock-like loss**: snow-like signal, a vertical tear (cross-program or true), a counter
-  discontinuity, a signal-state relock or splice; a unit event, both fields. The Shuttle's regenerated rows absent
+  placement at its own lock. **Lock-like loss**: snow-like signal, a vertical tear (cross-program or true), a signal-state
+  relock or splice (the owner's list), and a counter discontinuity (the capture's own epoch rule, not the owner's);
+  a unit event, both fields. A unit failing the stable-VBI check (a decoder lock slip) is a hold (rule 6). The Shuttle's regenerated rows absent
   (its decoder without sync: a mute, a dropout) is a signal-state fact and a hold (rule 6), never a gauge and not by
   itself a loss.
 - **Crop**: line 23 (286) is always the output's top line (owner); the crop takes the picture's first line to it, so
@@ -360,7 +368,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   candidate, not a decision, applied only when the comb reads zero at the candidate (a move shared by both fields reads zero at both placements and stays held, recorded, until a caption
   places the field: the caption is the only absolute confirmation); a held row-above reading becomes a move when
   the comb disagrees at the held crop and agrees at the moved one (the owner's exception; H is unchanged and the
-  switch-line reading, now one row from its identity, is the travel until it follows); a move the account applied
+  switch-line reading, now one row from its identity, is the travel until it follows — for good, if H was seeded
+  one high, until a caption); a move the account applied
   is not undone when the comb disagrees — geometry is the authority (rule 1) and the disagreement is reported to
   the owner (section 7). **Field precedence** (which field's line sits between the other's): the transport order,
   the 23-field's line above the 286-field's, always (by origin); what is measured per capture is the pairing —
@@ -460,7 +469,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    - anything else (different amounts): reported loudly, held (rule 2).
    A caption reads d = its row − 21 (284), compared with the account's d after the unit's case: on the seed, and
    before any lock, it places the unit (re-seeding the geometry from it); under a lock confirmed by the insert's bytes or the comb alone (both windowed or relative) a raw
-   caption is the absolute reading and re-seeds the geometry (d, H, c from that unit; reported, rule 8) — that
+   caption is the absolute reading and re-seeds the geometry once — the segment's first raw caption (d, H, c from
+   that unit; reported, rule 8), the lock becoming caption-confirmed so that later caption jitter is logged — that
    re-seed is where the tape's line 22 is identified as the row below the caption (owner, 16:20: real picture there
    "should get dropped") and the picture as starting on the next row; under a caption-confirmed lock (which keeps that
    status when the caption stops) it confirms when it equals the account's d, and any disagreement is logged and
