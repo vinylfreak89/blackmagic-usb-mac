@@ -292,7 +292,8 @@ def process_unit(u,RU,RN):
         CLIP[f].add(clip_u-min(D[f],0)); clip_c=CLIP[f].top()[0]             # a field sitting high shows its clip |d| rows up (contract, clip line)
         if T is not None:
             pad_start=next((r for r in range(T,Y.shape[0]) if padding[r]),Y.shape[0])   # the Shuttle's padding bounds the pass-through region
-            blank_under=sum(1 for r in range(T,pad_start) if blanklvl(r))    # blank rows between the band and the padding
+            bound=(clip_c+1) if CLIP[f].top()[1]>1 else pad_start               # to the clip once the comparator leads; on the seed, to the padding
+            blank_under=sum(1 for r in range(T,bound) if blanklvl(r))        # blank rows between the band and that bound
             n_sw=clip_c-T+1                                                  # the band's extent: the top switch line to the clip
             c_vis=sum(1 for r in range(T,min(clip_c,last_rec)+1) if not blanklvl(r))   # the visible switch lines (timed or pedestal-black)
         else: blank_under=0; n_sw=0; c_vis=0
