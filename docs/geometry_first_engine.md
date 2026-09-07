@@ -443,3 +443,34 @@ switch transitions, none changed the registration.
   must be constant where measurable; S within one row of its mode. Codex's rows (turn 10) show the first-full-other-
   head row itself moving between 260 and 261 at counters 6645, 6688, 6714, 6738 with the top fixed at 23: the
   picture is stable, the switch position is not — the test's one-row allowance is physics, not tolerance.
+
+### 10.1.3 Engine rules revised after run C (commit 992bf15, 2026-09-07 09:11 JST), each from rows looked at first
+
+- **Every band test states its physical premise.** The whole-row lag is a time-base STEP only when the lag against the
+  row two above equals the lag against the row above (a slanted picture feature doubles it: EP counter 1967, lines
+  253–258, lag 3–5 one row up and 6–10 two rows up, had read as band); it needs texture on both rows (a flat row has
+  no alignment: commercial counter 6657's flat grey rows read lag −16 at ratio 0.90 by chance); the leading run must
+  sit at black (a flat picture row's own noise ended a picture-level run); the row-two-above pass carries no torn test
+  (two rows apart the picture's own detail exceeds the body envelope: seven picture rows read as torn at counter 6907).
+- **The field's noise is the median std of adjacent-SAMPLE differences /√2.** VHS luma is band-limited near 3 MHz, so
+  adjacent samples at 13.5 MHz differ mostly by noise; adjacent-ROW differences carried the picture's vertical detail
+  and read 12–15 on the SP recording against a tape noise near 5 (EP 1–4, commercial ≈ 1).
+- **A VBI row is textured and uncorrelated with BOTH neighbours at its best horizontal lag (−24..24).** A torn
+  picture row correlates with its neighbour at its lag (the V-stabilize-off pass's field tops read 287–289 or
+  unmeasurable in 125 units under zero-lag correlation); a picture row at a horizontal edge correlates with one side
+  (EP counter 2303, line 26 at 41.5/26.1: 0.00 below, 0.94 above). Rows torn beyond 24 samples (the raw pass's
+  flagged first lines) still fail and are a listed residual; widening the search would carry the EP recording's
+  run-in row (0.48 at ±24) over the 0.5 bound.
+- **The black line 22 is SUB-BLACK, not merely dark.** On a tape with setup the tape's black line 22 sits below the
+  tape's own black — the pedestal, the other head's black in the band (SP recording: 3–7 against 11.4) — which no
+  picture row does; so a sub-black row before a row that is not sub-black is VBI and a run of sub-black rows is
+  picture (the dark-band ruling). On a tape without setup (black at blanking: the commercial tape) the pedestal is
+  the blank, nothing is sub-black and a dark first line is picture — commercial counter 6672 (lines 23–27 at 4–19)
+  reads 23 again, as the harness's turn-8 rows ruled. The earlier 'bright = pedestal + 3σ_b' rule had read those lines
+  as bright and the top wandered 23/24/25 on a stable picture. A level-free rule was tried in between and read the
+  SP intro one row high in every unit (the black line 22 taken as picture); the two tapes differ exactly by setup.
+- **A flat row before a textured row is VBI, before a flat row picture** (EP counter 2066: line 25 at 18/2.7 before
+  107/65 → top 26; a flat grey field → 23).
+- **Residual (per-unit undecidable, both instruments):** commercial counters 6641–6674 and 6802–6819, where the first
+  picture line is a half-row transition (counter 6645: line 23 at 5.3/3.3, 24 at 15.3/9.0, 25 at 22.7/2.4) — the
+  engine reads 25, the harness 24 'inferred'; the picture's constancy across the tape (line 23 grey at 6842) says 23.
