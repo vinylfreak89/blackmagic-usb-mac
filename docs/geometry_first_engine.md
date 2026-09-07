@@ -523,10 +523,15 @@ lag and a full other-head row's does not. Full record: the 2026-09-07 report (do
 > As to your other questions, why is the engine measuring garbage in the rewind section. As there is not a stable VBI
 > yet, why isn't that measured as no stable lock?
 
-Consequences: (1) the switch line is a per-source constant — the line carrying the peak, the tear's crossing into the
-other field, or its falling off the edge — held through units whose line is otherwise stable picture; the per-unit
-"first row entirely the other head" (S) is evidence for acquiring and checking the lock, never the record's switch
-line. (2) With the switch line fixed, the band-row count between it and the clip is the vertical position gauge of
+Owner correction, minutes later, verbatim: "It should not be fixed in the case the picture shifts. It is NOT a fixed
+position. The height of it I expect to be fixed not its position, but if that height changes other than for the reason
+I said [the peak disappearing], I should know about it." Consequences: (1) the switch line's POSITION moves with the
+picture; its HEIGHT — the rows from the picture top to the switch line, and the band's row count — is the per-source
+constant; a height change is reported as an event unless the peak has disappeared (the one-row partial ambiguity).
+Measured at run E on the commercial's stable interval: S − top = 238 with the peak present in 31/36 field-1 units and
+237 in 48/59 field-2 units; with the peak absent the same modes in 402/546 and 395/517 with a 234–239 spread; of 57
+field-1 S changes, 44 have the peak absent in both units. The per-unit "first row entirely the other head" (S) is
+evidence for acquiring and checking the height lock, never the record's switch line. (2) With the switch line fixed, the band-row count between it and the clip is the vertical position gauge of
 each field; measured at run E: SP field 1 two rows (427/606), field 2 three or four (597/608); EP 2 vs 3–4;
 commercial 2 vs 3 — field 2's band one row longer on all three tapes; whether that is a field-2 shift (the owner's
 guess: −1, the tape's line 286 fallen into the Shuttle's overwritten 285) or the raster's own half-line geometry is
