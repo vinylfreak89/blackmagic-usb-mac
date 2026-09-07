@@ -138,8 +138,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   picture starts on its standard line in every unit, the first one or two lines carry a horizontal timing error
   that varies along the row (flagging), and the head switch's RF peak and timing step are visible. The rows from the
   picture top to the row before the switch line are the same in both passes (237 at units 20, 105, 200).
-- The commercial tape's picture is stable from counter 6593 onward (before it the tape is rewinding); its pedestal
-  measures 9–11, the same as fixture A's 11.4 (both tapes have setup); its head switch sits on line 260 or 261 in
+- The commercial tape's picture is stable from counter 6593 onward (before it the tape is rewinding); its black measures
+  9–11 in the picture (no flat black rows under its band; the same as fixture A's pedestal 11.4: both tapes have
+  setup); its head switch sits on line 260 or 261 in
   every measurable unit, and with the peak present the rows from the top to the row before the switch row are 238 in 31 of 36
   field-1 units and 237 in 48 of 59 field-2 units.
 - Field 2's band is one row longer than field 1's on the SP, EP and commercial tapes (SP, TBC off: field 1 two rows
@@ -155,7 +156,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   of rules 2 and 9 (held, reported) — two labels, one action. **Apertures used by
   the tests**: "present" for the Shuttle's timing pattern and insert is the row's variation above 20, an aperture
   inside the measured gap (40–54 present, 0.5 absent, section 2); "blank" is the blanking level (1.4) within the blanking rows' noise; "flat" is a
-  row's variation within that noise for a regenerated or TBC-made row, and within twice the field's own noise
+  row's variation within that noise for a regenerated or TBC-made row, and at most twice the field's own noise
   (defined under the comb) for a recorded row — the tape's line 22 on the SP recording reads luma 3–5 with a
   within-row spread of 3–4 in 434 of 608 units, uncorrelated with the picture row below (0.02), measured
   2026-09-07; the line-22 level match uses the same twice-the-noise window; "static" pixels are unchanged against the previous unit within the field's own
@@ -430,7 +431,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    sits between the other's) is settled once per lock from the capture's pairing (definition of the comb) and held;
    boxed pictures are kept as broadcast; black level is never assumed. Snow-like signal, vertical tears (an
    appearance class of that layer), splices and relocks are delivered by the signal-state layer and packet accounting
-   by the capture reader; the engine reads the raster only.
+   by the capture reader; the engine reads the raster only. The offline runs on the four captures have no
+   signal-state input (the engine stands in with both fields pictureless as a loss), so on the commercial tape the
+   rewind's garbage seeds the segment and stands until a caption or a loss; the live path receives the relock.
 9. The account decides, per field per unit, from the field's edges — the signature top and the switch-line reading
    (never the picture's content: a content movement seen in both fields moves neither edge, the model) — against
    the geometry's expectation — the previous decision (never a recorded, unapplied reading): top 23 + d, switch line
