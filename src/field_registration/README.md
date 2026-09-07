@@ -9,7 +9,7 @@ The normative design is [`../../docs/geometry_first_engine.md`](../../docs/geome
 The implementation is landing one rule at a time with a failing golden before
 each rule.
 
-## Implemented: rule 1
+## Implemented: rules 1 and 3
 
 Measurable current-unit geometry is the sole placement authority. The field's
 measured top and provisional lower edge are recorded; its top against the standard
@@ -27,11 +27,32 @@ and comb crop-correction paths have been removed from the compiled engine.
 Body and comb confirmation will return only as the contract defines them; they
 currently report no observation. Acquisition/reset/damage behavior still has
 the inherited placeholder state and is implemented by rules 5–6, after the
-line account and fixed switch-line count.
+fixed switch-line count.
 
-The frameserver decision log is schema 11. Each per-field group adds
-`caption_confirmation` and `blank_chroma_noise`; line-valued fields remain
-NTSC line numbers.
+Rule 3 measures the lower geometry horizontally, never from luma level. The
+last recorded row is found from the same per-unit decoder-noise boundary as
+the top. Working upward from it, the engine finds `S`, the first full
+other-head row, by the capture's measured separation: ordinary adjacent
+picture rows have full-row MAD 8–17 and median segment lag 0–1; `S` has MAD
+35–80 and median lag at least 10. Eight equal apertures are a fixed memory
+capacity over the standard 720 luma samples, not a fitted corridor. When no RF
+peak exposes the partial row above `S`, `switch_line` is `S`; the record keeps
+both columns so the contract's one-row partial ambiguity stays visible.
+
+`raw_bottom` is the row above `switch_line`. `raw_span` is the number of rows
+from the standard 23/286 origin through that bottom; `band_extent` is the
+visible switch band through the measured last recorded row. For a visible
+top, `observed_switch_line_count = band_extent + d` and `picture_rows = 240 -
+observed_switch_line_count`. The two Rule 3 golden units hold that observed
+count at three while a one-line downward move increases the span and decreases
+the visible band. Rule 4 next freezes the count only at a confirmed lock.
+
+There is no bottom censor, luma-derived bottom, or typed fixture-A clip start.
+
+The frameserver decision log is schema 12. Each per-field group records the
+recorded bounds, top and picture bottom, `switch_line`, `S`, RF-peak line and
+horizontal position, span, picture rows, visible band, observed switch-line
+count and switch signature. Line-valued fields remain NTSC line numbers.
 
 Build and run the current suite with:
 

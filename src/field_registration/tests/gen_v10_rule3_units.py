@@ -28,7 +28,7 @@ def horizontal_pattern():
 
 def account_unit(counter, d1):
     unit = make_unit(counter, picture=(d1, 0), insert=False,
-                     base_bottoms=(258, 521), content_phases=(0, 0))
+                     bottom_overrides=(258, 521), content_phases=(0, 0))
     pattern = horizontal_pattern()
     shifted = pattern[60:] + pattern[:60]
 

@@ -75,6 +75,11 @@ typedef enum fieldreg_confirmation {
     FIELDREG_CONFIRM_AMBIGUOUS,
 } fieldreg_confirmation;
 
+typedef enum fieldreg_switch_signature {
+    FIELDREG_SWITCH_NONE = 0,
+    FIELDREG_SWITCH_FULL_OTHER_HEAD,
+} fieldreg_switch_signature;
+
 typedef enum fieldreg_mode {
     FIELDREG_MODE_INVALID_UNIT = 0,
     FIELDREG_MODE_ACQUIRING,
@@ -117,7 +122,7 @@ typedef enum fieldreg_gauge_source {
     FIELDREG_GAUGE_STATIC_COMB,
 } fieldreg_gauge_source;
 
-/* v9 has no thresholds, dwell, FIFO, or tunable evidence model. */
+/* v10 has no runtime tunables or evidence-voting weights. */
 typedef struct fieldreg_config {
     uint32_t reserved;
 } fieldreg_config;
@@ -142,11 +147,21 @@ typedef struct fieldreg_field_decision {
     double blank_mean;
     double blank_chroma_noise;
     double body_mad;
+    int16_t recorded_first;
+    int16_t recorded_last;
     int16_t raw_top;
     int16_t raw_bottom;
-    int16_t raw_height;
+    int16_t switch_line;
+    int16_t first_full_other_head_line;
+    int16_t rf_peak_line;
+    int16_t rf_peak_position;
+    int16_t raw_span;
+    int16_t picture_rows;
+    int16_t band_extent;
+    int16_t observed_switch_line_count;
+    fieldreg_switch_signature switch_signature;
+    bool switch_measurable;
     bool geometry_measurable;
-    bool bottom_censored;
     bool body_witness_valid;
     int8_t body_shift;
     bool body_geometry_agrees;
@@ -264,6 +279,7 @@ const char *fieldreg_clip_state_name(fieldreg_clip_state state);
 const char *fieldreg_zero_source_name(fieldreg_zero_source source);
 const char *fieldreg_insert_relation_name(fieldreg_insert_relation relation);
 const char *fieldreg_confirmation_name(fieldreg_confirmation confirmation);
+const char *fieldreg_switch_signature_name(fieldreg_switch_signature signature);
 const char *fieldreg_parity_state_name(fieldreg_parity_state state);
 const char *fieldreg_comb_check_name(fieldreg_comb_check check);
 

@@ -50,7 +50,6 @@ int main(int argc, char **argv)
         FIELDREG_CONFIRM_NOT_APPLICABLE,
     };
     const int expected_d[] = {2, 2, 2, 0, 0};
-    const int expected_bottom[] = {252, 252, 252, 250, 250};
     for (size_t i = 0; i < sizeof expected_d / sizeof expected_d[0]; ++i) {
         assert(fread(unit, 1, FIELDREG_UNIT_BYTES, raw) ==
                FIELDREG_UNIT_BYTES);
@@ -59,8 +58,6 @@ int main(int argc, char **argv)
         assert(fieldreg_process(&engine, unit, &decision));
         assert(decision.applied_d1 == expected_d[i]);
         assert(decision.field[0].geometry_d == expected_d[i]);
-        assert(decision.field[0].raw_bottom == expected_bottom[i]);
-        assert(decision.field[0].raw_height == 232);
         assert(decision.field[0].gauge == FIELDREG_GAUGE_GEOMETRY);
         assert(decision.field[0].caption_confirmation ==
                expected_confirmation[i]);

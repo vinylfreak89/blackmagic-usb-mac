@@ -15,13 +15,81 @@ typedef struct field_measurement {
     int16_t fallback_row;
     uint16_t fallback_count;
     double blank_mean;
+    int16_t recorded_first;
+    int16_t recorded_last;
     int16_t top;
     int16_t bottom;
-    int16_t height;
+    int16_t switch_line;
+    int16_t first_full_other_head_line;
+    int16_t rf_peak_line;
+    int16_t rf_peak_position;
+    int16_t span;
+    int16_t picture_rows;
+    int16_t band_extent;
+    int16_t observed_switch_line_count;
+    fieldreg_switch_signature switch_signature;
+    bool switch_measurable;
     bool geometry_measurable;
-    bool bottom_censored;
     double blank_chroma_noise;
 } field_measurement;
+
+/* Eight is a fixed hot-path memory capacity. Each aperture is therefore 90
+ * of the standard 720 luma samples; the aperture size is not a decision
+ * threshold. */
+enum { H_LAG_APERTURES = 8, H_LAG_APERTURE_SAMPLES = 720 / H_LAG_APERTURES };
+
+static bool full_other_head_row(const uint8_t *raster, int row)
+{
+    const uint8_t *current = raster + (size_t)row * FIELDREG_BYTES_PER_LINE;
+    const uint8_t *above = current - FIELDREG_BYTES_PER_LINE;
+    uint32_t zero_difference = 0;
+    int absolute_lags[H_LAG_APERTURES];
+
+    for (int x = 0; x < 720; ++x) {
+        const int delta = (int)current[x * 2 + 1] -
+                          (int)above[x * 2 + 1];
+        zero_difference += (uint32_t)abs(delta);
+    }
+    /* The full-row difference is the cheap half of the capture measurement;
+     * avoid the exhaustive all-lag aperture check on ordinary picture rows. */
+    if (zero_difference < 35u * 720u) return false;
+    for (int aperture = 0; aperture < H_LAG_APERTURES; ++aperture) {
+        const int first = aperture * H_LAG_APERTURE_SAMPLES;
+        const int past = first + H_LAG_APERTURE_SAMPLES;
+        uint32_t best_cost = UINT32_MAX;
+        int best_lag = 0;
+        for (int lag = -first; lag <= 720 - past; ++lag) {
+            uint32_t cost = 0;
+            for (int x = first; x < past; ++x) {
+                const int delta = (int)current[x * 2 + 1] -
+                                  (int)above[(x + lag) * 2 + 1];
+                cost += (uint32_t)abs(delta);
+            }
+            if (cost < best_cost ||
+                (cost == best_cost && abs(lag) < abs(best_lag))) {
+                best_cost = cost;
+                best_lag = lag;
+            }
+        }
+        absolute_lags[aperture] = abs(best_lag);
+    }
+    for (int i = 1; i < H_LAG_APERTURES; ++i) {
+        const int value = absolute_lags[i];
+        int j = i;
+        while (j > 0 && absolute_lags[j - 1] > value) {
+            absolute_lags[j] = absolute_lags[j - 1];
+            --j;
+        }
+        absolute_lags[j] = value;
+    }
+
+    /* Capture measurement, contract section 2: ordinary adjacent picture
+     * rows differ by 8..17 luma units at median segment lag 0..1; the first
+     * full other-head row differs by 35..80 at median lag >= 10. Test the
+     * measured non-overlapping boundaries, not a fitted bottom corridor. */
+    return absolute_lags[H_LAG_APERTURES / 2 - 1] +
+               absolute_lags[H_LAG_APERTURES / 2] >= 2 * 10;
+}
 
 static uint16_t read_le16(const uint8_t *p)
 {
@@ -158,15 +226,21 @@ static void measure_field(const uint8_t *raster, int field,
     const int last = field == 0 ? 262 : 524;  /* NTSC 266 / 528 */
     const int insert = field == 0 ? FIELDREG_INSERT_F1 : FIELDREG_INSERT_F2;
     const int picture_first = field == 0 ? 18 : 281; /* NTSC 22 / 285 */
-    const int adc_last = field == 0 ? 260 : 522;      /* NTSC 264 / 526 */
+    const int pass_through_last = field == 0 ? 260 : 522; /* NTSC 264 / 526 */
     const int blank_first = field == 0 ? 7 : 270;
     const int blank_last = field == 0 ? 16 : 279;
     bool waveform[257] = {false};
+    bool recorded[257] = {false};
     bool picture[257] = {false};
     double means[257] = {0.0};
     memset(m, 0, sizeof *m);
     m->fallback_row = -1;
-    m->top = m->bottom = m->height = -1;
+    m->recorded_first = m->recorded_last = -1;
+    m->top = m->bottom = -1;
+    m->switch_line = m->first_full_other_head_line = -1;
+    m->rf_peak_line = m->rf_peak_position = -1;
+    m->span = m->picture_rows = m->band_extent = -1;
+    m->observed_switch_line_count = -1;
 
     double blank_luma_ceiling = 0.0;
     for (int row = blank_first; row <= blank_last; ++row) {
@@ -219,31 +293,59 @@ static void measure_field(const uint8_t *raster, int field,
          * Luma must rise above this unit's own blanking ceiling, or chroma
          * noise must cross the measured 1.48x/2.02x gap at its lower bound.
          * Neither test contains a fixed luma-code offset. */
-        picture[row - first] = !waveform[row - first] &&
+        recorded[row - first] =
             (means[row - first] > blank_luma_ceiling ||
              row_chroma_noise(raster, row) >
                  2.0 * m->blank_chroma_noise);
+        picture[row - first] = !waveform[row - first] &&
+                               recorded[row - first];
+    }
+
+    for (int row = picture_first; row <= pass_through_last; ++row) {
+        if (recorded[row - first]) {
+            if (m->recorded_first < 0) m->recorded_first = (int16_t)row;
+            m->recorded_last = (int16_t)row;
+        }
     }
 
     /* Geometry is measured independently of every caption/fallback result.
      * Recognised VBI rows are excluded by their own waveform, never because
      * a caption told the scan where to begin. */
-    for (int row = picture_first; row <= adc_last; ++row) {
+    for (int row = picture_first; row <= pass_through_last; ++row) {
         if (picture[row - first]) {
             m->top = (int16_t)row;
             break;
         }
     }
-    for (int row = adc_last; row >= picture_first; --row) {
-        if (picture[row - first]) {
-            m->bottom = (int16_t)row;
-            break;
+
+    /* Find S, the first row belonging entirely to the other head. Starting
+     * from the measured clip side avoids promoting an internal graphics edge
+     * to the picture bottom. The switch is reported at S until an RF-peak
+     * measurement exposes the partial row immediately above it. */
+    if (m->top >= 0) {
+        for (int row = m->recorded_last; row > m->top; --row) {
+            if (full_other_head_row(raster, row)) {
+                m->first_full_other_head_line = (int16_t)row;
+                m->switch_line = (int16_t)row;
+                m->switch_signature = FIELDREG_SWITCH_FULL_OTHER_HEAD;
+                m->switch_measurable = true;
+                break;
+            }
         }
     }
-    if (m->top >= 0 && m->bottom >= m->top) {
-        m->height = (int16_t)(m->bottom - m->top + 1);
-        m->geometry_measurable = true;
-        m->bottom_censored = false;
+    if (m->top >= 0) m->geometry_measurable = true;
+    if (m->switch_measurable) {
+        const int origin = field == 0 ? FIELDREG_PICTURE_ORIGIN_F1 :
+                                        FIELDREG_PICTURE_ORIGIN_F2;
+        const int visible_d = m->top - origin;
+        m->bottom = (int16_t)(m->switch_line - 1);
+        m->span = (int16_t)(m->switch_line - origin);
+        m->band_extent = (int16_t)(m->recorded_last - m->switch_line + 1);
+        m->observed_switch_line_count =
+            (int16_t)(m->band_extent + visible_d);
+        m->picture_rows =
+            (int16_t)(FIELDREG_FIELD_LINES -
+                      m->observed_switch_line_count);
     }
 }
 
@@ -386,9 +488,22 @@ static void v10_decide_field(fieldreg_field_state *state,
     decision->geometry_d = FIELDREG_UNKNOWN;
     decision->gauge_row = -1;
     decision->expected_bottom = -1;
+    decision->recorded_first = measurement->recorded_first;
+    decision->recorded_last = measurement->recorded_last;
     decision->raw_top = measurement->top;
     decision->raw_bottom = measurement->bottom;
-    decision->raw_height = measurement->height;
+    decision->switch_line = measurement->switch_line;
+    decision->first_full_other_head_line =
+        measurement->first_full_other_head_line;
+    decision->rf_peak_line = measurement->rf_peak_line;
+    decision->rf_peak_position = measurement->rf_peak_position;
+    decision->raw_span = measurement->span;
+    decision->picture_rows = measurement->picture_rows;
+    decision->band_extent = measurement->band_extent;
+    decision->observed_switch_line_count =
+        measurement->observed_switch_line_count;
+    decision->switch_signature = measurement->switch_signature;
+    decision->switch_measurable = measurement->switch_measurable;
     decision->geometry_measurable = measurement->geometry_measurable;
     decision->blank_mean = measurement->blank_mean;
     decision->blank_chroma_noise = measurement->blank_chroma_noise;
@@ -407,6 +522,18 @@ static void v10_decide_field(fieldreg_field_state *state,
                                     FIELDREG_PICTURE_ORIGIN_F2;
     if (measurement->geometry_measurable) {
         const int geometry_d = measurement->top - origin;
+        decision->expected_bottom =
+            (int16_t)(measurement->top + FIELDREG_FIELD_LINES - 1);
+        if (measurement->recorded_last >= 0 &&
+            decision->expected_bottom > measurement->recorded_last)
+            decision->lines_lost =
+                (int16_t)(decision->expected_bottom -
+                          measurement->recorded_last);
+        if (measurement->switch_measurable)
+            decision->invariant_residual =
+                (int16_t)(measurement->picture_rows +
+                          measurement->observed_switch_line_count -
+                          FIELDREG_FIELD_LINES);
         if (crop_fits_raster(field, geometry_d)) {
             decision->geometry_d = (int8_t)geometry_d;
             decision->measured_d = (int8_t)geometry_d;
@@ -594,4 +721,13 @@ const char *fieldreg_confirmation_name(fieldreg_confirmation confirmation)
     case FIELDREG_CONFIRM_AMBIGUOUS: return "ambiguous";
     }
     return "unknown";
+}
+
+const char *fieldreg_switch_signature_name(fieldreg_switch_signature signature)
+{
+    switch (signature) {
+    case FIELDREG_SWITCH_NONE: return "None";
+    case FIELDREG_SWITCH_FULL_OTHER_HEAD: return "FullOtherHead";
+    }
+    return "Unknown";
 }
