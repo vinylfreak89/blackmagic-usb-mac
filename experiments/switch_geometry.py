@@ -218,7 +218,7 @@ def process_unit(u,RU,RN):
         vbi={r:vbi_kind(r) for r in recrows[:6]}
         top=next((r for r in recrows if not vbi.get(r,'')),None) if recrows else None   # the first picture row (owner)
         M[f]=dict(Y=Y,C=C,by_m=by_m,sig_b=sig_b,c_b=c_b,base=base,slot=slot,ym=ym,thr=thr,rec=rec,recrows=recrows,vbi_ok=vbi_ok,ped=ped,sig_n=sig_n,
-                  insert_data=insert_data,cap_row=cap_row,line22_row=line22_row,vbi=vbi,top=top)
+                  insert_data=insert_data,cap_row=cap_row,line22_row=line22_row,vbi=vbi,top=top,xds_row=xds_row)
     # unit-level lock-like loss (owner: both fields at once): a counter discontinuity, regenerated rows absent in either field,
     # or no picture in both fields (a snow-like candidate; the signal-state layer's verdict is the input in the live path)
     # (offline stand-in for the signal-state input: both fields without picture; the regenerated rows absent is a hold, rule 6)
@@ -316,7 +316,7 @@ def process_unit(u,RU,RN):
         m.update(d=None,T=T,Hu=Hu,n_sw=n_sw,n_below=n_below,blank_under=blank_under,c_vis=c_vis,sw=sw,how=how,px=px,ev=ev,feats=feats,tests=tests,M_spk=M_spk,last_rec=last_rec,clip_c=clip_c,clip_u=clip_u)
         # THE ACCOUNT (contract rule 9): the signature top and the switch line against the geometry's expectation (the
         # previous decision) and the comparators
-        d_cap=(m['cap_row']-1) if m['cap_row'] is not None else None       # the tape's line 21 at row r: d = r - 1 (row 1 = line 21)
+        d_cap=(m['cap_row']-1) if m['cap_row'] is not None else ((m['xds_row']-1) if (f==2 and m['xds_row'] is not None) else None)   # the tape's line 21 (284: the XDS bar) at row r: d = r - 1 (row 1 = line 21/284)
         case=''; hid=None; rowabove=None
         if T is None and Hc0 is not None:
             # no switch-line reading: the band has left the raster past the clip (or the source has none); the top is the only edge
