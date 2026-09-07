@@ -73,15 +73,15 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None,sig_n=0.0):
     # samples) and shorter than any blanking interval could be (200 samples = 14.8 us; H blanking is 10.9 us). Census
     # (commercial, 920 units): band rows 834/954 and 1259/1323 carry one, the row before the switch 0/531 and 0/535;
     # picture rows carry one in 0.4% and never within 4 rows of the switch (the scan from the clip is contiguous).
-    blank_run=0
+    blank_run=0; blank_x=-1
     if by_m is not None:
         m=np.abs(row[24:696]-by_m)<=6*sig_b
         if m.any():
             e=np.flatnonzero(np.diff(np.concatenate(([0],m.astype(np.int8),[0]))))
-            blank_run=int((e[1::2]-e[0::2]).max())
-    return dict(blank_run=blank_run,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
+            k=int((e[1::2]-e[0::2]).argmax()); blank_run=int(e[1::2][k]-e[0::2][k]); blank_x=24+int(e[0::2][k])   # where along the row the other head's blanking begins
+    return dict(blank_run=blank_run,blank_x=blank_x,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
 # the record is flushed per unit (Python 3.14 buffers 128 KiB, ~600 rows, before the first write)
-OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b','S_tests','band_tests','lock_state','switch_lock','band_rows_lock','height_lock','height_change'])
+OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b','S_tests','band_tests','lock_state','switch_lock','band_rows_lock','height_lock','height_change','disc_x'])
 PED={1:None,2:None}   # the carried pedestal per field
 # the switch HEIGHT LOCK per field (owner, 2026-09-07 afternoon, contract v3 §10.6 with its correction): the head-switch
 # line's POSITION moves with the picture; its HEIGHT — the rows from the picture top to the switch line — is the
@@ -204,7 +204,7 @@ def process_unit(u,RU,RN):
             for r in recrows[:6]: print(f'  top-diag u{u} f{f} L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,24:696].std()):5.1f} rec {int(rec[r])} cc608 {int(bool(cc608(Y[r])[0]))} textured {int(textured(r))} corr {corr_below(r):.2f}/{corr_either(r):.2f} bright {int(bright(r))} picture {int(picture_row(r))} | sig_n {sig_n:.2f} ped {ped:.1f} body_corr {body_corr:.2f}')
         if top is None or len(recrows)<60:
             st,held=lock_update(f,None)
-            w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','',st,-1,-1,(held if held is not None else -1),'']); continue
+            w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','',st,-1,-1,(held if held is not None else -1),'','']); continue
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
         feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl,by_m,sig_n) for r in range(top+1,last_rec+1)}
@@ -266,7 +266,12 @@ def process_unit(u,RU,RN):
         st,held=lock_update(f,obs); clipr=(262 if slot==1 else 525)
         swl=(top+base+held) if held is not None else -1                       # the switch line under the lock: it moves with the picture
         hchg=(f"{obs-held:+d}{'p' if px>=0 else 'a'}" if (held is not None and obs is not None and obs!=held) else '')
-        lockcols=[st,swl,(clipr-swl+1) if swl>0 else -1,(held if held is not None else -1),hchg]
+        # the horizontal position of the timing discontinuity at S-1 / S / S+1: 'row:blank_x/lead_run_end/transient_x'
+        def discx(r):
+            if r not in feats: return ''
+            ft=feats[r]; return f"{r+base}:{ft['blank_x']}/{(6+ft['lead_run']) if ft['lead_run']>0 else -1}/{ft['x'] if ft['spike']>M_spk else -1}"
+        disc='|'.join(discx(r) for r in ((sw-1,sw,sw+1) if sw is not None else ()))
+        lockcols=[st,swl,(clipr-swl+1) if swl>0 else -1,(held if held is not None else -1),hchg,disc]
         w.writerow([u,CTR[u],f,top+base,(sw+base) if sw is not None else -1,how,px,ev,reliable,band,last_rec+base,reliable+band,(feats[sw]['wlag'] if sw is not None else ''),(round(feats[sw]['wr'],2) if sw is not None else ''),body_lag,round(body_r,2),M_run,round(M_spk,0),round(by_m,2),round(sig_b,2),(tests(sw) if sw is not None else ''),('|'.join(f'{r+base}:{tests(r)}' for r in range(sw,last_rec+1)) if sw is not None else '')]+lockcols)
         if u in VERB:
             sys.stdout.flush(); print(f'unit {u} field {f}: top L{top+base} switch {("L%d"%(sw+base)) if sw is not None else "none"} ({how}) peak_x {px} reliable {reliable} band {band} last_rec L{last_rec+base} | body max lag {M_lag} dm {M_dm:.1f} lead_run {M_run} narrow-spike {M_spk:.0f}')
