@@ -151,7 +151,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   of rules 2 and 9 (held, reported) — two labels, one action. **Apertures used by
   the tests**: "present" for the Shuttle's timing pattern and insert is the row's variation above 20, an aperture
   inside the measured gap (40–54 present, 0.5 absent, section 2); "blank" is the blanking level (1.4) within the blanking rows' noise; "flat" is a
-  row's variation within that noise; "static" pixels are unchanged against the previous unit within the field's own
+  row's variation within that noise for a regenerated or TBC-made row, and within twice the field's own noise
+  (defined under the comb) for a recorded row — the tape's line 22 on the SP recording reads luma 3–5 with a
+  within-row spread of 3–4 in 434 of 608 units, uncorrelated with the picture row below (0.02), measured
+  2026-09-07; the line-22 level match uses the same twice-the-noise window; "static" pixels are unchanged against the previous unit within the field's own
   noise (defined under the comb), "detailed" ones differ from the row below by more than it; a "dark scene" is dark
   rows (not above the pedestal by more than the blanking rows' noise) under a dark row.
 - **Pedestal**: the tape's black — the other head's black rows at the bottom of the band; measured per unit as the

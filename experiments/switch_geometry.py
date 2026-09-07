@@ -180,7 +180,7 @@ def process_unit(u,RU,RN):
             ok,_,_,_=cc608(Y[r])
             if ok: cap_row=r; break
         # VBI rows by signature only (contract section 3); the tape's line 22 = the row under the tape's line 21
-        def flatrow(r): return float(Y[r,40:680].std())<4*sig_b
+        def flatrow(r): return float(Y[r,40:680].std())<=max(4*sig_b,2*sig_n)   # a recorded row is flat within twice the field's own noise (the tape's line 22 carries tape noise: SP std 3-4)
         def subblack(r): return ym[r]<ped-3*sig_b
         line22_row=None
         xds_row=next((r for r in recrows[:6] if xds_bar(Y[r])),None)
@@ -188,7 +188,7 @@ def process_unit(u,RU,RN):
         elif xds_row is not None: line22_row=xds_row+1                    # the tape's line 285 is one line below its line 284 (the XDS bar), field 2 of the EP recording
         elif rec[3] and flatrow(3):
             seen=[v for v in L22[f].v if v is not None]                  # the levels of the tape's line 22 its line 21 has placed (a comparator by running count, fed by caption/XDS + 1 only)
-            if seen and min(seen)-2*sig_b<=ym[3]<=max(seen)+2*sig_b: line22_row=3
+            if seen and min(seen)-2*sig_n<=ym[3]<=max(seen)+2*sig_n: line22_row=3
         # no gate on line-21 evidence: a dark first row that the signatures call line 22 is decided by the account (rule 9)
         if line22_row is not None and line22_row<Y.shape[0] and rec[line22_row]: L22[f].add(int(round(ym[line22_row])))
         def vbi_kind(r):
