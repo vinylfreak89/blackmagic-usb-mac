@@ -33,8 +33,8 @@ comb disagreement on the settled comb. No lock is claimed without at least one c
 correct — combing, captions, or both; without it the picture stays at standard placement (23/286) and the record
 says there was not enough to lock on. The row directly above the picture that sometimes carries data and sometimes
 a faint copy of the line below is decided by geometry, never by classifying the row: if the bands below did not
-change, the field did not move. Captions are confirmation; a caption may place the very first unit of a segment; a
-caption that disagrees with measured geometry is logged, geometry wins. Segment events (splice, signal loss, relock)
+change, the field did not move. Captions are confirmation; a caption may confirm the very first unit of a segment when it
+agrees with geometry; a caption that disagrees with measured geometry is logged, geometry wins. Segment events (splice, signal loss, relock)
 come from the signal-state layer as explicit inputs; never inferred from a body-half heuristic. A raster whose edges
 cannot be measured at all is Unknown, held and labelled, never a substituted number. Tests are dumb and brute force: picture visible is the top, picture gone is the bottom; black is
 the hard case and every not-sure class is worked through, never thresholded away.
@@ -161,7 +161,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   blanking and only ever a regenerated-row-presence check. The tape's line 22 is one line below the tape's line 21; it
   carries a specific level or sometimes faint picture (owner, 13:29). The tape's black line 22 is located by the line
   account as the row below the located line 21; its running level comparator (the owner's 12:52 mechanism) confirms
-  that identity but never establishes the row by itself. The row directly above the picture that carries data or a
+  that identity but never establishes the row by itself. When no line 21 is located, the band-above rows are what
+  the account requires — count − extent — and the level comparator confirms which of them is line 22; a first-row
+  reading that the account does not require never moves anything. The row directly above the picture that carries data or a
   faint copy is decided by the account (the bands below), never by classifying the row (owner, 2026-09-06). The former
   "grey line 22 under half the brightness of the three rows below" rule was a typed brightness test (Claude's round-3
   audit finding, CLAUDE.md §11, not an owner ruling) and is dropped: the comparator supersedes it.
@@ -199,7 +201,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   reported (rule 2). Worked with three lines: offset 0, picture 23–259, band 260–262 (3 + 0); offset +1, picture 24–260,
   band 261–262, one line past the clip (2 + 1); offset −1, picture from line 22 (overwritten), band 259–262 with a
   blank row at its bottom (4 − 1). **Picture rows** = 240 − switch-line count, the
-  source's constant under the lock (237 on these tapes with 3 switch lines; owner 15:22 "237 real picture line + 3
+  source's constant under the lock (237 when the lock's confirmed switch-line count is 3; owner 15:22 "237 real picture line + 3
   head switch lines = 0 offset", and 16:03 "I agree with that interpretation" to "237 is 240 minus the source's
   switch-line count"). **Span** from line 23 to the row before the switch line = picture rows + d = 240 − the band's
   extent. Per unit the two readings of d — the bands above the picture, and count − extent — must agree ("most
@@ -301,9 +303,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    6; measured on fixture A at 24:17, one field black); snow-like signal is a unit event of the signal-state layer,
    both fields (owner, 15:11: "why would there be snow in one field but not the other"). Switch
    lines past the clip are counted by the account: the count is fixed for a field, so with the picture lower by d
-   the band's extent is the count minus d. (Interpretations resolved from the owner's words by both agents at
-   extreme confidence, 2026-09-07 15:50; the deciding quotes are in the harness report
-   interpretation_resolution_a80c7e6.md.)
+   the band's extent is the count minus d. (The line-account interpretations here were resolved by both agents at 15:50 —
+   interpretation_resolution_a80c7e6.md, whose running-comparator reading of the switch-line count is overruled by
+   the owner's 20:56 ruling — and re-settled on the current text at 21:12 and 21:21.)
 10. Not applicable (no head switch on the source) is distinct from unmeasurable.
 
 ## 5. Measured every unit, per field (what the record must carry)
