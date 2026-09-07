@@ -79,30 +79,6 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 > Whenever you don't have extreme confidence in something go back to the design. If your understanding is
 > contradictory, understand why; don't just assume the contract is right.
 
-**Answers to the blanks (2026-09-07 afternoon, verbatim).**
-> [Line 22:] 22 can carry a specific level or sometimes faint picture. 22 should be 1 line below 21 obviously.
-
-> [The picture top:] The first picture row is the first picture row. However, due to the shuttles overwrite blanking
-> it may not be visible. We can assume that if there are decoded captions on line 21 by the shuttle the real line 21
-> is showing up somewhere between line 20 and 22. A bottom band that does not extend to the end of the frame and/or a
-> mostly black head switch area is suspect that the top of the picture landed in the shuttles blanking region. This
-> becomes confirmed if new luma that is not blanking and not darkened picture appears at line 23 (or another way to
-> put this is if every bands luma shifts approximately 1 row down). How to measure this I'm not really sure.
-
-> [The band count:] Including the partial line. So where the peak is. Check the TBC vs non TBC case to see how many
-> bands of head switch there are. My guess is the TBC clears up that partial line which is why the peak isn't shown.
-> My guess is you might see a faint of the peak every once in a while. I will leave this up to you to measure.
-
-> [The comparator array:] Number I will leave up to you. 8 sounds fine. Equal counts do not change ordering.
-
-> [The lock:] Lock only happens after you get at least one confirmation that the geometry is correct. Either
-> combing, captions or both.
-
-> Some of these answers aren't absolute obviously. Use DSP theory, research, prior art and your own experimentation
-> to figure it out. If you are going to change the contract and clarify any of these rules, stop and tell me what you
-> are changing, why and the evidence for your decision. This should be in the contract as well. Both you and codex,
-> when you are the least bit uncertain about something, confidence not extremely high, go back and reread the
-> contract.
 
 ## 2. What the captures show (measured)
 
@@ -147,7 +123,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - Field 2's band is one row longer than field 1's on the SP, EP and commercial tapes (SP: two rows in 427 of 606
   units against three or four in 597 of 608).
 
-## 3. Definitions — the owner's; blanks are for the owner to fill
+## 3. Definitions
 
 - **Recorded row**: a pass-through row that came through the analog decoder, told from the Shuttle's regenerated
   rows by the decoder's noise (section 2 gives the measured gaps). The exact test is the engine's to derive from those
@@ -156,23 +132,32 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - **VBI row**: a recorded row carrying a vertical-interval signal, recognised by signature: the CEA-608 waveform
   (standard), the run-in burst without data (standard), the smeared XDS bar (measured on the EP recording), the
   tape's black line 22, the tape's grey line 22 (a flat row under half the brightness of the three rows below it,
-  owner ruling 2026-09-05). BLANK: how the black line 22 is told from a crushed-black first picture line — the owner
-  ruled a comparator by running count of "that level"; which quantity "that level" is (the row's luma level, or
-  the row's state) is for the owner to state.
-- **Picture row**: a recorded row that is not a VBI row. **Picture top**: the first picture row. BLANK: whether a
-  run of picture rows is required, and how many.
+  owner ruling 2026-09-05). The tape's line 22 is one line below the tape's line 21; it carries a specific level or
+  sometimes faint picture (owner). Its level is a comparator by running count (ruling four), not a constant.
+- **Picture row**: a recorded row that is not a VBI row. **Picture top**: the first picture row (owner: "the first
+  picture row is the first picture row"). It may be hidden by the Shuttle's overwrite blanking: if the Shuttle's
+  insert decodes captions on line 21, the real line 21 is somewhere between lines 20 and 22; a bottom band that does
+  not extend to the end of the frame, or a mostly black head-switch area, is suspect that the top landed in the
+  Shuttle's blanking; confirmed when new luma that is neither blanking nor darkened picture appears at line 23 —
+  every band's luma shifting about one row down (owner; how to measure it is open).
 - **Head switch**: discontinuous horizontal skew, an RF peak, or both, plus an AGC mismatch where present (owner,
   2026-09-07 morning); the other head's blanking intruding into the row and the pedestal rows are what the captures
   show (section 2). **Switch line**: the horizontal line carrying the peak, or where the tear crosses into the other
-  field or falls off the edge (owner, afternoon). **Band**: the switch lines below the top switch line to the clip.
-  BLANK: whether the band count is taken from the top switch line or from the first line entirely in the other head.
+  field or falls off the edge (owner, afternoon). **Band**: the switch lines, counted from the top switch line
+  including the partial line where the peak is (owner). Measured, TBC off against on on the same recorded fields
+  (2026-09-07): with the deck's line TBC off the SP's field 1 shows 2 switch lines in 434 of 597 units and field 2
+  shows 3 in 335 of 577, the band running to the clip in 576 of 577; with the TBC on, 1–2 switch lines remain and one
+  (field 1) or two (field 2) of them have become flat black rows, so the TBC clears switch lines into black, one more
+  in field 2; the peak shows in 31 of 597 and 5 of 577 units with the TBC off and in 1–2 of 606 with it on. The
+  commercial tape shows 2 (field 1, 422 of 582) and 3 (field 2, 507 of 576) switch lines with no black under them.
 - **Height**: the rows from the picture top to the switch line — fixed within a source (owner).
 - **Closure**: a field is 240 lines; top + 239 is the expected bottom; rows past the clip are lost (owner).
 - **Displacement**: the picture top against its standard line (23 / 286).
-- **Comparator**: the value seen most often since the last reset, held in a fixed array (owner rulings four and
-  five). BLANK: the array's length; what happens on equal counts.
-- **Source lock / lock-like loss**: BLANK — the owner's criterion for a stable VBI (the Shuttle's regenerated rows
-  present? for how many units?) and the list of lock-like losses beyond a counter discontinuity and a relock.
+- **Comparator**: the value seen most often since the last reset, held in a fixed array of eight slots (owner: "8
+  sounds fine"); equal counts do not change the ordering (owner).
+- **Source lock**: exists only after at least one confirmation that the geometry is correct — combing, captions, or
+  both (owner). **Lock-like loss**: a counter discontinuity, a signal-state relock or splice, a vertical tear, the
+  Shuttle's regenerated rows absent.
 
 ## 4. Rules (the owner's, from section 1; the engine implements, the harness checks)
 
@@ -223,7 +208,7 @@ captures × two fields per frame, rows doubled, red = picture top and bottom, ye
 by machine on every frame — bar positions and decisive picture shifts — before anyone looks at it. The owner's
 watch copy is the live path's output with its record burned in. No work product stands in one instrument alone.
 
-## 9. Open, for the owner (the blanks of section 3 and these)
+## 9. Open
 
 1. The lock criterion: is one observation after a reset a lock (the comparator exists), or must the Shuttle's
    regenerated rows be stable over more than one unit first?
