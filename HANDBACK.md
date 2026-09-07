@@ -78,6 +78,12 @@ main stays the measured fallback (round 10) until v10 passes the whole tape.
 The Codex thread for v10 is created on `/private/tmp/blackmagic-v10` (`codex-run new /private/tmp/blackmagic-v10`)
 after the old thread's turn 17 has returned; one dispatch at a time, its reply read before the next.
 
+Both agents may examine the frozen experiment branches (`geometry-first-engine`, `geometry-first-harness`) and the
+reports for learnings — the owner, 20:2x JST: "the other context does have permission to examine the experiment.
+there may be real learnings there, but have it approach with caution". The experiment's engine, its reference
+builder's later semantics, and every constant it fitted are not carried; its measurements on the raw rows (section 2
+of the contract, the census tools, the three-tree comparison) are.
+
 ## 5. Acceptance: four captures in order, then the whole tape
 
 The order is the owner's: (1) the commercial tape, (2) the EP recording, (3) the SP recording, (4) the SP recording
