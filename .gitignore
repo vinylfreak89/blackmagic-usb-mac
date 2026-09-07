@@ -29,6 +29,7 @@ __pycache__/
 *.tpc
 *.webp
 *.mov
+*.csv
 captures/
 src/field_registration/tests/field_registration_unit
 src/field_registration/tests/field_registration_golden
