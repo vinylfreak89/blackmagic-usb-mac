@@ -315,13 +315,13 @@ def process_unit(u,RU,RN):
             # rule 9, the cases in order; the first that fits decides
             if dt==0 and dT==0: case='steady'
             elif dt==dT: D[f]+=dt; case=f'rigid{dt:+d}'                       # the switch line followed the picture: the field moved
-            elif top==3 and dT<0 and dT<=dt:
-                hid=D[f]+dT; case=f'hidden{hid:+d}?'                          # a move up with the top hidden at 23: d = V - H, applied only when the comb confirms it
+            elif top==3 and dT<dt:
+                hid=D[f]+dT; case=f'hidden{hid:+d}?'                          # the top pinned at 23: the switch line's move is the field's (d = V - H), applied only when the comb confirms it
             elif dT==0: case=f'rowabove{dt:+d}'; rowabove=dt                 # the row above the picture: the field did not move (unless the settled comb says so)
             elif dt==0 and abs(dT)==1: case=f'travel{dT:+d}'                  # the switch-line reading's travel (the partial line, the peak)
             elif dt==0: case=f'switch{dT:+d}!'                                # more than the travel: reported loudly, held
             else: case=f'geom{dt:+d}/{dT:+d}!'                                # different amounts: reported loudly, held
-            H[f].add(Hu)
+            H[f].add(Hu if top>3 else (T-(3+D[f])))                          # the top hidden at 23 reads at 23 whatever d is: feed H at 23 + d, not the raw reading
             Hc1=H[f].top()[0]
             if Hc1!=Hc0: D[f]=T-Hc1-3; case+=f';H{Hc0}->{Hc1}'               # a comparator replaced re-places the crop (owner ruling four)
             if d_cap is not None and d_cap!=D[f]:
