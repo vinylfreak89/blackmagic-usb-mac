@@ -309,6 +309,7 @@ def process_unit(u,RU,RN):
             # the seed (contract: d from the bands above, or 0 with the top at 23 — the owner's basis assumption — or the caption's d)
             d0=d_cap if d_cap is not None else max(top-3,0)
             D[f]=d0; H[f].add(T-(3+d0)); case='seed'+('-cap' if d_cap is not None else '')
+            if d_cap is None and top==3 and blank_under>0: hid=-blank_under; case+=f';hidden{hid:+d}?'   # blank rows under the band at the seed: the hidden-top candidate, put to the comb (owner, 15:40)
         else:
             exp_top=3+D[f]; exp_T=exp_top+Hc0; dt=top-exp_top; dT=T-exp_T
             # rule 9, the cases in order; the first that fits decides
@@ -320,7 +321,7 @@ def process_unit(u,RU,RN):
             elif dt==0 and abs(dT)==1: case=f'travel{dT:+d}'                  # the switch-line reading's travel (the partial line, the peak)
             elif dt==0: case=f'switch{dT:+d}!'                                # more than the travel: reported loudly, held
             else: case=f'geom{dt:+d}/{dT:+d}!'                                # different amounts: reported loudly, held
-            if hid is None: H[f].add(Hu if top>3 else (T-(3+D[f])))          # the top hidden at 23 reads at 23 whatever d is: feed H at 23 + d; an unconfirmed hidden reading feeds nothing
+            if hid is None: H[f].add((Hc0-(top-(3+D[f]))) if top>3 else Hc0)   # H fed by the top's evidence only: the switch line's identity minus the signature top; its reading's travel never feeds H (owner: the peak gone keeps the switch line)
             Hc1=H[f].top()[0]
             if Hc1!=Hc0: D[f]=T-Hc1-3; case+=f';H{Hc0}->{Hc1}'               # a comparator replaced re-places the crop (owner ruling four)
             if d_cap is not None and d_cap!=D[f]:
