@@ -21,6 +21,7 @@ from build_reference import (
     STATUSES,
     CaptureSpec,
     _flat_picture_boundary,
+    _first_full_other_head,
     _first_edge_departure,
     _inspect_top,
     _middle_blanking_row,
@@ -120,6 +121,27 @@ class ReferenceMeasurementTest(unittest.TestCase):
         )
         self.assertEqual(reading.line, 24)
 
+    def test_two_recorded_subblack_rows_are_a_picture_band(self) -> None:
+        rng = np.random.default_rng(9)
+        y = np.ones((525, 720), dtype=np.uint8)
+        texture = (np.arange(640, dtype=np.uint16) % 17).astype(np.uint8)
+        y[19:21, 40:680] = 5 + texture % 4
+        y[21:250, 40:680] = rng.integers(30, 80, (229, 640), dtype=np.uint8)
+        recorded = np.zeros(244, dtype=bool)
+        recorded[:231] = True
+        reading = _inspect_top(
+            y,
+            1,
+            23,
+            False,
+            recorded,
+            1.5,
+            (0, 1.0, 2.0, 0.5, 1, 0.5),
+            1,
+        )
+        self.assertEqual(reading.line, 23)
+        self.assertIn("low-coherence boundary", reading.evidence)
+
     def test_picture_can_begin_one_line_after_a_caption(self) -> None:
         y = np.ones((525, 720), dtype=np.uint8)
         texture = (np.arange(640, dtype=np.uint16) % 71).astype(np.uint8)
@@ -211,6 +233,35 @@ class ReferenceMeasurementTest(unittest.TestCase):
         self.assertEqual(line, 260)
         self.assertIn("internal blank", evidence)
 
+    def test_first_full_other_head_uses_internal_blanking(self) -> None:
+        y = np.ones((525, 720), dtype=np.uint8)
+        y[19:260] = 80
+        y[256, 60:200] = 1
+        line, evidence = _first_full_other_head(y, 1)
+        self.assertEqual(line, 260)
+        self.assertIn("internal blank", evidence)
+
+    def test_first_full_other_head_accepts_two_sided_timebase_step(self) -> None:
+        y = np.ones((525, 720), dtype=np.uint8)
+        texture = 40 + (np.arange(720, dtype=np.uint16) % 151)
+        y[19:255] = texture
+        y[255:259] = np.roll(texture, 12)
+        line, evidence = _first_full_other_head(y, 1)
+        self.assertEqual(line, 259)
+        self.assertIn("two-sided whole-row step", evidence)
+
+    def test_first_full_other_head_accepts_persistent_three_third_step(self) -> None:
+        rng = np.random.default_rng(14)
+        y = np.ones((525, 720), dtype=np.uint8)
+        body = rng.integers(20, 220, 720, dtype=np.uint8)
+        y[19:259] = body
+        shifted = np.roll(body, 9)
+        y[256] = shifted
+        y[257] = np.clip(shifted.astype(np.int16) + 2, 0, 255).astype(np.uint8)
+        line, evidence = _first_full_other_head(y, 1)
+        self.assertEqual(line, 260)
+        self.assertIn("persistent three-third step", evidence)
+
     def test_committed_references_obey_contract(self) -> None:
         for name, specification in CAPTURES.items():
             rows = read_reference(name)
@@ -238,6 +289,7 @@ class ReferenceMeasurementTest(unittest.TestCase):
                         self.assertEqual(int(row[prefix + "switch_first_line"]), -1)
                         self.assertEqual(int(row[prefix + "bottom_line"]), -1)
                         continue
+                    self.assertIn("first_full_other_head_line", FIELD_COLUMNS)
                     top = int(row[prefix + "picture_top_line"])
                     switch = int(row[prefix + "switch_first_line"])
                     self.assertEqual(int(row[prefix + "expected_bottom_line"]), top + 239)
@@ -361,6 +413,22 @@ class ReferenceMeasurementTest(unittest.TestCase):
             [int(indexed[unit]["f1_switch_first_line"]) for unit in (623, 630, 700, 800, 861)],
             [260, 260, 260, 260, 260],
         )
+        full_changes: list[int] = []
+        previous: tuple[int, int] | None = None
+        for row in rows:
+            counter = int(row["counter"])
+            value = int(row["f1_first_full_other_head_line"])
+            if counter < 6593:
+                continue
+            if (
+                previous is not None
+                and counter == previous[0] + 1
+                and min(value, previous[1]) >= 0
+                and value != previous[1]
+            ):
+                full_changes.append(counter)
+            previous = counter, value
+        self.assertEqual(full_changes, [6645, 6688, 6714, 6738])
         self.assertIn("mid_blank", indexed[630]["f1_switch_cues"])
         self.assertEqual(
             (
@@ -466,6 +534,7 @@ class ReferenceMeasurementTest(unittest.TestCase):
             "top_blanking_evidence",
             "expected_bottom_line",
             "switch_first_line",
+            "first_full_other_head_line",
             "last_reliable_line",
             "hs_bottom_line",
             "first_blank_line",
