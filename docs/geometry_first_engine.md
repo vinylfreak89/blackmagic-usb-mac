@@ -204,8 +204,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - **The account**: the comparison, per field per unit, of the two edge readings (signature top, switch-line reading)
   with the geometry's expectation and the segment's constants (rule 9); its reading is d, its crop 23 + d. A
   **segment** runs from the capture's first unit or a lock-like loss to the next lock-like loss; its seed is the
-  first unit with both edges readable (on a source without a head switch, rule 10, the top and the clip) and the
-  regenerated rows present; H, c and d are per field; after Unknown or
+  first unit with both edges readable (on a source without a head switch, rule 10, the top alone, its H := clip −
+  (23 + d) + 1 and c := 0) and the regenerated rows present; H, c and d are per field; after Unknown or
   held units the expectation is the last applied decision. The rules name fields by origin — the 23-field and the 286-field;
   the capture's pairing input (the harness's per-capture measurement, section 2) says which transport slots of
   which units form a frame, and the record names each field by its slot. Every line number in the rules has its field-2 analogue (23 → 286, 22 →
@@ -318,7 +318,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - **Source lock**: claimed only after at least one confirmation that the geometry is correct — combing, captions, or
   both (owner) — with the Shuttle's regenerated rows present (**stable VBI**, the owner's term: the timing pattern
   and the insert on lines 20/21 (283/284) present — their variation above 20, an aperture inside the measured gap 0.5 to 40 —
-  and line 22 (285) blank in the unit; the rewind passage carries
+  and line 22 (285) blank in the unit — a lock slip of the Shuttle's decoder puts the insert one line low; the
+  rewind passage carries
   the rows and no confirmation, so it has no lock). A lock confirmed by the comb alone is a lock at
   the account's reading — the comb cannot see an offset both fields share; a caption is the only absolute
   confirmation — and the record names which confirmed it. Decoded non-null bytes on the Shuttle's insert with no raw caption
@@ -362,14 +363,18 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   switch-line reading, now one row from its identity, is the travel until it follows); a move the account applied
   is not undone when the comb disagrees — geometry is the authority (rule 1) and the disagreement is reported to
   the owner (section 7). **Field precedence** (which field's line sits between the other's): the transport order,
-  the line-23 slot's line above the line-286 slot's whichever engine field carries it, measured per capture by the
-  same-field temporal match between the slots (section 2, MAD: the V-stabilize-off capture pairs one field later;
-  measured 2026-09-07: with the order unswapped the comb read a correct interleave on that pass as a one-line shift
-  and held a field one line high in 379 units) and applied at each lock; never
+  the 23-field's line above the 286-field's, always (by origin); what is measured per capture is the pairing —
+  which slots of which units form a frame — by the same-field temporal match between the slots (section 2, MAD:
+  the V-stabilize-off capture pairs slot 2 of a unit with slot 1 of the next; measured 2026-09-07: with the 286
+  slot woven on top the comb read a correct interleave on that pass as a one-line shift and held a field one line
+  high in 379 units), applied at each lock. A reading of +s means the 286-field's crop sits s rows high of the
+  interleave (or the 23-field's s rows low); never
   inferred from the comb, which cannot tell a swapped precedence from a one-line displacement. On a unit without
   static detail the comb reads nothing, the geometry is applied (to the account; the output follows only under a
-  lock) and the unit is marked unconfirmed. A source whose line 22 carries picture and shows no caption reads, at
-  +1, as the reading's travel; the comb's decisive disagreement at the account's crops is then reported every unit.
+  lock) and the unit is marked unconfirmed. A source whose line 22 carries picture and shows no caption seeds H one
+  high at +1 and reads as still; the comb's decisive disagreement at the account's crops is then reported every
+  unit, no lock is claimed, and the output stays at standard placement (the tape's line 22 rendered, since nothing
+  identifies it) until a caption or a lock-like loss — the honest outcome, for the owner's examination.
 - **Body shift**: the vertical shift of a field's picture body against the previous unit of the same field, over
   whatever range is required (never a fixed one); a maybe (owner), not used by the engine.
 
@@ -449,8 +454,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
      has left the raster past the clip (or the source has none — rule 10, whose bottom is the clip and c is 0, and
      whose only edge is the top);
      Δtop > 0: the field moved by Δtop (the reliable edge), the lost lines recorded (closure), the comb agreeing
-     where it can read; Δtop = 0: still; Δtop < 0 with the band gone: reported loudly, held (a band cannot vanish
-     upward);
+     where it can read; Δtop = 0: still; Δtop < 0 with a band gone from a source that has one: reported loudly,
+     held (a band cannot vanish upward); on a source without a head switch the top's move is the field's in either
+     direction (a bottom letterbox bar there reads as its band; the crop is unaffected);
    - anything else (different amounts): reported loudly, held (rule 2).
    A caption reads d = its row − 21 (284), compared with the account's d after the unit's case: on the seed, and
    before any lock, it places the unit (re-seeding the geometry from it); under a lock confirmed by the insert's bytes or the comb alone (both windowed or relative) a raw

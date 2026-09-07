@@ -320,10 +320,15 @@ def process_unit(u,RU,RN):
         case=''; hid=None; rowabove=None
         if T is None and Hc0 is not None:
             # no switch-line reading: the band has left the raster past the clip (or the source has none); the top is the only edge
-            exp_top=3+D[f]; dt=top-exp_top
-            if dt>0: D[f]+=dt; case=f'rigid{dt:+d}-bandpast'
+            exp_top=3+D[f]; dt=top-exp_top; noband=(CSW[f].top()[0]==0)
+            if dt>0 or (dt<0 and noband): D[f]+=dt; case=f'rigid{dt:+d}-'+('noband' if noband else 'bandpast')   # the top's move is the field's (no band, or the band past the clip)
             elif dt==0: case='noS'
             else: case=f'noS{dt:+d}!'                                         # the band gone with the top moving up: reported loudly, held
+        elif T is None and blank_under==0 and clip_u>=clip_c-1:
+            # no switch signature and the picture contiguous with the clip: a source without a head switch (rule 10); the seed
+            # from the top alone, H := clip - (23 + d) + 1, c := 0
+            d0=d_cap if d_cap is not None else max(top-3,0)
+            D[f]=d0; H[f].add(clip_c-(3+d0)+1); CSW[f].add(0); case='seed-noband'+('-cap' if d_cap is not None else '')
         elif T is None:
             case='noS'                                                        # no switch line on the segment's first unit: nothing to seed from
         elif Hc0 is None:
