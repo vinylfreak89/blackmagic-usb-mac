@@ -48,7 +48,9 @@ instrument; no whole-tape run and no cost measurement existed on the experiment.
   disagree, the disagreement is interrogated (which is wrong, shown by a measurement), never melded.
 - **Repos stay in sync.** Both branches are pushed on every commit; each agent pulls the other's branch before a
   review or a dispatch; a review is of a pushed commit named by hash. The contract file must be byte-identical on
-  both branches at all times (checked by `diff` in every review).
+  both branches at all times (checked by `diff` in every review). Mechanism: each agent begins a turn by merging the
+  other's pushed branch into its own (`git merge`, never a rewrite of a pushed branch), so both branches carry both
+  agents' work; `CLAUDE.md` and `HANDBACK.md` are held identical the same way.
 
 ## 3. The contract
 
@@ -67,13 +69,13 @@ decrement.
 | who | worktree | branch | base |
 |---|---|---|---|
 | Codex (engine) | `/private/tmp/blackmagic-v10` | `v10-engine` | main `753b1d2` + the contract (`c31bb4b`) |
-| Claude (harness) | `/private/tmp/blackmagic-v10-harness` | `v10-harness` | main + Codex's committed harness (`geometry-first-harness` to `84446cd`) + the contract, the engine-side tools and today's reports from the frozen engine branch (`fe011be`) |
+| Claude (harness) | `/Users/vinylfreak89/Documents/blackmagic-usb-mac` (the desktop session's primary checkout, so the session loads this branch's `CLAUDE.md`; moved from `/private/tmp/blackmagic-v10-harness` at 20:42 JST) | `v10-harness` | main + Codex's committed harness (`geometry-first-harness` to `84446cd`) + the contract, the engine-side tools and today's reports from the frozen engine branch (`fe011be`) |
 
 Frozen when Codex's current turn returns (no further commits; kept for the record): `geometry-first-engine`
-(`/Users/vinylfreak89/Documents/blackmagic-usb-mac`, HEAD `bc2931f`, rewound to the dcca9ea contract at `6696fa4`)
+(branch ref only, no worktree since 20:42 JST; HEAD `bc2931f`, pushed; rewound to the dcca9ea contract at `6696fa4`)
 and `geometry-first-harness` (`/private/tmp/blackmagic-v9`, HEAD `84446cd`, Codex's turn 17 returned 20:2x JST: run R
 scored "not accepted on any capture", the 2,600 owner-review bwdif frames at
-`experiments/geometry_oracle/reports/engine_run_R_disagreements/`, no contract objections; its final committed
+`experiments/geometry_oracle/reports/engine_run_R_disagreements/` (2,600 `.webp`, untracked from the v10 branches at 20:42 JST — render frames are scratch, `*.webp` and `*.mov` now ignored; they remain at `84446cd` and in the frozen worktree `/private/tmp/blackmagic-v9`), no contract objections; its final committed
 harness is carried into `v10-harness`). `AGENTS.md` is a symlink to `CLAUDE.md` in every worktree. Merges to main go through mutual review;
 main stays the measured fallback (round 10) until v10 passes the whole tape.
 
@@ -155,3 +157,58 @@ V-stabilize-off capture must be re-taken from the deck if lost (30–45 s, S-Vid
 4. Codex writes v10 to the contract from main's round-10 engine, with failing-first goldens, reviewed by Claude.
 5. Every engine or harness change: run captures 1→4 in order, score, render, read back; regressions block.
 6. All four passed → the whole tape, main's instruments, the watch copy from the live path with its record burned in.
+
+## 7. The plan (stated 20:42 JST 2026-09-07; owner, 20:5x: "both of you must agree fully on the stated plan before beginning")
+
+The owner's words that bind it (20:5x JST): "before either of you start work, make sure you are in agreement on how to
+proceed. understand you may reference any of your prior work, including uncommitted either from this thread or the
+other one as valid ideas may still be present. if there is any disagreement, especially on the contract that you are
+unable to resolve the ambiguity on yourselves ask me"; and: "same applies as before that going 'captions first' was
+the wrong reasoning you led yourselves to so that has not changed"; "keep the worktrees in sync rather than letting
+them drift".
+
+0. **Settle the words first; no code.** Codex merges `v10-harness` into `v10-engine` and reviews the CLAUDE.md and
+   HANDBACK changes by hash. Both agents confirm, from the owner's verbatim messages
+   (`/private/tmp/hw-session/briefs/owner_messages_2026-09-07_1230-2030.md`, extracted by script), the reading of his
+   five 19:32 questions summarised in section 3; the contract's preamble and section 8 are corrected to the v10
+   roles by agreement (Claude proposes the wording, Codex confirms or objects); every contract sentence either agent
+   cannot hold at extreme confidence is listed with the sentence and the two readings; the lists go to the owner in
+   one message. Nothing else starts until both agents have written "agreed in full" against this section.
+1. **Claude: the four references, in the acceptance order, one commit each**, from the raw rows by the contract's
+   definitions (section 3): per unit per field the picture top, the VBI rows above it with their signatures, the
+   switch line, S, the band's extent and count, the clip, the closure, the caption line when visible, the comb of the
+   two fields at the reference's own placement, and the measurability class (observed / unmeasurable / not
+   applicable) — never a substituted number. Starting points: Codex's committed builder
+   `experiments/geometry_oracle/build_reference.py` and `reports/reference_*.csv` at `84446cd`, and Claude's Python
+   instrument `experiments/switch_geometry.py` as a second, blind reading; every column's raw-row derivation is
+   stated in the reference report, and every constant is a standard, a stated measurement on the captures, or
+   labelled a defect. The invariant tests: capture 1's stable interval from counter 6593 (`stable_interval_check.py`,
+   an external assertion, never a builder input); the fixture-A invariants of contract section 8 for the whole tape
+   later. The render and read-back path is exercised on the reference itself (a stabilized side-by-side render of
+   the reference's own placement, read back on every frame) before any engine record exists. Codex reviews each
+   commit (code and intent, whole system) and objects with the deciding unit; a disagreement about what a row IS is
+   decided on the raw rows by both agents.
+2. **Codex, in parallel: v10 in C from main's round-10 engine, rewritten to the contract**, one rule at a time with a
+   failing-first golden per rule; the record per contract section 5, joined by device counter; the replay path
+   (`frameserver_replay`, paced, zero drops) producing the record for a capture; ms/unit (median, p95) per commit
+   against the §11b budget. Each commit names the contract sentence it implements. Claude reviews each commit (code
+   and intent, whole system). No constant that is not a standard, a stated measurement or a memory capacity.
+3. **Acceptance, capture 1, then 2, 3, 4, in that order** (harness runs, both agents read): the engine's record vs the
+   reference by counter (`compare_records.py`), the capture's invariants, the stabilized side-by-side render
+   (`sg_to_render_csv.py` → `field_pair_review.py --mode stabilized --vscale 2`) with its machine read-back on every
+   frame (`stabilized_readback.py`), then the owner looks. A measurement disagreement (what a row is) is decided on
+   the raw rows by both; a true disagreement (the settled comb against the placed crops, or the two instruments
+   against each other on a unit after the rows were read) goes to the owner as one labelled bwdif frame per unit,
+   adjudicated by neither agent. A capture passes when the record agrees with the reference on every unit the
+   reference can measure, the invariants hold, and the read-back shows the picture still except at rule 8's moves.
+   Any later engine or harness change re-runs 1→4 in order; a regression blocks it.
+4. **All four passed → the whole tape**: 86,293 units, zero drops, main's parity and comb instruments
+   (`line21_truth.py`, `v9_acceptance.py`, `relative_comb_audit.py`), the watch copy from the live path with its
+   record burned in; the owner's sign-off.
+
+Throughout: each turn begins by merging the other's pushed branch; one Codex dispatch at a time, its reply read
+before the next; a review is of a pushed hash; the contract changes only by agreement, else the owner; no round
+without a premise check (CLAUDE.md §14); raw panels before numbers; a machine reads every render back before anyone
+looks; timestamps only from a checked clock; no program content in the repo.
+
+**Agreement record:** Claude — agreed in full, 20:42 JST. Codex — (pending its turn).

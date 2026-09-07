@@ -1643,6 +1643,24 @@ delivery edge; wrong one at acquisition.
   ~1.4 ms median. **Open:** the owner's damage ruling (saved good geometry, hold on absent
   evidence, one re-check on clearing) — round 12, in progress; round 11's contradiction-based
   damage classifier was falsified (the torn units show absent testimony, not contradiction).
+  **→ v10 (owner redirect 2026-09-07 20:00 JST; the standing instruction is `HANDBACK.md` at the
+  root of both v10 worktrees).** Rounds 11–14 and the 2026-09-06/07 geometry-first experiment
+  (branches `geometry-first-engine` bc2931f and `geometry-first-harness` 84446cd, frozen; its
+  post-mortem `docs/reports/2026-09-07_three_tree_comparison.md`, accepted by the owner) did not
+  beat round 10; main's round-10 engine (comb misregistered 165 of 86,293 pairs, parity 0
+  disagreements) is the base for v10 and stays the measured fallback until v10 passes the whole
+  tape. v10 is that engine rewritten to the contract `docs/geometry_first_engine.md` (the owner's
+  words verbatim in its section 1 plus measurements; byte-identical on both v10 branches; never
+  edited by one agent alone). Roles (owner, 20:10): **Codex owns the code** —
+  `src/field_registration/` in C, failing-first goldens, ms/unit with every change; **Claude owns
+  the test harness** — the references from the raw rows under `experiments/`, scoring by device
+  counter, the invariants, the side-by-side renders with their machine read-backs, the acceptance
+  verdicts. Acceptance in a fixed order: the commercial tape, the EP recording, the SP recording,
+  the SP recording with V-stabilize off; every engine or harness change is re-run against all
+  four in that order before it is accepted; the whole tape (86,293 units, main's parity and comb
+  instruments, the watch copy from the live path with its record burned in) only after all four
+  pass. "Captions first" was the wrong premise both times it was tried (v9, then the experiment):
+  geometry decides, captions and comb confirm (contract rule 1).
 
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
@@ -1792,6 +1810,26 @@ delivery edge; wrong one at acquisition.
      real colour program decoded. Taken over an audio-grade RCA lead (not 75 Ω), so it proves the
      path and the framing, **not** chroma quality — the S-Video-vs-composite chroma A/B still needs
      a proper 75 Ω cable and the same passage on both inputs.
+  5. **`Vスタビライズ` is the deck's line TBC and its only TBC switch (measured 2026-09-06):**
+     with it off, the head-switch demodulator peaks and the floating horizontal timing step
+     return, which no vertical-only function could restore; the frame TBC and dropout compensator
+     are always on, so §7's "TBC on" was never a setting. Nothing is owed on it (owner, 2026-09-06
+     evening): a V-stabilize-off capture was an offer of interest, not a requirement; all it
+     changes is the head-switch band's peaks and the horizontal damage where it is bad.
+     **Field-1 displacement is recording-borne, not a playback fault (measured 2026-09-06,
+     `captures/composite_program_30s.tpc`, 920 units, same deck and setting):** raw fields
+     registered at the nominal crops in every measurable unit (static comb 205 registered, 714
+     flat, 0 misregistered), bottoms rigid at lines 262 (711, 263 in 3) and 525 (805, one 524),
+     top moves symmetric between fields and all on dark scene tops. The same fault reproduces on
+     a second JVC line TBC, so §7's tape-vs-deck question resolves to: weak field-1 sync on the
+     SP (first) recording, placed a line or two off by the line TBC's sync regeneration. This is
+     an SP-recording statement only: the EP recording's errors are small, in both fields, and
+     consistent with EP tracking on the weak-RF recorder that also produced its noise bands
+     (owner, 2026-09-06); its field-1 +2↔+3 jitter is not evidence of a bad field. Also: this tape's
+     picture runs to 262/525 against fixture A's 260/522 — the bottom edge is a per-source
+     constant, never a raster one. (A V-stabilize-off capture was nevertheless taken 2026-09-07 as
+     acceptance capture 4; the Shuttle pairs its fields one later than the V-stabilize-on pass —
+     contract section 2.)
   No over-the-air analog exists in Japan since 2011/2012 (cable digi-ana ended 2015), and dead-air
   tapes through this deck yield TBC-locked snow identical to the relock windows already captured.
 - Throughout: **all testing via deterministic replay** (whole_tape.tpc + untagged_capture + libusb_replay_shim +
@@ -1885,159 +1923,28 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   the signal is, and it is brought with the measured alternatives and a recommendation. Also
   from the same day: review a commit's message bytes as well as its tree; push every branch the
   docs cite; write timestamps only from a checked clock.
+- **v10 process (owner, 2026-09-07 20:00–20:50 JST; `HANDBACK.md`, and what the three-tree
+  comparison found missing from the experiment).** Codex writes the C engine, Claude the harness;
+  every engine change is reviewed by Claude and every harness change by Codex — code and intent,
+  whole system — before it counts; a review is of a pushed commit named by hash. The branches
+  stay in sync: each agent begins a turn by merging the other's pushed branch into its own
+  (`git merge`, never a rewrite of a pushed branch) and pushes every commit, so both branches
+  carry both agents' work and `docs/geometry_first_engine.md`, `CLAUDE.md` and `HANDBACK.md` are
+  byte-identical on both (checked by `diff` in every review). The contract is edited only by
+  agreement: a change is proposed to the other agent with the owner's quote and the measurement
+  behind it and made in place only when both are at extreme confidence; otherwise the turn ends
+  and the owner is asked — "if there is any disagreement, especially on the contract that you are
+  unable to resolve the ambiguity on yourselves ask me" (owner, 20:5x). Code is written only to
+  settled wording; when code and contract disagree, which one is wrong is shown by a measurement,
+  never melded. Both agents must agree in full on the stated plan (`HANDBACK.md` §7) before any
+  work begins; prior work on the frozen branches and main, committed or not, may be referenced as
+  ideas but nothing from it is carried without being re-derived from the contract. One Codex
+  dispatch at a time, from this chat's own Codex thread, its reply read before the next.
+- The 2026-09-07 experiment's harness notes (its contract-v3 reference semantics, comb census and
+  run-E score) stay on the frozen branch `geometry-first-harness` (84446cd, this file §11); they
+  are not carried into v10 (the experiment's engine, its reference builder's later semantics and
+  its fitted constants are not carried — owner, 20:10; its raw-row measurements are, in the
+  contract's section 2).
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
-- **The bounded contract-v3 raw reference is generated in
-  `experiments/geometry_oracle/reports/reference_*.csv` (revised 2026-09-07).** One source-blind
-  measurement path covers every exact unit of the SP slice (608), EP slice (621), the same SP
-  passage with deck V-stabilize off (608), and the commercial capture (919). Capture descriptors
-  contain only transport count, label, ordinal origin, and independently measured half-field
-  transport phase—never a top, switch, bottom, or stable boundary.
-  Per field the record carries top plus blanking/VBI/caption evidence, expected bottom `top+239`,
-  clipping, first switch row with separate skew/RF/AGC evidence, last reliable row `switch-1`,
-  last visible picture-bearing band row, first blank, raster limit, visible/censored band count,
-  comb confirmation, and closure. `bottom_line` aliases last reliable and `hs_partial_line`
-  aliases `hs_bottom_line` for old consumers. Chroma-only survival cannot extend the band.
-  A spatially flat field remains measurable when its recorded region has a clear level boundary
-  from raster blanking; flat fields without that boundary and no-picture fields are
-  `unmeasurable`. A hold policy is noted but no coordinate is substituted. Numeric `dp`/switch
-  displacement exists only when both same-slot coordinates do.
-  RF candidates keep their measured row/sample and after-x tear evidence. The before-x lag gate
-  was withdrawn because the tear can begin before the transient sample; RF evidence alone remains
-  `inferred` rather than being promoted to an observed head-switch identification.
-
-  The commercial reference uses counter-based review ordinals: first exact unit 211, with
-  device-short holes 213, 214, and 216. The owner's stable-picture statement from ordinal 551 is
-  external acceptance knowledge in `build_invariant_report.py`, not builder input. Units such as
-  550 and 551 that are indistinguishable at the noise floor are classified alike. Only fields
-  whose full status is `observed` test the invariant; unmeasurable and inferred fields are listed,
-  not counted as agreement. Direct raw-row measurement now separates the acceptance result:
-  observed picture top is stable at L23 in field 1 and L286 in field 2, while switch row and band
-  length are not constant and explicitly fail the assertion. The V-stabilize-off slice is half-frame
-  phased against the first SP slice: slot 1 carries the preceding unit's field 2, and slot 2 the
-  current unit's field 1; the notes retain that parity. The generated displacement report lists
-  every nonzero `(dp,ds)` cell and three raw-row witnesses per populated cell.
-
-  Contract-v3 comb confirmation uses each unit's measured tops. Relative shifts -3 through +3
-  are scored only through each field's last reliable row
-  (`switch-1`), on one common same-parity static mask against the preceding unit; flat, moving,
-  indecisive, missing-predecessor, or unavailable-geometry units are `unmeasurable` and carry no
-  numeric shift. The record preserves the field partner, its ordering-dependent expected shift,
-  all seven energies, best/second energy, decisiveness, mask size/fraction, texture, the explicit
-  field-row mapping, and the two fields' top/switch/band/closure evidence. Ordinary field-1 then
-  field-2 raster order expects zero. The V-stabilize-off source pair is slot 2 of the current unit
-  then slot 1 of the following unit; because this reverses raster parity, it expects +1. On the
-  corrected SP reference, every measurable fixed-top switch transition keeps the same comb
-  registration (field 1: 17; field 2: 52); three and eight further transitions respectively are
-  unmeasurable. This supports switch-band motion without whole-picture displacement in the
-  remaining measured transitions.
-
-  The bounded comb census is: SP 591 observed / 17 unmeasurable (shift 0: 590, shift +1: unit
-  103); EP 330 / 291 (shift 0: 107, shift -1: 223); V-stabilize-off SP source pairs 571 / 37 (expected +1:
-  455; departures 0: 115 and +2: 1); commercial tape 327 / 592 (shift 0: 318, shift +3: 9 at
-  units 217-225). The former commercial +3 run at 635-759 was a reference error: raw L23-L27 is
-  a chroma-confirmed recorded, non-VBI dark first picture band and L28 is only the brighter luma
-  onset. With top corrected from L28 to L23, every one of the 125 energy vectors minimizes at
-  zero (104 decisive, 21 unmeasurable). Complete
-  unit lists, decisiveness histograms, and raw-row witnesses are in
-  `experiments/geometry_oracle/reports/comb_summary.md`.
-
-  **Raw-row top correction (2026-09-07):** SP field-2 units 87, 258, 439, and 467 have the tape's
-  black line 22 at NTSC L286 (mean 3.8-6.0, standard deviation 3-4) and picture beginning at L287.
-  The rebuilt census is L286 in 604 units and L287 in those four. The source-blind cue is a +1
-  same-slot body displacement together with a dark L286 and structured L287; source parity comes
-  from the capture's independently measured transport phase, not a per-unit lookup.
-
-  **Comb premise audit (2026-09-07):** the 56 V-stabilize-off units formerly scored +1 in
-  within-transport-slot ordering. Pairing the actual source fields moves all 56 minima to zero,
-  but that ordering's normal raster-parity expectation is +1, so the one-line departure remains:
-  it is recorded/playback inter-field displacement, not a partner artifact. SP unit 103 likewise
-  changes from shift zero at unit 102 to +1 while both measured tops and switches stay fixed.
-  Full seven-energy vectors and deciding rows are in
-  `experiments/geometry_oracle/reports/turn8_raw_row_audit.md`.
-
-  **Body/comb residual audit (2026-09-07):** none of SP units 75 field 2, 76 field 1,
-  79 field 1, 102 field 1, or 105 field 2 showed an inter-field comb shift that followed
-  the nominated same-slot body displacement at that unit and returned afterward. Unit 76
-  field 1 was not top-clamped: top/switch/body all moved -1 from unit 75 to 76, and the
-  published crop already follows it. Units 79 and 102 field 1 are content motion; unit 103,
-  not 102, is the separate +1 comb-registration departure with both field bodies and all
-  top/switch coordinates fixed. Units 75 and 105 field 2 remain insufficient to establish
-  a clamped move because the comb does not change and the other field's geometry moves.
-  Therefore this audit adds no crop displacement. After the EP field-1 top correction, 107
-  measurable comb readings minimize at zero, 223 at -1, and 291 are unmeasurable; the -1
-  readings are retained as measurements rather than forced to the geometry expectation.
-  Every measurable fixed-top switch transition retains its prior comb registration: field 1
-  has 1 unchanged and 7 unmeasurable; field 2 has 82 unchanged and 107 unmeasurable. Exact
-  vectors, boundary rows, and unit lists are in
-  `experiments/geometry_oracle/reports/turn9_body_comb_audit.md` and `comb_summary.md`.
-
-  **EP-top and commercial-switch raw adjudication (2026-09-07):** the EP field-1 rule that
-  unconditionally placed picture two lines after a detected caption was false. A structured
-  picture row can immediately follow the caption; counters 1913, 1967, and 2010 decide the
-  corrected L25/L24/L24 readings. The common path now skips that row only when it is another
-  detected waveform or an isolated low-structure row before a brighter, structured body. EP
-  field 2 remains L288: L286 is a localized bar/pulse, L287 is a run-in waveform with a flat
-  remainder, and neither continues as full-width picture structure. On the commercial tape,
-  spatial flatness is not absence when the pass-through region has a clear level boundary from
-  raster blanking; counters 6863-6875 retain observed coordinates despite low texture. Flat
-  fields without that independently visible boundary remain unmeasurable. The first row entirely
-  from the other head is directly exposed by the other head's horizontal
-  blanking in the middle of the raster row. The detector anchors to that row and includes its
-  predecessor only with independent partial/skew/AGC evidence. Across stable-interval observed
-  fields, top remains constant, but switch row is L259/L260/L261 in field 1 and L522/L523 in
-  field 2; the stable switch/band assertion is therefore falsified. Deciding rows and the full
-  census are in `experiments/geometry_oracle/reports/turn10_row_disagreements.md`.
-
-  **Independent engine-record score, run E (engine `8d0fdeb`, 2026-09-07):** counter joins,
-  including the V-stabilize-off half-field repair, and every raw-row adjudication are in
-  `experiments/geometry_oracle/reports/engine_record_score_8d0fdeb.md`. The references now store
-  `first_full_other_head_line` separately from `switch_first_line`: the latter remains the first
-  unreliable row and may be a partial predecessor; the former is recorded only where an internal
-  blanking run, persistent three-third step, or decisive two-sided whole-row lag independently
-  exposes a full other-head row. No exposed signature means `-1`, not an inferred coordinate.
-  SP counters 13500 (not exposed) and 13833 (direct L260 versus engine S L261) demonstrate the
-  distinction.
-
-  Run E is **not accepted on any of the four captures**. SP top is exact in 607/608 field-1 and
-  608/608 field-2 units, but its S differs by more than the one-line partial-predecessor gap at
-  counters 13833 and 14106, and it is not exact wherever the reference directly exposes a
-  different full-other-head row. On the repaired off pass, field 1 agrees on top in 469/607
-  comparable units and the engine is right in the raw-row differences (the earlier rows are
-  blank/VBI); field 2 agrees in 604/607 and the reference is right in all three differences.
-  Exact S scoring still has many numeric raw-row disagreements in both repaired fields. On EP,
-  top agreement is 597/621 field 1 and 617/620 comparable field 2; the raw rows support the
-  reference in every difference, and only 17 of the prior 178 field-1 exceptions remain. The
-  named counters 1967, 2066, 2303, and 2410 are all reread in the report.
-
-  In the commercial stable interval (counter >=6593), observed reference tops remain L23/L286;
-  the engine emits L23/L24/L25/L26 in field 1 and L286/L287/L289 or unmeasurable in field 2.
-  The reference's exposed full-other-head row changes at 6645, 6688, 6714, and 6738 in field 1;
-  the engine shares only 6645 and 6714, moves one counter early at 6687 and 6737, and reports 53
-  additional changes. Field 2 has five reference signature changes and 16 engine changes. The
-  measurable comb/top contradictions are SP 1/591, repaired off-pass 131/571, commercial 58/328,
-  and EP 13/329. Counters 6645 field 1 and 6672 field 2 decide the dark-boundary rule: their
-  sub-black first rows are picture under stable signal lock even though row texture alone cannot
-  distinguish them from a lone black line.
-
-  **Current geometry-lock reference (2026-09-07 afternoon rulings):** each field now carries two
-  fixed eight-slot, increment-only running-count comparators: the directly exposed `S..clip` band
-  count and the first recorded-row state (`black22` or `picture`). A hit increments its own slot
-  and bubbles upward; a challenger becomes the comparator only after its count passes the
-  incumbent; a full array replaces the least-counted entry without decrementing any count.
-  `switch_first_line` and `first_full_other_head_line` remain per-unit evidence. The locked switch
-  is `held_top + 240 - band_comparator`; comparator/count/runner-up, projected line, and the
-  asymmetric `travel` / `band+` / `dropped` / `fell-out` class are recorded every unit. A hidden
-  top or S holds the prior decision and counts. Counter discontinuity or loss of both Shuttle
-  regenerated inserts resets all counts immediately. Before the first directly exposed S the
-  source is `no-lock`; consequently every commercial rewind unit (counter <6593) makes no locked
-  geometry claim. The complete census and raw SP shift-gauge test are in
-  `experiments/geometry_oracle/reports/switch_lock_summary.md`.
-
-  The SP field-2 continuous `-1` hypothesis is rejected by the raw raster: L285 is Shuttle blank
-  in all 608 units (mean 1.350-1.406, standard deviation 0.477-0.491), while the measured top is
-  L286 in 604 and L287 in four. For all 607 units with seven comb energies, the measured top pair
-  beats field 2 pulled down one line; the energy penalty has range 0.256595-4.697690 and median
-  2.420552. Thus pulling down adds a blank row rather than recovering tape VBI. The unequal band
-  counts are raster/head-switch evidence, not a continuous hidden field-2 displacement.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).
