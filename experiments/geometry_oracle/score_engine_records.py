@@ -242,7 +242,13 @@ def _top_evidence(y: np.ndarray, raw_field: int, engine: int, reference: int) ->
     return f"waveforms={waveforms or 'none'}; " + _row_span(y, range(first, stop + 1))
 
 
-def top_verdict(case: str, engine_field: int, engine: int, reference: int) -> str:
+def top_verdict(
+    case: str,
+    engine_field: int,
+    engine: int,
+    reference: int,
+    reference_status: str = "observed",
+) -> str:
     """Encode the report's independently stated row-level adjudications."""
     if engine == reference:
         return "agree"
@@ -250,6 +256,8 @@ def top_verdict(case: str, engine_field: int, engine: int, reference: int) -> st
         return "reference (picture rows remain measurable)"
     if reference < 0:
         return "reference (raw raster does not place a unique top)"
+    if reference_status != "observed":
+        return "neither (raw top is not uniquely observed)"
     if case == "off" and engine_field == 1:
         return "engine (repaired parity; preceding row is VBI/blank)"
     return "reference (first structured/dark-picture row)"
@@ -328,7 +336,13 @@ def _write_top(
             evidence = _top_evidence(
                 rasters[row.raw_counter], row.raw_field, engine, reference
             )
-            verdict = top_verdict(case.key, field, engine, reference)
+            verdict = top_verdict(
+                case.key,
+                field,
+                engine,
+                reference,
+                row.reference[f"f{row.raw_field}_top_status"],
+            )
             out.append(
                 f"| {row.engine_counter} | {row.raw_counter}/F{row.raw_field} | "
                 f"{_value(engine)} | {_value(reference)} | {verdict} | {evidence} |"

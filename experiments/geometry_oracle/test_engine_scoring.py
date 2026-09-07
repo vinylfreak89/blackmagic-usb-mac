@@ -27,6 +27,11 @@ class EngineScoringTest(unittest.TestCase):
         self.assertIn("reference", top_verdict("ep", 1, -1, 25))
         self.assertIn("reference", top_verdict("commercial", 1, 23, -1))
 
+    def test_inferred_reference_does_not_become_an_exact_verdict(self) -> None:
+        self.assertIn(
+            "neither", top_verdict("commercial", 1, 25, 24, "inferred")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
