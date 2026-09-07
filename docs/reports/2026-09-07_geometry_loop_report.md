@@ -121,3 +121,67 @@ Closed today (with the rows): the commercial S over-extension (261/262 → 260/2
 1. A lone sub-black first line before the picture: on fixture A it is the tape's black line 22 (displaced field), on the commercial tape a crushed-black first picture line. Per unit the two are the same rows. Do you want the engine to carry a per-source constant for the black line 22 (the contract's lock: always sub-black, flat, at one row, never grey — learned over the first units, re-checked every unit), so the commercial's 115 units read 286 and the SP keeps 24? The per-unit instrument as it stands reads the fixture-A convention.
 2. The V-stabilize-off pass's flagged first lines (120 units): leave them as measured (top one or two rows low with the picture torn there anyway), or have the engine align per segment so the top reads 286 under flagging? The pass is a fixture for what the line TBC does; the deliverable path has the TBC on.
 3. The commercial rewind passage (before counter 6593): both instruments read garbage; the render shows it as measured. Blank it, or leave it?
+
+## 10. Afternoon and evening (2026-09-07 12:40–19:15 JST): the contract rewritten from the owner's words; the engine rewritten to it; run R
+
+**The contract** (`docs/geometry_first_engine.md`, one document edited in place, 39 commits today from 000e0cd to
+ce9cf10, each commit message listing what changed and its evidence). Section 1 carries the owner's rulings verbatim
+(the head switch's identity and travel, the line-22 comparator by running count, the fixed array, no decrements,
+reset on a lock-like loss, "237 + 3 = 0 offset (basis assumption requiring confirmation)", the hidden top's output
+at negative offsets, damage holds the geometry). Section 3 defines the account: the source's constants H (picture
+lines) and c (switch lines) seeded per segment, the offset d read from the bands above the picture or from V − H
+with the top hidden, the comparators by running count (the tape's line-22 level, the clip), the comb as
+confirmation only, the crop origin 23 + d for every sign. Rule 9 is the decision table (still / moved / hidden-top
+candidate / row above the picture / moved with one row of travel / travel / band past the clip / loud hold), tested
+in order against the previous decision. Twenty-six context-free reads (each given concrete units to work) drove
+the wording; reads 21–25 found wording only.
+
+**Engine** (`experiments/switch_geometry.py`, 860b520 for run R): the decision layer implements rule 9; H and c are
+seed constants (a running count for H, tried in runs J–N, let 400 units of a dark first row move the crop with no
+confirmation, against the model); the comb is measured at the account's crops and at one candidate per hidden-top
+or row-above reading, confirming a move only when it changes from a decisive nonzero at the held crop to a decisive
+zero at the candidate; a raw caption re-seeds once per segment; the field with origin 23 is woven on top whichever
+engine field carries it (the unswapped order on the re-paired pass read a correct interleave as a one-line shift:
+379 units held one line high in run P).
+
+**Measurements made today that changed a definition** (each with its tool): the commercial tape's line 23 tracks
+line 24 across units with correlation 1.00 and is dark only through one 177-unit scene (crushed picture, not the
+tape's line 22; `experiments/first_row_level_census.py`) — the grey-line signature now requires picture rows under
+the dark run and the line-22 level comparator is fed only by caption-placed rows; the SP's line 22 at raster 23 reads
+luma 3–5 with a within-row spread of 3–4 in 434 of 608 units, uncorrelated with the row below (0.02) — a recorded row
+is flat within the field's own noise, not the Shuttle's (run O had held the SP one line high in 413 units for that).
+
+**Run R (engine 860b520) against Codex's references as rebuilt at 19:09, joined by counter** — units whose engine
+top equals the reference's, per field:
+
+| capture | field 1 | field 2 | notes |
+|---|---|---|---|
+| SP, TBC on | 598 of 608 (−1 ×3, +1 ×7) | 608 of 608 | |
+| SP, TBC off, re-paired | 581 of 607 (−1 ×22, +1 ×4) | 563 of 607 (−1 ×42) | run P: 198 of 607 in field 1 before the comb-order fix |
+| commercial | 588 of 600 measurable (−1 ×9, −2 ×3) | 449 of 607 (−1 ×158) | the 158: the reference reads 287 in 157 stable units since 19:09 (see below) |
+| EP | 502 of 621 (−1 ×112, +1 ×7) | 618 of 621 (−2 ×3) | the 112: the caption moved down one row, the switch line still (see below) |
+
+Commercial stable interval (counter ≥ 6593, 582 units): the engine's top 23 ×582 and 286 ×582, zero changes; the
+switch-line reading's one-row travel 71 (field 1) / 76 (field 2) changes, within the partial line; readings more
+than one row from the mode 3 / 10 (the field-2 ten are the interval's first ten units at 525). Stable-interval
+violations by the old invariant script: 13, all switch-reading travel.
+
+**Two instrument disagreements for the raw rows (section 7 of the contract; neither agent adjudicates):**
+1. EP field 1, 112 units: the caption line moves from 23 to 24 while the switch line stays at 262 and the comb reads
+   nothing decisive; the engine holds the top (the row above the picture) and logs the caption; the reference
+   follows the caption (top = caption + 2). On the raw raster line 25 in those units reads luma 83 with a within-row
+   spread of 16.6 (picture-like; correlation 0.58 with line 26), so its identity is not readable from its look.
+   Listed for Codex: the record's rows with case `rowabove+1` and event `cap+3!` in `sg_ep_R.csv`.
+2. Commercial field 2, 157 stable-interval units: Codex's reference at 19:09 reads the top at 287 where it read 286
+   at 18:37 (run P's compare: 606 of 607 agreed). On the raw rows line 286 is dark (< 8) in 191 of 582 units, in one
+   176-unit run plus a few pairs, and tracks line 287 across units with correlation 1.00 — content, by the same test
+   that made field 1's line 23 picture. Steered to Codex at 19:12; unresolved.
+
+**Codex:** turn 17 (rebuild the references to the current contract; confirm its interpretation resolutions) has
+run since 15:50 across my steers (each contract commit steered with its hash); its references were rebuilt at 19:09
+in its checkout (uncommitted); no reply yet. The bwdif frames for the true disagreements (owner, 15:15) are its
+deliverable and are not yet produced.
+
+**Not done:** the report's read-back of run R's renders (the finisher's renders exist at
+`/private/tmp/hw-session/engine_*_stab.mp4` for run R; the read-backs were not examined); Codex's scoring of run
+R; the harness's seed-suspect and true-disagreement listings.
