@@ -226,6 +226,13 @@ captures × two fields per frame, rows doubled, red = picture top and bottom, ye
 by machine on every frame — bar positions and decisive picture shifts — before anyone looks at it. The owner's
 watch copy is the live path's output with its record burned in. No work product stands in one instrument alone.
 
+Owner, verbatim (2026-09-07 15:15): "any true disagreement (such as comb not matching) should be reported loudly for
+me to examine unit by unit in the test harness (Codex's job). please present a single frame rendered (and shifted)
+bwdif image in that case." So every true disagreement — the engine's crop against the settled comb, the two
+instruments against each other on a unit — is listed by the harness with, per unit, one rendered frame: the two
+fields woven at the engine's crops and deinterlaced with bwdif, shifted as the engine placed them, for the owner to
+examine one by one.
+
 ## 9. Open
 
 1. A height change with the peak present: reported only, or also a reset?
