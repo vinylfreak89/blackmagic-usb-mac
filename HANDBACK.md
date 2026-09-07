@@ -66,9 +66,9 @@ running-count comparator is the level of the tape's line 22 (12:52); a caption m
 to, in `/private/tmp/hw-session/briefs/antecedents_1253_1603.md`); the rewind is unlocked because nothing confirms
 it; snow and relocks are the signal-state layer's events, and the offline record is produced by the replay path that
 runs that layer (`frameserver_replay`), so it needs no separate input; the comparator's "fixed number" is its array
-of eight slots, counts never decrement. Open for the owner (asked 21:07): whether significant clean picture luma
-also confirms a first lock (his 2026-09-06 22:13) or the later "combing, captions or both" (13:29) is exhaustive;
-contract section 9. Everything else in the contract was settled by both agents at extreme confidence (Codex turn 2,
+of eight slots, counts never decrement. The owner answered the one open question at 21:34: combing, captions or
+both and nothing else, and a caption on the insert is ambiguous over three placements and needs the comb re-measured
+(contract sections 3 and 9; nothing is open). Everything else in the contract was settled by both agents at extreme confidence (Codex turn 2,
 21:12) and edited in place.
 
 ## 4. Worktrees and branches
@@ -205,7 +205,11 @@ them drift".
 3. **Acceptance, capture 1, then 2, 3, 4, in that order** (harness runs, both agents read): the engine's record vs the
    reference by counter (`compare_records.py`), the capture's invariants, the stabilized side-by-side render
    (`sg_to_render_csv.py` → `field_pair_review.py --mode stabilized --vscale 2`) with its machine read-back on every
-   frame (`stabilized_readback.py`), then the owner looks. A measurement disagreement (what a row is) is decided on
+   frame (`stabilized_readback.py`), then the owner looks. The FINAL output per capture is the contract's section-8
+   format (the 720×486 overlay as placed, the 525-line raster beside it, the decision information, the marker line
+   and the unit number, bwdif); two readings in it are mine and he corrects them in a line if wrong: that "the
+   running line" is the marker drawn at the measured picture edges, and that bwdif runs one frame per unit (TFF)
+   rather than 2× at 59.94. A measurement disagreement (what a row is) is decided on
    the raw rows by both; a true disagreement (the settled comb against the placed crops, or the two instruments
    against each other on a unit after the rows were read) goes to the owner as one labelled bwdif frame per unit,
    adjudicated by neither agent. A capture passes when the record agrees with the reference on every unit the

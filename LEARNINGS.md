@@ -314,3 +314,31 @@ placements. The absolute instruments — the static-comb registration of the pub
 unit and the parity acceptance against the caption truth — score the state, not the transition,
 and are the acceptance figures. A relative audit is a pointer to where to look, never the
 verdict.
+
+## Removing a generated file from history re-hashes the other agent's commits (2026-09-07)
+
+The v10 branches were made by merging two frozen branches, so they inherited 24 generated reference
+CSVs (~100 MB) and 2,600 review `.webp` frames that the other agent had committed on 09-06/07. The
+owner asked for them to be untracked and the history rewritten. `git-filter-repo --refs v10-harness
+v10-engine --path-glob '*.csv' --path-glob '*.webp' --invert-paths` did it in 52 s — and gave new
+hashes to all 439 commits on those refs, including that agent's 154. That is not a mistake in the
+invocation: a commit's hash covers its tree, so dropping a blob changes the commit that carried it
+and every descendant. `--refs` limits which BRANCHES are rewritten, never which commits inside them.
+
+Two rules. **The fix is the `.gitignore` line before the tool first writes there**, not the rewrite
+afterwards: an ignore line costs nothing, a rewrite costs every downstream hash and forces the other
+agent to reset its worktree mid-round. When a tool starts writing outputs into the repo, its
+extensions go into `.gitignore` in the same commit that adds the tool — and generated output that is
+already tracked is untracked the moment it is noticed, not at the end of the round.
+
+**When a rewrite is unavoidable, say whose commits it will re-hash and verify what survives.** Here
+author, email, author date, committer date, message and every `Co-authored-by` trailer were preserved
+(`84446cd` "Stabilize dark first-row identity" became `4714d70`, identical in all of them); the
+originals stayed on the unrewritten frozen branches as the record; the push used
+`--force-with-lease` against the known old hash; and the other agent's worktree was reset before its
+next turn (`git branch -f` refuses a branch that is checked out in another worktree — reset from
+inside that worktree instead).
+
+Corollary on attribution: three contract commits whose wording came from the other agent's review
+carried only this agent's trailer. Co-authorship is part of the record — when the other agent's words
+go into a commit, its trailer goes in with them. The same rewrite added them.

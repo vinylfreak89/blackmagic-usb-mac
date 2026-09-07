@@ -78,6 +78,11 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 > [2026-09-07 20:56, asked whether the 12:52 comparator ruling applied to the switch-line count:] no. the comparator
 > was at line 22. you extended it to the head switch (wrongly) on your own
 
+> [2026-09-07 21:34, on what confirms a first lock:] combing captions or both. significant clean picture was a
+> fuck up on my part. because of the shuttle's own raster hiding potentially the first few lines. and "captions"
+> that sit on the raster's line 21 have to be assumed they could be from 20, 21, or 22 LOL, so only if it agrees
+> with the comb on one of those 3, but comb should be retested in that case
+
 > A change of geometry (a loss of source lock or lock like loss) resets everything immediately.
 
 > Whenever you don't have extreme confidence in something go back to the design. If your understanding is
@@ -118,6 +123,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - Nothing the tape carries above line 23 (286) reaches us except the re-encoded bytes on the insert. The tape's own
   VBI becomes visible only when the field is displaced downward: at +1 its black line 22 appears on line 23 (luma
   4–7 on fixture A), at +2 its line 21 on 23, at +3 its line 20 on 23 and its line 21 on 24.
+- The Shuttle re-encodes the insert from a caption it slices within one line of the standard line: measured on
+  fixture A, 91 units of the first 13,000 carry decoded caption bytes at line 21 with no parity-valid raw caption
+  anywhere in the field and a rigid +1 picture (top and bottom together, 24/261 against a 23/260 lock), while in
+  1,300+ units whose raw caption sits at 23 or 24 (+2, +3) the insert carried nulls every time (CLAUDE.md §11). So
+  the window reaches ±1 and not ±2; the −1 side (the tape's line 21 on raster line 20) is its symmetric case, not
+  separately measured.
 - The deck clips each field at line 262 / 525 on every capture (its clip line); lines 263–264 / 526 of the
   pass-through region carry only the near-blank remainder and the chroma noise of the decoder.
 - Noise gaps on the commercial capture: the Shuttle's regenerated rows have chroma noise ≤ 1.48 times the blanking
@@ -225,11 +236,19 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   visible (an integer, the row's luma mean rounded to a unit). The switch-line count is not a comparator (owner,
   20:56).
 - **Source lock**: exists only after at least one confirmation that the geometry is correct — combing, captions, or
-  both (owner, 13:29; whether significant clean picture luma also confirms a first lock is open, section 9) — at a
+  both, and nothing else (owner, 13:29 and 21:34: "combing captions or both. significant clean picture was a fuck
+  up on my part. because of the shuttle's own raster hiding potentially the first few lines" — his earlier
+  "significant non-dirty luma" is withdrawn, because the Shuttle's blanking can hide the picture's first lines) — at a
   unit whose switch line and band are measurable, so that the lock's count is taken there and never substituted; a
   unit that confirms only the top does not make a lock. A caption confirms the very first unit of a segment when it
   agrees with the geometry (the lock's confirmation); it never places a unit against measurable geometry (owner,
-  2026-09-04 21:26: "assuming the picture itself ALSO MOVES THE SAME AMOUNT"). **Regenerated-row presence** (the
+  2026-09-04 21:26: "assuming the picture itself ALSO MOVES THE SAME AMOUNT"). **A caption on the insert** (bytes
+  decoded on the raster's line 21 / 284) does not say where the tape's line 21 was: the Shuttle slices within one
+  line (section 2), so the tape's row could be 20, 21 or 22 — d ∈ {−1, 0, +1}. It confirms only when the comb,
+  re-measured for that unit at the three candidate placements, agrees with exactly one of them (owner, 21:34: "so
+  only if it agrees with the comb on one of those 3, but comb should be retested in that case"); otherwise it
+  confirms nothing. A caption whose row lies in the pass-through region (line 23 or below) is the tape's own line 21
+  and gives d = its line − 21 directly. **Regenerated-row presence** (the
   Shuttle's timing pattern and insert on lines 20/21 and 283/284, line 22/285 blank) is required decoder evidence,
   not a lock: the rewind passage carries the regenerated rows (measured) and has no source-lock confirmation, so it
   stays unlocked — the owner's 12:39 "no stable VBI = no stable lock" as this document states it. **Lock-like loss**:
@@ -248,6 +267,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   crops; thereafter it stands, confirming or vetoing each move (a veto is reported, never acted on by either agent).
   Field precedence is the half-line order the zero reading fixes (which field's line sits between the other's). On a
   unit without static detail the comb reads nothing, the geometry is applied and the unit is marked unconfirmed.
+  At an acquisition whose only caption is on the insert the comb is re-measured for that unit at each of the three
+  candidate placements (owner, 21:34) and confirms only if exactly one of them weaves without a relative shift. The
+  comb constrains the two fields' relative registration only, so where both fields are ambiguous by the same amount
+  it cannot decide and there is no lock.
 - **Body shift**: the vertical shift of a field's picture body against the previous unit of the same field, over
   whatever range is required (never a fixed one); a maybe, not an authority.
 - **Comparator order**: the first observed value leads; a replacement enters at the bottom; equal counts do not change
@@ -343,6 +366,16 @@ captures × two fields per frame, rows doubled, red = picture top and bottom, ye
 by machine on every frame — bar positions and decisive picture shifts — before anyone looks at it. The owner's
 watch copy is the live path's output with its record burned in. No work product stands in one instrument alone.
 
+**Final outputs** (owner, 2026-09-07 21:4x): "for final outputs, the 720x486 overlay plus the raster that shows the
+picture shift. the one with the running line and number at the bottom, rendered as bwdiff, not nnedi3", and "plus
+all the decision information ... the last type of output this thread was last producing, tweaked slightly". So the
+deliverable review copy of a capture is one frame per unit carrying: the 720×486 output as placed (the 480-line crop
+with its two lines above — lines 21–263 and 283–525, CLAUDE.md §11's alternate mode — so what landed on 21 and 22 is
+visible) with the record burned in; the 525-line raster beside it, showing where the picture sits in the raster; the
+unit's decision information, its marker line and its unit number. Deinterlaced with bwdif, never NNEDI3 — a weaver
+combs exactly where the two fields disagree, which is the presentation-level acceptance test (CLAUDE.md §7). Read
+back by machine on every frame before anyone looks at it.
+
 Owner, verbatim (2026-09-07 15:15): "any true disagreement (such as comb not matching) should be reported loudly for
 me to examine unit by unit in the test harness (Codex's job). please present a single frame rendered (and shifted)
 bwdif image in that case." [The harness was Codex's at 15:15 and is Claude's since 20:10.] So every true disagreement — the engine's crop against the settled comb, the two
@@ -353,10 +386,12 @@ labelled with the unit, its counter, both crop origins and the comb's reading. N
 
 ## 9. Open
 
-1. Whether significant clean picture luma at the measured edge also confirms a first lock (owner, 2026-09-06 22:13:
-   "a confirmation from comb or a significant non-dirty luma") or the later list is exhaustive (2026-09-07 13:29:
-   "Either combing, captions or both") — put to the owner 2026-09-07 21:07. Until answered, the engine locks on comb
-   or caption only.
+Nothing is open.
+
+Closed 2026-09-07 21:34 (the owner): a first lock is confirmed by combing, captions or both, and nothing else; the
+earlier "significant non-dirty luma" is withdrawn (the Shuttle's blanking can hide the picture's first lines), and a
+caption on the insert is ambiguous over d ∈ {−1, 0, +1} and confirms only with the comb re-measured (Source lock,
+Comb).
 
 Closed 2026-09-07 21:12 (both agents): the V-stabilize-off pass's flagged first lines are recorded, non-VBI rows and
 therefore picture; the top is read through the flagging; the horizontal error is not the engine's (owner: "Horizontal
