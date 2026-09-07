@@ -133,9 +133,11 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   measurements and the harness's to check; it is not contract.
 - **Pedestal**: the tape's black — the other head's black rows at the bottom of the band.
 - **VBI row**: a recorded row carrying a vertical-interval signal, recognised by signature: the CEA-608 waveform
-  (standard), the run-in burst without data (standard), the smeared XDS bar (measured on the EP recording), the
-  tape's black line 22, the tape's grey line 22 (a flat row under half the brightness of the three rows below it,
-  owner ruling 2026-09-05). The tape's line 22 is one line below the tape's line 21; it carries a specific level or
+  (standard), the run-in burst without data (standard), the tape's line-20 timing pattern (the same pattern as the
+  Shuttle's regenerated line 20), the smeared XDS bar (measured on the EP recording), the tape's black line 22, the
+  tape's grey line 22 (a flat row under half the brightness of the three rows below it, owner ruling 2026-09-05).
+  "Line 22" in this document is the TAPE's line 22 wherever it lands in the raster (line 23 at +1); the Shuttle's own
+  line 22 (row 18) is regenerated blanking and is only ever a stable-VBI check. The tape's line 22 is one line below the tape's line 21; it carries a specific level or
   sometimes faint picture (owner). Its level is a comparator by running count (ruling four), not a constant.
 - **Picture row**: a recorded row that is not a VBI row. **Picture top**: the first picture row (owner: "the first
   picture row is the first picture row"). It may be hidden by the Shuttle's overwrite blanking: if the Shuttle's
@@ -153,11 +155,22 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   (field 1) or two (field 2) of them have become flat black rows, so the TBC clears switch lines into black, one more
   in field 2; the peak shows in 31 of 597 and 5 of 577 units with the TBC off and in 1–2 of 606 with it on. The
   commercial tape shows 2 (field 1, 422 of 582) and 3 (field 2, 507 of 576) switch lines with no black under them.
-- **Height**: the rows from the picture top to the switch line — fixed within a source (owner).
-- **Closure**: a field is 240 lines; top + 239 is the expected bottom; rows past the clip are lost (owner).
+- **Height**: the rows from the picture top up to but not including the switch line (237 = lines 24..260 on the SP
+  recording) — fixed within a source (owner). **Bands above the picture**: the recorded rows above the picture top
+  that are not the Shuttle's (VBI rows, black rows); **bands below**: the switch lines and the rows under them to
+  the clip. Past the raster bounds neither can be seen; the account counts them by the change in the ones that can.
+- **Closure**: a field is 240 lines; top + 239 is the expected bottom; rows past the clip are lost (owner). The
+  picture bottom placed by the engine is the row above the switch line; the expected bottom is the closure check.
+- **S**: the first row belonging entirely to the other head (an engine measurement; the switch lies in S or the
+  partial line above it). **Segment lag**: the horizontal lag, in samples, at which a 55-sample segment of a row best
+  matches the row above. **Provenance error**: a capture whose packet accounting is not complete at a unit; the
+  engine emits no record for it (fail closed).
 - **Displacement**: the picture top against its standard line (23 / 286).
 - **Comparator**: the value seen most often since the last reset, held in a fixed array of eight slots (owner: "8
-  sounds fine"); equal counts do not change the ordering (owner).
+  sounds fine"); equal counts do not change the ordering (owner); a ninth distinct value replaces the least-counted
+  entry. The comparators are: the band count, the state of the first recorded row (the tape's black line 22 or
+  picture), and the level of the tape's line 22 where it is visible. Values are integers (rows, counts) or the row's
+  luma mean rounded to a unit.
 - **Source lock**: exists only after at least one confirmation that the geometry is correct — combing, captions, or
   both (owner) — with the Shuttle's regenerated rows present (**stable VBI**: the timing pattern and the insert on
   lines 20/21 (283/284) and line 22 (285) blank). **Lock-like loss**: snow-like signal, a vertical tear (cross-program
@@ -175,17 +188,18 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 ## 4. Rules (the owner's, from section 1; the engine implements, the harness checks)
 
 1. Geometry is the authority; every other signal confirms or contradicts and is recorded, never acted on alone.
-2. The head switch's position moves with the picture; its height is fixed; the top switch line alone travels by
-   one row; the switch lines below it stay constant or decrease; a height change for any other reason than the
-   peak disappearing is reported.
+2. The head switch's position moves with the picture; its height is fixed; the top switch line is the only variable
+   one (the area of travel); the switch lines below it stay constant or decrease; a height change for any other
+   reason than the peak disappearing is reported.
 3. The line account is conserved; the picture bottom is the row above the switch line; lines past the clip are lost.
 4. Locks are comparators by running count in fixed arrays; counts never decrement; the most frequent value is the
    comparator and is replaced by a value whose count passes it; no magic numbers, no per-source constants typed in.
 5. A change of geometry — loss of source lock or a lock-like loss — resets everything immediately, both fields at
    once (there is no snow in one field only); without a stable VBI there is no lock and no geometry is claimed.
 6. Damage that is not snow-like and not a vertical tear (cross-program or true) is continuing program: the previous
-   geometry — the comparators and the lock — holds through it, and the previous crop stays (the output picture does
-   not move); the unit's own position is recorded Unknown and re-measured when the edge returns. Horizontal tearing
+   geometry — the comparators and the lock — holds through it; the unit's own position is recorded Unknown, the crop
+   is left where it was because nothing measurable says to move it (not a claim that the position held), and the
+   position is re-measured when the edge returns. Horizontal tearing
    is not a geometry event. Snow-like signal or a vertical tear is a lost lock: everything resets, both fields at once.
 7. Line 22 never renders.
 8. The output picture never moves except at a segment's initial lock and after a re-acquisition; field precedence
@@ -207,7 +221,8 @@ closed.
 ## 6. The engine deliberately does not have
 
 No zero re-anchoring, no learned numeric offsets, no evidence-voting hierarchy, no body-witness veto of a measurable
-top, no persistent comb correction, no held position through damage (the geometry holds, the position is Unknown),
+top, no comb correction of the crop (the settled comb confirms, it never moves a field), no position claimed through
+damage (the geometry holds, the position is Unknown),
 no top-reliability history, no windows, no thresholds that are not a stated measurement. Each was measured to fit fixture A rather than the raster.
 
 ## 7. (reserved)
