@@ -324,8 +324,7 @@ def process_unit(u,RU,RN):
             if top==3 and D[f]<0:
                 # the top already hidden: Δtop is no reading; the switch line's move is the field's
                 if dT==0: case='steady'
-                elif dT<0: hid=D[f]+dT; case=f'hidden{hid:+d}?'               # further up: the candidate, the comb must confirm it
-                elif D[f]+dT<=0: D[f]+=dT; case=f'rigid{dT:+d}-hidden'        # down, the top still hidden: a move (an emerging top would have read above 23)
+                elif D[f]+dT<=0: hid=D[f]+dT; case=f'hidden{hid:+d}?'         # either direction: the candidate, the comb must confirm it (the band alone never moves anything)
                 else: case=f'geom?/{dT:+d}!'                                   # down past 23 with the top still reading 23: reported loudly, held
             elif dt==0 and dT==0: case='steady'
             elif dt==dT: D[f]+=dt; case=f'rigid{dt:+d}'                       # the switch line followed the picture: the field moved
@@ -338,7 +337,7 @@ def process_unit(u,RU,RN):
             else: case=f'geom{dt:+d}/{dT:+d}!'                                # different amounts: reported loudly, held
             # H and c are constants from the seed: nothing feeds them here (owner: "its height should be fixed")
             if d_cap is not None and d_cap!=D[f]:
-                if LOCKST[f]!='locked' or CONF[f]!='caption' or abs(d_cap-D[f])==1:   # a raw caption is absolute: it re-seeds a lock the insert or the comb confirmed; under a caption lock, one row off re-identifies the rows (owner, 16:20)
+                if LOCKST[f]!='locked' or CONF[f]!='caption':                 # a raw caption is absolute: it re-seeds a lock the insert or the comb confirmed (line 22 = the row below it, owner 16:20); under a caption lock a disagreement is logged (the caption line itself jitters)
                     D[f]=d_cap; H[f]=RunMode(); H[f].add(T-(3+d_cap)); CSW[f]=RunMode(); CSW[f].add(c_vis+max(0,(3+d_cap)+239-clip_c)); case+=';reseed-cap!'
                 else: case+=f';cap{d_cap:+d}!'                                 # logged and reported, geometry wins (the model)
         Cc=CSW[f].top()[0]; c_read=c_vis+max(0,(3+D[f])+239-clip_c) if T is not None else None

@@ -152,13 +152,17 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   the tests**: "present" for the Shuttle's timing pattern and insert is the row's variation above 20, an aperture
   inside the measured gap (40–54 present, 0.5 absent, section 2); "blank" is the blanking level (1.4) within the blanking rows' noise; "flat" is a
   row's variation within that noise; "static" pixels are unchanged against the previous unit within the field's own
-  adjacent-sample noise, "detailed" ones differ from the row below by more than it.
+  noise (defined under the comb), "detailed" ones differ from the row below by more than it; a "dark scene" is dark
+  rows (not above the pedestal by more than the blanking rows' noise) under a dark row.
 - **Pedestal**: the tape's black — the other head's black rows at the bottom of the band; measured per unit as the
   level of the flat rows above the blanking level contiguous with the clip, carried from the last unit that had
   them (on a source without setup it is the blanking level).
 - **VBI row**: a recorded row carrying a vertical-interval signal, recognised by signature: the CEA-608 waveform
-  (standard), the run-in burst without data (standard), the tape's line-20 timing pattern (the same pattern as the
-  Shuttle's regenerated line 20), the smeared XDS bar (measured on the EP recording), the tape's line 22 by
+  (standard), the run-in burst without data (standard: the clock-frequency amplitude over three cycles at the
+  decoder's gate, 35 — measured captions 52–60, chance picture hits 15–22 — with the row flat beyond it), the tape's
+  line-20 timing pattern (correlation at least 0.8 with the Shuttle's regenerated line 20, an aperture), the smeared
+  XDS bar (measured on the EP recording, frozen 2026-09-04: 48-bin luma profile, row mean under 95, bins 20–47 at
+  most 40, a run of at least six bins over 60 within bins 0–19), the tape's line 22 by
   position (the row below a decoded caption or below the XDS bar: one line below its line 21, whatever it carries),
   the tape's black line 22 (a
   flat row at the level its line 21 has placed before: the level comparator is fed only by the row below a decoded
@@ -186,7 +190,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   **segment** runs from the capture's first unit or a lock-like loss to the next lock-like loss; its seed is the
   first unit with both edges readable and the regenerated rows present; H, c and d are per field; after Unknown or
   held units the expectation is the last applied decision. Under the capture's pairing input the engine's field 1 is
-  the re-paired first field (origin 23), field 2 the second (286); the output weaves each field at its own crop,
+  the re-paired first field (origin 23), field 2 the second (286) — section 2's "field 1/2" are the transport's
+  slots; the output weaves each field at its own crop,
   one locked and one at standard placement included. A seed
   whose H is high by one (the row above read as picture on the first unit) has no correction without a raw caption
   (at |d| = 1 the caption is overwritten, the insert's bytes confirm either d, the comb cannot see a shared offset):
@@ -234,7 +239,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   band's last switch line and the clip once the clip comparator leads — on the seed, to the Shuttle's padding (exact
   Y16/C128 rows, section 2), so the near-blank remainder of lines 263–264 then counts and its candidates are put
   to the comb, which rejects them; they arise from a field sitting high (its band's lines above the clip leave the
-  tape's rows after the band visible) or from a source whose band ends above the clip; the comb tells which. **Bands above the picture**: the rows from line 23 up to, not including, the
+  tape's rows after the band visible) or from a source whose band ends above the clip; the comb tells which where the offset is not shared by both
+  fields. **Bands above the picture**: the rows from line 23 up to, not including, the
   picture's first line, whatever they carry (the Shuttle's own rows end at 22): d = top − 23 when the top is
   visible; none when it is hidden (d then from V − H). **Bands below**: the band's extent. **Clip line**: the
   last row the deck delivers (262/525 on every capture seen), measured per source as a comparator of the last row
@@ -250,8 +256,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   observations V and extent against the constants H and c.) Worked with H 237, c 3, clip 262: d 0 — picture 23–259, switch lines 260–262, nothing under;
   d +1 — picture 24–260, switch lines 261–262, one switch line lost past the clip (the visible count fell by d, rule
   2; c 3 is the owner's example, field 1 of the SP measures 2, section 2); d −1 — the picture's first line at 22, overwritten, picture 23–258 visible (V 236), switch lines 259–261, row
-  262 at the blanking level (not a switch line). **Seed**: on a segment's first unit the comparators are empty; d
-  is read from that unit alone — the caption's d when the unit carries one, else the bands above the picture, else 0
+  262 at the blanking level (not a switch line). **Seed**: on the seed unit (the segment's first unit with both edges readable and the regenerated rows present;
+  units before it are Unknown, at standard placement, feeding nothing) the comparators are empty; d is read from
+  that unit alone — the caption's d when the unit carries one, else the bands above the picture, else 0
   with the signature top at 23 (owner, 15:40: "0 offset (basis assumption of geometry requiring confirmation)") — and
   H := switch line − (23 + d), c := the visible switch lines plus the lines lost past the clip; with the top at 23 and
   blank rows under the band, the
@@ -261,7 +268,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   use the account's crop from the seed on; the output stays at standard placement until the lock, then moves to it).
   A seed with the top hidden seeds H low by |d| and c high by |d|; one with the row above the picture read as picture
   seeds H high by one; the comb corrects the first (the hidden-top candidates), a raw caption the second (rule 9);
-  nothing else does — the seed is the geometry until a caption or a lock-like loss. On the first unit the clip is
+  nothing else does — the seed is the geometry until a caption or a lock-like loss. On the seed unit the clip is
   the unit's own reading (the last row above blanking) until the comparator has a leader. The level and clip
   comparators are fed from the seed on, lock or not; a lock-like loss empties everything.
 - **Closure**: a field is 240 lines; the lines past the clip — top + 239 − clip when positive — are lost (owner) and
@@ -273,8 +280,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   (the rows 20 to 200 below the picture top, an aperture; the field's own variance, never a typed level); the
   switch lies in S or the partial line above it. **Segment lag**: the horizontal lag, in samples, at which a short
   segment of a row best matches the row above (55-sample segments, lags −24 to +24: apertures). **Provenance error**: a capture whose
-  packet accounting (the capture reader's, an input) is not complete at a unit; the engine emits no record for it
-  (fail closed) and the counter's continuity alone decides a discontinuity.
+  packet accounting (the capture reader's, an input) is not complete at a unit; the engine emits no record from it
+  on (fail closed).
 - **Displacement**: d.
 - **Comparator**: the value seen most often since the last reset, held in a fixed array of eight slots (owner: "8
   sounds fine"); equal counts do not change the ordering (owner); a ninth distinct value takes the slot of the
@@ -309,15 +316,16 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   "centred"); before a lock, standard placement. **Displacement sign**: positive is lower in the raster.
 - **Comb**: the relative vertical shift between the two fields' crops that minimises the comb energy of their weave on
   static, detailed picture (pixels unchanged against the previous unit within the field's own noise — the median
-  over the picture body, lines 63–222 / 326–485, of the standard deviation of adjacent-sample differences over √2 —
-  with vertical detail above it; the comb energy is the mean absolute second difference along the weave after an
+  over the picture body, lines 63–222 / 326–485, of the standard deviation of adjacent-sample differences over √2
+  (one sample's noise from a difference of two) — with vertical detail above it; the comb energy is the mean absolute second difference along the weave after an
   8-sample horizontal low-pass; shifts −3 to +3, an aperture covering every displacement measured; apertures), measured at the account's crops at the capture's field precedence (an input from the
   capture's pairing measurement, not a constant); a reading is decisive when the best shift's energy is at most
   0.8 of the runner-up's — a fitted default, labelled: fitted on fixture A against caption truth, where a decisive
   reading is wrong in about 1 unit in 500; a decisive zero confirms the relative placement (a
   lock, source lock). The **settled comb**
   is that zero reading, re-measured at the account's crops every unit; before a lock there is none, and the cases of
-  rule 9 that consult it apply under a lock only. The comb is measured at the account's crops
+  rule 9 that consult it apply under a lock only — the seed's hidden-top candidates and the lock's own confirmation
+  use the comb's reading at the account's and candidate crops. The comb is measured at the account's crops
   (23 + d per field, lock or not; the output before a lock is at standard placement) and, per field with a hidden-top
   or row-above reading, at that one candidate crop. The comb never proposes a crop and moves no field: it decides
   only between the account's own readings — the account's decision (a move or a still unit) stands whether the comb
@@ -351,7 +359,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 3. The line account is conserved; the picture bottom (picture gone) is the row above the switch line; lines past the
    clip are lost.
 4. H and c are the segment's constants from the seed (owner: fixed); the level of the tape's line 22 and the clip
-   (the owner's "locks" in his ruling on the level) are values by running count in fixed arrays; counts never decrement; the most frequent value is the
+   are comparators by running count in fixed arrays (the owner's ruling on the level); counts never decrement; the most frequent value is the
    comparator and is replaced by a value whose count passes it; no magic numbers, no per-source constants typed in.
 5. A change of geometry — loss of source lock or a lock-like loss — resets everything immediately, both fields at
    once (there is no snow in one field only; a single field with no picture is not snow — rule 6); without a stable
@@ -388,13 +396,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
      move stands (rule 1);
    - the signature top at 23 with the expectation at or above 23 (the top pinned: it cannot show a move above 23,
      so Δtop is censored — an upper bound on the top's move when the expectation is 23, no reading at all when the
-     top is already hidden) and Δswitch < Δtop (or, with the top hidden, Δswitch ≠ 0): the switch line's move is the
-     field's — d changes by Δswitch (definition of d: d = V − H); a move up is applied only when the comb reads zero
-     at that placement and not at the held one (definition of the comb; owner: blank lines under the picture
-     "could be indicative … needs to be confirmed against the comb"), then reported loudly (rule 2); a move down
-     that keeps the top hidden is applied as a move (the top emerging above 23 would have shown it); the band's
-     extent alone never moves anything; unconfirmed, the geometry is held and the reading recorded as travel when it
-     is one row, reported loudly when more (rule 2);
+     top is already hidden) and Δswitch < Δtop (or, with the top hidden, Δswitch ≠ 0; Δswitch = 0 there is still):
+     the switch line's move is the field's candidate — d would change by Δswitch (definition of d: d = V − H) —
+     applied, in either direction, only when the comb reads zero at that placement and not at the held one
+     (definition of the comb; owner: blank lines under the picture "could be indicative … needs to be confirmed
+     against the comb"), then reported loudly (rule 2); the band's extent alone never moves anything; unconfirmed,
+     the geometry is held and the reading recorded as travel when it is one row, reported loudly when more (rule
+     2);
    - Δswitch = 0, Δtop ≠ 0: the row above the picture — the field did not move (the model); the top stays at
      switch line − H; unless the settled comb disagrees at the held crop and agrees at the moved one (owner: "unless
      the line shift down of new luma causes a comb disagreement on the settled comb"), then it moved;
@@ -410,13 +418,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    - anything else (different amounts): reported loudly, held (rule 2).
    A caption reads d = its row − 21 (284), compared with the account's d after the unit's case: on the seed, and
    before any lock, it places the unit (re-seeding the geometry from it); under a lock confirmed by the insert's bytes or the comb alone (both windowed or relative) a raw
-   caption is the absolute reading and re-seeds the geometry (d, H, c from that unit; reported, rule 8); under a
-   caption-confirmed lock it confirms when it equals the account's d; when it reads one row from it, it
-   re-identifies the rows — the tape's line 22 is the row below the caption (owner, 16:20: real picture there
-   "should get dropped" — the one reading the owner made decisive over the account) and the picture starts on the
-   next row — H is re-seeded from that unit and the crop re-placed (reported, rule 8); without a caption the rows'
-   identity is their signatures'; any other disagreement is logged and reported (section 7) — geometry wins (the
-   model). Two fields whose edges both move are both
+   caption is the absolute reading and re-seeds the geometry (d, H, c from that unit; reported, rule 8) — that
+   re-seed is where the tape's line 22 is identified as the row below the caption (owner, 16:20: real picture there
+   "should get dropped") and the picture as starting on the next row; under a caption-confirmed lock it confirms
+   when it equals the account's d, and any disagreement is logged and reported (section 7) — geometry wins (the
+   model; the caption line itself moves for a single unit on fixture A, measured: 2,023 one-unit flips); without a
+   caption the rows' identity is their signatures'. Two fields whose edges both move are both
    displaced (the model's "content" is the picture's body, which moves no edge). New luma at the top alone never
    moves anything (owner); most important is agreement (owner). A field partly out
    of the raster is a displacement of that field, tracked and confirmed; a field with no picture at all in a unit has
@@ -451,7 +458,7 @@ its rows; a true disagreement about the geometry (the comb not matching the plac
 either agent — it is reported to the owner as below. Invariants: on the
 commercial tape from counter 6593, the top constant, the switch-line count constant, the switch line moving only
 with the top within the partial line's one-row travel; on fixture A, the rendered picture moves only at its two relocks
-(units 300/301 and 43,737/43,738: the play-start mute and the owner's program split) and at the moves rule 8 allows (each reported; a boxing change is content the
+(units 300/301 and 43,737/43,738: the play-start mute as a signal-state relock, and the owner's program split) and at the moves rule 8 allows (each reported; a boxing change is content the
 read-back sees as a move), no placement on the snow units 43,686–43,736, field precedence
 constant within a lock. Every render (two
 captures × two fields per frame, rows doubled, red = picture top and bottom, yellow = the band bottom) is read back
