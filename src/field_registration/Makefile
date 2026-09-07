@@ -3,7 +3,7 @@ CFLAGS ?= -O3 -std=c11 -Wall -Wextra -Werror
 CPPFLAGS ?=
 LDLIBS ?= -lm
 
-.PHONY: all test legacy-trajectory-test retired-v9-test v10-rule1-test clean
+.PHONY: all test legacy-trajectory-test retired-v9-test v10-rule1-test v10-rule3-test clean
 
 all: libfieldreg.dylib tests/field_registration_unit tests/cea608_unit tests/field_registration_v10_rule1
 
@@ -37,6 +37,9 @@ retired-v9-test: tests/field_registration_v9 tests/registration_v9.raw
 v10-rule1-test: tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw
 	./tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw
 
+v10-rule3-test: tests/field_registration_v10_rule3 tests/registration_v10_rule3.raw
+	./tests/field_registration_v10_rule3 tests/registration_v10_rule3.raw
+
 tests/field_registration_v9: field_registration.c field_registration.h cea608.c cea608.h tests/field_registration_v9.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -I. field_registration.c cea608.c tests/field_registration_v9.c -o $@ $(LDLIBS)
 
@@ -48,6 +51,12 @@ tests/field_registration_v10_rule1: field_registration.c field_registration.h ce
 
 tests/registration_v10_rule1.raw: tests/gen_v10_rule1_units.py tests/gen_v9_units.py
 	python3 tests/gen_v10_rule1_units.py --output $@
+
+tests/field_registration_v10_rule3: field_registration.c field_registration.h cea608.c cea608.h tests/field_registration_v10_rule3.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I. field_registration.c cea608.c tests/field_registration_v10_rule3.c -o $@ $(LDLIBS)
+
+tests/registration_v10_rule3.raw: tests/gen_v10_rule3_units.py tests/gen_v9_units.py
+	python3 tests/gen_v10_rule3_units.py --output $@
 
 tests/field_registration_trajectory: field_registration.c field_registration.h cea608.c cea608.h tests/field_registration_trajectory.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -I. field_registration.c cea608.c tests/field_registration_trajectory.c -o $@ $(LDLIBS)
@@ -72,4 +81,5 @@ clean:
 		tests/field_registration_trajectory tests/registration_trajectory.raw \
 		tests/registration_trajectory.csv tests/field_registration_v9 \
 		tests/registration_v9.raw tests/registration_v9.csv \
-		tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw
+		tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw \
+		tests/field_registration_v10_rule3 tests/registration_v10_rule3.raw
