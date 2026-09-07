@@ -210,11 +210,8 @@ watch copy is the live path's output with its record burned in. No work product 
 
 ## 9. Open
 
-1. The lock criterion: is one observation after a reset a lock (the comparator exists), or must the Shuttle's
-   regenerated rows be stable over more than one unit first?
-2. A height change with the peak present: reported only, or also a reset?
-3. The shift gauge of rule 10: field 2's band one row longer on every tape.
-4. The V-stabilize-off pass's flagged first lines (120 units): held under the lock, or the top read through the
+1. A height change with the peak present: reported only, or also a reset?
+2. The V-stabilize-off pass's flagged first lines (120 units): held under the lock, or the top read through the
    flagging?
-5. S one row early where the partial line carries part of the other head's blanking (a partial line's left part
-   still aligns with the row above; a full other-head row's does not): a definitional refinement to apply.
+3. How to measure the hidden-top confirmation of section 3 (new luma at line 23; every band's luma shifting one row
+   down).
