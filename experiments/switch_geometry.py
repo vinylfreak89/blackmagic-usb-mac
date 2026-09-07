@@ -242,10 +242,13 @@ def process_unit(u,RU,RN):
             for r in recrows[:6]: print(f'  top-diag u{u} f{f} L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,24:696].std()):5.1f} rec {int(rec[r])} cc608 {int(bool(cc608(Y[r])[0]))} textured {int(textured(r))} corr {corr_below(r):.2f}/{corr_either(r):.2f} bright {int(bright(r))} picture {int(picture_row(r))} | sig_n {sig_n:.2f} ped {ped:.1f} body_corr {body_corr:.2f}')
         # the Shuttle's regenerated rows must be present (lines 20/21 waveforms, line 22 blank) for a source lock to exist
         vbi_ok=(float(Y[0,40:680].std())>=20 and float(Y[1,40:680].std())>=20 and ym[2]<thr and float(Y[2,40:680].std())<4*sig_b)   # 20: a presence margin (measured waveform rows 40-54, absent 0.5); moderate confidence
-        if top is None or len(recrows)<60 or not vbi_ok:
-            lock_reset(f)                                             # a lock-like loss: everything resets immediately
-            st,held,cls,n,n2=lock_update(f,None); fc,fn,fn2=FIRST[f].top()
-            w.writerow([u,CTR[u],f,-1,-1,('no-picture' if vbi_ok else 'no-vbi'),-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','','no-lock',-1,-1,-1,'reset','0/0','','0/0','']); continue
+        if not vbi_ok:
+            lock_reset(f)                                             # a lock-like loss (the decoder without sync): everything resets immediately
+            w.writerow([u,CTR[u],f,-1,-1,'no-vbi',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','','no-lock',-1,-1,-1,'reset','0/0','','0/0','']); continue
+        if top is None or len(recrows)<60:
+            # a hidden edge (torn strip, flat raster, dropout): the previous decision holds and the comparators are kept
+            comp,n,n2=BAND[f].top(); fc,fn,fn2=FIRST[f].top()
+            w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','',('hold' if comp is not None else 'acquiring'),-1,(comp if comp is not None else -1),-1,'hidden',f'{n}/{n2}',fc or '',f'{fn}/{fn2}','']); continue
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
         feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl,by_m,sig_n) for r in range(top+1,last_rec+1)}
