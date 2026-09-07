@@ -81,7 +81,7 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None,sig_n=0.0):
             k=int((e[1::2]-e[0::2]).argmax()); blank_run=int(e[1::2][k]-e[0::2][k]); blank_x=24+int(e[0::2][k])   # where along the row the other head's blanking begins
     return dict(blank_run=blank_run,blank_x=blank_x,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
 # the record is flushed per unit (Python 3.14 buffers 128 KiB, ~600 rows, before the first write)
-OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b','S_tests','band_tests','lock_state','switch_lock','band_comparator','band_rows_obs','band_class','band_counts','first_comparator','first_counts','disc_x'])
+OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','d','T','S','switch_lines','below','lost','height','how','peak_x','partial_evidence','caption_line','insert_data','line22','l22_level','comb_shift','comb_ratio','comb_static','lock_state','band_class','applied','band_comparator','band_counts','height_comparator','height_counts','events','band_tests','disc_x','blank_y','sig_b'])
 PED={1:None,2:None}   # the carried pedestal per field
 # LOCKS BY RUNNING COUNT (owner, 2026-09-07: "No magic numbers. It should be derived and stabilized. ie, check the number
 # of times that level has appeared. If it's appeared more often than any other level, then it becomes the comparator
@@ -99,6 +99,7 @@ PED={1:None,2:None}   # the carried pedestal per field
 # Lock state: 'locked' once a comparator exists; 'acquiring' before the first observation. The record carries each
 # comparator's count and the runner-up's count, so the stability of every claim is visible per unit.
 CTR={}; LASTTOP={}
+SEEN21={1:False,2:False}   # line 21 evidence seen in this source (a caption off the insert or data on the insert): line 22 is defined one line below it
 class RunMode:
     """a comparator by running count in a FIXED array (owner: "keep a fixed number. If it falls below that number it drops
     out and the entire array shifts. No dynamic memory allocation!!! (In the real C engine)"): SLOTS entries of
@@ -139,116 +140,109 @@ def lock_update(f,obs):
     elif obs>=comp-1: cls='travel'
     else: cls='short'
     return 'locked',comp,cls,n,n2
+PREV={1:None,2:None}     # the previous unit's field rasters, for the comb's static mask
+LOCKST={1:'acquiring',2:'acquiring'}; DAPPLIED={1:0,2:0}
+HEIGHT={1:RunMode(),2:RunMode()}; L22={1:RunMode(),2:RunMode()}
+def lock_reset_all():
+    for f in (1,2):
+        BAND[f]=RunMode(); HEIGHT[f]=RunMode(); L22[f]=RunMode(); LOCKST[f]='no-lock'; DAPPLIED[f]=0; PREV[f]=None; SEEN21[f]=False
+CELL608=1.986e-6*13.5e6   # the CEA-608 clock cell in samples (standard)
+def runin_burst(row):
+    """the 608 run-in burst present anywhere over the row's left 300 samples: the clock-frequency amplitude over sliding
+    64-sample windows (the run-in is 7 cycles = 188 samples; a fragment is shorter) at the decoder's own gate (35: measured
+    captions 52-60, chance picture hits 15-22)"""
+    x=row.astype(np.float64); w=2*np.pi/CELL608; best=0.0; W=int(round(3*CELL608))   # three cycles of the clock: a fragment of the burst
+    for a in range(8,300-W,16):
+        seg=x[a:a+W]-x[a:a+W].mean(); n=np.arange(a,a+W)
+        amp=np.hypot((seg*np.cos(w*n)).sum(),(seg*np.sin(w*n)).sum())*2/len(seg); best=max(best,amp)
+    # the burst sits in the left third and the row is flat after it (the run-in line's structure; a picture row with
+    # a periodic texture on the left carries content on the right too)
+    return best>=35 and float(x[300:696].std())<=4*max(float(np.diff(x[300:696]).std())/np.sqrt(2),0.5)
+def xds_bar(row):
+    """the smeared XDS-like bar (contract section 3; the frozen envelope measured 2026-09-04): 48-bin luma profile, row
+    mean < 95, bins 20..47 all <= 40, a run of >= 6 consecutive bins > 60 within bins 0..19"""
+    if float(row.mean())>=95: return False
+    prof=row[:720].reshape(48,15).mean(axis=1)
+    if (prof[20:]>40).any(): return False
+    run=0
+    for v in prof[:20]:
+        run=run+1 if v>60 else 0
+        if run>=6: return True
+    return False
 def process_unit(u,RU,RN):
     """one unit: RU = this unit's raster, RN = the next unit's (needed only with --repair)"""
     if A.only and u not in VERB: return
-    if LASTCTR[0] is not None and ((CTR[u]-LASTCTR[0])&0xffff)!=1: lock_reset(1); lock_reset(2)   # a counter discontinuity: a lock-like loss
+    gap = LASTCTR[0] is not None and ((CTR[u]-LASTCTR[0])&0xffff)!=1
     LASTCTR[0]=CTR[u]
+    M={}
     for f in (1,2):
         R=RU if (f==1 or not A.repair) else RN; slot=(2 if (f==1 and A.repair) else (1 if (f==2 and A.repair) else f))
         Y,C,by_m,sig_b,c_b=field_arrays(R,slot); base=20 if slot==1 else 283   # line = row + base (slot numbering)
         ym=Y.mean(axis=1); thr=by_m+6*sig_b
-        # a recorded row carries tape noise the regenerated rows do not: chroma noise above 2x the blank's, OR luma above
-        # the blank (a flat grey field's rows, luma 17-20 with chroma noise only 1.7x the blank's — commercial unit 800 —
-        # are recorded); the Shuttle's hard padding (Y16 C128, zero variance in both) is neither
         ystd=Y[:,40:680].std(axis=1); cstd=C.std(axis=(1,2))
         padding=(ystd==0)&(cstd==0)
-        rec=(~padding)&((cstd/c_b>2.0)|(ym>thr)|(ystd>=4*sig_b))
+        rec=(~padding)&((cstd/c_b>2.0)|(ym>thr)|(ystd>=4*sig_b))              # measured gaps: blank <= 1.48x, recorded >= 2.02x chroma noise
         recrows=[r for r in range(3,Y.shape[0]) if rec[r]]                      # rows 0..2 = lines 20/21/22 regenerated
-        # top = the first recorded row that carries picture: above the blank, not flat (the tape's black line 22 sits
-        # at luma 4-7 with std < 4 sigma_b: a VBI row, never a top), and not a CEA-608 waveform (the tape's line 21 or
-        # 20 pushed into the pass-through region by a displacement)
-        # the tape's own black (its line 22, and recorded black under the picture) sits at the pedestal or below it;
-        # the pedestal is the field's own: the lowest flat recorded row above the blank (the band's other-head black,
-        # std < 4 sigma_b), else the blank itself. A picture row is above the pedestal by more than the blank noise.
-        # recorded black (the pedestal): the field's own flat recorded row when it has one (the other head's black in
-        # the band); otherwise the last pedestal seen on this source (a per-source constant measured when available,
-        # never assumed); otherwise the blank
-        # the pedestal is the other head's black: the run of flat recorded rows contiguous with the clip (the band's
-        # bottom), never any flat row of the field — a flat dark picture (EP unit 3: lines 253-260 at luma 26, std 1-2,
-        # above the band's pedestal 13) is picture, and a flat grey field (commercial unit 800, luma 17-20, std 1.3) has
-        # no pedestal of its own
+        # the Shuttle's regenerated rows present = stable VBI (contract section 3)
+        vbi_ok=(float(Y[0,40:680].std())>=20 and float(Y[1,40:680].std())>=20 and ym[2]<thr and float(Y[2,40:680].std())<4*sig_b)   # 20: a presence margin (waveform rows 40-54 measured, absent 0.5)
+        # the pedestal: the flat run contiguous with the clip
         flat_rec=[]
         for r in reversed(recrows):
             if ym[r]>thr and float(Y[r,40:680].std())<4*sig_b: flat_rec.append(float(ym[r]))
             else: break
         if flat_rec: PED[f]=min(flat_rec)
         ped=PED[f] if PED[f] is not None else by_m
-        # a picture row is recorded and not a VBI row. VBI rows are recognised by signature, never by level: a CEA-608
-        # waveform (the tape's line 21/20), a textured row uncorrelated with the row below (caption fragments, the smeared
-        # XDS bar, run-in lines), or an isolated flat row before a textured row (the tape's black line 22 on the SP
-        # recording, luma 4-7 before the picture; the EP recording's dim row at 18 before the picture at 107). A flat row
-        # before a flat row is picture (a flat grey field; a dark band). No black level or pedestal enters the top rule
-        # (2026-09-07: with the pedestal unknown on the commercial tape, its dark first line at luma 4-5 read as 'bright'
-        # and the top wandered between 23 and 25 on a stable picture).
-        # the field's own noise: the median over its middle rows of the std of adjacent-SAMPLE differences /sqrt(2). VHS
-        # luma is band-limited near 3 MHz, so at 13.5 MHz adjacent samples of real content differ little and the
-        # difference is dominated by noise; adjacent-ROW differences (tried first) carry the picture's vertical detail
-        # and read 12-15 on the SP recording against a tape noise of 2-3
+        # the field's noise from adjacent samples (VHS luma band-limited near 3 MHz)
         mid=[r for r in range(40,200) if rec[r]]
         sig_n=float(np.median([float(np.diff(Y[r,24:696]).std()) for r in mid]))/np.sqrt(2) if len(mid)>=20 else 4*sig_b
-        def corr_rows(r,q):
-            # the maximum over horizontal lags -24..24 of the correlation between rows r and q: a torn or time-shifted
-            # picture row (every field top of the V-stabilize-off pass; the EP recording's tears) correlates at its lag;
-            # a VBI row correlates with the picture at no lag (zero-lag only, 2026-09-07 run C: the raw pass's tops read
-            # 287-289 in 68 units and unmeasurable in 57 where the rows show 286)
-            if q<0 or q>=Y.shape[0]: return 0.0
-            a=Y[r,48:672]-Y[r,48:672].mean(); na=float(np.sqrt((a*a).sum())); best=0.0
-            if na==0: return 0.0
-            for t in range(-24,25):
-                b=Y[q,48+t:672+t]; b=b-b.mean(); d=na*float(np.sqrt((b*b).sum()))
-                if d>0: best=max(best,float((a*b).sum()/d))
-            return best
-        def corr_below(r): return corr_rows(r,r+1)
-        # a VBI row correlates with NEITHER neighbour; a picture row at a horizontal edge correlates with one side (EP
-        # counter 2303: line 26 at 41.5/26.1 correlates 0.00 with 27 and with 25 above, so the row-below test alone
-        # excluded it and the field had no run of three picture rows)
-        def corr_either(r): return max(corr_rows(r,r-1) if r-1>=3 and rec[r-1] else 0.0, corr_below(r))
-        # the premise of the correlation and texture rules: adjacent picture lines correlate IN THIS FIELD. On a flat or
-        # dark scene the picture rows are noise-only (commercial counter 6645: body rows correlate at 0.1-0.3, row std
-        # 1-3 against a noise of 0.7), so 'textured' and 'uncorrelated' describe noise; the rules stand down and the top
-        # is the first recorded row that is not a waveform and not sub-black (run D read 25/287 in 107/109 stable
-        # units of the commercial tape with the rules active there)
-        body_corr=float(np.median([corr_rows(r,r+1) for r in range(40,200,8) if rec[r] and rec[r+1]])) if sum(1 for r in range(40,200,8) if rec[r] and rec[r+1])>=10 else 0.0
-        redundant=body_corr>=0.5
-        def textured(r): return redundant and float(Y[r,24:696].std())>=4*sig_n     # 4: a guess, unmeasured (low confidence)
-        def vbi_type(r): return redundant and textured(r) and corr_either(r)<0.5          # 0.5: a fitted default (measured VBI 0.01-0.36, picture 0.87-0.99)
-        # the level rule, in its physical form: on a tape with setup the tape's black line 22 sits BELOW the tape's own
-        # black (the pedestal, the other head's black in the band: SP recording 3-7 against 11.4), which no picture row
-        # does; so a SUB-BLACK row before a row that is not sub-black is VBI, and a run of sub-black rows is picture (a
-        # dark band, owner ruling 2026-09-06). On a tape without setup (black at blanking: the commercial tape) the
-        # pedestal is the blank and nothing is sub-black, so a dark first line is picture — the constancy of that tape
-        # says the same (line 23 carries grey picture at counter 6842). The earlier 'bright = above pedestal + 3 sigma_b'
-        # rule read the commercial's near-black first lines as bright and its top wandered 23/24/25 on a stable picture.
+        # caption evidence: the Shuttle's insert bytes (row 1) and a parity-valid row off the insert within the first rows
+        ins_ok,ib1,ib2,_=cc608(Y[1]); insert_data = bool(ins_ok and ((ib1 or 0)&0x7f or (ib2 or 0)&0x7f))
+        cap_row=None
+        for r in recrows[:6]:
+            ok,_,_,_=cc608(Y[r])
+            if ok: cap_row=r; break
+        # VBI rows by signature only (contract section 3); the tape's line 22 = the row under the tape's line 21
+        def flatrow(r): return float(Y[r,40:680].std())<4*sig_b
         def subblack(r): return ym[r]<ped-3*sig_b
-        r0=recrows[0] if recrows else None
-        first_state=(('black22' if (subblack(r0) and float(Y[r0,24:696].std())<4*sig_n+2*sig_b) else 'picture') if (r0 is not None and not cc608(Y[r0])[0]) else None)   # the flatness bound is an ad-hoc sum, unmeasured (low confidence)
-        FIRST[f].add(first_state); first_comp=FIRST[f].top()[0]
-        def picture_row(r):
-            if not rec[r] or cc608(Y[r])[0] or vbi_type(r): return False
-            if subblack(r):
-                if first_comp=='picture': return True                     # this source shows picture at its first row: a dark first line is crushed black
-                return (r+1<Y.shape[0] and rec[r+1] and subblack(r+1)) or (rec[r-1] and subblack(r-1))   # a sub-black row inside or ending a sub-black band is picture; a LONE one before the picture is the tape's black line 22 (the band's last row read as VBI before this: commercial counter 6672, top 25)
-            if not redundant: return True
-            return textured(r) or not (r+1<Y.shape[0] and rec[r+1] and textured(r+1))   # a flat row before a textured row is VBI (the EP recording's dim isolated row), before a flat row picture
-        bright=lambda r: not subblack(r)   # diagnostics only
-        # the top begins a run of three picture rows (a lone waveform row before a black row is VBI: a damaged caption,
-        # the tape's line 20 data)
-        # the top lies within the first four recorded rows: the tape's VBI can occupy at most lines 20-22 of the pass-
-        # through region (§2), three rows; a picture whose first picture-like row is deeper than that has a black top and
-        # its top is unmeasurable, not a brightness edge
-        top=next((r for r in recrows[:4] if picture_row(r) and picture_row(r+1) and picture_row(r+2)),None)
-        if u in VERB:
-            for r in recrows[:6]: print(f'  top-diag u{u} f{f} L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,24:696].std()):5.1f} rec {int(rec[r])} cc608 {int(bool(cc608(Y[r])[0]))} textured {int(textured(r))} corr {corr_below(r):.2f}/{corr_either(r):.2f} bright {int(bright(r))} picture {int(picture_row(r))} | sig_n {sig_n:.2f} ped {ped:.1f} body_corr {body_corr:.2f}')
-        # the Shuttle's regenerated rows must be present (lines 20/21 waveforms, line 22 blank) for a source lock to exist
-        vbi_ok=(float(Y[0,40:680].std())>=20 and float(Y[1,40:680].std())>=20 and ym[2]<thr and float(Y[2,40:680].std())<4*sig_b)   # 20: a presence margin (measured waveform rows 40-54, absent 0.5); moderate confidence
-        if not vbi_ok:
-            lock_reset(f)                                             # a lock-like loss (the decoder without sync): everything resets immediately
-            w.writerow([u,CTR[u],f,-1,-1,'no-vbi',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','','no-lock',-1,-1,-1,'reset','0/0','','0/0','']); continue
-        if top is None or len(recrows)<60:
-            # a hidden edge (torn strip, flat raster, dropout): the previous decision holds and the comparators are kept
-            comp,n,n2=BAND[f].top(); fc,fn,fn2=FIRST[f].top()
-            w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','',('hold' if comp is not None else 'acquiring'),-1,(comp if comp is not None else -1),-1,'hidden',f'{n}/{n2}',fc or '',f'{fn}/{fn2}','']); continue
+        if cap_row is not None or insert_data: SEEN21[f]=True
+        line22_row=None
+        if cap_row is not None: line22_row=cap_row+1                      # the tape's line 22 is one line below its line 21 (owner)
+        elif SEEN21[f] and rec[3] and (subblack(3) or flatrow(3)):        # without any line-21 evidence in the source no line 22 can be identified: a dark first row is picture
+            seen=[v for v in L22[f].v if v is not None]                  # the levels of the tape's line 22 seen so far (a comparator by running count)
+            if (seen and min(seen)-2*sig_b<=ym[3]<=max(seen)+2*sig_b) or (not seen and insert_data): line22_row=3
+        if line22_row is not None and line22_row<Y.shape[0] and rec[line22_row]: L22[f].add(int(round(ym[line22_row])))
+        def vbi_kind(r):
+            if cap_row is not None and r<cap_row: return 'above21'           # rows above the tape's line 21 are its lines 20 and earlier
+            ok,_,_,info=cc608(Y[r])
+            if ok: return 'cc608'
+            if info!='no run-in' or runin_burst(Y[r]): return 'runin'         # the run-in burst present, no data
+            if r==line22_row: return 'line22'
+            if xds_bar(Y[r]): return 'xds'
+            a=Y[r,24:696]-Y[r,24:696].mean(); t=Y[0,24:696]-Y[0,24:696].mean(); d=float(np.sqrt((a*a).sum()*(t*t).sum()))
+            if d>0 and float((a*t).sum()/d)>=0.8: return 'line20'                 # the tape's line-20 timing pattern = the Shuttle's regenerated one (0.8: a template-match aperture)
+            if SEEN21[f] and flatrow(r) and r+3<Y.shape[0] and all(rec[q] for q in (r+1,r+2,r+3)) and ym[r]<0.5*float(ym[r+1:r+4].mean()): return 'gap'   # the tape's grey line 22 (owner ruling 2026-09-05), only where line 21 has been seen in the source
+            return ''
+        vbi={r:vbi_kind(r) for r in recrows[:6]}
+        for r,k in vbi.items():
+            if k=='gap' and line22_row is None: L22[f].add(int(round(ym[r])))   # the grey line 22 is the tape's line 22 too (owner ruling 2026-09-05): its level feeds the comparator
+        top=next((r for r in recrows if not vbi.get(r,'')),None) if recrows else None   # the first picture row (owner)
+        M[f]=dict(Y=Y,C=C,by_m=by_m,sig_b=sig_b,c_b=c_b,base=base,slot=slot,ym=ym,thr=thr,rec=rec,recrows=recrows,vbi_ok=vbi_ok,ped=ped,sig_n=sig_n,
+                  insert_data=insert_data,cap_row=cap_row,line22_row=line22_row,vbi=vbi,top=top)
+    # unit-level lock-like loss (owner: both fields at once): a counter discontinuity, regenerated rows absent in either field,
+    # or no picture in both fields (a snow-like candidate; the signal-state layer's verdict is the input in the live path)
+    loss = gap or (not M[1]['vbi_ok']) or (not M[2]['vbi_ok']) or (M[1]['top'] is None and M[2]['top'] is None)
+    if loss: lock_reset_all()
+    for f in (1,2):
+        m=M[f]; Y=m['Y']; base=m['base']; slot=m['slot']; ym=m['ym']; thr=m['thr']; rec=m['rec']; recrows=m['recrows']; top=m['top']
+        by_m=m['by_m']; sig_b=m['sig_b']; ped=m['ped']; sig_n=m['sig_n']
+        clipr=(262 if slot==1 else 525); clip_row=clipr-base
+        if loss or top is None or len(recrows)<60:
+            why=('reset' if loss else 'hidden')
+            st=('no-lock' if loss else (LOCKST[f] if LOCKST[f]!='acquiring' else 'acquiring'))
+            if not loss and LOCKST[f]=='locked': st='hold'
+            w.writerow([u,CTR[u],f,(top+base) if top is not None else -1,-1,-1,-1,-1,-1,-1,-1,'','','',-1,'','',-1,'','','',st,why,DAPPLIED[f],'','','','','','',round(by_m,2),round(sig_b,2)])
+            continue
+        d=top-3                                                               # the offset: the rows above the picture from line 23 (bands above)
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
         feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl,by_m,sig_n) for r in range(top+1,last_rec+1)}
@@ -305,27 +299,80 @@ def process_unit(u,RU,RN):
             narrow_flat = pf['width']<=12 and pf['above_range']<pf['spike']/2 and pf['spike']>pf['dm']+5*pf['dsig']
             ev=f"spike {pf['spike']:.0f}@{pf['x']} w{pf['width']} rank {spk_rank:.2f} narrowflat {int(narrow_flat)} wlag {pf['wlag']} r {pf['wr']:.2f}"
             if narrow_flat and spk_rank>=1.0: px=pf['x']; how='shifted+peak_above'
-        reliable=(sw-top) if sw is not None else (last_rec-top+1); band=(last_rec-sw+1) if sw is not None else 0
-        clipr=(262 if slot==1 else 525); obs=(clipr-(sw+base)+1) if sw is not None else None   # the observed band count S..clip
-        st,held,cls,n,n2=lock_update(f,obs); fc,fn,fn2=FIRST[f].top()
-        if cls=='short' and obs is not None: cls='dropped' if (LASTTOP.get(f)==top) else 'fell-out'   # rows lost: with the top still, the picture dropped under a clamped top; with the top moved, the field fell out of the raster
-        LASTTOP[f]=top
-        swl=(top+base+240-held) if held is not None else -1                   # the switch line under the lock: 240 - max rows below the top, so it moves with the picture
-        if cls in ('band+','dropped','fell-out') and px>=0: cls+='(peak)'
-        # the horizontal position of the timing discontinuity at S-1 / S / S+1: 'row:blank_x/lead_run_end/transient_x'
-        def discx(r):
-            if r not in feats: return ''
-            ft=feats[r]; return f"{r+base}:{ft['blank_x']}/{(6+ft['lead_run']) if ft['lead_run']>0 else -1}/{ft['x'] if ft['spike']>M_spk else -1}"
-        disc='|'.join(discx(r) for r in ((sw-1,sw,sw+1) if sw is not None else ()))
-        lockcols=[st,swl,(held if held is not None else -1),(obs if obs is not None else -1),cls,f'{n}/{n2}',fc or '',f'{fn}/{fn2}',disc]
-        w.writerow([u,CTR[u],f,top+base,(sw+base) if sw is not None else -1,how,px,ev,reliable,band,last_rec+base,reliable+band,(feats[sw]['wlag'] if sw is not None else ''),(round(feats[sw]['wr'],2) if sw is not None else ''),body_lag,round(body_r,2),M_run,round(M_spk,0),round(by_m,2),round(sig_b,2),(tests(sw) if sw is not None else ''),('|'.join(f'{r+base}:{tests(r)}' for r in range(sw,last_rec+1)) if sw is not None else '')]+lockcols)
+        # the top switch line: S-1 where S-1 carries the partial line's evidence (the peak / a departing later segment), else S
+        T=None; n_sw=0; n_below=0; lost=0
+        if sw is not None:
+            pf=feats.get(sw-1); partial = pf is not None and (px>=0 or (abs(pf['wlag'])>=2 and pf['wr']<=0.90))
+            T=sw-1 if partial else sw
+            # the switch lines: contiguous rows from T down that carry a switch signature; below them, rows at the pedestal/blank to the clip
+            n_sw=clip_row-T+1                                                 # the switch band: the top switch line to the clip (the TBC's blacked switch lines included)
+            n_below=sum(1 for r in range(T,last_rec+1) if r in feats and flat(feats[r],r))   # its black rows (pedestal), reported: blank under the picture is comb-confirmed evidence, never an actuator
+            lost=0
+        h=(T-3) if T is not None else None                                    # the height: rows from line 23 to the row before the switch line
+        # comparators (running count, fixed arrays): the switch-line count and the height
+        BAND[f].add(n_sw if T is not None else None); HEIGHT[f].add(h)
+        bc,bn,bn2=BAND[f].top(); hc,hn,hn2=HEIGHT[f].top(); l22,ln,ln2=L22[f].top()
+        # band class against the switch-line comparator: equal or one less = the travel; more = band+; less = short (rows under the band grew)
+        cls='' if bc is None or T is None else ('travel' if bc-1<=n_sw<=bc else ('band+' if n_sw>bc else 'short'))
+        # the comb: the relative vertical shift of the two crops that minimises the weave's comb energy on static picture
+        # (static = both fields' rows unchanged against the previous unit within the noise); computed once both fields are measured
+        m['d']=d; m['T']=T; m['h']=h; m['n_sw']=n_sw; m['n_below']=n_below; m['lost']=lost; m['sw']=sw; m['how']=how; m['px']=px; m['ev']=ev
+        m['feats']=feats; m['tests']=tests; m['M_spk']=M_spk; m['last_rec']=last_rec; m['cls']=cls; m['comp']=(bc,bn,bn2,hc,hn,hn2,l22,ln,ln2)
+    comb_s=None; comb_r=None; static_frac=0.0
+    if all(f in M and M[f].get('T') is not None or (f in M and 'd' in M[f]) for f in (1,2)) and 'd' in M[1] and 'd' in M[2]:
+        Y1=M[1]['Y']; Y2=M[2]['Y']; d1=M[1]['d']; d2=M[2]['d']
+        if PREV[1] is not None and PREV[2] is not None:
+            n=min(200,Y1.shape[0]-3-d1-8,Y2.shape[0]-3-d2-8)
+            A1=Y1[3+d1:3+d1+n,24:696]; A2=Y2[3+d2:3+d2+n,24:696]
+            st1=np.abs(A1-PREV[1][3+d1:3+d1+n,24:696])<=4*M[1]['sig_n']; st2=np.abs(A2-PREV[2][3+d2:3+d2+n,24:696])<=4*M[2]['sig_n']
+            det=np.abs(A1[:-1]-A1[1:])>4*M[1]['sig_n']; det=np.concatenate((det,det[-1:]),axis=0)   # vertical detail in field 1 (a flat area combs at no shift)
+            static=st1&st2&det; static_frac=float(static.mean())
+            if static.sum()>=0.03*static.size:                                   # enough static, detailed picture to measure (3%: the harness's own aperture)
+                # the weave's comb energy: field-1 row i, field-2 row i+sh, field-1 row i+1 interleaved; a registered weave is
+                # smooth line to line, a misregistered one alternates; measured as the mean second difference along the
+                # weave over static, detailed pixels, after an 8-sample horizontal low-pass (the same metric as the
+                # project's static_comb_metric.py)
+                k=np.ones(8)/8.0
+                L1=np.apply_along_axis(lambda r: np.convolve(r,k,mode='same'),1,A1); L2=np.apply_along_axis(lambda r: np.convolve(r,k,mode='same'),1,A2)
+                E={}
+                for sh in range(-3,4):                                            # the range: whatever is required (owner); ±3 covers every displacement seen
+                    lo=max(0,-sh); hi=n-1-max(0,sh)
+                    if hi-lo<20: continue
+                    a=L1[lo:hi]; b=L2[lo+sh:hi+sh]; c=L1[lo+1:hi+1]
+                    dd=np.abs(a-2*b+c); msk=static[lo:hi]&static[lo+sh:hi+sh]&static[lo+1:hi+1]
+                    E[sh]=float(dd[msk].mean()) if msk.any() else None
+                E={k:v for k,v in E.items() if v is not None}
+                if len(E)>=3:
+                    best=min(E,key=E.get); ss=sorted(E.values()); comb_s=best; comb_r=(ss[0]/ss[1]) if ss[1]>0 else 1.0
+        PREV[1]=Y1.copy(); PREV[2]=Y2.copy()
+    for f in (1,2):
+        m=M[f]
+        if 'd' not in m: continue
+        base=m['base']; top=m['top']; d=m['d']; T=m['T']; sw=m['sw']
+        bc,bn,bn2,hc,hn,hn2,l22,ln,ln2=m['comp']
+        # the lock: comparators plus one confirmation — a caption placing the field (its line 21 two rows above the picture, or
+        # the insert carrying data with the top at 23..24) or the comb agreeing at these crops
+        cap_ok = (m['cap_row'] is not None and m['cap_row']+2==top) or (m['insert_data'] and d<=1)
+        comb_ok = (comb_s==0 and comb_r is not None and comb_r<=0.8)
+        comb_bad = (comb_s is not None and comb_s!=0 and comb_r is not None and comb_r<=0.8)
+        if LOCKST[f]!='locked' and bc is not None and (cap_ok or comb_ok): LOCKST[f]='locked'
+        st=LOCKST[f]
+        applied = d if st=='locked' else 0
+        DAPPLIED[f]=applied
+        events=[]
+        if m['cls']=='band+': events.append('band+')
+        if m['cls']=='short': events.append('short')
+        if hc is not None and m['h'] is not None and m['h']!=hc: events.append(f'height{m["h"]-hc:+d}'+('p' if m['px']>=0 else 'a'))
+        if comb_bad: events.append(f'comb{comb_s:+d}')
+        if m['n_below']>0: events.append(f'below{m["n_below"]}')
+        disc='|'.join(f"{r+base}:{m['feats'][r]['blank_x']}/{(6+m['feats'][r]['lead_run']) if m['feats'][r]['lead_run']>0 else -1}/{m['feats'][r]['x'] if m['feats'][r]['spike']>m['M_spk'] else -1}" for r in ((sw-1,sw,sw+1) if sw is not None else ()) if r in m['feats'])
+        band_tests='|'.join(f"{r+base}:{m['tests'](r)}" for r in range(sw,m['last_rec']+1)) if sw is not None else ''
+        w.writerow([u,CTR[u],f,top+base,d,(T+base) if T is not None else -1,(sw+base) if sw is not None else -1,m['n_sw'],m['n_below'],m['lost'],m['h'] if m['h'] is not None else -1,
+                    m['how'],m['px'],m['ev'],(m['cap_row']+base) if m['cap_row'] is not None else -1,int(m['insert_data']),(m['line22_row']+base) if m['line22_row'] is not None else -1,
+                    (l22 if l22 is not None else -1),(comb_s if comb_s is not None else ''),(round(comb_r,2) if comb_r is not None else ''),round(static_frac,3),
+                    st,m['cls'],applied,(bc if bc is not None else -1),f'{bn}/{bn2}',(hc if hc is not None else -1),f'{hn}/{hn2}',';'.join(events),band_tests,disc,round(m['by_m'],2),round(m['sig_b'],2)])
         if u in VERB:
-            sys.stdout.flush(); print(f'unit {u} field {f}: top L{top+base} switch {("L%d"%(sw+base)) if sw is not None else "none"} ({how}) peak_x {px} reliable {reliable} band {band} last_rec L{last_rec+base} | body max lag {M_lag} dm {M_dm:.1f} lead_run {M_run} narrow-spike {M_spk:.0f}')
-            for r in range(max(top+20,last_rec-9),last_rec+1):
-                ft=feats[r]; f2=feats2.get(r)
-                why=''.join(k for k,v in (('W',step(ft,r,False)),('T',torn(ft)),('F',flat(ft,r)),('R',ft['lead_run']>M_run+8),('D',ft['dip_absent']),('B',blanked(ft))) if v)
-                why2=''.join(k for k,v in (('W',step(f2,r,True)),('T',False),('F',flat(f2,r)),('R',f2['lead_run']>M_run+8),('D',f2['dip_absent']),('B',blanked(f2))) if v) if f2 else '-'
-                print(f'    L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,40:680].std()):4.1f} lagmed {ft["lagmed"]} n {ft["n"]} dm {ft["dm"]:5.1f} dsig {ft["dsig"]:5.1f} wlag {ft["wlag"]} r {ft["wr"]:.2f} spike {ft["spike"]:5.0f}@{ft["x"]} w{ft["width"]} run {ft["lead_run"]} band {int(band_row(r))} [{why}|{why2}] peak {int(peak(ft,r))}')
+            sys.stdout.flush(); print(f"unit {u} field {f}: top L{top+base} d {d} T {('L%d'%(T+base)) if T is not None else 'none'} S {('L%d'%(sw+base)) if sw is not None else 'none'} switch lines {m['n_sw']} below {m['n_below']} lost {m['lost']} h {m['h']} | comp band {bc} {bn}/{bn2} height {hc} {hn}/{hn2} l22 {l22} | cap {m['cap_row']} ins {int(m['insert_data'])} l22row {m['line22_row']} vbi {dict((k+base,v) for k,v in m['vbi'].items() if v)} | comb {comb_s} {comb_r} static {static_frac:.3f} | {st} {m['cls']} applied {applied} {events}")
 # the walk: units are processed as they arrive, holding at most two rasters (the capture is never loaded whole — a
 # 608-unit capture is 460 MB per process and four of them drove the host into swap, 2026-09-07)
 buf=bytearray(); pend=[]; N=[0]

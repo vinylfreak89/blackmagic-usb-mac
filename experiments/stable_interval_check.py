@@ -9,6 +9,8 @@ import sys, csv, argparse, collections
 ap=argparse.ArgumentParser(); ap.add_argument('sg'); ap.add_argument('--from-counter',type=int,default=6593); ap.add_argument('--clip',default='262,525'); A=ap.parse_args()
 clip={ '1':int(A.clip.split(',')[0]), '2':int(A.clip.split(',')[1]) }
 rows=[r for r in csv.DictReader(open(A.sg)) if int(r['counter'])>=A.from_counter]
+for r in rows:   # the current record names the top switch line T; the earlier records named S
+    if 'S_first_shifted' not in r: r['S_first_shifted']=r.get('T','-1') or '-1'
 print(f'stable interval: counter >= {A.from_counter}: {len({r["unit"] for r in rows})} units')
 bad=0
 for f in ('1','2'):

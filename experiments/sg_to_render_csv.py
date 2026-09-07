@@ -22,7 +22,9 @@ for u in sorted(by):
     if u not in cnt: continue
     out=[u,cnt[u]]
     for f in ('1','2'):
-        r=(by.get(u-1,{}).get('2') if f=='1' else by[u].get('1')) if A.repair_slots else by[u].get(f); top=int(r['top']) if r else -1; last=int(r['last_rec']) if r else -1; S=int(r['S_first_shifted']) if r else -1
+        r=(by.get(u-1,{}).get('2') if f=='1' else by[u].get('1')) if A.repair_slots else by[u].get(f); top=int(r['top']) if r else -1
+        S=int(r['S']) if (r and r.get('S') not in (None,'')) else (int(r['S_first_shifted']) if (r and r.get('S_first_shifted') not in (None,'')) else -1)
+        T=int(r['T']) if (r and r.get('T') not in (None,'')) else -1 if r else -1
         if BS and u in BS and top>0:
             b=BS[u]; o='2' if f=='1' else '1'
             def dec(k): return b[f'f{k}_shift']!='' and float(b[f'f{k}_ratio'])<=0.8 and int(b[f'f{k}_shift'])!=0
@@ -36,9 +38,10 @@ for u in sorted(by):
         # constant: the chroma-recorded last row falls short of it on dark units (the decoder's chroma noise drops with
         # the signal), which is a measurement limit, not geometry
         CLIP=262 if f=='1' else 525
-        lock=int(r.get('switch_lock',-1) or -1) if r else -1; state=(r.get('lock_state','') if r else '')
-        if state and state!='locked': atop=-1                      # no lock, no geometry (owner, 2026-09-07 §10.6)
-        bottom=(min(atop+239,(lock-1) if lock>0 else CLIP) if atop>0 else -1)   # the picture ends at the held switch line; rows past it are lost under the band
-        out+=[atop,bottom,S if S>0 else -1,(lock if lock>0 else S)]
+        state=(r.get('lock_state','') if r else '')
+        if state and state!='locked': atop=-1                      # no lock, no geometry (contract rule 5)
+        # the picture bottom is the row above the top switch line (contract, closure); rows past the clip are lost
+        bottom=(min(atop+239,(T-1) if T>0 else CLIP) if atop>0 else -1)
+        out+=[atop,bottom,CLIP,(T if T>0 else S)]
     w.writerow(out)
 print('rows',len(by),'->',sys.argv[2],'| body corrections applied',corrected)
