@@ -200,8 +200,21 @@ def process_unit(u,RU,RN):
             if xds_bar(Y[r]): return 'xds'
             a=Y[r,24:696]-Y[r,24:696].mean(); t=Y[0,24:696]-Y[0,24:696].mean(); d=float(np.sqrt((a*a).sum()*(t*t).sum()))
             if d>0 and float((a*t).sum()/d)>=0.8: return 'line20'                 # the tape's line-20 timing pattern = the Shuttle's regenerated one (0.8: a template-match aperture)
-            if flatrow(r) and r+3<Y.shape[0] and all(rec[q] for q in (r+1,r+2,r+3)) and ym[r]<0.5*float(ym[r+1:r+4].mean()) and all(ym[q]>ped+6*sig_b for q in (r+1,r+2,r+3)): return 'gap'   # the tape's grey line 22 (owner ruling 2026-09-05) over PICTURE rows; a dark row over dark rows is a dark scene (commercial tape, 2026-09-07)
+            # the tape's grey line 22 (owner ruling 2026-09-05): read on the run of dark flat rows from the top (at most three:
+            # the tape's lines 20-22) against the three picture rows under the run; a dark row over dark rows is a dark scene
+            if r in gaprun: return 'gap'
             return ''
+        gaprun=set()
+        if recrows:
+            run=[]
+            for r in recrows[:3]:
+                if r==3+len(run) and flatrow(r): run.append(r)
+                else: break
+            if run:
+                below=[run[-1]+1,run[-1]+2,run[-1]+3]
+                if all(q<Y.shape[0] and rec[q] and ym[q]>ped+6*sig_b for q in below):
+                    m3=float(np.mean([ym[q] for q in below]))
+                    if all(ym[q]<0.5*m3 for q in run): gaprun=set(run)
         vbi={r:vbi_kind(r) for r in recrows[:6]}
         top=next((r for r in recrows if not vbi.get(r,'')),None) if recrows else None   # the first picture row (owner)
         M[f]=dict(Y=Y,C=C,by_m=by_m,sig_b=sig_b,c_b=c_b,base=base,slot=slot,ym=ym,thr=thr,rec=rec,recrows=recrows,vbi_ok=vbi_ok,ped=ped,sig_n=sig_n,

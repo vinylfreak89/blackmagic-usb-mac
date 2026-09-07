@@ -174,10 +174,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   flat row at the level its line 21 has placed before: the level comparator is fed only by the row below a decoded
   caption or below the XDS bar), the tape's grey line 22 (a flat row under half the brightness of the three rows
   below it, owner ruling 2026-09-05, those rows being picture — above the pedestal by more than the blanking rows'
-  noise; a dark
-  row over dark rows is a dark scene: on the commercial tape lines 23–25 read 4.0/5.8/12.4 through one 177-unit
-  scene and line 23 tracks line 24 across units with correlation 1.00, measured 2026-09-07). The signatures are
-  read on the rows above the picture only; a bottom letterbox bar never meets them.
+  noise; read on the run of dark flat rows at the top, at most three — the tape's lines 20–22 — against the three
+  picture rows under the run, so the tape's blank line 21 and black line 22 without caption service are both VBI;
+  a dark row over dark rows is a dark scene: on the commercial tape lines 23–25 read 4.0/5.8/12.4 through one
+  177-unit scene and line 23 tracks line 24 across units with correlation 1.00, measured 2026-09-07). The
+  signatures are read on the rows above the picture only, from line 23 down; the picture top is the first row
+  they do not claim; a bottom letterbox bar never meets them. Per unit the order is: recorded rows, the
+  signatures and the top, the body rows below the top, S from the bottom up, the clip reading, then the account.
   "Line 22" in this document is the TAPE's line 22 wherever it lands in the raster (line 23 at +1); the Shuttle's own
   line 22 (row 18) is regenerated blanking and is only ever a stable-VBI check. The tape's line 22 is one line below the tape's line 21; it carries a specific level or
   sometimes faint picture (owner). Its level is a comparator by running count (owner: "derived and stabilized"), not a constant.
@@ -289,7 +292,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   switch lies in S or the partial line above it. **Segment lag**: the horizontal lag, in samples, at which a short
   segment of a row best matches the row above (55-sample segments, lags −24 to +24: apertures). **Provenance error**: a capture whose
   packet accounting (the capture reader's, an input) is not complete at a unit; the engine emits no record from it
-  on (fail closed).
+  on to the end of the capture (fail closed).
 - **Displacement**: d.
 - **Comparator**: the value seen most often since the last reset, held in a fixed array of eight slots (owner: "8
   sounds fine"); equal counts do not change the ordering (owner); a ninth distinct value takes the slot of the
@@ -404,11 +407,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    - Δtop = Δswitch ≠ 0: the field moved (rule 2, the switch line follows the picture); d changes by that amount; the
      settled comb must agree at the moved crop — a disagreement is reported as a true disagreement (section 7), the
      move stands (rule 1);
-   - the signature top at 23 with the expectation at or above 23 (the top pinned: it cannot show a move above 23,
+   - the signature top at 23 with the expectation at 23 or hidden above it (23 + d ≤ 23; the top pinned: it cannot show a move above 23,
      so Δtop is censored — an upper bound on the top's move when the expectation is 23, no reading at all when the
      top is already hidden) and Δswitch < Δtop (or, with the top hidden, Δswitch ≠ 0; Δswitch = 0 there is still):
      the switch line's move is the field's candidate — d would change by Δswitch (definition of d: d = V − H) —
-     applied, in either direction, only when the comb reads zero at that placement and not at the held one
+     applied — up, or with the top hidden in either direction — only when the comb reads zero at that placement
+     and not at the held one
      (definition of the comb; owner: blank lines under the picture "could be indicative … needs to be confirmed
      against the comb"), then reported loudly (rule 2); the band's extent alone never moves anything; unconfirmed,
      the geometry is held and the reading recorded as travel when it is one row, reported loudly when more (rule
@@ -430,8 +434,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    before any lock, it places the unit (re-seeding the geometry from it); under a lock confirmed by the insert's bytes or the comb alone (both windowed or relative) a raw
    caption is the absolute reading and re-seeds the geometry (d, H, c from that unit; reported, rule 8) — that
    re-seed is where the tape's line 22 is identified as the row below the caption (owner, 16:20: real picture there
-   "should get dropped") and the picture as starting on the next row; under a caption-confirmed lock it confirms
-   when it equals the account's d, and any disagreement is logged and reported (section 7) — geometry wins (the
+   "should get dropped") and the picture as starting on the next row; under a caption-confirmed lock (which keeps that
+   status when the caption stops) it confirms when it equals the account's d, and any disagreement is logged and
+   reported (section 7) — geometry wins (the
    model; the caption line itself moves for a single unit on fixture A, measured: 2,023 one-unit flips); without a
    caption the rows' identity is their signatures'. Two fields whose edges both move are both
    displaced (the model's "content" is the picture's body, which moves no edge). New luma at the top alone never
