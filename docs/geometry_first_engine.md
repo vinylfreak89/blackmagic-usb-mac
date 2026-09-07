@@ -4,7 +4,9 @@ The single current contract for the registration engine and its validation harne
 the engine (`experiments/switch_geometry.py`), Codex the harness (`experiments/geometry_oracle/`, branch
 `geometry-first-harness`); neither reads the other's code. Line numbers are NTSC lines; unit row r is line r+4.
 Every number is a standard (NTSC, SMPTE RP-202, CEA-608), a measurement on the captures (stated with its value), a
-memory capacity, or a measurement aperture named as such; any other number in the code is a defect.
+memory capacity, a measurement aperture named as such, a test point inside a measured gap (stated with the gap), or
+a fitted default labelled as such; any other number in the code is a defect. "Variation" and "spread" are the
+standard deviation of a row's samples 40–680.
 
 ## 1. The owner's rules, verbatim
 
@@ -136,7 +138,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   picture top to the row before the switch line are the same in both passes (237 at units 20, 105, 200).
 - The commercial tape's picture is stable from counter 6593 onward (before it the tape is rewinding); its pedestal
   measures 9–11, the same as fixture A's 11.4 (both tapes have setup); its head switch sits on line 260 or 261 in
-  every measurable unit, and with the peak present the rows from the top to the switch row are 238 in 31 of 36
+  every measurable unit, and with the peak present the rows from the top to the row before the switch row are 238 in 31 of 36
   field-1 units and 237 in 48 of 59 field-2 units.
 - Field 2's band is one row longer than field 1's on the SP, EP and commercial tapes (SP, TBC off: field 1 two rows
   in 427 of 606 units, field 2 three or four rows in 597 of 608).
@@ -166,11 +168,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   line-20 timing pattern (correlation at least 0.8 with the Shuttle's regenerated line 20, an aperture), the smeared
   XDS bar (measured on the EP recording, frozen 2026-09-04: 48-bin luma profile, row mean under 95, bins 20–47 at
   most 40, a run of at least six bins over 60 within bins 0–19), the tape's line 22 by
-  position (the row below a decoded caption or below the XDS bar: one line below its line 21, whatever it carries),
+  position (the row below a raw parity-valid caption line or below the XDS bar — never the Shuttle's insert: one
+  line below its line 21, whatever it carries),
   the tape's black line 22 (a
   flat row at the level its line 21 has placed before: the level comparator is fed only by the row below a decoded
   caption or below the XDS bar), the tape's grey line 22 (a flat row under half the brightness of the three rows
-  below it, owner ruling 2026-09-05, those rows being picture — above the pedestal by more than the noise; a dark
+  below it, owner ruling 2026-09-05, those rows being picture — above the pedestal by more than the blanking rows'
+  noise; a dark
   row over dark rows is a dark scene: on the commercial tape lines 23–25 read 4.0/5.8/12.4 through one 177-unit
   scene and line 23 tracks line 24 across units with correlation 1.00, measured 2026-09-07). The signatures are
   read on the rows above the picture only; a bottom letterbox bar never meets them.
@@ -191,7 +195,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - **The account**: the comparison, per field per unit, of the two edge readings (signature top, switch-line reading)
   with the geometry's expectation and the segment's constants (rule 9); its reading is d, its crop 23 + d. A
   **segment** runs from the capture's first unit or a lock-like loss to the next lock-like loss; its seed is the
-  first unit with both edges readable and the regenerated rows present; H, c and d are per field; after Unknown or
+  first unit with both edges readable (on a source without a head switch, rule 10, the top and the clip) and the
+  regenerated rows present; H, c and d are per field; after Unknown or
   held units the expectation is the last applied decision. Under the capture's pairing input the engine's field 1 is
   the re-paired first field (origin 23), field 2 the second (286) — section 2's "field 1/2" are the transport's
   slots; the output weaves each field at its own crop,
@@ -302,7 +307,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   the account's reading — the comb cannot see an offset both fields share; a caption is the only absolute
   confirmation — and the record names which confirmed it. Decoded bytes on the Shuttle's insert with no raw caption
   anywhere in the field confirm the account's d when |d| ≤ 1 (the tape's line 21 is then inside the Shuttle's
-  window and overwritten; measured 2026-09-05); at |d| ≥ 2 the raw caption is the confirmation. The lock is per
+  window and overwritten; measured 2026-09-05) — a windowed confirmation, the owner's "captions" read to include the
+  Shuttle's decode, labelled a choice; at |d| ≥ 2 the raw caption is the confirmation. The lock is per
   field: a caption
   confirms its field, a decisive comb zero confirms both fields' relative placement; each field's output leaves standard
   placement at its own lock. **Lock-like loss**: snow-like signal, a vertical tear (cross-program or true), a counter
@@ -379,9 +385,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    (owner, 2026-09-03), whatever the raster carries there. At negative d the raster rows the Shuttle regenerated
    stand in for the hidden lines (owner, 16:20; definition of the crop).
 8. The output picture — the picture's content on the render; the crop origin 23 + d moves with every applied d so
-   that the content does not — never moves except at a segment's initial lock, after a re-acquisition, and at a
-   caption re-seed (rule 9: the correction of the initial lock's seed, reported loudly whenever it happens) — and returns to standard placement at a lock-like
-   loss (rule 5); this list is the one list; field precedence (which field's line
+   that the content does not — never moves except at a segment's initial lock, after a re-acquisition, and at the
+   corrections of the initial lock's seed (rule 9: a caption re-seed, a comb-confirmed hidden-top move, the
+   row-above exception — each reported loudly whenever it happens) — and returns to standard placement at a
+   lock-like loss (rule 5); this list is the one list; field precedence (which field's line
    sits between the other's) is settled once per lock from the capture's pairing (definition of the comb) and held;
    boxed pictures are kept as broadcast; black level is never assumed. Snow-like signal, vertical tears (an
    appearance class of that layer), splices and relocks are delivered by the signal-state layer and packet accounting
