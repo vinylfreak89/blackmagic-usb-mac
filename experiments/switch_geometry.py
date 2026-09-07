@@ -147,8 +147,15 @@ def process_unit(u,RU,RN):
         # counter 2303: line 26 at 41.5/26.1 correlates 0.00 with 27 and with 25 above, so the row-below test alone
         # excluded it and the field had no run of three picture rows)
         def corr_either(r): return max(corr_rows(r,r-1) if r-1>=3 and rec[r-1] else 0.0, corr_below(r))
-        def textured(r): return float(Y[r,24:696].std())>=4*sig_n
-        def vbi_type(r): return textured(r) and corr_either(r)<0.5          # 0.5: a fitted default (measured VBI 0.01-0.36, picture 0.87-0.99)
+        # the premise of the correlation and texture rules: adjacent picture lines correlate IN THIS FIELD. On a flat or
+        # dark scene the picture rows are noise-only (commercial counter 6645: body rows correlate at 0.1-0.3, row std
+        # 1-3 against a noise of 0.7), so 'textured' and 'uncorrelated' describe noise; the rules stand down and the top
+        # is the first recorded row that is not a waveform and not sub-black (run D read 25/287 in 107/109 stable
+        # units of the commercial tape with the rules active there)
+        body_corr=float(np.median([corr_rows(r,r+1) for r in range(40,200,8) if rec[r] and rec[r+1]])) if sum(1 for r in range(40,200,8) if rec[r] and rec[r+1])>=10 else 0.0
+        redundant=body_corr>=0.5
+        def textured(r): return redundant and float(Y[r,24:696].std())>=4*sig_n
+        def vbi_type(r): return redundant and textured(r) and corr_either(r)<0.5          # 0.5: a fitted default (measured VBI 0.01-0.36, picture 0.87-0.99)
         # the level rule, in its physical form: on a tape with setup the tape's black line 22 sits BELOW the tape's own
         # black (the pedestal, the other head's black in the band: SP recording 3-7 against 11.4), which no picture row
         # does; so a SUB-BLACK row before a row that is not sub-black is VBI, and a run of sub-black rows is picture (a
@@ -159,7 +166,8 @@ def process_unit(u,RU,RN):
         def subblack(r): return ym[r]<ped-3*sig_b
         def picture_row(r):
             if not rec[r] or cc608(Y[r])[0] or vbi_type(r): return False
-            if subblack(r): return r+1<Y.shape[0] and rec[r+1] and subblack(r+1)
+            if subblack(r): return (r+1<Y.shape[0] and rec[r+1] and subblack(r+1)) or (rec[r-1] and subblack(r-1))   # a sub-black row inside or ending a sub-black band is picture; a LONE one before the picture is the tape's black line 22 (the band's last row read as VBI before this: commercial counter 6672, top 25)
+            if not redundant: return True
             return textured(r) or not (r+1<Y.shape[0] and rec[r+1] and textured(r+1))   # a flat row before a textured row is VBI (the EP recording's dim isolated row), before a flat row picture
         bright=lambda r: not subblack(r)   # diagnostics only
         # the top begins a run of three picture rows (a lone waveform row before a black row is VBI: a damaged caption,
@@ -169,7 +177,7 @@ def process_unit(u,RU,RN):
         # its top is unmeasurable, not a brightness edge
         top=next((r for r in recrows[:4] if picture_row(r) and picture_row(r+1) and picture_row(r+2)),None)
         if u in VERB:
-            for r in recrows[:6]: print(f'  top-diag u{u} f{f} L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,24:696].std()):5.1f} rec {int(rec[r])} cc608 {int(bool(cc608(Y[r])[0]))} textured {int(textured(r))} corr {corr_below(r):.2f}/{corr_either(r):.2f} bright {int(bright(r))} picture {int(picture_row(r))} | sig_n {sig_n:.2f} ped {ped:.1f}')
+            for r in recrows[:6]: print(f'  top-diag u{u} f{f} L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,24:696].std()):5.1f} rec {int(rec[r])} cc608 {int(bool(cc608(Y[r])[0]))} textured {int(textured(r))} corr {corr_below(r):.2f}/{corr_either(r):.2f} bright {int(bright(r))} picture {int(picture_row(r))} | sig_n {sig_n:.2f} ped {ped:.1f} body_corr {body_corr:.2f}')
         if top is None or len(recrows)<60: w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','']); continue
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
