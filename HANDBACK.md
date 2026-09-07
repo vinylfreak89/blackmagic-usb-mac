@@ -66,7 +66,10 @@ running-count comparator is the level of the tape's line 22 (12:52); a caption m
 to, in `/private/tmp/hw-session/briefs/antecedents_1253_1603.md`); the rewind is unlocked because nothing confirms
 it; snow and relocks are the signal-state layer's events, and the offline record is produced by the replay path that
 runs that layer (`frameserver_replay`), so it needs no separate input; the comparator's "fixed number" is its array
-of eight slots, counts never decrement. Still open for the owner: see the consolidated question list.
+of eight slots, counts never decrement. Open for the owner (asked 21:07): whether significant clean picture luma
+also confirms a first lock (his 2026-09-06 22:13) or the later "combing, captions or both" (13:29) is exhaustive;
+contract section 9. Everything else in the contract was settled by both agents at extreme confidence (Codex turn 2,
+21:12) and edited in place.
 
 ## 4. Worktrees and branches
 
@@ -196,7 +199,9 @@ them drift".
    failing-first golden per rule; the record per contract section 5, joined by device counter; the replay path
    (`frameserver_replay`, paced, zero drops) producing the record for a capture; ms/unit (median, p95) per commit
    against the §11b budget. Each commit names the contract sentence it implements. Claude reviews each commit (code
-   and intent, whole system). No constant that is not a standard, a stated measurement or a memory capacity.
+   and intent, whole system). No constant that is not a standard, a stated measurement or a memory capacity. Codex's
+   contract-versus-round-10 gap list (its turn 1, 2026-09-07 20:57) is the checklist: remove what the contract
+   prohibits, build what it requires, one reviewed commit per rule.
 3. **Acceptance, capture 1, then 2, 3, 4, in that order** (harness runs, both agents read): the engine's record vs the
    reference by counter (`compare_records.py`), the capture's invariants, the stabilized side-by-side render
    (`sg_to_render_csv.py` → `field_pair_review.py --mode stabilized --vscale 2`) with its machine read-back on every
