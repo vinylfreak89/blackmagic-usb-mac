@@ -3,9 +3,9 @@ CFLAGS ?= -O3 -std=c11 -Wall -Wextra -Werror
 CPPFLAGS ?=
 LDLIBS ?= -lm
 
-.PHONY: all test legacy-trajectory-test v9-test v10-rule1-test clean
+.PHONY: all test legacy-trajectory-test retired-v9-test v10-rule1-test clean
 
-all: libfieldreg.dylib tests/field_registration_unit tests/cea608_unit tests/field_registration_v9
+all: libfieldreg.dylib tests/field_registration_unit tests/cea608_unit tests/field_registration_v10_rule1
 
 libfieldreg.dylib: field_registration.c field_registration.h cea608.c cea608.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -dynamiclib field_registration.c cea608.c -o $@ $(LDLIBS)
@@ -31,7 +31,7 @@ test: tests/field_registration_unit tests/cea608_unit tests/field_registration_v
 legacy-trajectory-test: tests/field_registration_trajectory tests/registration_trajectory.raw
 	./tests/field_registration_trajectory tests/registration_trajectory.raw tests/registration_trajectory.csv
 
-v9-test: tests/field_registration_v9 tests/registration_v9.raw
+retired-v9-test: tests/field_registration_v9 tests/registration_v9.raw
 	./tests/field_registration_v9 tests/registration_v9.raw tests/registration_v9.csv
 
 v10-rule1-test: tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw

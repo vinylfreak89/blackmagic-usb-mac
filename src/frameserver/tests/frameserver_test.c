@@ -14,6 +14,7 @@
 #include <pthread.h>
 static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { fails++; fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); } } while (0)
+#define REQUIRE(c, ...) do { if (!(c)) { fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); return 1; } } while (0)
 static _Atomic int done; static _Atomic uint64_t frames_seen; static _Atomic int sink_stall_us, sink_hold;
 static IOSurfaceRef held_surface;
 static _Atomic int hook_arm, hook_empty, hook_release;
@@ -78,7 +79,7 @@ int main(int argc, char **argv){
     fs_config cfg = {0}; cfg.capture.replay_path = argv[1]; cfg.decision_log = logp; cfg.on_end = on_end;
     cfg.sink.on_frame = sink; cfg.pool_units = 4; cfg.surface_pool = 3; cfg.audio_sink.on_block = audio_sink;
     frameserver *f = NULL;
-    CHECK(fs_open(&f, &cfg) == 0, "open");
+    REQUIRE(fs_open(&f, &cfg) == 0, "open");
     atomic_store(&hook_arm,!ring_may_drop); atomic_store(&hook_empty,0); atomic_store(&hook_release,0);
     CHECK(fs_start(f) == 0, "start");
     while (!done) usleep(10000);
@@ -117,7 +118,7 @@ int main(int argc, char **argv){
     atomic_store(&audio_sink_stall_us, 50000);
     fs_config c5 = cfg; c5.decision_log = NULL; c5.audio_queue_blocks = 1;
     frameserver *q = NULL;
-    CHECK(fs_open(&q, &c5) == 0, "open (slow audio sink)");
+    REQUIRE(fs_open(&q, &c5) == 0, "open (slow audio sink)");
     CHECK(fs_start(q) == 0, "start (slow audio sink)");
     while (!done) usleep(10000);
     CHECK(fs_stop(q) == 0, "stop (slow audio sink)");
@@ -155,7 +156,7 @@ int main(int argc, char **argv){
     fs_config c2 = cfg; c2.decision_log = logp2; c2.pool_units = 1;
     atomic_store(&sink_stall_us, 200000);   // slot held ~200 ms per unit: the next unit MUST find the pool full
     frameserver *g = NULL;
-    CHECK(fs_open(&g, &c2) == 0, "open (pool=1)");
+    REQUIRE(fs_open(&g, &c2) == 0, "open (pool=1)");
     CHECK(fs_start(g) == 0, "start (pool=1)");
     while (!done) usleep(10000);
     CHECK(fs_stop(g) == 0, "stop (pool=1)");
@@ -198,7 +199,7 @@ int main(int argc, char **argv){
         c4.capture.replay_pace_us=10000; // loss while stalled, then retained post-gap observations
         atomic_store(&sink_stall_us, 100000);
         frameserver *r = NULL;
-        CHECK(fs_open(&r, &c4) == 0, "open (small ring)");
+        REQUIRE(fs_open(&r, &c4) == 0, "open (small ring)");
         CHECK(fs_start(r) == 0, "start (small ring)");
         while (!done) usleep(10000);
         CHECK(fs_stop(r) == 0, "stop (small ring)");
@@ -233,7 +234,7 @@ int main(int argc, char **argv){
     // F6: close after start without stop must stop first (ASan/TSan builds prove no use-after-free)
     done = 0;
     frameserver *k = NULL; fs_config c3 = cfg; c3.decision_log = NULL;
-    CHECK(fs_open(&k, &c3) == 0, "open (close-without-stop)");
+    REQUIRE(fs_open(&k, &c3) == 0, "open (close-without-stop)");
     CHECK(fs_start(k) == 0, "start (close-without-stop)");
     while (!done) usleep(10000);
     fs_close(k);
@@ -241,7 +242,7 @@ int main(int argc, char **argv){
     // Failed start: replay open happens in cc_start.  It must roll the worker back without
     // presenting on_end for a session that never successfully started.
     done=0; fs_config badcfg=cfg; badcfg.capture.replay_path="/definitely/not/a/capture.tpc"; badcfg.decision_log=NULL;
-    frameserver *badf=NULL; CHECK(fs_open(&badf,&badcfg)==0,"open (failed-start fixture)");
+    frameserver *badf=NULL; REQUIRE(fs_open(&badf,&badcfg)==0,"open (failed-start fixture)");
     if(badf){ CHECK(fs_start(badf)!=0,"missing replay unexpectedly started"); CHECK(!done,"on_end fired after failed start"); fs_close(badf); }
 
     // Early fs_open cleanup reaches fs_close before publisher/log/capture exist; initialized
@@ -251,7 +252,7 @@ int main(int argc, char **argv){
 
     // Two control callers stopping a live paced session must synchronize on the completed join.
     done=0; fs_config concfg=cfg; concfg.decision_log=NULL; concfg.capture.replay_pace_us=100000;
-    frameserver *cf=NULL; CHECK(fs_open(&cf,&concfg)==0,"open (concurrent stop)");
+    frameserver *cf=NULL; REQUIRE(fs_open(&cf,&concfg)==0,"open (concurrent stop)");
     if(cf){
         CHECK(fs_start(cf)==0,"start (concurrent stop)"); usleep(10000);
         fs_stop_arg a={cf,-99},b={cf,-99}; pthread_t ta,tb;
@@ -265,7 +266,7 @@ int main(int argc, char **argv){
     done=0; atomic_store(&sink_hold,1); held_surface=NULL;
     char logp4[]="/tmp/fs_test_log4_XXXXXX"; fd=mkstemp(logp4); close(fd); unlink(logp4);
     fs_config pc=cfg; pc.decision_log=logp4; pc.surface_pool=1; frameserver *pf=NULL;
-    CHECK(fs_open(&pf,&pc)==0,"open (publisher full)");
+    REQUIRE(fs_open(&pf,&pc)==0,"open (publisher full)");
     if(pf){
         CHECK(fs_start(pf)==0,"start (publisher full)"); while(!done) usleep(10000); CHECK(fs_stop(pf)==0,"stop (publisher full)");
         fs_stats ps; fs_get_stats(pf,&ps); CHECK(ps.publisher_dropped>0,"publisher exhaustion not exercised");
@@ -282,7 +283,7 @@ int main(int argc, char **argv){
     done=0; char la[]="/tmp/fs_test_logA_XXXXXX"; fd=mkstemp(la); close(fd); unlink(la); char lb[]="/tmp/fs_test_logB_XXXXXX"; fd=mkstemp(lb); close(fd); unlink(lb);   /* fs_log_start opens exclusively */
     CHECK(argc>=3,"runtime-log test needs the long plain fixture as argv[2]");
     fs_config rc=cfg; rc.decision_log=NULL; rc.capture.replay_path=argc>=3?argv[2]:argv[1]; rc.capture.replay_pace_us=30000; frameserver *rf=NULL;
-    CHECK(fs_open(&rf,&rc)==0,"open (runtime log)");
+    REQUIRE(fs_open(&rf,&rc)==0,"open (runtime log)");
     if(rf&&argc>=3){
         CHECK(fs_log_stop(rf)==-1,"stop with no log attached must fail");
         unsigned long long base=atomic_load(&frames_seen);
@@ -318,7 +319,7 @@ int main(int argc, char **argv){
     // PoolFull rows with exact conservation — never acquisition. Rows that failed are never counted.
     done=0; char lc[]="/tmp/fs_test_logC_XXXXXX"; fd=mkstemp(lc); close(fd); unlink(lc);
     fs_config sc=cfg; sc.decision_log=NULL; sc.capture.replay_path=argc>=3?argv[2]:argv[1]; sc.capture.replay_pace_us=8000; sc.pool_units=4; frameserver *sf=NULL;
-    CHECK(fs_open(&sf,&sc)==0,"open (stall)");
+    REQUIRE(fs_open(&sf,&sc)==0,"open (stall)");
     if(sf&&argc>=3){
         g_cb_target=sf; atomic_store(&cb_start_rc,99); atomic_store(&cb_stop_rc,99); atomic_store(&cb_try,1);
         unsigned long long sbase=atomic_load(&frames_seen);
@@ -358,7 +359,7 @@ int main(int argc, char **argv){
     // the file as incomplete (-1) so a publisher cannot pass it off as complete.
     done=0; char ld[]="/tmp/fs_test_logD_XXXXXX"; fd=mkstemp(ld); close(fd); unlink(ld);
     fs_config bc=cfg; bc.decision_log=NULL; bc.capture.replay_path=argc>=3?argv[2]:argv[1]; bc.capture.replay_pace_us=8000; frameserver *bf=NULL;
-    CHECK(fs_open(&bf,&bc)==0,"open (write failure)");
+    REQUIRE(fs_open(&bf,&bc)==0,"open (write failure)");
     if(bf&&argc>=3){
         unsigned long long bbase=atomic_load(&frames_seen);
         CHECK(fs_start(bf)==0,"start (write failure)"); CHECK(wait_frames(bbase,5),"frames before the failing attach");

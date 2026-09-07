@@ -40,6 +40,6 @@ make -C src/field_registration test
 ```
 
 The retired v9 fixture remains available only as a contradiction inventory:
-`make -C src/field_registration v9-test`. It is deliberately not part of the
+`make -C src/field_registration retired-v9-test`. It is deliberately not part of the
 v10 pass suite because it encodes the authority hierarchy prohibited by the
 current contract.

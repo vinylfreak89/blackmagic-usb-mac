@@ -6,6 +6,7 @@
 #include <string.h>
 static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { fails++; fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); } } while (0)
+#define REQUIRE(c, ...) do { if (!(c)) { fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); return 1; } } while (0)
 
 // unit whose every source line L is filled with byte value (L & 0xFF) — geometry is readable
 static uint8_t *make_unit(void){
@@ -45,7 +46,7 @@ int main(void){
     sink_ctx c = {0}; c.pts_monotonic = 1;
     fp_sink s = { on_frame, &c };
     fp_publisher *p = NULL;
-    CHECK(fp_open(&p, 2, &s) == 0 && p, "open");
+    REQUIRE(fp_open(&p, 2, &s) == 0 && p, "open");
     for (uint32_t i = 0; i < 10; i++) CHECK(fp_publish(p, u, FP_UNIT_BYTES, 1000 + i, 1, 0, FP_TRANSPORT_COMPLETE, 0, 0) == 0, "publish %u", i);
     CHECK(c.frames == 10 && c.pts_monotonic, "10 frames, monotonic PTS");
     CHECK(fp_publish(p,u,FP_UNIT_BYTES,(uint64_t)UINT32_MAX+1,0,0,FP_TRANSPORT_COMPLETE,0,0)==0,
