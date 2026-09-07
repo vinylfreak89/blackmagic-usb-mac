@@ -78,6 +78,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 
 > [On the hidden upward top, 16:20:] If the source has real picture on line 22 that originated correctly on line 22
 > it should get dropped. If it's line 23 shifted to line 22, that should become the first line of the 480 line render.
+> If the picture is truly shifted up by 1, then the top line of the render will be a blank line. If it's shifted up
+> by 2, then the first line will be line 21 captions, etc. The real derived line 23 should be the consistent line 23
+> that is displayed by that source. If the Shuttle overwrote it, tough noogies.
 
 > [On damage:] There are only two true program splits across this tape. Anything that's not snow-like or a vertical
 > tear (cross-program or true tear) should be indicative of continuing program and therefore previous geometry (not
@@ -206,10 +209,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   or true), a counter discontinuity, a signal-state relock or splice, the Shuttle's regenerated rows absent; a unit
   event, both fields.
 - **Crop**: line 23 (286) is always the output's top line (owner); the crop takes the picture's first line to it, so
-  its origin in the raster is 23 + d (286 + d) for every sign of d: at −1 the origin is raster line 22, which the
-  Shuttle has overwritten with blanking, so the render's first line is that blank row standing in for the lost line
-  (owner, 16:20: "if it's line 23 shifted to line 22, that should become the first line of the 480 line render"); a
-  source whose own line 22 carries picture keeps its origin at 23 and that line is dropped ("VBI never rendered").
+  its origin in the raster is 23 + d (286 + d) for every sign of d: the render's line 23 is the source's real line
+  23 wherever it landed, and whatever the Shuttle put there is what is rendered — its blank at −1, its caption
+  insert at −2, its timing line at −3 (owner, 16:20). A source whose own line 22 carries picture keeps its origin at
+  23 and that line is dropped ("VBI never rendered").
   Extra black at the bottom is acceptable; rows past the clip read as legal black (owner, 2026-09-03); a letterboxed
   picture is centred; before a lock, standard placement. **Displacement sign**: positive is lower in the raster.
 - **Comb**: the relative vertical shift between the two fields' crops that minimises the comb energy of their weave on
