@@ -543,7 +543,10 @@ also need to keep a fixed number. If it falls below that number it drops out and
 memory allocation!!! (In the real C engine)" — each comparator is a fixed array of eight (value, count) slots in count
 order: a hit increments and bubbles up; a new value takes a free slot, or with the array full replaces the last
 (least-counted) entry, which drops out; counts never decrement (owner: "Why are you ever decrementing counts"); eight
-is a memory capacity, not a decision constant. On the SP the comparator
+is a memory capacity, not a decision constant. Sixth ruling, verbatim: "A change of geometry (a loss of source lock or lock like loss resets everything immediately)"
+— the comparators never carry across a source: a unit with no measurable picture, regenerated VBI rows that are not
+the Shuttle's, or a counter discontinuity clears both arrays of the field at once, and the counts restart. On the SP
+the comparator
 becomes the black line 22 at row 23, on the commercial tape picture — derived from the tapes, with each comparator's
 count and runner-up count written per unit. Measured at run E on the commercial's stable interval: S − top = 238 with the peak present in 31/36 field-1 units and
 237 in 48/59 field-2 units; with the peak absent the same modes in 402/546 and 395/517 with a 234–239 spread; of 57
