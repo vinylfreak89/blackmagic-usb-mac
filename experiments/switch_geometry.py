@@ -210,13 +210,14 @@ def process_unit(u,RU,RN):
                   insert_data=insert_data,cap_row=cap_row,line22_row=line22_row,vbi=vbi,top=top)
     # unit-level lock-like loss (owner: both fields at once): a counter discontinuity, regenerated rows absent in either field,
     # or no picture in both fields (a snow-like candidate; the signal-state layer's verdict is the input in the live path)
-    loss = gap or (not M[1]['vbi_ok']) or (not M[2]['vbi_ok']) or (M[1]['top'] is None and M[2]['top'] is None)
+    # (offline stand-in for the signal-state input: both fields without picture; the regenerated rows absent is a hold, rule 6)
+    loss = gap or (M[1]['top'] is None and M[2]['top'] is None)
     if loss: lock_reset_all()
     for f in (1,2):
         m=M[f]; Y=m['Y']; base=m['base']; slot=m['slot']; ym=m['ym']; thr=m['thr']; rec=m['rec']; recrows=m['recrows']; top=m['top']
         by_m=m['by_m']; sig_b=m['sig_b']; ped=m['ped']; sig_n=m['sig_n']
-        if loss or top is None or len(recrows)<60:
-            why=('reset' if loss else 'hidden')
+        if loss or top is None or len(recrows)<60 or not m['vbi_ok']:
+            why=('reset' if loss else ('rows-absent' if not m['vbi_ok'] else 'hidden'))
             st=('no-lock' if loss else (LOCKST[f] if LOCKST[f]!='acquiring' else 'acquiring'))
             if not loss and LOCKST[f]=='locked': st='hold'
             w.writerow([u,CTR[u],f,-1,(top+base) if top is not None else -1,-1,-1,-1,-1,-1,-1,-1,-1,'','','',-1,'','',-1,'','','',st,CONF[f],why,DAPPLIED[f],-1,'',-1,'',-1,why,'','',round(by_m,2),round(sig_b,2)])
@@ -321,11 +322,11 @@ def process_unit(u,RU,RN):
             elif dt==0 and abs(dT)==1: case=f'travel{dT:+d}'                  # the switch-line reading's travel (the partial line, the peak)
             elif dt==0: case=f'switch{dT:+d}!'                                # more than the travel: reported loudly, held
             else: case=f'geom{dt:+d}/{dT:+d}!'                                # different amounts: reported loudly, held
-            H[f].add(Hu if top>3 else (T-(3+D[f])))                          # the top hidden at 23 reads at 23 whatever d is: feed H at 23 + d, not the raw reading
+            if hid is None: H[f].add(Hu if top>3 else (T-(3+D[f])))          # the top hidden at 23 reads at 23 whatever d is: feed H at 23 + d; an unconfirmed hidden reading feeds nothing
             Hc1=H[f].top()[0]
             if Hc1!=Hc0: D[f]=T-Hc1-3; case+=f';H{Hc0}->{Hc1}'               # a comparator replaced re-places the crop (owner ruling four)
             if d_cap is not None and d_cap!=D[f]:
-                if LOCKST[f]!='locked' or d_cap==D[f]+1:                      # before a lock the caption re-seeds (the model); under one, a caption one more than d names the account's first line the tape's line 22 (owner, 16:20: dropped)
+                if LOCKST[f]!='locked' or abs(d_cap-D[f])==1:                 # before a lock the caption re-seeds (the model); under one, a caption one row off re-identifies the rows: line 22 is the row below it, the picture starts after (owner, 16:20)
                     D[f]=d_cap; H[f]=RunMode(); H[f].add(T-(3+d_cap)); CSW[f]=RunMode(); case+=';reseed-cap!'
                 else: case+=f';cap{d_cap:+d}!'                                 # logged and reported, geometry wins (the model)
         Cc=CSW[f].top()[0]
@@ -366,7 +367,7 @@ def process_unit(u,RU,RN):
             m=M[f]; o=3-f
             if m['hid'] is not None:
                 cand={f:m['hid'],o:M[o]['d']}; s,r,_=comb_at(cand[1],cand[2])
-                if decisive(s,r) and s==0: D[f]=m['hid']; m['d']=D[f]; m['case']+=';comb-confirmed'
+                if decisive(s,r) and s==0: D[f]=m['hid']; m['d']=D[f]; H[f].add(m['T']-(3+D[f])); m['case']+=';comb-confirmed!'
                 else: m['case']+=(';held-travel' if abs(m['hid']-D[f])==1 else ';held!')
             if m['rowabove'] is not None and LOCKST[f]=='locked':
                 s0,r0,_=comb_at(M[1]['d'],M[2]['d'])
