@@ -79,6 +79,31 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 > Whenever you don't have extreme confidence in something go back to the design. If your understanding is
 > contradictory, understand why; don't just assume the contract is right.
 
+**Answers to the blanks (2026-09-07 afternoon, verbatim).**
+> [Line 22:] 22 can carry a specific level or sometimes faint picture. 22 should be 1 line below 21 obviously.
+
+> [The picture top:] The first picture row is the first picture row. However, due to the shuttles overwrite blanking
+> it may not be visible. We can assume that if there are decoded captions on line 21 by the shuttle the real line 21
+> is showing up somewhere between line 20 and 22. A bottom band that does not extend to the end of the frame and/or a
+> mostly black head switch area is suspect that the top of the picture landed in the shuttles blanking region. This
+> becomes confirmed if new luma that is not blanking and not darkened picture appears at line 23 (or another way to
+> put this is if every bands luma shifts approximately 1 row down). How to measure this I'm not really sure.
+
+> [The band count:] Including the partial line. So where the peak is. Check the TBC vs non TBC case to see how many
+> bands of head switch there are. My guess is the TBC clears up that partial line which is why the peak isn't shown.
+> My guess is you might see a faint of the peak every once in a while. I will leave this up to you to measure.
+
+> [The comparator array:] Number I will leave up to you. 8 sounds fine. Equal counts do not change ordering.
+
+> [The lock:] Lock only happens after you get at least one confirmation that the geometry is correct. Either
+> combing, captions or both.
+
+> Some of these answers aren't absolute obviously. Use DSP theory, research, prior art and your own experimentation
+> to figure it out. If you are going to change the contract and clarify any of these rules, stop and tell me what you
+> are changing, why and the evidence for your decision. This should be in the contract as well. Both you and codex,
+> when you are the least bit uncertain about something, confidence not extremely high, go back and reread the
+> contract.
+
 ## 2. What the captures show (measured)
 
 | unit rows | NTSC lines | content | origin |
@@ -174,7 +199,7 @@ The recorded region; the picture top with the VBI rows above it and their signat
 visible; the switch line and the signatures that carried it; the RF peak's line and position along the line when
 present; the height and the band count; the comparators with their counts and the runner-up's counts; the lock
 state and every hold or reset with its cause; the body shift and comb as confirmations. Provenance errors fail
-closed. BLANK: any column the owner wants added.
+closed.
 
 ## 6. The engine deliberately does not have
 
