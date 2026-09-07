@@ -2018,5 +2018,26 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   and EP 13/329. Counters 6645 field 1 and 6672 field 2 decide the dark-boundary rule: their
   sub-black first rows are picture under stable signal lock even though row texture alone cannot
   distinguish them from a lone black line.
+
+  **Current geometry-lock reference (2026-09-07 afternoon rulings):** each field now carries two
+  fixed eight-slot, increment-only running-count comparators: the directly exposed `S..clip` band
+  count and the first recorded-row state (`black22` or `picture`). A hit increments its own slot
+  and bubbles upward; a challenger becomes the comparator only after its count passes the
+  incumbent; a full array replaces the least-counted entry without decrementing any count.
+  `switch_first_line` and `first_full_other_head_line` remain per-unit evidence. The locked switch
+  is `held_top + 240 - band_comparator`; comparator/count/runner-up, projected line, and the
+  asymmetric `travel` / `band+` / `dropped` / `fell-out` class are recorded every unit. A hidden
+  top or S holds the prior decision and counts. Counter discontinuity or loss of both Shuttle
+  regenerated inserts resets all counts immediately. Before the first directly exposed S the
+  source is `no-lock`; consequently every commercial rewind unit (counter <6593) makes no locked
+  geometry claim. The complete census and raw SP shift-gauge test are in
+  `experiments/geometry_oracle/reports/switch_lock_summary.md`.
+
+  The SP field-2 continuous `-1` hypothesis is rejected by the raw raster: L285 is Shuttle blank
+  in all 608 units (mean 1.350-1.406, standard deviation 0.477-0.491), while the measured top is
+  L286 in 604 and L287 in four. For all 607 units with seven comb energies, the measured top pair
+  beats field 2 pulled down one line; the energy penalty has range 0.256595-4.697690 and median
+  2.420552. Thus pulling down adds a blank row rather than recovering tape VBI. The unequal band
+  counts are raster/head-switch evidence, not a continuous hidden field-2 displacement.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).

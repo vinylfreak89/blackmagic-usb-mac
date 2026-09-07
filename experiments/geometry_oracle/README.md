@@ -136,9 +136,9 @@ exists so a flat dim row cannot be described merely by that combined result.
 recording, the SP recording with V-stabilize off, and the commercial tape through one measurement
 path. Capture specifications contain transport identity only: count, label, and ordinal origin.
 No capture supplies a top, switch row, stable interval, or per-unit answer. A spatially flat field
-is measurable when its recorded region has a clear level boundary from raster blanking; flat fields
-without that boundary and no-picture fields are `unmeasurable`. The hold policy is documented but
-no coordinate is substituted.
+is measurable when its recorded region has a clear level boundary from raster blanking. A hidden
+top or switch retains the prior locked decision in `picture_top_under_lock_line` and
+`switch_line_from_height_comparator`; the raw per-unit measurement remains independently visible.
 
 Each field records the measured picture top and its blanking/VBI/caption evidence, expected bottom
 (`top + 239`), raster clipping, first switch row, last reliable row (`switch - 1`), last visible
@@ -149,6 +149,24 @@ columns and statuses. `bottom_line` aliases the last reliable row for the review
 compatibility alias. Chroma-only survival cannot extend either marker. `dp` and
 `switch_displacement` compare the preceding unit's same raster slot only when both coordinates
 exist.
+
+The authoritative geometry lock is source-blind and uses two fixed eight-slot running-count
+comparators per field. One counts the directly exposed `S..clip` band length and one counts the
+first-row state (`black22` or `picture`). A hit increments only its own count and bubbles upward;
+a challenger takes over only after its count passes the incumbent. A new value uses a free slot or
+replaces the least-counted slot, and no count is decremented. Every row stores the comparator,
+its count, and its runner-up count. The projected switch is
+`picture_top_under_lock_line + 240 - band_row_count_comparator`. `switch_first_line` and
+`first_full_other_head_line` remain raw evidence. Missing edges are `hold`; counter discontinuity
+or loss of both Shuttle regenerated inserts resets every count immediately. The commercial rewind
+never exposes a full other-head row and remains `no-lock`, so its lock-derived coordinates are
+`-1` even where the raw detector can emit a candidate.
+
+Band classification is asymmetric: comparator or comparator-minus-one is `travel`; a larger
+observation is `band+`; a smaller observation with a fixed top is `dropped`; and a matching
+downward top displacement is `fell-out`. The running first-row comparator resolves ambiguous
+sub-black rows without a source-specific black-line constant. VBI exclusions are based only on
+their measured waveform/run-in signatures.
 
 An RF transient candidate retains its row, sample, strength, ratio, and before/after segment lags.
 The former before-x lag gate was withdrawn because a tear can begin before the transient's sample.
@@ -212,6 +230,13 @@ python3 experiments/geometry_oracle/build_reference.py \
   experiments/geometry_oracle/reports/reference_composite.csv --profile composite
 python3 experiments/geometry_oracle/build_comb_report.py \
   experiments/geometry_oracle/reports/comb_summary.md \
+  w_300s=experiments/geometry_oracle/reports/reference_w_300s.csv \
+  w_2100s=experiments/geometry_oracle/reports/reference_w_2100s.csv \
+  sp_vstab_off=experiments/geometry_oracle/reports/reference_sp_vstab_off.csv \
+  composite=experiments/geometry_oracle/reports/reference_composite.csv
+python3 experiments/geometry_oracle/build_switch_lock_report.py \
+  experiments/geometry_oracle/reports/switch_lock_summary.md \
+  /private/tmp/hw-session/w_300s.tpc \
   w_300s=experiments/geometry_oracle/reports/reference_w_300s.csv \
   w_2100s=experiments/geometry_oracle/reports/reference_w_2100s.csv \
   sp_vstab_off=experiments/geometry_oracle/reports/reference_sp_vstab_off.csv \

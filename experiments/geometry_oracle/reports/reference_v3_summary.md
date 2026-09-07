@@ -83,12 +83,12 @@
 ### Field 1
 
 - units: 919
-- method: cv_inspected: 122, direct: 482, unmeasurable: 315
-- status: censored: 47, inferred: 75, observed: 482, unmeasurable: 315
-- picture top: -1: 315, 23: 557, 24: 14, 25: 33
+- method: cv_inspected: 112, direct: 492, unmeasurable: 315
+- status: censored: 36, inferred: 76, observed: 492, unmeasurable: 315
+- picture top: -1: 315, 23: 568, 24: 13, 25: 23
 - first switch row: -1: 315, 258: 2, 259: 19, 260: 398, 261: 165, 262: 20
 - last reliable row: -1: 315, 257: 2, 258: 19, 259: 398, 260: 165, 261: 20
-- band length: -1: 315, 1: 15, 2: 157, 3: 383, 4: 17, 5: 28, 6: 4
+- band length: -1: 315, 1: 16, 2: 157, 3: 392, 4: 16, 5: 19, 6: 4
 - closure status: observed: 604, unmeasurable: 315
 - RF presence: absent: 544, disappeared: 47, present: 6, reappeared: 7, unmeasurable: 315
 

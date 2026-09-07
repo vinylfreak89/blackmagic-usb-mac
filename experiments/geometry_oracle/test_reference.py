@@ -14,12 +14,18 @@ from build_comb_report import build as build_comb_report
 from build_invariant_report import build as build_invariant_report
 from comb_confirmation import FieldGeometry, measure_interfield_comb
 from build_reference import (
+    BAND_COUNT_CAPACITY,
     CAPTURES,
     CSV_COLUMNS,
     FIELD_COLUMNS,
+    FIRST_ROW_STATE_CAPACITY,
     METHODS,
     STATUSES,
     CaptureSpec,
+    FieldResult,
+    FixedCountComparator,
+    ReferenceBuilder,
+    _classify_band_count,
     _flat_picture_boundary,
     _first_full_other_head,
     _first_edge_departure,
@@ -38,6 +44,58 @@ def read_reference(name: str) -> list[dict[str, str]]:
 
 
 class ReferenceMeasurementTest(unittest.TestCase):
+    def test_fixed_comparator_counts_never_decrement(self) -> None:
+        comparator = FixedCountComparator(2)
+        self.assertEqual(comparator.observe("a"), ("a", 1, 0))
+        self.assertEqual(comparator.observe("a"), ("a", 2, 0))
+        self.assertEqual(comparator.observe("b"), ("a", 2, 1))
+        # A tie does not replace the incumbent; replacement requires passing it.
+        self.assertEqual(comparator.observe("b"), ("a", 2, 2))
+        self.assertEqual(comparator.observe("b"), ("b", 3, 2))
+        # Full-array insertion replaces the least-counted entry at count one.
+        self.assertEqual(comparator.observe("c"), ("b", 3, 1))
+        self.assertEqual(comparator.slots, [("b", 3), ("c", 1)])
+
+    def test_asymmetric_band_count_classes(self) -> None:
+        self.assertEqual(_classify_band_count(4, 4, "0"), "travel")
+        self.assertEqual(_classify_band_count(3, 4, "0"), "travel")
+        self.assertEqual(_classify_band_count(5, 4, "0"), "band+")
+        self.assertEqual(_classify_band_count(2, 4, "0"), "dropped")
+        self.assertEqual(_classify_band_count(2, 4, "2"), "fell-out")
+        self.assertEqual(_classify_band_count(-1, 4, "0"), "hidden")
+
+    def test_comparator_capacities_are_memory_bounds(self) -> None:
+        self.assertEqual(BAND_COUNT_CAPACITY, 8)
+        self.assertEqual(FIRST_ROW_STATE_CAPACITY, 8)
+
+    def test_missing_shuttle_regenerated_rows_reset_all_counts(self) -> None:
+        builder = ReferenceBuilder("w_300s")
+        builder.source_lock_acquired = True
+        for field in (1, 2):
+            builder.band_comparators[field].observe(3)
+            builder.first_row_comparators[field].observe("picture")
+        values = {
+            "first_full_other_head_line": -1,
+            "shuttle_regenerated_status": "unmeasurable",
+            "picture_top_line": -1,
+            "top_status": "unmeasurable",
+            "vbi_lines": "",
+            "caption_lines": "",
+            "note": "",
+            "dp": "unmeasurable",
+            "rf_presence": "unmeasurable",
+        }
+        current = {
+            field: FieldResult(dict(values), -1, -1, -1, -1) for field in (1, 2)
+        }
+        row: dict[str, object] = {}
+        builder._apply_running_comparators(row, current)
+        self.assertEqual(row["source_lock_state"], "no-lock")
+        self.assertIn("reset=Shuttle regenerated rows absent", row["source_lock_evidence"])
+        for field in (1, 2):
+            self.assertEqual(row[f"f{field}_band_row_count_comparator_count"], 0)
+            self.assertEqual(row[f"f{field}_first_row_state_comparator_count"], 0)
+
     @staticmethod
     def _comb_fixture(
         shift: int = 0,
@@ -299,6 +357,12 @@ class ReferenceMeasurementTest(unittest.TestCase):
                     self.assertIn("row Y(mean/std)", row[prefix + "note"])
                     if index:
                         previous = rows[index - 1]
+                        if ((int(row["counter"]) - int(previous["counter"])) & 0xFFFF) != 1:
+                            self.assertEqual(row[prefix + "dp"], "not-applicable")
+                            self.assertEqual(
+                                row[prefix + "switch_displacement"], "not-applicable"
+                            )
+                            continue
                         prior_top = int(previous[prefix + "picture_top_line"])
                         prior_switch = int(previous[prefix + "switch_first_line"])
                         expected_dp = (
@@ -532,6 +596,11 @@ class ReferenceMeasurementTest(unittest.TestCase):
     def test_schema_contains_every_v3_measurement_family(self) -> None:
         for required in (
             "top_blanking_evidence",
+            "picture_top_under_lock_line",
+            "lock_state",
+            "lock_evidence",
+            "shuttle_regenerated_status",
+            "shuttle_regenerated_evidence",
             "expected_bottom_line",
             "switch_first_line",
             "first_full_other_head_line",
@@ -562,8 +631,109 @@ class ReferenceMeasurementTest(unittest.TestCase):
             "closure_status",
             "dp",
             "switch_displacement",
+            "first_row_state_observation",
+            "first_row_state_comparator",
+            "first_row_state_comparator_count",
+            "first_row_state_runner_up_count",
+            "band_row_count_observation",
+            "band_row_count_comparator",
+            "band_row_count_comparator_count",
+            "band_row_count_runner_up_count",
+            "switch_height_comparator",
+            "switch_line_from_height_comparator",
+            "band_rows_to_clip",
+            "height_change",
+            "height_change_evidence",
         ):
             self.assertIn(required, FIELD_COLUMNS)
+
+        self.assertIn("source_lock_state", CSV_COLUMNS)
+        self.assertIn("source_lock_evidence", CSV_COLUMNS)
+
+    def test_running_band_comparator_is_auditable(self) -> None:
+        expected_final = {
+            "w_300s": {1: 3, 2: 3},
+            "sp_vstab_off": {1: 2, 2: 2},
+            "w_2100s": {1: 2, 2: 3},
+            "composite": {1: 2, 2: 3},
+        }
+        for capture, fields_expected in expected_final.items():
+            rows = read_reference(capture)
+            for field, expected in fields_expected.items():
+                prefix = f"f{field}_"
+                locked = [row for row in rows if row[prefix + "lock_state"] == "locked"]
+                self.assertTrue(locked, f"{capture} field {field}")
+                self.assertEqual(
+                    int(locked[-1][prefix + "band_row_count_comparator"]), expected
+                )
+                for row in locked:
+                    comparator = int(row[prefix + "band_row_count_comparator"])
+                    height = int(row[prefix + "switch_height_comparator"])
+                    top = int(row[prefix + "picture_top_under_lock_line"])
+                    projected = int(row[prefix + "switch_line_from_height_comparator"])
+                    self.assertEqual(height + comparator, 240)
+                    if top >= 0:
+                        self.assertEqual(projected, top + height)
+                    else:
+                        self.assertEqual(projected, -1)
+                    self.assertGreaterEqual(
+                        int(row[prefix + "band_row_count_comparator_count"]),
+                        int(row[prefix + "band_row_count_runner_up_count"]),
+                    )
+
+    def test_commercial_rewind_never_claims_geometry(self) -> None:
+        rows = read_reference("composite")
+        rewind = [row for row in rows if int(row["counter"]) < 6593]
+        self.assertTrue(rewind)
+        self.assertEqual({row["source_lock_state"] for row in rewind}, {"no-lock"})
+        for row in rewind:
+            self.assertEqual((row["applied_d1"], row["applied_d2"]), ("0", "0"))
+            for field in (1, 2):
+                prefix = f"f{field}_"
+                self.assertEqual(
+                    int(row[prefix + "switch_line_from_height_comparator"]), -1
+                )
+                self.assertIn(row[prefix + "height_change"], {"hidden", "reset"})
+
+    def test_hidden_edge_holds_counts_and_last_top(self) -> None:
+        rows = read_reference("composite")
+        for previous, row in zip(rows, rows[1:]):
+            if int(row["counter"]) < 6593:
+                continue
+            if previous["source_lock_state"] == "no-lock":
+                continue
+            if not all(int(row[f"f{field}_picture_top_line"]) < 0 for field in (1, 2)):
+                continue
+            for field in (1, 2):
+                prefix = f"f{field}_"
+                self.assertEqual(row[prefix + "lock_state"], "hold")
+                self.assertEqual(row[prefix + "height_change"], "hidden")
+                self.assertEqual(
+                    row[prefix + "band_row_count_comparator_count"],
+                    previous[prefix + "band_row_count_comparator_count"],
+                )
+                self.assertEqual(
+                    row[prefix + "picture_top_under_lock_line"],
+                    previous[prefix + "picture_top_under_lock_line"],
+                )
+            break
+        else:
+            self.fail("no hidden-edge hold found after commercial lock")
+
+    def test_sp_field2_minus_one_hypothesis_loses_every_measurable_comb(self) -> None:
+        rows = read_reference("w_300s")
+        compared = 0
+        for row in rows:
+            energies = {
+                int(item.split(":", 1)[0]): float(item.split(":", 1)[1])
+                for item in row["f1_comb_energies"].split(",")
+                if item
+            }
+            if -1 not in energies or 0 not in energies:
+                continue
+            compared += 1
+            self.assertLess(energies[0], energies[-1])
+        self.assertEqual(compared, 607)
 
     def test_comb_report_is_reproducible_and_has_no_numeric_unmeasurable_shift(self) -> None:
         named = [

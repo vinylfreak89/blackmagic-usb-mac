@@ -57,6 +57,66 @@ RASTER_LIMITS = {1: 262, 2: 525}
 RF_MIN_STRENGTH = 40.0
 RF_MIN_RATIO = 4.0
 EDGE_KERNEL = np.ones(5, dtype=np.float64) / 5.0
+# These are storage capacities, not decision thresholds.  Contract rule 3
+# fixes every comparator at eight (value, count) slots.
+BAND_COUNT_CAPACITY = 8
+FIRST_ROW_STATES = ("picture", "black22")
+FIRST_ROW_STATE_CAPACITY = 8
+
+
+class FixedCountComparator:
+    """Fixed-slot running mode whose counts only ever increase.
+
+    Slots remain in descending count order.  Equal counts retain their prior
+    order, so a challenger replaces the comparator only after its count passes
+    the incumbent.  A full array replaces its least-counted entry; production
+    capacity is the contract's eight-slot memory bound, and the replacement
+    path is explicit for the equivalent bounded C implementation.
+    """
+
+    def __init__(self, capacity: int) -> None:
+        if capacity <= 0:
+            raise ValueError("comparator capacity must be positive")
+        self.capacity = capacity
+        self.slots: list[tuple[object, int]] = []
+
+    def observe(self, value: object) -> tuple[object, int, int]:
+        for index, (stored, count) in enumerate(self.slots):
+            if stored == value:
+                self.slots[index] = (stored, count + 1)
+                break
+        else:
+            item = (value, 1)
+            if len(self.slots) < self.capacity:
+                self.slots.append(item)
+            else:
+                self.slots[-1] = item
+        self.slots.sort(key=lambda item: item[1], reverse=True)
+        return self.current()
+
+    def current(self) -> tuple[object, int, int]:
+        if not self.slots:
+            return "unmeasurable", 0, 0
+        runner_up = self.slots[1][1] if len(self.slots) > 1 else 0
+        return self.slots[0][0], self.slots[0][1], runner_up
+
+
+def _classify_band_count(observed: int, comparator: int, dp: str) -> str:
+    """Apply the owner's asymmetric maximum-band rule."""
+    if observed < 0 or comparator < 0:
+        return "hidden"
+    if observed in {comparator, comparator - 1}:
+        return "travel"
+    if observed > comparator:
+        return "band+"
+    deficit = comparator - observed
+    try:
+        displacement = int(dp)
+    except ValueError:
+        displacement = 0
+    if displacement > 0 and displacement == deficit:
+        return "fell-out"
+    return "dropped" if dp == "0" else "fell-out"
 
 
 @dataclass(frozen=True)
@@ -89,6 +149,15 @@ COMPOSITE_MISSING_EXACT = {213, 214, 216}
 FIELD_COLUMNS = [
     "picture_top_line",
     "top_status",
+    "picture_top_under_lock_line",
+    "lock_state",
+    "lock_evidence",
+    "shuttle_regenerated_status",
+    "shuttle_regenerated_evidence",
+    "first_row_state_observation",
+    "first_row_state_comparator",
+    "first_row_state_comparator_count",
+    "first_row_state_runner_up_count",
     "top_blanking_evidence",
     "vbi_lines",
     "vbi_status",
@@ -113,6 +182,15 @@ FIELD_COLUMNS = [
     "visible_band_rows",
     "censored_band_rows",
     "band_length",
+    "band_row_count_observation",
+    "band_row_count_comparator",
+    "band_row_count_comparator_count",
+    "band_row_count_runner_up_count",
+    "switch_height_comparator",
+    "switch_line_from_height_comparator",
+    "band_rows_to_clip",
+    "height_change",
+    "height_change_evidence",
     "rf_peak_line",
     "rf_peak_x",
     "rf_peak_strength",
@@ -162,7 +240,7 @@ FIELD_COLUMNS = [
     "direct_bottom_candidate",
 ]
 CSV_COLUMNS = (
-    ["ordinal", "counter"]
+    ["ordinal", "counter", "source_lock_state", "source_lock_evidence"]
     + [f"f{field}_{name}" for field in FIELDS for name in FIELD_COLUMNS]
     + ["applied_d1", "applied_d2"]
 )
@@ -179,6 +257,8 @@ class TopReading:
     caption_lines: str
     caption_status: str
     caption_confirmation: str
+    regenerated_status: str
+    regenerated_evidence: str
     evidence: str
 
 
@@ -351,6 +431,15 @@ def _inspect_top(
     waveforms = scan_cea608_waveforms(y, spec)
     caption_ntsc = [row + 4 for row, _b1, _b2, _amp in captions]
     waveform_ntsc = [item.row + 4 for item in waveforms]
+    insert_waveforms = [item for item in waveforms if item.row == spec.insert_row]
+    regenerated_status = "observed" if insert_waveforms else "unmeasurable"
+    regenerated_evidence = (
+        f"Shuttle insert L{spec.insert_row + 4} waveform "
+        f"run-in/start={insert_waveforms[0].runin_score:.3f}/"
+        f"{insert_waveforms[0].start_score:.3f}"
+        if insert_waveforms
+        else f"Shuttle insert L{spec.insert_row + 4} waveform absent"
+    )
     off_caption = [line for line in caption_ntsc if line != spec.insert_row + 4]
     off_waveform = [line for line in waveform_ntsc if line != spec.insert_row + 4]
     blank_evidence = (
@@ -368,6 +457,8 @@ def _inspect_top(
             " ".join(map(str, off_caption)),
             "observed" if off_caption else "unmeasurable",
             "flat field; caption is confirmation only",
+            regenerated_status,
+            regenerated_evidence,
             "spatially flat field; hold policy recorded but no coordinate substituted",
         )
 
@@ -601,6 +692,8 @@ def _inspect_top(
         " ".join(map(str, off_caption)),
         "observed" if off_caption else "unmeasurable",
         caption_confirmation,
+        regenerated_status,
+        regenerated_evidence,
         reason,
     )
 
@@ -1314,6 +1407,61 @@ def _motion(current: int, previous: int, has_previous: bool) -> str:
     return str(current - previous) if current >= 0 and previous >= 0 else "unmeasurable"
 
 
+def _integer_lines(value: object) -> set[int]:
+    result: set[int] = set()
+    for item in str(value).split():
+        try:
+            result.add(int(item))
+        except ValueError:
+            pass
+    return result
+
+
+def _first_row_state(values: dict[str, object], field: int) -> str:
+    """Return an independently observed state for the first raster pass row.
+
+    Explicit VBI/caption rows are outside the binary running comparison.  A
+    one-row, non-waveform displacement is the black-line-22 observation; an
+    observed top at the first pass row is picture.  Inferred continuity is not
+    allowed to vote for itself.
+    """
+    top = int(values.get("picture_top_line", -1))
+    if top < 0:
+        return "unmeasurable"
+    first = STANDARD_TOPS[field]
+    candidate = _first_row_candidate(values, field)
+    excluded = _integer_lines(values.get("vbi_lines", "")) | _integer_lines(
+        values.get("caption_lines", "")
+    )
+    evidence = str(values.get("note", ""))
+    if top == candidate and (
+        values.get("top_status") == "observed" or "dark band is picture" in evidence
+    ):
+        return "picture"
+    if top == candidate + 1 and (
+        values.get("top_status") == "observed"
+        or "first picture-level onset" in evidence
+        or "recorded dark, not picture" in evidence
+        or "isolated low-structure row" in evidence
+    ):
+        return "black22"
+    if top in {candidate, candidate + 1}:
+        return "ambiguous"
+    if first in excluded:
+        return "vbi-or-caption"
+    return "other-non-picture"
+
+
+def _first_row_candidate(values: dict[str, object], field: int) -> int:
+    """First row to classify after explicit early VBI/caption signatures."""
+    first = STANDARD_TOPS[field]
+    excluded = _integer_lines(values.get("vbi_lines", "")) | _integer_lines(
+        values.get("caption_lines", "")
+    )
+    early_excluded = [line for line in excluded if first <= line <= first + 2]
+    return max(early_excluded) + 1 if early_excluded else first
+
+
 def _geometry(
     results: dict[int, FieldResult],
 ) -> tuple[FieldGeometry, FieldGeometry]:
@@ -1387,8 +1535,31 @@ class ReferenceBuilder:
         self.previous_rf_line = -1
         self.previous_rf_x = -1
         self.have_preceding_field = False
+        self.counter_discontinuity = False
+        self.lock_like_reset_current = False
+        self.source_lock_acquired = False
+        self.source_lock_origin = "no directly exposed full other-head row"
+        self.band_comparators = {
+            field: FixedCountComparator(BAND_COUNT_CAPACITY) for field in FIELDS
+        }
+        self.first_row_comparators = {
+            field: FixedCountComparator(FIRST_ROW_STATE_CAPACITY) for field in FIELDS
+        }
+        self.last_locked_top: dict[int, int] = {}
+
+    def _reset_geometry_lock(self, reason: str) -> None:
+        self.source_lock_acquired = False
+        self.source_lock_origin = reason
+        self.band_comparators = {
+            field: FixedCountComparator(BAND_COUNT_CAPACITY) for field in FIELDS
+        }
+        self.first_row_comparators = {
+            field: FixedCountComparator(FIRST_ROW_STATE_CAPACITY) for field in FIELDS
+        }
+        self.last_locked_top = {}
 
     def _ordinal(self, counter: int, local_exact: int) -> int:
+        self.counter_discontinuity = False
         if self.first_counter is None:
             self.first_counter = counter
             self.counter_extended = counter
@@ -1400,9 +1571,194 @@ class ReferenceBuilder:
                     f"counter is not strictly forward at exact unit {local_exact}: "
                     f"{self.previous_counter}->{counter}"
                 )
+            self.counter_discontinuity = delta != 1
             self.counter_extended += delta
         self.previous_counter = counter
         return self.specification.ordinal_origin + self.counter_extended - self.first_counter
+
+    def _apply_running_comparators(
+        self,
+        row: dict[str, object],
+        current: dict[int, FieldResult],
+    ) -> None:
+        regenerated_lost = all(
+            current[field].values.get("shuttle_regenerated_status") != "observed"
+            for field in FIELDS
+        )
+        self.lock_like_reset_current = regenerated_lost
+        reset_current = self.counter_discontinuity or regenerated_lost
+        if regenerated_lost and not self.counter_discontinuity:
+            self._reset_geometry_lock("Shuttle regenerated rows absent")
+        exposed = [
+            field
+            for field in FIELDS
+            if int(current[field].values.get("first_full_other_head_line", -1)) >= 0
+            and current[field].top_line >= 0
+        ]
+        if not self.source_lock_acquired and exposed and not reset_current:
+            self.source_lock_acquired = True
+            evidence = ",".join(
+                f"field {field} L{current[field].values['first_full_other_head_line']}"
+                for field in exposed
+            )
+            self.source_lock_origin = f"direct full-other-head signature: {evidence}"
+
+        snapshots: dict[int, tuple[object, int, int]] = {}
+        first_snapshots: dict[int, tuple[object, int, int]] = {}
+        observations: dict[int, int] = {}
+        first_observations: dict[int, str] = {}
+        for field in FIELDS:
+            values = current[field].values
+            top = current[field].top_line
+            first_full = int(values.get("first_full_other_head_line", -1))
+            observation = (
+                RASTER_LIMITS[field] - first_full + 1
+                if top >= 0 and first_full >= 0
+                else -1
+            )
+            observations[field] = observation
+            first_state = _first_row_state(values, field)
+            first_observations[field] = first_state
+            if (
+                self.source_lock_acquired
+                and not reset_current
+                and observation >= 0
+            ):
+                snapshots[field] = self.band_comparators[field].observe(observation)
+            else:
+                snapshots[field] = self.band_comparators[field].current()
+            if (
+                self.source_lock_acquired
+                and not reset_current
+                and first_state in FIRST_ROW_STATES
+            ):
+                first_snapshots[field] = self.first_row_comparators[field].observe(
+                    first_state
+                )
+            else:
+                first_snapshots[field] = self.first_row_comparators[field].current()
+
+        field_states: dict[int, str] = {}
+        for field in FIELDS:
+            prefix = f"f{field}_"
+            values = current[field].values
+            comparator_value, comparator_count, runner_count = snapshots[field]
+            first_value, first_count, first_runner = first_snapshots[field]
+            comparator = (
+                int(comparator_value)
+                if comparator_count > 0 and comparator_value != "unmeasurable"
+                else -1
+            )
+            first_comparator = (
+                str(first_value) if first_count > 0 else "unmeasurable"
+            )
+            top = current[field].top_line
+            if reset_current:
+                field_state = "no-lock"
+            elif not self.source_lock_acquired:
+                field_state = "no-lock"
+            elif comparator_count == 0:
+                field_state = "acquiring"
+            elif top < 0 or observations[field] < 0:
+                field_state = "hold"
+            else:
+                field_state = "locked"
+            field_states[field] = field_state
+            if top >= 0 and self.source_lock_acquired:
+                self.last_locked_top[field] = top
+            effective_top = (
+                top
+                if top >= 0
+                else self.last_locked_top.get(field, -1)
+                if field_state == "hold"
+                else -1
+            )
+            if (
+                top >= 0
+                and first_observations[field] == "ambiguous"
+                and first_comparator in FIRST_ROW_STATES
+            ):
+                candidate = _first_row_candidate(values, field)
+                effective_top = candidate + (first_comparator == "black22")
+                self.last_locked_top[field] = effective_top
+            projected = (
+                effective_top + EXPECTED_PICTURE_LINES - comparator
+                if field_state in {"locked", "hold"}
+                and effective_top >= 0
+                and comparator >= 0
+                else -1
+            )
+            rows_to_clip = (
+                max(0, RASTER_LIMITS[field] - projected + 1)
+                if projected >= 0
+                else -1
+            )
+            if reset_current:
+                classification = "reset"
+            elif field_state == "hold":
+                classification = "hidden"
+            elif field_state == "locked":
+                classification = _classify_band_count(
+                    observations[field], comparator, str(values.get("dp", "unmeasurable"))
+                )
+            else:
+                classification = "hidden"
+            row.update(
+                {
+                    prefix + "picture_top_under_lock_line": effective_top,
+                    prefix + "lock_state": field_state,
+                    prefix + "lock_evidence": (
+                        f"{self.source_lock_origin}; "
+                        f"{'edge hidden; prior decision held' if field_state == 'hold' else 'current rows'}"
+                    ),
+                    prefix + "first_row_state_observation": first_observations[field],
+                    prefix + "first_row_state_comparator": first_comparator,
+                    prefix + "first_row_state_comparator_count": first_count,
+                    prefix + "first_row_state_runner_up_count": first_runner,
+                    prefix + "band_row_count_observation": observations[field],
+                    prefix + "band_row_count_comparator": comparator,
+                    prefix + "band_row_count_comparator_count": comparator_count,
+                    prefix + "band_row_count_runner_up_count": runner_count,
+                    prefix + "switch_height_comparator": (
+                        EXPECTED_PICTURE_LINES - comparator if comparator >= 0 else -1
+                    ),
+                    prefix + "switch_line_from_height_comparator": projected,
+                    prefix + "band_rows_to_clip": rows_to_clip,
+                    prefix + "height_change": classification,
+                    prefix + "height_change_evidence": (
+                        f"observed band={observations[field]}; comparator={comparator} "
+                        f"count={comparator_count}; runner-up={runner_count}; "
+                        f"RF={values.get('rf_presence', 'unmeasurable')}; "
+                        f"first-full=L{values.get('first_full_other_head_line', -1)}"
+                    ),
+                }
+            )
+            row[f"applied_d{field}"] = (
+                effective_top - STANDARD_TOPS[field]
+                if field_state in {"locked", "hold"} and effective_top >= 0
+                else 0
+            )
+
+        if all(state == "no-lock" for state in field_states.values()):
+            source_state = "no-lock"
+        elif any(state == "acquiring" for state in field_states.values()):
+            source_state = "acquiring"
+        elif any(state == "hold" for state in field_states.values()):
+            source_state = "hold"
+        else:
+            source_state = "locked"
+        row["source_lock_state"] = source_state
+        row["source_lock_evidence"] = (
+            f"{self.source_lock_origin}; fixed slots band={BAND_COUNT_CAPACITY} "
+            f"first-row={FIRST_ROW_STATE_CAPACITY}; counts never decrement"
+            + (
+                "; reset=counter discontinuity"
+                if self.counter_discontinuity
+                else "; reset=Shuttle regenerated rows absent"
+                if regenerated_lost
+                else ""
+            )
+        )
 
     def _measure_field(
         self,
@@ -1457,6 +1813,8 @@ class ReferenceBuilder:
                     "caption_lines": top.caption_lines,
                     "caption_status": top.caption_status,
                     "caption_confirmation": top.caption_confirmation,
+                    "shuttle_regenerated_status": top.regenerated_status,
+                    "shuttle_regenerated_evidence": top.regenerated_evidence,
                     "clipping_status": "unmeasurable",
                     "clipping_evidence": "flat/no-picture field; hold policy only",
                     "switch_status": "unmeasurable",
@@ -1512,6 +1870,8 @@ class ReferenceBuilder:
                     "caption_lines": top.caption_lines,
                     "caption_status": top.caption_status,
                     "caption_confirmation": top.caption_confirmation,
+                    "shuttle_regenerated_status": top.regenerated_status,
+                    "shuttle_regenerated_evidence": top.regenerated_evidence,
                     "expected_bottom_line": expected_bottom,
                     "clipping_status": "unmeasurable",
                     "clipping_evidence": switch.evidence,
@@ -1655,6 +2015,8 @@ class ReferenceBuilder:
             "caption_lines": top.caption_lines,
             "caption_status": top.caption_status,
             "caption_confirmation": top.caption_confirmation,
+            "shuttle_regenerated_status": top.regenerated_status,
+            "shuttle_regenerated_evidence": top.regenerated_evidence,
             "expected_bottom_line": expected_bottom,
             "clipping_status": clipping_status,
             "clipping_evidence": clipping_evidence,
@@ -1716,6 +2078,17 @@ class ReferenceBuilder:
     def measure_unit(self, unit: bytes, local_exact: int) -> dict[str, object]:
         counter = struct.unpack_from("<H", unit, 4)[0]
         ordinal = self._ordinal(counter, local_exact)
+        if self.counter_discontinuity:
+            self._reset_geometry_lock("counter discontinuity")
+            self.previous_y = None
+            self.previous_previous_y = None
+            self.previous = {}
+            self.previous_previous = {}
+            self.last_measurable_top = {}
+            self.pending_row = None
+            self.previous_rf_line = -1
+            self.previous_rf_x = -1
+            self.have_preceding_field = False
         packed = np.frombuffer(unit, dtype=np.uint8, offset=HEADER_BYTES).reshape(
             RASTER_LINES, LINE_BYTES
         )
@@ -1810,11 +2183,24 @@ class ReferenceBuilder:
                 0,
             )
 
-        self.previous_previous = self.previous
-        self.previous_previous_y = self.previous_y
-        self.previous = current
-        self.previous_y = y.copy()
-        self.pending_row = row
+        self._apply_running_comparators(row, current)
+
+        if self.lock_like_reset_current:
+            self.previous_y = None
+            self.previous_previous_y = None
+            self.previous = {}
+            self.previous_previous = {}
+            self.last_measurable_top = {}
+            self.pending_row = None
+            self.previous_rf_line = -1
+            self.previous_rf_x = -1
+            self.have_preceding_field = False
+        else:
+            self.previous_previous = self.previous
+            self.previous_previous_y = self.previous_y
+            self.previous = current
+            self.previous_y = y.copy()
+            self.pending_row = row
         return row
 
 
@@ -1833,6 +2219,9 @@ def validate(rows: list[dict[str, object]], capture_name: str) -> None:
         raise RuntimeError(f"{capture_name}: ordinals do not match transport sequence")
 
     for row in rows:
+        lock_state = str(row["source_lock_state"])
+        if lock_state not in {"no-lock", "acquiring", "locked", "hold"}:
+            raise RuntimeError(f"ordinal {row['ordinal']}: invalid source lock state")
         for field in FIELDS:
             prefix = f"f{field}_"
             status = str(row[prefix + "status"])
@@ -1844,6 +2233,68 @@ def validate(rows: list[dict[str, object]], capture_name: str) -> None:
             first_full = int(row[prefix + "first_full_other_head_line"])
             bottom = int(row[prefix + "bottom_line"])
             expected_bottom = int(row[prefix + "expected_bottom_line"])
+            band_observation = int(row[prefix + "band_row_count_observation"])
+            comparator = int(row[prefix + "band_row_count_comparator"])
+            comparator_count = int(row[prefix + "band_row_count_comparator_count"])
+            runner_count = int(row[prefix + "band_row_count_runner_up_count"])
+            height = int(row[prefix + "switch_height_comparator"])
+            projected = int(row[prefix + "switch_line_from_height_comparator"])
+            rows_to_clip = int(row[prefix + "band_rows_to_clip"])
+            field_lock_state = str(row[prefix + "lock_state"])
+            locked_top = int(row[prefix + "picture_top_under_lock_line"])
+            if field_lock_state not in {"no-lock", "acquiring", "locked", "hold"}:
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']} field {field}: invalid field lock state"
+                )
+            if comparator_count < runner_count or min(comparator_count, runner_count) < 0:
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']} field {field}: invalid running counts"
+                )
+            if comparator >= 0 and height + comparator != EXPECTED_PICTURE_LINES:
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']} field {field}: height/band lock does not close"
+                )
+            expected_observation = (
+                RASTER_LIMITS[field] - first_full + 1 if first_full >= 0 and top >= 0 else -1
+            )
+            if band_observation != expected_observation:
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']} field {field}: observed band does not begin at S"
+                )
+            if field_lock_state not in {"locked", "hold"} or locked_top < 0 or comparator < 0:
+                if projected != -1 or rows_to_clip != -1:
+                    raise RuntimeError(
+                        f"ordinal {row['ordinal']} field {field}: unlocked geometry claimed"
+                    )
+                expected_unlocked_class = (
+                    "reset"
+                    if "; reset=" in str(row["source_lock_evidence"])
+                    else "hidden"
+                )
+                if row[prefix + "height_change"] != expected_unlocked_class:
+                    raise RuntimeError(
+                        f"ordinal {row['ordinal']} field {field}: unlocked height classified"
+                    )
+            else:
+                if projected != locked_top + height:
+                    raise RuntimeError(
+                        f"ordinal {row['ordinal']} field {field}: projected switch differs"
+                    )
+                if rows_to_clip != max(0, RASTER_LIMITS[field] - projected + 1):
+                    raise RuntimeError(
+                        f"ordinal {row['ordinal']} field {field}: locked band-to-clip differs"
+                    )
+                expected_class = (
+                    "hidden"
+                    if field_lock_state == "hold"
+                    else _classify_band_count(
+                        band_observation, comparator, str(row[prefix + "dp"])
+                    )
+                )
+                if row[prefix + "height_change"] != expected_class:
+                    raise RuntimeError(
+                        f"ordinal {row['ordinal']} field {field}: asymmetric class differs"
+                    )
             if status == "unmeasurable":
                 if any(value >= 0 for value in (bottom, switch)):
                     raise RuntimeError(
@@ -1925,7 +2376,8 @@ def validate(rows: list[dict[str, object]], capture_name: str) -> None:
 
 
 def summarize(rows: list[dict[str, object]]) -> str:
-    output: list[str] = []
+    locks = Counter(str(row["source_lock_state"]) for row in rows)
+    output: list[str] = [f"source lock={dict(sorted(locks.items()))}"]
     for field in FIELDS:
         prefix = f"f{field}_"
         statuses = Counter(str(row[prefix + "status"]) for row in rows)
@@ -1939,6 +2391,8 @@ def summarize(rows: list[dict[str, object]]) -> str:
         ):
             histogram = Counter(str(row[prefix + key]) for row in rows)
             output.append(f"field {field}: {label}={dict(sorted(histogram.items()))}")
+        classes = Counter(str(row[prefix + "height_change"]) for row in rows)
+        output.append(f"field {field}: band classes={dict(sorted(classes.items()))}")
     return "\n".join(output)
 
 
