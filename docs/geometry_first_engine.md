@@ -493,3 +493,13 @@ switch transitions, none changed the registration.
   agreement depends on that reading. **Residual, recommended resolution:** the tape's black line 22 is a per-source
   constant (it is always sub-black and flat, always at the same row, and never carries grey), so a per-source lock —
   the contract's own geometry constant — separates the two tapes where a per-unit reading cannot.
+
+### 10.1.5 Whole-capture numbers at 8d0fdeb (run E, 2026-09-07 10:05 JST; references at geometry-first-harness 2390a2f)
+SP: top 607/608 (f1) and 608/608 (f2), S within the one-row partial ambiguity in 605/606 and 607/608; stabilized
+output moves in 7/6 frames (content motion by the comb). EP: top 597/621 and 617/621, S within one row in 618/621 and
+617/620; the crop follows the recording's own +2↔+3 jitter (bottom bar moved 228 frames) and the picture moves in
+3/5 frames. V-stabilize-off pass: recorded field 2 top 604/607; recorded field 1 469 + 18 where the engine's 287 is
+right and the reference's 286 wrong (line 286 at the noise floor), 120 flagged first lines residual. Commercial stable
+interval (582 units): field 1 measurable 582/582, top 23 ×548, S 261 ×443 / 260 ×136; field 2 top 286 ×455 / 287 ×115
+(the lone sub-black class, residual), S 523 ×542. The harness's acceptance of this record: Codex turn 12 (report of
+2026-09-07).
