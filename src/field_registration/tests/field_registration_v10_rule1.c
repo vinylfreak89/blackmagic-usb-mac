@@ -42,23 +42,28 @@ int main(int argc, char **argv)
     fieldreg_init(&engine, &config);
     fieldreg_begin_segment(&engine);
 
-    const fieldreg_confirmation expected[] = {
+    const fieldreg_confirmation expected_confirmation[] = {
         FIELDREG_CONFIRM_AGREES,
         FIELDREG_CONFIRM_DISAGREES,
         FIELDREG_CONFIRM_AGREES,
+        FIELDREG_CONFIRM_NOT_APPLICABLE,
+        FIELDREG_CONFIRM_NOT_APPLICABLE,
     };
-    for (size_t i = 0; i < sizeof expected / sizeof expected[0]; ++i) {
+    const int expected_d[] = {2, 2, 2, 0, 0};
+    const int expected_bottom[] = {252, 252, 252, 250, 250};
+    for (size_t i = 0; i < sizeof expected_d / sizeof expected_d[0]; ++i) {
         assert(fread(unit, 1, FIELDREG_UNIT_BYTES, raw) ==
                FIELDREG_UNIT_BYTES);
         fieldreg_decision decision;
         memset(&decision, 0, sizeof decision);
         assert(fieldreg_process(&engine, unit, &decision));
-        assert(decision.applied_d1 == 2);
-        assert(decision.field[0].geometry_d == 2);
-        assert(decision.field[0].raw_bottom == 252);
+        assert(decision.applied_d1 == expected_d[i]);
+        assert(decision.field[0].geometry_d == expected_d[i]);
+        assert(decision.field[0].raw_bottom == expected_bottom[i]);
         assert(decision.field[0].raw_height == 232);
         assert(decision.field[0].gauge == FIELDREG_GAUGE_GEOMETRY);
-        assert(decision.field[0].caption_confirmation == expected[i]);
+        assert(decision.field[0].caption_confirmation ==
+               expected_confirmation[i]);
     }
 
     assert(fgetc(raw) == EOF);
@@ -75,7 +80,7 @@ int main(int argc, char **argv)
     assert(p95 <= 10000.0);
     fclose(raw);
     free(unit);
-    printf("FIELDREG-V10-RULE1: 3/3 cost median=%.3f us/unit "
+    printf("FIELDREG-V10-RULE1: 5/5 cost median=%.3f us/unit "
            "p95=%.3f us/unit budget=10000.000 us/unit\n", median, p95);
     return 0;
 }
