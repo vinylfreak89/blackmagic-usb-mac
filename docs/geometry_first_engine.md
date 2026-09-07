@@ -107,7 +107,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 | 0–6, 261–269, 523–524 | 4–10, 265–273, 527–528 | padding, Y 16.0 / C 128.0 exactly | Shuttle |
 | 7–15, 270–278 | 11–19, 274–282 | blanking, Y 1.4 ± 0.5 | Shuttle |
 | 16, 279 | 20, 283 | timing pulse pattern, std 40–54 when present | Shuttle, when its decoder has sync |
-| 17, 280 | 21, 284 | CEA-608 insert: the tape's bytes when it decodes them at the standard line, else nulls | Shuttle, when its decoder has sync |
+| 17, 280 | 21, 284 | CEA-608 insert: the tape's bytes when its line 21 lies within one line of the standard line (measured 2026-09-05), else nulls | Shuttle, when its decoder has sync |
 | 18, 281 | 22, 285 | blanking, Y 1.4 | Shuttle |
 | 19–260, 282–522 | 23–264, 286–526 | pass-through from the tape and deck | source |
 
@@ -206,9 +206,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   **segment** runs from the capture's first unit or a lock-like loss to the next lock-like loss; its seed is the
   first unit with both edges readable (on a source without a head switch, rule 10, the top and the clip) and the
   regenerated rows present; H, c and d are per field; after Unknown or
-  held units the expectation is the last applied decision. Under the capture's pairing input the engine's field 1 is
-  the transport's second slot (origin 286) and its field 2 the next unit's first slot (origin 23) — section 2's
-  "field 1/2" are the transport's slots. Every line number in the rules has its field-2 analogue (23 → 286, 22 →
+  held units the expectation is the last applied decision. The rules name fields by origin — the 23-field and the 286-field;
+  the capture's pairing input (the harness's per-capture measurement, section 2) says which transport slots of
+  which units form a frame, and the record names each field by its slot. Every line number in the rules has its field-2 analogue (23 → 286, 22 →
   285, 21 → 284, 20 → 283, the clip 262 → 525). The output weaves each field at its own crop,
   one locked and one at standard placement included. A seed
   whose H is high by one (the row above read as picture on the first unit) has no correction without a raw caption
@@ -223,8 +223,11 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   it keeps being the switch line when the peak moves into the other field or disappears off the edge, even if it
   then holds a fully stable line of picture (owner, afternoon) — the account keeps that identity (the switch line
   sits H rows below the picture top); the per-unit **reading** of it, with the peak absent, is S, the first row
-  entirely the other head, or the partial line above S where that row's later part departs; a reading one row from
-  the identity is the travel.
+  entirely the other head, or the partial line above S where that row's later part departs (its segment lags in the
+  right part of the row exceed the body's maxima while its left part aligns); a reading one row from the identity
+  is the travel. The RF peak per unit: a narrow spike on a flat background above the field's own narrow specks (the
+  body's maximum). "Not applicable" (rule 10) per unit: no switch signature and the picture contiguous with the
+  clip.
   **Switch lines / the band**: the head-switch lines counted from the top switch line down, the partial line
   included (owner); the black rows the deck's TBC makes of them are band rows, not picture. Measured, TBC off against on on the same recorded fields
   (2026-09-07, one census; section 2's row is another over the same passes): with the deck's line TBC off the SP's
@@ -236,7 +239,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   counts should be both head switching and non head switching"). **Picture lines** H: the rows from the picture's
   first line to the row before the switch line (the reliable geometry); a constant of the segment (owner: "its
   height should be fixed"), seeded on the seed unit and re-seeded only by a raw caption (rule 9) or a comb-confirmed
-  hidden-top move (the seed's correction) — never learned by count: a row above the picture reading as picture or as VBI never moves it (the model: "if the bands
+  hidden-top move (the seed's correction: H := switch line − (23 + d) with the confirmed d) — never learned by count: a row above the picture reading as picture or as VBI never moves it (the model: "if the bands
   below did not change, the field did not move"), nor does the switch-line reading's travel (the owner: the peak
   disappearing "should maintain that as the head switch line"). On flat content, where the comb reads nothing, a
   hidden-top move stays held and recorded until the comb can read. **Switch-line count** c: the head-switch lines from
@@ -286,7 +289,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   the held crop (rule 9; owner, 15:40); no lock until a confirmation
   (the record and rule 9
   use the account's crop from the seed on; the output stays at standard placement until the lock, then moves to it).
-  A seed with the top hidden seeds H low by |d| and c high by |d|; one with the row above the picture read as picture
+  A seed with the top hidden seeds H low by |d|; one with the row above the picture read as picture
   seeds H high by one; the comb corrects the first (the hidden-top candidates), a raw caption the second (rule 9);
   nothing else does — the seed is the geometry until a caption or a lock-like loss. On the seed unit the clip is
   the unit's own reading (the last row above blanking) until the comparator has a leader. The level and clip
@@ -296,7 +299,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   geometry ends there; the band lies between it and the blanking the owner named as the lower bound).
 - **S**: the first row belonging entirely to the other head — read from the bottom of the field upward as the top
   of the run of rows whose horizontal alignment to the row above (segment lag), row difference, missing horizontal
-  blanking dip, intruded blanking run, or flatness at the pedestal exceeds the maxima of the field's own body rows
+  blanking dip (the blank run at the row's start where the horizontal blanking interval ends, which every picture
+  row carries), intruded blanking run, or flatness at the pedestal exceeds the maxima of the field's own body rows
   (the rows 20 to 200 below the picture top, an aperture; the field's own variance, never a typed level); the
   switch lies in S or the partial line above it. **Segment lag**: the horizontal lag, in samples, at which a short
   segment of a row best matches the row above (55-sample segments, lags −24 to +24: apertures). **Provenance error**: a capture whose
@@ -363,7 +367,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   measured 2026-09-07: with the order unswapped the comb read a correct interleave on that pass as a one-line shift
   and held a field one line high in 379 units) and applied at each lock; never
   inferred from the comb, which cannot tell a swapped precedence from a one-line displacement. On a unit without
-  static detail the comb reads nothing, the geometry is applied and the unit is marked unconfirmed.
+  static detail the comb reads nothing, the geometry is applied (to the account; the output follows only under a
+  lock) and the unit is marked unconfirmed. A source whose line 22 carries picture and shows no caption reads, at
+  +1, as the reading's travel; the comb's decisive disagreement at the account's crops is then reported every unit.
 - **Body shift**: the vertical shift of a field's picture body against the previous unit of the same field, over
   whatever range is required (never a fixed one); a maybe (owner), not used by the engine.
 
@@ -405,7 +411,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    that the content does not — never moves except at a segment's initial lock, after a re-acquisition, and at the
    corrections of the initial lock's seed (rule 9: a caption re-seed, a comb-confirmed hidden-top move, the
    row-above exception — each reported loudly whenever it happens) — and returns to standard placement at a
-   lock-like loss (rule 5); this list is the one list; field precedence (which field's line
+   lock-like loss (rule 5); this list is the one list — a rule-9 move keeps the content still by construction and
+   is not on it; field precedence (which field's line
    sits between the other's) is settled once per lock from the capture's pairing (definition of the comb) and held;
    boxed pictures are kept as broadcast; black level is never assumed. Snow-like signal, vertical tears (an
    appearance class of that layer), splices and relocks are delivered by the signal-state layer and packet accounting
