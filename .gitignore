@@ -27,6 +27,8 @@ __pycache__/
 *.s24le
 *.uyvy
 *.tpc
+*.webp
+*.mov
 captures/
 src/field_registration/tests/field_registration_unit
 src/field_registration/tests/field_registration_golden
