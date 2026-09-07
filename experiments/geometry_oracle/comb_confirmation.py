@@ -13,8 +13,7 @@ SHIFTS = range(-3, 4)
 MIN_STATIC_PIXELS = 1024
 MIN_STATIC_FRACTION = 0.02
 MIN_TEXTURE = 1.0
-MAX_DECISIVE_RATIO = 0.98
-MIN_ENERGY_MARGIN = 0.25
+MAX_DECISIVE_RATIO = 0.80
 MIN_STATIC_RUN_BLOCKS = 2  # 16 source pixels after the eight-pixel box filter.
 
 
@@ -253,7 +252,6 @@ def measure_interfield_comb_planes(
     if (
         not math.isfinite(ratio)
         or ratio > MAX_DECISIVE_RATIO
-        or energy_margin < MIN_ENERGY_MARGIN
     ):
         return unmeasurable_comb(
             f"indecisive comb: best/second={best_energy:.6f}/{second[1]:.6f} "

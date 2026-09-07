@@ -138,35 +138,50 @@ path. Capture specifications contain transport identity only: count, label, and 
 No capture supplies a top, switch row, stable interval, or per-unit answer. A spatially flat field
 is measurable when its recorded region has a clear level boundary from raster blanking. A hidden
 top or switch retains the prior locked decision in `picture_top_under_lock_line` and
-`switch_line_from_height_comparator`; the raw per-unit measurement remains independently visible.
+`switch_line_from_geometry`; the raw per-unit measurement remains independently visible
+and its position is marked unknown.
 
 Each field records the measured picture top and its blanking/VBI/caption evidence, expected bottom
 (`top + 239`), raster clipping, first switch row, last reliable row (`switch - 1`), last visible
-picture-bearing band row, first blank row, raster limit, and the visible plus censored band count.
+switch/pedestal row, first blanking-level row, raster limit, and the visible plus censored band count.
 RF transient, discontinuous aperture-edge/skew, AGC, comb, VBI, and caption evidence have separate
 columns and statuses. `bottom_line` aliases the last reliable row for the review renderer;
-`hs_bottom_line` is the last visible picture-bearing band row, and `hs_partial_line` is its exact
+`hs_bottom_line` is the last visible switch/pedestal row, and `hs_partial_line` is its exact
 compatibility alias. Chroma-only survival cannot extend either marker. `dp` and
 `switch_displacement` compare the preceding unit's same raster slot only when both coordinates
 exist.
 
-The authoritative geometry lock is source-blind and uses two fixed eight-slot running-count
-comparators per field. One counts the directly exposed `S..clip` band length and one counts the
-first-row state (`black22` or `picture`). A hit increments only its own count and bubbles upward;
+The authoritative geometry lock is source-blind. Picture lines `H` (the account top through the
+row before the partial switch line) and switch-line count `c` are fixed constants from the first
+measurable segment unit. They are re-seeded only by the first raw caption after a relative/windowed
+lock or by a comb-confirmed hidden-top seed. Repeated per-unit H/c readings are evidence and never
+vote the geometry to a new value; a segment that persistently contradicts its seed is reported.
+The measured clip line and identified tape-line-22 luma level are the two fixed eight-slot
+running-count comparators per field. A hit increments only its own count and bubbles upward;
 a challenger takes over only after its count passes the incumbent. A new value uses a free slot or
-replaces the least-counted slot, and no count is decremented. Every row stores the comparator,
-its count, and its runner-up count. The projected switch is
-`picture_top_under_lock_line + 240 - band_row_count_comparator`. `switch_first_line` and
+replaces the least-counted slot, and no count is decremented. Every row stores each comparator,
+its count, its runner-up count, and every occupied slot. The first measurable segment unit seeds `H` and
+`c` from its directly visible geometry, using its visible top displacement or caption placement.
+The expected switch identity is the placed top plus `H`. `switch_first_line` and
 `first_full_other_head_line` remain raw evidence. Missing edges are `hold`; counter discontinuity
-or loss of both Shuttle regenerated inserts resets every count immediately. The commercial rewind
-never exposes a full other-head row and remains `no-lock`, so its lock-derived coordinates are
-`-1` even where the raw detector can emit a candidate.
+or a signal-state lock-like loss resets both fields. Absent Shuttle-regenerated rows hold an
+existing lock and feed no gauge. A caption/XDS lock requires regenerated rows and exposed geometry
+in that field; an agreeing-comb lock requires both fields. The commercial rewind therefore remains
+`no-lock`/`acquiring`, with no lock-derived
+coordinates even where the raw detector emits a candidate.
 
-Band classification is asymmetric: comparator or comparator-minus-one is `travel`; a larger
-observation is `band+`; a smaller observation with a fixed top is `dropped`; and a matching
-downward top displacement is `fell-out`. The running first-row comparator resolves ambiguous
-sub-black rows without a source-specific black-line constant. VBI exclusions are based only on
-their measured waveform/run-in signatures.
+For a visible top below the standard line, `d` is that signed line difference. With a clamped top,
+`d` is the visible picture-line count minus `H`; the hidden-top reading is applied only when the
+comb confirms it. The crop origin is the standard line plus signed `d` at every sign, including
+the Shuttle-overwritten row for negative `d`.
+
+One-row switch-only motion is `travel`; a larger switch-only motion or different top/switch
+amounts are `reported-hold`. Clip and line-22 comparator replacements are reported settling
+events and never move the crop. The running line-22-level comparator
+resolves ambiguous sub-black rows without a source-specific magic value. VBI
+exclusions are based only on their measured waveform/run-in signatures. A measured comb that
+differs from the shift settled at acquisition is recorded as a true disagreement for owner review;
+the reference does not adjudicate it or change the settled comb.
 
 An RF transient candidate retains its row, sample, strength, ratio, and before/after segment lags.
 The former before-x lag gate was withdrawn because a tear can begin before the transient's sample.
@@ -209,11 +224,14 @@ commercial stable-interval falsification.
 
 The commercial capture uses counter-based review ordinals: first exact unit 211, with device-short
 ordinals 213, 214, and 216 absent. The owner-provided stable-picture boundary at 551 is deliberately
-an external test assertion in `build_invariant_report.py`, never a builder input. Only `observed`
-fields test that invariant; every unmeasurable or inferred field is listed rather than counted as
-agreement. The observed picture top passes: field 1 is L23 and field 2 is L286. Direct raw-row
-measurement falsifies constancy of the switch and band length, and the invariant report records
-those failures instead of treating them as agreement.
+an external test assertion in `build_invariant_report.py`, never a builder input. Units with an
+acquired field lock (`locked` or a reported `hold`) and measurable edges test that invariant;
+everything else is listed rather than counted as agreement. `signature_top_line` preserves the
+per-unit VBI classifier's candidate, while `picture_top_line` and
+`picture_top_under_lock_line` carry the account's decided/rendered top. This distinction is
+required where an isolated dark row resembles line 22 but the bottom geometry says the picture
+did not move. Across all 582 stable units the placed tops are L23/L286; field 2's provisional L287
+signature in 174 units is retained as disagreement evidence and never moves the crop.
 
 ```sh
 python3 experiments/geometry_oracle/build_reference.py \

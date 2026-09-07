@@ -33,7 +33,8 @@ def build(inputs: list[Path]) -> str:
     sections = [
         "# Contract-v3 picture/switch displacement audit",
         "",
-        "`dp` and `ds` compare each field with the preceding unit's same raster slot. "
+        "`dp` and `ds` compare each field's independently read signature top and switch "
+        "line with the preceding unit's same raster slot. "
         "A missing coordinate is `unmeasurable`; no numeric displacement is made from it. "
         "Every nonzero cell lists all units and up to three raw-row witnesses.",
         "",

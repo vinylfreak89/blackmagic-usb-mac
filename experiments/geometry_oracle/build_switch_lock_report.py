@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report running switch-band comparators and the SP vertical-shift test."""
+"""Report fixed geometry seeds, running level/clip comparators, and SP shift test."""
 
 from __future__ import annotations
 
@@ -10,7 +10,10 @@ from pathlib import Path
 
 import numpy as np
 
-from build_reference import BAND_COUNT_CAPACITY, FIRST_ROW_STATE_CAPACITY
+from build_reference import (
+    CLIP_LINE_CAPACITY,
+    LINE22_LEVEL_CAPACITY,
+)
 from oracle import HEADER_BYTES, LINE_BYTES, RASTER_LINES, walk_exact_units
 
 
@@ -70,21 +73,20 @@ def build(
 ) -> str:
     loaded: dict[str, list[dict[str, str]]] = {}
     output = [
-        "# Running geometry-lock census",
+        "# Geometry-lock census",
         "",
         "The comparators are fixed arrays ordered by cumulative count. A hit increments "
         "only its own count and bubbles upward; a challenger becomes comparator only after "
         "its count passes the incumbent. A new value uses a free slot or replaces the "
-        "least-counted slot when full; counts never decrement. The band array has "
-        f"{BAND_COUNT_CAPACITY} slots, and the first-row-state array has "
-        f"{FIRST_ROW_STATE_CAPACITY} slots. These are memory "
-        "capacities, not decision constants.",
+        "least-counted slot when full; counts never decrement. Only clip and line-22 "
+        f"level use arrays, with {CLIP_LINE_CAPACITY}/{LINE22_LEVEL_CAPACITY} slots. "
+        "H and c are fixed constants from the segment seed, not comparators.",
         "",
-        "A counter discontinuity resets both arrays immediately. A hidden top or switch "
+        "A counter discontinuity resets all arrays immediately. A hidden top or switch "
         "holds the prior decision and counts. `switch_first_line` and "
-        "`first_full_other_head_line` remain raw evidence. Locked geometry uses the running "
-        "band comparator; `comparator-1` is partial-line travel, values above it are `band+`, "
-        "and values below `comparator-1` are `dropped` or `fell-out` displacement evidence.",
+        "`first_full_other_head_line` remain raw evidence. The first measurable segment "
+        "unit seeds H and c; only a raw caption or a comb-confirmed hidden-top seed can "
+        "re-seed them before the next lock-like reset.",
         "",
     ]
     for capture, path in named_inputs:
@@ -108,34 +110,33 @@ def build(
         )
         for field in (1, 2):
             prefix = f"f{field}_"
-            classes = Counter(row[prefix + "height_change"] for row in rows)
+            classes = Counter(row[prefix + "band_class"] for row in rows)
             field_locks = Counter(row[prefix + "lock_state"] for row in rows)
-            band_observations = Counter(
-                row[prefix + "band_row_count_observation"] for row in rows
-            )
             final_segment = next(
                 row
                 for row in reversed(rows)
-                if int(row[prefix + "band_row_count_comparator_count"]) > 0
+                if int(row[prefix + "picture_lines_constant"]) >= 0
             )
             output.extend(
                 [
                     f"### Field {field}",
                     "",
                     f"- field lock: {_histogram(field_locks)}",
-                    f"- observed S..clip band rows: {_histogram(band_observations)}",
-                    "- final segment band comparator/count/runner-up: "
-                    f"{final_segment[prefix + 'band_row_count_comparator']}/"
-                    f"{final_segment[prefix + 'band_row_count_comparator_count']}/"
-                    f"{final_segment[prefix + 'band_row_count_runner_up_count']}",
-                    "- final segment switch height/projected line: "
-                    f"{final_segment[prefix + 'switch_height_comparator']}/"
-                    f"{final_segment[prefix + 'switch_line_from_height_comparator']}",
-                    "- final segment first-row comparator/count/runner-up: "
-                    f"{final_segment[prefix + 'first_row_state_comparator']}/"
-                    f"{final_segment[prefix + 'first_row_state_comparator_count']}/"
-                    f"{final_segment[prefix + 'first_row_state_runner_up_count']}",
-                    f"- asymmetric band classes: {_histogram(classes)}",
+                    "- final segment H constant: "
+                    f"{final_segment[prefix + 'picture_lines_constant']}",
+                    "- final segment c constant: "
+                    f"{final_segment[prefix + 'switch_line_count_constant']}",
+                    "- final segment clip comparator/count/runner-up: "
+                    f"{final_segment[prefix + 'clip_line_comparator']}/"
+                    f"{final_segment[prefix + 'clip_line_comparator_count']}/"
+                    f"{final_segment[prefix + 'clip_line_runner_up_count']}",
+                    "- final segment account switch line: "
+                    f"{final_segment[prefix + 'switch_line_from_geometry']}",
+                    "- final segment line-22 level comparator/count/runner-up: "
+                    f"{final_segment[prefix + 'line22_level_comparator']}/"
+                    f"{final_segment[prefix + 'line22_level_comparator_count']}/"
+                    f"{final_segment[prefix + 'line22_level_runner_up_count']}",
+                    f"- switch-count classes: {_histogram(classes)}",
                     "- first-row observations: "
                     f"{_histogram(Counter(row[prefix + 'first_row_state_observation'] for row in rows))}",
                     "",
