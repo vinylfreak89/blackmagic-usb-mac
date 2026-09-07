@@ -532,7 +532,15 @@ Third ruling, verbatim: "The number of switch lines below the top line either st
 switch line should be the only variable one as that's the actual area of travel." So the lock is the band's maximum
 row count per source; per unit the count equal to it, or one less with the partial line, is the travel; a larger count
 is an error (the switch read on a picture row); a smaller count with the top still is the picture dropped under a
-clamped top — displacement evidence. Measured at run E on the commercial's stable interval: S − top = 238 with the peak present in 31/36 field-1 units and
+clamped top — displacement evidence. Fourth ruling, verbatim (on the black-line-22 question, "should it be a per-source constant?"): "no it should not be
+per source. No god damn magic numbers. It should be derived and stabilized. ie, check the number of times that level
+has appeared. If it's appeared more often than any other level, then it becomes the comparitor and replaces the
+previous comparitor which the number of times it has appeared." So every lock is a running count: the value seen most
+often so far is the comparator and is replaced by any value whose count passes it; no window, no threshold. Applied
+(commit after 8ffa2f0) to the band count (comparator = the most frequent count; the travel is that count or one less)
+and to the first recorded row's state (sub-black-and-flat = the black line 22, or picture): on the SP the comparator
+becomes the black line 22 at row 23, on the commercial tape picture — derived from the tapes, with each comparator's
+count and runner-up count written per unit. Measured at run E on the commercial's stable interval: S − top = 238 with the peak present in 31/36 field-1 units and
 237 in 48/59 field-2 units; with the peak absent the same modes in 402/546 and 395/517 with a 234–239 spread; of 57
 field-1 S changes, 44 have the peak absent in both units. The per-unit "first row entirely the other head" (S) is
 evidence for acquiring and checking the height lock, never the record's switch line. (2) With the switch line fixed, the band-row count between it and the clip is the vertical position gauge of
