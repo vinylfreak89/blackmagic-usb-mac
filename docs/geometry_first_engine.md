@@ -45,7 +45,7 @@ Consequences that the engine is built on:
   line-21 position, or directly under a black row that sits where line 22 would be, it is line 22
   and the crop starts one row lower.
 
-## 3. Measurements, per unit, per field (all from the raw raster)
+## 3. Measurements, per unit, per field (all from the raw raster) — SUPERSEDED by §8 and §10 (kept as history)
 
 1. **Row luma profile** over the pass-through rows: mean and within-row std, at 640 samples per
    row. Blanking floor: 1.4 (**raster**). A row is *dark* if its mean ≤ floor + 8 (**default**: the
@@ -83,7 +83,7 @@ Consequences that the engine is built on:
    check only; disagreement is logged, never acted on per unit; a persistent disagreement (≥ 8
    units, **default**) with both edges stable flags the lock for re-acquisition.
 
-## 4. Decision, per unit
+## 4. Decision, per unit — SUPERSEDED by §8 and §10 (kept as history)
 
 For each field independently:
 - If the top edge is measurable: d = d_top (with the line-22 correction). If a caption or gap is
@@ -120,7 +120,7 @@ two relocks) and at real boxing changes; field precedence constant within a lock
 the snow/mute units 43,686–43,736; every hold named with its cause. Then the live-path watch copy
 with the sidecar burned in, for the owner.
 
-## 7. Revision from the raw panels (2026-09-06 05:30 JST, prototype `experiments/geometry_first_proto.py` at `be08bba`)
+## 7. (superseded by §8/§10 where they differ) Revision from the raw panels (2026-09-06 05:30 JST, prototype `experiments/geometry_first_proto.py` at `be08bba`)
 
 Every rule below replaced one in §3–§4 after a class panel (`experiments/class_panels.py`, raw rows of the units in
 each decision class) contradicted the metric that had proposed it. Constants are labelled RASTER (measured on the
@@ -285,12 +285,12 @@ against the body's own):
 - Where the switch lands at or past the clip line no band is visible in that unit (owner: "certain fields have no
   detectable head switch").
 
-Consequences (owner, 2026-09-07, amending §8): the head switch is a separate physical event (drum phase) whose
-position relative to the picture jitters on this recording, so it is **not** a per-source constant to lock and **not**
-a witness of the picture's vertical position by itself; the account "bottom moved by X ⇒ top moved by X" does not
-hold across a switch move. The picture's position under lock is the top and the body; the picture's bottom is
-`min(last picture line, switch line − 1)` measured per unit and legitimately moves when the switch cuts higher; the
-review render carries two markers, the picture bottom (red) and the band bottom (yellow), both per unit. A recording
+Consequences — SUPERSEDED the same afternoon by the rulings in §10.6: the switch's position moves with the picture
+and the rows from the picture top to the switch line are a per-source constant (by running count); the top switch
+line alone travels by one row as the switch point moves along the line and off its edge; the changes seen above
+(261 → 259 → 260 with the top fixed) are that travel and the peak's disappearance, and any change beyond one row is
+an event to report, never a new position. The picture's bottom under the lock is the row above the switch line so
+placed; the review render carries the picture bottom (red) and the band bottom (yellow). A recording
 whose fields were recorded misregistered cannot be corrected by any frame TBC; only measuring the expected geometry
 and every departure from it can, which is this engine's job. The v3 engine's switch lock (`geometry_v3_decide.py`)
 is therefore correct only for sources whose switch is steady (the commercial tape) and is superseded for fixture A.
@@ -427,7 +427,11 @@ switch transitions, none changed the registration.
   intruding run sits at the pedestal (luma ~11) and no band row carries a blank-level run: the two captures show the
   same physics at two levels, and the engine keeps both tests. Codex's harness arrived at the same signature
   independently ("internal blank run x82–145 at Y1.391", turn 10).
-- **VBI-type rows fail to correlate with the row below.** Adjacent picture lines correlate (measured r 0.87–0.99); the
+- WITHDRAWN 2026-09-07 afternoon ("whenever you don't have extreme confidence in something go back to the design"):
+  the correlation-and-texture VBI test below and its noise gate were inventions; the design's VBI signatures (§2, §3
+  item 2, §7, §7a: the CEA-608 waveform, the run-in burst, the smeared XDS bar, the black line 22, the dim "gap" line
+  under half the brightness of the rows below) replace them in the engine after run G. **VBI-type rows fail to
+  correlate with the row below.** Adjacent picture lines correlate (measured r 0.87–0.99); the
   EP recording's smeared XDS bar (line 286), its run-in fragments (287) and its caption rows correlate at 0.01–0.36.
   The test applies only to rows with texture ≥ 4× the field's own noise (median std of adjacent-row differences /√2
   over the middle rows), so a dark band with texture at the noise (commercial lines 23–24, std 3–6 against noise 2)
@@ -477,7 +481,7 @@ switch transitions, none changed the registration.
 
 ### 10.1.4 Two more premises, and what the pedestal says about the commercial tape (commit 8d0fdeb, 2026-09-07 09:36 JST)
 
-- **The correlation and texture rules stand down where the field's own rows do not correlate.** Their premise is
+- (withdrawn with the rule above) **The correlation and texture rules stand down where the field's own rows do not correlate.** Their premise is
   that adjacent picture lines correlate in this field; on the commercial tape's flat and dark scenes the picture rows
   are noise-only (the middle rows correlate at 0.1–0.3, row std 1–3 against a noise of 0.7), so "textured" and
   "uncorrelated" describe noise and run D read the top at 25/287 in 107/109 stable units. The rules apply when the
@@ -490,9 +494,8 @@ switch transitions, none changed the registration.
   in the picture, since line 23 carries grey picture elsewhere (counter 6842) and the picture is stable. Where a
   single sub-black line precedes the picture (counter 6645 field 1, 6672 field 2) the per-unit rule reads the black
   line 22 and the top one row low; fixture A's displaced black line 22 looks identical per unit and its 608/608
-  agreement depends on that reading. **Residual, recommended resolution:** the tape's black line 22 is a per-source
-  constant (it is always sub-black and flat, always at the same row, and never carries grey), so a per-source lock —
-  the contract's own geometry constant — separates the two tapes where a per-unit reading cannot.
+  agreement depends on that reading. Resolved by ruling 4 (§10.6): the first recorded row's state is a comparator by
+  running count — black line 22 or picture — derived from the source, not a per-source constant.
 
 ### 10.1.5 Whole-capture numbers at 8d0fdeb (run E, 2026-09-07 10:05 JST; references at geometry-first-harness 2390a2f)
 SP: top 607/608 (f1) and 608/608 (f2), S within the one-row partial ambiguity in 605/606 and 607/608; stabilized
@@ -544,8 +547,10 @@ memory allocation!!! (In the real C engine)" — each comparator is a fixed arra
 order: a hit increments and bubbles up; a new value takes a free slot, or with the array full replaces the last
 (least-counted) entry, which drops out; counts never decrement (owner: "Why are you ever decrementing counts"); eight
 is a memory capacity, not a decision constant. Sixth ruling, verbatim: "A change of geometry (a loss of source lock or lock like loss resets everything immediately)"
-— the comparators never carry across a source: a unit with no measurable picture, regenerated VBI rows that are not
-the Shuttle's, or a counter discontinuity clears both arrays of the field at once, and the counts restart. On the SP
+— the comparators never carry across a source: regenerated VBI rows that are not the Shuttle's (the decoder without
+sync), a counter discontinuity, or a signal-state relock clears both arrays of the field at once, and the counts
+restart. A hidden edge (a unit with no measurable picture: torn strip, flat raster, dropout) is the other class of §1
+— the previous decision holds and the comparators are kept. On the SP
 the comparator
 becomes the black line 22 at row 23, on the commercial tape picture — derived from the tapes, with each comparator's
 count and runner-up count written per unit. Measured at run E on the commercial's stable interval: S − top = 238 with the peak present in 31/36 field-1 units and
