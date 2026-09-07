@@ -528,7 +528,11 @@ position. The height of it I expect to be fixed not its position, but if that he
 I said [the peak disappearing], I should know about it." Consequences: (1) the switch line's POSITION moves with the
 picture; its HEIGHT — the rows from the picture top to the switch line, and the band's row count — is the per-source
 constant; a height change is reported as an event unless the peak has disappeared (the one-row partial ambiguity).
-Measured at run E on the commercial's stable interval: S − top = 238 with the peak present in 31/36 field-1 units and
+Third ruling, verbatim: "The number of switch lines below the top line either stays constant or decreases. The top
+switch line should be the only variable one as that's the actual area of travel." So the lock is the band's maximum
+row count per source; per unit the count equal to it, or one less with the partial line, is the travel; a larger count
+is an error (the switch read on a picture row); a smaller count with the top still is the picture dropped under a
+clamped top — displacement evidence. Measured at run E on the commercial's stable interval: S − top = 238 with the peak present in 31/36 field-1 units and
 237 in 48/59 field-2 units; with the peak absent the same modes in 402/546 and 395/517 with a 234–239 spread; of 57
 field-1 S changes, 44 have the peak absent in both units. The per-unit "first row entirely the other head" (S) is
 evidence for acquiring and checking the height lock, never the record's switch line. (2) With the switch line fixed, the band-row count between it and the clip is the vertical position gauge of
