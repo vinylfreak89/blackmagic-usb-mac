@@ -214,9 +214,8 @@ them drift".
    (`sg_to_render_csv.py` → `field_pair_review.py --mode stabilized --vscale 2`) with its machine read-back on every
    frame (`stabilized_readback.py`), then the owner looks. The FINAL output per capture is the contract's section-8
    format (the 720×486 overlay as placed, the 525-line raster beside it, the decision information, the marker line
-   and the unit number, bwdif); two readings in it are mine and he corrects them in a line if wrong: that "the
-   running line" is the marker drawn at the measured picture edges, and that bwdif runs one frame per unit (TFF)
-   rather than 2× at 59.94. A measurement disagreement (what a row is) is decided on
+   and the unit number, bwdif); the two readings in it that are mine are listed as open in contract section 9 and
+   were put to the owner at 22:0x. A measurement disagreement (what a row is) is decided on
    the raw rows by both; a true disagreement (the settled comb against the placed crops, or the two instruments
    against each other on a unit after the rows were read) goes to the owner as one labelled bwdif frame per unit,
    adjudicated by neither agent. A capture passes when the record agrees with the reference on every unit the

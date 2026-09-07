@@ -369,12 +369,14 @@ watch copy is the live path's output with its record burned in. No work product 
 **Final outputs** (owner, 2026-09-07 21:4x): "for final outputs, the 720x486 overlay plus the raster that shows the
 picture shift. the one with the running line and number at the bottom, rendered as bwdiff, not nnedi3", and "plus
 all the decision information ... the last type of output this thread was last producing, tweaked slightly". So the
-deliverable review copy of a capture is one frame per unit carrying: the 720×486 output as placed (the 480-line crop
-with its two lines above — lines 21–263 and 283–525, CLAUDE.md §11's alternate mode — so what landed on 21 and 22 is
-visible) with the record burned in; the 525-line raster beside it, showing where the picture sits in the raster; the
-unit's decision information, its marker line and its unit number. Deinterlaced with bwdif, never NNEDI3 — a weaver
-combs exactly where the two fields disagree, which is the presentation-level acceptance test (CLAUDE.md §7). Read
-back by machine on every frame before anyone looks at it.
+deliverable review copy of a capture is one frame per unit carrying: the 720×486 output as placed (CLAUDE.md §11's alternate
+mode: lines 21–263 and 283–525, 243 lines per field; against the 480-line crop that is lines 21–22 above and 263
+below in field 1, and 283–285 above in field 2 — the 486 raster is asymmetric — so what landed on the caption and
+VBI rows is visible) with the record burned in; the 525-line raster beside it, showing where the picture sits in the raster; the
+unit's decision information, its marker line and its unit number. Deinterlaced with bwdif, never NNEDI3 (owner, 21:4x). bwdif is the
+presentation the owner reviews, not a measurement: it weaves where it judges the picture static and its per-pixel
+decisions add structure of their own (CLAUDE.md §7), so the registration check stays the settled comb and the
+machine read-back of every frame, which happens before anyone looks at it.
 
 Owner, verbatim (2026-09-07 15:15): "any true disagreement (such as comb not matching) should be reported loudly for
 me to examine unit by unit in the test harness (Codex's job). please present a single frame rendered (and shifted)
@@ -386,7 +388,15 @@ labelled with the unit, its counter, both crop origins and the comb's reading. N
 
 ## 9. Open
 
-Nothing is open.
+Two readings of the owner's final-output words are Claude's and are open until he corrects or confirms them (output
+preferences, not signal):
+
+1. "the one with the running line and number at the bottom": read as the marker line drawn at the measured picture
+   top and bottom, with the unit number, on the render this session was last producing. Recommendation: as read.
+2. bwdif at one frame per unit (29.97, top field first), or 2× at 59.94. Recommendation: one frame per unit, so the
+   frame and the unit number are one to one; 2× doubles the length and shows the same two fields twice.
+
+Neither affects the engine or the plan: they set the review render's format only.
 
 Closed 2026-09-07 21:34 (the owner): a first lock is confirmed by combing, captions or both, and nothing else; the
 earlier "significant non-dirty luma" is withdrawn (the Shuttle's blanking can hide the picture's first lines), and a
