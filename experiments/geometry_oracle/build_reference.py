@@ -100,6 +100,7 @@ FIELD_COLUMNS = [
     "clipping_status",
     "clipping_evidence",
     "switch_first_line",
+    "first_full_other_head_line",
     "switch_status",
     "switch_cues",
     "bottom_line",
@@ -204,6 +205,8 @@ class RowCue:
 @dataclass(frozen=True)
 class SwitchReading:
     line: int
+    first_full_other_head_line: int
+    first_full_other_head_evidence: str
     status: str
     cues: str
     skew_line: int
@@ -407,13 +410,32 @@ def _inspect_top(
     elif field == 1:
         excluded = set(off_waveform) | set(off_caption)
         means, _stds, _gradients, active, _blank, _gates = measure_row_activity(y, spec)
+        middle_coherence, _middle_vertical_mad = _picture_coherence(y, field)
         active_lines = [
             line
             for line in range(pass_first, min(pass_first + 8, pass_last + 1))
             if line not in excluded
             and bool(active[line - pass_first])
         ]
-        if active_lines:
+        low_coherence_boundary = (
+            middle_coherence < 0.50
+            and pass_first not in excluded
+            and bool(recorded_rows[0])
+            and (
+                abs(float(means[0]) - blank_mean) >= 4.0 * blank_noise
+                or float(_stds[0]) >= max(2.0, 4.0 * blank_noise)
+            )
+        )
+        if low_coherence_boundary:
+            top = pass_first
+            reason = (
+                f"recorded low-coherence boundary begins at L{top}; "
+                f"Y={float(means[0]):.3f}/{float(_stds[0]):.3f} "
+                f"versus blank={blank_mean:.3f}/{blank_noise:.3f}; "
+                f"chroma gate={recorded_gate:.3f}; middle coherence="
+                f"{middle_coherence:.3f}; correlation/texture gate stood down"
+            )
+        elif active_lines:
             body = y[spec.body_lo : spec.body_hi, 40:680].astype(np.float64)
             body_level = float(np.median(body))
             midpoint = (blank_mean + body_level) / 2.0
@@ -426,7 +448,19 @@ def _inspect_top(
                 bright_top = level_lines[0]
                 dark_band = list(range(pass_first, bright_top))
                 recorded_dark_band = (
-                    len(dark_band) >= 3
+                    (
+                        len(dark_band) >= 3
+                        or (
+                            middle_coherence < 0.50
+                            and (
+                                len(dark_band) >= 2
+                                or (
+                                    len(dark_band) == 1
+                                    and previous_top == pass_first
+                                )
+                            )
+                        )
+                    )
                     and all(
                         bool(recorded_rows[line - pass_first])
                         for line in dark_band
@@ -438,10 +472,19 @@ def _inspect_top(
                     # first picture band from an isolated recorded VBI-black
                     # row immediately before an otherwise normal picture.
                     top = pass_first
+                    if len(dark_band) == 1:
+                        status = "inferred"
                     reason = (
                         f"recorded non-VBI dark band L{pass_first}-L{bright_top - 1} "
                         f"precedes picture-level onset L{bright_top}; "
-                        f"chroma gate={recorded_gate:.3f}; dark band is picture"
+                        f"chroma gate={recorded_gate:.3f}; "
+                        f"middle coherence={middle_coherence:.3f}; "
+                        "dark band is picture"
+                        + (
+                            "; one-row band confirmed by last-measurable same-slot top continuity"
+                            if len(dark_band) == 1
+                            else ""
+                        )
                     )
                 else:
                     top = bright_top
@@ -869,6 +912,100 @@ def _middle_blanking_row(
     return -1, f"no internal horizontal blanking run; gate={threshold:.3f}"
 
 
+def _first_full_other_head(
+    y: np.ndarray,
+    field: int,
+    cues: list[RowCue] | None = None,
+    middle_blank: tuple[int, str] | None = None,
+    minimum_line: int | None = None,
+) -> tuple[int, str]:
+    """Measure the first row independently exposed as entirely other-head.
+
+    An internal horizontal-blanking run exposes a full other-head row directly.
+    A persistent full-width three-segment departure is also direct evidence.
+    Otherwise an earlier whole-row step is accepted only when the same
+    displacement is independently present relative to each of the two
+    preceding rows.  Those conditions separate a time-base step from ordinary
+    inter-line content, and are disabled for fields whose middle rows lack
+    correlation.
+    """
+    if cues is None:
+        cues = _cue_rows(y, field, RASTER_LIMITS[field])
+    if middle_blank is None:
+        middle_blank = _middle_blanking_row(
+            y,
+            field,
+            (item.line for item in cues if item.line >= RASTER_LIMITS[field] - 3),
+        )
+    middle_blank_line, middle_blank_evidence = middle_blank
+    coherence, _vertical_mad = _picture_coherence(y, field)
+    if minimum_line is None:
+        minimum_line = RASTER_LIMITS[field] - 3
+
+    last_candidate = middle_blank_line if middle_blank_line >= 0 else RASTER_LIMITS[field]
+    steps: list[tuple[int, str]] = []
+    for cue in cues:
+        if (
+            cue.line < minimum_line
+            or cue.line > last_candidate
+            or not cue.generic
+            or not cue.skew
+        ):
+            continue
+        line = cue.line
+        above_correlation = _correlation(y[line - 5], y[line - 4])
+        next_correlation = (
+            _correlation(y[line - 4], y[line - 3])
+            if line < RASTER_LIMITS[field]
+            else 0.0
+        )
+        if (
+            coherence >= 0.50
+            and all(score >= 2.5 for score in cue.thirds)
+            and above_correlation < 0.60
+            and next_correlation >= 0.70
+        ):
+            steps.append(
+                (
+                    line,
+                    f"L{line} persistent three-third step; "
+                    f"thirds={','.join(f'{score:.3f}' for score in cue.thirds)}; "
+                    f"correlation above/next={above_correlation:.3f}/"
+                    f"{next_correlation:.3f}; middle coherence={coherence:.3f}",
+                )
+            )
+            continue
+        lag_one, best_one, zero_one = _best_lag(y[line - 5], y[line - 4])
+        lag_two, best_two, zero_two = _best_lag(y[line - 6], y[line - 4])
+        if (
+            coherence >= 0.50
+            and abs(lag_one) >= 4
+            and abs(lag_two) >= 4
+            and abs(lag_one - lag_two) <= 2
+            and best_one <= 0.80 * zero_one
+            and best_two <= 0.80 * zero_two
+        ):
+            steps.append(
+                (
+                    line,
+                    f"L{line} two-sided whole-row step "
+                    f"lag/MAD={lag_one}/{best_one:.3f}/{zero_one:.3f},"
+                    f"{lag_two}/{best_two:.3f}/{zero_two:.3f}; "
+                    f"middle coherence={coherence:.3f}",
+                )
+            )
+    if steps:
+        return min(steps, key=lambda item: item[0])
+
+    if middle_blank_line >= 0:
+        return middle_blank_line, middle_blank_evidence
+    return (
+        -1,
+        "no independently exposed full other-head row; "
+        f"middle coherence={coherence:.3f}; {middle_blank_evidence}",
+    )
+
+
 def _cue_rows(y: np.ndarray, field: int, expected_bottom: int) -> list[RowCue]:
     spec = FIELD_SPECS[field - 1]
     raster_limit = RASTER_LIMITS[field]
@@ -996,7 +1133,6 @@ def _inspect_switch(
     middle_blank_line, middle_blank_evidence = _middle_blanking_row(
         y, field, (item.line for item in structural_cues)
     )
-
     maximums = np.asarray([max(item.thirds) for item in structural_cues])
     peak_index = int(np.argmax(maximums))
     peak = structural_cues[peak_index]
@@ -1061,7 +1197,8 @@ def _inspect_switch(
         selected = next(item for item in cues if item.line == line)
         status = (
             "observed"
-            if middle_blank_line >= 0 or (directly_read and edge_line == line)
+            if middle_blank_line >= 0
+            or (directly_read and edge_line == line)
             else "inferred"
         )
         reason = (
@@ -1077,6 +1214,14 @@ def _inspect_switch(
     else:
         status = "unmeasurable"
         reason = "no switch cue"
+
+    first_full_line, first_full_evidence = _first_full_other_head(
+        y,
+        field,
+        cues,
+        (middle_blank_line, middle_blank_evidence),
+        line if line >= 0 else None,
+    )
 
     skew_item = next((item for item in cues if item.line == edge_line), None)
     agc_item = agc[0] if agc else None
@@ -1124,6 +1269,8 @@ def _inspect_switch(
     )
     return SwitchReading(
         line=line,
+        first_full_other_head_line=first_full_line,
+        first_full_other_head_evidence=first_full_evidence,
         status=status,
         cues="+".join(names) if names else "none",
         skew_line=skew_item.line if skew_item else -1,
@@ -1235,6 +1382,7 @@ class ReferenceBuilder:
         self.previous_previous_y: np.ndarray | None = None
         self.previous: dict[int, FieldResult] = {}
         self.previous_previous: dict[int, FieldResult] = {}
+        self.last_measurable_top: dict[int, int] = {}
         self.pending_row: dict[str, object] | None = None
         self.previous_rf_line = -1
         self.previous_rf_x = -1
@@ -1264,7 +1412,12 @@ class ReferenceBuilder:
     ) -> FieldResult:
         spec = FIELD_SPECS[field - 1]
         previous = self.previous.get(field)
-        previous_top = previous.top_line if previous else -1
+        immediate_previous_top = previous.top_line if previous else -1
+        previous_top = (
+            immediate_previous_top
+            if immediate_previous_top >= 0
+            else self.last_measurable_top.get(field, -1)
+        )
         previous_switch = previous.switch_line if previous else -1
         previous_rf_line = self.previous_rf_line
         previous_rf_x = self.previous_rf_x
@@ -1325,7 +1478,7 @@ class ReferenceBuilder:
                     "closure_status": "unmeasurable",
                     "closure_reason": "flat/no-picture field; no geometry substituted",
                     "status": "unmeasurable",
-                    "dp": _motion(-1, previous_top, previous is not None),
+                    "dp": _motion(-1, immediate_previous_top, previous is not None),
                     "switch_displacement": _motion(-1, previous_switch, previous is not None),
                     "method": "unmeasurable",
                     "note": (
@@ -1364,6 +1517,7 @@ class ReferenceBuilder:
                     "clipping_evidence": switch.evidence,
                     "switch_status": "unmeasurable",
                     "switch_cues": switch.cues,
+                    "first_full_other_head_line": switch.first_full_other_head_line,
                     "raster_limit_line": raster_limit,
                     "rf_peak_line": switch.rf_peak_line,
                     "rf_peak_x": switch.rf_peak_x,
@@ -1394,7 +1548,9 @@ class ReferenceBuilder:
                     "closure_reason": switch.evidence,
                     "last_recorded_line": -1,
                     "status": "unmeasurable",
-                    "dp": _motion(top.line, previous_top, previous is not None),
+                    "dp": _motion(
+                        top.line, immediate_previous_top, previous is not None
+                    ),
                     "switch_displacement": _motion(-1, previous_switch, previous is not None),
                     "method": "unmeasurable",
                     "note": f"{top.evidence}; {switch.evidence}",
@@ -1483,6 +1639,7 @@ class ReferenceBuilder:
                 switch.rf_evidence,
                 switch.skew_evidence,
                 switch.agc_evidence,
+                switch.first_full_other_head_evidence,
                 clipping_evidence,
                 closure_reason,
                 "row Y(mean/std) " + " ".join(_row_luma(y, line) for line in cue_lines),
@@ -1502,6 +1659,7 @@ class ReferenceBuilder:
             "clipping_status": clipping_status,
             "clipping_evidence": clipping_evidence,
             "switch_first_line": switch.line,
+            "first_full_other_head_line": switch.first_full_other_head_line,
             "switch_status": switch.status,
             "switch_cues": switch.cues,
             "bottom_line": bottom,
@@ -1545,7 +1703,7 @@ class ReferenceBuilder:
             "closure_reason": closure_reason,
             "last_recorded_line": last_recorded,
             "status": overall_status,
-            "dp": _motion(top.line, previous_top, previous is not None),
+            "dp": _motion(top.line, immediate_previous_top, previous is not None),
             "switch_displacement": _motion(
                 switch.line, previous_switch, previous is not None
             ),
@@ -1567,6 +1725,8 @@ class ReferenceBuilder:
         for field in FIELDS:
             result = self._measure_field(y, packed, field)
             current[field] = result
+            if result.top_line >= 0:
+                self.last_measurable_top[field] = result.top_line
             if self.specification.half_field_phase:
                 carried = (
                     "slot 1 carries SP field 2 of the preceding unit"
@@ -1681,6 +1841,7 @@ def validate(rows: list[dict[str, object]], capture_name: str) -> None:
                 raise RuntimeError(f"ordinal {row['ordinal']} field {field}: bad status/method")
             top = int(row[prefix + "picture_top_line"])
             switch = int(row[prefix + "switch_first_line"])
+            first_full = int(row[prefix + "first_full_other_head_line"])
             bottom = int(row[prefix + "bottom_line"])
             expected_bottom = int(row[prefix + "expected_bottom_line"])
             if status == "unmeasurable":
@@ -1693,6 +1854,10 @@ def validate(rows: list[dict[str, object]], capture_name: str) -> None:
                 raise RuntimeError(f"ordinal {row['ordinal']} field {field}: inconsistent geometry")
             if int(row[prefix + "last_reliable_line"]) != bottom:
                 raise RuntimeError(f"ordinal {row['ordinal']} field {field}: compatibility bottom differs")
+            if first_full >= 0 and not (switch <= first_full <= RASTER_LIMITS[field]):
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']} field {field}: first-full row precedes switch or exceeds raster"
+                )
             if int(row[prefix + "hs_partial_line"]) != int(row[prefix + "hs_bottom_line"]):
                 raise RuntimeError(f"ordinal {row['ordinal']} field {field}: band aliases differ")
             if int(row[prefix + "closure_line_count"]) != 240:

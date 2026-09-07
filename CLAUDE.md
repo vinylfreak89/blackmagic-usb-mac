@@ -1988,29 +1988,35 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   field 2; the stable switch/band assertion is therefore falsified. Deciding rows and the full
   census are in `experiments/geometry_oracle/reports/turn10_row_disagreements.md`.
 
-  **Independent engine-record score (engine `0fc3461`, 2026-09-07):** counter joins, including
-  the V-stabilize-off half-field repair, are audited in
-  `experiments/geometry_oracle/reports/engine_record_score_0fc3461.md`. The SP record's top
-  agrees in 608/608 units in both fields; direct tail evidence rejects its S at counters 13825,
-  13833, and 14106. The repaired off-pass field-1 top correctly moves above the old fixed L286
-  reference in 68 units (L286 is blank/VBI in the clear cases), but says no picture in 57
-  picture-bearing fields; repaired field 2 is one row early at engine counters 395 and 397.
-  Therefore the old off-pass L286-everywhere reference and the engine record are both incomplete.
-  On EP, engine-minus-reference top is field 1: `-1:51, 0:357, +1:141, +2:21,
-  unmeasurable:51`; field 2: `0:509, +1:32, unmeasurable:80`; the raw rows support the reference
-  in every disagreement, and 58 of the prior 178 field-1 exceptions remain (47 numeric, 11
-  no-picture). Measurable comb contradictions caused by unequal engine top deltas are SP 0/591,
-  off-pass 64/518, EP 113/249, commercial 2/331. In the commercial stable interval the engine
-  emits multiple numeric tops while the observed reference top remains L23/L286. Its field-1 S
-  changes at many more counters than the directly exposed internal-blanking signature, agrees
-  with that signature's changes at 6645 and 6714, and moves one counter early at 6687 and 6737
-  instead of the observed 6688 and 6738.
+  **Independent engine-record score, run E (engine `8d0fdeb`, 2026-09-07):** counter joins,
+  including the V-stabilize-off half-field repair, and every raw-row adjudication are in
+  `experiments/geometry_oracle/reports/engine_record_score_8d0fdeb.md`. The references now store
+  `first_full_other_head_line` separately from `switch_first_line`: the latter remains the first
+  unreliable row and may be a partial predecessor; the former is recorded only where an internal
+  blanking run, persistent three-third step, or decisive two-sided whole-row lag independently
+  exposes a full other-head row. No exposed signature means `-1`, not an inferred coordinate.
+  SP counters 13500 (not exposed) and 13833 (direct L260 versus engine S L261) demonstrate the
+  distinction.
 
-  The reference does not yet store a separate first-full-other-head coordinate. Its
-  `switch_first_line` is the earliest unreliable switch-band row and may include a partial
-  predecessor. Consequently exact S scoring is limited to units where the other head directly
-  exposes horizontal blanking inside a row; absent that direct signature the exact comparator is
-  `unmeasurable`, never an inferred switch coordinate. SP counters 13500 (signature absent) and
-  13833 (direct L260 versus engine S L261) are the deciding pair.
+  Run E is **not accepted on any of the four captures**. SP top is exact in 607/608 field-1 and
+  608/608 field-2 units, but its S differs by more than the one-line partial-predecessor gap at
+  counters 13833 and 14106, and it is not exact wherever the reference directly exposes a
+  different full-other-head row. On the repaired off pass, field 1 agrees on top in 469/607
+  comparable units and the engine is right in the raw-row differences (the earlier rows are
+  blank/VBI); field 2 agrees in 604/607 and the reference is right in all three differences.
+  Exact S scoring still has many numeric raw-row disagreements in both repaired fields. On EP,
+  top agreement is 597/621 field 1 and 617/620 comparable field 2; the raw rows support the
+  reference in every difference, and only 17 of the prior 178 field-1 exceptions remain. The
+  named counters 1967, 2066, 2303, and 2410 are all reread in the report.
+
+  In the commercial stable interval (counter >=6593), observed reference tops remain L23/L286;
+  the engine emits L23/L24/L25/L26 in field 1 and L286/L287/L289 or unmeasurable in field 2.
+  The reference's exposed full-other-head row changes at 6645, 6688, 6714, and 6738 in field 1;
+  the engine shares only 6645 and 6714, moves one counter early at 6687 and 6737, and reports 53
+  additional changes. Field 2 has five reference signature changes and 16 engine changes. The
+  measurable comb/top contradictions are SP 1/591, repaired off-pass 131/571, commercial 58/328,
+  and EP 13/329. Counters 6645 field 1 and 6672 field 2 decide the dark-boundary rule: their
+  sub-black first rows are picture under stable signal lock even though row texture alone cannot
+  distinguish them from a lone black line.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).

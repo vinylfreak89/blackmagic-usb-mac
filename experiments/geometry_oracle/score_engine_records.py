@@ -19,7 +19,7 @@ from typing import Iterable
 
 import numpy as np
 
-from build_reference import RASTER_LIMITS, _middle_blanking_row
+from build_reference import RASTER_LIMITS, _first_full_other_head
 from oracle import (
     FIELD_SPECS,
     HEADER_BYTES,
@@ -84,7 +84,7 @@ def _direct_delta(engine: int, direct: int) -> str:
     if engine < 0:
         return "engine-unmeasurable"
     if direct < 0:
-        return "raw-signature-unmeasurable"
+        return "reference-unmeasurable"
     return f"{engine - direct:+d}"
 
 
@@ -248,6 +248,7 @@ def top_verdict(
     engine: int,
     reference: int,
     reference_status: str = "observed",
+    raw_counter: int | None = None,
 ) -> str:
     """Encode the report's independently stated row-level adjudications."""
     if engine == reference:
@@ -256,20 +257,38 @@ def top_verdict(
         return "reference (picture rows remain measurable)"
     if reference < 0:
         return "reference (raw raster does not place a unique top)"
+    if case == "commercial" and raw_counter is not None and raw_counter >= 6593:
+        expected = 23 if engine_field == 1 else 286
+        if engine == expected:
+            return "engine (stable signal-lock geometry; dark boundary is picture)"
+        if reference == expected:
+            return "reference (stable signal-lock geometry; dark boundary is picture)"
+        return "neither (stable signal-lock geometry has a different top)"
+    if case == "off":
+        if engine_field == 1:
+            return "engine (VBI/black rows precede the repaired-parity picture)"
+        return "reference (first repaired-parity row is picture)"
+    if case in {"sp", "ep"}:
+        return "reference (VBI/black-line exclusion and picture-row continuity)"
     if reference_status != "observed":
         return "neither (raw top is not uniquely observed)"
-    if case == "off" and engine_field == 1:
-        return "engine (repaired parity; preceding row is VBI/blank)"
     return "reference (first structured/dark-picture row)"
 
 
-def _direct_full_signature(y: np.ndarray, raw_field: int) -> tuple[int, str]:
+def _direct_full_signature(
+    y: np.ndarray, raw_field: int, minimum_line: int | None = None
+) -> tuple[int, str]:
     """Return a directly proven full other-head row, not an inferred onset."""
-    limit = RASTER_LIMITS[raw_field]
-    return _middle_blanking_row(y, raw_field, range(limit - 3, limit + 1))
+    return _first_full_other_head(y, raw_field, minimum_line=minimum_line)
 
 
-def _switch_evidence(y: np.ndarray, raw_field: int, engine: int, reference: int) -> str:
+def _switch_evidence(
+    y: np.ndarray,
+    raw_field: int,
+    engine: int,
+    reference: int,
+    minimum_line: int | None = None,
+) -> str:
     limit = RASTER_LIMITS[raw_field]
     numeric = [value for value in (engine, reference) if value >= 0]
     lo = max(limit - 15, min(numeric, default=limit) - 1)
@@ -282,7 +301,7 @@ def _switch_evidence(y: np.ndarray, raw_field: int, engine: int, reference: int)
         lines.update(range(max(5, engine - 1), min(limit, engine + 1) + 1))
     if reference >= 0 and reference < lo:
         lines.update(range(max(5, reference - 1), min(limit, reference + 1) + 1))
-    full, full_evidence = _direct_full_signature(y, raw_field)
+    full, full_evidence = _direct_full_signature(y, raw_field, minimum_line)
     return _row_span(y, sorted(lines)) + f"; direct-full={_value(full)} ({full_evidence})"
 
 
@@ -342,6 +361,7 @@ def _write_top(
                 engine,
                 reference,
                 row.reference[f"f{row.raw_field}_top_status"],
+                row.raw_counter,
             )
             out.append(
                 f"| {row.engine_counter} | {row.raw_counter}/F{row.raw_field} | "
@@ -357,8 +377,10 @@ def _write_switch(
     out += [
         "`S` is scored first against the reference's earliest switch-band row. "
         "A difference of one row is the declared partial-predecessor semantic gap. "
-        "The separate exact check below uses only the directly visible internal-blanking "
-        "signature; it does not invent a first-full row when that signature is absent.",
+        "The separate exact check uses the reference's independently measured "
+        "first-full-other-head row: an internal blanking signature, a persistent "
+        "three-third step, or a two-sided whole-row time-base step. It remains "
+        "unmeasurable when none is exposed.",
         "",
     ]
     for field in (1, 2):
@@ -368,17 +390,28 @@ def _write_switch(
         exact = Counter()
         exact_lists: dict[str, list[int]] = defaultdict(list)
         exact_witnesses: dict[str, list[str]] = defaultdict(list)
+        exact_numeric: list[tuple[Joined, int, int]] = []
         for row in rows:
             engine = _integer(row.engine["S_first_shifted"])
             reference = _reference_value(row, row.raw_field, "switch_first_line")
             values.append(_delta(engine, reference))
             if engine >= 0 and reference >= 0 and abs(engine - reference) > 1:
                 beyond.append((row, engine, reference))
-            full, full_evidence = _direct_full_signature(
-                rasters[row.raw_counter], row.raw_field
+            full = _reference_value(
+                row, row.raw_field, "first_full_other_head_line"
             )
+            reference_switch = _reference_value(
+                row, row.raw_field, "switch_first_line"
+            )
+            measured_full, full_evidence = _direct_full_signature(
+                rasters[row.raw_counter], row.raw_field, reference_switch
+            )
+            if full < 0 and measured_full >= 0:
+                full_evidence += "; reference field is no-picture/unmeasurable"
             key = _direct_delta(engine, full)
             exact[key] += 1
+            if engine >= 0 and full >= 0 and engine != full:
+                exact_numeric.append((row, engine, full))
             if key not in {"+0", "both-unmeasurable"}:
                 exact_lists[key].append(row.engine_counter)
                 if len(exact_witnesses[key]) < 3:
@@ -409,7 +442,7 @@ def _write_switch(
         else:
             out += ["No differences beyond the semantic gap.", ""]
         out += [
-            "Direct-full signature histogram (engine S minus signature): "
+            "First-full-other-head histogram (engine S minus reference): "
             + _histogram(key for key, count in exact.items() for _ in range(count)),
             "",
         ]
@@ -420,6 +453,20 @@ def _write_switch(
                 + " / ".join(exact_witnesses[key]),
                 "",
             ]
+        if exact_numeric:
+            out += [
+                "Every numeric first-full disagreement:",
+                "",
+                "| engine counter | raw counter/field | engine S | reference first-full | raw tail rows |",
+                "|---:|:---:|:---|:---|:---|",
+            ]
+            for row, engine, full in exact_numeric:
+                out.append(
+                    f"| {row.engine_counter} | {row.raw_counter}/F{row.raw_field} | "
+                    f"{_value(engine)} | {_value(full)} | "
+                    f"{_switch_evidence(rasters[row.raw_counter], row.raw_field, engine, full, _reference_value(row, row.raw_field, 'switch_first_line'))} |"
+                )
+            out.append("")
 
 
 def _engine_pair(case: Case, joined: list[Joined], reference_counter: int) -> tuple[Joined, Joined] | None:
@@ -545,7 +592,9 @@ def _write_stable(
         direct_full = [
             (
                 row.engine_counter,
-                _direct_full_signature(rasters[row.raw_counter], row.raw_field)[0],
+                _reference_value(
+                    row, row.raw_field, "first_full_other_head_line"
+                ),
             )
             for row in rows
         ]
@@ -578,12 +627,12 @@ def _write_stable(
             "",
             "Engine S: " + _histogram(_value(value) for _, value in engine_s) + ".",
             "",
-            "Direct-full signature: "
+            "Reference first-full-other-head row: "
             + _histogram(_value(value) for _, value in direct_full)
             + ".",
             "",
             f"Engine S changes ({len(changes)}): {_compress(changes)}. "
-            f"Direct raw-signature changes ({len(direct_changes)}): "
+            f"Reference first-full changes ({len(direct_changes)}): "
             f"{_compress(direct_changes)}. Shared={_compress(changes & direct_changes)}, "
             f"missing={_compress(direct_changes - changes)}, "
             f"extra={_compress(changes - direct_changes)}.",
@@ -594,13 +643,13 @@ def _write_stable(
             "",
             f"Reference-top unmeasurable counters: {_compress(counter for counter, value in ref_top if value < 0)}.",
             "",
-            f"Direct-full unmeasurable counters: {_compress(counter for counter, value in direct_full if value < 0)}.",
+            f"Reference first-full unmeasurable counters: {_compress(counter for counter, value in direct_full if value < 0)}.",
             "",
         ]
         if direct_changes:
             by_counter = {row.engine_counter: row for row in rows}
             out += [
-                "Direct raw-signature change witnesses:",
+                "First-full raw-signature change witnesses:",
                 "",
                 "| counter | engine S before/at | direct signature before/at | raw rows at change |",
                 "|---:|:---|:---|:---|",
@@ -611,10 +660,14 @@ def _write_stable(
                 engine_before = _integer(before.engine["S_first_shifted"])
                 engine_current = _integer(current.engine["S_first_shifted"])
                 full_before = _direct_full_signature(
-                    rasters[before.raw_counter], before.raw_field
+                    rasters[before.raw_counter],
+                    before.raw_field,
+                    _reference_value(before, before.raw_field, "switch_first_line"),
                 )[0]
                 full_current = _direct_full_signature(
-                    rasters[current.raw_counter], current.raw_field
+                    rasters[current.raw_counter],
+                    current.raw_field,
+                    _reference_value(current, current.raw_field, "switch_first_line"),
                 )[0]
                 lo = min(full_before, full_current) - 1
                 hi = max(full_before, full_current) + 1
@@ -631,7 +684,9 @@ def _write_stable(
             out.append("")
 
 
-def _write_ep_178(out: list[str], joined: list[Joined]) -> None:
+def _write_ep_178(
+    out: list[str], joined: list[Joined], rasters: dict[int, np.ndarray]
+) -> None:
     # The previous 178 exceptions were characterized in the committed turn-10
     # report.  This set is derived from that published criterion: old engine
     # field-1 top was one row above the corrected reference.
@@ -657,6 +712,19 @@ def _write_ep_178(out: list[str], joined: list[Joined]) -> None:
         if _integer(row.engine["top"])
         != _reference_value(row, row.raw_field, "picture_top_line")
     ]
+    named: list[tuple[Joined, int, int]] = []
+    by_counter = {row.engine_counter: row for row in current}
+    for counter in (1967, 2066, 2303, 2410):
+        row = by_counter.get(counter)
+        if row is None:
+            continue
+        named.append(
+            (
+                row,
+                _integer(row.engine["top"]),
+                _reference_value(row, row.raw_field, "picture_top_line"),
+            )
+        )
     out += [
         "## EP prior-178 regression",
         "",
@@ -665,10 +733,17 @@ def _write_ep_178(out: list[str], joined: list[Joined]) -> None:
         "",
         "Remaining counters: " + _compress(row.engine_counter for row in remaining) + ".",
         "",
-        "Named checks: counter 2066 remains engine L25/reference L26; counter 2303 "
-        "is now engine-unmeasurable/reference L25; counter 2410 now agrees at L26.",
+        "Named raw-row checks:",
         "",
+        "| counter | engine/reference | raw top rows |",
+        "|---:|:---:|:---|",
     ]
+    for row, engine, reference in named:
+        out.append(
+            f"| {row.engine_counter} | {_value(engine)}/{_value(reference)} | "
+            f"{_top_evidence(rasters[row.raw_counter], row.raw_field, engine, reference)} |"
+        )
+    out.append("")
 
 
 def _case_report(case: Case) -> list[str]:
@@ -691,17 +766,22 @@ def _case_report(case: Case) -> list[str]:
     ]
     _write_top(out, case, joined, rasters)
     if case.key == "ep":
-        _write_ep_178(out, joined)
+        _write_ep_178(out, joined, rasters)
     _write_switch(out, joined, rasters)
     _write_comb(out, case, joined)
     _write_stable(out, case, joined, rasters)
     return out
 
 
-def build(cases: list[Case]) -> str:
+def build(cases: list[Case], engine_revision: str | None = None) -> str:
     lines = [
         "# Independent score of engine geometry records",
         "",
+        *(
+            [f"Engine input revision: `{engine_revision}`.", ""]
+            if engine_revision
+            else []
+        ),
         "This is a raw-raster score, not an engine-log-to-reference diff. Records are "
         "joined by the 16-bit device counter. Luma is reported as mean/standard deviation "
         "over samples 40-679; correlations use samples 24-696; lag entries give best "
@@ -710,32 +790,29 @@ def build(cases: list[Case]) -> str:
         "",
         "## Acceptance verdicts",
         "",
-        "- SP recording: **accepted with listed exceptions**. Tops agree in every field. "
-        "The raw tail rejects S at counters 13825, 13833, and 14106.",
+        "- SP recording: **not accepted**. The top has one raw-row exception, and the "
+        "engine's S is not exact against the newly recorded first-full-other-head row.",
         "",
-        "- SP recording, V-stabilize off: **not accepted**. The repaired field-1 top "
-        "correctly rejects the old fixed L286 reference in 68 numeric cases, but it also "
-        "reports no picture in 57 picture-bearing fields; repaired field 2 is one row early "
-        "at counters 395 and 397. S has additional raw-signature disagreements.",
+        "- SP recording, V-stabilize off: **not accepted**. Both repaired-parity top "
+        "records and both S records have the listed raw-row disagreements.",
         "",
-        "- EP recording: **not accepted**. The reference wins every top disagreement; "
-        "58 of the prior 178 field-1 exceptions remain, and both fields contain S readings "
-        "well inside ordinary picture rows.",
+        "- Commercial tape: **not accepted**. In the stable interval the engine top "
+        "departs from the fixed signal-lock geometry, and its S moves at counters not "
+        "carried by the reference's directly exposed other-head signature.",
         "",
-        "- Commercial tape: **not accepted**. The observed reference top is constant in "
-        "the stable interval, while the engine emits several numeric tops and no-picture "
-        "calls. Its S changes far more often than the four directly exposed raw-signature "
-        "changes and misses two of those four by one counter.",
+        "- EP recording: **not accepted**. Every top disagreement and every S difference "
+        "beyond the partial-predecessor gap is listed with its deciding rows.",
         "",
-        "## Scope objection",
+        "## Reference extension",
         "",
-        "The reference CSV has an earliest switch-band row, not a separately stored "
-        "first-full-other-head row. An exact S comparison is therefore possible only where "
-        "the other head directly exposes its own horizontal blanking inside a row. The score "
-        "reports that observed row and marks every other exact comparison unmeasurable; it "
-        "does not relabel an inferred switch row as exact. SP counter 13500 is the deciding "
-        "absence (no internal blanking signature); SP counter 13833 is the deciding presence "
-        "(directly exposed L260 while engine S is L261).",
+        "Every reference now stores `first_full_other_head_line` separately from "
+        "`switch_first_line`. The first is measured only at or below the earliest unreliable "
+        "row, using an internal horizontal-blanking run, a persistent three-third step, or "
+        "a decisive two-sided whole-row lag. It is -1 when none is exposed.",
+        "",
+        "## Objections",
+        "",
+        "None.",
         "",
     ]
     for case in cases:
@@ -746,6 +823,7 @@ def build(cases: list[Case]) -> str:
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--engine-revision")
     parser.add_argument(
         "--case",
         action="append",
@@ -762,7 +840,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     if unknown:
         parser.error(f"unknown case(s): {sorted(unknown)}")
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(build(cases))
+    args.output.write_text(build(cases, args.engine_revision))
     return 0
 
 
