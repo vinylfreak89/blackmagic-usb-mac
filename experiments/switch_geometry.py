@@ -290,7 +290,7 @@ def process_unit(u,RU,RN):
         # the blanking level are not; the clip is the last row that is not at the blanking level (a comparator)
         def blanklvl(r): return ym[r]<=thr
         clip_u=next((r for r in range(last_rec,top,-1) if not blanklvl(r)),last_rec)
-        CLIP[f].add(clip_u); clip_c=CLIP[f].top()[0]
+        CLIP[f].add(clip_u-min(D[f],0)); clip_c=CLIP[f].top()[0]             # a field sitting high shows its clip |d| rows up (contract, clip line)
         if T is not None:
             blank_under=sum(1 for r in range(T,last_rec+1) if blanklvl(r))
             n_sw=clip_c-T+1                                                  # the band's extent: the top switch line to the clip
@@ -325,9 +325,9 @@ def process_unit(u,RU,RN):
             Hc1=H[f].top()[0]
             if Hc1!=Hc0: D[f]=T-Hc1-3; case+=f';H{Hc0}->{Hc1}'               # a comparator replaced re-places the crop (owner ruling four)
             if d_cap is not None and d_cap!=D[f]:
-                if LOCKST[f]!='locked':                                       # before a lock the caption re-seeds (the model: a caption may place the first unit)
-                    D[f]=d_cap; H[f]=RunMode(); H[f].add(T-(3+d_cap)); CSW[f]=RunMode(); case+=';reseed-cap'
-                else: case+=f';cap{d_cap:+d}'                                  # logged, geometry wins (the model)
+                if LOCKST[f]!='locked' or d_cap==D[f]+1:                      # before a lock the caption re-seeds (the model); under one, a caption one more than d names the account's first line the tape's line 22 (owner, 16:20: dropped)
+                    D[f]=d_cap; H[f]=RunMode(); H[f].add(T-(3+d_cap)); CSW[f]=RunMode(); case+=';reseed-cap!'
+                else: case+=f';cap{d_cap:+d}!'                                 # logged and reported, geometry wins (the model)
         Cc=CSW[f].top()[0]
         if Cc is not None and c_vis>Cc+1: case+=f';c_vis{c_vis-Cc:+d}!'      # visible switch lines beyond c + 1 (the travel): reported loudly
         elif Cc is not None and c_vis!=Cc: case+=f';c{c_vis-Cc:+d}'
@@ -367,7 +367,7 @@ def process_unit(u,RU,RN):
             if m['hid'] is not None:
                 cand={f:m['hid'],o:M[o]['d']}; s,r,_=comb_at(cand[1],cand[2])
                 if decisive(s,r) and s==0: D[f]=m['hid']; m['d']=D[f]; m['case']+=';comb-confirmed'
-                else: m['case']+=';held'
+                else: m['case']+=(';held-travel' if abs(m['hid']-D[f])==1 else ';held!')
             if m['rowabove'] is not None and LOCKST[f]=='locked':
                 s0,r0,_=comb_at(M[1]['d'],M[2]['d'])
                 if decisive(s0,r0) and s0!=0:
