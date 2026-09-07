@@ -81,9 +81,32 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None,sig_n=0.0):
             blank_run=int((e[1::2]-e[0::2]).max())
     return dict(blank_run=blank_run,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
 # the record is flushed per unit (Python 3.14 buffers 128 KiB, ~600 rows, before the first write)
-OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b','S_tests','band_tests'])
+OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b','S_tests','band_tests','lock_state','switch_lock','band_rows_lock','height_lock','height_change'])
 PED={1:None,2:None}   # the carried pedestal per field
-CTR={}
+# the switch HEIGHT LOCK per field (owner, 2026-09-07 afternoon, contract v3 §10.6 with its correction): the head-switch
+# line's POSITION moves with the picture; its HEIGHT — the rows from the picture top to the switch line — is the
+# per-source constant, and a height change is an event to report unless the peak has disappeared (then the one-row
+# partial ambiguity of S). The per-unit S (first row entirely the other head) is evidence: the height lock is acquired
+# from LOCK_N consecutive units whose S − top agree within one row (the mode), checked every unit, and lost after LOCK_N
+# consecutive units whose S − top departs by more than one row or that carry no picture; without a lock no geometry is
+# claimed (the commercial tape's rewind passage: no-lock, not coordinates). LOCK_N = 8 is a fitted default (a quarter
+# second), labelled so. Per unit under the lock: switch line = top + height; band rows = clip − switch + 1; the
+# height_change column carries the observed S − top minus the lock with the peak's presence (p) or absence (a).
+LOCK_N=8
+LOCK={1:dict(state='acquiring',h=None,hist=[],miss=0),2:dict(state='acquiring',h=None,hist=[],miss=0)}
+def lock_update(f,obs):
+    """obs = this unit's S − top (rows) or None; returns (state, held height or None)"""
+    L=LOCK[f]
+    if L['state']=='locked':
+        if obs is None or abs(obs-L['h'])>1: L['miss']+=1
+        else: L['miss']=0
+        if L['miss']>=LOCK_N: L.update(state='no-lock',h=None,hist=[],miss=0)
+        return L['state'],L['h']
+    if obs is None: L.update(state='no-lock',hist=[]); return 'no-lock',None
+    L['hist'].append(obs); L['hist']=L['hist'][-LOCK_N:]
+    if len(L['hist'])==LOCK_N and max(L['hist'])-min(L['hist'])<=1:
+        vals=sorted(L['hist']); L.update(state='locked',h=vals[len(vals)//2],miss=0); return 'locked',L['h']
+    L['state']='acquiring'; return 'acquiring',None
 def process_unit(u,RU,RN):
     """one unit: RU = this unit's raster, RN = the next unit's (needed only with --repair)"""
     if A.only and u not in VERB: return
@@ -178,7 +201,9 @@ def process_unit(u,RU,RN):
         top=next((r for r in recrows[:4] if picture_row(r) and picture_row(r+1) and picture_row(r+2)),None)
         if u in VERB:
             for r in recrows[:6]: print(f'  top-diag u{u} f{f} L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,24:696].std()):5.1f} rec {int(rec[r])} cc608 {int(bool(cc608(Y[r])[0]))} textured {int(textured(r))} corr {corr_below(r):.2f}/{corr_either(r):.2f} bright {int(bright(r))} picture {int(picture_row(r))} | sig_n {sig_n:.2f} ped {ped:.1f} body_corr {body_corr:.2f}')
-        if top is None or len(recrows)<60: w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','']); continue
+        if top is None or len(recrows)<60:
+            st,held=lock_update(f,None)
+            w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','',st,-1,-1,(held if held is not None else -1),'']); continue
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
         feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl,by_m,sig_n) for r in range(top+1,last_rec+1)}
@@ -236,7 +261,12 @@ def process_unit(u,RU,RN):
             ev=f"spike {pf['spike']:.0f}@{pf['x']} w{pf['width']} rank {spk_rank:.2f} narrowflat {int(narrow_flat)} wlag {pf['wlag']} r {pf['wr']:.2f}"
             if narrow_flat and spk_rank>=1.0: px=pf['x']; how='shifted+peak_above'
         reliable=(sw-top) if sw is not None else (last_rec-top+1); band=(last_rec-sw+1) if sw is not None else 0
-        w.writerow([u,CTR[u],f,top+base,(sw+base) if sw is not None else -1,how,px,ev,reliable,band,last_rec+base,reliable+band,(feats[sw]['wlag'] if sw is not None else ''),(round(feats[sw]['wr'],2) if sw is not None else ''),body_lag,round(body_r,2),M_run,round(M_spk,0),round(by_m,2),round(sig_b,2),(tests(sw) if sw is not None else ''),('|'.join(f'{r+base}:{tests(r)}' for r in range(sw,last_rec+1)) if sw is not None else '')])
+        obs=(sw-top) if sw is not None else None
+        st,held=lock_update(f,obs); clipr=(262 if slot==1 else 525)
+        swl=(top+base+held) if held is not None else -1                       # the switch line under the lock: it moves with the picture
+        hchg=(f"{obs-held:+d}{'p' if px>=0 else 'a'}" if (held is not None and obs is not None and obs!=held) else '')
+        lockcols=[st,swl,(clipr-swl+1) if swl>0 else -1,(held if held is not None else -1),hchg]
+        w.writerow([u,CTR[u],f,top+base,(sw+base) if sw is not None else -1,how,px,ev,reliable,band,last_rec+base,reliable+band,(feats[sw]['wlag'] if sw is not None else ''),(round(feats[sw]['wr'],2) if sw is not None else ''),body_lag,round(body_r,2),M_run,round(M_spk,0),round(by_m,2),round(sig_b,2),(tests(sw) if sw is not None else ''),('|'.join(f'{r+base}:{tests(r)}' for r in range(sw,last_rec+1)) if sw is not None else '')]+lockcols)
         if u in VERB:
             sys.stdout.flush(); print(f'unit {u} field {f}: top L{top+base} switch {("L%d"%(sw+base)) if sw is not None else "none"} ({how}) peak_x {px} reliable {reliable} band {band} last_rec L{last_rec+base} | body max lag {M_lag} dm {M_dm:.1f} lead_run {M_run} narrow-spike {M_spk:.0f}')
             for r in range(max(top+20,last_rec-9),last_rec+1):

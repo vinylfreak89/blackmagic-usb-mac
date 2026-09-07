@@ -36,7 +36,9 @@ for u in sorted(by):
         # constant: the chroma-recorded last row falls short of it on dark units (the decoder's chroma noise drops with
         # the signal), which is a measurement limit, not geometry
         CLIP=262 if f=='1' else 525
-        bottom=min(atop+239,CLIP) if atop>0 else -1
-        out+=[atop,bottom,S if S>0 else -1,S]
+        lock=int(r.get('switch_lock',-1) or -1) if r else -1; state=(r.get('lock_state','') if r else '')
+        if state and state!='locked': atop=-1                      # no lock, no geometry (owner, 2026-09-07 §10.6)
+        bottom=(min(atop+239,(lock-1) if lock>0 else CLIP) if atop>0 else -1)   # the picture ends at the held switch line; rows past it are lost under the band
+        out+=[atop,bottom,S if S>0 else -1,(lock if lock>0 else S)]
     w.writerow(out)
 print('rows',len(by),'->',sys.argv[2],'| body corrections applied',corrected)
