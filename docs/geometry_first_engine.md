@@ -82,6 +82,14 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 > the same time. [On the body shift:] It is not a fixed −3..+3; it is whatever is required. Cross-correlation between
 > the two fields might be needed, but is probably overkill — a maybe.
 
+> [15:40] [Blank lines under the picture] could be indicative. Needs to be confirmed against the comb. The height
+> counts should be both head switching and non head switching. Number of picture lines should indicate position
+> assuming the number of head switch lines stay fixed. In other words, 237 real picture lines + 3 head switch lines =
+> 0 offset (basis assumption of geometry requiring confirmation). Most important is agreement. Line 23 remains the
+> top line always. VBI should never be rendered (so for instance extra black on the bottom is okay but obviously
+> letterboxing and such the picture should be centered). If the full picture starts at 23 and goes say to 235 only
+> and then head switch from 236–238 then full geometry is 237 lines, not 238 lines, not 240.
+
 
 ## 2. What the captures show (measured)
 
@@ -155,10 +163,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   (field 1) or two (field 2) of them have become flat black rows, so the TBC clears switch lines into black, one more
   in field 2; the peak shows in 31 of 597 and 5 of 577 units with the TBC off and in 1–2 of 606 with it on. The
   commercial tape shows 2 (field 1, 422 of 582) and 3 (field 2, 507 of 576) switch lines with no black under them.
-- **Height**: the rows from the picture top up to but not including the switch line (237 = lines 24..260 on the SP
-  recording) — fixed within a source (owner). **Bands above the picture**: the recorded rows above the picture top
-  that are not the Shuttle's (VBI rows, black rows); **bands below**: the switch lines and the rows under them to
-  the clip. Past the raster bounds neither can be seen; the account counts them by the change in the ones that can.
+- **Height** (restated from the owner's 15:40 ruling): the rows from line 23 to the row before the switch line, which
+  is 240 minus the source's switch-line count (237 with three switch lines); the picture lines inside it are the
+  height minus the bands above the picture; the switch-line count is fixed for a source and the picture-line count
+  indicates position: 237 picture lines and 3 switch lines is offset 0. The count excludes the partial line (not
+  238) and is not the field (not 240). **Bands above the picture**: the recorded rows between line 23 and the picture
+  top that are not the Shuttle's (VBI rows, black rows) — the offset, read every unit and confirmed by the comb.
+  **Switch band**: the switch lines from the partial line down, a fixed count per source.
 - **Closure**: a field is 240 lines; top + 239 is the expected bottom; rows past the clip are lost (owner). The
   picture bottom placed by the engine is the row above the switch line; the expected bottom is the closure check.
 - **S**: the first row belonging entirely to the other head (an engine measurement; the switch lies in S or the
@@ -176,8 +187,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   lines 20/21 (283/284) and line 22 (285) blank). **Lock-like loss**: snow-like signal, a vertical tear (cross-program
   or true), a counter discontinuity, a signal-state relock or splice, the Shuttle's regenerated rows absent; a unit
   event, both fields.
-- **Crop**: 240 rows per field from the placed top (23 + d / 286 + d); rows past the clip read as legal black (owner,
-  2026-09-03); before a lock, standard placement. **Displacement sign**: positive is lower in the raster.
+- **Crop**: line 23 (286) is always the output's top line (owner); the crop takes the picture's first line to it, so
+  its origin in the raster is 23 + d (286 + d); VBI is never rendered; extra black at the bottom is acceptable; rows
+  past the clip read as legal black (owner, 2026-09-03); a letterboxed picture is centred; before a lock, standard
+  placement. **Displacement sign**: positive is lower in the raster.
 - **Comb**: the relative vertical shift between the two fields' crops that minimises the comb energy of their weave on
   static picture; settled once per lock; thereafter a disagreement is the arbiter of rule 9.
 - **Body shift**: the vertical shift of a field's picture body against the previous unit of the same field, over
@@ -204,9 +217,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 7. Line 22 never renders.
 8. The output picture never moves except at a segment's initial lock and after a re-acquisition; field precedence
    is settled once per lock; boxed pictures are centred; black level is never assumed.
-9. Blank lines under the picture are evidence that the field sits high; the band count alone never moves anything;
-   new luma at the top alone never moves anything either — the count of bands above against the count below, with the
-   settled comb as arbiter, decides a displacement.
+9. Blank lines under the picture could indicate that the field sits high and need confirmation against the comb
+   (owner); the band count alone never moves anything; new luma at the top alone never moves anything either. The
+   offset is the count of bands above the picture, with the picture-line count as its check (height minus bands
+   above) and the settled comb as confirmation; most important is agreement (owner).
 10. Not applicable (no head switch on the source) is distinct from unmeasurable.
 
 ## 5. Measured every unit, per field (what the record must carry)
