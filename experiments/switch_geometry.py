@@ -346,6 +346,7 @@ def process_unit(u,RU,RN):
                 else: case=f'geom?/{dT:+d}!'                                   # down past 23 with the top still reading 23: reported loudly, held
             elif dt==0 and dT==0: case='steady'
             elif dt==dT: D[f]+=dt; case=f'rigid{dt:+d}'                       # the switch line followed the picture: the field moved
+            elif T>=clip_c and dt>0 and dT<=0: D[f]+=dt; case=f'rigid{dt:+d}-clipcensored'   # the reading at the clip row is censored (the band may start there or past it): the top's move down is the field's
             elif top==3 and dT<dt:
                 hid=D[f]+dT; case=f'hidden{hid:+d}?'                          # the top pinned at 23: the switch line's move is the field's (d = V - H), applied only when the comb confirms it
             elif dT==0: case=f'rowabove{dt:+d}'; rowabove=dt                 # the row above the picture: the field did not move (unless the settled comb says so)

@@ -459,8 +459,11 @@ cues present one frame and absent the next mean they shifted away, near-certain 
      unreliable one — owner) with one row of the reading's travel, recorded;
    - Δtop = 0, Δswitch = ±1: travel, recorded (rule 2; a one-row upward reading with the top at 23 reaches this
      through the hidden-top case unconfirmed); |Δswitch| > 1: reported loudly, held;
-   - no switch-line reading with the expected switch row reading as picture, or expected past the clip: the band
-     has left the raster past the clip (or the source has none — rule 10, whose bottom is the clip and c is 0, and
+   - no switch-line reading with the expected switch row reading as picture, or expected past the clip, or the
+     reading at the clip row itself (censored: the band may start there or past it — measured 2026-09-07 on the EP
+     recording, whose field 1 jitters between +2 and +3 with the switch line at 262 or 263: at +3 the reading stayed
+     262 and the account held 112 units whose picture had moved with the caption): the band has left the raster
+     past the clip (or the source has none — rule 10, whose bottom is the clip and c is 0, and
      whose only edge is the top);
      Δtop > 0: the field moved by Δtop (the reliable edge), the lost lines recorded (closure), the comb agreeing
      where it can read; Δtop = 0: still; Δtop < 0 with a band gone from a source that has one: reported loudly,
