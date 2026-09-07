@@ -123,6 +123,13 @@ class RunMode:
         if self.v[0] is None: return None,0,0
         return self.v[0],self.n[0],(self.n[1] if self.v[1] is not None else 0)
 BAND={1:RunMode(),2:RunMode()}; FIRST={1:RunMode(),2:RunMode()}
+def lock_reset(f):
+    """a change of geometry — the loss of the source lock, or a loss that looks like one — resets every comparator of the
+    field at once (owner, 2026-09-07: "A change of geometry (a loss of source lock or lock like loss resets everything
+    immediately)"). Called on a unit with no measurable picture, on regenerated VBI rows that are not the Shuttle's
+    (lines 20/21 absent or line 22 not blank: the decoder without sync), and on a counter discontinuity."""
+    BAND[f]=RunMode(); FIRST[f]=RunMode(); LASTTOP.pop(f,None)
+LASTCTR=[None]
 def lock_update(f,obs):
     """obs = this unit's observed band count S..clip or None; returns (state, comparator, class, count, runner-up)"""
     BAND[f].add(obs); comp,n,n2=BAND[f].top()
@@ -135,6 +142,8 @@ def lock_update(f,obs):
 def process_unit(u,RU,RN):
     """one unit: RU = this unit's raster, RN = the next unit's (needed only with --repair)"""
     if A.only and u not in VERB: return
+    if LASTCTR[0] is not None and ((CTR[u]-LASTCTR[0])&0xffff)!=1: lock_reset(1); lock_reset(2)   # a counter discontinuity: a lock-like loss
+    LASTCTR[0]=CTR[u]
     for f in (1,2):
         R=RU if (f==1 or not A.repair) else RN; slot=(2 if (f==1 and A.repair) else (1 if (f==2 and A.repair) else f))
         Y,C,by_m,sig_b,c_b=field_arrays(R,slot); base=20 if slot==1 else 283   # line = row + base (slot numbering)
@@ -231,9 +240,12 @@ def process_unit(u,RU,RN):
         top=next((r for r in recrows[:4] if picture_row(r) and picture_row(r+1) and picture_row(r+2)),None)
         if u in VERB:
             for r in recrows[:6]: print(f'  top-diag u{u} f{f} L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,24:696].std()):5.1f} rec {int(rec[r])} cc608 {int(bool(cc608(Y[r])[0]))} textured {int(textured(r))} corr {corr_below(r):.2f}/{corr_either(r):.2f} bright {int(bright(r))} picture {int(picture_row(r))} | sig_n {sig_n:.2f} ped {ped:.1f} body_corr {body_corr:.2f}')
-        if top is None or len(recrows)<60:
+        # the Shuttle's regenerated rows must be present (lines 20/21 waveforms, line 22 blank) for a source lock to exist
+        vbi_ok=(float(Y[0,40:680].std())>=20 and float(Y[1,40:680].std())>=20 and ym[2]<thr and float(Y[2,40:680].std())<4*sig_b)
+        if top is None or len(recrows)<60 or not vbi_ok:
+            lock_reset(f)                                             # a lock-like loss: everything resets immediately
             st,held,cls,n,n2=lock_update(f,None); fc,fn,fn2=FIRST[f].top()
-            w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','',st,-1,(held if held is not None else -1),-1,cls,f'{n}/{n2}',fc or '',f'{fn}/{fn2}','']); continue
+            w.writerow([u,CTR[u],f,-1,-1,('no-picture' if vbi_ok else 'no-vbi'),-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','','no-lock',-1,-1,-1,'reset','0/0','','0/0','']); continue
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
         feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl,by_m,sig_n) for r in range(top+1,last_rec+1)}
