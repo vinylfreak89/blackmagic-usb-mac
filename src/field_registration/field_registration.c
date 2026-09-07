@@ -20,6 +20,7 @@ typedef struct field_measurement {
     int16_t height;
     bool geometry_measurable;
     bool bottom_censored;
+    double blank_chroma_noise;
 } field_measurement;
 
 static uint16_t read_le16(const uint8_t *p)
@@ -45,30 +46,18 @@ static double row_mean(const uint8_t *raster, int row)
     return (double)sum / 640.0;
 }
 
-static double row_variance(const uint8_t *raster, int row, double mean)
+static double row_chroma_noise(const uint8_t *raster, int row)
 {
     const uint8_t *line = raster + (size_t)row * FIELDREG_BYTES_PER_LINE;
+    double mean = 0.0;
+    for (int x = 40; x < 680; ++x) mean += line[x * 2];
+    mean /= 640.0;
     double sum = 0.0;
     for (int x = 40; x < 680; ++x) {
-        const double delta = (double)line[x * 2 + 1] - mean;
+        const double delta = (double)line[x * 2] - mean;
         sum += delta * delta;
     }
-    return sum / 640.0;
-}
-
-static bool gap_like_line(const uint8_t *raster, int row, int first,
-                          int adc_last, const double *means,
-                          double picture_threshold)
-{
-    if (row + 3 > adc_last || means[row - first] <= picture_threshold)
-        return false;
-    const double below = (means[row + 1 - first] +
-                          means[row + 2 - first] +
-                          means[row + 3 - first]) / 3.0;
-    if (means[row - first] * 2.0 >= below) return false;
-    /* The tape's line-22 gap is both dim and flat. The variance guard keeps a
-     * genuinely dark, textured first picture row from being discarded. */
-    return row_variance(raster, row, means[row - first]) <= 16.0;
+    return sqrt(sum / 640.0);
 }
 
 static double row_bins(const uint8_t *raster, int row, double *bins,
@@ -170,19 +159,25 @@ static void measure_field(const uint8_t *raster, int field,
     const int insert = field == 0 ? FIELDREG_INSERT_F1 : FIELDREG_INSERT_F2;
     const int picture_first = field == 0 ? 18 : 281; /* NTSC 22 / 285 */
     const int adc_last = field == 0 ? 260 : 522;      /* NTSC 264 / 526 */
-    const int clip_band_first = field == 0 ? 256 : 518; /* NTSC 260 / 522 */
     const int blank_first = field == 0 ? 7 : 270;
     const int blank_last = field == 0 ? 16 : 279;
     bool waveform[257] = {false};
+    bool picture[257] = {false};
     double means[257] = {0.0};
     memset(m, 0, sizeof *m);
     m->fallback_row = -1;
     m->top = m->bottom = m->height = -1;
 
-    for (int row = blank_first; row <= blank_last; ++row)
+    double blank_luma_ceiling = 0.0;
+    for (int row = blank_first; row <= blank_last; ++row) {
         m->blank_mean += row_mean(raster, row);
+        const double mean = row_mean(raster, row);
+        if (mean > blank_luma_ceiling) blank_luma_ceiling = mean;
+        const double chroma_noise = row_chroma_noise(raster, row);
+        if (chroma_noise > m->blank_chroma_noise)
+            m->blank_chroma_noise = chroma_noise;
+    }
     m->blank_mean /= (double)(blank_last - blank_first + 1);
-    const double picture_threshold = m->blank_mean + 4.0;
 
     uint8_t luma[CEA608_PIXELS_PER_LINE];
     for (int row = first; row <= last; ++row) {
@@ -220,24 +215,27 @@ static void measure_field(const uint8_t *raster, int field,
             if (m->fallback_count == 0) m->fallback_row = (int16_t)row;
             if (m->fallback_count != UINT16_MAX) ++m->fallback_count;
         }
+        /* Contract section 3 gives two independent recorded-row readings.
+         * Luma must rise above this unit's own blanking ceiling, or chroma
+         * noise must cross the measured 1.48x/2.02x gap at its lower bound.
+         * Neither test contains a fixed luma-code offset. */
+        picture[row - first] = !waveform[row - first] &&
+            (means[row - first] > blank_luma_ceiling ||
+             row_chroma_noise(raster, row) >
+                 2.0 * m->blank_chroma_noise);
     }
 
     /* Geometry is measured independently of every caption/fallback result.
      * Recognised VBI rows are excluded by their own waveform, never because
      * a caption told the scan where to begin. */
-    for (int row = picture_first; row + 2 <= adc_last; ++row) {
-        if (!waveform[row - first] && means[row - first] > picture_threshold &&
-            !waveform[row + 1 - first] && means[row + 1 - first] > picture_threshold &&
-            !waveform[row + 2 - first] && means[row + 2 - first] > picture_threshold &&
-            !gap_like_line(raster, row, first, adc_last, means, picture_threshold) &&
-            !gap_like_line(raster, row + 1, first, adc_last, means, picture_threshold) &&
-            !gap_like_line(raster, row + 2, first, adc_last, means, picture_threshold)) {
+    for (int row = picture_first; row <= adc_last; ++row) {
+        if (picture[row - first]) {
             m->top = (int16_t)row;
             break;
         }
     }
     for (int row = adc_last; row >= picture_first; --row) {
-        if (!waveform[row - first] && means[row - first] > picture_threshold) {
+        if (picture[row - first]) {
             m->bottom = (int16_t)row;
             break;
         }
@@ -245,7 +243,7 @@ static void measure_field(const uint8_t *raster, int field,
     if (m->top >= 0 && m->bottom >= m->top) {
         m->height = (int16_t)(m->bottom - m->top + 1);
         m->geometry_measurable = true;
-        m->bottom_censored = m->bottom >= clip_band_first;
+        m->bottom_censored = false;
     }
 }
 
@@ -393,6 +391,7 @@ static void v10_decide_field(fieldreg_field_state *state,
     decision->raw_height = measurement->height;
     decision->geometry_measurable = measurement->geometry_measurable;
     decision->blank_mean = measurement->blank_mean;
+    decision->blank_chroma_noise = measurement->blank_chroma_noise;
     decision->body_shift = FIELDREG_UNKNOWN;
     decision->body_reference_top = state->previous_measured_top;
     decision->body_implied_top = -1;

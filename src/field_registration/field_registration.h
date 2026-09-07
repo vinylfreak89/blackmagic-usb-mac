@@ -140,6 +140,7 @@ typedef struct fieldreg_field_decision {
     uint8_t gauge_byte2;
     double gauge_amplitude;
     double blank_mean;
+    double blank_chroma_noise;
     double body_mad;
     int16_t raw_top;
     int16_t raw_bottom;

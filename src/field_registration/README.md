@@ -12,10 +12,13 @@ each rule.
 ## Implemented: rule 1
 
 Measurable current-unit geometry is the sole placement authority. The field's
-measured top, bottom, and span are recorded; its top against the standard
+measured top and provisional lower edge are recorded; its top against the standard
 23/286 origin supplies the provisional crop until the conserved line account
 lands in rules 3–4. A caption cannot place, veto, hold, re-anchor, or otherwise
-mutate a crop. Its decoded row and bytes are retained as an explicit
+mutate a crop. A picture row is a non-waveform recorded row: its luma exceeds
+this unit's own blanking-row ceiling, or its chroma noise crosses the measured
+1.48×/2.02× blanking-to-recorded gap at 2×. The first such row is the top;
+there is no multi-row brightness gate. A caption's decoded row and bytes are retained as an explicit
 `agrees`/`disagrees`/`ambiguous` confirmation. Geometry is measured without
 using a decoded caption row to choose where its top scan begins.
 
@@ -26,8 +29,9 @@ currently report no observation. Acquisition/reset/damage behavior still has
 the inherited placeholder state and is implemented by rules 5–6, after the
 line account and fixed switch-line count.
 
-The frameserver decision log is schema 10. Each per-field group adds
-`caption_confirmation`; line-valued fields remain NTSC line numbers.
+The frameserver decision log is schema 11. Each per-field group adds
+`caption_confirmation` and `blank_chroma_noise`; line-valued fields remain
+NTSC line numbers.
 
 Build and run the current suite with:
 
