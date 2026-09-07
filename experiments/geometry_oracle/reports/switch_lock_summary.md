@@ -15,8 +15,8 @@ A counter discontinuity resets both arrays immediately. A hidden top or switch h
 - field lock: acquiring: 98, hold: 495, locked: 12, no-lock: 3
 - observed S..clip band rows: -1: 596, 2: 1, 3: 10, 4: 1
 - final segment band comparator/count/runner-up: 3/10/1
-- final segment switch height/projected line: 237/260
-- final segment first-row comparator/count/runner-up: black22/347/122
+- final segment switch height/projected line: 237/261
+- final segment first-row comparator/count/runner-up: black22/481/122
 - asymmetric band classes: band+: 2, hidden: 596, travel: 10
 - first-row observations: black22: 484, other-non-picture: 2, picture: 122
 
@@ -26,7 +26,7 @@ A counter discontinuity resets both arrays immediately. A hidden top or switch h
 - observed S..clip band rows: -1: 453, 3: 120, 4: 35
 - final segment band comparator/count/runner-up: 3/120/35
 - final segment switch height/projected line: 237/523
-- final segment first-row comparator/count/runner-up: picture/598/4
+- final segment first-row comparator/count/runner-up: picture/601/4
 - asymmetric band classes: band+: 22, hidden: 453, travel: 133
 - first-row observations: black22: 4, picture: 604
 
@@ -42,7 +42,7 @@ A counter discontinuity resets both arrays immediately. A hidden top or switch h
 - observed S..clip band rows: -1: 620, 2: 1
 - final segment band comparator/count/runner-up: 2/1/0
 - final segment switch height/projected line: 238/264
-- final segment first-row comparator/count/runner-up: picture/414/154
+- final segment first-row comparator/count/runner-up: picture/414/195
 - asymmetric band classes: hidden: 620, travel: 1
 - first-row observations: black22: 195, picture: 426
 
