@@ -16,6 +16,7 @@ import struct
 import tempfile
 from collections import Counter
 from dataclasses import dataclass
+from itertools import product
 from pathlib import Path
 from typing import Iterable
 
@@ -35,7 +36,6 @@ from oracle import (
     LINE_BYTES,
     RASTER_LINES,
     measure_chroma_deviation,
-    measure_body,
     measure_flat_raster,
     measure_last_recorded,
     measure_recorded_rows,
@@ -57,11 +57,10 @@ RASTER_LIMITS = {1: 262, 2: 525}
 RF_MIN_STRENGTH = 40.0
 RF_MIN_RATIO = 4.0
 EDGE_KERNEL = np.ones(5, dtype=np.float64) / 5.0
-# These are storage capacities, not decision thresholds.  Contract rule 3
-# fixes every comparator at eight (value, count) slots.
-BAND_COUNT_CAPACITY = 8
-FIRST_ROW_STATES = ("picture", "black22")
-FIRST_ROW_STATE_CAPACITY = 8
+# These are storage capacities, not decision thresholds.  Only the two
+# quantities which the contract defines as running comparators use them.
+CLIP_LINE_CAPACITY = 8
+LINE22_LEVEL_CAPACITY = 8
 
 
 class FixedCountComparator:
@@ -150,14 +149,22 @@ FIELD_COLUMNS = [
     "picture_top_line",
     "top_status",
     "picture_top_under_lock_line",
+    "crop_status",
+    "account_case",
+    "crop_evidence",
     "lock_state",
     "lock_evidence",
     "shuttle_regenerated_status",
     "shuttle_regenerated_evidence",
+    "offset_observation",
+    "offset_status",
     "first_row_state_observation",
-    "first_row_state_comparator",
-    "first_row_state_comparator_count",
-    "first_row_state_runner_up_count",
+    "line22_level_observation",
+    "line22_level_identification",
+    "line22_level_comparator",
+    "line22_level_comparator_count",
+    "line22_level_runner_up_count",
+    "line22_level_counts",
     "top_blanking_evidence",
     "vbi_lines",
     "vbi_status",
@@ -165,6 +172,15 @@ FIELD_COLUMNS = [
     "caption_lines",
     "caption_status",
     "caption_confirmation",
+    "xds_line",
+    "xds_status",
+    "xds_confirmation",
+    "xds_evidence",
+    "pedestal_observation",
+    "pedestal_carried",
+    "pedestal_evidence",
+    "insert_data_status",
+    "insert_data_evidence",
     "expected_bottom_line",
     "clipping_status",
     "clipping_evidence",
@@ -172,23 +188,50 @@ FIELD_COLUMNS = [
     "first_full_other_head_line",
     "switch_status",
     "switch_cues",
+    "bottom_picture_rows",
     "bottom_line",
     "last_reliable_line",
     "hs_bottom_line",
     # Exact alias for older review readers.
     "hs_partial_line",
     "first_blank_line",
+    "clip_line_observation",
+    "clip_line_under_lock",
+    "clip_status",
+    "clip_evidence",
     "raster_limit_line",
     "visible_band_rows",
     "censored_band_rows",
     "band_length",
-    "band_row_count_observation",
-    "band_row_count_comparator",
-    "band_row_count_comparator_count",
-    "band_row_count_runner_up_count",
-    "switch_height_comparator",
-    "switch_line_from_height_comparator",
+    "band_extent_observation",
+    "signature_top_line",
+    "picture_lines_top_line",
+    "picture_lines_observation",
+    "picture_lines_constant",
+    "picture_lines_seed_evidence",
+    "visible_switch_lines_observation",
+    "visible_switch_lines_status",
+    "switch_lines_lost_past_clip",
+    "blank_rows_under_band",
+    "switch_line_count_observation",
+    "switch_line_count_constant",
+    "switch_line_count_seed_evidence",
+    "seed_support_count",
+    "seed_suspect_count",
+    "seed_suspect",
+    "seed_suspect_evidence",
+    "measurement_disagreement",
+    "measurement_disagreement_evidence",
+    "clip_line_comparator",
+    "clip_line_comparator_count",
+    "clip_line_runner_up_count",
+    "clip_line_counts",
+    "height_observation",
+    "height_status",
+    "picture_lines_under_lock",
+    "switch_line_from_geometry",
     "band_rows_to_clip",
+    "band_class",
     "height_change",
     "height_change_evidence",
     "rf_peak_line",
@@ -240,7 +283,18 @@ FIELD_COLUMNS = [
     "direct_bottom_candidate",
 ]
 CSV_COLUMNS = (
-    ["ordinal", "counter", "source_lock_state", "source_lock_evidence"]
+    [
+        "ordinal",
+        "counter",
+        "source_lock_state",
+        "source_lock_evidence",
+        "settled_comb_shift",
+        "settled_comb_evidence",
+        "comb_at_placed_crops",
+        "true_disagreement",
+        "true_disagreement_evidence",
+        "disagreement_frame",
+    ]
     + [f"f{field}_{name}" for field in FIELDS for name in FIELD_COLUMNS]
     + ["applied_d1", "applied_d2"]
 )
@@ -257,6 +311,12 @@ class TopReading:
     caption_lines: str
     caption_status: str
     caption_confirmation: str
+    xds_line: int
+    xds_status: str
+    xds_confirmation: str
+    xds_evidence: str
+    insert_data_status: str
+    insert_data_evidence: str
     regenerated_status: str
     regenerated_evidence: str
     evidence: str
@@ -378,6 +438,161 @@ def _picture_coherence(y: np.ndarray, field: int) -> tuple[float, float]:
     return float(np.median(correlations)), float(np.median(vertical))
 
 
+def _field_luma_noise(y: np.ndarray, field: int) -> float:
+    """One-sample luma noise from the field's middle-picture rows."""
+    spec = FIELD_SPECS[field - 1]
+    body = y[spec.body_lo : spec.body_hi, 40:680].astype(np.float64)
+    row_noise = np.std(np.diff(body, axis=1), axis=1) / math.sqrt(2.0)
+    return max(0.25, float(np.median(row_noise)))
+
+
+def _bottom_pedestal(y: np.ndarray, field: int) -> tuple[float, str]:
+    """Measure flat tape-black rows contiguous with the source clip.
+
+    This observation is made after the top and bottom reads.  The following
+    unit may use it as the carried pedestal; the current unit's top never gets
+    to look ahead at its own bottom.
+    """
+    spec = FIELD_SPECS[field - 1]
+    field_noise = _field_luma_noise(y, field)
+    blank = y[spec.blank_lo : spec.blank_hi, 40:680].astype(np.float64)
+    blank_level = float(np.median(blank))
+    blank_noise = max(
+        0.25,
+        1.4826 * float(np.median(np.abs(blank - np.median(blank)))),
+    )
+    rows: list[tuple[int, float, float]] = []
+    for line in range(spec.pass_hi + 4, spec.pass_lo + 3, -1):
+        samples = y[line - 4, 40:680].astype(np.float64)
+        mean = float(samples.mean())
+        spread = float(samples.std())
+        if mean <= blank_level + 2.0 * blank_noise:
+            if not rows:
+                continue
+            break
+        if spread <= 2.0 * field_noise:
+            rows.append((line, mean, spread))
+            continue
+        break
+    if not rows:
+        return math.nan, (
+            f"no flat above-blank rows contiguous with clip; blank="
+            f"{blank_level:.3f}/{blank_noise:.3f}; field noise={field_noise:.3f}"
+        )
+    value = float(np.median([mean for _line, mean, _spread in rows]))
+    ordered = list(reversed(rows))
+    return value, (
+        f"pedestal Y={value:.3f} from "
+        + ",".join(
+            f"L{line}={mean:.3f}/{spread:.3f}"
+            for line, mean, spread in ordered
+        )
+        + f"; blank={blank_level:.3f}/{blank_noise:.3f}; "
+        f"field noise={field_noise:.3f}"
+    )
+
+
+def _top_grey_vbi_run(
+    y: np.ndarray,
+    field: int,
+    recorded_rows: np.ndarray,
+    carried_pedestal: float,
+) -> tuple[list[int], str]:
+    """Read the contract's one-to-three-row flat grey VBI run.
+
+    The run must end before three brighter recorded picture rows.  A longer
+    dark run is therefore picture, not a prefix that may be peeled off.  When
+    the bottom exposes flat pedestal rows, the following rows must also sit
+    above that per-unit pedestal; this keeps a dark scene from manufacturing a
+    grey-line signature merely because its first two rows are darkest.
+    """
+    spec = FIELD_SPECS[field - 1]
+    first = spec.pass_lo + 4
+    field_noise = _field_luma_noise(y, field)
+    blank = y[spec.blank_lo : spec.blank_hi, 40:680].astype(np.float64)
+    blank_level = float(np.median(blank))
+    blank_noise = max(
+        0.25,
+        1.4826 * float(np.median(np.abs(blank - np.median(blank)))),
+    )
+
+    for length in range(3, 0, -1):
+        run_lines = list(range(first, first + length))
+        following_lines = list(range(first + length, first + length + 3))
+        indexes = [line - first for line in run_lines + following_lines]
+        if max(indexes) >= len(recorded_rows) or not all(
+            bool(recorded_rows[index]) for index in indexes
+        ):
+            continue
+        run = [y[line - 4, 40:680].astype(np.float64) for line in run_lines]
+        following = [
+            y[line - 4, 40:680].astype(np.float64) for line in following_lines
+        ]
+        run_means = [float(samples.mean()) for samples in run]
+        run_spreads = [float(samples.std()) for samples in run]
+        following_means = [float(samples.mean()) for samples in following]
+        flat = all(spread <= 2.0 * field_noise for spread in run_spreads)
+        under_half = 2.0 * max(run_means) < min(following_means)
+        picture_floor = (
+            carried_pedestal + blank_noise
+            if math.isfinite(carried_pedestal)
+            else blank_level + 2.0 * blank_noise
+        )
+        picture_below = min(following_means) > picture_floor
+        first_correlation = abs(_correlation(run[-1], following[0]))
+        following_correlations = [
+            abs(_correlation(following[index], following[index + 1]))
+            for index in range(len(following) - 1)
+        ]
+        correlation_separates = (
+            first_correlation < 0.50
+            and following_correlations
+            and first_correlation
+            < 0.50 * float(np.median(following_correlations))
+        )
+        # A carried tape-black pedestal is the primary dark-scene guard.  At
+        # the start of a segment, before one exists, require the measured
+        # decorrelation of line 22 from picture (0.02 on the SP recording)
+        # against coherent rows below.  This does not peel a dark scene's
+        # first rows merely because their levels rise gradually.
+        row_identity = math.isfinite(carried_pedestal) or correlation_separates
+        if flat and under_half and picture_below and row_identity:
+            return run_lines, (
+                f"flat grey VBI run L{run_lines[0]}-L{run_lines[-1]} "
+                f"Y={','.join(f'{value:.3f}' for value in run_means)} "
+                f"std={','.join(f'{value:.3f}' for value in run_spreads)}; "
+                f"field noise={field_noise:.3f}; following picture "
+                f"L{following_lines[0]}-L{following_lines[-1]} "
+                f"Y={','.join(f'{value:.3f}' for value in following_means)}; "
+                f"carried pedestal={carried_pedestal:.3f}; "
+                f"boundary/following correlations={first_correlation:.3f}/"
+                f"{','.join(f'{value:.3f}' for value in following_correlations)}"
+            )
+    return [], "no qualifying one-to-three-row flat grey VBI run"
+
+
+def _xds_bar(y: np.ndarray, field: int) -> tuple[int, str]:
+    """Find the frozen 48-bin field-2 XDS-bar envelope."""
+    if field != 2:
+        return -1, "not field 2"
+    spec = FIELD_SPECS[field - 1]
+    for line in range(spec.pass_lo + 4, min(spec.pass_hi + 4, spec.pass_lo + 10)):
+        row = y[line - 4].astype(np.float64)
+        profile = row.reshape(48, 15).mean(axis=1)
+        high_run = _longest_true_run(profile[:20] > 60.0)
+        if (
+            float(row.mean()) < 95.0
+            and float(np.max(profile[20:])) <= 40.0
+            and high_run >= 6
+        ):
+            return line, (
+                f"XDS 48-bin envelope at L{line}: mean={float(row.mean()):.3f}, "
+                f"right-max={float(np.max(profile[20:])):.3f}, "
+                f"left-high-run={high_run}"
+            )
+    return -1, "no fitted XDS-bar envelope"
+
+
 def _known_top_confidence(y: np.ndarray, field: int, top: int) -> bool:
     spec = FIELD_SPECS[field - 1]
     body = y[spec.body_lo : spec.body_hi, 40:680].astype(np.float64)
@@ -413,11 +628,9 @@ def _inspect_top(
     y: np.ndarray,
     field: int,
     previous_top: int,
-    flat: bool,
     recorded_rows: np.ndarray,
     recorded_gate: float,
-    body_motion: tuple[int, float, float, float, int, float],
-    source_field: int,
+    carried_pedestal: float = math.nan,
 ) -> TopReading:
     """Use one signal-derived top path for every source."""
     spec = FIELD_SPECS[field - 1]
@@ -432,13 +645,49 @@ def _inspect_top(
     caption_ntsc = [row + 4 for row, _b1, _b2, _amp in captions]
     waveform_ntsc = [item.row + 4 for item in waveforms]
     insert_waveforms = [item for item in waveforms if item.row == spec.insert_row]
-    regenerated_status = "observed" if insert_waveforms else "unmeasurable"
+    insert_decoded = [
+        (byte1, byte2)
+        for row, byte1, byte2, _amplitude in captions
+        if row == spec.insert_row
+    ]
+    insert_data = [pair for pair in insert_decoded if pair != (0x80, 0x80)]
+    insert_data_status = "observed" if insert_data else "absent"
+    insert_data_evidence = (
+        "Shuttle insert decoded non-null bytes"
+        if insert_data
+        else "Shuttle insert contains nulls or no decodable bytes"
+    )
+    xds_line, xds_evidence = _xds_bar(y, field)
+    xds_status = "observed" if xds_line >= 0 else "unmeasurable"
+    xds_confirmation = "agrees" if xds_line >= 0 else "absent"
+    timing = y[spec.insert_row - 1, 40:680].astype(np.float64)
+    shuttle_line22 = y[spec.insert_row + 1, 40:680].astype(np.float64)
+    timing_std = float(timing.std())
+    shuttle_line22_mean = float(shuttle_line22.mean())
+    shuttle_line22_std = float(shuttle_line22.std())
+    timing_present = timing_std >= 20.0
+    shuttle_line22_blank = (
+        abs(shuttle_line22_mean - blank_mean) <= 2.0 * blank_noise
+        and shuttle_line22_std <= 2.0 * blank_noise
+    )
+    regenerated_observed = bool(
+        timing_present and insert_waveforms and shuttle_line22_blank
+    )
+    regenerated_status = "observed" if regenerated_observed else "unmeasurable"
     regenerated_evidence = (
-        f"Shuttle insert L{spec.insert_row + 4} waveform "
-        f"run-in/start={insert_waveforms[0].runin_score:.3f}/"
-        f"{insert_waveforms[0].start_score:.3f}"
-        if insert_waveforms
-        else f"Shuttle insert L{spec.insert_row + 4} waveform absent"
+        f"Shuttle timing L{spec.insert_row + 3} std={timing_std:.3f} "
+        f"({'present' if timing_present else 'absent'}; gate=20 measured gap); "
+        + (
+            f"insert L{spec.insert_row + 4} run-in/start="
+            f"{insert_waveforms[0].runin_score:.3f}/"
+            f"{insert_waveforms[0].start_score:.3f}; "
+            if insert_waveforms
+            else f"insert L{spec.insert_row + 4} absent; "
+        )
+        + f"Shuttle line 22 L{spec.insert_row + 5} Y="
+        f"{shuttle_line22_mean:.3f}/{shuttle_line22_std:.3f} "
+        f"({'blank' if shuttle_line22_blank else 'not blank'}; "
+        f"reference={blank_mean:.3f}/{blank_noise:.3f})"
     )
     off_caption = [line for line in caption_ntsc if line != spec.insert_row + 4]
     off_waveform = [line for line in waveform_ntsc if line != spec.insert_row + 4]
@@ -446,28 +695,23 @@ def _inspect_top(
         f"blank rows L{spec.blank_lo + 4}-L{spec.blank_hi + 3} "
         f"Y={blank_mean:.3f} noise={blank_noise:.3f}"
     )
-    if flat:
-        return TopReading(
-            -1,
-            "unmeasurable",
-            blank_evidence,
-            " ".join(map(str, off_waveform)),
-            "observed" if off_waveform else "unmeasurable",
-            "flat field; VBI cannot place picture",
-            " ".join(map(str, off_caption)),
-            "observed" if off_caption else "unmeasurable",
-            "flat field; caption is confirmation only",
-            regenerated_status,
-            regenerated_evidence,
-            "spatially flat field; hold policy recorded but no coordinate substituted",
-        )
-
     top: int
     status = "observed"
     reason: str
     pass_first = spec.pass_lo + 4
     pass_last = spec.pass_hi + 4
     in_pass_caption = [line for line in off_caption if pass_first <= line <= pass_last]
+    if pass_first <= xds_line <= pass_last:
+        off_waveform = sorted(
+            set(off_waveform) | {xds_line, min(pass_last, xds_line + 1)}
+        )
+    grey_vbi_lines: list[int] = []
+    grey_vbi_evidence = ""
+    if not in_pass_caption and xds_line < 0:
+        grey_vbi_lines, grey_vbi_evidence = _top_grey_vbi_run(
+            y, field, recorded_rows, carried_pedestal
+        )
+        off_waveform = sorted(set(off_waveform) | set(grey_vbi_lines))
     if field == 1 and len(in_pass_caption) == 1:
         caption_line = in_pass_caption[0]
         candidate = caption_line + 1
@@ -478,26 +722,25 @@ def _inspect_top(
         following_mean = float(following.mean())
         following_std = float(following.std())
         correlation = _correlation(y[candidate - 4], y[candidate - 3])
-        isolated_low_structure = (
-            current_std < 6.0
-            and following_std > max(6.0, 2.0 * current_std)
-            and following_mean - current_mean > 10.0
+        # The row immediately below the tape's line 21 is its line 22 by
+        # identity, regardless of whether damage makes it resemble picture.
+        # Line 22 never renders, so picture begins on the following row.
+        top = candidate + 1
+        reason = (
+            f"in-pass caption L{caption_line}; tape line 22 L{candidate} "
+            f"Y={current_mean:.3f}/{current_std:.3f} "
+            f"correlation={correlation:.3f}; picture begins L{top} "
+            f"Y={following_mean:.3f}/{following_std:.3f}"
         )
-        if candidate in set(off_waveform) | set(off_caption) or isolated_low_structure:
-            top = candidate + 1
-            reason = (
-                f"in-pass caption L{caption_line}; isolated low-structure row "
-                f"L{candidate} Y={current_mean:.3f}/{current_std:.3f} "
-                f"correlation={correlation:.3f}; picture begins L{top} "
-                f"Y={following_mean:.3f}/{following_std:.3f}"
-            )
-        else:
-            top = candidate
-            reason = (
-                f"in-pass caption L{caption_line}; picture row immediately follows "
-                f"at L{top} Y={current_mean:.3f}/{current_std:.3f} "
-                f"correlation to L{top + 1}={correlation:.3f}"
-            )
+    elif xds_line >= 0:
+        top = min(pass_last, xds_line + 2)
+        reason = (
+            f"{xds_evidence}; tape line 22 L{xds_line + 1} by position; "
+            f"picture begins L{top}"
+        )
+    elif grey_vbi_lines:
+        top = grey_vbi_lines[-1] + 1
+        reason = f"{grey_vbi_evidence}; picture begins L{top}"
     elif field == 1:
         excluded = set(off_waveform) | set(off_caption)
         means, _stds, _gradients, active, _blank, _gates = measure_row_activity(y, spec)
@@ -540,7 +783,7 @@ def _inspect_top(
                 dark_band = list(range(pass_first, bright_top))
                 recorded_dark_band = (
                     (
-                        len(dark_band) >= 3
+                        len(dark_band) >= 2
                         or (
                             middle_coherence < 0.50
                             and (
@@ -623,31 +866,7 @@ def _inspect_top(
         break_at_287 = _correlation(y[283], y[284]) < 0.40
         body_resumes = _correlation(y[284], y[285]) > 0.70
         vbi_pair = line287_wave and break_at_287 and body_resumes
-        body_shift, body_best, body_second, body_ratio, body_unique, body_static = body_motion
-        first_mean = float(means[0])
-        first_std = float(stds[0])
-        next_mean = float(means[1])
-        next_std = float(stds[1])
-        first_line_missing = (
-            source_field == 2
-            and previous_top >= 0
-            and body_shift == 1
-            and bool(body_unique)
-            and first_std < 6.0
-            and next_std > 15.0
-            and next_mean - first_mean > 40.0
-            and pass_first not in set(off_waveform) | set(off_caption)
-        )
-        if first_line_missing:
-            top = pass_first + 1
-            reason = (
-                f"first pass-through row L{pass_first} is recorded dark, not picture "
-                f"(Y={first_mean:.3f}/{first_std:.3f}); picture begins L{top} "
-                f"(Y={next_mean:.3f}/{next_std:.3f}); same-slot body shift=+1 "
-                f"energy={body_best:.3f}/{body_second:.3f} ratio={body_ratio:.3f} "
-                f"static={body_static:.3f}"
-            )
-        elif previous_top == 288:
+        if previous_top == 288:
             top = 288
             status = "observed" if vbi_pair else "inferred"
             reason = "field-2 VBI lock ends at L287" if vbi_pair else "held field-2 VBI lock"
@@ -692,6 +911,12 @@ def _inspect_top(
         " ".join(map(str, off_caption)),
         "observed" if off_caption else "unmeasurable",
         caption_confirmation,
+        xds_line,
+        xds_status,
+        xds_confirmation,
+        xds_evidence,
+        insert_data_status,
+        insert_data_evidence,
         regenerated_status,
         regenerated_evidence,
         reason,
@@ -1279,8 +1504,6 @@ def _inspect_switch(
         if earlier:
             structural_onset = min(earlier)
     candidates = [structural_onset]
-    if rf_onset >= 0:
-        candidates.append(rf_onset)
     line = min(candidates) if candidates else -1
     strong_peak = float(maximums[peak_index]) >= 3.0 and margin >= 0.75
     directly_read = middle_blank_line >= 0 or (
@@ -1313,8 +1536,19 @@ def _inspect_switch(
         field,
         cues,
         (middle_blank_line, middle_blank_evidence),
-        line if line >= 0 else None,
+        RASTER_LIMITS[field] - 3,
     )
+    if first_full_line >= 0 and (line < 0 or first_full_line < line):
+        # The RF transient can sit on the last in-place row immediately above
+        # the time-base step.  It is evidence for the boundary, but does not
+        # by itself turn that still-aligned row into the switch line.  A
+        # directly exposed full other-head row is the later hard bound.
+        line = first_full_line
+        status = "observed"
+        reason = (
+            f"switch candidate L{line} from first full other-head row; "
+            f"{first_full_evidence}; RF evidence retained separately"
+        )
 
     skew_item = next((item for item in cues if item.line == edge_line), None)
     agc_item = agc[0] if agc else None
@@ -1420,10 +1654,10 @@ def _integer_lines(value: object) -> set[int]:
 def _first_row_state(values: dict[str, object], field: int) -> str:
     """Return an independently observed state for the first raster pass row.
 
-    Explicit VBI/caption rows are outside the binary running comparison.  A
+    Explicit VBI/caption rows are outside this recorded state.  A
     one-row, non-waveform displacement is the black-line-22 observation; an
     observed top at the first pass row is picture.  Inferred continuity is not
-    allowed to vote for itself.
+    allowed to identify itself.
     """
     top = int(values.get("picture_top_line", -1))
     if top < 0:
@@ -1519,6 +1753,1177 @@ def _apply_comb_to_row(
         row.update({f"f{field}_{key}": value for key, value in values.items()})
 
 
+def _slots_text(comparator: FixedCountComparator) -> str:
+    return "|".join(f"{value}:{count}" for value, count in comparator.slots)
+
+
+def _integer(value: object, default: int = -1) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+class ContractState:
+    """Apply contract lock/comparator policy after raw measurements are complete.
+
+    Keeping this pass separate is material for half-field-paired captures: their
+    comb result is not available until the following transport unit arrives.
+    No capture-specific geometry enters this state machine.
+    """
+
+    def __init__(self, capture_name: str) -> None:
+        self.capture_name = capture_name
+        self.previous_counter: int | None = None
+        self.field_lock_acquired = {field: False for field in FIELDS}
+        self.field_lock_origin = {
+            field: "awaiting regenerated rows and caption/comb confirmation"
+            for field in FIELDS
+        }
+        self.settled_comb_shift: int | None = None
+        self.settled_comb_evidence = "not settled"
+        self.picture_lines_constant = {field: -1 for field in FIELDS}
+        self.switch_line_count_constant = {field: -1 for field in FIELDS}
+        self.geometry_seed_evidence = {field: "not seeded" for field in FIELDS}
+        self.seed_support_count = {field: 0 for field in FIELDS}
+        self.seed_suspect_count = {field: 0 for field in FIELDS}
+        self.field_lock_confirmation = {field: "none" for field in FIELDS}
+        self.absolute_seed_seen = {field: False for field in FIELDS}
+        self.clip_line_comparators: dict[int, FixedCountComparator] = {}
+        self.line22_level_comparators: dict[int, FixedCountComparator] = {}
+        self.last_applied_top: dict[int, int] = {}
+        self.last_applied_d: dict[int, int] = {}
+        self.previous_signature_top: dict[int, int] = {}
+        self.previous_switch: dict[int, int] = {}
+        self.seeded_fields: set[int] = set()
+        self._clear_comparators()
+
+    def _clear_comparators(self) -> None:
+        self.clip_line_comparators = {
+            field: FixedCountComparator(CLIP_LINE_CAPACITY) for field in FIELDS
+        }
+        self.line22_level_comparators = {
+            field: FixedCountComparator(LINE22_LEVEL_CAPACITY) for field in FIELDS
+        }
+
+    def reset(self, reason: str) -> None:
+        self.field_lock_acquired = {field: False for field in FIELDS}
+        self.field_lock_origin = {field: reason for field in FIELDS}
+        self.settled_comb_shift = None
+        self.settled_comb_evidence = "not settled"
+        self.last_applied_top = {}
+        self.last_applied_d = {}
+        self.previous_signature_top = {}
+        self.previous_switch = {}
+        self.seeded_fields = set()
+        self.picture_lines_constant = {field: -1 for field in FIELDS}
+        self.switch_line_count_constant = {field: -1 for field in FIELDS}
+        self.geometry_seed_evidence = {field: "not seeded" for field in FIELDS}
+        self.seed_support_count = {field: 0 for field in FIELDS}
+        self.seed_suspect_count = {field: 0 for field in FIELDS}
+        self.field_lock_confirmation = {field: "none" for field in FIELDS}
+        self.absolute_seed_seen = {field: False for field in FIELDS}
+        self._clear_comparators()
+
+    def _seed_geometry(
+        self,
+        row: dict[str, object],
+        field: int,
+        raw: dict[str, int],
+        d: int,
+        reason: str,
+    ) -> None:
+        """Seed the segment constants from one confirmed unit.
+
+        H and c are deliberately assignments, not observations of a running
+        mode.  Only a raw caption or a comb-confirmed hidden-top candidate may
+        call this again before the next lock-like reset.
+        """
+        top_identity = STANDARD_TOPS[field] + d
+        h = raw["switch"] - top_identity
+        normalized_clip = raw["clip"] - min(d, 0)
+        lost = max(0, top_identity + EXPECTED_PICTURE_LINES - 1 - normalized_clip)
+        c = raw["visible_switch"] + lost
+        if min(h, c, normalized_clip) < 0:
+            return
+        self.picture_lines_constant[field] = h
+        self.switch_line_count_constant[field] = c
+        self.geometry_seed_evidence[field] = (
+            f"{reason}: d={d}, H={h}, c={c}, clip observation L{normalized_clip}"
+        )
+        self.last_applied_d[field] = d
+        self.last_applied_top[field] = top_identity
+        self.seeded_fields.add(field)
+        raw["picture_lines_top"] = top_identity
+        raw["picture_lines"] = h
+        raw["clip_comparator_input"] = normalized_clip
+        raw["switch_lost"] = lost
+        raw["switch_count"] = c
+        self.clip_line_comparators[field].observe(normalized_clip)
+
+    @staticmethod
+    def _caption_seed_d(row: dict[str, object], field: int) -> int | None:
+        if row.get(f"f{field}_caption_confirmation") != "agrees":
+            return None
+        lines = sorted(_integer_lines(row.get(f"f{field}_caption_lines", "")))
+        if not lines:
+            return None
+        source_line = 21 if field == 1 else 284
+        return lines[0] - source_line
+
+    @staticmethod
+    def _xds_seed_d(row: dict[str, object], field: int) -> int | None:
+        if field != 2 or row.get("f2_xds_confirmation") != "agrees":
+            return None
+        line = _integer(row.get("f2_xds_line"))
+        return line - 284 if line >= 0 else None
+
+    @classmethod
+    def _absolute_seed(cls, row: dict[str, object], field: int) -> tuple[int, str] | None:
+        caption = cls._caption_seed_d(row, field)
+        if caption is not None:
+            return caption, "caption"
+        xds = cls._xds_seed_d(row, field)
+        if xds is not None:
+            return xds, "XDS"
+        return None
+
+    @staticmethod
+    def _raw_geometry(row: dict[str, object], field: int) -> dict[str, int]:
+        prefix = f"f{field}_"
+        top = _integer(row.get(prefix + "picture_top_line"))
+        switch = _integer(row.get(prefix + "switch_first_line"))
+        band_bottom = _integer(row.get(prefix + "hs_bottom_line"))
+        clip = _integer(row.get(prefix + "last_recorded_line"))
+        visible_switch = (
+            band_bottom - switch + 1
+            if switch >= 0 and band_bottom >= switch
+            else -1
+        )
+        blank_under = _integer(row.get(prefix + "blank_rows_under_band"))
+        return {
+            "top": top,
+            "switch": switch,
+            "band_bottom": band_bottom,
+            "clip": clip,
+            "clip_comparator_input": clip,
+            "picture_lines": switch - top if top >= 0 and switch >= 0 else -1,
+            "picture_lines_top": top,
+            "visible_switch": visible_switch,
+            "switch_count": visible_switch,
+            "switch_lost": 0 if visible_switch >= 0 else -1,
+            "blank_under": blank_under,
+            "extent": clip - switch + 1 if clip >= 0 and switch >= 0 else -1,
+        }
+
+    @staticmethod
+    def _geometry_exposed(row: dict[str, object], field: int) -> bool:
+        prefix = f"f{field}_"
+        top = _integer(row.get(prefix + "picture_top_line"))
+        switch = _integer(row.get(prefix + "switch_first_line"))
+        direct_switch = (
+            row.get(prefix + "switch_status") == "observed"
+            or _integer(row.get(prefix + "first_full_other_head_line")) >= 0
+            or row.get(prefix + "rf_presence") in {"present", "reappeared"}
+        )
+        clip = _integer(row.get(prefix + "last_recorded_line"))
+        return top >= 0 and switch >= 0 and clip >= 0 and direct_switch
+
+    def apply(self, row: dict[str, object]) -> None:
+        counter = _integer(row.get("counter"))
+        discontinuity = False
+        if self.previous_counter is not None:
+            delta = (counter - self.previous_counter) & 0xFFFF
+            discontinuity = delta != 1
+        self.previous_counter = counter
+
+        regenerated_present = {
+            field: row.get(f"f{field}_shuttle_regenerated_status") == "observed"
+            for field in FIELDS
+        }
+        reset_reason = ""
+        if discontinuity:
+            reset_reason = "counter discontinuity"
+        if reset_reason:
+            self.reset(reset_reason)
+
+        caption_confirmed = {
+            field: row.get(f"f{field}_caption_confirmation") == "agrees"
+            for field in FIELDS
+        }
+        xds_confirmed = {
+            field: row.get(f"f{field}_xds_confirmation") == "agrees"
+            for field in FIELDS
+        }
+        comb_status = str(row.get("f1_comb_status", "unmeasurable"))
+        comb_agreement = str(
+            row.get("f1_comb_geometry_agreement", "unmeasurable")
+        )
+        comb_confirmed = comb_status == "observed" and comb_agreement == "agrees"
+        geometry_exposed = {
+            field: self._geometry_exposed(row, field) for field in FIELDS
+        }
+        newly_acquired_fields: set[int] = set()
+        if not reset_reason:
+            if (
+                comb_confirmed
+                and all(regenerated_present.values())
+                and all(geometry_exposed.values())
+            ):
+                for field in FIELDS:
+                    if not self.field_lock_acquired[field]:
+                        newly_acquired_fields.add(field)
+                        self.field_lock_origin[field] = (
+                            f"field {field} lock acquired at counter {counter}: "
+                            "regenerated rows + comb"
+                        )
+                        self.field_lock_confirmation[field] = "comb"
+                    self.field_lock_acquired[field] = True
+                self.settled_comb_shift = 0
+                self.settled_comb_evidence = (
+                    f"field precedence confirmed by zero comb at counter {counter}"
+                )
+            for field in FIELDS:
+                if (
+                    not self.field_lock_acquired[field]
+                    and (caption_confirmed[field] or xds_confirmed[field])
+                    and regenerated_present[field]
+                    and geometry_exposed[field]
+                ):
+                    self.field_lock_acquired[field] = True
+                    newly_acquired_fields.add(field)
+                    self.field_lock_origin[field] = (
+                        f"field {field} lock acquired at counter {counter}: "
+                        "regenerated rows + "
+                        + ("caption" if caption_confirmed[field] else "XDS")
+                    )
+                    self.field_lock_confirmation[field] = (
+                        "caption" if caption_confirmed[field] else "xds"
+                    )
+        newly_acquired = bool(newly_acquired_fields)
+
+        raw = {field: self._raw_geometry(row, field) for field in FIELDS}
+        if (
+            not any(self.field_lock_acquired.values())
+            and all(
+                raw[field]["top"] < 0 or raw[field]["switch"] < 0
+                for field in FIELDS
+            )
+        ):
+            # No source was ever confirmed and both fields have lost an edge.
+            # There is no geometry to hold: discard the provisional seed so
+            # the next fully readable unit is the segment's seed.  This does
+            # not classify the unit as a lock-like loss and never disturbs an
+            # established per-field lock.
+            self.seeded_fields = set()
+            self.absolute_seed_seen = {field: False for field in FIELDS}
+            self.picture_lines_constant = {field: -1 for field in FIELDS}
+            self.switch_line_count_constant = {field: -1 for field in FIELDS}
+            self.geometry_seed_evidence = {
+                field: "provisional seed discarded while acquiring: both edges absent"
+                for field in FIELDS
+            }
+            self.last_applied_top = {}
+            self.last_applied_d = {}
+            self.previous_signature_top = {}
+            self.previous_switch = {}
+            self._clear_comparators()
+        seed_d: dict[int, int] = {}
+        newly_seeded: dict[int, bool] = {}
+        for field in FIELDS:
+            can_seed = (
+                not reset_reason
+                and regenerated_present[field]
+                and raw[field]["top"] >= 0
+                and raw[field]["switch"] >= 0
+                and raw[field]["visible_switch"] >= 0
+                and raw[field]["clip"] >= 0
+            )
+            newly_seeded[field] = field not in self.seeded_fields and can_seed
+            if newly_seeded[field]:
+                absolute = self._absolute_seed(row, field)
+                seed_d[field] = absolute[0] if absolute is not None else None
+                if absolute is not None:
+                    self.absolute_seed_seen[field] = True
+                if seed_d[field] is None:
+                    seed_d[field] = (
+                        raw[field]["top"] - STANDARD_TOPS[field]
+                        if raw[field]["top"] > STANDARD_TOPS[field]
+                        else 0
+                    )
+                self._seed_geometry(
+                    row,
+                    field,
+                    raw[field],
+                    seed_d[field],
+                    "segment first measurable unit",
+                )
+
+        candidate_offsets: dict[int, int] = {}
+        decision_evidence: dict[int, str] = {}
+        decision_hold: dict[int, bool] = {}
+        decision_case: dict[int, str] = {}
+        decision_report: dict[int, str] = {field: "" for field in FIELDS}
+        seed_hidden_options: dict[int, list[int]] = {field: [] for field in FIELDS}
+        caption_reseeded: dict[int, bool] = {field: False for field in FIELDS}
+        for field in FIELDS:
+            top = raw[field]["top"]
+            switch = raw[field]["switch"]
+            h_mode = self.picture_lines_constant[field]
+            c_mode = self.switch_line_count_constant[field]
+            previous_d = self.last_applied_d.get(field, 0)
+            previous_top = self.previous_signature_top.get(field, -1)
+            previous_switch = self.previous_switch.get(field, -1)
+            hold = False
+            evidence: list[str] = []
+
+            if not regenerated_present[field]:
+                candidate = previous_d
+                hold = self.field_lock_acquired[field]
+                case = "hidden-edge"
+                evidence.append("Shuttle regenerated rows absent; hold, no gauge")
+            elif newly_seeded[field]:
+                candidate = seed_d[field]
+                case = "seed"
+                evidence.append(f"seed d={candidate}")
+                if (
+                    candidate == 0
+                    and top == STANDARD_TOPS[field]
+                    and raw[field]["blank_under"] > 0
+                ):
+                    seed_hidden_options[field] = list(
+                        range(-1, -raw[field]["blank_under"] - 1, -1)
+                    )
+                    candidate = seed_hidden_options[field][0]
+                    hold = True
+                    case = "seed-hidden-top"
+                    evidence.append(
+                        f"{raw[field]['blank_under']} blank rows under band put "
+                        "hidden-top candidates "
+                        + ",".join(map(str, seed_hidden_options[field]))
+                        + " to comb"
+                    )
+            elif field not in self.seeded_fields:
+                candidate = 0
+                hold = self.field_lock_acquired[field]
+                case = "hidden-edge"
+                evidence.append("account not seeded")
+            elif top < 0 or h_mode < 0 or c_mode < 0:
+                candidate = previous_d
+                hold = self.field_lock_acquired[field]
+                case = "hidden-edge"
+                evidence.append("hidden edge")
+            elif switch < 0:
+                expected_top = STANDARD_TOPS[field] + previous_d
+                expected_switch = expected_top + h_mode
+                expected_reads_picture = expected_switch in _integer_lines(
+                    row.get(f"f{field}_bottom_picture_rows", "")
+                )
+                dt = top - expected_top if top >= 0 else 0
+                if expected_reads_picture and dt > 0:
+                    candidate = previous_d + dt
+                    case = "band-past-clip"
+                    evidence.append(
+                        f"expected switch L{expected_switch} reads as picture; "
+                        f"top moved {dt:+d}; band left raster past clip"
+                    )
+                elif expected_reads_picture and dt == 0:
+                    candidate = previous_d
+                    case = "still-no-switch"
+                    evidence.append(
+                        f"expected switch L{expected_switch} reads as picture; "
+                        "band remains past clip; top still"
+                    )
+                elif expected_reads_picture:
+                    candidate = previous_d
+                    hold = True
+                    case = "band-missing-upward"
+                    evidence.append(
+                        f"expected switch L{expected_switch} reads as picture but "
+                        f"top moved upward {dt:+d}; reported hold"
+                    )
+                else:
+                    candidate = previous_d
+                    hold = self.field_lock_acquired[field]
+                    case = "hidden-edge"
+                    evidence.append("no switch-line reading; expected row not picture")
+            else:
+                expected_top = STANDARD_TOPS[field] + previous_d
+                expected_switch = expected_top + h_mode
+                dt = top - expected_top
+                ds = switch - expected_switch
+                if previous_d < 0 and top == STANDARD_TOPS[field]:
+                    if ds != 0:
+                        candidate = previous_d + ds
+                        hold = True
+                        case = "hidden-top"
+                        evidence.append(
+                            f"top already hidden; switch moved {ds:+d}; "
+                            f"candidate d={candidate} awaits comb"
+                        )
+                    else:
+                        candidate = previous_d
+                        case = "still"
+                        evidence.append("top hidden; switch matches previous decision")
+                elif previous_top < 0 or previous_switch < 0:
+                    candidate = top - STANDARD_TOPS[field]
+                    case = "first-measurable"
+                    evidence.append("first measurable signature top")
+                elif dt == ds and dt != 0:
+                    candidate = previous_d + dt
+                    case = "moved-together"
+                    evidence.append(f"top/switch moved together {dt:+d}")
+                elif dt != 0 and ds != 0 and abs(ds - dt) == 1:
+                    candidate = previous_d + dt
+                    case = "moved-with-switch-travel"
+                    evidence.append(
+                        f"top moved {dt:+d}; switch reading {ds:+d} includes "
+                        "one row of travel"
+                    )
+                elif (
+                    top == STANDARD_TOPS[field]
+                    and ds < dt
+                ):
+                    candidate = previous_d + ds
+                    case = "hidden-top"
+                    evidence.append(
+                        f"pinned-top account d={previous_d}{ds:+d}={candidate}"
+                    )
+                elif dt != 0 and ds == 0:
+                    candidate = switch - h_mode - STANDARD_TOPS[field]
+                    case = "top-alone"
+                    evidence.append("top moved alone; account retained switch minus H")
+                elif dt == 0 and abs(ds) == 1:
+                    candidate = previous_d
+                    case = "switch-travel"
+                    evidence.append(f"one-row switch travel {ds:+d}")
+                elif dt == 0 and ds == 0:
+                    candidate = previous_d
+                    case = "still"
+                    evidence.append("top/switch match the previous decision")
+                else:
+                    candidate = previous_d
+                    hold = True
+                    case = "different-amounts"
+                    evidence.append(f"different top/switch motion {dt:+d}/{ds:+d}")
+
+                absolute = self._absolute_seed(row, field)
+                absolute_d = absolute[0] if absolute is not None else None
+                absolute_name = absolute[1] if absolute is not None else ""
+                if self.field_lock_acquired[field] and absolute_d is not None:
+                    reseed = not self.absolute_seed_seen[field]
+                    if reseed:
+                        self._seed_geometry(
+                            row,
+                            field,
+                            raw[field],
+                            absolute_d,
+                            f"raw {absolute_name} absolute re-seed",
+                        )
+                        self.field_lock_confirmation[field] = absolute_name.lower()
+                        self.absolute_seed_seen[field] = True
+                        candidate = absolute_d
+                        hold = False
+                        case = f"{absolute_name.lower()}-absolute-reseed"
+                        caption_reseeded[field] = True
+                        evidence.append(
+                            f"{absolute_name} d={absolute_d}; geometry re-seeded to "
+                            f"H={self.picture_lines_constant[field]}, "
+                            f"c={self.switch_line_count_constant[field]}; "
+                            "crop re-placed"
+                        )
+                    elif absolute_d != candidate:
+                        decision_report[field] = (
+                            f"{absolute_name} d={absolute_d} disagrees with "
+                            f"account d={candidate}"
+                        )
+                        evidence.append(
+                            f"{absolute_name} d={absolute_d} disagrees with account "
+                            f"d={candidate}; geometry wins; owner review required"
+                        )
+
+            candidate_offsets[field] = candidate
+            decision_evidence[field] = "; ".join(evidence)
+            decision_hold[field] = hold
+            decision_case[field] = case
+
+        true_disagreement = False
+        disagreement_evidence = ""
+        comb_at_placed_crops: int | str = "unmeasurable"
+        hidden_cases = {"hidden-top", "seed-hidden-top"}
+        seed_hidden_present = any(
+            decision_case[field] == "seed-hidden-top" for field in FIELDS
+        )
+        if (
+            comb_status == "observed"
+            and (
+                (
+                    any(self.field_lock_acquired.values())
+                    and self.settled_comb_shift is not None
+                )
+                or seed_hidden_present
+            )
+        ):
+            comb_target = (
+                self.settled_comb_shift
+                if self.settled_comb_shift is not None
+                else 0
+            )
+            observed_comb = _integer(row.get("f1_comb_shift"))
+            base_comb = _integer(row.get("f1_comb_expected_shift"), 0)
+
+            def placed_residual(offsets: dict[int, int]) -> int:
+                # The raw comb is measured from each field's observed picture
+                # top.  A visible displacement is already embodied in that
+                # aperture and must not be counted twice.  Only a crop that
+                # differs from the observed top (the hidden negative-d case)
+                # changes the comb at the placed crops.
+                adjustments = {
+                    field: offsets[field]
+                    - (
+                        _integer(row.get(f"f{field}_picture_top_line"))
+                        - STANDARD_TOPS[field]
+                    )
+                    for field in FIELDS
+                }
+                return (
+                    observed_comb
+                    - base_comb
+                    + adjustments[1]
+                    - adjustments[2]
+                )
+
+            comb_at_placed_crops = placed_residual(candidate_offsets)
+            if seed_hidden_present:
+                choices = [
+                    (
+                        [self.last_applied_d.get(field, 0)]
+                        + seed_hidden_options[field]
+                        if decision_case[field] == "seed-hidden-top"
+                        else [candidate_offsets[field]]
+                    )
+                    for field in FIELDS
+                ]
+                solutions: list[dict[int, int]] = []
+                for values in product(*choices):
+                    tested = dict(zip(FIELDS, values))
+                    if placed_residual(tested) == comb_target:
+                        solutions.append(tested)
+                if len(solutions) == 1:
+                    selected = solutions[0]
+                    candidate_offsets.update(selected)
+                    comb_at_placed_crops = placed_residual(candidate_offsets)
+                    for field in FIELDS:
+                        if decision_case[field] != "seed-hidden-top":
+                            continue
+                        decision_hold[field] = False
+                        self._seed_geometry(
+                            row,
+                            field,
+                            raw[field],
+                            selected[field],
+                            "comb-confirmed hidden-top seed",
+                        )
+                        decision_evidence[field] += (
+                            f"; comb uniquely selected seed d={selected[field]} "
+                            f"from {choices[field - 1]}"
+                        )
+                else:
+                    for field in FIELDS:
+                        if decision_case[field] != "seed-hidden-top":
+                            continue
+                        candidate_offsets[field] = self.last_applied_d.get(field, 0)
+                        decision_hold[field] = True
+                        decision_evidence[field] += (
+                            f"; seed comb had {len(solutions)} solutions; "
+                            "hidden-top candidate unconfirmed"
+                        )
+                    comb_at_placed_crops = placed_residual(candidate_offsets)
+            for field in FIELDS:
+                if decision_case[field] != "hidden-top":
+                    continue
+                held = dict(candidate_offsets)
+                held[field] = self.last_applied_d.get(field, 0)
+                held_residual = placed_residual(held)
+                if (
+                    comb_at_placed_crops == comb_target
+                    and held_residual != comb_target
+                ):
+                    decision_hold[field] = False
+                    decision_evidence[field] += (
+                        "; settled comb changed from nonzero at held crop "
+                        f"({held_residual}) to zero at candidate; hidden-top move "
+                        "confirmed; candidate overrides c+1 hold"
+                    )
+                else:
+                    decision_hold[field] = True
+                    decision_evidence[field] += (
+                        "; hidden-top move unconfirmed: comb residual held/candidate="
+                        f"{held_residual}/{comb_at_placed_crops}"
+                    )
+            for field in FIELDS:
+                if decision_case[field] != "top-alone":
+                    continue
+                moved = dict(candidate_offsets)
+                moved[field] = raw[field]["top"] - STANDARD_TOPS[field]
+                if (
+                    comb_at_placed_crops != comb_target
+                    and placed_residual(moved) == comb_target
+                ):
+                    candidate_offsets[field] = moved[field]
+                    decision_case[field] = "top-alone-comb-move"
+                    decision_evidence[field] += "; comb exception confirms moved top"
+                    comb_at_placed_crops = placed_residual(candidate_offsets)
+            if comb_at_placed_crops != comb_target:
+                vetoed_hidden = False
+                placed_offsets = dict(candidate_offsets)
+                for field in FIELDS:
+                    if decision_case[field] in hidden_cases:
+                        decision_hold[field] = True
+                        decision_evidence[field] += "; settled comb vetoed proposed move"
+                        placed_offsets[field] = self.last_applied_d.get(field, 0)
+                        vetoed_hidden = True
+                if vetoed_hidden:
+                    # A hidden-top reading is only a proposal.  Once the comb
+                    # vetoes it, rule 9 leaves the prior crop in place.  Score
+                    # the comb at that actual placement; a rejected proposal
+                    # is not itself a true disagreement.
+                    comb_at_placed_crops = placed_residual(placed_offsets)
+                if (
+                    comb_at_placed_crops != comb_target
+                    and any(self.field_lock_acquired.values())
+                ):
+                    true_disagreement = True
+                    disagreement_evidence = (
+                        f"observed comb {observed_comb} at placed crops leaves residual "
+                        f"{comb_at_placed_crops} (base {base_comb}, "
+                        f"settled residual {comb_target}, "
+                        f"d1={candidate_offsets[1]}, d2={candidate_offsets[2]}); "
+                        "owner review required"
+                    )
+            if (
+                seed_hidden_present
+                and any(
+                    decision_case[field] == "seed-hidden-top"
+                    and not decision_hold[field]
+                    for field in FIELDS
+                )
+                and comb_at_placed_crops == 0
+                and all(regenerated_present.values())
+                and all(geometry_exposed.values())
+            ):
+                for field in FIELDS:
+                    if not self.field_lock_acquired[field]:
+                        newly_acquired_fields.add(field)
+                    self.field_lock_acquired[field] = True
+                    self.field_lock_origin[field] = (
+                        f"field {field} lock acquired at counter {counter}: "
+                        "regenerated rows + seed hidden-top comb"
+                    )
+                    self.field_lock_confirmation[field] = "comb"
+                newly_acquired = True
+                self.settled_comb_shift = 0
+                self.settled_comb_evidence = (
+                    f"field precedence confirmed by seed candidate comb at counter {counter}"
+                )
+        for field in FIELDS:
+            if decision_case[field] in hidden_cases and comb_status != "observed":
+                decision_hold[field] = True
+                decision_evidence[field] += "; hidden-top reading awaits measurable comb"
+
+        for field in FIELDS:
+            if field not in self.seeded_fields or not regenerated_present[field]:
+                continue
+            if decision_case[field] == "top-alone":
+                self.seed_suspect_count[field] += 1
+            elif decision_case[field] in {"seed", "still", "switch-travel"}:
+                self.seed_support_count[field] += 1
+
+        # H and c are segment constants, not running votes.  Each measurable
+        # unit still carries its independent observation and its difference
+        # from the seed; the observation may report/hold geometry but can
+        # never silently change either constant.
+        for field in FIELDS:
+            unresolved_hidden = (
+                decision_case[field] in hidden_cases and decision_hold[field]
+            )
+            if (
+                newly_seeded[field]
+                or caption_reseeded[field]
+                or field not in self.seeded_fields
+                or not regenerated_present[field]
+                or unresolved_hidden
+            ):
+                continue
+            if raw[field]["visible_switch"] < 0:
+                continue
+            account_d = (
+                candidate_offsets[field]
+                if not decision_hold[field]
+                else self.last_applied_d.get(field, 0)
+            )
+            clip_value, clip_count, _ = self.clip_line_comparators[field].current()
+            clip_for_count = (
+                _integer(clip_value)
+                if clip_count
+                else raw[field]["clip"] - min(account_d, 0)
+            )
+            lost = max(
+                0,
+                STANDARD_TOPS[field]
+                + account_d
+                + EXPECTED_PICTURE_LINES
+                - 1
+                - clip_for_count,
+            )
+            raw[field]["switch_lost"] = lost
+            raw[field]["switch_count"] = raw[field]["visible_switch"] + lost
+            h_constant = self.picture_lines_constant[field]
+            c_constant = self.switch_line_count_constant[field]
+            account_top = STANDARD_TOPS[field] + account_d
+            raw[field]["picture_lines_top"] = account_top
+            raw[field]["picture_lines"] = raw[field]["switch"] - account_top
+            if c_constant >= 0 and abs(raw[field]["switch_count"] - c_constant) > 1:
+                decision_hold[field] = True
+                decision_evidence[field] += (
+                    f"; switch-line count {raw[field]['switch_count']} exceeds "
+                    f"seed c={c_constant} by more than one; owner review required"
+                )
+            if h_constant >= 0 and abs(raw[field]["picture_lines"] - h_constant) > 1:
+                decision_hold[field] = True
+                decision_evidence[field] += (
+                    f"; picture-line reading {raw[field]['picture_lines']} differs "
+                    f"from seed H={h_constant} by more than one; owner review required"
+                )
+
+        # The physical clip is a source coordinate.  When the stack sits high,
+        # normalize the last above-blank raster row by subtracting negative d
+        # before it votes in the clip comparator.
+        for field in FIELDS:
+            if (
+                newly_seeded[field]
+                or caption_reseeded[field]
+                or field not in self.seeded_fields
+                or not regenerated_present[field]
+                or (
+                    decision_case[field] in hidden_cases
+                    and decision_hold[field]
+                )
+            ):
+                continue
+            if raw[field]["clip"] < 0:
+                continue
+            account_d = (
+                candidate_offsets[field]
+                if not decision_hold[field]
+                else self.last_applied_d.get(field, 0)
+            )
+            normalized_clip = raw[field]["clip"] - min(account_d, 0)
+            raw[field]["clip_comparator_input"] = normalized_clip
+            before = self.clip_line_comparators[field].current()[0]
+            after = self.clip_line_comparators[field].observe(normalized_clip)[0]
+            if before is not None and after != before:
+                decision_evidence[field] += (
+                    f"; clip comparator replaced {before}->{after}; crop unchanged"
+                )
+
+        # Decoded non-null bytes on the Shuttle's fixed insert confirm only
+        # an already-derived account within its measured one-line capture
+        # window.  They do not propose d, and a raw caption remains the
+        # positional authority when one is visible.
+        for field in FIELDS:
+            if self.field_lock_acquired[field] or reset_reason:
+                continue
+            if (
+                row.get(f"f{field}_insert_data_status") != "observed"
+                or _integer_lines(row.get(f"f{field}_caption_lines", ""))
+                or not regenerated_present[field]
+                or not geometry_exposed[field]
+                or field not in self.seeded_fields
+            ):
+                continue
+            account_d = (
+                candidate_offsets[field]
+                if not decision_hold[field]
+                else self.last_applied_d.get(field, 0)
+            )
+            if abs(account_d) <= 1:
+                self.field_lock_acquired[field] = True
+                newly_acquired_fields.add(field)
+                newly_acquired = True
+                self.field_lock_origin[field] = (
+                    f"field {field} lock acquired at counter {counter}: "
+                    f"regenerated rows + decoded insert data confirms d={account_d}"
+                )
+                self.field_lock_confirmation[field] = "insert"
+
+        # Re-evaluate the comb at the crops that will actually be used after
+        # any veto or H replacement.  Candidate readings that were vetoed are
+        # not rendered and therefore are not true disagreements.
+        if (
+            any(self.field_lock_acquired.values())
+            and self.settled_comb_shift is not None
+            and comb_status == "observed"
+        ):
+            actual_offsets = {
+                field: (
+                    candidate_offsets[field]
+                    if not decision_hold[field]
+                    else self.last_applied_d.get(field, 0)
+                )
+                for field in FIELDS
+            }
+            comb_at_placed_crops = placed_residual(actual_offsets)
+            true_disagreement = comb_at_placed_crops != self.settled_comb_shift
+            disagreement_evidence = (
+                f"observed comb {observed_comb} at placed crops leaves residual "
+                f"{comb_at_placed_crops} (base {base_comb}, "
+                f"settled residual {self.settled_comb_shift}, "
+                f"d1={actual_offsets[1]}, d2={actual_offsets[2]}); "
+                "owner review required"
+                if true_disagreement
+                else ""
+            )
+
+        field_states: dict[int, str] = {}
+        for field in FIELDS:
+            prefix = f"f{field}_"
+            top = raw[field]["top"]
+            switch = raw[field]["switch"]
+            clip_observation = raw[field]["clip_comparator_input"]
+            band_extent = raw[field]["extent"]
+            clip_snapshot = self.clip_line_comparators[field].current()
+            clip_value, clip_count, clip_runner = clip_snapshot
+            h_constant = self.picture_lines_constant[field]
+            c_constant = self.switch_line_count_constant[field]
+            locked_clip = _integer(clip_value) if clip_count else -1
+            if locked_clip >= 0 and raw[field]["band_bottom"] >= 0:
+                raw[field]["blank_under"] = min(
+                    raw[field]["blank_under"],
+                    max(0, locked_clip - raw[field]["band_bottom"]),
+                )
+            raw_offset = candidate_offsets[field]
+            h_observation = raw[field]["picture_lines"]
+            c_observation = raw[field]["switch_count"]
+            first_state = str(
+                row.get(prefix + "first_row_state_observation", "unmeasurable")
+            )
+            line22_level = _integer(
+                row.get(prefix + "line22_level_observation")
+            )
+
+            clip_disagrees = (
+                self.field_lock_acquired[field]
+                and locked_clip >= 0
+                and clip_observation >= 0
+                and clip_observation != locked_clip
+            )
+            # The unit's last row above blanking can move inside the source
+            # clip (for example at negative d).  Its running comparator records
+            # that fact; a differing unit observation does not hold geometry.
+            hold_measurement = decision_hold[field]
+
+            if (
+                field in self.seeded_fields
+                and not reset_reason
+                and line22_level >= 0
+                and str(row.get(prefix + "line22_level_identification", "none"))
+                != "none"
+                and not hold_measurement
+            ):
+                level_snapshot = self.line22_level_comparators[field].observe(
+                    line22_level
+                )
+            else:
+                level_snapshot = self.line22_level_comparators[field].current()
+
+            level_value, level_count, level_runner = level_snapshot
+            level_comparator = _integer(level_value) if level_count else -1
+
+            if reset_reason:
+                field_state = "no-lock"
+            elif not self.field_lock_acquired[field]:
+                field_state = "acquiring"
+            elif h_constant < 0 or c_constant < 0 or clip_count == 0:
+                field_state = "acquiring"
+            elif top < 0 or hold_measurement:
+                field_state = "hold"
+            else:
+                field_state = "locked"
+            field_states[field] = field_state
+
+            effective_top = top
+            if field_state == "locked":
+                effective_top = STANDARD_TOPS[field] + raw_offset
+                self.last_applied_top[field] = effective_top
+                self.last_applied_d[field] = raw_offset
+            elif field_state == "hold":
+                effective_top = self.last_applied_top.get(field, -1)
+            elif field_state not in {"locked", "hold"}:
+                effective_top = STANDARD_TOPS[field]
+
+            applied_d = (
+                effective_top - STANDARD_TOPS[field]
+                if effective_top >= 0 and field_state in {"locked", "hold"}
+                else 0
+            )
+            projected = (
+                effective_top + h_constant
+                if h_constant >= 0
+                and effective_top >= 0
+                and field_state in {"locked", "hold"}
+                else -1
+            )
+            rows_to_clip = (
+                max(0, locked_clip - projected + 1)
+                if projected >= 0 and locked_clip >= 0
+                else -1
+            )
+            if reset_reason:
+                band_class = "reset"
+            elif field_state == "hold":
+                band_class = (
+                    "hidden"
+                    if top < 0 or switch < 0 or decision_case[field] == "hidden-edge"
+                    else "reported-hold"
+                )
+            elif field_state == "locked":
+                band_class = "travel"
+            else:
+                band_class = "hidden"
+
+            # The legacy review columns carry the account's decided picture
+            # top, not the independent signature candidate.  The latter is
+            # retained verbatim in signature_top_line.  This distinction is
+            # material for the contract's row-above and hidden-top cases: a
+            # dark first picture row may look like line 22 while unchanged
+            # bottom geometry keeps the picture at the prior placement.
+            if top >= 0 and effective_top >= 0:
+                row[prefix + "picture_top_line"] = effective_top
+                row[prefix + "expected_bottom_line"] = (
+                    effective_top + EXPECTED_PICTURE_LINES - 1
+                )
+
+            row.update(
+                {
+                    prefix + "offset_observation": raw_offset,
+                    prefix + "offset_status": (
+                        "unmeasurable"
+                        if top < 0
+                        else "inferred"
+                        if raw_offset < 0
+                        else "observed"
+                    ),
+                    prefix + "picture_top_under_lock_line": effective_top,
+                    prefix + "crop_status": (
+                        "held"
+                        if field_state == "hold"
+                        else "applied"
+                        if field_state == "locked"
+                        else "standard-unlocked"
+                    ),
+                    prefix + "account_case": decision_case[field],
+                    prefix + "crop_evidence": (
+                        "crop origin is standard line + signed d"
+                        if field_state == "locked"
+                        else "prior crop left in place; position Unknown"
+                        if field_state == "hold"
+                        else "no lock; standard placement"
+                    ),
+                    prefix + "lock_state": field_state,
+                    prefix + "lock_evidence": (
+                        self.field_lock_origin[field]
+                        + (
+                            "; position Unknown, crop left at prior placement"
+                            if field_state == "hold"
+                            else "; current geometry"
+                            if field_state == "locked"
+                            else "; no geometry claimed"
+                        )
+                    ),
+                    prefix + "first_row_state_observation": first_state,
+                    prefix + "line22_level_observation": line22_level,
+                    prefix + "line22_level_identification": str(
+                        row.get(prefix + "line22_level_identification", "none")
+                    ),
+                    prefix + "line22_level_comparator": level_comparator,
+                    prefix + "line22_level_comparator_count": level_count,
+                    prefix + "line22_level_runner_up_count": level_runner,
+                    prefix + "line22_level_counts": _slots_text(
+                        self.line22_level_comparators[field]
+                    ),
+                    prefix + "clip_line_observation": clip_observation,
+                    prefix + "clip_line_under_lock": (
+                        locked_clip
+                        if self.field_lock_acquired[field] and not reset_reason
+                        else -1
+                    ),
+                    prefix + "clip_status": (
+                        "unmeasurable"
+                        if clip_observation < 0
+                        else "observed"
+                        if locked_clip < 0 or clip_observation == locked_clip
+                        else "disagrees"
+                    ),
+                    prefix + "clip_evidence": (
+                        f"last above-blank raster row L{raw[field]['clip']}; "
+                        f"normalized observation L{clip_observation}; "
+                        f"source clip L{locked_clip if locked_clip >= 0 else -1}"
+                    ),
+                    prefix + "band_extent_observation": band_extent,
+                    prefix + "signature_top_line": top,
+                    prefix + "picture_lines_top_line": raw[field]["picture_lines_top"],
+                    prefix + "picture_lines_observation": h_observation,
+                    prefix + "picture_lines_constant": h_constant,
+                    prefix + "picture_lines_seed_evidence": self.geometry_seed_evidence[field],
+                    prefix + "visible_switch_lines_observation": raw[field]["visible_switch"],
+                    prefix + "visible_switch_lines_status": (
+                        "observed" if raw[field]["visible_switch"] >= 0
+                        else "unmeasurable"
+                    ),
+                    prefix + "switch_lines_lost_past_clip": raw[field]["switch_lost"],
+                    prefix + "blank_rows_under_band": raw[field]["blank_under"],
+                    prefix + "switch_line_count_observation": c_observation,
+                    prefix + "switch_line_count_constant": c_constant,
+                    prefix + "switch_line_count_seed_evidence": self.geometry_seed_evidence[field],
+                    prefix + "seed_support_count": self.seed_support_count[field],
+                    prefix + "seed_suspect_count": self.seed_suspect_count[field],
+                    prefix + "seed_suspect": (
+                        "yes"
+                        if self.seed_suspect_count[field] > self.seed_support_count[field]
+                        else "no"
+                    ),
+                    prefix + "seed_suspect_evidence": (
+                        f"row-above cases={self.seed_suspect_count[field]}; "
+                        f"seed-supporting still/travel cases={self.seed_support_count[field]}; "
+                        "report only; no correction without raw caption"
+                    ),
+                    prefix + "measurement_disagreement": (
+                        "yes" if decision_report[field] else "no"
+                    ),
+                    prefix + "measurement_disagreement_evidence": decision_report[field],
+                    prefix + "clip_line_comparator": locked_clip,
+                    prefix + "clip_line_comparator_count": clip_count,
+                    prefix + "clip_line_runner_up_count": clip_runner,
+                    prefix + "clip_line_counts": _slots_text(
+                        self.clip_line_comparators[field]
+                    ),
+                    prefix + "height_observation": h_observation,
+                    prefix + "height_status": (
+                        "observed" if h_observation >= 0 else "unmeasurable"
+                    ),
+                    prefix + "picture_lines_under_lock": h_constant,
+                    prefix + "switch_line_from_geometry": projected,
+                    prefix + "band_rows_to_clip": rows_to_clip,
+                    prefix + "band_class": band_class,
+                    prefix + "height_change": band_class,
+                    prefix + "height_change_evidence": (
+                        f"H observed/seed={h_observation}/{h_constant}; "
+                        f"c observed/seed={c_observation}/{c_constant}; "
+                        f"visible={raw[field]['visible_switch']} "
+                        f"blank-under={raw[field]['blank_under']}; "
+                        f"d={raw_offset}; {decision_evidence[field]}; "
+                        f"RF={row.get(prefix + 'rf_presence', 'unmeasurable')}"
+                    ),
+                }
+            )
+            row[f"applied_d{field}"] = applied_d
+
+        # The raw comb aperture is evaluated at the independently read
+        # signature tops so the account can test its candidate crops.  The
+        # public comb columns describe the crops the account actually outputs
+        # (standard placement before lock).  Relabel the seven measured
+        # energies by that exact crop delta; this proposes no crop.
+        if row.get("f1_comb_status") == "observed":
+            raw_energies = {
+                int(item.split(":", 1)[0]): float(item.split(":", 1)[1])
+                for item in str(row.get("f1_comb_energies", "")).split(",")
+                if item
+            }
+            signature_d = {
+                field: (
+                    raw[field]["top"] - STANDARD_TOPS[field]
+                    if raw[field]["top"] >= 0
+                    else 0
+                )
+                for field in FIELDS
+            }
+            output_d = {
+                field: _integer(row.get(f"applied_d{field}"), 0)
+                for field in FIELDS
+            }
+            relabel = (
+                output_d[1]
+                - signature_d[1]
+                - output_d[2]
+                + signature_d[2]
+            )
+            placed_energies = {
+                shift + relabel: energy for shift, energy in raw_energies.items()
+            }
+            placed_shift = _integer(row.get("f1_comb_shift")) + relabel
+            evidence_suffix = (
+                "; relabelled from signature-top aperture to output crops "
+                f"d={output_d[1]}/{output_d[2]} "
+                f"(signature d={signature_d[1]}/{signature_d[2]})"
+            )
+            for field in FIELDS:
+                prefix = f"f{field}_"
+                row[prefix + "comb_shift"] = placed_shift
+                row[prefix + "comb_expected_shift"] = 0
+                row[prefix + "comb_energies"] = ",".join(
+                    f"{shift}:{energy:.6f}"
+                    for shift, energy in sorted(placed_energies.items())
+                )
+                row[prefix + "comb_registration"] = (
+                    "line-286 field requires no relative shift"
+                    if placed_shift == 0
+                    else f"line-286 field relative shift {placed_shift:+d}"
+                )
+                row[prefix + "comb_geometry_agreement"] = (
+                    "agrees" if placed_shift == 0 else "disagrees"
+                )
+                row[prefix + "comb_confirmation"] = (
+                    str(row.get(prefix + "comb_confirmation", ""))
+                    + evidence_suffix
+                )
+
+        if reset_reason:
+            source_state = "no-lock"
+        elif not any(self.field_lock_acquired.values()):
+            source_state = "acquiring"
+        elif any(state == "hold" for state in field_states.values()):
+            source_state = "hold"
+        elif any(state == "acquiring" for state in field_states.values()):
+            source_state = "acquiring"
+        else:
+            source_state = "locked"
+        row["source_lock_state"] = source_state
+        row["source_lock_evidence"] = (
+            f"f1={self.field_lock_origin[1]}; f2={self.field_lock_origin[2]}; "
+            f"fixed seed constants H/c per field; fixed slots clip={CLIP_LINE_CAPACITY} "
+            f"line22-level={LINE22_LEVEL_CAPACITY}; "
+            "counts increment only"
+            + (f"; reset={reset_reason}" if reset_reason else "")
+            + ("; initial lock" if newly_acquired else "")
+        )
+        row["settled_comb_shift"] = (
+            self.settled_comb_shift
+            if self.settled_comb_shift is not None
+            else "unmeasurable"
+        )
+        row["settled_comb_evidence"] = self.settled_comb_evidence
+        row["comb_at_placed_crops"] = comb_at_placed_crops
+        row["true_disagreement"] = "yes" if true_disagreement else "no"
+        row["true_disagreement_evidence"] = disagreement_evidence
+        row["disagreement_frame"] = ""
+        for field in FIELDS:
+            if raw[field]["top"] >= 0:
+                self.previous_signature_top[field] = raw[field]["top"]
+            if raw[field]["switch"] >= 0:
+                self.previous_switch[field] = raw[field]["switch"]
+
+
 class ReferenceBuilder:
     def __init__(self, capture_name: str) -> None:
         self.capture_name = capture_name
@@ -1536,27 +2941,7 @@ class ReferenceBuilder:
         self.previous_rf_x = -1
         self.have_preceding_field = False
         self.counter_discontinuity = False
-        self.lock_like_reset_current = False
-        self.source_lock_acquired = False
-        self.source_lock_origin = "no directly exposed full other-head row"
-        self.band_comparators = {
-            field: FixedCountComparator(BAND_COUNT_CAPACITY) for field in FIELDS
-        }
-        self.first_row_comparators = {
-            field: FixedCountComparator(FIRST_ROW_STATE_CAPACITY) for field in FIELDS
-        }
-        self.last_locked_top: dict[int, int] = {}
-
-    def _reset_geometry_lock(self, reason: str) -> None:
-        self.source_lock_acquired = False
-        self.source_lock_origin = reason
-        self.band_comparators = {
-            field: FixedCountComparator(BAND_COUNT_CAPACITY) for field in FIELDS
-        }
-        self.first_row_comparators = {
-            field: FixedCountComparator(FIRST_ROW_STATE_CAPACITY) for field in FIELDS
-        }
-        self.last_locked_top = {}
+        self.carried_pedestal = {field: math.nan for field in FIELDS}
 
     def _ordinal(self, counter: int, local_exact: int) -> int:
         self.counter_discontinuity = False
@@ -1575,190 +2960,6 @@ class ReferenceBuilder:
             self.counter_extended += delta
         self.previous_counter = counter
         return self.specification.ordinal_origin + self.counter_extended - self.first_counter
-
-    def _apply_running_comparators(
-        self,
-        row: dict[str, object],
-        current: dict[int, FieldResult],
-    ) -> None:
-        regenerated_lost = all(
-            current[field].values.get("shuttle_regenerated_status") != "observed"
-            for field in FIELDS
-        )
-        self.lock_like_reset_current = regenerated_lost
-        reset_current = self.counter_discontinuity or regenerated_lost
-        if regenerated_lost and not self.counter_discontinuity:
-            self._reset_geometry_lock("Shuttle regenerated rows absent")
-        exposed = [
-            field
-            for field in FIELDS
-            if int(current[field].values.get("first_full_other_head_line", -1)) >= 0
-            and current[field].top_line >= 0
-        ]
-        if not self.source_lock_acquired and exposed and not reset_current:
-            self.source_lock_acquired = True
-            evidence = ",".join(
-                f"field {field} L{current[field].values['first_full_other_head_line']}"
-                for field in exposed
-            )
-            self.source_lock_origin = f"direct full-other-head signature: {evidence}"
-
-        snapshots: dict[int, tuple[object, int, int]] = {}
-        first_snapshots: dict[int, tuple[object, int, int]] = {}
-        observations: dict[int, int] = {}
-        first_observations: dict[int, str] = {}
-        for field in FIELDS:
-            values = current[field].values
-            top = current[field].top_line
-            first_full = int(values.get("first_full_other_head_line", -1))
-            observation = (
-                RASTER_LIMITS[field] - first_full + 1
-                if top >= 0 and first_full >= 0
-                else -1
-            )
-            observations[field] = observation
-            first_state = _first_row_state(values, field)
-            first_observations[field] = first_state
-            if (
-                self.source_lock_acquired
-                and not reset_current
-                and observation >= 0
-            ):
-                snapshots[field] = self.band_comparators[field].observe(observation)
-            else:
-                snapshots[field] = self.band_comparators[field].current()
-            if (
-                self.source_lock_acquired
-                and not reset_current
-                and first_state in FIRST_ROW_STATES
-            ):
-                first_snapshots[field] = self.first_row_comparators[field].observe(
-                    first_state
-                )
-            else:
-                first_snapshots[field] = self.first_row_comparators[field].current()
-
-        field_states: dict[int, str] = {}
-        for field in FIELDS:
-            prefix = f"f{field}_"
-            values = current[field].values
-            comparator_value, comparator_count, runner_count = snapshots[field]
-            first_value, first_count, first_runner = first_snapshots[field]
-            comparator = (
-                int(comparator_value)
-                if comparator_count > 0 and comparator_value != "unmeasurable"
-                else -1
-            )
-            first_comparator = (
-                str(first_value) if first_count > 0 else "unmeasurable"
-            )
-            top = current[field].top_line
-            if reset_current:
-                field_state = "no-lock"
-            elif not self.source_lock_acquired:
-                field_state = "no-lock"
-            elif comparator_count == 0:
-                field_state = "acquiring"
-            elif top < 0 or observations[field] < 0:
-                field_state = "hold"
-            else:
-                field_state = "locked"
-            field_states[field] = field_state
-            if top >= 0 and self.source_lock_acquired:
-                self.last_locked_top[field] = top
-            effective_top = (
-                top
-                if top >= 0
-                else self.last_locked_top.get(field, -1)
-                if field_state == "hold"
-                else -1
-            )
-            if (
-                top >= 0
-                and first_observations[field] == "ambiguous"
-                and first_comparator in FIRST_ROW_STATES
-            ):
-                candidate = _first_row_candidate(values, field)
-                effective_top = candidate + (first_comparator == "black22")
-                self.last_locked_top[field] = effective_top
-            projected = (
-                effective_top + EXPECTED_PICTURE_LINES - comparator
-                if field_state in {"locked", "hold"}
-                and effective_top >= 0
-                and comparator >= 0
-                else -1
-            )
-            rows_to_clip = (
-                max(0, RASTER_LIMITS[field] - projected + 1)
-                if projected >= 0
-                else -1
-            )
-            if reset_current:
-                classification = "reset"
-            elif field_state == "hold":
-                classification = "hidden"
-            elif field_state == "locked":
-                classification = _classify_band_count(
-                    observations[field], comparator, str(values.get("dp", "unmeasurable"))
-                )
-            else:
-                classification = "hidden"
-            row.update(
-                {
-                    prefix + "picture_top_under_lock_line": effective_top,
-                    prefix + "lock_state": field_state,
-                    prefix + "lock_evidence": (
-                        f"{self.source_lock_origin}; "
-                        f"{'edge hidden; prior decision held' if field_state == 'hold' else 'current rows'}"
-                    ),
-                    prefix + "first_row_state_observation": first_observations[field],
-                    prefix + "first_row_state_comparator": first_comparator,
-                    prefix + "first_row_state_comparator_count": first_count,
-                    prefix + "first_row_state_runner_up_count": first_runner,
-                    prefix + "band_row_count_observation": observations[field],
-                    prefix + "band_row_count_comparator": comparator,
-                    prefix + "band_row_count_comparator_count": comparator_count,
-                    prefix + "band_row_count_runner_up_count": runner_count,
-                    prefix + "switch_height_comparator": (
-                        EXPECTED_PICTURE_LINES - comparator if comparator >= 0 else -1
-                    ),
-                    prefix + "switch_line_from_height_comparator": projected,
-                    prefix + "band_rows_to_clip": rows_to_clip,
-                    prefix + "height_change": classification,
-                    prefix + "height_change_evidence": (
-                        f"observed band={observations[field]}; comparator={comparator} "
-                        f"count={comparator_count}; runner-up={runner_count}; "
-                        f"RF={values.get('rf_presence', 'unmeasurable')}; "
-                        f"first-full=L{values.get('first_full_other_head_line', -1)}"
-                    ),
-                }
-            )
-            row[f"applied_d{field}"] = (
-                effective_top - STANDARD_TOPS[field]
-                if field_state in {"locked", "hold"} and effective_top >= 0
-                else 0
-            )
-
-        if all(state == "no-lock" for state in field_states.values()):
-            source_state = "no-lock"
-        elif any(state == "acquiring" for state in field_states.values()):
-            source_state = "acquiring"
-        elif any(state == "hold" for state in field_states.values()):
-            source_state = "hold"
-        else:
-            source_state = "locked"
-        row["source_lock_state"] = source_state
-        row["source_lock_evidence"] = (
-            f"{self.source_lock_origin}; fixed slots band={BAND_COUNT_CAPACITY} "
-            f"first-row={FIRST_ROW_STATE_CAPACITY}; counts never decrement"
-            + (
-                "; reset=counter discontinuity"
-                if self.counter_discontinuity
-                else "; reset=Shuttle regenerated rows absent"
-                if regenerated_lost
-                else ""
-            )
-        )
 
     def _measure_field(
         self,
@@ -1779,25 +2980,15 @@ class ReferenceBuilder:
         previous_rf_x = self.previous_rf_x
         flat_values = measure_flat_raster(y, spec)
         coherence, vertical_mad = _picture_coherence(y, field)
-        has_structure = coherence >= 0.20 or vertical_mad >= 2.0
-        structure_flat = bool(flat_values[0]) or not has_structure
-        flat_picture_boundary = _flat_picture_boundary(y, field)
-        # Spatial flatness does not mean absence. A flat field whose recorded
-        # region has a clear level boundary against raster blanking remains
-        # measurable. Only a flat field without that boundary is ambiguous.
-        flat = structure_flat and not flat_picture_boundary
         chroma_deviation = measure_chroma_deviation(packed)
         recorded_rows, recorded_gate = measure_recorded_rows(chroma_deviation, spec)
-        body_motion = measure_body(y, self.previous_y, spec)
         top = _inspect_top(
             y,
             field,
             previous_top,
-            flat,
             recorded_rows,
             recorded_gate,
-            body_motion,
-            3 - field if self.specification.half_field_phase else field,
+            self.carried_pedestal[field],
         )
         raster_limit = RASTER_LIMITS[field]
 
@@ -1813,6 +3004,12 @@ class ReferenceBuilder:
                     "caption_lines": top.caption_lines,
                     "caption_status": top.caption_status,
                     "caption_confirmation": top.caption_confirmation,
+                    "xds_line": top.xds_line,
+                    "xds_status": top.xds_status,
+                    "xds_confirmation": top.xds_confirmation,
+                    "xds_evidence": top.xds_evidence,
+                    "insert_data_status": top.insert_data_status,
+                    "insert_data_evidence": top.insert_data_evidence,
                     "shuttle_regenerated_status": top.regenerated_status,
                     "shuttle_regenerated_evidence": top.regenerated_evidence,
                     "clipping_status": "unmeasurable",
@@ -1856,6 +3053,22 @@ class ReferenceBuilder:
             return FieldResult(values, -1, -1, -1, -1)
 
         expected_bottom = top.line + EXPECTED_PICTURE_LINES - 1
+        bottom_blank = y[spec.blank_lo : spec.blank_hi, 40:680].astype(np.float64)
+        bottom_blank_level = float(np.median(bottom_blank))
+        bottom_blank_noise = max(
+            0.25,
+            1.4826
+            * float(np.median(np.abs(bottom_blank - np.median(bottom_blank)))),
+        )
+        bottom_picture_rows = ",".join(
+            str(line)
+            for line in range(
+                max(spec.pass_lo + 4, expected_bottom - 12),
+                min(spec.pass_hi + 4, expected_bottom + 3) + 1,
+            )
+            if float(np.mean(y[line - 4, 40:680]))
+            > bottom_blank_level + 2.0 * bottom_blank_noise
+        )
         switch = _inspect_switch(y, field, expected_bottom, previous_switch)
         if switch.line < 0 or switch.line <= top.line or switch.line > expected_bottom:
             values = {name: -1 for name in FIELD_COLUMNS}
@@ -1870,6 +3083,12 @@ class ReferenceBuilder:
                     "caption_lines": top.caption_lines,
                     "caption_status": top.caption_status,
                     "caption_confirmation": top.caption_confirmation,
+                    "xds_line": top.xds_line,
+                    "xds_status": top.xds_status,
+                    "xds_confirmation": top.xds_confirmation,
+                    "xds_evidence": top.xds_evidence,
+                    "insert_data_status": top.insert_data_status,
+                    "insert_data_evidence": top.insert_data_evidence,
                     "shuttle_regenerated_status": top.regenerated_status,
                     "shuttle_regenerated_evidence": top.regenerated_evidence,
                     "expected_bottom_line": expected_bottom,
@@ -1877,6 +3096,7 @@ class ReferenceBuilder:
                     "clipping_evidence": switch.evidence,
                     "switch_status": "unmeasurable",
                     "switch_cues": switch.cues,
+                    "bottom_picture_rows": bottom_picture_rows,
                     "first_full_other_head_line": switch.first_full_other_head_line,
                     "raster_limit_line": raster_limit,
                     "rf_peak_line": switch.rf_peak_line,
@@ -1922,13 +3142,24 @@ class ReferenceBuilder:
         _means, _stds, _gradients, active, _blank, _gates = measure_row_activity(y, spec)
         visible_end = min(expected_bottom, raster_limit)
         visible_lines = list(range(switch.line, visible_end + 1))
-        activity = {
-            line: bool(active[line - (spec.pass_lo + 4)])
-            for line in visible_lines
-        }
-        picture_band_lines = [line for line in visible_lines if activity[line]]
-        hs_bottom = max(picture_band_lines, default=-1)
-        visible_band_rows = len(picture_band_lines)
+        blank_samples = y[spec.blank_lo : spec.blank_hi, 40:680].astype(np.float64)
+        blank_level = float(np.median(blank_samples))
+        blank_noise = max(
+            0.25,
+            1.4826
+            * float(np.median(np.abs(blank_samples - np.median(blank_samples)))),
+        )
+        # Pedestal-black rows belong to the switch band; blanking-level rows
+        # below it do not.  Walk contiguously from the top switch line so a
+        # stray noisy row below blanking cannot extend the band.
+        band_rows: list[int] = []
+        for line in visible_lines:
+            samples = y[line - 4, 40:680].astype(np.float64)
+            if float(samples.mean()) <= blank_level + 2.0 * blank_noise:
+                break
+            band_rows.append(line)
+        hs_bottom = band_rows[-1] if band_rows else -1
+        visible_band_rows = len(band_rows)
         blanked_rows = len(visible_lines) - visible_band_rows
         raster_censored = max(0, expected_bottom - raster_limit)
         censored_rows = blanked_rows + raster_censored
@@ -1944,12 +3175,20 @@ class ReferenceBuilder:
             else f"line account failed: {closure_count}"
         )
         scan_last = spec.pass_hi + 4
-        following = [
-            line
-            for line in range(max(switch.line, hs_bottom + 1), scan_last + 1)
-            if not bool(active[line - (spec.pass_lo + 4)])
-        ]
+        following = []
+        for line in range(max(switch.line, hs_bottom + 1), scan_last + 1):
+            samples = y[line - 4, 40:680].astype(np.float64)
+            if float(samples.mean()) <= blank_level + 2.0 * blank_noise:
+                following.append(line)
         first_blank = following[0] if following else scan_last + 1
+        blank_under_rows: list[int] = []
+        if hs_bottom >= switch.line:
+            for line in range(hs_bottom + 1, scan_last + 1):
+                samples = y[line - 4, 40:680].astype(np.float64)
+                if float(samples.mean()) > blank_level + 2.0 * blank_noise:
+                    break
+                blank_under_rows.append(line)
+        blank_rows_under_band = len(blank_under_rows)
         last_row, last_valid, _deviation, _gate = measure_last_recorded(
             chroma_deviation, spec
         )
@@ -2015,6 +3254,12 @@ class ReferenceBuilder:
             "caption_lines": top.caption_lines,
             "caption_status": top.caption_status,
             "caption_confirmation": top.caption_confirmation,
+            "xds_line": top.xds_line,
+            "xds_status": top.xds_status,
+            "xds_confirmation": top.xds_confirmation,
+            "xds_evidence": top.xds_evidence,
+            "insert_data_status": top.insert_data_status,
+            "insert_data_evidence": top.insert_data_evidence,
             "shuttle_regenerated_status": top.regenerated_status,
             "shuttle_regenerated_evidence": top.regenerated_evidence,
             "expected_bottom_line": expected_bottom,
@@ -2024,6 +3269,7 @@ class ReferenceBuilder:
             "first_full_other_head_line": switch.first_full_other_head_line,
             "switch_status": switch.status,
             "switch_cues": switch.cues,
+            "bottom_picture_rows": bottom_picture_rows,
             "bottom_line": bottom,
             "last_reliable_line": bottom,
             "hs_bottom_line": hs_bottom,
@@ -2031,6 +3277,7 @@ class ReferenceBuilder:
             "first_blank_line": first_blank,
             "raster_limit_line": raster_limit,
             "visible_band_rows": visible_band_rows,
+            "blank_rows_under_band": blank_rows_under_band,
             "censored_band_rows": censored_rows,
             "band_length": band_length,
             "rf_peak_line": switch.rf_peak_line,
@@ -2079,7 +3326,6 @@ class ReferenceBuilder:
         counter = struct.unpack_from("<H", unit, 4)[0]
         ordinal = self._ordinal(counter, local_exact)
         if self.counter_discontinuity:
-            self._reset_geometry_lock("counter discontinuity")
             self.previous_y = None
             self.previous_previous_y = None
             self.previous = {}
@@ -2089,6 +3335,7 @@ class ReferenceBuilder:
             self.previous_rf_line = -1
             self.previous_rf_x = -1
             self.have_preceding_field = False
+            self.carried_pedestal = {field: math.nan for field in FIELDS}
         packed = np.frombuffer(unit, dtype=np.uint8, offset=HEADER_BYTES).reshape(
             RASTER_LINES, LINE_BYTES
         )
@@ -2098,6 +3345,57 @@ class ReferenceBuilder:
         for field in FIELDS:
             result = self._measure_field(y, packed, field)
             current[field] = result
+            prior_pedestal = self.carried_pedestal[field]
+            pedestal_observation, pedestal_evidence = _bottom_pedestal(y, field)
+            if math.isfinite(pedestal_observation):
+                self.carried_pedestal[field] = pedestal_observation
+            result.values["pedestal_observation"] = (
+                pedestal_observation
+                if math.isfinite(pedestal_observation)
+                else -1
+            )
+            result.values["pedestal_carried"] = (
+                self.carried_pedestal[field]
+                if math.isfinite(self.carried_pedestal[field])
+                else -1
+            )
+            result.values["pedestal_evidence"] = (
+                f"prior carried pedestal="
+                f"{prior_pedestal if math.isfinite(prior_pedestal) else 'none'}; "
+                + pedestal_evidence
+            )
+            first_state = _first_row_state(result.values, field)
+            result.values["first_row_state_observation"] = first_state
+            spec = FIELD_SPECS[field - 1]
+            caption_lines = sorted(
+                line
+                for line in _integer_lines(result.values.get("caption_lines", ""))
+                if spec.pass_lo + 4 <= line <= spec.pass_hi + 4
+            )
+            vbi_lines = _integer_lines(result.values.get("vbi_lines", ""))
+            anchor_line = -1
+            identification = "none"
+            if caption_lines:
+                anchor_line = caption_lines[0] + 1
+                identification = (
+                    f"decoded caption L{caption_lines[0]} places tape line 22 "
+                    f"at L{anchor_line}"
+                )
+            elif field == 2 and _integer(result.values.get("xds_line")) >= 0:
+                xds_line = _integer(result.values.get("xds_line"))
+                anchor_line = xds_line + 1
+                identification = (
+                    f"XDS bar L{xds_line} places tape line 22 "
+                    f"at L{anchor_line}"
+                )
+            if anchor_line >= 0:
+                row_index = anchor_line - 4
+                result.values["line22_level_observation"] = int(
+                    round(float(np.mean(y[row_index, 24:696])))
+                )
+            else:
+                result.values["line22_level_observation"] = -1
+            result.values["line22_level_identification"] = identification
             if result.top_line >= 0:
                 self.last_measurable_top[field] = result.top_line
             if self.specification.half_field_phase:
@@ -2133,38 +3431,38 @@ class ReferenceBuilder:
             _apply_comb_to_row(
                 row,
                 unmeasurable_comb("no following source-field slot is available yet"),
-                "source pair: slot-2/current + slot-1/following unit",
-                1,
+                "line-23 slot-1/following above line-286 slot-2/current",
+                0,
             )
             if self.pending_row is not None:
                 current_pair_geometry = (
-                    _geometry(self.previous)[1],
                     _geometry(current)[0],
+                    _geometry(self.previous)[1],
                 )
                 previous_pair_geometry = (
                     (
-                        _geometry(self.previous_previous)[1],
                         _geometry(self.previous)[0],
+                        _geometry(self.previous_previous)[1],
                     )
                     if len(self.previous_previous) == 2
                     else None
                 )
                 comb = measure_interfield_comb_planes(
-                    self.previous_y,
                     y,
-                    self.previous_previous_y,
                     self.previous_y,
+                    self.previous_y,
+                    self.previous_previous_y,
                     current_pair_geometry,
                     previous_pair_geometry,
-                    first_label="slot-2/current source field-1",
-                    second_label="slot-1/following source field-2",
-                    expected_shift=1,
+                    first_label="line-23 slot-1/following (engine field 2)",
+                    second_label="line-286 slot-2/current (engine field 1)",
+                    expected_shift=0,
                 )
                 _apply_comb_to_row(
                     self.pending_row,
                     comb,
-                    "source pair: slot-2/current + slot-1/following unit",
-                    1,
+                    "line-23 slot-1/following above line-286 slot-2/current",
+                    0,
                 )
         else:
             previous_geometry = (
@@ -2183,24 +3481,11 @@ class ReferenceBuilder:
                 0,
             )
 
-        self._apply_running_comparators(row, current)
-
-        if self.lock_like_reset_current:
-            self.previous_y = None
-            self.previous_previous_y = None
-            self.previous = {}
-            self.previous_previous = {}
-            self.last_measurable_top = {}
-            self.pending_row = None
-            self.previous_rf_line = -1
-            self.previous_rf_x = -1
-            self.have_preceding_field = False
-        else:
-            self.previous_previous = self.previous
-            self.previous_previous_y = self.previous_y
-            self.previous = current
-            self.previous_y = y.copy()
-            self.pending_row = row
+        self.previous_previous = self.previous
+        self.previous_previous_y = self.previous_y
+        self.previous = current
+        self.previous_y = y.copy()
+        self.pending_row = row
         return row
 
 
@@ -2229,16 +3514,27 @@ def validate(rows: list[dict[str, object]], capture_name: str) -> None:
             if status not in STATUSES or method not in METHODS:
                 raise RuntimeError(f"ordinal {row['ordinal']} field {field}: bad status/method")
             top = int(row[prefix + "picture_top_line"])
+            signature_top = int(row[prefix + "signature_top_line"])
             switch = int(row[prefix + "switch_first_line"])
             first_full = int(row[prefix + "first_full_other_head_line"])
             bottom = int(row[prefix + "bottom_line"])
             expected_bottom = int(row[prefix + "expected_bottom_line"])
-            band_observation = int(row[prefix + "band_row_count_observation"])
-            comparator = int(row[prefix + "band_row_count_comparator"])
-            comparator_count = int(row[prefix + "band_row_count_comparator_count"])
-            runner_count = int(row[prefix + "band_row_count_runner_up_count"])
-            height = int(row[prefix + "switch_height_comparator"])
-            projected = int(row[prefix + "switch_line_from_height_comparator"])
+            clip_observation = int(row[prefix + "clip_line_observation"])
+            locked_clip = int(row[prefix + "clip_line_under_lock"])
+            band_extent = int(row[prefix + "band_extent_observation"])
+            h_observation = int(row[prefix + "picture_lines_observation"])
+            h_constant = int(row[prefix + "picture_lines_constant"])
+            visible_switch = int(row[prefix + "visible_switch_lines_observation"])
+            switch_lost = int(row[prefix + "switch_lines_lost_past_clip"])
+            blank_under = int(row[prefix + "blank_rows_under_band"])
+            c_observation = int(row[prefix + "switch_line_count_observation"])
+            c_constant = int(row[prefix + "switch_line_count_constant"])
+            clip_comparator = int(row[prefix + "clip_line_comparator"])
+            clip_count = int(row[prefix + "clip_line_comparator_count"])
+            clip_runner = int(row[prefix + "clip_line_runner_up_count"])
+            line22_count = int(row[prefix + "line22_level_comparator_count"])
+            line22_runner = int(row[prefix + "line22_level_runner_up_count"])
+            projected = int(row[prefix + "switch_line_from_geometry"])
             rows_to_clip = int(row[prefix + "band_rows_to_clip"])
             field_lock_state = str(row[prefix + "lock_state"])
             locked_top = int(row[prefix + "picture_top_under_lock_line"])
@@ -2246,62 +3542,124 @@ def validate(rows: list[dict[str, object]], capture_name: str) -> None:
                 raise RuntimeError(
                     f"ordinal {row['ordinal']} field {field}: invalid field lock state"
                 )
-            if comparator_count < runner_count or min(comparator_count, runner_count) < 0:
+            if (
+                clip_count < clip_runner
+                or line22_count < line22_runner
+                or min(
+                    clip_count,
+                    clip_runner,
+                    line22_count,
+                    line22_runner,
+                )
+                < 0
+            ):
                 raise RuntimeError(
                     f"ordinal {row['ordinal']} field {field}: invalid running counts"
                 )
-            if comparator >= 0 and height + comparator != EXPECTED_PICTURE_LINES:
-                raise RuntimeError(
-                    f"ordinal {row['ordinal']} field {field}: height/band lock does not close"
-                )
-            expected_observation = (
-                RASTER_LIMITS[field] - first_full + 1 if first_full >= 0 and top >= 0 else -1
+            last_recorded = int(row[prefix + "last_recorded_line"])
+            expected_extent = (
+                last_recorded - switch + 1
+                if last_recorded >= 0 and switch >= 0
+                else -1
             )
-            if band_observation != expected_observation:
+            if band_extent != expected_extent:
                 raise RuntimeError(
-                    f"ordinal {row['ordinal']} field {field}: observed band does not begin at S"
+                    f"ordinal {row['ordinal']} field {field}: band extent differs"
                 )
-            if field_lock_state not in {"locked", "hold"} or locked_top < 0 or comparator < 0:
+            h_top = int(row[prefix + "picture_lines_top_line"])
+            if (h_observation >= 0) != (h_top >= 0):
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']} field {field}: H evidence aperture differs"
+                )
+            if row[prefix + "height_observation"] != row[prefix + "picture_lines_observation"]:
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']} field {field}: H compatibility alias differs"
+                )
+            expected_visible = (
+                int(row[prefix + "hs_bottom_line"]) - switch + 1
+                if switch >= 0 and int(row[prefix + "hs_bottom_line"]) >= switch
+                else -1
+            )
+            if visible_switch != expected_visible:
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']} field {field}: visible switch count differs"
+                )
+            expected_c = (
+                visible_switch + switch_lost
+                if visible_switch >= 0 and switch_lost >= 0
+                else -1
+            )
+            if c_observation != expected_c:
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']} field {field}: c observation differs"
+                )
+            if field_lock_state not in {"locked", "hold"} or locked_top < 0 or c_constant < 0:
                 if projected != -1 or rows_to_clip != -1:
                     raise RuntimeError(
                         f"ordinal {row['ordinal']} field {field}: unlocked geometry claimed"
+                    )
+                if h_constant >= 0 and int(row[prefix + "picture_lines_under_lock"]) != h_constant:
+                    raise RuntimeError(
+                        f"ordinal {row['ordinal']} field {field}: H alias differs"
+                    )
+                if locked_clip != -1:
+                    raise RuntimeError(
+                        f"ordinal {row['ordinal']} field {field}: unlocked clip claimed"
                     )
                 expected_unlocked_class = (
                     "reset"
                     if "; reset=" in str(row["source_lock_evidence"])
                     else "hidden"
                 )
-                if row[prefix + "height_change"] != expected_unlocked_class:
+                if row[prefix + "band_class"] != expected_unlocked_class:
                     raise RuntimeError(
-                        f"ordinal {row['ordinal']} field {field}: unlocked height classified"
+                        f"ordinal {row['ordinal']} field {field}: unlocked band classified"
                     )
             else:
-                if projected != locked_top + height:
+                applied = int(row[f"applied_d{field}"])
+                expected_projected = (
+                    locked_top + h_constant
+                )
+                if projected != expected_projected:
                     raise RuntimeError(
                         f"ordinal {row['ordinal']} field {field}: projected switch differs"
                     )
-                if rows_to_clip != max(0, RASTER_LIMITS[field] - projected + 1):
+                if int(row[prefix + "picture_lines_under_lock"]) != h_constant:
+                    raise RuntimeError(
+                        f"ordinal {row['ordinal']} field {field}: locked H differs"
+                    )
+                if locked_clip != clip_comparator:
+                    raise RuntimeError(
+                        f"ordinal {row['ordinal']} field {field}: clip comparator differs"
+                    )
+                if rows_to_clip != max(0, locked_clip - projected + 1):
                     raise RuntimeError(
                         f"ordinal {row['ordinal']} field {field}: locked band-to-clip differs"
                     )
-                expected_class = (
-                    "hidden"
-                    if field_lock_state == "hold"
-                    else _classify_band_count(
-                        band_observation, comparator, str(row[prefix + "dp"])
-                    )
-                )
-                if row[prefix + "height_change"] != expected_class:
+                if row[prefix + "band_class"] not in {
+                    "travel",
+                    "hidden",
+                    "reported-hold",
+                }:
                     raise RuntimeError(
-                        f"ordinal {row['ordinal']} field {field}: asymmetric class differs"
+                        f"ordinal {row['ordinal']} field {field}: invalid band class"
                     )
+            if row[prefix + "height_change"] != row[prefix + "band_class"]:
+                raise RuntimeError(
+                    f"ordinal {row['ordinal']} field {field}: compatibility class differs"
+                )
             if status == "unmeasurable":
                 if any(value >= 0 for value in (bottom, switch)):
                     raise RuntimeError(
                         f"ordinal {row['ordinal']} field {field}: unmeasurable contains switch geometry"
                     )
                 continue
-            if not (top >= 0 and switch == bottom + 1 and expected_bottom == top + 239):
+            if not (
+                top >= 0
+                and signature_top >= 0
+                and switch == bottom + 1
+                and expected_bottom == top + 239
+            ):
                 raise RuntimeError(f"ordinal {row['ordinal']} field {field}: inconsistent geometry")
             if int(row[prefix + "last_reliable_line"]) != bottom:
                 raise RuntimeError(f"ordinal {row['ordinal']} field {field}: compatibility bottom differs")
@@ -2412,6 +3770,9 @@ def build(
         lambda unit, index: rows.append(instrument.measure_unit(unit, index)),
         allow_slice_boundary_provenance=capture_name != "composite",
     )
+    state = ContractState(capture_name)
+    for row in rows:
+        state.apply(row)
     validate(rows, capture_name)
     output.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(

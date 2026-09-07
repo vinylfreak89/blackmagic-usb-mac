@@ -24,11 +24,40 @@ def _histogram(rows: list[dict[str, str]], key: str) -> str:
 
 
 def build(named_inputs: list[tuple[str, Path]]) -> str:
-    output = ["# Contract-v3 reference census", ""]
+    output = [
+        "# Contract-v3 reference census",
+        "",
+        "The per-field source constants are the picture-line count H and switch-line "
+        "count c. They are fixed from the segment seed; later per-unit readings are checked "
+        "but never vote. A raw caption or a comb-confirmed hidden-top seed can re-seed them. "
+        "The clip and identified tape-line-22 "
+        "level are separate running comparators. The comb confirms or vetoes placement "
+        "and never proposes it.",
+        "",
+    ]
     for capture, path in named_inputs:
         with path.open(newline="") as handle:
             rows = list(csv.DictReader(handle))
+        disagreements = [
+            row["ordinal"] for row in rows if row["true_disagreement"] == "yes"
+        ]
+        measurement_disagreements = {
+            field: [
+                row["ordinal"]
+                for row in rows
+                if row[f"f{field}_measurement_disagreement"] == "yes"
+            ]
+            for field in (1, 2)
+        }
         output.extend([f"## {LABELS[capture]}", ""])
+        output.extend(
+            [
+                f"- source lock: {_histogram(rows, 'source_lock_state')}",
+                f"- true comb disagreements: {_histogram(rows, 'true_disagreement')}",
+                f"- true-disagreement units: {','.join(disagreements) or 'none'}",
+                "",
+            ]
+        )
         for field in (1, 2):
             prefix = f"f{field}_"
             output.extend(
@@ -38,10 +67,26 @@ def build(named_inputs: list[tuple[str, Path]]) -> str:
                     f"- units: {len(rows)}",
                     f"- method: {_histogram(rows, prefix + 'method')}",
                     f"- status: {_histogram(rows, prefix + 'status')}",
-                    f"- picture top: {_histogram(rows, prefix + 'picture_top_line')}",
+                    f"- signature top: {_histogram(rows, prefix + 'signature_top_line')}",
+                    f"- placed top: {_histogram(rows, prefix + 'picture_top_under_lock_line')}",
                     f"- first switch row: {_histogram(rows, prefix + 'switch_first_line')}",
                     f"- last reliable row: {_histogram(rows, prefix + 'bottom_line')}",
+                    f"- measured clip: {_histogram(rows, prefix + 'clip_line_observation')}",
+                    f"- clip comparator: {_histogram(rows, prefix + 'clip_line_comparator')}",
                     f"- band length: {_histogram(rows, prefix + 'band_length')}",
+                    f"- band extent: {_histogram(rows, prefix + 'band_extent_observation')}",
+                    f"- picture lines H observation: {_histogram(rows, prefix + 'picture_lines_observation')}",
+                    f"- picture lines H constant: {_histogram(rows, prefix + 'picture_lines_constant')}",
+                    f"- visible switch lines: {_histogram(rows, prefix + 'visible_switch_lines_observation')}",
+                    f"- blank rows below band: {_histogram(rows, prefix + 'blank_rows_under_band')}",
+                    f"- switch-line c observation: {_histogram(rows, prefix + 'switch_line_count_observation')}",
+                    f"- switch-line c constant: {_histogram(rows, prefix + 'switch_line_count_constant')}",
+                    f"- seed suspect: {_histogram(rows, prefix + 'seed_suspect')}",
+                    "- measurement-disagreement units: "
+                    + (",".join(measurement_disagreements[field]) or "none"),
+                    f"- applied d: {_histogram(rows, 'applied_d' + str(field))}",
+                    f"- observed d: {_histogram(rows, prefix + 'offset_observation')}",
+                    f"- band class: {_histogram(rows, prefix + 'band_class')}",
                     f"- closure status: {_histogram(rows, prefix + 'closure_status')}",
                     f"- RF presence: {_histogram(rows, prefix + 'rf_presence')}",
                     "",
