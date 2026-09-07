@@ -103,9 +103,9 @@ class RunMode:
     """a comparator by running count in a FIXED array (owner: "keep a fixed number. If it falls below that number it drops
     out and the entire array shifts. No dynamic memory allocation!!! (In the real C engine)"): SLOTS entries of
     (value, count) kept in count order. A hit increments its entry and bubbles it up; a new value takes a free slot with
-    count 1, or, with the array full, decrements the last slot's count — when that reaches zero the entry drops out, the
-    array shifts, and the new value takes the freed slot. The comparator is slot 0. SLOTS is a capacity (memory), not a
-    decision constant."""
+    count 1, or, with the array full, replaces the last (least-counted) entry, which drops out. Counts never decrement;
+    entries move only by their own counts rising past their neighbours. The comparator is slot 0. SLOTS is a capacity
+    (memory), not a decision constant."""
     SLOTS=8
     def __init__(self): self.v=[None]*self.SLOTS; self.n=[0]*self.SLOTS
     def add(self,x):
@@ -118,8 +118,7 @@ class RunMode:
                 return
         for i in range(self.SLOTS):
             if self.v[i] is None: self.v[i]=x; self.n[i]=1; return          # a free slot
-        self.n[-1]-=1                                                        # full: the last entry's count falls
-        if self.n[-1]<=0: self.v[-1]=x; self.n[-1]=1                        # it dropped out; the new value takes the slot
+        self.v[-1]=x; self.n[-1]=1                                           # full: the least-counted entry drops out; the new value takes its slot
     def top(self):
         if self.v[0] is None: return None,0,0
         return self.v[0],self.n[0],(self.n[1] if self.v[1] is not None else 0)
