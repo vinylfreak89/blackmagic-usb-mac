@@ -3,7 +3,7 @@ CFLAGS ?= -O3 -std=c11 -Wall -Wextra -Werror
 CPPFLAGS ?=
 LDLIBS ?= -lm
 
-.PHONY: all test legacy-trajectory-test v9-test clean
+.PHONY: all test legacy-trajectory-test v9-test v10-rule1-test clean
 
 all: libfieldreg.dylib tests/field_registration_unit tests/cea608_unit tests/field_registration_v9
 
@@ -23,10 +23,10 @@ tests/field_registration_unit: field_registration.c field_registration.h cea608.
 TRUTH_SRC := $(wildcard tests/field_registration_truth.c)
 TRUTH_DEPS := $(if $(TRUTH_SRC),tests/field_registration_truth tests/libfieldreg_truth.dylib tests/registration_truth.raw)
 
-test: tests/field_registration_unit tests/cea608_unit tests/field_registration_v9 tests/registration_v9.raw
+test: tests/field_registration_unit tests/cea608_unit tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw
 	./tests/field_registration_unit
 	./tests/cea608_unit
-	./tests/field_registration_v9 tests/registration_v9.raw tests/registration_v9.csv
+	./tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw
 
 legacy-trajectory-test: tests/field_registration_trajectory tests/registration_trajectory.raw
 	./tests/field_registration_trajectory tests/registration_trajectory.raw tests/registration_trajectory.csv
@@ -34,11 +34,20 @@ legacy-trajectory-test: tests/field_registration_trajectory tests/registration_t
 v9-test: tests/field_registration_v9 tests/registration_v9.raw
 	./tests/field_registration_v9 tests/registration_v9.raw tests/registration_v9.csv
 
+v10-rule1-test: tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw
+	./tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw
+
 tests/field_registration_v9: field_registration.c field_registration.h cea608.c cea608.h tests/field_registration_v9.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -I. field_registration.c cea608.c tests/field_registration_v9.c -o $@ $(LDLIBS)
 
 tests/registration_v9.raw: tests/gen_v9_units.py
 	python3 tests/gen_v9_units.py --output $@ --truth tests/registration_v9.csv
+
+tests/field_registration_v10_rule1: field_registration.c field_registration.h cea608.c cea608.h tests/field_registration_v10_rule1.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I. field_registration.c cea608.c tests/field_registration_v10_rule1.c -o $@ $(LDLIBS)
+
+tests/registration_v10_rule1.raw: tests/gen_v10_rule1_units.py tests/gen_v9_units.py
+	python3 tests/gen_v10_rule1_units.py --output $@
 
 tests/field_registration_trajectory: field_registration.c field_registration.h cea608.c cea608.h tests/field_registration_trajectory.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -I. field_registration.c cea608.c tests/field_registration_trajectory.c -o $@ $(LDLIBS)
@@ -62,4 +71,5 @@ clean:
 	rm -f libfieldreg.dylib libcea608.dylib tests/field_registration_unit tests/field_registration_golden tests/cea608_unit \
 		tests/field_registration_trajectory tests/registration_trajectory.raw \
 		tests/registration_trajectory.csv tests/field_registration_v9 \
-		tests/registration_v9.raw tests/registration_v9.csv
+		tests/registration_v9.raw tests/registration_v9.csv \
+		tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw

@@ -21,11 +21,10 @@ static uint8_t *blank_unit(void)
 
 int main(void)
 {
-    assert(fieldreg_algorithm_version() == 9);
+    assert(fieldreg_algorithm_version() == 10);
     assert(fieldreg_state_size() == sizeof(field_registration));
-    /* Two full-width 160x640 luma witnesses dominate this bound. The
-     * process path remains allocation-free; the falsified row-mean summary
-     * cannot be substituted merely to keep the old sub-1-KiB target. */
+    /* State remains caller-owned and allocation-free.  Later v10 rules will
+     * replace the retained ABI storage as their measurements land. */
     assert(fieldreg_state_size() < 256 * 1024);
     assert(fieldreg_config_size() == sizeof(fieldreg_config));
     assert(fieldreg_decision_size() == sizeof(fieldreg_decision));
@@ -39,8 +38,8 @@ int main(void)
     assert(fieldreg_process(&engine, unit, &decision));
     assert(decision.transport_ok);
     assert(decision.applied_d1 == 0 && decision.applied_d2 == 0);
-    assert(decision.field[0].reason == FIELDREG_MODE_INSERT_ABSENT);
-    assert(decision.field[1].reason == FIELDREG_MODE_INSERT_ABSENT);
+    assert(decision.field[0].reason == FIELDREG_MODE_GEOMETRY_UNMEASURABLE);
+    assert(decision.field[1].reason == FIELDREG_MODE_GEOMETRY_UNMEASURABLE);
     unit[6] = 0;
     assert(!fieldreg_process(&engine, unit, &decision));
     fieldreg_discontinuity(&engine);
@@ -54,6 +53,8 @@ int main(void)
                   "Line21Placement") == 0);
     assert(strcmp(fieldreg_gauge_name(FIELDREG_GAUGE_CEA608_PARITY),
                   "CEA608Parity") == 0);
+    assert(strcmp(fieldreg_confirmation_name(FIELDREG_CONFIRM_DISAGREES),
+                  "disagrees") == 0);
     free(unit);
     printf("FIELDREG-UNIT: state=%zu bytes 18/18\n", sizeof engine);
     return 0;
