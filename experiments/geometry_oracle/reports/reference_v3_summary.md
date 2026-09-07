@@ -193,7 +193,7 @@ The per-field source constants are the picture-line count H and switch-line coun
 - units: 919
 - method: cv_inspected: 390, direct: 529
 - status: censored: 73, inferred: 317, observed: 529
-- signature top: 23: 899, 24: 17, 25: 3
+- signature top: 23: 916, 24: 3
 - placed top: 23: 919
 - first switch row: 258: 14, 259: 32, 260: 645, 261: 204, 262: 24
 - last reliable row: 257: 14, 258: 32, 259: 645, 260: 204, 261: 24
@@ -220,7 +220,7 @@ The per-field source constants are the picture-line count H and switch-line coun
 - units: 919
 - method: cv_inspected: 561, direct: 358
 - status: censored: 263, inferred: 298, observed: 358
-- signature top: 286: 744, 287: 175
+- signature top: 286: 918, 287: 1
 - placed top: 286: 919
 - first switch row: 521: 18, 522: 333, 523: 299, 524: 237, 525: 32
 - last reliable row: 520: 18, 521: 333, 522: 299, 523: 237, 524: 32

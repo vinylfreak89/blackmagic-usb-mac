@@ -1941,16 +1941,16 @@ Shifted woven bwdif frames written: 919 under `reports/engine_run_R_disagreement
 | 6253 | F1 S/switch unmeasurable/L262; F2 S/switch unmeasurable/L524 | `reports/engine_run_R_disagreements/commercial/counter_06253.webp` |
 | 6254 | F1 S/switch unmeasurable/L262; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06254.webp` |
 | 6257 | F1 S/switch unmeasurable/L261; F1 signature top L23/L24; F2 S/switch unmeasurable/L524 | `reports/engine_run_R_disagreements/commercial/counter_06257.webp` |
-| 6259 | F1 S/switch unmeasurable/L261; F1 signature top L23/L24; F2 S/switch unmeasurable/L524 | `reports/engine_run_R_disagreements/commercial/counter_06259.webp` |
-| 6260 | F1 H 239/237; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06260.webp` |
-| 6261 | F1 H 239/237; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06261.webp` |
-| 6262 | F1 H 239/237; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06262.webp` |
-| 6263 | F1 H 239/237; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06263.webp` |
-| 6264 | F1 H 239/237; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06264.webp` |
-| 6265 | F1 H 239/237; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06265.webp` |
-| 6266 | F1 H 239/237; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06266.webp` |
-| 6267 | F1 H 239/237; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06267.webp` |
-| 6268 | F1 H 239/237; F1 S/switch unmeasurable/L262; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 S/switch unmeasurable/L524; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06268.webp` |
+| 6259 | F1 S/switch unmeasurable/L261; F2 S/switch unmeasurable/L524 | `reports/engine_run_R_disagreements/commercial/counter_06259.webp` |
+| 6260 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06260.webp` |
+| 6261 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06261.webp` |
+| 6262 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06262.webp` |
+| 6263 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06263.webp` |
+| 6264 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06264.webp` |
+| 6265 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06265.webp` |
+| 6266 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06266.webp` |
+| 6267 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06267.webp` |
+| 6268 | F1 H 239/237; F1 S/switch unmeasurable/L262; F1 c 1/3; F2 H 239/238; F2 S/switch unmeasurable/L524; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06268.webp` |
 | 6269 | F1 H 239/237; F1 S/switch L240/L261; F1 c 1/3; F2 H 239/238; F2 S/switch L502/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06269.webp` |
 | 6270 | F1 H 239/237; F1 S/switch L239/L262; F1 c 1/3; F2 H 239/238; F2 S/switch L512/L522; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06270.webp` |
 | 6271 | F1 H 239/237; F1 S/switch L137/L262; F1 c 1/3; F2 H 239/238; F2 S/switch L511/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06271.webp` |
@@ -1962,11 +1962,11 @@ Shifted woven bwdif frames written: 919 under `reports/engine_run_R_disagreement
 | 6277 | F1 H 239/237; F1 S/switch unmeasurable/L261; F1 c 1/3; F2 H 239/238; F2 S/switch L518/L524; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06277.webp` |
 | 6278 | F1 H 239/237; F1 S/switch L194/L261; F1 c 1/3; F2 H 239/238; F2 S/switch L339/L522; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06278.webp` |
 | 6279 | F1 H 239/237; F1 S/switch L75/L259; F1 c 1/3; F2 H 239/238; F2 S/switch unmeasurable/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06279.webp` |
-| 6280 | F1 H 239/237; F1 S/switch L207/L261; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 S/switch unmeasurable/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06280.webp` |
+| 6280 | F1 H 239/237; F1 S/switch L207/L261; F1 c 1/3; F2 H 239/238; F2 S/switch unmeasurable/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06280.webp` |
 | 6281 | F1 H 239/237; F1 S/switch L215/L261; F1 c 1/3; F2 H 239/238; F2 S/switch unmeasurable/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06281.webp` |
-| 6282 | F1 H 239/237; F1 S/switch L212/L261; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 S/switch unmeasurable/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06282.webp` |
-| 6283 | F1 H 239/237; F1 S/switch L213/L259; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 S/switch unmeasurable/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06283.webp` |
-| 6284 | F1 H 239/237; F1 S/switch L215/L259; F1 c 1/3; F1 signature top L23/L24; F2 H 239/238; F2 S/switch unmeasurable/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06284.webp` |
+| 6282 | F1 H 239/237; F1 S/switch L212/L261; F1 c 1/3; F2 H 239/238; F2 S/switch unmeasurable/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06282.webp` |
+| 6283 | F1 H 239/237; F1 S/switch L213/L259; F1 c 1/3; F2 H 239/238; F2 S/switch unmeasurable/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06283.webp` |
+| 6284 | F1 H 239/237; F1 S/switch L215/L259; F1 c 1/3; F2 H 239/238; F2 S/switch unmeasurable/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06284.webp` |
 | 6285 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 S/switch unmeasurable/L525; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06285.webp` |
 | 6286 | F1 H 239/237; F1 S/switch unmeasurable/L262; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06286.webp` |
 | 6287 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06287.webp` |
@@ -2328,181 +2328,181 @@ Shifted woven bwdif frames written: 919 under `reports/engine_run_R_disagreement
 | 6643 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06643.webp` |
 | 6644 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06644.webp` |
 | 6645 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06645.webp` |
-| 6646 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06646.webp` |
-| 6647 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06647.webp` |
-| 6648 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287; engine decisive comb -3 at placed crops (ratio 0.580) | `reports/engine_run_R_disagreements/commercial/counter_06648.webp` |
-| 6649 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06649.webp` |
-| 6650 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287; engine decisive comb -3 at placed crops (ratio 0.700) | `reports/engine_run_R_disagreements/commercial/counter_06650.webp` |
-| 6651 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06651.webp` |
-| 6652 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06652.webp` |
-| 6653 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06653.webp` |
-| 6654 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06654.webp` |
-| 6655 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06655.webp` |
-| 6656 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06656.webp` |
-| 6657 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06657.webp` |
-| 6658 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06658.webp` |
-| 6659 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06659.webp` |
+| 6646 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06646.webp` |
+| 6647 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06647.webp` |
+| 6648 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; engine decisive comb -3 at placed crops (ratio 0.580) | `reports/engine_run_R_disagreements/commercial/counter_06648.webp` |
+| 6649 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06649.webp` |
+| 6650 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; engine decisive comb -3 at placed crops (ratio 0.700) | `reports/engine_run_R_disagreements/commercial/counter_06650.webp` |
+| 6651 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06651.webp` |
+| 6652 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06652.webp` |
+| 6653 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06653.webp` |
+| 6654 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06654.webp` |
+| 6655 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06655.webp` |
+| 6656 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06656.webp` |
+| 6657 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06657.webp` |
+| 6658 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06658.webp` |
+| 6659 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06659.webp` |
 | 6660 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06660.webp` |
-| 6661 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06661.webp` |
-| 6662 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06662.webp` |
-| 6663 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06663.webp` |
-| 6664 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06664.webp` |
-| 6665 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06665.webp` |
-| 6666 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06666.webp` |
-| 6667 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06667.webp` |
-| 6668 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06668.webp` |
-| 6669 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06669.webp` |
-| 6670 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06670.webp` |
-| 6671 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06671.webp` |
-| 6672 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06672.webp` |
-| 6673 | F1 H 239/237; F1 c 1/3; F1 signature top L23/L25; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06673.webp` |
-| 6674 | F1 H 239/237; F1 c 1/3; F1 signature top L23/L25; F2 H 239/238; F2 S/first-full unmeasurable/L523; F2 S/switch unmeasurable/L522; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06674.webp` |
-| 6675 | F1 H 239/237; F1 c 1/3; F1 signature top L23/L25; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06675.webp` |
-| 6676 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06676.webp` |
-| 6677 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06677.webp` |
-| 6678 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06678.webp` |
-| 6679 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06679.webp` |
-| 6680 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06680.webp` |
-| 6681 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06681.webp` |
-| 6682 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06682.webp` |
-| 6683 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06683.webp` |
-| 6684 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06684.webp` |
-| 6685 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06685.webp` |
-| 6686 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06686.webp` |
-| 6687 | F1 H 239/237; F1 S/first-full L261/L260; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06687.webp` |
-| 6688 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06688.webp` |
-| 6689 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06689.webp` |
-| 6690 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06690.webp` |
-| 6691 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06691.webp` |
-| 6692 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06692.webp` |
-| 6693 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06693.webp` |
-| 6694 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06694.webp` |
-| 6695 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06695.webp` |
-| 6696 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06696.webp` |
-| 6697 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06697.webp` |
-| 6698 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 S/first-full L524/L523; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06698.webp` |
-| 6699 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06699.webp` |
-| 6700 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06700.webp` |
-| 6701 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06701.webp` |
-| 6702 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06702.webp` |
-| 6703 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06703.webp` |
-| 6704 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06704.webp` |
-| 6705 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06705.webp` |
-| 6706 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06706.webp` |
-| 6707 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06707.webp` |
-| 6708 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06708.webp` |
-| 6709 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06709.webp` |
-| 6710 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06710.webp` |
-| 6711 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06711.webp` |
-| 6712 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06712.webp` |
-| 6713 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06713.webp` |
-| 6714 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06714.webp` |
-| 6715 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06715.webp` |
-| 6716 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06716.webp` |
-| 6717 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06717.webp` |
-| 6718 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06718.webp` |
-| 6719 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06719.webp` |
-| 6720 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06720.webp` |
-| 6721 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06721.webp` |
-| 6722 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06722.webp` |
-| 6723 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06723.webp` |
-| 6724 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06724.webp` |
-| 6725 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06725.webp` |
-| 6726 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06726.webp` |
-| 6727 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06727.webp` |
-| 6728 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06728.webp` |
-| 6729 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06729.webp` |
-| 6730 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06730.webp` |
-| 6731 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06731.webp` |
-| 6732 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06732.webp` |
-| 6733 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06733.webp` |
-| 6734 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06734.webp` |
-| 6735 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06735.webp` |
-| 6736 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06736.webp` |
-| 6737 | F1 H 239/237; F1 S/first-full L261/L260; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06737.webp` |
-| 6738 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06738.webp` |
-| 6739 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06739.webp` |
-| 6740 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06740.webp` |
-| 6741 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06741.webp` |
-| 6742 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06742.webp` |
-| 6743 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06743.webp` |
-| 6744 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06744.webp` |
-| 6745 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06745.webp` |
-| 6746 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06746.webp` |
-| 6747 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06747.webp` |
-| 6748 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06748.webp` |
-| 6749 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 S/first-full L524/L523; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06749.webp` |
-| 6750 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06750.webp` |
-| 6751 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06751.webp` |
-| 6752 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06752.webp` |
-| 6753 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06753.webp` |
-| 6754 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 S/first-full L524/L523; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06754.webp` |
-| 6755 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06755.webp` |
-| 6756 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06756.webp` |
-| 6757 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06757.webp` |
-| 6758 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06758.webp` |
-| 6759 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06759.webp` |
-| 6760 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06760.webp` |
-| 6761 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06761.webp` |
-| 6762 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06762.webp` |
-| 6763 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06763.webp` |
-| 6764 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06764.webp` |
-| 6765 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06765.webp` |
-| 6766 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06766.webp` |
-| 6767 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06767.webp` |
-| 6768 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06768.webp` |
-| 6769 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06769.webp` |
-| 6770 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06770.webp` |
-| 6771 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06771.webp` |
-| 6772 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06772.webp` |
-| 6773 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06773.webp` |
-| 6774 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06774.webp` |
-| 6775 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06775.webp` |
-| 6776 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 S/first-full unmeasurable/L523; F2 S/switch unmeasurable/L522; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06776.webp` |
-| 6777 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06777.webp` |
-| 6778 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06778.webp` |
-| 6779 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06779.webp` |
-| 6780 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06780.webp` |
-| 6781 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06781.webp` |
-| 6782 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06782.webp` |
-| 6783 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06783.webp` |
-| 6784 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06784.webp` |
-| 6785 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06785.webp` |
-| 6786 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06786.webp` |
-| 6787 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06787.webp` |
-| 6788 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06788.webp` |
-| 6789 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06789.webp` |
-| 6790 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06790.webp` |
-| 6791 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06791.webp` |
-| 6792 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06792.webp` |
-| 6793 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06793.webp` |
-| 6794 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06794.webp` |
-| 6795 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06795.webp` |
-| 6796 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06796.webp` |
-| 6797 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06797.webp` |
-| 6798 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06798.webp` |
-| 6799 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06799.webp` |
-| 6800 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06800.webp` |
-| 6801 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06801.webp` |
-| 6802 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06802.webp` |
-| 6803 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06803.webp` |
-| 6804 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06804.webp` |
-| 6805 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06805.webp` |
-| 6806 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06806.webp` |
-| 6807 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06807.webp` |
-| 6808 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06808.webp` |
-| 6809 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06809.webp` |
-| 6810 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06810.webp` |
-| 6811 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06811.webp` |
-| 6812 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287; engine decisive comb -2 at placed crops (ratio 0.710) | `reports/engine_run_R_disagreements/commercial/counter_06812.webp` |
-| 6813 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06813.webp` |
-| 6814 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06814.webp` |
-| 6815 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06815.webp` |
-| 6816 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06816.webp` |
-| 6817 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06817.webp` |
-| 6818 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06818.webp` |
-| 6819 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06819.webp` |
-| 6820 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L286/L287 | `reports/engine_run_R_disagreements/commercial/counter_06820.webp` |
+| 6661 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L287/L286 | `reports/engine_run_R_disagreements/commercial/counter_06661.webp` |
+| 6662 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L287/L286 | `reports/engine_run_R_disagreements/commercial/counter_06662.webp` |
+| 6663 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; F2 signature top L287/L286 | `reports/engine_run_R_disagreements/commercial/counter_06663.webp` |
+| 6664 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06664.webp` |
+| 6665 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06665.webp` |
+| 6666 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06666.webp` |
+| 6667 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06667.webp` |
+| 6668 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06668.webp` |
+| 6669 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06669.webp` |
+| 6670 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06670.webp` |
+| 6671 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06671.webp` |
+| 6672 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06672.webp` |
+| 6673 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06673.webp` |
+| 6674 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 S/first-full unmeasurable/L523; F2 S/switch unmeasurable/L522; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06674.webp` |
+| 6675 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06675.webp` |
+| 6676 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06676.webp` |
+| 6677 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06677.webp` |
+| 6678 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06678.webp` |
+| 6679 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06679.webp` |
+| 6680 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06680.webp` |
+| 6681 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06681.webp` |
+| 6682 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06682.webp` |
+| 6683 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06683.webp` |
+| 6684 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06684.webp` |
+| 6685 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06685.webp` |
+| 6686 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06686.webp` |
+| 6687 | F1 H 239/237; F1 S/first-full L261/L260; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06687.webp` |
+| 6688 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06688.webp` |
+| 6689 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06689.webp` |
+| 6690 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06690.webp` |
+| 6691 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06691.webp` |
+| 6692 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06692.webp` |
+| 6693 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06693.webp` |
+| 6694 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06694.webp` |
+| 6695 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06695.webp` |
+| 6696 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06696.webp` |
+| 6697 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06697.webp` |
+| 6698 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 S/first-full L524/L523; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06698.webp` |
+| 6699 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06699.webp` |
+| 6700 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06700.webp` |
+| 6701 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06701.webp` |
+| 6702 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06702.webp` |
+| 6703 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06703.webp` |
+| 6704 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06704.webp` |
+| 6705 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06705.webp` |
+| 6706 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06706.webp` |
+| 6707 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06707.webp` |
+| 6708 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06708.webp` |
+| 6709 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06709.webp` |
+| 6710 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06710.webp` |
+| 6711 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06711.webp` |
+| 6712 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06712.webp` |
+| 6713 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06713.webp` |
+| 6714 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06714.webp` |
+| 6715 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06715.webp` |
+| 6716 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06716.webp` |
+| 6717 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06717.webp` |
+| 6718 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06718.webp` |
+| 6719 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06719.webp` |
+| 6720 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06720.webp` |
+| 6721 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06721.webp` |
+| 6722 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06722.webp` |
+| 6723 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06723.webp` |
+| 6724 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06724.webp` |
+| 6725 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06725.webp` |
+| 6726 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06726.webp` |
+| 6727 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06727.webp` |
+| 6728 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06728.webp` |
+| 6729 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06729.webp` |
+| 6730 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06730.webp` |
+| 6731 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06731.webp` |
+| 6732 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06732.webp` |
+| 6733 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06733.webp` |
+| 6734 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06734.webp` |
+| 6735 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06735.webp` |
+| 6736 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06736.webp` |
+| 6737 | F1 H 239/237; F1 S/first-full L261/L260; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06737.webp` |
+| 6738 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06738.webp` |
+| 6739 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06739.webp` |
+| 6740 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06740.webp` |
+| 6741 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06741.webp` |
+| 6742 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06742.webp` |
+| 6743 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06743.webp` |
+| 6744 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06744.webp` |
+| 6745 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06745.webp` |
+| 6746 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06746.webp` |
+| 6747 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06747.webp` |
+| 6748 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06748.webp` |
+| 6749 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 S/first-full L524/L523; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06749.webp` |
+| 6750 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06750.webp` |
+| 6751 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06751.webp` |
+| 6752 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06752.webp` |
+| 6753 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06753.webp` |
+| 6754 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 S/first-full L524/L523; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06754.webp` |
+| 6755 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06755.webp` |
+| 6756 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06756.webp` |
+| 6757 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06757.webp` |
+| 6758 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06758.webp` |
+| 6759 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06759.webp` |
+| 6760 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06760.webp` |
+| 6761 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06761.webp` |
+| 6762 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06762.webp` |
+| 6763 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06763.webp` |
+| 6764 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06764.webp` |
+| 6765 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06765.webp` |
+| 6766 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06766.webp` |
+| 6767 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06767.webp` |
+| 6768 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06768.webp` |
+| 6769 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06769.webp` |
+| 6770 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06770.webp` |
+| 6771 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06771.webp` |
+| 6772 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06772.webp` |
+| 6773 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06773.webp` |
+| 6774 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06774.webp` |
+| 6775 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06775.webp` |
+| 6776 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 S/first-full unmeasurable/L523; F2 S/switch unmeasurable/L522; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06776.webp` |
+| 6777 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06777.webp` |
+| 6778 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06778.webp` |
+| 6779 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06779.webp` |
+| 6780 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06780.webp` |
+| 6781 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06781.webp` |
+| 6782 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06782.webp` |
+| 6783 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06783.webp` |
+| 6784 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06784.webp` |
+| 6785 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06785.webp` |
+| 6786 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06786.webp` |
+| 6787 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06787.webp` |
+| 6788 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06788.webp` |
+| 6789 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06789.webp` |
+| 6790 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06790.webp` |
+| 6791 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06791.webp` |
+| 6792 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06792.webp` |
+| 6793 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06793.webp` |
+| 6794 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06794.webp` |
+| 6795 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06795.webp` |
+| 6796 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06796.webp` |
+| 6797 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06797.webp` |
+| 6798 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06798.webp` |
+| 6799 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06799.webp` |
+| 6800 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06800.webp` |
+| 6801 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06801.webp` |
+| 6802 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06802.webp` |
+| 6803 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06803.webp` |
+| 6804 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06804.webp` |
+| 6805 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06805.webp` |
+| 6806 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06806.webp` |
+| 6807 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06807.webp` |
+| 6808 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06808.webp` |
+| 6809 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06809.webp` |
+| 6810 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06810.webp` |
+| 6811 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06811.webp` |
+| 6812 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2; engine decisive comb -2 at placed crops (ratio 0.710) | `reports/engine_run_R_disagreements/commercial/counter_06812.webp` |
+| 6813 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06813.webp` |
+| 6814 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06814.webp` |
+| 6815 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06815.webp` |
+| 6816 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06816.webp` |
+| 6817 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06817.webp` |
+| 6818 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06818.webp` |
+| 6819 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06819.webp` |
+| 6820 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06820.webp` |
 | 6821 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06821.webp` |
 | 6822 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06822.webp` |
 | 6823 | F1 H 239/237; F1 c 1/3; F2 H 239/238; F2 c 1/2 | `reports/engine_run_R_disagreements/commercial/counter_06823.webp` |
@@ -2862,207 +2862,22 @@ Shifted woven bwdif frames written: 919 under `reports/engine_run_R_disagreement
 
 ### Engine field 1
 
-Agreement histogram (engine minus reference): -2: 3, -1: 15, +0: 901
+Agreement histogram (engine minus reference): -1: 1, +0: 918
 
 | engine counter | raw counter/field | engine | reference | verdict | raw top rows |
 |---:|:---:|:---|:---|:---|:---|
 | 6257 | 6257/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 4.88/1.07 r_next=0.001 MAD_above=3.51 lag=-32(3.48/3.51); L24 25.82/1.09 r_next=0.351 MAD_above=20.94 lag=-32(20.90/20.94); L25 25.32/1.11 r_next=0.403 MAD_above=1.14 lag=9(1.12/1.14) |
-| 6259 | 6259/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 4.88/1.04 r_next=-0.009 MAD_above=3.48 lag=-31(3.48/3.48); L24 25.77/1.10 r_next=0.357 MAD_above=20.89 lag=-32(20.87/20.89); L25 25.20/1.21 r_next=0.450 MAD_above=1.21 lag=32(1.16/1.21) |
-| 6260 | 6260/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 4.47/0.97 r_next=-0.015 MAD_above=3.10 lag=-32(3.08/3.10); L24 25.55/1.10 r_next=0.343 MAD_above=21.08 lag=-32(21.02/21.08); L25 24.97/1.19 r_next=0.454 MAD_above=1.21 lag=10(1.16/1.21) |
-| 6261 | 6261/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 4.80/0.94 r_next=0.018 MAD_above=3.41 lag=-32(3.39/3.41); L24 25.90/1.13 r_next=0.357 MAD_above=21.10 lag=-24(21.06/21.10); L25 25.54/1.13 r_next=0.431 MAD_above=1.15 lag=14(1.10/1.15) |
-| 6262 | 6262/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 4.70/0.89 r_next=0.041 MAD_above=3.35 lag=-32(3.34/3.35); L24 25.65/1.17 r_next=0.367 MAD_above=20.95 lag=-27(20.92/20.95); L25 25.17/1.10 r_next=0.389 MAD_above=1.13 lag=5(1.08/1.13) |
-| 6263 | 6263/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 4.80/0.95 r_next=0.076 MAD_above=3.43 lag=0(3.43/3.43); L24 25.83/1.13 r_next=0.288 MAD_above=21.03 lag=-32(21.01/21.03); L25 25.31/1.27 r_next=0.446 MAD_above=1.22 lag=27(1.21/1.22) |
-| 6264 | 6264/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 4.67/0.91 r_next=0.098 MAD_above=3.29 lag=-32(3.28/3.29); L24 25.63/1.16 r_next=0.372 MAD_above=20.96 lag=-25(20.93/20.96); L25 25.16/1.14 r_next=0.341 MAD_above=1.17 lag=-6(1.13/1.17) |
-| 6265 | 6265/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 4.83/1.00 r_next=0.102 MAD_above=3.45 lag=17(3.44/3.45); L24 25.99/1.05 r_next=0.412 MAD_above=21.15 lag=0(21.15/21.15); L25 25.72/1.19 r_next=0.392 MAD_above=1.11 lag=-32(1.01/1.11) |
-| 6266 | 6266/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 5.30/1.00 r_next=0.075 MAD_above=3.92 lag=-29(3.91/3.92); L24 26.70/1.06 r_next=0.365 MAD_above=21.40 lag=0(21.40/21.40); L25 26.17/1.18 r_next=0.428 MAD_above=1.20 lag=-25(1.09/1.20) |
-| 6267 | 6267/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 5.05/1.04 r_next=-0.021 MAD_above=3.68 lag=-31(3.66/3.68); L24 26.34/1.03 r_next=0.392 MAD_above=21.29 lag=-1(21.29/21.29); L25 26.02/1.20 r_next=0.340 MAD_above=1.10 lag=-4(1.03/1.10) |
-| 6268 | 6268/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 5.17/1.16 r_next=0.075 MAD_above=3.82 lag=-32(3.79/3.82); L24 26.64/1.43 r_next=0.291 MAD_above=21.46 lag=-23(21.41/21.46); L25 26.11/1.19 r_next=0.307 MAD_above=1.42 lag=28(1.31/1.42) |
-| 6280 | 6280/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21, 23]; L23 2.02/1.23 r_next=0.031 MAD_above=0.93 lag=-23(0.90/0.93); L24 17.65/1.43 r_next=0.003 MAD_above=15.63 lag=14(15.59/15.63); L25 17.00/1.40 r_next=0.044 MAD_above=1.67 lag=32(1.47/1.67) |
-| 6282 | 6282/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 4.30/1.44 r_next=-0.086 MAD_above=2.94 lag=32(2.89/2.94); L24 21.45/1.49 r_next=0.032 MAD_above=17.14 lag=-7(17.12/17.14); L25 19.79/1.47 r_next=0.064 MAD_above=2.18 lag=5(2.07/2.18) |
-| 6283 | 6283/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 4.28/1.36 r_next=-0.000 MAD_above=2.91 lag=17(2.89/2.91); L24 21.58/1.30 r_next=0.009 MAD_above=17.31 lag=32(17.30/17.31); L25 20.59/1.32 r_next=0.150 MAD_above=1.71 lag=25(1.54/1.71) |
-| 6284 | 6284/F1 | L23 | L24 | reference (first structured/dark-picture row) | waveforms=[21]; L23 4.80/1.34 r_next=-0.098 MAD_above=3.43 lag=20(3.41/3.43); L24 22.82/1.43 r_next=0.011 MAD_above=18.02 lag=28(18.00/18.02); L25 21.44/1.17 r_next=-0.048 MAD_above=1.83 lag=23(1.71/1.83) |
-| 6673 | 6673/F1 | L23 | L25 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[21]; L23 4.38/3.33 r_next=-0.541 MAD_above=3.12 lag=27(2.92/3.12); L24 6.78/5.72 r_next=-0.442 MAD_above=6.94 lag=-32(6.38/6.94); L25 16.74/3.84 r_next=0.082 MAD_above=10.77 lag=-30(10.74/10.77); L26 14.39/3.16 r_next=0.094 MAD_above=4.29 lag=-28(3.93/4.29) |
-| 6674 | 6674/F1 | L23 | L25 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[21]; L23 4.50/3.29 r_next=-0.458 MAD_above=3.27 lag=21(3.11/3.27); L24 6.16/5.09 r_next=-0.500 MAD_above=6.14 lag=-30(5.67/6.14); L25 15.34/4.03 r_next=0.143 MAD_above=10.25 lag=-22(9.90/10.25); L26 13.41/3.40 r_next=0.130 MAD_above=4.20 lag=-32(3.92/4.20) |
-| 6675 | 6675/F1 | L23 | L25 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[21]; L23 4.42/3.55 r_next=-0.320 MAD_above=3.18 lag=28(3.03/3.18); L24 5.82/5.17 r_next=-0.283 MAD_above=5.63 lag=-22(5.30/5.63); L25 13.43/4.65 r_next=0.192 MAD_above=9.14 lag=-13(9.09/9.14); L26 11.66/3.80 r_next=0.082 MAD_above=4.42 lag=14(4.34/4.42) |
 
 ### Engine field 2
 
-Agreement histogram (engine minus reference): -1: 172, +0: 747
+Agreement histogram (engine minus reference): -1: 1, +0: 915, +1: 3
 
 | engine counter | raw counter/field | engine | reference | verdict | raw top rows |
 |---:|:---:|:---|:---|:---|:---|
 | 6254 | 6254/F2 | L286 | L287 | reference (first structured/dark-picture row) | waveforms=[284]; L286 5.28/1.01 r_next=-0.047 MAD_above=3.93 lag=-19(3.91/3.93); L287 26.48/1.10 r_next=0.817 MAD_above=21.20 lag=1(21.20/21.20); L288 26.27/1.26 r_next=0.417 MAD_above=1.22 lag=-20(1.09/1.22) |
-| 6646 | 6646/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 3.43/1.42 r_next=-0.027 MAD_above=2.10 lag=30(2.06/2.10); L287 21.10/1.29 r_next=-0.093 MAD_above=17.67 lag=32(17.59/17.67); L288 20.29/1.23 r_next=0.134 MAD_above=1.59 lag=-25(1.38/1.59) |
-| 6647 | 6647/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 3.04/1.46 r_next=-0.149 MAD_above=1.78 lag=-16(1.73/1.78); L287 20.91/1.41 r_next=0.205 MAD_above=17.87 lag=8(17.84/17.87); L288 20.00/1.11 r_next=0.094 MAD_above=1.46 lag=2(1.45/1.46) |
-| 6648 | 6648/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.81/1.32 r_next=-0.043 MAD_above=1.55 lag=-27(1.48/1.55); L287 20.95/1.24 r_next=0.167 MAD_above=18.14 lag=-29(18.09/18.14); L288 19.69/1.30 r_next=0.084 MAD_above=1.63 lag=31(1.62/1.63) |
-| 6649 | 6649/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.26/1.11 r_next=-0.114 MAD_above=1.10 lag=15(1.07/1.10); L287 19.99/1.24 r_next=0.081 MAD_above=17.73 lag=32(17.70/17.73); L288 19.39/1.23 r_next=0.078 MAD_above=1.42 lag=-30(1.31/1.42) |
-| 6650 | 6650/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.62/1.33 r_next=-0.014 MAD_above=1.43 lag=27(1.38/1.43); L287 20.13/1.35 r_next=0.136 MAD_above=17.51 lag=-16(17.50/17.51); L288 19.12/1.20 r_next=-0.065 MAD_above=1.57 lag=26(1.49/1.57) |
-| 6651 | 6651/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.66/1.32 r_next=-0.118 MAD_above=1.46 lag=-1(1.40/1.46); L287 20.11/1.32 r_next=0.006 MAD_above=17.45 lag=-30(17.39/17.45); L288 19.21/1.10 r_next=-0.053 MAD_above=1.50 lag=-7(1.38/1.50) |
-| 6652 | 6652/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.37/1.18 r_next=-0.042 MAD_above=1.18 lag=-8(1.15/1.18); L287 20.17/1.30 r_next=0.016 MAD_above=17.80 lag=29(17.77/17.80); L288 19.27/1.12 r_next=0.039 MAD_above=1.48 lag=-10(1.37/1.48) |
-| 6653 | 6653/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284, 286]; L286 2.52/1.42 r_next=0.050 MAD_above=1.32 lag=-23(1.28/1.32); L287 20.43/1.67 r_next=-0.106 MAD_above=17.92 lag=32(17.92/17.92); L288 20.10/1.63 r_next=0.027 MAD_above=1.94 lag=-32(1.63/1.94) |
-| 6654 | 6654/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 3.15/1.59 r_next=-0.045 MAD_above=1.90 lag=-22(1.84/1.90); L287 21.17/1.79 r_next=0.047 MAD_above=18.02 lag=5(18.01/18.02); L288 21.20/1.71 r_next=0.115 MAD_above=1.86 lag=5(1.73/1.86) |
-| 6655 | 6655/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.76/1.54 r_next=-0.155 MAD_above=1.53 lag=-29(1.49/1.53); L287 20.97/1.77 r_next=-0.065 MAD_above=18.21 lag=-27(18.13/18.21); L288 20.73/1.72 r_next=-0.155 MAD_above=2.05 lag=-16(1.70/2.05) |
-| 6656 | 6656/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 3.25/1.60 r_next=0.023 MAD_above=1.94 lag=-6(1.92/1.94); L287 21.50/1.60 r_next=0.046 MAD_above=18.24 lag=28(18.20/18.24); L288 21.42/1.85 r_next=-0.008 MAD_above=1.85 lag=-14(1.78/1.85) |
-| 6657 | 6657/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284, 286]; L286 2.86/1.54 r_next=0.044 MAD_above=1.62 lag=32(1.60/1.62); L287 20.35/1.78 r_next=-0.009 MAD_above=17.49 lag=32(17.42/17.49); L288 20.41/1.69 r_next=-0.031 MAD_above=1.93 lag=-17(1.67/1.93) |
-| 6658 | 6658/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284, 286]; L286 3.45/1.74 r_next=-0.020 MAD_above=2.16 lag=-6(2.13/2.16); L287 21.29/1.99 r_next=0.141 MAD_above=17.84 lag=11(17.77/17.84); L288 21.02/1.74 r_next=0.093 MAD_above=1.93 lag=-27(1.88/1.93) |
-| 6659 | 6659/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.87/1.55 r_next=0.010 MAD_above=1.63 lag=-8(1.61/1.63); L287 20.91/1.89 r_next=0.097 MAD_above=18.04 lag=15(18.00/18.04); L288 20.58/1.74 r_next=-0.078 MAD_above=1.97 lag=-17(1.86/1.97) |
-| 6664 | 6664/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.92/1.01 r_next=0.048 MAD_above=0.85 lag=32(0.80/0.85); L287 22.53/1.89 r_next=0.183 MAD_above=20.61 lag=-6(20.59/20.61); L288 23.17/2.16 r_next=0.284 MAD_above=2.17 lag=-7(1.99/2.17) |
-| 6665 | 6665/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.95/1.09 r_next=-0.007 MAD_above=0.89 lag=-28(0.82/0.89); L287 22.00/1.92 r_next=0.187 MAD_above=20.05 lag=-5(20.04/20.05); L288 23.09/2.17 r_next=0.292 MAD_above=2.33 lag=-11(2.28/2.33) |
-| 6666 | 6666/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.07/1.09 r_next=0.046 MAD_above=1.01 lag=18(0.91/1.01); L287 21.78/1.99 r_next=0.211 MAD_above=19.72 lag=-5(19.70/19.72); L288 22.16/2.20 r_next=0.137 MAD_above=2.07 lag=-24(1.93/2.07) |
-| 6667 | 6667/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.02/1.15 r_next=-0.064 MAD_above=0.94 lag=30(0.89/0.94); L287 19.79/2.04 r_next=0.062 MAD_above=17.76 lag=-13(17.74/17.76); L288 20.85/2.42 r_next=0.147 MAD_above=2.66 lag=-5(2.40/2.66) |
-| 6668 | 6668/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.99/1.15 r_next=0.085 MAD_above=0.94 lag=-1(0.87/0.94); L287 19.24/2.19 r_next=0.038 MAD_above=17.25 lag=17(17.15/17.25); L288 19.66/2.05 r_next=-0.001 MAD_above=2.35 lag=23(2.16/2.35) |
-| 6669 | 6669/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.22/1.40 r_next=0.043 MAD_above=1.10 lag=31(1.00/1.10); L287 18.46/2.35 r_next=0.078 MAD_above=16.24 lag=10(16.23/16.24); L288 18.38/2.32 r_next=0.038 MAD_above=2.46 lag=-13(2.29/2.46) |
-| 6670 | 6670/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.98/1.05 r_next=0.034 MAD_above=0.91 lag=-28(0.83/0.91); L287 17.93/1.93 r_next=0.235 MAD_above=15.95 lag=1(15.95/15.95); L288 17.12/2.15 r_next=0.166 MAD_above=2.16 lag=-29(2.10/2.16) |
-| 6671 | 6671/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.56/1.67 r_next=-0.088 MAD_above=1.41 lag=9(1.33/1.41); L287 16.18/2.35 r_next=0.051 MAD_above=13.61 lag=0(13.61/13.61); L288 16.41/2.68 r_next=0.092 MAD_above=2.72 lag=6(2.56/2.72) |
-| 6672 | 6672/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.84/1.80 r_next=-0.149 MAD_above=1.65 lag=19(1.58/1.65); L287 16.43/3.53 r_next=0.112 MAD_above=13.59 lag=-31(13.55/13.59); L288 15.68/2.88 r_next=0.169 MAD_above=3.40 lag=-25(3.09/3.40) |
-| 6673 | 6673/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 3.05/2.11 r_next=-0.112 MAD_above=1.85 lag=-23(1.77/1.85); L287 13.96/3.91 r_next=0.086 MAD_above=10.96 lag=3(10.94/10.96); L288 14.29/4.00 r_next=0.080 MAD_above=3.88 lag=1(3.87/3.88) |
-| 6674 | 6674/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.37/1.99 r_next=0.056 MAD_above=1.26 lag=9(1.26/1.26); L287 12.57/3.46 r_next=0.003 MAD_above=10.26 lag=-17(10.22/10.26); L288 10.80/3.60 r_next=-0.054 MAD_above=4.24 lag=-13(3.75/4.24) |
-| 6675 | 6675/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.40/1.74 r_next=-0.062 MAD_above=1.29 lag=-19(1.24/1.29); L287 11.96/3.57 r_next=0.103 MAD_above=9.62 lag=-20(9.53/9.62); L288 12.13/3.15 r_next=0.045 MAD_above=3.60 lag=-7(3.38/3.60) |
-| 6676 | 6676/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.76/2.21 r_next=-0.056 MAD_above=1.61 lag=25(1.56/1.61); L287 12.02/3.85 r_next=0.207 MAD_above=9.38 lag=11(9.24/9.38); L288 11.34/3.41 r_next=-0.026 MAD_above=3.67 lag=18(3.58/3.67) |
-| 6677 | 6677/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.22/1.42 r_next=0.037 MAD_above=1.13 lag=27(1.08/1.13); L287 11.06/3.29 r_next=0.039 MAD_above=8.87 lag=-24(8.73/8.87); L288 10.44/3.46 r_next=0.015 MAD_above=3.63 lag=-9(3.37/3.63) |
-| 6678 | 6678/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.46/1.73 r_next=0.009 MAD_above=1.37 lag=-5(1.27/1.37); L287 11.09/2.81 r_next=0.041 MAD_above=8.69 lag=-30(8.64/8.69); L288 10.66/2.57 r_next=0.084 MAD_above=2.92 lag=26(2.67/2.92) |
-| 6679 | 6679/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.07/1.17 r_next=-0.011 MAD_above=0.98 lag=9(0.94/0.98); L287 9.26/2.56 r_next=0.095 MAD_above=7.23 lag=14(7.19/7.23); L288 9.82/2.36 r_next=0.129 MAD_above=2.61 lag=3(2.50/2.61) |
-| 6680 | 6680/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.31/1.37 r_next=0.072 MAD_above=1.17 lag=26(1.11/1.17); L287 10.77/2.29 r_next=0.002 MAD_above=8.46 lag=13(8.45/8.46); L288 9.56/2.34 r_next=-0.134 MAD_above=2.73 lag=-9(2.50/2.73) |
-| 6681 | 6681/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.42/1.32 r_next=0.078 MAD_above=1.25 lag=24(1.21/1.25); L287 10.16/2.62 r_next=0.139 MAD_above=7.75 lag=-13(7.74/7.75); L288 10.70/2.32 r_next=0.024 MAD_above=2.59 lag=24(2.47/2.59) |
-| 6682 | 6682/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.43/1.33 r_next=-0.007 MAD_above=1.29 lag=27(1.24/1.29); L287 11.20/2.43 r_next=0.160 MAD_above=8.77 lag=0(8.77/8.77); L288 10.21/2.08 r_next=0.066 MAD_above=2.49 lag=-2(2.41/2.49) |
-| 6683 | 6683/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.39/1.31 r_next=0.050 MAD_above=1.24 lag=-29(1.19/1.24); L287 10.60/2.18 r_next=0.204 MAD_above=8.21 lag=0(8.21/8.21); L288 11.13/2.12 r_next=-0.019 MAD_above=2.26 lag=9(2.23/2.26) |
-| 6684 | 6684/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.13/1.15 r_next=-0.042 MAD_above=1.04 lag=32(0.98/1.04); L287 10.57/2.13 r_next=0.054 MAD_above=8.44 lag=-10(8.41/8.44); L288 10.27/2.01 r_next=-0.005 MAD_above=2.33 lag=-24(2.03/2.33) |
-| 6685 | 6685/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.94/1.11 r_next=0.002 MAD_above=0.89 lag=-21(0.83/0.89); L287 9.69/1.86 r_next=0.219 MAD_above=7.76 lag=-25(7.72/7.76); L288 9.70/1.90 r_next=0.192 MAD_above=1.88 lag=1(1.84/1.88) |
-| 6686 | 6686/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.11/1.12 r_next=0.006 MAD_above=0.98 lag=-31(0.94/0.98); L287 10.29/1.66 r_next=0.060 MAD_above=8.17 lag=0(8.17/8.17); L288 9.85/1.81 r_next=0.244 MAD_above=1.98 lag=9(1.71/1.98) |
-| 6687 | 6687/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.25/1.13 r_next=-0.003 MAD_above=1.07 lag=21(1.01/1.07); L287 10.42/1.79 r_next=0.167 MAD_above=8.17 lag=-11(8.16/8.17); L288 10.05/1.95 r_next=0.176 MAD_above=1.95 lag=11(1.84/1.95) |
-| 6688 | 6688/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.16/1.10 r_next=-0.032 MAD_above=1.02 lag=20(0.98/1.02); L287 10.09/1.78 r_next=0.281 MAD_above=7.93 lag=-11(7.92/7.93); L288 10.40/1.70 r_next=0.185 MAD_above=1.66 lag=-1(1.65/1.66) |
-| 6689 | 6689/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.00/0.96 r_next=0.006 MAD_above=0.86 lag=-4(0.84/0.86); L287 9.95/1.58 r_next=0.030 MAD_above=7.94 lag=-2(7.94/7.94); L288 10.28/1.63 r_next=0.283 MAD_above=1.79 lag=-30(1.55/1.79) |
-| 6690 | 6690/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.36/1.04 r_next=-0.003 MAD_above=1.16 lag=-27(1.11/1.16); L287 10.40/1.71 r_next=0.177 MAD_above=8.04 lag=-16(7.99/8.04); L288 9.68/1.79 r_next=0.312 MAD_above=1.83 lag=22(1.78/1.83) |
-| 6691 | 6691/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.96/0.97 r_next=-0.044 MAD_above=0.91 lag=-29(0.83/0.91); L287 9.68/1.52 r_next=0.126 MAD_above=7.72 lag=-15(7.66/7.72); L288 10.19/1.46 r_next=0.149 MAD_above=1.61 lag=20(1.58/1.61) |
-| 6692 | 6692/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.05/0.96 r_next=0.054 MAD_above=0.93 lag=-31(0.89/0.93); L287 10.54/1.46 r_next=0.128 MAD_above=8.49 lag=-27(8.43/8.49); L288 10.11/1.45 r_next=0.176 MAD_above=1.55 lag=-24(1.44/1.55) |
-| 6693 | 6693/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.10/0.94 r_next=0.019 MAD_above=0.95 lag=-32(0.90/0.95); L287 9.99/1.38 r_next=0.055 MAD_above=7.88 lag=-8(7.87/7.88); L288 10.29/1.50 r_next=0.137 MAD_above=1.62 lag=-25(1.43/1.62) |
-| 6694 | 6694/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.96/0.92 r_next=0.022 MAD_above=0.88 lag=6(0.80/0.88); L287 9.80/1.45 r_next=0.085 MAD_above=7.84 lag=26(7.80/7.84); L288 10.20/1.41 r_next=0.185 MAD_above=1.62 lag=26(1.47/1.62) |
-| 6695 | 6695/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.75/0.81 r_next=0.021 MAD_above=0.70 lag=-8(0.62/0.70); L287 8.94/1.37 r_next=0.044 MAD_above=7.19 lag=-11(7.19/7.19); L288 9.63/1.49 r_next=0.040 MAD_above=1.73 lag=28(1.59/1.73) |
-| 6696 | 6696/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.10/0.94 r_next=0.078 MAD_above=0.95 lag=22(0.88/0.95); L287 10.60/1.60 r_next=0.074 MAD_above=8.50 lag=-6(8.50/8.50); L288 10.78/1.54 r_next=0.141 MAD_above=1.72 lag=-19(1.47/1.72) |
-| 6697 | 6697/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.61/0.70 r_next=-0.012 MAD_above=0.60 lag=9(0.58/0.60); L287 9.75/1.28 r_next=0.208 MAD_above=8.14 lag=-5(8.13/8.14); L288 10.30/1.40 r_next=0.148 MAD_above=1.47 lag=32(1.42/1.47) |
-| 6698 | 6698/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.90/0.87 r_next=0.014 MAD_above=0.82 lag=-7(0.77/0.82); L287 10.33/1.29 r_next=0.113 MAD_above=8.43 lag=-21(8.42/8.43); L288 10.13/1.39 r_next=0.071 MAD_above=1.48 lag=-15(1.26/1.48) |
-| 6699 | 6699/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.92/0.91 r_next=0.102 MAD_above=0.83 lag=13(0.79/0.83); L287 9.97/1.29 r_next=0.090 MAD_above=8.05 lag=-25(8.04/8.05); L288 9.58/1.38 r_next=0.230 MAD_above=1.49 lag=26(1.34/1.49) |
-| 6700 | 6700/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.06/1.00 r_next=-0.030 MAD_above=0.93 lag=-26(0.84/0.93); L287 10.94/1.48 r_next=0.144 MAD_above=8.87 lag=-18(8.85/8.87); L288 10.50/1.49 r_next=0.238 MAD_above=1.55 lag=-23(1.47/1.55) |
-| 6701 | 6701/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.82/0.84 r_next=-0.056 MAD_above=0.79 lag=11(0.68/0.79); L287 10.23/1.25 r_next=0.221 MAD_above=8.41 lag=-32(8.37/8.41); L288 10.31/1.39 r_next=0.184 MAD_above=1.29 lag=0(1.29/1.29) |
-| 6702 | 6702/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.96/0.90 r_next=0.064 MAD_above=0.84 lag=-17(0.81/0.84); L287 10.58/1.37 r_next=0.263 MAD_above=8.62 lag=-32(8.61/8.62); L288 10.58/1.49 r_next=0.218 MAD_above=1.42 lag=-3(1.40/1.42) |
-| 6703 | 6703/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.04/0.92 r_next=-0.014 MAD_above=0.90 lag=-26(0.86/0.90); L287 9.62/1.41 r_next=0.203 MAD_above=7.58 lag=5(7.57/7.58); L288 10.43/1.29 r_next=-0.031 MAD_above=1.50 lag=2(1.49/1.50) |
-| 6704 | 6704/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.00/0.93 r_next=-0.014 MAD_above=0.83 lag=-3(0.82/0.83); L287 10.51/1.46 r_next=0.199 MAD_above=8.51 lag=-14(8.46/8.51); L288 10.78/1.23 r_next=0.061 MAD_above=1.40 lag=-17(1.31/1.40) |
-| 6705 | 6705/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.33/0.95 r_next=0.067 MAD_above=1.10 lag=27(1.07/1.10); L287 10.56/1.32 r_next=0.088 MAD_above=8.22 lag=8(8.22/8.22); L288 11.20/1.40 r_next=0.101 MAD_above=1.55 lag=25(1.45/1.55) |
-| 6706 | 6706/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.97/0.89 r_next=-0.058 MAD_above=0.85 lag=22(0.80/0.85); L287 10.61/1.26 r_next=0.153 MAD_above=8.64 lag=0(8.64/8.64); L288 10.75/1.40 r_next=0.174 MAD_above=1.42 lag=-4(1.39/1.42) |
-| 6707 | 6707/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.12/0.97 r_next=0.025 MAD_above=0.96 lag=21(0.92/0.96); L287 10.60/1.32 r_next=0.064 MAD_above=8.49 lag=-13(8.47/8.49); L288 10.75/1.23 r_next=0.037 MAD_above=1.36 lag=-12(1.19/1.36) |
-| 6708 | 6708/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.95/0.86 r_next=-0.040 MAD_above=0.83 lag=-17(0.80/0.83); L287 10.44/1.24 r_next=0.132 MAD_above=8.49 lag=0(8.49/8.49); L288 10.80/1.29 r_next=0.092 MAD_above=1.37 lag=21(1.27/1.37) |
-| 6709 | 6709/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.78/0.77 r_next=-0.030 MAD_above=0.71 lag=-3(0.66/0.71); L287 10.46/1.38 r_next=0.149 MAD_above=8.68 lag=0(8.68/8.68); L288 11.08/1.38 r_next=0.153 MAD_above=1.53 lag=-12(1.38/1.53) |
-| 6710 | 6710/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.85/0.85 r_next=-0.039 MAD_above=0.78 lag=-8(0.75/0.78); L287 10.68/1.37 r_next=0.123 MAD_above=8.83 lag=-18(8.80/8.83); L288 10.09/1.58 r_next=0.009 MAD_above=1.62 lag=-13(1.52/1.62) |
-| 6711 | 6711/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.85/0.87 r_next=0.016 MAD_above=0.76 lag=9(0.72/0.76); L287 9.92/1.36 r_next=0.119 MAD_above=8.07 lag=-1(8.07/8.07); L288 9.61/1.34 r_next=-0.047 MAD_above=1.46 lag=-5(1.37/1.46) |
-| 6712 | 6712/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.93/0.93 r_next=-0.038 MAD_above=0.85 lag=-14(0.80/0.85); L287 10.30/1.47 r_next=0.106 MAD_above=8.38 lag=-4(8.36/8.38); L288 9.93/1.69 r_next=0.149 MAD_above=1.71 lag=31(1.59/1.71) |
-| 6713 | 6713/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.72/0.78 r_next=-0.049 MAD_above=0.67 lag=13(0.64/0.67); L287 9.77/1.42 r_next=0.058 MAD_above=8.06 lag=-30(8.02/8.06); L288 9.72/1.46 r_next=0.107 MAD_above=1.58 lag=-25(1.42/1.58) |
-| 6714 | 6714/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.29/1.11 r_next=-0.020 MAD_above=1.11 lag=32(1.07/1.11); L287 10.79/1.69 r_next=0.054 MAD_above=8.51 lag=3(8.51/8.51); L288 9.92/1.71 r_next=0.043 MAD_above=1.99 lag=32(1.93/1.99) |
-| 6715 | 6715/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.30/1.32 r_next=0.033 MAD_above=1.15 lag=7(1.09/1.15); L287 10.38/1.82 r_next=0.002 MAD_above=8.10 lag=21(8.06/8.10); L288 10.45/1.80 r_next=-0.080 MAD_above=2.08 lag=-32(1.88/2.08) |
-| 6716 | 6716/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.57/1.52 r_next=-0.093 MAD_above=1.39 lag=20(1.33/1.39); L287 10.52/1.87 r_next=0.018 MAD_above=7.97 lag=25(7.93/7.97); L288 10.41/2.02 r_next=0.109 MAD_above=2.14 lag=5(2.04/2.14) |
-| 6717 | 6717/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.10/1.12 r_next=-0.098 MAD_above=0.97 lag=31(0.97/0.97); L287 9.81/1.99 r_next=0.178 MAD_above=7.72 lag=-14(7.70/7.72); L288 10.26/1.82 r_next=0.028 MAD_above=2.00 lag=31(1.86/2.00) |
-| 6718 | 6718/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.06/1.07 r_next=-0.080 MAD_above=0.94 lag=10(0.91/0.94); L287 9.51/2.04 r_next=0.027 MAD_above=7.46 lag=-15(7.42/7.46); L288 9.53/2.51 r_next=-0.051 MAD_above=2.54 lag=19(2.22/2.54) |
-| 6719 | 6719/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.24/1.26 r_next=-0.092 MAD_above=1.13 lag=3(1.07/1.13); L287 9.15/2.22 r_next=0.185 MAD_above=6.91 lag=-5(6.90/6.91); L288 10.13/2.31 r_next=0.093 MAD_above=2.38 lag=-2(2.30/2.38) |
-| 6720 | 6720/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.26/1.25 r_next=0.044 MAD_above=1.15 lag=27(1.04/1.15); L287 8.95/1.89 r_next=0.021 MAD_above=6.69 lag=1(6.69/6.69); L288 9.47/2.19 r_next=0.110 MAD_above=2.27 lag=30(2.00/2.27) |
-| 6721 | 6721/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.31/1.38 r_next=0.042 MAD_above=1.19 lag=-16(1.12/1.19); L287 10.07/2.37 r_next=0.081 MAD_above=7.75 lag=-15(7.73/7.75); L288 10.12/2.00 r_next=0.098 MAD_above=2.38 lag=22(2.17/2.38) |
-| 6722 | 6722/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.80/1.49 r_next=0.008 MAD_above=1.56 lag=30(1.49/1.56); L287 11.39/1.59 r_next=0.025 MAD_above=8.60 lag=-9(8.59/8.60); L288 11.35/1.99 r_next=0.030 MAD_above=2.03 lag=24(1.78/2.03) |
-| 6723 | 6723/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.21/1.22 r_next=0.150 MAD_above=1.08 lag=-20(1.04/1.08); L287 10.65/2.00 r_next=0.150 MAD_above=8.45 lag=-10(8.44/8.45); L288 11.05/1.72 r_next=0.074 MAD_above=2.07 lag=-27(1.80/2.07) |
-| 6724 | 6724/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.35/1.35 r_next=-0.014 MAD_above=1.20 lag=-25(1.16/1.20); L287 10.67/1.90 r_next=0.098 MAD_above=8.31 lag=0(8.31/8.31); L288 11.07/1.79 r_next=-0.022 MAD_above=2.02 lag=-16(1.92/2.02) |
-| 6725 | 6725/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.38/1.30 r_next=-0.065 MAD_above=1.24 lag=-32(1.17/1.24); L287 10.08/1.64 r_next=0.139 MAD_above=7.71 lag=-4(7.70/7.71); L288 10.63/2.12 r_next=0.142 MAD_above=2.04 lag=-8(1.99/2.04) |
-| 6726 | 6726/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.30/1.21 r_next=-0.017 MAD_above=1.15 lag=10(1.12/1.15); L287 10.18/1.61 r_next=0.080 MAD_above=7.88 lag=-6(7.86/7.88); L288 9.82/1.83 r_next=0.079 MAD_above=1.91 lag=-29(1.83/1.91) |
-| 6727 | 6727/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.98/1.04 r_next=-0.000 MAD_above=0.90 lag=11(0.85/0.90); L287 9.95/2.06 r_next=-0.058 MAD_above=7.98 lag=-32(7.94/7.98); L288 9.90/2.33 r_next=0.073 MAD_above=2.51 lag=14(2.23/2.51) |
-| 6728 | 6728/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.99/1.06 r_next=-0.009 MAD_above=0.92 lag=-9(0.87/0.92); L287 9.42/1.70 r_next=0.185 MAD_above=7.43 lag=-32(7.38/7.43); L288 9.68/2.56 r_next=0.033 MAD_above=2.17 lag=-9(2.09/2.17) |
-| 6729 | 6729/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.93/1.10 r_next=0.157 MAD_above=0.90 lag=30(0.85/0.90); L287 9.71/1.95 r_next=0.163 MAD_above=7.78 lag=-31(7.76/7.78); L288 9.90/1.77 r_next=0.133 MAD_above=1.91 lag=3(1.80/1.91) |
-| 6730 | 6730/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.20/1.14 r_next=0.059 MAD_above=1.04 lag=32(0.98/1.04); L287 10.10/2.01 r_next=0.062 MAD_above=7.90 lag=-11(7.89/7.90); L288 9.17/1.89 r_next=0.052 MAD_above=2.21 lag=-16(2.03/2.21) |
-| 6731 | 6731/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.47/1.51 r_next=-0.035 MAD_above=1.34 lag=32(1.28/1.34); L287 9.93/1.74 r_next=0.026 MAD_above=7.48 lag=-20(7.46/7.48); L288 9.85/2.03 r_next=0.104 MAD_above=2.10 lag=-10(1.86/2.10) |
-| 6732 | 6732/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.38/1.33 r_next=-0.115 MAD_above=1.24 lag=15(1.19/1.24); L287 10.54/2.07 r_next=0.099 MAD_above=8.18 lag=-22(8.14/8.18); L288 10.22/1.76 r_next=0.096 MAD_above=2.07 lag=8(1.94/2.07) |
-| 6733 | 6733/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.13/1.39 r_next=0.005 MAD_above=1.00 lag=29(0.92/1.00); L287 9.31/1.76 r_next=0.166 MAD_above=7.21 lag=1(7.21/7.21); L288 9.44/1.75 r_next=-0.017 MAD_above=1.80 lag=15(1.71/1.80) |
-| 6734 | 6734/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.95/1.01 r_next=0.125 MAD_above=0.86 lag=-23(0.80/0.86); L287 10.32/1.93 r_next=0.094 MAD_above=8.38 lag=1(8.38/8.38); L288 10.47/1.67 r_next=0.208 MAD_above=1.98 lag=-30(1.87/1.98) |
-| 6735 | 6735/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.90/1.01 r_next=0.075 MAD_above=0.86 lag=12(0.77/0.86); L287 9.62/1.95 r_next=0.074 MAD_above=7.72 lag=-3(7.71/7.72); L288 10.31/1.62 r_next=0.005 MAD_above=1.95 lag=-22(1.75/1.95) |
-| 6736 | 6736/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.36/1.24 r_next=-0.111 MAD_above=1.21 lag=-32(1.13/1.21); L287 9.90/1.71 r_next=0.100 MAD_above=7.55 lag=24(7.53/7.55); L288 9.87/1.37 r_next=0.011 MAD_above=1.63 lag=-31(1.53/1.63) |
-| 6737 | 6737/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.14/1.07 r_next=-0.080 MAD_above=0.98 lag=-23(0.97/0.98); L287 9.99/1.85 r_next=0.172 MAD_above=7.85 lag=-18(7.82/7.85); L288 10.17/1.52 r_next=-0.023 MAD_above=1.75 lag=-4(1.63/1.75) |
-| 6738 | 6738/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.37/1.10 r_next=-0.125 MAD_above=1.17 lag=30(1.11/1.17); L287 9.76/1.68 r_next=0.234 MAD_above=7.39 lag=0(7.39/7.39); L288 9.12/1.49 r_next=-0.043 MAD_above=1.67 lag=1(1.67/1.67) |
-| 6739 | 6739/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.98/0.96 r_next=-0.012 MAD_above=0.90 lag=18(0.83/0.90); L287 9.92/1.61 r_next=0.185 MAD_above=7.93 lag=5(7.91/7.93); L288 9.99/1.54 r_next=0.085 MAD_above=1.62 lag=16(1.44/1.62) |
-| 6740 | 6740/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.65/0.79 r_next=-0.005 MAD_above=0.66 lag=-27(0.60/0.66); L287 9.65/1.52 r_next=0.134 MAD_above=8.00 lag=-28(7.96/8.00); L288 9.53/1.50 r_next=0.158 MAD_above=1.62 lag=8(1.44/1.62) |
-| 6741 | 6741/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.04/1.00 r_next=0.072 MAD_above=0.93 lag=16(0.88/0.93); L287 9.81/1.57 r_next=0.172 MAD_above=7.77 lag=-6(7.77/7.77); L288 9.11/1.44 r_next=0.235 MAD_above=1.66 lag=-10(1.48/1.66) |
-| 6742 | 6742/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.78/0.80 r_next=0.004 MAD_above=0.73 lag=29(0.65/0.73); L287 9.44/1.24 r_next=0.137 MAD_above=7.66 lag=4(7.66/7.66); L288 9.16/1.38 r_next=0.149 MAD_above=1.44 lag=7(1.30/1.44) |
-| 6743 | 6743/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.80/0.86 r_next=-0.032 MAD_above=0.75 lag=30(0.67/0.75); L287 8.81/1.35 r_next=0.054 MAD_above=7.01 lag=1(7.00/7.01); L288 9.61/1.35 r_next=0.122 MAD_above=1.60 lag=-27(1.51/1.60) |
-| 6744 | 6744/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.89/0.86 r_next=-0.088 MAD_above=0.80 lag=26(0.72/0.80); L287 9.20/1.33 r_next=0.203 MAD_above=7.31 lag=0(7.31/7.31); L288 9.99/1.26 r_next=0.194 MAD_above=1.39 lag=-17(1.34/1.39) |
-| 6745 | 6745/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.75/0.80 r_next=0.062 MAD_above=0.72 lag=28(0.66/0.72); L287 8.83/1.33 r_next=0.146 MAD_above=7.08 lag=-1(7.08/7.08); L288 9.43/1.32 r_next=-0.019 MAD_above=1.45 lag=-18(1.34/1.45) |
-| 6746 | 6746/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.70/0.76 r_next=0.140 MAD_above=0.64 lag=-10(0.60/0.64); L287 9.57/1.42 r_next=0.122 MAD_above=7.87 lag=-1(7.87/7.87); L288 9.68/1.35 r_next=0.172 MAD_above=1.52 lag=16(1.29/1.52) |
-| 6747 | 6747/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.83/0.86 r_next=0.025 MAD_above=0.76 lag=-17(0.72/0.76); L287 10.00/1.27 r_next=0.158 MAD_above=8.17 lag=-32(8.15/8.17); L288 9.72/1.34 r_next=0.105 MAD_above=1.40 lag=32(1.29/1.40) |
-| 6748 | 6748/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.61/0.70 r_next=-0.060 MAD_above=0.59 lag=15(0.53/0.59); L287 9.98/1.23 r_next=0.137 MAD_above=8.37 lag=0(8.37/8.37); L288 9.76/1.27 r_next=0.285 MAD_above=1.36 lag=-17(1.21/1.36) |
-| 6749 | 6749/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.00/0.92 r_next=-0.071 MAD_above=0.88 lag=-14(0.85/0.88); L287 10.20/1.27 r_next=0.160 MAD_above=8.20 lag=-16(8.19/8.20); L288 10.17/1.31 r_next=0.210 MAD_above=1.34 lag=-1(1.33/1.34) |
-| 6750 | 6750/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.11/0.98 r_next=-0.081 MAD_above=0.95 lag=-4(0.92/0.95); L287 10.12/1.22 r_next=0.101 MAD_above=8.01 lag=0(8.01/8.01); L288 9.74/1.54 r_next=0.164 MAD_above=1.51 lag=16(1.44/1.51) |
-| 6751 | 6751/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.93/0.91 r_next=-0.028 MAD_above=0.82 lag=28(0.78/0.82); L287 9.62/1.32 r_next=0.128 MAD_above=7.69 lag=0(7.69/7.69); L288 9.39/1.45 r_next=0.146 MAD_above=1.47 lag=29(1.37/1.47) |
-| 6752 | 6752/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.81/0.85 r_next=0.059 MAD_above=0.73 lag=8(0.71/0.73); L287 9.43/1.39 r_next=0.162 MAD_above=7.62 lag=-32(7.62/7.62); L288 9.52/1.27 r_next=-0.106 MAD_above=1.38 lag=23(1.30/1.38) |
-| 6753 | 6753/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.94/0.97 r_next=-0.059 MAD_above=0.83 lag=-10(0.79/0.83); L287 10.19/1.39 r_next=0.128 MAD_above=8.26 lag=-7(8.24/8.26); L288 10.27/1.46 r_next=0.095 MAD_above=1.57 lag=-9(1.43/1.57) |
-| 6754 | 6754/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.15/1.01 r_next=-0.098 MAD_above=0.96 lag=-8(0.95/0.96); L287 10.19/1.36 r_next=0.122 MAD_above=8.04 lag=-8(8.03/8.04); L288 9.51/1.40 r_next=0.151 MAD_above=1.63 lag=16(1.49/1.63) |
-| 6755 | 6755/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.89/0.89 r_next=0.091 MAD_above=0.79 lag=12(0.77/0.79); L287 9.99/1.31 r_next=0.206 MAD_above=8.10 lag=0(8.10/8.10); L288 10.23/1.41 r_next=0.143 MAD_above=1.36 lag=18(1.30/1.36) |
-| 6756 | 6756/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.82/0.86 r_next=-0.012 MAD_above=0.74 lag=6(0.69/0.74); L287 9.90/1.16 r_next=0.247 MAD_above=8.09 lag=0(8.09/8.09); L288 9.59/1.27 r_next=0.274 MAD_above=1.22 lag=16(1.17/1.22) |
-| 6757 | 6757/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.57/0.69 r_next=-0.027 MAD_above=0.57 lag=15(0.54/0.57); L287 9.71/1.24 r_next=0.221 MAD_above=8.14 lag=-4(8.14/8.14); L288 9.37/1.48 r_next=0.116 MAD_above=1.36 lag=1(1.35/1.36) |
-| 6758 | 6758/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.01/1.01 r_next=-0.041 MAD_above=0.91 lag=-2(0.87/0.91); L287 9.90/1.26 r_next=0.337 MAD_above=7.89 lag=-8(7.87/7.89); L288 9.70/1.34 r_next=0.173 MAD_above=1.25 lag=3(1.21/1.25) |
-| 6759 | 6759/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.93/1.01 r_next=-0.087 MAD_above=0.89 lag=-22(0.83/0.89); L287 9.44/1.29 r_next=0.211 MAD_above=7.51 lag=-32(7.50/7.51); L288 9.24/1.40 r_next=0.082 MAD_above=1.41 lag=-27(1.37/1.41) |
-| 6760 | 6760/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.86/0.90 r_next=-0.017 MAD_above=0.80 lag=-15(0.72/0.80); L287 9.47/1.22 r_next=0.139 MAD_above=7.62 lag=-31(7.61/7.62); L288 9.48/1.41 r_next=0.034 MAD_above=1.42 lag=-26(1.28/1.42) |
-| 6761 | 6761/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.69/0.82 r_next=-0.034 MAD_above=0.67 lag=2(0.63/0.67); L287 9.24/1.41 r_next=0.139 MAD_above=7.55 lag=-6(7.54/7.55); L288 9.38/1.46 r_next=0.245 MAD_above=1.52 lag=-16(1.46/1.52) |
-| 6762 | 6762/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.84/0.85 r_next=-0.096 MAD_above=0.73 lag=27(0.72/0.73); L287 9.62/1.38 r_next=0.212 MAD_above=7.78 lag=28(7.77/7.78); L288 9.52/1.41 r_next=0.087 MAD_above=1.38 lag=1(1.37/1.38) |
-| 6763 | 6763/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.11/1.04 r_next=0.046 MAD_above=0.97 lag=11(0.93/0.97); L287 9.66/1.26 r_next=0.192 MAD_above=7.55 lag=-4(7.54/7.55); L288 9.74/1.41 r_next=0.148 MAD_above=1.43 lag=-16(1.36/1.43) |
-| 6764 | 6764/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.00/0.98 r_next=0.005 MAD_above=0.88 lag=25(0.84/0.88); L287 9.94/1.36 r_next=0.109 MAD_above=7.94 lag=-11(7.92/7.94); L288 9.90/1.56 r_next=0.108 MAD_above=1.59 lag=-9(1.30/1.59) |
-| 6765 | 6765/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.93/0.97 r_next=-0.121 MAD_above=0.86 lag=-17(0.81/0.86); L287 9.34/1.47 r_next=0.163 MAD_above=7.41 lag=-28(7.40/7.41); L288 9.63/1.55 r_next=0.012 MAD_above=1.56 lag=-10(1.49/1.56) |
-| 6766 | 6766/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.98/0.92 r_next=-0.102 MAD_above=0.87 lag=-19(0.81/0.87); L287 9.66/1.44 r_next=0.134 MAD_above=7.67 lag=-1(7.67/7.67); L288 9.62/1.44 r_next=0.098 MAD_above=1.52 lag=16(1.49/1.52) |
-| 6767 | 6767/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.12/0.99 r_next=-0.017 MAD_above=0.99 lag=24(0.89/0.99); L287 9.83/1.51 r_next=0.197 MAD_above=7.70 lag=-6(7.69/7.70); L288 10.08/1.52 r_next=0.127 MAD_above=1.56 lag=25(1.49/1.56) |
-| 6768 | 6768/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.81/0.84 r_next=-0.033 MAD_above=0.76 lag=9(0.72/0.76); L287 9.93/1.37 r_next=0.158 MAD_above=8.12 lag=-9(8.08/8.12); L288 9.77/1.37 r_next=0.095 MAD_above=1.40 lag=2(1.38/1.40) |
-| 6769 | 6769/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.15/1.03 r_next=-0.054 MAD_above=1.00 lag=-6(0.94/1.00); L287 9.48/1.41 r_next=0.093 MAD_above=7.33 lag=-8(7.33/7.33); L288 9.98/1.45 r_next=0.075 MAD_above=1.65 lag=-27(1.41/1.65) |
-| 6770 | 6770/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.12/1.00 r_next=-0.133 MAD_above=0.97 lag=11(0.91/0.97); L287 10.05/1.28 r_next=0.117 MAD_above=7.93 lag=2(7.93/7.93); L288 9.52/1.33 r_next=0.099 MAD_above=1.45 lag=-16(1.34/1.45) |
-| 6771 | 6771/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.83/0.89 r_next=0.088 MAD_above=0.76 lag=24(0.73/0.76); L287 9.60/1.47 r_next=0.076 MAD_above=7.77 lag=-32(7.74/7.77); L288 9.27/1.71 r_next=0.131 MAD_above=1.73 lag=-7(1.60/1.73) |
-| 6772 | 6772/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.85/0.88 r_next=-0.001 MAD_above=0.80 lag=-1(0.74/0.80); L287 8.87/1.41 r_next=0.142 MAD_above=7.02 lag=-7(7.01/7.02); L288 8.08/1.56 r_next=0.048 MAD_above=1.70 lag=6(1.55/1.70) |
-| 6773 | 6773/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.72/0.82 r_next=-0.026 MAD_above=0.70 lag=26(0.64/0.70); L287 9.05/1.42 r_next=0.122 MAD_above=7.33 lag=-29(7.28/7.33); L288 9.39/1.61 r_next=0.019 MAD_above=1.62 lag=3(1.50/1.62) |
-| 6774 | 6774/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.90/0.92 r_next=0.082 MAD_above=0.82 lag=-18(0.78/0.82); L287 9.44/1.40 r_next=0.094 MAD_above=7.53 lag=-30(7.51/7.53); L288 8.70/1.51 r_next=0.086 MAD_above=1.62 lag=3(1.61/1.62) |
-| 6775 | 6775/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.78/0.84 r_next=0.000 MAD_above=0.73 lag=1(0.69/0.73); L287 8.27/1.67 r_next=0.024 MAD_above=6.49 lag=-28(6.47/6.49); L288 9.25/1.33 r_next=0.071 MAD_above=1.87 lag=-24(1.71/1.87) |
-| 6776 | 6776/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.16/1.06 r_next=0.005 MAD_above=1.00 lag=-30(0.97/1.00); L287 9.22/1.45 r_next=0.140 MAD_above=7.07 lag=-28(7.02/7.07); L288 9.59/1.37 r_next=0.071 MAD_above=1.58 lag=-21(1.43/1.58) |
-| 6777 | 6777/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.87/0.88 r_next=-0.002 MAD_above=0.81 lag=21(0.72/0.81); L287 8.84/1.62 r_next=0.105 MAD_above=6.97 lag=-30(6.93/6.97); L288 9.35/1.31 r_next=0.238 MAD_above=1.67 lag=-18(1.49/1.67) |
-| 6778 | 6778/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.95/0.92 r_next=-0.182 MAD_above=0.87 lag=-26(0.81/0.87); L287 9.21/1.38 r_next=0.110 MAD_above=7.26 lag=-24(7.24/7.26); L288 9.28/1.30 r_next=0.003 MAD_above=1.42 lag=-7(1.35/1.42) |
-| 6779 | 6779/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.79/0.82 r_next=0.077 MAD_above=0.73 lag=26(0.69/0.73); L287 9.29/1.43 r_next=0.172 MAD_above=7.50 lag=1(7.50/7.50); L288 9.11/1.33 r_next=0.232 MAD_above=1.41 lag=-1(1.38/1.41) |
-| 6780 | 6780/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.62/0.72 r_next=-0.104 MAD_above=0.61 lag=-20(0.55/0.61); L287 8.97/1.38 r_next=0.157 MAD_above=7.36 lag=14(7.34/7.36); L288 8.54/1.41 r_next=0.184 MAD_above=1.47 lag=-12(1.41/1.47) |
-| 6781 | 6781/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.03/1.01 r_next=0.010 MAD_above=0.92 lag=8(0.88/0.92); L287 9.06/1.29 r_next=0.071 MAD_above=7.03 lag=-6(7.02/7.03); L288 8.54/1.37 r_next=0.169 MAD_above=1.49 lag=-28(1.37/1.49) |
-| 6782 | 6782/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.69/0.83 r_next=-0.038 MAD_above=0.67 lag=30(0.63/0.67); L287 7.78/1.37 r_next=0.168 MAD_above=6.09 lag=17(6.08/6.09); L288 8.20/1.27 r_next=0.129 MAD_above=1.43 lag=-32(1.38/1.43) |
-| 6783 | 6783/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.66/0.71 r_next=0.068 MAD_above=0.66 lag=-27(0.57/0.66); L287 9.07/1.27 r_next=0.096 MAD_above=7.41 lag=-16(7.39/7.41); L288 9.01/1.35 r_next=0.195 MAD_above=1.43 lag=12(1.32/1.43) |
-| 6784 | 6784/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.83/0.84 r_next=-0.064 MAD_above=0.78 lag=-13(0.72/0.78); L287 9.36/1.49 r_next=0.109 MAD_above=7.53 lag=-1(7.52/7.53); L288 9.25/1.35 r_next=0.082 MAD_above=1.49 lag=-16(1.45/1.49) |
-| 6785 | 6785/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.72/0.94 r_next=-0.012 MAD_above=0.70 lag=-2(0.66/0.70); L287 8.38/1.45 r_next=0.136 MAD_above=6.67 lag=-16(6.66/6.67); L288 9.05/1.51 r_next=0.028 MAD_above=1.60 lag=-2(1.59/1.60) |
-| 6786 | 6786/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.68/0.76 r_next=0.020 MAD_above=0.66 lag=-12(0.59/0.66); L287 8.74/1.37 r_next=0.062 MAD_above=7.06 lag=-10(7.05/7.06); L288 8.70/1.40 r_next=0.125 MAD_above=1.45 lag=-1(1.43/1.45) |
-| 6787 | 6787/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.52/0.59 r_next=0.096 MAD_above=0.55 lag=-32(0.49/0.55); L287 8.13/1.35 r_next=0.148 MAD_above=6.61 lag=-1(6.61/6.61); L288 8.46/1.44 r_next=0.202 MAD_above=1.50 lag=-17(1.36/1.50) |
-| 6788 | 6788/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.66/0.78 r_next=0.024 MAD_above=0.66 lag=30(0.60/0.66); L287 8.38/1.40 r_next=0.302 MAD_above=6.72 lag=-4(6.72/6.72); L288 9.07/1.30 r_next=0.229 MAD_above=1.42 lag=0(1.42/1.42) |
-| 6789 | 6789/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.65/0.80 r_next=-0.019 MAD_above=0.64 lag=2(0.60/0.64); L287 8.91/1.45 r_next=0.125 MAD_above=7.27 lag=-17(7.23/7.27); L288 8.92/1.40 r_next=0.170 MAD_above=1.50 lag=-32(1.32/1.50) |
-| 6790 | 6790/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.65/0.79 r_next=0.023 MAD_above=0.64 lag=21(0.62/0.64); L287 9.15/1.70 r_next=0.131 MAD_above=7.50 lag=-18(7.45/7.50); L288 8.92/1.43 r_next=0.062 MAD_above=1.64 lag=-19(1.49/1.64) |
-| 6791 | 6791/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.88/0.94 r_next=-0.125 MAD_above=0.82 lag=3(0.77/0.82); L287 9.24/1.39 r_next=0.222 MAD_above=7.36 lag=-32(7.32/7.36); L288 9.68/1.52 r_next=0.037 MAD_above=1.47 lag=1(1.44/1.47) |
-| 6792 | 6792/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.79/0.91 r_next=0.014 MAD_above=0.76 lag=28(0.72/0.76); L287 9.12/1.38 r_next=0.025 MAD_above=7.33 lag=-29(7.27/7.33); L288 9.27/1.40 r_next=0.176 MAD_above=1.59 lag=20(1.35/1.59) |
-| 6793 | 6793/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.71/0.78 r_next=0.017 MAD_above=0.66 lag=-29(0.63/0.66); L287 8.98/1.48 r_next=0.165 MAD_above=7.27 lag=-27(7.26/7.27); L288 9.06/1.25 r_next=0.047 MAD_above=1.37 lag=2(1.33/1.37) |
-| 6794 | 6794/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.78/0.82 r_next=0.072 MAD_above=0.71 lag=27(0.69/0.71); L287 9.47/1.41 r_next=0.174 MAD_above=7.69 lag=-24(7.65/7.69); L288 8.64/1.35 r_next=-0.040 MAD_above=1.54 lag=18(1.45/1.54) |
-| 6795 | 6795/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.13/1.02 r_next=-0.011 MAD_above=1.00 lag=1(0.95/1.00); L287 9.69/1.42 r_next=0.076 MAD_above=7.56 lag=-10(7.52/7.56); L288 9.58/1.59 r_next=-0.018 MAD_above=1.60 lag=7(1.45/1.60) |
-| 6796 | 6796/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.90/0.93 r_next=-0.045 MAD_above=0.82 lag=26(0.74/0.82); L287 9.62/1.37 r_next=0.006 MAD_above=7.72 lag=-9(7.69/7.72); L288 9.04/1.76 r_next=0.233 MAD_above=1.79 lag=32(1.64/1.79) |
-| 6797 | 6797/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.85/0.81 r_next=-0.042 MAD_above=0.76 lag=-30(0.73/0.76); L287 9.30/1.26 r_next=0.248 MAD_above=7.45 lag=-21(7.41/7.45); L288 9.51/1.47 r_next=0.142 MAD_above=1.39 lag=16(1.28/1.39) |
-| 6798 | 6798/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.63/0.76 r_next=0.032 MAD_above=0.64 lag=4(0.57/0.64); L287 9.63/1.40 r_next=0.232 MAD_above=8.00 lag=-32(7.98/8.00); L288 9.55/1.45 r_next=0.098 MAD_above=1.46 lag=-2(1.45/1.46) |
-| 6799 | 6799/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.62/0.74 r_next=-0.017 MAD_above=0.61 lag=18(0.57/0.61); L287 9.51/1.50 r_next=0.051 MAD_above=7.88 lag=-7(7.87/7.88); L288 10.03/1.54 r_next=0.075 MAD_above=1.69 lag=18(1.54/1.69) |
-| 6800 | 6800/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.72/0.80 r_next=-0.036 MAD_above=0.65 lag=23(0.65/0.65); L287 10.16/1.47 r_next=0.212 MAD_above=8.43 lag=-30(8.39/8.43); L288 10.68/1.67 r_next=0.216 MAD_above=1.63 lag=-4(1.58/1.63) |
-| 6801 | 6801/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.57/0.67 r_next=-0.069 MAD_above=0.58 lag=18(0.55/0.58); L287 10.18/1.44 r_next=0.097 MAD_above=8.60 lag=-23(8.59/8.60); L288 10.08/1.59 r_next=0.172 MAD_above=1.56 lag=-21(1.49/1.56) |
-| 6802 | 6802/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.55/0.67 r_next=0.001 MAD_above=0.60 lag=-8(0.53/0.60); L287 11.43/1.78 r_next=0.280 MAD_above=9.88 lag=-21(9.83/9.88); L288 11.63/1.52 r_next=0.155 MAD_above=1.65 lag=-9(1.51/1.65) |
-| 6803 | 6803/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.52/0.70 r_next=0.049 MAD_above=0.53 lag=27(0.50/0.53); L287 13.19/1.77 r_next=0.318 MAD_above=11.67 lag=-31(11.62/11.67); L288 14.38/1.83 r_next=0.256 MAD_above=1.99 lag=-4(1.94/1.99) |
-| 6804 | 6804/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.56/0.70 r_next=-0.034 MAD_above=0.56 lag=26(0.53/0.56); L287 14.01/1.77 r_next=0.180 MAD_above=12.45 lag=-23(12.43/12.45); L288 15.04/1.81 r_next=0.376 MAD_above=2.17 lag=9(2.01/2.17) |
-| 6805 | 6805/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.56/0.70 r_next=-0.081 MAD_above=0.57 lag=18(0.54/0.57); L287 13.06/1.54 r_next=0.304 MAD_above=11.50 lag=-30(11.47/11.50); L288 14.89/1.66 r_next=0.177 MAD_above=2.21 lag=-1(2.20/2.21) |
-| 6806 | 6806/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.47/0.59 r_next=0.010 MAD_above=0.53 lag=-17(0.48/0.53); L287 14.64/1.59 r_next=0.209 MAD_above=13.17 lag=-19(13.17/13.17); L288 14.69/1.78 r_next=0.224 MAD_above=1.78 lag=17(1.68/1.78) |
-| 6807 | 6807/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.49/0.62 r_next=0.047 MAD_above=0.55 lag=24(0.51/0.55); L287 15.61/1.64 r_next=0.209 MAD_above=14.12 lag=-9(14.12/14.12); L288 16.48/1.82 r_next=0.170 MAD_above=1.89 lag=-12(1.83/1.89) |
-| 6808 | 6808/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.49/0.60 r_next=0.009 MAD_above=0.51 lag=-15(0.48/0.51); L287 16.59/1.54 r_next=0.225 MAD_above=15.10 lag=29(15.07/15.10); L288 17.31/1.61 r_next=0.148 MAD_above=1.60 lag=4(1.54/1.60) |
-| 6809 | 6809/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.57/0.69 r_next=-0.092 MAD_above=0.62 lag=16(0.53/0.62); L287 17.53/1.76 r_next=0.264 MAD_above=15.96 lag=-1(15.96/15.96); L288 19.36/1.49 r_next=0.110 MAD_above=2.23 lag=28(2.20/2.23) |
-| 6810 | 6810/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.59/0.71 r_next=0.025 MAD_above=0.62 lag=25(0.56/0.62); L287 19.38/1.62 r_next=0.216 MAD_above=17.79 lag=32(17.77/17.79); L288 19.97/1.55 r_next=0.279 MAD_above=1.81 lag=-12(1.65/1.81) |
-| 6811 | 6811/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.50/0.60 r_next=0.034 MAD_above=0.53 lag=-31(0.49/0.53); L287 19.69/1.50 r_next=0.186 MAD_above=18.19 lag=0(18.19/18.19); L288 19.88/1.63 r_next=0.087 MAD_above=1.63 lag=-6(1.51/1.63) |
-| 6812 | 6812/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.58/0.82 r_next=-0.002 MAD_above=0.62 lag=28(0.51/0.62); L287 21.25/1.64 r_next=0.178 MAD_above=19.68 lag=0(19.68/19.68); L288 21.36/1.43 r_next=0.289 MAD_above=1.69 lag=19(1.57/1.69) |
-| 6813 | 6813/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.41/0.53 r_next=0.010 MAD_above=0.47 lag=29(0.45/0.47); L287 22.24/1.38 r_next=0.404 MAD_above=20.83 lag=-32(20.82/20.83); L288 22.88/1.52 r_next=0.456 MAD_above=1.49 lag=1(1.43/1.49) |
-| 6814 | 6814/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.65/0.77 r_next=-0.064 MAD_above=0.66 lag=30(0.60/0.66); L287 22.99/1.41 r_next=0.300 MAD_above=21.35 lag=-24(21.33/21.35); L288 24.05/1.38 r_next=0.332 MAD_above=1.64 lag=32(1.61/1.64) |
-| 6815 | 6815/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.58/0.69 r_next=0.025 MAD_above=0.62 lag=-5(0.56/0.62); L287 22.49/1.61 r_next=0.330 MAD_above=20.91 lag=-4(20.91/20.91); L288 22.61/1.52 r_next=0.226 MAD_above=1.56 lag=-5(1.45/1.56) |
-| 6816 | 6816/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.60/0.73 r_next=0.046 MAD_above=0.62 lag=-17(0.57/0.62); L287 22.35/1.61 r_next=0.270 MAD_above=20.75 lag=18(20.75/20.75); L288 22.64/1.64 r_next=0.202 MAD_above=1.73 lag=-13(1.56/1.73) |
-| 6817 | 6817/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.61/0.74 r_next=0.048 MAD_above=0.62 lag=-10(0.57/0.62); L287 22.06/1.52 r_next=0.319 MAD_above=20.45 lag=24(20.44/20.45); L288 22.99/1.67 r_next=0.183 MAD_above=1.73 lag=-12(1.65/1.73) |
-| 6818 | 6818/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.72/0.86 r_next=0.035 MAD_above=0.70 lag=-32(0.67/0.70); L287 22.83/1.48 r_next=0.096 MAD_above=21.11 lag=30(21.10/21.11); L288 22.62/1.27 r_next=0.299 MAD_above=1.49 lag=-12(1.29/1.49) |
-| 6819 | 6819/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.65/0.78 r_next=0.072 MAD_above=0.66 lag=-12(0.62/0.66); L287 22.63/1.44 r_next=0.251 MAD_above=20.98 lag=17(20.96/20.98); L288 23.48/1.40 r_next=0.108 MAD_above=1.62 lag=-1(1.57/1.62) |
-| 6820 | 6820/F2 | L286 | L287 | engine (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.56/0.65 r_next=-0.017 MAD_above=0.54 lag=23(0.52/0.54); L287 22.67/1.39 r_next=0.003 MAD_above=21.11 lag=-31(21.10/21.11); L288 23.24/1.48 r_next=0.132 MAD_above=1.74 lag=-13(1.57/1.74) |
+| 6661 | 6661/F2 | L287 | L286 | reference (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 2.72/1.53 r_next=0.008 MAD_above=1.52 lag=17(1.47/1.52); L287 21.09/2.05 r_next=0.082 MAD_above=18.37 lag=16(18.31/18.37); L288 20.65/1.79 r_next=0.028 MAD_above=2.02 lag=-29(1.91/2.02) |
+| 6662 | 6662/F2 | L287 | L286 | reference (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.90/1.00 r_next=0.002 MAD_above=0.84 lag=-20(0.78/0.84); L287 19.82/2.02 r_next=0.061 MAD_above=17.92 lag=-30(17.87/17.92); L288 19.43/2.02 r_next=0.250 MAD_above=2.20 lag=-27(2.00/2.20) |
+| 6663 | 6663/F2 | L287 | L286 | reference (stable signal-lock geometry; dark boundary is picture) | waveforms=[284]; L286 1.68/0.77 r_next=-0.013 MAD_above=0.69 lag=24(0.62/0.69); L287 21.20/2.53 r_next=0.257 MAD_above=19.52 lag=-32(19.48/19.52); L288 22.78/2.40 r_next=0.247 MAD_above=2.73 lag=-2(2.64/2.73) |
 
 ## Head-switch row
 
@@ -3276,9 +3091,9 @@ Reference top: L23: 582.
 
 Engine signature top: L23: 582.
 
-Reference signature top: L23: 579, L25: 3.
+Reference signature top: L23: 582.
 
-Reference observed top only: L23: 582.
+Reference observed top only: L23: 579.
 
 First numeric engine top: counter 6593 L23; first observed reference top: counter 6593 L23.
 
@@ -3313,9 +3128,9 @@ Reference top: L286: 582.
 
 Engine signature top: L286: 579, L287: 3.
 
-Reference signature top: L286: 408, L287: 174.
+Reference signature top: L286: 582.
 
-Reference observed top only: L286: 442.
+Reference observed top only: L286: 408.
 
 First numeric engine top: counter 6593 L286; first observed reference top: counter 6593 L286.
 
@@ -3348,7 +3163,7 @@ First-full raw-signature change witnesses:
 
 Across 582 stable units, line 286 and line 287 row means correlate at 0.998610 over samples 24-696. Line 286 is below luma 8 in 191 units; the longest consecutive run is counters 6645-6820 (176 units).
 
-The reference signature test nominated line 287 in 174 units, but the account retained line 286 in all of them because the bottom geometry did not move. Verdict: line 286 is the dark first picture row; the provisional grey-line classification does not move the crop.
+The within-unit signature test nominated line 287 in 174 units. Temporal row-identity stabilization rejects that nomination, so both the final signature and the account retain line 286. Verdict: line 286 is the dark first picture row; the provisional grey-line classification does not move the crop.
 
 Deciding rows:
 

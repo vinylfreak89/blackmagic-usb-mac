@@ -32,6 +32,7 @@ from build_reference import (
     _first_edge_departure,
     _inspect_top,
     _middle_blanking_row,
+    stabilize_temporal_picture_identity,
     validate,
 )
 
@@ -594,6 +595,43 @@ class ReferenceMeasurementTest(unittest.TestCase):
         )
         self.assertEqual((reading.line, reading.status), (287, "observed"))
         self.assertIn("flat grey VBI run L286-L286", reading.evidence)
+
+    def test_temporally_coherent_grey_lookalike_is_picture(self) -> None:
+        rows = []
+        for index in range(12):
+            level = float(index * index + 3)
+            rows.append(
+                {
+                    "counter": 1000 + index,
+                    "f2_picture_top_line": 287,
+                    "f2_signature_top_line": 287,
+                    "f2_top_status": "observed",
+                    "f2_caption_lines": "",
+                    "f2_xds_line": -1,
+                    "f2_vbi_lines": "286",
+                    "f2_vbi_status": "observed",
+                    "f2_vbi_confirmation": "below VBI",
+                    "f2_expected_bottom_line": 526,
+                    "f2_note": "flat grey VBI run L286-L286; picture begins L287",
+                    "f2_dp": "0",
+                    "_f2_first_row_mean": level,
+                    "_f2_second_row_mean": 2.0 * level + 7.0,
+                    "f1_picture_top_line": 23,
+                    "f1_signature_top_line": 23,
+                    "f1_caption_lines": "",
+                    "f1_xds_line": -1,
+                    "f1_dp": "0",
+                    "_f1_first_row_mean": 20.0,
+                    "_f1_second_row_mean": 30.0,
+                }
+            )
+        stabilize_temporal_picture_identity(rows)
+        self.assertEqual({int(row["f2_picture_top_line"]) for row in rows}, {287})
+        self.assertEqual({int(row["f2_signature_top_line"]) for row in rows}, {286})
+        self.assertEqual({row["f2_vbi_lines"] for row in rows}, {""})
+        self.assertTrue(
+            all("temporal row identity" in str(row["f2_note"]) for row in rows)
+        )
 
     def test_edge_departure_uses_field_body_variance(self) -> None:
         y = np.ones((525, 720), dtype=np.uint8)
