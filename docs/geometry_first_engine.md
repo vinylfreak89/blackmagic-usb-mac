@@ -229,9 +229,9 @@ watch copy is the live path's output with its record burned in. No work product 
 Owner, verbatim (2026-09-07 15:15): "any true disagreement (such as comb not matching) should be reported loudly for
 me to examine unit by unit in the test harness (Codex's job). please present a single frame rendered (and shifted)
 bwdif image in that case." So every true disagreement — the engine's crop against the settled comb, the two
-instruments against each other on a unit — is listed by the harness with, per unit, one rendered frame: the two
-fields woven at the engine's crops and deinterlaced with bwdif, shifted as the engine placed them, for the owner to
-examine one by one.
+instruments against each other on a unit — is reported by the harness (Codex produces the report and the frames)
+and handed to the owner, who examines them one by one: per unit, one rendered frame, the two fields woven at the
+engine's crops and deinterlaced with bwdif, shifted as the engine placed them. Neither agent adjudicates these.
 
 ## 9. Open
 
