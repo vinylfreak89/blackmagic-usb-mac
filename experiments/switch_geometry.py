@@ -186,8 +186,8 @@ def process_unit(u,RU,RN):
         xds_row=next((r for r in recrows[:6] if xds_bar(Y[r])),None)
         if cap_row is not None: line22_row=cap_row+1                      # the tape's line 22 is one line below its line 21 (owner)
         elif xds_row is not None: line22_row=xds_row+1                    # the tape's line 285 is one line below its line 284 (the XDS bar), field 2 of the EP recording
-        elif rec[3] and (subblack(3) or flatrow(3)):
-            seen=[v for v in L22[f].v if v is not None]                  # the levels of the tape's line 22 seen so far (a comparator by running count)
+        elif rec[3] and flatrow(3):
+            seen=[v for v in L22[f].v if v is not None]                  # the levels of the tape's line 22 its line 21 has placed (a comparator by running count, fed by caption/XDS + 1 only)
             if seen and min(seen)-2*sig_b<=ym[3]<=max(seen)+2*sig_b: line22_row=3
         # no gate on line-21 evidence: a dark first row that the signatures call line 22 is decided by the account (rule 9)
         if line22_row is not None and line22_row<Y.shape[0] and rec[line22_row]: L22[f].add(int(round(ym[line22_row])))
@@ -200,11 +200,9 @@ def process_unit(u,RU,RN):
             if xds_bar(Y[r]): return 'xds'
             a=Y[r,24:696]-Y[r,24:696].mean(); t=Y[0,24:696]-Y[0,24:696].mean(); d=float(np.sqrt((a*a).sum()*(t*t).sum()))
             if d>0 and float((a*t).sum()/d)>=0.8: return 'line20'                 # the tape's line-20 timing pattern = the Shuttle's regenerated one (0.8: a template-match aperture)
-            if flatrow(r) and r+3<Y.shape[0] and all(rec[q] for q in (r+1,r+2,r+3)) and ym[r]<0.5*float(ym[r+1:r+4].mean()): return 'gap'   # the tape's grey line 22 (owner ruling 2026-09-05)
+            if flatrow(r) and r+3<Y.shape[0] and all(rec[q] for q in (r+1,r+2,r+3)) and ym[r]<0.5*float(ym[r+1:r+4].mean()) and all(ym[q]>ped+6*sig_b for q in (r+1,r+2,r+3)): return 'gap'   # the tape's grey line 22 (owner ruling 2026-09-05) over PICTURE rows; a dark row over dark rows is a dark scene (commercial tape, 2026-09-07)
             return ''
         vbi={r:vbi_kind(r) for r in recrows[:6]}
-        for r,k in vbi.items():
-            if k=='gap' and line22_row is None: L22[f].add(int(round(ym[r])))   # the grey line 22 is the tape's line 22 too (owner ruling 2026-09-05): its level feeds the comparator
         top=next((r for r in recrows if not vbi.get(r,'')),None) if recrows else None   # the first picture row (owner)
         M[f]=dict(Y=Y,C=C,by_m=by_m,sig_b=sig_b,c_b=c_b,base=base,slot=slot,ym=ym,thr=thr,rec=rec,recrows=recrows,vbi_ok=vbi_ok,ped=ped,sig_n=sig_n,
                   insert_data=insert_data,cap_row=cap_row,line22_row=line22_row,vbi=vbi,top=top)
@@ -366,8 +364,11 @@ def process_unit(u,RU,RN):
         for f in (1,2):
             m=M[f]; o=3-f
             if m['hid'] is not None:
+                # confirmed only when the comb CHANGES: decisive nonzero at the held crop and decisive zero at the candidate
+                # (a move shared by both fields reads zero at both placements and stays held — contract, the comb)
+                s0,r0,_=comb_at(M[1]['d'],M[2]['d'])
                 cand={f:m['hid'],o:M[o]['d']}; s,r,_=comb_at(cand[1],cand[2])
-                if decisive(s,r) and s==0: D[f]=m['hid']; m['d']=D[f]; H[f].add(m['T']-(3+D[f])); m['case']+=';comb-confirmed!'
+                if decisive(s0,r0) and s0!=0 and decisive(s,r) and s==0: D[f]=m['hid']; m['d']=D[f]; H[f].add(m['T']-(3+D[f])); m['case']+=';comb-confirmed!'
                 else: m['case']+=(';held-travel' if abs(m['hid']-D[f])==1 else ';held!')
             if m['rowabove'] is not None and LOCKST[f]=='locked':
                 s0,r0,_=comb_at(M[1]['d'],M[2]['d'])

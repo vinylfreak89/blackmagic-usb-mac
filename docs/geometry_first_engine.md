@@ -155,8 +155,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - **Pedestal**: the tape's black — the other head's black rows at the bottom of the band.
 - **VBI row**: a recorded row carrying a vertical-interval signal, recognised by signature: the CEA-608 waveform
   (standard), the run-in burst without data (standard), the tape's line-20 timing pattern (the same pattern as the
-  Shuttle's regenerated line 20), the smeared XDS bar (measured on the EP recording), the tape's black line 22, the
-  tape's grey line 22 (a flat row under half the brightness of the three rows below it, owner ruling 2026-09-05).
+  Shuttle's regenerated line 20), the smeared XDS bar (measured on the EP recording), the tape's black line 22 (a
+  flat row at the level its line 21 has placed before: the level comparator is fed only by the row below a decoded
+  caption or below the XDS bar), the tape's grey line 22 (a flat row under half the brightness of the three rows
+  below it, owner ruling 2026-09-05, those rows being picture — above the pedestal by more than the noise; a dark
+  row over dark rows is a dark scene: on the commercial tape lines 23–25 read 4.0/5.8/12.4 through one 177-unit
+  scene and line 23 tracks line 24 across units with correlation 1.00, measured 2026-09-07).
   "Line 22" in this document is the TAPE's line 22 wherever it lands in the raster (line 23 at +1); the Shuttle's own
   line 22 (row 18) is regenerated blanking and is only ever a stable-VBI check. The tape's line 22 is one line below the tape's line 21; it carries a specific level or
   sometimes faint picture (owner). Its level is a comparator by running count (owner: "derived and stabilized"), not a constant.
