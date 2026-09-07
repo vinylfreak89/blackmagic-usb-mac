@@ -538,7 +538,12 @@ has appeared. If it's appeared more often than any other level, then it becomes 
 previous comparitor which the number of times it has appeared." So every lock is a running count: the value seen most
 often so far is the comparator and is replaced by any value whose count passes it; no window, no threshold. Applied
 (commit after 8ffa2f0) to the band count (comparator = the most frequent count; the travel is that count or one less)
-and to the first recorded row's state (sub-black-and-flat = the black line 22, or picture): on the SP the comparator
+and to the first recorded row's state (sub-black-and-flat = the black line 22, or picture). Fifth ruling, verbatim: "You
+also need to keep a fixed number. If it falls below that number it drops out and the entire array shifts. No dynamic
+memory allocation!!! (In the real C engine)" — each comparator is a fixed array of eight (value, count) slots in count
+order: a hit increments and bubbles up; a new value takes a free slot, or with the array full decrements the last
+slot's count, and at zero that entry drops out, the array shifts and the new value takes the slot (eight is a memory
+capacity, not a decision constant). On the SP the comparator
 becomes the black line 22 at row 23, on the commercial tape picture — derived from the tapes, with each comparator's
 count and runner-up count written per unit. Measured at run E on the commercial's stable interval: S − top = 238 with the peak present in 31/36 field-1 units and
 237 in 48/59 field-2 units; with the peak absent the same modes in 402/546 and 395/517 with a 234–239 spread; of 57

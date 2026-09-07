@@ -81,38 +81,58 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None,sig_n=0.0):
             k=int((e[1::2]-e[0::2]).argmax()); blank_run=int(e[1::2][k]-e[0::2][k]); blank_x=24+int(e[0::2][k])   # where along the row the other head's blanking begins
     return dict(blank_run=blank_run,blank_x=blank_x,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
 # the record is flushed per unit (Python 3.14 buffers 128 KiB, ~600 rows, before the first write)
-OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b','S_tests','band_tests','lock_state','switch_lock','band_max_lock','band_rows_obs','band_class','disc_x'])
+OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','S_first_shifted','how','peak_x','partial_evidence','reliable_to_S','band_from_S','last_rec','closure','S_wlag','S_r','body_lag_max','body_r_min','M_run','M_spk','blank_y','sig_b','S_tests','band_tests','lock_state','switch_lock','band_comparator','band_rows_obs','band_class','band_counts','first_comparator','first_counts','disc_x'])
 PED={1:None,2:None}   # the carried pedestal per field
-# the head-switch BAND LOCK per field (owner rulings, 2026-09-07 afternoon, contract v3 §10.6): "The number of switch
-# lines below the top line either stays constant or decreases. The top switch line should be the only variable one as
-# that's the actual area of travel." The band's row count from its top line to the clip is a per-source MAXIMUM; the top
-# switch line (the partial line, where the switch point travels along the line and off its edge) is the only variable.
-# Per unit under the lock, with n = the observed count S..clip: n == max or n == max-1 is the travel; n > max is an error
-# (the switch read on a picture row: 'band+'); n < max-1 with the top still is the picture dropped under a clamped top
-# ('dropped', displacement evidence); n < max-1 with the top moved down by the same rows is the field falling out of the
-# raster (consistent). The lock is acquired from LOCK_N consecutive units whose counts agree within one row (max of the
-# window), checked every unit, lost after LOCK_N consecutive pictureless units or 'band+' units; without a lock no
-# geometry is claimed. LOCK_N = 8 is a fitted default (a quarter second), labelled so. The record's switch line under
-# the lock = clip - max + 1 + (rows fallen off) ... expressed per unit as top + (240 - max) so that it moves with the
-# picture: rows from the top to the switch line = 240 - max, the same in every unit (the 240-line closure).
+# LOCKS BY RUNNING COUNT (owner, 2026-09-07: "No magic numbers. It should be derived and stabilized. ie, check the number
+# of times that level has appeared. If it's appeared more often than any other level, then it becomes the comparator
+# and replaces the previous comparator"). A comparator is the value seen most often so far; a value whose count passes
+# the comparator's replaces it. No window, no threshold. Two comparators per field:
+#  band: the head-switch band's row count S..clip. "The number of switch lines below the top line either stays constant
+#        or decreases. The top switch line should be the only variable one as that's the actual area of travel." Per
+#        unit: count == comparator or comparator-1 is the travel; larger is 'band+' (the switch read on a picture row);
+#        smaller with the top still is 'dropped' (the picture under a clamped top); smaller with the top moved is
+#        'fell-out'. The switch line under the lock sits 240 - comparator rows below the top in every unit.
+#  first: the state of the first recorded row (row 3 of the slot: line 23 / 286): 'black22' when it is sub-black and flat
+#        (the tape's black line 22 with the field displaced) or 'picture'. A lone sub-black first row is the black line
+#        22 only when the comparator says the source shows one there; where the comparator says picture (the commercial
+#        tape, whose dark first lines are crushed picture black) it is picture.
+# Lock state: 'locked' once a comparator exists; 'acquiring' before the first observation. The record carries each
+# comparator's count and the runner-up's count, so the stability of every claim is visible per unit.
 CTR={}; LASTTOP={}
-LOCK_N=8
-LOCK={1:dict(state='acquiring',n=None,hist=[],miss=0),2:dict(state='acquiring',n=None,hist=[],miss=0)}
+class RunMode:
+    """a comparator by running count in a FIXED array (owner: "keep a fixed number. If it falls below that number it drops
+    out and the entire array shifts. No dynamic memory allocation!!! (In the real C engine)"): SLOTS entries of
+    (value, count) kept in count order. A hit increments its entry and bubbles it up; a new value takes a free slot with
+    count 1, or, with the array full, decrements the last slot's count — when that reaches zero the entry drops out, the
+    array shifts, and the new value takes the freed slot. The comparator is slot 0. SLOTS is a capacity (memory), not a
+    decision constant."""
+    SLOTS=8
+    def __init__(self): self.v=[None]*self.SLOTS; self.n=[0]*self.SLOTS
+    def add(self,x):
+        if x is None: return
+        for i in range(self.SLOTS):
+            if self.v[i]==x:
+                self.n[i]+=1
+                while i>0 and self.n[i]>self.n[i-1]:                       # bubble up: the array shifts
+                    self.v[i],self.v[i-1]=self.v[i-1],self.v[i]; self.n[i],self.n[i-1]=self.n[i-1],self.n[i]; i-=1
+                return
+        for i in range(self.SLOTS):
+            if self.v[i] is None: self.v[i]=x; self.n[i]=1; return          # a free slot
+        self.n[-1]-=1                                                        # full: the last entry's count falls
+        if self.n[-1]<=0: self.v[-1]=x; self.n[-1]=1                        # it dropped out; the new value takes the slot
+    def top(self):
+        if self.v[0] is None: return None,0,0
+        return self.v[0],self.n[0],(self.n[1] if self.v[1] is not None else 0)
+BAND={1:RunMode(),2:RunMode()}; FIRST={1:RunMode(),2:RunMode()}
 def lock_update(f,obs):
-    """obs = this unit's observed band count S..clip (rows) or None; returns (state, held max count or None, class)"""
-    L=LOCK[f]
-    if L['state']=='locked':
-        if obs is None: L['miss']+=1; cls='no-picture'
-        elif obs>L['n']: L['miss']+=1; cls='band+'
-        else:
-            L['miss']=0; cls='travel' if obs>=L['n']-1 else 'short'
-        if L['miss']>=LOCK_N: L.update(state='no-lock',n=None,hist=[],miss=0)
-        return L['state'],L['n'],cls
-    if obs is None: L.update(state='no-lock',hist=[]); return 'no-lock',None,'no-picture'
-    L['hist'].append(obs); L['hist']=L['hist'][-LOCK_N:]
-    if len(L['hist'])==LOCK_N and max(L['hist'])-min(L['hist'])<=1:
-        L.update(state='locked',n=max(L['hist']),miss=0); return 'locked',L['n'],'travel'
-    L['state']='acquiring'; return 'acquiring',None,''
+    """obs = this unit's observed band count S..clip or None; returns (state, comparator, class, count, runner-up)"""
+    BAND[f].add(obs); comp,n,n2=BAND[f].top()
+    if comp is None: return 'acquiring',None,'',0,0
+    if obs is None: cls='no-picture'
+    elif obs>comp: cls='band+'
+    elif obs>=comp-1: cls='travel'
+    else: cls='short'
+    return 'locked',comp,cls,n,n2
 def process_unit(u,RU,RN):
     """one unit: RU = this unit's raster, RN = the next unit's (needed only with --repair)"""
     if A.only and u not in VERB: return
@@ -193,9 +213,14 @@ def process_unit(u,RU,RN):
         # says the same (line 23 carries grey picture at counter 6842). The earlier 'bright = above pedestal + 3 sigma_b'
         # rule read the commercial's near-black first lines as bright and its top wandered 23/24/25 on a stable picture.
         def subblack(r): return ym[r]<ped-3*sig_b
+        r0=recrows[0] if recrows else None
+        first_state=(('black22' if (subblack(r0) and float(Y[r0,24:696].std())<4*sig_n+2*sig_b) else 'picture') if (r0 is not None and not cc608(Y[r0])[0]) else None)
+        FIRST[f].add(first_state); first_comp=FIRST[f].top()[0]
         def picture_row(r):
             if not rec[r] or cc608(Y[r])[0] or vbi_type(r): return False
-            if subblack(r): return (r+1<Y.shape[0] and rec[r+1] and subblack(r+1)) or (rec[r-1] and subblack(r-1))   # a sub-black row inside or ending a sub-black band is picture; a LONE one before the picture is the tape's black line 22 (the band's last row read as VBI before this: commercial counter 6672, top 25)
+            if subblack(r):
+                if first_comp=='picture': return True                     # this source shows picture at its first row: a dark first line is crushed black
+                return (r+1<Y.shape[0] and rec[r+1] and subblack(r+1)) or (rec[r-1] and subblack(r-1))   # a sub-black row inside or ending a sub-black band is picture; a LONE one before the picture is the tape's black line 22 (the band's last row read as VBI before this: commercial counter 6672, top 25)
             if not redundant: return True
             return textured(r) or not (r+1<Y.shape[0] and rec[r+1] and textured(r+1))   # a flat row before a textured row is VBI (the EP recording's dim isolated row), before a flat row picture
         bright=lambda r: not subblack(r)   # diagnostics only
@@ -208,8 +233,8 @@ def process_unit(u,RU,RN):
         if u in VERB:
             for r in recrows[:6]: print(f'  top-diag u{u} f{f} L{r+base}: mean {ym[r]:5.1f} std {float(Y[r,24:696].std()):5.1f} rec {int(rec[r])} cc608 {int(bool(cc608(Y[r])[0]))} textured {int(textured(r))} corr {corr_below(r):.2f}/{corr_either(r):.2f} bright {int(bright(r))} picture {int(picture_row(r))} | sig_n {sig_n:.2f} ped {ped:.1f} body_corr {body_corr:.2f}')
         if top is None or len(recrows)<60:
-            st,held,cls=lock_update(f,None)
-            w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','',st,-1,(held if held is not None else -1),-1,cls,'']); continue
+            st,held,cls,n,n2=lock_update(f,None); fc,fn,fn2=FIRST[f].top()
+            w.writerow([u,CTR[u],f,-1,-1,'no-picture',-1,'',0,0,-1,'','','',-1,-1,-1,-1,round(by_m,2),round(sig_b,2),'','',st,-1,(held if held is not None else -1),-1,cls,f'{n}/{n2}',fc or '',f'{fn}/{fn2}','']); continue
         last_rec=recrows[-1]
         ped_lvl=ped+6*sig_b
         feats={r:rowfeat(Y[r],Y[r-1],sig_b,ped_lvl,by_m,sig_n) for r in range(top+1,last_rec+1)}
@@ -268,7 +293,7 @@ def process_unit(u,RU,RN):
             if narrow_flat and spk_rank>=1.0: px=pf['x']; how='shifted+peak_above'
         reliable=(sw-top) if sw is not None else (last_rec-top+1); band=(last_rec-sw+1) if sw is not None else 0
         clipr=(262 if slot==1 else 525); obs=(clipr-(sw+base)+1) if sw is not None else None   # the observed band count S..clip
-        st,held,cls=lock_update(f,obs)
+        st,held,cls,n,n2=lock_update(f,obs); fc,fn,fn2=FIRST[f].top()
         if cls=='short' and obs is not None: cls='dropped' if (LASTTOP.get(f)==top) else 'fell-out'   # rows lost: with the top still, the picture dropped under a clamped top; with the top moved, the field fell out of the raster
         LASTTOP[f]=top
         swl=(top+base+240-held) if held is not None else -1                   # the switch line under the lock: 240 - max rows below the top, so it moves with the picture
@@ -278,7 +303,7 @@ def process_unit(u,RU,RN):
             if r not in feats: return ''
             ft=feats[r]; return f"{r+base}:{ft['blank_x']}/{(6+ft['lead_run']) if ft['lead_run']>0 else -1}/{ft['x'] if ft['spike']>M_spk else -1}"
         disc='|'.join(discx(r) for r in ((sw-1,sw,sw+1) if sw is not None else ()))
-        lockcols=[st,swl,(held if held is not None else -1),(obs if obs is not None else -1),cls,disc]
+        lockcols=[st,swl,(held if held is not None else -1),(obs if obs is not None else -1),cls,f'{n}/{n2}',fc or '',f'{fn}/{fn2}',disc]
         w.writerow([u,CTR[u],f,top+base,(sw+base) if sw is not None else -1,how,px,ev,reliable,band,last_rec+base,reliable+band,(feats[sw]['wlag'] if sw is not None else ''),(round(feats[sw]['wr'],2) if sw is not None else ''),body_lag,round(body_r,2),M_run,round(M_spk,0),round(by_m,2),round(sig_b,2),(tests(sw) if sw is not None else ''),('|'.join(f'{r+base}:{tests(r)}' for r in range(sw,last_rec+1)) if sw is not None else '')]+lockcols)
         if u in VERB:
             sys.stdout.flush(); print(f'unit {u} field {f}: top L{top+base} switch {("L%d"%(sw+base)) if sw is not None else "none"} ({how}) peak_x {px} reliable {reliable} band {band} last_rec L{last_rec+base} | body max lag {M_lag} dm {M_dm:.1f} lead_run {M_run} narrow-spike {M_spk:.0f}')
