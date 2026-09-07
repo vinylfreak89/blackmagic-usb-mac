@@ -77,10 +77,8 @@ scored "not accepted on any capture", the 2,600 owner-review bwdif frames at
 harness is carried into `v10-harness`). `AGENTS.md` is a symlink to `CLAUDE.md` in every worktree. Merges to main go through mutual review;
 main stays the measured fallback (round 10) until v10 passes the whole tape.
 
-Dispatches to Codex go only from this chat's parent thread (`01a07733-14e0-7543-ab82-e3f605c8d6b8`), every one with
-`--cwd /private/tmp/blackmagic-v10` so its writes land in the v10 engine worktree; no second thread (a "v10 engine"
-thread created at 20:24 JST was withdrawn by the owner and deleted at 20:28). One dispatch at a time, its reply read
-before the next; the owner says when the first v10 dispatch goes out.
+Codex works from its original thread, with its writes in the v10 engine worktree; Claude creates no Codex threads.
+One dispatch at a time, its reply read before the next; the owner says when the first v10 dispatch goes out.
 
 Both agents may examine the frozen experiment branches (`geometry-first-engine`, `geometry-first-harness`) and the
 reports for learnings — the owner, 20:2x JST: "the other context does have permission to examine the experiment.
