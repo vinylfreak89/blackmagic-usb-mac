@@ -149,8 +149,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   more than twice their noise (0.5, section 2; the same factor, an aperture); padding is neither. A raster whose
   edges cannot be measured at all is Unknown (held, labelled); edges measured but inconsistent are the loud reports
   of rules 2 and 9 (held, reported) — two labels, one action. **Apertures used by
-  the tests**: "present" for the Shuttle's timing pattern and insert is the row's variation at the measured level
-  (40–54, absent 0.5, section 2); "blank" is the blanking level (1.4) within the blanking rows' noise; "flat" is a
+  the tests**: "present" for the Shuttle's timing pattern and insert is the row's variation above 20, an aperture
+  inside the measured gap (40–54 present, 0.5 absent, section 2); "blank" is the blanking level (1.4) within the blanking rows' noise; "flat" is a
   row's variation within that noise; "static" pixels are unchanged against the previous unit within the field's own
   adjacent-sample noise, "detailed" ones differ from the row below by more than it.
 - **Pedestal**: the tape's black — the other head's black rows at the bottom of the band; measured per unit as the
@@ -182,7 +182,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   of 21, measured 2026-09-05, so decoded bytes on the insert say only that) — the top is 23 + d from the account,
   confirmed by the comb (rule 9).
 - **The account**: the comparison, per field per unit, of the two edge readings (signature top, switch-line reading)
-  with the geometry's expectation and the segment's constants (rule 9); its reading is d, its crop 23 + d. A seed
+  with the geometry's expectation and the segment's constants (rule 9); its reading is d, its crop 23 + d. A
+  **segment** runs from the capture's first unit or a lock-like loss to the next lock-like loss; its seed is the
+  first unit with both edges readable and the regenerated rows present; H, c and d are per field; after Unknown or
+  held units the expectation is the last applied decision. Under the capture's pairing input the engine's field 1 is
+  the re-paired first field (origin 23), field 2 the second (286); the output weaves each field at its own crop,
+  one locked and one at standard placement included. A seed
   whose H is high by one (the row above read as picture on the first unit) has no correction without a raw caption
   (at |d| = 1 the caption is overwritten, the insert's bytes confirm either d, the comb cannot see a shared offset):
   it stands until a caption or a lock-like loss, and a segment whose units mostly read the row above the picture
@@ -289,7 +294,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   anywhere in the field confirm the account's d when |d| ≤ 1 (the tape's line 21 is then inside the Shuttle's
   window and overwritten; measured 2026-09-05); at |d| ≥ 2 the raw caption is the confirmation. The lock is per
   field: a caption
-  confirms its field, a decisive comb zero confirms both fields' placement; each field's output leaves standard
+  confirms its field, a decisive comb zero confirms both fields' relative placement; each field's output leaves standard
   placement at its own lock. **Lock-like loss**: snow-like signal, a vertical tear (cross-program or true), a counter
   discontinuity, a signal-state relock or splice; a unit event, both fields. The Shuttle's regenerated rows absent
   (its decoder without sync: a mute, a dropout) is a signal-state fact and a hold (rule 6), never a gauge and not by
@@ -338,8 +343,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    offset; per unit, a one-row change of the switch line alone is the travel (the partial line, the peak's drift)
    and is recorded; a change of more than one row, the top and the switch line moving by different amounts beyond
    that one row of travel, or a count beyond c + 1, is reported loudly and the geometry is held — unless the comb confirms it as a
-   hidden-top move (rule 9; owner: "needs to be confirmed against the comb"), then it is reported loudly and
-   applied. None of these readings is a "change of geometry" in the owner's sense (rule 5): only
+   hidden-top move (rule 9's pinned-top case; owner: "needs to be confirmed against the comb"), then it is reported
+   loudly and applied. None of these readings is a "change of geometry" in the owner's sense (rule 5): only
    a lock-like loss (definition: snow-like signal, a vertical tear, a counter discontinuity, a relock or splice from
    the signal-state layer) is a lost lock (owner, section 1, on damage; both agents at extreme confidence,
    2026-09-07 15:50).
@@ -350,8 +355,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    comparator and is replaced by a value whose count passes it; no magic numbers, no per-source constants typed in.
 5. A change of geometry — loss of source lock or a lock-like loss — resets everything immediately, both fields at
    once (there is no snow in one field only; a single field with no picture is not snow — rule 6); without a stable
-   VBI (the Shuttle's regenerated rows) no new lock is claimed and no geometry is read; an existing lock holds through
-   their absence (rule 6).
+   VBI (the Shuttle's regenerated rows) no new lock is claimed and no geometry is read — the unit's position is
+   Unknown (rule 6); an existing lock holds through their absence.
 6. Damage that is not snow-like and not a vertical tear (cross-program or true) is continuing program: the previous
    geometry — the comparators and the lock — holds through it; the unit's own position is recorded Unknown, the crop
    is left where it was because nothing measurable says to move it (not a claim that the position held), and the
@@ -381,17 +386,19 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    - Δtop = Δswitch ≠ 0: the field moved (rule 2, the switch line follows the picture); d changes by that amount; the
      settled comb must agree at the moved crop — a disagreement is reported as a true disagreement (section 7), the
      move stands (rule 1);
-   - the signature top at 23 (pinned: it cannot show a move above 23, so Δtop is only an upper bound on the top's
-     move) and Δswitch < Δtop: the field moved by Δswitch with the top hidden — d changes by Δswitch (definition of
-     d: d = V − H) — applied only when the comb reads zero at that placement and not at the held one (definition of
-     the comb; owner: blank lines under the picture
-     "could be indicative … needs to be confirmed against the comb"), then reported loudly (rule 2); the band's
-     extent alone never moves anything; unconfirmed, the geometry is held and the reading recorded as travel when it is one row, reported loudly when
-     more (rule 2);
+   - the signature top at 23 with the expectation at or above 23 (the top pinned: it cannot show a move above 23,
+     so Δtop is censored — an upper bound on the top's move when the expectation is 23, no reading at all when the
+     top is already hidden) and Δswitch < Δtop (or, with the top hidden, Δswitch ≠ 0): the switch line's move is the
+     field's — d changes by Δswitch (definition of d: d = V − H); a move up is applied only when the comb reads zero
+     at that placement and not at the held one (definition of the comb; owner: blank lines under the picture
+     "could be indicative … needs to be confirmed against the comb"), then reported loudly (rule 2); a move down
+     that keeps the top hidden is applied as a move (the top emerging above 23 would have shown it); the band's
+     extent alone never moves anything; unconfirmed, the geometry is held and the reading recorded as travel when it
+     is one row, reported loudly when more (rule 2);
    - Δswitch = 0, Δtop ≠ 0: the row above the picture — the field did not move (the model); the top stays at
      switch line − H; unless the settled comb disagrees at the held crop and agrees at the moved one (owner: "unless
      the line shift down of new luma causes a comb disagreement on the settled comb"), then it moved;
-   - Δtop ≠ 0 and Δswitch = Δtop ± 1: the field moved by Δtop (the top is the reliable edge, the band the
+   - Δtop ≠ 0, Δswitch ≠ 0 and Δswitch = Δtop ± 1: the field moved by Δtop (the top is the reliable edge, the band the
      unreliable one — owner) with one row of the reading's travel, recorded;
    - Δtop = 0, Δswitch = ±1: travel, recorded (rule 2; a one-row upward reading with the top at 23 reaches this
      through the hidden-top case unconfirmed); |Δswitch| > 1: reported loudly, held;

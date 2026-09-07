@@ -321,7 +321,13 @@ def process_unit(u,RU,RN):
         else:
             exp_top=3+D[f]; exp_T=exp_top+Hc0; dt=top-exp_top; dT=T-exp_T
             # rule 9, the cases in order; the first that fits decides
-            if dt==0 and dT==0: case='steady'
+            if top==3 and D[f]<0:
+                # the top already hidden: Δtop is no reading; the switch line's move is the field's
+                if dT==0: case='steady'
+                elif dT<0: hid=D[f]+dT; case=f'hidden{hid:+d}?'               # further up: the candidate, the comb must confirm it
+                elif D[f]+dT<=0: D[f]+=dT; case=f'rigid{dT:+d}-hidden'        # down, the top still hidden: a move (an emerging top would have read above 23)
+                else: case=f'geom?/{dT:+d}!'                                   # down past 23 with the top still reading 23: reported loudly, held
+            elif dt==0 and dT==0: case='steady'
             elif dt==dT: D[f]+=dt; case=f'rigid{dt:+d}'                       # the switch line followed the picture: the field moved
             elif top==3 and dT<dt:
                 hid=D[f]+dT; case=f'hidden{hid:+d}?'                          # the top pinned at 23: the switch line's move is the field's (d = V - H), applied only when the comb confirms it
