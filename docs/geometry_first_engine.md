@@ -503,3 +503,7 @@ right and the reference's 286 wrong (line 286 at the noise floor), 120 flagged f
 interval (582 units): field 1 measurable 582/582, top 23 ×548, S 261 ×443 / 260 ×136; field 2 top 286 ×455 / 287 ×115
 (the lone sub-black class, residual), S 523 ×542. The harness's acceptance of this record: Codex turn 12 (report of
 2026-09-07).
+Codex turn 12 (c4beaaa): not accepted on any capture; the reference gained `first_full_other_head_line`; the
+engine's S is one row early where the partial line carries the other head's blanking (commercial ~86 stable units):
+the next definitional refinement is that a partial row's leading segment still aligns with the row above at zero
+lag and a full other-head row's does not. Full record: the 2026-09-07 report (docs/reports).
