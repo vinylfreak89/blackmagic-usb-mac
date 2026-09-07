@@ -474,3 +474,22 @@ switch transitions, none changed the registration.
 - **Residual (per-unit undecidable, both instruments):** commercial counters 6641–6674 and 6802–6819, where the first
   picture line is a half-row transition (counter 6645: line 23 at 5.3/3.3, 24 at 15.3/9.0, 25 at 22.7/2.4) — the
   engine reads 25, the harness 24 'inferred'; the picture's constancy across the tape (line 23 grey at 6842) says 23.
+
+### 10.1.4 Two more premises, and what the pedestal says about the commercial tape (commit 8d0fdeb, 2026-09-07 09:36 JST)
+
+- **The correlation and texture rules stand down where the field's own rows do not correlate.** Their premise is
+  that adjacent picture lines correlate in this field; on the commercial tape's flat and dark scenes the picture rows
+  are noise-only (the middle rows correlate at 0.1–0.3, row std 1–3 against a noise of 0.7), so "textured" and
+  "uncorrelated" describe noise and run D read the top at 25/287 in 107/109 stable units. The rules apply when the
+  median correlation of the field's middle rows is ≥ 0.5; otherwise the top is the first recorded row that is not a
+  waveform and not a lone sub-black row.
+- **A sub-black row inside or ending a sub-black band is picture**; only a lone sub-black row before the picture is
+  the tape's black line 22. (The band's last row had read as VBI: commercial counter 6672, top 25 → 23.)
+- **The commercial tape has setup.** Its carried pedestal (the flat rows contiguous with the clip) measures 9–11
+  (fixture A: 11.4, its 7.5 IRE black), not the blank; so its dark first lines at 3–5 are sub-black — crushed blacks
+  in the picture, since line 23 carries grey picture elsewhere (counter 6842) and the picture is stable. Where a
+  single sub-black line precedes the picture (counter 6645 field 1, 6672 field 2) the per-unit rule reads the black
+  line 22 and the top one row low; fixture A's displaced black line 22 looks identical per unit and its 608/608
+  agreement depends on that reading. **Residual, recommended resolution:** the tape's black line 22 is a per-source
+  constant (it is always sub-black and flat, always at the same row, and never carries grey), so a per-source lock —
+  the contract's own geometry constant — separates the two tapes where a per-unit reading cannot.
