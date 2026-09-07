@@ -66,16 +66,49 @@ def body_variance(rows, top_idx):
     L = [x['left'] for x in body]; Rt = [x['right'] for x in body]
     return dict(lmin=min(L), lmax=max(L), rmin=min(Rt), rmax=max(Rt), n=len(body))
 
+def summarise(rows, var):
+    """the field's reading: picture bottom = the last row inside the field's own edge variance; the band = the rows
+    after it that have edges and lie outside it; the clip = the last row with any edges at all."""
+    if not var: return None
+    idx = {r['row']: k for k, r in enumerate(rows)}
+    inside = [r for r in rows if r['left'] is not None and
+              var['lmin'] <= r['left'] <= var['lmax'] and var['rmin'] <= r['right'] <= var['rmax']]
+    if not inside: return None
+    top = inside[0]['row']; bottom = inside[-1]['row']
+    withedges = [r for r in rows if r['left'] is not None]
+    clip = withedges[-1]['row']
+    band = [r for r in rows if r['row'] > bottom and r['left'] is not None]
+    # how far outside the variance each band row sits, in samples: the separation the rule rests on
+    def outby(r):
+        dl = max(var['lmin'] - r['left'], r['left'] - var['lmax'], 0)
+        dr = max(var['rmin'] - r['right'], r['right'] - var['rmax'], 0)
+        return max(dl, dr)
+    # the same figure for the rows inside the picture, to expose false positives
+    inside_out = [outby(r) for r in rows[idx[top]:idx[bottom]+1] if r['left'] is not None]
+    stray = [r['row'] for r in rows[idx[top]:idx[bottom]+1]
+             if r['left'] is not None and outby(r) > 0]
+    return dict(top=top, bottom=bottom, clip=clip, band=len(band),
+                band_out_min=min((outby(r) for r in band), default=''),
+                band_out_max=max((outby(r) for r in band), default=''),
+                stray=len(stray), stray_max=max(inside_out, default=0),
+                lmin=var['lmin'], lmax=var['lmax'], rmin=var['rmin'], rmax=var['rmax'], nbody=var['n'])
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('out')
     ap.add_argument('--units', default=''); ap.add_argument('--only', action='store_true')
     ap.add_argument('--first', type=int, default=0); ap.add_argument('--start', type=int, default=0)
+    ap.add_argument('--summary', action='store_true', help='one row per field per unit: the reference')
     A = ap.parse_args()
     want = {int(x) for x in A.units.split(',') if x}
     N = [0]; buf = bytearray()
     out = open(A.out, 'w', newline=''); W = csv.writer(out)
-    W.writerow(['unit','counter','field','row','line','base','left','right','runs','mean','std',
-                'lmin','lmax','rmin','rmax','inside'])
+    if A.summary:
+        W.writerow(['unit','counter','field','class','top_line','bottom_line','clip_line','band_rows',
+                    'band_out_min','band_out_max','stray_rows','stray_max','lmin','lmax','rmin','rmax','body_rows'])
+    else:
+        W.writerow(['unit','counter','field','row','line','base','left','right','runs','mean','std',
+                    'lmin','lmax','rmin','rmax','inside'])
     def emit(u):
         i = N[0]; N[0] += 1
         if i < A.start: return
@@ -87,6 +120,15 @@ def main():
             rows, bmu, bsd = measure(R, f)
             first = next((k for k, x in enumerate(rows) if x['left'] is not None), None)
             var = body_variance(rows, first) if first is not None else None
+            if A.summary:
+                sm = summarise(rows, var)
+                if sm is None:
+                    W.writerow([i, c, f, 'unmeasurable'] + ['']*13)
+                else:
+                    W.writerow([i, c, f, 'observed', sm['top']+4, sm['bottom']+4, sm['clip']+4, sm['band'],
+                                sm['band_out_min'], sm['band_out_max'], sm['stray'], sm['stray_max'],
+                                sm['lmin'], sm['lmax'], sm['rmin'], sm['rmax'], sm['nbody']])
+                continue
             for x in rows:
                 ins = ''
                 if var and x['left'] is not None:
