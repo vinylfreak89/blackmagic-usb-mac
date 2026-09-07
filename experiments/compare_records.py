@@ -17,9 +17,9 @@ for r in csv.DictReader(open(A.sg)):
     E[(o,r['field'])]=r
 print(f'joined {len(E)//2} engine units by counter; engine units with no reference counter: {unjoined}')
 def refcols(r,f):
-    return dict(top=int(r.get(f'f{f}_picture_top_line',-1) or -1), sw=int(r.get(f'f{f}_switch_first_line', r.get(f'f{f}_switch_line',-1)) or -1), bot=int(r.get(f'f{f}_bottom_line',-1) or -1))
+    return dict(top=int(r.get(f'f{f}_picture_top_line',-1) or -1), sw=int(r.get(f'f{f}_switch_first_line', r.get(f'f{f}_switch_line',-1)) or -1), full=int(r.get(f'f{f}_first_full_other_head_line',-1) or -1), bot=int(r.get(f'f{f}_bottom_line',-1) or -1))
 for f in ('1','2'):
-    dtop=collections.Counter(); dsw=collections.Counter(); out=[]
+    dtop=collections.Counter(); dsw=collections.Counter(); dfull=collections.Counter(); out=[]; outf=[]
     for (u,ef),e in sorted(E.items()):
         if ef!=f: continue
         if A.repair_slots:
@@ -27,11 +27,15 @@ for f in ('1','2'):
             ru,rf=(u,'2') if f=='1' else (u+1,'1')
         else: ru,rf=u,f
         if ru not in R: continue
-        rc=refcols(R[ru],rf); et=int(e['top']); es=int(e['S_first_shifted'])
+        rc=refcols(R[ru],rf); et=int(e['top']); es=int(e.get('S', e.get('S_first_shifted','-1')) or -1)
         if et<0 or rc['top']<0: dtop['unmeasurable']+=1
         else: dtop[et-rc['top']]+=1
         if es<0 or rc['sw']<0: dsw['noS' if es<0 else 'ref-none']+=1
         else:
             d=es-rc['sw']; dsw[d]+=1
             if abs(d)>1: out.append((u,es,rc['sw']))
+        if rc['full']>=0 and es>=0:
+            df=es-rc['full']; dfull[df]+=1
+            if df!=0: outf.append((u,es,rc['full']))
     print(f'field {f}: top(engine - ref):',dict(sorted(dtop.items(),key=lambda x:str(x[0]))),'| S - switch_first:',dict(sorted(dsw.items(),key=lambda x:str(x[0]))),'| |diff|>1 units:',out[:20])
+    print(f'field {f}: S - first_full_other_head (exact where exposed):',dict(sorted(dfull.items(),key=lambda x:str(x[0]))),'| nonzero units:',outf[:20])
