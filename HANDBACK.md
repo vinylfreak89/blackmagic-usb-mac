@@ -76,7 +76,7 @@ both and nothing else, and a caption on the insert is ambiguous over three place
 | who | worktree | branch | base |
 |---|---|---|---|
 | Codex (engine) | `/private/tmp/blackmagic-v10` | `v10-engine` | main `753b1d2` + the contract (`c31bb4b`) |
-| Claude (harness) | `/Users/vinylfreak89/Documents/blackmagic-usb-mac` (the desktop session's primary checkout, so the session loads this branch's `CLAUDE.md`; moved from `/private/tmp/blackmagic-v10-harness` at 20:42 JST) | `v10-harness` | main + Codex's committed harness (`geometry-first-harness` to `84446cd`) + the contract, the engine-side tools and today's reports from the frozen engine branch (`fe011be`) |
+| Claude (harness) | `/Users/vinylfreak89/Documents/blackmagic-usb-mac` (the desktop session's primary checkout, so the session loads this branch's `CLAUDE.md`; moved from `/private/tmp/blackmagic-v10-harness` at 20:42 JST) | `v10-harness` | main + Codex's committed harness (`geometry-first-harness` to `84446cd`) + the contract, the engine-side tools and today's reports from the frozen engine branch (`c073d43`, `fe011be` before the rewrite) |
 
 Frozen when Codex's current turn returns (no further commits; kept for the record): `geometry-first-engine`
 (branch ref only, no worktree since 20:42 JST; HEAD `bc2931f`, pushed; rewound to the dcca9ea contract at `6696fa4`)
@@ -85,6 +85,13 @@ scored "not accepted on any capture", the 2,600 owner-review bwdif frames at
 `experiments/geometry_oracle/reports/engine_run_R_disagreements/` (2,600 `.webp`, untracked from the v10 branches at 20:42 JST — render frames are scratch, `*.webp` and `*.mov` now ignored; they remain at `84446cd` and in the frozen worktree `/private/tmp/blackmagic-v9`), no contract objections; its final committed
 harness is carried into `v10-harness`). `AGENTS.md` is a symlink to `CLAUDE.md` in every worktree. Merges to main go through mutual review;
 main stays the measured fallback (round 10) until v10 passes the whole tape.
+
+**The v10 branches were rewritten at 21:44 JST 2026-09-07** (`git-filter-repo` over `v10-harness` and `v10-engine`
+only, dropping `*.csv` and `*.webp` from their whole history at the owner's instruction). Author, email, both dates,
+messages and every `Co-authored-by` trailer survive; every hash on the v10 line before that time changed, and
+filter-repo also remapped hashes quoted INSIDE commit messages — so three messages that meant the frozen harness tip
+`84446cd` now name its v10-line copy `4714d70` (same tree, author and dates). The frozen branches are untouched and
+are the reference for anything before v10. LEARNINGS.md carries why a rewrite re-hashes the other agent's commits.
 
 Codex works from its original thread, with its writes in the v10 engine worktree; Claude creates no Codex threads.
 One dispatch at a time, its reply read before the next; the owner says when the first v10 dispatch goes out.
