@@ -173,8 +173,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - **Closure**: a field is 240 lines; top + 239 is the expected bottom; rows past the clip are lost (owner). The
   picture bottom placed by the engine is the row above the switch line; the expected bottom is the closure check.
 - **S**: the first row belonging entirely to the other head (an engine measurement; the switch lies in S or the
-  partial line above it). **Segment lag**: the horizontal lag, in samples, at which a 55-sample segment of a row best
-  matches the row above. **Provenance error**: a capture whose packet accounting is not complete at a unit; the
+  partial line above it). **Segment lag**: the horizontal lag, in samples, at which a short segment of a row best
+  matches the row above (the segment's length is the engine's measurement aperture, not a decision constant). **Provenance error**: a capture whose packet accounting is not complete at a unit; the
   engine emits no record for it (fail closed).
 - **Displacement**: the picture top against its standard line (23 / 286).
 - **Comparator**: the value seen most often since the last reset, held in a fixed array of eight slots (owner: "8
@@ -246,8 +246,10 @@ no top-reliability history, no windows, no thresholds that are not a stated meas
 Two blind instruments, the engine's record and Codex's reference, from the same raw rows and this contract, joined
 by device counter. Counted per capture per field: the top; S against the reference's first-full-other-head row
 (exact where the reference exposes one) and against its earliest switch-band row (within the one-row partial
-ambiguity); the band count under the lock; the comb on the engine's crops. Every disagreement is decided on the raw
-rows by both agents and listed with its rows; an interpretation question goes to the owner. Invariants: on the
+ambiguity); the band count under the lock; the comb on the engine's crops. A disagreement between the two instruments
+about what a row IS (a measurement error in one of them) is decided on the raw rows by both agents and listed with
+its rows; a true disagreement about the geometry (the comb not matching the placed crops) is not adjudicated by
+either agent — it is reported to the owner as below. Invariants: on the
 commercial tape from counter 6593, the top constant, the band comparator constant, the switch line moving only with
 the top; on fixture A, output moves only at its two relocks (units 300/301 and 43,737/43,738) and at real boxing
 changes, no placement on the snow units 43,686–43,736, field precedence constant within a lock. Every render (two
@@ -259,8 +261,9 @@ Owner, verbatim (2026-09-07 15:15): "any true disagreement (such as comb not mat
 me to examine unit by unit in the test harness (Codex's job). please present a single frame rendered (and shifted)
 bwdif image in that case." So every true disagreement — the engine's crop against the settled comb, the two
 instruments against each other on a unit — is reported by the harness (Codex produces the report and the frames)
-and handed to the owner, who examines them one by one: per unit, one rendered frame, the two fields woven at the
-engine's crops and deinterlaced with bwdif, shifted as the engine placed them. Neither agent adjudicates these.
+and handed to the owner, who examines them one by one: per unit, one rendered frame — the two fields' 240-row crops
+as the engine placed them, woven into a 720×480 frame, deinterlaced with bwdif (one frame per unit, top field first),
+labelled with the unit, its counter, both crop origins and the comb's reading. Neither agent adjudicates these.
 
 ## 9. Open
 
