@@ -67,12 +67,14 @@ decrement.
 | who | worktree | branch | base |
 |---|---|---|---|
 | Codex (engine) | `/private/tmp/blackmagic-v10` | `v10-engine` | main `753b1d2` + the contract (`c31bb4b`) |
-| Claude (harness) | `/private/tmp/blackmagic-v10-harness` | `v10-harness` | main + Codex's committed harness (`geometry-first-harness` to `6dfbc32`) + the contract, the engine-side tools and today's reports from the frozen engine branch (`fe011be`) |
+| Claude (harness) | `/private/tmp/blackmagic-v10-harness` | `v10-harness` | main + Codex's committed harness (`geometry-first-harness` to `84446cd`) + the contract, the engine-side tools and today's reports from the frozen engine branch (`fe011be`) |
 
 Frozen when Codex's current turn returns (no further commits; kept for the record): `geometry-first-engine`
 (`/Users/vinylfreak89/Documents/blackmagic-usb-mac`, HEAD `bc2931f`, rewound to the dcca9ea contract at `6696fa4`)
-and `geometry-first-harness` (`/private/tmp/blackmagic-v9`, HEAD `6dfbc32`, with uncommitted reference rebuilds that
-are not carried). `AGENTS.md` is a symlink to `CLAUDE.md` in every worktree. Merges to main go through mutual review;
+and `geometry-first-harness` (`/private/tmp/blackmagic-v9`, HEAD `84446cd`, Codex's turn 17 returned 20:2x JST: run R
+scored "not accepted on any capture", the 2,600 owner-review bwdif frames at
+`experiments/geometry_oracle/reports/engine_run_R_disagreements/`, no contract objections; its final committed
+harness is carried into `v10-harness`). `AGENTS.md` is a symlink to `CLAUDE.md` in every worktree. Merges to main go through mutual review;
 main stays the measured fallback (round 10) until v10 passes the whole tape.
 
 The Codex thread for v10 is created on `/private/tmp/blackmagic-v10` (`codex-run new /private/tmp/blackmagic-v10`)
@@ -118,8 +120,8 @@ V-stabilize-off capture must be re-taken from the deck if lost (30–45 s, S-Vid
 ### The harness's artifacts (Claude's)
 
 - References per capture (raw-row measurements, one row per device counter): Codex's committed builder
-  `experiments/geometry_oracle/build_reference.py` and its `reports/reference_*.csv` at `6dfbc32` are the starting
-  point; the harness owner re-derives them from the contract and states, per column, the raw-row measurement behind
+  `experiments/geometry_oracle/build_reference.py` and its `reports/reference_*.csv` at `84446cd` (its run-R score
+  and census in `reports/engine_run_R_score.md` and `reports/reference_v3_summary.md`) are the starting point; the harness owner re-derives them from the contract and states, per column, the raw-row measurement behind
   it. The commercial tape's stable-interval invariant (top 23/286 constant from counter 6593, the switch-line count
   constant, the switch line moving only within the partial line's one-row travel) is an external test assertion,
   never a builder input.
