@@ -161,7 +161,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   rows (not above the pedestal by more than the blanking rows' noise) under a dark row.
 - **Pedestal**: the tape's black — the other head's black rows at the bottom of the band; measured per unit as the
   level of the flat rows above the blanking level contiguous with the clip, carried from the last unit that had
-  them (on a source without setup, or before any unit had them, it is the blanking level). At d = 0 the tape's
+  them (on a source without setup, or before any unit had them, it is the blanking level; a lock-like loss
+  empties it with everything else). At d = 0 the tape's
   line 22 is behind the Shuttle's, so the level comparator is fed only where the caption is raw.
 - **VBI row**: a recorded row carrying a vertical-interval signal, recognised by signature: the CEA-608 waveform
   (standard), the run-in burst without data (standard: the clock-frequency amplitude over three cycles at the
@@ -170,7 +171,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   line-20 timing pattern (correlation at least 0.8 with the Shuttle's regenerated line 20, an aperture), the smeared
   XDS bar (its envelope measured on the EP recording, the test frozen 2026-09-04 as fitted defaults, labelled:
   48-bin luma profile, row mean under 95, bins 20–47 at most 40, a run of at least six bins over 60 within bins
-  0–19; the tape's line 284, so it places field 2 as a caption places field 1: d = its row − 284), the tape's line
+  0–19; the tape's line 284, so it places field 2 as a caption places field 1 — d = its row − 284 — and confirms its
+  lock the same way: it is that field's caption line), the tape's line
   22 by
   position (the row below a raw parity-valid caption line or below the XDS bar — never the Shuttle's insert: one
   line below its line 21, whatever it carries),
@@ -205,13 +207,16 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   first unit with both edges readable (on a source without a head switch, rule 10, the top and the clip) and the
   regenerated rows present; H, c and d are per field; after Unknown or
   held units the expectation is the last applied decision. Under the capture's pairing input the engine's field 1 is
-  the re-paired first field (origin 23), field 2 the second (286) — section 2's "field 1/2" are the transport's
-  slots; the output weaves each field at its own crop,
+  the transport's second slot (origin 286) and its field 2 the next unit's first slot (origin 23) — section 2's
+  "field 1/2" are the transport's slots. Every line number in the rules has its field-2 analogue (23 → 286, 22 →
+  285, 21 → 284, 20 → 283, the clip 262 → 525). The output weaves each field at its own crop,
   one locked and one at standard placement included. A seed
   whose H is high by one (the row above read as picture on the first unit) has no correction without a raw caption
   (at |d| = 1 the caption is overwritten, the insert's bytes confirm either d, the comb cannot see a shared offset):
   it stands until a caption or a lock-like loss, and a segment whose units mostly read the row above the picture
-  against its seed is a seed suspect the harness reports (section 7).
+  against its seed is a seed suspect the harness reports (section 7). A shared −1 (both tops hidden, the caption
+  inside the Shuttle's window) is unresolvable by any instrument named here and stays at the seed's reading,
+  reported the same way.
 - **Head switch**: discontinuous horizontal skew, an RF peak, or both, plus an AGC mismatch where present (owner,
   2026-09-07 morning); the other head's blanking intruding into the row and the pedestal rows are what the captures
   show (section 2). **Switch line** (the top switch line): the horizontal line carrying the peak, the partial line;
@@ -349,11 +354,14 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   reads zero, nothing, or disagrees (a decisive disagreement is reported, section 7); a hidden-top reading is a
   candidate, not a decision, applied only when the comb reads zero at the candidate (a move shared by both fields reads zero at both placements and stays held, recorded, until a caption
   places the field: the caption is the only absolute confirmation); a held row-above reading becomes a move when
-  the comb disagrees at the held crop and agrees at the moved one (the owner's exception); a move the account applied
+  the comb disagrees at the held crop and agrees at the moved one (the owner's exception; H is unchanged and the
+  switch-line reading, now one row from its identity, is the travel until it follows); a move the account applied
   is not undone when the comb disagrees — geometry is the authority (rule 1) and the disagreement is reported to
   the owner (section 7). **Field precedence** (which field's line sits between the other's): the transport order,
-  the field-1 slot's line above the field-2 slot's, measured per capture by the same-field temporal match between
-  the slots (section 2, MAD: the V-stabilize-off capture pairs one field later) and applied at each lock; never
+  the line-23 slot's line above the line-286 slot's whichever engine field carries it, measured per capture by the
+  same-field temporal match between the slots (section 2, MAD: the V-stabilize-off capture pairs one field later;
+  measured 2026-09-07: with the order unswapped the comb read a correct interleave on that pass as a one-line shift
+  and held a field one line high in 379 units) and applied at each lock; never
   inferred from the comb, which cannot tell a swapped precedence from a one-line displacement. On a unit without
   static detail the comb reads nothing, the geometry is applied and the unit is marked unconfirmed.
 - **Body shift**: the vertical shift of a field's picture body against the previous unit of the same field, over
@@ -366,8 +374,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 2. The head switch's position moves with the picture; the source's switch-line count is fixed; the top switch line
    is the only variable one (the area of travel); the visible switch lines below it stay constant or decrease by the
    offset; per unit, a one-row change of the switch line alone is the travel (the partial line, the peak's drift)
-   and is recorded; a change of more than one row, the top and the switch line moving by different amounts beyond
-   that one row of travel, or a count beyond c + 1, is reported loudly and the geometry is held — unless the comb confirms it as a
+   and is recorded; a change of the switch-line reading of more than one row against the top's move, or a count
+   beyond c + 1, is reported loudly (the top's own readings are rule 9's: the rows above the picture, the field's
+   move) and the geometry is held — unless the comb confirms it as a
    hidden-top move (rule 9's pinned-top case; owner: "needs to be confirmed against the comb"), then it is reported
    loudly and applied. None of these readings is a "change of geometry" in the owner's sense (rule 5): only
    a lock-like loss (definition: snow-like signal, a vertical tear, a counter discontinuity, a relock or splice from
@@ -429,8 +438,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
      unreliable one — owner) with one row of the reading's travel, recorded;
    - Δtop = 0, Δswitch = ±1: travel, recorded (rule 2; a one-row upward reading with the top at 23 reaches this
      through the hidden-top case unconfirmed); |Δswitch| > 1: reported loudly, held;
-   - no switch-line reading with the expected switch row reading as picture: the band has left the raster past the
-     clip (or the source has none — rule 10, whose bottom is the clip and c is 0, and whose only edge is the top);
+   - no switch-line reading with the expected switch row reading as picture, or expected past the clip: the band
+     has left the raster past the clip (or the source has none — rule 10, whose bottom is the clip and c is 0, and
+     whose only edge is the top);
      Δtop > 0: the field moved by Δtop (the reliable edge), the lost lines recorded (closure), the comb agreeing
      where it can read; Δtop = 0: still; Δtop < 0 with the band gone: reported loudly, held (a band cannot vanish
      upward);
@@ -469,7 +479,8 @@ no top-reliability history, no windows, no thresholds that are not a stated meas
 
 ## 7. Acceptance
 
-Two blind instruments, the engine's record and Codex's reference, from the same raw rows and this contract, joined
+Seed suspects (segments whose units mostly read the row above the picture against their seed) are listed with
+their counts. Two blind instruments, the engine's record and Codex's reference, from the same raw rows and this contract, joined
 by device counter. Counted per capture per field: the top; S against the reference's first-full-other-head row
 (exact where the reference exposes one) and against its earliest switch-band row (within the one-row partial
 ambiguity); the picture lines and switch lines against the segment's constants; the comb on the engine's crops. A disagreement between the two instruments
