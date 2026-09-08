@@ -132,8 +132,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   147 samples (SMPTE 170M). Since 147 > 858 − 720 = 138, a correctly timed line ALWAYS shows about 9 samples of
   blanking inside the window, split between its two ends and nowhere else. Displace the line's timing and that
   blanking moves with it: one end loses its blanking, the other gains it, and at full displacement the whole
-  147-sample interval sits inside the window. So locating a row's blanking IS measuring its timing, with no reference
-  to what the picture is doing — which is why an "active edge" (where content begins) is not a timing edge, and why
+  147-sample interval sits inside the window. So WHERE THE BLANKING INTERVAL IS DISTINGUISHABLE, locating it measures a row's timing absolutely, with no reference
+  to what the picture is doing — which is why an "active edge" (where content begins) is not a timing edge,
+  and the standards guarantee the nine samples of OVERLAP, not that they can be told from black picture (Codex,
+  2026-09-09; measured: on the SP recording the other head's rows sit at the pedestal, luma 8–11, against a
+  regenerated blanking ceiling of 2, so no qualifying blanking run is visible there and the absolute detector
+  reports no band at all. Relative phase, the RF peak, or both remain necessary wherever the analog chain has raised
+  or obscured the blanking; the absolute measurement is the primary one, not the only one), and why
   horizontal and vertical geometry are one problem rather than two. Measured on the commercial capture (2026-09-09,
   independent instrument): the head-switch band's rows are displaced about 160 samples, the whole blanking interval
   inside the window; reading the bottom this way puts it on one row in 496 of 526 measured field-1 units (99.4%
@@ -146,6 +151,15 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   rows, never whole-field: the top rows of each field (lines 23–34) carry end levels of median 4.6–6.6 and p95 52–63
   above blanking against median 0.6 and p95 7.6 just above the head switch — the flagging of a VHS field's first
   lines. Judged whole-field, those top rows hide the band.
+- **The commercial capture's picture bottom is line 259 (field 1) and 521 (field 2)**, adjudicated on the raw rows
+  2026-09-09 after two independent instruments read 259/521 and the engine read 260/522. The engine was wrong: it
+  takes the first FULLY other-head row as the switch line, so it counted the partial switch line as picture. At
+  counter 6955 field 1, line 259 is ordinary picture (mean 89.5, ends normal), line 260 is the partial line (trailing
+  edge elevated by 78.6, and 77.6–100.6 in neighbouring units), and lines 261–262 are fully displaced (interior
+  blanking runs of 145–146 samples); field 2 the same, 521 ordinary, 522 partial (elevated 80.6), 523–524 displaced
+  (141–143). No contract change was needed: the partial line is the switch line and the bottom is the row above it.
+  The instrument that read 259/521 has its own defect, recorded here: it counted rows past the delivered clip (field
+  1 to line 264, field 2 to 526) as band rows, which they are not.
 - Nothing the tape carries above line 23 (286) reaches us except the re-encoded bytes on the insert. The tape's own
   VBI becomes visible only when the field is displaced downward: at +1 its black line 22 appears on line 23 (luma
   4–7 on fixture A), at +2 its line 21 on 23, at +3 its line 20 on 23 and its line 21 on 24.
