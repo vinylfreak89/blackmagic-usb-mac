@@ -185,6 +185,14 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   Shuttle's blanking (owner, 13:29); the hidden top is read from the account (definition of d: the band's extent
   against the count, blank rows under the band) and confirmed by the comb — new luma alone never means the picture
   moved (owner, 15:11).
+- **Per source, never fixed** (owner, 2026-09-09: "this should always be derived per source. ABSOLUTELY not a fixed
+  thing and the reason should be obvious. horizontal timing and levels will be a PER RECORDING thing. any vertical
+  tear or signal loss like completely invalidates this registration and it will need to be rebuilt"). The field's
+  horizontal-timing variance (the spread of its rows' active edges) and its level references (the blanking level and
+  noise, the pedestal, the tape's line-22 level) are measured from the source itself and belong to the current lock.
+  No sample position and no luma level is ever typed in or carried from another recording; the numbers quoted in
+  section 2 are measurements on these captures, never test points. A lock-like loss (rule 5) discards them with the
+  lock, and they are rebuilt from the units after re-acquisition — nothing derived under the old lock survives it.
 - **Head switch**: discontinuous horizontal skew, an RF peak, or both, plus an AGC mismatch where present (owner,
   2026-09-07 morning); the other head's blanking intruding into the row and the pedestal rows are what the captures
   show (section 2). **Switch line** (the top switch line): the horizontal line carrying the peak, the partial line;
@@ -386,6 +394,13 @@ rule 10). The band is "probably the thing that's most likely to be wrong" (owner
 NOT traced: it must land on line 23 (286), so a jump is obvious on the picture itself, and the 720×486 render shows
 lines 20, 21 and 22 anyway (owner). The plotted quantity is the applied displacement, zero meaning the standard
 origin, so the absolute position is 23 + d (286 + d) — the same information shifted by a constant.
+
+The band also carries the per-source quantities the placement rests on, so a wrong one is visible where it is used:
+per field, the derived horizontal-timing variance (the body's active-edge range) and the row's edges that were
+compared against it, and the level references (blanking level and noise, pedestal, the tape's line-22 level with its
+comparator count). Owner, 2026-09-09: "more good statistics to add to the bottom output, along with luma levels.
+basically that running output should be as detailed as possible while still being sensible to read" — detail is
+bounded by legibility, and anything that does not change a decision stays out.
 
 **Alignment.** The band is aligned to the picture by construction ONLY when the video holds exactly one frame per
 sidecar row from the first row, and the tool refuses anything else. The existing guard in `overlay_sidecar.py` tests
