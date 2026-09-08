@@ -373,10 +373,22 @@ deliverable review copy of a capture is one frame per unit carrying: the 720×48
 mode: lines 21–263 and 283–525, 243 lines per field; against the 480-line crop that is lines 21–22 above and 263
 below in field 1, and 283–285 above in field 2 — the 486 raster is asymmetric — so what landed on the caption and
 VBI rows is visible) with the record burned in; the 525-line raster beside it, showing where the picture sits in the raster; the
-unit's decision information, its marker line and its unit number. Deinterlaced with bwdif, never NNEDI3 (owner, 21:4x). bwdif is the
-presentation the owner reviews, not a measurement: it weaves where it judges the picture static and its per-pixel
-decisions add structure of their own (CLAUDE.md §7), so the registration check stays the settled comb and the
-machine read-back of every frame, which happens before anyone looks at it.
+unit's decision information, its marker line and its unit number.
+
+Deinterlaced with **bwdif in `send_frame` mode**, one frame per unit, 29.97p — never NNEDI3 (owner, 2026-09-08:
+"the problem with nnedi3 is it doesn't just show jumps cleanly. it shows field doubling so the comb pattern during
+playback is structurally impossible. it just renders as blur"). NNEDI3 builds each frame from one field, so the two
+fields never share a frame and an inter-field error cannot appear as comb at all; the comb pattern is the legible
+signal. A weaver decides motion by comparing fields of the SAME PARITY across time, so on static picture a
+misregistered field shows no motion, the filter weaves, and the error combs at full strength; where the picture
+really moves the test fires and interpolates, so ordinary motion comb never reaches the eye. Both filters also run a
+spatial check that can override the temporal decision and smooth a comb; bwdif has no switch for it and yadif does
+(`mode=send_frame_nospatial`), which is the named fallback if a known one-line error ever renders as smoothing
+rather than combing. The filter's job is to make an error obvious to the owner's eye; it is never the measurement,
+which stays the settled comb on the placed crops and the machine read-back of every frame before anyone looks.
+(Recorded so it is not relitigated: an estdif render once made the deck's OSD look stationary when frame-stepping
+proved it moved — 2026-09-04 — which is the same interpolation happening in MOVING content, where registration
+cannot be judged by eye in any case.)
 
 Owner, verbatim (2026-09-07 15:15): "any true disagreement (such as comb not matching) should be reported loudly for
 me to examine unit by unit in the test harness (Codex's job). please present a single frame rendered (and shifted)
