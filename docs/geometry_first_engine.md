@@ -188,7 +188,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - **Per source, never fixed** (owner, 2026-09-09: "this should always be derived per source. ABSOLUTELY not a fixed
   thing and the reason should be obvious. horizontal timing and levels will be a PER RECORDING thing. any vertical
   tear or signal loss like completely invalidates this registration and it will need to be rebuilt"). The field's
-  horizontal-timing variance (the spread of its rows' active edges) and its level references (the blanking level and
+  horizontal-timing variance (its source-derived horizontal-phase distribution — NOT the spread of its rows'
+  active edges, which is where content begins and moves with brightness; falsified on the commercial capture,
+  2026-09-09) and its level references (the blanking level and
   noise, the pedestal, the tape's line-22 level) are measured from the source itself and belong to the current lock.
   No sample position and no luma level is ever typed in or carried from another recording; the numbers quoted in
   section 2 are measurements on these captures, never test points. A lock-like loss (rule 5) discards them with the
@@ -383,7 +385,7 @@ below in field 1, and 283–285 above in field 2 — the 486 raster is asymmetri
 VBI rows is visible); the 525-line raster beside it, showing where the picture sits in the raster; and BELOW the
 picture, never over it, the metrics band of `experiments/overlay_sidecar.py` — the per-field statistics on the left
 (reason colour-coded, gauge with its line and decoded bytes, geometry d, raw top and bottom, lock state with the
-zero's provenance, clip state, the conservation equation) and on the right a graph of the applied shift across the
+source-lock provenance, the lock's fixed switch-line count, the measured clip line, the conservation equation) and on the right a graph of the applied shift across the
 surrounding ±90 units with a line at zero and guides at ±2, swept by a red vertical RUNNING LINE at the current unit
 (the owner's "the one with the running line and number at the bottom", identified 2026-09-09); the band's first line
 carries the unit, the counter, the unit state, the applied pair and comb_safe. What the graph traces (owner, 2026-09-09):
@@ -415,7 +417,8 @@ playback is structurally impossible. it just renders as blur"). NNEDI3 builds ea
 fields never share a frame and an inter-field error cannot appear as comb at all; the comb pattern is the legible
 signal. A weaver decides motion by comparing fields of the SAME PARITY across time, so on static picture a
 misregistered field shows no motion, the filter weaves, and the error combs at full strength; where the picture
-really moves the test fires and interpolates, so ordinary motion comb never reaches the eye. Both filters also run a
+really moves the test fires and interpolates, which is intended to suppress ordinary motion comb — an intention, not
+a guarantee: its motion decision can fail, and the machine read-back stays authoritative. Both filters also run a
 spatial check that can override the temporal decision and smooth a comb; bwdif has no switch for it and yadif does
 (`mode=send_frame_nospatial`), which is the named fallback if a known one-line error ever renders as smoothing
 rather than combing. The filter's job is to make an error obvious to the owner's eye; it is never the measurement,
