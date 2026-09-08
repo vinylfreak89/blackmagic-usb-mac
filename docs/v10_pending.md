@@ -39,13 +39,10 @@ Reconstructed 2026-09-09 03:58 JST from the 45 owner messages since the v10 rest
   invalidates every sidecar and render made before it (HANDBACK §7 step 3), so the full set of classifier
   corrections is cheaper to know before the acceptance renders than after.
 
-## D. Waiting on the owner
+## D. Contract
 
-- **A live contract disagreement.** Contract §2 states "0 displaced rows against 1,957" and calls the separation
-  categorical; Codex did not reproduce it and measured 11 against 1,957, "strong, not categorical" (turn 15). Its
-  proposed replacement wording for that paragraph was never applied, and §9 still reads "Nothing is open". Under
-  the v10 process an unresolved contract disagreement goes to the owner.
-- Codex's model and effort changed under the upgrade (measured 2026-09-09 04:11 JST, `gpt-5.6-sol`/`xhigh` before
-  the turn, `gpt-6-astra`/`high` after; the echo test returned "GPT-6, reasoning effort level not exposed"): whether
-  the v10 thread stays on the new default effort or goes back to xhigh, and whether the app-server, still running
-  0.149.1 against 0.153.4 on disk, is restarted.
+- **Section 2's displaced-row figure is disputed and unamended.** It states "0 displaced rows against 1,957" and
+  calls the separation categorical; Codex did not reproduce it and measured 11 against 1,957, "strong, not
+  categorical" (turn 15), proposing replacement wording that was never applied, while §9 still reads "Nothing is
+  open". The v10 process amends the contract when BOTH agents are at extreme confidence, and only sends it to the
+  owner when they cannot resolve it. I agree with Codex's measurement, so this goes to Codex for assent first.
