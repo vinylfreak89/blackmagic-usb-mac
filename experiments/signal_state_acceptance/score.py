@@ -53,6 +53,7 @@ def main():
     # share counter 0; they are skipped by transport, never by deduplication, so a genuine duplicate
     # among the exact units is still an error.
     rows = {}
+    loss_column_present = False   # set while READING; initialising it after the loop erased it
     seen_any = set()          # every counter the log carries, whatever its transport
     non_exact = {}            # unit -> its transport, for units present but not fixed-raster
     skipped = 0
@@ -85,7 +86,6 @@ def main():
     fixture = load_fixture(a.fixture)
     missed, false_mute, ungated, absent, not_applicable = [], [], [], [], []
     false_loss = []
-    loss_column_present = False
     for first, last, expect, note in fixture:
         for u in range(first, last + 1):
             r = rows.get(u)
