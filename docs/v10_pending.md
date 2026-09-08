@@ -28,8 +28,8 @@ Reconstructed 2026-09-09 03:58 JST from the 45 owner messages since the v10 rest
 
 | # | item | where it is written down | state |
 |---|---|---|---|
-| B1 | The four references, one commit each, in the acceptance order | HANDBACK §7 step 1 | not started |
-| B2 | The bottom instrument rebuilt on the phase measurement | contract rule 3; the luma rule's falsification is in contract §3 | not started |
+| B1 | The four references, one commit each, in the acceptance order | HANDBACK §7 step 1; `experiments/geometry_oracle/REFERENCE_SPEC.md` states every column's raw-row derivation | `switch_geometry.py` already implements most of the spec (recorded rows by chroma noise, the horizontal-phase profile, the peak, the eight-slot comparators, the VBI signatures, the account); capture 1 building now, its invariant not yet checked |
+| B2 | The bottom instrument rebuilt on the phase measurement | contract rule 3; the luma rule's falsification is in contract §3 | done inside `switch_geometry.py`: the bottom is the row above the switch line, which comes from the phase profile, not from luma |
 | B3 | The render changes | contract §8 | not implemented |
 | B4 | The acceptance runs | HANDBACK §7 steps 3 and 4 | blocked on B1 and the engine |
 
