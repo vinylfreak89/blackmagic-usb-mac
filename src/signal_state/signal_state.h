@@ -1,6 +1,8 @@
 #ifndef BLACKMAGIC_USB_MAC_SIGNAL_STATE_H
 #define BLACKMAGIC_USB_MAC_SIGNAL_STATE_H
 
+#define SIGNAL_STATE_UPSTREAM_ONLY 1
+
 #include "../unit_parser/unit_parser.h"
 
 #include <stdbool.h>
@@ -81,20 +83,15 @@ typedef struct signal_result {
     signal_measurements measurements;
     uint32_t actions;
 
+    /* Source acquisition only; registration lock/phase belongs to the engine. */
     bool unsettled;
     uint64_t unsettled_interval_id;
-    bool settled_phase_known;
-    int8_t settled_d1;
-    int8_t settled_d2;
 } signal_result;
 
 typedef struct signal_state_config {
     uint32_t appearance_confirm_units;
     uint32_t acquisition_confirm_units;
     uint32_t mute_confirm_units;
-    uint32_t phase_chatter_window_units;
-    uint32_t phase_chatter_threshold;
-    uint32_t settle_confirm_units;
 } signal_state_config;
 
 size_t signal_state_size(void);
@@ -108,21 +105,6 @@ bool signal_state_classify(signal_state *state,
                            const unit_video_observation *unit,
                            const signal_context *context,
                            signal_result *out);
-
-/*
- * Second stage, called after field_registration examines the same unit.
- * A positive per-unit observation can open an interval.  `applied_*` is the
- * phase actually presented by the zero-latency forward engine; a stable
- * applied phase is what can settle that live interval when absolute evidence
- * legitimately abstains. This never changes pixels or calls registration.
- */
-void signal_state_note_registration(signal_state *state, signal_result *result,
-                                    bool observation_known, int8_t d1, int8_t d2,
-                                    double confidence, bool applied_known,
-                                    int8_t applied_d1, int8_t applied_d2);
-
-/* Called only when the trajectory layer commits a newly settled endpoint. */
-void signal_state_commit_registration(signal_state *state, int8_t d1, int8_t d2);
 
 const char *signal_appearance_name(signal_appearance appearance);
 const char *signal_source_state_name(signal_source_state source);

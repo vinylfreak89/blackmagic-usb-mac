@@ -608,6 +608,11 @@ bool fieldreg_process(field_registration *engine,
     field_measurement measurement[2];
     measure_field(raster, 0, &measurement[0]);
     measure_field(raster, 1, &measurement[1]);
+    for (int f = 0; f < 2; ++f)
+        out->geometry_observation_changed[f] =
+            measurement[f].geometry_measurable &&
+            engine->field[f].previous_measured_top >= 0 &&
+            measurement[f].top != engine->field[f].previous_measured_top;
     v10_decide_field(&engine->field[0], &measurement[0], 0,
                      &out->field[0]);
     v10_decide_field(&engine->field[1], &measurement[1], 1,
@@ -627,6 +632,9 @@ bool fieldreg_process(field_registration *engine,
     out->mode = out->field[0].reason == out->field[1].reason ?
                 out->field[0].reason : FIELDREG_MODE_MIXED_FIELD_DECISION;
     out->confidence = out->frame_observation_support > 0 ? 1.0 : 0.0;
+    out->geometry_lock_known =
+        engine->field[0].lock_state == FIELDREG_LOCK_LOCKED &&
+        engine->field[1].lock_state == FIELDREG_LOCK_LOCKED;
     return true;
 }
 

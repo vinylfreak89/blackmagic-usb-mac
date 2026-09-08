@@ -11,7 +11,6 @@ enum {
     HEADER_BYTES = 48,
     X_SAMPLES = 180,
     SAMPLE_STEP_PIXELS = 4,
-    MAX_PHASE_WINDOW = 64,
 };
 
 struct signal_state {
@@ -30,12 +29,6 @@ struct signal_state {
     bool unsettled;
     uint64_t interval_serial;
     uint64_t active_interval;
-    uint32_t stable_phase_count;
-    bool phase_valid;
-    int8_t phase_d1;
-    int8_t phase_d2;
-    uint64_t phase_change_bits;
-    uint32_t phase_window_count;
 
     bool previous_valid;
     uint8_t previous[RASTER_LINES][X_SAMPLES];
@@ -57,9 +50,6 @@ signal_state_config signal_state_default_config(void)
         .appearance_confirm_units = 2,
         .acquisition_confirm_units = 5,
         .mute_confirm_units = 3,
-        .phase_chatter_window_units = 30,
-        .phase_chatter_threshold = 4,
-        .settle_confirm_units = 30,
     };
     return config;
 }
@@ -77,15 +67,6 @@ void signal_state_init(signal_state *state, const signal_state_config *config)
     chosen.acquisition_confirm_units = clamp_nonzero(
         chosen.acquisition_confirm_units, 5);
     chosen.mute_confirm_units = clamp_nonzero(chosen.mute_confirm_units, 3);
-    chosen.phase_chatter_window_units = clamp_nonzero(
-        chosen.phase_chatter_window_units, 30);
-    if (chosen.phase_chatter_window_units > MAX_PHASE_WINDOW)
-        chosen.phase_chatter_window_units = MAX_PHASE_WINDOW;
-    chosen.phase_chatter_threshold = clamp_nonzero(
-        chosen.phase_chatter_threshold, 4);
-    if (chosen.phase_chatter_threshold > chosen.phase_chatter_window_units)
-        chosen.phase_chatter_threshold = chosen.phase_chatter_window_units;
-    chosen.settle_confirm_units = clamp_nonzero(chosen.settle_confirm_units, 30);
     memset(state, 0, sizeof(*state));
     state->config = chosen;
 }
@@ -363,15 +344,6 @@ static void open_interval(signal_state *state)
         state->unsettled = true;
         state->active_interval = ++state->interval_serial;
     }
-    state->stable_phase_count = 0;
-}
-
-static void invalidate_phase(signal_state *state)
-{
-    state->phase_valid = false;
-    state->stable_phase_count = 0;
-    state->phase_change_bits = 0;
-    state->phase_window_count = 0;
 }
 
 bool signal_state_classify(signal_state *state,
@@ -384,7 +356,6 @@ bool signal_state_classify(signal_state *state,
     memset(out, 0, sizeof(*out));
     out->transport = unit->transport;
     out->transport_flags = unit->transport_flags;
-    out->settled_d1 = out->settled_d2 = 0;
     bool host_unobserved = context && context->host_raster_unobserved;
     if (context && context->host_observations_missing_before)
         state->previous_valid = false;
@@ -401,11 +372,6 @@ bool signal_state_classify(signal_state *state,
                                      : 0.5;
         out->unsettled = state->unsettled;
         out->unsettled_interval_id = state->active_interval;
-        out->settled_phase_known = state->phase_valid && !state->unsettled;
-        if (state->phase_valid) {
-            out->settled_d1 = state->phase_d1;
-            out->settled_d2 = state->phase_d2;
-        }
         return true;
     }
     bool structural_unknown = false;
@@ -475,7 +441,6 @@ bool signal_state_classify(signal_state *state,
     if (needed < state->config.appearance_confirm_units)
         needed = state->config.appearance_confirm_units;
     if (structural_unknown) {
-        invalidate_phase(state);
         state->stable_source = SIGNAL_SOURCE_UNKNOWN;
         state->source_candidate = SIGNAL_SOURCE_UNKNOWN;
         state->source_candidate_count = 1;
@@ -485,20 +450,18 @@ bool signal_state_classify(signal_state *state,
         signal_source_state prior = state->stable_source;
         state->stable_source = target;
         if (target != prior && target == SIGNAL_SOURCE_REACQUIRING) {
-            invalidate_phase(state);
             out->actions |= SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT;
             state->acquisition_open = true;
             open_interval(state);
         } else if (target != prior && target == SIGNAL_SOURCE_PRESENT) {
-            invalidate_phase(state);
             if (!state->acquisition_open)
                 out->actions |= SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT;
-            state->acquisition_open = true;
+            state->acquisition_open = false;
             open_interval(state);
+            state->unsettled = false;
         } else if (target != prior &&
                    (target == SIGNAL_SOURCE_MUTED ||
                     target == SIGNAL_SOURCE_NO_INPUT)) {
-            invalidate_phase(state);
             state->acquisition_open = false;
             open_interval(state);
             /* The confirmed non-picture state is itself a settled endpoint;
@@ -520,94 +483,7 @@ bool signal_state_classify(signal_state *state,
         open_interval(state);
     out->unsettled = state->unsettled;
     out->unsettled_interval_id = state->active_interval;
-    out->settled_phase_known = state->phase_valid && !state->unsettled;
-    if (state->phase_valid) {
-        out->settled_d1 = state->phase_d1;
-        out->settled_d2 = state->phase_d2;
-    }
     return true;
-}
-
-static uint32_t popcount64(uint64_t value)
-{
-    uint32_t count = 0;
-    while (value) {
-        value &= value - 1;
-        ++count;
-    }
-    return count;
-}
-
-void signal_state_note_registration(signal_state *state, signal_result *result,
-                                    bool observation_known, int8_t d1, int8_t d2,
-                                    double confidence, bool applied_known,
-                                    int8_t applied_d1, int8_t applied_d2)
-{
-    if (!state || !result)
-        return;
-    if (state->stable_source != SIGNAL_SOURCE_PRESENT) {
-        result->unsettled = state->unsettled;
-        result->unsettled_interval_id = state->active_interval;
-        result->settled_phase_known = false;
-        return;
-    }
-
-    bool changed = observation_known && confidence >= 0.25 && state->phase_valid &&
-                   (d1 != state->phase_d1 || d2 != state->phase_d2);
-    uint32_t window = state->config.phase_chatter_window_units;
-    uint64_t mask = window == 64 ? UINT64_MAX : ((UINT64_C(1) << window) - 1);
-    state->phase_change_bits = ((state->phase_change_bits << 1) |
-                                (changed ? 1u : 0u)) & mask;
-    if (state->phase_window_count < window)
-        ++state->phase_window_count;
-    if (popcount64(state->phase_change_bits) >=
-        state->config.phase_chatter_threshold)
-        open_interval(state);
-
-    if (applied_known) {
-        if (!state->phase_valid) {
-            state->phase_d1 = applied_d1;
-            state->phase_d2 = applied_d2;
-            state->phase_valid = true;
-            state->stable_phase_count = 1;
-        } else if (applied_d1 == state->phase_d1 &&
-                   applied_d2 == state->phase_d2) {
-            increment_saturating(&state->stable_phase_count);
-        } else {
-            state->phase_d1 = applied_d1;
-            state->phase_d2 = applied_d2;
-            open_interval(state);
-            state->stable_phase_count = 1;
-        }
-    } else if (state->unsettled) {
-        state->stable_phase_count = 0;
-    }
-
-    if (state->unsettled && state->stable_source == SIGNAL_SOURCE_PRESENT &&
-        state->stable_phase_count >= state->config.settle_confirm_units &&
-        popcount64(state->phase_change_bits) == 0) {
-        state->unsettled = false;
-        state->acquisition_open = false;
-    }
-    result->unsettled = state->unsettled;
-    result->unsettled_interval_id = state->active_interval;
-    result->settled_phase_known = state->phase_valid && !state->unsettled;
-    if (state->phase_valid) {
-        result->settled_d1 = state->phase_d1;
-        result->settled_d2 = state->phase_d2;
-    }
-}
-
-void signal_state_commit_registration(signal_state *state, int8_t d1, int8_t d2)
-{
-    if (!state)
-        return;
-    state->phase_valid = true;
-    state->phase_d1 = d1;
-    state->phase_d2 = d2;
-    state->stable_phase_count = 0;
-    state->phase_change_bits = 0;
-    state->phase_window_count = 0;
 }
 
 const char *signal_appearance_name(signal_appearance appearance)

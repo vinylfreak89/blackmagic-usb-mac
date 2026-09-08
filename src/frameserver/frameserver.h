@@ -2,11 +2,11 @@
 //
 //   capture_core (device or replay) --on_packet--> unit_parser --on_video--> [pool slot + SPSC ring]
 //     --> processing worker: signal_state_classify -> registration actions -> fieldreg_process
-//         -> signal_state_note_registration -> frame_publisher -> decision-log row
+//         -> frame_publisher -> decision-log row
 //
 // Policy implemented here is the contract's LOW-LATENCY LIVE policy: every fixed-raster unit is
 // published immediately with the engine's per-unit applied phase (provisional; marked unsettled
-// when the classifier says so), and the sidecar records enough for an archival re-render. The
+// when source acquisition or engine geometry is unresolved), and the sidecar records enough for an archival re-render. The
 // gated trajectory redesign (delayed/corrected policy) plugs in behind the same log schema later.
 //
 // Threading: the parser runs on capture_core's delivery thread and only copies an eligible unit
@@ -30,7 +30,7 @@ extern "C" {
 
 typedef struct frameserver frameserver;
 
-#define FS_DECISION_LOG_SCHEMA 13
+#define FS_DECISION_LOG_SCHEMA 14
 
 typedef struct {
     cc_config capture;          // device input or replay_path

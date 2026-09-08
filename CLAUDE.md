@@ -2037,6 +2037,13 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**v10 ownership implementation:** registration feedback into `signal_state` is retired.
+Source confirmation closes the source interval from raster evidence only. Engine lock state,
+applied crops and each field's measured geometry changes are separate schema-14 record fields;
+there is no registration dwell or chatter threshold in source inference. The regression
+`registration_output_cannot_mutate_signal_state` failed at unit 5 on the old API and passes
+with the upstream-only API. This does not repair the separate 27:18 appearance miss or rule-5 gate.
+
 - **Mutual code-and-intent review is the coding style of this project (owner rule, 2026-09-03).**
   Every change by one agent (Claude or Codex) is reviewed by the other before it is considered
   done, and the review covers **intent as well as code**: the reviewer must be able to state the

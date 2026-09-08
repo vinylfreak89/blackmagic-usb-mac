@@ -109,10 +109,6 @@ int main(int argc, char **argv)
         else if (sr.actions & SIGNAL_ACTION_REGISTRATION_DISCONTINUITY)
             fieldreg_discontinuity(&engine);
         if (!fieldreg_process(&engine, unit, &decision)) return 2;
-        signal_state_note_registration(signal, &sr,
-            decision.frame_observation_support == 2,
-            decision.frame_observation_d1, decision.frame_observation_d2,
-            decision.confidence, true, decision.applied_d1, decision.applied_d2);
         if (fp_publish(publisher, unit, FIELDREG_UNIT_BYTES, (uint64_t)i,
                        decision.applied_d1, decision.applied_d2,
                        FP_TRANSPORT_COMPLETE, 0, 0) != 0)

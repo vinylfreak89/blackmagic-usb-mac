@@ -12,9 +12,7 @@ appearance plus an explicitly uncertain inference.
 
 The hot path is allocation-free and retains only subsampled luma history and a
 small state machine. `signal_state_classify()` runs before registration.
-`signal_state_note_registration()` then feeds the same unit's phase observation
-back into the trajectory gate, allowing positive-but-provisional chatter to
-open an `unsettled` interval. The caller, not this library, invokes
+Registration never feeds back into this library. The caller, not this library, invokes
 `fieldreg_begin_segment()` or `fieldreg_discontinuity()` according to the
 returned action bits.
 
@@ -50,27 +48,21 @@ sub-black raster is itself sufficient for the property label `Muted`.
 
 ## `unsettled` on the live path
 
-An interval opens at startup, on a structural discontinuity, on a confirmed
-acquisition/source transition, or when positive registration observations
-chatter. Repeated units in an already-confirmed mute/no-input state do not
+An interval opens at startup, on a structural discontinuity, or on a confirmed
+acquisition/source transition. Repeated units in an already-confirmed mute/no-input state do not
 reopen it. A confirmed mute/no-input state is a settled non-picture endpoint
 with no settled raster phase.
 
-For present video, the forward-only caller supplies both the estimator's
-instantaneous observation and the phase actually applied to the published
-unit. The interval settles after the source is confirmed, the applied phase is
-unchanged for `settle_confirm_units` (default 30), and the registration-change
-window is clear. Thus a valid applied fallback can settle the live stream when
-absolute visual evidence abstains; `settled_phase_known` describes the phase
-being presented, not a claim that a physical landmark was observed in every
-unit. The optional archival trajectory layer may revisit provisional history,
-but it is not part of this zero-latency state machine.
+Present settles when source evidence confirms Present. This says nothing about
+the geometry lock or the correctness of the published crop. The engine owns
+its lock, applied phase, and per-field observation changes; the record carries
+those separately. No phase dwell or chatter threshold controls source inference.
 
 Host-side shedding is explicitly separate from source state. A caller sets
 `host_raster_unobserved` when an otherwise valid current raster was shed by a
 bounded downstream pool; the result reports `Unknown` appearance for that row
-while retaining the confirmed source, interval, and settled phase. It cannot
+while retaining the confirmed source and interval. It cannot
 fire a registration action. `host_observations_missing_before` clears only the
 same-parity temporal image reference before classifying the next retained
 raster. Parser-originated hole, short, and unframed observations remain real
-structural discontinuities and still reset source/phase inference.
+structural discontinuities and still invalidate temporal source evidence.
