@@ -383,9 +383,11 @@ measured — the black distribution is smooth (16.4/24.8/24.4% at codes 16/17/18
 than Gaussian, where a clamp would make them lighter, and no capture has a sample at code 0 or 255. The only thing
 truncated is sub-black excursion, which is edge undershoot rather than picture. No level fix is needed, by the
 ruling above. Appearing as intended is demonstrated on the commercial tape, where NTSC-M's 7.5 IRE setup arrives
-intact. It is NOT yet demonstrated on fixture A, whose black sits at ≈ 9, floor-crushed and ≈ 24 across three
-passages — a spread as wide as the pedestal itself, which is either real variation in that recording or the noise
-the owner suspects; that measurement is owed and is the only open item on levels.
+intact. On fixture A black sits at ≈ 9, floor-crushed and ≈ 24 across three passages, a
+spread as wide as the pedestal itself. **Closed without further measurement (owner, 2026-09-09): "I would ignore
+that. that shitty VCR's AGC wrecked the levels I'm sure."** The recording VCR's automatic gain control is the
+explanation, it is a property of the 1998 recording rather than of the capture path, and nothing downstream depends
+on it. Levels are settled; no item is open.
 
 **Renderer implications (adopted):** the Y16/C128
 hard-padding ruler stays valid (device-generated, says nothing about program black); classifiers
