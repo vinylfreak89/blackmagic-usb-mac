@@ -16,6 +16,11 @@ device counter - 4511. Three counts, and the gate is that none of them may get w
   UNGATED     units the fixture says are not normal picture, where the run still applied a
               registration displacement. Baseline 270. After rule 5 it must be 0 across every
               not_program range.
+  FALSE_LOSS  units the fixture says are programme, that the run marks snow or a lock-like loss.
+              Must be 0. This is a harder failure than a false mute: under rule 5b a lock-like loss
+              resets the geometry, so a false one destroys a good lock on real picture. Added
+              2026-09-09 after reviewing a classifier change that could newly produce one; the
+              earlier version of this scorer could not see it.
 
 A third class, `boundary`, is scored in NEITHER direction. It covers the relock ramps at the end of
 an event, where adjacent-row coherence is climbing from the event's incoherent floor to settled
@@ -59,6 +64,8 @@ def main():
                 sys.exit(f"ERROR: unparseable row: {e}")
             if c >= a.counter_base:
                 seen_any.add(c - a.counter_base)
+            if "lock_like_loss" in r:
+                loss_column_present = True
             if r.get("transport") != "Complete":
                 if c >= a.counter_base:
                     non_exact[c - a.counter_base] = r.get("transport", "?")
@@ -77,6 +84,8 @@ def main():
 
     fixture = load_fixture(a.fixture)
     missed, false_mute, ungated, absent, not_applicable = [], [], [], [], []
+    false_loss = []
+    loss_column_present = False
     for first, last, expect, note in fixture:
         for u in range(first, last + 1):
             r = rows.get(u)
@@ -103,6 +112,11 @@ def main():
             elif expect == "program":
                 if app in MUTE_APPEARANCES or src in MUTE_SOURCES:
                     false_mute.append(u)
+                # A false SNOW on programme is worse than a false mute: snow is a lock-like loss
+                # under rule 5b, so it resets the geometry on real picture. Counted separately
+                # because its cost is different, and it must be zero.
+                if app == "SNOW_LIKE" or app == "SnowLike" or r.get("lock_like_loss") in ("1", "true", "True"):
+                    false_loss.append(u)
 
     if absent:
         sys.exit(f"ERROR: {len(absent)} fixture units absent from the log "
@@ -111,10 +125,15 @@ def main():
     if not_applicable:
         print(f"not applicable: {len(not_applicable)} fixture units are device-short or unframed "
               f"({sorted(not_applicable)[:6]}), so they carry no fixed raster to classify")
-    print(f"MISSED     {len(missed):5d}   (baseline 27; must not rise)")
-    print(f"FALSE_MUTE {len(false_mute):5d}   (baseline 114; must not rise)")
+    print(f"MISSED     {len(missed):5d}   (baseline 17; must not rise)")
+    print(f"FALSE_MUTE {len(false_mute):5d}   (baseline 108; must not rise)")
     print(f"UNGATED    {len(ungated):5d}   (must be 0 once rule 5 lands)")
-    for name, lst in (("missed", missed), ("false_mute", false_mute), ("ungated", ungated)):
+    if loss_column_present:
+        print(f"FALSE_LOSS {len(false_loss):5d}   (must be 0: a lock-like loss on programme resets real geometry)")
+    else:
+        print("FALSE_LOSS   n/a   the log has no lock_like_loss column, so this cannot be measured "
+              "on it — that is unknown, not zero")
+    for name, lst in (("missed", missed), ("false_mute", false_mute), ("ungated", ungated), ("false_loss", false_loss if loss_column_present else [])):
         if lst:
             print(f"  {name}: {lst[:12]}{' ...' if len(lst) > 12 else ''}")
     return 0
