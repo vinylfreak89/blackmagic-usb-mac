@@ -370,15 +370,12 @@ proper levels which means the digital file captures them as intended. NSTC-M is 
 that just means those tapes will have more dynamic range, thats just the kicks." So the level-correction option
 raised earlier the same day is withdrawn; nothing in the delivery path remaps levels.
 
-The measurement supports the ruling once "0 IRE at code 1.5" is read correctly. Studio range puts BLACK at 16, not
-blanking: for an NTSC-M source with 7.5 IRE setup, a correct decoder maps 7.5 IRE → 16 and 100 IRE → 235, which is
-219 codes over 92.5 IRE = 2.368 codes per IRE, and leaves 0 IRE blanking at 16 − 17.8 ≈ −1.8, below the legal floor.
-Measured blanking is 1.375–1.53, i.e. at the floor, and the commercial tape's black card measures 17.70, within 1.7
-codes of studio black. On that reading the device is doing the standard NTSC-M mapping and the file is already right.
-One point stays open rather than being asserted: the earlier analysis rejected exactly this explanation on the
-grounds that a clipped 0 IRE would produce a constant, whereas the blanking samples are distributed (58% at code 1,
-38.6% at 2, 2.9% at 3). That objection has force and is not resolved here; what is settled is the owner's decision
-not to adjust, and the fact that black lands where studio black belongs.
+Also (owner, same day): "we don't need to match studio levels LOL. this is consumer grade VHS tape." So conformance
+to BT.601's black and white points is not a goal and the question of whether the device implements the standard
+NTSC-M mapping exactly is not one this project needs to answer — nothing depends on it. The measurements stand as
+measurements: blanking at 1.375–1.53, the commercial tape's black card at 17.70 (16.2 codes above its own lines'
+blanking, i.e. NTSC-M's 7.5 IRE setup intact), a jump rather than a slope between the two, no clipping at black, and
+sub-black excursion truncated at the legal floor. Nothing in the delivery path remaps any of it.
 
 **Renderer implications (adopted):** the Y16/C128
 hard-padding ruler stays valid (device-generated, says nothing about program black); classifiers
