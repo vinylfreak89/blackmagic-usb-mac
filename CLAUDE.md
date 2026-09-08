@@ -325,9 +325,35 @@ units — estimator chatter, explicitly NOT deck-health evidence**; after bridgi
 regions remain (largest 15.2–975.6 s and 2837 s–end), pending raw-field/visual confirmation.
 Deck-health conditions 2–6 therefore stay OPEN pending that inspection.
 
-**NTSC-M setup: no preserved pedestal in this capture.** Fade-bottom/black frames in fixture A measure **median Y ≈ 12–17** with
-sub-black excursions — with p95 ≈ 22–24 these frames **cannot represent ordinary 7.5 IRE setup
-(expected Y ≈ 16 + 219×0.075 ≈ 32)**. That is the supportable claim; the measurement does NOT
+**NTSC-M setup: PRESERVED and measured at 7.5 IRE — the earlier "no preserved pedestal" conclusion below rested on
+the wrong zero and is withdrawn (2026-09-09).** It assumed the device digitises blanking at studio black, Y 16, so
+that 7.5 IRE setup would put black near Y 32. **The device puts 0 IRE at code ≈ 1.5, not 16**, established three
+independent ways: the vertical-interval lines carry a device-WRITTEN dithered constant 1.375 (identical in all five
+captures, spread 0.0007; its lag-1 autocorrelation of −0.33 is the high-pass signature of dither, so it is written
+rather than digitised); each picture line's own horizontal blanking reads 1.459–1.53; and the relay-muted composite
+units, whose active area goes through the same decode path, read 1.533. Against that zero, 7.5 IRE lands near code
+18, and it is there. Measured on 95 units of a full-frame black card on the commercial tape, using each line's OWN
+blanking as its 0 IRE reference (the classical black-minus-porch measurement, needing no device constant): blanking
+mean 1.459 and finished by code 7; picture black beginning at code 12, peaking at 17–18, mean 17.699; **a separation
+of 16.22 codes against those same lines' blanking and 16.32 against the vertical interval, which is 7.45 IRE at
+BT.601's 219 codes per 100 IRE — NTSC-M setup is 7.5.** It is a jump, not a slope: codes 8–11 carry about five
+samples per million, and the skirt below code 15 is the black's own noise (0.0296% observed in codes 3–12 against
+0.0506% predicted by a Gaussian at the measured mean and sd), not a ramp into blanking. No clipping at black either:
+16.4% at code 16, 24.8% at 17, 24.4% at 18, a smooth distribution with tails ~10× heavier than Gaussian, where a
+clamp would make them lighter. Nothing at code 0 or 255 in any capture.
+**What IS truncated is sub-black.** With 0 IRE at ≈ 1.5 there is half a code below blanking, so every excursion
+under 0 IRE is lost at the floor: the composite capture has 2.576% of samples at code 1 against 0.352% at code 3, a
+ratio of 7.3, traced to composite edge undershoot at sharp white text. With black at 16 those would survive to −7
+IRE. The black level is not squashed; sub-black content is.
+**Attribution remains impossible**, and the spread shows why: within one tape, one deck and one S-Video input, black
+sits at ≈ 9 in the SP passage, floor-crushed at 2,100 s, and ≈ 24 at 2,700 s — a range as wide as the pedestal
+itself. The one stage excluded as the composite-versus-S-Video differentiator is the Shuttle: its own generated
+line-21 insert measures 119 codes above blanking on both inputs (117 on the EP captures), so its luma scale is the
+same for both — though it reads 125–126 with no input, so that scale is not constant across device states. The
+device's no-signal output sits at exactly the captures' blanking level (1.3749 against 1.3750–1.3756).
+The superseded reasoning, kept for the record: fade-bottom/black frames in fixture A measure median Y ≈ 12–17 with
+sub-black excursions — with p95 ≈ 22–24 these frames were said to be unable to represent ordinary 7.5 IRE setup
+(expected Y ≈ 16 + 219×0.075 ≈ 32). Against the real zero of 1.5, 12–17 is setup, and the conclusion inverts. That is the supportable claim; the measurement does NOT
 establish where setup vanished, nor that "US black became Y12" (8 frames is thin; dark program
 content can legitimately contain superblack/crushed fades). **THREE unapportioned stages, not
 two:** the 1998 broadcast→cable→VCR chain, the DHX2's playback processing, and **the Shuttle's
