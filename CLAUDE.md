@@ -2043,14 +2043,29 @@ when false; it clears the temporal witness and publishes the last successfully p
 crop, with schema-15 `SignalGateHold`, `registration_measured=0`, and `signal_gate_cause`.
 The synthetic live-path test covers the first gray unit under prior Present hysteresis,
 gray/sub-black runs at a nonzero crop, and initial acquisition at standard placement.
-The separate snow detector repair is still required for falsely ProgramLike wrecked units.
+The separate snow detector repair below handles the measured falsely ProgramLike wrecked units.
+
+**v10 current-unit loss implementation:** per-field spatial/temporal coherence blocks
+the wrecked units 49105–49112 immediately; broadband low-coherence evidence marks
+49118–49125 SnowLike/lost lock, overriding the old sub-black veto for those units only.
+The paced 27:18 replay processes/publishes 449 exact units with zero drops: 62 gate
+holds at 49105–49166, one reset at 49118, all five sub-black-stage and eleven
+carried-forward sub-black grey labels preserved. Mute alone does not reset; safety
+overrides do not train appearance-label hysteresis. The numerical coherence limits
+are explicitly empirical capture measurements, not a standard or a universal
+detector. EP/SP/SP-off controls have zero appearance/source changes; the commercial
+counter >=6593 interval has zero changes (ten new events occur in its rewind).
+Reproduction, rejected variants and limits: `src/signal_state/tests/SIGNAL_LOSS.md`.
+The active synthetic worker measured 2.738 ms median / 3.093 p95, with 9,996 of
+10,000 units actually invoking registration. This does NOT close the earlier broad
+retired-v9 engine cost finding: 4.853 ms median / 24.293 p95, above the 10-ms budget.
 
 **v10 ownership implementation:** registration feedback into `signal_state` is retired.
 Source confirmation closes the source interval from raster evidence only. Engine lock state,
 applied crops and each field's measured geometry changes are separate schema-14 record fields;
 there is no registration dwell or chatter threshold in source inference. The regression
 `registration_output_cannot_mutate_signal_state` failed at unit 5 on the old API and passes
-with the upstream-only API. This does not repair the separate 27:18 appearance miss or rule-5 gate.
+with the upstream-only API. The gate and 27:18 repairs above were independently tested changes.
 
 - **Mutual code-and-intent review is the coding style of this project (owner rule, 2026-09-03).**
   Every change by one agent (Claude or Codex) is reviewed by the other before it is considered

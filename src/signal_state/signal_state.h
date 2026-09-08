@@ -23,6 +23,7 @@ typedef enum signal_appearance {
     SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE,
     SIGNAL_APPEARANCE_DEVICE_NO_SIGNAL_0800,
     SIGNAL_APPEARANCE_FLAT_AMBIGUOUS,
+    SIGNAL_APPEARANCE_INCOHERENT,
 } signal_appearance;
 
 typedef enum signal_source_state {
@@ -70,6 +71,12 @@ typedef struct signal_measurements {
     double hard_padding_fraction;
     double vbi_signature_energy;
     double flat_pixel_fraction;
+    double row_coherence[2];
+    double temporal_coherence[2];
+    double median_row_range[2];
+    double median_row_sigma[2];
+    double blanking_range[2];
+    bool temporal_coherence_known[2];
 } signal_measurements;
 
 typedef struct signal_result {
@@ -85,6 +92,7 @@ typedef struct signal_result {
     /* Current raster eligibility, never the previous hysteretic appearance. */
     bool normal_picture;
     signal_appearance observed_appearance;
+    bool lock_like_loss;
 
     /* Source acquisition only; registration lock/phase belongs to the engine. */
     bool unsettled;

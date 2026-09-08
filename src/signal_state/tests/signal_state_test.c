@@ -14,6 +14,8 @@ enum { UNIT_BYTES = 756048, HEADER = 48, BPL = 1440, LINES = 525 };
 typedef enum pattern {
     PATTERN_PROGRAM,
     PATTERN_SNOW,
+    PATTERN_LOW_SNOW,
+    PATTERN_DITHER_BLACK,
     PATTERN_GRAY,
     PATTERN_SUBBLACK,
     PATTERN_SUBBLACK_STREAK,
@@ -68,6 +70,12 @@ static void make_unit(uint8_t *unit, pattern kind, unsigned frame, uint8_t gray)
                     y = random_byte();
                     c = random_byte();
                     break;
+                case PATTERN_LOW_SNOW:
+                    y = 2 + random_byte() % 16;
+                    break;
+                case PATTERN_DITHER_BLACK:
+                    y = 1 + random_byte() % 2;
+                    break;
                 case PATTERN_GRAY:
                     y = gray;
                     if ((frame & 1) && line >= 40 && line <= 55 &&
@@ -99,6 +107,9 @@ static void make_unit(uint8_t *unit, pattern kind, unsigned frame, uint8_t gray)
                     break;
                 }
             }
+            if ((kind == PATTERN_LOW_SNOW || kind == PATTERN_DITHER_BLACK) &&
+                ((line >= 7 && line <= 15) || (line >= 270 && line <= 278)))
+                y = 1 + (x & 1);
             row[x * 2] = c;
             row[x * 2 + 1] = y;
         }
@@ -171,12 +182,60 @@ static void registration_output_cannot_mutate_signal_state(uint8_t *unit)
     puts("registration_output_cannot_mutate_signal_state: PASS");
 }
 
+static void snow_loss_and_mute_lifecycle(uint8_t *unit)
+{
+    signal_state *state = aligned_alloc(signal_state_alignment(), signal_state_size());
+    assert(state);
+    signal_state_init(state, NULL);
+    signal_result result;
+    for (unsigned i = 0; i < 12; ++i)
+        result = classify(state, unit, PATTERN_PROGRAM, i, 0);
+    assert(result.normal_picture);
+    for (unsigned i = 12; i < 20; ++i) {
+        result = classify(state, unit, PATTERN_DITHER_BLACK, i, 0);
+        assert(!result.lock_like_loss && !result.normal_picture);
+        assert(result.appearance == SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE);
+        assert(!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT));
+    }
+    for (unsigned i = 20; i < 32; ++i) {
+        result = classify(state, unit, PATTERN_PROGRAM, i, 0);
+        assert(!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT));
+    }
+    assert(result.normal_picture);
+    for (unsigned i = 32; i < 40; ++i) {
+        result = classify(state, unit, PATTERN_LOW_SNOW, i, 0);
+        assert(result.lock_like_loss && !result.normal_picture);
+        assert(result.appearance == SIGNAL_APPEARANCE_SNOW_LIKE);
+        assert(result.source == SIGNAL_SOURCE_REACQUIRING);
+        assert(!!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT) == (i == 32));
+    }
+    for (unsigned i = 40; i < 48; ++i) {
+        result = classify(state, unit, PATTERN_DITHER_BLACK, i, 0);
+        assert(!result.lock_like_loss && !result.normal_picture);
+        assert(!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT));
+    }
+    for (unsigned i = 48; i < 60; ++i) {
+        result = classify(state, unit, PATTERN_PROGRAM, i, 0);
+        assert(!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT));
+    }
+    assert(result.normal_picture);
+    free(state);
+    puts("snow_loss_and_mute_lifecycle: PASS (dither is not snow; one loss reset; mute retains epoch)");
+}
+
+static int compare_u64(const void *a, const void *b)
+{
+    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
+    return (x > y) - (x < y);
+}
+
 int main(void)
 {
     signal_state *state = aligned_alloc(signal_state_alignment(), signal_state_size());
     uint8_t *unit = malloc(UNIT_BYTES);
     assert(state && unit);
     registration_output_cannot_mutate_signal_state(unit);
+    snow_loss_and_mute_lifecycle(unit);
     signal_state_config config = signal_state_default_config();
     signal_state_init(state, &config);
     signal_state_begin_epoch(state, 1);
@@ -322,13 +381,21 @@ int main(void)
     }
     assert(!result.unsettled);
 
-    uint64_t begin = monotonic_ns();
-    for (unsigned i = 0; i < 100; ++i)
-        result = classify(state, unit, PATTERN_PROGRAM, 1000 + i, 0);
-    uint64_t elapsed = monotonic_ns() - begin;
+    uint64_t elapsed = 0, timings[100];
+    for (unsigned i = 0; i < 100; ++i) {
+        make_unit(unit, PATTERN_PROGRAM, 1000 + i, 0);
+        unit_video_observation input = observation(unit, 1000 + i);
+        uint64_t begin = monotonic_ns();
+        assert(signal_state_classify(state, &input, NULL, &result));
+        timings[i] = monotonic_ns() - begin;
+        elapsed += timings[i];
+    }
+    qsort(timings, 100, sizeof *timings, compare_u64);
     double microseconds = elapsed / 1000.0 / 100.0;
     printf("signal_state_test: PASS cost=%.3f us/unit interval=%" PRIu64 "\n",
            microseconds, result.unsettled_interval_id);
+    printf("signal_state classifier-only: median %.3f ms p95 %.3f ms\n",
+           timings[50]/1e6, timings[95]/1e6);
 #ifndef SIGNAL_STATE_SANITIZED
     assert(microseconds < 5000.0);
 #endif

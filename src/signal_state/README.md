@@ -22,9 +22,11 @@ label cannot authorize a current gray, sub-black, snow or unknown raster. The
 frameserver publishes its last successful crop through this gate and emits
 `SignalGateHold`, `registration_measured=0`, and the current gate cause.
 
-`SIGNAL_ACTION_REGISTRATION_DISCONTINUITY` is transport truth. Acquisition and
-relock transitions produce `SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT`; ordinary
-scene cuts or global luma changes do not. Optional audio-mute/OSD inputs are
+`SIGNAL_ACTION_REGISTRATION_DISCONTINUITY` is transport truth. First acquisition
+and a current snow/no-signal loss edge produce
+`SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT`. A loss emits that reset once, not on
+every snow unit and not again on its eventual program return. Mute alone and
+ordinary scene cuts or global luma changes do not reset. Optional audio-mute/OSD inputs are
 generic corroborating context, never defining evidence.
 
 ## Observable appearance rules
@@ -36,8 +38,7 @@ fraction of tiles with meaningful luma range (`program_extent_fraction`), and
 a temporal/locality score for a small static overlay. Edge energy alone is
 never program evidence.
 
-A neutral raster with luma median at least three code values below nominal
-blanking (`Y <= 12`) is immediately `SubBlackMuteLike`, regardless of sparse
+A neutral raster with luma median `Y <= 12` is immediately `SubBlackMuteLike`, regardless of sparse
 white streaks, bottom noise, or OSD edges. This is a safety veto: such a unit
 can never be reported as `ProgramLike`. A flat neutral raster may carry a
 localized static high-contrast overlay and remain
@@ -51,6 +52,28 @@ during a shorter contradictory run instead of flapping through `Unknown`.
 The format-level `0x0800` observation and the robust sub-black veto are applied
 immediately; source-state confirmation remains separate except that a robust
 sub-black raster is itself sufficient for the property label `Muted`.
+The retained `Y <= 12` rule is a historical appearance measurement, not the
+device's blanking level (its regenerated blanking is near 1.4). It is not a
+claim about tape black or setup and is not changed by this repair.
+
+## Current-unit coherence and loss
+
+The additional measurement uses each field separately: median adjacent-row
+Pearson correlation, same-field temporal correlation, median within-row sigma,
+and that field's measured regenerated-blanking range. Current broadband noise
+with low spatial and temporal coherence overrides the historical sub-black
+veto as `SnowLike`, immediately `Reacquiring` and `lock_like_loss=1`.
+Broad loss of coherence on an otherwise ProgramLike raster blocks Present
+immediately. That block persists until spatial or temporal coherence recovers,
+or an actual mute is identified. A mute ends the disrupted-picture episode,
+not the registration loss epoch.
+
+Safety overrides do not train appearance hysteresis. Thus the genuine
+SubBlackMuteLike stage and carried-forward mute labels survive; the record's
+`observed_appearance` and `signal_gate_cause` expose the current safety decision
+separately. The numeric separation limits are capture measurements, not an
+NTSC standard or a universal snow classifier. Reproduction, control results,
+and rejected variants are in [SIGNAL_LOSS.md](tests/SIGNAL_LOSS.md).
 
 ## `unsettled` on the live path
 

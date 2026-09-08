@@ -42,10 +42,22 @@ def main():
                 failures.append(f'{ordinal}: snow not marked lock-like loss')
         if 49113 <= ordinal <= 49117 and row['appearance'] != 'SubBlackMuteLike':
             failures.append(f'{ordinal}: sub-black appearance changed')
+        if 49126 <= ordinal <= 49136 and row['appearance'] != 'SubBlackMuteLike':
+            failures.append(f'{ordinal}: carried-forward sub-black appearance changed')
+        if row['evidence_mode'] != 'SignalGateHold':
+            failures.append(f'{ordinal}: not a named signal-gate hold')
+        if (row['applied_d1'], row['applied_d2']) != (
+                rows[49104]['applied_d1'], rows[49104]['applied_d2']):
+            failures.append(f'{ordinal}: crop changed during signal gate')
+    resets = [ordinal for ordinal in range(49105, 49167)
+              if int(rows[ordinal].get('signal_actions', '0')) & 2]
+    if resets != [49118]:
+        failures.append(f'loss resets {resets}, expected only 49118')
     for failure in failures:
         print(failure)
     assert not failures, f'signal_loss_2718: FAIL ({len(failures)} assertions)'
-    print('signal_loss_2718: PASS (8 wrecked, 5 sub-black, 8 snow; 62 gated)')
+    print('signal_loss_2718: PASS (8 wrecked, 5 sub-black, 8 snow; 62 gated; '
+          'one reset at 49118; 11 grey labels preserved)')
 
 
 if __name__ == '__main__':

@@ -86,6 +86,7 @@ int main(int argc, char **argv)
     fp_sink sink = { consume_frame, &bench };
     fp_publisher *publisher = NULL;
     int8_t published_d1 = 0, published_d2 = 0;
+    unsigned registration_calls = 0;
     if (fp_open(&publisher, 6, &sink) != 0) {
         fprintf(stderr, "BENCH: fp_open failed\n");
         return 2;
@@ -110,6 +111,7 @@ int main(int argc, char **argv)
         else if (sr.actions & SIGNAL_ACTION_REGISTRATION_DISCONTINUITY)
             fieldreg_discontinuity(&engine);
         if (sr.normal_picture) {
+            ++registration_calls;
             if (!fieldreg_process(&engine, unit, &decision)) return 2;
             published_d1 = decision.applied_d1;
             published_d2 = decision.applied_d2;
@@ -130,8 +132,8 @@ int main(int argc, char **argv)
     checksum += bench.checksum;
     report("FIELDREG-BENCH", engine_ns);
     report("WORKER-BENCH", worker_ns);
-    printf("BENCH-SAMPLES %d checksum %llu\n", SAMPLES,
-           (unsigned long long)checksum);
+    printf("BENCH-SAMPLES %d registration_calls %u gated %u checksum %llu\n", SAMPLES,
+           registration_calls, SAMPLES-registration_calls, (unsigned long long)checksum);
     fp_close(publisher);
     free(worker_ns); free(engine_ns); free(signal); free(raw);
     return 0;
