@@ -378,9 +378,21 @@ picture, never over it, the metrics band of `experiments/overlay_sidecar.py` —
 zero's provenance, clip state, the conservation equation) and on the right a graph of the applied shift across the
 surrounding ±90 units with a line at zero and guides at ±2, swept by a red vertical RUNNING LINE at the current unit
 (the owner's "the one with the running line and number at the bottom", identified 2026-09-09); the band's first line
-carries the unit, the counter, the unit state, the applied pair and comb_safe. The graph traces BOTH fields' applied
-shifts, d1 and d2, not d1 alone (owner: "add the individual field shift statistics like you have in the side by side
-field renders").
+carries the unit, the counter, the unit state, the applied pair and comb_safe. What the graph traces (owner, 2026-09-09):
+BOTH fields' applied shifts, d1 and d2, not d1 alone; and the head-switch band's two edges per field — its top (the
+switch line) and its bottom (the last band row) — drawn so both edges are visible in one element, absent where the
+band is not measurable and omitted where the source has none ("not applicable" is distinct from unmeasurable,
+rule 10). The band is "probably the thing that's most likely to be wrong" (owner). The picture top is deliberately
+NOT traced: it must land on line 23 (286), so a jump is obvious on the picture itself, and the 720×486 render shows
+lines 20, 21 and 22 anyway (owner). The plotted quantity is the applied displacement, zero meaning the standard
+origin, so the absolute position is 23 + d (286 + d) — the same information shifted by a constant.
+
+**Alignment.** The band is aligned to the picture by construction ONLY when the video holds exactly one frame per
+sidecar row from the first row, and the tool refuses anything else. The existing guard in `overlay_sidecar.py` tests
+two frames per row because it was written for the bobbed 59.94p render; at one frame per unit it becomes one. This
+matters: a keyframe-cut excerpt once silently offset every label by 12 units (25 extra frames, measured 2026-09-05)
+and misled a whole review, which is why the review copy is produced over the entire capture and never from an
+excerpt (CLAUDE.md §11, review-copy rules).
 
 Deinterlaced with **bwdif in `send_frame` mode**, one frame per unit, 29.97p — never NNEDI3 (owner, 2026-09-08:
 "the problem with nnedi3 is it doesn't just show jumps cleanly. it shows field doubling so the comb pattern during
