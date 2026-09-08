@@ -199,7 +199,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   2026-09-09) and its level references (the blanking level and
   noise, the pedestal, the tape's line-22 level) are measured from the source itself and belong to the current lock.
   No sample position and no luma level is ever typed in or carried from another recording; the numbers quoted in
-  section 2 are measurements on these captures, never test points. A lock-like loss (rule 5) discards them with the
+  section 2 are measurements on these captures, never test points. A lock-like loss (rule 5b) discards them with the
   lock, and they are rebuilt from the units after re-acquisition — nothing derived under the old lock survives it.
 - **Vertical tear**: a field whose horizontal timing departs mid-field and then becomes stable again (owner,
   2026-09-09: "in a vertical tear, horizontal timing goes completely out the window. any field with horizontal
@@ -415,8 +415,8 @@ lines 20, 21 and 22 anyway (owner). The plotted quantity is the applied displace
 origin, so the absolute position is 23 + d (286 + d) — the same information shifted by a constant.
 
 The band also carries the per-source quantities the placement rests on, so a wrong one is visible where it is used:
-per field, the derived horizontal-timing variance (the body's active-edge range) and the row's edges that were
-compared against it, and the level references (blanking level and noise, pedestal, the tape's line-22 level with its
+per field, the derived horizontal-phase distribution of the source and the row's own phase measured against it, and
+the level references (blanking level and noise, pedestal, the tape's line-22 level with its
 comparator count). Owner, 2026-09-09: "more good statistics to add to the bottom output, along with luma levels.
 basically that running output should be as detailed as possible while still being sensible to read" — detail is
 bounded by legibility, and anything that does not change a decision stays out.
