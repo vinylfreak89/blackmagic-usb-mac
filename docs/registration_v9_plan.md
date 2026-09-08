@@ -274,9 +274,9 @@ true signal loss or a cut is audited against the raw 525-line raster before hand
   raw follow audit, not by the count).
 - 45:00 field-2 regression closed: the XDS bar's signature is its LEFT half only (picture bleeds
   into the right half); run-in fragments excluded by 503.5 kHz energy regardless of variance
-  (`09d59ee`, `945c6a3`, `a64003a`, `7de0b14`); field 2 +2 ×620, unique candidate 620/620.
+  (`d45dd3c`, `9969a52`, `9503e78`, `c2f1455`); field 2 +2 ×620, unique candidate 620/620.
 - The tape's grey line 22 (luma ≈ 7 above a picture at ≈ 90) is VBI type 'gap', never a top
-  (`30e1fa5`).
+  (`412d4e4`).
 - 37:01 field 2: Claude's dark-scene guess was FALSE (Codex measured lines 288–290 as picture at
   33–65 against blanking 3.4); the OLD broad bar exclusion classified picture lines through 293
   as VBI and pushed the top to 294 (+8, `OutOfRangeHold` 52/329). Fix in progress: the narrow
@@ -293,7 +293,7 @@ true signal loss or a cut is audited against the raw 525-line raster before hand
   picture's edges still places the unit directly (the 180/200 case). To be implemented on
   `render-live` after Codex's current unit reports, with a golden from the 35:00 units.
 
-## Round 3, state at 03:50 JST on 2026-09-05 (`render-live` at `be7691a`, not merged)
+## Round 3, state at 03:50 JST on 2026-09-05 (`render-live` at `3061c8f`, not merged)
 
 Landed with goldens (105/105): A (VBI-type lines excluded by signature, weak captions separated
 from picture rows at run-in variance 20), B (near-blank band censored), C (standard origin, gauges
@@ -328,16 +328,16 @@ not measurable, corroborates otherwise, and anchors the segment zero. That is th
 of the ruling and the next brief to Codex. The same audit is running on the C/D build for the
 before/after.
 
-## Round 4: the C/D build and the body witness `dc8a459`, measured (2026-09-05, 04:40–05:30 JST)
+## Round 4: the C/D build and the body witness `ad28382`, measured (2026-09-05, 04:40–05:30 JST)
 
-**C/D build (`021eb0d`) on the whole tape** (same audit, same script with the content-motion
+**C/D build (`f71b8c0`) on the whole tape** (same audit, same script with the content-motion
 class): field 1 engine-motion **2,971** (baseline 954), missed moves 2,631 (baseline 2,259),
 follows 5,729; field 2 engine-motion 1,723, missed 2,916. The engine-motion rose in minutes 2–12
 of the SP recording (1,623 events: GeometryLockDecides 1,542, applied change ±1 alternating, body
 MAD below 4 in 924 of them): the no-caption path chases the picture's first visible line as it
 flickers between lines 23 and 24 while the body stands still. It fell in the second recording.
 
-**Body witness `dc8a459`** (verified in a detached checkout: goldens 122/122, whole tape
+**Body witness `ad28382`** (verified in a detached checkout: goldens 122/122, whole tape
 86,293/86,293 exact, zero drops) trades engine motion for missed moves and the net wrongness at
 the owner's sites went up — 35:00 wrong 40→46 (engine-motion 33→11, missed 7→35), 37:01 wrong
 7→30 (3→5, 4→25); every missed move is differential (field 2 still). On the raw raster at 37:01
@@ -362,11 +362,11 @@ its own top edge and its geometry candidate all see. Four defects, sent to Codex
 
 Tools added: `experiments/raw_panel.py` (four strips per unit, both fields' top and bottom, crop
 drawn in, NTSC line labels) and `experiments/held_vs_top_runs.py` (runs where the applied offset
-contradicts the engine's own top candidate). The whole-tape follow audit of `dc8a459` is running.
+contradicts the engine's own top candidate). The whole-tape follow audit of `ad28382` is running.
 
 **Second instrument, same verdict.** `experiments/relative_comb_audit.py` weaves the two
 published crops and measures comb energy on static pixels at field-2 re-weave shifts −3..+3; a
-registered pair has its minimum at 0. On `dc8a459`: 05:00 slice 549 registered / 23 flat /
+registered pair has its minimum at 0. On `ad28382`: 05:00 slice 549 registered / 23 flat /
 **35 misregistered**, 37:01 298 / 15 / 15, 35:00 536 / 77 / 7, 01:26 70 / 6 / 2. The
 misregistered units are exactly the follow audit's engine-motion units plus the held runs the
 follow audit cannot see: at 05:00 ordinals 475–488 (14 units) the tape's caption sits on line
@@ -376,7 +376,7 @@ inherited (defects 1 and 2 above); at 37:01 the latched units 34, 43, 46. The co
 acceptance instrument for "no combing under yadif": it sees persistent wrong holds, which a
 unit-to-unit follow audit scores as still.
 
-## Round 4 result: `2efc416` (2-D body witness anchored on the measured position), verified 2026-09-05 ~06:00 JST
+## Round 4 result: `b8aafe2` (2-D body witness anchored on the measured position), verified 2026-09-05 ~06:00 JST
 
 Codex implemented defects 1–4 (goldens 132/132; witness agreement with the audit 534/534). Six
 slices, field 1, follow audit (still/follow/missed/engine-motion) and comb audit
@@ -421,7 +421,7 @@ observable separates the site from both neighbour ranges, and no threshold was t
 ordinals. Cost: engine 2.0 ms median / 2.65 ms p95 per unit (was 0.44; §11b budget 10 ms),
 state 168,088 bytes.
 
-**Whole tape, `2efc416` (before calibration):** follow audit field 1 engine-motion **837**
+**Whole tape, `b8aafe2` (before calibration):** follow audit field 1 engine-motion **837**
 (round-2 baseline 954, C/D 2,971), missed moves 2,104 (2,259), follows 6,065; field 2
 engine-motion 32, missed 3,078. Comb audit over 86,292 unit pairs: **78,908 registered, 3,693
 flat, 3,691 misregistered** (+1 ×2,038, +2 ×902, −1 ×691, others 60) — the whole-tape
@@ -807,11 +807,11 @@ branch: trees byte-identical to the backups on all 14 branches, author and commi
 subjects identical (main and round12 diffed line by line), zero offenders remaining on any
 working branch. Backups kept as `backup/<branch>-pre-trailer-fix` until the owner releases
 them. Cited hashes in this document and CLAUDE.md map as follows (old → new; commits before
-the first offender are unchanged, e.g. `e1c91f6`, `dc8a459`, `2efc416`):
-`490877b → 56edda0`, `339b83a → 92963f3`, `cb1b4ed → fb582c9`, `7254d58 → 5b6ae68`,
-`2f8bb86 → 63b5bf7`, `a683926 → a4a1bec`, `af6ff63 → 1a660cf`, `7e10fee → 72c1260`,
-`d871f1f → 67a9752`, `a1a91c8 → ac36073`, `e310f47 → 7fa4a64`, `3aacdc7 → 6d919a2`.
-Codex's worktree on `round12-saved-geometry` follows the rewritten branch (head `6d919a2`).
+the first offender are unchanged, e.g. `b7a94d5`, `ad28382`, `b8aafe2`):
+`490877b → 85a413b`, `339b83a → 27eac4d`, `cb1b4ed → c529ab4`, `7254d58 → e8a6f1a`,
+`2f8bb86 → ca7310e`, `a683926 → 0322323`, `af6ff63 → adaf161`, `7e10fee → 208d53d`,
+`d871f1f → 2301834`, `a1a91c8 → 5837b10`, `e310f47 → 1f77aff`, `3aacdc7 → 792d385`.
+Codex's worktree on `round12-saved-geometry` follows the rewritten branch (head `792d385`).
 
 ## STOP-WORK and role switch (owner, 2026-09-05 evening)
 
@@ -837,7 +837,7 @@ version of this note called the OFF+1 class "the black line in the crop"; that i
 class — corrected 2026-09-06 after the owner asked.) Round-14 figures
 follow when its verification lands; all three are the fallback-base record, not acceptance.
 
-**Round 14 (`6d919a2`) verification, Claude (22:51 JST): NOT a valid acceptance run.** Goldens
+**Round 14 (`792d385`) verification, Claude (22:51 JST): NOT a valid acceptance run.** Goldens
 235/235 and all eight slices reproduce Codex's table (comb misregistered 0/0/1/5/1/0, minute-43
 cold 25, torn 0). But the whole-tape paced replay in my checkout, run while three other whole-tape
 audits shared the machine, dropped **4,154 units at the pool and 153 at the ring** (published
@@ -845,15 +845,15 @@ audits shared the machine, dropped **4,154 units at the pool and 153 at the ring
 cost (Codex: 6.4 ms median / 10.06 ms p95) no longer keeps up with a 4 ms transfer pace under
 load — the §11b concern made concrete. The audits of the incomplete run are indicative only: comb
 763 misregistered, gap gauge field 1 OFF+1 1,791 (round 10: 2,956), follow field 1 engine-motion
-5,215. Round 10 (`5b6ae68`, merged main) remains the only verified fallback base. A second
+5,215. Round 10 (`e8a6f1a`, merged main) remains the only verified fallback base. A second
 round-14 pass at half pace on an idle machine is running for the record.
 
-**Round 14 half-pace record run (Claude, 2026-09-06 00:59 JST; `6d919a2`, idle machine, 8 ms
+**Round 14 half-pace record run (Claude, 2026-09-06 00:59 JST; `792d385`, idle machine, 8 ms
 pace, pool 128): clean — 86,293/86,293, zero drops.** Parity 40,217 + 18/2 vetoes + 0. Comb
 **55,315 registered / 30,352 flat / 622 misregistered** (round 10: 165; −1 ×388, +1 ×188). Gap
 gauge field 1: too high 277 (round 10: 319), too low 2,642 (2,956); field 2: too high 323 (367),
 too low 1,066 (1,197). Round 14 buys a small gain on the absolute classes with a large loss on
-the relative one. **Round 10 (`5b6ae68`) remains the fallback base.** Round 14 is not merged.
+the relative one. **Round 10 (`e8a6f1a`) remains the fallback base.** Round 14 is not merged.
 
 **Owner refinement of the hold contract (2026-09-06 00:55):** a vertically torn picture is the
 same class as a lost lock — old geometry invalid, re-acquire from zero when the lock returns.

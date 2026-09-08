@@ -333,7 +333,7 @@ already tracked is untracked the moment it is noticed, not at the end of the rou
 
 **When a rewrite is unavoidable, say whose commits it will re-hash and verify what survives.** Here
 author, email, author date, committer date, message and every `Co-authored-by` trailer were preserved
-(`84446cd` "Stabilize dark first-row identity" became `4714d70`, identical in all of them); the
+(`552ad2f` "Stabilize dark first-row identity" became `861ed49`, identical in all of them); the
 originals stayed on the unrewritten frozen branches as the record; the push used
 `--force-with-lease` against the known old hash; and the other agent's worktree was reset before its
 next turn (`git branch -f` refuses a branch that is checked out in another worktree — reset from

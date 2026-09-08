@@ -1491,7 +1491,7 @@ delivery edge; wrong one at acquisition.
   line 286 in ~87% of first-minute units and 100% of the EP slice — and field 1's moves are rigid
   whole-field-line shifts of caption + gap + picture together (parity test on raw units: per-field
   model 202–0 over a whole-picture one-display-line shift).
-- ✅ **P2 v9 — the line-21 engine (merged to main `e1c91f6`, 2026-09-05 early morning; Codex
+- ✅ **P2 v9 — the line-21 engine (merged to main `b7a94d5`, 2026-09-05 early morning; Codex
   wrote, Claude reviewed, two review rounds, 69/69 goldens, 18/18 API, 3/3 decoder).** Supersedes
   every estimator above. Per field per unit: decode every line of the field (NTSC 12–266 /
   272–528) as CEA-608 with parity (`cea608.c`, byte-exact against `experiments/cc608_decode.py`
@@ -1522,7 +1522,7 @@ delivery edge; wrong one at acquisition.
   flips: 2,023 parity-placed (the caption line itself moved for one unit), 734 geometry-placed
   of which 692 rigid (top and bottom moved together) and ~40 top-only under a fitted clip.
   **`captures/fulltape_render.{mp4,_registration.csv}` re-rendered from v9 (2026-09-05 01:09,
-  `render_fulltape.sh` at `6be3103`, gate all PASS: clean `-xerror` decode, 2879.410 s and
+  `render_fulltape.sh` at `6f7941d`, gate all PASS: clean `-xerror` decode, 2879.410 s and
   86,297 sidecar rows identical to the v7 pair, 172,592 frames; published by SHA-256-verified
   copy, old pair deleted).** Render sidecar: field 1 agrees with the parity truth 40,237/40,237
   too; pairs (0,0) 23,134, (2,2) 20,702, (1,0) 18,361, (3,2) 13,484, (1,1) 2,404; 7,207
@@ -1533,7 +1533,7 @@ delivery edge; wrong one at acquisition.
   renderer calls it once at the start, so the content-acquired field-2 zero differs. The renderer
   must make the live path's relock calls (run the same classifier) before its sidecar can be
   called the live path's output. The renderer's arming detector also broke when the crop origin
-  moved (fixed `6be3103`; LEARNINGS).
+  moved (fixed `6f7941d`; LEARNINGS).
   **Owner review of the v9 render (2026-09-05 01:30–02:30) — v9 as built FAILS the owner's
   invariant, and the review artifacts were wrong too.** The invariant (owner): the regenerated
   raster is identical in every unit and the tape's field position is directly readable every
@@ -1613,7 +1613,7 @@ delivery edge; wrong one at acquisition.
   field 2's zero) and "the top alone never moves the crop" (it suppressed 2,616 caption
   placements). Whole tape at `490877b`: 86,293/86,293, zero drops; parity acceptance field 1
   40,208 agree + 29 evidence-checked vetoes + 0 disagreements, field 2 24 + 1 + 0; comb
-  misregistered **1,052** of 86,293 unit pairs (`a683926` 1,889; `2efc416` ~3,700 by the old
+  misregistered **1,052** of 86,293 unit pairs (`a683926` 1,889; `b8aafe2` ~3,700 by the old
   rule) with 30,213 flat; Calibrated 82,051, bias 0/+1/+2 only; engine 1.35 ms median /
   1.37 p95 per unit, state 168,096 bytes. **Not built:** a raster-damage state — Codex's census
   at the owner's torn units (ordinals 62322–62326) found the Shuttle inserts decoding, tops
@@ -1645,7 +1645,7 @@ delivery edge; wrong one at acquisition.
   damage classifier was falsified (the torn units show absent testimony, not contradiction).
   **→ v10 (owner redirect 2026-09-07 20:00 JST; the standing instruction is `HANDBACK.md` at the
   root of both v10 worktrees).** Rounds 11–14 and the 2026-09-06/07 geometry-first experiment
-  (branches `geometry-first-engine` bc2931f and `geometry-first-harness` 84446cd, frozen; its
+  (branches `geometry-first-engine` 7eec699 and `geometry-first-harness` 552ad2f, frozen; its
   post-mortem `docs/reports/2026-09-07_three_tree_comparison.md`, accepted by the owner) did not
   beat round 10; main's round-10 engine (comb misregistered 165 of 86,293 pairs, parity 0
   disagreements) is the base for v10 and stays the measured fallback until v10 passes the whole
@@ -1942,7 +1942,7 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   ideas but nothing from it is carried without being re-derived from the contract. One Codex
   dispatch at a time, from this chat's own Codex thread, its reply read before the next.
 - The 2026-09-07 experiment's harness notes (its contract-v3 reference semantics, comb census and
-  run-E score) stay on the frozen branch `geometry-first-harness` (84446cd, this file §11); they
+  run-E score) stay on the frozen branch `geometry-first-harness` (552ad2f, this file §11); they
   are not carried into v10 (the experiment's engine, its reference builder's later semantics and
   its fitted constants are not carried — owner, 20:10; its raw-row measurements are, in the
   contract's section 2).

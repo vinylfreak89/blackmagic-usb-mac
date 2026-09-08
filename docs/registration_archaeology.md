@@ -273,7 +273,7 @@ and yourselves." 17:39 Claude reverts (`2930095`) to match Codex's answer and te
 line-19 render was its own commit. 17:41 the owner: "so what's this about a 486 height thing
 then?" and, given both standard answers, decides: **720×480 is clean aperture** (crop rows
 19/282 = lines 23/286, captions out of the render); **720×486 is an alternate output mode** (lines
-21–263 / 283–525, captions kept). `7285d89` restores 19/282 at 17:51.
+21–263 / 283–525, captions kept). `0d08180` restores 19/282 at 17:51.
 
 The root fault: three coordinate systems, unit rows (17/19), the standard's line numbers
 (21/23), and the deck's regenerated lines versus the tape's, all called "line N" by Claude
@@ -291,7 +291,7 @@ signal is valid." Secondary checks, never the primary gauge: leaky VBI framing d
 of the field, picture jumping above the deck's line-21 band ("video should obviously never touch
 there"), and the black line 22 between.
 
-`docs/registration_v9_plan.md` (`d61ee8e`, 18:06) records the agreed design: line 21 primary
+`docs/registration_v9_plan.md` (`30e6176`, 18:06) records the agreed design: line 21 primary
 (`d = row − 17`), the picture envelope secondary (top, bottom, height, black relative to the
 field's own blanking, VBI-type lines excluded by signature), one unit of memory, no lookahead or
 FIFO or backtracking, field parity as an atomic invariant, whole UYVY lines moved, every hold
@@ -398,7 +398,7 @@ patched that inversion instead of reversing it, and the owner's two later ruling
 
 ## The items, continued
 
-**15. The caption becomes the authority (v9, `e1c91f6`, 2026-09-05 01:00).** Codex's engine
+**15. The caption becomes the authority (v9, `b7a94d5`, 2026-09-05 01:00).** Codex's engine
 decoded every line of each field as CEA-608 and placed field 1 at `line − 21` whenever exactly
 one valid line sat off the insert (`Line21Placement`); geometry placed only otherwise
 (`GeometryLockDecides`); field 2 used a frozen "smeared XDS" envelope at line 286. Claude built
@@ -413,17 +413,17 @@ each unit by whether the crop change matched the body's shift since the previous
 built from the same slices the engine was being fixed on. The follow audit was relative and, as
 Codex later showed, labelled every late correction as engine motion; rules E and F of round 7
 were written on those mislabelled counts and suppressed 2,616 correct caption placements
-(`d871f1f` → `67a9752`).
+(`d871f1f` → `2301834`).
 
-**17. Rounds 4 to 8: the witness stack.** A 1-D body witness (`dc8a459`) that misread one-line
+**17. Rounds 4 to 8: the witness stack.** A 1-D body witness (`ad28382`) that misread one-line
 jitter at 37:01 and latched on the last applied crop; a 2-D witness anchored on the previous
-measured position (`2efc416`); a reliability margin measured against caption truth (0.8; wrong
+measured position (`b8aafe2`); a reliability margin measured against caption truth (0.8; wrong
 in about one unit of five hundred below it, but blind to 15–17% of real moves); a "tied witness
 abstains" rule that Claude first turned into a hold and then, on the falsification, back into
-"the top decides" (`56edda0`, round 8). Each round moved the comb figure: 3,691 → 1,889 → 1,052
+"the top decides" (`85a413b`, round 8). Each round moved the comb figure: 3,691 → 1,889 → 1,052
 misregistered unit pairs. Each also added a rule that only made sense on top of caption-first.
 
-**18. The field-2 zero and the 41-line walk (rounds 5–6, `a4a1bec` → `72c1260`).** Field 2 has
+**18. The field-2 zero and the 41-line walk (rounds 5–6, `0322323` → `208d53d`).** Field 2 has
 no parity gauge in the first recording, so Codex calibrated its zero by comb against field 1.
 Claude's brief froze `d1 − d2` as the segment constant; Codex refused it with the numbers (field 1
 jitters independently) and calibrated the zero instead. At minute 43 the calibration then walked
@@ -433,7 +433,7 @@ the same disagreement, drift fired every eight units, and each recalibration der
 from the old one. Round 6 fixed the four faults and added a ±3 bound as a brake. By the evening
 the brake was being recited as "a segment constant bounded to three lines".
 
-**19. Round 10, the best whole-tape state (`63b5bf7`, merged `5b6ae68`).** A bounded relative
+**19. Round 10, the best whole-tape state (`ca7310e`, merged `e8a6f1a`).** A bounded relative
 comb correction closed minute 43: comb misregistered 165 of 86,293 pairs, caption placement
 40,208 + 29 evidence-checked vetoes + 0 disagreements. The same evening the v7 and v8 engines
 were replayed through the same instruments: v8 combed less (326) than round 8 (1,052) because it
@@ -446,14 +446,14 @@ caption for absolute.
 ruling (save the last good geometry, hold a damaged raster, re-check once when it clears) was
 briefed by Claude first as a contradiction-based classifier, which Codex falsified on the torn
 units themselves (their inserts decode, tops measure, body MAD 5.7–11.1), then as "hold whenever
-no evidence" (`ac36073`). That fired on 23,442 field-1 units in 3,059 runs (22,107 of them "body
+no evidence" (`5837b10`). That fired on 23,442 field-1 units in 3,059 runs (22,107 of them "body
 witness tied"), one run 8,998 units long, and raised the comb figure from 165 to 620 by freezing
 stale positions and the wrong phase of real jitter. The raw panels of the fourteen longest holds
 showed one damaged site, one relock snow at a program cut, and twelve holds keeping a crop one or
 two lines high with the tape's black line inside the frame. The owner read them and stopped the
 work.
 
-**21. Round 14 and the black line 22 (`6d919a2`, 2026-09-05 19:54, unmerged).** In between,
+**21. Round 14 and the black line 22 (`792d385`, 2026-09-05 19:54, unmerged).** In between,
 two genuinely new facts: the Shuttle's reference raster, measured on the no-source capture
 (padding rows 0–6 and 261–269, blanking on lines 11–19, its timing pattern on line 20, its null
 caption insert on line 21, blanking on line 22, pass-through only from line 23 and from line 286
@@ -523,7 +523,7 @@ The first clean-sheet v9 implementation, culminating around `8336b78`, treated d
 
 That success concealed the inversion. The parity acceptance measured whether the engine followed its caption authority, not whether the resulting picture geometry was stable or correct. The whole-tape acceptance later reported 40,163/40,163 field-1 parity agreements and 25/25 field-2 agreements, yet the owner’s render still visibly bounced and admitted VBI/XDS lines.
 
-The next rounds deepened the inversion. When captions and geometry disagreed, `be7691a` added `CaptionOnlyMotion`, allowing picture evidence to veto captions—but only after the caption had already been made primary. `dc8a459` added a temporal body witness. `2efc416` replaced its weak one-dimensional profile with a two-dimensional comparison. Later rounds added comb corroboration, zero calibration, saved geometry, and gap authority. Each repaired a measured failure of the preceding hierarchy without restoring geometry to the top of that hierarchy.
+The next rounds deepened the inversion. When captions and geometry disagreed, `3061c8f` added `CaptionOnlyMotion`, allowing picture evidence to veto captions—but only after the caption had already been made primary. `ad28382` added a temporal body witness. `b8aafe2` replaced its weak one-dimensional profile with a two-dimensional comparison. Later rounds added comb corroboration, zero calibration, saved geometry, and gap authority. Each repaired a measured failure of the preceding hierarchy without restoring geometry to the top of that hierarchy.
 
 By round 12, `a1a91c8` held a saved “good” crop whenever caption, body, comb, or geometry did not provide enough evidence under the accumulated rules. That was contrary to the original contract: measurable geometry should have placed the unit, while only genuine raster damage or signal loss justified a hold. I had built an evidence-voting engine whose default was memory, rather than a geometry engine whose confirmations only resolved specific uncertainty.
 

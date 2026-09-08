@@ -28,7 +28,7 @@ instrument; no whole-tape run and no cost measurement existed on the experiment.
 ## 2. Roles
 
 - **Codex owns the code**: the registration engine in C, `src/field_registration/`, starting from main's merged
-  round-10 engine (`5b6ae68` merged into main; main HEAD `753b1d2`) — the best working engine on record (comb
+  round-10 engine (`e8a6f1a` merged into main; main HEAD `b15b459`) — the best working engine on record (comb
   misregistered 165 of 86,293 unit pairs on the whole tape; parity 40,208 agree, 0 disagree) — rewritten to the
   contract in section 3. Its goldens (`tests/`, failing-first) stay Codex's. Codex reports ms/unit (median, p95)
   with every engine change (CLAUDE.md §11b).
@@ -40,7 +40,7 @@ instrument; no whole-tape run and no cost measurement existed on the experiment.
   reviewing each other"): every engine change is reviewed by Claude for code and intent in whole-system context
   before merge; every harness change is reviewed by Codex the same way. A mismatch is decided by a deterministic
   test or a raw-row measurement; an interpretation question ends the turn and goes to the owner.
-- **The contract is the owner's words.** `docs/geometry_first_engine.md` at its dcca9ea wording (2026-09-07 16:19),
+- **The contract is the owner's words.** `docs/geometry_first_engine.md` at its 5e4646f wording (2026-09-07 16:19),
   the last version both agents had read and agreed on with the owner's 15:40 and 16:20 rulings recorded. Neither
   agent edits it alone: a proposed change is put to the other agent with the owner's quote and the measurement it
   rests on; if both reach extreme confidence it is edited in place and the commit says what changed and why; if not,
@@ -75,14 +75,14 @@ both and nothing else, and a caption on the insert is ambiguous over three place
 
 | who | worktree | branch | base |
 |---|---|---|---|
-| Codex (engine) | `/private/tmp/blackmagic-v10` | `v10-engine` | main `753b1d2` + the contract (`c31bb4b`) |
-| Claude (harness) | `/Users/vinylfreak89/Documents/blackmagic-usb-mac` (the desktop session's primary checkout, so the session loads this branch's `CLAUDE.md`; moved from `/private/tmp/blackmagic-v10-harness` at 20:42 JST) | `v10-harness` | main + Codex's committed harness (`geometry-first-harness` to `84446cd`) + the contract, the engine-side tools and today's reports from the frozen engine branch (`c073d43`, `fe011be` before the rewrite) |
+| Codex (engine) | `/private/tmp/blackmagic-v10` | `v10-engine` | main `b15b459` + the contract (`9d57654`) |
+| Claude (harness) | `/Users/vinylfreak89/Documents/blackmagic-usb-mac` (the desktop session's primary checkout, so the session loads this branch's `CLAUDE.md`; moved from `/private/tmp/blackmagic-v10-harness` at 20:42 JST) | `v10-harness` | main + Codex's committed harness (`geometry-first-harness` to `552ad2f`) + the contract, the engine-side tools and today's reports from the frozen engine branch (`4753470`, `fe011be` before the rewrite) |
 
 Frozen when Codex's current turn returns (no further commits; kept for the record): `geometry-first-engine`
-(branch ref only, no worktree since 20:42 JST; HEAD `bc2931f`, pushed; rewound to the dcca9ea contract at `6696fa4`)
-and `geometry-first-harness` (`/private/tmp/blackmagic-v9`, HEAD `84446cd`, Codex's turn 17 returned 20:2x JST: run R
+(branch ref only, no worktree since 20:42 JST; HEAD `7eec699`, pushed; rewound to the 5e4646f contract at `8db3c99`)
+and `geometry-first-harness` (`/private/tmp/blackmagic-v9`, HEAD `552ad2f`, Codex's turn 17 returned 20:2x JST: run R
 scored "not accepted on any capture", the 2,600 owner-review bwdif frames at
-`experiments/geometry_oracle/reports/engine_run_R_disagreements/` (2,600 `.webp`, untracked from the v10 branches at 20:42 JST — render frames are scratch, `*.webp` and `*.mov` now ignored; they remain at `84446cd` and in the frozen worktree `/private/tmp/blackmagic-v9`), no contract objections; its final committed
+`experiments/geometry_oracle/reports/engine_run_R_disagreements/` (2,600 `.webp`, untracked from the v10 branches at 20:42 JST — render frames are scratch, `*.webp` and `*.mov` now ignored; they remain at `552ad2f` and in the frozen worktree `/private/tmp/blackmagic-v9`), no contract objections; its final committed
 harness is carried into `v10-harness`). `AGENTS.md` is a symlink to `CLAUDE.md` in every worktree. Merges to main go through mutual review;
 main stays the measured fallback (round 10) until v10 passes the whole tape.
 
@@ -90,7 +90,7 @@ main stays the measured fallback (round 10) until v10 passes the whole tape.
 only, dropping `*.csv` and `*.webp` from their whole history at the owner's instruction). Author, email, both dates,
 messages and every `Co-authored-by` trailer survive; every hash on the v10 line before that time changed, and
 filter-repo also remapped hashes quoted INSIDE commit messages — so three messages that meant the frozen harness tip
-`84446cd` now name its v10-line copy `4714d70`. Not the same tree: `84446cd` has 2,775 paths and tree `c89df51f`, `4714d70`
+`552ad2f` now name its v10-line copy `861ed49`. Not the same tree: `552ad2f` has 2,775 paths and tree `c89df51f`, `861ed49`
 has 151 and tree `28fc774d`, the 2,624 removed paths being exactly the generated `.csv` and `.webp`; every shared
 path is byte-identical, and the author, both dates, the message and the trailers are preserved. The frozen branches are untouched and
 are the reference for anything before v10. LEARNINGS.md carries why a rewrite re-hashes the other agent's commits.
@@ -138,7 +138,7 @@ V-stabilize-off capture must be re-taken from the deck if lost (30–45 s, S-Vid
 ### The harness's artifacts (Claude's)
 
 - References per capture (raw-row measurements, one row per device counter): Codex's committed builder
-  `experiments/geometry_oracle/build_reference.py` and its `reports/reference_*.csv` at `84446cd` (its run-R score
+  `experiments/geometry_oracle/build_reference.py` and its `reports/reference_*.csv` at `552ad2f` (its run-R score
   and census in `reports/engine_run_R_score.md` and `reports/reference_v3_summary.md`) are the starting point; the harness owner re-derives them from the contract and states, per column, the raw-row measurement behind
   it. The commercial tape's stable-interval invariant (top 23/286 constant from counter 6593, the switch-line count
   constant, the switch line moving only within the partial line's one-row travel) is an external test assertion,
@@ -195,7 +195,7 @@ them drift".
    switch line, S, the band's extent and count, the clip, the closure, the caption line when visible, the comb of the
    two fields at the reference's own placement, and the measurability class (observed / unmeasurable / not
    applicable) — never a substituted number. Starting points: Codex's committed builder
-   `experiments/geometry_oracle/build_reference.py` and `reports/reference_*.csv` at `84446cd`, and Claude's Python
+   `experiments/geometry_oracle/build_reference.py` and `reports/reference_*.csv` at `552ad2f`, and Claude's Python
    instrument `experiments/switch_geometry.py` as a second, independent reading; every column's raw-row derivation is
    stated in the reference report, and every constant is a standard, a stated measurement on the captures, or
    labelled a defect. The invariant tests: capture 1's stable interval from counter 6593 (`stable_interval_check.py`,
