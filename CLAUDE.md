@@ -502,6 +502,16 @@ result in §9 — and note the `214/16` status register is still un-probed acros
 **→ Signal-state classification is therefore a real design problem. Do NOT reduce it to one
 `signal_valid` boolean.** Three separate layers, each recorded:
 1. **Transport state** — exact unit / partial unit / packet hole / absent video / counter discontinuity.
+**`SubBlackMuteLike` on a degenerating passage is NOT a mislabel** (owner, 2026-09-09): "the label sub mute black
+like is not a miss. that is actually what the picture looks like before it degenerates into snow." Measured at
+27:18 on fixture A, the sequence through a signal stop is programme → wrecked/snow-like → sub-black → deck grey mute
+→ programme, and the sub-black stage is a real appearance of the signal, not the classifier getting the level wrong.
+Do not chase it as a defect. (What WAS measured there and is a defect: eight units of wrecked picture at 27:18.47–.70
+classified `ProgramLike`/`Present` with the engine registering on them — units 49105–49112, adjacent-row correlation
+falling from 0.89 to 0.56–0.77 and frame-to-frame correlation from 0.98 to about zero. Separately, 11 units at
+27:19.17–.50 whose raster is grey at mean 117 carry the sub-black label; the source state `Muted` is right
+throughout, which is what rule 5 gates on, so this is recorded as information, not as a defect.)
+
 2. **Raster appearance** — program-like / snow-like / deck-grey / sub-blanking mute / device
    no-signal / flat-ambiguous.
 3. **Source-state inference** — present / reacquiring / deck-muted / no input / **unknown**, with
