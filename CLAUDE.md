@@ -364,7 +364,21 @@ Shuttle directly, with and without setup** — that isolates the Shuttle; then t
 known signal. Method upgrades for the next pass: gate on low spatial variance + neutral chroma +
 unimodal luma histogram (not just p95); report the histogram mode (median biases on detail);
 measure setup as **black-minus-same-line-porch** (that difference IS setup); require the black
-peak to settle across contiguous frames. **Renderer implications (adopted):** the Y16/C128
+peak to settle across contiguous frames. **PLUGIN REQUIREMENT — level correction is a configurable input (owner, 2026-09-09): "this is another input needed
+for the plugin (either configurable eventually at the secondary app or in OBS). the levels need to be corrected."**
+The device places 0 IRE at code ≈ 1.5 rather than studio black 16 (measured three ways, §6 above), so its output is
+not studio-range and a consumer that assumes BT.601 levels is wrong about both ends. The correction is the affine
+remap this file already mandates — from MEASURED black and white points, never assumed ones — mapping the source's
+7.5 IRE setup to code 16 and its 100 IRE to 235. It belongs in the delivery path as a user-settable option: the
+OBS source's properties now, the configurator app (P5) later, defaulting to off so nothing is altered silently, and
+never applied to what a recorder writes as a master unless the user asks. Two open measurements before it can be
+specified: whether fixture A shows the same pedestal as the commercial tape (its black sits at ≈ 9, floor-crushed
+and ≈ 24 in three passages, a spread as wide as the pedestal, and the owner's doubt is that its noise makes the
+measurement unreliable), and where 100 IRE actually lands — at ≈ 2.38 codes per IRE from the device's line-21
+insert, 100 IRE would sit near code 239, above studio white, so whether whites exceed 235 and whether anything is
+lost at the top is measured, not assumed.
+
+**Renderer implications (adopted):** the Y16/C128
 hard-padding ruler stays valid (device-generated, says nothing about program black); classifiers
 and registration landmarks must treat program black as **relative/adaptive, never assume Y16**;
 any future presentation-side setup removal is an affine remap from measured black/white — and the
