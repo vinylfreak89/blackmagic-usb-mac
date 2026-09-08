@@ -126,6 +126,26 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 | 18, 281 | 22, 285 | blanking, Y 1.4 | Shuttle |
 | 19–260, 282–522 | 23–264, 286–526 | pass-through from the tape and deck | source |
 
+- **The delivered window is narrower than the line but wider than the active picture, and that is what makes
+  horizontal timing readable at all** (standards, with the measurement that follows). An NTSC line is 858 samples at
+  13.5 MHz and the device delivers 720 (BT.601 / SMPTE 259M); the analogue horizontal blanking interval is 10.9 µs =
+  147 samples (SMPTE 170M). Since 147 > 858 − 720 = 138, a correctly timed line ALWAYS shows about 9 samples of
+  blanking inside the window, split between its two ends and nowhere else. Displace the line's timing and that
+  blanking moves with it: one end loses its blanking, the other gains it, and at full displacement the whole
+  147-sample interval sits inside the window. So locating a row's blanking IS measuring its timing, with no reference
+  to what the picture is doing — which is why an "active edge" (where content begins) is not a timing edge, and why
+  horizontal and vertical geometry are one problem rather than two. Measured on the commercial capture (2026-09-09,
+  independent instrument): the head-switch band's rows are displaced about 160 samples, the whole blanking interval
+  inside the window; reading the bottom this way puts it on one row in 496 of 526 measured field-1 units (99.4%
+  within one row) and 443 of 504 field-2 units, flags no picture row, and refuses the rewind (337 of 338 units before
+  counter 6593 unmeasurable).
+- **Black picture content in this source is clipped to exactly the blanking level, with the same dither** (mean 1.40
+  against 1.39, standard deviation 0.49 against 0.49, measured inside content runs and band runs). No level test and
+  no texture test can separate content from blanking here; only geometry can.
+- **A field's horizontal timing is not uniform down the field**, so its variance is measured over a local window of
+  rows, never whole-field: the top rows of each field (lines 23–34) carry end levels of median 4.6–6.6 and p95 52–63
+  above blanking against median 0.6 and p95 7.6 just above the head switch — the flagging of a VHS field's first
+  lines. Judged whole-field, those top rows hide the band.
 - Nothing the tape carries above line 23 (286) reaches us except the re-encoded bytes on the insert. The tape's own
   VBI becomes visible only when the field is displaced downward: at +1 its black line 22 appears on line 23 (luma
   4–7 on fixture A), at +2 its line 21 on 23, at +3 its line 20 on 23 and its line 21 on 24.
