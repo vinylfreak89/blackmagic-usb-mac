@@ -365,6 +365,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    is left where it was because nothing measurable says to move it (not a claim that the position held), and the
    position is re-measured when the edge returns. Horizontal tearing
    is not a geometry event. Snow-like signal or a vertical tear is a lost lock: everything resets, both fields at once.
+   **A unit carrying a horizontal timing error other than its own head switch may not be the confirmed unit**: it
+   holds, and the lock's constants are taken from a clean unit (owner, 2026-09-09: "other horizontal timing error
+   should result in a hold rather than a lock"). Holding through such damage is the rule above; this is its other
+   half, that damage may not seed the geometry either.
 7. The tape's line 22 never renders: a source whose own line 22 carries picture keeps its origin at 23 and that line
    is dropped; at a negative offset the render's first line is whatever the Shuttle put at 23 + d — its blank at −1,
    its caption insert at −2 (owner, 16:16–16:18: "if the shuttle overwrote it, tough noogies"). Rows past the clip
