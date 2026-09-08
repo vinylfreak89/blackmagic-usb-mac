@@ -364,19 +364,21 @@ Shuttle directly, with and without setup** — that isolates the Shuttle; then t
 known signal. Method upgrades for the next pass: gate on low spatial variance + neutral chroma +
 unimodal luma histogram (not just p95); report the histogram mode (median biases on detail);
 measure setup as **black-minus-same-line-porch** (that difference IS setup); require the black
-peak to settle across contiguous frames. **PLUGIN REQUIREMENT — level correction is a configurable input (owner, 2026-09-09): "this is another input needed
-for the plugin (either configurable eventually at the secondary app or in OBS). the levels need to be corrected."**
-The device places 0 IRE at code ≈ 1.5 rather than studio black 16 (measured three ways, §6 above), so its output is
-not studio-range and a consumer that assumes BT.601 levels is wrong about both ends. The correction is the affine
-remap this file already mandates — from MEASURED black and white points, never assumed ones — mapping the source's
-7.5 IRE setup to code 16 and its 100 IRE to 235. It belongs in the delivery path as a user-settable option: the
-OBS source's properties now, the configurator app (P5) later, defaulting to off so nothing is altered silently, and
-never applied to what a recorder writes as a master unless the user asks. Two open measurements before it can be
-specified: whether fixture A shows the same pedestal as the commercial tape (its black sits at ≈ 9, floor-crushed
-and ≈ 24 in three passages, a spread as wide as the pedestal, and the owner's doubt is that its noise makes the
-measurement unreliable), and where 100 IRE actually lands — at ≈ 2.38 codes per IRE from the device's line-21
-insert, 100 IRE would sit near code 239, above studio white, so whether whites exceed 235 and whether anything is
-lost at the top is measured, not assumed.
+peak to settle across contiguous frames. **NO LEVEL CORRECTION — the owner's ruling, 2026-09-09:** "nah lets not adjust too much. the standard fix NTSC-J or
+NSTC-M is the only thing that might have been necessary, and its not. they are passing through the signal at the
+proper levels which means the digital file captures them as intended. NSTC-M is a higher level black than NTSC-J and
+that just means those tapes will have more dynamic range, thats just the kicks." So the level-correction option
+raised earlier the same day is withdrawn; nothing in the delivery path remaps levels.
+
+The measurement supports the ruling once "0 IRE at code 1.5" is read correctly. Studio range puts BLACK at 16, not
+blanking: for an NTSC-M source with 7.5 IRE setup, a correct decoder maps 7.5 IRE → 16 and 100 IRE → 235, which is
+219 codes over 92.5 IRE = 2.368 codes per IRE, and leaves 0 IRE blanking at 16 − 17.8 ≈ −1.8, below the legal floor.
+Measured blanking is 1.375–1.53, i.e. at the floor, and the commercial tape's black card measures 17.70, within 1.7
+codes of studio black. On that reading the device is doing the standard NTSC-M mapping and the file is already right.
+One point stays open rather than being asserted: the earlier analysis rejected exactly this explanation on the
+grounds that a clipped 0 IRE would produce a constant, whereas the blanking samples are distributed (58% at code 1,
+38.6% at 2, 2.9% at 3). That objection has force and is not resolved here; what is settled is the owner's decision
+not to adjust, and the fact that black lands where studio black belongs.
 
 **Renderer implications (adopted):** the Y16/C128
 hard-padding ruler stays valid (device-generated, says nothing about program black); classifiers
