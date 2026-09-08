@@ -58,6 +58,9 @@ def main():
                    for r in csv.DictReader(published.open()) if r['kind'] == 'V'}
         assert len(visible) == 29, len(visible)
         assert visible[11][0] == 2, visible[11]
+        for counter in range(4):
+            assert rows[counter]['registration_measured'] == '0'
+            assert visible[counter] == (0, 0)
         for start, end in [(12, 16), (25, 28)]:
             held = visible[start - 1]
             for counter in range(start, end + 1):

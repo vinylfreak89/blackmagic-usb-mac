@@ -2037,6 +2037,14 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**v10 rule-5 gate implementation:** `signal_result.normal_picture` combines current-unit
+ProgramLike evidence with acquired Present. The frameserver never calls `fieldreg_process`
+when false; it clears the temporal witness and publishes the last successfully published
+crop, with schema-15 `SignalGateHold`, `registration_measured=0`, and `signal_gate_cause`.
+The synthetic live-path test covers the first gray unit under prior Present hysteresis,
+gray/sub-black runs at a nonzero crop, and initial acquisition at standard placement.
+The separate snow detector repair is still required for falsely ProgramLike wrecked units.
+
 **v10 ownership implementation:** registration feedback into `signal_state` is retired.
 Source confirmation closes the source interval from raster evidence only. Engine lock state,
 applied crops and each field's measured geometry changes are separate schema-14 record fields;

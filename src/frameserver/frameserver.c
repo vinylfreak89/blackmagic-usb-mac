@@ -66,6 +66,7 @@ struct frameserver {
     uint64_t ring_drops_pending;           // producer-owned: attached only to a later item
     uint64_t ring_drop_first_ordinal;
     int8_t last_comb_correction;
+    int8_t last_published_d1, last_published_d2;
     uint64_t comb_correction_install_ordinal;
 };
 
@@ -224,7 +225,7 @@ static int log_header(FILE *L){
                "geometry_lock_known,engine_applied_d1,engine_applied_d2,resolution,evidence_mode,confidence,"
                "f1_reason,f1_gauge,f1_insert_present,f1_insert_bytes,f1_insert_relation,f1_caption_confirmation,f1_parity_candidates,f1_fallback_candidates,f1_gauge_line,f1_gauge_bytes,f1_gauge_amplitude,f1_geometry_d,f1_blank_mean,f1_blank_chroma_noise,f1_body_witness_valid,f1_body_shift,f1_body_mad,f1_body_geometry_agrees,f1_body_reference_top,f1_body_implied_top,f1_body_differential,f1_body_common_mode,f1_picture_position_valid,f1_measured_picture_top,f1_picture_from_body,f1_recorded_first,f1_recorded_last,f1_raw_top,f1_raw_bottom,f1_switch_line,f1_first_full_other_head_line,f1_rf_peak_line,f1_rf_peak_position,f1_raw_span,f1_picture_rows,f1_band_extent,f1_observed_switch_line_count,f1_switch_count_agrees,f1_switch_count_conflict,f1_switch_signature,f1_switch_measurable,f1_geometry_measurable,f1_lock_state,f1_zero_source,f1_lock_id,f1_lock_top,f1_lock_switch_line_count,f1_lock_switch_line_count_known,f1_clip_state,f1_clip_ceiling,f1_expected_bottom,f1_lines_lost,f1_invariant_residual,"
                "f2_reason,f2_gauge,f2_insert_present,f2_insert_bytes,f2_insert_relation,f2_caption_confirmation,f2_parity_candidates,f2_fallback_candidates,f2_gauge_line,f2_gauge_bytes,f2_gauge_amplitude,f2_geometry_d,f2_blank_mean,f2_blank_chroma_noise,f2_body_witness_valid,f2_body_shift,f2_body_mad,f2_body_geometry_agrees,f2_body_reference_top,f2_body_implied_top,f2_body_differential,f2_body_common_mode,f2_picture_position_valid,f2_measured_picture_top,f2_picture_from_body,f2_recorded_first,f2_recorded_last,f2_raw_top,f2_raw_bottom,f2_switch_line,f2_first_full_other_head_line,f2_rf_peak_line,f2_rf_peak_position,f2_raw_span,f2_picture_rows,f2_band_extent,f2_observed_switch_line_count,f2_switch_count_agrees,f2_switch_count_conflict,f2_switch_signature,f2_switch_measurable,f2_geometry_measurable,f2_lock_state,f2_zero_source,f2_lock_id,f2_lock_top,f2_lock_switch_line_count,f2_lock_switch_line_count_known,f2_clip_state,f2_clip_ceiling,f2_expected_bottom,f2_lines_lost,f2_invariant_residual,"
-               "parity_state,comb_check,comb_best_shift,parity_bias,comb_best_energy,comb_second_energy,comb_static_fraction,comb_correction,comb_correction_install_ordinal,comb_safe,published,drop_reason,schema_version,preceding_ring_drops,f1_geometry_observation_changed,f2_geometry_observation_changed\n") < 0 ? -1 : 0;
+               "parity_state,comb_check,comb_best_shift,parity_bias,comb_best_energy,comb_second_energy,comb_static_fraction,comb_correction,comb_correction_install_ordinal,comb_safe,published,drop_reason,schema_version,preceding_ring_drops,f1_geometry_observation_changed,f2_geometry_observation_changed,registration_measured,signal_gate_cause\n") < 0 ? -1 : 0;
 }
 
 static int log_field(FILE *L, const fieldreg_field_decision *d)
@@ -306,7 +307,7 @@ static void process_item(frameserver *f, const fs_item *it){
                              (unsigned long long)it->obs.ordinal);
             if (wr >= 0) wr = log_field(f->log, NULL);
             if (wr >= 0) wr = log_field(f->log, NULL);
-            if (wr >= 0) wr = fprintf(f->log, ",Uncalibrated,n.a.,-128,0,0.000,0.000,0.000,%d,%lld,0,0,RingFullTail,%u,%llu,0,0\n",
+            if (wr >= 0) wr = fprintf(f->log, ",Uncalibrated,n.a.,-128,0,0.000,0.000,0.000,%d,%lld,0,0,RingFullTail,%u,%llu,0,0,0,NoRaster\n",
                                       f->last_comb_correction,
                                       f->comb_correction_install_ordinal == UINT64_MAX ?
                                       -1LL : (long long)f->comb_correction_install_ordinal,
@@ -360,7 +361,14 @@ static void process_item(frameserver *f, const fs_item *it){
     }
     if (unit){
         f->st.exact_units++;
-        have_d = fieldreg_process(f->eng, unit, &d);
+        if (classified && sr.normal_picture) {
+            f->st.registration_calls++;
+            have_d = fieldreg_process(f->eng, unit, &d);
+        } else {
+            f->st.signal_gate_units++;
+            /* A gated raster is not a previous-picture witness either. */
+            fieldreg_discontinuity(f->eng);
+        }
         if (have_d && d.comb_correction != f->last_comb_correction) {
             f->last_comb_correction = d.comb_correction;
             f->comb_correction_install_ordinal = d.comb_correction == 0 ?
@@ -370,10 +378,17 @@ static void process_item(frameserver *f, const fs_item *it){
         uint64_t apts = 0; int aknown = ap_lookup(f->aud, obs.epoch, obs.counter_extended, &apts, NULL);   // audio-clock time of this unit
         if (aknown) atomic_fetch_add(&f->audio_master_frames, 1);
         int rc = fp_publish(f->pub, unit, FP_UNIT_BYTES, obs.counter_extended,
-                            have_d ? d.applied_d1 : 0, have_d ? d.applied_d2 : 0,
+                            have_d ? d.applied_d1 : f->last_published_d1,
+                            have_d ? d.applied_d2 : f->last_published_d2,
                             obs.transport == UNIT_TRANSPORT_COMPLETE ? FP_TRANSPORT_COMPLETE : FP_TRANSPORT_SHORT,
                             aknown, apts);
-        if (rc == 0){ f->st.published++; published = 1; } else if (rc == 1) f->st.publisher_dropped++;
+        if (rc == 0){
+            f->st.published++; published = 1;
+            if (have_d) {
+                f->last_published_d1 = d.applied_d1;
+                f->last_published_d2 = d.applied_d2;
+            }
+        } else if (rc == 1) f->st.publisher_dropped++;
         // The publisher copied the bytes: free the slot before the (slow) log write so slot
         // occupancy is the analysis time, not analysis + I/O.
         atomic_store(&f->slot_used[it->slot], 0);
@@ -388,13 +403,15 @@ static void process_item(frameserver *f, const fs_item *it){
             classified ? signal_source_state_name(sr.source) : "Unknown", classified ? sr.source_confidence : 0.0,
             (unsigned long long)(classified ? sr.unsettled_interval_id : 0), classified && sr.unsettled,
             have_d ? d.frame_observation_d1 : 0, have_d ? d.frame_observation_d2 : 0,
-            have_d ? d.applied_d1 : 0, have_d ? d.applied_d2 : 0,
+            have_d ? d.applied_d1 : f->last_published_d1,
+            have_d ? d.applied_d2 : f->last_published_d2,
             have_d ? d.baseline_d1 : 0, have_d ? d.baseline_d2 : 0,
             have_d && d.geometry_lock_known, have_d ? d.applied_d1 : 0, have_d ? d.applied_d2 : 0,
-            "Immediate", have_d ? fieldreg_mode_name(d.mode) : "None", have_d ? d.confidence : 0.0);
+            "Immediate", have_d ? fieldreg_mode_name(d.mode) :
+                unit ? "SignalGateHold" : "None", have_d ? d.confidence : 0.0);
         if (wr >= 0) wr = log_field(f->log, have_d ? &d.field[0] : NULL);
         if (wr >= 0) wr = log_field(f->log, have_d ? &d.field[1] : NULL);
-        if (wr >= 0) wr = fprintf(f->log, ",%s,%s,%d,%d,%.3f,%.3f,%.6f,%d,%lld,%d,%d,%s,%u,%llu,%d,%d\n",
+        if (wr >= 0) wr = fprintf(f->log, ",%s,%s,%d,%d,%.3f,%.3f,%.6f,%d,%lld,%d,%d,%s,%u,%llu,%d,%d,%d,%s\n",
             have_d ? fieldreg_parity_state_name(d.parity_state) : "Uncalibrated",
             have_d ? fieldreg_comb_check_name(d.comb_check) : "n.a.",
             have_d ? d.comb_best_shift : FIELDREG_UNKNOWN,
@@ -409,7 +426,12 @@ static void process_item(frameserver *f, const fs_item *it){
             it->drop == FS_DROP_POOL_FULL ? "PoolFull" : (!published && unit ? "PublisherFull" : "None"),
             FS_DECISION_LOG_SCHEMA, (unsigned long long)rd,
             have_d && d.geometry_observation_changed[0],
-            have_d && d.geometry_observation_changed[1]);
+            have_d && d.geometry_observation_changed[1],
+            unit && classified && sr.normal_picture,
+            !unit ? "NoRaster" : !classified ? "Unclassified" :
+            sr.normal_picture ? "None" :
+            sr.observed_appearance == SIGNAL_APPEARANCE_PROGRAM_LIKE ?
+                "SourceAcquiring" : signal_appearance_name(sr.observed_appearance));
         if (wr < 0){ f->st.log_write_errors++; f->log_file_errors++; } else f->st.log_rows++;   // a failed row is never counted as written
         fs_test_after_log_row(f, f->log);
     }

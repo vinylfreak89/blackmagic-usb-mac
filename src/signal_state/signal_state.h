@@ -82,6 +82,9 @@ typedef struct signal_result {
     bool host_raster_unobserved;
     signal_measurements measurements;
     uint32_t actions;
+    /* Current raster eligibility, never the previous hysteretic appearance. */
+    bool normal_picture;
+    signal_appearance observed_appearance;
 
     /* Source acquisition only; registration lock/phase belongs to the engine. */
     bool unsettled;

@@ -401,6 +401,7 @@ bool signal_state_classify(signal_state *state,
     }
 
     signal_appearance observed_appearance = out->appearance;
+    out->observed_appearance = observed_appearance;
     double observed_confidence = out->appearance_confidence;
     if (observed_appearance == state->appearance_candidate) {
         increment_saturating(&state->appearance_candidate_count);
@@ -473,6 +474,9 @@ bool signal_state_classify(signal_state *state,
         }
     }
     out->source = state->stable_source;
+    out->normal_picture = unit->fixed_raster_eligible && unit->bytes &&
+        observed_appearance == SIGNAL_APPEARANCE_PROGRAM_LIKE &&
+        state->stable_source == SIGNAL_SOURCE_PRESENT;
     out->source_confidence = state->stable_source == SIGNAL_SOURCE_UNKNOWN
                                  ? 0.0
                                  : target == state->stable_source

@@ -30,7 +30,7 @@ extern "C" {
 
 typedef struct frameserver frameserver;
 
-#define FS_DECISION_LOG_SCHEMA 14
+#define FS_DECISION_LOG_SCHEMA 15
 
 typedef struct {
     cc_config capture;          // device input or replay_path
@@ -77,6 +77,7 @@ typedef struct {
     // Invariants: published + dropped_pool_full + publisher_dropped == exact_units;
     //             exact_units + eligible ring drops == eligible_observations.
     uint64_t unsettled_units, begin_segment_calls, discontinuity_calls;
+    uint64_t registration_calls, signal_gate_units;
     uint64_t log_rows;                // cumulative over every attached log file
     uint64_t log_files;               // decision-log files opened (cfg.decision_log + fs_log_start)
     uint64_t log_write_errors;        // rows whose fprintf failed (NOT counted in log_rows): the sidecar is incomplete

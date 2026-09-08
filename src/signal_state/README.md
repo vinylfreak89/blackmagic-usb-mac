@@ -16,6 +16,12 @@ Registration never feeds back into this library. The caller, not this library, i
 `fieldreg_begin_segment()` or `fieldreg_discontinuity()` according to the
 returned action bits.
 
+`normal_picture` requires the current appearance observation to be ProgramLike
+and the source to have acquired Present. A previous hysteretic ProgramLike/Present
+label cannot authorize a current gray, sub-black, snow or unknown raster. The
+frameserver publishes its last successful crop through this gate and emits
+`SignalGateHold`, `registration_measured=0`, and the current gate cause.
+
 `SIGNAL_ACTION_REGISTRATION_DISCONTINUITY` is transport truth. Acquisition and
 relock transitions produce `SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT`; ordinary
 scene cuts or global luma changes do not. Optional audio-mute/OSD inputs are
