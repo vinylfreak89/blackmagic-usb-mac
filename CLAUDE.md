@@ -595,7 +595,25 @@ twice on the whole tape (43,693–43,694) and both are real. What it does instea
 overflows against a reader going at ~1 GB/s, its HostLoss becomes parser holes, and the tool prints no
 capture-level loss counter. Re-run at `--pace-us 8000` (2× realtime) it is 86,293 exact, 0 holes, 0 drops, ring
 high-water 0. Use `--pace-us 8000` for a whole-tape replay, or a ring larger than the file for a slice; never
-trust an unpaced whole-tape run's exit code. (This is the §6 hazard already recorded for
+trust an unpaced whole-tape run's exit code.
+
+**Rule 5's gate and the snow correction, measured over the whole tape (2026-09-09, Codex wrote,
+Claude reviewed and scored).** `frameserver_replay --pace-us 8000` over `fulltape.cap6`: 86,293
+exact units, 0 holes, 0 drops, ring high-water 0. Scored against
+`experiments/signal_state_acceptance/`, whose fixture is the audit's raster-confirmed units:
+
+| count | before | after | requirement |
+|---|---:|---:|---|
+| confirmed non-picture read as normal picture | 17 | **2** | must not rise |
+| mute label on confirmed programme | 108 | **108** | must not rise |
+| registration ran on confirmed non-picture | 270 | **0** | must be 0 after rule 5 |
+| lock-like loss on confirmed programme | not measurable | **0** | must be 0 |
+
+So the gate is complete across the tape and nothing regressed, which is the owner's stated bar for
+this work ("any changes should not introduce false positives (or false negatives)", 2026-09-09).
+The two remaining misses are units 43,678–43,679, the onset of the recording-boundary event. The
+108 mute labels on dark programme are the pre-existing class and are now the largest one left.
+Not yet through the four-capture acceptance of HANDBACK §7 step 3. (This is the §6 hazard already recorded for
 `shuttle_no_input_45s.tpc`, now measured at scale and with the silent-exit-0 half named.)
 
 2. **Raster appearance** — program-like / snow-like / deck-grey / sub-blanking mute / device

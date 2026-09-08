@@ -21,9 +21,9 @@ whole-tape signal-state audit.
 
 | # | item | where it is written down | state |
 |---|---|---|---|
-| A1 | Rule 5 gate: registration off on anything but normal picture | contract rule 5; CLAUDE.md §11; the +101/+118-line crops from a contentless raster are in CLAUDE.md §6 | dispatched 2026-09-09 04:3x |
-| A2 | Signal-state snow / lost-lock correction at 27:18 | CLAUDE.md §6; contract rule 5b | dispatched with A1 |
-| A3 | Retire the registration → classifier feedback path | CLAUDE.md §11 (the one-way ownership rule and its deciding test) | dispatched with A1; its decision came back in the task output, not a turn log, so there is no `codex_v10_turn17.log` to cite |
+| A1 | Rule 5 gate: registration off on anything but normal picture | contract rule 5; the whole-tape score is in CLAUDE.md §6 | implemented, reviewed, whole-tape UNGATED 270 → **0**; awaiting the four-capture acceptance |
+| A2 | Signal-state snow / lost-lock correction at 27:18 | CLAUDE.md §6; contract rule 5b | implemented, reviewed, whole-tape misses 17 → **2** (units 43,678–43,679, an event onset); awaiting acceptance |
+| A3 | Retire the registration → classifier feedback path | CLAUDE.md §11 (the one-way ownership rule) | implemented; its first deciding test was vacuous (a macro compiled the body out) and is replaced by one requiring the retired names to fail compilation |
 | A4 | Per-source timing and level references that die with the lock | contract §3, rule 5b | not implemented, and wider than first written: `grep` finds **no line-22 level comparator in the engine at all**, though contract rule 4 requires the owner's eight-slot running comparator; the level references are recomputed per `field_measurement` and never retained under the lock |
 | A5 | Undeclared constants named or derived | contract rule 4 ("no magic numbers") | **four**, not three: `caption_like_damage`, `timing_like_damage`, the `zero_difference` gate, and `field_registration.c:91`'s `>= 2 * 10` median-lag boundary. The owner's own three from 2026-09-08 (the bare `+4`, the three-consecutive-row rule, the five-line clip band) were already removed in Codex turn 10 and are NOT these |
 | A6 | Absolute versus relative horizontal timing | contract §2; Codex turn 14 costed both | undecided; needs a C benchmark |
@@ -44,26 +44,30 @@ whole-tape signal-state audit.
 | B3 | The render changes | contract §8 | not implemented |
 | B4 | The acceptance runs | HANDBACK §7 steps 3 and 4 | blocked on B1 and the engine |
 
-## C. The first two-instrument disagreement (capture 1)
+## C. The switch line on capture 1 — both detectors were wrong, differently
 
-Measured 2026-09-09 on the commercial capture, 582 units of the stable interval, my reference
-(`switch_geometry.py`) against the engine's record (`frameserver_replay`), joined by device counter:
+Both instruments put the picture top at lines 23 and 286 in all 582 units of the stable interval:
+the owner's invariant holds in two independent implementations. The switch line did not agree, and
+reading the raw samples of unit 6687 settled what each was doing wrong.
 
-- **The picture top agrees perfectly.** Both put field 1 at line 23 and field 2 at 286 in all 582
-  units, and both bottoms constant at 262 and 525. That is the owner's invariant and it holds.
-- **The switch line does not.** Exact agreement on 163 units (field 1) and 186 (field 2); the rest
-  differ by exactly 25 or exactly 59 lines, with the engine always the earlier. Band counts follow:
-  mine 2, the engine's 27 or 61 on the same units.
-- **The rows in dispute carry no readable horizontal timing.** On unit 6687 the picture's content
-  ends at line 235 (mean 65, sigma 60) and lines 237-262 sit at mean 21, sigma 5, with best-lag SAD
-  ratios of 0.94-1.00 throughout — no row improves by shifting, so there is no departure to read.
-  Both instruments are therefore inferring that region from something other than timing, which is
-  the case the contract sends to the raw rows and BOTH agents.
-- **What can be said without adjudicating:** a 27-row or 61-row head-switch band is not physically
-  available. NTSC's head switch is a few lines before vertical sync, and the contract's own
-  measurement of this capture is 3.32 rows, median 3.
-
-Not yet with Codex: its turn is running and the rule is one dispatch at a time.
+- **The engine fired ~25 rows early.** A 35-code MAD gate passes a dark row, and the aperture search
+  then returns lags of 0, +40, −46, +360, +252, +180, +51, −2: matches to unrelated dark regions.
+  Codex diagnosed this itself and is rewriting the detector.
+- **My reference was one row late**, because it sought the partial row's evidence as a whole-row lag
+  improvement, which a nearly flat dark row cannot supply. Fixed at `3244999` by measuring the row's
+  own two ends instead. Rebuilding capture 1 now.
+- **Both agree on the raw rows**: picture bottom 259/521, partial switch row 260/522, first full
+  other-head row 261/523. That matches contract §2's already-adjudicated 259/521.
+- **Codex objects to the ends test as a universal detector** and is right that the standards
+  guarantee the overlap, not which end carries it; that flagging can also move a row's start; and
+  that a corrected source, whose band the TBC replaced with flat rows, has no timing to read. The
+  contract already frames this correctly: how each instrument measures the discontinuity is its own,
+  stated per column, with S as the explicit fallback and Unknown only when neither is measurable.
+- **Open, and possibly a contract measurement defect:** contract §3 records this capture as showing
+  2 switch lines in field 1 (422 of 582) and 3 in field 2 (507 of 576). My OLD detector reproduces
+  those closely (409 and 491 of 582), and it is the detector now shown to miss the partial row. The
+  contract's own definition counts "the partial line included". If the corrected count comes back
+  one higher, that carried figure is one low and needs re-measuring rather than matching.
 
 ## D. Contract
 

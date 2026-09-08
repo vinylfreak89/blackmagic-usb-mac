@@ -67,6 +67,17 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None,sig_n=0.0):
     # the horizontal-blanking dip: a timed line begins with samples at the blank level (1..3); the other head's line,
     # with V-stabilize off, starts with content at sample 0 (its blanking is elsewhere in the line)
     dip_absent = float(row[0:7].min())>ped_lvl
+    # The row's own horizontal blanking at each END of the delivered window. An NTSC line is 858
+    # samples with 720 delivered and 147 of horizontal blanking (contract section 2), so 147 - 138 =
+    # 9 samples of a correctly timed row's own blanking fall inside the window. A row whose right
+    # part arrived from the other head has its blanking elsewhere and does not return to the blank
+    # level at the end. Counted against the FIELD's own blanking rows, never a typed level.
+    end_run = 0
+    if by_m is not None:
+        k = 719
+        while k >= 0 and abs(float(row[k]) - by_m) <= 6 * sig_b:
+            end_run += 1; k -= 1
+    lead_blank = (by_m is not None) and abs(float(row[0:3].min()) - by_m) <= 6 * sig_b
     # blanking inside the row: the longest run of samples (24..696) at the decoder's blank level (within 6 sigma_b of
     # the field's own blank rows). The other head's line arrives with its horizontal blanking interval somewhere inside
     # the row (owner: the head switch always lands timing in the horizontal blanking region); a timed picture row has
@@ -80,7 +91,7 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None,sig_n=0.0):
         if m.any():
             e=np.flatnonzero(np.diff(np.concatenate(([0],m.astype(np.int8),[0]))))
             k=int((e[1::2]-e[0::2]).argmax()); blank_run=int(e[1::2][k]-e[0::2][k]); blank_x=24+int(e[0::2][k])   # where along the row the other head's blanking begins
-    return dict(blank_run=blank_run,blank_x=blank_x,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
+    return dict(end_run=end_run,lead_blank=lead_blank,blank_run=blank_run,blank_x=blank_x,lagmed=(float(np.median(al)) if len(lags)>=3 else None),n=len(lags),dm=dm,dsig=ds,spike=sp,x=x,width=r-l+1,uniform=uniform,above_range=above_range,lead_run=run,wlag=wlag,wr=wr,dip_absent=dip_absent)
 # the record is flushed per unit (Python 3.14 buffers 128 KiB, ~600 rows, before the first write)
 OUT=open(A.out,'w',newline=''); w=csv.writer(OUT); w.writerow(['unit','counter','field','top','d','T','S','switch_lines','below','lost','height','how','peak_x','partial_evidence','caption_line','insert_data','line22','l22_level','comb_shift','comb_ratio','comb_static','lock_state','band_class','applied','band_comparator','band_counts','switch_total_comparator','switch_total_counts','events','band_tests','disc_x','blank_y','sig_b'])
 PED={1:None,2:None}   # the carried pedestal per field
@@ -303,7 +314,21 @@ def process_unit(u,RU,RN):
         # the top switch line: S-1 where S-1 carries the partial line's evidence (the peak / a departing later segment), else S
         T=None; n_sw=0; n_below=0; lost=0
         if sw is not None:
-            pf=feats.get(sw-1); partial = pf is not None and (px>=0 or (abs(pf['wlag'])>=2 and pf['wr']<=0.90))
+            pf=feats.get(sw-1)
+            # The partial switch row keeps its normal LEFT transition and loses its trailing
+            # blanking, because its right-hand part came from the other head (measured on the raw
+            # samples of the commercial capture, unit 6687: line 260 ramps from blanking as any row
+            # does and then ends at luma 17-20 where 258/259 end at 1-2; both agents read the same
+            # rows, 2026-09-09). The expectation is the field's OWN picture rows, not a constant:
+            # body_end is the smallest trailing blanking run they show.
+            body_ends=[feats[r]['end_run'] for r in range(top+20,min(top+201,last_rec+1)) if r in feats]
+            body_end=min(body_ends) if len(body_ends)>=40 else None
+            ends_partial = (pf is not None and body_end is not None and pf.get('lead_blank')
+                            and pf['end_run'] < body_end)
+            # The peak and the whole-row lag stay as corroboration; neither is required, because a
+            # dark row carries no lag to improve (the defect this replaces: line 260 read wlag 6 at
+            # ratio 0.97, so the old test failed and the switch line fell through to the full row).
+            partial = pf is not None and (ends_partial or px>=0 or (abs(pf['wlag'])>=2 and pf['wr']<=0.90))
             T=sw-1 if partial else sw
             # the switch lines: contiguous rows from T down that carry a switch signature; below them, rows at the pedestal/blank to the clip
             n_sw=clip_row-T+1                                                 # the switch band: the top switch line to the clip (the TBC's blacked switch lines included)
