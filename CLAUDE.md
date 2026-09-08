@@ -997,6 +997,26 @@ never silently blank/dup/drop/resample/force-CFR.
 audio as continuity master; **bob at field rate (59.94p/50p)**; conceal only in the live
 derivative; shed the live consumer before it threatens acquisition.
 
+**BACKLOGGED — filling horizontally damaged rows from the other field (owner, 2026-09-09).** "almost all of our
+horizontal timing errors so far are in one field. is there a way that registration can duplicate content from the
+other field to fill in those rows to prevent timing errors from showing at all. this is definitely something to
+backlog and only consider if the registration engine ends up running significantly ahead of real time." Recorded
+with the conditions that make it admissible, none of which is settled:
+- It is CONCEALMENT, so by §8/§9 it may exist only in the live derivative and never in what a recorder writes as the
+  master, and every filled row is named in the sidecar with its source row. The archival path renders damage as-is.
+- Only the registration layer knows WHICH rows are damaged, which is the argument for doing it there; a downstream
+  deinterlacer cannot know. The honest split may instead be that registration MARKS the rows and a consumer that
+  wants concealment fills them, which keeps the frameserver's contract (it publishes fields, presentation is
+  downstream) intact. Undecided.
+- The other field is 1/60 s away and half a line off vertically, so a filled row is a temporal and vertical
+  interpolation: nearly exact on static picture, and on motion it is the classic weave artifact in exactly the rows
+  the viewer is being shown as "fixed". A motion test is therefore part of the feature, not an optimisation.
+- The gate the owner set is headroom: only if the engine runs significantly ahead of real time. Measured today,
+  1.4–3.3 ms/unit against the §11b 10 ms budget, so headroom exists; the fill is cheap and the decision is not.
+- The passage that motivates it (owner, same day): the 34:14–34:43 mistracking band "shows up and migrates from the
+  bottom to the top of the picture a few times and it does cause timing errors". It is already the named acceptance
+  site where any output move is a defect.
+
 ## 10. Delivery: OBS virtual camera
 
 **End state: a device every app's picker sees as a standard capture device.** Every design choice below serves that sentence — a normal camera in every
