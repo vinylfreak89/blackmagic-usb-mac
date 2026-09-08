@@ -78,6 +78,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 > [2026-09-07 20:56, asked whether the 12:52 comparator ruling applied to the switch-line count:] no. the comparator
 > was at line 22. you extended it to the head switch (wrongly) on your own
 
+> [2026-09-09, after the live-path audit found placements of +30 and +101 lines on muted rasters:] okay obviously
+> you need to completely turn off registration in anything other than normal picture and that should solve most of
+> the detection issues. detecting the vertical tear should be equally obvious. in a vertical tear, horizontal timing
+> goes completely out the window. any field with horizontal timing that skews mid frame and then becomes stable
+> again is a vertical tear by nature. this would cover signal, VBI, etc coming back into the picture.
+
 > [2026-09-07 21:34, on what confirms a first lock:] combing captions or both. significant clean picture was a
 > fuck up on my part. because of the shuttle's own raster hiding potentially the first few lines. and "captions"
 > that sit on the raster's line 21 have to be assumed they could be from 20, 21, or 22 LOL, so only if it agrees
@@ -195,6 +201,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   No sample position and no luma level is ever typed in or carried from another recording; the numbers quoted in
   section 2 are measurements on these captures, never test points. A lock-like loss (rule 5) discards them with the
   lock, and they are rebuilt from the units after re-acquisition — nothing derived under the old lock survives it.
+- **Vertical tear**: a field whose horizontal timing departs mid-field and then becomes stable again (owner,
+  2026-09-09: "in a vertical tear, horizontal timing goes completely out the window. any field with horizontal
+  timing that skews mid frame and then becomes stable again is a vertical tear by nature. this would cover signal,
+  VBI, etc coming back into the picture"). It is read from the same per-row horizontal-phase profile as the head
+  switch and is told apart by WHERE the departure ends: the head-switch band's departure begins near the bottom and
+  persists to the clip, while a tear's departure returns to the field's own stable phase and picture continues below
+  it. A vertical tear is a lock-like loss (rule 5b).
 - **Head switch**: discontinuous horizontal skew, an RF peak, or both, plus an AGC mismatch where present (owner,
   2026-09-07 morning); the other head's blanking intruding into the row and the pedestal rows are what the captures
   show (section 2). **Switch line** (the top switch line): the horizontal line carrying the peak, the partial line;
@@ -303,7 +316,11 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    running count in a fixed array of eight slots; counts never decrement; the most frequent value is the comparator
    and is replaced by a value whose count passes it (owner, 12:52, 12:55, 20:56). No magic numbers, no per-source
    constants typed in.
-5. A loss of source lock or a lock-like loss (the owner's "change of geometry", 2026-09-07 afternoon) resets
+5. **Registration runs only on normal picture.** Where the signal-state layer does not report program, the engine
+   measures nothing and places nothing: no displacement is computed, none is applied, the crop stays where it was,
+   and the record says why (owner, 2026-09-09: "you need to completely turn off registration in anything other than
+   normal picture"). Mute, snow, no-signal, device-no-signal and unframed rasters are not inputs to geometry.
+5b. A loss of source lock or a lock-like loss (the owner's "change of geometry", 2026-09-07 afternoon) resets
    everything immediately, both fields at once (there is no snow in one field only); an ordinary measured
    displacement is tracking, not a change of geometry; a transport hole or short unit is damage (rule 6), not a
    loss; without regenerated-row presence and a confirmation there is no lock and no geometry is claimed.
