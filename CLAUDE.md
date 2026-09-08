@@ -1002,15 +1002,22 @@ horizontal timing errors so far are in one field. is there a way that registrati
 other field to fill in those rows to prevent timing errors from showing at all. this is definitely something to
 backlog and only consider if the registration engine ends up running significantly ahead of real time." Recorded
 with the conditions that make it admissible, none of which is settled:
-- It is CONCEALMENT, so by §8/§9 it may exist only in the live derivative and never in what a recorder writes as the
-  master, and every filled row is named in the sidecar with its source row. The archival path renders damage as-is.
-- Only the registration layer knows WHICH rows are damaged, which is the argument for doing it there; a downstream
-  deinterlacer cannot know. The honest split may instead be that registration MARKS the rows and a consumer that
-  wants concealment fills them, which keeps the frameserver's contract (it publishes fields, presentation is
-  downstream) intact. Undecided.
-- The other field is 1/60 s away and half a line off vertically, so a filled row is a temporal and vertical
-  interpolation: nearly exact on static picture, and on motion it is the classic weave artifact in exactly the rows
-  the viewer is being shown as "fixed". A motion test is therefore part of the feature, not an optimisation.
+**The owner settled the design the same day; what remains open is only the cost gate and two details.** "with the
+horizontal tear causing combing, thats an easy test to run, since we already have a comb detector in the engine, and
+yes it would be output by option as part of the frameserver and marked with the side channel `.tpc` for direct
+archival if that is turned on. If it combs, probably best to just run a simple interpolation algo or something like
+nnedi does for the lines that comb. again, anything is going to look better than flagging LOL"
+- **Where it lives:** in the frameserver, behind an option, with every repaired row marked in the record. The
+  unmodified raster is preserved through the debug `.tpc` side channel when that is enabled (§8: the tpc sink is
+  debug-only, so this is an option a user turns on, not a default).
+- **How it decides:** fill the damaged row from the other field, then TEST the result with the comb detector; if it
+  combs, the fill is wrong for that row (the picture moved) and the row is filled by intra-field interpolation
+  instead, the way NNEDI3 builds a line from its own field. "anything is going to look better than flagging."
+- **The one engineering caveat:** the comb detector the engine has today is a whole-field, static-masked measurement
+  of inter-field registration. Deciding whether ONE row may be borrowed needs a local test on that row's
+  neighbourhood, not a field-wide one. It is the same idea and not the same instrument.
+- **Still open:** whether the recorder sink (a downstream consumer like any other) receives the repaired frames or
+  the untouched ones when the option is on. Not decided here.
 - The gate the owner set is headroom: only if the engine runs significantly ahead of real time. Measured today,
   1.4–3.3 ms/unit against the §11b 10 ms budget, so headroom exists; the fill is cheap and the decision is not.
 - The passage that motivates it (owner, same day): the 34:14–34:43 mistracking band "shows up and migrates from the
