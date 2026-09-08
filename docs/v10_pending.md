@@ -1,6 +1,6 @@
 # v10 — what is pending, and where it stands
 
-Reconstructed 2026-09-09 04:0x JST at the owner's instruction ("either things are recorded in the contract or they
+Reconstructed 2026-09-09 03:58 JST at the owner's instruction ("either things are recorded in the contract or they
 are still pending in the transcript... do not assume from memory") from: the 45 owner messages since the v10
 restart (2026-09-07 20:29), `docs/geometry_first_engine.md`, `HANDBACK.md`, `CLAUDE.md`, the Codex turn logs
 `/private/tmp/hw-session/codex_v10_turn*.log`, and the engine's own test output. Every line below names its source.
@@ -32,7 +32,7 @@ This file is a state record, not a contract: it is rewritten as items close and 
 ## C. Owner questions not answered
 
 - **"How do you trace the head-switch band's top and bottom without covering the line?"** (2026-09-09 00:18, asked
-  out of curiosity). Answered 2026-09-09 04:0x: nothing is drawn on the raster. The two edges are plotted in the
+  out of curiosity). Answered 2026-09-09 03:58: nothing is drawn on the raster. The two edges are plotted in the
   metrics band below the picture, on the same graph as the applied shifts, so the rows being measured are never
   painted over. The contract already required the band to sit below the picture and never over it.
 - **"Do whites peak out too high?"** (2026-09-09 03:27). Partly. Not clipping at white IS measured: no samples at
