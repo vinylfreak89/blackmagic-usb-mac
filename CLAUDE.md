@@ -503,14 +503,24 @@ result in §9 — and note the `214/16` status register is still un-probed acros
 `signal_valid` boolean.** Three separate layers, each recorded:
 1. **Transport state** — exact unit / partial unit / packet hole / absent video / counter discontinuity.
 **`SubBlackMuteLike` on a degenerating passage is NOT a mislabel** (owner, 2026-09-09): "the label sub mute black
-like is not a miss. that is actually what the picture looks like before it degenerates into snow." Measured at
-27:18 on fixture A, the sequence through a signal stop is programme → wrecked/snow-like → sub-black → deck grey mute
-→ programme, and the sub-black stage is a real appearance of the signal, not the classifier getting the level wrong.
-Do not chase it as a defect. (What WAS measured there and is a defect: eight units of wrecked picture at 27:18.47–.70
+like is not a miss. that is actually what the picture looks like before it degenerates into snow." Measured at 27:18 on fixture A (unit
+index = device counter − 4511), the sequence through a signal stop is **programme → wrecked → sub-black →
+snow-like → deck grey mute → programme**, with these boundaries:
+| units | time | mean | std | adjacent-row corr | temporal corr | stage |
+|---|---|---|---|---|---|---|
+| 49095–49104 | 27:18.14–.44 | 60–62 | 48–51 | 0.89 | 0.98 | programme |
+| 49105–49112 | 27:18.47–.70 | 17–72, swinging | 31–92 | 0.56–0.77 | −0.17 to +0.26 | wrecked |
+| 49113–49117 | 27:18.74–.87 | 8–16 | 6–29 | 0.93–0.98 | — | sub-black |
+| 49118–49125 | 27:18.90–27:19.14 | 17→41 | 31→48 | 0.62 → 0.18 | 0.77 → 0.21 | snow-like |
+| 49126–49163 | 27:19.17–27:20.41 | 117 | 16 | 0.75 | 0.998 | deck grey mute |
+The sub-black stage is a real appearance of the signal, not the classifier getting the level wrong: do not chase it
+as a defect. (What WAS measured there and is a defect: eight units of wrecked picture at 27:18.47–.70
 classified `ProgramLike`/`Present` with the engine registering on them — units 49105–49112, adjacent-row correlation
-falling from 0.89 to 0.56–0.77 and frame-to-frame correlation from 0.98 to about zero. Separately, 11 units at
-27:19.17–.50 whose raster is grey at mean 117 carry the sub-black label; the source state `Muted` is right
-throughout, which is what rule 5 gates on, so this is recorded as information, not as a defect.)
+falling from 0.89 to 0.56–0.77 and frame-to-frame correlation from 0.98 to about zero. And the SNOW-LIKE phase, units 49118–49125, is
+classified `SubBlackMuteLike` too — which matters beyond a label, because snow-like signal is a LOCK-LIKE LOSS that
+resets the geometry under rule 5b while a deck mute is not, so a snow phase read as mute means the engine may not
+reset when it must. Separately, 11 units at 27:19.17–.50 whose raster is grey at mean 117 also carry the sub-black
+label; the source state `Muted` is right throughout, so that one is information rather than a defect.)
 
 2. **Raster appearance** — program-like / snow-like / deck-grey / sub-blanking mute / device
    no-signal / flat-ambiguous.
