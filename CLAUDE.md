@@ -377,6 +377,16 @@ measurements: blanking at 1.375–1.53, the commercial tape's black card at 17.7
 blanking, i.e. NTSC-M's 7.5 IRE setup intact), a jump rather than a slope between the two, no clipping at black, and
 sub-black excursion truncated at the legal floor. Nothing in the delivery path remaps any of it.
 
+**The acceptance for levels, in the owner's words (2026-09-09): "as long as its not clipping and as long as we dont
+need to fix levels and they are appearing as intended on the tape, we are fine."** Against that: not clipping is
+measured — the black distribution is smooth (16.4/24.8/24.4% at codes 16/17/18) with tails about ten times heavier
+than Gaussian, where a clamp would make them lighter, and no capture has a sample at code 0 or 255. The only thing
+truncated is sub-black excursion, which is edge undershoot rather than picture. No level fix is needed, by the
+ruling above. Appearing as intended is demonstrated on the commercial tape, where NTSC-M's 7.5 IRE setup arrives
+intact. It is NOT yet demonstrated on fixture A, whose black sits at ≈ 9, floor-crushed and ≈ 24 across three
+passages — a spread as wide as the pedestal itself, which is either real variation in that recording or the noise
+the owner suspects; that measurement is owed and is the only open item on levels.
+
 **Renderer implications (adopted):** the Y16/C128
 hard-padding ruler stays valid (device-generated, says nothing about program black); classifiers
 and registration landmarks must treat program black as **relative/adaptive, never assume Y16**;
