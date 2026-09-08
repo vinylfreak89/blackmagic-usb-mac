@@ -227,7 +227,23 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   VBI, etc coming back into the picture"). It is read from the same per-row horizontal-phase profile as the head
   switch and is told apart by WHERE the departure ends: the head-switch band's departure begins near the bottom and
   persists to the clip, while a tear's departure returns to the field's own stable phase and picture continues below
-  it. A vertical tear is a lock-like loss (rule 5b).
+  it. A vertical tear is a lock-like loss (rule 5b). **The bare definition is not sufficient and carries three
+  qualifiers, each measured** (2026-09-09, independent instrument on fixture A's opening 416 units): applied
+  literally it fires 1,038 times, so a departure is a tear only when it (a) returns to the field's stable timing,
+  (b) is at least three rows long, and (c) has stable readable rows above it — without (c) the field's first lines,
+  which carry VHS flagging up to 231 samples over 4–6 rows, "return" trivially because the whole field lies below
+  them, and that class alone is 23 of 27 candidates in settled programme; rule 5's normal-picture gate removes the
+  rest, which are snow during relock. With the three, the signature fires once in 198 settled units and it is the
+  splice. Two limits stated with it: the displacement is known only modulo one line (a late shift and an early one
+  differing by a whole line are the same arrangement of samples), and a dark picture edge of a few tens of samples
+  cannot be separated from a displacement of the same size when the row's other end shows nothing either.
+- **The head-switch band's horizontal displacement is a per-source property, and on a TBC'd source it is absent.**
+  Measured 2026-09-09 on the last 14 lines of all 396 settled fields of fixture A's opening (the deck's line TBC on):
+  |displacement| median 1–2 samples, p95 ≤ 5, and ZERO rows at ≥ 20, against 23 such rows in the same fields' middles.
+  The deck clips its picture and leaves flat rows at luma ≈ 12 with no transition at all, whose timing is
+  unreadable — the TBC has re-timed the band away. On the commercial capture the same instrument measures band rows
+  displaced about 160 samples. So the band is found by displacement on one source and by unreadable flatness on
+  another, which is why the reference is per source and why "not applicable" is distinct from "unmeasurable".
 - **Head switch**: discontinuous horizontal skew, an RF peak, or both, plus an AGC mismatch where present (owner,
   2026-09-07 morning); the other head's blanking intruding into the row and the pedestal rows are what the captures
   show (section 2). **Switch line** (the top switch line): the horizontal line carrying the peak, the partial line;
