@@ -1125,8 +1125,12 @@ nnedi does for the lines that comb. again, anything is going to look better than
 - The gate the owner set is headroom: only if the engine runs significantly ahead of real time. Measured today,
   1.4–3.3 ms/unit against the §11b 10 ms budget, so headroom exists; the fill is cheap and the decision is not.
 - The passage that motivates it (owner, same day): the 34:14–34:43 mistracking band "shows up and migrates from the
-  bottom to the top of the picture a few times and it does cause timing errors". It is already the named acceptance
-  site where any output move is a defect.
+  bottom to the top of the picture a few times and it does cause timing errors". Its required behaviour needs no
+  fixture name and gets none: contract rule 6 makes horizontal tearing not a geometry event, so the previous
+  geometry holds through it and the unit's position is recorded Unknown, and rule 8 says the output does not move.
+  (An earlier sentence here claimed the band "is already the named acceptance site where any output move is a
+  defect". Nothing named it, and nothing should: the contract's rules are by property, never by tape. Owner,
+  2026-09-09: "why should the contract name any specific band in the fixture?")
 
 ## 10. Delivery: OBS virtual camera
 

@@ -50,8 +50,6 @@ whole-tape signal-state audit.
   separation categorical; Codex measured 11 against 1,957, "strong, not categorical" (turn 15), proposed replacement
   wording that was never applied, and §9 still reads "Nothing is open". I agree with its measurement, so it is with
   Codex for assent in the current turn; it reaches the owner only if we cannot settle it.
-- **The 34:14–34:43 mistracking band is not in the contract**, though CLAUDE.md §9 asserts it "is already the named
-  acceptance site where any output move is a defect". Either §8's invariants gain it or CLAUDE.md's claim is wrong.
 
 ## D. To put to the owner
 
