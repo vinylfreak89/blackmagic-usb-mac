@@ -372,8 +372,15 @@ all the decision information ... the last type of output this thread was last pr
 deliverable review copy of a capture is one frame per unit carrying: the 720×486 output as placed (CLAUDE.md §11's alternate
 mode: lines 21–263 and 283–525, 243 lines per field; against the 480-line crop that is lines 21–22 above and 263
 below in field 1, and 283–285 above in field 2 — the 486 raster is asymmetric — so what landed on the caption and
-VBI rows is visible) with the record burned in; the 525-line raster beside it, showing where the picture sits in the raster; the
-unit's decision information, its marker line and its unit number.
+VBI rows is visible); the 525-line raster beside it, showing where the picture sits in the raster; and BELOW the
+picture, never over it, the metrics band of `experiments/overlay_sidecar.py` — the per-field statistics on the left
+(reason colour-coded, gauge with its line and decoded bytes, geometry d, raw top and bottom, lock state with the
+zero's provenance, clip state, the conservation equation) and on the right a graph of the applied shift across the
+surrounding ±90 units with a line at zero and guides at ±2, swept by a red vertical RUNNING LINE at the current unit
+(the owner's "the one with the running line and number at the bottom", identified 2026-09-09); the band's first line
+carries the unit, the counter, the unit state, the applied pair and comb_safe. The graph traces BOTH fields' applied
+shifts, d1 and d2, not d1 alone (owner: "add the individual field shift statistics like you have in the side by side
+field renders").
 
 Deinterlaced with **bwdif in `send_frame` mode**, one frame per unit, 29.97p — never NNEDI3 (owner, 2026-09-08:
 "the problem with nnedi3 is it doesn't just show jumps cleanly. it shows field doubling so the comb pattern during
@@ -403,15 +410,11 @@ labelled with the unit, its counter, both crop origins and the comb's reading. N
 
 ## 9. Open
 
-Two readings of the owner's final-output words are Claude's and are open until he corrects or confirms them (output
-preferences, not signal):
+Nothing is open.
 
-1. "the one with the running line and number at the bottom": read as the marker line drawn at the measured picture
-   top and bottom, with the unit number, on the render this session was last producing. Recommendation: as read.
-2. bwdif at one frame per unit (29.97, top field first), or 2× at 59.94. Recommendation: one frame per unit, so the
-   frame and the unit number are one to one; 2× doubles the length and shows the same two fields twice.
-
-Neither affects the engine or the plan: they set the review render's format only.
+Closed 2026-09-09 (the owner): "the running line" is the red playhead sweeping the applied-shift graph in the
+`overlay_sidecar.py` band under the picture, not a marker on the raster, and the graph must trace both fields. The
+cadence is one frame per unit, 29.97, top field first, which follows from bwdif in `send_frame` mode.
 
 Closed 2026-09-07 21:34 (the owner): a first lock is confirmed by combing, captions or both, and nothing else; the
 earlier "significant non-dirty luma" is withdrawn (the Shuttle's blanking can hide the picture's first lines), and a
