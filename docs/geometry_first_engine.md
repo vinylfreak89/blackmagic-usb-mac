@@ -386,9 +386,12 @@ spatial check that can override the temporal decision and smooth a comb; bwdif h
 (`mode=send_frame_nospatial`), which is the named fallback if a known one-line error ever renders as smoothing
 rather than combing. The filter's job is to make an error obvious to the owner's eye; it is never the measurement,
 which stays the settled comb on the placed crops and the machine read-back of every frame before anyone looks.
-(Recorded so it is not relitigated: an estdif render once made the deck's OSD look stationary when frame-stepping
-proved it moved — 2026-09-04 — which is the same interpolation happening in MOVING content, where registration
-cannot be judged by eye in any case.)
+(Recorded so it is not relitigated: the 2026-09-04 "estdif made the OSD look stationary" episode is NOT evidence
+against a weaver. The owner re-checked the raw full-raster render the same evening and confirmed the opposite — the
+OSD in the OUTPUT RASTER is stationary, the picture behind it moves, and what had looked like a moving OSD was the
+CORRECTED render, where the OSD must move by exactly the applied displacement because the crop window shifts to hold
+the picture still. That is an acceptance check, not a fault: OSD displacement in a corrected output equals the
+applied d. CLAUDE.md §7 carries the finding and LEARNINGS the lesson.)
 
 Owner, verbatim (2026-09-07 15:15): "any true disagreement (such as comb not matching) should be reported loudly for
 me to examine unit by unit in the test harness (Codex's job). please present a single frame rendered (and shifted)
