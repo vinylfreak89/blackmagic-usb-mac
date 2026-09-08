@@ -2101,6 +2101,17 @@ the production object must export neither; four declaration/definition mutation
 controls exercise rejection. The runtime test and its feature macro are removed.
 The gate and 27:18 repairs above were independently tested changes.
 
+**v10 switch-detector adjudication (commercial counter 6687):** the current C
+`full_other_head_row` falsely calls NTSC 236/498 a switch (extents 27/28).
+Its >=35 whole-row MAD gate admits an internal luma step, then independent
+aperture matches to unrelated dark regions satisfy its absolute-lag test.
+The actual low-contrast terminal timing departure fails that same MAD gate.
+Raw edges support partial rows 260/522 and full other-head rows 261/523 on
+this unit; the harness's saved T=S=261/523 omits that partial row. This is a
+two-instrument disagreement, not an accepted detector change. Measurements,
+reproduction, and the precise scope of the old 24.293-ms synthetic engine
+percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
+
 - **Mutual code-and-intent review is the coding style of this project (owner rule, 2026-09-03).**
   Every change by one agent (Claude or Codex) is reviewed by the other before it is considered
   done, and the review covers **intent as well as code**: the reviewer must be able to state the
