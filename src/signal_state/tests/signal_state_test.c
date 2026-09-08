@@ -14,6 +14,8 @@ enum { UNIT_BYTES = 756048, HEADER = 48, BPL = 1440, LINES = 525 };
 typedef enum pattern {
     PATTERN_PROGRAM,
     PATTERN_SNOW,
+    PATTERN_LOW_SNOW,
+    PATTERN_DITHER_BLACK,
     PATTERN_GRAY,
     PATTERN_SUBBLACK,
     PATTERN_SUBBLACK_STREAK,
@@ -68,6 +70,12 @@ static void make_unit(uint8_t *unit, pattern kind, unsigned frame, uint8_t gray)
                     y = random_byte();
                     c = random_byte();
                     break;
+                case PATTERN_LOW_SNOW:
+                    y = 2 + random_byte() % 16;
+                    break;
+                case PATTERN_DITHER_BLACK:
+                    y = 1 + random_byte() % 2;
+                    break;
                 case PATTERN_GRAY:
                     y = gray;
                     if ((frame & 1) && line >= 40 && line <= 55 &&
@@ -99,6 +107,9 @@ static void make_unit(uint8_t *unit, pattern kind, unsigned frame, uint8_t gray)
                     break;
                 }
             }
+            if ((kind == PATTERN_LOW_SNOW || kind == PATTERN_DITHER_BLACK) &&
+                ((line >= 7 && line <= 15) || (line >= 270 && line <= 278)))
+                y = 1 + (x & 1);
             row[x * 2] = c;
             row[x * 2 + 1] = y;
         }
@@ -134,15 +145,6 @@ static signal_result classify(signal_state *state, uint8_t *unit, pattern kind,
     return result;
 }
 
-static void note(signal_state *state, signal_result *result,
-                 bool observation_known, int8_t observed_d1, int8_t observed_d2,
-                 int8_t applied_d1, int8_t applied_d2)
-{
-    signal_state_note_registration(state, result, observation_known,
-                                   observed_d1, observed_d2, 1.0, true,
-                                   applied_d1, applied_d2);
-}
-
 static uint64_t monotonic_ns(void)
 {
     struct timespec value;
@@ -150,15 +152,91 @@ static uint64_t monotonic_ns(void)
     return (uint64_t)value.tv_sec * UINT64_C(1000000000) + value.tv_nsec;
 }
 
+/* Regression: identical upstream evidence must produce identical upstream
+ * state regardless of downstream crop choices. The conditional exercises the
+ * retired API on the pre-fix revision, and disappears with that API. */
+static void registration_output_cannot_mutate_signal_state(uint8_t *unit)
+{
+    signal_state *a = aligned_alloc(signal_state_alignment(), signal_state_size());
+    signal_state *b = aligned_alloc(signal_state_alignment(), signal_state_size());
+    assert(a && b);
+    signal_state_init(a, NULL);
+    signal_state_init(b, NULL);
+    for (unsigned i = 0; i < 50; ++i) {
+        make_unit(unit, PATTERN_PROGRAM, i, 0);
+        unit_video_observation input = observation(unit, i);
+        signal_result ra, rb;
+        assert(signal_state_classify(a, &input, NULL, &ra));
+        assert(signal_state_classify(b, &input, NULL, &rb));
+#ifndef SIGNAL_STATE_UPSTREAM_ONLY
+        signal_state_note_registration(a, &ra, false, 0, 0, 0, true, 0, 0);
+        signal_state_note_registration(b, &rb, false, 0, 0, 0, true, i & 1, 0);
+#endif
+        if (memcmp(&ra, &rb, sizeof ra) != 0) {
+            fprintf(stderr, "registration_output_cannot_mutate_signal_state: FAIL unit %u\n", i);
+            abort();
+        }
+    }
+    free(a);
+    free(b);
+    puts("registration_output_cannot_mutate_signal_state: PASS");
+}
+
+static void snow_loss_and_mute_lifecycle(uint8_t *unit)
+{
+    signal_state *state = aligned_alloc(signal_state_alignment(), signal_state_size());
+    assert(state);
+    signal_state_init(state, NULL);
+    signal_result result;
+    for (unsigned i = 0; i < 12; ++i)
+        result = classify(state, unit, PATTERN_PROGRAM, i, 0);
+    assert(result.normal_picture);
+    for (unsigned i = 12; i < 20; ++i) {
+        result = classify(state, unit, PATTERN_DITHER_BLACK, i, 0);
+        assert(!result.lock_like_loss && !result.normal_picture);
+        assert(result.appearance == SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE);
+        assert(!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT));
+    }
+    for (unsigned i = 20; i < 32; ++i) {
+        result = classify(state, unit, PATTERN_PROGRAM, i, 0);
+        assert(!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT));
+    }
+    assert(result.normal_picture);
+    for (unsigned i = 32; i < 40; ++i) {
+        result = classify(state, unit, PATTERN_LOW_SNOW, i, 0);
+        assert(result.lock_like_loss && !result.normal_picture);
+        assert(result.appearance == SIGNAL_APPEARANCE_SNOW_LIKE);
+        assert(result.source == SIGNAL_SOURCE_REACQUIRING);
+        assert(!!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT) == (i == 32));
+    }
+    for (unsigned i = 40; i < 48; ++i) {
+        result = classify(state, unit, PATTERN_DITHER_BLACK, i, 0);
+        assert(!result.lock_like_loss && !result.normal_picture);
+        assert(!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT));
+    }
+    for (unsigned i = 48; i < 60; ++i) {
+        result = classify(state, unit, PATTERN_PROGRAM, i, 0);
+        assert(!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT));
+    }
+    assert(result.normal_picture);
+    free(state);
+    puts("snow_loss_and_mute_lifecycle: PASS (dither is not snow; one loss reset; mute retains epoch)");
+}
+
+static int compare_u64(const void *a, const void *b)
+{
+    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
+    return (x > y) - (x < y);
+}
+
 int main(void)
 {
     signal_state *state = aligned_alloc(signal_state_alignment(), signal_state_size());
     uint8_t *unit = malloc(UNIT_BYTES);
     assert(state && unit);
+    registration_output_cannot_mutate_signal_state(unit);
+    snow_loss_and_mute_lifecycle(unit);
     signal_state_config config = signal_state_default_config();
-    config.settle_confirm_units = 8;
-    config.phase_chatter_window_units = 10;
-    config.phase_chatter_threshold = 4;
     signal_state_init(state, &config);
     signal_state_begin_epoch(state, 1);
 
@@ -167,13 +245,12 @@ int main(void)
     for (unsigned i = 0; i < 12; ++i) {
         result = classify(state, unit, PATTERN_PROGRAM, i, 0);
         begin_actions += !!(result.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT);
-        note(state, &result, true, 0, 0, 0, 0);
         if (i >= config.acquisition_confirm_units - 1)
             assert(result.appearance == SIGNAL_APPEARANCE_PROGRAM_LIKE);
     }
     assert(result.source == SIGNAL_SOURCE_PRESENT);
     assert(begin_actions == 1);
-    assert(!result.unsettled && result.settled_phase_known);
+    assert(!result.unsettled);
 
     /* A host-side pool shed is not a signal observation. Hold the confirmed
      * source/phase/interval across any number of unobserved rasters, then
@@ -189,14 +266,13 @@ int main(void)
         assert(result.appearance == SIGNAL_APPEARANCE_UNKNOWN);
         assert(result.source == SIGNAL_SOURCE_PRESENT);
         assert(result.actions == SIGNAL_ACTION_NONE);
-        assert(!result.unsettled && result.settled_phase_known);
+        assert(!result.unsettled);
         assert(result.unsettled_interval_id == settled_interval);
     }
     make_unit(unit, PATTERN_PROGRAM, 31, 0);
     unit_video_observation resumed = observation(unit, 31);
     signal_context after_shed = {.host_observations_missing_before = true};
     assert(signal_state_classify(state, &resumed, &after_shed, &result));
-    note(state, &result, true, 0, 0, 0, 0);
     assert(result.source == SIGNAL_SOURCE_PRESENT);
     assert(result.actions == SIGNAL_ACTION_NONE);
     assert(!result.unsettled && result.unsettled_interval_id == settled_interval);
@@ -262,13 +338,10 @@ int main(void)
 
     for (unsigned i = 0; i < 12; ++i) {
         result = classify(state, unit, PATTERN_PROGRAM, 600 + i, 0);
-        /* Exercise the real live case: absolute observation abstains while
-         * the forward engine presents a stable applied phase. */
-        note(state, &result, false, 0, 0, 0, 0);
+        /* Source confirmation is independent of registration. */
     }
     assert(result.source == SIGNAL_SOURCE_PRESENT);
     assert(!result.unsettled);
-    assert(result.settled_phase_known);
 
     result = classify(state, unit, PATTERN_FLAT_CHROMA, 700, 0);
     result = classify(state, unit, PATTERN_FLAT_CHROMA, 701, 0);
@@ -305,35 +378,24 @@ int main(void)
     /* Re-establish a settled live phase after the structural hole. */
     for (unsigned i = 0; i < 12; ++i) {
         result = classify(state, unit, PATTERN_PROGRAM, 750 + i, 0);
-        note(state, &result, false, 0, 0, 0, 0);
     }
     assert(!result.unsettled);
 
-    /* Four phase changes inside ten units open a classifier interval. */
-    for (unsigned i = 0; i < 8; ++i) {
-        result = classify(state, unit, PATTERN_PROGRAM, 800 + i, 0);
-        note(state, &result, true, (int8_t)(i & 1), 0, 0, 0);
+    uint64_t elapsed = 0, timings[100];
+    for (unsigned i = 0; i < 100; ++i) {
+        make_unit(unit, PATTERN_PROGRAM, 1000 + i, 0);
+        unit_video_observation input = observation(unit, 1000 + i);
+        uint64_t begin = monotonic_ns();
+        assert(signal_state_classify(state, &input, NULL, &result));
+        timings[i] = monotonic_ns() - begin;
+        elapsed += timings[i];
     }
-    assert(result.unsettled);
-    uint64_t chatter_interval = result.unsettled_interval_id;
-    assert(chatter_interval != 0);
-
-    signal_state_commit_registration(state, 1, 0);
-    for (unsigned i = 0; i < 12; ++i) {
-        result = classify(state, unit, PATTERN_PROGRAM, 900 + i, 0);
-        note(state, &result, true, 1, 0, 1, 0);
-    }
-    assert(!result.unsettled);
-    assert(result.settled_phase_known && result.settled_d1 == 1 &&
-           result.settled_d2 == 0);
-
-    uint64_t begin = monotonic_ns();
-    for (unsigned i = 0; i < 100; ++i)
-        result = classify(state, unit, PATTERN_PROGRAM, 1000 + i, 0);
-    uint64_t elapsed = monotonic_ns() - begin;
+    qsort(timings, 100, sizeof *timings, compare_u64);
     double microseconds = elapsed / 1000.0 / 100.0;
     printf("signal_state_test: PASS cost=%.3f us/unit interval=%" PRIu64 "\n",
-           microseconds, chatter_interval);
+           microseconds, result.unsettled_interval_id);
+    printf("signal_state classifier-only: median %.3f ms p95 %.3f ms\n",
+           timings[50]/1e6, timings[95]/1e6);
 #ifndef SIGNAL_STATE_SANITIZED
     assert(microseconds < 5000.0);
 #endif

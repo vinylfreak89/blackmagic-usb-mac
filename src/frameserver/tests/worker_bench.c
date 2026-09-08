@@ -85,6 +85,8 @@ int main(int argc, char **argv)
     bench_sink bench = {0};
     fp_sink sink = { consume_frame, &bench };
     fp_publisher *publisher = NULL;
+    int8_t published_d1 = 0, published_d2 = 0;
+    unsigned registration_calls = 0;
     if (fp_open(&publisher, 6, &sink) != 0) {
         fprintf(stderr, "BENCH: fp_open failed\n");
         return 2;
@@ -108,13 +110,16 @@ int main(int argc, char **argv)
             fieldreg_begin_segment(&engine);
         else if (sr.actions & SIGNAL_ACTION_REGISTRATION_DISCONTINUITY)
             fieldreg_discontinuity(&engine);
-        if (!fieldreg_process(&engine, unit, &decision)) return 2;
-        signal_state_note_registration(signal, &sr,
-            decision.frame_observation_support == 2,
-            decision.frame_observation_d1, decision.frame_observation_d2,
-            decision.confidence, true, decision.applied_d1, decision.applied_d2);
+        if (sr.normal_picture) {
+            ++registration_calls;
+            if (!fieldreg_process(&engine, unit, &decision)) return 2;
+            published_d1 = decision.applied_d1;
+            published_d2 = decision.applied_d2;
+        } else {
+            fieldreg_discontinuity(&engine);
+        }
         if (fp_publish(publisher, unit, FIELDREG_UNIT_BYTES, (uint64_t)i,
-                       decision.applied_d1, decision.applied_d2,
+                       published_d1, published_d2,
                        FP_TRANSPORT_COMPLETE, 0, 0) != 0)
             return 2;
         worker_ns[i] = now_ns() - begin;
@@ -127,8 +132,8 @@ int main(int argc, char **argv)
     checksum += bench.checksum;
     report("FIELDREG-BENCH", engine_ns);
     report("WORKER-BENCH", worker_ns);
-    printf("BENCH-SAMPLES %d checksum %llu\n", SAMPLES,
-           (unsigned long long)checksum);
+    printf("BENCH-SAMPLES %d registration_calls %u gated %u checksum %llu\n", SAMPLES,
+           registration_calls, SAMPLES-registration_calls, (unsigned long long)checksum);
     fp_close(publisher);
     free(worker_ns); free(engine_ns); free(signal); free(raw);
     return 0;

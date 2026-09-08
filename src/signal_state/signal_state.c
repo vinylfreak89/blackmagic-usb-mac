@@ -11,7 +11,6 @@ enum {
     HEADER_BYTES = 48,
     X_SAMPLES = 180,
     SAMPLE_STEP_PIXELS = 4,
-    MAX_PHASE_WINDOW = 64,
 };
 
 struct signal_state {
@@ -25,17 +24,13 @@ struct signal_state {
     signal_source_state stable_source;
     signal_source_state source_candidate;
     uint32_t source_candidate_count;
-    bool acquisition_open;
+    bool picture_disrupted;
+    bool loss_active;
+    bool epoch_started;
 
     bool unsettled;
     uint64_t interval_serial;
     uint64_t active_interval;
-    uint32_t stable_phase_count;
-    bool phase_valid;
-    int8_t phase_d1;
-    int8_t phase_d2;
-    uint64_t phase_change_bits;
-    uint32_t phase_window_count;
 
     bool previous_valid;
     uint8_t previous[RASTER_LINES][X_SAMPLES];
@@ -57,9 +52,6 @@ signal_state_config signal_state_default_config(void)
         .appearance_confirm_units = 2,
         .acquisition_confirm_units = 5,
         .mute_confirm_units = 3,
-        .phase_chatter_window_units = 30,
-        .phase_chatter_threshold = 4,
-        .settle_confirm_units = 30,
     };
     return config;
 }
@@ -77,15 +69,6 @@ void signal_state_init(signal_state *state, const signal_state_config *config)
     chosen.acquisition_confirm_units = clamp_nonzero(
         chosen.acquisition_confirm_units, 5);
     chosen.mute_confirm_units = clamp_nonzero(chosen.mute_confirm_units, 3);
-    chosen.phase_chatter_window_units = clamp_nonzero(
-        chosen.phase_chatter_window_units, 30);
-    if (chosen.phase_chatter_window_units > MAX_PHASE_WINDOW)
-        chosen.phase_chatter_window_units = MAX_PHASE_WINDOW;
-    chosen.phase_chatter_threshold = clamp_nonzero(
-        chosen.phase_chatter_threshold, 4);
-    if (chosen.phase_chatter_threshold > chosen.phase_chatter_window_units)
-        chosen.phase_chatter_threshold = chosen.phase_chatter_window_units;
-    chosen.settle_confirm_units = clamp_nonzero(chosen.settle_confirm_units, 30);
     memset(state, 0, sizeof(*state));
     state->config = chosen;
 }
@@ -116,10 +99,84 @@ static double clamp01(double value)
     return value;
 }
 
+typedef struct correlation_sums {
+    double a, b, aa, bb, ab;
+    unsigned n;
+} correlation_sums;
+
+static void add_pair(correlation_sums *s, double a, double b)
+{
+    s->a += a; s->b += b; s->aa += a*a; s->bb += b*b;
+    s->ab += a*b; ++s->n;
+}
+
+static double correlation(correlation_sums s, bool *known)
+{
+    double a = s.n*s.aa-s.a*s.a, b = s.n*s.bb-s.b*s.b;
+    *known = a > 0 && b > 0;
+    return *known ? (s.n*s.ab-s.a*s.b)/sqrt(a*b) : 0;
+}
+
+static int compare_double(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+
+/* Same sampled field body as the existing classifier; adjacent rows never
+ * cross a field boundary. Statistics retain gain/offset invariance. */
+static void measure_coherence(const signal_state *state, const uint8_t *raster,
+                              signal_measurements *out)
+{
+    for (int f = 0; f < 2; ++f) {
+        int first = f ? 282 : 20;
+        double rows[236], ranges[237], sigmas[237];
+        unsigned count = 0;
+        correlation_sums temporal = {0};
+        for (int y = first; y < first + 237; ++y) {
+            correlation_sums row = {0};
+            int lo = 255, hi = 0;
+            double sum = 0, sum2 = 0;
+            for (int x = 0; x < X_SAMPLES; ++x) {
+                size_t p = (size_t)y*BYTES_PER_LINE + x*SAMPLE_STEP_PIXELS*2 + 1;
+                int v = raster[p];
+                sum += v; sum2 += v*v;
+                if (v < lo) lo = v;
+                if (v > hi) hi = v;
+                if (y > first) add_pair(&row, v, raster[p-BYTES_PER_LINE]);
+                if (state->previous_valid) add_pair(&temporal, v, state->previous[y][x]);
+            }
+            bool known;
+            double c = correlation(row, &known);
+            if (known) rows[count++] = c;
+            ranges[y-first] = hi-lo;
+            sigmas[y-first] = sqrt(fmax(0, sum2/X_SAMPLES -
+                                        (sum/X_SAMPLES)*(sum/X_SAMPLES)));
+        }
+        qsort(rows, count, sizeof *rows, compare_double);
+        qsort(ranges, 237, sizeof *ranges, compare_double);
+        qsort(sigmas, 237, sizeof *sigmas, compare_double);
+        out->row_coherence[f] = count ? rows[count/2] : 0;
+        out->temporal_coherence[f] = correlation(temporal, &out->temporal_coherence_known[f]);
+        out->median_row_range[f] = ranges[237/2];
+        out->median_row_sigma[f] = sigmas[237/2];
+        int lo = 255, hi = 0;
+        /* Device regenerated blanking rows, excluding the insert. */
+        for (int y = f ? 270 : 7; y <= (f ? 278 : 15); ++y)
+            for (int x = 0; x < 720; ++x) {
+                int v = raster[(size_t)y*BYTES_PER_LINE + x*2 + 1];
+                if (v < lo) lo = v;
+                if (v > hi) hi = v;
+            }
+        out->blanking_range[f] = hi-lo;
+    }
+}
+
 static void measure_raster(signal_state *state, const uint8_t *unit,
                            signal_measurements *out)
 {
     const uint8_t *raster = unit + HEADER_BYTES;
+    measure_coherence(state, raster, out);
     double sum_y = 0.0, sum_y2 = 0.0, chroma = 0.0;
     double gradient = 0.0, temporal = 0.0;
     uint64_t samples = 0, gradients = 0, temporal_samples = 0;
@@ -258,6 +315,26 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
     state->previous_valid = true;
 }
 
+static bool incoherent_noise(const signal_measurements *m)
+{
+    /* Measured separation, not standards: 27:18 noise rows have median
+     * adjacent-row correlation -0.020..0.038; program controls across the
+     * four captures' program intervals are >=0.699 (commercial >=6593).
+     * Snow temporal correlation is <=0.767 in
+     * at least one field; the preceding sub-black onset remains >=0.831.
+     * See tests/coherence_probe.c and the measurement report. Broadband
+     * extent is a median row sigma above this field's entire blanking range,
+     * so sparse overlays and the blanking dither cannot supply it. */
+    for (int f = 0; f < 2; ++f) {
+        if (m->row_coherence[f] < 0.1 &&
+            m->median_row_sigma[f] > m->blanking_range[f] &&
+            m->temporal_coherence_known[f] && m->temporal_coherence[f] < 0.8) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static signal_appearance classify_appearance(const signal_measurements *m,
                                              double *confidence)
 {
@@ -363,15 +440,6 @@ static void open_interval(signal_state *state)
         state->unsettled = true;
         state->active_interval = ++state->interval_serial;
     }
-    state->stable_phase_count = 0;
-}
-
-static void invalidate_phase(signal_state *state)
-{
-    state->phase_valid = false;
-    state->stable_phase_count = 0;
-    state->phase_change_bits = 0;
-    state->phase_window_count = 0;
 }
 
 bool signal_state_classify(signal_state *state,
@@ -384,7 +452,6 @@ bool signal_state_classify(signal_state *state,
     memset(out, 0, sizeof(*out));
     out->transport = unit->transport;
     out->transport_flags = unit->transport_flags;
-    out->settled_d1 = out->settled_d2 = 0;
     bool host_unobserved = context && context->host_raster_unobserved;
     if (context && context->host_observations_missing_before)
         state->previous_valid = false;
@@ -401,11 +468,6 @@ bool signal_state_classify(signal_state *state,
                                      : 0.5;
         out->unsettled = state->unsettled;
         out->unsettled_interval_id = state->active_interval;
-        out->settled_phase_known = state->phase_valid && !state->unsettled;
-        if (state->phase_valid) {
-            out->settled_d1 = state->phase_d1;
-            out->settled_d2 = state->phase_d2;
-        }
         return true;
     }
     bool structural_unknown = false;
@@ -434,7 +496,53 @@ bool signal_state_classify(signal_state *state,
                                               &out->appearance_confidence);
     }
 
+    /* Wreck onset at 49105: field-2 row/temporal coherence .295/.419;
+     * none of the normal-program controls in captures 1..4 meets <.5 and <.8
+     * (commercial counter >=6593; its rewind is a separate control).
+     * A content cut with spatial structure alone cannot enter this state.
+     * Once entered, incoherent successors cannot acquire Present merely
+     * because one wrecked unit has spatially coherent bands. */
+    bool disruption = false, temporal_clean = true, spatial_clean = true;
+    for (int f = 0; f < 2; ++f) {
+        const signal_measurements *m = &out->measurements;
+        bool temporal = m->temporal_coherence_known[f];
+        bool broad = m->median_row_sigma[f] > m->blanking_range[f];
+        disruption |= broad && temporal && m->row_coherence[f] < 0.5 &&
+                      m->temporal_coherence[f] < 0.8;
+        temporal_clean &= temporal && m->temporal_coherence[f] >= 0.8;
+        /* Both-field minimum over wreck 49105..49112 is at most .887;
+         * returned program 49164..49168 is at least .934. Spatial recovery
+         * also permits real content motion/cuts with low temporal coherence. */
+        spatial_clean &= m->row_coherence[f] >= 0.9;
+    }
+    bool blocked_picture = out->appearance == SIGNAL_APPEARANCE_PROGRAM_LIKE &&
+        (disruption || (state->picture_disrupted && !temporal_clean && !spatial_clean));
+    if (blocked_picture) {
+        state->picture_disrupted = true;
+    }
+    bool snow = out->appearance == SIGNAL_APPEARANCE_SNOW_LIKE ||
+        (unit->fixed_raster_eligible && incoherent_noise(&out->measurements));
+    out->lock_like_loss = snow ||
+                         out->appearance == SIGNAL_APPEARANCE_DEVICE_NO_SIGNAL_0800;
+    /* A positively identified mute ends the wrecked-picture episode, not
+     * the loss epoch. It stays gated; return to program still needs source
+     * confirmation. Do not latch a subsequent clean fade as damaged. */
+    if (!out->lock_like_loss &&
+        (out->appearance == SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE ||
+         out->appearance == SIGNAL_APPEARANCE_NEUTRAL_GRAY_MUTE_LIKE))
+        state->picture_disrupted = false;
+    if (out->lock_like_loss) {
+        if (!state->loss_active) {
+            out->actions |= SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT;
+            open_interval(state);
+        }
+        state->loss_active = true;
+        state->epoch_started = true;
+        state->picture_disrupted = true;
+    }
+
     signal_appearance observed_appearance = out->appearance;
+    out->observed_appearance = observed_appearance;
     double observed_confidence = out->appearance_confidence;
     if (observed_appearance == state->appearance_candidate) {
         increment_saturating(&state->appearance_candidate_count);
@@ -460,10 +568,20 @@ bool signal_state_classify(signal_state *state,
     }
     out->appearance = state->stable_appearance;
     out->appearance_confidence = state->stable_appearance_confidence;
+    /* Safety evidence is current-unit, not subject to appearance hysteresis.
+     * Keep that hysteresis independent so a snow override cannot rewrite the
+     * following sub-black/grey appearance history. */
+    signal_appearance safety_appearance = snow ? SIGNAL_APPEARANCE_SNOW_LIKE :
+        blocked_picture ? SIGNAL_APPEARANCE_INCOHERENT : observed_appearance;
+    out->observed_appearance = safety_appearance;
+    if (snow || (blocked_picture && out->appearance == SIGNAL_APPEARANCE_PROGRAM_LIKE)) {
+        out->appearance = safety_appearance;
+        out->appearance_confidence = 1.0;
+    }
 
     /* Source inference accumulates the instantaneous property observation in
      * parallel with appearance hysteresis, so confirmation is not paid twice. */
-    signal_source_state target = appearance_source(observed_appearance, context);
+    signal_source_state target = appearance_source(safety_appearance, context);
     if (target == state->source_candidate) {
         increment_saturating(&state->source_candidate_count);
     } else {
@@ -475,41 +593,41 @@ bool signal_state_classify(signal_state *state,
     if (needed < state->config.appearance_confirm_units)
         needed = state->config.appearance_confirm_units;
     if (structural_unknown) {
-        invalidate_phase(state);
         state->stable_source = SIGNAL_SOURCE_UNKNOWN;
         state->source_candidate = SIGNAL_SOURCE_UNKNOWN;
         state->source_candidate_count = 1;
-    } else if ((target == SIGNAL_SOURCE_MUTED &&
+    } else if (out->lock_like_loss ||
+               blocked_picture ||
+               (target == SIGNAL_SOURCE_MUTED &&
                 observed_appearance == SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE) ||
                state->source_candidate_count >= needed) {
         signal_source_state prior = state->stable_source;
         state->stable_source = target;
         if (target != prior && target == SIGNAL_SOURCE_REACQUIRING) {
-            invalidate_phase(state);
-            out->actions |= SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT;
-            state->acquisition_open = true;
             open_interval(state);
         } else if (target != prior && target == SIGNAL_SOURCE_PRESENT) {
-            invalidate_phase(state);
-            if (!state->acquisition_open)
+            if (!state->epoch_started)
                 out->actions |= SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT;
-            state->acquisition_open = true;
+            state->epoch_started = true;
+            state->loss_active = false;
+            state->picture_disrupted = false;
             open_interval(state);
+            state->unsettled = false;
         } else if (target != prior &&
                    (target == SIGNAL_SOURCE_MUTED ||
                     target == SIGNAL_SOURCE_NO_INPUT)) {
-            invalidate_phase(state);
-            state->acquisition_open = false;
             open_interval(state);
             /* The confirmed non-picture state is itself a settled endpoint;
              * raster registration has no meaning until acquisition resumes. */
             state->unsettled = false;
         } else if (target != prior && target == SIGNAL_SOURCE_UNKNOWN) {
-            state->acquisition_open = false;
             open_interval(state);
         }
     }
     out->source = state->stable_source;
+    out->normal_picture = unit->fixed_raster_eligible && unit->bytes &&
+        safety_appearance == SIGNAL_APPEARANCE_PROGRAM_LIKE &&
+        state->stable_source == SIGNAL_SOURCE_PRESENT;
     out->source_confidence = state->stable_source == SIGNAL_SOURCE_UNKNOWN
                                  ? 0.0
                                  : target == state->stable_source
@@ -520,94 +638,7 @@ bool signal_state_classify(signal_state *state,
         open_interval(state);
     out->unsettled = state->unsettled;
     out->unsettled_interval_id = state->active_interval;
-    out->settled_phase_known = state->phase_valid && !state->unsettled;
-    if (state->phase_valid) {
-        out->settled_d1 = state->phase_d1;
-        out->settled_d2 = state->phase_d2;
-    }
     return true;
-}
-
-static uint32_t popcount64(uint64_t value)
-{
-    uint32_t count = 0;
-    while (value) {
-        value &= value - 1;
-        ++count;
-    }
-    return count;
-}
-
-void signal_state_note_registration(signal_state *state, signal_result *result,
-                                    bool observation_known, int8_t d1, int8_t d2,
-                                    double confidence, bool applied_known,
-                                    int8_t applied_d1, int8_t applied_d2)
-{
-    if (!state || !result)
-        return;
-    if (state->stable_source != SIGNAL_SOURCE_PRESENT) {
-        result->unsettled = state->unsettled;
-        result->unsettled_interval_id = state->active_interval;
-        result->settled_phase_known = false;
-        return;
-    }
-
-    bool changed = observation_known && confidence >= 0.25 && state->phase_valid &&
-                   (d1 != state->phase_d1 || d2 != state->phase_d2);
-    uint32_t window = state->config.phase_chatter_window_units;
-    uint64_t mask = window == 64 ? UINT64_MAX : ((UINT64_C(1) << window) - 1);
-    state->phase_change_bits = ((state->phase_change_bits << 1) |
-                                (changed ? 1u : 0u)) & mask;
-    if (state->phase_window_count < window)
-        ++state->phase_window_count;
-    if (popcount64(state->phase_change_bits) >=
-        state->config.phase_chatter_threshold)
-        open_interval(state);
-
-    if (applied_known) {
-        if (!state->phase_valid) {
-            state->phase_d1 = applied_d1;
-            state->phase_d2 = applied_d2;
-            state->phase_valid = true;
-            state->stable_phase_count = 1;
-        } else if (applied_d1 == state->phase_d1 &&
-                   applied_d2 == state->phase_d2) {
-            increment_saturating(&state->stable_phase_count);
-        } else {
-            state->phase_d1 = applied_d1;
-            state->phase_d2 = applied_d2;
-            open_interval(state);
-            state->stable_phase_count = 1;
-        }
-    } else if (state->unsettled) {
-        state->stable_phase_count = 0;
-    }
-
-    if (state->unsettled && state->stable_source == SIGNAL_SOURCE_PRESENT &&
-        state->stable_phase_count >= state->config.settle_confirm_units &&
-        popcount64(state->phase_change_bits) == 0) {
-        state->unsettled = false;
-        state->acquisition_open = false;
-    }
-    result->unsettled = state->unsettled;
-    result->unsettled_interval_id = state->active_interval;
-    result->settled_phase_known = state->phase_valid && !state->unsettled;
-    if (state->phase_valid) {
-        result->settled_d1 = state->phase_d1;
-        result->settled_d2 = state->phase_d2;
-    }
-}
-
-void signal_state_commit_registration(signal_state *state, int8_t d1, int8_t d2)
-{
-    if (!state)
-        return;
-    state->phase_valid = true;
-    state->phase_d1 = d1;
-    state->phase_d2 = d2;
-    state->stable_phase_count = 0;
-    state->phase_change_bits = 0;
-    state->phase_window_count = 0;
 }
 
 const char *signal_appearance_name(signal_appearance appearance)
@@ -619,6 +650,7 @@ const char *signal_appearance_name(signal_appearance appearance)
     case SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE: return "SubBlackMuteLike";
     case SIGNAL_APPEARANCE_DEVICE_NO_SIGNAL_0800: return "DeviceNoSignal0800";
     case SIGNAL_APPEARANCE_FLAT_AMBIGUOUS: return "FlatAmbiguous";
+    case SIGNAL_APPEARANCE_INCOHERENT: return "Incoherent";
     default: return "Unknown";
     }
 }

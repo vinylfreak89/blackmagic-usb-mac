@@ -200,6 +200,9 @@ typedef struct fieldreg_decision {
     int8_t frame_observation_d1;
     int8_t frame_observation_d2;
     uint8_t frame_observation_support;
+    /* Registration facts only: no feedback into source inference. */
+    bool geometry_lock_known;
+    bool geometry_observation_changed[2];
     fieldreg_mode mode;
     /* Binary accepted-evidence flag, not a probability. */
     double confidence;

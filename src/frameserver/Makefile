@@ -29,6 +29,9 @@ test: tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_te
 	./tests/frame_publisher_test
 	./tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
 
+test-registration-gate: frameserver_replay
+	python3 tests/registration_gate_test.py
+
 # Item ring of 2 so a stalled consumer exhausts it deterministically (ring-full accounting path).
 test-smallring: $(FIXTURE) $(FIXTURE_LONG)
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -DRING_ITEMS=2 $(TESTFLAGS) -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_smallring $(LIBS)
