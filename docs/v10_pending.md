@@ -41,5 +41,5 @@ Reconstructed 2026-09-09 03:58 JST from the 45 owner messages since the v10 rest
 
 ## D. Waiting on the owner
 
-- Codex's model and effort changed under the upgrade (reported 2026-09-09 04:1x): whether the v10 thread stays on
+- Codex's model and effort changed under the upgrade (reported 2026-09-09 04:11 JST): whether the v10 thread stays on
   the new default or goes back to xhigh, and whether the app-server is restarted onto the newer CLI on disk.
