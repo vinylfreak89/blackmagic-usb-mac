@@ -44,14 +44,35 @@ whole-tape signal-state audit.
 | B3 | The render changes | contract §8 | not implemented |
 | B4 | The acceptance runs | HANDBACK §7 steps 3 and 4 | blocked on B1 and the engine |
 
-## C. Contract
+## C. The first two-instrument disagreement (capture 1)
+
+Measured 2026-09-09 on the commercial capture, 582 units of the stable interval, my reference
+(`switch_geometry.py`) against the engine's record (`frameserver_replay`), joined by device counter:
+
+- **The picture top agrees perfectly.** Both put field 1 at line 23 and field 2 at 286 in all 582
+  units, and both bottoms constant at 262 and 525. That is the owner's invariant and it holds.
+- **The switch line does not.** Exact agreement on 163 units (field 1) and 186 (field 2); the rest
+  differ by exactly 25 or exactly 59 lines, with the engine always the earlier. Band counts follow:
+  mine 2, the engine's 27 or 61 on the same units.
+- **The rows in dispute carry no readable horizontal timing.** On unit 6687 the picture's content
+  ends at line 235 (mean 65, sigma 60) and lines 237-262 sit at mean 21, sigma 5, with best-lag SAD
+  ratios of 0.94-1.00 throughout — no row improves by shifting, so there is no departure to read.
+  Both instruments are therefore inferring that region from something other than timing, which is
+  the case the contract sends to the raw rows and BOTH agents.
+- **What can be said without adjudicating:** a 27-row or 61-row head-switch band is not physically
+  available. NTSC's head switch is a few lines before vertical sync, and the contract's own
+  measurement of this capture is 3.32 rows, median 3.
+
+Not yet with Codex: its turn is running and the rule is one dispatch at a time.
+
+## D. Contract
 
 - **§2's displaced-row figure is disputed and unamended.** It states "0 displaced rows against 1,957" and calls the
   separation categorical; Codex measured 11 against 1,957, "strong, not categorical" (turn 15), proposed replacement
   wording that was never applied, and §9 still reads "Nothing is open". I agree with its measurement, so it is with
   Codex for assent in the current turn; it reaches the owner only if we cannot settle it.
 
-## D. To put to the owner
+## E. To put to the owner
 
 - **His vertical-tear definition was measured insufficient and amended without a word to him.** Applied literally it
   fires 1,038 times, so the contract now carries three added qualifiers (contract §3). He asked us to confirm the
@@ -60,7 +81,7 @@ whole-tape signal-state audit.
 - He said on 2026-09-09 00:11 "I haven't responded to all your questions so give me a minute". Nothing tracks which
   of my questions are still with him.
 
-## E. Recorded elsewhere, still open, outside the v10 acceptance path
+## F. Recorded elsewhere, still open, outside the v10 acceptance path
 
 - The render and the live path disagree in ~8,400 units, almost all field 2 of the first recording, by one line,
   because the renderer does not make the live path's `fieldreg_begin_segment` calls (CLAUDE.md §11). This bears on
