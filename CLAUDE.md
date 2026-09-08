@@ -2094,7 +2094,12 @@ Source confirmation closes the source interval from raster evidence only. Engine
 applied crops and each field's measured geometry changes are separate schema-14 record fields;
 there is no registration dwell or chatter threshold in source inference. The regression
 `registration_output_cannot_mutate_signal_state` failed at unit 5 on the old API and passes
-with the upstream-only API. The gate and 27:18 repairs above were independently tested changes.
+with the upstream-only API. Review subsequently found that the post-fix conditional
+test made no differing calls and was vacuous. It is replaced by
+`retired_registration_api_absent`: compilation must reject both retired names and
+the production object must export neither; four declaration/definition mutation
+controls exercise rejection. The runtime test and its feature macro are removed.
+The gate and 27:18 repairs above were independently tested changes.
 
 - **Mutual code-and-intent review is the coding style of this project (owner rule, 2026-09-03).**
   Every change by one agent (Claude or Codex) is reviewed by the other before it is considered

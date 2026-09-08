@@ -1,8 +1,6 @@
 #ifndef BLACKMAGIC_USB_MAC_SIGNAL_STATE_H
 #define BLACKMAGIC_USB_MAC_SIGNAL_STATE_H
 
-#define SIGNAL_STATE_UPSTREAM_ONLY 1
-
 #include "../unit_parser/unit_parser.h"
 
 #include <stdbool.h>

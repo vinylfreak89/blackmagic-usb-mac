@@ -10,6 +10,13 @@ ownership/lifecycle seams; it does not change picture-edge measurement.
 - `registration_output_cannot_mutate_signal_state` failed at unit 5 with the
   old feedback API. Both feedback APIs and the settled-phase members are
   removed. Source confirmation and geometry confirmation are now separate.
+  Review found that its conditional compilation made the post-fix version
+  vacuous: neither history reached the classifier. That runtime test and its
+  feature macro are now removed. `retired_registration_api_absent` instead
+  requires references to both retired names to fail compilation, checks that
+  neither is exported by the actual object, and tests all four checks with
+  reintroduced declarations/definitions. No surviving API accepts registration
+  output, so there is no meaningful two-downstream-histories runtime test.
 - `registration_gate_test.py` failed on the first grey unit, counter 12.
   It exercises the real parser, classifier, engine and publisher: 29 exact
   synthetic units, nine mute units held at the previous nonzero crop, and
