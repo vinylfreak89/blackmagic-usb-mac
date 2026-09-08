@@ -38,6 +38,23 @@ A hang is the worst failure mode a test has. It reports nothing, so CI and a hum
 the cost lands on someone who was not there. A test that fails loudly at a deadline is strictly
 better even when the deadline is wrong. **Every wait in a test carries a deadline and fails at it.**
 
+**The same defect in shell, with a sharper edge: `pgrep -f` matches the watcher's own command
+line.** A watcher written as `until ! pgrep -f frameserver_replay >/dev/null; do sleep 10; done`
+can NEVER exit. `pgrep -f` tests the pattern against every process's full command line, and the
+watcher's own shell has the pattern in its command line, so it matches itself forever. Reproduced
+2026-09-09: with no `frameserver_replay` running at all, the loop was still spinning after three
+seconds, and `pgrep -fl` showed two matches — the watcher itself, and an unrelated shell that
+happened to hold a heredoc mentioning the same string. One such watcher ran 37 minutes past the
+job it was watching and kept its task registered as "running" the whole time.
+
+Two rules follow, and the first is the one already written down and not applied:
+- **Cap every wait loop** (`i=0; until <cond> || [ "$i" -ge N ]; do sleep S; i=$((i+1)); done`). A
+  loop that cannot terminate on its own is a defect regardless of what it is waiting for.
+- **Never wait on `pgrep -f <string>` from a shell whose command line contains `<string>`.** Wait
+  on a PID (`kill -0 $PID`), or on the artifact the job produces, or exclude self with `pgrep -f
+  <string> | grep -v $$`. Matching on text that the matcher itself contains is a self-fulfilling
+  condition, and it fails in the direction that looks like "still running".
+
 ### 3. A self-validating invariant beats every heuristic
 De-interleaving the untagged capture was solved not by a clever detector but by a property that
 **cannot accidentally hold**: remove the right bytes and consecutive `0xe801` markers land at
