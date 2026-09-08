@@ -1013,11 +1013,19 @@ nnedi does for the lines that comb. again, anything is going to look better than
 - **How it decides:** fill the damaged row from the other field, then TEST the result with the comb detector; if it
   combs, the fill is wrong for that row (the picture moved) and the row is filled by intra-field interpolation
   instead, the way NNEDI3 builds a line from its own field. "anything is going to look better than flagging."
-- **The one engineering caveat:** the comb detector the engine has today is a whole-field, static-masked measurement
-  of inter-field registration. Deciding whether ONE row may be borrowed needs a local test on that row's
-  neighbourhood, not a field-wide one. It is the same idea and not the same instrument.
-- **Still open:** whether the recorder sink (a downstream consumer like any other) receives the repaired frames or
-  the untouched ones when the option is on. Not decided here.
+- **The whole-field comb is the test** (owner, 2026-09-09, resolving the caveat that it is not a per-row
+  instrument): "whole field combing is a fine substitute. if the field combs we should assume those lines might comb
+  and interpolate them." So no per-row motion test is built: a combing field means the damaged rows are interpolated
+  intra-field rather than borrowed, which is the conservative direction.
+- **The recorder sink receives the repaired fields** (owner, same day). Every consumer therefore sees the repair; the
+  untouched raster exists only in the debug `.tpc` when it is enabled.
+- **Where the repair must happen, measured in the code:** libobs has no notion of a field. The plugin hands OBS one
+  assembled 720×480 UYVY frame per unit through `obs_source_output_video`, and `struct obs_source_frame` carries no
+  field member; deinterlacing is a per-SOURCE property (`obs_source_set_deinterlace_mode`, default Yadif 2x TFF, and
+  `obs_source_set_deinterlace_field_order`, set to TOP) applied at render time, where OBS splits that assembled frame
+  into fields itself. So a consumer cannot repair a field even in principle: the repair has to be upstream in the
+  frameserver, on the fields, before the frame is woven — which is where the owner put it. A benign side effect is
+  that OBS's own deinterlacer then sees a clean frame instead of a damaged one.
 - The gate the owner set is headroom: only if the engine runs significantly ahead of real time. Measured today,
   1.4–3.3 ms/unit against the §11b 10 ms budget, so headroom exists; the fill is cheap and the decision is not.
 - The passage that motivates it (owner, same day): the 34:14–34:43 mistracking band "shows up and migrates from the
