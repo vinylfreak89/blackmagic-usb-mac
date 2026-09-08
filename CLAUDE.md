@@ -573,6 +573,31 @@ resets the geometry under rule 5b while a deck mute is not, so a snow phase read
 reset when it must. Separately, 11 units at 27:19.17–.50 whose raster is grey at mean 117 also carry the sub-black
 label; the source state `Muted` is right throughout, so that one is information rather than a defect.)
 
+**Whole-tape signal-state audit — measured 2026-09-09 over all 86,293 units (independent instrument, then joined
+against the live classifier's own decision log).** The owner's expectation was right: **the tape carries three
+genuine non-programme events totalling 10.9 seconds**, every one confirmed on the raw 525-line raster — the tape
+start (units 0–214: deck grey mute with OSD, then a completely black raster, then relock snow), the boundary
+between the two recordings (43,678–43,729, one torn unit then snow then grey mute), and 27:18 (49,105–49,163, nine
+violently torn rasters then black, snow, grey mute). The deck's grey-mute fingerprint (mean 115–125, σ 14–18,
+temporal r > 0.99 in both fields) matches 228 units in six runs and **every one lies inside those three events**.
+A ~99-run flat list reconstructed to the same shape is **96% ordinary programme**: 54 runs vertically coherent
+throughout, 21 carrying saturated chroma, 15 fade bottoms. Five 9-unit sequences at units 45719/48115/48642/49560/
+57488 have matching statistics in matching order and a large coherent saturated U plane where relock snow carries
+no chroma at all: recorded content, not noise.
+**The classifier's failures are all in one direction — it never calls programme snow.** `SnowLike` fires exactly
+twice on the whole tape (43,693–43,694) and both are real. What it does instead:
+- **The `SnowLike` rule has no temporal and no vertical-coherence term** (`luma_sigma > 35 && spatial_gradient_energy > 30 && program_extent_fraction > 0.50`), so a TORN raster — which keeps high sigma and high gradient — reads as programme. That is the mechanism behind the 27:18 miss and behind units 196–212, the relock snow at tape start. Measured at 49,106/49,109/49,112 the adjacent-row correlation is 0.95–0.97 while the temporal correlation is ≈ 0: **a torn raster is still made of picture rows, so vertical coherence does not collapse and temporal decorrelation is the reliable signal.**
+- **The appearance latch is asymmetric.** The logged appearance is `stable_appearance`; `SubBlackMuteLike` (like `DeviceNoSignal0800`) installs with NO confirmation while leaving it needs three consecutive identical observations. At 49,126–49,136 it therefore persisted 11 units (0.37 s) onto a raster measuring mean 117–118 — the deck grey mute — with confidence 1.00 and nothing in the raster changing at the switch. This is the "sub-black label on grey" the owner saw.
+- **`NeutralGrayMuteLike`'s rule tests uniformity, not greyness**, so 253 units of near-black programme (mean 15–38, against the deck's actual grey mute at 117) carry a label and a `Muted` source that assert a deck mute. 122 false positives in all, none of them snow.
+- **Registration ran on contentless rasters.** Inside the tape-start event the engine derived and recorded crops of **+101 and +118 lines** on a raster measuring Y 1.4 with σ 0.5 and no content whatever, plus +7…+30 across units 175–214, while the classifier's source already read `Muted`. Everywhere else on the tape |d| ≤ 2 with one exception. No picture is corrupted (there is none), but it is the sharpest evidence for contract rule 5's gate.
+**Tool defect found by the same audit: `frameserver_replay --pace-us 0` silently destroys a whole-tape run.** On
+`fulltape.cap6` it produced 20,933 holes and only 991 exact units, then **exited 0**: the 256 MB capture ring
+overflows against a reader going at ~1 GB/s, its HostLoss becomes parser holes, and the tool prints no
+capture-level loss counter. Re-run at `--pace-us 8000` (2× realtime) it is 86,293 exact, 0 holes, 0 drops, ring
+high-water 0. Use `--pace-us 8000` for a whole-tape replay, or a ring larger than the file for a slice; never
+trust an unpaced whole-tape run's exit code. (This is the §6 hazard already recorded for
+`shuttle_no_input_45s.tpc`, now measured at scale and with the silent-exit-0 half named.)
+
 2. **Raster appearance** — program-like / snow-like / deck-grey / sub-blanking mute / device
    no-signal / flat-ambiguous.
 3. **Source-state inference** — present / reacquiring / deck-muted / no input / **unknown**, with
