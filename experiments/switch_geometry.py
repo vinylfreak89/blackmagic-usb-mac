@@ -15,7 +15,8 @@ Per field of every exact unit:
            width <= 12 samples (physics: the head-switch transient is a few hundred ns, i.e. a few samples at 13.5 MHz;
            picture edges measured >= 20 wide) on a row that is not shifted, directly above a shifted row
   switch   the first row from the body downward that is shifted, or that carries a peak with the next row shifted
-  top      the first recorded row that is above black (luma > blank + 6 sigma_b) [VBI-type rows not yet skipped]
+  top      the first RECORDED row that is not a VBI row (contract section 3; VBI rows are excluded by signature at
+           line 228, never by level) -- 'the first picture row is the first picture row' (owner)
   reliable rows = top .. switch-1; band = switch .. last recorded row; closure = reliable + band vs 240
 Usage: switch_geometry.py <capture> <out.csv> [--repair] [--units a,b,c (verbose rows)]"""
 import sys, os, csv, argparse, numpy as np
