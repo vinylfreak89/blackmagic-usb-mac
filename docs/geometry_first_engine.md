@@ -279,8 +279,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
     property, never by this deck). The band is therefore found by displacement where the timing survives and by the
     absence of picture where a corrector has replaced it, and "not applicable" stays distinct from "unmeasurable".
   * Caveat stated with it: the two captures are not frame-aligned (best field-match correlation 0.07–0.31), so this
-    is a distributional comparison of 396 fields against 1,216, not the same frames. The categorical difference —
-    768 flat rows against 0, and 0 displaced rows against 1,957 — cannot be explained by content.
+    is a distributional comparison of 396 fields against 1,216, not the same frames. The flat-row measurement is
+    768 with TBC on against 0 with TBC off. Using the affected-row definition and |d| >= 6 samples, Codex measured
+    11 displaced TBC-on rows against 1,957 TBC-off rows. The timing separation is strong, not categorical; these
+    distributional measurements do not establish a content-independent, error-free per-unit regime classifier.
 - **Head switch**: discontinuous horizontal skew, an RF peak, or both, plus an AGC mismatch where present (owner,
   2026-09-07 morning); the other head's blanking intruding into the row and the pedestal rows are what the captures
   show (section 2). **Switch line** (the top switch line): the horizontal line carrying the peak, the partial line;
