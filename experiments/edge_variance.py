@@ -59,9 +59,16 @@ def measure(R, f):
                          mean=round(float(y.mean()),2), std=round(float(y.std()),2)))
     return rows, blank_mu, blank_sd
 
-def body_variance(rows, top_idx):
-    """the field's own edge variance over rows that are picture by construction (top+20 .. top+200)"""
-    body = [x for x in rows[top_idx+20:top_idx+201] if x['left'] is not None]
+def body_variance(rows, top_idx=None):
+    """the field's own edge variance, taken over a FIXED window of the field's own rows.
+
+    Corrected 2026-09-08: the window used to start at the first row with edges, which on a dark or VBI-led field is
+    not the picture, so the envelope was built from the wrong rows and then rejected half the picture. This
+    instrument measures the BOTTOM (the owner's horizontal-timing rule); the picture top is a different measurement
+    and must not feed it. Rows 40..200 of the pass-through region are inside any placed picture whatever the
+    displacement (the picture is 240 lines and displacement is a few lines), so they are the field's own reference
+    without a top being known."""
+    body = [x for x in rows[40:201] if x['left'] is not None]
     if len(body) < 40: return None
     L = [x['left'] for x in body]; Rt = [x['right'] for x in body]
     return dict(lmin=min(L), lmax=max(L), rmin=min(Rt), rmax=max(Rt), n=len(body))
@@ -74,7 +81,7 @@ def summarise(rows, var):
     inside = [r for r in rows if r['left'] is not None and
               var['lmin'] <= r['left'] <= var['lmax'] and var['rmin'] <= r['right'] <= var['rmax']]
     if not inside: return None
-    top = inside[0]['row']; bottom = inside[-1]['row']
+    top = inside[0]['row']; bottom = inside[-1]['row']   # top is NOT this instrument's answer (see body_variance)
     withedges = [r for r in rows if r['left'] is not None]
     clip = withedges[-1]['row']
     band = [r for r in rows if r['row'] > bottom and r['left'] is not None]
@@ -119,7 +126,7 @@ def main():
         for f in (1, 2):
             rows, bmu, bsd = measure(R, f)
             first = next((k for k, x in enumerate(rows) if x['left'] is not None), None)
-            var = body_variance(rows, first) if first is not None else None
+            var = body_variance(rows)
             if A.summary:
                 sm = summarise(rows, var)
                 if sm is None:
