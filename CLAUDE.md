@@ -606,12 +606,20 @@ exact units, 0 holes, 0 drops, ring high-water 0. Scored against
 |---|---:|---:|---|
 | confirmed non-picture read as normal picture | 17 | **2** | must not rise |
 | mute label on confirmed programme | 108 | **108** | must not rise |
-| registration ran on confirmed non-picture | 270 | **0** | must be 0 after rule 5 |
+| registration MEASURED on confirmed non-picture | 270 | **1** | must be 0 after rule 5 |
 | lock-like loss on confirmed programme | not measurable | **0** | must be 0 |
 
-So the gate is complete across the tape and nothing regressed, which is the owner's stated bar for
-this work ("any changes should not introduce false positives (or false negatives)", 2026-09-09).
-The two remaining misses are units 43,678–43,679, the onset of the recording-boundary event. The
+Nothing regressed, which is the owner's stated bar for this work ("any changes should not introduce
+false positives (or false negatives)", 2026-09-09). ⚠️ **The first version of this table said the
+gate reached 0, and that was a false pass in the scorer, not a result.** It read the APPLIED CROP:
+a gated unit publishes the held crop, often (0,0), and a unit that measured and produced (0,0) is
+indistinguishable from it, so a gate that never applied still scored as applied. Codex found it on
+unit 43,678. The scorer now reads the log's own `registration_measured`, and an absent column is an
+error rather than an inferred pass.
+The one remaining unit is **43,678, which is also one of the two remaining misses**: it is measured
+because it is classified `ProgramLike`/`Present`. So the gate is doing exactly what rule 5 asks —
+it gates on the classifier's verdict — and the residue is upstream in the classification, not in
+the gate. The two misses are units 43,678–43,679, the onset of the recording-boundary event. The
 108 mute labels on dark programme are the pre-existing class and are now the largest one left.
 Not yet through the four-capture acceptance of HANDBACK §7 step 3. (This is the §6 hazard already recorded for
 `shuttle_no_input_45s.tpc`, now measured at scale and with the silent-exit-0 half named.)

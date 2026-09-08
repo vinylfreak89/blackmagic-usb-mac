@@ -21,7 +21,7 @@ whole-tape signal-state audit.
 
 | # | item | where it is written down | state |
 |---|---|---|---|
-| A1 | Rule 5 gate: registration off on anything but normal picture | contract rule 5; the whole-tape score is in CLAUDE.md §6 | implemented, reviewed, whole-tape UNGATED 270 → **0**; awaiting the four-capture acceptance |
+| A1 | Rule 5 gate: registration off on anything but normal picture | contract rule 5; the whole-tape score is in CLAUDE.md §6 | implemented, reviewed, whole-tape registration-on-non-picture 270 → **1**, and that one unit (43,678) is measured because it is misclassified, so the gate itself is doing what rule 5 asks; awaiting the four-capture acceptance |
 | A2 | Signal-state snow / lost-lock correction at 27:18 | CLAUDE.md §6; contract rule 5b | implemented, reviewed, whole-tape misses 17 → **2** (units 43,678–43,679, an event onset); awaiting acceptance |
 | A3 | Retire the registration → classifier feedback path | CLAUDE.md §11 (the one-way ownership rule) | implemented; its first deciding test was vacuous (a macro compiled the body out) and is replaced by one requiring the retired names to fail compilation |
 | A4 | Per-source timing and level references that die with the lock | contract §3, rule 5b | not implemented, and wider than first written: `grep` finds **no line-22 level comparator in the engine at all**, though contract rule 4 requires the owner's eight-slot running comparator; the level references are recomputed per `field_measurement` and never retained under the lock |
