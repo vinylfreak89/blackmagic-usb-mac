@@ -26,14 +26,17 @@ def horizontal_pattern():
     return values
 
 
-def account_unit(counter, d1):
+def account_unit(counter, d1, *, switch1=None, caption_d=None):
+    if switch1 is None:
+        switch1 = 256 + d1
+    caption = (caption_d, 0x14, 0x2C) if caption_d is not None else None
     unit = make_unit(counter, picture=(d1, 0), insert=False,
+                     captions=(caption, None),
                      bottom_overrides=(258, 521), content_phases=(0, 0))
     pattern = horizontal_pattern()
     shifted = pattern[60:] + pattern[:60]
 
     top1 = 19 + d1
-    switch1 = 256 + d1
     for row in range(top1, switch1):
         set_line(unit, row, pattern)
     for row in range(switch1, 259):
