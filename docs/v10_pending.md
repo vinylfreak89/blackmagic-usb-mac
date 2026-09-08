@@ -4,7 +4,14 @@ Reconstructed 2026-09-09 03:58 JST at the owner's instruction ("either things ar
 are still pending in the transcript... do not assume from memory") from: the 45 owner messages since the v10
 restart (2026-09-07 20:29), `docs/geometry_first_engine.md`, `HANDBACK.md`, `CLAUDE.md`, the Codex turn logs
 `/private/tmp/hw-session/codex_v10_turn*.log`, and the engine's own test output. Every line below names its source.
-This file is a state record, not a contract: it is rewritten as items close and it never overrides the contract.
+**This file is temporary.** It exists only because more is in flight than can be held in one head. A row is DELETED
+when its item closes, not marked done, and when the last row goes the file goes with it. It is not a contract and it
+never overrides one; anything that must outlive the work is written into the contract or CLAUDE.md instead (owner,
+2026-09-09: "don't let that live as a permanent artifact ... eventually that file should disappear as things get
+resolved").
+
+**Codex is being upgraded (owner, 2026-09-09). No dispatch goes to it until he says the upgrade is finished.**
+Everything in section A is therefore held, not stalled.
 
 ## A. With Codex (the engine). All raised, none implemented.
 
@@ -12,7 +19,7 @@ This file is a state record, not a contract: it is rewritten as items close and 
 |---|---|---|---|
 | A1 | **Rule 5 gate — registration off on anything but normal picture.** The caller must not measure on an ineligible raster, must publish the previously applied crop rather than `(0,0)`, must record a signal-gate hold rather than a placement, and must use current-unit eligibility, never a hysteretic prior `Present`. | owner 2026-09-09 00:44; contract rule 5; Codex turn 16 §4 | contract written; `frameserver.c:363` still calls `fieldreg_process` for every retained raster |
 | A2 | **The signal-state snow / lost-lock correction at 27:18.** Acceptance, Codex's words: units 49105–49112 never `Present`; 49118–49125 snow-like lost lock (rule 5b), not mute; 49105–49166 zero registration placements; the sub-black appearances preserved. | owner 2026-09-09 03:01 and 03:12; CLAUDE.md §6; Codex turn 16 | measured and recorded; not implemented |
-| A3 | **The registration → classifier feedback loop.** Codex's decision (turn 17, 2026-09-09 03:5x): remove BOTH halves, retire `signal_state_note_registration` and the unused `signal_state_commit_registration`, move chatter / applied phase / settlement to `field_registration`, and drop `settled_phase_known` and `settled_d1/d2` from `signal_result`. Its failing-first test: `registration_output_cannot_mutate_signal_state`. Its one correction to the finding as raised: the loop cannot cause `source == Present`, it can only falsely settle a misclassified interval, so it masks the 27:18 failure rather than causing it. | owner 2026-09-09 03:23 ("these are measured AFTER running registration... thats very backwards") | decision in hand, not implemented, and not yet reviewed by the harness owner |
+| A3 | **The registration → classifier feedback loop.** Codex's decision (turn 17, 2026-09-09 03:5x): remove BOTH halves, retire `signal_state_note_registration` and the unused `signal_state_commit_registration`, move chatter / applied phase / settlement to `field_registration`, and drop `settled_phase_known` and `settled_d1/d2` from `signal_result`. Its failing-first test: `registration_output_cannot_mutate_signal_state`. Its one correction to the finding as raised: the loop cannot cause `source == Present`, it can only falsely settle a misclassified interval, so it masks the 27:18 failure rather than causing it. | owner 2026-09-09 03:23 ("these are measured AFTER running registration... thats very backwards") | decision in hand, not implemented, not yet reviewed by the harness owner, and held for the upgrade |
 | A4 | **Per-source references that die with the lock.** Horizontal timing and levels derived per recording, never fixed; a vertical tear or signal loss invalidates them and the lock is rebuilt. | owner 2026-09-09 00:13 | contract carries it; engine does not |
 | A5 | **Three clusters of undeclared constants** — the damaged-caption classifier, the damaged-timing classifier, and the `zero_difference` gate in the other-head row test. Each names its measurement or is derived. | owner 2026-09-08 23:15 | open |
 | A6 | **Absolute versus relative horizontal timing.** Codex costed both (turn 14): the absolute scan is roughly 2–10× cheaper on ordinary units and over 20× on a tear-heavy one, but it said only an implemented C benchmark gives median/p95. | Codex turns 12 and 14 | not decided |
@@ -29,19 +36,7 @@ This file is a state record, not a contract: it is rewritten as items close and 
 | B3 | **The render changes.** Both fields' applied shifts plotted, not `d1` alone; the head-switch band's top and bottom edges traced per field; the per-source horizontal-phase and level statistics in the band; the alignment guard changed from two frames per row to one; bwdif `send_frame` at 29.97p. | owner 2026-09-09 00:05, 00:11, 00:13; contract §8 | specified in the contract, not implemented |
 | B4 | **The acceptance runs** (plan steps 3 and 4). | HANDBACK §7 | blocked on B1 and on the engine |
 
-## C. Owner questions not answered
-
-- **"How do you trace the head-switch band's top and bottom without covering the line?"** (2026-09-09 00:18, asked
-  out of curiosity). Answered 2026-09-09 03:58: nothing is drawn on the raster. The two edges are plotted in the
-  metrics band below the picture, on the same graph as the applied shifts, so the rows being measured are never
-  painted over. The contract already required the band to sit below the picture and never over it.
-- **"Do whites peak out too high?"** (2026-09-09 03:27). Partly. Not clipping at white IS measured: no samples at
-  254 or 255 in three of the four captures and two in the fourth. Whether 100 IRE lands above BT.601's 235 was
-  never measured — the figure of code 239 given that night was an estimate from the device's own line-21 insert,
-  and the agent measuring it was stopped when the owner closed the topic. It does not matter under his ruling that
-  the project does not match studio levels, and his acceptance was "as long as its not clipping", which is met.
-
-## D. Running
+## C. Running
 
 - **The whole-tape signal-state audit** (owner, 2026-09-09 03:10: audit where the live engine unlocks, whether it is
   too reactive, and anything caught as snow-like that is not snow). Part A measures all 86,293 units directly,
@@ -52,7 +47,7 @@ Nothing is blocked on it. What it changes is scope: a signal-state change invali
 and every render made before it (HANDBACK §7 step 3), so the cheapest order is to know the full set of classifier
 corrections before the acceptance renders are generated, not after.
 
-## E. Recorded elsewhere, still open, outside the v10 acceptance path
+## D. Recorded elsewhere, still open, outside the v10 acceptance path
 
 - The raster-damage state: no observable separated the owner's torn units from their neighbours, so no threshold
   was tuned; an owner decision is owed (CLAUDE.md §11, round 11/12).
