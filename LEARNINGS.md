@@ -25,10 +25,13 @@ opposite have been detected?* If the answer is "it wouldn't", the measurement sa
 data's own invariant — never inferred from the absence of complaints.)
 
 ### 2. A test that waits without a deadline hangs instead of failing
-Five instances of `while (!done) usleep(10000)` in the frameserver suite carry no deadline. When the
+Nine instances of `while (!done)` in `src/frameserver/tests/frameserver_test.c` carry no deadline, and a
+tenth in `frameserver_replay.c:59` is bounded only when `--limit` is passed. When the
 condition never arrives the process waits forever, and on 2026-09-08 five `frameserver_test`
 processes were found alive on the owner's machine, the oldest three to five days old, each holding
-memory on a host with about 5 GB free.
+memory on a host with about 5 GB free. (The count was reported as five waits for several hours
+because it was carried from memory instead of grepped; it is nine. Counting by hand is not
+counting.)
 
 A hang is the worst failure mode a test has. It reports nothing, so CI and a human both read it as
 "still going"; it produces no artifact to diagnose; and it outlives the session that created it, so

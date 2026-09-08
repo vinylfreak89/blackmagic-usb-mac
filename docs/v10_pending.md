@@ -21,8 +21,8 @@ Reconstructed 2026-09-09 03:58 JST from the 45 owner messages since the v10 rest
 | A5 | Three clusters of undeclared constants named or derived | contract rule 4 ("no magic numbers") | open |
 | A6 | Absolute versus relative horizontal timing | contract §2; Codex turn 14 costed both | undecided; needs a C benchmark |
 | A7 | Band detector split by regime | contract §2; CLAUDE.md §11 (the RF peak's role) | not built |
-| A8 | Contract rules 2, 5, 5b, 6, 7, 8, 9, 10 | contract §4 | rules 1, 3, 4 green; seven to go |
-| A9 | Deadlines on the frameserver suite's five unbounded waits | LEARNINGS.md method lesson 2 | not fixed |
+| A8 | Contract rules 5, 5b, 6, 7, 8, 9, 10 (rule 2's conflict report is built) | contract §4 | rules 1, 3, 4 green; rule 1's p95 reached 6.9 ms under load, 69% of the §11b budget, and must be re-measured on a quiet machine |
+| A9 | Deadlines on nine unbounded waits in `frameserver_test.c`, and the `--limit`-only bound in `frameserver_replay.c:59` | LEARNINGS.md method lesson 2 | not fixed |
 
 ## B. Harness (Claude writes, Codex reviews)
 
@@ -41,5 +41,11 @@ Reconstructed 2026-09-09 03:58 JST from the 45 owner messages since the v10 rest
 
 ## D. Waiting on the owner
 
-- Codex's model and effort changed under the upgrade (reported 2026-09-09 04:11 JST): whether the v10 thread stays on
-  the new default or goes back to xhigh, and whether the app-server is restarted onto the newer CLI on disk.
+- **A live contract disagreement.** Contract §2 states "0 displaced rows against 1,957" and calls the separation
+  categorical; Codex did not reproduce it and measured 11 against 1,957, "strong, not categorical" (turn 15). Its
+  proposed replacement wording for that paragraph was never applied, and §9 still reads "Nothing is open". Under
+  the v10 process an unresolved contract disagreement goes to the owner.
+- Codex's model and effort changed under the upgrade (measured 2026-09-09 04:11 JST, `gpt-5.6-sol`/`xhigh` before
+  the turn, `gpt-6-astra`/`high` after; the echo test returned "GPT-6, reasoning effort level not exposed"): whether
+  the v10 thread stays on the new default effort or goes back to xhigh, and whether the app-server, still running
+  0.149.1 against 0.153.4 on disk, is restarted.
