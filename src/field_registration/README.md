@@ -9,7 +9,7 @@ The normative design is [`../../docs/geometry_first_engine.md`](../../docs/geome
 The implementation is landing one rule at a time with a failing golden before
 each rule.
 
-## Implemented: rules 1 and 3
+## Implemented: rules 1, 3 and 4
 
 Measurable current-unit geometry is the sole placement authority. The field's
 measured top and provisional lower edge are recorded; its top against the standard
@@ -45,14 +45,24 @@ visible switch band through the measured last recorded row. For a visible
 top, `observed_switch_line_count = band_extent + d` and `picture_rows = 240 -
 observed_switch_line_count`. The two Rule 3 golden units hold that observed
 count at three while a one-line downward move increases the span and decreases
-the visible band. Rule 4 next freezes the count only at a confirmed lock.
+the visible band.
+
+Rule 4 freezes the switch-line count only at a source-lock confirmation on a
+unit whose switch line and band are measurable. The implemented confirmation
+path is a unique pass-through caption agreeing with the current geometry;
+acquisition comb confirmation lands with rules 5–6. Once frozen, every later
+measurable count is compared with the lock. A mismatch is recorded as
+`SwitchCountConflict`; it neither relearns the count nor overrides the
+current-unit top placement. `picture_rows` is then the source constant 240
+minus the locked switch-line count.
 
 There is no bottom censor, luma-derived bottom, or typed fixture-A clip start.
 
-The frameserver decision log is schema 12. Each per-field group records the
+The frameserver decision log is schema 13. Each per-field group records the
 recorded bounds, top and picture bottom, `switch_line`, `S`, RF-peak line and
 horizontal position, span, picture rows, visible band, observed switch-line
-count and switch signature. Line-valued fields remain NTSC line numbers.
+count, its agreement/conflict with the locked count, the locked count itself,
+and switch signature. Line-valued fields remain NTSC line numbers.
 
 Build and run the current suite with:
 

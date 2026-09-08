@@ -137,9 +137,9 @@ int main(int argc, char **argv){
           "eligible ingress conservation failed");
     if(!ring_may_drop) CHECK(s.short_units + s.holes + s.unframed + s.exact_units + s.other_format + s.no_signal_0800 >= s.video_observations, "every observation classified by transport/kind");
     // log integrity: header + rows, columns as the contract names them
-    FILE *L = fopen(logp, "r"); char line[2048]; unsigned rows = 0; int hdr_ok = 0, row_shape_ok = 1; unsigned header_fields = 0;
+    FILE *L = fopen(logp, "r"); char line[8192]; unsigned rows = 0; int hdr_ok = 0, row_shape_ok = 1; unsigned header_fields = 0;
     while (fgets(line, sizeof line, L)){
-        if (rows == 0){ hdr_ok = strstr(line, "interval_id,unsettled,provisional_d1") != NULL && strstr(line, "f1_insert_bytes,f1_insert_relation,f1_caption_confirmation,f1_parity_candidates") != NULL && strstr(line, "f1_geometry_d,f1_blank_mean,f1_blank_chroma_noise") != NULL && strstr(line, "f1_switch_line,f1_first_full_other_head_line,f1_rf_peak_line,f1_rf_peak_position,f1_raw_span,f1_picture_rows,f1_band_extent,f1_observed_switch_line_count,f1_switch_signature,f1_switch_measurable") != NULL && strstr(line, "f2_lock_state,f2_zero_source,f2_lock_id") != NULL && strstr(line, "f2_lock_top,f2_lock_height,f2_lock_height_known,f2_clip_state,f2_clip_ceiling") != NULL; header_fields=csv_fields(line); }
+        if (rows == 0){ hdr_ok = strstr(line, "interval_id,unsettled,provisional_d1") != NULL && strstr(line, "f1_insert_bytes,f1_insert_relation,f1_caption_confirmation,f1_parity_candidates") != NULL && strstr(line, "f1_geometry_d,f1_blank_mean,f1_blank_chroma_noise") != NULL && strstr(line, "f1_switch_line,f1_first_full_other_head_line,f1_rf_peak_line,f1_rf_peak_position,f1_raw_span,f1_picture_rows,f1_band_extent,f1_observed_switch_line_count,f1_switch_count_agrees,f1_switch_count_conflict,f1_switch_signature,f1_switch_measurable") != NULL && strstr(line, "f2_lock_state,f2_zero_source,f2_lock_id") != NULL && strstr(line, "f2_lock_top,f2_lock_switch_line_count,f2_lock_switch_line_count_known,f2_clip_state,f2_clip_ceiling") != NULL; header_fields=csv_fields(line); }
         else if(csv_fields(line)!=header_fields) row_shape_ok=0;
         rows++;
     }

@@ -109,6 +109,7 @@ typedef enum fieldreg_mode {
     FIELDREG_MODE_TOP_COMB_VETOED,
     FIELDREG_MODE_TOP_ONLY,
     FIELDREG_MODE_COMB_RELATIVE_CORRECTION,
+    FIELDREG_MODE_SWITCH_COUNT_CONFLICT,
     FIELDREG_MODE_MIXED_FIELD_DECISION,
 } fieldreg_mode;
 
@@ -159,6 +160,8 @@ typedef struct fieldreg_field_decision {
     int16_t picture_rows;
     int16_t band_extent;
     int16_t observed_switch_line_count;
+    bool switch_count_agrees;
+    bool switch_count_conflict;
     fieldreg_switch_signature switch_signature;
     bool switch_measurable;
     bool geometry_measurable;
@@ -178,8 +181,8 @@ typedef struct fieldreg_field_decision {
     fieldreg_zero_source zero_source;
     uint32_t lock_id;
     int16_t lock_top;
-    int16_t lock_height;
-    bool lock_height_known;
+    int16_t lock_switch_line_count;
+    bool lock_switch_line_count_known;
     fieldreg_clip_state clip_state;
     int16_t clip_ceiling;
     int16_t expected_bottom;
@@ -220,14 +223,14 @@ typedef struct fieldreg_decision {
 
 typedef struct fieldreg_field_state {
     int16_t top;
-    int16_t height;
+    int16_t switch_line_count;
     int16_t clip_ceiling;
     int16_t clip_candidate;
     int16_t zero_candidate;
     int8_t last_applied;
     int8_t clip_candidate_d;
     fieldreg_lock_state lock_state;
-    bool height_known;
+    bool switch_line_count_known;
     bool placement_initialized;
     uint8_t clip_candidate_count;
     uint8_t zero_candidate_count;

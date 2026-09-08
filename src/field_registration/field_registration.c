@@ -368,17 +368,18 @@ static void v10_reset_field(fieldreg_field_state *state, bool reset_applied,
     memset(state, 0, sizeof *state);
     state->top = field == 0 ? FIELDREG_PICTURE_ORIGIN_F1 :
                               FIELDREG_PICTURE_ORIGIN_F2;
-    state->height = -1;
+    state->switch_line_count = -1;
     state->clip_ceiling = -1;
     state->clip_candidate = -1;
     state->zero_candidate = INT16_MIN;
     state->clip_candidate_d = FIELDREG_UNKNOWN;
     state->previous_measured_top = -1;
     state->last_applied = applied;
-    /* Acquisition semantics are implemented by rules 5-6.  Until then the
-     * inherited standard origin is exposed as state, never as authority over
-     * a measurable current-unit edge. */
-    state->lock_state = FIELDREG_LOCK_LOCKED;
+    /* A source lock does not exist until current-unit geometry is confirmed
+     * at a unit whose switch line and band are measurable (contract rule 4).
+     * The standard origin remains state, never authority over a measurable
+     * current-unit edge. */
+    state->lock_state = FIELDREG_LOCK_UNLOCKED;
     state->zero_source = FIELDREG_ZERO_STANDARD;
     state->lock_id = lock_id;
 }
@@ -447,8 +448,9 @@ static void v10_copy_state(const fieldreg_field_state *state,
     decision->zero_source = state->zero_source;
     decision->lock_id = state->lock_id;
     decision->lock_top = state->top;
-    decision->lock_height = state->height;
-    decision->lock_height_known = state->height_known;
+    decision->lock_switch_line_count = state->switch_line_count;
+    decision->lock_switch_line_count_known =
+        state->switch_line_count_known;
     decision->clip_state = FIELDREG_CLIP_UNKNOWN;
     decision->clip_ceiling = -1;
 }
@@ -557,6 +559,34 @@ static void v10_decide_field(fieldreg_field_state *state,
 
     decision->caption_confirmation = caption_confirmation(
         measurement, field, decision->geometry_d, decision);
+
+    /* Rule 4: the switch-line count is acquired once, from a unit where the
+     * geometry is complete and independently confirmed.  A pass-through
+     * caption can provide that confirmation now; the acquisition comb adds
+     * another confirmation path when rule 5 lands.  Later observations are
+     * comparisons against the frozen count, never learning samples. */
+    if (state->lock_state == FIELDREG_LOCK_UNLOCKED &&
+        measurement->switch_measurable &&
+        decision->caption_confirmation == FIELDREG_CONFIRM_AGREES) {
+        state->switch_line_count = measurement->observed_switch_line_count;
+        state->switch_line_count_known = true;
+        state->lock_state = FIELDREG_LOCK_LOCKED;
+        state->top = measurement->top;
+    }
+    if (state->lock_state == FIELDREG_LOCK_LOCKED &&
+        state->switch_line_count_known && measurement->switch_measurable) {
+        decision->switch_count_agrees =
+            measurement->observed_switch_line_count ==
+            state->switch_line_count;
+        decision->switch_count_conflict = !decision->switch_count_agrees;
+        decision->picture_rows =
+            (int16_t)(FIELDREG_FIELD_LINES - state->switch_line_count);
+        decision->invariant_residual =
+            (int16_t)(measurement->observed_switch_line_count -
+                      state->switch_line_count);
+        if (decision->switch_count_conflict)
+            decision->reason = FIELDREG_MODE_SWITCH_COUNT_CONFLICT;
+    }
     v10_copy_state(state, decision);
 }
 
@@ -631,6 +661,7 @@ const char *fieldreg_mode_name(fieldreg_mode mode)
     case FIELDREG_MODE_TOP_COMB_VETOED: return "TopCombVetoed";
     case FIELDREG_MODE_TOP_ONLY: return "TopOnly";
     case FIELDREG_MODE_COMB_RELATIVE_CORRECTION: return "CombRelativeCorrection";
+    case FIELDREG_MODE_SWITCH_COUNT_CONFLICT: return "SwitchCountConflict";
     case FIELDREG_MODE_MIXED_FIELD_DECISION: return "MixedFieldDecision";
     }
     return "Unknown";

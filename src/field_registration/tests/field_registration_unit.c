@@ -43,7 +43,8 @@ int main(void)
     unit[6] = 0;
     assert(!fieldreg_process(&engine, unit, &decision));
     fieldreg_discontinuity(&engine);
-    assert(engine.field[0].lock_state == FIELDREG_LOCK_LOCKED);
+    assert(engine.field[0].lock_state == FIELDREG_LOCK_UNLOCKED);
+    assert(!engine.field[0].switch_line_count_known);
     assert(engine.field[0].top == FIELDREG_PICTURE_ORIGIN_F1);
     assert(engine.field[1].top == FIELDREG_PICTURE_ORIGIN_F2);
     assert(engine.field[0].zero_source == FIELDREG_ZERO_STANDARD);
