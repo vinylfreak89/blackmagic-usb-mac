@@ -21,9 +21,9 @@ whole-tape signal-state audit.
 
 | # | item | where it is written down | state |
 |---|---|---|---|
-| A1 | Rule 5 gate: registration off on anything but normal picture | contract rule 5; CLAUDE.md §11; the +101/+118-line crops from a contentless raster are in CLAUDE.md §6 | dispatched 2026-09-09 04:3x |
-| A2 | Signal-state snow / lost-lock correction at 27:18 | CLAUDE.md §6; contract rule 5b | dispatched with A1 |
-| A3 | Retire the registration → classifier feedback path | CLAUDE.md §11 (the one-way ownership rule and its deciding test) | dispatched with A1; its decision came back in the task output, not a turn log, so there is no `codex_v10_turn17.log` to cite |
+| A1 | Rule 5 gate: registration off on anything but normal picture | contract rule 5; the whole-tape score is in CLAUDE.md §6 | implemented, reviewed, whole-tape UNGATED 270 → **0**; awaiting the four-capture acceptance |
+| A2 | Signal-state snow / lost-lock correction at 27:18 | CLAUDE.md §6; contract rule 5b | implemented, reviewed, whole-tape misses 17 → **2** (units 43,678–43,679, an event onset); awaiting acceptance |
+| A3 | Retire the registration → classifier feedback path | CLAUDE.md §11 (the one-way ownership rule) | implemented; its first deciding test was vacuous (a macro compiled the body out) and is replaced by one requiring the retired names to fail compilation |
 | A4 | Per-source timing and level references that die with the lock | contract §3, rule 5b | not implemented, and wider than first written: `grep` finds **no line-22 level comparator in the engine at all**, though contract rule 4 requires the owner's eight-slot running comparator; the level references are recomputed per `field_measurement` and never retained under the lock |
 | A5 | Undeclared constants named or derived | contract rule 4 ("no magic numbers") | **four**, not three: `caption_like_damage`, `timing_like_damage`, the `zero_difference` gate, and `field_registration.c:91`'s `>= 2 * 10` median-lag boundary. The owner's own three from 2026-09-08 (the bare `+4`, the three-consecutive-row rule, the five-line clip band) were already removed in Codex turn 10 and are NOT these |
 | A6 | Absolute versus relative horizontal timing | contract §2; Codex turn 14 costed both | undecided; needs a C benchmark |
