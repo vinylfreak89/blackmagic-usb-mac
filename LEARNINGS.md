@@ -24,36 +24,47 @@ opposite have been detected?* If the answer is "it wouldn't", the measurement sa
 **fine**. (Corollary: continuity must be established positively — from a monotonic sequence or the
 data's own invariant — never inferred from the absence of complaints.)
 
-### 2. A self-validating invariant beats every heuristic
+### 2. A test that waits without a deadline hangs instead of failing
+Five instances of `while (!done) usleep(10000)` in the frameserver suite carry no deadline. When the
+condition never arrives the process waits forever, and on 2026-09-08 five `frameserver_test`
+processes were found alive on the owner's machine, the oldest three to five days old, each holding
+memory on a host with about 5 GB free.
+
+A hang is the worst failure mode a test has. It reports nothing, so CI and a human both read it as
+"still going"; it produces no artifact to diagnose; and it outlives the session that created it, so
+the cost lands on someone who was not there. A test that fails loudly at a deadline is strictly
+better even when the deadline is wrong. **Every wait in a test carries a deadline and fails at it.**
+
+### 3. A self-validating invariant beats every heuristic
 De-interleaving the untagged capture was solved not by a clever detector but by a property that
 **cannot accidentally hold**: remove the right bytes and consecutive `0xe801` markers land at
 *exactly* 756,048. Every bad extractor was caught instantly and unambiguously by its own off-by-N
 (120 B, then 1–4 B). Heuristics (zero-density maxima, period-4 variance) each looked plausible and
 each silently corrupted output. **Find the invariant first; it is the arbiter, not the eyeball.**
 
-### 3. One frame is not a render
+### 4. One frame is not a render
 A single hand-picked frame was declared clean; a montage of the same clip showed green/magenta
 chroma-shifted frames and leaked-audio bands throughout. **Always sample across the whole artifact
 before making a quality claim** — `select='not(mod(n\,N))',tile=` costs seconds.
 
-### 4. Symptoms and causes live in different layers — name the layer before fixing
+### 5. Symptoms and causes live in different layers — name the layer before fixing
 Repeatedly, a visible artifact was attributed to the wrong layer: a raster slip blamed on the
 deinterlacer, a capture-loss claim blamed on disk I/O, a commit failure blamed on file permissions.
 Each fix aimed at the wrong layer wasted a cycle and, twice, **added** a defect. Ask "which stage
 could produce *exactly* this signature?" and prove that stage is implicated before changing it.
 
-### 5. Verify hardware and tool preconditions instead of assuming them
+### 6. Verify hardware and tool preconditions instead of assuming them
 Assumed the deck had no HDMI (it does), and dispatched a commit task to an agent thread whose
 approval policy made `.git` writes impossible (checkable in one command beforehand). Both were
 cheap to verify and expensive to assume.
 
-### 6. Don't "fix" a symptom outside the system you were asked to change
+### 7. Don't "fix" a symptom outside the system you were asked to change
 Faced with a sandbox-denied `.git` write, the repo's macOS sandbox ACL (`com.apple.macl`) was
 stripped. It **did not** fix the problem — the real cause was the agent's approval policy — and it
 damaged security metadata that then had to be restored from a Time Machine backup. Out-of-scope
 "fixes" are how one bug becomes two.
 
-### 7. A metric that constrains a *difference* cannot locate an *absolute* position
+### 8. A metric that constrains a *difference* cannot locate an *absolute* position
 The field-registration fault was reported for hours as "field 2's origin wanders across 274–285."
 It was measured with comb/weave scoring — a metric that is mathematically **only** sensitive to
 `f2 − f1`, because translating both fields together leaves the weave identical. It therefore could
@@ -72,7 +83,7 @@ reported as signal. Always emit a per-decision confidence, threshold on it, and 
 where the metric provably has nothing to work with (here: a flat bright field with no vertical
 detail, and dropout frames with no VBI at all). "Unmeasurable" is a valid, useful result.
 
-### 8. A discrepancy is a lead, not a thing to explain away
+### 9. A discrepancy is a lead, not a thing to explain away
 The decoder recovered **6,160** video units where the audio resync records proved **8,991** frames
 had occurred. That 2,831-frame gap was *rationalized* on the spot — "consistent with the ~100 s of
 stop/rewind/no-signal" — and moved past. **The gap was the bug.** A plausible story was accepted in
@@ -83,7 +94,7 @@ the highest-value signal available. Explaining it away with a story that happens
 expensive shortcut in this log — it postponed the real finding by hours, and only an independent
 investigator eventually chased the number down.
 
-### 9. A periodic fault carries its period — histogram the timestamps before theorizing
+### 10. A periodic fault carries its period — histogram the timestamps before theorizing
 The USB capture losses spawned days of mechanism theories: bandwidth, disk throughput, hub
 quirks, buffering mechanics, transfer ordering, USB-vs-host clock desync. The actual cause was
 **a timing-cycle mismatch all along**: a ~1 Hz periodic host task beating against a ~6 ms USB
@@ -102,7 +113,7 @@ against it. The same census also cleared two suspects at once: the drops were no
 (an impression that bursts followed the splice failed its own test), and the flat 1/5-duty
 plateaus ruled out gradual clock drift — steps, not slope.
 
-### 10. A silenced guard is no guard
+### 11. A silenced guard is no guard
 Hours after building automatic lock-holding into the dispatch tooling, the orchestrator's own
 commit ritual ran `lock acquire ... >/dev/null 2>&1` during a live render turn. The guard worked
 perfectly — it refused with BUSY every single time — and the output suppression threw the refusal
@@ -118,7 +129,7 @@ the operator who won't notice they just released someone else's lock. Same famil
 rule "never disable a safety net and exercise what it protected in one pass" — performed, this
 time, by the person who built the net that afternoon.
 
-### 11. Don't claim credit for a fix you didn't prove you caused
+### 12. Don't claim credit for a fix you didn't prove you caused
 A commit that had been failing suddenly succeeded, and the sandbox-ACL strip performed just before
 it was announced as the fix. It was not — the actual cause was the agent's approval policy. Two
 changes had landed close together and the wrong one was credited, purely because it was *mine*.

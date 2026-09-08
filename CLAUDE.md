@@ -1768,6 +1768,35 @@ delivery edge; wrong one at acquisition.
   pass. "Captions first" was the wrong premise both times it was tried (v9, then the experiment):
   geometry decides, captions and comb confirm (contract rule 1).
 
+  **The registration result must never reach the classifier — measured in the code 2026-09-09, confirmed by both
+  agents.** `frameserver.c:339` classifies the raster; `:347` dispatches the engine's segment actions from that
+  classification; `:363` registers; `:375` then fed the engine's own observation AND its applied phase back into
+  `signal_state_note_registration`, which drove the phase-chatter mask, opened intervals, and cleared `unsettled`
+  once the APPLIED phase had been constant for `settle_confirm_units`. Owner, 2026-09-09: "wait hold up... these
+  are measured AFTER running registration... thats very backwards." Codex confirmed the defect and narrowed it
+  correctly: the loop cannot make `stable_source` read `Present`, because that function never mutates it; what it
+  can do is falsely declare a MISCLASSIFIED `Present` interval settled, since a held constant phase on a flat
+  raster is maximally stable. It therefore MASKS the 27:18 failure rather than causing it. **The ownership is
+  one-way and has no exceptions:** signal_state → the registration gate and actions → field_registration →
+  publisher and record. Registration chatter, applied phase and geometry-lock settlement belong to
+  `field_registration` and its record; `settled_phase_known` and `settled_d1/d2` do not belong in `signal_result`;
+  a retained source interval changes only on transport, raster or source-state evidence, and an ordinary
+  registration displacement can neither open nor settle one. `signal_state_note_registration` and the unused
+  `signal_state_commit_registration` are both retired. Deciding test:
+  `registration_output_cannot_mutate_signal_state` — two classifiers given identical transport and raster evidence,
+  whose downstream engines produce different applied phases, must produce identical source-layer results and
+  actions.
+
+  **The RF peak is not a regime test — measured 2026-09-09 (Codex, across the V-stabilize-off and V-stabilize-on
+  captures).** With the deck's line TBC off the peak appears in 31 of 597 field-1 units and 5 of 577 field-2 units,
+  36 of 1,174 or 3.07%; with it on, in one or two of 606. So "peak present" has about 3% sensitivity for the
+  uncorrected regime, "peak absent" is a false negative about 97% of the time, and it is not exclusive either. The
+  owner asked directly whether the peak was the way to tell the two regimes apart (2026-09-09 02:50): it is not.
+  Its proper role is narrower and real — where it IS present it confirms the exact partial switch line and its
+  position along the row. The regimes are told apart instead by the two categorical signatures already in the
+  contract's section 2 (flat replacement rows against whole-line displaced rows, 768 against 0 and 0 against
+  1,957), accumulated per source and never decided from one field.
+
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
   out of fixed-raster consumers, holes derived from tags never content, counter wrap, audio
