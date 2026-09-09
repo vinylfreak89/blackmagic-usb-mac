@@ -15,35 +15,34 @@ does not advance capture 2.
 
 ## Triage
 
-**Tier 1 — the comb. It is the last thing between capture 1 and its first lock.**
-The route to a lock on this source is now fully traced and every step but one has its evidence: geometry from the
-standard origin (assumed under the golden rule — the tape carries no captions, so nothing can move it); no switch
-line required (rule 8's gap rule applies, and the contract now makes the switch conditional); and confirmation
-from the comb, which the harness census finds decisive at shift 0 in 506 of 508 units, median margin 3.39×. The
-engine's comb cannot deliver that because its static mask retains under 2% of its support at blanking luma and
-flips the verdict. Cause identified, production unchanged after three turns.
+**Tier 1 — box classification. It is the single blocker, and it blocks two different things.**
+Without it the engine cannot tell a boxed source from an unboxed one, and both consequences are measured on
+capture 1. It reports the switch as measurable in 143 of 146 card units and takes a lock on it at counter 6668 —
+but rule 8 excludes that switch here, because the card's content ends at line 236 and the switch is at 260, with
+twenty-three rows of the box's own dark band between them (237–260 all read 20–23, std ~3.3, changing only at
+261). So the lock is authorised by evidence the contract excludes. And with no box to take geometry from, the
+picture top is measured by luma threshold on a ramp that runs 2.0 → 10 → 13 → 28 over five lines, which is what
+moved field 2 on eleven units. The unlocked gate hid those moves; a working comb un-hides them, because they then
+happen while locked.
 
-**Tier 2 — the conditional switch requirement, and the box classification it needs.**
-Both acquisition sites still demand a measurable switch. On a boxed source the switch must NOT be measured, so
-until this lands the lock is unreachable even with a working comb. The box-validity wording the owner gave
-unblocks the classification.
+**Tier 2 — land the comb, which is finished and held behind tier 1.**
+Measured in the prototype: 367 of 508 units decisive, 365 agreeing, the coherent-pan and accidental-block controls
+passing, all seven raw controls passing after the paired-energy correction. It must not land alone: doing so buys
+a lock rule 8 does not sanction and reintroduces the eleven movements. Owed when it lands: the whole-capture
+replay the paired-energy correction has not yet had.
 
-**Tier 3 — the picture-top detector on a boxed source.**
-It measured a top it should have assumed and moved the output eleven times; that is now gated, so this is no
-longer urgent, but the underlying measurement is still wrong. A box's outer edge is a 0.7–2.8 code step against
-blanking where an ordinary picture's is 187.
+**Tier 3 — the render's content**, which is what the owner reviews at the gate. The band now carries the record's
+own fields; three §8 quantities remain undrawable because the engine does not emit them (pedestal, the tape's
+line-22 level with its comparator count, the horizontal-phase distribution — the comparator does not exist in the
+engine at all).
 
-**Tier 4 — the render's content**, which is what the owner reviews at the gate. The band now carries the record's
-own fields; three §8 quantities remain undrawable because the engine does not emit them.
+**Tier 4 — classifier defects**, before any render he reviews, since they invalidate every render made before them.
 
-**Tier 5 — classifier defects**, before any render he reviews, since they invalidate every render made before them.
+**Tier 5 — robustness, performance, instrument qualifications.** Performance is over budget and deferred by him.
 
-**Tier 6 — robustness, performance, instrument qualifications.** Performance is over budget and deferred by him.
-
-**With the owner, and blocking nothing above:** whether a box is recentred or left where the source put it. It
-does not gate the lock — placing at the standard origin needs no centring decision — and it is not well posed
-until "where does a box's band end when it runs into the switch band" is answered, since the offset is 4.0, 3.5,
-2.5 or 1.5 field lines depending on that boundary.
+**With the owner, blocking nothing above:** whether a box is recentred or left where the source put it; and
+whether rule 8's gap is read against picture CONTENT (making the card's lower band the gap, which is what makes
+the 6668 lock unsanctioned) or otherwise.
 
 ## A. Engine (Codex writes, Claude reviews)
 
