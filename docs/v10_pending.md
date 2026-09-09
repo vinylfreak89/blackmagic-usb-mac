@@ -15,45 +15,42 @@ does not advance capture 2.
 
 ## Triage
 
-**Tier 1 — make a lock reachable at all on capture 1.** Nothing else about this capture can succeed first, and
-three of these four are one small change to one function.
+**Revised 2026-09-09 evening.** The owner approved an earlier version verbatim; this replaces it because
+measurements since have moved what is binding. What changed and why is at the bottom.
 
-1. **Widen the confirmation route and fix its ordering.** Accept comb *or* VBI *or* caption, and compute the comb
-   before the acquisition decision instead of after it. Right now the only route is captions and this tape has
-   none, so the lock is unreachable by construction — and the comb, which should be the alternative, runs 59 lines
-   too late to be consulted.
-2. **Drop the unconditional switch-line precondition.** A lock is geometry plus one other observation; §2 has said
-   the head switch is optional since it was written.
-3. **The band hold.** Absent switch is a hold of the band, invalidated only when the line count below it changes —
-   then the lock is truly lost.
-4. **The box's validity bounds.** A box is not invariant: if the mask changes the geometry must open up to the
-   full picture, so a box needs defined bounds where it is valid and where it is invalidated. It lives through the
-   fade, and the fade is measured rather than treated as noise (owner, 2026-09-09).
-5. **My box mask extent** — it still covers the WARNING label, so the box can't fix geometry on the units where it
-   is the only route. Mine to fix before any of it goes to Codex as concept.
+**Tier 1 — the comb. It is the last thing between capture 1 and its first lock.**
+The route to a lock on this source is now fully traced and every step but one has its evidence: geometry from the
+standard origin (assumed under the golden rule — the tape carries no captions, so nothing can move it); no switch
+line required (rule 8's gap rule applies, and the contract now makes the switch conditional); and confirmation
+from the comb, which the harness census finds decisive at shift 0 in 506 of 508 units, median margin 3.39×. The
+engine's comb cannot deliver that because its static mask retains under 2% of its support at blanking luma and
+flips the verdict. Cause identified, production unchanged after three turns.
 
-**Tier 2 — make the geometry readable once it can lock.** The `count − extent` reading doesn't exist;
-`top − origin` is the only one implemented and it's degenerate on this source, reading 23/286 in every stable unit.
+**Tier 2 — the conditional switch requirement, and the box classification it needs.**
+Both acquisition sites still demand a measurable switch. On a boxed source the switch must NOT be measured, so
+until this lands the lock is unreachable even with a working comb. The box-validity wording the owner gave
+unblocks the classification.
 
-**Tier 3 — switch detector coverage on the non-boxed units.** Including the RF peak's polarity — white in some
-units, black in others.
+**Tier 3 — the picture-top detector on a boxed source.**
+It measured a top it should have assumed and moved the output eleven times; that is now gated, so this is no
+longer urgent, but the underlying measurement is still wrong. A box's outer edge is a 0.7–2.8 code step against
+blanking where an ordinary picture's is 187.
 
-**Tier 4 — the comb's own quality.** The recalibrated tolerance and the pairwise dominance. This *drops* below the
-wiring: a perfect comb connected to nothing is worth nothing, and that's what three turns bought.
+**Tier 4 — the render's content**, which is what the owner reviews at the gate. The band now carries the record's
+own fields; three §8 quantities remain undrawable because the engine does not emit them.
 
-**Tier 5 — classifier defects, before any render you review**, since they invalidate every render made before them
-and none exists yet.
+**Tier 5 — classifier defects**, before any render he reviews, since they invalidate every render made before them.
 
-**Tier 6 — the render**, which is the actual gate for captures 2–4.
+**Tier 6 — robustness, performance, instrument qualifications.** Performance is over budget and deferred by him.
 
-**Tier 7 —** robustness, performance, instrument qualifications, the §2 dispute.
+**With the owner, and blocking nothing above:** whether a box is recentred or left where the source put it. It
+does not gate the lock — placing at the standard origin needs no centring decision — and it is not well posed
+until "where does a box's band end when it runs into the switch band" is answered, since the offset is 4.0, 3.5,
+2.5 or 1.5 field lines depending on that boundary.
 
-The biggest change from the previous version: comb quality fell from tier 1 to tier 4, and the lock wiring — which
-wasn't on the list at all an hour ago — took its place. We spent the day tuning an instrument that isn't connected
-to the thing it was meant to inform.
-
-Parallelism, per the rule that Codex gets concepts and never implementations: Claude takes the mask extent, Codex
-takes tier 1 items 1–3 as concepts.
+**What changed from the approved version.** It said comb quality fell from tier 1 to tier 4 because wiring came
+first. The wiring turned out to be sound — the comb was never disconnected, which was Claude's error — and the
+unlocked-movement gate has landed. So the comb is no longer behind anything, and it is the binding constraint.
 
 ## A. Engine (Codex writes, Claude reviews)
 
