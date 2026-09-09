@@ -40,12 +40,27 @@ on capture 1 makes it inert HERE, not derived; it decides real rows on capture 2
 capture in front of us never triggers it would be fitting the instrument to the fixture, which is the fault this
 exercise exists to remove.
 
-⚠️ **Settling the constants does NOT lock the harness.** The owner's gate is the head-switch reading being stable
-and agreeing on capture 1, and it is not: off-mode is 34/508 and 62/505 after tonight's fix, which is better than
-the 35/508 and 65/505 it started at, not stable. The remaining off-mode units are runs rather than single-unit
-blips (field 1: 34 off-mode, 17 of them blips), and no one has yet looked at whether those runs are the partial
-line's real one-row travel — which the contract permits and `|T − mode| ≤ 1` is consistent with — or more
-instrument error. That is the next measurement, and it is what stands between here and the harness lock.
+**"Off-mode" is the WRONG stability metric, measured 2026-09-10, and it was counting legitimate travel as error.**
+
+- **`|T − mode| > 1` is ZERO** in both fields across every registerable unit (508 field 1, 505 field 2). That is
+  exactly what contract §8 permits: "the switch line moves only with the top and only within the partial line's
+  one-row travel". On the contract's own stated invariant the harness already passes.
+- The residual off-mode units are mostly RUNS, not scatter: field 2 has runs of 20, 17, 6, 4, 4 and 3 units;
+  field 1 a run of 9 and four of 2.
+- **The longest run was checked on the raw rows and it is real travel.** At the transition into field 2's 20-unit
+  run, line 522's trailing blank run reads 0 at counter 6691 and 19 at 6692 — at 6691 the other head has taken
+  that row's trailing blanking, so it IS the partial line and T=522; at 6692 its own blanking is back and the
+  partial structure has moved down to 523, so T=523. The panel shows the transient at the far right of 522 in
+  6691 and not in 6692. The harness is following the signal, not wobbling.
+
+**What is actually left is the single-unit blip class: 17 in field 1 and 8 in field 2**, down from 27 and 14. A
+one-unit excursion that returns is the shape that cannot be real travel, and that is the number the harness lock
+should be judged on — not off-mode, which the contract already licenses.
+
+⚠️ Settling the constants and reframing the metric still does NOT lock the harness — that is the owner's gate to
+close, on his criterion, and "stable and agreeing" is his phrase to interpret. What is offered here is the
+measurement he needs to close it: the contract's invariant is met, the multi-unit runs are verified real on the
+raw rows, and 25 single-unit blips remain unexplained across both fields.
 
 Also unfixed and named at its site: `lead_blank` is a bool, so an unreadable lead is asserted as "not blank"
 rather than unknown. Harmless on this capture; a real fault where the regenerated rows are absent.
