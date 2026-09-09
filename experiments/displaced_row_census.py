@@ -37,7 +37,8 @@ har = collections.defaultdict(dict)
 for r in csv.DictReader(open(A.ref)):
     c = int(r["counter"])
     if c >= A.from_counter and r["T"] not in ("", "-1", "None"):
-        har[c][int(r["field"])] = int(r["T"])
+        Sv = int(r["S"]) if r["S"] not in ("", "-1", "None") else None
+        har[c][int(r["field"])] = (int(r["T"]), Sv)
 
 def longest_blank_run(row, by_m, sig):
     """longest run of consecutive samples within 6 sigma of the field's own blank level, anywhere in the row"""
@@ -56,7 +57,7 @@ def emit(u):
     if c not in har: return
     seen[0] += 1
     R = np.frombuffer(u, np.uint8)[HDR:].reshape(LINES, LINE)[:, 1::2].astype(np.float32)
-    for f, T in har[c].items():
+    for f, (T, Sv) in har[c].items():
         a = SLOT[f][0]; bl = R[a - 9:a - 1]
         by_m = float(bl.mean()); sig = max(float(bl.std()), 0.5)
         first = None
@@ -68,9 +69,17 @@ def emit(u):
             res["no relocated-blanking row found"] += 1
             if len(ex["none"]) < 6: ex["none"].append((c, f, T))
             continue
+        # Compare against S, the first FULL other-head row, NOT against T. T is the PARTIAL row: part of it is
+        # still normal-timed, so it need not carry a whole relocated blanking interval, and measuring the
+        # relocated row against T therefore reports T+1 almost everywhere by construction. That is the shape of
+        # the relationship, not a fault -- an earlier version of this census compared against T and the 907/1013
+        # at T+1 read as a systematic one-row error until the examples showed relocated == S exactly.
         d = first - T
-        res[f"T{d:+d}"] += 1
-        if d != 0 and len(ex[d]) < 6: ex[d].append((c, f, T, first))
+        res[f"vs T: T{d:+d}"] += 1
+        if Sv is not None:
+            ds = first - Sv
+            res[f"vs S: S{ds:+d}"] += 1
+            if ds != 0: ex[ds].append((c, f, Sv, first))
 
 def on_video(p):
     buf.extend(p)
@@ -92,10 +101,19 @@ if not res:
     print("NOTHING CLASSIFIED — the census measured nothing, do not read anything into the absence")
     sys.exit(1)
 print(f"blank-run window {RUN_MIN}..{RUN_MAX} samples, level = the field's own regenerated blanking rows\n")
-print("first row carrying relocated blanking, relative to the harness's band top T:")
+print("first row carrying relocated blanking, against BOTH the band top T and the first full row S:")
 for k, n in sorted(res.items(), key=lambda kv: -kv[1]):
     print(f"   {n:5d}  {k}")
+import itertools
 for d in sorted(k for k in ex if k != "none"):
-    print(f"\n   {'T%+d' % d}: " + ", ".join(f"ctr {c} f{f} T={T} relocated={fr}" for c, f, T, fr in ex[d]))
+    rows=sorted(ex[d])
+    print(f"\n   S{d:+d}: {len(rows)} readings")
+    for f in (1,2):
+        cs=[c for c,ff,_,_ in rows if ff==f]
+        if not cs: continue
+        runs=[]
+        for _,g in itertools.groupby(enumerate(cs), lambda x: x[1]-x[0]):
+            g=[c for _,c in g]; runs.append(f"{g[0]}-{g[-1]}" if len(g)>1 else f"{g[0]}")
+        print(f"      field {f}: {len(cs)} at counters {', '.join(runs)}")
 if ex["none"]:
     print("\n   none found: " + ", ".join(f"ctr {c} f{f} T={T}" for c, f, T in ex["none"]))

@@ -67,13 +67,27 @@ the ~9 the contract allows a correctly timed row, while line 260 carries none an
 harness reads T=260 in all six units — wrong in all six.** Since 260 IS the mode, off-mode counts it correct and
 `|T − mode| ≤ 1` passes: no stability measure taken tonight can see this class of error. Stable is not correct.
 
-**The scope is UNKNOWN and the census that tried to establish it is wrong — do not use its numbers.** It tested
-for a LEADING blank run, and partial rows here have two morphologies: at 6899 the displaced blanking is a leading
-prefix, but at 6667 — the partial verified on the rows hours earlier — line 260 measures `lead_run 0` with
-`blank_run 158`, the blanking sitting in the MIDDLE of the row. A leading-run test is blind to that class, which
-is most of this capture, and its output confirms it by flagging field 2's clip line 525 as displaced. A correct
-scope census must detect both morphologies; that is the next piece of work and it is the one that decides whether
-tonight's tier-0 fix was necessary-but-insufficient or merely local.
+**SCOPED, and it is LOCAL — the systematic-error alarm above is withdrawn** (`experiments/displaced_row_census.py`,
+which detects both morphologies of relocated blanking, with bounds from the contract's own NTSC figures and the
+blank level from each field's own regenerated rows, sharing no code with the harness):
+
+| first relocated-blanking row vs the harness's `S` | readings |
+|---|---:|
+| **exact** | **963 of 1013 (95.1%)** |
+| one row below | 49 |
+| two rows below | 1 |
+
+**All 50 exceptions fall in counters 6880–6963**, 46 of them field 1. So: **outside that 84-counter window the
+harness's `S` is exact in 845 of 845 readings**; inside it, 118 of 168. One passage of about 2.8 seconds, not a
+systematic fault.
+
+⚠️ Two instrument errors on the way to that number, both caught by the instrument's own output rather than by
+review, and both recorded so the next census does not repeat them. The first version tested only a LEADING blank
+run and was blind to the interior-run morphology (6667 line 260 reads `lead_run 0`, `blank_run 158`), giving
+itself away by flagging field 2's clip line as displaced. The second compared the relocated row against `T` and
+reported `T+1` in 907 of 1013 — which is the DEFINITION of the T-to-S relationship, not an error, since `T` is
+the partial row and need not carry a whole relocated interval. `S` is the quantity that means the same thing.
+What survives from the alarm: 6899 is a real fault in `S`, and the mode-based stability metrics cannot see it.
 
 Also unfixed and named at its site: `lead_blank` is a bool, so an unreadable lead is asserted as "not blank"
 rather than unknown. Harmless on this capture; a real fault where the regenerated rows are absent.
