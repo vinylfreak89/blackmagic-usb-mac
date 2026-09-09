@@ -10,9 +10,17 @@ of this capture. Partial rows have two morphologies and both must be detected:
 Both are the same physical thing — the head switch relocating that line's horizontal blanking into the
 delivered window — so the test is the longest run at the field's own blank level ANYWHERE in the row.
 
-Bounds are the contract's, not typed here: the run must be longer than a sync pulse alone (4.7 us = 64 samples
-at 13.5 MHz) and shorter than any whole blanking interval could be (200 samples; H blanking is 10.9 us). A
-correctly timed row shows about 9 samples of its own blanking inside the 720 delivered, so it cannot reach 64.
+⚠️ THE BOUNDS ARE THE HARNESS'S, NOT THE CONTRACT'S — corrected 2026-09-10 after Codex checked the claim. The
+contract carries only "the analogue horizontal blanking interval is 10.9 us" (section 2), which at 13.5 MHz is
+about 147 samples. It does NOT contain 64 or 200; those come from switch_geometry.py's own comment, and 200 in
+particular is not derived from 10.9 us. Earlier versions of this file and of the tracker called them "the
+contract's", which was a falsely sourced constant introduced during the exercise meant to remove exactly that.
+
+⚠️ AND A BLANK-LEVEL RUN IS NOT PROOF OF RELOCATED BLANKING. This test admits any run at the field's blank level,
+and CLAUDE.md records that black picture content in this material can be clipped to exactly the blanking level
+with the same dither, so no level test separates the two. What this census establishes is the POSITION of the
+first long blank-level run, which is enough to check the harness's S against an independent instrument. It is
+not enough to assert what that run physically is.
 
 The blank LEVEL is the field's own regenerated blanking rows, never a typed level.
 
