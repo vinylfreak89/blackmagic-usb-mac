@@ -180,12 +180,30 @@ the hole this harness's level test provably cannot. 34/34 controls under ASan/UB
 
 `no_disjoint` 265 → 264, `run_recovered` 2, and a new `observation_disagreement` 6.
 
-**The likely reason is in Codex's own design note, and it is a regime problem rather than a bug:** the run must
-show *"locally readable source porches at both delivered ends"*, flagged there as *"an explicit instrument
-limitation"*. On the line-TBC-off pass, where §2 measures 1,022 of 1,042 rows displaced at ≥ 100 samples with a
-median of 192, a readable porch at BOTH ends is what a row is least likely to have. The strictness that correctly
-rejects a black rectangle rejects 263 of the 265 it was built for. Per-stage rejection census requested;
-Codex's position owed on whether the both-ends requirement is the binding constraint.
+**DIAGNOSED — and it is leading-edge truncation, not strictness.** Codex's per-stage funnel puts 255 of 264
+(96.6%) at the first stage, "no exposed interior alphabet run ≥ 147 samples"; the both-ends porch requirement
+accounts for 4. Measured at the harness's `S` row for exactly those 255:
+
+| | of 255 |
+|---|---:|
+| run **touches the leading edge** (starts at sample ≤ 2, left end off-window) | **229** |
+| interior, both ends exposed | 26 |
+| run **shorter than 147 samples** | **205** |
+| ≥ 147 | 50 |
+
+Those are one fact seen twice. The relocated blanking arrives at the leading edge of the delivered window and is
+truncated by it, so it is at once missing an exposed left endpoint and shorter than 147. The lengths cluster just
+BELOW 147 — the signature of a 147-sample interval losing a few samples off the left, not of a different feature.
+720 of 858 samples are delivered; an interval displaced leftward runs off the edge.
+
+**So Codex's requirement is not mis-tuned: the extent is genuinely absent from the delivered window.** The open
+question put to it is narrower — whether a one-ended observation is sound when the left endpoint is unmeasurable
+by construction but the right endpoint is exposed. If the answer is no, the honest outcome is that these 255 are
+unmeasurable by the engine and the agreement half closes with a named, understood residue rather than a fix.
+
+⚠️ Two of Claude's hypotheses died here and are recorded so neither agent re-runs them: the both-ends porch
+requirement binds on 4 of 264, not the bulk; and the generated-blanking alphabet is NOT the obstacle — the codes
+in those runs are {1,2,3,4} against the generated rows' {1,2,3}, with 1.0% of 36,190 samples outside.
 
 ⚠️ **Engine cost at `800ed67` is 9.7475 ms median / 16.772 ms p95 per engine call.** §11b's budget is 10 ms for
 the WHOLE worker including classifier, assembly and publish, so the engine alone is at the budget's edge and the
