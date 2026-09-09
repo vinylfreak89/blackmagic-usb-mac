@@ -449,10 +449,18 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    them. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
    separates nothing and its switch stays measurable; read the other way, this rule would suppress switch evidence
    on every dark passage of every source. **The gap is created by the box, so the classification comes first and
-   the exemption follows from it** — never the reverse. On a boxed source the switch must not be measured and a
-   lock may not be taken on it. Where the picture is a
-   box, the region below it carries no RF lift-off point, so there is nothing to time against. Such a unit's switch
-   line is Unknown under rule 6's wording, and the lock's count is not substituted;
+   any consequence follows from it** — never the reverse.
+   **What the gap changes is acquisition, by AGREEMENT** (owner, 2026-09-10): "if the two numbers on geometry LINE
+   UP (the head switch band and the boxed geometry), then this is valid geometry and can write a new picture
+   (which is basically just the full geometry as if the box didn't exist). if they DONT line up, then no, it can
+   not become a new acquisition, only a hold." So a measurable head switch is evidence FOR a lock, never against
+   one; a box makes an RF lift-off point less likely and the absence of one does not invalidate the switch; and
+   the test is whether the band and the boxed geometry agree. **Agreeing, they are valid geometry and MAY set a new
+   acquisition, taken as the full geometry as if the box were not there. Disagreeing, the unit holds and may not
+   acquire.**
+   **A box is not its own class** (owner, same day): "it should be left on the tape where it was centered… boxes
+   aren't their own special class. I already said this before." The picture is left where the source placed it and
+   is never recentred; collapsing letterboxing to geometry means a box establishes geometry like anything else;
    black level is never assumed. Snow-like signal, splices and relocks are delivered by the signal-state layer; the
    engine reads the raster only.
 9. Blank lines under the picture could indicate that the field sits high and need confirmation against the comb
