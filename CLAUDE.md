@@ -2113,6 +2113,29 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**The harness's switch line is independently confirmed on capture 1, and what got it there (2026-09-10).**
+`experiments/displaced_row_census.py` locates the first long run at each field's own blank level and compares it
+with the harness's S. It shares no code with `switch_geometry.py`. **S is exact in 1,013 of 1,013 registerable
+field-readings.** The progression, each step measured rather than argued: **963** as found → **1,009** with
+`torn` no longer selecting the switch line → **1,012** with `step` no longer selecting → **1,013** with the
+census's own unjustified 200-sample ceiling removed.
+⚠️ The census validates **S, which is position**. It does NOT validate T, and it cannot establish that the run is
+physically relocated blanking rather than clipped black content — CLAUDE.md §2 records that black content in this
+material can be clipped to exactly the blanking level with the same dither.
+**Do not re-derive the T-to-S relationship from scratch:** measuring the relocated row against T reports T+1 in
+~90% of readings, which is the DEFINITION of the relationship (T is the partial row and need not carry a whole
+relocated interval), not an error.
+
+**A RULED-OUT ROUTE, measured 2026-09-10 — gating the partial-row test on relocated blanking does not work.**
+The harness declares a partial row where the raw rows show ordinary picture in a class of ~76 readings, and the
+obvious fix is to require the partial candidate to carry some of the other head's relocated blanking. Measured:
+it fixes **62 of 80** target readings and **breaks 248** that already agreed with the engine, net **−186**;
+agreement over the mutually-measured readings falls **384 → 198**. The reason is that low blank-run is a property
+BOTH populations share — the falsely-declared partials run at blank runs of 1–27, and so do 248 genuine partials
+— so no threshold on that quantity can separate them. Characterised on raw rows across both fields and counters
+6674–7172: the class has ONE shape, so it is one fault rather than several, and the separating observable is
+still unknown. Kept behind `SG_PARTIAL_BLANKING`, default off, so the negative result survives.
+
 **The engine cannot measure the switch on 255 of capture 1's readings, and that is a decided result rather than
 an open defect (2026-09-10, Codex decided, Claude measured).** Of the engine's 527 non-box Unknowns, the largest
 bucket — 264 `no_disjoint`, where no complete-interval candidate's phase departure is separable from local
