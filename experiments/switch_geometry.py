@@ -50,6 +50,7 @@ TORN_SELECTS=os.environ.get('SG_TORN_SELECTS','0')!='0'
 # physical relocated-blanking test. Step, like torn, can only fire on sub-switch-scale timing wobble, and contract
 # rule 6 says horizontal tearing is not a geometry event. Set SG_STEP_SELECTS=1 to restore it for a comparison.
 STEP_SELECTS=os.environ.get('SG_STEP_SELECTS','0')!='0'
+PARTIAL_NEEDS_BLANKING=os.environ.get('SG_PARTIAL_BLANKING','0')!='0'   # see ends_partial; default OFF until measured
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('out'); ap.add_argument('--repair',action='store_true',help='fields paired one later (V-stabilize-off capture): field 1 = this unit slot 2, field 2 = next unit slot 1')
 ap.add_argument('--units',default=''); ap.add_argument('--only',action='store_true',help='process only the --units (test mode)'); A=ap.parse_args(); VERB={int(x) for x in A.units.split(',') if x}
 SLOT={1:(16,279),2:(279,525)}     # unit rows of each slot (line 20.. / 283..); blank reference rows 7..15 / 270..278
@@ -475,7 +476,27 @@ def process_unit(u,RU,RN):
             # pf.get('lead_blank')`, which is a bool in every case, so the clause was always true. Removed because
             # a dead clause that reads like a guard is worse than no guard — it advertises a safety that is not
             # there. The real guard it was standing in for is the tri-state above, which does not exist yet.
-            ends_partial = (pf is not None and body_end is not None and (lead_ok != trail_ok))
+            # PARTIAL_NEEDS_BLANKING: a partial row is partly the OTHER HEAD, so it must carry some of that head's
+            # relocated blanking. Measured 2026-09-10 at commercial 6697 f1, the first of the largest disagreement
+            # class against the engine: the switch line is correctly found at 261 (blank run 160) and the ends test
+            # then invents a partial at 260, whose longest blank run is 3 - less than the ~9 samples a correctly
+            # timed row shows from its own blanking, per contract section 2. The raw rows say 260 is ordinary
+            # picture and the engine's T=261 is right. The displaced-row census cannot see this class at all: it
+            # validates S, and both instruments agree S=261; the phantom partial sits above it.
+            # The floor is the contract's own figure for a correctly timed row: a row carrying any relocated
+            # blanking shows more than its own ~9 in-window samples.
+            # ⚠️ MEASURED AND FALSIFIED, 2026-09-10 — default OFF, and the premise above is WRONG. Enabling it
+            # fixes 62 of the 80 target readings and BREAKS 248 that already agreed with the engine, all one shape:
+            # the harness read 260/261 matching the engine and now reads 261/261. Net -186; agreement over the 480
+            # mutually measured readings falls 384 -> 198. So a genuine partial row often carries 9 or fewer
+            # samples of relocated blanking: it is partly the other head, and the part it receives need not include
+            # the blanking interval at all. blank_run cannot separate a real partial from a phantom one, and the
+            # three units at 6697 that suggested it were not representative. The S-census stayed at 1012/1013
+            # throughout, confirming the damage is entirely in T and none of it in S.
+            # What still needs explaining: 6697 line 260 has blank_run 3 and is NOT a partial, while 248 rows with
+            # blank_run <= 9 ARE. Some other observable separates them; this one does not.
+            blank_ok = (not PARTIAL_NEEDS_BLANKING) or (pf is not None and pf['blank_run'] > 9)
+            ends_partial = (pf is not None and body_end is not None and (lead_ok != trail_ok) and blank_ok)
             # The peak and the whole-row lag stay as corroboration; neither is required, because a
             # dark row carries no lag to improve (the defect this replaces: line 260 read wlag 6 at
             # ratio 0.97, so the old test failed and the switch line fell through to the full row).
