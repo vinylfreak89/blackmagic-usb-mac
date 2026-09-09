@@ -2113,6 +2113,24 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**One-ended timing, design position only:** an identified blanking-to-active
+boundary can supply its position even when the interval's other endpoint is
+outside the delivered window. The missing endpoint/extent remains Unknown;
+147 samples must not be substituted as a measured extent. A blank-level
+prefix alone cannot identify that boundary: edge-connected black content can
+produce the same samples. Source-local independent timing corroboration is
+still required; persistence to the clip alone does not resolve that ambiguity.
+Thus a qualified one-ended observation is possible, but recovery of the 255
+candidate failures is unproved, and they are not declared fundamentally
+unmeasurable or an accepted residue. The harness reports 229/255 starts <=2
+and 205/255 lengths <147; these are not independently re-measured here. Starts
+1/2 are near-edge, not by themselves proof of an off-window endpoint. Also,
+1% out-of-alphabet samples does not exonerate the exact contiguous-run test:
+one excluded code can split a run. Its placement, not just pooled frequency,
+determines the effect. Both-ends remains a minority first-rejection cause
+(4/264, after candidate formation). No implementation,
+contract change, capture acceptance or new lock/hold policy follows.
+
 **Run-route rejection census, no detector change:** on the immutable 264
 remaining `no_disjoint` field readings at `856ec13` (same engine at merge
 `33e102c`), 255 have no exposed interior >=147-sample run in the generated
