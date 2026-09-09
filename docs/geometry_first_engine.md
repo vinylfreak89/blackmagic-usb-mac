@@ -323,7 +323,11 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   visible (an integer, the row's luma mean rounded to a unit). The switch-line count is not a comparator (owner,
   20:56).
 - **Source lock**: exists only after at least one confirmation that the geometry is correct — combing, captions, or
-  both, and nothing else (owner, 13:29 and 21:34: "combing captions or both. significant clean picture was a fuck
+  both (owner, 2026-09-09, admitting VBI in one bounded form: **"only admit as confirmation of positive evidence
+  of displacement. unless you can get line 22 from the tape's own blanking, not the shuttles"** — the tape's own
+  VBI is above the delivered window at zero displacement and appears only when the field is displaced downward, so
+  it can confirm "displaced by +N" and never "at zero"; the exception is the tape's OWN line 22, told from the
+  Shuttle's regenerated one, which may confirm) (owner, 13:29 and 21:34: "combing captions or both. significant clean picture was a fuck
   up on my part. because of the shuttle's own raster hiding potentially the first few lines" — his earlier
   "significant non-dirty luma" is withdrawn, because the Shuttle's blanking can hide the picture's first lines).
   A unit that confirms only the top does not make a lock.
@@ -426,7 +430,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    are learned at the lock like any other per-source quantity; no extent belongs here. Owner, 2026-09-09: "the top of the picture SHOULD be the [warning card's] 'WARNING' label and the bottom
    the last text line. everything else is too close to blanking. that should properly end up being a fixed size and
    centered in the middle, which will correct the geometry", and: structurelessness at ONE end lowers confidence and
-   needs corroboration, at BOTH ends it fixes the geometry and it is a box. What makes a region structureless is a
+   needs corroboration, at BOTH ends it fixes the geometry and it is a box. **A box's validity, and what a fade does** (owner, 2026-09-09): the box's geometry is the extent
+   measured while the picture is well exposed, and it is HELD. **"geometry (including the box) can't change during
+   a fade. that must be a hold"** — a fade shows as the picture's overall level falling while the band edges stay
+   put in the rows that still read, and it never invalidates anything. Only a band edge moving **while the level is
+   steady** releases the geometry. This matters because the two look identical at the first unit and one means hold
+   while the other means release.
+   What makes a region structureless is a
    measurement neither agent has yet: flat-within-one-code fires only on the device's four synthetic rows, vertical
    coherence rates text as MORE coherent than noise, and horizontal spread against sample noise has separated on one
    unit only.
