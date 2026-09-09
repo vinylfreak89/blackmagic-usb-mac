@@ -373,3 +373,26 @@ inside that worktree instead).
 Corollary on attribution: three contract commits whose wording came from the other agent's review
 carried only this agent's trailer. Co-authorship is part of the record — when the other agent's words
 go into a commit, its trailer goes in with them. The same rewrite added them.
+
+## Method lesson: one grep is not a reading of a code path
+
+Three times on 2026-09-09 I asserted a structural fact about `src/field_registration/` from a single
+grep and was wrong each time; Codex caught all three by reading the path.
+
+- "There is exactly one lock-acquisition site and it requires a caption." There are two —
+  `field_registration.c:608` locks from the comb with no caption. I had grepped for the caption
+  condition, found it, and generalised from the one match.
+- "The comb runs after the lock decision, so it can never license a lock." True of one site, false
+  of the engine: the comb has its own acquisition site. I built a louder claim on top of it — that
+  three turns of comb work were aimed at a disconnected path — and that was false too.
+- "The RF-peak detector assumes one polarity." There is no RF-peak detector; both fields are
+  initialised to −1 and nothing assigns them, and the record's columns are always −1.
+
+The shape is identical every time: grep, one hit, generalise to "the only", state it as established.
+What makes it expensive is that each wrong claim went out in a dispatch and cost the other agent a
+turn to refute, and one of them reached the owner as a finding.
+
+The rule: before writing "the only", "never" or "always" about a code path, enumerate the sites —
+`grep -n` for the state being set, not for the condition you expect — and read the function that
+contains each one. A negative claim about code is the same class as a negative claim about a
+capability: it is a hypothesis about my own search, not a fact about the system.
