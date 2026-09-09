@@ -92,6 +92,41 @@ What survives from the alarm: 6899 is a real fault in `S`, and the mode-based st
 Also unfixed and named at its site: `lead_blank` is a bool, so an unreadable lead is asserted as "not blank"
 rather than unknown. Harmless on this capture; a real fault where the regenerated rows are absent.
 
+**AGREEMENT, the gate's second half — measured 2026-09-10 against the rule-8-conformed engine (`800ed67`).**
+The earlier 142 agree / 60 disagree was against pre-ruling behaviour and is superseded; it was never reported to
+the owner as a result, which was the right call.
+
+| | pre-ruling engine | rule-8 conformed |
+|---|---:|---:|
+| agree | 142 | **383** |
+| disagree | 60 | **97** |
+| engine Unknown, boxed | 285 | **7** |
+| engine Unknown, NOT boxed | 526 | 526 |
+
+Where both instruments measure — 480 readings — they agree on **383 (79.8%)**. ⚠️ Codex's own count corrects
+figures quoted earlier here: **814 Unknowns = 287 boxed + 527 non-box**, not 811/285/526.
+
+**71 of the 97 disagreements (73%) are ONE shape, and it is not the one the earlier join suggested.** 41 in
+field 1 (engine 261/261 against harness 260/261) and 30 in field 2 (engine 523/523 against harness 522/523):
+**the two instruments agree on `S` and differ only on `T`** — whether a partial row sits above the first full
+other-head row. The engine reads no partial where the harness reads one. This is now one-directional, where the
+pre-ruling split was 26 one way and 18 the other.
+
+⚠️ **The displaced-row census CANNOT adjudicate this.** It validates `S`, which is exactly what the two
+instruments already agree on. Deciding whether the partial exists needs raw-row adjudication on a sample of the
+71, and that is the next measurement on this half.
+
+**The 527 non-box Unknowns are the larger half and are NOT one cause** (Codex's per-reading census): candidates
+overlapping the local phase envelope 265, accepted departure later cleared by phase return 145, no readable
+local basis 75, previous same-phase row vetoing the candidate 39, and 2 + 1 in two more. **141 of the clearing
+events occur at field-2 line 525**, the clip line. Nothing tonight has touched this and it is untouched by the
+rule-8 work.
+
+⚠️ **Engine cost at `800ed67` is 9.7475 ms median / 16.772 ms p95 per engine call.** §11b's budget is 10 ms for
+the WHOLE worker including classifier, assembly and publish, so the engine alone is at the budget's edge and the
+p95 is over it. Codex states plainly this is not a budget pass. Optimisation waits on correctness acceptance
+(the standing rule), but the number belongs on the record now rather than being discovered at acceptance.
+
 **Tier 1 — the engine's switch detector on ordinary picture. It is what makes a lock POSSIBLE, and it is failing
 where the switch demonstrably is.** On capture 1's 364 non-boxed registerable units (counters 6811–7174) the
 harness reference measures the switch in **364 of 364** — T reads 260 in 337, 261 in 25, 259 in 2, and the picture
