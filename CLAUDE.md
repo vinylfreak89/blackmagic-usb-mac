@@ -2113,6 +2113,23 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Box-observer candidate falsified, no production change:** a two-class
+log-row-variance partition with edge-anchored low-spread runs preserves an
+ideal gain-scaled box but falsely labels a fully textured field boxed when
+its edge texture has lower contrast. Commercial counter 6668 is the other
+deciding failure: f1's terminal switch row exceeds the adaptive cut, so this
+candidate misses the known box exactly where forbidden switch evidence
+licensed the prototype lock. On 508 registerable units it proposes boxes in
+255 f1 / 380 f2 / 254 both; these are NOT true-box counts. No tuning to the
+harness census, no acquisition bypass, no comb promotion. Method, controls,
+raw row values and reproduction: `src/field_registration/tests/BOX_PARTITION.md`.
+Unchanged production replay after the diagnostic: 930 observations, 919 exact
+and published, no input/publication/log drops; applied d1/d2 and
+geometry_lock_known each zero on all 930 observations. No first lock. Worker
+median/p95 2.693/14.092 ms overall, 10.872/16.192 on 452 registration calls.
+Sandboxed `queue_bench` failed `fs_open`; the authorized host-access retry
+completed. This does not identify the underlying open failure's cause.
+
 **Static-comb prototype quarantined, not a sanctioned first lock:** diagnostic
 confirmation exposed the missing boxed-geometry observation: the card's lower
 structureless band separates structured content from the switch, so rule 8
