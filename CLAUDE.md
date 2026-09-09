@@ -2206,6 +2206,16 @@ the pan does. The recalibration is NOT sufficient either: the commercial mask ab
 correctly, but the SP mask retains two accidental blocks and still favours +2. Production comb
 unchanged; no support threshold was invented to paper over it.
 
+**Capture 1's reference passes its own invariant — measured 2026-09-09, the first time the check has been run**
+(`experiments/stable_interval_check.py` over the harness reference, 508 units from counter 6667):
+`STABLE_INTERVAL_VIOLATIONS 0`. Both fields measurable in all 508 units. Field 1: top 23 in every unit, switch line
+mode 260 (260 in 473, 261 in 26, 259 in 9), crop window constant. Field 2: top 286 in every unit, switch mode 522
+(522 in 440, 523 in 65, absent in 3), crop window constant. **The top never changes in either field**, and although
+the switch line changes 62 times in field 1 and 44 in field 2, `|S − mode| > 1` is zero in both — every move is
+within the partial line's one-row travel, which is exactly what contract §8's invariant permits. The three field-2
+units with a measurable top and no switch line (counters 6674, 6776, 6863) are the "band not detectable in every
+unit even of a clean source" case the owner described, and under rule 4 they are a hold.
+
 **The v10 acceptance captures (session logistics, moved out of `HANDBACK.md` 2026-09-09 when that file was
 retired).** The contract's section 8 carries the order and the pass condition; this is what the four captures are.
 Order: (1) commercial tape, (2) EP recording, (3) SP recording, (4) SP with the deck's V-stabilize off.
