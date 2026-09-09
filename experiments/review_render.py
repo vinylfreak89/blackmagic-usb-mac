@@ -35,10 +35,19 @@ from packet_capture_reader import walk_tagged
 UNIT_BYTES = 756_048; HDR = 48; ROW_BYTES = 1440; RASTER_ROWS = 525
 MARK = b"\x00\x00\xff\xff"
 # 486 mode: field 1 lines 21..263, field 2 lines 283..525, 243 rows each. Unit row = NTSC line - 4.
-F1_FIRST_LINE, F2_FIRST_LINE, FIELD_ROWS = 21, 283, 243
+# 486 mode, CORRECTED 2026-09-09. The two fields are structurally identical - each carries the
+# Shuttle's line-20 insert, its caption insert, its regenerated black, then picture - and the field
+# spacing is 263 throughout (284-21, 286-23, 283-20, all 263). Starting field 1 at 21 while field 2
+# starts at 283 is an offset of 262, one line short, and it produced exactly what the owner saw in
+# the first render: the two caption lines landing three output rows apart instead of adjacent, and
+# the line-20 insert appearing from field 2 only because field 1's was outside its crop. Starting
+# field 1 at 20 makes both fields three lines above the picture and none below, symmetric, spaced
+# 263. (The contract's section on the 486 mode still says 21-263 / 283-525 and calls the raster
+# asymmetric; the raster is symmetric and the CROP was not - raised with the owner.)
+F1_FIRST_LINE, F2_FIRST_LINE, FIELD_ROWS = 20, 283, 243
 FW, FH = 720, FIELD_ROWS * 2      # 720x486
 DW = 640                          # displayed width: 720 samples at 8:9
-BAND = 132
+BAND = 158          # room for the identity strip BELOW the text; at 132 the label sat on the strip
 MARGIN = 26                       # left/right margin either side of the picture, where ticks live
 SPAN = 90                         # units either side of the playhead in the graph
 
@@ -146,8 +155,8 @@ def main():
         dr.text((gx0, gy0 + gh + 3), "d1 red  d2 blue  +-90 units", font=small, fill=(120, 120, 120))
         if a.machine_strip:
             from live_overlay_strip import payload as strip_payload, draw as draw_strip
-            dr.text((6, H - 19), "machine identity strip (not signal):", font=small, fill=(90, 90, 90))
-            draw_strip(dr, H - 7, strip_payload(int(g(r, "ordinal", "0")),
+            dr.text((6, H - 30), "machine identity strip (not signal):", font=small, fill=(90, 90, 90))
+            draw_strip(dr, H - 16, strip_payload(int(g(r, "ordinal", "0")),
                                                 int(g(r, "counter_extended", "0")), dd1, dd2))
 
     order = []          # the capture's own unit order, so a frame is never paired with another's record
