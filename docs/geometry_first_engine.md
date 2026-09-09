@@ -49,7 +49,9 @@ WHITE. sometimes its pure BLACK. genuinely unknown to me"), so a detector keyed 
 The peak carries the tear with it, so its horizontal position on the line is
 measured when present; it drifts slowly and never jumps from one side to the other; the TBC can smooth it away and
 render the partial line as picture, and then the band's row count is what survives. The head switch is optional (not
-every source is VHS): "not applicable" is distinct from "unmeasurable". The band is the unreliable part of the
+every source is VHS): "not applicable" is distinct from "unmeasurable". Some recordings show no head switch at all
+— on a line-TBC-corrected pass there is torn horizontal timing below the picture and no switch to find (owner,
+2026-09-09) — so a lock must never be conditioned on one. The band is the unreliable part of the
 geometry; its row count is confirmed by secondary signals (comb between the fields, VBI, captions), ideally more
 than one; the band count alone never moves anything. A whole field can mistime and fall out of the Shuttle's raster:
 cues present one frame and absent the next mean they shifted away, near-certain when the top shifts too (owner, 03:34:41).
