@@ -21,14 +21,25 @@ switch line — `S` is stable across the blips, and `switch_lines` is derived fr
 normally reads T=S=260 and blips to 259; field 2 normally reads T=522 with S=523 and blips to 523: the two fields
 sit on opposite sides of the same binary "is the row above the switch part of the band" decision. The raw rows say
 the blip row is ordinary picture, so it is instrument error; `SG_EXPLAIN` names which disjunct fires.
-Six typed constants, not five. Two are now derived and committed (the caption run-in gate from CEA-608 + BT.601,
-`98257b0`; the insert-presence test from the field's own blanking noise, `113882a`). Four remain:
-- `switch_geometry.py:173` carries a SECOND copy of the run-in amplitude gate, still typed 35, whose comment claims
-  it sits "at the decoder's own gate" — the decoder's gate is now 27.375, so the two have silently diverged. One
-  quantity, two implementations. Needs its own measurement before it is unified.
-- the field-2 envelope's four constants (mean < 95, bins 20–47 ≤ 40, run of ≥ 6 bins > 60)
-- the eight-sample blanking slack (`M_run+8`)
-- the span floor (`len(span)>=60`)
+**The typed-constant ledger, every entry decided by measurement on capture 1 rather than by argument.** Six, not
+the five first counted — the sixth was a duplicate nobody had noticed.
+
+| constant | outcome | evidence |
+|---|---|---|
+| caption run-in gate | **derived**, from CEA-608's 50 IRE p-p run-in and BT.601's 219 codes/100 IRE | `98257b0`; 0 of 1,840 readings changed |
+| insert-presence test | **derived**, from the field's own blanking noise | `113882a`; 0 of 1,840 |
+| duplicate run-in gate (a second copy, typed 35, whose comment claimed it sat "at the decoder's own gate" while the decoder's had become 27.375) | **removed**, now imported | `910f345`; 0 of 1,840 |
+| span floor (`len(span)>=60`) | **derived**, `2*MAXLAG` from the search it guards | `d964a73`; sweeping to 40 and 100 left the reference byte-identical, and the floor is monotone, so identical output at both ends PROVES no row has a span in [40,100) |
+| `M_run+8` blanking slack | **KEPT, and it is load-bearing** | `7340fa5`; removing it changed 3 field-2 units, converted two documented holds into detections, and introduced a jitter blip at 6674 — a regression on tier 0's own criterion |
+| field-2 envelope (mean < 95, bins 20–47 ≤ 40, run of ≥ 6 bins > 60) | measurement in flight | fitted to fixture A's second recording, where the bar exists; cannot be derived, because it is a source artefact rather than a standard waveform |
+
+Two things this ledger should not be read as saying. `M_run+8` staying is not a defeat: the measurement found it
+carries a decision, and the principled replacement — the body's DISTRIBUTION instead of its maximum plus a
+constant — is named at the site for the next attempt. And the field-2 envelope firing nowhere on capture 1 would
+make it inert HERE, not derived; it decides real rows on capture 2, which this harness is gated from.
+
+Also unfixed and named at its site: `lead_blank` is a bool, so an unreadable lead is asserted as "not blank"
+rather than unknown. Harmless on this capture; a real fault where the regenerated rows are absent.
 
 **Tier 1 — the engine's switch detector on ordinary picture. It is what makes a lock POSSIBLE, and it is failing
 where the switch demonstrably is.** On capture 1's 364 non-boxed registerable units (counters 6811–7174) the
