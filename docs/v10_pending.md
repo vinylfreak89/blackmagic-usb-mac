@@ -201,9 +201,40 @@ question put to it is narrower — whether a one-ended observation is sound when
 by construction but the right endpoint is exposed. If the answer is no, the honest outcome is that these 255 are
 unmeasurable by the engine and the agreement half closes with a named, understood residue rather than a fix.
 
-⚠️ Two of Claude's hypotheses died here and are recorded so neither agent re-runs them: the both-ends porch
-requirement binds on 4 of 264, not the bulk; and the generated-blanking alphabet is NOT the obstacle — the codes
-in those runs are {1,2,3,4} against the generated rows' {1,2,3}, with 1.0% of 36,190 samples outside.
+**The full account, after two corrections from Codex, both of which were right.** The 255 split into two nested
+causes with nothing left over:
+
+| | of 255 |
+|---|---:|
+| fail on length even under the most permissive measure — **truncated at the window edge** | **205** |
+| additionally **fragmented by alphabet splitting** | **42** |
+| genuine uninterrupted ≥147 run, failing at later stages | 8 |
+
+- **Truncation is real but was over-counted.** 210 start at sample 0 with the left endpoint genuinely off-window;
+  19 start at 1 or 2, where the endpoint IS visible and nothing is truncated; 26 are interior. Claude's "touches
+  the leading edge, 229" conflated the first two — Codex's point that a start ≤ 2 is proximity, not truncation.
+- **The alphabet IS an obstacle, and the earlier dismissal used the wrong test.** The predicate requires
+  UNINTERRUPTED membership, so one excluded code mid-run fragments it. Longest run ≥ 147 by tolerance band: 50;
+  by uninterrupted alphabet: 8. **42 of the 50 are split below 147.** The earlier reasoning — 1.0% of 36,190
+  samples outside, therefore not the obstacle — measured frequency and inferred a mechanism from it.
+
+These are different fixes: one says the evidence is not in the window, the other says it is there and the
+predicate is brittle to a few scattered codes. **The 42 are the tractable half.**
+
+⚠️ **Three of Claude's hypotheses died on this question** and are recorded so neither agent re-runs them: the
+both-ends porch requirement (binds on 4 of 264), the alphabet as a frequency effect (wrong test), and "touches
+the edge" as truncation (right for 210, wrong for 19). The pattern in all three is the same — measuring an
+aggregate and treating it as the mechanism.
+
+**Codex's bar for any one-ended observation**, stricter than the harness side proposed and adopted as the
+standard here: leave the missing endpoint and full extent Unknown and never reconstruct them by assuming 147;
+require corroborating timing evidence such as another identifiable feature moving consistently; keep the
+stationary edge-connected black rectangle rejecting; abstain when identity cannot be established, because
+"persistence to the clip alone cannot distinguish blanking from content".
+
+⚠️ And its caution stands unqualified: this makes truncation a strong and quantified explanation, NOT a proof
+that all 255 share one cause, and the exposed right endpoint has not been shown to supply sufficient timing
+identity.
 
 ⚠️ **Engine cost at `800ed67` is 9.7475 ms median / 16.772 ms p95 per engine call.** §11b's budget is 10 ms for
 the WHOLE worker including classifier, assembly and publish, so the engine alone is at the budget's edge and the
