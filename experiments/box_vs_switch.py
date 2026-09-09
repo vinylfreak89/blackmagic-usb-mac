@@ -48,21 +48,30 @@ print("(a unit absent from either side is NOT counted below, and is reported her
 
 for f in (1, 2):
     gaps = []
+    skipped_unboxed = 0
     for c, brow in sorted(box.items()):
         key = f"f{f}_content_bot"
         if key not in brow or brow[key] in ("", "None"):
             continue
         if f not in ref.get(c, {}):
             continue
+        # ONLY boxed units. On an unboxed unit `content_bot` is the last structured row of ordinary picture, which
+        # runs to the bottom of the field, so a gap computed from it is not the owner's question and its negative
+        # value means nothing. The first version of this script omitted the filter and reported 893 units in a
+        # field carrying 160 boxes; its own denominator gave it away.
+        if brow.get(f"f{f}_verdict") != "box":
+            skipped_unboxed += 1
+            continue
         content_bot_line = int(brow[key]) + 4
         gap = ref[c][f] - content_bot_line - 1
         gaps.append((c, gap, content_bot_line, ref[c][f]))
+    print(f"field {f}: {skipped_unboxed} units excluded as not boxed (verdict != 'box')")
     if not gaps:
-        print(f"field {f}: no units measurable on both sides"); continue
+        print(f"field {f}: no BOXED units measurable on both sides"); continue
     above = [g for g in gaps if g[1] >= 0]
     into = [g for g in gaps if g[1] < 0]
     dist = collections.Counter(g[1] for g in gaps)
-    print(f"field {f}: {len(gaps)} units measurable on both sides")
+    print(f"field {f}: {len(gaps)} BOXED units measurable on both sides")
     print(f"   box bottom ABOVE the band (gap >= 0): {len(above)}  ({100.0*len(above)/len(gaps):.1f}%)")
     print(f"   content INTO or past the band (< 0):  {len(into)}   ({100.0*len(into)/len(gaps):.1f}%)")
     print(f"   gap distribution (rows between the box's last content line and the band's first):")
