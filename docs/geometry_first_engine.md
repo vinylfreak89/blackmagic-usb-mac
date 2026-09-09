@@ -442,7 +442,15 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    unit only.
    **A head switch separated from the picture by a gap is not measured** (owner, 2026-09-09: "a head switch placed
    below the actual video is unreliable and shouldn't be measured at all", clarified as "where there is a gap between
-   the head switch and picture content, not a head switch directly touching the picture"). Where the picture is a
+   the head switch and picture content, not a head switch directly touching the picture"). **A box's own band IS that gap, and WHY is binding** (owner,
+   2026-09-09: asked whether the rows between a card's last content row and its switch line count as a gap, "Yes
+   they count as a gap", and then — "But why they count as a gap is important. They are part of a box"). The rows
+   are a gap **because they are the box's band**: not because they are dark, and not because content stopped above
+   them. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
+   separates nothing and its switch stays measurable; read the other way, this rule would suppress switch evidence
+   on every dark passage of every source. **The gap is created by the box, so the classification comes first and
+   the exemption follows from it** — never the reverse. On a boxed source the switch must not be measured and a
+   lock may not be taken on it. Where the picture is a
    box, the region below it carries no RF lift-off point, so there is nothing to time against. Such a unit's switch
    line is Unknown under rule 6's wording, and the lock's count is not substituted;
    black level is never assumed. Snow-like signal, splices and relocks are delivered by the signal-state layer; the
