@@ -321,8 +321,16 @@ def process_unit(u,RU,RN):
             # does and then ends at luma 17-20 where 258/259 end at 1-2; both agents read the same
             # rows, 2026-09-09). The expectation is the field's OWN picture rows, not a constant:
             # body_end is the smallest trailing blanking run they show.
-            body_ends=[feats[r]['end_run'] for r in range(top+20,min(top+201,last_rec+1)) if r in feats]
-            body_end=min(body_ends) if len(body_ends)>=40 else None
+            # The expectation comes from the picture rows IMMEDIATELY ABOVE the candidate, and from
+            # their MEDIAN, not the whole field's minimum. Falsified 2026-09-09 on counters
+            # 6701/6702/6703, three units whose field-2 bottoms are byte-alike in structure (lines
+            # 520-522 return to blanking, 523 keeps its leading ramp and ends at luma 19-21, 524/525
+            # begin at 24-30 with no ramp): the whole-field minimum let one anomalous body row 160
+            # lines away drag the expectation to 1, so the same row read partial, not-partial,
+            # partial. A local median cannot be moved by a single distant row, and the separation it
+            # decides is 1 against 8+, so nothing hinges on which robust statistic is used.
+            above=[feats[r]['end_run'] for r in range(max(top, sw-21), sw-1) if r in feats]
+            body_end=float(np.median(above)) if len(above)>=10 else None
             ends_partial = (pf is not None and body_end is not None and pf.get('lead_blank')
                             and pf['end_run'] < body_end)
             # The peak and the whole-row lag stay as corroboration; neither is required, because a
