@@ -171,7 +171,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - The deck clips each field at its own clip line, constant per source; the pass-through rows below it carry only
   the near-blank remainder and the chroma noise of the decoder.
 - The Shuttle's regenerated rows and recorded rows separate on chroma noise against the blanking rows', with a
-  clear gap between them; the separation, not a typed ratio, is what the recorded-row test uses.
+  clear gap between them: the regenerated rows measure at most 1.48x the blanking rows' and the recorded rows at
+  least 2.02x. The separation, not a typed ratio, is what the recorded-row test uses.
 - Row signatures (verified on raw units of both SP passes): picture rows match the row above
   at a segment lag of 0–1 with mean |difference| 8–17; the first other-head row has a median segment lag ≥ 10 and
   mean |difference| 35–80; the RF peak is a spike ≥ 4 times the row's mean |difference| at the same sample in both
@@ -196,8 +197,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 ## 3. Definitions
 
 - **Recorded row**: a pass-through row that came through the analog decoder, told from the Shuttle's regenerated
-  rows by the decoder's noise: chroma noise above twice the blanking rows' (section 2's measured gap, the test set at
-  its lower bound), or luma above the blank; padding is neither. The Shuttle's regenerated blanking rows (7–15 / 270–278) are the
+  rows by the decoder's noise: chroma noise above twice the blanking rows' (section 2's measured separation, at most
+  1.48x against at least 2.02x; the 2.0x test sits inside that observed gap, and NOT at its lower bound, which is
+  2.02x), or luma above the blank; padding is neither. The Shuttle's regenerated blanking rows (7–15 / 270–278) are the
   reference when present; tape signal cannot reach them; their absence is a lock-like-loss observation.
 - **Pedestal**: the tape's black — the other head's black rows at the bottom of the band.
 - **VBI row**: a recorded row carrying a vertical-interval WAVEFORM, recognised by signature: the CEA-608 waveform

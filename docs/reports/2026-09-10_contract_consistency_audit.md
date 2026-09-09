@@ -60,12 +60,22 @@ extent (≤ 0)".
 For a source whose top reads line 23, d can only be read as count − extent. The count exists only from the
 confirmed unit. The confirmed unit requires geometry, i.e. requires d. Neither can go first.
 
-This is not hypothetical. **Capture 1's reference reads top = 23 in 508 of 508 units in field 1 and 286 in 508
-of 508 in field 2** — it is the clamped-top case throughout — and no commercial geometry lock has ever been
-acquired. The contract does not say how the count is seeded at a first lock. The obvious seed (assume d = 0 at
-acquisition, so count = extent at that unit, consistent with `:365` "before a lock, standard placement") is
-nowhere written, and it would make the acquisition unit's geometry an assumption rather than an observation,
-which rule 4 may not intend. **Owner decision, and it is the one on capture 1's critical path.**
+**Capture 1's reference reads top = 23 in 508 of 508 units in field 1 and 286 in 508 of 508 in field 2**, so it
+is the clamped-top case throughout. The contract does not say how the count is seeded at a first lock.
+
+⚠️ **Corrected after Codex checked its own engine (2026-09-10).** This entry first said the circularity is "the one
+on capture 1's critical path". That is not supported and is withdrawn. The engine already bypasses the deadlock
+with an implicit seed: `field_registration.c:436` computes `visible_d = top - origin` and then
+`observed_count = extent + visible_d`, so a top at 23/286 yields d = 0 and count = extent without ever
+distinguishing a clamped top, and that count is installed at confirmation by both acquisition paths
+(`:628` comb, `:882` caption). Codex: "the contract circularity is **not a literal acquisition deadlock in the
+implementation** … It therefore cannot alone explain zero commercial locks."
+
+What survives, and both agents agree on it: the engine's seed is an assumption the contract does not authorize.
+Standard fallback placement (`:365`) does not make zero an *observed* geometry, and rule 4 requires the
+acquisition's geometry to be an observation. So the gap is real and it is the owner's to settle — but it is a
+correctness question about what the first lock is entitled to assume, not the explanation for capture 1 failing
+to lock. That explanation is still open. **Owner decision.**
 
 The same shape, smaller: the band's extent runs "to the clip" (`:295-296`) and the clip is "measured per source
 as the last recorded row's **constant**" (`:308-310`). A per-source constant does not exist at unit 1.
@@ -91,11 +101,18 @@ between them; **the separation, not a typed ratio, is what the recorded-row test
 `:198-199` — "**Recorded row**: … chroma noise **above twice the blanking rows'** (section 2's measured gap, the
 test set at its lower bound)".
 
-§3 cites §2 as its authority for a number §2 refuses to supply — and §2 states its gap without a value ("a clear
-gap between them"), so the citation cannot supply it either. By the document's own rule at `:8-9` ("Every number
+§3 cites §2 as its authority for a number §2 refuses to supply — and §2 stated its gap without a value ("a clear
+gap between them"), so the citation could not supply it either. By the document's own rule at `:8-9` ("Every number
 is a standard, a measurement on the captures (stated with its value), or a memory capacity; any other number in
-the code is a defect") the typed 2× is a defect. **Both agents can settle this with a measurement** — §2's gap
-has a value (1.48× against 2.02×, recorded in CLAUDE.md); stating it turns the typed ratio into a measurement.
+the code is a defect") the typed 2x was a defect.
+
+✅ **Settled by both agents, 2026-09-10, and the contract is edited.** §2 now states the measured values (regenerated
+rows at most 1.48x the blanking rows', recorded rows at least 2.02x). Codex made one correction to the proposed
+wording that was worth having: **2.0 is not the gap's lower bound** — the lower bound is 2.02 — so §3's claim that
+the test is "set at its lower bound" was itself false and is replaced by "sits inside that observed gap, and NOT at
+its lower bound". The engine's `>2.0x` at `field_registration.c:405` is unchanged; this documents an existing
+measurement-backed threshold with no behaviour change. Neither agent re-measured the gap this turn; the values are
+the ones recorded in CLAUDE.md.
 
 ### 6. Rule 6 gives no way to tell ordinary VHS flagging from disqualifying horizontal damage.
 
