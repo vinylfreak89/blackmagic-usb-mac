@@ -43,7 +43,10 @@ the hard case and every not-sure class is worked through, never thresholded away
 Blanking bounds the geometry above and below; the picture is the rows between, and a field closes to 240 lines
 (top + 239) whether or not all of them are visible. The reliable geometry is the top of the picture to the row before
 the head switch. The head switch is one of: discontinuous horizontal skew, an RF peak in the luma, or both, plus an
-AGC level mismatch where present; the peak carries the tear with it, so its horizontal position on the line is
+AGC level mismatch where present. **The peak's polarity is not fixed**: it reads as pure white in some units and
+pure black in others, and the cause is unknown (owner, 2026-09-09: "The RF peak isn't always detectable as pure
+WHITE. sometimes its pure BLACK. genuinely unknown to me"), so a detector keyed to one polarity misses the other.
+The peak carries the tear with it, so its horizontal position on the line is
 measured when present; it drifts slowly and never jumps from one side to the other; the TBC can smooth it away and
 render the partial line as picture, and then the band's row count is what survives. The head switch is optional (not
 every source is VHS): "not applicable" is distinct from "unmeasurable". The band is the unreliable part of the
@@ -390,8 +393,14 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    (owner, 04:29, and 15:11 "previous geometry (not position) holds through the damage"; both agents at extreme
    confidence, 2026-09-07 15:50 and 21:12).
 3. The line account is conserved; the picture bottom is the row above the switch line; lines past the clip are lost.
-4. The lock's constant, the switch-line count, is taken at the confirmed unit and kept until a reset, never
-   re-learned; a unit that disagrees with it is reported (rule 2). The level of the tape's line 22 is a comparator by
+4. **A lock is acquired on two or more independent observations, at least one of which must be geometry**
+   (owner, 2026-09-09: "lock is 2 or more things, one of which HAS to be geometry. thats what will move a lock to
+   acquired"). The lock's constant, the switch-line count, is taken at the confirmed unit and kept until a reset,
+   never re-learned; a unit that disagrees with it is reported (rule 2).
+   **The switch band is not detectable in every unit even of a clean source. Where it is absent the band is HELD,
+   not removed** — moving where the head switch is, in the absence of a line, is a hold. That hold is invalidated
+   when the number of lines below the detected head switch changes, and then the lock is truly lost (owner,
+   2026-09-09). The level of the tape's line 22 is a comparator by
    running count in a fixed array of eight slots; counts never decrement; the most frequent value is the comparator
    and is replaced by a value whose count passes it (owner, 12:52, 12:55, 20:56). No magic numbers, no per-source
    constants typed in.
