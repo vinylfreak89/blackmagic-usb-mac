@@ -54,6 +54,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("capture"); ap.add_argument("log"); ap.add_argument("out")
     ap.add_argument("--crf", default="14")
+    ap.add_argument("--no-machine-strip", dest="machine_strip", action="store_false",
+                    help="omit the machine-readable identity barcode. It is DRAWN by default and "
+                         "labelled: it encodes the unit ordinal, counter and applied pair so the "
+                         "read-back gate can prove each frame carries the unit its labels claim. "
+                         "The owner asked what the alternating black and white blocks at the bottom "
+                         "were (2026-09-09) and, told it was a machine code, said to leave it in — "
+                         "so it stays, but it says what it is on the frame.")
     ap.add_argument("--font", default="/System/Library/Fonts/Menlo.ttc")
     a = ap.parse_args()
 
@@ -81,6 +88,47 @@ def main():
 
     gx0, gw = W - 300, 280
     gy0, gh = FH + 10, BAND - 22
+
+    def draw_band(dr, r, i, dd1, dd2):
+        """The metrics band, BELOW the picture and never over it. Text in fixed columns on the left
+        that cannot run into the graph on the right — the v9 band drew one long line and it collided
+        with the plot (owner, 2026-09-09: "the overlay looks like it is on top of things")."""
+        dr.rectangle([0, FH, W, H], fill=(8, 8, 8))
+        dr.text((6, FH + 5),
+                f"u{int(g(r,'ordinal','0')):06d}  ctr {g(r,'counter_extended','?'):>6}  "
+                f"{g(r,'appearance','?')[:16]:16s} {g(r,'source','?')[:8]:8s}  "
+                f"applied ({dd1:+d},{dd2:+d})", font=font, fill=(230, 230, 230))
+        for f in (1, 2):
+            col = (255, 90, 90) if f == 1 else (90, 170, 255)
+            sw = num(r, f"f{f}_switch_line"); ext = num(r, f"f{f}_band_extent")
+            top = num(r, f"f{f}_measured_picture_top")
+            y = FH + 24 + (f - 1) * 30
+            dr.text((6, y),
+                    f"f{f}  top {top if top is not None else '--':>4}   "
+                    f"switch {sw if sw is not None else '--':>4}   "
+                    f"band {ext if ext is not None else '--':>3}   "
+                    f"{g(r, f'f{f}_reason','?')[:20]}", font=small, fill=col)
+            dr.text((6, y + 13),
+                    f"    lock {g(r, f'f{f}_lock_state','?')[:12]:12s} "
+                    f"raw {num(r, f'f{f}_raw_top')}/{num(r, f'f{f}_raw_bottom')}",
+                    font=small, fill=(150, 150, 150))
+        # both fields' applied shift, with the playhead
+        dr.rectangle([gx0, gy0, gx0 + gw, gy0 + gh], outline=(60, 60, 60))
+        def px(k): return gx0 + (k - (i - SPAN)) * gw / (2 * SPAN)
+        def py(v): return gy0 + gh / 2 - max(-3, min(3, v)) * (gh / 8)
+        for v, c in ((0, (70, 70, 70)), (2, (45, 45, 45)), (-2, (45, 45, 45))):
+            dr.line([(gx0, py(v)), (gx0 + gw, py(v))], fill=c)
+        for series, col in ((d1, (255, 90, 90)), (d2, (90, 170, 255))):
+            pts = [(px(k), py(series[k])) for k in range(max(0, i - SPAN), min(len(rows), i + SPAN))]
+            if len(pts) > 1:
+                dr.line(pts, fill=col, width=1)
+        dr.line([(px(i), gy0), (px(i), gy0 + gh)], fill=(255, 40, 40), width=2)
+        dr.text((gx0, gy0 + gh + 3), "d1 red  d2 blue  +-90 units", font=small, fill=(120, 120, 120))
+        if a.machine_strip:
+            from live_overlay_strip import payload as strip_payload, draw as draw_strip
+            dr.text((6, H - 19), "machine identity strip (not signal):", font=small, fill=(90, 90, 90))
+            draw_strip(dr, H - 7, strip_payload(int(g(r, "ordinal", "0")),
+                                                int(g(r, "counter_extended", "0")), dd1, dd2))
 
     order = []          # the capture's own unit order, so a frame is never paired with another's record
     state = {"buf": bytearray(), "i": 0}
