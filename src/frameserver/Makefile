@@ -1,18 +1,19 @@
 # frameserver: P3 assembly + IOSurface frame publisher. `make test` needs no hardware.
 CC ?= clang
 CFLAGS ?= -O2 -std=c11 -Wall -Wextra
-TESTFLAGS = -DFRAMESERVER_TEST_HOOKS
+TESTFLAGS = -DFRAMESERVER_TEST_HOOKS -DFRAMESERVER_QUEUE_TEST_HOOKS
 CPPFLAGS ?= -I. -I../capture_core -I../unit_parser -I../signal_state -I../field_registration
 LIBS = $(shell pkg-config --libs libusb-1.0) -lpthread -lm -framework IOSurface -framework CoreFoundation
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/field_registration.c ../field_registration/cea608.c
 SRCS = frame_publisher.c audio_publisher.c frameserver.c $(CORE)
+QUEUE_HEADERS = frameserver.h wakeup.h
 FIXTURE = ../unit_parser/tests/fixture.tpc
 FIXTURE_LONG = ../unit_parser/tests/fixture_plain.tpc   # 120 exact units, for the runtime-log window test
 
 $(FIXTURE): ../unit_parser/tests/gen_unit_parser_capture.py
 	python3 $< --output $@
 
-frameserver_replay: $(SRCS) frameserver_replay.c frameserver.h frame_publisher.h
+frameserver_replay: $(SRCS) frameserver_replay.c $(QUEUE_HEADERS) frame_publisher.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o $@ $(LIBS)
 
 tests/audio_publisher_test: audio_publisher.c audio_publisher.h tests/audio_publisher_test.c
@@ -21,16 +22,52 @@ tests/audio_publisher_test: audio_publisher.c audio_publisher.h tests/audio_publ
 tests/frame_publisher_test: frame_publisher.c frame_publisher.h tests/frame_publisher_test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) frame_publisher.c tests/frame_publisher_test.c -o $@ -framework IOSurface -framework CoreFoundation
 
-tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h
+tests/frameserver_test: $(SRCS) tests/frameserver_test.c $(QUEUE_HEADERS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TESTFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o $@ $(LIBS)
 
-test: tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
+test: test-output-isolation test-wakeup tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
 	./tests/audio_publisher_test
 	./tests/frame_publisher_test
 	./tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
 
 test-registration-gate: frameserver_replay
 	python3 tests/registration_gate_test.py
+
+tests/wakeup_race_test: $(SRCS) tests/wakeup_race_test.c $(QUEUE_HEADERS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/wakeup_race_test.c -o $@ $(LIBS)
+
+test-wakeup: tests/wakeup_race_test $(FIXTURE)
+	./tests/wakeup_race_test $(FIXTURE)
+
+tests/output_isolation_test: $(SRCS) tests/output_isolation_test.c $(QUEUE_HEADERS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/output_isolation_test.c -o $@ $(LIBS)
+
+test-output-isolation: tests/output_isolation_test $(FIXTURE_LONG)
+	./tests/output_isolation_test $(FIXTURE_LONG) 0
+	./tests/output_isolation_test $(FIXTURE_LONG) 1
+	./tests/output_isolation_test $(FIXTURE_LONG) 2
+	./tests/output_isolation_test $(FIXTURE_LONG) 3
+
+tests/queue_bench: $(SRCS) tests/queue_bench.c $(QUEUE_HEADERS)
+	$(CC) $(CPPFLAGS) -O2 -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/queue_bench.c -o $@ $(LIBS)
+
+test-queue-asan: $(FIXTURE) $(FIXTURE_LONG)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/wakeup_race_test.c -o tests/test_queue_wakeup_asan $(LIBS)
+	./tests/test_queue_wakeup_asan $(FIXTURE)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/output_isolation_test.c -o tests/test_queue_output_asan $(LIBS)
+	./tests/test_queue_output_asan $(FIXTURE_LONG) 0
+	./tests/test_queue_output_asan $(FIXTURE_LONG) 1
+	./tests/test_queue_output_asan $(FIXTURE_LONG) 2
+	./tests/test_queue_output_asan $(FIXTURE_LONG) 3
+
+test-queue-tsan: $(FIXTURE) $(FIXTURE_LONG)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/wakeup_race_test.c -o tests/test_queue_wakeup_tsan $(LIBS)
+	./tests/test_queue_wakeup_tsan $(FIXTURE)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/output_isolation_test.c -o tests/test_queue_output_tsan $(LIBS)
+	./tests/test_queue_output_tsan $(FIXTURE_LONG) 0
+	./tests/test_queue_output_tsan $(FIXTURE_LONG) 1
+	./tests/test_queue_output_tsan $(FIXTURE_LONG) 2
+	./tests/test_queue_output_tsan $(FIXTURE_LONG) 3
 
 # Item ring of 2 so a stalled consumer exhausts it deterministically (ring-full accounting path).
 test-smallring: $(FIXTURE) $(FIXTURE_LONG)
@@ -59,3 +96,4 @@ $(FIXTURE_LONG): ../unit_parser/tests/gen_unit_parser_capture.py
 
 clean:
 	rm -f frameserver_replay tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring tests/worker_bench
+	rm -f tests/wakeup_race_test tests/output_isolation_test tests/queue_bench tests/test_queue_wakeup_asan tests/test_queue_output_asan tests/test_queue_wakeup_tsan tests/test_queue_output_tsan

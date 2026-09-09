@@ -16,6 +16,13 @@ static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { fails++; fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); } } while (0)
 #define REQUIRE(c, ...) do { if (!(c)) { fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); return 1; } } while (0)
 static _Atomic int done; static _Atomic uint64_t frames_seen; static _Atomic int sink_stall_us, sink_hold;
+static _Atomic int analysis_stall_us;
+void fs_test_before_analysis_wait(frameserver *f){(void)f;}
+void fs_test_after_analysis_wait(frameserver *f,int r){(void)f;(void)r;}
+void fs_test_before_analysis_item(frameserver *f,const unit_video_observation *o){
+    (void)f;(void)o;int st=atomic_load(&analysis_stall_us);if(st)usleep(st);
+}
+void fs_test_after_analysis_item(frameserver *f,const unit_video_observation *o){(void)f;(void)o;}
 static IOSurfaceRef held_surface;
 static _Atomic int hook_arm, hook_empty, hook_release;
 void fs_test_after_empty_snapshot(frameserver *f){
@@ -71,7 +78,16 @@ static int repeat_fixture(const char *src,const char *dst,int copies){
 static unsigned csv_fields(const char *line){
     unsigned n=1; for(const char *p=line;*p;p++) if(*p==',') n++; return n;
 }
+static unsigned csv_column(const char *header,const char *name){
+    const char *p=strstr(header,name);if(!p)abort();unsigned n=0;
+    for(const char *s=header;s<p;++s)if(*s==',')++n;return n;
+}
+static unsigned long long csv_uint(const char *line,unsigned column){
+    for(unsigned i=0;i<column;++i){line=strchr(line,',');if(!line)abort();++line;}
+    return strtoull(line,NULL,10);
+}
 int main(int argc, char **argv){
+    alarm(180); /* test watchdog; no indefinitely orphaned suite on failure */
     if (argc < 2){ fprintf(stderr, "usage: %s <fixture.tpc>\n", argv[0]); return 9; }
     signal(SIGPIPE, SIG_IGN);   /* the write-failure injection writes to a reader-less pipe */
     int ring_may_drop = getenv("FS_TEST_EXPECT_RING_DROPS") != NULL;
@@ -137,10 +153,11 @@ int main(int argc, char **argv){
           "eligible ingress conservation failed");
     if(!ring_may_drop) CHECK(s.short_units + s.holes + s.unframed + s.exact_units + s.other_format + s.no_signal_0800 >= s.video_observations, "every observation classified by transport/kind");
     // log integrity: header + rows, columns as the contract names them
-    FILE *L = fopen(logp, "r"); char line[8192]; unsigned rows = 0; int hdr_ok = 0, row_shape_ok = 1; unsigned header_fields = 0;
+    FILE *L = fopen(logp, "r"); char line[8192]; unsigned rows = 0; int hdr_ok = 0, row_shape_ok = 1; unsigned header_fields = 0,ring_column=0;
     while (fgets(line, sizeof line, L)){
         if (rows == 0){ hdr_ok = strstr(line, "interval_id,unsettled,provisional_d1") != NULL && strstr(line, "f1_insert_bytes,f1_insert_relation,f1_caption_confirmation,f1_parity_candidates") != NULL && strstr(line, "f1_geometry_d,f1_blank_mean,f1_blank_chroma_noise") != NULL && strstr(line, "f1_switch_line,f1_first_full_other_head_line,f1_rf_peak_line,f1_rf_peak_position,f1_raw_span,f1_picture_rows,f1_band_extent,f1_observed_switch_line_count,f1_switch_count_agrees,f1_switch_count_conflict,f1_switch_signature,f1_switch_measurable") != NULL && strstr(line, "f2_lock_state,f2_zero_source,f2_lock_id") != NULL && strstr(line, "f2_lock_top,f2_lock_switch_line_count,f2_lock_switch_line_count_known,f2_clip_state,f2_clip_ceiling") != NULL; header_fields=csv_fields(line); }
         else if(csv_fields(line)!=header_fields) row_shape_ok=0;
+        if(!rows)ring_column=csv_column(line,"preceding_ring_drops");
         rows++;
     }
     fclose(L); unlink(logp);
@@ -154,14 +171,14 @@ int main(int argc, char **argv){
     done = 0; atomic_store(&frames_seen, 0);
     char logp2[] = "/tmp/fs_test_log2_XXXXXX"; fd = mkstemp(logp2); close(fd); unlink(logp2);
     fs_config c2 = cfg; c2.decision_log = logp2; c2.pool_units = 1;
-    atomic_store(&sink_stall_us, 200000);   // slot held ~200 ms per unit: the next unit MUST find the pool full
+    atomic_store(&analysis_stall_us, 200000); // stall ANALYSIS to test input pressure, never use a downstream consumer
     frameserver *g = NULL;
     REQUIRE(fs_open(&g, &c2) == 0, "open (pool=1)");
     CHECK(fs_start(g) == 0, "start (pool=1)");
     while (!done) usleep(10000);
     CHECK(fs_stop(g) == 0, "stop (pool=1)");
     CHECK(fs_stop(g) == 0, "second stop is an idempotent no-op");
-    atomic_store(&sink_stall_us, 0);
+    atomic_store(&analysis_stall_us, 0);
     fs_stats s2; fs_get_stats(g, &s2);
     if(!ring_may_drop) CHECK(s2.dropped_pool_full > 0, "pool=1 with a stalled consumer did not exercise pool exhaustion");
     CHECK(s2.log_rows+s2.dropped_ring_full==s2.video_observations+s2.ring_gap_rows,
@@ -197,13 +214,13 @@ int main(int argc, char **argv){
         fs_config c4 = cfg; c4.decision_log = logp3; c4.pool_units = 8;
         c4.capture.replay_path=ringcap;
         c4.capture.replay_pace_us=10000; // loss while stalled, then retained post-gap observations
-        atomic_store(&sink_stall_us, 100000);
+        atomic_store(&analysis_stall_us, 100000);
         frameserver *r = NULL;
         REQUIRE(fs_open(&r, &c4) == 0, "open (small ring)");
         CHECK(fs_start(r) == 0, "start (small ring)");
         while (!done) usleep(10000);
         CHECK(fs_stop(r) == 0, "stop (small ring)");
-        atomic_store(&sink_stall_us, 0);
+        atomic_store(&analysis_stall_us, 0);
         fs_stats s4; fs_get_stats(r, &s4);
         CHECK(s4.dropped_ring_full > 0, "small ring with a stalled consumer did not exercise ring exhaustion");
         unsigned long long col_sum = 0, last_ordinal=0; rows = 0;
@@ -211,8 +228,8 @@ int main(int argc, char **argv){
         L = fopen(logp3, "r");
         while (fgets(line, sizeof line, L)){
             if (rows){
-                unsigned long long ord=strtoull(line,NULL,10); char *c=strrchr(line,',');
-                unsigned long long n=c?strtoull(c+1,NULL,10):0; col_sum+=n;
+                unsigned long long ord=strtoull(line,NULL,10);
+                unsigned long long n=csv_uint(line,ring_column); col_sum+=n;
                 int tail=strstr(line,",RingFullTail,")!=NULL;
                 if(n && have_last && tail && ord!=last_ordinal+1) chronology_ok=0;
                 if(n && have_last && !tail && ord!=last_ordinal+n+1) chronology_ok=0;
@@ -315,8 +332,8 @@ int main(int argc, char **argv){
     unlink(la); unlink(lb);
 
     // Callback refusal and storage stall: fs_log_start/stop from the video worker return -1 without
-    // deadlock; a row write that stalls (disk hang) stalls the worker and sheds video DOWNSTREAM —
-    // PoolFull rows with exact conservation — never acquisition. Rows that failed are never counted.
+    // deadlock; a stalled log writer must NOT stall analysis or publication.
+    // Rows that failed are never counted.
     done=0; char lc[]="/tmp/fs_test_logC_XXXXXX"; fd=mkstemp(lc); close(fd); unlink(lc);
     fs_config sc=cfg; sc.decision_log=NULL; sc.capture.replay_path=argc>=3?argv[2]:argv[1]; sc.capture.replay_pace_us=8000; sc.pool_units=4; frameserver *sf=NULL;
     REQUIRE(fs_open(&sf,&sc)==0,"open (stall)");
@@ -333,21 +350,21 @@ int main(int argc, char **argv){
         fs_stats ss; fs_get_stats(sf,&ss);
         /* Which bounded queue saturates first depends on the build's topology: the 4-slot pool
          * normally, the item ring under RING_ITEMS=2. Either way something is shed and accounted. */
-        CHECK(ss.dropped_pool_full+ss.dropped_ring_full>0,"a stalled sidecar write must shed video downstream (pool or ring), got 0");
+        if(!ring_may_drop)CHECK(ss.dropped_pool_full+ss.dropped_ring_full+ss.publisher_dropped==0,"a stalled sidecar writer must not shed video");
         CHECK(ss.published+ss.dropped_pool_full+ss.publisher_dropped==ss.exact_units,"conservation under stall: %llu+%llu+%llu != %llu",(unsigned long long)ss.published,(unsigned long long)ss.dropped_pool_full,(unsigned long long)ss.publisher_dropped,(unsigned long long)ss.exact_units);
         /* A long enough stall also fills the item ring; those observations are all PoolFull (the pool
          * filled first) and are accounted in the next row's preceding_ring_drops rather than as rows. */
         unsigned long long poolrows=0,rows=0,obsrows=0,ringdrops=0,firstord=0; int firstrow=1; L=fopen(lc,"r");
         while(fgets(line,sizeof line,L)){ if(!strncmp(line,"ordinal,",8)) continue; rows++; unsigned long long ord=strtoull(line,NULL,10); if(firstrow){firstord=ord;firstrow=0;}
             if(!strstr(line,",RingFullTail,")) obsrows++;   /* the synthetic tail-loss row is a range marker, not an observation */
-            if(strstr(line,",PoolFull,")) poolrows++; char *last=strrchr(line,','); if(last) ringdrops+=strtoull(last+1,NULL,10); } fclose(L);
+            if(strstr(line,",PoolFull,")) poolrows++; ringdrops+=csv_uint(line,ring_column); } fclose(L);
         CHECK(ringdrops==ss.ring_drops_logged,"preceding_ring_drops in the log %llu != ring drops logged %llu",ringdrops,(unsigned long long)ss.ring_drops_logged);
         /* Every observation from the first logged ordinal to the end of the session is either an
          * observation row or range-accounted by a later row's preceding_ring_drops (including the
          * RingFullTail marker): nothing shed during the stall vanishes from the sidecar. */
         CHECK(obsrows+ringdrops==ss.video_observations-firstord,"from ordinal %llu: %llu observation rows + %llu ring-accounted != %llu observations",firstord,obsrows,ringdrops,(unsigned long long)ss.video_observations-firstord);
         CHECK(poolrows<=ss.dropped_pool_full,"PoolFull rows %llu vs pool drops %llu",poolrows,(unsigned long long)ss.dropped_pool_full);
-        CHECK(poolrows>0||ringdrops>0,"neither PoolFull rows nor ring-accounted drops appeared in the sidecar");
+        CHECK(ss.log_queue_drops==0,"the 128-item log queue should retain this finite stall without losing records");
         CHECK(rows==ss.log_rows,"stall log rows %llu != counted %llu",rows,(unsigned long long)ss.log_rows);
         printf("  stall: %llu published, %llu PoolFull (%llu rows + %llu ring-accounted), %llu rows\n",(unsigned long long)ss.published,(unsigned long long)ss.dropped_pool_full,poolrows,ringdrops,rows);
         fs_close(sf);

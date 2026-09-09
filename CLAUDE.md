@@ -2109,6 +2109,22 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**v10 asynchronous output ownership:** analysis now owns its last decided crop,
+including across failed deliveries; publication cannot change that crop or the
+engine's temporal witness. Independent output slabs (16-unit default) and binary
+log slots (128 default) feed separate publication and writer workers. Persistent
+kqueue notifications replace timeout-backed frameserver wakes; the lost enqueue
+race failed first at daa2f1c (ETIMEDOUT), then passed. c4e9e4d's stalled-sink and
+failed-delivery tests failed first; now analysis finishes 119/119 exact units
+while either sink is blocked and the gate keeps decision 2 rather than delivered
+crop 1. A full log queue marks its file incomplete, never blocks video. Schema
+18 carries epoch and actual publication completion. Commercial replay: 919/919
+published, zero input/output/log drops, unchanged crops/classification/comb;
+analysis-worker registration calls median/p95 9.428/18.227 ms (O2, includes
+copy/enqueue, excludes independent sinks). No comb or signal-state change.
+Ownership, capacities, tests, limits and replay SHA: `src/frameserver/QUEUES.md`.
+This supersedes the earlier synchronous-sidecar-writer deferral in section 11.
+
 **v10 running-comb attempt — NOT accepted on capture 1:** the unconditional
 stub is replaced by a full-width low-pass, previous-published-crop static
 comparison and relative reweave search. Failing-first tests be3c7a7 / fbfc7ee
