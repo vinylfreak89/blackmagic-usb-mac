@@ -30,8 +30,11 @@ typedef struct field_measurement {
     fieldreg_switch_signature switch_signature;
     bool switch_measurable;
     bool geometry_measurable;
+    bool box_detected;
     double blank_chroma_noise;
 } field_measurement;
+
+#include "box_observation.h"
 
 /* BT.601: 858 total / 720 delivered samples. SMPTE 170M blanking is
  * approximately 147 samples, leaving nine delivered blanking samples in
@@ -421,6 +424,10 @@ static void measure_field(const uint8_t *raster, int field,
         }
     }
 
+    m->box_detected=observe_box(raster,field,m->recorded_last);
+    /* Rule 8: do not measure a switch below a boxed content gap. The
+     * categorical observation supplies no origin or measured box extent. */
+    if(m->box_detected)return;
     if (m->top >= 0) measure_switch(raster,field,m);
     if (m->top >= 0) m->geometry_measurable = true;
     if (m->switch_measurable) {
@@ -811,6 +818,7 @@ static void v10_decide_field(fieldreg_field_state *state,
     decision->switch_signature = measurement->switch_signature;
     decision->switch_measurable = measurement->switch_measurable;
     decision->geometry_measurable = measurement->geometry_measurable;
+    decision->box_detected = measurement->box_detected;
     decision->blank_mean = measurement->blank_mean;
     decision->blank_chroma_noise = measurement->blank_chroma_noise;
     decision->body_shift = FIELDREG_UNKNOWN;
@@ -912,6 +920,17 @@ bool fieldreg_process(field_registration *engine,
     field_measurement measurement[2];
     measure_field(raster, 0, &measurement[0]);
     measure_field(raster, 1, &measurement[1]);
+    if(measurement[0].box_detected || measurement[1].box_detected){
+        /* A previously accepted non-boxed lock cannot authorize this class.
+         * Preserve the analysis-owned applied crop; no box placement exists.
+         * Extent validity through fades is not inferred from this verdict. */
+        for(int f=0;f<2;++f){
+            engine->field[f].lock_state=FIELDREG_LOCK_UNLOCKED;
+            engine->field[f].switch_line_count_known=false;
+            engine->field[f].switch_line_count=-1;
+        }
+        engine->parity_state=FIELDREG_PARITY_UNCALIBRATED;
+    }
     for (int f = 0; f < 2; ++f)
         out->geometry_observation_changed[f] =
             measurement[f].geometry_measurable &&

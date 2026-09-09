@@ -6,7 +6,7 @@ CPPFLAGS ?= -I. -I../capture_core -I../unit_parser -I../signal_state -I../field_
 LIBS = $(shell pkg-config --libs libusb-1.0) -lpthread -lm -framework IOSurface -framework CoreFoundation
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/field_registration.c ../field_registration/cea608.c
 SRCS = frame_publisher.c audio_publisher.c frameserver.c $(CORE)
-QUEUE_HEADERS = frameserver.h wakeup.h
+QUEUE_HEADERS = frameserver.h wakeup.h ../field_registration/field_registration.h ../field_registration/box_observation.h
 FIXTURE = ../unit_parser/tests/fixture.tpc
 FIXTURE_LONG = ../unit_parser/tests/fixture_plain.tpc   # 120 exact units, for the runtime-log window test
 

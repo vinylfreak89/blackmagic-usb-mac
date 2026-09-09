@@ -2113,6 +2113,19 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Qualified rule-8 box exclusion implemented, coverage incomplete:** a positive
+box observation suppresses switch measurement and leaves placement Unknown;
+it supplies no origin/extent. The fitted 6/40/3 limits and 0.28 relative cut
+are instrument qualifications, NOT source properties. Weak textured edges
+and one-ended controls reject; counter 6668 positively boxes both fields.
+Schema 19 emits per-field box flags. Commercial replay: 930 observations,
+919 exact/published, zero drops, zero locks and zero nonzero applied crops.
+Of 144 measured card units (6665/6666 already signal-gated), f1 excludes 143
+and f2 all 144. F1 at 6810 still emits switch evidence: full-card exclusion
+FAILS, and no parameter is tuned to hide it. No comb promotion, box placement,
+centering, or fade lifecycle. Details, functional controls, timings and
+failing acceptance: `src/field_registration/tests/BOX_EXCLUSION.md`.
+
 **Box-observer candidate falsified, no production change:** a two-class
 log-row-variance partition with edge-anchored low-spread runs preserves an
 ideal gain-scaled box but falsely labels a fully textured field boxed when
