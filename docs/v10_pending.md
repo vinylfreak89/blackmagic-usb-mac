@@ -92,6 +92,67 @@ What survives from the alarm: 6899 is a real fault in `S`, and the mode-based st
 Also unfixed and named at its site: `lead_blank` is a bool, so an unreadable lead is asserted as "not blank"
 rather than unknown. Harmless on this capture; a real fault where the regenerated rows are absent.
 
+**AGREEMENT, the gate's second half — measured 2026-09-10 against the rule-8-conformed engine (`800ed67`).**
+The earlier 142 agree / 60 disagree was against pre-ruling behaviour and is superseded; it was never reported to
+the owner as a result, which was the right call.
+
+| | pre-ruling engine | rule-8 conformed |
+|---|---:|---:|
+| agree | 142 | **383** |
+| disagree | 60 | **97** |
+| engine Unknown, boxed | 285 | **7** |
+| engine Unknown, NOT boxed | 526 | 526 |
+
+Where both instruments measure — 480 readings — they agree on **383 (79.8%)**. ⚠️ Codex's own count corrects
+figures quoted earlier here: **814 Unknowns = 287 boxed + 527 non-box**, not 811/285/526.
+
+**71 of the 97 disagreements (73%) are ONE shape, and it is not the one the earlier join suggested.** 41 in
+field 1 (engine 261/261 against harness 260/261) and 30 in field 2 (engine 523/523 against harness 522/523):
+**the two instruments agree on `S` and differ only on `T`** — whether a partial row sits above the first full
+other-head row. The engine reads no partial where the harness reads one. This is now one-directional, where the
+pre-ruling split was 26 one way and 18 the other.
+
+⚠️ **The displaced-row census CANNOT adjudicate this.** It validates `S`, which is exactly what the two
+instruments already agree on. Deciding whether the partial exists needs raw-row adjudication on a sample of the
+71, and that is the next measurement on this half.
+
+**The 527 non-box Unknowns are the larger half and are NOT one cause** (Codex's per-reading census, keyed in the
+CSV as `no_disjoint` 265, `accepted_then_returned` 147, `no_basis` 75, `no_accepted` 44, `no_prefix_free` 2,
+`no_complete` 1, against 482 measured). **141 of the clearing events occur at field-2 line 525**, the clip line.
+⚠️ The report's table sums the clearing bucket at 145 where the CSV holds 147; the CSV is taken as authoritative
+because it is per-reading, and the two should be reconciled before either is quoted at acceptance.
+
+**The largest bucket is a GAP, not a rule correctly applied — measured 2026-09-10.** For all 265 `no_disjoint`
+readings, the row the HARNESS independently identifies as the first fully relocated blanking row carries a
+blank-level run at or above the contract's 64-sample sync-pulse floor — **265 of 265, 100%** — with the mass at
+140–159 samples, the contract's own ~147-sample blanking interval arriving intact:
+
+| blank run at that row | 80–99 | 100–119 | 120–139 | 140–159 | 160–179 | 180–199 |
+|---|---:|---:|---:|---:|---:|---:|
+| readings | 8 | 2 | 89 | **146** | 9 | 11 |
+
+So the engine declines rows carrying an unmistakable relocated blanking interval because their phase departure is
+not separable from local horizontal variation. That is expected on THIS capture and the reason generalises:
+`composite_program_30s` is the line-TBC-OFF pass, and contract §2 measures that regime as the one with wide
+horizontal timing error (1,022 of 1,042 rows readable at ≥ 100 samples, median 192). A phase-envelope test is
+what that regime defeats — and it is the regime the acceptance order puts FIRST.
+
+⚠️ Two things this does NOT claim. It is not an adjudication that the phase test is wrong in general: on the
+TBC-on captures a narrow envelope may make it the better instrument, and this harness is gated from measuring
+them. And it does not use the engine's candidate funnel, so Codex's caveat that the cause is "the first zero over
+the whole scan, not an assertion about which row is the true band" does not weaken it — the row examined is the
+one an independent instrument identifies, and that instrument reads `S` exactly in 1,012 of 1,013 readings here.
+
+The shape of the finding: the engine has one observable for the switch where the contract describes two. §3
+carries the blanking-inside-the-row observable explicitly, bounded by NTSC at 64–200 samples. Whether it should
+be a fallback when the phase test abstains, a corroborator, or something else is a design question for the engine
+side; put to Codex 2026-09-10, its position owed.
+
+⚠️ **Engine cost at `800ed67` is 9.7475 ms median / 16.772 ms p95 per engine call.** §11b's budget is 10 ms for
+the WHOLE worker including classifier, assembly and publish, so the engine alone is at the budget's edge and the
+p95 is over it. Codex states plainly this is not a budget pass. Optimisation waits on correctness acceptance
+(the standing rule), but the number belongs on the record now rather than being discovered at acceptance.
+
 **Tier 1 — the engine's switch detector on ordinary picture. It is what makes a lock POSSIBLE, and it is failing
 where the switch demonstrably is.** On capture 1's 364 non-boxed registerable units (counters 6811–7174) the
 harness reference measures the switch in **364 of 364** — T reads 260 in 337, 261 in 25, 259 in 2, and the picture
