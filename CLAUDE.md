@@ -621,7 +621,24 @@ because it is classified `ProgramLike`/`Present`. So the gate is doing exactly w
 it gates on the classifier's verdict — and the residue is upstream in the classification, not in
 the gate. The two misses are units 43,678–43,679, the onset of the recording-boundary event. The
 108 mute labels on dark programme are the pre-existing class and are now the largest one left.
-Not yet through the four-capture acceptance of HANDBACK §7 step 3. (This is the §6 hazard already recorded for
+Not yet through the four-capture acceptance of HANDBACK §7 step 3.
+
+**The commercial capture's opening is a tape coming in, and its mute labelling is CORRECT (owner ruling,
+2026-09-09).** Measured: counters 6593–6609 carry no picture at all, both fields at mean 1.7–2.5 with sparse white
+specks — the dropout compensator running with no RF, the signature already recorded here for virgin tape. A relay
+mute would be flat with no specks, so the deck is playing and finding nothing rather than muting. The picture
+arrives as a one-unit STEP, not a fade, and the step lands BETWEEN the two fields of counter 6610: field 1 still
+black, field 2 up. It settles at the pedestal, 17.5. Standard deviation stays near 5 throughout, so none of it is
+snow (this tape's snow measures 30–50).
+The classifier then calls the picture a mute for a further 57 units and first says programme at **counter 6667**,
+where field 1's mean has risen 24.2 → 27.1 → 28.6 → **30.6**. That boundary is a rising level crossing a
+threshold, and the owner's ruling is that this is right and not to be fixed: "It's the tape coming in... You are
+trying to do the impossible which is register the difference between the first fade from black on tape and real
+picture. That should stay unregistered." So the 123 mute-labelled units at the head of this capture are correct
+behaviour, registration stays off across them, and the grey-mute rule's uniformity test is NOT a defect here.
+⚠️ Consequence for the contract: §8's invariant reads "on the commercial tape from counter 6593", and there is no
+picture until 6610 and none the engine may register until 6667. The invariant's start counter is a measurement
+error of about 74 units. Raised with Codex; not edited by one agent. (This is the §6 hazard already recorded for
 `shuttle_no_input_45s.tpc`, now measured at scale and with the silent-exit-0 half named.)
 
 2. **Raster appearance** — program-like / snow-like / deck-grey / sub-blanking mute / device
