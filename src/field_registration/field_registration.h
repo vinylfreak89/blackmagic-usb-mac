@@ -171,6 +171,8 @@ typedef struct fieldreg_field_decision {
     fieldreg_switch_signature switch_signature;
     bool switch_measurable;
     bool geometry_measurable;
+    /* Positive qualified exclusion only; false is not proof of no box. */
+    bool box_detected;
     bool body_witness_valid;
     int8_t body_shift;
     bool body_geometry_agrees;

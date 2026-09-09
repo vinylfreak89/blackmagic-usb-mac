@@ -2113,6 +2113,50 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Qualified rule-8 box exclusion implemented, coverage incomplete:** a positive
+box observation suppresses switch measurement and leaves placement Unknown;
+it supplies no origin/extent. The fitted 6/40/3 limits and 0.28 relative cut
+are instrument qualifications, NOT source properties. Weak textured edges
+and one-ended controls reject; counter 6668 positively boxes both fields.
+Schema 19 emits per-field box flags. Commercial replay: 930 observations,
+919 exact/published, zero drops, zero locks and zero nonzero applied crops.
+Of 144 measured card units (6665/6666 already signal-gated), f1 excludes 143
+and f2 all 144. F1 at 6810 still emits switch evidence: full-card exclusion
+FAILS, and no parameter is tuned to hide it. No comb promotion, box placement,
+centering, or fade lifecycle. Details, functional controls, timings and
+failing acceptance: `src/field_registration/tests/BOX_EXCLUSION.md`.
+
+**Box-observer candidate falsified, no production change:** a two-class
+log-row-variance partition with edge-anchored low-spread runs preserves an
+ideal gain-scaled box but falsely labels a fully textured field boxed when
+its edge texture has lower contrast. Commercial counter 6668 is the other
+deciding failure: f1's terminal switch row exceeds the adaptive cut, so this
+candidate misses the known box exactly where forbidden switch evidence
+licensed the prototype lock. On 508 registerable units it proposes boxes in
+255 f1 / 380 f2 / 254 both; these are NOT true-box counts. No tuning to the
+harness census, no acquisition bypass, no comb promotion. Method, controls,
+raw row values and reproduction: `src/field_registration/tests/BOX_PARTITION.md`.
+Unchanged production replay after the diagnostic: 930 observations, 919 exact
+and published, no input/publication/log drops; applied d1/d2 and
+geometry_lock_known each zero on all 930 observations. No first lock. Worker
+median/p95 2.693/14.092 ms overall, 10.872/16.192 on 452 registration calls.
+Sandboxed `queue_bench` failed `fs_open`; the authorized host-access retry
+completed. This does not identify the underlying open failure's cause.
+
+**Static-comb prototype quarantined, not a sanctioned first lock:** diagnostic
+confirmation exposed the missing boxed-geometry observation: the card's lower
+structureless band separates structured content from the switch, so rule 8
+excludes that switch evidence even though the band remains recorded picture
+in the line account. Both agents agree on this distinction; no contract edit.
+The earlier prototype's first lock at counter 6668 and eleven field-2 moves
+are a regression. Its 367/508 decisive (365 agreeing) census is NOT a result
+for the final paired-energy correction, which has only synthetic 6/6 and
+cached raw 7/7 checks. Production source restored unchanged; prototype retained
+only as `src/field_registration/tests/static_comb_prototype.patch`, with method,
+reproduction, cost and unresolved controls in the adjacent `STATIC_COMB_PROTOTYPE.md`.
+No new capture replay, no acquisition bypass, no box or
+top-detector change. Box classification must precede promotion of the comb.
+
 **Unlocked placement gate (rule 8):** the eleven commercial field-2 movements
 with no lock are removed at application, without changing the raw top detector.
 Caption and comb acquisition run before the per-field gate; an unlocked field
