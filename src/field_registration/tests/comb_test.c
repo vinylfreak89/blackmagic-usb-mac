@@ -7,6 +7,7 @@
 static field_registration engine;
 static uint8_t unit[FIELDREG_UNIT_BYTES];
 static unsigned checks, failures;
+static bool periodic_pattern;
 static void check(const char *name, bool ok)
 {
     ++checks;
@@ -14,7 +15,12 @@ static void check(const char *name, bool ok)
 }
 static int picture(int y,int x)
 {
-    return 40+2*((y*17+x*13)%60);
+    if(periodic_pattern)return 40+2*((y*17+x*13)%60);
+    /* Constructed aperiodic detail. The original 60-row repeating pattern
+     * has distant exact aliases and belongs in an abstention test instead. */
+    uint32_t z=(uint32_t)y*2654435761u+(uint32_t)x*2246822519u;
+    z^=z>>16;z*=3266489917u;z^=z>>13;
+    return 40+2*(int)(z%60);
 }
 static void make_unit(int d,int wrong,bool flat)
 {
@@ -60,6 +66,8 @@ int main(void)
     check("wrong weave shift +1",d.comb_best_shift==1);
     check("contradiction never corrects crop",d.applied_d1==0 && d.applied_d2==0 && d.comb_correction==0);
     check("settled precedence does not chase error",d.parity_bias==bias && d.parity_state==FIELDREG_PARITY_DRIFT);
+    make_unit(0,-4,false);(void)run();d=run();
+    check("remote minimum is searched",d.comb_check==FIELDREG_COMB_DISAGREE && d.comb_best_shift==4);
     make_unit(0,0,false);(void)run();d=run();
     check("registered return clears diagnostic drift",d.comb_check==FIELDREG_COMB_AGREE && d.parity_bias==bias);
     make_unit(1,0,false);d=run();
@@ -71,6 +79,8 @@ int main(void)
     check("source reset discards precedence",d.parity_state==FIELDREG_PARITY_UNCALIBRATED);
     make_unit(0,0,true);fieldreg_begin_segment(&engine);(void)run();d=run();
     check("flat picture does not confirm",d.comb_check==FIELDREG_COMB_FLAT && !d.comb_safe);
+    periodic_pattern=true;make_unit(0,0,false);fieldreg_begin_segment(&engine);(void)run();d=run();
+    check("periodic aliases do not calibrate",d.comb_check==FIELDREG_COMB_FLAT && d.parity_state==FIELDREG_PARITY_UNCALIBRATED);
     printf("COMB: %u/%u passed\n",checks-failures,checks);
     return failures?1:0;
 }
