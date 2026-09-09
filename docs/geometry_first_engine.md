@@ -324,7 +324,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   Equal counts do not change ordering."). The comparator, per field: the level of the tape's line 22 where it is
   visible (an integer, the row's luma mean rounded to a unit). The switch-line count is not a comparator (owner,
   20:56).
-- **Source lock**: exists only after at least one confirmation that the geometry is correct — combing, captions, or
+- **Source lock**: exists only after at least one confirmation that the geometry is correct. **The list is not
+  closed, and a measurable box is itself one of the two** (owner, 2026-09-09T16:40:11Z, transcript uuid d385c50e):
+  "thats your 2 independent confirmations isn't it? **the fact that the harness shows real geometry with a real
+  measurable box means a geometry can be acquired. which means only 1 additional measurement is needed, comb or
+  head switch** and ideally both are generateable and a full lock is acquired on the logo." So where a box is
+  measured it supplies the geometry and exactly one further observation is required, comb or head switch. Where
+  there is no box the confirmations are combing, captions, or
   both (owner, 2026-09-09, admitting VBI in one bounded form: **"only admit as confirmation of positive evidence
   of displacement. unless you can get line 22 from the tape's own blanking, not the shuttles"** — the tape's own
   VBI is above the delivered window at zero displacement and appears only when the field is displaced downward, so
@@ -448,7 +454,15 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    2026-09-09: asked whether the rows between a card's last content row and its switch line count as a gap, "Yes
    they count as a gap", and then — "But why they count as a gap is important. They are part of a box"). The rows
    are a gap **because they are the box's band**: not because they are dark, and not because content stopped above
-   them. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
+   them.
+   ⚠️ **This does NOT make a boxed source's head switch unmeasurable, and the earlier wording that said so is
+   withdrawn** (owner, 2026-09-09T16:21:01Z, transcript uuid 12b22361, naming this contradiction and instructing
+   the fix): "In terms of the contract the wording is the problem. **A valid head switch is a reason to be evidence
+   for a lock, not the opposite.** All I was trying to say before is **a box decreases the likelihood of a lift off
+   point and therefore the lack of one doesn't make the head switch invalid. It just means to hold its bounds, and
+   not to set a new one.** So it needs to go and fix that contradiction." So on a boxed picture the switch is
+   measured like any other; what the box changes is that the measurement **holds the existing bounds instead of
+   setting new ones** — unless the agreement test below is satisfied, which is the one thing that licenses setting. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
    separates nothing and its switch stays measurable; read the other way, this rule would suppress switch evidence
    on every dark passage of every source. **The gap is created by the box, so the classification comes first and
    any consequence follows from it** — never the reverse.
@@ -457,7 +471,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    (which is basically just the full geometry as if the box didn't exist). if they DONT line up, then no, it can
    not become a new acquisition, only a hold." So a measurable head switch is evidence FOR a lock, never against
    one; a box makes an RF lift-off point less likely and the absence of one does not invalidate the switch; and
-   the test is whether the band and the boxed geometry agree. **Agreeing, they are valid geometry and MAY set a new
+   the test is whether the band and the boxed geometry agree. **The two numbers are the box's outer edges, top and
+   bottom, in each field, against where the switch band puts the picture's bounds** — inferred, and marked as an
+   inference rather than quoted as a rule, from the owner's question of 2026-09-09T16:32:59Z (uuid 1bd1fc1d): "does
+   the box (again measured by the harness) consistently line up at line 23 after the fade (both fields)… and same on
+   the bottom. where does it land in each field?" He was asking the harness for a measurement there, not writing a
+   definition, so if the intended comparison is a different pair, this sentence is the one to correct. **Agreeing, they are valid geometry and MAY set a new
    acquisition, taken as the full geometry as if the box were not there. Disagreeing, the unit holds and may not
    acquire.**
    **A box is not its own class** (owner, same day): "it should be left on the tape where it was centered… boxes
