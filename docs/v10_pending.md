@@ -116,11 +116,37 @@ pre-ruling split was 26 one way and 18 the other.
 instruments already agree on. Deciding whether the partial exists needs raw-row adjudication on a sample of the
 71, and that is the next measurement on this half.
 
-**The 527 non-box Unknowns are the larger half and are NOT one cause** (Codex's per-reading census): candidates
-overlapping the local phase envelope 265, accepted departure later cleared by phase return 145, no readable
-local basis 75, previous same-phase row vetoing the candidate 39, and 2 + 1 in two more. **141 of the clearing
-events occur at field-2 line 525**, the clip line. Nothing tonight has touched this and it is untouched by the
-rule-8 work.
+**The 527 non-box Unknowns are the larger half and are NOT one cause** (Codex's per-reading census, keyed in the
+CSV as `no_disjoint` 265, `accepted_then_returned` 147, `no_basis` 75, `no_accepted` 44, `no_prefix_free` 2,
+`no_complete` 1, against 482 measured). **141 of the clearing events occur at field-2 line 525**, the clip line.
+⚠️ The report's table sums the clearing bucket at 145 where the CSV holds 147; the CSV is taken as authoritative
+because it is per-reading, and the two should be reconciled before either is quoted at acceptance.
+
+**The largest bucket is a GAP, not a rule correctly applied — measured 2026-09-10.** For all 265 `no_disjoint`
+readings, the row the HARNESS independently identifies as the first fully relocated blanking row carries a
+blank-level run at or above the contract's 64-sample sync-pulse floor — **265 of 265, 100%** — with the mass at
+140–159 samples, the contract's own ~147-sample blanking interval arriving intact:
+
+| blank run at that row | 80–99 | 100–119 | 120–139 | 140–159 | 160–179 | 180–199 |
+|---|---:|---:|---:|---:|---:|---:|
+| readings | 8 | 2 | 89 | **146** | 9 | 11 |
+
+So the engine declines rows carrying an unmistakable relocated blanking interval because their phase departure is
+not separable from local horizontal variation. That is expected on THIS capture and the reason generalises:
+`composite_program_30s` is the line-TBC-OFF pass, and contract §2 measures that regime as the one with wide
+horizontal timing error (1,022 of 1,042 rows readable at ≥ 100 samples, median 192). A phase-envelope test is
+what that regime defeats — and it is the regime the acceptance order puts FIRST.
+
+⚠️ Two things this does NOT claim. It is not an adjudication that the phase test is wrong in general: on the
+TBC-on captures a narrow envelope may make it the better instrument, and this harness is gated from measuring
+them. And it does not use the engine's candidate funnel, so Codex's caveat that the cause is "the first zero over
+the whole scan, not an assertion about which row is the true band" does not weaken it — the row examined is the
+one an independent instrument identifies, and that instrument reads `S` exactly in 1,012 of 1,013 readings here.
+
+The shape of the finding: the engine has one observable for the switch where the contract describes two. §3
+carries the blanking-inside-the-row observable explicitly, bounded by NTSC at 64–200 samples. Whether it should
+be a fallback when the phase test abstains, a corroborator, or something else is a design question for the engine
+side; put to Codex 2026-09-10, its position owed.
 
 ⚠️ **Engine cost at `800ed67` is 9.7475 ms median / 16.772 ms p95 per engine call.** §11b's budget is 10 ms for
 the WHOLE worker including classifier, assembly and publish, so the engine alone is at the budget's edge and the
