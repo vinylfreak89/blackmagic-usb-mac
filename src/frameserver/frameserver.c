@@ -74,16 +74,23 @@ struct frameserver {
 extern void fs_test_after_empty_snapshot(frameserver *f);
 extern void fs_test_before_producer_done(frameserver *f);
 extern void fs_test_after_log_row(frameserver *f, FILE *log);
-extern void fs_test_before_analysis_wait(frameserver *f) __attribute__((weak_import));
-extern void fs_test_after_analysis_wait(frameserver *f, int result) __attribute__((weak_import));
-#define before_analysis_wait(f) do { if(fs_test_before_analysis_wait) fs_test_before_analysis_wait(f); } while(0)
-#define after_analysis_wait(f,r) do { if(fs_test_after_analysis_wait) fs_test_after_analysis_wait(f,r); } while(0)
 #else
 #define fs_test_after_empty_snapshot(f) ((void)(f))
 #define fs_test_before_producer_done(f) ((void)(f))
 #define fs_test_after_log_row(f,L) ((void)(f),(void)(L))
+#endif
+
+#ifdef FRAMESERVER_QUEUE_TEST_HOOKS
+extern void fs_test_before_analysis_wait(frameserver *f);
+extern void fs_test_after_analysis_wait(frameserver *f, int result);
+extern void fs_test_after_analysis_item(frameserver *f, const unit_video_observation *obs);
+#define before_analysis_wait(f) fs_test_before_analysis_wait(f)
+#define after_analysis_wait(f,r) fs_test_after_analysis_wait(f,r)
+#define after_analysis_item(f,o) fs_test_after_analysis_item(f,o)
+#else
 #define before_analysis_wait(f) ((void)(f))
 #define after_analysis_wait(f,r) ((void)(f),(void)(r))
+#define after_analysis_item(f,o) ((void)(f),(void)(o))
 #endif
 
 // ------------------------------------------------------------ producer side (delivery thread)
@@ -488,6 +495,7 @@ static void *worker_main(void *arg){
         fs_item it = f->ring[t % RING_ITEMS];
         atomic_store_explicit(&f->r_tail, t + 1, memory_order_release);
         process_item(f, &it);
+        after_analysis_item(f,&it.obs);
     }
     atomic_store(&f->worker_done, 1);
     if (atomic_fetch_add(&f->workers_terminal, 1) == 1 && atomic_load_explicit(&f->notify_end, memory_order_acquire) && f->cfg.on_end)

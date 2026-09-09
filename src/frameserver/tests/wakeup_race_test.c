@@ -1,6 +1,7 @@
 /* Force enqueue AFTER the consumer's last empty check but BEFORE sleep.
  * The old trylock notification is lost while the consumer owns m. */
 #define FRAMESERVER_TEST_HOOKS
+#define FRAMESERVER_QUEUE_TEST_HOOKS
 #include "../frameserver.c"
 #include <assert.h>
 #include <errno.h>
@@ -8,6 +9,7 @@
 #include <signal.h>
 static _Atomic int armed=1, at_wait, release_wait, completed, result;
 void fs_test_after_empty_snapshot(frameserver *f){(void)f;}
+void fs_test_after_analysis_item(frameserver *f,const unit_video_observation *o){(void)f;(void)o;}
 void fs_test_before_producer_done(frameserver *f){(void)f;}
 void fs_test_after_log_row(frameserver *f,FILE *l){(void)f;(void)l;}
 void fs_test_before_analysis_wait(frameserver *f){

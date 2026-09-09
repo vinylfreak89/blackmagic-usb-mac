@@ -38,6 +38,14 @@ tests/wakeup_race_test: $(SRCS) tests/wakeup_race_test.c frameserver.h
 test-wakeup: tests/wakeup_race_test $(FIXTURE)
 	./tests/wakeup_race_test $(FIXTURE)
 
+tests/output_isolation_test: $(SRCS) tests/output_isolation_test.c frameserver.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/output_isolation_test.c -o $@ $(LIBS)
+
+test-output-isolation: tests/output_isolation_test $(FIXTURE_LONG)
+	./tests/output_isolation_test $(FIXTURE_LONG) 0
+	./tests/output_isolation_test $(FIXTURE_LONG) 1
+	./tests/output_isolation_test $(FIXTURE_LONG) 2
+
 # Item ring of 2 so a stalled consumer exhausts it deterministically (ring-full accounting path).
 test-smallring: $(FIXTURE) $(FIXTURE_LONG)
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -DRING_ITEMS=2 $(TESTFLAGS) -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_smallring $(LIBS)
