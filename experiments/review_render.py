@@ -22,6 +22,9 @@ What section 8 asks for, and what this draws:
   BOTH fields' applied shifts on the right — d1 and d2, not d1 alone (owner, 2026-09-09).
 * Text laid out in fixed columns that cannot run into the graph. The v9 band drew one long line and
   it collided with the plot.
+* AUDIO, with --pcm, from `frameserver_replay --dump-pcm` on the same capture (owner, 2026-09-09:
+  "you rendered with no audio which is not cool"). Laid down against the picture unresampled: the
+  audio clock is locked to the video unit clock with no rate offset, so nothing is stretched.
 """
 import argparse, csv, os, subprocess, sys
 import numpy as np
@@ -62,6 +65,10 @@ def main():
                          "were (2026-09-09) and, told it was a machine code, said to leave it in — "
                          "so it stays, but it says what it is on the frame.")
     ap.add_argument("--font", default="/System/Library/Fonts/Menlo.ttc")
+    ap.add_argument("--pcm", help="raw PCM from `frameserver_replay --dump-pcm` for THIS capture: "
+                                  "S24LE, 2 channels interleaved, 6 bytes per frame, 48 kHz "
+                                  "(audio_publisher.h). Muxed against the picture. The owner, "
+                                  "2026-09-09: \"you rendered with no audio which is not cool\"")
     a = ap.parse_args()
 
     rows = [r for r in csv.DictReader(open(a.log))
@@ -80,11 +87,24 @@ def main():
     small = ImageFont.truetype(a.font, 11)
 
     W, H = DW + 2 * MARGIN, FH + BAND
-    enc = subprocess.Popen(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-         "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", "30000/1001", "-i", "-",
-         "-c:v", "libx264", "-crf", a.crf, "-preset", "medium", "-pix_fmt", "yuv420p", a.out],
-        stdin=subprocess.PIPE)
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+           "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", "30000/1001", "-i", "-"]
+    if a.pcm:
+        # The device's own clock, unresampled. Audio is locked to the video unit clock with no rate
+        # offset (CLAUDE.md section 6: exactly 1601.6 samples per unit, measured over every resync
+        # interval of the whole tape), so the two are laid down together and nothing is stretched.
+        # A capture's PCM begins at its first audio block; this render begins at the first sidecar
+        # row, so an audio offset is applied when the render does not start at the capture's head -
+        # skipping that is how a review copy ends up a second out of sync at the end of a tape.
+        first_ctr = int(rows[0].get("counter_extended") or 0)
+        base_ctr = min(int(r.get("counter_extended") or 0) for r in rows)
+        skip_units = first_ctr - base_ctr
+        if skip_units > 0:
+            cmd += ["-ss", f"{skip_units * 1001 / 30000:.6f}"]
+        cmd += ["-f", "s24le", "-ar", "48000", "-ac", "2", "-i", a.pcm]
+        cmd += ["-c:a", "aac", "-b:a", "192k", "-shortest"]
+    cmd += ["-c:v", "libx264", "-crf", a.crf, "-preset", "medium", "-pix_fmt", "yuv420p", a.out]
+    enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
     gx0, gw = W - 300, 280
     gy0, gh = FH + 10, BAND - 22
@@ -136,8 +156,10 @@ def main():
     def weave(raster, d1v, d2v):
         """486 mode: field 1 from line 21+d1, field 2 from 283+d2, 243 rows each, woven.
         A row outside the delivered raster renders as legal black (contract rule 7) rather than
-        wrapping or repeating."""
-        out = np.zeros((FIELD_ROWS * 2, FW), np.float32)
+        wrapping or repeating. The output takes its WIDTH from the input: this is called with the
+        720-wide luma and with the 360-wide U and V planes, and hardcoding 720 here made every
+        chroma call fail (`could not broadcast (360,) into (720,)`)."""
+        out = np.zeros((FIELD_ROWS * 2, raster.shape[1]), np.float32)
         for f, (first, d) in enumerate(((F1_FIRST_LINE, d1v), (F2_FIRST_LINE, d2v))):
             for k in range(FIELD_ROWS):
                 row = first + d + k - 4
