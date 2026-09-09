@@ -396,3 +396,29 @@ The rule: before writing "the only", "never" or "always" about a code path, enum
 `grep -n` for the state being set, not for the condition you expect — and read the function that
 contains each one. A negative claim about code is the same class as a negative claim about a
 capability: it is a hypothesis about my own search, not a fact about the system.
+
+## Never revert a file when you mean to revert a change (2026-09-10)
+
+The MAD-margin jitter patch failed its own test, so I ran `git checkout -- experiments/switch_geometry.py`
+to back it out. That file also held an unrelated, uncommitted, **already-proven** change: the VBI-presence
+test derived from the field's own blanking noise, which had rebuilt capture 1's reference at 0 of 1,840
+field readings changed hours earlier. The checkout took it. The proven result survived only in a transcript,
+and it took a watchdog grep to notice it was gone.
+
+Two separate mistakes, and the second is the expensive one:
+
+- **`git checkout -- <file>` reverts a file, not a change.** Its blast radius is everything uncommitted in
+  that file, and the thing you are trying to undo is usually not the only thing there. `git diff` first and
+  read what else is in it — I did run `git diff --stat`, saw "17 insertions, 2 deletions", and did not stop
+  to ask which lines those two deletions were. They were the derivation.
+- **A proven result that is not committed is not a result.** The measurement passed and I moved on to the
+  next experiment with it sitting in the working tree, because it felt like part of a larger unfinished
+  thread. It was not: it was a complete unit that had passed its test. Commit at the moment of proof, not
+  at the end of the thread — the window between them is where results die.
+
+The recovery also produced a finding that would not otherwise have surfaced, which is the one consolation:
+checking whether the constant was really back turned up a SECOND copy of the same run-in amplitude gate at
+`switch_geometry.py:173`, typed at 35, whose own comment claims it sits "at the decoder's own gate". The
+decoder's gate had since become 27.375. One quantity, two implementations, silently diverged — the standing
+"one format, one loader, one source of truth" rule, violated by a value copied into a comment years of
+edits ago and never re-derived.
