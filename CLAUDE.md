@@ -2204,6 +2204,68 @@ the pan does. The recalibration is NOT sufficient either: the commercial mask ab
 correctly, but the SP mask retains two accidental blocks and still favours +2. Production comb
 unchanged; no support threshold was invented to paper over it.
 
+**Measurements moved out of the contract, 2026-09-09.** The contract states properties; these are the numbers
+behind them, taken on the author's own captures and labelled as author-fixture validation per PUBLISHING.md. They
+are not asserted by any test and are reproducible from the instruments named beside them.
+
+*Reading the bottom from the band's displacement* (commercial capture, independent instrument): the band's rows are
+displaced about 160 samples, the whole blanking interval inside the window; reading the bottom this way puts it on
+one row in 496 of 526 measured field-1 units (99.4% within one row) and 443 of 504 field-2 units, flags no picture
+row, and refuses the rewind (337 of 338 units before counter 6593 unmeasurable).
+
+*The picture bottom adjudication* (commercial capture, counter 6955): field 1 line 259 is ordinary picture (mean
+89.5, ends normal), line 260 is the partial line (trailing edge elevated by 78.6, and 77.6–100.6 in neighbouring
+units), lines 261–262 fully displaced (interior blanking runs of 145–146 samples); field 2 the same — 521 ordinary,
+522 partial (elevated 80.6), 523–524 displaced (141–143). The instrument that read 259/521 counted rows past the
+delivered clip (field 1 to line 264, field 2 to 526) as band rows, which they are not.
+
+*The Shuttle's slicer window* (fixture A): 91 units of the first 13,000 carry decoded caption bytes at line 21 with
+no parity-valid raw caption anywhere in the field and a rigid +1 picture (24/261 against a 23/260 lock); in 1,300+
+units whose raw caption sits at 23 or 24 the insert carried nulls every time.
+
+*Clip lines and noise gaps*: the deck clips each field at line 262 / 525 on every capture seen. Regenerated rows
+have chroma noise ≤ 1.48× the blanking rows'; recorded rows ≥ 2.02×; the blanking rows' luma noise is 0.5 (std
+within a row). A row of chroma noise can sit below the band (commercial rewind units, line 263: chroma std 3.08
+against 0.5). Row signatures verified on units 20/78/105/106/200 of the SP recording, both passes.
+
+*Field pairing on the V-stabilize-off capture*: its field-1 slot is the original's field 2 of the previous unit,
+MAD 2.6–3.0 against 7–12 for any other pairing.
+
+*The line TBC's effect on the band* (same passage, corrector on and off; both instruments first validated on a
+synthetic field rebuilt at known displacements, recovering injected shifts of 3, 6, 8, 12, 15, 20, 30, 160 and 215
+samples exactly). **Off:** of the rows above the padding, 1,022 of 1,042 readable at ≥ 100 samples, median 192
+(14.1 µs, 22% of the line); the interior blanking run measures 147 ± 6 samples in 1,397 of 2,535. Zero flat rows per
+field; the partial line is the row above the displaced pair, switch column at median sample 597, moving 5–6 samples
+unit to unit. **On:** of 1,076 affected rows only 14 carry any readable horizontal timing (10 at 6–17 samples
+against 1.6 expected from background); 768 of 1,076 are perfectly flat (row σ ≈ 1.0) at luma 11.1, the deck's black,
+against the device's regenerated blanking at 1.38; of the 129 rows with two registrable apertures, 3 reach the step
+threshold against a 3.4% null. **Count unchanged either way:** rows from the switch row to the padding average 2.78
+on, 2.82 off, 3.32 on the commercial tape, median 3 in all three; rows carrying no picture at all go from 1.94 per
+field on to 0.00 off. **The wandering boundary:** the last row still carrying picture stops before the row's end in
+337 of 396 fields, median column 373, that column moving 23 samples unit to unit (p90 396, max 564) while the row
+itself moves 0–4 lines. **The flatness detector:** "flat to the row's right end" fires on 98/91/68/26% of rows at
+0/1/2/3 rows above the padding and 0.00% at 4–16 rows above, selecting 2.82 rows per field with no false positive
+inside that window, missing the 98 of 1,076 that carry picture to the row's end. **Caveat:** the two captures are
+not frame-aligned (best field-match correlation 0.07–0.31), so this is a distributional comparison of 396 fields
+against 1,216, not the same frames. Flat rows: 768 with TBC on against 0 with TBC off. Using the affected-row
+definition and |d| ≥ 6 samples, Codex measured 11 displaced TBC-on rows against 1,957 TBC-off rows.
+
+*The vertical tear's qualifiers* (independent instrument, fixture A's opening 416 units): applied literally the bare
+definition fires 1,038 times. Without qualifier (c) the field's first lines, which carry VHS flagging up to 231
+samples over 4–6 rows, "return" trivially; that class alone is 23 of 27 candidates in settled programme. With all
+three the signature fires once in 198 settled units and it is the splice.
+
+*Head switch and band counts*: the commercial tape's picture is stable from counter 6593 onward, pedestal 9–11
+against fixture A's 11.4; its head switch sits on line 260 or 261 in every measurable unit, and with the peak
+present the rows from the top to the switch row are 238 in 31 of 36 field-1 units and 237 in 48 of 59 field-2 units.
+Field 2's band is one row longer than field 1's on the SP, EP and commercial tapes (SP: two rows in 427 of 606 units
+against three or four in 597 of 608). With the corrector on, rows from the picture top to the switch line are 237 at
+units 20, 105, 200 — the same in both passes.
+
+*The v10 acceptance invariants as they were written before being restated as properties*: on the commercial tape
+from counter 6593 (an error — that source has no registerable picture until 6667); on fixture A, output moving only
+at its two relocks, units 300/301 and 43,737/43,738, with no placement on the snow units 43,686–43,736.
+
 **The commercial capture's box, measured 2026-09-09 (`experiments/box_census.py`, panels checked before the
 numbers).** These are source measurements and live here, not in the contract, which states only the property.
 Counter 6700, NTSC lines: field 1 structureless band 23-53, content 54-236, band 237-264; field 2 the same shape,
