@@ -2204,6 +2204,30 @@ the pan does. The recalibration is NOT sufficient either: the commercial mask ab
 correctly, but the SP mask retains two accidental blocks and still favours +2. Production comb
 unchanged; no support threshold was invented to paper over it.
 
+**The v10 acceptance captures (session logistics, moved out of HANDBACK.md 2026-09-09 when that file was
+retired).** The contract's section 8 carries the order and the pass condition; this is what the four captures are.
+Order: (1) commercial tape, (2) EP recording, (3) SP recording, (4) SP with the deck's V-stabilize off.
+
+| # | what | file | origin |
+|---|---|---|---|
+| 1 | commercial tape, composite input | `captures/composite_program_30s.tpc` | captured 2026-09-03; the tape rewinds at the head — **no registerable picture until device counter 6667** (an earlier "stable from 6593" here was measured wrong) |
+| 2 | EP recording | `/private/tmp/hw-session/w_2100s_aligned.tpc` | `tpc_slice.py` of `captures/fulltape.cap6` from byte 50811787037 |
+| 3 | SP recording | `/private/tmp/hw-session/w_300s_aligned.tpc` | `tpc_slice.py` of `captures/fulltape.cap6` from byte 7260251349 |
+| 4 | SP, V-stabilize off | `/private/tmp/hw-session/sp_vstab_off_aligned.tpc` | `tpc_slice.py` of `sp_vstab_off_45s.tpc` (captured 2026-09-07, line TBC off) from byte 118907896; **the Shuttle pairs this capture's fields one later**, so the harness re-pairs it (`--repair`) |
+
+Whole tape: `captures/fulltape.cap6`, 69.7 GB, byte-complete.
+
+⚠️ **All four were re-cut on 2026-09-09** and the paths above are the re-cut ones. `tpc_slice.py` originally aligned
+a slice to a CAP1 record but not to a whole transfer, so every one of the four began mid-transfer and failed the
+reader's provenance check with exactly three packet-index errors. It now aligns both ends; the four walk clean.
+
+`/private/tmp/hw-session/` is scratch, not synced and not backed up: if it is gone, re-cut from the byte offsets
+above. The V-stabilize-off capture must be re-taken from the deck if lost (30–45 s, S-Video, `shuttle-capture`).
+
+Diagnostic slices from the 2026-09-09 signal-state work, with the offsets that reproduce them:
+`w_2718.tpc` (39439481630 / 340000000, the 27:18 signal stop), `w_start_400u.tpc` (0 / 320000000, the tape start and
+the unit-300 tear), `w_43678.tpc` (35000331301 / 260000000, the recording boundary).
+
 **Measurements moved out of the contract, 2026-09-09.** The contract states properties; these are the numbers
 behind them, taken on the author's own captures and labelled as author-fixture validation per PUBLISHING.md. They
 are not asserted by any test and are reproducible from the instruments named beside them.

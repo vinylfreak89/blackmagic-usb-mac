@@ -466,6 +466,14 @@ no top-reliability history, no windows, no thresholds that are not a stated meas
 
 ## 8. Acceptance
 
+**The order is the owner's:** (1) the commercial tape, (2) the EP recording, (3) the SP recording, (4) the SP
+recording with the deck's V-stabilize off. A capture passes when the engine's record agrees with the harness's
+reference on every unit the reference can measure, the capture's invariants hold, and the render's machine
+read-back shows the picture still except at the moves rule 8 allows. **Any engine change and any harness change is
+re-run against all four in this order before it is accepted**, and only when all four pass does the whole-tape run
+begin. The captures themselves, their files and how a slice is re-cut are session logistics and live in CLAUDE.md,
+not here.
+
 Two independent instruments — the engine's record (Codex) and the harness's reference (Claude), independently
 implemented and mutually reviewed, never fused — from the same raw rows and this contract, joined by device counter. Counted per capture per field: the top; S against the reference's first-full-other-head row
 (exact where the reference exposes one) and against its earliest switch-band row (within the one-row partial
