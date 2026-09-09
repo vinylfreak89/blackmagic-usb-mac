@@ -47,7 +47,7 @@ MARK = b"\x00\x00\xff\xff"
 F1_FIRST_LINE, F2_FIRST_LINE, FIELD_ROWS = 20, 283, 243
 FW, FH = 720, FIELD_ROWS * 2      # 720x486
 DW = 640                          # displayed width: 720 samples at 8:9
-BAND = 158          # room for the identity strip BELOW the text; at 132 the label sat on the strip
+BAND = 190          # three text rows per field, then the legend, then the strip's own row
 MARGIN = 26                       # left/right margin either side of the picture, where ticks live
 SPAN = 90                         # units either side of the playhead in the graph
 
@@ -95,7 +95,14 @@ def main():
     font = ImageFont.truetype(a.font, 12)
     small = ImageFont.truetype(a.font, 11)
 
-    W, H = DW + 2 * MARGIN, FH + BAND
+    # The canvas is WIDER than the picture on purpose. The band's left column has to hold the
+    # per-field statistics section 8 asks for, and constraining its width to the picture's meant the
+    # text either ran into the graph or was truncated - both of which happened, in that order. The
+    # picture keeps its size and is centred; the extra width is for the band. Owner, 2026-09-09:
+    # "I do not think the render area is big enough", and "that running output should be as detailed
+    # as possible while still being sensible to read".
+    W, H = 1000, FH + BAND
+    PX = (W - DW) // 2                # the picture's left edge, centred on the canvas
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", "30000/1001", "-i", "-"]
     if a.pcm:
@@ -126,29 +133,63 @@ def main():
     LEGEND_Y      = STRIP_LABEL_Y - 14
     gy0, gh = FH + 10, (LEGEND_Y - 3) - (FH + 10)
 
+    def fit(dr, xy, text, font, fill):
+        """Draw text that CANNOT reach the graph. The left column ends at gx0 and everything drawn
+        there is truncated to fit, because the alternative - shortening the strings by hand - has now
+        failed twice: once when the v9 band drew one long line into the plot, and again when the band
+        gained the record's own fields and the gauge row ran under the graph. A hard boundary is the
+        only version that survives the next field being added."""
+        limit = gx0 - 10 - xy[0]
+        while text and dr.textlength(text, font=font) > limit:
+            text = text[:-1]
+        dr.text(xy, text, font=font, fill=fill)
+
     def draw_band(dr, r, i, dd1, dd2):
         """The metrics band, BELOW the picture and never over it. Text in fixed columns on the left
         that cannot run into the graph on the right — the v9 band drew one long line and it collided
         with the plot (owner, 2026-09-09: "the overlay looks like it is on top of things")."""
         dr.rectangle([0, FH, W, H], fill=(8, 8, 8))
-        dr.text((6, FH + 5),
+        cs = g(r, "comb_safe", "")
+        fit(dr, (6, FH + 5),
                 f"u{int(g(r,'ordinal','0')):06d}  ctr {g(r,'counter_extended','?'):>6}  "
                 f"{g(r,'appearance','?')[:16]:16s} {g(r,'source','?')[:8]:8s}  "
-                f"applied ({dd1:+d},{dd2:+d})", font=font, fill=(230, 230, 230))
+                f"applied ({dd1:+d},{dd2:+d})  "
+                f"comb {'safe' if cs in ('1','true','True') else 'unsafe' if cs else '--'}",
+                font, (230, 230, 230))
         for f in (1, 2):
             col = (255, 90, 90) if f == 1 else (90, 170, 255)
             sw = num(r, f"f{f}_switch_line"); ext = num(r, f"f{f}_band_extent")
             top = num(r, f"f{f}_measured_picture_top")
-            y = FH + 24 + (f - 1) * 30
-            dr.text((6, y),
-                    f"f{f}  top {top if top is not None else '--':>4}   "
-                    f"switch {sw if sw is not None else '--':>4}   "
-                    f"band {ext if ext is not None else '--':>3}   "
-                    f"{g(r, f'f{f}_reason','?')[:20]}", font=small, fill=col)
-            dr.text((6, y + 13),
-                    f"    lock {g(r, f'f{f}_lock_state','?')[:12]:12s} "
+            # Everything below is in the record already; the band simply did not show it. The three
+            # section-8 quantities that are NOT here - the pedestal, the tape's line-22 level with
+            # its comparator count, and the horizontal-phase distribution - are absent because the
+            # ENGINE does not emit them (the line-22 comparator does not exist in it at all), so
+            # they are named as missing rather than left blank.
+            def sh(key, w=4):
+                v = num(r, f"f{f}_{key}")
+                return f"{v:>{w}}" if v is not None else f"{'--':>{w}}"
+            gd = num(r, f"f{f}_geometry_d")
+            y = FH + 22 + (f - 1) * 40
+            fit(dr, (6, y),
+                    f"f{f}  top {top if top is not None else '--':>4}  "
+                    f"d {gd if gd is not None else '--':>3}  "
+                    f"switch {sw if sw is not None else '--':>4}  "
+                    f"band {ext if ext is not None else '--':>3}  "
+                    f"clip {sh('clip_ceiling')}  "
+                    f"{g(r, f'f{f}_reason','?')[:22]}", small, col)
+            fit(dr, (6, y + 13),
+                    f"    lock {g(r, f'f{f}_lock_state','?')[:10]:10s} "
+                    f"zero {g(r, f'f{f}_zero_source','--')[:9]:9s} "
+                    f"count {sh('lock_switch_line_count',3)}  "
                     f"raw {num(r, f'f{f}_raw_top')}/{num(r, f'f{f}_raw_bottom')}",
-                    font=small, fill=(150, 150, 150))
+                    small, (150, 150, 150))
+            # the conservation equation of rule 3, and the gauge that placed the field
+            fit(dr, (6, y + 26),
+                    f"    expect_bot {sh('expected_bottom')} lost {sh('lines_lost',3)} "
+                    f"resid {sh('invariant_residual',3)}   "
+                    f"gauge {g(r, f'f{f}_gauge','--')[:10]:10s} "
+                    f"line {sh('gauge_line',4)} {g(r, f'f{f}_gauge_bytes','')[:11]}",
+                    small, (120, 120, 120))
         # both fields' applied shift, with the playhead
         dr.rectangle([gx0, gy0, gx0 + gw, gy0 + gh], outline=(60, 60, 60))
         def px(k): return gx0 + (k - (i - SPAN)) * gw / (2 * SPAN)
@@ -203,7 +244,7 @@ def main():
                                  yy + 1.772 * cb]) * 255.0, 0, 255).astype(np.uint8)
 
         img = Image.new("RGB", (W, H), (12, 12, 12))
-        img.paste(Image.fromarray(rgb, "RGB").resize((DW, FH), Image.BILINEAR), (MARGIN, 0))
+        img.paste(Image.fromarray(rgb, "RGB").resize((DW, FH), Image.BILINEAR), (PX, 0))
         dr = ImageDraw.Draw(img)
         for f, (first, d, col) in enumerate(((F1_FIRST_LINE, dd1, (255, 90, 90)),
                                             (F2_FIRST_LINE, dd2, (90, 170, 255)))):
@@ -214,8 +255,9 @@ def main():
                 k = e - (first + d)
                 if 0 <= k < FIELD_ROWS:
                     fr = int((k * 2 + f) * FH / (FIELD_ROWS * 2))
-                    dr.line([(2, fr), (MARGIN - 6, fr)], fill=col, width=2)
-                    dr.line([(W - MARGIN + 6, fr), (W - 3, fr)], fill=col, width=2)
+                    # beside the PICTURE, not the canvas: the canvas is now wider than the picture
+                    dr.line([(PX - MARGIN + 2, fr), (PX - 6, fr)], fill=col, width=2)
+                    dr.line([(PX + DW + 6, fr), (PX + DW + MARGIN - 2, fr)], fill=col, width=2)
         draw_band(dr, r, i, dd1, dd2)
         enc.stdin.write(img.tobytes())
 
