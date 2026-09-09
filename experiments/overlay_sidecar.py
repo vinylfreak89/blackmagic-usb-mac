@@ -44,19 +44,32 @@ def main() -> None:
         source_rows = list(csv.DictReader(sidecar_file))
     live = bool(source_rows and "ordinal" in source_rows[0])
     if live:
-        exact = [r for r in source_rows if g(r, "transport") == "Complete"]
+        # "Exact" is a COMPLETE transport carrying the fixed NTSC raster, kind 0. A device-no-signal
+        # 0x0800 unit (kind 1) also has a complete transport but no fixed raster, so it is never
+        # published and must not be counted as an unpublished exact unit — that reads as loss when
+        # nothing was lost (measured on the commercial capture, 2026-09-09: 921 Complete = 919 exact
+        # + 2 device-no-signal, and the guard called the two a publication failure).
+        exact = [r for r in source_rows
+                 if g(r, "transport") == "Complete" and g(r, "kind", "0") == "0"]
         unpublished = [r for r in exact if g(r, "published", "0") not in ("1", "True", "true")]
         if unpublished:
             raise SystemExit(f"refusing to overlay: {len(unpublished)} exact live units were not published")
         rows = exact
     else:
         rows = source_rows
-    # Alignment is by construction only when the video holds exactly two bobbed frames per sidecar row from the first
-    # row: an excerpt cut on a keyframe silently offsets every label (measured 2026-09-05: 25 extra frames = 12 units).
+    # Alignment is by construction only when the frame count is an exact whole multiple of the sidecar rows from the
+    # first row: an excerpt cut on a keyframe silently offsets every label (measured 2026-09-05: 25 extra frames = 12
+    # units). TWO frames per row is a field-rate bob; ONE is the contract's section-8 review copy, bwdif in
+    # send_frame at 29.97 with one frame per unit. Both are accepted, nothing else is, and the ratio is reported so a
+    # silent mismatch cannot pass.
     nfr = int(subprocess.run(["ffprobe","-v","error","-select_streams","v","-count_packets","-show_entries","stream=nb_read_packets","-of","csv=p=0",a.video],capture_output=True,text=True).stdout.strip() or 0)
-    if nfr != 2 * len(rows):
-        raise SystemExit(f"refusing to overlay: video has {nfr} frames but the sidecar has {len(rows)} rows (expected {2*len(rows)} frames); "
-                         f"overlay the FULL render with its full sidecar, never an excerpt")
+    if len(rows) and nfr % len(rows) == 0 and nfr // len(rows) in (1, 2):
+        per_row = nfr // len(rows)
+    else:
+        raise SystemExit(f"refusing to overlay: video has {nfr} frames and the sidecar {len(rows)} rows, "
+                         f"which is neither one nor two frames per row; overlay the FULL render with its full "
+                         f"sidecar, never an excerpt")
+    print(f"alignment: {per_row} frame(s) per sidecar row")
     d1s = []
     for r in rows:
         try: d1s.append(int(g(r, "applied_d1", "0")))
@@ -117,6 +130,12 @@ def main() -> None:
         d.line([(px(i, i), sy0), (px(i, i), sy0 + sh)], fill=(255, 60, 60), width=2)
         d.text((sx0 - 40, sy0 + sh - 10), "d1 ±3s", font=small, fill=(180, 180, 180))
         d.text((sx0 + sw + 2, py(3) - 5), "+3", font=small, fill=(120, 120, 120)); d.text((sx0 + sw + 2, py(-3) - 5), "-3", font=small, fill=(120, 120, 120))
+        # The identity barcode is a watermark for the read-back gate, not signal. Drawn unlabelled
+        # at the bottom of the band it reads as picture content: the owner spent three exchanges on
+        # 2026-09-09 asking what the alternating black and white blocks were, and I answered about
+        # head-switch blanking three times before checking my own renderer. Labelled here; the
+        # section-8 review copy (review_render.py) omits it unless --machine-strip is passed.
+        d.text((6, B - 18), "machine identity strip below (not signal):", font=small, fill=(90, 90, 90))
         draw_strip(d, B - 7, strip_payload(int(f), int(counter),
                                           int(g(r, "applied_d1", "0")),
                                           int(g(r, "applied_d2", "0"))))
