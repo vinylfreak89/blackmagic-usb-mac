@@ -31,12 +31,21 @@ the five first counted — the sixth was a duplicate nobody had noticed.
 | duplicate run-in gate (a second copy, typed 35, whose comment claimed it sat "at the decoder's own gate" while the decoder's had become 27.375) | **removed**, now imported | `910f345`; 0 of 1,840 |
 | span floor (`len(span)>=60`) | **derived**, `2*MAXLAG` from the search it guards | `d964a73`; sweeping to 40 and 100 left the reference byte-identical, and the floor is monotone, so identical output at both ends PROVES no row has a span in [40,100) |
 | `M_run+8` blanking slack | **KEPT, and it is load-bearing** | `7340fa5`; removing it changed 3 field-2 units, converted two documented holds into detections, and introduced a jitter blip at 6674 — a regression on tier 0's own criterion |
-| field-2 envelope (mean < 95, bins 20–47 ≤ 40, run of ≥ 6 bins > 60) | measurement in flight | fitted to fixture A's second recording, where the bar exists; cannot be derived, because it is a source artefact rather than a standard waveform |
+| field-2 envelope (mean < 95, bins 20–47 ≤ 40, run of ≥ 6 bins > 60) | **KEPT, and inert here** | `fef5a43`; 11,017 calls on capture 1, FIRED 0 (rejected by mean 3,390, by the right-hand bins 197, by no run of six 7,430). Cannot be derived — the bar is a smeared source artefact of fixture A's second recording, not a standard waveform |
 
-Two things this ledger should not be read as saying. `M_run+8` staying is not a defeat: the measurement found it
-carries a decision, and the principled replacement — the body's DISTRIBUTION instead of its maximum plus a
-constant — is named at the site for the next attempt. And the field-2 envelope firing nowhere on capture 1 would
-make it inert HERE, not derived; it decides real rows on capture 2, which this harness is gated from.
+**All six are settled.** Two things this ledger should not be read as saying. `M_run+8` staying is not a defeat:
+the measurement found it carries a decision, and the principled replacement — the body's DISTRIBUTION instead of
+its maximum plus a constant — is named at the site for the next attempt. And the field-2 envelope firing nowhere
+on capture 1 makes it inert HERE, not derived; it decides real rows on capture 2, and removing a test because the
+capture in front of us never triggers it would be fitting the instrument to the fixture, which is the fault this
+exercise exists to remove.
+
+⚠️ **Settling the constants does NOT lock the harness.** The owner's gate is the head-switch reading being stable
+and agreeing on capture 1, and it is not: off-mode is 34/508 and 62/505 after tonight's fix, which is better than
+the 35/508 and 65/505 it started at, not stable. The remaining off-mode units are runs rather than single-unit
+blips (field 1: 34 off-mode, 17 of them blips), and no one has yet looked at whether those runs are the partial
+line's real one-row travel — which the contract permits and `|T − mode| ≤ 1` is consistent with — or more
+instrument error. That is the next measurement, and it is what stands between here and the harness lock.
 
 Also unfixed and named at its site: `lead_blank` is a bool, so an unreadable lead is asserted as "not blank"
 rather than unknown. Harmless on this capture; a real fault where the regenerated rows are absent.
