@@ -49,6 +49,7 @@ FW, FH = 720, FIELD_ROWS * 2      # 720x486
 DW = 640                          # displayed width: 720 samples at 8:9
 BAND = 190          # three text rows per field, then the legend, then the strip's own row
 MARGIN = 26                       # left/right margin either side of the picture, where ticks live
+LANE = 22                         # one field's tick lane; field 1 inner, field 2 outer, per side
 SPAN = 90                         # units either side of the playhead in the graph
 
 def g(r, k, d=""):
@@ -255,9 +256,19 @@ def main():
                 k = e - (first + d)
                 if 0 <= k < FIELD_ROWS:
                     fr = int((k * 2 + f) * FH / (FIELD_ROWS * 2))
-                    # beside the PICTURE, not the canvas: the canvas is now wider than the picture
-                    dr.line([(PX - MARGIN + 2, fr), (PX - 6, fr)], fill=col, width=2)
-                    dr.line([(PX + DW + 6, fr), (PX + DW + MARGIN - 2, fr)], fill=col, width=2)
+                    # Each field gets its OWN lane rather than both being drawn in one (owner,
+                    # 2026-09-09: "it can render field 1 and 2's side markers separately instead of
+                    # superimposed"). Superimposed, a field-1 and a field-2 edge landing on the same
+                    # displayed row drew over each other and one colour simply won. Field 1's lane
+                    # is inner, field 2's outer, both sides, using the space the wider canvas freed.
+                    inner, outer = 8, 8 + LANE
+                    o = 0 if f == 0 else LANE
+                    dr.line([(PX - inner - o - LANE + 2, fr), (PX - inner - o, fr)], fill=col, width=2)
+                    dr.line([(PX + DW + inner + o, fr), (PX + DW + inner + o + LANE - 2, fr)], fill=col, width=2)
+        # at the TOP of the margins: band edges sit near the bottom of a field, so a label there
+        # was drawn straight through the ticks it names
+        dr.text((PX - 8 - 2 * LANE + 2, 3), "f2 f1", font=small, fill=(70, 70, 70))
+        dr.text((PX + DW + 10, 3), "f1 f2", font=small, fill=(70, 70, 70))
         draw_band(dr, r, i, dd1, dd2)
         enc.stdin.write(img.tobytes())
 
