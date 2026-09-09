@@ -2113,6 +2113,31 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**The engine cannot measure the switch on 255 of capture 1's readings, and that is a decided result rather than
+an open defect (2026-09-10, Codex decided, Claude measured).** Of the engine's 527 non-box Unknowns, the largest
+bucket — 264 `no_disjoint`, where no complete-interval candidate's phase departure is separable from local
+horizontal variation — fails at candidate formation in 255 cases, not at the strictness downstream. Measured at
+the row an independent harness instrument identifies: **210 of the 255 have their blank-level run starting at
+sample 0**, its left endpoint off the delivered window; 19 start at 1–2 with the endpoint visible; 26 are
+interior. The device delivers 720 of 858 samples, so an interval displaced leftward runs off the edge, and the
+run lengths cluster just below the 147 samples the contract's 10.9 µs gives at 13.5 MHz — the signature of a
+truncated interval rather than of a different feature.
+A scattered-code tolerance ablation was measured and rejected: it recovers **9 candidates and 0 readings**, and
+its broader variant raises whole-capture observation disagreements 6 → 19. Controls held throughout (34/34 in
+every variant; 0 false positives across ten scattered-code negatives including stationary interior AND
+edge-connected black rectangles), so tolerance is not unsafe — it does not help.
+**Codex's decision, with its bounds carried unrounded:** a sound one-ended observation would need "another
+independently identifiable timing feature corroborating the boundary's displacement against source-local
+references", preserving black-rectangle rejection and departure/return discrimination, leaving the missing
+endpoint and extent Unknown, and rebuilding references after lock-like loss. No such witness has been
+demonstrated for these readings, so the 255 stay Unknown. **"This is a limitation of this engine/source pairing,
+not proof that the capture lacks usable evidence, that another instrument cannot measure it, or that other
+line-TBC-off sources share it."** A start at sample zero records censoring, NOT proof that those samples are
+physically blanking rather than dark content.
+⚠️ **The ROW is not in doubt where the engine cannot measure it.** The harness's switch line is exact in 1,013 of
+1,013 registerable field-readings on this capture against an instrument sharing no code with it. So this is a
+limit on the engine's independent observation, not an unknown in the geometry.
+
 **Qualified rule-8 box exclusion implemented, coverage incomplete:** a positive
 box observation suppresses switch measurement and leaves placement Unknown;
 it supplies no origin/extent. The fitted 6/40/3 limits and 0.28 relative cut
