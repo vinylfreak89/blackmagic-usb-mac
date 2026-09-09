@@ -2109,6 +2109,19 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Static-mask follow-up, diagnostic not production:** per-field real-static-patch
+maxima replace generated blanking only in the experiment: commercial 107/100,
+SP 173/162, SP-off 154/146 summed eight-pixel codes. Seven named raw controls
+retain the correct comb winner; masked margins do not uniformly improve.
+A synthetic coherent pan with fixed geometry produces a WRONG +2 minimum at
+1,024,739x margin, still 83–1,427x with empirical picture-difference noise.
+Margin + rule 9 protects crops but cannot establish static confirmation.
+The recalibrated commercial mask abstains; the SP mask retains two accidental
+blocks and still falsely prefers +2. Static evidence remains necessary; neither
+maskless aggregation nor changing this tolerance alone is validated. No arbitrary
+support threshold added. Rejected moving-patch calibration, raw goldens, tests,
+reproduction and limitations: `src/field_registration/tests/STATIC_MASK.md`.
+
 **Capture-1 comb disagreement reproduced, not fixed:** the independent C probe
 reproduces the harness's current-raster positive-product census exactly:
 506/508 minima at zero, median margin 3.390436. Raw controls 6667/6687/6690/6700
