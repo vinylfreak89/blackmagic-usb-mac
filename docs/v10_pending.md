@@ -165,9 +165,27 @@ one an independent instrument identifies, and that instrument reads `S` exactly 
 
 The shape of the finding: the engine has one observable for the switch where the contract describes two. §3
 carries the blanking-inside-the-row observable explicitly; its 64–200 bounds are the HARNESS's, and what the
-contract gives is the 10.9 µs interval (~147 samples at 13.5 MHz). Whether it should
-be a fallback when the phase test abstains, a corroborator, or something else is a design question for the engine
-side; put to Codex 2026-09-10, its position owed.
+contract gives is the 10.9 µs interval (~147 samples at 13.5 MHz).
+
+**Codex agreed it is an instrument gap and built the second observation (`856ec13`) — and it recovers 2 of the
+265.** Its discriminator is better than anything proposed from the harness side: **porch loss, not level.** A
+relocated row loses its leading porch and its trailing minimum extent; *"a stationary black rectangle with
+unchanged porches is therefore rejected, even when its samples are exactly identical to blanking"* — which closes
+the hole this harness's level test provably cannot. 34/34 controls under ASan/UBSan, 0.3115/0.372 ms.
+
+| | agree | disagree | engine-Unknown | mutually measured |
+|---|---:|---:|---:|---:|
+| `800ed67` | 384 | 96 | 533 | 480 (80.0%) |
+| `856ec13` | 383 | 99 | 531 | 482 (79.5%) |
+
+`no_disjoint` 265 → 264, `run_recovered` 2, and a new `observation_disagreement` 6.
+
+**The likely reason is in Codex's own design note, and it is a regime problem rather than a bug:** the run must
+show *"locally readable source porches at both delivered ends"*, flagged there as *"an explicit instrument
+limitation"*. On the line-TBC-off pass, where §2 measures 1,022 of 1,042 rows displaced at ≥ 100 samples with a
+median of 192, a readable porch at BOTH ends is what a row is least likely to have. The strictness that correctly
+rejects a black rectangle rejects 263 of the 265 it was built for. Per-stage rejection census requested;
+Codex's position owed on whether the both-ends requirement is the binding constraint.
 
 ⚠️ **Engine cost at `800ed67` is 9.7475 ms median / 16.772 ms p95 per engine call.** §11b's budget is 10 ms for
 the WHOLE worker including classifier, assembly and publish, so the engine alone is at the budget's edge and the
