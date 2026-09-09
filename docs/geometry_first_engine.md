@@ -144,11 +144,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   regenerated blanking ceiling of 2, so no qualifying blanking run is visible there and the absolute detector
   reports no band at all. Relative phase, the RF peak, or both remain necessary wherever the analog chain has raised
   or obscured the blanking; the absolute measurement is the primary one, not the only one), and why
-  horizontal and vertical geometry are one problem rather than two. Measured on the commercial capture (2026-09-09,
-  independent instrument): the head-switch band's rows are displaced about 160 samples, the whole blanking interval
-  inside the window; reading the bottom this way puts it on one row in 496 of 526 measured field-1 units (99.4%
-  within one row) and 443 of 504 field-2 units, flags no picture row, and refuses the rewind (337 of 338 units before
-  counter 6593 unmeasurable).
+  horizontal and vertical geometry are one problem rather than two. Where the band's rows are displaced by enough
+  that the whole blanking interval sits inside the delivered window, reading the bottom this way settles it to
+  within one row on almost every measurable unit of a field, flags no picture row as band, and refuses to answer on
+  a rewind rather than guessing.
 - **Black picture content in this source is clipped to exactly the blanking level, with the same dither** (mean 1.40
   against 1.39, standard deviation 0.49 against 0.49, measured inside content runs and band runs). No level test and
   no texture test can separate content from blanking here; only geometry can.
@@ -156,58 +155,49 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   rows, never whole-field: the top rows of each field (lines 23–34) carry end levels of median 4.6–6.6 and p95 52–63
   above blanking against median 0.6 and p95 7.6 just above the head switch — the flagging of a VHS field's first
   lines. Judged whole-field, those top rows hide the band.
-- **The commercial capture's picture bottom is line 259 (field 1) and 521 (field 2)**, adjudicated on the raw rows
-  2026-09-09 after two independent instruments read 259/521 and the engine read 260/522. The engine was wrong: it
-  takes the first FULLY other-head row as the switch line, so it counted the partial switch line as picture. At
-  counter 6955 field 1, line 259 is ordinary picture (mean 89.5, ends normal), line 260 is the partial line (trailing
-  edge elevated by 78.6, and 77.6–100.6 in neighbouring units), and lines 261–262 are fully displaced (interior
-  blanking runs of 145–146 samples); field 2 the same, 521 ordinary, 522 partial (elevated 80.6), 523–524 displaced
-  (141–143). No contract change was needed: the partial line is the switch line and the bottom is the row above it.
-  The instrument that read 259/521 has its own defect, recorded here: it counted rows past the delivered clip (field
-  1 to line 264, field 2 to 526) as band rows, which they are not.
+- **The partial line is the switch line and the picture bottom is the row above it.** Adjudicated on the raw rows
+  after two independent instruments and the engine disagreed by one row. The engine was wrong: it took the first
+  FULLY other-head row as the switch line, so it counted the partial line as picture. No contract change was needed.
+  The other instrument had its own defect, recorded because it is easy to repeat: it counted rows past the delivered
+  clip as band rows, which they are not.
 - Nothing the tape carries above line 23 (286) reaches us except the re-encoded bytes on the insert. The tape's own
   VBI becomes visible only when the field is displaced downward: at +1 its black line 22 appears on line 23 (luma
   4–7 on fixture A), at +2 its line 21 on 23, at +3 its line 20 on 23 and its line 21 on 24.
-- The Shuttle re-encodes the insert from a caption it slices within one line of the standard line: measured on
-  fixture A, 91 units of the first 13,000 carry decoded caption bytes at line 21 with no parity-valid raw caption
-  anywhere in the field and a rigid +1 picture (top and bottom together, 24/261 against a 23/260 lock), while in
-  1,300+ units whose raw caption sits at 23 or 24 (+2, +3) the insert carried nulls every time (CLAUDE.md §11). So
-  the window reaches ±1 and not ±2; the −1 side (the tape's line 21 on raster line 20) is its symmetric case, not
+- The Shuttle re-encodes the insert from a caption it slices within one line of the standard line. Units exist that
+  carry decoded caption bytes on the insert with no parity-valid raw caption anywhere in the field and a rigid
+  one-line displacement of the whole picture; units whose raw caption sits two or three lines low carry nulls on the
+  insert without exception. So the slicer's window reaches one line and not two; the −1 side (the tape's line 21 on raster line 20) is its symmetric case, not
   separately measured.
-- The deck clips each field at line 262 / 525 on every capture (its clip line); lines 263–264 / 526 of the
-  pass-through region carry only the near-blank remainder and the chroma noise of the decoder.
-- Noise gaps on the commercial capture: the Shuttle's regenerated rows have chroma noise ≤ 1.48 times the blanking
-  rows'; recorded rows ≥ 2.02 times. The blanking rows' luma noise is 0.5 (std within a row).
-- Row signatures (SP recording, both passes, verified units 20/78/105/106/200): picture rows match the row above
+- The deck clips each field at its own clip line, constant per source; the pass-through rows below it carry only
+  the near-blank remainder and the chroma noise of the decoder.
+- The Shuttle's regenerated rows and recorded rows separate on chroma noise against the blanking rows', with a
+  clear gap between them; the separation, not a typed ratio, is what the recorded-row test uses.
+- Row signatures (verified on raw units of both SP passes): picture rows match the row above
   at a segment lag of 0–1 with mean |difference| 8–17; the first other-head row has a median segment lag ≥ 10 and
   mean |difference| 35–80; the RF peak is a spike ≥ 4 times the row's mean |difference| at the same sample in both
   passes, on an otherwise aligned row, with the next row torn from that sample on; the V-stabilize-on pass ends the
   band with a flat pedestal row (std < 1.1). On the commercial tape the other head's rows carry its horizontal
   blanking in mid-row (luma 1–2 at the blank's noise, samples ~60–200); on the SP recording that run sits at the
   pedestal (luma ~11), not at the blank.
-- A row of chroma noise can sit below the band (commercial rewind units, line 263: chroma std 3.08 against 0.5), so
-  chroma alone overstates the band bottom by one line there.
+- A row of chroma noise can sit below the band, so chroma alone overstates the band bottom by one line where it
+  does.
 - "Field 1" and "field 2" name transport slots. The Shuttle grouped the same field sequence one field later on the
-  V-stabilize-off capture of the SP passage (its field-1 slot is the original's field 2 of the previous unit, MAD
-  2.6–3.0 against 7–12 for any other pairing); every per-field quantity is measured per capture on the slot's own
-  content.
+  V-stabilize-off capture of the SP passage — its field-1 slot holds the previous unit's field 2, and the content
+  match separates that pairing from every other decisively; every per-field quantity is measured per capture on the
+  slot's own content.
 - The deck's line TBC (V-stabilize) drops rows it cannot time at the top of a field and shifts the rest down by that
-  count (one line in most SP units, two where the tear is worse), clipping the bottom by as much; with it off the
-  picture starts on its standard line in every unit, the first one or two lines carry a horizontal timing error
-  that varies along the row (flagging), and the head switch's RF peak and timing step are visible. The rows from the
-  picture top to the switch line are the same in both passes (237 at units 20, 105, 200).
-- The commercial tape's picture is stable from counter 6593 onward (before it the tape is rewinding); its pedestal
-  measures 9–11, the same as fixture A's 11.4 (both tapes have setup); its head switch sits on line 260 or 261 in
-  every measurable unit, and with the peak present the rows from the top to the switch row are 238 in 31 of 36
-  field-1 units and 237 in 48 of 59 field-2 units.
-- Field 2's band is one row longer than field 1's on the SP, EP and commercial tapes (SP: two rows in 427 of 606
-  units against three or four in 597 of 608).
+  count, clipping the bottom by as much; with it off the picture starts on its standard line, the first lines carry
+  a horizontal timing error that varies along the row (flagging), and the head switch's RF peak and timing step are
+  visible. The rows from the picture top to the switch line are the same in both passes.
+- A commercial tape and an off-air recording can both carry setup, and a source's head switch can sit on either of
+  two adjacent lines across a capture while its top-to-switch row count stays constant.
+- Field 2's band runs one row longer than field 1's on every source measured so far.
 
 ## 3. Definitions
 
 - **Recorded row**: a pass-through row that came through the analog decoder, told from the Shuttle's regenerated
-  rows by the decoder's noise: chroma noise above twice the blanking rows' (the measured gap of section 2, regenerated
-  ≤ 1.48×, recorded ≥ 2.02×, the test at its lower bound), or luma above the blank; padding is neither. The Shuttle's regenerated blanking rows (7–15 / 270–278) are the
+  rows by the decoder's noise: chroma noise above twice the blanking rows' (section 2's measured gap, the test set at
+  its lower bound), or luma above the blank; padding is neither. The Shuttle's regenerated blanking rows (7–15 / 270–278) are the
   reference when present; tape signal cannot reach them; their absence is a lock-like-loss observation.
 - **Pedestal**: the tape's black — the other head's black rows at the bottom of the band.
 - **VBI row**: a recorded row carrying a vertical-interval WAVEFORM, recognised by signature: the CEA-608 waveform
@@ -247,47 +237,37 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   switch and is told apart by WHERE the departure ends: the head-switch band's departure begins near the bottom and
   persists to the clip, while a tear's departure returns to the field's own stable phase and picture continues below
   it. A vertical tear is a lock-like loss (rule 5b). **The bare definition is not sufficient and carries three
-  qualifiers, each measured** (2026-09-09, independent instrument on fixture A's opening 416 units): applied
-  literally it fires 1,038 times, so a departure is a tear only when it (a) returns to the field's stable timing,
-  (b) is at least three rows long, and (c) has stable readable rows above it — without (c) the field's first lines,
-  which carry VHS flagging up to 231 samples over 4–6 rows, "return" trivially because the whole field lies below
-  them, and that class alone is 23 of 27 candidates in settled programme; rule 5's normal-picture gate removes the
-  rest, which are snow during relock. With the three, the signature fires once in 198 settled units and it is the
-  splice. Two limits stated with it: the displacement is known only modulo one line (a late shift and an early one
+  qualifiers** (owner-accepted 2026-09-09): a departure is a tear only when it (a) returns to the field's stable
+  timing, (b) is at least three rows long, and (c) has stable readable rows above it. Without (c) a field's first
+  lines, which carry VHS flagging, "return" trivially because the whole field lies below them; rule 5's
+  normal-picture gate removes the remainder, which are snow during relock. Applied without the qualifiers the
+  signature fires on ordinary programme; with them it selects splices. Two limits stated with it: the displacement is known only modulo one line (a late shift and an early one
   differing by a whole line are the same arrangement of samples), and a dark picture edge of a few tens of samples
   cannot be separated from a displacement of the same size when the row's other end shows nothing either.
-- **What the line TBC does to the head-switch band: it removes the PICTURE, not the displacement** (measured
-  2026-09-09 on the same passage of the same tape with the corrector on and off, both instruments validated first on
-  a synthetic field rebuilt at known displacements, which recovered injected shifts of 3, 6, 8, 12, 15, 20, 30, 160
-  and 215 samples exactly).
-  * **TBC off:** the band rows are displaced by a whole line's worth of time — of the rows above the padding, 1,022
-    of 1,042 readable at ≥ 100 samples, median 192 (14.1 µs, 22% of the line), and the interior blanking run measures
-    147 ± 6 samples in 1,397 of 2,535, i.e. a complete blanking interval sitting inside the window: one whole line
-    delivered late. Zero flat rows per field. The partial line is the row ABOVE the displaced pair, its switch column
-    at median sample 597, moving 5–6 samples unit to unit.
-  * **TBC on:** the displacement is gone and so is the picture. Of 1,076 affected rows, only 14 carry any readable
-    horizontal timing at all, and those are distributed like the rest of the field (10 at 6–17 samples against 1.6
-    expected from background — not a mechanism). **768 of 1,076 are perfectly flat (row σ ≈ 1.0) at luma 11.1, the
-    DECK'S black, against the device's regenerated blanking at 1.38.** Per-aperture testing finds no side-versus-side
-    step either: of the 129 rows with two registrable apertures, 3 reach the step threshold against a 3.4% null.
-  * **The count is the same either way, which is what the owner expected:** rows from the switch row to the padding
-    average 2.78 with the corrector on, 2.82 with it off, and 3.32 on the commercial tape, median 3 in all three.
-    What changes is rows carrying no picture at all: 1.94 per field with the corrector on, 0.00 with it off.
-  * **The visible "skew" on a corrected source is a wandering picture/black boundary, not a timing skew.** The last
-    row still carrying picture stops before the row's end in 337 of 396 fields, median column 373, and that column
-    moves 23 samples unit to unit (p90 396, max 564) while the row itself moves 0–4 lines.
+- **What the line TBC does to the head-switch band: it removes the PICTURE, not the displacement.** Both
+  instruments behind this were validated first on a synthetic field rebuilt at known displacements, which they
+  recovered exactly.
+  * **Corrector off:** the band rows are displaced by about a whole line's worth of time, and a complete horizontal
+    blanking interval sits inside the delivered window — one whole line delivered late. No flat rows. The partial
+    line is the row ABOVE the displaced pair, and its switch column moves only slightly unit to unit.
+  * **Corrector on:** the displacement is gone and so is the picture. Most affected rows are perfectly flat at the
+    DECK's black, which is distinct from the device's regenerated blanking, and per-aperture testing finds no
+    side-versus-side step.
+  * **The band's row count is the same either way**, which is what the owner expected. What changes is how many of
+    those rows carry no picture at all.
+  * **The visible "skew" on a corrected source is a wandering picture/black boundary, not a timing skew**: the last
+    row still carrying picture stops before the row's end, and that column wanders far more than the row itself
+    moves.
   * **So on a corrected source these rows cannot be identified from timing at all.** They are identifiable by
-    flatness: "flat to the row's right end" fires on 98/91/68/26% of rows at 0/1/2/3 rows above the padding and
-    0.00% at 4–16 rows above, selecting 2.82 rows per field with no false positive inside that window, and missing
-    the 98 of 1,076 that carry picture to the row's end. **That detector reads "this deck wrote black here" — deck
-    behaviour, not a standards property, so it does not transfer to another deck** (CLAUDE.md's rule: generalise by
-    property, never by this deck). The band is therefore found by displacement where the timing survives and by the
-    absence of picture where a corrector has replaced it, and "not applicable" stays distinct from "unmeasurable".
-  * Caveat stated with it: the two captures are not frame-aligned (best field-match correlation 0.07–0.31), so this
-    is a distributional comparison of 396 fields against 1,216, not the same frames. The flat-row measurement is
-    768 with TBC on against 0 with TBC off. Using the affected-row definition and |d| >= 6 samples, Codex measured
-    11 displaced TBC-on rows against 1,957 TBC-off rows. The timing separation is strong, not categorical; these
-    distributional measurements do not establish a content-independent, error-free per-unit regime classifier.
+    flatness to the row's right end, which is sharply confined to the rows just above the padding. **But that
+    detector reads "this deck wrote black here" — deck behaviour, not a standards property, so it does not transfer
+    to another deck** (CLAUDE.md's rule: generalise by property, never by this deck). The band is therefore found by
+    displacement where the timing survives and by the absence of picture where a corrector has replaced it, and
+    "not applicable" stays distinct from "unmeasurable".
+  * Caveat stated with it: the two captures compared are not frame-aligned, so this is a distributional comparison
+    rather than the same frames. The flat-row separation is categorical; the timing separation is strong but not
+    categorical. Neither establishes a content-independent, error-free per-unit regime classifier.
+
 - **Head switch**: discontinuous horizontal skew, an RF peak, or both, plus an AGC mismatch where present (owner,
   2026-09-07 morning); the other head's blanking intruding into the row and the pedestal rows are what the captures
   show (section 2). **Switch line** (the top switch line): the horizontal line carrying the peak, the partial line;
@@ -326,7 +306,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   important is agreement"). The owner's "say to 235" figures are illustrative; the ruling is the count, the partial
   line counted as a switch line ("not 238"). **Bands above the picture**: the recorded rows between line 23
   and the picture top that are not the Shuttle's. **Bands below**: the band's extent. **Clip line**: the last row
-  the deck delivers (262/525 on every capture seen), measured per source as the last recorded row's constant, never
+  the deck delivers, measured per source as the last recorded row's constant, never
   typed in. It is not the picture bottom, which is the row above the switch line (rule 3).
 - **Closure**: a field is 240 lines; top + 239 is the expected bottom; rows past the clip are lost (owner). The
   picture bottom placed by the engine is the row above the switch line; the expected bottom is the closure check.
@@ -492,10 +472,12 @@ implemented and mutually reviewed, never fused — from the same raw rows and th
 ambiguity); the band count under the lock; the comb on the engine's crops. A disagreement between the two instruments
 about what a row IS (a measurement error in one of them) is decided on the raw rows by both agents and listed with
 its rows; a true disagreement about the geometry (the comb not matching the placed crops) is not adjudicated by
-either agent — it is reported to the owner as below. "Output" below means the stabilized visible picture the owner watches, not the crop-origin metadata. Invariants: on
-the commercial tape from counter 6593, the top constant, the lock's switch-line count constant, the switch line moving only
-with the top within the partial line's one-row travel; on fixture A, output moves only at its two relocks (units 300/301 and 43,737/43,738) and at real boxing
-changes, no placement on the snow units 43,686–43,736, field precedence constant within a lock. Every render (two
+either agent — it is reported to the owner as below. "Output" below means the stabilized visible picture the owner watches, not the crop-origin metadata. Invariants, stated as properties and
+checked per capture from that capture's own record: through a source's stable interval the top is constant, the
+lock's switch-line count is constant, and the switch line moves only with the top and only within the partial
+line's one-row travel; the output moves only at a relock and at a real change of boxing; nothing is placed on
+snow; and field precedence is constant within a lock. The units at which each holds are read from the run, not
+written here. Every render (two
 captures × two fields per frame, rows doubled, red = picture top and bottom, yellow = the band bottom) is read back
 by machine on every frame — bar positions and decisive picture shifts — before anyone looks at it. The owner's
 watch copy is the live path's output with its record burned in. No work product stands in one instrument alone.
