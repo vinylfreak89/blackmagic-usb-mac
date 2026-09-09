@@ -2113,6 +2113,24 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Scattered-code tolerance tested, diagnostic only:** the published reference
+S rows reproduce the harness's 205 short / 42 split / eight uninterrupted
+>=147 partition of the 255 candidate failures. The missing cross-tab is
+decisive: 33 of the 42 split intervals start at sample zero; only nine expose
+both ends (four start 1/2, five farther inside). Of the 205 short runs, 169
+start zero, 36 inside. Six-sigma membership is tested as the harness's
+instrument choice, not a production rule. Candidate-only tolerance leaves
+nine candidates, four with a basis, none with a qualifying predecessor.
+Applying it to porch membership too leaves nine through both porch-loss
+checks, one through predecessor, none through CDF. Hence **0/42 survive**.
+Both stationary interior and edge-connected black rectangles still reject;
+all 34 old controls pass, and ten new negative field-controls reject. The
+two scattered-code positive fields recover only with tolerant porch references.
+The all-populations variant increases whole-capture observation conflicts
+from six to 19; neither variant is promoted. Production unchanged, no capture
+acceptance. Details, preserved diagnostic correction and reproducibility:
+`src/field_registration/tests/RUN_TOLERANCE.md`.
+
 **One-ended timing, design position only:** an identified blanking-to-active
 boundary can supply its position even when the interval's other endpoint is
 outside the delivered window. The missing endpoint/extent remains Unknown;

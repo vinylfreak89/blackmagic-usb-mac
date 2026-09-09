@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Instrument the actual C predicates in a scratch build, never change them.
+"""Default: instrument the actual C predicates without changing them.
 
 All counts are execution-path evidence, not adjudications of what a raw row IS.
 First zero in the ordered candidate funnel is a mutually exclusive field cause;
 a candidate accepted then cleared is reported separately. No detector thresholds
-or harness readings participate. Run on an original, provenance-complete CAP1.
+or harness readings participate in default detection. Optional, explicitly
+labelled tolerance ablations change only a generated scratch header; reference
+S can select a separate diagnostic row but never feeds either engine reader.
+Run on an original, provenance-complete CAP1.
 The run-stage trace writes scalar candidate rows; timings in this instrumented
 build include tracing and must not be reported as production performance.
 """
@@ -17,14 +20,17 @@ from pathlib import Path
 import subprocess
 
 
-def instrument_run_header(engine, out):
-    """Trace production predicates without replacing any decision expression.
+def instrument_run_header(engine, out, tolerance="strict"):
+    """Trace strict production predicates or the explicitly selected ablation.
 
     The funnel is ordered run-first for diagnosis, although production's AND
     tests basis first. Candidate rows also retain independent positional facts.
     Output is enabled only during the probe's independent per-field call.
     """
     header = (engine / "run_timing.h").read_text()
+    if tolerance != "strict":
+        from run_tolerance_diagnostic import variant
+        header = variant(header, tolerance)
     header = '#include <stdio.h>\n#include <assert.h>\n' + header
     header = replace_once(header, "static void measure_run_switch(", r'''
 static FILE *run_fields, *run_candidates;
@@ -96,12 +102,14 @@ def main():
     ap.add_argument("capture", type=Path)
     ap.add_argument("output", type=Path)
     ap.add_argument("--previous", type=Path, help="previous counter,field,T,S export")
+    ap.add_argument("--diagnostic-tolerance", choices=["strict", "interior", "all"], default="strict")
+    ap.add_argument("--diagnostic-reference", type=Path, help="reference S for membership tracing only")
     args = ap.parse_args()
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=True)
     tests = Path(__file__).resolve().parent
     engine = tests.parent
-    instrument_run_header(engine, out)
+    instrument_run_header(engine, out, args.diagnostic_tolerance)
     source = (engine / "field_registration.c").read_text()
     source_hash = hashlib.sha256(source.encode()).hexdigest()
     source = '''#include <time.h>
@@ -197,6 +205,9 @@ static void measure_switch(""")
                          'measured?d.geometry_lock_known:0,measured?d.applied_d1:0,'
                          'measured?d.applied_d2:0);\n'
                          'if(unit->counter16<selected_first')
+    if args.diagnostic_reference:
+        from run_tolerance_diagnostic import reference_trace
+        probe = reference_trace(probe, args.diagnostic_reference)
     (out / "probe.c").write_text(probe)
     src = engine.parent
     subprocess.run(["clang", "-O3", "-std=c11", "-Wall", "-Wextra", "-Werror",
@@ -243,6 +254,7 @@ static void measure_switch(""")
     with (out / "unknown_causes.csv").open("w") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
     summary = {"engine_sha256": source_hash,
+               "diagnostic_tolerance": args.diagnostic_tolerance,
                "header_sha256": {name: hashlib.sha256((engine/name).read_bytes()).hexdigest()
                                   for name in ["field_registration.h", "box_observation.h", "run_timing.h"]},
                "rows": len(rows),
