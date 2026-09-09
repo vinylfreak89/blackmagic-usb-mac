@@ -1,4 +1,108 @@
-# Commercial switch replacement: counter 6687 fixed, capture gate NOT passed
+# Commercial switch measurement: capture gate NOT passed
+
+## Review follow-up: partial prefix, counters 6667 and 6690
+
+Rule 3 includes the measurable partial before S. A partial can retain a normal
+prefix but lose the trailing porch without exposing ANY complete blanking
+window. Requiring nine samples on that partial had confused an aperture used
+to find a full interval with a prerequisite for observing a partial.
+
+The new `retains_normal_prefix` reads retained local-normal blank samples
+before the following full row's measured relocated blanking window. Neither
+the end nor a sample index is prescribed. A lone trailing blank sample does
+not establish a normal prefix, and cannot veto a positively relocated full
+interval. The full-interval requirement and the local normal-phase envelope
+remain; there is no new level, run length, band count, or brightness fallback.
+This is a sufficient prefix observation, not a universal detector: when the
+prefix cannot be read but S is exposed, the existing S fallback still applies.
+
+Independent raw reads (NTSC lines, zero-based sample positions):
+
+| Counter/field | Raw evidence | T | S | Picture bottom | Clip |
+|---|---|---:|---:|---:|---:|
+| 6667/1 | L259 returns to blanking; L260 begins 22,18,22,19 and exposes relocated blanking | 260 | 260 | 259 | 262 |
+| 6690/1 | L260 retains blanking at 0..2, loses its trailing porch; L261 exposes the full interval | 260 | 261 | 259 | 262 |
+| 6687/1 | Previous raw adjudication retained | 260 | 261 | 259 | 262 |
+| 6687/2 | Previous raw adjudication retained | 522 | 523 | 521 | 525 |
+
+At 6690 L260 there are zero nine-sample blanking windows; L261's minimum
+147-sample mean is 1.401 against this unit's regenerated maximum 2. At 6667
+L260 the minimum is 1.469. The ordinary row at 6667 L259 retains normal windows.
+Raw panels and samples were inspected, not just the two detectors' outputs.
+
+The abstention investigation found another concrete defect at 6668/6669:
+L260 exposes the full interval (minimum mean 1.537/1.524), yet the old
+retained-sample test vetoed it solely at sample 719. That column's local
+normal and band values are 1..2; a code-3 sample elsewhere makes the field-wide
+information mask admit it. Retaining only that trailing sample is not evidence
+that the beginning of the row kept normal phase. The new prefix test applies
+to the partial and to the full-row predicate, and reads T=S=260 on these units.
+
+Failing-first records: `3e1f0d4` gave 36/42 checks before the partial fix;
+`37298a5` caught the provisional fix inventing a partial from a lone trailing
+sample (30/31). **Correction:** `13981d9`'s message falsely claimed a failure:
+its actual test passed 32/32 because the input omitted the code-3 sample that
+admits the column to the mask. `d83b6d8` preserves and corrects that claim and
+adds the missing input; the actual pre-fix result is `got -1 expected 257`,
+31/32, exit 1. No reported commit was rewritten. Final tests: synthetic 32/32,
+with the three optional raw units 44/44, also 44/44 under ASan/UBSan. Unit
+18/18, CEA-608 3/3, rules 1/3/4 5/5, 2/2, 5/5; both live signal-gate tests pass.
+
+### Commercial replay and comparison from counter 6667
+
+The current comparison starts at 6667, following the corrected raw ramp
+measurement; 6593 was not a wholly registerable interval. The older census
+below is historical and is not relabelled as new evidence. No contract edit
+or signal-state change was made. Even after 6667, 68 of 508 units are gated;
+the scorer's generic unmeasurable category must not be read as all detector
+abstentions. Of 440 measured units, actual detector abstentions fall from
+287 to 214 (f1), and 348 to 287 (f2).
+
+Saved reference: `ref_capture1.csv`, SHA-256
+`1b10d36f1e442da5247c0f11072b23d3ced883f456026edd7af7f4233fbeaaa3`.
+It still labels 6667 T=259 despite the raw adjudication in the brief. Its
+unfinished `ref_capture1_v3.csv` was also inadvertently scored: only 342
+counters were available then, so that partial run is NOT the census below.
+Both before and after here use the same complete saved reference, 508 counters.
+
+| Quantity | F1 before agree/differ | F1 after agree/differ | F2 before agree/differ | F2 after agree/differ |
+|---|---:|---:|---:|---:|
+| Top | 440/0 | 440/0 | 422/18 | 422/18 |
+| T | 46/107 | 154/72 | 26/65 | 107/44 |
+| S | 109/44 | 190/36 | 67/24 | 146/5 |
+| Observed count | 46/107 | 154/72 | 22/70 | 93/60 |
+
+Post-change T categories: f1 226 mutually measurable, 282 engine-only
+unmeasurable; f2 151 mutually measurable, 354 engine-only unmeasurable,
+1 both unmeasurable, 2 reference-only unmeasurable. All include the gate
+category. The recorded tops, applied crops, appearances and measurement
+eligibility have zero changes against the previous commercial replay.
+Unknowns and disagreements remain; no commercial lock has been acquired
+(comb acquisition is still pending). This is not a capture pass.
+
+Final paced replay: 919 eligible exact units processed and published, zero
+pool/ring/surface drops or counter holes, 930 observations. Native O3 probe,
+452 actual engine calls: median/p95 **2.012/3.423 ms**; classifier plus engine
+**2.363/3.786 ms** (not the whole publishing worker). Final rule-1/3/4 synthetic
+median/p95: 1.250/1.356, 3.240/3.408, 3.227/3.489 ms.
+
+Artifacts: `/private/tmp/v10-switch-review-fixed/registration.csv`, `geometry.csv`,
+`rows.csv`, `units.csv`; exact units and panels under
+`/private/tmp/v10-switch-review-6690/`. Reproduce with the probe command below
+selecting 6667..6690; pass the 6667, 6690 and 6687 raw paths to
+`switch_timing_test`. Compare with `experiments/geometry_oracle/compare_capture.py`
+and `--from-counter 6667`. PGM preview initially failed with
+`unable to process image: invalid or unsupported image data`; a lossless PNG
+conversion in scratch allowed inspection. No program content was committed.
+
+Final sidecar SHA-256:
+`4324346f1b368510f37e8ed140656e5cea48086962ccc0f3bd848710b52c5955`.
+6667 exact-unit SHA-256:
+`ce37480b77cfc4ffe294105f8cc8098d50f4afab294b11c9c583f14be6a908bb`.
+6690 exact-unit SHA-256:
+`6b7ba5de1676745e9f92cd0e7a754c1ed9ff7ee8312bcbf8a33037e251079194`.
+
+## Previous implementation and measurements (af960f1)
 
 This replaces the rejected 35-code MAD / independent-aperture-lag predicate.
 It is an engine measurement under review, not a new reference and not an

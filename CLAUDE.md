@@ -2109,6 +2109,22 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Commercial switch review follow-up:** raw 6667 f1 has T=S=260 (no
+partial); raw 6690 f1 has T=260, S=261. A partial need not expose a complete
+nine-sample blanking window. The engine now requires retained local-normal
+PREFIX evidence before the exposed other-head interval, rather than treating
+a lone trailing blank sample as proof of normal timing. This also removes
+the false full-row veto measured at 6668/6669. No sample position or count
+was typed in. Goldens 44/44 with raw units and ASan/UBSan, synthetic 32/32;
+live gate tests pass. At counter >=6667, 440 of 508 units invoke registration;
+68 remain gated. Actual detector abstentions improve 287→214 / 348→287.
+Against the same saved reference, T agreement improves 46→154 / 26→107;
+S agreement 109→190 / 67→146. Capture 1 still does NOT pass. The saved
+reference still predates its acknowledged 6667 correction. Full method,
+remaining classes, runtime and the correction of a false failing-test claim
+in commit 13981d9 (corrected without rewriting at d83b6d8) are in
+`src/field_registration/tests/SWITCH_TIMING.md`. Signal-state unchanged.
+
 **Commercial switch replacement, under review (not capture acceptance):**
 the 35-code MAD / unrelated-aperture-lag detector is removed. The replacement
 measures blanking relocation against local source timing, including positive

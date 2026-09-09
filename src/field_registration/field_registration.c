@@ -88,13 +88,21 @@ static bool phase_overlap(const horizontal_blanking *a,
     return false;
 }
 
-static bool retains_normal_blanking(const horizontal_blanking *row,
-                                    const horizontal_blanking *basis,
-                                    const uint8_t *informative_columns)
+static bool retains_normal_prefix(const horizontal_blanking *row,
+                                  const horizontal_blanking *basis,
+                                  const horizontal_blanking *full,
+                                  const uint8_t *informative_columns)
 {
-    for(int x=0;x<H_SAMPLES;++x)
+    /* The prefix precedes the exposed other-head blanking, whose position
+     * is measured, not assumed to be at either delivered end. A lone final
+     * blank sample cannot establish that the BEGINNING retained timing.
+     * This is sufficient prefix evidence, not a claim that every partial
+     * exposes such a prefix; otherwise the contract's S fallback remains. */
+    for(int x=0;x<H_SAMPLES;++x) {
+        if(full->support[x])return false;
         if(informative_columns[x] && row->blank_samples[x] &&
            basis->blank_samples[x])return true;
+    }
     return false;
 }
 
@@ -133,7 +141,7 @@ static void measure_switch(const uint8_t *raster, int field,
             if(!history[i].readable)continue;
             /* The envelope admits locally observed phase variance; individual
              * blank samples must instead persist throughout that reference.
-             * Their survival on only part of a row rules out a full departure.
+             * Their survival in a normal prefix rules out a full departure.
              * No leading/trailing sample position is typed in. */
             for(int x=0;x<H_SAMPLES;++x)
                 basis.blank_samples[x]=basis.readable ?
@@ -145,9 +153,15 @@ static void measure_switch(const uint8_t *raster, int field,
         }
         const bool current_full=p.readable && p.complete_interval && basis.readable &&
            !phase_overlap(&p,&basis) &&
-           !retains_normal_blanking(&p,&basis,informative_columns);
-        const bool previous_partial=previous.readable &&
-            retains_normal_blanking(&previous,&basis,informative_columns) &&
+           !retains_normal_prefix(&p,&basis,&p,informative_columns);
+        /* A partial need not expose a complete delivered blanking overlap:
+         * its later portion can lose the porch while the leading remnant
+         * survives. Raw commercial 6690 L260 retains samples 0..2 but has
+         * no nine-sample window. The following full row supplies positive
+         * relocation; the partial supplies a retained normal prefix plus loss
+         * of the normal window. Blank-equivalent rows have no remnant map. */
+        const bool previous_partial=basis.readable &&
+            retains_normal_prefix(&previous,&basis,&p,informative_columns) &&
             !phase_overlap(&previous,&basis);
         /* A preceding row with the same displaced phase must be positively
          * identified as partial. Otherwise it might already be a full row:
