@@ -8,6 +8,13 @@ import sys, numpy as np, collections
 sys.path.insert(0,'/Users/vinylfreak89/Documents/blackmagic-usb-mac/experiments'); from packet_capture_reader import walk_tagged
 UNIT=756_048; HDR=48; LINE=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 CELL=1.986e-6*13.5e6   # 26.81 px
+# CEA-608's clock run-in is seven cycles at 50 IRE peak-to-peak, so 25 IRE peak; at BT.601's 219 codes
+# per 100 IRE that is 54.75 codes. Module level because a second instrument measures the same quantity
+# and must not carry its own copy: switch_geometry.py had a typed 35 whose comment claimed it sat "at
+# the decoder's own gate", and the two silently diverged the moment this one was derived (2026-09-10).
+RUNIN_PEAK_CODES = 50.0/2.0 * 219.0/100.0
+RUNIN_MIN_CODES  = RUNIN_PEAK_CODES/2.0    # a candidate must reach at least half the standard amplitude
+
 def decode(row):
     """row: 720-px luma. Returns (ok, byte1, byte2, info) or (False, None, None, reason)."""
     x=row.astype(np.float64)
@@ -22,8 +29,7 @@ def decode(row):
     # weaker is not a run-in at 50 IRE, whatever else it is. (The old gate was 35, chosen to sit
     # between this tape's two observed populations, real at 52-60 and chance-parity picture lines at
     # 15-22. That is a number fitted to one tape; this one comes from the standard and holds on any.)
-    RUNIN_PEAK_CODES = 50.0/2.0 * 219.0/100.0        # 50 IRE p-p -> 25 IRE peak -> codes
-    if amp < RUNIN_PEAK_CODES/2.0: return (False,None,None,'no run-in')
+    if amp < RUNIN_MIN_CODES: return (False,None,None,'no run-in')
     phase=np.arctan2(s,c)                 # peaks where cos(w n - phase)=1 -> n = (phase+2pi k)/w
     peaks=[(phase+2*np.pi*k)/w for k in range(-2,40)]; peaks=[p for p in peaks if lo<=p<hi+16*CELL+8*CELL]
     # find the run-in extent: consecutive peaks with high value

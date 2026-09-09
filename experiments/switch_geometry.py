@@ -22,7 +22,7 @@ Usage: switch_geometry.py <capture> <out.csv> [--repair] [--units a,b,c (verbose
 import sys, os, csv, argparse, numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
 from packet_capture_reader import walk_tagged
-from cc608_decode import decode as cc608
+from cc608_decode import decode as cc608, RUNIN_MIN_CODES
 UNIT=756_048; HDR=48; LINE=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('out'); ap.add_argument('--repair',action='store_true',help='fields paired one later (V-stabilize-off capture): field 1 = this unit slot 2, field 2 = next unit slot 1')
 ap.add_argument('--units',default=''); ap.add_argument('--only',action='store_true',help='process only the --units (test mode)'); A=ap.parse_args(); VERB={int(x) for x in A.units.split(',') if x}
@@ -170,7 +170,11 @@ def runin_burst(row):
         amp=np.hypot((seg*np.cos(w*n)).sum(),(seg*np.sin(w*n)).sum())*2/len(seg); best=max(best,amp)
     # the burst sits in the left third and the row is flat after it (the run-in line's structure; a picture row with
     # a periodic texture on the left carries content on the right too)
-    return best>=35 and float(x[300:696].std())<=4*max(float(np.diff(x[300:696]).std())/np.sqrt(2),0.5)
+    # The gate is the DECODER's, imported rather than copied. It used to be a typed 35 here with a comment claiming
+    # it sat "at the decoder's own gate"; when that gate was derived from CEA-608 + BT.601 (2026-09-10) this copy
+    # silently kept the old value and the two ran 27.375 against 35 for as long as nobody looked. `best` above is
+    # the same peak amplitude in the same units as the decoder's `amp`, so it takes the same bar.
+    return best>=RUNIN_MIN_CODES and float(x[300:696].std())<=4*max(float(np.diff(x[300:696]).std())/np.sqrt(2),0.5)
 def xds_bar(row):
     """the smeared XDS-like bar (contract section 3; the frozen envelope measured 2026-09-04): 48-bin luma profile, row
     mean < 95, bins 20..47 all <= 40, a run of >= 6 consecutive bins > 60 within bins 0..19"""
