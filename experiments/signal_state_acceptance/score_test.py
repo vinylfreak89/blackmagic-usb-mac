@@ -63,6 +63,31 @@ def main():
     write_log(log4, [dict(counter_extended=BASE, transport="Complete", appearance="ProgramLike",
                           source="Present", applied_d1=0, applied_d2=0, lock_like_loss="0")], True)
     ok("ERROR" in run(log4, fx), "an absent fixture unit is an error")
+    # 5. Codex's three requirements for UNGATED: the fact, not the crop.
+    fx2 = os.path.join(d, "fx2.csv"); fixture(fx2, [(0, 2, "not_program")])
+    def log_ng(path, rows):
+        cols = ["counter_extended", "transport", "appearance", "source", "applied_d1", "applied_d2",
+                "registration_measured", "lock_like_loss"]
+        with open(path, "w", newline="") as h:
+            w = csv.DictWriter(h, fieldnames=cols); w.writeheader()
+            for r in rows: w.writerow({c: r.get(c, "") for c in cols})
+    base = dict(transport="Complete", appearance="SubBlackMuteLike", source="Muted", lock_like_loss="0")
+    # measured with a (0,0) crop must still count as ungated
+    p5 = os.path.join(d, "ng1.csv")
+    log_ng(p5, [dict(base, counter_extended=BASE + i, applied_d1=0, applied_d2=0,
+                     registration_measured=("1" if i == 1 else "0")) for i in range(3)])
+    ok("UNGATED        1" in run(p5, fx2), "measured with a (0,0) crop counts as ungated")
+    # not measured, holding a non-zero crop, must NOT count
+    p6 = os.path.join(d, "ng2.csv")
+    log_ng(p6, [dict(base, counter_extended=BASE + i, applied_d1=2, applied_d2=0,
+                     registration_measured="0") for i in range(3)])
+    ok("UNGATED        0" in run(p6, fx2), "a held non-zero crop with no measurement is not ungated")
+    # absent column is unknown, not a pass
+    p7 = os.path.join(d, "ng3.csv")
+    write_log(p7, [dict(counter_extended=BASE + i, transport="Complete", appearance="SubBlackMuteLike",
+                        source="Muted", applied_d1=0, applied_d2=0) for i in range(3)], False)
+    ok("ERROR" in run(p7, fx2), "a log without registration_measured is an error, not a pass")
+
     print("score_test: PASS")
 
 if __name__ == "__main__":

@@ -13,9 +13,11 @@ device counter - 4511. Three counts, and the gate is that none of them may get w
               from any report. A change is only an improvement if this falls; it may never rise.
   FALSE_MUTE  units the fixture says are programme, that the run gives a mute/no-input label or a
               Muted/NoInput source. Baseline 108, measured the same way. This may never rise.
-  UNGATED     units the fixture says are not normal picture, where the run still applied a
-              registration displacement. Baseline 270. After rule 5 it must be 0 across every
-              not_program range.
+  UNGATED     units the fixture says are not normal picture where registration was MEASURED, read
+              from the log's `registration_measured`. NOT from the applied crop: a gated unit
+              publishes the held crop, often (0,0), and a unit that measured and produced (0,0) is
+              indistinguishable from it, so the crop reading passes a gate that never applied. A log
+              without that column makes this unknowable and is an error, not a pass.
   FALSE_LOSS  units the fixture says are programme, that the run marks snow or a lock-like loss.
               Must be 0. This is a harder failure than a false mute: under rule 5b a lock-like loss
               resets the geometry, so a false one destroys a good lock on real picture. Added
@@ -86,6 +88,7 @@ def main():
     fixture = load_fixture(a.fixture)
     missed, false_mute, ungated, absent, not_applicable = [], [], [], [], []
     false_loss = []
+    ungated_unknown = []
     for first, last, expect, note in fixture:
         for u in range(first, last + 1):
             r = rows.get(u)
@@ -104,11 +107,16 @@ def main():
             if expect.startswith("not_program"):
                 if app == "ProgramLike" and src == "Present":
                     missed.append(u)
-                try:
-                    if int(r.get("applied_d1", 0)) or int(r.get("applied_d2", 0)):
-                        ungated.append(u)
-                except ValueError:
-                    sys.exit(f"ERROR: unparseable applied_d at unit {u}")
+                # Whether registration RAN, never whether a non-zero crop came out. A gated unit
+                # publishes the held crop, which is often (0,0), and a unit that measured and
+                # produced (0,0) looks identical from the applied columns alone. Reading the crop
+                # therefore passes the gate that was never applied (found by Codex on unit 43678:
+                # UNGATED read 0 while that unit had measured). The log's own
+                # `registration_measured` is the fact; its absence is unknown, never a pass.
+                if "registration_measured" not in r:
+                    ungated_unknown.append(u)
+                elif r["registration_measured"] not in ("0", "", "false", "False"):
+                    ungated.append(u)
             elif expect == "program":
                 if app in MUTE_APPEARANCES or src in MUTE_SOURCES:
                     false_mute.append(u)
@@ -127,7 +135,10 @@ def main():
               f"({sorted(not_applicable)[:6]}), so they carry no fixed raster to classify")
     print(f"MISSED     {len(missed):5d}   (baseline 17; must not rise)")
     print(f"FALSE_MUTE {len(false_mute):5d}   (baseline 108; must not rise)")
-    print(f"UNGATED    {len(ungated):5d}   (must be 0 once rule 5 lands)")
+    if ungated_unknown:
+        sys.exit(f"ERROR: {len(ungated_unknown)} fixture units have no `registration_measured` column, "
+                 f"so whether registration ran cannot be established — that is unknown, not a pass")
+    print(f"UNGATED    {len(ungated):5d}   (registration MEASURED on confirmed non-picture; must be 0 after rule 5)")
     if loss_column_present:
         print(f"FALSE_LOSS {len(false_loss):5d}   (must be 0: a lock-like loss on programme resets real geometry)")
     else:
