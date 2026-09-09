@@ -38,21 +38,48 @@ def find_boundary(f, offset: int, depth: int = 16) -> int:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("src"); ap.add_argument("dst")
-    ap.add_argument("--start-bytes", type=int, required=True, help="approximate byte offset to start at (aligned forward to a record)")
+    ap.add_argument("--start-bytes", type=int, required=True, help="approximate byte offset to start at (aligned forward to a whole TRANSFER)")
     ap.add_argument("--video-bytes", type=int, required=True, help="stop after at least this many video (0x83) payload bytes")
     a = ap.parse_args()
     with open(a.src, "rb") as f, open(a.dst, "wb") as o:
         start = find_boundary(f, a.start_bytes)
+        # A record boundary is not enough: a transfer is a GROUP of packets and its members carry
+        # pkt_index 0,1,2,... A slice beginning mid-transfer starts at a non-zero pkt_index, and the
+        # reader rejects that as packet-index errors rather than reading it (measured 2026-09-09:
+        # all four acceptance slices failed provenance with exactly 3 such errors at their leading
+        # edge, so every one of them was cut mid-transfer). Walk forward to the first video record
+        # whose pkt_index is 0, so the slice begins on a whole transfer.
+        f.seek(start); scanned = 0
+        while scanned < 4000:
+            here = f.tell(); h = f.read(HDR.size)
+            if len(h) < HDR.size or not valid_header(h):
+                f.seek(start); break                       # leave it where it was; the reader will complain
+            kind, ep, pkt, _, _, _, alen = HDR.unpack(h)[1:8]
+            if kind == 0 and ep == 0x83 and pkt == 0:
+                start = here; break
+            f.seek(here + HDR.size + alen); scanned += 1
+        f.seek(start)
         note = f"tpc_slice of {a.src} from byte {start}".encode()
         o.write(HDR.pack(MAGIC, 3, 0, 0, 0, 0, len(note), len(note)) + note)
         f.seek(start); video = records = 0; end = start
-        while video < a.video_bytes:
-            h = f.read(HDR.size)
+        # Both ends must land on a whole transfer, not just the start: stopping mid-transfer leaves a
+        # trailing partial group and the reader rejects it the same way (measured 2026-09-09 — fixing
+        # only the leading edge took the error count from 3 to 1). So once enough video has been
+        # taken, keep going until the NEXT video record would begin a new transfer.
+        enough = False
+        while True:
+            here = f.tell(); h = f.read(HDR.size)
             if len(h) < HDR.size: break
             if not valid_header(h): raise SystemExit(f"record chain broke at byte {end}")
-            alen = HDR.unpack(h)[7]; payload = f.read(alen)
+            kind, ep, pkt = HDR.unpack(h)[1], HDR.unpack(h)[2], HDR.unpack(h)[3]
+            alen = HDR.unpack(h)[7]
+            if enough and kind == 0 and ep == 0x83 and pkt == 0:
+                f.seek(here); break
+            payload = f.read(alen)
             o.write(h + payload); records += 1; end += HDR.size + alen
-            if HDR.unpack(h)[1] == 0 and HDR.unpack(h)[2] == 0x83: video += alen
+            if kind == 0 and ep == 0x83:
+                video += alen
+                if video >= a.video_bytes: enough = True
     print(f"wrote {a.dst}: bytes {start}..{end} of {a.src}, {records} records, {video} video payload bytes")
 
 if __name__ == "__main__":

@@ -43,10 +43,15 @@ the hard case and every not-sure class is worked through, never thresholded away
 Blanking bounds the geometry above and below; the picture is the rows between, and a field closes to 240 lines
 (top + 239) whether or not all of them are visible. The reliable geometry is the top of the picture to the row before
 the head switch. The head switch is one of: discontinuous horizontal skew, an RF peak in the luma, or both, plus an
-AGC level mismatch where present; the peak carries the tear with it, so its horizontal position on the line is
+AGC level mismatch where present. **The peak's polarity is not fixed**: it reads as pure white in some units and
+pure black in others, and the cause is unknown (owner, 2026-09-09: "The RF peak isn't always detectable as pure
+WHITE. sometimes its pure BLACK. genuinely unknown to me"), so a detector keyed to one polarity misses the other.
+The peak carries the tear with it, so its horizontal position on the line is
 measured when present; it drifts slowly and never jumps from one side to the other; the TBC can smooth it away and
 render the partial line as picture, and then the band's row count is what survives. The head switch is optional (not
-every source is VHS): "not applicable" is distinct from "unmeasurable". The band is the unreliable part of the
+every source is VHS): "not applicable" is distinct from "unmeasurable". Some recordings show no head switch at all
+— on a line-TBC-corrected pass there is torn horizontal timing below the picture and no switch to find (owner,
+2026-09-09) — so a lock must never be conditioned on one. The band is the unreliable part of the
 geometry; its row count is confirmed by secondary signals (comb between the fields, VBI, captions), ideally more
 than one; the band count alone never moves anything. A whole field can mistime and fall out of the Shuttle's raster:
 cues present one frame and absent the next mean they shifted away, near-certain when the top shifts too (owner, 03:34:41).
@@ -390,8 +395,14 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    (owner, 04:29, and 15:11 "previous geometry (not position) holds through the damage"; both agents at extreme
    confidence, 2026-09-07 15:50 and 21:12).
 3. The line account is conserved; the picture bottom is the row above the switch line; lines past the clip are lost.
-4. The lock's constant, the switch-line count, is taken at the confirmed unit and kept until a reset, never
-   re-learned; a unit that disagrees with it is reported (rule 2). The level of the tape's line 22 is a comparator by
+4. **A lock is acquired on two or more independent observations, at least one of which must be geometry**
+   (owner, 2026-09-09: "lock is 2 or more things, one of which HAS to be geometry. thats what will move a lock to
+   acquired"). The lock's constant, the switch-line count, is taken at the confirmed unit and kept until a reset,
+   never re-learned; a unit that disagrees with it is reported (rule 2).
+   **The switch band is not detectable in every unit even of a clean source. Where it is absent the band is HELD,
+   not removed** — moving where the head switch is, in the absence of a line, is a hold. That hold is invalidated
+   when the number of lines below the detected head switch changes, and then the lock is truly lost (owner,
+   2026-09-09). The level of the tape's line 22 is a comparator by
    running count in a fixed array of eight slots; counts never decrement; the most frequent value is the comparator
    and is replaced by a value whose count passes it (owner, 12:52, 12:55, 20:56). No magic numbers, no per-source
    constants typed in.
@@ -419,12 +430,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 8. The output picture never moves except at a segment's initial lock and after a re-acquisition; field precedence
    (which field's line sits between the other's) is settled once per lock by the comb; a boxed picture's bars are recorded picture rows inside the 240 and change nothing in the account, and the box is
    rendered where the account puts it, centred as the source centred it (owner, 2026-09-05: "letterboxing or any
-   weirdboxing creates its own geometry and that can EASILY be centered in the raster"). **ACCEPTANCE CAPTURE 1 IS A
-   BOXED PICTURE** — the sentence here previously read "no acceptance capture carries a boxed picture, so the class
-   is not exercised", and that is false and is withdrawn (measured 2026-09-09, counter 6700: field 1 carries a
-   structureless band at lines 24-53, content from 55 to 236, a second structureless band at 237-260; field 2 the
-   same shape). The class is exercised by the first capture in the acceptance order, so it is not a deferred edge
-   case. Owner, 2026-09-09: "the top of the picture SHOULD be the [warning card's] 'WARNING' label and the bottom
+   weirdboxing creates its own geometry and that can EASILY be centered in the raster"). The sentence here previously read "no acceptance capture carries a boxed picture, so the class
+   is not exercised", and that is false and is withdrawn: the class IS exercised by the acceptance material, so it
+   is not a deferred edge case. A box's bands, where they fall and how many rows they run, are source dependent and
+   are learned at the lock like any other per-source quantity; no extent belongs here. Owner, 2026-09-09: "the top of the picture SHOULD be the [warning card's] 'WARNING' label and the bottom
    the last text line. everything else is too close to blanking. that should properly end up being a fixed size and
    centered in the middle, which will correct the geometry", and: structurelessness at ONE end lowers confidence and
    needs corroboration, at BOTH ends it fixes the geometry and it is a box. What makes a region structureless is a
@@ -434,9 +443,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    **A head switch separated from the picture by a gap is not measured** (owner, 2026-09-09: "a head switch placed
    below the actual video is unreliable and shouldn't be measured at all", clarified as "where there is a gap between
    the head switch and picture content, not a head switch directly touching the picture"). Where the picture is a
-   box, the region below it carries no RF lift-off point, so there is nothing to time against; measured on counter
-   6700 the gap is 24 rows. Such a unit's switch line is Unknown under rule 6's wording, and the lock's count is not
-   substituted;
+   box, the region below it carries no RF lift-off point, so there is nothing to time against. Such a unit's switch
+   line is Unknown under rule 6's wording, and the lock's count is not substituted;
    black level is never assumed. Snow-like signal, splices and relocks are delivered by the signal-state layer; the
    engine reads the raster only.
 9. Blank lines under the picture could indicate that the field sits high and need confirmation against the comb
@@ -449,7 +457,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    field and inside the count; a change against it is the evidence, confirmed by the comb. After a displacement is applied the settled comb stands and
    must agree again at the moved crop. A field partly out of the raster is a displacement of that field, tracked and
    confirmed; a field with no measurable picture while the other field's picture continues is a hidden edge (rule
-   6; measured on fixture A at 24:17, one field black); snow-like signal is a unit event of the signal-state layer,
+   6; one field black while the other carries picture); snow-like signal is a unit event of the signal-state layer,
    both fields (owner, 15:11: "why would there be snow in one field but not the other"). Switch
    lines past the clip are counted by the account: the count is fixed for a field, so with the picture lower by d
    the band's extent is the count minus d. (The line-account interpretations here were resolved by both agents at 15:50 —
