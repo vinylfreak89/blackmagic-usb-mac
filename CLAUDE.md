@@ -2374,6 +2374,28 @@ lock (which is what rule 4 does for every other per-source quantity) or re-measu
 the contract previously recorded the bottom band ending at line 260 against this census's 264, the difference
 being exactly the head-switch region that rule 8 says is not measured when a gap separates it.
 
+**Where the box's bottom lands relative to the head-switch band — measured 2026-09-10, and it is the owner's clean
+case** (`experiments/box_vs_switch.py`, joining `box_census.py --csv` against the switch reference on
+(counter, field)). His question and his acceptance, 2026-09-09T18:25:05Z: "my HOPE is that it lands above the head
+switch band, in which case its clean. if it doesn't land above the head switch band consistently, then yeah we have
+a problem." Over the whole commercial capture including its fades:
+
+| field | boxed units measurable | box bottom ABOVE the band | content INTO the band | gap mode | spread |
+|---|---:|---:|---:|---:|---|
+| 1 | 154 | **154 (100%)** | 0 | 23 rows | 22–26 |
+| 2 | 152 | **152 (100%)** | 0 | 23 rows | 23–24 |
+
+The spread falls where the fades are — the early dim pass at 6259–6267, and the first and last few units of the
+6665–6810 run — and it moves the gap by a row or three, never toward the band. **The result does not depend on the
+census's fitted `--threshold`:** swept at 4.0, 4.5 and 8.0, the full range over which the box verdict itself holds,
+every one gives 154/154 and 152/152 with the box counts identical (159 field 1, 160 field 2), and counter 6731's
+extent moves only 31→32 rows above and 28→29 below across that whole range. So the SIGN — above versus into — has
+22+ rows of margin and survives the one constant it rests on, even though the census separately documents the
+extent growing 5–10 rows on the dim pass.
+⚠️ **Thirteen boxed units have NO measurable band and are excluded from both denominators, not counted as passes**
+(field 1: 6253, 6254, 6257, 6259, 6268; field 2: those plus 6042, 6674, 6776). The question cannot be asked of them.
+⚠️ The boxed units are not one stretch: 6253–6254, 6257, 6259–6268, then 6665–6810.
+
 **The comb across all four acceptance captures (Claude, 2026-09-09, `experiments/comb_census.py`;
 verdicts checked against woven raw rows with `experiments/weave_panel.py`, units selected BY verdict
 with `experiments/comb_per_unit.py`).** The metric weaves field 1 from line 23 against field 2 from
