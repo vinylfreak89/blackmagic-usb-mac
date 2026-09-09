@@ -68,8 +68,9 @@ harness reads T=260 in all six units — wrong in all six.** Since 260 IS the mo
 `|T − mode| ≤ 1` passes: no stability measure taken tonight can see this class of error. Stable is not correct.
 
 **SCOPED, and it is LOCAL — the systematic-error alarm above is withdrawn** (`experiments/displaced_row_census.py`,
-which detects both morphologies of relocated blanking, with bounds from the contract's own NTSC figures and the
-blank level from each field's own regenerated rows, sharing no code with the harness):
+which detects both morphologies of long blank-level run, with bounds carried over from `switch_geometry.py` — NOT
+the contract's, see the correction below — and the blank level from each field's own regenerated rows, sharing no
+code with the harness):
 
 | first relocated-blanking row vs the harness's `S` | readings |
 |---|---:|
@@ -152,7 +153,8 @@ the whole scan, not an assertion about which row is the true band" does not weak
 one an independent instrument identifies, and that instrument reads `S` exactly in 1,012 of 1,013 readings here.
 
 The shape of the finding: the engine has one observable for the switch where the contract describes two. §3
-carries the blanking-inside-the-row observable explicitly, bounded by NTSC at 64–200 samples. Whether it should
+carries the blanking-inside-the-row observable explicitly; its 64–200 bounds are the HARNESS's, and what the
+contract gives is the 10.9 µs interval (~147 samples at 13.5 MHz). Whether it should
 be a fallback when the phase test abstains, a corroborator, or something else is a design question for the engine
 side; put to Codex 2026-09-10, its position owed.
 
