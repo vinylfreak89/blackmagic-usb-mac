@@ -33,8 +33,16 @@ from packet_capture_reader import walk_tagged
 UNIT = 756_048; HDR = 48; LINE = 1440; LINES = 525; MARK = b"\x00\x00\xff\xff"
 SLOT = {1: (16, 279), 2: (279, 525)}
 CLIP = {1: 262, 2: 525}
-RUN_MIN = 64      # 4.7 us sync pulse at 13.5 MHz — a correctly timed row's ~9 in-window samples cannot reach it
-RUN_MAX = 200     # H blanking is 10.9 us; a longer run is not a relocated blanking interval
+import os
+# ⚠️ Both bounds are the HARNESS's, carried over from switch_geometry.py — NOT the contract's. What the contract
+# gives is the 10.9 us horizontal blanking interval, about 147 samples at 13.5 MHz.
+# The CEILING is measured harmful and is now off by default (2026-09-10). It produced the last remaining
+# discrepancy this census reported: at commercial 6907 f1 the harness reads S=261 and the ENGINE AGREES, and
+# line 261 carries a blank-level run of 205 samples — above the old 200 ceiling — so the census skipped the
+# correct row and reported the next one. A run can exceed the 147-sample interval when adjacent content also sits
+# near blank level, which is the same reason a blank-level run is not proof of relocated blanking.
+RUN_MIN = int(os.environ.get('CENSUS_RUN_MIN', '64'))
+RUN_MAX = int(os.environ.get('CENSUS_RUN_MAX', '100000'))
 
 ap = argparse.ArgumentParser()
 ap.add_argument("cap"); ap.add_argument("ref")
@@ -108,7 +116,7 @@ print(f"harness units loaded {len(har)} | units walked {seen[0]} | field-reading
 if not res:
     print("NOTHING CLASSIFIED — the census measured nothing, do not read anything into the absence")
     sys.exit(1)
-print(f"blank-run window {RUN_MIN}..{RUN_MAX} samples, level = the field's own regenerated blanking rows\n")
+print(f"blank-run window {RUN_MIN}..{RUN_MAX} samples (ceiling off by default), level = each field's own blanking rows\n")
 print("first row carrying relocated blanking, against BOTH the band top T and the first full row S:")
 for k, n in sorted(res.items(), key=lambda kv: -kv[1]):
     print(f"   {n:5d}  {k}")
