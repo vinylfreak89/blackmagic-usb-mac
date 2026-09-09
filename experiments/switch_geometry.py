@@ -39,11 +39,17 @@ SPAN_FLOOR=int(os.environ.get('SG_SPAN_FLOOR', 2*MAXLAG))
 # independently: "Horizontal tearing is not a geometry event", and torn selects rows whose lag varies along the
 # line, which is what horizontal tearing is. Set SG_TORN_SELECTS=1 to restore it for a comparison.
 TORN_SELECTS=os.environ.get('SG_TORN_SELECTS','0')!='0'
-# STEP_SELECTS: whether a whole-row lag alone may make a row the switch line, same question as TORN_SELECTS and
-# measured the same way. Default ON pending that measurement -- unlike torn, step may be load-bearing, and the
-# M_run slack is the standing reminder that a tidier rule which changes readings is a regression until the
-# independent census says otherwise.
-STEP_SELECTS=os.environ.get('SG_STEP_SELECTS','1')!='0'
+# STEP_SELECTS: whether a whole-row lag alone may make a row the switch line. DEFAULT OFF, measured 2026-09-10.
+# The independent census reads 963 of 1,013 with both step and torn selecting, 1,009 with torn off, and 1,012
+# with both off; the single survivor is 6907 f1, inside the same window, so the 845 readings outside it are exact
+# throughout. The concern before measuring was that step might be load-bearing on the line-TBC-off regime, where
+# the contract records whole-line displaced rows -- but capture 1 IS that regime (CLAUDE.md: composite_program_30s
+# was taken with V-stabilize/line TBC OFF), so the case at risk is the case measured, and it improves.
+# The physics says the same: TBC-off rows are displaced a median of 192 samples while the lag search is bounded
+# at +-MAXLAG = 24, so step CANNOT see a real head-switch displacement -- it aliases. What finds those rows is the
+# physical relocated-blanking test. Step, like torn, can only fire on sub-switch-scale timing wobble, and contract
+# rule 6 says horizontal tearing is not a geometry event. Set SG_STEP_SELECTS=1 to restore it for a comparison.
+STEP_SELECTS=os.environ.get('SG_STEP_SELECTS','0')!='0'
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('out'); ap.add_argument('--repair',action='store_true',help='fields paired one later (V-stabilize-off capture): field 1 = this unit slot 2, field 2 = next unit slot 1')
 ap.add_argument('--units',default=''); ap.add_argument('--only',action='store_true',help='process only the --units (test mode)'); A=ap.parse_args(); VERB={int(x) for x in A.units.split(',') if x}
 SLOT={1:(16,279),2:(279,525)}     # unit rows of each slot (line 20.. / 283..); blank reference rows 7..15 / 270..278
