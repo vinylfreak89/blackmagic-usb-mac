@@ -53,7 +53,11 @@ int main(int argc, char **argv)
         memset(&decision, 0, sizeof decision);
         assert(fieldreg_process(&engine, unit, &decision));
         const fieldreg_field_decision *field = &decision.field[0];
-        assert(field->applied_d == expected_d[i]);
+        /* The line account is measured, but these caption-free units have
+         * no decisive comb. Measurement alone cannot apply a displacement. */
+        assert(field->lock_state == FIELDREG_LOCK_UNLOCKED);
+        assert(field->applied_d == 0);
+        assert(field->measured_d == expected_d[i]);
         assert(field->raw_top == expected_top[i]);
         assert(field->recorded_last == 258);
         assert(field->switch_measurable);

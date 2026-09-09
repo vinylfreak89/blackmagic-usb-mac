@@ -23,6 +23,10 @@ int main(void)
         check("unlocked hold is labelled",
               d.field[0].reason == FIELDREG_MODE_ACQUIRING &&
               d.field[1].gauge == FIELDREG_GAUGE_HOLD);
+        check("baseline and temporal crop are the held output",
+              d.baseline_d1 == 0 && d.baseline_d2 == 0 &&
+              engine.previous_crop[0] == FIELDREG_FIELD1_START &&
+              engine.previous_crop[1] == FIELDREG_FIELD2_START);
     }
 
     /* The gate must not turn the existing comb acquisition into a dead end:

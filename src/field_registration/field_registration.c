@@ -566,6 +566,28 @@ static comb_reading comb_search(const field_registration *e,const int start[2],
     result.measured=unique;result.shift=best;return result;
 }
 
+/* Rule 8: geometry is an observation before a lock, not an applied crop.
+ * Both acquisition paths run before this commit point. The comb may test a
+ * proposed crop, but only a lock can commit it to analysis-owned placement. */
+static void apply_locked_geometry(field_registration *e, fieldreg_decision *out)
+{
+    for (int f = 0; f < 2; ++f) {
+        fieldreg_field_decision *d = &out->field[f];
+        if (e->field[f].lock_state == FIELDREG_LOCK_UNLOCKED) {
+            d->applied_d = e->field[f].last_applied;
+            d->gauge = FIELDREG_GAUGE_HOLD;
+            if (d->measured_d != FIELDREG_UNKNOWN)
+                d->reason = FIELDREG_MODE_ACQUIRING;
+        } else {
+            e->field[f].last_applied = d->applied_d;
+        }
+    }
+    out->applied_d1 = out->field[0].applied_d;
+    out->applied_d2 = out->field[1].applied_d;
+    out->baseline_d1 = out->applied_d1;
+    out->baseline_d2 = out->applied_d2;
+}
+
 static void comb_confirm(field_registration *e,const uint8_t *raster,
                          const field_measurement m[2],fieldreg_decision *out)
 {
@@ -576,26 +598,19 @@ static void comb_confirm(field_registration *e,const uint8_t *raster,
         begin[f]=m[f].top>=0?m[f].top:start[f];
         end[f]=m[f].switch_measurable?m[f].bottom:m[f].recorded_last;
     }
+    bool settled=e->parity_state==FIELDREG_PARITY_CALIBRATED;
+    const bool was_settled=settled;
+    int bias=settled?e->comb_zero_candidate:-1;
+    comb_reading standard={0}, r={0};
     if(e->previous_luma_valid){
-        bool settled=e->parity_state==FIELDREG_PARITY_CALIBRATED;
-        int bias=settled?e->comb_zero_candidate:-1;
-        comb_reading standard={0};
         if(!settled){
             const int nominal[2]={FIELDREG_FIELD1_START,FIELDREG_FIELD2_START};
             standard=comb_search(e,nominal,begin,end,-1);
         }
-        comb_reading r=(!settled && out->applied_d1==0 && out->applied_d2==0)?
+        r=(!settled && out->applied_d1==0 && out->applied_d2==0)?
                          standard:comb_search(e,start,begin,end,bias);
-        out->comb_check=FIELDREG_COMB_FLAT;
-        out->comb_best_energy=r.best;out->comb_second_energy=r.second;
-        out->comb_static_fraction=r.fraction;
-        out->comb_unresolved_alternatives=r.unresolved;
-        if(r.fraction>0)out->comb_candidate_shift=(int16_t)(r.shift-(settled?bias:(r.shift==1?1:0)));
         if(r.measured){
             int order=settled?bias:(r.shift==1?1:0);
-            out->parity_bias=(int8_t)order;
-            out->comb_best_shift=(int16_t)(r.shift-order);
-            out->comb_check=out->comb_best_shift==0?FIELDREG_COMB_AGREE:FIELDREG_COMB_DISAGREE;
             int standard_order=standard.shift-(out->applied_d2-out->applied_d1);
             if(!settled && r.shift==order && standard.measured && standard_order==order &&
                m[0].geometry_measurable && m[1].geometry_measurable &&
@@ -614,6 +629,29 @@ static void comb_confirm(field_registration *e,const uint8_t *raster,
                     out->field[f].switch_count_agrees=true;
                 }
             }
+        }
+    }
+    apply_locked_geometry(e,out);
+    const int applied[2]={FIELDREG_FIELD1_START+out->applied_d1,
+                          FIELDREG_FIELD2_START+out->applied_d2};
+    if(e->previous_luma_valid){
+        /* Acquisition above inspected the geometry proposal. If the gate
+         * rejected it, report the comb on the HELD crop, not that proposal.
+         * Reuse the already measured standard reading when applicable. */
+        if(applied[0]!=start[0] || applied[1]!=start[1])
+            r=(!was_settled && out->applied_d1==0 && out->applied_d2==0)?
+                standard:comb_search(e,applied,begin,end,
+                                     settled?e->comb_zero_candidate:-1);
+        out->comb_check=FIELDREG_COMB_FLAT;
+        out->comb_best_energy=r.best;out->comb_second_energy=r.second;
+        out->comb_static_fraction=r.fraction;
+        out->comb_unresolved_alternatives=r.unresolved;
+        int order=settled?e->comb_zero_candidate:(r.shift==1?1:0);
+        if(r.fraction>0)out->comb_candidate_shift=(int16_t)(r.shift-order);
+        if(r.measured){
+            out->parity_bias=(int8_t)order;
+            out->comb_best_shift=(int16_t)(r.shift-order);
+            out->comb_check=out->comb_best_shift==0?FIELDREG_COMB_AGREE:FIELDREG_COMB_DISAGREE;
             out->comb_safe=settled && out->comb_check==FIELDREG_COMB_AGREE;
             out->parity_state=settled && out->comb_check==FIELDREG_COMB_DISAGREE?
                               FIELDREG_PARITY_DRIFT:e->parity_state;
@@ -621,7 +659,7 @@ static void comb_confirm(field_registration *e,const uint8_t *raster,
     }
     if(e->parity_state==FIELDREG_PARITY_CALIBRATED)out->parity_bias=(int8_t)e->comb_zero_candidate;
     memcpy(e->previous_luma,e->current_luma,sizeof e->previous_luma);
-    for(int f=0;f<2;++f){e->previous_crop[f]=(int16_t)start[f];
+    for(int f=0;f<2;++f){e->previous_crop[f]=(int16_t)applied[f];
         e->previous_begin[f]=(int16_t)begin[f];e->previous_end[f]=(int16_t)end[f];}
     e->previous_luma_valid=true;
 }
@@ -643,8 +681,8 @@ static void v10_reset_field(fieldreg_field_state *state, bool reset_applied,
     state->last_applied = applied;
     /* A source lock does not exist until current-unit geometry is confirmed
      * at a unit whose switch line and band are measurable (contract rule 4).
-     * The standard origin remains state, never authority over a measurable
-     * current-unit edge. */
+     * The standard origin is the applied crop until confirmation; a measured
+     * current-unit edge remains an observation even while application holds. */
     state->lock_state = FIELDREG_LOCK_UNLOCKED;
     state->zero_source = FIELDREG_ZERO_STANDARD;
     state->lock_id = lock_id;
@@ -808,7 +846,6 @@ static void v10_decide_field(fieldreg_field_state *state,
             decision->applied_d = (int8_t)geometry_d;
             decision->reason = FIELDREG_MODE_GEOMETRY_PLACEMENT;
             decision->gauge = FIELDREG_GAUGE_GEOMETRY;
-            state->last_applied = (int8_t)geometry_d;
             state->previous_measured_top = measurement->top;
         } else {
             decision->applied_d = state->last_applied;

@@ -2113,6 +2113,19 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Unlocked placement gate (rule 8):** the eleven commercial field-2 movements
+with no lock are removed at application, without changing the raw top detector.
+Caption and comb acquisition run before the per-field gate; an unlocked field
+holds the analysis-owned crop, standard after reset. Rejected proposals remain
+measurements, and comb diagnostics/temporal crop describe actual application.
+Failing-first `8ea7dbb`: 12/20; fixed golden with baseline/witness checks 24/24,
+also ASan/UBSan. Commercial live replay: 930 observations, 919 exact/published,
+zero drops; nonzero applied d1/d2 and geometry_lock_known all zero. All eleven
+raw nonzero f2 observations remain, labelled Acquiring. Source, eligibility,
+raw tops and switch measurements unchanged. Worker median/p95 2.509/14.111 ms
+overall, 9.140/16.330 ms on registration calls; budget not passed. Scope,
+obsolete test assertions, replay and SHA: `src/field_registration/tests/UNLOCKED_PLACEMENT.md`.
+
 **Static-mask follow-up, diagnostic not production:** per-field real-static-patch
 maxima replace generated blanking only in the experiment: commercial 107/100,
 SP 173/162, SP-off 154/146 summed eight-pixel codes. Seven named raw controls

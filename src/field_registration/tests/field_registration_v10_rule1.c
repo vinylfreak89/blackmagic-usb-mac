@@ -56,9 +56,14 @@ int main(int argc, char **argv)
         fieldreg_decision decision;
         memset(&decision, 0, sizeof decision);
         assert(fieldreg_process(&engine, unit, &decision));
-        assert(decision.applied_d1 == expected_d[i]);
+        /* These fixtures have no measurable switch and never acquire a
+         * lock. Rule 1 preserves their geometry and caption disagreement;
+         * rule 8 forbids applying the unconfirmed nonzero observation. */
+        assert(decision.field[0].lock_state == FIELDREG_LOCK_UNLOCKED);
+        assert(decision.applied_d1 == 0);
+        assert(decision.field[0].measured_d == expected_d[i]);
         assert(decision.field[0].geometry_d == expected_d[i]);
-        assert(decision.field[0].gauge == FIELDREG_GAUGE_GEOMETRY);
+        assert(decision.field[0].gauge == FIELDREG_GAUGE_HOLD);
         assert(decision.field[0].caption_confirmation ==
                expected_confirmation[i]);
     }
