@@ -1463,7 +1463,9 @@ delivery edge; wrong one at acquisition.
   owner decision 2026-09-04 (after a same-day false alarm and reversal):** **720×480 is clean
   aperture**: crop origin rows 19/282 = lines 23/286 (SMPTE RP-202's 480-line lattice 23–262 /
   286–525); captions are not in the 480 render. **720×486 is an alternate output mode** (to be
-  added to the publisher and the OBS source): lines 21–263 / 283–525, captions kept in the
+  added to the publisher and the OBS source): lines 20–262 / 283–525 (corrected 2026-09-09 from
+  21–263 / 283–525, which was an offset of 262 against the raster's 263 and rendered field 2 one
+  line displaced), captions kept in the
   picture for downstream decoding. In both modes the PICTURE ORIGIN 19/282 is where registration
   measures and what "d = 0" means. **The tape's real line 21 (seven-cycle run-in, start bit,
   two parity bits) is the golden alignment reference: correctly placed, it sits exactly on the

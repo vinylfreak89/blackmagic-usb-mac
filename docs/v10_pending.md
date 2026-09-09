@@ -101,13 +101,7 @@ Neither agent may resolve these; the process sends contract conflicts to him.
    only when the total number of bands changes, ordinary clipping excluded. A change of geometry — box to full
    picture or back — resets the lock.
 
-4. **The contract's 486 crop is off by one and needs his confirmation to correct.** It specifies lines 21–263 and
-   283–525 — an offset of 262 where the field spacing is 263 — and calls the raster asymmetric. Measured, the
-   raster is symmetric (both fields: timing insert, caption insert, regenerated black, picture, spaced 263) and
-   the CROP is what is asymmetric. It puts the two caption lines three rows apart instead of adjacent and drops
-   field 1's line 20 while keeping field 2's line 283, which is exactly what he saw in the first render. Corrected
-   in the renderer to 20–262 / 283–525; the contract sentence is not edited by one agent.
-
+~~4. The contract's 486 crop is off by one~~ — CONFIRMED and corrected 2026-09-09.
 ~~4. Rule 8's box-validity wording is owed~~ — the bounds where a box is valid and where it is invalidated. Neither
    agent should write it. Asked and explained; answer pending.
 ~~5. Is VBI a confirmation signal alongside captions?~~ The owner raised it himself: "isn't VBI another confirmation

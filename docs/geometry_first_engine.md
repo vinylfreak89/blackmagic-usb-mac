@@ -514,9 +514,15 @@ watch copy is the live path's output with its record burned in. No work product 
 picture shift. the one with the running line and number at the bottom, rendered as bwdiff, not nnedi3", and "plus
 all the decision information ... the last type of output this thread was last producing, tweaked slightly". So the
 deliverable review copy of a capture is one frame per unit carrying: the 720×486 output as placed (CLAUDE.md §11's alternate
-mode: lines 21–263 and 283–525, 243 lines per field; against the 480-line crop that is lines 21–22 above and 263
-below in field 1, and 283–285 above in field 2 — the 486 raster is asymmetric — so what landed on the caption and
-VBI rows is visible); the 525-line raster beside it, showing where the picture sits in the raster; and BELOW the
+mode: lines 20–262 and 283–525, 243 lines per field, so each field carries its timing insert, its caption insert
+and its regenerated black above the picture — three lines above and none below, in both fields, and the field
+offset is 263 like every other pair in the raster. So what landed on the caption and VBI rows is visible.
+**Corrected 2026-09-09** (owner: "yes that is the right crop"): this previously read 21–263 / 283–525 and called
+the 486 raster asymmetric. The raster is not asymmetric — measured on a raw unit both fields carry timing insert,
+caption insert, regenerated black and picture at the same relative positions — the CROP was, by one line: field 1
+from 21 against field 2 from 283 is an offset of 262. It put the two caption lines three output rows apart instead
+of adjacent and dropped field 1's line 20 while keeping field 2's line 283, which is how the owner saw field 2 as
+displaced by one in the first review copy); the 525-line raster beside it, showing where the picture sits in the raster; and BELOW the
 picture, never over it, the metrics band of `experiments/overlay_sidecar.py` — the per-field statistics on the left
 (reason colour-coded, gauge with its line and decoded bytes, geometry d, raw top and bottom, lock state with the
 source-lock provenance, the lock's fixed switch-line count, the measured clip line, the conservation equation) and on the right a graph of the applied shift across the
