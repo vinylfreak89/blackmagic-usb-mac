@@ -96,6 +96,34 @@ A callback or filesystem operation that never returns can still prevent a
 complete drain. Arbitrary callback threads are not forcibly cancelled or freed
 underneath. Analysis isolation does not claim cancellable consumer code.
 
+### Open before shipping: fatal completion and bounded shutdown
+
+Review finding A is accepted and **not fixed by this queue commit**.
+`complete_log` currently calls `abort()` on an epoch/ordinal mismatch. The pending
+slot invariant prevents that mismatch in correct execution, but killing OBS is
+not an acceptable failure policy. The follow-up is a named frameserver fatal
+session outcome, not process termination: stop admission, request capture stop
+from a control context (never join the current worker), mark the sidecar
+incomplete, and report the fatal reason through the session's end notification.
+Never complete the mismatching slot under a guessed identity. The test must
+inject a mismatched completion, keep the host alive, report the named error,
+and prove that neither a pending-row deadlock nor slot reuse follows. The wake
+helpers' unexpected-error `abort()` paths need the same host-safe policy.
+
+Review finding B is also accepted and **open**, not satisfied by analysis
+isolation. A permanently blocked publisher leaves a pending log row and prevents
+`publication_done`, log drain, `on_end`, and `fs_stop` from completing. Proposed
+policy: a caller-specified shutdown deadline; at expiry return a distinct
+incomplete/timeout result without waiting for the sink, stop further deliveries,
+and quarantine the still-owned worker/session resources until that callback
+returns. Do not free its buffer, unload its code, or forcibly cancel arbitrary
+consumer code. A permanent callback may therefore retain quarantined resources;
+unconditional reclamation would require process isolation, not another queue.
+Terminal/error notification must remain deliverable without the stuck worker,
+and distinguish timeout from successful drain. This needs an explicit lifecycle
+API change and a barrier-controlled never-returning-sink test before shipping;
+no deadline value or successful bounded-shutdown claim is made here.
+
 Schema **18** appends `epoch`; existing ordinal/counter and decision columns
 remain. The `published` bit is the actual completed publication outcome.
 `applied_d1/d2` name the immutable chosen crop even for an undelivered unit.

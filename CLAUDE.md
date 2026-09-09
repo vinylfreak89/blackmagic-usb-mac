@@ -2109,6 +2109,27 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Capture-1 comb disagreement reproduced, not fixed:** the independent C probe
+reproduces the harness's current-raster positive-product census exactly:
+506/508 minima at zero, median margin 3.390436. Raw controls 6667/6687/6690/6700
+weave cleanly at zero. The engine's eight-pixel energy also prefers zero before
+static masking. Its generated-blanking temporal tolerance retains only
+0.81–1.60% of common local support at 6687/6690/6700, mean luma 1.48–2.19;
+the retained local minima are +1/-1/-2. Separately, remote overlaps of as few
+as five blocks defeat nominal zero. Both mask and full-range dominance fail,
+not just search size. Production comb unchanged; capture 1 not accepted.
+Scalar probe, ablations, reproduction and timing:
+`src/field_registration/tests/COMB_COMPARISON.md`.
+
+**Queue review follow-up — open before shipping:** accepted findings A/B on
+b555868: a mis-joined completion currently aborts the host, and a permanently
+blocked sink prevents shutdown drain. Neither is fixed by queue isolation.
+Proposed follow-ups are a named fatal session outcome (also for wake errors),
+and caller-deadlined shutdown with explicit timeout/incomplete reporting and
+quarantined still-owned resources, never freeing/cancelling a live callback.
+Deciding fault-injection tests and the lifecycle policy are recorded under
+`src/frameserver/QUEUES.md` "Open before shipping".
+
 **v10 asynchronous output ownership:** analysis now owns its last decided crop,
 including across failed deliveries; publication cannot change that crop or the
 engine's temporal witness. Independent output slabs (16-unit default) and binary
