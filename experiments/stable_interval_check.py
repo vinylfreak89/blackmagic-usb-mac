@@ -29,9 +29,13 @@ for f in ('1','2'):
     print(f'  how  {dict(collections.Counter(r["how"] for r in R).most_common())}')
     ch=lambda seq:[(R[i]['counter'],a,b) for i,(a,b) in enumerate(zip(seq,seq[1:])) if a!=b and a>=0 and b>=0]
     ct,cs,cb=ch(tops),ch(Ss),ch(bots)
-    print(f'  measurable-to-measurable changes: top {len(ct)} {ct[:10]} | S {len(cs)} {cs[:10]} | crop_last {len(cb)} {cb[:10]}')
+    # NOT the CSV's S column: `S_first_shifted` falls back to T above, so everything this script calls "S" is the
+    # band's TOP switch line. Printing it as S cost a real investigation on 2026-09-10 — the CSV's S was identical
+    # across two references while this count moved 49 -> 33, which reads as two instruments contradicting each
+    # other until you find the fallback. Label it for what it is.
+    print(f'  measurable-to-measurable changes: top {len(ct)} {ct[:10]} | T(band top; legacy col "S") {len(cs)} {cs[:10]} | crop_last {len(cb)} {cb[:10]}')
     offt=[(R[i]['counter'],t) for i,t in enumerate(tops) if t>=0 and t!=mt]; offs=[(R[i]['counter'],s) for i,s in enumerate(Ss) if s>=0 and abs(s-ms)>1]
     noS=[R[i]['counter'] for i,(t,s) in enumerate(zip(tops,Ss)) if t>=0 and s<0]
-    print(f'  top != mode: {len(offt)} {offt[:20]} | |S - mode| > 1: {len(offs)} {offs[:20]} | measurable top but no S: {len(noS)} {noS[:10]}')
+    print(f'  top != mode: {len(offt)} {offt[:20]} | |T - mode| > 1: {len(offs)} {offs[:20]} | measurable top but no T: {len(noS)} {noS[:10]}')
     bad+=len(offt)+len(offs)
 print('STABLE_INTERVAL_VIOLATIONS',bad); sys.exit(1 if bad else 0)
