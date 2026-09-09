@@ -23,7 +23,8 @@ static void sample(int row, int x, unsigned y)
     raster[(size_t)row * FIELDREG_BYTES_PER_LINE + 2*x+1] = (uint8_t)y;
 }
 
-static void synthetic(unsigned blank, int partial, bool complete_partial)
+static void synthetic(unsigned blank, int partial, bool complete_partial,
+                      bool exposed_partial_blanking)
 {
     /* These are constructed input values, not detector parameters. Blanking
      * may be at a different level; picture brightness changes without timing.
@@ -42,7 +43,8 @@ static void synthetic(unsigned blank, int partial, bool complete_partial)
                 if (x>=80 && x<227) y=blank;
             } else if (row==t && x>=360) {
                 y=blank+18+(x*3)%5;
-                if (complete_partial ? (x>=400 && x<547) : (x>=560 && x<610)) y=blank;
+                if (exposed_partial_blanking &&
+                    (complete_partial ? (x>=400 && x<547) : (x>=560 && x<610))) y=blank;
             }
             sample(row,x,y);
         }
@@ -112,30 +114,38 @@ static void raw_unit(const char *path)
     if (!in) { perror(path); ++failures; return; }
     uint8_t unit[FIELDREG_UNIT_BYTES];
     if(fread(unit,1,sizeof unit,in)!=sizeof unit || !valid_unit(unit) ||
-       read_le16(unit+4)!=6687) {fprintf(stderr,"invalid raw 6687 unit\n");exit(2);}
+       (read_le16(unit+4)!=6687 && read_le16(unit+4)!=6667 &&
+        read_le16(unit+4)!=6690)) {fprintf(stderr,"invalid adjudicated raw unit\n");exit(2);}
+    const unsigned counter=read_le16(unit+4);
     memcpy(raster,unit+FIELDREG_HEADER_BYTES,sizeof raster);
     if(fgetc(in)!=EOF || ferror(in))exit(2);
     fclose(in);
-    for(int f=0; f<2; ++f) {
+    /* 6667/6690 were adjudicated in field 1 only; do not manufacture a
+     * field-2 expectation from either instrument's unreviewed output. */
+    for(int f=0; f<(counter==6687?2:1); ++f) {
         field_measurement m; measure_field(raster,f,&m);
-        printf("6687 f%d: T=%d S=%d bottom=%d clip=%d\n",f+1,
+        printf("%u f%d: T=%d S=%d bottom=%d clip=%d\n",counter,f+1,
                m.switch_line<0?-1:m.switch_line+4,
                m.first_full_other_head_line<0?-1:m.first_full_other_head_line+4,
                m.bottom<0?-1:m.bottom+4,m.recorded_last+4);
-        check("6687 partial",m.switch_line,f?518:256);
-        check("6687 full",m.first_full_other_head_line,f?519:257);
-        check("6687 bottom",m.bottom,f?517:255);
+        check("adjudicated switch",m.switch_line,f?518:256);
+        check("adjudicated full",m.first_full_other_head_line,
+              f?519:(counter==6667?256:257));
+        check("adjudicated bottom",m.bottom,f?517:255);
     }
 }
 
 int main(int argc,char **argv)
 {
-    synthetic(2,256,false);
-    synthetic(17,248,false);
-    synthetic(2,256,true);
+    synthetic(2,256,false,true);
+    synthetic(17,248,false,true);
+    synthetic(2,256,true,true);
+    /* Like raw 6690: a partial retains its normal leading blanking, loses
+     * the trailing part, and exposes NO interior blanking interval. The
+     * following full row supplies the positive relocation evidence. */
+    synthetic(2,256,false,false);
     negative_controls();
-    if(argc==2)raw_unit(argv[1]);
-    else if(argc!=1)return 2;
+    for(int i=1;i<argc;++i)raw_unit(argv[i]);
     printf("SWITCH-TIMING: %u/%u passed\n",checks-failures,checks);
     return failures?1:0;
 }
