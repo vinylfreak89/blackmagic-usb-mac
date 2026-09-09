@@ -218,8 +218,29 @@ causes with nothing left over:
   by uninterrupted alphabet: 8. **42 of the 50 are split below 147.** The earlier reasoning — 1.0% of 36,190
   samples outside, therefore not the obstacle — measured frequency and inferred a mechanism from it.
 
-These are different fixes: one says the evidence is not in the window, the other says it is there and the
-predicate is brittle to a few scattered codes. **The 42 are the tractable half.**
+⚠️ **"Two nested causes" and "the 42 are the tractable half" are BOTH WRONG — Codex's cross-tab, 2026-09-10.**
+The counts reproduce exactly, but they are not separate physical causes: **33 of the 42 are edge-connected even
+with tolerance**, and 36 of the 205 short runs start inside the window.
+
+| longest-run result | starts 0 | starts 1–2 | starts ≥3 | total |
+|---|---:|---:|---:|---:|
+| under 147 even with tolerance | 169 | 15 | 21 | 205 |
+| reaches 147 with tolerance, not exact membership | **33** | 4 | 5 | 42 |
+| reaches 147 with exact membership | 8 | 0 | 0 | 8 |
+
+Only **9** of the 42 offer two exposed endpoints, so the "tractable half" is at most 9 readings, not 42. The error
+was treating start position and run length as independent partitions because they had been measured separately —
+the same fault as the three hypotheses above, one level up: no cross-tabulation.
+
+**The tolerance ablation recovers 9 candidates and 0 readings**, and the broader variant raises whole-capture
+observation disagreements from 6 to 19. Codex declines to promote either variant and that is the right call. Its
+controls held throughout: 34/34 in every variant, plus 0 false positives across ten new scattered-code negatives
+including stationary interior AND edge-connected black rectangles. So tolerance is not unsafe — it simply does
+not help.
+
+⚠️ Codex's qualifier, carried unrounded: **"This does not establish fundamental unmeasurability."** A start of
+zero records censoring or edge connection, NOT proof that those samples are physically blanking rather than dark
+content.
 
 ⚠️ **Three of Claude's hypotheses died on this question** and are recorded so neither agent re-runs them: the
 both-ends porch requirement (binds on 4 of 264), the alphabet as a frequency effect (wrong test), and "touches
