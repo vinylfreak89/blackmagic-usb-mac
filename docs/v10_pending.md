@@ -26,10 +26,11 @@ moved field 2 on eleven units. The unlocked gate hid those moves; a working comb
 happen while locked.
 
 **Tier 2 — land the comb, which is finished and held behind tier 1.**
-Measured in the prototype: 367 of 508 units decisive, 365 agreeing, the coherent-pan and accidental-block controls
-passing, all seven raw controls passing after the paired-energy correction. It must not land alone: doing so buys
-a lock rule 8 does not sanction and reintroduces the eleven movements. Owed when it lands: the whole-capture
-replay the paired-energy correction has not yet had.
+Preserved as an unapplied diagnostic patch; production is byte-identical to its baseline. **The 367 of 508
+decisive with 365 agreeing belongs to the EARLIER prototype, before the paired-energy correction** — the corrected
+version has passed six synthetic and seven cached raw controls but has had no whole-capture replay, so its census
+is unknown. It must not land alone: doing so buys a lock rule 8 does not sanction and reintroduces the eleven
+movements. Owed when it lands: that whole-capture replay.
 
 **Tier 3 — the render's content**, which is what the owner reviews at the gate. The band now carries the record's
 own fields; three §8 quantities remain undrawable because the engine does not emit them (pedestal, the tape's
