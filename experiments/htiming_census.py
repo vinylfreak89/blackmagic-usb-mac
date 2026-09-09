@@ -31,7 +31,7 @@ F1,F2 = 23,286
 BODY  = 200
 SWITCH_LO, SWITCH_HI = 216, 241   # rows below the origin: NTSC lines 239-264 / 502-527, the switch band
 EDGE  = 24          # the line-start edge lies within the first EDGE samples of the window
-MINPK = 6.0         # a gradient peak below this is not an edge; the row is unmeasurable
+MINPK = float(os.environ.get("HT_MINPK", "6.0"))   # a gradient peak below this is not an edge; the row is unmeasurable
 
 def field_stats(Y):
     pos=[]

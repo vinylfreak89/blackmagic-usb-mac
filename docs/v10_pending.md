@@ -19,6 +19,7 @@ does not advance capture 2.
 
 ## Next, in order
 
+0. **Codex's working tree is behind mine** — `3090b76` contains none of `c072b65`, `b40eb47`, `83abd99`, `2b619f9`. Its next dispatch must merge `origin/v10-harness` before anything else.
 1. The comb's static mask (A15) — the identified cause of capture 1's only remaining engine blocker.
 2. Capture 1's reference finishes and is checked against its own invariant (`stable_interval_check.py`).
 3. The classifier defects the audit found (A10–A12) go to Codex as one dispatch.
@@ -41,7 +42,7 @@ does not advance capture 2.
 | A11 | The appearance latch is asymmetric: `SubBlackMuteLike` installs with no confirmation and needs three to leave | CLAUDE.md §6 | not dispatched |
 | A12 | `NeutralGrayMuteLike` tests uniformity, not greyness, and asserts a `Muted` source on near-black programme | CLAUDE.md §6 | not dispatched |
 | A14 | Audit the classifier's thresholds for magic numbers, using the commercial capture's opening as the case: the mute-to-programme boundary there is a rising level crossing a fixed threshold. The owner, 2026-09-09: once the warning card is legible it "shouldn't be showing up as mute but if it is, not the end of the world. Probably another thing to audit for magic numbers, but since it's the first real picture from this source I expect it to be a little slow to react." Not a defect; an audit. | CLAUDE.md §6 | not started |
-| A15 | The comb's static mask retains 0.81–1.60% of the support, at blanking luma, and flips the verdict; its tolerance was calibrated on the device's own generated blanking, which is quieter than any picture | CLAUDE.md §14 (the ablation table and the deinterlacer comparison); `src/field_registration/tests/COMB_COMPARISON.md` | cause identified, NOT fixed. Recalibrate "static" against real picture, then test whether the mask beats margin + rule 9 at all. Do not simply delete it: coherent vertical pan is the real risk it was aimed at |
+| A15 | The comb's static mask: tolerance was calibrated on the device's generated blanking, so it retained 0.81–1.60% of support at blanking luma and flipped the verdict | CLAUDE.md §14; `COMB_COMPARISON.md`, `STATIC_MASK.md` | cause identified, tolerance re-measured from stationary picture patches (107/100, 173/162, 154/146 summed codes), **production still unchanged after three turns**. Claude's "the mask is redundant" argument is FALSIFIED: a coherent vertical pan makes the maskless product pick +2 at a 1,024,739× margin. The recalibrated mask is ALSO insufficient — the SP mask keeps two accidental blocks and still favours +2. Next step is an implementation, not another diagnosis |
 | A16 | `complete_log` calls `abort()` on a completion mis-join — inside OBS that kills the host and the user's recording | `src/frameserver/QUEUES.md`; Codex accepted at `dec922f` | open before shipping; named fatal-session handling is the agreed policy, not implemented |
 | A17 | A permanently blocked consumer cannot stall analysis but prevents shutdown drain (`fs_stop` hangs) | `src/frameserver/QUEUES.md`; Codex accepted at `dec922f` | open before shipping; caller-deadlined shutdown with quarantined live resources is the agreed policy, not implemented |
 | A13 | `frameserver_replay --pace-us 0` destroys a whole-tape run and exits 0, printing no capture-level loss | CLAUDE.md §6 | not fixed; use `--pace-us 8000`, or a ring larger than the file for a slice |
@@ -52,7 +53,7 @@ does not advance capture 2.
 |---|---|---|---|
 | B1 | The four references, one commit each, in the acceptance order | HANDBACK §7 step 1; `experiments/geometry_oracle/REFERENCE_SPEC.md` states every column's raw-row derivation | `switch_geometry.py` already implements most of the spec; capture 1 building, its invariant not yet checked |
 | B5 | All four acceptance slices were cut mid-transfer and failed the reader's provenance check | `experiments/tpc_slice.py` header comment carries the measurement | CLOSED — both ends now align to a whole transfer; all four re-cut and provenance-clean. Delete this row |
-| B6 | Horizontal-timing instrument for the owner's line-TBC mechanism (does field-1 line-time jitter predict which units misregister?) | nowhere yet — no usable measurement exists | first version counted integer blanking samples and pinned at its quantization floor (every field read an IQR of exactly 2.00); rebuilt to sub-sample edge location, NOT yet run to completion |
+| B6 | Horizontal-timing instrument for the owner's line-TBC mechanism | measurements belong in CLAUDE.md and are NOT yet written there | ran. **Within-capture: NULL** — field-1 jitter does not predict which units misregister (Cohen d −0.14 and +0.23, both opposite to the prediction). **Switch band: TBC-off is 27% rougher** (2.765 against 2.180), where the field body showed no difference at all (2.013/2.006) — the setting acting where it is documented to act. ⚠️ The null is not a refutation: the instrument measures the TBC's OUTPUT, downstream of the correction. **Capture 1 is unmeasurable by it** — 347 of 920 units, field 2 mostly not; gate test in flight |
 | B7 | Box detection across the four captures | agent report; scripts `experiments/box_census.py`, `experiments/box_panel.py` UNCOMMITTED | census done and the title-graphic false positive rejected on the panel; three qualifications of the measure not yet acted on, chiefly that per-row `h` overlaps far more than the region statistic suggested (28.1% of the commercial tape's post-card picture rows fall below threshold) and that its denominator is an integer, making the ratio a step function of source noise |
 | B2 | The bottom instrument on the phase measurement | contract rule 3 | done inside `switch_geometry.py`: the bottom is the row above the switch line, from the phase profile, not from luma |
 | B3 | The render changes | contract §8 | not implemented |
@@ -85,6 +86,12 @@ unit 6687 settled what each was doing wrong.
   Codex for assent in the current turn; it reaches the owner only if we cannot settle it.
 
 ## E. To put to the owner
+
+- **When a box fixes the geometry, is the fixed value taken once from a well-exposed unit and held under the lock,
+  or re-measured per unit?** Rule 4 holds every other per-source quantity from a confirmed unit, which points at the
+  first, but rule 8 does not say it. It matters because the verdict is stable and the EXTENT is not: the same card's
+  top band reads 31 rows well-exposed and 36–41 on its dim pass and at its fades (CLAUDE.md). Asked 2026-09-09,
+  not answered.
 
 - **His vertical-tear definition was measured insufficient and amended without a word to him.** Applied literally it
   fires 1,038 times, so the contract now carries three added qualifiers (contract §3). He asked us to confirm the

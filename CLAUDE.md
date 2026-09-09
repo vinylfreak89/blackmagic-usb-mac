@@ -2174,10 +2174,22 @@ here?") with a local clamp applied everywhere and graceful failure; they never b
 because they never estimate a global per-field parameter. Where a deinterlacer-family tool DOES estimate
 a global property (ffmpeg `idet`), its robustness comes from aggregation and a multi-frame vote, not
 from selecting a subset of pixels. Aggregating the textbook metric over the whole field is itself the
-defence: misregistration displaces every row coherently and accumulates, while motion is localised and
-adds noise without favouring a shift. The one motion pattern that CAN bias the aggregate is coherent
-vertical pan; the defences against that are the margin (abstain when it approaches 1) and rule 9's
-confirm-or-veto role, not a per-pixel static mask.
+defence for ORDINARY motion: misregistration displaces every row coherently and accumulates, while
+localised motion adds noise without favouring a shift.
+⚠️ **But "the mask is redundant, margin plus rule 9 covers the pan" was Claude's claim and it is
+FALSIFIED (Codex, 2026-09-09, `src/field_registration/tests/STATIC_MASK.md`).** On a fixed-geometry
+coherent vertical pan the maskless positive product picks a **wrong +2 minimum at a margin of
+1,024,739x** — and 83-1,427x once empirical picture-difference noise is added. The margin is no
+defence at all there: it is maximally confident and wrong. Rule 9 still prevents the crop from
+moving, but it cannot turn that reading into a confirmation, so the comb is simply unusable on a
+pan rather than safe. **Static evidence must not be deleted.**
+Recalibrating the tolerance from inspected stationary picture patches instead of generated blanking
+gives 107/100 (commercial), 173/162 (SP), 154/146 (SP-off) summed codes, against the 4-5 that
+generated blanking produced. Both the recalibrated mask and the maskless product reproduce all seven
+raw golden shifts, and masked margins do not improve uniformly — so the goldens do not separate them;
+the pan does. The recalibration is NOT sufficient either: the commercial mask abstains on the pan
+correctly, but the SP mask retains two accidental blocks and still favours +2. Production comb
+unchanged; no support threshold was invented to paper over it.
 
 **The commercial capture's box, measured 2026-09-09 (`experiments/box_census.py`, panels checked before the
 numbers).** These are source measurements and live here, not in the contract, which states only the property.
