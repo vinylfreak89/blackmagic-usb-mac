@@ -44,30 +44,23 @@ whole-tape signal-state audit.
 | B3 | The render changes | contract §8 | not implemented |
 | B4 | The acceptance runs | HANDBACK §7 steps 3 and 4 | blocked on B1 and the engine |
 
-## C. The switch line on capture 1 — both detectors were wrong, differently
+## C. The switch line on capture 1
 
-Both instruments put the picture top at lines 23 and 286 in all 582 units of the stable interval:
-the owner's invariant holds in two independent implementations. The switch line did not agree, and
-reading the raw samples of unit 6687 settled what each was doing wrong.
+Both instruments put the picture top at lines 23 and 286 in all 582 units of the stable interval: the owner's
+invariant holds in two independent implementations. The switch line did not agree, and reading the raw samples of
+unit 6687 settled what each was doing wrong.
 
-- **The engine fired ~25 rows early.** A 35-code MAD gate passes a dark row, and the aperture search
-  then returns lags of 0, +40, −46, +360, +252, +180, +51, −2: matches to unrelated dark regions.
-  Codex diagnosed this itself and is rewriting the detector.
-- **My reference was one row late**, because it sought the partial row's evidence as a whole-row lag
-  improvement, which a nearly flat dark row cannot supply. Fixed at `3244999` by measuring the row's
-  own two ends instead. Rebuilding capture 1 now.
-- **Both agree on the raw rows**: picture bottom 259/521, partial switch row 260/522, first full
-  other-head row 261/523. That matches contract §2's already-adjudicated 259/521.
-- **Codex objects to the ends test as a universal detector** and is right that the standards
-  guarantee the overlap, not which end carries it; that flagging can also move a row's start; and
-  that a corrected source, whose band the TBC replaced with flat rows, has no timing to read. The
-  contract already frames this correctly: how each instrument measures the discontinuity is its own,
-  stated per column, with S as the explicit fallback and Unknown only when neither is measurable.
-- **Open, and possibly a contract measurement defect:** contract §3 records this capture as showing
-  2 switch lines in field 1 (422 of 582) and 3 in field 2 (507 of 576). My OLD detector reproduces
-  those closely (409 and 491 of 582), and it is the detector now shown to miss the partial row. The
-  contract's own definition counts "the partial line included". If the corrected count comes back
-  one higher, that carried figure is one low and needs re-measuring rather than matching.
+- **The engine fired ~25 rows early** on a 35-code brightness gate; Codex diagnosed it and is rewriting.
+- **My reference was one row late**, seeking the partial row as a lag improvement a flat dark row cannot supply.
+  Fixed at `3244999` by measuring the row's own two ends.
+- **Both agree on the raw rows**: picture bottom 259/521, partial switch row 260/522, first full other-head row
+  261/523 — matching contract §2's already-adjudicated 259/521.
+- **Codex objects to the ends test as a universal detector** and is right; the contract already makes the method
+  per-instrument, with S as the stated fallback and Unknown only when neither is measurable.
+- ⚠️ **My "the contract's count is one low" framing was itself wrong** (owner, 2026-09-09: the count "is source
+  dependent"). There was no contract number to be right or wrong about; the count is learned per source at the
+  lock and held. The per-source counts are removed from the contract's definition, and what an instrument is
+  checked against is the other instrument on the same source, unit by unit, plus the lock's own constancy.
 
 ## D. Contract
 

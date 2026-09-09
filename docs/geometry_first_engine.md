@@ -293,12 +293,16 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   measurable, the unit's switch line is Unknown and the lock's count is not substituted as an observation. How each
   instrument measures the discontinuity is its own, stated per column (harness) and per golden (engine).
   **Switch lines / the band**: the head-switch lines counted from the top switch line down, the partial line
-  included (owner); the black rows the deck's TBC makes of them are band rows, not picture. Measured, TBC off against on on the same recorded fields
-  (2026-09-07): with the deck's line TBC off the SP's field 1 shows 2 switch lines in 434 of 597 units and field 2
-  shows 3 in 335 of 577, the band running to the clip in 576 of 577; with the TBC on, 1–2 switch lines remain and one
-  (field 1) or two (field 2) of them have become flat black rows, so the TBC clears switch lines into black, one more
-  in field 2; the peak shows in 31 of 597 and 5 of 577 units with the TBC off and in 1–2 of 606 with it on. The
-  commercial tape shows 2 (field 1, 422 of 582) and 3 (field 2, 507 of 576) switch lines with no black under them.
+  included (owner); the black rows the deck's TBC makes of them are band rows, not picture. **The count is a
+  per-source quantity, learned at the confirmed lock and held (rules 2 and 4). No count appears here, because a
+  number written in a definition becomes an expectation to match** (owner, 2026-09-09: "why are there numbers
+  anywhere in the contract about number of switch rows? That is source dependent"). The counts previously quoted
+  here for the SP recording and the commercial tape were removed for that reason, and because an instrument later
+  shown to miss the partial row produced them — so they were an expectation that also contradicted this
+  definition's own "the partial line included". What an instrument is checked against is the OTHER instrument on
+  the same source, unit by unit, and the lock's own constancy — never a number in this document. The TBC-off /
+  TBC-on comparison that those figures supported is a claim about INVARIANCE and keeps its evidence in section 2:
+  the count does not change when the line TBC is switched, while the rows carrying no picture do.
 - **Offset d** (signed; positive when the picture sits lower in the raster). When the picture top sits below line
   23, d = the bands above the picture (the recorded rows between line 23 and the picture's first line). When the
   top reads line 23 the picture may sit at or above it (a **clamped top**: its true first line in the Shuttle's
