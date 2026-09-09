@@ -422,3 +422,53 @@ checking whether the constant was really back turned up a SECOND copy of the sam
 decoder's gate had since become 27.375. One quantity, two implementations, silently diverged — the standing
 "one format, one loader, one source of truth" rule, violated by a value copied into a comment years of
 edits ago and never re-derived.
+
+## An extreme is not an envelope (2026-09-10)
+
+Five tests in `experiments/switch_geometry.py` were deciding where the head switch is, using statistics that
+cannot see a head switch. The file's docstring states the premise they share — the body rows' own maxima are
+"the field's own variance of alignment; nothing inside the picture exceeds them by definition" — and that is the
+one thing an extreme cannot support, because a single anomalous row redefines it.
+
+Three were extreme-value envelopes compared against with no margin:
+
+- `body_end`, the **minimum** trailing blank run over the 20 rows above the switch. One sample below the shortest
+  row in the window reclassified an ordinary picture row as a partial line. Line 259 read 16 / 12 / 17 across
+  three consecutive units against a floor of 15, so the band's top flipped 260 → 259 → 260.
+- `M_run`, the **maximum** leading run over the body. Because it is a per-unit maximum, a narrow body envelope
+  drops the bar; its `+8` slack turned out to be load-bearing and removing it regressed three readings.
+- `M_lag`, the **maximum** lag over the body. A picture row with a large spike cleared it by 2.5 and became the
+  switch line.
+
+Two more were timing statistics asked to measure something outside their range: `torn` and `step` select on a lag
+search bounded at ±24 samples, while the head switch displaces blanking by ~150–192. They could only ever fire on
+sub-switch-scale wobble — which contract rule 6 explicitly says is not a geometry event.
+
+The repair that worked was not a better threshold. It was asking which of two measured populations a value
+belongs to: ordinary rows carry 15–22 samples of trailing blanking and a partial carries ~1, so the boundary is
+the midpoint between two measured centres, one of which is zero by construction, and no number is typed in.
+
+**The rule: before comparing against a body statistic, ask what one anomalous row does to it.** A minimum or a
+maximum moves to that row. A median or a population midpoint does not.
+
+## Audit the ruler, not just the code (2026-09-10)
+
+The instrument scoring every harness change that night — `displaced_row_census.py`, deliberately built to share
+no code with what it measured — carried a 200-sample ceiling I had invented and twice described as "the
+contract's". The contract gives the 10.9 µs horizontal blanking interval and nothing else; 64 and 200 came from
+a comment in the harness itself. I propagated the false attribution into a docstring, two commit messages and
+four places in the tracker, during the exercise whose whole purpose was removing unsourced constants.
+
+It then manufactured the one fault it was being used to detect. The census's last reported discrepancy was a row
+where the harness and the engine agree exactly, rejected because its blank run measured 205 samples — above my
+ceiling. Removing the ceiling took the result from "1,012 of 1,013 with a residual harness fault" to
+**1,013 of 1,013 with no fault at all**.
+
+What survived: every change was scored on MOVEMENT within the same instrument, and a fixed bound biases all arms
+identically, so the comparisons held. What did not: the absolute figure, and the claim that the harness had a
+residual error.
+
+**An unsourced constant in the measuring device is worse than one in the code under test, because everything
+else is judged against it and nobody thinks to check it.** Give an instrument's constants the same provenance
+test as production code, and when an instrument reports a single stubborn exception, adjudicate that exception
+on raw data before believing it.
