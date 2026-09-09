@@ -15,6 +15,11 @@ does not advance capture 2.
 
 ## Triage
 
+**Tier 0 — the harness's own switch line must be trustworthy before anything is compared against it.** It jitters
+by a row where the signal does not, and five fitted constants remain in `switch_geometry.py`. Two are now derived
+(the caption run-in gate from CEA-608 + BT.601; the insert-presence test from the field's own blanking noise);
+three remain — the field-2 envelope's four constants, the eight-sample blanking slack, and the span floor.
+
 **Tier 1 — the engine's switch detector on ordinary picture. It is what makes a lock POSSIBLE, and it is failing
 where the switch demonstrably is.** On capture 1's 364 non-boxed registerable units (counters 6811–7174) the
 harness reference measures the switch in **364 of 364** — T reads 260 in 337, 261 in 25, 259 in 2, and the picture
@@ -38,10 +43,15 @@ not emit them.
 
 **Tier 6 — robustness, performance, instrument qualifications.**
 
-**With the owner, blocking nothing above:** whether a box is recentred or left as the source placed it; and what
-measurement of a box constitutes its geometry observation, given that the verdict is not geometry, the outer top
-edge is a 0.7–2.8 code step neither instrument actually measures, the content bounds locate content rather than
-picture, and the lower band's end is ill-posed.
+**Gated behind harness work, NOT on the owner.** Neither is answerable until the instrument is trustworthy, and
+presenting them as his to decide made him the bottleneck when the harness was.
+
+- **Rule 8 hold-versus-set** — gated behind the switch line being trustworthy throughout. He was holding it on the
+  band being at the correct location across the capture, and by our own measurement it is not: the switch line
+  still jitters by a row, most of it the partial-row test rather than the signal, and fitted constants remain in
+  the instrument.
+- **Box centring** — gated behind settling where a box's band ends when it meets the switch band, since the
+  recentring offset is 4.0, 3.5, 2.5 or 1.5 field lines depending on that boundary alone.
 
 ## A. Engine (Codex writes, Claude reviews)
 
