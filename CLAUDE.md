@@ -2113,6 +2113,24 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**One-ended observation decision — decline implementation on current evidence:**
+the 255-field candidate-failure cohort is not measurable by this engine on
+capture 1. Retain its Unknown T/S readings as a named instrument limitation,
+not fundamental unmeasurability and not an acceptance pass. Both component
+T/S pairs and combined T/S are Unknown on all 255 in the unchanged export.
+The existing phase reader cannot establish its qualified departure, and the
+run reader lacks a qualifying exposed interval. A visible low-prefix endpoint
+does not itself identify blanking rather than black content; no independent
+timing witness resolving that ambiguity has been demonstrated for these keys.
+This is absence of validated evidence in the engine, NOT proof such a witness
+is absent from the capture. A future one-ended reader would need a source-local
+identifiable timing feature corroborating the exposed boundary's displacement,
+with black-rectangle rejection and departure/return controls; missing extent
+would remain Unknown and references would be rebuilt after lock-like loss.
+This is a limitation of this source/engine pairing, not all line-TBC-off sources
+or a prediction for unopened captures. Detailed disposition is appended to
+`src/field_registration/tests/RUN_TOLERANCE.md`. No production change.
+
 **Scattered-code tolerance tested, diagnostic only:** the published reference
 S rows reproduce the harness's 205 short / 42 split / eight uninterrupted
 >=147 partition of the 255 candidate failures. The missing cross-tab is

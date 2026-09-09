@@ -132,3 +132,38 @@ Reproduce into fresh output directories for each MODE (strict, interior, all):
 
 CAPTURE is the original `captures/composite_program_30s.tpc`, not a slice;
 REFERENCE is `/private/tmp/hw-session/v10/ref_capture1.csv` with the hash above.
+
+## Disposition: retain the 255 as an engine limitation
+
+Choose the negative option: **these 255 field readings are not measurable by
+the current engine on capture 1.** No one-ended implementation is added.
+Re-checking the frozen cohort confirms all 255 combined T/S pairs and both
+component T/S pairs are Unknown. The engine is still byte-identical to the
+one measured above; diagnostics and documentation did not change production.
+
+What specifically is missing is a validated timing-identity witness, not merely
+the interval's width. The phase reader cannot establish a departure under its
+local-envelope qualification. The run reader has no qualifying exposed
+interval. For an edge-connected low region, its right boundary's visible
+position alone cannot determine whether it is blanking or dark picture content.
+The harness's validated S localizes the target row, but supplying that label
+to the engine would not constitute its independent timing measurement.
+
+For a sound one-ended observation on a source, an independently identifiable
+timing feature must survive in the delivered data and corroborate the exposed
+boundary's displacement against source-local references. The supporting feature
+must not simply be another statistic of the same ambiguous dark region.
+Stationary edge-connected black rectangles must still reject, and genuine
+departure/return must remain distinguishable from a terminal band. The missing
+endpoint and full extent stay Unknown, never inferred by subtracting 147;
+reference validity must end on lock-like loss. None of that qualification has
+been demonstrated for this 255-key cohort.
+
+This does **not** establish fundamental unmeasurability, nor that another
+instrument cannot read S. It also does not establish that all 255 failures
+are truncation or that no additional usable feature exists in these raw rows.
+It names the demonstrated limitation of this capture with these two engine
+observations. Other sources might expose distinguishing timing evidence,
+but line-TBC on/off alone does not establish that, and captures 2–4 have not
+been examined for this decision. No agreement/acceptance gate is declared
+passed by recording this residue; that disposition remains with the owner.
