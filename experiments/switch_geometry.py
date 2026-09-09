@@ -284,6 +284,17 @@ def process_unit(u,RU,RN):
         M_lag2=max(ft['lagmed'] for ft in body2) if body2 else 1.0; M_dm2=max(ft['dm'] for ft in body2) if body2 else 20.0
         # the field's own variance: the body rows' own maxima (nothing inside the picture exceeds them by definition)
         M_lag=max(ft['lagmed'] for ft in body) if body else 1.0; M_dm=max(ft['dm'] for ft in body) if body else 20.0
+        # M_run is the body's MAXIMUM leading blank run and the test below adds 8. Both halves are typed, and the
+        # slack is NOT inert: removing it (2026-09-10) changed three field-2 units — 6287, 6674 and 6776 — and two
+        # of those are units this project records as honest abstentions, "the band not detectable in every unit even
+        # of a clean source" case, which under rule 4 are a hold. It also INTRODUCED a jitter blip at 6674 (field 2
+        # blips 8 -> 9), so it is a regression on tier 0's own criterion and was reverted.
+        # Why it is load-bearing at all, when the populations look cleanly separated: measured over 508 units,
+        # body rows' lead_run never exceeds 14 while band rows reach 199, so any bar between about 15 and 140 gives
+        # the same answer on most units. But M_run is a per-unit MAX, so on a unit whose body envelope happens to be
+        # narrow the bar drops and the slack decides. That is the same extreme-statistic fragility that the trailing
+        # test had, in the other direction. The principled replacement is the body's DISTRIBUTION rather than its
+        # max plus a constant — a design change to be measured, not guessed, and not attempted at 04:00.
         M_run=max(ft['lead_run'] for ft in body) if body else 8       # the picture rows' own leading blank run (the H-blanking dip)
         narrow=[ft['spike'] for ft in body if ft['width']<=12 and ft['above_range']<ft['spike']/2]; M_spk=max(narrow) if narrow else 0.0   # the picture's own narrow specks
         body_r=min(ft['wr'] for ft in body) if body else 1.0; body_lag=max(abs(ft['wlag']) for ft in body) if body else 1   # the field's own envelope, reported
