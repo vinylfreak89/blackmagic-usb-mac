@@ -15,35 +15,33 @@ does not advance capture 2.
 
 ## Triage
 
-**Tier 1 — box classification. It is the single blocker, and it blocks two different things.**
-Without it the engine cannot tell a boxed source from an unboxed one, and both consequences are measured on
-capture 1. It reports the switch as measurable in 143 of 146 card units and takes a lock on it at counter 6668 —
-but rule 8 excludes that switch here, because the card's content ends at line 236 and the switch is at 260, with
-twenty-three rows of the box's own dark band between them (237–260 all read 20–23, std ~3.3, changing only at
-261). So the lock is authorised by evidence the contract excludes. And with no box to take geometry from, the
-picture top is measured by luma threshold on a ramp that runs 2.0 → 10 → 13 → 28 over five lines, which is what
-moved field 2 on eleven units. The unlocked gate hid those moves; a working comb un-hides them, because they then
-happen while locked.
+**Tier 1 — the engine's switch detector on ordinary picture. It is what makes a lock POSSIBLE, and it is failing
+where the switch demonstrably is.** On capture 1's 364 non-boxed registerable units (counters 6811–7174) the
+harness reference measures the switch in **364 of 364** — T reads 260 in 337, 261 in 25, 259 in 2, and the picture
+top reads 23 in every one. The engine measures it in **3 of 364**. That two-instrument disagreement, not the box
+and not the comb, is why this capture does not lock on its actual programme. The card is 144 units; the ordinary
+picture is 364.
 
-**Tier 2 — land the comb, which is finished and held behind tier 1.**
-Preserved as an unapplied diagnostic patch; production is byte-identical to its baseline. **The 367 of 508
-decisive with 365 agreeing belongs to the EARLIER prototype, before the paired-energy correction** — the corrected
-version has passed six synthetic and seven cached raw controls but has had no whole-capture replay, so its census
-is unknown. It must not land alone: doing so buys a lock rule 8 does not sanction and reintroduces the eleven
-movements. Owed when it lands: that whole-capture replay.
+**Tier 2 — the comb, finished and quarantined**, waiting on tier 3 so it cannot lock on the card first. The 367 of
+508 decisive figure belongs to the pre-correction prototype; the corrected version has passed six synthetic and
+seven cached raw controls and has had no whole-capture replay.
 
-**Tier 3 — the render's content**, which is what the owner reviews at the gate. The band now carries the record's
-own fields; three §8 quantities remain undrawable because the engine does not emit them (pedestal, the tape's
-line-22 level with its comparator count, the horizontal-phase distribution — the comparator does not exist in the
-engine at all).
+**Tier 3 — box classification, largely landed.** Exclusions cover 143 of 144 card units in field 1 and 144 of 144
+in field 2, with the golden at 18/18 including counter 6668. Open: one residual at field 1 counter 6810, and
+detections at 6263–6268 needing adjudication. This makes a lock LEGITIMATE by suppressing switch evidence rule 8
+excludes; it does not make one possible, and it establishes no box position — boxed placement stays Unknown.
 
-**Tier 4 — classifier defects**, before any render he reviews, since they invalidate every render made before them.
+**Tier 4 — the render's content**, the owner's gate. Three §8 quantities remain undrawable because the engine does
+not emit them.
 
-**Tier 5 — robustness, performance, instrument qualifications.** Performance is over budget and deferred by him.
+**Tier 5 — classifier defects**, before any render he reviews.
 
-**With the owner, blocking nothing above:** whether a box is recentred or left where the source put it; and
-whether rule 8's gap is read against picture CONTENT (making the card's lower band the gap, which is what makes
-the 6668 lock unsanctioned) or otherwise.
+**Tier 6 — robustness, performance, instrument qualifications.**
+
+**With the owner, blocking nothing above:** whether a box is recentred or left as the source placed it; and what
+measurement of a box constitutes its geometry observation, given that the verdict is not geometry, the outer top
+edge is a 0.7–2.8 code step neither instrument actually measures, the content bounds locate content rather than
+picture, and the lower band's end is ill-posed.
 
 ## A. Engine (Codex writes, Claude reviews)
 
