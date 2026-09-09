@@ -2179,6 +2179,21 @@ adds noise without favouring a shift. The one motion pattern that CAN bias the a
 vertical pan; the defences against that are the margin (abstain when it approaches 1) and rule 9's
 confirm-or-veto role, not a per-pixel static mask.
 
+**The commercial capture's box, measured 2026-09-09 (`experiments/box_census.py`, panels checked before the
+numbers).** These are source measurements and live here, not in the contract, which states only the property.
+Counter 6700, NTSC lines: field 1 structureless band 23-53, content 54-236, band 237-264; field 2 the same shape,
+its content mapping onto field 1's exactly (317-263 = 54, 499-263 = 236), so the box is registered identically in
+both fields rather than agreeing by chance. Stable core 6668-6807, both fields, 140 units; 159 box units in all.
+The gap between the box's bottom and the head switch measured 24 rows on that unit. Captures 2, 3 and 4 carry no
+box at any threshold tested.
+⚠️ **The verdict is robust; the extent is not.** "Box: yes" holds across every threshold from 4.0 to 8.0, but the
+top band grows from 31 to 36-41 rows on the card's dimmer pass and at its fades, because the WARNING line stops
+reading as structure. Since the owner's rule makes a box FIX the geometry, and the geometry is the extent, this is
+the open design question: whether a box's fixed value is taken once from a well-exposed unit and held under the
+lock (which is what rule 4 does for every other per-source quantity) or re-measured per unit. Also unreconciled:
+the contract previously recorded the bottom band ending at line 260 against this census's 264, the difference
+being exactly the head-switch region that rule 8 says is not measured when a gap separates it.
+
 **The comb across all four acceptance captures (Claude, 2026-09-09, `experiments/comb_census.py`;
 verdicts checked against woven raw rows with `experiments/weave_panel.py`, units selected BY verdict
 with `experiments/comb_per_unit.py`).** The metric weaves field 1 from line 23 against field 2 from
