@@ -32,6 +32,13 @@ MAXLAG=24                                              # the alignment search is
 # -- so identical output at 40 and 100 PROVES no row has a span in [40,100) and every value in that range gives
 # the same answer. 48 lies inside it, so this derivation is a no-op here rather than a retuning.
 SPAN_FLOOR=int(os.environ.get('SG_SPAN_FLOOR', 2*MAXLAG))
+# DEFAULT OFF, measured 2026-09-10. With torn selecting, an independent census puts the first relocated-blanking
+# row exactly on S in 963 of 1,013 readings; with it off, 1,009 of 1,013. The 50-reading error class collapses to
+# 4, and every remaining one is inside the same 6880-6963 window, so the 845 readings outside that window stay
+# exact either way -- improvement inside, no regression outside. Contract rule 6 says the same thing
+# independently: "Horizontal tearing is not a geometry event", and torn selects rows whose lag varies along the
+# line, which is what horizontal tearing is. Set SG_TORN_SELECTS=1 to restore it for a comparison.
+TORN_SELECTS=os.environ.get('SG_TORN_SELECTS','0')!='0'
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('out'); ap.add_argument('--repair',action='store_true',help='fields paired one later (V-stabilize-off capture): field 1 = this unit slot 2, field 2 = next unit slot 1')
 ap.add_argument('--units',default=''); ap.add_argument('--only',action='store_true',help='process only the --units (test mode)'); A=ap.parse_args(); VERB={int(x) for x in A.units.split(',') if x}
 SLOT={1:(16,279),2:(279,525)}     # unit rows of each slot (line 20.. / 283..); blank reference rows 7..15 / 270..278
@@ -335,7 +342,15 @@ def process_unit(u,RU,RN):
             if not (abs(ft['wlag'])>=2 and ft['wr']<=0.90): return False
             other=(feats.get(r) if two else feats2.get(r))
             return other is None or abs(other['wlag']-ft['wlag'])<=1
-        def shifted(ft,r,two=False): return step(ft,r,two) or (torn(ft) if not two else False) or flat(ft,r) or ft['lead_run']>M_run+8 or ft['dip_absent'] or blanked(ft)   # the two-above pass carries no torn test: two rows apart the picture's own detail exceeds the body envelope (commercial counters 6907, 6943 read seven picture rows as torn)   # (the upward scan from the clip keeps a dip-less row inside the picture from ever being taken as the band)
+        # TORN_SELECTS: whether a row's lag statistic alone may make it the switch line. Measured 2026-09-10 at
+        # commercial 6899: line 260 is ordinary picture - blank_run 0, dip present, no relocated blanking anywhere -
+        # and it is selected as the switch by torn alone, lagmed 19.5 against a body envelope of 17.0 and dm 11.99
+        # against 4.56. M_lag is the body's MAXIMUM, the third extreme-value envelope in this file to be caught
+        # deciding a boundary. Line 261 below it is the real other-head row and says so physically: blank_run 88,
+        # dip absent. An independent census puts the first relocated-blanking row exactly on S in 963 of 1,013
+        # readings, so the physical signature is present in the overwhelming majority and the lag statistic is not
+        # needed to find it. Sweepable so the question is settled by the census rather than by argument.
+        def shifted(ft,r,two=False): return step(ft,r,two) or (TORN_SELECTS and torn(ft) if not two else False) or flat(ft,r) or ft['lead_run']>M_run+8 or ft['dip_absent'] or blanked(ft)   # the two-above pass carries no torn test: two rows apart the picture's own detail exceeds the body envelope (commercial counters 6907, 6943 read seven picture rows as torn)   # (the upward scan from the clip keeps a dip-less row inside the picture from ever being taken as the band)
         def peak(ft,r): return ft['spike']>M_spk and ft['spike']>ft['dm']+5*ft['dsig'] and ft['width']<=12 and ft['above_range']<ft['spike']/2 and not shifted(ft,r)
         if os.environ.get('SG_EXPLAIN'):
             # SG_EXPLAIN="field:line[,line...]" names WHICH test made a row part of the band, so a band edge
