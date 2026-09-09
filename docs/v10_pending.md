@@ -25,6 +25,45 @@ does not advance capture 2.
 3. The classifier defects the audit found (A10–A12) go to Codex as one dispatch.
 4. Captures 2, 3 and 4 acceptance — ONLY after the owner approves capture 1's render.
 
+## Triage
+
+**Tier 1 — make a lock reachable at all on capture 1.** Nothing else about this capture can succeed first, and
+three of these four are one small change to one function.
+
+1. **Widen the confirmation route and fix its ordering.** Accept comb *or* VBI *or* caption, and compute the comb
+   before the acquisition decision instead of after it. Right now the only route is captions and this tape has
+   none, so the lock is unreachable by construction — and the comb, which should be the alternative, runs 59 lines
+   too late to be consulted.
+2. **Drop the unconditional switch-line precondition.** A lock is geometry plus one other observation; §2 has said
+   the head switch is optional since it was written.
+3. **The band hold.** Absent switch is a hold of the band, invalidated only when the line count below it changes —
+   then the lock is truly lost.
+4. **My box mask extent** — it still covers the WARNING label, so the box can't fix geometry on the units where it
+   is the only route. Mine to fix before any of it goes to Codex as concept.
+
+**Tier 2 — make the geometry readable once it can lock.** The `count − extent` reading doesn't exist;
+`top − origin` is the only one implemented and it's degenerate on this source, reading 23/286 in every stable unit.
+
+**Tier 3 — switch detector coverage on the non-boxed units.** Including the RF peak's polarity — white in some
+units, black in others.
+
+**Tier 4 — the comb's own quality.** The recalibrated tolerance and the pairwise dominance. This *drops* below the
+wiring: a perfect comb connected to nothing is worth nothing, and that's what three turns bought.
+
+**Tier 5 — classifier defects, before any render you review**, since they invalidate every render made before them
+and none exists yet.
+
+**Tier 6 — the render**, which is the actual gate for captures 2–4.
+
+**Tier 7 —** robustness, performance, instrument qualifications, the §2 dispute.
+
+The biggest change from the previous version: comb quality fell from tier 1 to tier 4, and the lock wiring — which
+wasn't on the list at all an hour ago — took its place. We spent the day tuning an instrument that isn't connected
+to the thing it was meant to inform.
+
+Parallelism, per the rule that Codex gets concepts and never implementations: Claude takes the mask extent, Codex
+takes tier 1 items 1–3 as concepts.
+
 ## A. Engine (Codex writes, Claude reviews)
 
 | # | item | where it is written down | state |
