@@ -330,13 +330,34 @@ def process_unit(u,RU,RN):
             # partial. A local median cannot be moved by a single distant row, and the separation it
             # decides is 1 against 8+, so nothing hinges on which robust statistic is used.
             above=[feats[r]['end_run'] for r in range(max(top, sw-21), sw-1) if r in feats]
-            body_end=float(np.median(above)) if len(above)>=10 else None
+            # The MINIMUM of that local window, not its median. A partial row's trailing blanking is
+            # ABSENT, not merely shorter than typical, and the separation is categorical: measured on
+            # the commercial capture at counters 6667/6687/6690, ordinary picture rows carry 15-22
+            # samples of their own trailing blanking and a partial carries 1. The median sits inside
+            # the ordinary spread, so it fired on line 259 of 6667 (end_run 16 against a median of
+            # 17) where the raw samples say that row is ordinary picture and the switch is the fully
+            # displaced row below it. The first version of this used the minimum over 160 whole-field
+            # rows and one distant anomaly dragged it to 1; the fault was the WINDOW, and narrowing
+            # the window to the rows immediately above is what makes the minimum the right bar.
+            body_end=float(min(above)) if len(above)>=10 else None
             ends_partial = (pf is not None and body_end is not None and pf.get('lead_blank')
                             and pf['end_run'] < body_end)
             # The peak and the whole-row lag stay as corroboration; neither is required, because a
             # dark row carries no lag to improve (the defect this replaces: line 260 read wlag 6 at
             # ratio 0.97, so the old test failed and the switch line fell through to the full row).
-            partial = pf is not None and (ends_partial or px>=0 or (abs(pf['wlag'])>=2 and pf['wr']<=0.90))
+            # The ENDS are authoritative where they can be read, and the peak and the whole-row lag
+            # are corroboration only. Falsified 2026-09-09 against the engine on the raw rows:
+            # counter 6667 line 259 ramps up from blanking AND returns to it (last samples 1,1,2,2,
+            # 2,1,2,1) — an ordinary picture row — while line 260 starts at 22 with no ramp, so
+            # there is no partial and the switch line is 260. My OR let the peak/lag alternative
+            # fire on that normal row and I reported 259. At counter 6690 line 260 ramps up
+            # normally and ends at 22 without returning: that IS a partial, and the engine, which
+            # has no ends test, took 261. Each instrument was wrong in one direction; the ends
+            # decide both, so they are no longer one option among three.
+            if pf is not None and body_end is not None and pf.get('lead_blank') is not None:
+                partial = ends_partial
+            else:
+                partial = pf is not None and (px>=0 or (abs(pf['wlag'])>=2 and pf['wr']<=0.90))
             T=sw-1 if partial else sw
             # the switch lines: contiguous rows from T down that carry a switch signature; below them, rows at the pedestal/blank to the clip
             n_sw=clip_row-T+1                                                 # the switch band: the top switch line to the clip (the TBC's blacked switch lines included)
