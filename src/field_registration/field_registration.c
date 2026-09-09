@@ -28,6 +28,7 @@ typedef struct field_measurement {
     int16_t band_extent;
     int16_t observed_switch_line_count;
     fieldreg_switch_signature switch_signature;
+    fieldreg_switch_observations switch_observations;
     bool switch_measurable;
     bool geometry_measurable;
     bool box_detected;
@@ -197,6 +198,8 @@ static void measure_switch(const uint8_t *raster, int field,
     }
 }
 
+#include "run_timing.h"
+
 static uint16_t read_le16(const uint8_t *p)
 {
     return (uint16_t)p[0] | (uint16_t)((uint16_t)p[1] << 8);
@@ -347,6 +350,9 @@ static void measure_field(const uint8_t *raster, int field,
     m->rf_peak_line = m->rf_peak_position = -1;
     m->span = m->picture_rows = m->band_extent = -1;
     m->observed_switch_line_count = -1;
+    m->switch_observations=(fieldreg_switch_observations){
+        .phase_t=-1,.phase_s=-1,.run_t=-1,.run_s=-1,
+        .run_start=-1,.run_length=-1,.run_blank_distance=-1,.run_blank_tolerance=-1};
 
     double blank_luma_ceiling = 0.0;
     for (int row = blank_first; row <= blank_last; ++row) {
@@ -425,7 +431,30 @@ static void measure_field(const uint8_t *raster, int field,
     }
 
     m->box_detected=observe_box(raster,field,m->recorded_last);
-    if (m->top >= 0) measure_switch(raster,field,m);
+    if (m->top >= 0) {
+        measure_switch(raster,field,m);
+        m->switch_observations.phase_t=m->switch_line;
+        m->switch_observations.phase_s=m->first_full_other_head_line;
+        measure_run_switch(raster,field,m);
+        fieldreg_switch_observations *o=&m->switch_observations;
+        if(o->run_t>=0) {
+            o->disagreement=m->switch_measurable &&
+                (o->run_t!=o->phase_t || o->run_s!=o->phase_s);
+            if(o->disagreement) {
+                m->switch_measurable=false;
+                m->switch_line=-1;
+                /* Agreement on S survives a disagreement about the partial
+                 * row T. Keep that observation, but no band/position claim. */
+                m->first_full_other_head_line=o->run_s==o->phase_s?o->run_s:-1;
+                m->switch_signature=FIELDREG_SWITCH_NONE;
+            } else if(!m->switch_measurable) {
+                m->switch_measurable=true;
+                m->switch_line=o->run_t;m->first_full_other_head_line=o->run_s;
+                m->switch_signature=o->run_t<o->run_s ?
+                    FIELDREG_SWITCH_BLANKING_PARTIAL:FIELDREG_SWITCH_FULL_OTHER_HEAD;
+            }
+        }
+    }
     if (m->switch_measurable) {
         const int origin = field == 0 ? FIELDREG_PICTURE_ORIGIN_F1 :
                                         FIELDREG_PICTURE_ORIGIN_F2;
@@ -822,6 +851,7 @@ static void v10_decide_field(fieldreg_field_state *state,
     decision->observed_switch_line_count =
         measurement->observed_switch_line_count;
     decision->switch_signature = measurement->switch_signature;
+    decision->switch_observations = measurement->switch_observations;
     decision->switch_measurable = measurement->switch_measurable;
     decision->geometry_measurable = measurement->geometry_measurable;
     decision->box_detected = measurement->box_detected;

@@ -32,6 +32,18 @@ def main():
     engine = tests.parent
     source = (engine / "field_registration.c").read_text()
     source_hash = hashlib.sha256(source.encode()).hexdigest()
+    source = '''#include <time.h>
+#include <stdint.h>
+static double audit_run_ms;
+static uint64_t audit_run_clock(void) {
+    struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t);
+    return (uint64_t)t.tv_sec*1000000000ull+t.tv_nsec;
+}
+''' + source
+    source = replace_once(source, "measure_run_switch(raster,field,m);",
+        "uint64_t run_started=audit_run_clock();\n"
+        "measure_run_switch(raster,field,m);\n"
+        "audit_run_ms=(audit_run_clock()-run_started)/1e6;")
     source = replace_once(source, "static void measure_switch(", """
 typedef struct {
     unsigned rows, readable, complete, basis, disjoint, prefix_free;
@@ -72,19 +84,26 @@ static void measure_switch(""")
     probe = replace_once(probe, "static FILE *geometry;",
                          "static FILE *geometry;\nstatic FILE *causes;")
     probe = replace_once(probe, "field_measurement m;measure_field(unit->bytes+48,f,&m);",
-                         "audit=(switch_audit){.last_accepted=-1,.last_returned=-1};\n"
+                         "audit=(switch_audit){.last_accepted=-1,.last_returned=-1};audit_run_ms=0;\n"
                          "field_measurement m;measure_field(unit->bytes+48,f,&m);\n" + r'''
-        fprintf(causes,"%u,%d,%d,%d,%d,%d,%d,%u,%u,%u,%u,%u,%u,%u,%u,%u,%d,%d\n",
+        fprintf(causes,"%u,%d,%d,%d,%d,%d,%d,%u,%u,%u,%u,%u,%u,%u,%u,%u,%d,%d,%d,%d,%d,%d,%d,%d,%.6f,%d,%.6f,%.6f\n",
             unit->counter16,f+1,m.box_detected,m.top<0?-1:m.top+4,
             m.switch_line<0?-1:m.switch_line+4,
             m.first_full_other_head_line<0?-1:m.first_full_other_head_line+4,
             measured,audit.rows,audit.readable,audit.complete,audit.basis,
             audit.disjoint,audit.prefix_free,audit.previous_veto,audit.accepted,audit.returned,
-            audit.last_accepted,audit.last_returned);
+            audit.last_accepted,audit.last_returned,
+            m.switch_observations.phase_t<0?-1:m.switch_observations.phase_t+4,
+            m.switch_observations.phase_s<0?-1:m.switch_observations.phase_s+4,
+            m.switch_observations.run_t<0?-1:m.switch_observations.run_t+4,
+            m.switch_observations.run_s<0?-1:m.switch_observations.run_s+4,
+            m.switch_observations.run_start,m.switch_observations.run_length,
+            m.switch_observations.run_blank_distance,m.switch_observations.disagreement,audit_run_ms,
+            m.switch_observations.run_blank_tolerance);
 ''')
     probe = replace_once(probe, "probe_signal=aligned_alloc", r'''
     snprintf(path,sizeof path,"%s/causes.csv",directory);causes=fopen(path,"w");assert(causes);
-    fputs("counter,field,box,top,T,S,registration_measured,rows,readable,complete,basis,disjoint,prefix_free,previous_veto,accepted,returned,last_accepted,last_returned\n",causes);
+    fputs("counter,field,box,top,T,S,registration_measured,rows,readable,complete,basis,disjoint,prefix_free,previous_veto,accepted,returned,last_accepted,last_returned,phase_T,phase_S,run_T,run_S,run_start,run_length,run_blank_distance,disagreement,run_ms,run_blank_tolerance\n",causes);
     probe_signal=aligned_alloc''')
     probe = replace_once(probe, "free(parser);free(probe_signal);",
                          "assert(!fclose(causes));free(parser);free(probe_signal);")
@@ -122,7 +141,7 @@ static void measure_switch(""")
         stages = [int(r[k]) for k in ["rows", "readable", "complete", "basis", "disjoint", "prefix_free", "accepted"]]
         assert stages == sorted(stages, reverse=True)
         assert int(r["prefix_free"]) == int(r["previous_veto"]) + int(r["accepted"])
-        if int(r["T"]) >= 0: return "measured"
+        if int(r["phase_T"]) >= 0: return "measured"
         if int(r["top"]) < 0: return "no_picture_top"
         for column in ["rows", "readable", "complete", "basis", "disjoint", "prefix_free", "accepted"]:
             if not int(r[column]): return "no_" + column
@@ -130,7 +149,9 @@ static void measure_switch(""")
         return "accepted_then_returned"
     counts = Counter()
     for r in rows:
-        r["cause"] = cause(r)
+        r["phase_cause"] = cause(r)
+        r["cause"] = ("observation_disagreement" if int(r["disagreement"]) else
+                      "run_recovered" if int(r["run_T"])>=0 and int(r["phase_T"])<0 else r["phase_cause"])
         key = (r["counter"], r["field"])
         old = previous.get(key)
         r["previous_nonbox_unknown"] = int(bool(old and int(old["T"]) < 0 and not int(r["box"])))
@@ -138,7 +159,10 @@ static void measure_switch(""")
             counts[(r["field"], r["cause"])] += 1
     with (out / "unknown_causes.csv").open("w") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
-    summary = {"engine_sha256": source_hash, "rows": len(rows),
+    summary = {"engine_sha256": source_hash,
+               "header_sha256": {name: hashlib.sha256((engine/name).read_bytes()).hexdigest()
+                                  for name in ["field_registration.h", "box_observation.h", "run_timing.h"]},
+               "rows": len(rows),
                "previous_nonbox_unknown": {f"f{f}:{c}": n for (f,c),n in sorted(counts.items())},
                "current_causes": dict(Counter(r["cause"] for r in rows))}
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

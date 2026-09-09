@@ -2113,6 +2113,27 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Independent run timing observation, qualified and not a capture pass:**
+the engine now records a second timing reader beside the unchanged phase
+envelope. A unique exposed interior run >=147 samples must agree with the
+unit's source-porch distribution and accompany loss of locally readable end
+porches; a stationary blank-level rectangle alone cannot qualify. The
+two-ended reference is an instrument limitation, not a standards guarantee.
+No 64/200 bounds, new lock/hold policy, top-reader or comb change. Schema 20
+retains both T/S pairs, run start/extent, CDF distance and source-derived
+tolerance, and disagreement. Conflicting T stays Unknown; an agreed S remains.
+Failing-first `23d1ec4`: 6/10; expanded controls 34/34 including sanitizers.
+One of the 265 old non-box `no_disjoint` readings recovers (7034/f2); 264
+remain Unknown. Boxed 6764/f2 also recovers. Six T disagreements are explicit,
+not silently adjudicated; all six S readings agree. Total known T is 478/1016
+(279/199 by field), versus 482 before; live-gated 221/154. This does NOT close
+Track 1's agreement condition. Method, limitations, controls, exact disagreeing
+keys and reproduction: `src/field_registration/tests/RUN_TIMING.md`.
+Paced worker: 919 exact/published, zero drops/log errors, zero locks and zero
+nonzero crops. Registration-call worker median/p95 9.169/13.923 ms; added
+run routine alone over both fields 0.3115/0.372 ms. No speedup or budget-pass
+claim. Plain/instrumented outputs and the schema-20 worker records agree.
+
 **Rule-8 switch observations restored on boxed rasters, no bounds invented:**
 the categorical box flag no longer skips `measure_switch`. T, S, bottom, span
 and visible extent are reported; the flag still supplies no box geometry,

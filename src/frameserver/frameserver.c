@@ -261,8 +261,8 @@ static int log_header(FILE *L){
     return fprintf(L, "ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,"
                "interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,"
                "geometry_lock_known,engine_applied_d1,engine_applied_d2,resolution,evidence_mode,confidence,"
-               "f1_reason,f1_gauge,f1_insert_present,f1_insert_bytes,f1_insert_relation,f1_caption_confirmation,f1_parity_candidates,f1_fallback_candidates,f1_gauge_line,f1_gauge_bytes,f1_gauge_amplitude,f1_geometry_d,f1_blank_mean,f1_blank_chroma_noise,f1_body_witness_valid,f1_body_shift,f1_body_mad,f1_body_geometry_agrees,f1_body_reference_top,f1_body_implied_top,f1_body_differential,f1_body_common_mode,f1_picture_position_valid,f1_measured_picture_top,f1_picture_from_body,f1_recorded_first,f1_recorded_last,f1_raw_top,f1_raw_bottom,f1_switch_line,f1_first_full_other_head_line,f1_rf_peak_line,f1_rf_peak_position,f1_raw_span,f1_picture_rows,f1_band_extent,f1_observed_switch_line_count,f1_switch_count_agrees,f1_switch_count_conflict,f1_switch_signature,f1_switch_measurable,f1_geometry_measurable,f1_lock_state,f1_zero_source,f1_lock_id,f1_lock_top,f1_lock_switch_line_count,f1_lock_switch_line_count_known,f1_clip_state,f1_clip_ceiling,f1_expected_bottom,f1_lines_lost,f1_invariant_residual,f1_box_detected,"
-               "f2_reason,f2_gauge,f2_insert_present,f2_insert_bytes,f2_insert_relation,f2_caption_confirmation,f2_parity_candidates,f2_fallback_candidates,f2_gauge_line,f2_gauge_bytes,f2_gauge_amplitude,f2_geometry_d,f2_blank_mean,f2_blank_chroma_noise,f2_body_witness_valid,f2_body_shift,f2_body_mad,f2_body_geometry_agrees,f2_body_reference_top,f2_body_implied_top,f2_body_differential,f2_body_common_mode,f2_picture_position_valid,f2_measured_picture_top,f2_picture_from_body,f2_recorded_first,f2_recorded_last,f2_raw_top,f2_raw_bottom,f2_switch_line,f2_first_full_other_head_line,f2_rf_peak_line,f2_rf_peak_position,f2_raw_span,f2_picture_rows,f2_band_extent,f2_observed_switch_line_count,f2_switch_count_agrees,f2_switch_count_conflict,f2_switch_signature,f2_switch_measurable,f2_geometry_measurable,f2_lock_state,f2_zero_source,f2_lock_id,f2_lock_top,f2_lock_switch_line_count,f2_lock_switch_line_count_known,f2_clip_state,f2_clip_ceiling,f2_expected_bottom,f2_lines_lost,f2_invariant_residual,f2_box_detected,"
+               "f1_reason,f1_gauge,f1_insert_present,f1_insert_bytes,f1_insert_relation,f1_caption_confirmation,f1_parity_candidates,f1_fallback_candidates,f1_gauge_line,f1_gauge_bytes,f1_gauge_amplitude,f1_geometry_d,f1_blank_mean,f1_blank_chroma_noise,f1_body_witness_valid,f1_body_shift,f1_body_mad,f1_body_geometry_agrees,f1_body_reference_top,f1_body_implied_top,f1_body_differential,f1_body_common_mode,f1_picture_position_valid,f1_measured_picture_top,f1_picture_from_body,f1_recorded_first,f1_recorded_last,f1_raw_top,f1_raw_bottom,f1_switch_line,f1_first_full_other_head_line,f1_rf_peak_line,f1_rf_peak_position,f1_raw_span,f1_picture_rows,f1_band_extent,f1_observed_switch_line_count,f1_switch_count_agrees,f1_switch_count_conflict,f1_switch_signature,f1_switch_measurable,f1_geometry_measurable,f1_lock_state,f1_zero_source,f1_lock_id,f1_lock_top,f1_lock_switch_line_count,f1_lock_switch_line_count_known,f1_clip_state,f1_clip_ceiling,f1_expected_bottom,f1_lines_lost,f1_invariant_residual,f1_box_detected,f1_phase_switch_line,f1_phase_full_line,f1_run_switch_line,f1_run_full_line,f1_run_start,f1_run_length,f1_switch_disagreement,f1_run_blank_distance,f1_run_blank_tolerance,"
+               "f2_reason,f2_gauge,f2_insert_present,f2_insert_bytes,f2_insert_relation,f2_caption_confirmation,f2_parity_candidates,f2_fallback_candidates,f2_gauge_line,f2_gauge_bytes,f2_gauge_amplitude,f2_geometry_d,f2_blank_mean,f2_blank_chroma_noise,f2_body_witness_valid,f2_body_shift,f2_body_mad,f2_body_geometry_agrees,f2_body_reference_top,f2_body_implied_top,f2_body_differential,f2_body_common_mode,f2_picture_position_valid,f2_measured_picture_top,f2_picture_from_body,f2_recorded_first,f2_recorded_last,f2_raw_top,f2_raw_bottom,f2_switch_line,f2_first_full_other_head_line,f2_rf_peak_line,f2_rf_peak_position,f2_raw_span,f2_picture_rows,f2_band_extent,f2_observed_switch_line_count,f2_switch_count_agrees,f2_switch_count_conflict,f2_switch_signature,f2_switch_measurable,f2_geometry_measurable,f2_lock_state,f2_zero_source,f2_lock_id,f2_lock_top,f2_lock_switch_line_count,f2_lock_switch_line_count_known,f2_clip_state,f2_clip_ceiling,f2_expected_bottom,f2_lines_lost,f2_invariant_residual,f2_box_detected,f2_phase_switch_line,f2_phase_full_line,f2_run_switch_line,f2_run_full_line,f2_run_start,f2_run_length,f2_switch_disagreement,f2_run_blank_distance,f2_run_blank_tolerance,"
                "parity_state,comb_check,comb_best_shift,parity_bias,comb_best_energy,comb_second_energy,comb_static_fraction,comb_correction,comb_correction_install_ordinal,comb_safe,published,drop_reason,schema_version,preceding_ring_drops,f1_geometry_observation_changed,f2_geometry_observation_changed,registration_measured,signal_gate_cause,lock_like_loss,signal_actions,observed_appearance,f1_row_coherence,f1_temporal_coherence,f2_row_coherence,f2_temporal_coherence,comb_candidate_shift,comb_unresolved_alternatives,epoch\n") < 0 ? -1 : 0;
 }
 
@@ -276,6 +276,7 @@ static int log_field(FILE *L, const fieldreg_field_decision *d)
     const char *lock = d ? fieldreg_lock_state_name(d->lock_state) : "NotMeasured";
     const char *zero = d ? fieldreg_zero_source_name(d->zero_source) : "None";
     const char *clip = d ? fieldreg_clip_state_name(d->clip_state) : "ClipUnknown";
+    const fieldreg_switch_observations *o=d?&d->switch_observations:NULL;
     char insert_bytes[5] = "", gauge_bytes[5] = "";
     if (d && d->insert_present)
         snprintf(insert_bytes, sizeof insert_bytes, "%02x%02x", d->insert_byte1, d->insert_byte2);
@@ -288,7 +289,8 @@ static int log_field(FILE *L, const fieldreg_field_decision *d)
                    ",%d,%d,%.3f"
                    ",%d,%d,%d,%d,%d,%d,%d,%d"
                    ",%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s,%d,%d"
-                   ",%s,%s,%u,%d,%d,%d,%s,%d,%d,%d,%d,%d",
+                   ",%s,%s,%u,%d,%d,%d,%s,%d,%d,%d,%d,%d"
+                   ",%d,%d,%d,%d,%d,%d,%d,%.6f,%.6f",
                    reason, gauge, d && d->insert_present, insert_bytes,
                    insert_relation, caption_confirmation,
                    d ? d->parity_candidate_count : 0,
@@ -334,7 +336,13 @@ static int log_field(FILE *L, const fieldreg_field_decision *d)
                    d && d->clip_ceiling >= 0 ? d->clip_ceiling + 4 : -1,
                    d && d->expected_bottom >= 0 ? d->expected_bottom + 4 : -1,
                    d ? d->lines_lost : 0, d ? d->invariant_residual : 0,
-                   d && d->box_detected);
+                   d && d->box_detected,
+                   o && o->phase_t>=0?o->phase_t+4:-1,
+                   o && o->phase_s>=0?o->phase_s+4:-1,
+                   o && o->run_t>=0?o->run_t+4:-1,
+                   o && o->run_s>=0?o->run_s+4:-1,
+                   o?o->run_start:-1,o?o->run_length:-1,o && o->disagreement,
+                   o?o->run_blank_distance:-1,o?o->run_blank_tolerance:-1);
 }
 /* Analysis is the sole producer. The logger retains a slot until the publisher
  * has completed it, so a queued log index cannot alias a newer decision. */
