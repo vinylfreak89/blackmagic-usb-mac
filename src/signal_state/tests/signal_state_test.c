@@ -152,36 +152,6 @@ static uint64_t monotonic_ns(void)
     return (uint64_t)value.tv_sec * UINT64_C(1000000000) + value.tv_nsec;
 }
 
-/* Regression: identical upstream evidence must produce identical upstream
- * state regardless of downstream crop choices. The conditional exercises the
- * retired API on the pre-fix revision, and disappears with that API. */
-static void registration_output_cannot_mutate_signal_state(uint8_t *unit)
-{
-    signal_state *a = aligned_alloc(signal_state_alignment(), signal_state_size());
-    signal_state *b = aligned_alloc(signal_state_alignment(), signal_state_size());
-    assert(a && b);
-    signal_state_init(a, NULL);
-    signal_state_init(b, NULL);
-    for (unsigned i = 0; i < 50; ++i) {
-        make_unit(unit, PATTERN_PROGRAM, i, 0);
-        unit_video_observation input = observation(unit, i);
-        signal_result ra, rb;
-        assert(signal_state_classify(a, &input, NULL, &ra));
-        assert(signal_state_classify(b, &input, NULL, &rb));
-#ifndef SIGNAL_STATE_UPSTREAM_ONLY
-        signal_state_note_registration(a, &ra, false, 0, 0, 0, true, 0, 0);
-        signal_state_note_registration(b, &rb, false, 0, 0, 0, true, i & 1, 0);
-#endif
-        if (memcmp(&ra, &rb, sizeof ra) != 0) {
-            fprintf(stderr, "registration_output_cannot_mutate_signal_state: FAIL unit %u\n", i);
-            abort();
-        }
-    }
-    free(a);
-    free(b);
-    puts("registration_output_cannot_mutate_signal_state: PASS");
-}
-
 static void snow_loss_and_mute_lifecycle(uint8_t *unit)
 {
     signal_state *state = aligned_alloc(signal_state_alignment(), signal_state_size());
@@ -234,7 +204,6 @@ int main(void)
     signal_state *state = aligned_alloc(signal_state_alignment(), signal_state_size());
     uint8_t *unit = malloc(UNIT_BYTES);
     assert(state && unit);
-    registration_output_cannot_mutate_signal_state(unit);
     snow_loss_and_mute_lifecycle(unit);
     signal_state_config config = signal_state_default_config();
     signal_state_init(state, &config);

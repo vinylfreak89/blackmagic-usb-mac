@@ -33,62 +33,151 @@ typedef struct field_measurement {
     double blank_chroma_noise;
 } field_measurement;
 
-/* Eight is a fixed hot-path memory capacity. Each aperture is therefore 90
- * of the standard 720 luma samples; the aperture size is not a decision
- * threshold. */
-enum { H_LAG_APERTURES = 8, H_LAG_APERTURE_SAMPLES = 720 / H_LAG_APERTURES };
+/* BT.601: 858 total / 720 delivered samples. SMPTE 170M blanking is
+ * approximately 147 samples, leaving nine delivered blanking samples in
+ * total (not nine at EACH end). Sixteen is the local-profile memory capacity,
+ * not a required run length or an expected band extent. */
+enum { H_SAMPLES = 720, H_BLANK = 147, H_OVERLAP = H_BLANK-(858-720),
+       H_HISTORY = 16 };
 
-static bool full_other_head_row(const uint8_t *raster, int row)
+typedef struct horizontal_blanking {
+    uint8_t support[H_SAMPLES];
+    uint8_t blank_samples[H_SAMPLES];
+    bool readable;
+    bool complete_interval;
+} horizontal_blanking;
+
+static horizontal_blanking blanking_profile(const uint8_t *raster, int row,
+                                            unsigned blank_ceiling)
 {
-    const uint8_t *current = raster + (size_t)row * FIELDREG_BYTES_PER_LINE;
-    const uint8_t *above = current - FIELDREG_BYTES_PER_LINE;
-    uint32_t zero_difference = 0;
-    int absolute_lags[H_LAG_APERTURES];
-
-    for (int x = 0; x < 720; ++x) {
-        const int delta = (int)current[x * 2 + 1] -
-                          (int)above[x * 2 + 1];
-        zero_difference += (uint32_t)abs(delta);
+    horizontal_blanking p = {0};
+    const uint8_t *line = raster + (size_t)row*FIELDREG_BYTES_PER_LINE;
+    unsigned sum=0, total=0;
+    for(int x=0;x<H_SAMPLES;++x)total+=line[2*x+1];
+    /* A row indistinguishable from blanking supplies no phase. */
+    if(total<=blank_ceiling*H_SAMPLES)return p;
+    for(int x=0;x<H_SAMPLES;++x)
+        p.blank_samples[x]=line[2*x+1]<=blank_ceiling;
+    for(int x=0;x<H_OVERLAP;++x)sum+=line[2*x+1];
+    for(int x=0;x<H_SAMPLES;++x) {
+        p.support[x]=(sum<=blank_ceiling*H_OVERLAP);
+        p.readable |= p.support[x]!=0;
+        /* Circular windows join the two delivered ends: the overlap may
+         * be split between them. No particular end is required to be black. */
+        sum-=line[2*x+1];
+        sum+=line[2*((x+H_OVERLAP)%H_SAMPLES)+1];
     }
-    /* The full-row difference is the cheap half of the capture measurement;
-     * avoid the exhaustive all-lag aperture check on ordinary picture rows. */
-    if (zero_difference < 35u * 720u) return false;
-    for (int aperture = 0; aperture < H_LAG_APERTURES; ++aperture) {
-        const int first = aperture * H_LAG_APERTURE_SAMPLES;
-        const int past = first + H_LAG_APERTURE_SAMPLES;
-        uint32_t best_cost = UINT32_MAX;
-        int best_lag = 0;
-        for (int lag = -first; lag <= 720 - past; ++lag) {
-            uint32_t cost = 0;
-            for (int x = first; x < past; ++x) {
-                const int delta = (int)current[x * 2 + 1] -
-                                  (int)above[(x + lag) * 2 + 1];
-                cost += (uint32_t)abs(delta);
-            }
-            if (cost < best_cost ||
-                (cost == best_cost && abs(lag) < abs(best_lag))) {
-                best_cost = cost;
-                best_lag = lag;
-            }
+    sum=0;
+    for(int x=0;x<H_BLANK;++x)sum+=line[2*x+1];
+    for(int x=0;x<=H_SAMPLES-H_BLANK;++x) {
+        if(sum<=blank_ceiling*H_BLANK)p.complete_interval=true;
+        if(x<H_SAMPLES-H_BLANK) {
+            sum-=line[2*x+1];
+            sum+=line[2*(x+H_BLANK)+1];
         }
-        absolute_lags[aperture] = abs(best_lag);
     }
-    for (int i = 1; i < H_LAG_APERTURES; ++i) {
-        const int value = absolute_lags[i];
-        int j = i;
-        while (j > 0 && absolute_lags[j - 1] > value) {
-            absolute_lags[j] = absolute_lags[j - 1];
-            --j;
-        }
-        absolute_lags[j] = value;
-    }
+    return p;
+}
 
-    /* Capture measurement, contract section 2: ordinary adjacent picture
-     * rows differ by 8..17 luma units at median segment lag 0..1; the first
-     * full other-head row differs by 35..80 at median lag >= 10. Test the
-     * measured non-overlapping boundaries, not a fitted bottom corridor. */
-    return absolute_lags[H_LAG_APERTURES / 2 - 1] +
-               absolute_lags[H_LAG_APERTURES / 2] >= 2 * 10;
+static bool phase_overlap(const horizontal_blanking *a,
+                           const horizontal_blanking *b)
+{
+    if(!a->readable || !b->readable)return false;
+    for(int x=0;x<H_SAMPLES;++x)
+        if(a->support[x] && b->support[x])return true;
+    return false;
+}
+
+static bool retains_normal_blanking(const horizontal_blanking *row,
+                                    const horizontal_blanking *basis,
+                                    const uint8_t *informative_columns)
+{
+    for(int x=0;x<H_SAMPLES;++x)
+        if(informative_columns[x] && row->blank_samples[x] &&
+           basis->blank_samples[x])return true;
+    return false;
+}
+
+static void measure_switch(const uint8_t *raster, int field,
+                           field_measurement *m)
+{
+    /* This unit's regenerated blanking, excluding its timing/insert rows.
+     * Re-measured on every invocation: no source timing or level survives a
+     * reset, and a gated unit cannot train this measurement. */
+    const int first=field?270:7, last=field?278:15;
+    unsigned ceiling=0;
+    for(int r=first;r<=last;++r)for(int x=0;x<H_SAMPLES;++x) {
+        unsigned y=raster[(size_t)r*FIELDREG_BYTES_PER_LINE+2*x+1];
+        if(y>ceiling)ceiling=y;
+    }
+    /* A column blank throughout the field cannot distinguish either phase.
+     * Example measured on 6687 f1: sample 719 is blank even in the displaced
+     * rows. Discover such columns from the unit, never type their positions. */
+    uint8_t informative_columns[H_SAMPLES]={0};
+    for(int row=m->top;row<=m->recorded_last;++row)
+        for(int x=0;x<H_SAMPLES;++x)
+            informative_columns[x] |=
+                raster[(size_t)row*FIELDREG_BYTES_PER_LINE+2*x+1]>ceiling;
+    horizontal_blanking history[H_HISTORY];
+    horizontal_blanking previous={0};
+    horizontal_blanking departure_basis={0};
+    unsigned count=0,next=0;
+    int departure=-1, full=-1;
+    for(int row=m->top;row<=m->recorded_last;++row) {
+        const horizontal_blanking p=blanking_profile(raster,row,ceiling);
+        /* Return to the pre-departure phase excludes a mid-field event. */
+        if(departure>=0 && phase_overlap(&p,&departure_basis))
+            departure=full=-1;
+        horizontal_blanking basis={0};
+        for(unsigned i=0;i<count;++i) {
+            if(!history[i].readable)continue;
+            /* The envelope admits locally observed phase variance; individual
+             * blank samples must instead persist throughout that reference.
+             * Their survival on only part of a row rules out a full departure.
+             * No leading/trailing sample position is typed in. */
+            for(int x=0;x<H_SAMPLES;++x)
+                basis.blank_samples[x]=basis.readable ?
+                    basis.blank_samples[x] & history[i].blank_samples[x] :
+                    history[i].blank_samples[x];
+            basis.readable |= history[i].readable;
+            for(int x=0;x<H_SAMPLES;++x)
+                basis.support[x] |= history[i].support[x];
+        }
+        const bool current_full=p.readable && p.complete_interval && basis.readable &&
+           !phase_overlap(&p,&basis) &&
+           !retains_normal_blanking(&p,&basis,informative_columns);
+        const bool previous_partial=previous.readable &&
+            retains_normal_blanking(&previous,&basis,informative_columns) &&
+            !phase_overlap(&previous,&basis);
+        /* A preceding row with the same displaced phase must be positively
+         * identified as partial. Otherwise it might already be a full row:
+         * a later, easier-to-read row cannot become the FIRST full row. */
+        if(current_full && !(previous.readable && !previous_partial &&
+                             phase_overlap(&p,&previous))) {
+            full=row;
+            /* The contract's S / partial-row travel, not a band-size cap.
+             * An earlier isolated departure cannot be carried through
+             * intervening rows to manufacture a long head-switch band. */
+            departure=previous_partial ? row-1 : row;
+            departure_basis=basis;
+        }
+        /* Local means local in raster rows, including unreadable ones.
+         * Exclude the immediately preceding row while testing S: it may
+         * itself carry the partial switch. No lifetime/source-wide envelope. */
+        history[next]=previous;
+        previous=p;
+        next=(next+1)%H_HISTORY;
+        if(count<H_HISTORY)++count;
+    }
+    /* A relocated full blanking interval corroborates the preceding partial
+     * departure. Without it neither missing edge nor brightness places T. */
+    if(departure>=0 && full>=0) {
+        m->switch_line=(int16_t)departure;
+        m->first_full_other_head_line=(int16_t)full;
+        m->switch_signature=departure<full ? FIELDREG_SWITCH_BLANKING_PARTIAL :
+                                           FIELDREG_SWITCH_FULL_OTHER_HEAD;
+        m->switch_measurable=true;
+    }
 }
 
 static uint16_t read_le16(const uint8_t *p)
@@ -318,21 +407,7 @@ static void measure_field(const uint8_t *raster, int field,
         }
     }
 
-    /* Find S, the first row belonging entirely to the other head. Starting
-     * from the measured clip side avoids promoting an internal graphics edge
-     * to the picture bottom. The switch is reported at S until an RF-peak
-     * measurement exposes the partial row immediately above it. */
-    if (m->top >= 0) {
-        for (int row = m->recorded_last; row > m->top; --row) {
-            if (full_other_head_row(raster, row)) {
-                m->first_full_other_head_line = (int16_t)row;
-                m->switch_line = (int16_t)row;
-                m->switch_signature = FIELDREG_SWITCH_FULL_OTHER_HEAD;
-                m->switch_measurable = true;
-                break;
-            }
-        }
-    }
+    if (m->top >= 0) measure_switch(raster,field,m);
     if (m->top >= 0) m->geometry_measurable = true;
     if (m->switch_measurable) {
         const int origin = field == 0 ? FIELDREG_PICTURE_ORIGIN_F1 :
@@ -767,6 +842,7 @@ const char *fieldreg_switch_signature_name(fieldreg_switch_signature signature)
     switch (signature) {
     case FIELDREG_SWITCH_NONE: return "None";
     case FIELDREG_SWITCH_FULL_OTHER_HEAD: return "FullOtherHead";
+    case FIELDREG_SWITCH_BLANKING_PARTIAL: return "BlankingPartial";
     }
     return "Unknown";
 }

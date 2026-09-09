@@ -3,7 +3,7 @@ CFLAGS ?= -O3 -std=c11 -Wall -Wextra -Werror
 CPPFLAGS ?= -I. -I../unit_parser -I../capture_core
 LDLIBS ?= -lm
 
-.PHONY: all test test-asan test-tsan clean
+.PHONY: all test test-retired-api test-asan test-tsan clean
 
 all: libsignalstate.a
 
@@ -16,8 +16,11 @@ signal_state.o: signal_state.c signal_state.h ../unit_parser/unit_parser.h
 tests/signal_state_test: signal_state.c signal_state.h tests/signal_state_test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) signal_state.c tests/signal_state_test.c -o $@ $(LDLIBS)
 
-test: tests/signal_state_test
+test: tests/signal_state_test test-retired-api
 	./tests/signal_state_test
+
+test-retired-api:
+	CC="$(CC)" python3 tests/retired_api_test.py
 
 test-asan:
 	$(CC) $(CPPFLAGS) -O1 -g -std=c11 -Wall -Wextra -Werror \

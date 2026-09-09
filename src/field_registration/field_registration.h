@@ -78,6 +78,7 @@ typedef enum fieldreg_confirmation {
 typedef enum fieldreg_switch_signature {
     FIELDREG_SWITCH_NONE = 0,
     FIELDREG_SWITCH_FULL_OTHER_HEAD,
+    FIELDREG_SWITCH_BLANKING_PARTIAL,
 } fieldreg_switch_signature;
 
 typedef enum fieldreg_mode {

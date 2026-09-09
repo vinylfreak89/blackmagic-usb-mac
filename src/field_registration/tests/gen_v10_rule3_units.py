@@ -34,7 +34,13 @@ def account_unit(counter, d1, *, switch1=None, caption_d=None):
                      captions=(caption, None),
                      bottom_overrides=(258, 521), content_phases=(0, 0))
     pattern = horizontal_pattern()
-    shifted = pattern[60:] + pattern[:60]
+    # A physically timed NTSC line: 858 total samples, including 147 blank.
+    # The old fixture had arbitrary 720-sample texture with NO blanking. It
+    # tested a content matcher, not observable horizontal timing. The asserted
+    # vertical geometry and lock-count contradictions remain unchanged.
+    wire = pattern[:711] + [2] * 147
+    pattern = wire[:720]
+    shifted = [wire[(x-160) % 858] for x in range(720)]
 
     top1 = 19 + d1
     for row in range(top1, switch1):
