@@ -61,11 +61,14 @@ static void video(void *opaque,const unit_video_observation *unit) {
             m.bottom<0?-1:m.bottom+4,m.recorded_last<0?-1:m.recorded_last+4,
             m.band_extent,measured,measured?d.field[f].lock_switch_line_count:-1);
     }
-    printf("%llu,%s,%s,%d,%.6f,%.6f,%d,%d,%d,%d,%d,%d\n",
+    printf("%llu,%s,%s,%d,%.6f,%.6f,%d,%d,%d,%d,%d,%d,%s,%d,%.6f,%.6f,%.6f,%s\n",
         (unsigned long long)unit->counter_extended,signal_appearance_name(sr.appearance),
         signal_source_state_name(sr.source),measured,(end-before_engine)/1e6,(end-start)/1e6,
         d.field[0].raw_top,d.field[1].raw_top,d.field[0].switch_line,d.field[1].switch_line,
-        d.field[0].band_extent,d.field[1].band_extent);
+        d.field[0].band_extent,d.field[1].band_extent,
+        measured?fieldreg_comb_check_name(d.comb_check):"n.a.",d.comb_best_shift,
+        d.comb_best_energy,d.comb_second_energy,d.comb_static_fraction,
+        fieldreg_parity_state_name(d.parity_state));
     if(unit->counter16<selected_first || unit->counter16>selected_last)return;
     const uint8_t *raster=unit->bytes+48;
     char raw_path[1024];
@@ -96,7 +99,7 @@ int main(int argc,char **argv) {
     unit_parser *parser=aligned_alloc(unit_parser_alignment(),unit_parser_size());assert(parser);
     unit_parser_callbacks cb={.on_video=video};unit_parser_init(parser,NULL,&cb);
     FILE *input=fopen(argv[1],"rb");assert(input);uint8_t h[24];
-    puts("counter,appearance,source,measured,engine_ms,core_ms,f1_top_row,f2_top_row,f1_switch_row,f2_switch_row,f1_extent,f2_extent");
+    puts("counter,appearance,source,measured,engine_ms,core_ms,f1_top_row,f2_top_row,f1_switch_row,f2_switch_row,f1_extent,f2_extent,comb_check,comb_best_shift,comb_best_energy,comb_second_energy,comb_static_fraction,parity_state");
     for(;;) {
         size_t n=fread(h,1,24,input);if(!n){assert(!ferror(input));break;}
         assert(n==24 && u32(h)==0x31504143 && h[4]!=1 && h[4]!=2);

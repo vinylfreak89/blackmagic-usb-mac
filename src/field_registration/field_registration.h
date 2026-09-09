@@ -15,6 +15,10 @@ enum {
     FIELDREG_RASTER_LINES = 525,
     FIELDREG_BYTES_PER_LINE = 1440,
     FIELDREG_ACTIVE_LUMA_SAMPLES = 320,
+    /* Eight-sample low-pass aperture measured in CLAUDE.md section 11's
+     * static-comb experiment; disjoint boxes cover all 720 samples. */
+    FIELDREG_COMB_BOX = 8,
+    FIELDREG_COMB_COLUMNS = 720 / FIELDREG_COMB_BOX,
     FIELDREG_FIELD_LINES = 240,
     /* 720x480 clean-aperture crop: NTSC lines 23 and 286. */
     FIELDREG_FIELD1_START = 19,
@@ -27,6 +31,7 @@ enum {
     FIELDREG_FIELD1_MAX_OFFSET = 9,
     FIELDREG_FIELD2_MAX_OFFSET = 3,
     FIELDREG_UNKNOWN = -128,
+    FIELDREG_COMB_UNKNOWN = INT16_MIN,
     FIELDREG_ALGORITHM_VERSION = 10,
 };
 
@@ -211,7 +216,10 @@ typedef struct fieldreg_decision {
     bool comb_safe;
     fieldreg_parity_state parity_state;
     fieldreg_comb_check comb_check;
-    int8_t comb_best_shift;
+    int16_t comb_best_shift;
+    /* Diagnostic only; not a confirmed shift when alternatives remain. */
+    int16_t comb_candidate_shift;
+    uint16_t comb_unresolved_alternatives;
     int8_t parity_bias;
     /* Absolute, bounded correction relative to the ordinary per-unit crops.
      * A positive value moves field 2 down (or field 1 up) by this many lines. */
@@ -249,10 +257,10 @@ typedef struct fieldreg_field_state {
 typedef struct field_registration {
     fieldreg_config config;
     fieldreg_field_state field[2];
-    /* Previous full-raster active-width luma supplies both the bounded body
-     * witness and the static-comb calibration without retaining input. */
-    uint8_t previous_luma[FIELDREG_RASTER_LINES *
-                          FIELDREG_ACTIVE_LUMA_SAMPLES];
+    /* Full-width low-pass sums, no retained caller input or allocation. */
+    uint16_t previous_luma[FIELDREG_RASTER_LINES * FIELDREG_COMB_COLUMNS];
+    uint16_t current_luma[FIELDREG_RASTER_LINES * FIELDREG_COMB_COLUMNS];
+    int16_t previous_crop[2], previous_begin[2], previous_end[2];
     bool previous_luma_valid;
     fieldreg_parity_state parity_state;
     int16_t comb_zero_candidate;

@@ -449,6 +449,183 @@ static bool crop_fits_raster(int field, int displacement)
            displacement >= INT8_MIN && displacement <= INT8_MAX;
 }
 
+typedef struct comb_reading {
+    bool measured;
+    int shift;
+    double best, second, fraction;
+    uint16_t unresolved;
+} comb_reading;
+
+static void comb_lowpass(field_registration *e,const uint8_t *raster)
+{
+    for(int r=0;r<FIELDREG_RASTER_LINES;++r)
+        for(int x=0;x<FIELDREG_COMB_COLUMNS;++x){
+            unsigned sum=0;
+            for(int k=0;k<FIELDREG_COMB_BOX;++k)
+                sum+=raster[(size_t)r*1440+2*(x*FIELDREG_COMB_BOX+k)+1];
+            e->current_luma[r*FIELDREG_COMB_COLUMNS+x]=(uint16_t)sum;
+        }
+}
+
+typedef struct comb_pair_reading {
+    double energy[2][2]; /* time, alignment */
+    unsigned samples, possible;
+} comb_pair_reading;
+
+static comb_pair_reading comb_pair(const field_registration *e,const int start[2],
+    const uint8_t valid[2][240],const uint8_t still[2][240][FIELDREG_COMB_COLUMNS],int a,int b)
+{
+    enum { C=FIELDREG_COMB_COLUMNS,H=FIELDREG_FIELD_LINES };
+    comb_pair_reading r={0};uint64_t sums[2][2]={{0}};
+    for(int y=0;y<H-1;++y){
+        int j=y+a,k=y+b;
+        if(j<1 || j>=H-1 || k<1 || k>=H-1 || !valid[0][y] || !valid[0][y+1] ||
+           !valid[1][j-1] || !valid[1][j] || !valid[1][j+1] ||
+           !valid[1][k-1] || !valid[1][k] || !valid[1][k+1])continue;
+        r.possible+=C;
+        for(int x=0;x<C;++x){
+            if(!still[0][y][x] || !still[0][y+1][x] ||
+               !still[1][j-1][x] || !still[1][j][x] || !still[1][j+1][x] ||
+               !still[1][k-1][x] || !still[1][k][x] || !still[1][k+1][x])continue;
+            ++r.samples;
+            int ca=e->current_luma[(start[0]+y)*C+x]+e->current_luma[(start[0]+y+1)*C+x];
+            int pa=e->previous_luma[(e->previous_crop[0]+y)*C+x]+e->previous_luma[(e->previous_crop[0]+y+1)*C+x];
+            sums[0][0]+=(unsigned)abs(2*e->current_luma[(start[1]+j)*C+x]-ca);
+            sums[0][1]+=(unsigned)abs(2*e->current_luma[(start[1]+k)*C+x]-ca);
+            sums[1][0]+=(unsigned)abs(2*e->previous_luma[(e->previous_crop[1]+j)*C+x]-pa);
+            sums[1][1]+=(unsigned)abs(2*e->previous_luma[(e->previous_crop[1]+k)*C+x]-pa);
+        }
+    }
+    if(r.samples)for(int t=0;t<2;++t)for(int q=0;q<2;++q)
+        r.energy[t][q]=(double)sums[t][q]/(2*FIELDREG_COMB_BOX*r.samples);
+    return r;
+}
+
+/* One shared mask per comparison, in BOTH current and previous fields. The
+ * temporal tolerance is the largest observed low-pass fluctuation on this
+ * pair's regenerated blanking rows, not a typed luma threshold. It selects
+ * only picture changes indistinguishable at that instrument noise floor.
+ * Candidate ranking must also survive the observed energy fluctuation
+ * between the two units; ties or overlapping intervals do not confirm. */
+static comb_reading comb_search(const field_registration *e,const int start[2],
+                               const int begin[2],const int end[2],int bias)
+{
+    comb_reading result={0};
+    enum { C=FIELDREG_COMB_COLUMNS, H=FIELDREG_FIELD_LINES };
+    unsigned tolerance=0;
+    for(int f=0;f<2;++f)for(int r=f?270:7;r<=(f?278:15);++r)
+        for(int x=0;x<C;++x){
+            unsigned d=(unsigned)abs((int)e->current_luma[r*C+x]-e->previous_luma[r*C+x]);
+            if(d>tolerance)tolerance=d;
+        }
+    uint8_t still[2][H][C],valid[2][H];
+    for(int f=0;f<2;++f)for(int y=0;y<H;++y)for(int x=0;x<C;++x){
+        int r=start[f]+y,p=e->previous_crop[f]+y;
+        bool available=r>=begin[f] && r<=end[f] && p>=e->previous_begin[f] &&
+                   p<=e->previous_end[f] && r>=0 && r<525 && p>=0 && p<525;
+        valid[f][y]=available;
+        still[f][y][x]=available &&
+            (unsigned)abs((int)e->current_luma[r*C+x]-e->previous_luma[p*C+x])<=tolerance;
+    }
+    /* Search every shift with visible overlap. A local minimum does not
+     * exclude a remote match. Confirm the candidate against every alternative
+     * on pairwise IDENTICAL support at both times; ties, missing static
+     * evidence and comparison cycles never confirm a lock. */
+    int best=bias<0?0:bias;
+    bool observed=false;
+    for(int q=-(H-2);q<=H-2;++q){
+        comb_pair_reading p=comb_pair(e,start,valid,still,best,q);
+        if(!p.samples)continue;
+        observed=true;
+        /* Candidate means from DIFFERENT supports are not comparable.
+         * Tournament comparisons share the same pixels; a genuine strict
+         * pairwise winner survives regardless of enumeration order. */
+        if(p.energy[0][1]<p.energy[0][0])best=q;
+    }
+    if(!observed)return result;
+    comb_pair_reading own=comb_pair(e,start,valid,still,best,best);
+    result.best=own.energy[0][0];result.second=HUGE_VAL;
+    result.fraction=(double)own.samples/(H*C);
+    double limiting_margin=HUGE_VAL;
+    bool unique=true;
+    for(int q=-(H-2);q<=H-2;++q)if(q!=best){
+        comb_pair_reading p=comb_pair(e,start,valid,still,best,q);
+        if(!p.possible)continue;
+        if(!p.samples){unique=false;++result.unresolved;continue;}
+        double margin=p.energy[0][1]-p.energy[0][0];
+        if(margin<limiting_margin){
+            limiting_margin=margin;
+            result.best=p.energy[0][0];result.second=p.energy[0][1];
+            result.fraction=(double)p.samples/(H*C);
+        }
+        if(fmax(p.energy[0][0],p.energy[1][0])>=fmin(p.energy[0][1],p.energy[1][1])){
+            unique=false;++result.unresolved;
+        }
+    }
+    if(!isfinite(result.second)){result.second=0;return result;}
+    result.measured=unique;result.shift=best;return result;
+}
+
+static void comb_confirm(field_registration *e,const uint8_t *raster,
+                         const field_measurement m[2],fieldreg_decision *out)
+{
+    comb_lowpass(e,raster);
+    int start[2]={FIELDREG_FIELD1_START+out->applied_d1,FIELDREG_FIELD2_START+out->applied_d2};
+    int begin[2],end[2];
+    for(int f=0;f<2;++f){
+        begin[f]=m[f].top>=0?m[f].top:start[f];
+        end[f]=m[f].switch_measurable?m[f].bottom:m[f].recorded_last;
+    }
+    if(e->previous_luma_valid){
+        bool settled=e->parity_state==FIELDREG_PARITY_CALIBRATED;
+        int bias=settled?e->comb_zero_candidate:-1;
+        comb_reading standard={0};
+        if(!settled){
+            const int nominal[2]={FIELDREG_FIELD1_START,FIELDREG_FIELD2_START};
+            standard=comb_search(e,nominal,begin,end,-1);
+        }
+        comb_reading r=(!settled && out->applied_d1==0 && out->applied_d2==0)?
+                         standard:comb_search(e,start,begin,end,bias);
+        out->comb_check=FIELDREG_COMB_FLAT;
+        out->comb_best_energy=r.best;out->comb_second_energy=r.second;
+        out->comb_static_fraction=r.fraction;
+        out->comb_unresolved_alternatives=r.unresolved;
+        if(r.fraction>0)out->comb_candidate_shift=(int16_t)(r.shift-(settled?bias:(r.shift==1?1:0)));
+        if(r.measured){
+            int order=settled?bias:(r.shift==1?1:0);
+            out->parity_bias=(int8_t)order;
+            out->comb_best_shift=(int16_t)(r.shift-order);
+            out->comb_check=out->comb_best_shift==0?FIELDREG_COMB_AGREE:FIELDREG_COMB_DISAGREE;
+            int standard_order=standard.shift-(out->applied_d2-out->applied_d1);
+            if(!settled && r.shift==order && standard.measured && standard_order==order &&
+               m[0].geometry_measurable && m[1].geometry_measurable &&
+               m[0].switch_measurable && m[1].switch_measurable){
+                e->comb_zero_candidate=(int16_t)order;
+                e->parity_state=FIELDREG_PARITY_CALIBRATED;settled=true;
+                for(int f=0;f<2;++f)if(e->field[f].lock_state==FIELDREG_LOCK_UNLOCKED){
+                    e->field[f].switch_line_count=m[f].observed_switch_line_count;
+                    e->field[f].switch_line_count_known=true;
+                    e->field[f].lock_state=FIELDREG_LOCK_LOCKED;
+                    e->field[f].top=m[f].top;e->field[f].zero_source=FIELDREG_ZERO_COMB;
+                    out->field[f].lock_state=FIELDREG_LOCK_LOCKED;
+                    out->field[f].lock_switch_line_count=m[f].observed_switch_line_count;
+                    out->field[f].lock_switch_line_count_known=true;
+                    out->field[f].lock_top=m[f].top;out->field[f].zero_source=FIELDREG_ZERO_COMB;
+                    out->field[f].switch_count_agrees=true;
+                }
+            }
+            out->comb_safe=settled && out->comb_check==FIELDREG_COMB_AGREE;
+            out->parity_state=settled && out->comb_check==FIELDREG_COMB_DISAGREE?
+                              FIELDREG_PARITY_DRIFT:e->parity_state;
+        }
+    }
+    if(e->parity_state==FIELDREG_PARITY_CALIBRATED)out->parity_bias=(int8_t)e->comb_zero_candidate;
+    memcpy(e->previous_luma,e->current_luma,sizeof e->previous_luma);
+    for(int f=0;f<2;++f){e->previous_crop[f]=(int16_t)start[f];
+        e->previous_begin[f]=(int16_t)begin[f];e->previous_end[f]=(int16_t)end[f];}
+    e->previous_luma_valid=true;
+}
+
 static void v10_reset_field(fieldreg_field_state *state, bool reset_applied,
                             int field)
 {
@@ -651,8 +828,8 @@ static void v10_decide_field(fieldreg_field_state *state,
 
     /* Rule 4: the switch-line count is acquired once, from a unit where the
      * geometry is complete and independently confirmed.  A pass-through
-     * caption can provide that confirmation now; the acquisition comb adds
-     * another confirmation path when rule 5 lands.  Later observations are
+     * caption can provide that confirmation; comb_confirm supplies the
+     * independent static-weave path. Later observations are
      * comparisons against the frozen count, never learning samples. */
     if (state->lock_state == FIELDREG_LOCK_UNLOCKED &&
         measurement->switch_measurable &&
@@ -687,7 +864,8 @@ bool fieldreg_process(field_registration *engine,
     memset(out, 0, sizeof *out);
     out->decision_d1 = out->decision_d2 = FIELDREG_UNKNOWN;
     out->frame_observation_d1 = out->frame_observation_d2 = FIELDREG_UNKNOWN;
-    out->comb_best_shift = FIELDREG_UNKNOWN;
+    out->comb_best_shift = FIELDREG_COMB_UNKNOWN;
+    out->comb_candidate_shift = FIELDREG_COMB_UNKNOWN;
     out->transport_ok = true;
     out->segment_id = engine->segment_id;
     out->parity_state = engine->parity_state;
@@ -711,6 +889,7 @@ bool fieldreg_process(field_registration *engine,
     out->applied_d2 = out->field[1].applied_d;
     out->baseline_d1 = out->applied_d1;
     out->baseline_d2 = out->applied_d2;
+    comb_confirm(engine,raster,measurement,out);
     out->decision_d1 = out->field[0].measured_d;
     out->decision_d2 = out->field[1].measured_d;
     out->frame_observation_d1 = out->decision_d1;

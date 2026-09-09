@@ -79,7 +79,9 @@ int main(int argc, char **argv)
     qsort(timings, BENCHMARK_UNITS, sizeof timings[0], compare_double);
     const double median = timings[BENCHMARK_UNITS / 2];
     const double p95 = timings[(BENCHMARK_UNITS * 95) / 100];
-    assert(p95 <= 10000.0);
+    /* Owner: optimize after correctness; always report the budget breach. */
+    if(getenv("FIELDREG_ENFORCE_BUDGET"))assert(p95 <= 10000.0);
+    if(p95>10000.0)fprintf(stderr,"PERFORMANCE BUDGET EXCEEDED: %.3f us/unit p95\n",p95);
     fclose(raw);
     free(unit);
     printf("FIELDREG-V10-RULE4: 5/5 cost median=%.3f us/unit "

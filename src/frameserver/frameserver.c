@@ -225,7 +225,7 @@ static int log_header(FILE *L){
                "geometry_lock_known,engine_applied_d1,engine_applied_d2,resolution,evidence_mode,confidence,"
                "f1_reason,f1_gauge,f1_insert_present,f1_insert_bytes,f1_insert_relation,f1_caption_confirmation,f1_parity_candidates,f1_fallback_candidates,f1_gauge_line,f1_gauge_bytes,f1_gauge_amplitude,f1_geometry_d,f1_blank_mean,f1_blank_chroma_noise,f1_body_witness_valid,f1_body_shift,f1_body_mad,f1_body_geometry_agrees,f1_body_reference_top,f1_body_implied_top,f1_body_differential,f1_body_common_mode,f1_picture_position_valid,f1_measured_picture_top,f1_picture_from_body,f1_recorded_first,f1_recorded_last,f1_raw_top,f1_raw_bottom,f1_switch_line,f1_first_full_other_head_line,f1_rf_peak_line,f1_rf_peak_position,f1_raw_span,f1_picture_rows,f1_band_extent,f1_observed_switch_line_count,f1_switch_count_agrees,f1_switch_count_conflict,f1_switch_signature,f1_switch_measurable,f1_geometry_measurable,f1_lock_state,f1_zero_source,f1_lock_id,f1_lock_top,f1_lock_switch_line_count,f1_lock_switch_line_count_known,f1_clip_state,f1_clip_ceiling,f1_expected_bottom,f1_lines_lost,f1_invariant_residual,"
                "f2_reason,f2_gauge,f2_insert_present,f2_insert_bytes,f2_insert_relation,f2_caption_confirmation,f2_parity_candidates,f2_fallback_candidates,f2_gauge_line,f2_gauge_bytes,f2_gauge_amplitude,f2_geometry_d,f2_blank_mean,f2_blank_chroma_noise,f2_body_witness_valid,f2_body_shift,f2_body_mad,f2_body_geometry_agrees,f2_body_reference_top,f2_body_implied_top,f2_body_differential,f2_body_common_mode,f2_picture_position_valid,f2_measured_picture_top,f2_picture_from_body,f2_recorded_first,f2_recorded_last,f2_raw_top,f2_raw_bottom,f2_switch_line,f2_first_full_other_head_line,f2_rf_peak_line,f2_rf_peak_position,f2_raw_span,f2_picture_rows,f2_band_extent,f2_observed_switch_line_count,f2_switch_count_agrees,f2_switch_count_conflict,f2_switch_signature,f2_switch_measurable,f2_geometry_measurable,f2_lock_state,f2_zero_source,f2_lock_id,f2_lock_top,f2_lock_switch_line_count,f2_lock_switch_line_count_known,f2_clip_state,f2_clip_ceiling,f2_expected_bottom,f2_lines_lost,f2_invariant_residual,"
-               "parity_state,comb_check,comb_best_shift,parity_bias,comb_best_energy,comb_second_energy,comb_static_fraction,comb_correction,comb_correction_install_ordinal,comb_safe,published,drop_reason,schema_version,preceding_ring_drops,f1_geometry_observation_changed,f2_geometry_observation_changed,registration_measured,signal_gate_cause,lock_like_loss,signal_actions,observed_appearance,f1_row_coherence,f1_temporal_coherence,f2_row_coherence,f2_temporal_coherence\n") < 0 ? -1 : 0;
+               "parity_state,comb_check,comb_best_shift,parity_bias,comb_best_energy,comb_second_energy,comb_static_fraction,comb_correction,comb_correction_install_ordinal,comb_safe,published,drop_reason,schema_version,preceding_ring_drops,f1_geometry_observation_changed,f2_geometry_observation_changed,registration_measured,signal_gate_cause,lock_like_loss,signal_actions,observed_appearance,f1_row_coherence,f1_temporal_coherence,f2_row_coherence,f2_temporal_coherence,comb_candidate_shift,comb_unresolved_alternatives\n") < 0 ? -1 : 0;
 }
 
 static int log_field(FILE *L, const fieldreg_field_decision *d)
@@ -388,7 +388,12 @@ static void process_item(frameserver *f, const fs_item *it){
                 f->last_published_d1 = d.applied_d1;
                 f->last_published_d2 = d.applied_d2;
             }
-        } else if (rc == 1) f->st.publisher_dropped++;
+        } else {
+            if (rc == 1) f->st.publisher_dropped++;
+            /* An unpublished crop must not become the next comb witness. */
+            fieldreg_discontinuity(f->eng);
+            f->st.discontinuity_calls++;
+        }
         // The publisher copied the bytes: free the slot before the (slow) log write so slot
         // occupancy is the analysis time, not analysis + I/O.
         atomic_store(&f->slot_used[it->slot], 0);
@@ -411,10 +416,10 @@ static void process_item(frameserver *f, const fs_item *it){
                 unit ? "SignalGateHold" : "None", have_d ? d.confidence : 0.0);
         if (wr >= 0) wr = log_field(f->log, have_d ? &d.field[0] : NULL);
         if (wr >= 0) wr = log_field(f->log, have_d ? &d.field[1] : NULL);
-        if (wr >= 0) wr = fprintf(f->log, ",%s,%s,%d,%d,%.3f,%.3f,%.6f,%d,%lld,%d,%d,%s,%u,%llu,%d,%d,%d,%s,%d,%u,%s,%.6f,%.6f,%.6f,%.6f\n",
+        if (wr >= 0) wr = fprintf(f->log, ",%s,%s,%d,%d,%.3f,%.3f,%.6f,%d,%lld,%d,%d,%s,%u,%llu,%d,%d,%d,%s,%d,%u,%s,%.6f,%.6f,%.6f,%.6f,%d,%u\n",
             have_d ? fieldreg_parity_state_name(d.parity_state) : "Uncalibrated",
             have_d ? fieldreg_comb_check_name(d.comb_check) : "n.a.",
-            have_d ? d.comb_best_shift : FIELDREG_UNKNOWN,
+            have_d ? d.comb_best_shift : FIELDREG_COMB_UNKNOWN,
             have_d ? d.parity_bias : 0,
             have_d ? d.comb_best_energy : 0.0,
             have_d ? d.comb_second_energy : 0.0,
@@ -435,7 +440,9 @@ static void process_item(frameserver *f, const fs_item *it){
             classified && sr.lock_like_loss, classified ? sr.actions : 0,
             classified ? signal_appearance_name(sr.observed_appearance) : "Unknown",
             sr.measurements.row_coherence[0], sr.measurements.temporal_coherence[0],
-            sr.measurements.row_coherence[1], sr.measurements.temporal_coherence[1]);
+            sr.measurements.row_coherence[1], sr.measurements.temporal_coherence[1],
+            have_d ? d.comb_candidate_shift : FIELDREG_COMB_UNKNOWN,
+            have_d ? d.comb_unresolved_alternatives : 0);
         if (wr < 0){ f->st.log_write_errors++; f->log_file_errors++; } else f->st.log_rows++;   // a failed row is never counted as written
         fs_test_after_log_row(f, f->log);
     }

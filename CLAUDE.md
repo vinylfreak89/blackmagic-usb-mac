@@ -2109,6 +2109,23 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**v10 running-comb attempt — NOT accepted on capture 1:** the unconditional
+stub is replaced by a full-width low-pass, previous-published-crop static
+comparison and relative reweave search. Failing-first tests be3c7a7 / fbfc7ee
+give 4/19 against the stub, 19/19 against the attempt (also ASan/UBSan).
+But the final commercial paced replay has 919 published exact units, zero
+drops, 467 gated, three without a prior witness and **449 ambiguous comb
+readings; zero agreements and zero calibrated units**. A local-search prototype
+was falsified by distant synthetic aliases. Its replacement's exhaustive
+pairwise dominance is our failed design, not a contract requirement: remote
+tiny overlaps veto useful readings. Native classifier+engine median/p95
+9.617/16.603 ms is over the 10-ms whole-worker budget (and excludes I/O).
+Schema 17 carries an unconfirmed candidate and unresolved-alternative count;
+these are diagnostics, never placement. Crops and classifier labels are
+unchanged on this capture. Definitions, rejected approaches, exact test
+outcomes, performance failures and replay SHA are in
+`src/field_registration/tests/COMB.md`. No contract or signal-state change.
+
 **Commercial switch review follow-up:** raw 6667 f1 has T=S=260 (no
 partial); raw 6690 f1 has T=260, S=261. A partial need not expose a complete
 nine-sample blanking window. The engine now requires retained local-normal
