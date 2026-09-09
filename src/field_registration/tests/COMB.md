@@ -6,6 +6,11 @@ units. The shared-support/search premise needs review before another change.
 This is an engine measurement failure, not an open owner-output preference.
 No contract or signal-state rule was changed.
 
+Queueing follow-up: `../../frameserver/QUEUES.md` supersedes the publication
+coupling described below. The previous witness now belongs to analysis at its
+own decided crop; downstream delivery failure no longer clears that witness.
+The comb algorithm and the failed measurement below are otherwise unchanged.
+
 ## What is implemented
 
 `comb_lowpass`, `comb_pair`, `comb_search` and `comb_confirm` in

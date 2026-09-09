@@ -2,18 +2,22 @@
 //
 //   capture_core (device or replay) --on_packet--> unit_parser --on_video--> [pool slot + SPSC ring]
 //     --> processing worker: signal_state_classify -> registration actions -> fieldreg_process
-//         -> frame_publisher -> decision-log row
+//         -> independent bounded publication queue -> frame_publisher
+//         -> independent bounded binary-record queue -> log writer
 //
 // Policy implemented here is the contract's LOW-LATENCY LIVE policy: every fixed-raster unit is
-// published immediately with the engine's per-unit applied phase (provisional; marked unsettled
+// offered for publication immediately with the engine's per-unit applied phase (provisional; marked unsettled
 // when source acquisition or engine geometry is unresolved), and the sidecar records enough for an archival re-render. The
 // gated trajectory redesign (delayed/corrected policy) plugs in behind the same log schema later.
 //
 // Threading: the parser runs on capture_core's delivery thread and only copies an eligible unit
 // into a free pool slot and pushes an item onto the SPSC ring; if no slot is free the unit is
 // DROPPED and counted — never blocked (§8 property 7) — but its observation still reaches the
-// worker and the sidecar (drop_reason=PoolFull), so a later re-render sees a marked hole, never an
-// unmarked one. The worker does all analysis and I/O. Lifecycle: open -> start -> stop -> close;
+// worker and, unless the log itself overflows (reported incomplete), the sidecar
+// (drop_reason=PoolFull). Analysis performs no output I/O or consumer callbacks. A separate raw output
+// pool prevents consumers retaining analysis input; a separate writer formats/writes records.
+// Persistent kqueue notifications wake the four frameserver workers without timeout polling.
+// Lifecycle: open -> start -> stop -> close;
 // fs_stop is idempotent and fs_close performs it if the caller did not.
 // No per-unit allocation anywhere: pool, engine, classifier and parser are allocated at open.
 #ifndef FRAMESERVER_H
@@ -30,7 +34,7 @@ extern "C" {
 
 typedef struct frameserver frameserver;
 
-#define FS_DECISION_LOG_SCHEMA 17
+#define FS_DECISION_LOG_SCHEMA 18
 
 typedef struct {
     cc_config capture;          // device input or replay_path
@@ -43,8 +47,10 @@ typedef struct {
     ap_sink audio_sink;         // consumer of PCM blocks on the device timebase ({NULL,NULL} => count only)
     unsigned audio_block_frames; // audio publisher block buffer (0 => 4096 stereo frames, > 2 units)
     unsigned audio_queue_blocks; // bounded queue between the publisher and the sink (0 => 32 blocks, ~1 s)
-    void (*on_end)(void *ctx, enum cc_end reason);   // optional; fires once BOTH the video and audio workers have drained
-                                                     // (no media callback of either kind follows it); never call fs_stop/fs_close from any callback
+    unsigned publication_queue_units; // independent raw output slots; 0 => 16 (~12.1 MB)
+    unsigned log_queue_items;         // binary decisions/completions; 0 => 128, overflow makes file incomplete
+    void (*on_end)(void *ctx, enum cc_end reason); // fires once analysis, publication, logging and audio have drained
+                                                 // no later media callbacks; fs_stop then closes/flushes the log
     void *end_ctx;
 } fs_config;
 
@@ -74,6 +80,7 @@ typedef struct {
     // dropped_ring_full: item ring full -> observation never reaches the worker; counted, and folded
     //   into the next sidecar row's preceding_ring_drops column. Tail loss gets one synthetic
     //   RingFullTail row, so every missing range remains chronologically locatable.
+    // publisher_dropped includes publication queue overflow, surface exhaustion and rejected output.
     // Invariants: published + dropped_pool_full + publisher_dropped == exact_units;
     //             exact_units + eligible ring drops == eligible_observations.
     uint64_t unsettled_units, begin_segment_calls, discontinuity_calls;
@@ -82,29 +89,32 @@ typedef struct {
     uint64_t log_files;               // decision-log files opened (cfg.decision_log + fs_log_start)
     uint64_t log_write_errors;        // rows whose fprintf failed (NOT counted in log_rows): the sidecar is incomplete
     uint64_t log_close_errors;        // fclose failures at detach/stop: the tail of that file may be missing
-    uint64_t log_last_file_errors;    // write+close errors of the most recently CLOSED log file (fs_log_stop or fs_stop): 0 => that file is complete
+    uint64_t log_last_file_errors;    // write+close+overflow errors of the most recently CLOSED log file: 0 => that file is complete
     unsigned pool_high_water;
+    uint64_t publication_queue_drops, log_queue_drops;
+    unsigned publication_queue_high_water, log_queue_high_water;
 } fs_stats;
 
 int  fs_open (frameserver **out, const fs_config *cfg);
 int  fs_start(frameserver *f);
-int  fs_stop (frameserver *f);            // stops capture, drains the worker, closes the log
+int  fs_stop (frameserver *f);            // stops capture, drains all workers, closes the log
 // Runtime decision-log attachment, for a recorder that aligns the sidecar to its own recording
-// rather than to the session: rows are written only while a log is attached; the first row after
-// fs_log_start is the first unit the worker processed after the call (it anchors the recording on
-// the device clock via counter_extended). Same schema and header as cfg.decision_log. One log at
+// rather than to the session: attachment atomically enables admission of analysis snapshots;
+// already-enqueued snapshots keep their original file identity. Rows join publication outcomes
+// by epoch + ordinal and remain analysis-ordered. Same schema and header as cfg.decision_log. One log at
 // a time: start fails (-1) while one is attached (including cfg.decision_log) — stop it first.
-// Refused from the worker/audio callbacks and after stop. fs_stop closes an attached log.
+// Refused from ALL worker callbacks and after stop. fs_stop closes an attached log.
 // The path must not exist (opened exclusively: a sidecar is evidence and is never truncated).
 // Control-thread ownership: fs_open/start/stop/close and fs_log_start/stop are serialized
 // against each other internally (life_m/log_m), but the sidecar's PATH policy is the caller's —
 // a growing file must not live in a cloud-synced root (CLAUDE.md writer output rule).
-// A synchronous row write runs on the video worker: a stalled disk stalls that worker and sheds
-// video downstream (PoolFull rows, then ring drops), never acquisition — proven by the storage-
-// stall test. A bounded row queue + writer thread is the named follow-up if that shedding is ever
-// observed in practice.
+// Detach disables admission, waits for in-flight admissions and all admitted publication/log
+// outcomes, then flushes/closes on the control caller. This may block that caller, never analysis.
+// A full log queue increments log_queue_drops and makes the attached file incomplete; it never
+// backpressures video. A callback or filesystem operation that never returns can prevent drain;
+// arbitrary consumer code is not forcibly cancelled or freed underneath.
 int  fs_log_start(frameserver *f, const char *path);
-int  fs_log_stop (frameserver *f);        // -1 if none attached, the close failed, or any row write failed in this file (it is then incomplete: do not publish it as complete)
+int  fs_log_stop (frameserver *f);        // -1 if absent, close/write failed, or records overflowed: never publish an incomplete file
 // Authoritative after fs_stop. During streaming worker-owned members are diagnostic only and
 // may be momentarily inconsistent; atomic ingress counters remain individually safe.
 void fs_get_stats(const frameserver *f, fs_stats *out);

@@ -72,7 +72,10 @@ int main(int argc, char **argv){
     printf("eligible ingress %llu = processed exact %llu + eligible ring loss %llu | ring loss logged %llu in %llu terminal range rows\n",
         (unsigned long long)s.eligible_observations,(unsigned long long)s.exact_units,
         (unsigned long long)s.eligible_ring_drops,(unsigned long long)s.ring_drops_logged,
-        (unsigned long long)s.ring_gap_rows);
+           (unsigned long long)s.ring_gap_rows);
+    printf("output queue: dropped %llu high %u | log queue: dropped %llu high %u | last log errors %llu\n",
+           (unsigned long long)s.publication_queue_drops,s.publication_queue_high_water,
+           (unsigned long long)s.log_queue_drops,s.log_queue_high_water,(unsigned long long)s.log_last_file_errors);
     printf("audio records %llu (resync %llu) | pcm %llu -> published %llu frames in %llu blocks (unanchored %llu, discontinuities %llu)\n",
         (unsigned long long)s.audio_records, (unsigned long long)s.audio_resync, (unsigned long long)s.audio_pcm_records,
         (unsigned long long)s.audio_frames_published, (unsigned long long)s.audio_blocks,
@@ -83,5 +86,5 @@ int main(int argc, char **argv){
         (unsigned long long)s.audio_counter_gaps, (long long)s.audio_residual_min, (long long)s.audio_residual_max,
         (unsigned long long)s.audio_master_frames);
     fs_close(f);
-    return 0;
+    return (s.log_queue_drops || s.log_write_errors || s.log_close_errors) ? 1 : 0;
 }
