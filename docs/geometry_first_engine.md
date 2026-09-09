@@ -329,7 +329,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   "thats your 2 independent confirmations isn't it? **the fact that the harness shows real geometry with a real
   measurable box means a geometry can be acquired. which means only 1 additional measurement is needed, comb or
   head switch** and ideally both are generateable and a full lock is acquired on the logo." So where a box is
-  measured it supplies the geometry and exactly one further observation is required, comb or head switch. Where
+  measured it supplies the geometry and **at least one** further observation is required, comb or head switch —
+  at least, not exactly, because his own sentence welcomes both. Where
   there is no box the confirmations are combing, captions, or
   both (owner, 2026-09-09, admitting VBI in one bounded form: **"only admit as confirmation of positive evidence
   of displacement. unless you can get line 22 from the tape's own blanking, not the shuttles"** — the tape's own
@@ -345,6 +346,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   picture**. Not every source is VHS; no head switch at all is legitimate, a picture may extend to the last row,
   and a boxed picture's framing below the gap is deliberately unmeasured under rule 8. Where the switch is
   required, the lock's count is taken at that unit and never substituted.
+  ⚠️ **"A boxed picture's framing below the gap is deliberately unmeasured under rule 8" above is WITHDRAWN**
+  (owner, 2026-09-09T16:21:01Z, uuid 12b22361, in rule 8): a box does not make the switch unmeasurable. The
+  sentence is left standing only so the withdrawal is visible where the old wording was; read rule 8, not it.
   **Confirmation is deliberately narrow, and failing to lock is an accepted outcome** (owner, same day): geometry
   alone cannot decide, and when nothing confirms it the picture stays stable and unmoved, which is correct. "some
   sources may never lock and thats okay. rather fail closed than fail open."
@@ -461,8 +465,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    for a lock, not the opposite.** All I was trying to say before is **a box decreases the likelihood of a lift off
    point and therefore the lack of one doesn't make the head switch invalid. It just means to hold its bounds, and
    not to set a new one.** So it needs to go and fix that contradiction." So on a boxed picture the switch is
-   measured like any other; what the box changes is that the measurement **holds the existing bounds instead of
-   setting new ones** — unless the agreement test below is satisfied, which is the one thing that licenses setting. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
+   measured like any other.
+   **Read the trigger precisely: it is the ABSENCE OF A LIFT-OFF POINT that holds the bounds, not boxing.** In his
+   sentence "it" is the lack of a lift-off point; a box only makes that absence more likely. So a switch measured
+   without a lift-off point **holds the bounds already established and does not set new ones**, boxed or not, and
+   the agreement test below is the one thing that licenses setting. ⚠️ Two things this does not yet say, and neither
+   may be invented by an agent: WHICH bounds are held, and what happens where no bounds exist yet — holding must
+   never manufacture an initial bound. The unit's own current observations are reported either way. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
    separates nothing and its switch stays measurable; read the other way, this rule would suppress switch evidence
    on every dark passage of every source. **The gap is created by the box, so the classification comes first and
    any consequence follows from it** — never the reverse.
@@ -476,7 +485,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    inference rather than quoted as a rule, from the owner's question of 2026-09-09T16:32:59Z (uuid 1bd1fc1d): "does
    the box (again measured by the harness) consistently line up at line 23 after the fade (both fields)… and same on
    the bottom. where does it land in each field?" He was asking the harness for a measurement there, not writing a
-   definition, so if the intended comparison is a different pair, this sentence is the one to correct. **Agreeing, they are valid geometry and MAY set a new
+   definition. ⚠️ **UNRESOLVED, and NOT an operative acquisition test** (both agents, 2026-09-10): the question does
+   not say which bottom is meant — the picture bottom, the switch line, or the recorded edge — nor what "line up"
+   is as an equation. No agent may implement the agreement test on this sentence; it records the likely reading so
+   the owner can confirm or replace it in one line. **Agreeing, they are valid geometry and MAY set a new
    acquisition, taken as the full geometry as if the box were not there. Disagreeing, the unit holds and may not
    acquire.**
    **A box is not its own class** (owner, same day): "it should be left on the tape where it was centered… boxes
