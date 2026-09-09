@@ -15,7 +15,15 @@ def decode(row):
     lo,hi=10,230
     seg=x[lo:hi]-x[lo:hi].mean(); n=np.arange(lo,hi)
     w=2*np.pi/CELL; c=(seg*np.cos(w*n)).sum(); s=(seg*np.sin(w*n)).sum(); amp=np.hypot(c,s)*2/len(seg)
-    if amp<35: return (False,None,None,'no run-in')   # real 608 run-in measures 52-60 here; picture lines that pass parity by chance measure 15-22
+    # The gate is DERIVED from the standard, not fitted to a tape. CEA-608's clock run-in is seven
+    # cycles at 50 IRE peak-to-peak, so 25 IRE peak; at BT.601's 219 codes per 100 IRE that is 54.75
+    # codes, and `amp` above is exactly that peak amplitude. The prediction matches what real run-ins
+    # measure here, 52-60. A candidate must reach at least HALF the standard amplitude — anything
+    # weaker is not a run-in at 50 IRE, whatever else it is. (The old gate was 35, chosen to sit
+    # between this tape's two observed populations, real at 52-60 and chance-parity picture lines at
+    # 15-22. That is a number fitted to one tape; this one comes from the standard and holds on any.)
+    RUNIN_PEAK_CODES = 50.0/2.0 * 219.0/100.0        # 50 IRE p-p -> 25 IRE peak -> codes
+    if amp < RUNIN_PEAK_CODES/2.0: return (False,None,None,'no run-in')
     phase=np.arctan2(s,c)                 # peaks where cos(w n - phase)=1 -> n = (phase+2pi k)/w
     peaks=[(phase+2*np.pi*k)/w for k in range(-2,40)]; peaks=[p for p in peaks if lo<=p<hi+16*CELL+8*CELL]
     # find the run-in extent: consecutive peaks with high value
