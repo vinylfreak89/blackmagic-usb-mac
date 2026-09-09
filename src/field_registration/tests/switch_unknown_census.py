@@ -5,6 +5,8 @@ All counts are execution-path evidence, not adjudications of what a raw row IS.
 First zero in the ordered candidate funnel is a mutually exclusive field cause;
 a candidate accepted then cleared is reported separately. No detector thresholds
 or harness readings participate. Run on an original, provenance-complete CAP1.
+The run-stage trace writes scalar candidate rows; timings in this instrumented
+build include tracing and must not be reported as production performance.
 """
 import argparse
 import csv
@@ -13,6 +15,75 @@ import json
 from collections import Counter
 from pathlib import Path
 import subprocess
+
+
+def instrument_run_header(engine, out):
+    """Trace production predicates without replacing any decision expression.
+
+    The funnel is ordered run-first for diagnosis, although production's AND
+    tests basis first. Candidate rows also retain independent positional facts.
+    Output is enabled only during the probe's independent per-field call.
+    """
+    header = (engine / "run_timing.h").read_text()
+    header = '#include <stdio.h>\n#include <assert.h>\n' + header
+    header = replace_once(header, "static void measure_run_switch(", r'''
+static FILE *run_fields, *run_candidates;
+static unsigned run_counter;
+static struct {
+    unsigned rows, candidate, unique, basis, leading, trailing, prior;
+    unsigned alphabet, cdf, accepted, returned;
+} run_audit;
+
+static void audit_run_row(int field,int row,const run_profile *p,
+    bool basis,int left,int right,const run_profile *previous,
+    bool prior_normal,bool prior_partial,int compatible,double delta,double envelope)
+{
+    if(!run_counter)return;
+    ++run_audit.rows;
+    if(p->runs>0) {
+        ++run_audit.candidate;
+        fprintf(run_candidates,"%u,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.9f,%.9f\n",
+            run_counter,field+1,row+4,p->runs,p->start,p->length,p->left,p->right,
+            basis,basis?left:-1,basis?right:-1,previous->left,previous->right,
+            prior_normal,prior_partial,compatible,delta,envelope);
+        if(p->runs==1) {
+            ++run_audit.unique;
+            if(basis) {
+                ++run_audit.basis;
+                if(p->left==0) {
+                    ++run_audit.leading;
+                    if(p->right<right) {
+                        ++run_audit.trailing;
+                        if(prior_normal || prior_partial) {
+                            ++run_audit.prior;
+                            assert(compatible>=0);
+                            if(compatible) {
+                                ++run_audit.alphabet;
+                                if(delta<=envelope)++run_audit.cdf;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void measure_run_switch(''')
+    header = replace_once(header, "            t=s=-1;",
+                          "            {if(run_counter)++run_audit.returned; t=s=-1;}")
+    header = replace_once(header, "        if(full && (prior_normal || prior_partial)) {",
+                          "        int audit_compatible=-1; double audit_delta=-1,audit_envelope=-1;\n"
+                          "        if(full && (prior_normal || prior_partial)) {")
+    header = replace_once(header, "            if(compatible && delta<=envelope) {",
+                          "            audit_compatible=compatible; audit_delta=delta; audit_envelope=envelope;\n"
+                          "            if(compatible && delta<=envelope) {\n"
+                          "                if(run_counter)++run_audit.accepted;")
+    header = replace_once(header, "        history[next]=previous;previous=p;",
+                          "        audit_run_row(field,row,&p,basis,left,right,&previous,\n"
+                          "            prior_normal,prior_partial,audit_compatible,audit_delta,audit_envelope);\n"
+                          "        history[next]=previous;previous=p;")
+    (out / "run_timing.h").write_text(header)
 
 
 def replace_once(text, old, new):
@@ -30,6 +101,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     tests = Path(__file__).resolve().parent
     engine = tests.parent
+    instrument_run_header(engine, out)
     source = (engine / "field_registration.c").read_text()
     source_hash = hashlib.sha256(source.encode()).hexdigest()
     source = '''#include <time.h>
@@ -85,7 +157,13 @@ static void measure_switch(""")
                          "static FILE *geometry;\nstatic FILE *causes;")
     probe = replace_once(probe, "field_measurement m;measure_field(unit->bytes+48,f,&m);",
                          "audit=(switch_audit){.last_accepted=-1,.last_returned=-1};audit_run_ms=0;\n"
+                         "memset(&run_audit,0,sizeof run_audit);run_counter=unit->counter16;\n"
                          "field_measurement m;measure_field(unit->bytes+48,f,&m);\n" + r'''
+        run_counter=0;
+        fprintf(run_fields,"%u,%d,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u\n",
+            unit->counter16,f+1,run_audit.rows,run_audit.candidate,run_audit.unique,
+            run_audit.basis,run_audit.leading,run_audit.trailing,run_audit.prior,
+            run_audit.alphabet,run_audit.cdf,run_audit.accepted,run_audit.returned);
         fprintf(causes,"%u,%d,%d,%d,%d,%d,%d,%u,%u,%u,%u,%u,%u,%u,%u,%u,%d,%d,%d,%d,%d,%d,%d,%d,%.6f,%d,%.6f,%.6f\n",
             unit->counter16,f+1,m.box_detected,m.top<0?-1:m.top+4,
             m.switch_line<0?-1:m.switch_line+4,
@@ -102,11 +180,16 @@ static void measure_switch(""")
             m.switch_observations.run_blank_tolerance);
 ''')
     probe = replace_once(probe, "probe_signal=aligned_alloc", r'''
+    snprintf(path,sizeof path,"%s/run_stages.csv",directory);run_fields=fopen(path,"w");assert(run_fields);
+    fputs("counter,field,rows,candidate,unique,basis,leading,trailing,prior,alphabet,cdf,accepted,returned\n",run_fields);
+    snprintf(path,sizeof path,"%s/run_candidates.csv",directory);run_candidates=fopen(path,"w");assert(run_candidates);
+    fputs("counter,field,line,runs,start,length,left,right,basis,basis_left,basis_right,previous_left,previous_right,prior_normal,prior_partial,compatible,cdf_distance,cdf_envelope\n",run_candidates);
     snprintf(path,sizeof path,"%s/causes.csv",directory);causes=fopen(path,"w");assert(causes);
     fputs("counter,field,box,top,T,S,registration_measured,rows,readable,complete,basis,disjoint,prefix_free,previous_veto,accepted,returned,last_accepted,last_returned,phase_T,phase_S,run_T,run_S,run_start,run_length,run_blank_distance,disagreement,run_ms,run_blank_tolerance\n",causes);
     probe_signal=aligned_alloc''')
     probe = replace_once(probe, "free(parser);free(probe_signal);",
-                         "assert(!fclose(causes));free(parser);free(probe_signal);")
+                         "assert(!fclose(causes));assert(!fclose(run_fields));"
+                         "assert(!fclose(run_candidates));free(parser);free(probe_signal);")
     # Separate per-unit scalar outcome, so restoring observations cannot hide
     # accidental acquisition or movement. Nothing from the raster is exported.
     probe = replace_once(probe, 'if(unit->counter16<selected_first',

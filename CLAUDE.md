@@ -2113,6 +2113,23 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Run-route rejection census, no detector change:** on the immutable 264
+remaining `no_disjoint` field readings at `856ec13` (same engine at merge
+`33e102c`), 255 have no exposed interior >=147-sample run in the generated
+blanking alphabet. Only nine reach the candidate stage: four lack a local
+two-ended porch basis, two retain a leading sample, two fail predecessor
+qualification, one fails the measured CDF envelope. Zero are rejected first
+by trailing extent or code support; none is accepted then returned. Thus the
+two-ended reference is NOT the dominant restriction measured here. This does
+not establish that physical blanking is absent: uninterrupted alphabet-run
+length, exposure and physical blanking duration are different measurements.
+All six observation disagreements are about partial T only; both readers
+agree on S, and this trace does not adjudicate T. Geometry and both join
+exports are byte-identical to the prior production exports; all 1,016
+component observations/causes unchanged. Fresh run controls 34/34. Reproduction,
+counts, exact keys and limits: `src/field_registration/tests/RUN_STAGE_CENSUS.md`.
+Capture 1 not accepted; no capture 2, detector change or new lock policy.
+
 **Independent run timing observation, qualified and not a capture pass:**
 the engine now records a second timing reader beside the unchanged phase
 envelope. A unique exposed interior run >=147 samples must agree with the
