@@ -116,7 +116,15 @@ def main():
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
     gx0, gw = W - 300, 280
-    gy0, gh = FH + 10, BAND - 22
+    # The identity strip owns the bottom of the band; everything else is derived UPWARD from it, so
+    # the graph's legend can never be pushed under the strip or off the frame. Deriving the graph
+    # height from BAND instead is what put the legend below the strip and cut it off (owner,
+    # 2026-09-09: "the line of text d1 red d2 blue etc is now below the machine identity strip. and
+    # is still cut off").
+    STRIP_Y       = H - 14          # the strip's own row
+    STRIP_LABEL_Y = STRIP_Y - 13    # its label, immediately above it
+    LEGEND_Y      = STRIP_LABEL_Y - 14
+    gy0, gh = FH + 10, (LEGEND_Y - 3) - (FH + 10)
 
     def draw_band(dr, r, i, dd1, dd2):
         """The metrics band, BELOW the picture and never over it. Text in fixed columns on the left
@@ -152,11 +160,11 @@ def main():
             if len(pts) > 1:
                 dr.line(pts, fill=col, width=1)
         dr.line([(px(i), gy0), (px(i), gy0 + gh)], fill=(255, 40, 40), width=2)
-        dr.text((gx0, gy0 + gh + 3), "d1 red  d2 blue  +-90 units", font=small, fill=(120, 120, 120))
+        dr.text((gx0, LEGEND_Y), "d1 red  d2 blue  +-90 units", font=small, fill=(120, 120, 120))
         if a.machine_strip:
             from live_overlay_strip import payload as strip_payload, draw as draw_strip
-            dr.text((6, H - 30), "machine identity strip (not signal):", font=small, fill=(90, 90, 90))
-            draw_strip(dr, H - 16, strip_payload(int(g(r, "ordinal", "0")),
+            dr.text((6, STRIP_LABEL_Y), "machine identity strip (not signal):", font=small, fill=(90, 90, 90))
+            draw_strip(dr, STRIP_Y, strip_payload(int(g(r, "ordinal", "0")),
                                                 int(g(r, "counter_extended", "0")), dd1, dd2))
 
     order = []          # the capture's own unit order, so a frame is never paired with another's record
