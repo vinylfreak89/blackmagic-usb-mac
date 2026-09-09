@@ -15,9 +15,6 @@ does not advance capture 2.
 
 ## Triage
 
-**Revised 2026-09-09 evening.** The owner approved an earlier version verbatim; this replaces it because
-measurements since have moved what is binding. What changed and why is at the bottom.
-
 **Tier 1 — the comb. It is the last thing between capture 1 and its first lock.**
 The route to a lock on this source is now fully traced and every step but one has its evidence: geometry from the
 standard origin (assumed under the golden rule — the tape carries no captions, so nothing can move it); no switch
@@ -47,10 +44,6 @@ own fields; three §8 quantities remain undrawable because the engine does not e
 does not gate the lock — placing at the standard origin needs no centring decision — and it is not well posed
 until "where does a box's band end when it runs into the switch band" is answered, since the offset is 4.0, 3.5,
 2.5 or 1.5 field lines depending on that boundary.
-
-**What changed from the approved version.** It said comb quality fell from tier 1 to tier 4 because wiring came
-first. The wiring turned out to be sound — the comb was never disconnected, which was Claude's error — and the
-unlocked-movement gate has landed. So the comb is no longer behind anything, and it is the binding constraint.
 
 ## A. Engine (Codex writes, Claude reviews)
 
