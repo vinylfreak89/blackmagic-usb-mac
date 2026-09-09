@@ -39,8 +39,35 @@ static comb_reading read_comb(void)
     const int s[2]={19,282}, end[2]={258,521};
     return comb_search(&engine,s,s,end,-1);
 }
-int main(void)
+int main(int argc,char **argv)
 {
+    if(argc==2){
+        /* Named controls packed from the previously provenance-checked
+         * diagnostic caches. Scalar results only; no content in the repo. */
+        FILE *in=fopen(argv[1],"rb");if(!in)return 2;
+        static uint8_t raster[525*720];
+        const int counters[]={6687,6690,6700,13653,13972,739,333};
+        const int wanted[]={0,0,0,-1,0,0,1};
+        for(unsigned k=0;k<sizeof counters/sizeof counters[0];++k){
+            fixture(0,false,false);
+            for(int t=0;t<2;++t){
+                if(fread(raster,1,sizeof raster,in)!=sizeof raster)return 2;
+                uint16_t *target=t?engine.current_luma:engine.previous_luma;
+                for(int r=0;r<525;++r)for(int x=0;x<90;++x){
+                    unsigned sum=0;for(int i=0;i<8;++i)sum+=raster[r*720+x*8+i];
+                    target[r*90+x]=(uint16_t)sum;
+                }
+            }
+            comb_reading r=read_comb();
+            printf("raw counter=%d measured=%d shift=%d support=%.6f energy=%.6f next=%.6f\n",
+                   counters[k],r.measured,r.shift,r.fraction,r.best,r.second);
+            check("raw_static_golden",r.measured && r.shift==wanted[k]);
+        }
+        if(fgetc(in)!=EOF || fclose(in))return 2;
+        printf("RAW-STATIC-COMB: %u/%u passed\n",checks-failures,checks);
+        return failures?1:0;
+    }
+    if(argc!=1)return 2;
     for(int d=-1;d<=1;++d){
         fixture(d,false,true);comb_reading r=read_comb();
         check("real_picture_fluctuation_does_not_discard_static_detail",

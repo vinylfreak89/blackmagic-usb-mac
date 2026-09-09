@@ -2113,6 +2113,20 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Static-comb prototype quarantined, not a sanctioned first lock:** diagnostic
+confirmation exposed the missing boxed-geometry observation: the card's lower
+structureless band separates structured content from the switch, so rule 8
+excludes that switch evidence even though the band remains recorded picture
+in the line account. Both agents agree on this distinction; no contract edit.
+The earlier prototype's first lock at counter 6668 and eleven field-2 moves
+are a regression. Its 367/508 decisive (365 agreeing) census is NOT a result
+for the final paired-energy correction, which has only synthetic 6/6 and
+cached raw 7/7 checks. Production source restored unchanged; prototype retained
+only as `src/field_registration/tests/static_comb_prototype.patch`, with method,
+reproduction, cost and unresolved controls in the adjacent `STATIC_COMB_PROTOTYPE.md`.
+No new capture replay, no acquisition bypass, no box or
+top-detector change. Box classification must precede promotion of the comb.
+
 **Unlocked placement gate (rule 8):** the eleven commercial field-2 movements
 with no lock are removed at application, without changing the raw top detector.
 Caption and comb acquisition run before the per-field gate; an unlocked field

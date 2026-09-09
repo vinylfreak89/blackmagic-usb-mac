@@ -1,0 +1,126 @@
+diff --git a/src/field_registration/field_registration.c b/src/field_registration/field_registration.c
+index e48c770..67637e7 100644
+--- a/src/field_registration/field_registration.c
++++ b/src/field_registration/field_registration.c
+@@ -491,6 +491,12 @@ static comb_pair_reading comb_pair(const field_registration *e,const int start[2
+-            int ca=e->current_luma[(start[0]+y)*C+x]+e->current_luma[(start[0]+y+1)*C+x];
+-            int pa=e->previous_luma[(e->previous_crop[0]+y)*C+x]+e->previous_luma[(e->previous_crop[0]+y+1)*C+x];
+-            sums[0][0]+=(unsigned)abs(2*e->current_luma[(start[1]+j)*C+x]-ca);
+-            sums[0][1]+=(unsigned)abs(2*e->current_luma[(start[1]+k)*C+x]-ca);
+-            sums[1][0]+=(unsigned)abs(2*e->previous_luma[(e->previous_crop[1]+j)*C+x]-pa);
+-            sums[1][1]+=(unsigned)abs(2*e->previous_luma[(e->previous_crop[1]+k)*C+x]-pa);
++            for(int t=0;t<2;++t){
++                const uint16_t *l=t?e->previous_luma:e->current_luma;
++                int s0=t?e->previous_crop[0]:start[0];
++                int s1=t?e->previous_crop[1]:start[1];
++                int top=l[(s0+y)*C+x],bottom=l[(s0+y+1)*C+x];
++                int rows[2]={j,k};
++                for(int q=0;q<2;++q){
++                    int middle=l[(s1+rows[q])*C+x];
++                    int product=(top-middle)*(bottom-middle);
++                    if(product>0)sums[t][q]+=(unsigned)product;
++                }
++            }
+@@ -500 +506,2 @@ static comb_pair_reading comb_pair(const field_registration *e,const int start[2
+-        r.energy[t][q]=(double)sums[t][q]/(2*FIELDREG_COMB_BOX*r.samples);
++        r.energy[t][q]=(double)sums[t][q]/
++            (FIELDREG_COMB_BOX*FIELDREG_COMB_BOX*r.samples);
+@@ -504,6 +511,37 @@ static comb_pair_reading comb_pair(const field_registration *e,const int start[2
+-/* One shared mask per comparison, in BOTH current and previous fields. The
+- * temporal tolerance is the largest observed low-pass fluctuation on this
+- * pair's regenerated blanking rows, not a typed luma threshold. It selects
+- * only picture changes indistinguishable at that instrument noise floor.
+- * Candidate ranking must also survive the observed energy fluctuation
+- * between the two units; ties or overlapping intervals do not confirm. */
++/* A strip is static evidence only if its vertical DETAIL has a unique
++ * same-position temporal match. Second differences remove constant levels
++ * and linear ramps before cyclic permutations test alternative phases.
++ * Every permutation uses the same complete strip: no tiny remote overlap
++ * can become a noise calibrator. Cyclic phases are adversarial controls,
++ * never reported physical displacements. No code-level tolerance or minimum
++ * surviving block count is fitted. See tests/STATIC_COMB.md for limitations. */
++static bool comb_static_strip(const field_registration *e,int start,int prior,
++                              int first,int last,int column)
++{
++    enum { C=FIELDREG_COMB_COLUMNS,H=FIELDREG_FIELD_LINES };
++    int current[H],previous[H],n=0;
++    int64_t zero=0;
++    for(int y=first+1;y<last;++y){
++        int r=start+y,p=prior+y;
++        current[n]=(int)e->current_luma[(r-1)*C+column]-
++            2*(int)e->current_luma[r*C+column]+e->current_luma[(r+1)*C+column];
++        previous[n]=(int)e->previous_luma[(p-1)*C+column]-
++            2*(int)e->previous_luma[p*C+column]+e->previous_luma[(p+1)*C+column];
++        zero+=(int64_t)current[n]*previous[n];++n;
++    }
++    if(n<2 || zero<=0)return false;
++    for(int shift=1;shift<n;++shift){
++        int64_t other=0;
++        for(int y=0;y<n;++y)
++            other+=(int64_t)current[y]*previous[(y+shift)%n];
++        if(other>=zero)return false;
++    }
++    return true;
++}
++
++/* Confirmation is a local weave test, not a displacement proposal: the two
++ * possible interlace orders (0/1) and their immediate one-row perturbations,
++ * or the settled order and its neighbours. Compare all on identical support
++ * at both times, and require the same strictly positive paired contrast at
++ * each time. Absolute energy ranges need not be disjoint: a noise/exposure
++ * change shared by all alignments is not an alignment disagreement. */
+@@ -515,2 +553,11 @@ static comb_reading comb_search(const field_registration *e,const int start[2],
+-    unsigned tolerance=0;
+-    for(int f=0;f<2;++f)for(int r=f?270:7;r<=(f?278:15);++r)
++    const int lo=bias<0?-1:bias-1,hi=bias<0?2:bias+1;
++    uint8_t still[2][H][C]={0},valid[2][H]={0};
++    for(int f=0;f<2;++f){
++        int first=H,last=-1;
++        for(int y=0;y<H;++y){
++            int r=start[f]+y,p=e->previous_crop[f]+y;
++            bool available=r>=begin[f] && r<=end[f] && p>=e->previous_begin[f] &&
++                       p<=e->previous_end[f] && r>=0 && r<525 && p>=0 && p<525;
++            valid[f][y]=available;
++            if(available){if(first==H)first=y;last=y;}
++        }
+@@ -518,2 +565,2 @@ static comb_reading comb_search(const field_registration *e,const int start[2],
+-            unsigned d=(unsigned)abs((int)e->current_luma[r*C+x]-e->previous_luma[r*C+x]);
+-            if(d>tolerance)tolerance=d;
++            bool stationary=comb_static_strip(e,start[f],e->previous_crop[f],first,last,x);
++            for(int y=0;y<H;++y)still[f][y][x]=valid[f][y] && stationary;
+@@ -521,8 +567,0 @@ static comb_reading comb_search(const field_registration *e,const int start[2],
+-    uint8_t still[2][H][C],valid[2][H];
+-    for(int f=0;f<2;++f)for(int y=0;y<H;++y)for(int x=0;x<C;++x){
+-        int r=start[f]+y,p=e->previous_crop[f]+y;
+-        bool available=r>=begin[f] && r<=end[f] && p>=e->previous_begin[f] &&
+-                   p<=e->previous_end[f] && r>=0 && r<525 && p>=0 && p<525;
+-        valid[f][y]=available;
+-        still[f][y][x]=available &&
+-            (unsigned)abs((int)e->current_luma[r*C+x]-e->previous_luma[p*C+x])<=tolerance;
+@@ -530,5 +569,8 @@ static comb_reading comb_search(const field_registration *e,const int start[2],
+-    /* Search every shift with visible overlap. A local minimum does not
+-     * exclude a remote match. Confirm the candidate against every alternative
+-     * on pairwise IDENTICAL support at both times; ties, missing static
+-     * evidence and comparison cycles never confirm a lock. */
+-    int best=bias<0?0:bias;
++    /* Restrict f1 before any ranking, so every local pair has exactly the
++     * same y/x grid, including the neighbours used by comb_pair. */
++    for(int y=0;y<H;++y)for(int q=lo;q<=hi;++q){
++        int j=y+q;
++        if(j<1 || j>=H-1 || !valid[1][j-1] || !valid[1][j] || !valid[1][j+1])
++            valid[0][y]=false;
++    }
++    int best=lo;
+@@ -536 +578 @@ static comb_reading comb_search(const field_registration *e,const int start[2],
+-    for(int q=-(H-2);q<=H-2;++q){
++    for(int q=lo;q<=hi;++q){
+@@ -540,3 +581,0 @@ static comb_reading comb_search(const field_registration *e,const int start[2],
+-        /* Candidate means from DIFFERENT supports are not comparable.
+-         * Tournament comparisons share the same pixels; a genuine strict
+-         * pairwise winner survives regardless of enumeration order. */
+@@ -551 +590 @@ static comb_reading comb_search(const field_registration *e,const int start[2],
+-    for(int q=-(H-2);q<=H-2;++q)if(q!=best){
++    for(int q=lo;q<=hi;++q)if(q!=best){
+@@ -561 +600 @@ static comb_reading comb_search(const field_registration *e,const int start[2],
+-        if(fmax(p.energy[0][0],p.energy[1][0])>=fmin(p.energy[0][1],p.energy[1][1])){
++        if(p.energy[0][0]>=p.energy[0][1] || p.energy[1][0]>=p.energy[1][1]){
