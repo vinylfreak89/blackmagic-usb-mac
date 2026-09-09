@@ -325,9 +325,19 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - **Source lock**: exists only after at least one confirmation that the geometry is correct — combing, captions, or
   both, and nothing else (owner, 13:29 and 21:34: "combing captions or both. significant clean picture was a fuck
   up on my part. because of the shuttle's own raster hiding potentially the first few lines" — his earlier
-  "significant non-dirty luma" is withdrawn, because the Shuttle's blanking can hide the picture's first lines) — at a
-  unit whose switch line and band are measurable, so that the lock's count is taken there and never substituted; a
-  unit that confirms only the top does not make a lock. A caption confirms the very first unit of a segment when it
+  "significant non-dirty luma" is withdrawn, because the Shuttle's blanking can hide the picture's first lines).
+  A unit that confirms only the top does not make a lock.
+  **The switch line and band are required CONDITIONALLY, not always** (owner, 2026-09-09, voiding the previous
+  unconditional wording — "section 3 is kind of voided and should have been a long time ago"): a source lock
+  requires a measurable head switch line and band **only where the geometry is not boxed and not all lines are
+  picture**. Not every source is VHS; no head switch at all is legitimate, a picture may extend to the last row,
+  and a boxed picture's framing below the gap is deliberately unmeasured under rule 8. Where the switch is
+  required, the lock's count is taken at that unit and never substituted.
+  **Confirmation is deliberately narrow, and failing to lock is an accepted outcome** (owner, same day): geometry
+  alone cannot decide, and when nothing confirms it the picture stays stable and unmoved, which is correct. "some
+  sources may never lock and thats okay. rather fail closed than fail open."
+  **A change of geometry resets the lock**: bounding-box geometry becoming full picture, or full picture plus a
+  head-switch band, or the reverse. A caption confirms the very first unit of a segment when it
   agrees with the geometry (the lock's confirmation); it never places a unit against measurable geometry (owner,
   2026-09-04 21:26: "assuming the picture itself ALSO MOVES THE SAME AMOUNT"). **A caption on the insert** (bytes
   decoded on the raster's line 21 / 284) does not say where the tape's line 21 was: the Shuttle slices within one
@@ -379,10 +389,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    (owner, 2026-09-09: "lock is 2 or more things, one of which HAS to be geometry. thats what will move a lock to
    acquired"). The lock's constant, the switch-line count, is taken at the confirmed unit and kept until a reset,
    never re-learned; a unit that disagrees with it is reported (rule 2).
-   **The switch band is not detectable in every unit even of a clean source. Where it is absent the band is HELD,
-   not removed** — moving where the head switch is, in the absence of a line, is a hold. That hold is invalidated
-   when the number of lines below the detected head switch changes, and then the lock is truly lost (owner,
-   2026-09-09). The level of the tape's line 22 is a comparator by
+   **The switch band is not detectable in every unit even of a clean source. Where it is absent the head switch's
+   POSITION LINE is HELD, not removed** — moving where the head switch is, in the absence of a line, is a hold.
+   The hold is lost when the total NUMBER of bands changes; **ordinary clipping changes do not count** (owner,
+   2026-09-09, narrowing his own earlier wording: "I think I was a bit too harsh on this rule"). The level of the tape's line 22 is a comparator by
    running count in a fixed array of eight slots; counts never decrement; the most frequent value is the comparator
    and is replaced by a value whose count passes it (owner, 12:52, 12:55, 20:56). No magic numbers, no per-source
    constants typed in.

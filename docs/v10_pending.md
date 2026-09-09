@@ -97,15 +97,17 @@ takes tier 1 items 1–3 as concepts.
 
 Neither agent may resolve these; the process sends contract conflicts to him.
 
-1. **A lock requires a measurable switch line and band** (§3, Source lock, his words) but **the head switch is
-   optional** (§2, his words) and **is not measured at all below a gap** (rule 8, his words). A boxed picture
-   therefore cannot lock, and capture 1 is the boxed capture. Which sentence gives?
-2. **Confirmation is "combing, captions, or both, and nothing else"** (§3, his words at 13:29 and 21:34). On a
-   caption-less boxed source that leaves the comb alone as the only confirmation. Is that intended?
-3. **Rule 2 says a count disagreement is not a reset; the new rule 4 says a changed line count below the detected
-   head switch loses the lock.** Are those the same quantity? Does ordinary clipping change count as a change?
+1–3 **ANSWERED 2026-09-09 and written into the contract**: the switch requirement is conditional (required only
+   where the geometry is not boxed and not all lines are picture); confirmation stays comb-or-caption and a source
+   that never locks is an accepted outcome, fail closed; the hold keeps the head switch's position line and is lost
+   only when the total number of bands changes, ordinary clipping excluded. A change of geometry — box to full
+   picture or back — resets the lock.
+
 4. **Rule 8's box-validity wording is owed** — the bounds where a box is valid and where it is invalidated. Neither
-   agent should write it.
+   agent should write it. Asked and explained; answer pending.
+5. **Is VBI a confirmation signal alongside captions?** The owner raised it himself: "isn't VBI another confirmation
+   signal? ... caption and VBI are kind of part of the same class I think". It would give a caption-less source a
+   second confirmation. Answered back to him with the asymmetry that decides it; his ruling pending.
 
 ## C. Recorded elsewhere, still open, outside the v10 acceptance path
 

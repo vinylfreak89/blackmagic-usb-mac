@@ -60,6 +60,34 @@ X0, X1 = 24, 696                      # active window, as comb_census.py and the
 FIELDS = {1: (19, 260), 2: (282, 522)}
 
 
+def row_threshold(h, lo, hi, absolute, rel):
+    """The h below which a row is structureless, taken from the FIELD'S OWN rows.
+
+    The absolute threshold this replaces was wrong for a reason worth keeping: h is
+    median|row-mean| / median|diff(row)|, and on 8-bit integer samples the denominator is pinned at
+    1.0 in every row of every unit measured, so the ratio never normalises for contrast - it is the
+    spread with a divide-by-one. When the picture dims, every row's h falls together and text drops
+    under a fixed threshold. Measured on the commercial tape's warning card, NTSC lines 48-61: on a
+    well-exposed unit the band reads 2.70 and the WARNING text 14.44; on the card's dim pass the same
+    rows read 0.72 and 3.57. The text has fallen to a quarter of its bright value and under any fixed
+    cut that admits the band - which is exactly the observed failure, the top band growing from 31
+    rows to 36-41 and swallowing the WARNING line.
+
+    What survives the fade is the SEPARATION: 5.35x bright, 4.93x dim, and the band sits at 19-20% of
+    the structured rows in both. So the threshold is a fraction of the field's own structured level,
+    estimated from the middle of the field where a mask cannot reach. `absolute` remains as a floor
+    so a field of pure noise cannot manufacture a band out of nothing.
+    """
+    mid = h[lo + (hi - lo) // 5: hi - (hi - lo) // 5 + 1]
+    if mid.size < 8:
+        return absolute
+    level = float(np.median(mid))
+    if level <= 0:
+        return absolute
+    return min(level * rel, absolute)      # absolute is a CEILING: a very busy field must not make
+                                           # moderately structured rows read as band
+
+
 def h_profile(Y: np.ndarray) -> np.ndarray:
     """Per-row horizontal structure ratio for a whole 525-row luma raster."""
     x = Y[:, X0:X1].astype(np.float32)
@@ -201,6 +229,13 @@ def main():
     ap.add_argument("--repair", action="store_true")
     ap.add_argument("--from-counter", type=int, default=0)
     ap.add_argument("--to-counter", type=int, default=1 << 30)
+    ap.add_argument("--rel", type=float, default=0.28,
+                    help="structureless = h below this fraction of the field's own structured level. "
+                         "MEASURED on the warning card, bright unit and faded unit: the band sits at "
+                         "0.19 and 0.20 of the field's level, the WARNING line itself at 0.41 and "
+                         "0.39. The cut must fall between those, and 0.28 is their geometric "
+                         "midpoint - the WARNING line is what the owner's rule says is the picture "
+                         "top, so it must never read as band")
     ap.add_argument("--threshold", type=float, default=4.5,
                     help="h at or below which a row is structureless (FITTED; see the report)")
     ap.add_argument("--minband", type=int, default=6, help="rows a run needs to count as a band")
@@ -221,7 +256,8 @@ def main():
             prof[ctr] = h.copy()
         rec = {"counter": ctr}
         for f, (lo, hi) in FIELDS.items():
-            b = bands(h, lo, hi, a.threshold, a.minband)
+            thr = row_threshold(h, lo, hi, a.threshold, a.rel)
+            b = bands(h, lo, hi, thr, a.minband)
             rec[f"f{f}_top"] = b["top"]
             rec[f"f{f}_bot"] = b["bot"]
             rec[f"f{f}_content_top"] = b["content_top"]
