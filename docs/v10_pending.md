@@ -67,6 +67,10 @@ the ~9 the contract allows a correctly timed row, while line 260 carries none an
 harness reads T=260 in all six units — wrong in all six.** Since 260 IS the mode, off-mode counts it correct and
 `|T − mode| ≤ 1` passes: no stability measure taken tonight can see this class of error. Stable is not correct.
 
+**→ The 1,013 of 1,013 result and the 963 → 1,009 → 1,012 → 1,013 progression now live in CLAUDE.md §14, with
+their two limits. The extreme-value pattern behind the fixes, and the census-ceiling finding, are in
+LEARNINGS.md. This file keeps only what is still open.**
+
 **SCOPED, and it is LOCAL — the systematic-error alarm above is withdrawn** (`experiments/displaced_row_census.py`,
 which detects both morphologies of long blank-level run, with bounds carried over from `switch_geometry.py` — NOT
 the contract's, see the correction below — and the blank level from each field's own regenerated rows, sharing no
@@ -137,13 +141,10 @@ It holds in dark scenes (means 22–27) and bright ones (79–112) alike, so the
 and the engine is right on all 13 sampled. That is worth knowing on its own: nobody should go looking for
 several rules.
 
-⚠️ **The discriminator this shape suggests is ALREADY FALSIFIED, and that is the point of recording it.** Gating
-the partial test on the candidate carrying relocated blanking was measured earlier the same night: it fixes 62
-of 80 target readings and BREAKS 248 that already agreed with the engine, net −186, agreement 384 → 198. The
-reason is visible in the table above — these disputed lines run at blank runs of 1–27, and so do 248 GENUINE
-partials. Low blank-run is a property both populations share, so it cannot separate them however the threshold
-is placed. **A future attempt must not re-run this.** The separating observable is still unknown and no
-candidate was written tonight.
+⚠️ **The discriminator this shape suggests is ALREADY FALSIFIED — the measurement and the reason are recorded
+in CLAUDE.md §14 as a ruled-out route, because it is the first thing a future pass will try.** Short form: net
+−186, and low blank-run is a property both populations share. **What remains OPEN here is only that the
+separating observable is unknown**; no candidate was written, deliberately.
 
 ⚠️ **The displaced-row census CANNOT adjudicate this.** It validates `S`, which is exactly what the two
 instruments already agree on. Deciding whether the partial exists needs raw-row adjudication on a sample of the
