@@ -74,10 +74,16 @@ struct frameserver {
 extern void fs_test_after_empty_snapshot(frameserver *f);
 extern void fs_test_before_producer_done(frameserver *f);
 extern void fs_test_after_log_row(frameserver *f, FILE *log);
+extern void fs_test_before_analysis_wait(frameserver *f) __attribute__((weak_import));
+extern void fs_test_after_analysis_wait(frameserver *f, int result) __attribute__((weak_import));
+#define before_analysis_wait(f) do { if(fs_test_before_analysis_wait) fs_test_before_analysis_wait(f); } while(0)
+#define after_analysis_wait(f,r) do { if(fs_test_after_analysis_wait) fs_test_after_analysis_wait(f,r); } while(0)
 #else
 #define fs_test_after_empty_snapshot(f) ((void)(f))
 #define fs_test_before_producer_done(f) ((void)(f))
 #define fs_test_after_log_row(f,L) ((void)(f),(void)(L))
+#define before_analysis_wait(f) ((void)(f))
+#define after_analysis_wait(f,r) ((void)(f),(void)(r))
 #endif
 
 // ------------------------------------------------------------ producer side (delivery thread)
@@ -472,7 +478,9 @@ static void *worker_main(void *arg){
             if (h == t && !atomic_load(&f->producer_done)){
                 struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); ts.tv_nsec += 100*1000000L;
                 if (ts.tv_nsec >= 1000000000L){ ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
-                pthread_cond_timedwait(&f->c, &f->m, &ts);
+                before_analysis_wait(f);
+                int wait_result=pthread_cond_timedwait(&f->c, &f->m, &ts);
+                after_analysis_wait(f,wait_result);
             }
             pthread_mutex_unlock(&f->m);
             continue;
