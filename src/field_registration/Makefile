@@ -23,12 +23,16 @@ tests/field_registration_unit: field_registration.c field_registration.h cea608.
 TRUTH_SRC := $(wildcard tests/field_registration_truth.c)
 TRUTH_DEPS := $(if $(TRUTH_SRC),tests/field_registration_truth tests/libfieldreg_truth.dylib tests/registration_truth.raw)
 
-test: tests/field_registration_unit tests/cea608_unit tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw tests/field_registration_v10_rule3 tests/registration_v10_rule3.raw tests/field_registration_v10_rule4 tests/registration_v10_rule4.raw
+test: tests/field_registration_unit tests/cea608_unit tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw tests/field_registration_v10_rule3 tests/registration_v10_rule3.raw tests/field_registration_v10_rule4 tests/registration_v10_rule4.raw tests/switch_timing_test
 	./tests/field_registration_unit
 	./tests/cea608_unit
 	./tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw
 	./tests/field_registration_v10_rule3 tests/registration_v10_rule3.raw
 	./tests/field_registration_v10_rule4 tests/registration_v10_rule4.raw
+	./tests/switch_timing_test
+
+tests/switch_timing_test: tests/switch_timing_test.c field_registration.c field_registration.h cea608.c cea608.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/switch_timing_test.c cea608.c -o $@ $(LDLIBS)
 
 legacy-trajectory-test: tests/field_registration_trajectory tests/registration_trajectory.raw
 	./tests/field_registration_trajectory tests/registration_trajectory.raw tests/registration_trajectory.csv
@@ -95,3 +99,4 @@ clean:
 		tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw \
 		tests/field_registration_v10_rule3 tests/registration_v10_rule3.raw \
 		tests/field_registration_v10_rule4 tests/registration_v10_rule4.raw
+	rm -f tests/switch_timing_test

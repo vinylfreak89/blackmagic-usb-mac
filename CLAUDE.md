@@ -2092,6 +2092,21 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Commercial switch replacement, under review (not capture acceptance):**
+the 35-code MAD / unrelated-aperture-lag detector is removed. The replacement
+measures blanking relocation against local source timing, including positive
+partial-row evidence; it does not target a switch-line count. Commercial
+counter 6687 now reads T=260/522, S=261/523, picture bottom=259/521, clip=262/525.
+Expanded goldens pass 30/30 including the exact raw unit (old implementation
+1/30); the ordinary rule-1/3/4 goldens and gate tests pass. Across 582 stable
+commercial units the diagnostic still abstains on 401/463 field readings,
+and partial/full-row disagreements remain. No commercial geometry lock has
+yet been acquired: acquisition comb confirmation remains unimplemented.
+Do not report this as an acceptance pass or advance to capture 2. Method,
+failed candidates, input-model correction, census and reproduction are in
+`src/field_registration/tests/SWITCH_TIMING.md`. Owner's 2026-09-09 ruling:
+43678 is an accepted one-unit miss; leave it and signal_state unchanged.
+
 **v10 rule-5 gate implementation:** `signal_result.normal_picture` combines current-unit
 ProgramLike evidence with acquired Present. The frameserver never calls `fieldreg_process`
 when false; it clears the temporal witness and publishes the last successfully published
@@ -2127,8 +2142,8 @@ the production object must export neither; four declaration/definition mutation
 controls exercise rejection. The runtime test and its feature macro are removed.
 The gate and 27:18 repairs above were independently tested changes.
 
-**v10 switch-detector adjudication (commercial counter 6687):** the current C
-`full_other_head_row` falsely calls NTSC 236/498 a switch (extents 27/28).
+**v10 pre-replacement switch adjudication (commercial counter 6687):** the rejected C
+`full_other_head_row` falsely called NTSC 236/498 a switch (extents 27/28).
 Its >=35 whole-row MAD gate admits an internal luma step, then independent
 aperture matches to unrelated dark regions satisfy its absolute-lag test.
 The actual low-contrast terminal timing departure fails that same MAD gate.

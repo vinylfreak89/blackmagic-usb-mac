@@ -11,6 +11,7 @@
 static field_registration engine;
 static signal_state *probe_signal;
 static FILE *trace;
+static FILE *geometry;
 static const char *directory;
 static unsigned selected_first, selected_last;
 
@@ -20,26 +21,20 @@ static uint64_t now_ns(void) {
 }
 
 static void row_trace(const uint8_t *raster, unsigned counter, int field, int row) {
-    const uint8_t *cur=raster+(size_t)row*1440, *above=cur-1440;
-    double sum=0, sum2=0; unsigned zero=0;
+    const uint8_t *cur=raster+(size_t)row*1440;
+    double sum=0, sum2=0; unsigned ceiling=0;
+    for(int r=field?270:7;r<=(field?278:15);++r)for(int x=0;x<720;++x) {
+        unsigned v=raster[(size_t)r*1440+2*x+1];if(v>ceiling)ceiling=v;
+    }
     for(int x=0;x<720;++x) {
         int v=cur[2*x+1]; sum+=v; sum2+=v*v;
-        zero+=(unsigned)abs(v-above[2*x+1]);
     }
-    for(int aperture=0;aperture<H_LAG_APERTURES;++aperture) {
-        int first=aperture*H_LAG_APERTURE_SAMPLES, past=first+H_LAG_APERTURE_SAMPLES;
-        unsigned best=UINT_MAX, at_zero=0; int best_lag=0;
-        for(int x=first;x<past;++x) at_zero+=(unsigned)abs(cur[2*x+1]-above[2*x+1]);
-        for(int lag=-first;lag<=720-past;++lag) {
-            unsigned cost=0;
-            for(int x=first;x<past;++x) cost+=(unsigned)abs(cur[2*x+1]-above[2*(x+lag)+1]);
-            if(cost<best || (cost==best && abs(lag)<abs(best_lag))) {best=cost;best_lag=lag;}
-        }
-        fprintf(trace,"%u,%d,%d,%.6f,%.6f,%.6f,%d,%d,%u,%u,%.6f,%d\n",
-            counter,field+1,row+4,sum/720,sqrt(fmax(0,sum2/720-(sum/720)*(sum/720))),
-            zero/720.0,aperture,best_lag,at_zero,best,at_zero?(double)best/at_zero:1,
-            full_other_head_row(raster,row));
-    }
+    horizontal_blanking p=blanking_profile(raster,row,ceiling);
+    int first=-1,last=-1,n=0;
+    for(int x=0;x<H_SAMPLES;++x)if(p.support[x]) {if(first<0)first=x;last=x;++n;}
+    fprintf(trace,"%u,%d,%d,%.6f,%.6f,%u,%d,%d,%d,%d,%d\n",counter,field+1,row+4,
+        sum/720,sqrt(fmax(0,sum2/720-(sum/720)*(sum/720))),ceiling,p.readable,
+        first,last,n,p.complete_interval);
 }
 
 static void video(void *opaque,const unit_video_observation *unit) {
@@ -56,6 +51,16 @@ static void video(void *opaque,const unit_video_observation *unit) {
     else fieldreg_discontinuity(&engine);
     uint64_t end=now_ns();
     if(!unit->fixed_raster_eligible)return;
+    /* Independent scalar diagnostic of every exact raster, including gated
+     * ones; explicitly NOT a registration invocation in the live path. */
+    for(int f=0;f<2;++f) {
+        field_measurement m;measure_field(unit->bytes+48,f,&m);
+        fprintf(geometry,"%u,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",unit->counter16,f+1,
+            m.top<0?-1:m.top+4,m.switch_line<0?-1:m.switch_line+4,
+            m.first_full_other_head_line<0?-1:m.first_full_other_head_line+4,
+            m.bottom<0?-1:m.bottom+4,m.recorded_last<0?-1:m.recorded_last+4,
+            m.band_extent,measured,measured?d.field[f].lock_switch_line_count:-1);
+    }
     printf("%llu,%s,%s,%d,%.6f,%.6f,%d,%d,%d,%d,%d,%d\n",
         (unsigned long long)unit->counter_extended,signal_appearance_name(sr.appearance),
         signal_source_state_name(sr.source),measured,(end-before_engine)/1e6,(end-start)/1e6,
@@ -63,6 +68,11 @@ static void video(void *opaque,const unit_video_observation *unit) {
         d.field[0].band_extent,d.field[1].band_extent);
     if(unit->counter16<selected_first || unit->counter16>selected_last)return;
     const uint8_t *raster=unit->bytes+48;
+    char raw_path[1024];
+    snprintf(raw_path,sizeof raw_path,"%s/%u.raw",directory,unit->counter16);
+    FILE *raw=fopen(raw_path,"wb");assert(raw);
+    assert(fwrite(unit->bytes,1,FIELDREG_UNIT_BYTES,raw)==FIELDREG_UNIT_BYTES);
+    assert(!fclose(raw));
     char path[1024]; snprintf(path,sizeof path,"%s/%u.pgm",directory,unit->counter16);
     FILE *panel=fopen(path,"wb"); assert(panel); fprintf(panel,"P5\n1440 263\n255\n");
     for(int y=0;y<263;++y) for(int f=0;f<2;++f) for(int x=0;x<720;++x) {
@@ -78,7 +88,9 @@ int main(int argc,char **argv) {
     assert(argc==5); selected_first=(unsigned)strtoul(argv[2],NULL,10);
     selected_last=(unsigned)strtoul(argv[3],NULL,10); directory=argv[4];
     char path[1024];snprintf(path,sizeof path,"%s/rows.csv",directory);trace=fopen(path,"w");assert(trace);
-    fputs("counter,field,line,mean,sigma,whole_zero_mad,aperture,best_lag,zero_sad,best_sad,ratio,predicate\n",trace);
+    fputs("counter,field,line,mean,sigma,blank_ceiling,readable,first_window,last_window,windows,complete_interval\n",trace);
+    snprintf(path,sizeof path,"%s/geometry.csv",directory);geometry=fopen(path,"w");assert(geometry);
+    fputs("counter,field,top,T,S,bottom,clip,extent,registration_measured,lock_count\n",geometry);
     probe_signal=aligned_alloc(signal_state_alignment(),signal_state_size());assert(probe_signal);signal_state_init(probe_signal,NULL);
     fieldreg_config config=fieldreg_default_config();fieldreg_init(&engine,&config);
     unit_parser *parser=aligned_alloc(unit_parser_alignment(),unit_parser_size());assert(parser);
@@ -98,5 +110,5 @@ int main(int argc,char **argv) {
         }
         free(bytes);
     }
-    unit_parser_finish(parser);assert(!fclose(input));assert(!fclose(trace));free(parser);free(probe_signal);
+    unit_parser_finish(parser);assert(!fclose(input));assert(!fclose(trace));assert(!fclose(geometry));free(parser);free(probe_signal);
 }

@@ -1,8 +1,8 @@
 # Commercial counter 6687: the current switch detector is wrong
 
-This is an adjudication measurement, not a detector fix or an acceptance pass.
-The implementation remains unchanged pending replacement of the faulty
-measurement. The scalar probe uses the actual private engine predicate and
+This is the historical adjudication at `5a62423`, not an acceptance pass.
+The subsequent replacement and its remaining failures are in
+`SWITCH_TIMING.md`. At the time, the scalar probe used the private engine predicate and
 the real CAP1/unit-parser path; it does not import the harness instrument.
 
 ## What the current C predicate actually does
