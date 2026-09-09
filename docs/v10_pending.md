@@ -73,10 +73,10 @@ takes tier 1 items 1–3 as concepts.
 | A16 | `complete_log` calls `abort()` on a completion mis-join — inside OBS that kills the host and the user's recording | `src/frameserver/QUEUES.md`; Codex accepted at `dec922f` | open before shipping; named fatal-session handling is the agreed policy, not implemented |
 | A17 | A permanently blocked consumer cannot stall analysis but prevents shutdown drain (`fs_stop` hangs) | `src/frameserver/QUEUES.md`; Codex accepted at `dec922f` | open before shipping; caller-deadlined shutdown with quarantined live resources is the agreed policy, not implemented |
 | A13 | `frameserver_replay --pace-us 0` destroys a whole-tape run and exits 0, printing no capture-level loss | CLAUDE.md §6 | not fixed; use `--pace-us 8000`, or a ring larger than the file for a slice |
-| A21 | `comb_confirm` runs at `field_registration.c:892`, AFTER `v10_decide_field` has already made the lock decision at :833 — so the comb can never license a lock, and the comment above the lock claiming it does is wrong. The comb must be computed before the acquisition decision | contract §2 ("confirmed by secondary signals… ideally more than one") | not fixed; **tier 1**, and it makes all comb quality work moot until it lands |
-| A22 | The lock's only accepted confirmation is `caption_confirmation == AGREES`. **The commercial tape carries no captions** (owner, 2026-09-09), so on that source the lock is unreachable by construction whatever the geometry does. Confirmation must accept comb or VBI or caption | contract §2 and rule 4 | not fixed; **tier 1** |
+| A21 | ~~The comb cannot license a lock~~ **WITHDRAWN, Claude was wrong** (Codex, 2026-09-09). There are TWO acquisition sites, not one: `field_registration.c:608` locks from the comb with no caption, and `:839` locks from a caption. The comb is wired to a lock. The claim that three turns of comb work were aimed at a disconnected path was false | — | closed, kept only so the error is not repeated |
+| A22 | ~~Confirmation is caption-only, so a caption-less tape cannot lock~~ **WITHDRAWN, Claude was wrong.** The comb path at `:608` needs no caption. Also wrong in the same brief: confirmation must accept "comb or VBI or caption" — the contract's Source lock definition carries the owner's own words, "combing, captions, or both, and nothing else", so VBI was Claude's invention | contract §3 Source lock | closed |
 | A23 | The contract's second reading of `d`, count minus extent, is not implemented — `geometry_d = top - origin` (`:792`) is the only one. On capture 1 the top reads 23/286 in every stable unit, so the implemented reading is degenerate there and the informative one is absent | contract rule 3 | not implemented; **tier 2** |
-| A18 | The engine's only lock-acquisition site requires `measurement->switch_measurable` unconditionally (`field_registration.c:833`). This contradicts contract §2's standing "the head switch is optional… the band count alone never moves anything": no source lacking a measurable switch can ever lock — boxed pictures, where rule 8 forbids measuring it, and line-TBC-corrected passes, where there is no switch to find. A lock is geometry plus at least one other observation | contract §2 and rule 4 | not fixed; **tier 1**, blocks every other capture-1 item. Reviewed repeatedly and never caught |
+| A18 | **BOTH acquisition sites require a measurable switch on both fields** (`field_registration.c:601–602` for the comb path, `:834` for the caption path), so no source lacking one can lock — boxed pictures, where rule 8 forbids measuring it, and line-TBC-corrected passes, where the owner says there is none. **This is not an engine defect: the contract's Source lock definition requires it in the owner's own words** ("at a unit whose switch line and band are measurable"). The contract contradicts itself and neither agent may resolve it | contract §3 Source lock against §2 and rule 8 | **blocked on the owner**; nothing in tier 1 can proceed until he settles it |
 | A19 | The band is not held when the switch is undetectable: absent detection must hold the band, invalidated only when the line count below the head switch changes | contract rule 4 | not implemented; **tier 1** |
 | A20 | The RF peak detector assumes one polarity; the peak reads pure white in some units and pure black in others | contract §2 | not fixed; part of the switch-detector coverage on the non-boxed units |
 | A24 | A box is not invariant — when the mask changes the geometry must open up to the full picture. The box needs defined bounds for where it is valid and where it is invalidated, and it lives through the fade, which is measured rather than treated as noise | contract rule 8 (wording owed) | not specified, not built; **tier 1** |
@@ -92,6 +92,20 @@ takes tier 1 items 1–3 as concepts.
 | B3 | The render changes | contract §8 | not implemented |
 | B8 | Audio in the review renders (`--dump-pcm`) | owner, 2026-09-09: "you rendered with no audio which is not cool" | not implemented |
 | B4 | The acceptance runs | contract §8 | blocked on B1 and the engine |
+
+## Blocked on the owner
+
+Neither agent may resolve these; the process sends contract conflicts to him.
+
+1. **A lock requires a measurable switch line and band** (§3, Source lock, his words) but **the head switch is
+   optional** (§2, his words) and **is not measured at all below a gap** (rule 8, his words). A boxed picture
+   therefore cannot lock, and capture 1 is the boxed capture. Which sentence gives?
+2. **Confirmation is "combing, captions, or both, and nothing else"** (§3, his words at 13:29 and 21:34). On a
+   caption-less boxed source that leaves the comb alone as the only confirmation. Is that intended?
+3. **Rule 2 says a count disagreement is not a reset; the new rule 4 says a changed line count below the detected
+   head switch loses the lock.** Are those the same quantity? Does ordinary clipping change count as a change?
+4. **Rule 8's box-validity wording is owed** — the bounds where a box is valid and where it is invalidated. Neither
+   agent should write it.
 
 ## C. Recorded elsewhere, still open, outside the v10 acceptance path
 
