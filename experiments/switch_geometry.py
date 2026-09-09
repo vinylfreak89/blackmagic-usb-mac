@@ -136,12 +136,13 @@ class RunMode:
         if self.v[0] is None: return None,0,0
         return self.v[0],self.n[0],(self.n[1] if self.v[1] is not None else 0)
 BAND={1:RunMode(),2:RunMode()}; FIRST={1:RunMode(),2:RunMode()}
+CLIP={1:RunMode(),2:RunMode()}   # the deck's clip line, learned per source and held (rule 4), never typed in
 def lock_reset(f):
     """a change of geometry — the loss of the source lock, or a loss that looks like one — resets every comparator of the
     field at once (owner, 2026-09-07: "A change of geometry (a loss of source lock or lock like loss resets everything
     immediately)"). Called on a unit with no measurable picture, on regenerated VBI rows that are not the Shuttle's
     (lines 20/21 absent or line 22 not blank: the decoder without sync), and on a counter discontinuity."""
-    BAND[f]=RunMode(); FIRST[f]=RunMode(); LASTTOP.pop(f,None)
+    BAND[f]=RunMode(); FIRST[f]=RunMode(); CLIP[f]=RunMode(); LASTTOP.pop(f,None)
 LASTCTR=[None]
 def lock_update(f,obs):
     """obs = this unit's observed band count S..clip or None; returns (state, comparator, class, count, runner-up)"""
@@ -247,7 +248,17 @@ def process_unit(u,RU,RN):
     for f in (1,2):
         m=M[f]; Y=m['Y']; base=m['base']; slot=m['slot']; ym=m['ym']; thr=m['thr']; rec=m['rec']; recrows=m['recrows']; top=m['top']
         by_m=m['by_m']; sig_b=m['sig_b']; ped=m['ped']; sig_n=m['sig_n']
-        clipr=(262 if slot==1 else 525); clip_row=clipr-base
+        # The deck's clip is a PER-SOURCE quantity, learned and held like any other (contract rule 4),
+        # not a number typed in. It was written here as 262/525 - this tape's values - and every
+        # switch-line count is that literal minus a measured row, so a wrong clip moved every count
+        # on any other source. It is now the last recorded row, taken from the rows themselves, with
+        # the same running comparator the contract uses for the line-22 level: the most frequent
+        # value wins and is replaced only by one whose count passes it.
+        last_recorded = recrows[-1] if recrows else None
+        if last_recorded is not None: CLIP[f].add(last_recorded + base)
+        clipr,_cn,_cn2 = CLIP[f].top()
+        if clipr is None: clipr = (last_recorded + base) if last_recorded is not None else None
+        clip_row = (clipr - base) if clipr is not None else None
         if loss or top is None or len(recrows)<60:
             why=('reset' if loss else 'hidden')
             st=('no-lock' if loss else (LOCKST[f] if LOCKST[f]!='acquiring' else 'acquiring'))
@@ -340,8 +351,17 @@ def process_unit(u,RU,RN):
             # rows and one distant anomaly dragged it to 1; the fault was the WINDOW, and narrowing
             # the window to the rows immediately above is what makes the minimum the right bar.
             body_end=float(min(above)) if len(above)>=10 else None
-            ends_partial = (pf is not None and body_end is not None and pf.get('lead_blank')
-                            and pf['end_run'] < body_end)
+            # SYMMETRIC in direction (owner, 2026-09-10: "I've seen the head switch move both ways,
+            # the harness needs to be honest rather than fitted garbage if it's to be trusted"). A
+            # partial row is one that keeps its own blanking at ONE end and loses it at the other,
+            # whichever end that is: the other head arriving from the right leaves the leading
+            # blanking and takes the trailing, and arriving from the left does the reverse. The old
+            # test required leading-present AND trailing-absent, so a switch the other way was
+            # invisible to it. Neither end is privileged now.
+            lead_ok  = pf is not None and pf.get('lead_blank')
+            trail_ok = pf is not None and body_end is not None and pf['end_run'] >= body_end
+            ends_partial = (pf is not None and body_end is not None
+                            and (lead_ok is not None) and (lead_ok != trail_ok))
             # The peak and the whole-row lag stay as corroboration; neither is required, because a
             # dark row carries no lag to improve (the defect this replaces: line 260 read wlag 6 at
             # ratio 0.97, so the old test failed and the switch line fell through to the full row).
