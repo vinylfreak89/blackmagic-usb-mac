@@ -197,7 +197,12 @@ def process_unit(u,RU,RN):
         rec=(~padding)&((cstd/c_b>2.0)|(ym>thr)|(ystd>=4*sig_b))              # measured gaps: blank <= 1.48x, recorded >= 2.02x chroma noise
         recrows=[r for r in range(3,Y.shape[0]) if rec[r]]                      # rows 0..2 = lines 20/21/22 regenerated
         # the Shuttle's regenerated rows present = stable VBI (contract section 3)
-        vbi_ok=(float(Y[0,40:680].std())>=20 and float(Y[1,40:680].std())>=20 and ym[2]<thr and float(Y[2,40:680].std())<4*sig_b)   # 20: a presence margin (waveform rows 40-54 measured, absent 0.5)
+        # presence is measured against the field's OWN blanking noise, not a typed margin: a regenerated waveform
+        # row must stand above the noise of the rows that carry no waveform. Measured here, waveform rows are 40-54
+        # and absent rows 0.5 - two populations a wide margin apart, so the derived bar separates them as surely as
+        # the typed 20 did, and it travels to a capture whose noise differs. (Verified: rebuilding capture 1's
+        # reference with this form changes 0 of 1,840 field readings in every column.)
+        vbi_ok=(float(Y[0,40:680].std())>=6*sig_b and float(Y[1,40:680].std())>=6*sig_b and ym[2]<thr and float(Y[2,40:680].std())<4*sig_b)
         # the pedestal: the flat run contiguous with the clip
         flat_rec=[]
         for r in reversed(recrows):
@@ -297,6 +302,26 @@ def process_unit(u,RU,RN):
             other=(feats.get(r) if two else feats2.get(r))
             return other is None or abs(other['wlag']-ft['wlag'])<=1
         def shifted(ft,r,two=False): return step(ft,r,two) or (torn(ft) if not two else False) or flat(ft,r) or ft['lead_run']>M_run+8 or ft['dip_absent'] or blanked(ft)   # the two-above pass carries no torn test: two rows apart the picture's own detail exceeds the body envelope (commercial counters 6907, 6943 read seven picture rows as torn)   # (the upward scan from the clip keeps a dip-less row inside the picture from ever being taken as the band)
+        if os.environ.get('SG_EXPLAIN'):
+            # SG_EXPLAIN="unit:field:line[,line...]" names WHICH test made a row part of the band, so a band edge
+            # that moves can be attributed instead of guessed at. Reports every disjunct of shifted(), not the
+            # first true one, because two tests firing together and one firing marginally are different faults.
+            _ef,_els = os.environ['SG_EXPLAIN'].split(':')     # "field:line[,line...]", for every --units unit
+            if int(_ef)==f:
+                print(f'  explain unit {u} field {f}: M_lag {M_lag:.3f} M_dm {M_dm:.3f} M_lag2 {M_lag2:.3f} M_dm2 {M_dm2:.3f} M_run {M_run} M_spk {M_spk:.2f} sig_b {sig_b:.3f} ped {ped:.2f}')
+                for _L in (int(x) for x in _els.split(',')):
+                    _r=_L-4-SLOT[f][0]
+                    if _r not in feats: print(f'    line {_L}: no features (outside top+1..last_rec)'); continue
+                    for _lbl,_fs,_two in (('1-above',feats,False),('2-above',feats2,True)):
+                        if _r not in _fs: print(f'    line {_L} {_lbl}: absent'); continue
+                        ft=_fs[_r]
+                        print(f"    line {_L} {_lbl}: lagmed {ft['lagmed']} dm {ft['dm']:.2f} wlag {ft['wlag']} wr {ft['wr']:.3f} "
+                              f"lead_run {ft['lead_run']} blank_run {ft['blank_run']} dip_absent {ft['dip_absent']} "
+                              f"spike {ft['spike']:.1f} width {ft['width']} std {float(Y[_r,40:680].std()):.2f} mean {ym[_r]:.2f}")
+                        print(f"       step {step(ft,_r,_two)} | torn {torn(ft) if not _two else 'n/a'} | flat {flat(ft,_r)} | "
+                              f"lead_run>M_run+8 {ft['lead_run']>M_run+8} ({ft['lead_run']} > {M_run+8}) | "
+                              f"dip_absent {ft['dip_absent']} | blanked {blanked(ft)} => SHIFTED {shifted(ft,_r,_two)}")
+                    print(f"    line {_L}: peak(1-above) {peak(feats[_r],_r) if _r in feats else 'n/a'}")
         def peak(ft,r): return ft['spike']>M_spk and ft['spike']>ft['dm']+5*ft['dsig'] and ft['width']<=12 and ft['above_range']<ft['spike']/2 and not shifted(ft,r)
         # S = the first row from the body downward that is time-shifted / intruded beyond the field's own spread (the
         # first row that belongs entirely to the other head). The switch lands either inside S-1 (a partial line) or at
