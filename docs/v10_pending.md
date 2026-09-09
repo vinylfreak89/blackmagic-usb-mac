@@ -7,20 +7,22 @@ Nothing confirmed lives here: every measurement, decision and ruling belongs in 
 that is confirmed should end up in permanent files. that tracker file must absolutely not host anything that
 survives analysis, implementation, etc").
 
-Last reconciled 2026-09-09 04:23 JST against an independent re-derivation of this list and the completed
-whole-tape signal-state audit.
+Last reconciled 2026-09-09 18:2x JST. Closed and deleted since the 04:23 reconciliation: **A3** (the
+registration -> classifier feedback path; its vacuous test was replaced by one requiring the retired names to
+fail compilation). Everything else on list A is unchanged, and the day added more than it closed.
 
 **One source at a time (owner, 2026-09-09).** "the contract is sequential. I should approve a render before you
-move to the next of the 4 samples." So capture 1 is the only capture worked on until its render is produced from
-the live path and the owner approves it; captures 2, 3 and 4 are not built, not scored and not referenced until
-then. My builds of them were cancelled mid-flight on that instruction.
+move to the next of the 4 samples." Capture 1 remains the only capture whose ENGINE ACCEPTANCE is worked on. The
+owner amended this the same day for analysis specifically — "run that analysis yourself across all 4 capture" —
+so the comb and box censuses cover all four; that is measurement of the source, not engine acceptance, and it
+does not advance capture 2.
 
 ## Next, in order
 
-1. Codex's current turn (A3, A1, A2 together, plus the §2 amendment) lands and I review it.
+1. The comb's static mask (A15) — the identified cause of capture 1's only remaining engine blocker.
 2. Capture 1's reference finishes and is checked against its own invariant (`stable_interval_check.py`).
-3. The classifier defects the audit found (A10–A12) go to Codex as one dispatch, after its current turn.
-4. Captures 2, 3 and 4 — ONLY after the owner approves capture 1's render.
+3. The classifier defects the audit found (A10–A12) go to Codex as one dispatch.
+4. Captures 2, 3 and 4 acceptance — ONLY after the owner approves capture 1's render.
 
 ## A. Engine (Codex writes, Claude reviews)
 
@@ -39,6 +41,9 @@ then. My builds of them were cancelled mid-flight on that instruction.
 | A11 | The appearance latch is asymmetric: `SubBlackMuteLike` installs with no confirmation and needs three to leave | CLAUDE.md §6 | not dispatched |
 | A12 | `NeutralGrayMuteLike` tests uniformity, not greyness, and asserts a `Muted` source on near-black programme | CLAUDE.md §6 | not dispatched |
 | A14 | Audit the classifier's thresholds for magic numbers, using the commercial capture's opening as the case: the mute-to-programme boundary there is a rising level crossing a fixed threshold. The owner, 2026-09-09: once the warning card is legible it "shouldn't be showing up as mute but if it is, not the end of the world. Probably another thing to audit for magic numbers, but since it's the first real picture from this source I expect it to be a little slow to react." Not a defect; an audit. | CLAUDE.md §6 | not started |
+| A15 | The comb's static mask retains 0.81–1.60% of the support, at blanking luma, and flips the verdict; its tolerance was calibrated on the device's own generated blanking, which is quieter than any picture | CLAUDE.md §14 (the ablation table and the deinterlacer comparison); `src/field_registration/tests/COMB_COMPARISON.md` | cause identified, NOT fixed. Recalibrate "static" against real picture, then test whether the mask beats margin + rule 9 at all. Do not simply delete it: coherent vertical pan is the real risk it was aimed at |
+| A16 | `complete_log` calls `abort()` on a completion mis-join — inside OBS that kills the host and the user's recording | `src/frameserver/QUEUES.md`; Codex accepted at `dec922f` | open before shipping; named fatal-session handling is the agreed policy, not implemented |
+| A17 | A permanently blocked consumer cannot stall analysis but prevents shutdown drain (`fs_stop` hangs) | `src/frameserver/QUEUES.md`; Codex accepted at `dec922f` | open before shipping; caller-deadlined shutdown with quarantined live resources is the agreed policy, not implemented |
 | A13 | `frameserver_replay --pace-us 0` destroys a whole-tape run and exits 0, printing no capture-level loss | CLAUDE.md §6 | not fixed; use `--pace-us 8000`, or a ring larger than the file for a slice |
 
 ## B. Harness (Claude writes, Codex reviews)
@@ -46,8 +51,12 @@ then. My builds of them were cancelled mid-flight on that instruction.
 | # | item | where it is written down | state |
 |---|---|---|---|
 | B1 | The four references, one commit each, in the acceptance order | HANDBACK §7 step 1; `experiments/geometry_oracle/REFERENCE_SPEC.md` states every column's raw-row derivation | `switch_geometry.py` already implements most of the spec; capture 1 building, its invariant not yet checked |
+| B5 | All four acceptance slices were cut mid-transfer and failed the reader's provenance check | `experiments/tpc_slice.py` header comment carries the measurement | CLOSED — both ends now align to a whole transfer; all four re-cut and provenance-clean. Delete this row |
+| B6 | Horizontal-timing instrument for the owner's line-TBC mechanism (does field-1 line-time jitter predict which units misregister?) | nowhere yet — no usable measurement exists | first version counted integer blanking samples and pinned at its quantization floor (every field read an IQR of exactly 2.00); rebuilt to sub-sample edge location, NOT yet run to completion |
+| B7 | Box detection across the four captures | agent report; scripts `experiments/box_census.py`, `experiments/box_panel.py` UNCOMMITTED | census done and the title-graphic false positive rejected on the panel; three qualifications of the measure not yet acted on, chiefly that per-row `h` overlaps far more than the region statistic suggested (28.1% of the commercial tape's post-card picture rows fall below threshold) and that its denominator is an integer, making the ratio a step function of source noise |
 | B2 | The bottom instrument on the phase measurement | contract rule 3 | done inside `switch_geometry.py`: the bottom is the row above the switch line, from the phase profile, not from luma |
 | B3 | The render changes | contract §8 | not implemented |
+| B8 | Audio in the review renders (`--dump-pcm`) | owner, 2026-09-09: "you rendered with no audio which is not cool" | not implemented |
 | B4 | The acceptance runs | HANDBACK §7 steps 3 and 4 | blocked on B1 and the engine |
 
 ## C. The switch line on capture 1

@@ -2029,7 +2029,9 @@ delivery edge; wrong one at acquisition.
      evening): a V-stabilize-off capture was an offer of interest, not a requirement; all it
      changes is the head-switch band's peaks and the horizontal damage where it is bad.
      **Field-1 displacement is recording-borne, not a playback fault (measured 2026-09-06,
-     `captures/composite_program_30s.tpc`, 920 units, same deck and setting):** raw fields
+     `captures/composite_program_30s.tpc`, 920 units, same deck, `Vスタビライズ`/line TBC OFF —
+     owner, 2026-09-09; an earlier "same deck and setting" here did not name the setting and was
+     read as line-TBC-on, which inverted a conclusion):** raw fields
      registered at the nominal crops in every measurable unit (static comb 205 registered, 714
      flat, 0 misregistered), bottoms rigid at lines 262 (711, 263 in 3) and 525 (805, one 524),
      top moves symmetric between fields and all on dark scene tops. The same fault reproduces on
@@ -2145,6 +2147,62 @@ analysis-worker registration calls median/p95 9.428/18.227 ms (O2, includes
 copy/enqueue, excludes independent sinks). No comb or signal-state change.
 Ownership, capacities, tests, limits and replay SHA: `src/frameserver/QUEUES.md`.
 This supersedes the earlier synchronous-sidecar-writer deferral in section 11.
+
+**The capture-1 comb failure is the STATIC MASK, diagnosed 2026-09-09 (Codex measured, reproducing
+Claude's harness census in C).** The engine's comb already prefers the correct shift; the mask then
+destroys the evidence. Five-way common-support ablation at three commercial controls:
+
+| counter / mask | retained 8-px blocks | E(-1) | E(0) | E(+1) | minimum | mean f1 luma on support |
+|---|---:|---:|---:|---:|:--:|---:|
+| 6687 / none | 20,700 | 8.809 | 6.801 | 10.372 | **0** | 50.54 |
+| 6687 / static | 305 | 0.188 | 0.184 | 0.176 | +1 | **1.85** |
+| 6690 / none | 20,700 | 8.756 | 6.758 | 10.349 | **0** | 50.24 |
+| 6690 / static | 332 | 0.329 | 0.568 | 0.633 | -1 | **2.19** |
+| 6700 / none | 20,790 | 8.888 | 6.900 | 10.434 | **0** | 50.49 |
+| 6700 / static | 168 | 0.172 | 0.169 | 0.163 | -2 | **1.48** |
+
+The mask retains 0.81-1.60% of the support and what it retains is at BLANKING luma (1.5-2.2), so the
+candidates then differ in the third decimal place and the minimum lands wherever noise falls. The cause
+is the tolerance's provenance: it is the maximum temporal fluctuation of **the device's own generated
+blanking rows** (4-5 summed codes), and generated blanking is quieter than any real picture, so a
+threshold calibrated there admits blanking and rejects picture. A second, independent failure is
+recorded in the same report: remote five-block aliases defeat the correct local reading, so restricting
+the search alone would not have fixed this either. Evidence and reproduction:
+`src/field_registration/tests/COMB_COMPARISON.md`.
+**Why a deinterlacer does not hit this:** yadif/bwdif answer a per-pixel question ("what value goes
+here?") with a local clamp applied everywhere and graceful failure; they never build a static mask,
+because they never estimate a global per-field parameter. Where a deinterlacer-family tool DOES estimate
+a global property (ffmpeg `idet`), its robustness comes from aggregation and a multi-frame vote, not
+from selecting a subset of pixels. Aggregating the textbook metric over the whole field is itself the
+defence: misregistration displaces every row coherently and accumulates, while motion is localised and
+adds noise without favouring a shift. The one motion pattern that CAN bias the aggregate is coherent
+vertical pan; the defences against that are the margin (abstain when it approaches 1) and rule 9's
+confirm-or-veto role, not a per-pixel static mask.
+
+**The comb across all four acceptance captures (Claude, 2026-09-09, `experiments/comb_census.py`;
+verdicts checked against woven raw rows with `experiments/weave_panel.py`, units selected BY verdict
+with `experiments/comb_per_unit.py`).** The metric weaves field 1 from line 23 against field 2 from
+286+d; d is defined by that expression and is NOT cross-verified in sign against earlier instruments.
+
+| capture | minimum at | median margin | decided >= 2x |
+|---|---|---:|---:|
+| 1 commercial | 0 in 506/508 | 3.39 | - |
+| 2 EP 2100 s | -1 in 298, 0 in 252, +-2 in 15 | 1.26 | 183/649 |
+| 3 SP 300 s | -1 in 471, -2 in 52, 0 in 115 | 2.97 | 551/649 |
+| 4 SP V-stab off | 0 in 542, +1 in 97 | 2.90 | 448/649 |
+
+Verified units, each clean at the stated shift and toothed at its neighbours: capture 3 counter 13653
+at -1 and 13972 at 0; capture 4 counter 739 at 0 and 333 at +1. **Capture 2's abstention is correct
+behaviour, not a defect**: the EP recording sits at (+2,+2), a common-mode displacement the comb is
+structurally blind to, with field 1 jittering on top. So an acceptance figure that scores comb
+abstention uniformly across the four captures will mislead. Capture 4's verdict is unchanged with or
+without the field-pairing `--repair` (0 in 542 against 554), so it does not depend on that question.
+⚠️ **The three captures do NOT establish that the line TBC causes the misregistration**, though they
+are consistent with it: capture 1 and capture 4 are both line-TBC-off and both read 0, capture 3 is
+line-TBC-on and reads -1, and captures 3 and 4 are the same recording. But they are different passes
+over the tape, and the within-capture test (does field-1 horizontal timing predict which units
+misregister?) has not returned a usable measurement yet - the first instrument counted integer blanking
+samples and pinned at its quantization floor.
 
 **v10 running-comb attempt — NOT accepted on capture 1:** the unconditional
 stub is replaced by a full-width low-pass, previous-published-crop static
