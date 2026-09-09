@@ -24,6 +24,14 @@ sys.path.insert(0, os.path.dirname(__file__))
 from packet_capture_reader import walk_tagged
 from cc608_decode import decode as cc608, RUNIN_MIN_CODES
 UNIT=756_048; HDR=48; LINE=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
+MAXLAG=24                                              # the alignment search is +-MAXLAG samples (1.8 us at 13.5 MHz)
+# DERIVED from the search itself, not typed. At the extreme lag the two rows overlap over span-MAXLAG samples, so
+# requiring the extreme-lag comparison to still use at least half the span gives span >= 2*MAXLAG. The old value
+# was a typed 60. Measured before replacing it: sweeping the floor to 40 and to 100 leaves capture 1's reference
+# byte-identical, 0 cells changed of 12,880 at both, and the floor is monotone -- raising it can only reject rows
+# -- so identical output at 40 and 100 PROVES no row has a span in [40,100) and every value in that range gives
+# the same answer. 48 lies inside it, so this derivation is a no-op here rather than a retuning.
+SPAN_FLOOR=int(os.environ.get('SG_SPAN_FLOOR', 2*MAXLAG))
 ap=argparse.ArgumentParser(); ap.add_argument('cap'); ap.add_argument('out'); ap.add_argument('--repair',action='store_true',help='fields paired one later (V-stabilize-off capture): field 1 = this unit slot 2, field 2 = next unit slot 1')
 ap.add_argument('--units',default=''); ap.add_argument('--only',action='store_true',help='process only the --units (test mode)'); A=ap.parse_args(); VERB={int(x) for x in A.units.split(',') if x}
 SLOT={1:(16,279),2:(279,525)}     # unit rows of each slot (line 20.. / 283..); blank reference rows 7..15 / 270..278
@@ -36,7 +44,7 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None,sig_n=0.0):
     for a in range(30,690-55+1,55):
         b=a+55
         if float(prev[a:b].std())<4*sig_b: continue
-        c=[(float(np.abs(row[a:b]-prev[a+s:b+s]).mean()),s) for s in range(-24,25)]; lags.append(min(c,key=lambda x:x[0])[1])
+        c=[(float(np.abs(row[a:b]-prev[a+s:b+s]).mean()),s) for s in range(-MAXLAG,MAXLAG+1)]; lags.append(min(c,key=lambda x:x[0])[1])
     d=np.abs(row-prev); dm=float(d[30:690].mean()); ds=float(d[30:690].std()); x=int(d[10:710].argmax())+10; sp=float(d[x])
     half=sp/2; l=x; r=x
     while l>0 and d[l-1]>=half: l-=1
@@ -50,9 +58,12 @@ def rowfeat(row,prev,sig_b,ped_lvl,by_m=None,sig_n=0.0):
     # of the row only; the pedestal's own noise must not extend the span)
     cont=(row>ped_lvl)&(prev>ped_lvl); span=np.nonzero(cont[24:696])[0]
     wlag=0; wr=1.0
-    if len(span)>=60 and float(row[24:696].std())>=4*sig_n and float(prev[24:696].std())>=4*sig_n:   # both rows textured above the field's noise; a flat row has no alignment to measure
+    # SPAN_FLOOR is an INSTRUMENT LIMIT, not a source property, and it is derived from the lag search rather than
+    # typed -- see its definition. Sweepable by SG_SPAN_FLOOR, because "is this constant carrying a decision" is a
+    # question to answer by measurement rather than to argue from the fact that a number looks arbitrary.
+    if len(span)>=SPAN_FLOOR and float(row[24:696].std())>=4*sig_n and float(prev[24:696].std())>=4*sig_n:   # both rows textured above the field's noise; a flat row has no alignment to measure
         a=24+int(span[0]); b=24+int(span[-1])+1
-        sads=[(float(np.abs(row[a:b]-prev[a+t:b+t]).mean()),t) for t in range(-24,25)]; best=min(sads,key=lambda x:x[0]); wlag=best[1]; wr=best[0]/max(sads[24][0],1e-6)
+        sads=[(float(np.abs(row[a:b]-prev[a+t:b+t]).mean()),t) for t in range(-MAXLAG,MAXLAG+1)]; best=min(sads,key=lambda x:x[0]); wlag=best[1]; wr=best[0]/max(sads[MAXLAG][0],1e-6)
     uniform = med is not None and abs(med)>=2 and sum(1 for v in lags if abs(v-med)<=2)>=2*len(lags)/3   # a whole-row time shift: the other head (the subagent's rule); flagging inside the picture varies along the row
     # the row above's own horizontal structure at the spike: a vertical picture edge there makes a narrow |diff| spike
     # from one-sample jitter; the RF transient sits where the row above is locally flat
@@ -415,10 +426,22 @@ def process_unit(u,RU,RN):
             # blanking and takes the trailing, and arriving from the left does the reverse. The old
             # test required leading-present AND trailing-absent, so a switch the other way was
             # invisible to it. Neither end is privileged now.
+            # ⚠️ `lead_blank` is a BOOL, never a tri-state, so an unreadable lead is asserted as "not blank" rather
+            # than recorded as unknown — the "missing is not a value" fault. It does not bite on this capture,
+            # because `by_m` is `float(by.mean())` and always a real number, but the project records units where
+            # the Shuttle's regenerated rows are absent entirely (whole-tape units 176-194: no timing line, no
+            # caption insert, all-black raster). There `by.mean()` still returns a number — of rows that are not
+            # blanking — so `lead_blank` is computed against a meaningless reference and returns a confident False,
+            # which flips `ends_partial` to equal `trail_ok` and silently changes the answer. Fixing it means making
+            # `lead_blank` genuinely tri-state and routing None to the fallback below; that changes behaviour on
+            # captures this harness is gated from, so it is named rather than guessed at here.
             lead_ok  = pf is not None and pf.get('lead_blank')
             trail_ok = pf is not None and body_end is not None and 2*pf['end_run'] >= body_end
-            ends_partial = (pf is not None and body_end is not None
-                            and (lead_ok is not None) and (lead_ok != trail_ok))
+            # `(lead_ok is not None)` used to sit in this condition and was DEAD: lead_ok is `pf is not None and
+            # pf.get('lead_blank')`, which is a bool in every case, so the clause was always true. Removed because
+            # a dead clause that reads like a guard is worse than no guard — it advertises a safety that is not
+            # there. The real guard it was standing in for is the tri-state above, which does not exist yet.
+            ends_partial = (pf is not None and body_end is not None and (lead_ok != trail_ok))
             # The peak and the whole-row lag stay as corroboration; neither is required, because a
             # dark row carries no lag to improve (the defect this replaces: line 260 read wlag 6 at
             # ratio 0.97, so the old test failed and the switch line fell through to the full row).
