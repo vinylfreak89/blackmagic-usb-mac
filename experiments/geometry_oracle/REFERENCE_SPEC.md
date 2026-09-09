@@ -1,6 +1,6 @@
 # The v10 reference: what each column is, and the raw-row measurement behind it
 
-HANDBACK §7 step 1 requires the reference to be re-derived from the contract, with "every column's raw-row
+The v10 process requires the reference to be re-derived from the contract, with "every column's raw-row
 derivation stated". This is that statement. It is written BEFORE the code so the code can be checked against it,
 and it is the harness's half of the two-instrument acceptance (contract §8): the engine's record and this
 reference are implemented independently from the same contract and the same raw rows, and are never fused.

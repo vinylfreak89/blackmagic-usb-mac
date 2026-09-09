@@ -14,7 +14,7 @@ It sees relative placement of the two fields, never where the pair sits in the r
 
 --repair: the V-stabilize-off capture pairs its fields one later — slot 1 holds the PREVIOUS unit's
 field 2 — so field 1 is taken from this unit's slot 2 and field 2 from the next unit's slot 1
-(HANDBACK, the four captures).
+(CLAUDE.md, the v10 acceptance captures).
 """
 import argparse, sys, os
 import numpy as np

@@ -85,13 +85,13 @@ takes tier 1 items 1–3 as concepts.
 
 | # | item | where it is written down | state |
 |---|---|---|---|
-| B1 | The four references, one commit each, in the acceptance order | HANDBACK §7 step 1; `experiments/geometry_oracle/REFERENCE_SPEC.md` states every column's raw-row derivation | `switch_geometry.py` already implements most of the spec; capture 1 building, its invariant not yet checked |
+| B1 | The four references, one commit each, in the acceptance order | contract §8; `experiments/geometry_oracle/REFERENCE_SPEC.md` states every column's raw-row derivation | `switch_geometry.py` already implements most of the spec; capture 1 building, its invariant not yet checked |
 | B6 | Horizontal-timing instrument for the owner's line-TBC mechanism | measurements belong in CLAUDE.md and are NOT yet written there | ran. **Within-capture: NULL** — field-1 jitter does not predict which units misregister (Cohen d −0.14 and +0.23, both opposite to the prediction). **Switch band: TBC-off is 27% rougher** (2.765 against 2.180), where the field body showed no difference at all (2.013/2.006) — the setting acting where it is documented to act. ⚠️ The null is not a refutation: the instrument measures the TBC's OUTPUT, downstream of the correction. **Capture 1 is unmeasurable by it and loosening the gate does not fix it** — the edge-peak gate trades validity for coverage: at 6.0, 453 of 920 units and the located edge sits at 9.45 samples where NTSC geometry predicts ~9; at 3.0, 752 units but the edge drifts to 7.44; at 1.5, 917 units at 7.02 with 583 outside a plausible 8–12. Lower gates are finding noise peaks, not line starts. Low-contrast material needs a different edge estimator, NOT a looser threshold |
 | B9 | **The current box mask overlays the warning text, which is why geometry cannot go in.** The owner's rule is that the card's top line IS the picture top; the detected top band stops exactly above WARNING on a well-exposed unit (31 rows) and swallows it on the card's dim pass and at its fades (36–41). A box fixes geometry through its extent, so the extent is wrong on the units that matter | CLAUDE.md (the box measurements); owner, 2026-09-09 | not fixed; blocks box geometry in the engine |
 | B7 | Box detection across the four captures | agent report; `experiments/box_census.py`, `experiments/box_panel.py` committed at `83abd99` | census done and the title-graphic false positive rejected on the panel; two further qualifications not acted on — per-row `h` overlaps far more than the region statistic suggested (28.1% of the commercial tape's post-card picture rows fall below threshold), and the denominator is an integer, making the ratio a step function of source noise |
 | B3 | The render changes | contract §8 | not implemented |
 | B8 | Audio in the review renders (`--dump-pcm`) | owner, 2026-09-09: "you rendered with no audio which is not cool" | not implemented |
-| B4 | The acceptance runs | HANDBACK §7 steps 3 and 4 | blocked on B1 and the engine |
+| B4 | The acceptance runs | contract §8 | blocked on B1 and the engine |
 
 ## C. Recorded elsewhere, still open, outside the v10 acceptance path
 

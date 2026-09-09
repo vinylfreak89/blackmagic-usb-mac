@@ -154,7 +154,7 @@ def units(capture, repair, on_unit):
     """Walk a capture's exact 756,048-byte units, handing (counter, luma raster) to on_unit.
 
     --repair: the V-stabilize-off capture pairs its fields one unit later, so slot 1 of a unit
-    holds the PREVIOUS unit's field 2 (HANDBACK, the four captures; comb_census.py --repair). The
+    holds the PREVIOUS unit's field 2 (CLAUDE.md, the v10 acceptance captures; comb_census.py --repair). The
     repaired raster for counter c therefore takes field 1 from unit c's own slot 2 half and field 2
     from unit c+1's slot 1 half -- assembled here as a full 525-row raster so the row indices above
     keep meaning what they say.

@@ -1,7 +1,7 @@
 # Geometry-first registration engine — the contract
 
 The single current contract for the registration engine and its validation harness, edited in place only by both
-agents' agreement (HANDBACK.md §2). Codex writes the engine (`src/field_registration/`, C, branch `v10-engine`),
+agents' agreement (CLAUDE.md §14, the v10 process). Codex writes the engine (`src/field_registration/`, C, branch `v10-engine`),
 Claude the harness (`experiments/`, branch `v10-harness`); each reviews the other's code and intent (CLAUDE.md §14;
 the owner, 2026-09-07 20:10: "The roles reverse again ... Codex will go back to owning the code, you owning the test
 harness"). Line numbers are NTSC lines; unit row r is line r+4.

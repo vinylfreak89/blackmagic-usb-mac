@@ -621,7 +621,7 @@ because it is classified `ProgramLike`/`Present`. So the gate is doing exactly w
 it gates on the classifier's verdict — and the residue is upstream in the classification, not in
 the gate. The two misses are units 43,678–43,679, the onset of the recording-boundary event. The
 108 mute labels on dark programme are the pre-existing class and are now the largest one left.
-Not yet through the four-capture acceptance of HANDBACK §7 step 3.
+Not yet through the four-capture acceptance (contract §8).
 
 **The commercial capture's opening is a tape coming in, and its mute labelling is CORRECT (owner ruling,
 2026-09-09).** Measured: counters 6593–6609 carry no picture at all, both fields at mean 1.7–2.5 with sparse white
@@ -1821,8 +1821,8 @@ delivery edge; wrong one at acquisition.
   ~1.4 ms median. **Open:** the owner's damage ruling (saved good geometry, hold on absent
   evidence, one re-check on clearing) — round 12, in progress; round 11's contradiction-based
   damage classifier was falsified (the torn units show absent testimony, not contradiction).
-  **→ v10 (owner redirect 2026-09-07 20:00 JST; the standing instruction is `HANDBACK.md` at the
-  root of both v10 worktrees).** Rounds 11–14 and the 2026-09-06/07 geometry-first experiment
+  **→ v10 (owner redirect 2026-09-07 20:00 JST; the standing instruction is §14's v10 process below,
+  which absorbed `HANDBACK.md` when that file was retired 2026-09-09).** Rounds 11–14 and the 2026-09-06/07 geometry-first experiment
   (branches `geometry-first-engine` 7eec699 and `geometry-first-harness` 552ad2f, frozen; its
   post-mortem `docs/reports/2026-09-07_three_tree_comparison.md`, accepted by the owner) did not
   beat round 10; main's round-10 engine (comb misregistered 165 of 86,293 pairs, parity 0
@@ -2204,7 +2204,7 @@ the pan does. The recalibration is NOT sufficient either: the commercial mask ab
 correctly, but the SP mask retains two accidental blocks and still favours +2. Production comb
 unchanged; no support threshold was invented to paper over it.
 
-**The v10 acceptance captures (session logistics, moved out of HANDBACK.md 2026-09-09 when that file was
+**The v10 acceptance captures (session logistics, moved out of `HANDBACK.md` 2026-09-09 when that file was
 retired).** The contract's section 8 carries the order and the pass condition; this is what the four captures are.
 Order: (1) commercial tape, (2) EP recording, (3) SP recording, (4) SP with the deck's V-stabilize off.
 
@@ -2451,20 +2451,22 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   the signal is, and it is brought with the measured alternatives and a recommendation. Also
   from the same day: review a commit's message bytes as well as its tree; push every branch the
   docs cite; write timestamps only from a checked clock.
-- **v10 process (owner, 2026-09-07 20:00–20:50 JST; `HANDBACK.md`, and what the three-tree
-  comparison found missing from the experiment).** Codex writes the C engine, Claude the harness;
+- **v10 process (owner, 2026-09-07 20:00–20:50 JST; absorbed from `HANDBACK.md`, retired 2026-09-09, plus what
+  the three-tree comparison found missing from the experiment).** Worktrees: Codex's engine tree is
+  `/private/tmp/blackmagic-v10` on `v10-engine`; the harness tree is the repository itself on `v10-harness`.
+  The acceptance order and pass condition are contract §8; the four captures are inventoried above. Codex writes the C engine, Claude the harness;
   every engine change is reviewed by Claude and every harness change by Codex — code and intent,
   whole system — before it counts; a review is of a pushed commit named by hash. The branches
   stay in sync: each agent begins a turn by merging the other's pushed branch into its own
   (`git merge`, never a rewrite of a pushed branch) and pushes every commit, so both branches
-  carry both agents' work and `docs/geometry_first_engine.md`, `CLAUDE.md` and `HANDBACK.md` are
+  carry both agents' work and `docs/geometry_first_engine.md` and `CLAUDE.md` are
   byte-identical on both (checked by `diff` in every review). The contract is edited only by
   agreement: a change is proposed to the other agent with the owner's quote and the measurement
   behind it and made in place only when both are at extreme confidence; otherwise the turn ends
   and the owner is asked — "if there is any disagreement, especially on the contract that you are
   unable to resolve the ambiguity on yourselves ask me" (owner, 20:5x). Code is written only to
   settled wording; when code and contract disagree, which one is wrong is shown by a measurement,
-  never melded. Both agents must agree in full on the stated plan (`HANDBACK.md` §7) before any
+  never melded. Both agents must agree in full on the stated plan before any
   work begins; prior work on the frozen branches and main, committed or not, may be referenced as
   ideas but nothing from it is carried without being re-derived from the contract. One Codex
   dispatch at a time, from this chat's own Codex thread, its reply read before the next.
