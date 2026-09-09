@@ -106,6 +106,19 @@ static void negative_controls(void)
     }
     measure_field(raster,0,&m);
     check("corrupted first interval does not move S",m.switch_line,-1);
+
+    /* A lone trailing blank sample is not the retained NORMAL PREFIX of
+     * a partial whose later portion switches. With no readable timing in
+     * that row, use the following exposed S, not an invented partial. */
+    for(int row=19;row<=258;++row)for(int x=0;x<720;++x) {
+        unsigned y=80+(x*13)%70;
+        if(x<4 || x>=715)y=2;
+        if(row==256)y=x==719?2:28;
+        if(row>=257)y=x>=80 && x<227?2:28;
+        sample(row,x,y);
+    }
+    measure_field(raster,0,&m);
+    check("trailing remnant alone does not prove partial",m.switch_line,257);
 }
 
 static void raw_unit(const char *path)
