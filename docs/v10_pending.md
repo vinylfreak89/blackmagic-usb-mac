@@ -10,12 +10,17 @@ survives analysis, implementation, etc").
 Last reconciled 2026-09-09 04:23 JST against an independent re-derivation of this list and the completed
 whole-tape signal-state audit.
 
+**One source at a time (owner, 2026-09-09).** "the contract is sequential. I should approve a render before you
+move to the next of the 4 samples." So capture 1 is the only capture worked on until its render is produced from
+the live path and the owner approves it; captures 2, 3 and 4 are not built, not scored and not referenced until
+then. My builds of them were cancelled mid-flight on that instruction.
+
 ## Next, in order
 
 1. Codex's current turn (A3, A1, A2 together, plus the §2 amendment) lands and I review it.
 2. Capture 1's reference finishes and is checked against its own invariant (`stable_interval_check.py`).
 3. The classifier defects the audit found (A10–A12) go to Codex as one dispatch, after its current turn.
-4. Captures 2, 3, 4 references.
+4. Captures 2, 3 and 4 — ONLY after the owner approves capture 1's render.
 
 ## A. Engine (Codex writes, Claude reviews)
 

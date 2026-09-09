@@ -135,6 +135,17 @@ python3 experiments/tpc_slice.py /Users/vinylfreak89/Documents/blackmagic-usb-ma
 `/private/tmp/hw-session/` is scratch (not synced, not backed up): if it is gone, re-cut the slices as above; the
 V-stabilize-off capture must be re-taken from the deck if lost (30–45 s, S-Video, `shuttle-capture`).
 
+Diagnostic slices cut from `fulltape.cap6` during the 2026-09-09 signal-state work, with the offsets that
+reproduce them. `tpc_slice.py` aligns to a RECORD but not to a transfer, so an arbitrary offset can leave a
+partial leading transfer that the reader rejects as packet-index errors; start at an offset whose first `0x83`
+record has `pkt_index == 0`.
+
+| slice | `--start-bytes` | `--video-bytes` | what it covers |
+|---|---:|---:|---|
+| `w_2718.tpc` | 39439481630 | 340000000 | the 27:18 signal stop; Codex's `signal_loss_2718_test.py` fixture |
+| `w_start_400u.tpc` | 0 | 320000000 | the tape start and the unit-300 tear |
+| `w_43678.tpc` | 35000331301 | 260000000 | the recording boundary at units 43,676–43,680 |
+
 ### The harness's artifacts (Claude's)
 
 - References per capture (raw-row measurements, one row per device counter): Codex's committed builder
