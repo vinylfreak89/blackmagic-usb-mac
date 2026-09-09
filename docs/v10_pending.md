@@ -124,6 +124,27 @@ field 1 (engine 261/261 against harness 260/261) and 30 in field 2 (engine 523/5
 other-head row. The engine reads no partial where the harness reads one. This is now one-directional, where the
 pre-ruling split was 26 one way and 18 the other.
 
+**CHARACTERISED on raw rows, 2026-09-10 — one shape, not several (description only; no rule was written).**
+Sampled 13 across the class, both fields, counters 6674 to 7172. In every one the disputed line (the harness's
+`T`) is ordinary picture and `S` carries the relocated blanking:
+
+| | disputed line | line `S` |
+|---|---|---|
+| longest blank-level run | 1, 2, 2, 3, 3, 4, 4, 5, 8, 9, 9, 21, 27 | 100, 108, 110, 140, 140, 144, 150, 156, 157, 157, 158, 159, 160 |
+| profile | full content in every bin, no blanking structure | blanking at the start |
+
+It holds in dark scenes (means 22–27) and bright ones (79–112) alike, so the class is ONE fault with ONE shape
+and the engine is right on all 13 sampled. That is worth knowing on its own: nobody should go looking for
+several rules.
+
+⚠️ **The discriminator this shape suggests is ALREADY FALSIFIED, and that is the point of recording it.** Gating
+the partial test on the candidate carrying relocated blanking was measured earlier the same night: it fixes 62
+of 80 target readings and BREAKS 248 that already agreed with the engine, net −186, agreement 384 → 198. The
+reason is visible in the table above — these disputed lines run at blank runs of 1–27, and so do 248 GENUINE
+partials. Low blank-run is a property both populations share, so it cannot separate them however the threshold
+is placed. **A future attempt must not re-run this.** The separating observable is still unknown and no
+candidate was written tonight.
+
 ⚠️ **The displaced-row census CANNOT adjudicate this.** It validates `S`, which is exactly what the two
 instruments already agree on. Deciding whether the partial exists needs raw-row adjudication on a sample of the
 71, and that is the next measurement on this half.
