@@ -1,4 +1,4 @@
-/* Rule 8 exclusion, not a boxed placement or centring golden. */
+/* Rule 8: report switch observations; a box verdict supplies no placement. */
 #include "../field_registration.c"
 #include <stdio.h>
 static uint8_t raster[FIELDREG_RASTER_LINES*FIELDREG_BYTES_PER_LINE];
@@ -23,8 +23,37 @@ int main(int argc,char **argv)
         field_measurement m;measure_field(raster,0,&m);
         check("box verdict is explicitly observed",m.box_detected);
         check("boxed geometry stays unknown",!m.geometry_measurable);
-        check("box excludes switch",!m.switch_measurable);
+        check("no timing witness stays unknown",!m.switch_measurable);
     }
+    fixture(false,false,1);
+    for(int f=0;f<2;++f) {
+        const int top=f?282:19;
+        for(int y=0;y<240;++y)for(int x=0;x<720;++x) {
+            unsigned v=raster[(top+y)*1440+2*x+1];
+            if(x<4 || x>=715)v=2;
+            if(y==237 && x>=360)v=28+(x%2);
+            if(y>=238)v=x>=80 && x<227?2:28+(x%2);
+            raster[(top+y)*1440+2*x+1]=(uint8_t)v;
+        }
+        field_measurement m;measure_field(raster,f,&m);
+        check("box with timing is observed",m.box_detected);
+        check("box does not suppress partial switch",m.switch_measurable && m.switch_line==top+237);
+        check("box reports first full other-head row",m.first_full_other_head_line==top+238);
+        check("box reports current bottom and extent",m.bottom==top+236 && m.band_extent==3);
+        check("switch observation does not seed boxed geometry",!m.geometry_measurable &&
+            m.observed_switch_line_count<0 && m.picture_rows<0);
+    }
+    static uint8_t observed_unit[FIELDREG_UNIT_BYTES];
+    memcpy(observed_unit,"\0\0\xff\xff",4);observed_unit[6]=1;observed_unit[7]=0xe8;
+    memcpy(observed_unit+FIELDREG_HEADER_BYTES,raster,sizeof raster);
+    static field_registration fresh;fieldreg_init(&fresh,NULL);
+    fieldreg_decision observation;
+    check("public box observation accepted",fieldreg_process(&fresh,observed_unit,&observation));
+    check("public box reports both switches",observation.field[0].switch_measurable &&
+        observation.field[1].switch_measurable);
+    check("observations alone establish no lock or crop",!observation.geometry_lock_known &&
+        observation.applied_d1==0 && observation.applied_d2==0 &&
+        observation.decision_d1==FIELDREG_UNKNOWN && observation.decision_d2==FIELDREG_UNKNOWN);
     fixture(true,false,1);
     field_measurement m;measure_field(raster,0,&m);
     check("weak textured edges are not boxed",!m.box_detected && m.geometry_measurable);
@@ -53,10 +82,13 @@ int main(int argc,char **argv)
         for(int r=0;r<525;++r)for(int x=0;x<720;++x)raster[r*1440+2*x+1]=y[r*720+x];
         for(int f=0;f<2;++f){measure_field(raster,f,&m);
             check("6668 positive box observation",m.box_detected);
-            check("6668 box excludes switch",!m.switch_measurable);
+            field_measurement direct=m;measure_switch(raster,f,&direct);
+            check("6668 box reports directly measurable switch",m.switch_measurable &&
+                m.switch_line==direct.switch_line &&
+                m.first_full_other_head_line==direct.first_full_other_head_line);
             check("6668 box supplies no placement",!m.geometry_measurable);
         }
     }
-    printf("BOX-EXCLUSION: %u/%u passed\n",checks-failures,checks);
+    printf("BOX-SWITCH-OBSERVATION: %u/%u passed\n",checks-failures,checks);
     return failures?1:0;
 }
