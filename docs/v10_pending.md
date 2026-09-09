@@ -68,8 +68,9 @@ harness reads T=260 in all six units — wrong in all six.** Since 260 IS the mo
 `|T − mode| ≤ 1` passes: no stability measure taken tonight can see this class of error. Stable is not correct.
 
 **SCOPED, and it is LOCAL — the systematic-error alarm above is withdrawn** (`experiments/displaced_row_census.py`,
-which detects both morphologies of relocated blanking, with bounds from the contract's own NTSC figures and the
-blank level from each field's own regenerated rows, sharing no code with the harness):
+which detects both morphologies of long blank-level run, with bounds carried over from `switch_geometry.py` — NOT
+the contract's, see the correction below — and the blank level from each field's own regenerated rows, sharing no
+code with the harness):
 
 | first relocated-blanking row vs the harness's `S` | readings |
 |---|---:|
@@ -119,20 +120,28 @@ instruments already agree on. Deciding whether the partial exists needs raw-row 
 **The 527 non-box Unknowns are the larger half and are NOT one cause** (Codex's per-reading census, keyed in the
 CSV as `no_disjoint` 265, `accepted_then_returned` 147, `no_basis` 75, `no_accepted` 44, `no_prefix_free` 2,
 `no_complete` 1, against 482 measured). **141 of the clearing events occur at field-2 line 525**, the clip line.
-⚠️ The report's table sums the clearing bucket at 145 where the CSV holds 147; the CSV is taken as authoritative
-because it is per-reading, and the two should be reconciled before either is quoted at acceptance.
+The 145-versus-147 difference is NOT an error (Codex, 2026-09-10): it is a cohort distinction. 145 belong to the
+prior 527 non-box cohort; the full CSV adds two boxed readings, 6671/f2 and 6764/f2. Both numbers are correct for
+their cohort.
 
 **The largest bucket is a GAP, not a rule correctly applied — measured 2026-09-10.** For all 265 `no_disjoint`
-readings, the row the HARNESS independently identifies as the first fully relocated blanking row carries a
-blank-level run at or above the contract's 64-sample sync-pulse floor — **265 of 265, 100%** — with the mass at
-140–159 samples, the contract's own ~147-sample blanking interval arriving intact:
+readings, the row the HARNESS independently identifies carries a long run at the field's own blank level —
+**265 of 265, 100%** — with the mass at 140–159 samples, against the ~147 the contract's 10.9 µs horizontal
+blanking interval gives at 13.5 MHz:
 
 | blank run at that row | 80–99 | 100–119 | 120–139 | 140–159 | 160–179 | 180–199 |
 |---|---:|---:|---:|---:|---:|---:|
 | readings | 8 | 2 | 89 | **146** | 9 | 11 |
 
-So the engine declines rows carrying an unmistakable relocated blanking interval because their phase departure is
-not separable from local horizontal variation. That is expected on THIS capture and the reason generalises:
+So the engine declines rows carrying a long blank-level run because their phase departure is not separable from
+local horizontal variation.
+⚠️ **Two corrections, both Codex's, both accepted.** (1) The 64 and 200 bounds are the HARNESS's, from
+`switch_geometry.py`, NOT the contract's — the contract carries only the 10.9 µs interval, and 200 is not derived
+from it. Earlier text here called them the contract's, which was a falsely sourced constant. (2) A blank-level run
+is not proof of relocated blanking: the test admits any qualifying low-level window, and CLAUDE.md records that
+black content in this material can be clipped to exactly the blanking level with the same dither. So the gap
+finding stands on POSITION — a long blank-level run sits where the harness reads S, in all 265 — and NOT on an
+assertion of what that run physically is. Establishing that needs an observable this instrument does not have. That is expected on THIS capture and the reason generalises:
 `composite_program_30s` is the line-TBC-OFF pass, and contract §2 measures that regime as the one with wide
 horizontal timing error (1,022 of 1,042 rows readable at ≥ 100 samples, median 192). A phase-envelope test is
 what that regime defeats — and it is the regime the acceptance order puts FIRST.
@@ -144,7 +153,8 @@ the whole scan, not an assertion about which row is the true band" does not weak
 one an independent instrument identifies, and that instrument reads `S` exactly in 1,012 of 1,013 readings here.
 
 The shape of the finding: the engine has one observable for the switch where the contract describes two. §3
-carries the blanking-inside-the-row observable explicitly, bounded by NTSC at 64–200 samples. Whether it should
+carries the blanking-inside-the-row observable explicitly; its 64–200 bounds are the HARNESS's, and what the
+contract gives is the 10.9 µs interval (~147 samples at 13.5 MHz). Whether it should
 be a fallback when the phase test abstains, a corroborator, or something else is a design question for the engine
 side; put to Codex 2026-09-10, its position owed.
 
