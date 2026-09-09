@@ -16,9 +16,19 @@ does not advance capture 2.
 ## Triage
 
 **Tier 0 — the harness's own switch line must be trustworthy before anything is compared against it.** It jitters
-by a row where the signal does not, and five fitted constants remain in `switch_geometry.py`. Two are now derived
-(the caption run-in gate from CEA-608 + BT.601; the insert-presence test from the field's own blanking noise);
-three remain — the field-2 envelope's four constants, the eight-sample blanking slack, and the span floor.
+by a row where the signal does not, and typed constants remain. **What jitters is the band's TOP (`T`), not the
+switch line — `S` is stable across the blips, and `switch_lines` is derived from `T` so it inherits it.** Field 1
+normally reads T=S=260 and blips to 259; field 2 normally reads T=522 with S=523 and blips to 523: the two fields
+sit on opposite sides of the same binary "is the row above the switch part of the band" decision. The raw rows say
+the blip row is ordinary picture, so it is instrument error; `SG_EXPLAIN` names which disjunct fires.
+Six typed constants, not five. Two are now derived and committed (the caption run-in gate from CEA-608 + BT.601,
+`98257b0`; the insert-presence test from the field's own blanking noise, `113882a`). Four remain:
+- `switch_geometry.py:173` carries a SECOND copy of the run-in amplitude gate, still typed 35, whose comment claims
+  it sits "at the decoder's own gate" — the decoder's gate is now 27.375, so the two have silently diverged. One
+  quantity, two implementations. Needs its own measurement before it is unified.
+- the field-2 envelope's four constants (mean < 95, bins 20–47 ≤ 40, run of ≥ 6 bins > 60)
+- the eight-sample blanking slack (`M_run+8`)
+- the span floor (`len(span)>=60`)
 
 **Tier 1 — the engine's switch detector on ordinary picture. It is what makes a lock POSSIBLE, and it is failing
 where the switch demonstrably is.** On capture 1's 364 non-boxed registerable units (counters 6811–7174) the
@@ -102,6 +112,24 @@ Neither agent may resolve these; the process sends contract conflicts to him.
 ~~4. The contract's 486 crop is off by one~~ — CONFIRMED and corrected 2026-09-09.
 ~~4. Rule 8's box-validity wording is owed~~ — the bounds where a box is valid and where it is invalidated. Neither
    agent should write it. Asked and explained; answer pending.
+6. **Rule 8's box acquisition needs the head switch the same rule says is not measured.** Rule 8 says a head
+   switch separated from the picture by a gap is not measured and that a box's own band IS that gap; the
+   2026-09-10 agreement test compares "the head switch band and the boxed geometry". An unmeasured band has no
+   value to compare. Either the newer ruling supersedes the gap rule for boxed pictures, or "the two numbers"
+   means something other than the band. Claude introduced the conflict writing the ruling; neither agent picks.
+
+7. **Can band-and-box agreement alone make a lock?** The agreement path offers two geometry observations and no
+   comb and no caption. Rule 4 permits it; §3 Source lock ("combing, captions, or both") forbids it.
+
+8. **What are "the two numbers" on geometry?** The band has an extent, a top switch line and a count; the box has
+   bands at both ends. Which pair is compared, and in what units, is not stated.
+
+9. **The switch-line count has no seed the contract authorizes.** With the top at line 23 the offset can only be
+   read as count − extent, and the count comes from the confirmed unit, which needs geometry. The engine already
+   assumes d = 0 at acquisition so count = extent (`field_registration.c:436`), which resolves it in practice and
+   is nowhere in the contract; rule 4 wants the acquisition's geometry to be an observation, not an assumption.
+   (Both agents agree this does NOT explain capture 1's zero locks — that is still open.)
+
 ~~5. Is VBI a confirmation signal alongside captions?~~ The owner raised it himself: "isn't VBI another confirmation
    signal? ... caption and VBI are kind of part of the same class I think". It would give a caption-less source a
    second confirmation. Answered back to him with the asymmetry that decides it; his ruling pending.
