@@ -119,6 +119,11 @@ static void negative_controls(void)
     }
     measure_field(raster,0,&m);
     check("trailing remnant alone does not prove partial",m.switch_line,257);
+    /* Commercial 6668/6669: a shared trailing blank sample also cannot
+     * disprove the full row's positively relocated blanking interval. */
+    for(int row=257;row<=258;++row)sample(row,719,2);
+    measure_field(raster,0,&m);
+    check("shared trailing blank does not hide full departure",m.switch_line,257);
 }
 
 static void raw_unit(const char *path)
