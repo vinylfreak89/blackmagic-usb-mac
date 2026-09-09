@@ -483,15 +483,16 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    (which is basically just the full geometry as if the box didn't exist). if they DONT line up, then no, it can
    not become a new acquisition, only a hold." So a measurable head switch is evidence FOR a lock, never against
    one; a box makes an RF lift-off point less likely and the absence of one does not invalidate the switch; and
-   the test is whether the band and the boxed geometry agree. **The two numbers are the box's outer edges, top and
-   bottom, in each field, against where the switch band puts the picture's bounds** — inferred, and marked as an
-   inference rather than quoted as a rule, from the owner's question of 2026-09-09T16:32:59Z (uuid 1bd1fc1d): "does
-   the box (again measured by the harness) consistently line up at line 23 after the fade (both fields)… and same on
-   the bottom. where does it land in each field?" He was asking the harness for a measurement there, not writing a
-   definition. ⚠️ **UNRESOLVED, and NOT an operative acquisition test** (both agents, 2026-09-10): the question does
-   not say which bottom is meant — the picture bottom, the switch line, or the recorded edge — nor what "line up"
-   is as an equation. No agent may implement the agreement test on this sentence; it records the likely reading so
-   the owner can confirm or replace it in one line. **Agreeing, they are valid geometry and MAY set a new
+   the test is whether the band and the boxed geometry agree. ⚠️ **What "the two numbers" ARE is not settled and
+   nothing may be written here until it is** (owner, 2026-09-09T18:25:05Z): "yeah it didn't answer which means it
+   SHOULDN'T go in the contract. I need an answer to that." An earlier draft inferred the pair from a question he
+   had asked the harness; that inference is withdrawn, because a question he asked is not a rule he stated.
+   **What is owed first is a measurement, not a definition** (same message): "my HOPE is that it lands above the
+   head switch band, in which case its clean. if it doesn't land above the head switch band consistently, then
+   yeah we have a problem." So the harness measures where the box's bottom edge lands relative to the head-switch
+   band, per unit, per field, across a whole capture INCLUDING its fades — the box's extent is the part known to
+   move with exposure — and reports the distribution. Consistently above the band is clean; not consistently is a
+   problem. The agreement test is not implementable until that measurement exists. **Agreeing, they are valid geometry and MAY set a new
    acquisition, taken as the full geometry as if the box were not there. Disagreeing, the unit holds and may not
    acquire.**
    **A box is not its own class** (owner, same day): "it should be left on the tape where it was centered… boxes
