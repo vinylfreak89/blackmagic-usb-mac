@@ -93,7 +93,7 @@ takes tier 1 items 1–3 as concepts.
 | B8 | Audio in the review renders (`--dump-pcm`) | owner, 2026-09-09: "you rendered with no audio which is not cool" | not implemented |
 | B4 | The acceptance runs | HANDBACK §7 steps 3 and 4 | blocked on B1 and the engine |
 
-## F. Recorded elsewhere, still open, outside the v10 acceptance path
+## C. Recorded elsewhere, still open, outside the v10 acceptance path
 
 - The render and the live path disagree in ~8,400 units, almost all field 2 of the first recording, by one line,
   because the renderer does not make the live path's `fieldreg_begin_segment` calls (CLAUDE.md §11). This bears on
