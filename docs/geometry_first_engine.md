@@ -31,7 +31,10 @@ closing its own account (owner, 2026-09-07 15:11: "my original definition of geo
 bottom bands shifting is the correct answer"); new lines of luma appearing at the top alone never mean the picture moved, unless that shift causes a
 comb disagreement on the settled comb. No lock is claimed without at least one confirmation that the geometry is
 correct — combing, captions, or both; without it the picture stays at standard placement (23/286) and the record
-says there was not enough to lock on. The row directly above the picture that sometimes carries data and sometimes
+says there was not enough to lock on. ⚠️ **"combing, captions, or both" was BROADENED on 2026-09-09T16:40:11Z
+(uuid d385c50e) and this sentence is the superseded half — read §3 Source lock, not this.** A measurable box is
+itself one of the two confirmations, and the list was never closed. The sentence stands unaltered because §1 is a
+record of what he said and when, not a statement of the current rule. The row directly above the picture that sometimes carries data and sometimes
 a faint copy of the line below is decided by geometry, never by classifying the row: if the bands below did not
 change, the field did not move. Captions are confirmation; a caption may confirm the very first unit of a segment when it
 agrees with geometry; a caption that disagrees with measured geometry is logged, geometry wins. Segment events (splice, signal loss, relock)

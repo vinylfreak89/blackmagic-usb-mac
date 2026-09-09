@@ -104,7 +104,9 @@ presenting them as his to decide made him the bottleneck when the harness was.
 Neither agent may resolve these; the process sends contract conflicts to him.
 
 1–3 **ANSWERED 2026-09-09 and written into the contract**: the switch requirement is conditional (required only
-   where the geometry is not boxed and not all lines are picture); confirmation stays comb-or-caption and a source
+   where the geometry is not boxed and not all lines are picture); ~~confirmation stays comb-or-caption~~ **— that
+   half is superseded by item 7, settled 2026-09-09T16:40:11Z: a measurable box is itself one of the two
+   confirmations and at least one further observation, comb or head switch, completes the lock** — and a source
    that never locks is an accepted outcome, fail closed; the hold keeps the head switch's position line and is lost
    only when the total number of bands changes, ordinary clipping excluded. A change of geometry — box to full
    picture or back — resets the lock.
