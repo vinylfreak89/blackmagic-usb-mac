@@ -13,9 +13,15 @@ it. Unit index = device counter − 4511.
 | `program` | 108 | confirmed on the raw raster as dark or low-contrast programme. No mute or no-input label may remain or appear here. |
 | `boundary` | 17 | the relock ramps at the end of an event, where coherence is climbing from the event's floor to settled picture. Scored in neither direction, because demanding a verdict in a genuinely gradual transition is how a fix buys recall with false positives. |
 
+**Accepted by the owner, 2026-09-09: units 43,678–43,679 remaining a miss is not a defect.** His words:
+"that one unit being a miss is fine. It's the end of a recording and has weird coherence that will get cleaned up
+1 frame later. Not a big deal. Leave it alone." They stay in the fixture as `not_program`, because that is what the
+raster is, but MISSED 2 and UNGATED 1 are the ACCEPTED floor rather than a target to drive to zero. Do not tune the
+classifier at them.
+
 `score.py <decision.csv>` scores a whole-tape `frameserver_replay` log against it and prints three
 counts. Against the build at `44cfb94`: **MISSED 17, FALSE_MUTE 108, UNGATED 270.** Neither of the
-first two may rise; UNGATED must reach 0 once rule 5 lands.
+first two may rise. UNGATED's remaining 1 is unit 43,678, accepted above.
 
 It fails closed. A duplicate counter, an unparseable row, or a fixture unit the log never mentions
 is an error rather than a skipped row. A fixture unit that IS in the log but is device-short or
