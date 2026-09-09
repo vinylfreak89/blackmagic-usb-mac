@@ -1,4 +1,4 @@
-/* Private, source-qualified rule-8 exclusion instrument, not box geometry.
+/* Private, source-qualified box verdict instrument, not box geometry.
  * Measured basis and deliberately limited scope: tests/BOX_EXCLUSION.md.
  * This header is included by field_registration.c, not a separate API. */
 static double box_median(double *v,int n)
@@ -66,7 +66,7 @@ static bool observe_box(const uint8_t *raster,int field,int recorded_last)
         const int begin=y+1-run;
         /* The lower candidate extends to the recorded edge. Its median
          * may tolerate terminal switch rows; no switch endpoint is used.
-         * This is an exclusion verdict, never a reported band extent. */
+         * This is a categorical verdict, never a reported band extent. */
         size=0;for(int j=begin;j<n;++j)v[size++]=h[j];
         if(box_median(v,size)<cut)return true;
     }

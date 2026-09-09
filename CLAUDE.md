@@ -2113,6 +2113,28 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Rule-8 switch observations restored on boxed rasters, no bounds invented:**
+the categorical box flag no longer skips `measure_switch`. T, S, bottom, span
+and visible extent are reported; the flag still supplies no box geometry,
+displacement or initial switch-line count. No acquisition bypass, top-reader
+change, comb promotion or new hold policy. The historical exclusion entry below
+is superseded in that respect. Final observation golden fails 24/31 on the old
+engine, passes 31/31 on the new, also under ASan/UBSan.
+Capture-1 export (counter >= 6667): 1,016 field readings, now 284/198 measurable
+T in f1/f2 (live-gated: 226/153). At 6687 T/S is 260/261 and 522/523.
+Of the prior export's 814 Unknowns, 287 were box exclusions and 527 were
+non-box; these are the actual artifact counts, not the brief's 811/285/526.
+All non-box T/S pairs are unchanged. The non-box Unknown-cause funnel is:
+265 complete-interval candidates never disjoint from the local phase envelope;
+145 departures accepted then cleared by a phase return; 75 with no readable
+local basis at any complete-interval candidate; 39 vetoed as a continuation
+of the previous full phase; 2 retaining a normal prefix; 1 with no complete
+interval. This is execution-path evidence, not a raw-row adjudication or a fix.
+141 of the 145 last returns are at field-2 line 525. Independent plain and
+instrumented C runs have byte-identical geometry exports. Across all 919 exact
+units the analysis probe reports zero locks and zero nonzero applied crops.
+Reproduction, gates, test qualifications and census: `src/field_registration/tests/SWITCH_UNKNOWNS.md`.
+
 **Qualified rule-8 box exclusion implemented, coverage incomplete:** a positive
 box observation suppresses switch measurement and leaves placement Unknown;
 it supplies no origin/extent. The fitted 6/40/3 limits and 0.28 relative cut

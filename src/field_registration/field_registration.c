@@ -425,18 +425,24 @@ static void measure_field(const uint8_t *raster, int field,
     }
 
     m->box_detected=observe_box(raster,field,m->recorded_last);
-    /* Rule 8: do not measure a switch below a boxed content gap. The
-     * categorical observation supplies no origin or measured box extent. */
-    if(m->box_detected)return;
     if (m->top >= 0) measure_switch(raster,field,m);
+    if (m->switch_measurable) {
+        const int origin = field == 0 ? FIELDREG_PICTURE_ORIGIN_F1 :
+                                        FIELDREG_PICTURE_ORIGIN_F2;
+        m->bottom = (int16_t)(m->switch_line - 1);
+        m->span = (int16_t)(m->switch_line - origin);
+        m->band_extent = (int16_t)(m->recorded_last - m->switch_line + 1);
+    }
+    /* Rule 8, corrected: boxing does not exclude current switch evidence.
+     * This categorical observer still supplies no measured box geometry,
+     * displacement, or initial held bounds. Report T/S and visible extent,
+     * but do not seed a count or license acquisition from the tentative top. */
+    if(m->box_detected)return;
     if (m->top >= 0) m->geometry_measurable = true;
     if (m->switch_measurable) {
         const int origin = field == 0 ? FIELDREG_PICTURE_ORIGIN_F1 :
                                         FIELDREG_PICTURE_ORIGIN_F2;
         const int visible_d = m->top - origin;
-        m->bottom = (int16_t)(m->switch_line - 1);
-        m->span = (int16_t)(m->switch_line - origin);
-        m->band_extent = (int16_t)(m->recorded_last - m->switch_line + 1);
         m->observed_switch_line_count =
             (int16_t)(m->band_extent + visible_d);
         m->picture_rows =

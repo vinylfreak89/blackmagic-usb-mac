@@ -82,8 +82,12 @@ int main(int argc,char **argv)
         for(int r=0;r<525;++r)for(int x=0;x<720;++x)raster[r*1440+2*x+1]=y[r*720+x];
         for(int f=0;f<2;++f){measure_field(raster,f,&m);
             check("6668 positive box observation",m.box_detected);
-            field_measurement direct=m;measure_switch(raster,f,&direct);
-            check("6668 box reports directly measurable switch",m.switch_measurable &&
+            field_measurement direct=m;
+            direct.switch_measurable=false;
+            direct.switch_line=direct.first_full_other_head_line=-1;
+            measure_switch(raster,f,&direct);
+            check("6668 box preserves direct switch reading or abstention",
+                m.switch_measurable==direct.switch_measurable &&
                 m.switch_line==direct.switch_line &&
                 m.first_full_other_head_line==direct.first_full_other_head_line);
             check("6668 box supplies no placement",!m.geometry_measurable);
