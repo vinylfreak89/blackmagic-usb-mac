@@ -302,8 +302,9 @@ def process_unit(u,RU,RN):
             other=(feats.get(r) if two else feats2.get(r))
             return other is None or abs(other['wlag']-ft['wlag'])<=1
         def shifted(ft,r,two=False): return step(ft,r,two) or (torn(ft) if not two else False) or flat(ft,r) or ft['lead_run']>M_run+8 or ft['dip_absent'] or blanked(ft)   # the two-above pass carries no torn test: two rows apart the picture's own detail exceeds the body envelope (commercial counters 6907, 6943 read seven picture rows as torn)   # (the upward scan from the clip keeps a dip-less row inside the picture from ever being taken as the band)
+        def peak(ft,r): return ft['spike']>M_spk and ft['spike']>ft['dm']+5*ft['dsig'] and ft['width']<=12 and ft['above_range']<ft['spike']/2 and not shifted(ft,r)
         if os.environ.get('SG_EXPLAIN'):
-            # SG_EXPLAIN="unit:field:line[,line...]" names WHICH test made a row part of the band, so a band edge
+            # SG_EXPLAIN="field:line[,line...]" names WHICH test made a row part of the band, so a band edge
             # that moves can be attributed instead of guessed at. Reports every disjunct of shifted(), not the
             # first true one, because two tests firing together and one firing marginally are different faults.
             _ef,_els = os.environ['SG_EXPLAIN'].split(':')     # "field:line[,line...]", for every --units unit
@@ -322,7 +323,6 @@ def process_unit(u,RU,RN):
                               f"lead_run>M_run+8 {ft['lead_run']>M_run+8} ({ft['lead_run']} > {M_run+8}) | "
                               f"dip_absent {ft['dip_absent']} | blanked {blanked(ft)} => SHIFTED {shifted(ft,_r,_two)}")
                     print(f"    line {_L}: peak(1-above) {peak(feats[_r],_r) if _r in feats else 'n/a'}")
-        def peak(ft,r): return ft['spike']>M_spk and ft['spike']>ft['dm']+5*ft['dsig'] and ft['width']<=12 and ft['above_range']<ft['spike']/2 and not shifted(ft,r)
         # S = the first row from the body downward that is time-shifted / intruded beyond the field's own spread (the
         # first row that belongs entirely to the other head). The switch lands either inside S-1 (a partial line) or at
         # S's boundary; that one-row ambiguity is the band's uncertainty (contract v3 §10.4) and is reported with the
@@ -375,7 +375,24 @@ def process_unit(u,RU,RN):
             # displaced row below it. The first version of this used the minimum over 160 whole-field
             # rows and one distant anomaly dragged it to 1; the fault was the WINDOW, and narrowing
             # the window to the rows immediately above is what makes the minimum the right bar.
-            body_end=float(min(above)) if len(above)>=10 else None
+            # ...and the MINIMUM is wrong too, for the same reason the whole-field minimum was: it is an
+            # extreme, so it tracks the noisiest row in the window rather than the population. Measured
+            # 2026-09-10 at counters 6667/6668/6669, three consecutive units whose line 259 is ordinary
+            # picture in all three (raw rows looked at; means 21.87/21.91/22.36, full-width texture, no
+            # partial structure): its trailing run reads 16, 12, 17 against a window minimum of 15.0 in
+            # every unit, so `end_run >= body_end` flipped False for one unit and the band's top moved
+            # 260 -> 259 -> 260. That is 27 of field 1's 35 off-mode units.
+            # The fix is not a margin on the same comparison -- a margin from the body's own dispersion
+            # was tried on the same day and moved field 1 by three blips while making field 2 worse.
+            # The comparison itself is the fault: it asks "is this below the shortest ordinary row",
+            # when the measured question is "which of two populations is this row in". The populations
+            # are stated two comments above and are categorical: ordinary rows carry 15-22 samples of
+            # trailing blanking, a partial carries 1, because a partial row's blanking is ABSENT -- the
+            # other head's active video runs to the row's end. So classify by which centre the candidate
+            # is nearer, the ordinary rows' or zero. The boundary is the midpoint between two MEASURED
+            # centres, one of which is zero by construction, so nothing is typed in: 12 against a median
+            # of 16 is plainly an ordinary row, and 1 against 16 is plainly not.
+            body_end=float(np.median(above)) if len(above)>=10 else None
             # SYMMETRIC in direction (owner, 2026-09-10: "I've seen the head switch move both ways,
             # the harness needs to be honest rather than fitted garbage if it's to be trusted"). A
             # partial row is one that keeps its own blanking at ONE end and loses it at the other,
@@ -384,7 +401,7 @@ def process_unit(u,RU,RN):
             # test required leading-present AND trailing-absent, so a switch the other way was
             # invisible to it. Neither end is privileged now.
             lead_ok  = pf is not None and pf.get('lead_blank')
-            trail_ok = pf is not None and body_end is not None and pf['end_run'] >= body_end
+            trail_ok = pf is not None and body_end is not None and 2*pf['end_run'] >= body_end
             ends_partial = (pf is not None and body_end is not None
                             and (lead_ok is not None) and (lead_ok != trail_ok))
             # The peak and the whole-row lag stay as corroboration; neither is required, because a
@@ -399,6 +416,14 @@ def process_unit(u,RU,RN):
             # normally and ends at 22 without returning: that IS a partial, and the engine, which
             # has no ends test, took 261. Each instrument was wrong in one direction; the ends
             # decide both, so they are no longer one option among three.
+            if os.environ.get('SG_EXPLAIN_PARTIAL') and int(os.environ['SG_EXPLAIN_PARTIAL'])==f:
+                _ab=[feats[r]['end_run'] for r in range(max(top, sw-21), sw-1) if r in feats]
+                print(f"  partial unit {u} field {f}: sw L{sw+4+SLOT[f][0]} pf {'None' if pf is None else 'yes'} "
+                      f"lead_blank {None if pf is None else pf.get('lead_blank')} end_run {None if pf is None else pf['end_run']} "
+                      f"body_end(min of {len(_ab)}) {body_end} | above runs {sorted(_ab)} "
+                      f"median {float(np.median(_ab)) if _ab else None}")
+                print(f"     lead_ok {lead_ok} trail_ok {trail_ok} ends_partial {ends_partial} "
+                      f"=> T will be L{(sw-1 if ends_partial else sw)+4+SLOT[f][0]}")
             if pf is not None and body_end is not None and pf.get('lead_blank') is not None:
                 partial = ends_partial
             else:
