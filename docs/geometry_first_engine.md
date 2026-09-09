@@ -419,8 +419,24 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 8. The output picture never moves except at a segment's initial lock and after a re-acquisition; field precedence
    (which field's line sits between the other's) is settled once per lock by the comb; a boxed picture's bars are recorded picture rows inside the 240 and change nothing in the account, and the box is
    rendered where the account puts it, centred as the source centred it (owner, 2026-09-05: "letterboxing or any
-   weirdboxing creates its own geometry and that can EASILY be centered in the raster"; no acceptance capture carries
-   a boxed picture, so the class is not exercised);
+   weirdboxing creates its own geometry and that can EASILY be centered in the raster"). **ACCEPTANCE CAPTURE 1 IS A
+   BOXED PICTURE** — the sentence here previously read "no acceptance capture carries a boxed picture, so the class
+   is not exercised", and that is false and is withdrawn (measured 2026-09-09, counter 6700: field 1 carries a
+   structureless band at lines 24-53, content from 55 to 236, a second structureless band at 237-260; field 2 the
+   same shape). The class is exercised by the first capture in the acceptance order, so it is not a deferred edge
+   case. Owner, 2026-09-09: "the top of the picture SHOULD be the [warning card's] 'WARNING' label and the bottom
+   the last text line. everything else is too close to blanking. that should properly end up being a fixed size and
+   centered in the middle, which will correct the geometry", and: structurelessness at ONE end lowers confidence and
+   needs corroboration, at BOTH ends it fixes the geometry and it is a box. What makes a region structureless is a
+   measurement neither agent has yet: flat-within-one-code fires only on the device's four synthetic rows, vertical
+   coherence rates text as MORE coherent than noise, and horizontal spread against sample noise has separated on one
+   unit only.
+   **A head switch separated from the picture by a gap is not measured** (owner, 2026-09-09: "a head switch placed
+   below the actual video is unreliable and shouldn't be measured at all", clarified as "where there is a gap between
+   the head switch and picture content, not a head switch directly touching the picture"). Where the picture is a
+   box, the region below it carries no RF lift-off point, so there is nothing to time against; measured on counter
+   6700 the gap is 24 rows. Such a unit's switch line is Unknown under rule 6's wording, and the lock's count is not
+   substituted;
    black level is never assumed. Snow-like signal, splices and relocks are delivered by the signal-state layer; the
    engine reads the raster only.
 9. Blank lines under the picture could indicate that the field sits high and need confirmation against the comb
