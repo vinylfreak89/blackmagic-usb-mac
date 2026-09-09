@@ -564,8 +564,8 @@ labelled with the unit, its counter, both crop origins and the comb's reading. N
 
 ## 9. Open
 
-Nothing is open.
-
+What is open is tracked in `docs/v10_pending.md`, not here. This section previously read "Nothing is open",
+which was false for as long as the tracker had rows in it.
 Closed 2026-09-09 (the owner): "the running line" is the red playhead sweeping the applied-shift graph in the
 `overlay_sidecar.py` band under the picture, not a marker on the raster, and the graph must trace both fields. The
 cadence is one frame per unit, 29.97, top field first, which follows from bwdif in `send_frame` mode.

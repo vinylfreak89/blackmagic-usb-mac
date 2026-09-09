@@ -7,23 +7,11 @@ Nothing confirmed lives here: every measurement, decision and ruling belongs in 
 that is confirmed should end up in permanent files. that tracker file must absolutely not host anything that
 survives analysis, implementation, etc").
 
-Last reconciled 2026-09-09 18:2x JST. Closed and deleted since the 04:23 reconciliation: **A3** (the
-registration -> classifier feedback path; its vacuous test was replaced by one requiring the retired names to
-fail compilation). Everything else on list A is unchanged, and the day added more than it closed.
-
 **One source at a time (owner, 2026-09-09).** "the contract is sequential. I should approve a render before you
 move to the next of the 4 samples." Capture 1 remains the only capture whose ENGINE ACCEPTANCE is worked on. The
 owner amended this the same day for analysis specifically — "run that analysis yourself across all 4 capture" —
 so the comb and box censuses cover all four; that is measurement of the source, not engine acceptance, and it
 does not advance capture 2.
-
-## Next, in order
-
-0. **Codex's working tree is behind mine** — `3090b76` contains none of `c072b65`, `b40eb47`, `83abd99`, `2b619f9`. Its next dispatch must merge `origin/v10-harness` before anything else.
-1. The comb's static mask (A15) — the identified cause of capture 1's only remaining engine blocker.
-2. Capture 1's reference finishes and is checked against its own invariant (`stable_interval_check.py`).
-3. The classifier defects the audit found (A10–A12) go to Codex as one dispatch.
-4. Captures 2, 3 and 4 acceptance — ONLY after the owner approves capture 1's render.
 
 ## Triage
 
@@ -38,7 +26,10 @@ three of these four are one small change to one function.
    the head switch is optional since it was written.
 3. **The band hold.** Absent switch is a hold of the band, invalidated only when the line count below it changes —
    then the lock is truly lost.
-4. **My box mask extent** — it still covers the WARNING label, so the box can't fix geometry on the units where it
+4. **The box's validity bounds.** A box is not invariant: if the mask changes the geometry must open up to the
+   full picture, so a box needs defined bounds where it is valid and where it is invalidated. It lives through the
+   fade, and the fade is measured rather than treated as noise (owner, 2026-09-09).
+5. **My box mask extent** — it still covers the WARNING label, so the box can't fix geometry on the units where it
    is the only route. Mine to fix before any of it goes to Codex as concept.
 
 **Tier 2 — make the geometry readable once it can lock.** The `count − extent` reading doesn't exist;
@@ -95,49 +86,15 @@ takes tier 1 items 1–3 as concepts.
 | A18 | The engine's only lock-acquisition site requires `measurement->switch_measurable` unconditionally (`field_registration.c:833`). This contradicts contract §2's standing "the head switch is optional… the band count alone never moves anything": no source lacking a measurable switch can ever lock — boxed pictures, where rule 8 forbids measuring it, and line-TBC-corrected passes, where there is no switch to find. A lock is geometry plus at least one other observation | contract §2 and rule 4 | not fixed; **tier 1**, blocks every other capture-1 item. Reviewed repeatedly and never caught |
 | A19 | The band is not held when the switch is undetectable: absent detection must hold the band, invalidated only when the line count below the head switch changes | contract rule 4 | not implemented; **tier 1** |
 | A20 | The RF peak detector assumes one polarity; the peak reads pure white in some units and pure black in others | contract §2 | not fixed; part of the switch-detector coverage on the non-boxed units |
+| A24 | A box is not invariant — when the mask changes the geometry must open up to the full picture. The box needs defined bounds for where it is valid and where it is invalidated, and it lives through the fade, which is measured rather than treated as noise | contract rule 8 (wording owed) | not specified, not built; **tier 1** |
 | B9 | **The current box mask overlays the warning text, which is why geometry cannot go in.** The owner's rule is that the card's top line IS the picture top; the detected top band stops exactly above WARNING on a well-exposed unit (31 rows) and swallows it on the card's dim pass and at its fades (36–41). A box fixes geometry through its extent, so the extent is wrong on the units that matter | CLAUDE.md (the box measurements); owner, 2026-09-09 | not fixed; blocks box geometry in the engine |
 | B7 | Box detection across the four captures | agent report; `experiments/box_census.py`, `experiments/box_panel.py` committed at `83abd99` | census done and the title-graphic false positive rejected on the panel; two further qualifications not acted on — per-row `h` overlaps far more than the region statistic suggested (28.1% of the commercial tape's post-card picture rows fall below threshold), and the denominator is an integer, making the ratio a step function of source noise |
 | B3 | The render changes | contract §8 | not implemented |
 | B8 | Audio in the review renders (`--dump-pcm`) | owner, 2026-09-09: "you rendered with no audio which is not cool" | not implemented |
 | B4 | The acceptance runs | HANDBACK §7 steps 3 and 4 | blocked on B1 and the engine |
 
-## C. The switch line on capture 1
-
-Both instruments put the picture top at lines 23 and 286 in all 582 units of the stable interval: the owner's
-invariant holds in two independent implementations. The switch line did not agree, and reading the raw samples of
-unit 6687 settled what each was doing wrong.
-
-- **The engine fired ~25 rows early** on a 35-code brightness gate; Codex diagnosed it and is rewriting.
-- **My reference was one row late**, seeking the partial row as a lag improvement a flat dark row cannot supply.
-  Fixed at `3244999` by measuring the row's own two ends.
-- **Both agree on the raw rows**: picture bottom 259/521, partial switch row 260/522, first full other-head row
-  261/523 — matching contract §2's already-adjudicated 259/521.
-- **Codex objects to the ends test as a universal detector** and is right; the contract already makes the method
-  per-instrument, with S as the stated fallback and Unknown only when neither is measurable.
-- ⚠️ **My "the contract's count is one low" framing was itself wrong** (owner, 2026-09-09: the count "is source
-  dependent"). There was no contract number to be right or wrong about; the count is learned per source at the
-  lock and held. The per-source counts are removed from the contract's definition, and what an instrument is
-  checked against is the other instrument on the same source, unit by unit, plus the lock's own constancy.
-
-## D. Contract
-
-- **§2's displaced-row figure is disputed and unamended.** It states "0 displaced rows against 1,957" and calls the
-  separation categorical; Codex measured 11 against 1,957, "strong, not categorical" (turn 15), proposed replacement
-  wording that was never applied, and §9 still reads "Nothing is open". I agree with its measurement, so it is with
-  Codex for assent in the current turn; it reaches the owner only if we cannot settle it.
-
 ## E. To put to the owner
 
-- **When a box fixes the geometry, is the fixed value taken once from a well-exposed unit and held under the lock,
-  or re-measured per unit?** Rule 4 holds every other per-source quantity from a confirmed unit, which points at the
-  first, but rule 8 does not say it. It matters because the verdict is stable and the EXTENT is not: the same card's
-  top band reads 31 rows well-exposed and 36–41 on its dim pass and at its fades (CLAUDE.md). Asked 2026-09-09,
-  not answered.
-
-- **His vertical-tear definition was measured insufficient and amended without a word to him.** Applied literally it
-  fires 1,038 times, so the contract now carries three added qualifiers (contract §3). He asked us to confirm the
-  definition "makes sense"; what we found is that it needs three conditions he did not state. He has not been told
-  that in those terms.
 - He said on 2026-09-09 00:11 "I haven't responded to all your questions so give me a minute". Nothing tracks which
   of my questions are still with him.
 
