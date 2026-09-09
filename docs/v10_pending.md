@@ -58,9 +58,22 @@ one-unit excursion that returns is the shape that cannot be real travel, and tha
 should be judged on — not off-mode, which the contract already licenses.
 
 ⚠️ Settling the constants and reframing the metric still does NOT lock the harness — that is the owner's gate to
-close, on his criterion, and "stable and agreeing" is his phrase to interpret. What is offered here is the
-measurement he needs to close it: the contract's invariant is met, the multi-unit runs are verified real on the
-raw rows, and 25 single-unit blips remain unexplained across both fields.
+close, on his criterion, and "stable and agreeing" is his phrase to interpret.
+
+⚠️⚠️ **AND THE STABILITY METRIC IS STRUCTURALLY BLIND TO A REAL ERROR — found 2026-09-10 by the engine comparison,
+which is exactly why the gate has two halves.** At counters 6899 and 6817 and their neighbours, the raw sample
+profiles put the partial row unambiguously at line 261: it carries 180–215 samples of blank-level prefix against
+the ~9 the contract allows a correctly timed row, while line 260 carries none and is ordinary picture. **The
+harness reads T=260 in all six units — wrong in all six.** Since 260 IS the mode, off-mode counts it correct and
+`|T − mode| ≤ 1` passes: no stability measure taken tonight can see this class of error. Stable is not correct.
+
+**The scope is UNKNOWN and the census that tried to establish it is wrong — do not use its numbers.** It tested
+for a LEADING blank run, and partial rows here have two morphologies: at 6899 the displaced blanking is a leading
+prefix, but at 6667 — the partial verified on the rows hours earlier — line 260 measures `lead_run 0` with
+`blank_run 158`, the blanking sitting in the MIDDLE of the row. A leading-run test is blind to that class, which
+is most of this capture, and its output confirms it by flagging field 2's clip line 525 as displaced. A correct
+scope census must detect both morphologies; that is the next piece of work and it is the one that decides whether
+tonight's tier-0 fix was necessary-but-insufficient or merely local.
 
 Also unfixed and named at its site: `lead_blank` is a bool, so an unreadable lead is asserted as "not blank"
 rather than unknown. Harmless on this capture; a real fault where the regenerated rows are absent.
