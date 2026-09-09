@@ -186,16 +186,24 @@ def runin_burst(row):
     # silently kept the old value and the two ran 27.375 against 35 for as long as nobody looked. `best` above is
     # the same peak amplitude in the same units as the decoder's `amp`, so it takes the same bar.
     return best>=RUNIN_MIN_CODES and float(x[300:696].std())<=4*max(float(np.diff(x[300:696]).std())/np.sqrt(2),0.5)
+XDS_STATS={'calls':0,'fired':0,'rej_mean':0,'rej_right':0,'rej_run':0}
 def xds_bar(row):
     """the smeared XDS-like bar (contract section 3; the frozen envelope measured 2026-09-04): 48-bin luma profile, row
-    mean < 95, bins 20..47 all <= 40, a run of >= 6 consecutive bins > 60 within bins 0..19"""
-    if float(row.mean())>=95: return False
+    mean < 95, bins 20..47 all <= 40, a run of >= 6 consecutive bins > 60 within bins 0..19.
+
+    All four numbers are FITTED to the second recording of fixture A, where this bar exists; they are not derived
+    and cannot be, because the bar is a smeared source artefact rather than a standard waveform. Whether they can
+    be removed is therefore a question about the capture under test, not about the constants: set SG_XDS_STATS to
+    count calls, firings and which clause rejects, so "is this carrying a decision here" is measured."""
+    XDS_STATS['calls']+=1
+    if float(row.mean())>=95: XDS_STATS['rej_mean']+=1; return False
     prof=row[:720].reshape(48,15).mean(axis=1)
-    if (prof[20:]>40).any(): return False
+    if (prof[20:]>40).any(): XDS_STATS['rej_right']+=1; return False
     run=0
     for v in prof[:20]:
         run=run+1 if v>60 else 0
-        if run>=6: return True
+        if run>=6: XDS_STATS['fired']+=1; return True
+    XDS_STATS['rej_run']+=1
     return False
 def process_unit(u,RU,RN):
     """one unit: RU = this unit's raster, RN = the next unit's (needed only with --repair)"""
@@ -567,3 +575,7 @@ try: walk_tagged(A.cap,on_video=on_video,progress=False)
 except RuntimeError as e: print('walk ended:',str(e)[:60])
 n=N[0]-(1 if A.repair else 0)
 print('units',n,'->',A.out)
+if os.environ.get('SG_XDS_STATS'):
+    s=XDS_STATS
+    print(f"  xds_bar: calls {s['calls']}  FIRED {s['fired']}  rejected by mean>=95 {s['rej_mean']}, "
+          f"by bins 20-47 >40 {s['rej_right']}, by no run of 6 {s['rej_run']}")
