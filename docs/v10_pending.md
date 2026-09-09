@@ -112,40 +112,16 @@ Neither agent may resolve these; the process sends contract conflicts to him.
 ~~4. The contract's 486 crop is off by one~~ — CONFIRMED and corrected 2026-09-09.
 ~~4. Rule 8's box-validity wording is owed~~ — the bounds where a box is valid and where it is invalidated. Neither
    agent should write it. Asked and explained; answer pending.
-⚠️ **Items 6–8 have CLAIMED answers, relayed through the watchdog session on 2026-09-10 and NOT yet confirmed by
-the owner directly.** They are recorded here so a one-line confirmation turns them into contract text; none of them
-has been written into the contract, because a relayed quote is not evidence on its own and these three are in no
-commit, no doc and no capture. Verified against the repo: two quotes in the same relay ("section 3 is kind of
-voided", "boxes aren't their own special class") ARE recorded and check out, which raises but does not settle the
-credibility of the rest.
-
-6. **Rule 8's box acquisition needs the head switch the same rule says is not measured.** Rule 8 says a head
-   switch separated from the picture by a gap is not measured and that a box's own band IS that gap; the
-   2026-09-10 agreement test compares "the head switch band and the boxed geometry". An unmeasured band has no
-   value to compare. Either the newer ruling supersedes the gap rule for boxed pictures, or "the two numbers"
-   means something other than the band. Claude introduced the conflict writing the ruling; neither agent picks.
-
-   *Claimed answer (unconfirmed):* the newer ruling wins and the gap rule never covered a box — "A valid head
-   switch is a reason to be evidence for a lock, not the opposite. All I was trying to say before is a box
-   decreases the likelihood of a lift off point and therefore the lack of one doesn't make the head switch
-   invalid. It just means to hold its bounds, and not to set a new one." So a box does not make the switch
-   unmeasurable; it makes the switch HOLD its bounds rather than SET new ones, and "separated by a gap is not
-   measured" stops applying to a box.
-
-7. **Can band-and-box agreement alone make a lock?** The agreement path offers two geometry observations and no
-   comb and no caption. Rule 4 permits it; §3 Source lock ("combing, captions, or both") forbids it.
-   *Claimed answer (unconfirmed):* yes, and §3's list is not closed — "thats your 2 independent confirmations
-   isn't it? the fact that the harness shows real geometry with a real measurable box means a geometry can be
-   acquired. which means only 1 additional measurement is needed, comb or head switch and ideally both are
-   generateable and a full lock is acquired on the logo." If that is his ruling it also settles item 5 (VBI),
-   because it makes the second observation any of comb, head switch, caption or VBI rather than a fixed pair.
+⚠️ **Items 6 and 7 are CLOSED**, settled 2026-09-10 on the owner's own words verified from the source transcript
+(`type: user`, `isMeta` unset, with uuid and timestamp) rather than from a relay, and written into the contract at
+`604bef7` + `75bdc69`. They are recorded there, not here. Item 8 stays open and is deliberately non-operative.
 
 8. **What are "the two numbers" on geometry?** The band has an extent, a top switch line and a count; the box has
-   bands at both ends. Which pair is compared, and in what units, is not stated.
-   *Claimed answer (unconfirmed):* the box's outer edges, top and bottom, per field, against where the head-switch
-   band puts the picture's bounds — "does the box (again measured by the harness) consistently line up at line 23
-   after the fade (both fields)… and same on the bottom. where does it land in each field?"
-
+   bands at both ends. The contract now carries the likely reading — the box's outer edges, top and bottom, per
+   field, against where the switch band puts the picture's bounds — **marked as an inference and explicitly NOT an
+   operative acquisition test**, because the owner's words it comes from (uuid 1bd1fc1d) are a question he asked the
+   harness, not a definition. What is missing: which bottom is meant (picture bottom, switch line, or recorded
+   edge), and what "line up" is as an equation. One line from him replaces it. Nothing is blocked on it.
 9. **The switch-line count has no seed the contract authorizes.** With the top at line 23 the offset can only be
    read as count − extent, and the count comes from the confirmed unit, which needs geometry. The engine already
    assumes d = 0 at acquisition so count = extent (`field_registration.c:436`), which resolves it in practice and
