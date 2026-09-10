@@ -584,6 +584,36 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### STEP 2's THREE DEFECTS — all landed, verified at the call sites. One residue found in the RECORD.
+
+Verified in my own tree at HEAD by reading what the code DOES at each site, not by grepping the defect's name — a
+grep for a name tells you nothing about whether the behaviour still happens under a different identifier.
+
+1. **The static mask is gone.** `comb_static_fraction` survives at exactly two places: `field_registration.c:628`
+   assigning 0, and `field_registration.h:246` marked *"Deprecated: plain comb writes 0, not a reading."* No
+   masking logic remains in `comb_confirm`.
+2. **`comb_confirm` is lock-gated** — `:926`, `if(!maintained_lock)comb_confirm(...)`. **And the `else` branch is
+   the half that matters**: it calls `apply_locked_geometry` and sets `FIELDREG_COMB_NOT_EVALUATED`, so the comb's
+   result PERSISTS as a held geometry adjustment rather than being discarded. That is `:1027`'s
+   registered-once-and-held, implemented.
+3. **`switch_measurable` no longer gates acquisition.** It now appears only as a ternary supplying the count when
+   available (`:600`, `switch_line_count = m[f].switch_measurable ? …`) and selecting an end (`:577`). No lock is
+   conditioned on it.
+
+**Nothing is owed on any of the three. Do not re-open them.**
+
+⚠️ **THE RESIDUE IS REAL AND IT IS IN THE RECORD, not just the header.** A relay flagged the deprecated field as a
+"missing is not a value" hazard documented only in a note. Checked, it is worse than that:
+`frameserver.c:266` emits **`comb_static_fraction` as a schema-21 COLUMN**, and `:450` writes it as
+`have_d ? d.comb_static_fraction : 0.0`. **So the column carries 0.0 for three different states** — the engine
+deprecating it, `have_d` being false (no decision at all), and, in any older run, a genuine zero static fraction
+from the masked comb. **Three meanings, one value, in the artefact a future reader actually reads.** The header
+comment at `:246` is in the code; the CSV column carries no marker at all.
+**Suggestion, not a ruling, and not worth the owner's attention:** either drop the column from the record, or make
+its unmeasured state explicit IN the record. ⚠️ Note the `have_d ? … : 0.0` pattern is the same conflation at a
+second site and would survive dropping the field's deprecation — a decision-absent row and a measured zero are
+indistinguishable there for any column written that way.
+
 ### TWO "MISSING" RULINGS READ BY MEANING — both are ALREADY IN THE CONTRACT. No gap, nothing to add.
 
 A phrase audit reported two of his rulings absent. **A phrase search finds what to READ, never what is MISSING** —
