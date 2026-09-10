@@ -4147,6 +4147,33 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **R12: THE V-STABILIZE A/B CONTRADICTS THE TBC-PHASE-STEP ACCOUNT AND SUPPORTS LIFTOFF — but by its SIGN,
+  not by the co-location test, which is underpowered (2026-09-11).** The discriminator was written down BEFORE
+  the data was looked at, so the answer could not be read off it afterwards:
+  - **Liftoff (the owner's):** the peak is RF liftoff as the outgoing head leaves the tape; the skew is the
+    incoming head's signal sampled against this field's timing until the line TBC re-locks. **Both are one
+    instant**, so the line TBC — re-locking every line — removes the displacement, and TBC-off carries both while
+    TBC-on carries neither.
+  - **TBC phase step:** the step is introduced BY the corrector, so it should appear **WITH** the TBC.
+  **THE SIGN DECIDES BETWEEN THEM AND IT IS ALREADY MEASURED.** Displaced rows: **1,957 with the TBC off against
+  11 with it on**. Peaks: **3.07% off against one or two of 606 on**. Both vanish together when the corrector is
+  engaged. **A step introduced by the TBC would appear when the TBC is on; it does the opposite**, so that account
+  is contradicted and liftoff is the one consistent with the A/B.
+  ⚠️ **THE CO-LOCATION LEG — the strongest available test, that peak-bearing rows must BE displaced rows if the
+  two are one instant — IS UNDERPOWERED AND DECIDES NOTHING.** On capture 4, field 1, 300 units, NTSC lines
+  244-262: **4 peak-bearing rows**, of which **3 are displaced (75%)**; 1% of the 521 displaced rows carry a peak.
+  Consistent with liftoff, n=4, worthless as evidence. The peak's rarity is an instrument limit already recorded
+  here (dark peaks go undetected, owner-accepted), not evidence against the account.
+  ⚠️ **A FALSE 100% NEARLY WENT INTO THIS ENTRY, from my own instrument.** The first run scanned to NTSC line 265
+  and reported **120 of 120 peak-bearing AND displaced at lines 263-264, with a 0-of-2,760 control** — a perfect
+  co-location result. Those rows are **storage rows 259-261: field 1's half-line 262.5, field 2's line 1, and
+  DEVICE PADDING**, whose constant structure reads as a peak under a row-MAD statistic. Excluding them leaves 4.
+  **The clean-looking answer came from measuring the device's own fill**, which is the same class as every other
+  instrument this file records: a plausible number from a population that could not carry it.
+  **So R12's verdict: the TBC-phase-step account is contradicted by the A/B's sign; liftoff is supported by it;
+  and the two-are-one-instant claim at the heart of liftoff is NOT independently confirmed here.** A capture with
+  a higher peak rate would be needed, and none of the four has one.
+
 - **THE LOCKED RENDER NOW CARRIES ALL THREE RENDER INSTRUCTIONS — the third was genuinely missing
   (2026-09-11).** Audited against the owner's words rather than assumed: the 720×486-plus-raster in colour was
   done, the bounding box on the PICTURE with field colours, purple on collision and alpha 0.35 was done, and
