@@ -2505,6 +2505,22 @@ line rendered at once as its digital self would imply. it is a skew across time.
 and think of them temporally."** This reframes the whole T/S dispute and it is worth more than any measurement in
 this entry.
 
+**Codex review of the proposed ruling application and temporal inference (2026-09-11, input `86b9fcc`).**
+`docs/reports/2026-09-11_owner_rulings_review.md` records the per-item disposition. R1, the one-line-region repair
+R2, and R2b's own-timing/location rule are agreed in substance, with evidence qualifications preserved; this is
+not a detector sign-off. R6's black-fill/486 composition and narrow picture-bearing line-22 exception are actionable
+as rendering repairs, but "maintain the lock" does not clearly replace the older explicit comb phase instruction.
+R3's invalid-signal gate is settled; the relay's inference that recovery has no lifecycle decision is not agreed,
+particularly against the owner's preceding "starts from scratch". R45 needs the operative earlier answer it
+references before caption-only precedence can be rewritten. No contract edits were made in this review.
+The owner's temporal correction is accepted, but the measure-zero inference in the following proposal is NOT:
+720 delivered samples cover 53.333 us of an 858-sample, 63.556-us scan, leaving 10.222 us unobserved. A physical
+transition, its first observable affected line, and a fully other-head delivered row are not interchangeable;
+their observation and phase distribution cannot be assumed. A late-crossing explanation remains a hypothesis.
+The report also distinguishes failure of the correlation test from falsification of an RF landmark, and a
+selected excursion count from a proved lower bound on genuine RF events. These are review findings, not a new
+rule selecting either reader's T.
+
 **The structural consequence, which no spatial framing can state.** A delivered row is about 53 microseconds of
 sweep and the head switch is an INSTANT. T and S are therefore not two rows -- they are two quantizations of ONE
 moment: T is the line the instant falls INSIDE, S the first line entirely after it. **So `T = S-1` is the generic
