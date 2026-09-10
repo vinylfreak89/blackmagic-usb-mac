@@ -410,20 +410,18 @@ above: 19, 20, 22 (`960b5ff`), 8, 11 (`0942d8b`), 25, 28 (`ab1b711`), 23, 32, 35
 without editing the frozen report: 24, 27, 29, and 11's withdrawn attribution. Audited rather than defined: 34
 (`docs/reports/2026-09-10_terminology_audit.md`). With the owner: 6/CR-10, 7, 24.
 
-**Of Codex's 13:** CR-01, CR-05, CR-07, CR-12 landed; CR-02, CR-06 and CR-13 landed 2026-09-10 in Codex's wording;
-CR-10 with the owner; **CR-08 verified closed** (the rebuilding-order conflict is repaired — references are
-qualified before supporting reacquisition).
+**Of Codex's 13, all worked (2026-09-10/11):** CR-01, CR-02, CR-05, CR-06, CR-07, CR-09, CR-12 and CR-13 landed;
+CR-03, CR-04 and CR-11 landed after Codex reopened them; **CR-08 verified closed** (the rebuilding-order conflict is
+repaired — references are qualified before supporting reacquisition); CR-10 is with the owner.
 
-⚠️ **FOUR of the five I had treated as "closed by overlap" are NOT closed, and Codex named the surviving text in
-each.** I had flagged that disposition as a judgement rather than a verified before/after; it was wrong, which is
-the argument for never using it again without the diff:
-- **CR-03** — §8 still says the switch moves only with the top and within one-row travel, while the head-catch rule
-  permits independent excursions. The qualified-displacement work does not repair that invariant.
-- **CR-04** — the heading still says "not the displacement"; its body still says "the displacement is gone".
-- **CR-09** — engine versus harness evaluation, current versus retained readings, and the treatment of unevaluated
-  units still need explicit validation semantics. `comb_safe` is part of this finding.
-- **CR-11** — "Picture row: a recorded row that is not a VBI row" still includes source-derived switch rows that
-  another definition excludes.
+⚠️ **FOUR of the five I had treated as "closed by overlap" were NOT closed**, and Codex named the surviving text in
+each. I had flagged that disposition as a judgement rather than a verified before/after; it was wrong, and the
+lesson is in CLAUDE.md — a labelled guess in a tracker is still read as a status by whoever plans from it.
+
+⚠️ **Codex has NOT signed off on the file.** Its exact words: "review the actual resulting diff before freezing;
+this response is not sign-off on an unwritten version." The diff is `869d34f..HEAD` for the last five items and
+`8d389ab..HEAD` for the day (244 insertions, 70 deletions); it is with Codex now. **Nothing is frozen, and my
+reader is dispatched only after Codex freezes**, per the owner's sequencing.
 
 **Engine work CR-06 and the terminology audit put on Codex's side:** rule 9 says the comb is not measured under a
 maintained lock; `field_registration.c:984` calls `comb_confirm` UNCONDITIONALLY on every unit, with no lock-state
@@ -450,7 +448,7 @@ guess about intent, so it needs agreement.
 
 `experiments/coordinate_audit.py` lists the harness scripts that still convert rows to lines by
 adding 4, the withdrawn convention (wrong for every row of field 2 and for field 1's rows 259 and
-522-524). **15 of 53.** CLAUDE.md §14 forbids flipping the harness before the writer/schema
+522-524). **15 of 54.** CLAUDE.md §14 forbids flipping the harness before the writer/schema
 migration and coordinated handoff, because both agents compare exports. Until then the contract's
 §1 says field-relative and the harness CSVs and panels say frame-continuous, so **no harness line
 number may be quoted as field-relative**. `experiments/field_lines_py.py` is the tested mirror to
