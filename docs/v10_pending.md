@@ -341,9 +341,18 @@ EXPAND where the partial was not present from the beginning.
    difference from the frozen count; he says expansion is accepted where the partial was not there from the start.
 3. **Nothing re-acquires.** A count conflict is reported and the lock stands. His ruling makes the hold invalid
    and requires the switch geometry's bounds to be re-acquired.
-4. **The acquisition routes he named do not exist.** The engine acquires at one site (`:920`), gated on caption
-   confirmation or the comb. There is no RF-peak detector at all — `rf_peak_line` / `rf_peak_position` are
-   declared, initialised to −1, and never assigned (already recorded as A20).
+4. **The acquisition routes he named do not exist** — but the framing below is corrected twice by Codex, and
+   both corrections matter. Neither the comb site (`:665`) nor the caption site (`:920`) implements
+   head-switch-bound acquisition or the head-switch confirmation route his ruling names. The RF peak is indeed
+   absent (`rf_peak_line` / `rf_peak_position` declared, initialised to −1, never assigned — A20), **but it is
+   OPTIONAL under his ruling** ("with or without the RF peak"), so its absence is not itself the gap.
+   ⚠️ **Claude wrote "the engine acquires at one site". There are TWO** — the comb path at `:665` and the caption
+   path at `:920`. This is the identical error already recorded in `LEARNINGS.md` ("There is exactly one
+   lock-acquisition site and it requires a caption" — there are two), made a second time from the same kind of
+   partial read, with only the line number moved.
+   ⚠️ **And acquiring SWITCH BOUNDS is not the same as acquiring a SOURCE LOCK** (Codex, 2026-09-10). His ruling
+   is about the switch geometry's bounds. A source lock still requires geometry plus another observation, per §3.
+   Conflating the two would let a bounds acquisition manufacture a lock, which no ruling licenses.
 
 ## A. Engine (Codex writes, Claude reviews)
 
