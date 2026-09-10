@@ -75,6 +75,24 @@ Classification stable in all 38 units checked except line 526:
 
   484 digitised, 23 written blanking, 18 padding = 525.
 
+NOTHING WRAPS AND NOTHING CARRIES OVER, measured 2026-09-10 after the owner asked whether the
+device is looping around the raster to make these rows. Over 38 units, 874 written-blanking rows
+examined: ZERO exact byte repeats - every written row in every unit is a distinct pattern. Line 263
+of one unit against line 263 of the next correlates +0.054 (max 0.117 over 30 consecutive pairs),
+against line 264 of the next -0.009, against the next unit's first written row -0.002, against the
+next unit's last delivered row +0.010; within one frame, line 263 against every other written row
+peaks at |r| 0.086. The flat-16 padding is the opposite and shows what reuse looks like: ONE
+identical byte pattern in all 38 units.
+What the generator is doing is representable: each written row is about 62% at code 1 and 38% at
+code 2, mean 1.38, because the level falls between two integers. The two codes are deliberately
+SPREAD rather than scattered - two high samples land adjacent in 6.35% of positions against 14.31%
+by chance, and lag-1 autocorrelation is -0.325 where the identical samples shuffled give -0.002.
+Not periodic at any lag to 16, and the running error is smaller than a shuffle's (6.5-7.5 against
+8-12 per row) but not bounded near one code, so it is not classic error diffusion either. Per-row
+generator, algorithm not identified.
+That also explains why there are two kinds of fill and not one: 16 is an integer the device can
+write exactly, 1.375 is not. Which rows get which is still not known from this side.
+
 Lines 1-3 are not delivered at all. Of the rows that ARE delivered above field 1's picture, not one
 carries a sample from the tape: per-pixel standard deviation ACROSS the 38 units is 0.48 on the
 written-blanking rows and 0.53/0.60 on the two inserted lines - the device draws the same waveform
