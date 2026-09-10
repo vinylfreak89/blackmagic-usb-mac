@@ -4147,6 +4147,43 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **THE OPERATING POINT, SWEPT AGAINST THE SOURCE'S OWN KNOWN-NO-SWITCH POPULATION — and the answer is that
+  ONE THRESHOLD CANNOT SERVE BOTH REGIMES (2026-09-11).** A gate asserted before its false-fire rate is measured
+  is a threshold fitted to nothing. The held-out mid-picture population (160 rows × 30 units, no switch possible,
+  cannot shrink when qualification improves) is a calibration set, so the trade-off was swept rather than a
+  number chosen:
+
+  | threshold | BRIGHT false-fire / hit | CARD false-fire / hit |
+  |---|---|---|
+  | 0.5 sd | 14.3% / 99% | **0.0% / 100%** |
+  | 1 sd | 14.3% / 99% | 0.0% / **0%** |
+  | 3 sd | 0.1% / 29% | 0.0% / 0% |
+  | 1 sample | 14.3% / 99% | 43.4% / 100% |
+  | 2 samples | 0.1% / **29%** | 37.7% / 100% |
+  | 12 samples | 0.0% / 0% | 0.1% / 100% |
+  | **20 samples** | 0.0% / 0% | **0.0% / 100%** |
+
+  **1. A WORKING OPERATING POINT EXISTS, in SAMPLES and for the CARD: 20 samples gives 0 of 4,800 false-fires
+  with 100% hit.** Clean separation, no divisor at all. So the statistic is not broken — it works where the signal
+  is large.
+  **2. THE TWO REGIMES NEED OPERATING POINTS AN ORDER OF MAGNITUDE APART.** The card's switch signal is ~25
+  samples, bright's ~1–3. In sd units the card needs 0.5 and loses EVERYTHING at 1.0, while bright needs 3 to
+  suppress its false-fires. In samples the card needs 12–20 and bright needs 2. **No single threshold in either
+  form serves both**, which is a finding about the statistic rather than about a threshold: the quantity it
+  measures differs by 10× between content regimes of the SAME source.
+  **3. BRIGHT HAS NO GOOD OPERATING POINT AT ALL.** Its best is 2 samples — 0.1% false-fire but **29% hit**. At
+  1 sample it keeps 99% of the signal and false-fires on 14.3% of rows where nothing can happen. **The margin is
+  one sample**, because the signal is ~3 samples and the quantisation noise is ~1, and that is not a threshold
+  problem.
+  ⚠️ **The high-false-fire bright units are NOT a class**, so the "find the qualifying property" route that has
+  worked twice tonight does not open here: the 21 units below 10% have median sd 0.54 and median transition 718;
+  the 9 at or above 10% have 0.51 and 717. Indistinguishable by both obvious properties.
+  **What follows for the harness, and it is consistent with the contract rather than a workaround:** the
+  operating point is a PER-SOURCE measurement taken from that source's own no-switch rows, never a constant —
+  which is what `:531`'s "measure things per source, NO MAGIC NUMBERS" already requires. And the divisor should
+  be dropped in favour of samples, since the sd form's card window (0.5 works, 1.0 fails completely) is far
+  narrower than the sample form's (12 to 20 all clean).
+
 - **THE LEVEL REGRESSION WAS ONE NAME SERVING TWO CONSUMERS, and splitting them fixed it (2026-09-11).**
   `row_transition` returned one index to two consumers wanting different quantities: the POSITION consumer wants
   the ARRIVAL (where the descent reaches the floor) and the LEVEL consumer wants only SETTLED samples (strictly
