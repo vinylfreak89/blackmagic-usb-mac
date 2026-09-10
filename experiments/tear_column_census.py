@@ -54,24 +54,36 @@ synthetic insert sits where the standard says; it now rests on the waveform deco
 ⚠️ What still cannot be measured from this side is the raster's absolute position against vertical
 sync: the device delivers decoded YCbCr, so no sync waveform survives to align against.
 
-THE WHOLE 525, in NTSC lines. The two fields' inserts correlate at +1.000 across a separation of
-263 - the standard's inter-field spacing - so the unit is ONE continuous frame raster, not two
-field blocks, and NTSC's line numbering runs continuously 1-525 without resetting per field.
-Classification stable in all 38 units checked except line 526:
+⚠️ THE MAP IS ANCHORED ONLY BETWEEN THE TWO CAPTION ROWS, and an earlier version of this table
+labelled rows outside that interval as if it were not (owner, 2026-09-10: "How can they not be
+delivered if it gives a 525 raster"). The two anchors are the 18th and 281st delivered rows; the
+count between them is 263 rows and the standard's line count between lines 21 and 284 is also 263,
+so no row is dropped or added inside that span and every row in it has a measured line number.
+OUTSIDE it - the 17 rows above field 1's caption and the 244 below field 2's - there is no anchor,
+and applying +4 there is arithmetic. It produces "lines 526-528" for the last three delivered rows,
+which do not exist in a 525-line frame. So the 525 delivered rows are NOT lines 1-525: the raster
+starts partway into the frame, and where it starts cannot be measured from this side because the
+device delivers decoded YCbCr and no vertical-sync waveform survives to align against. The rows
+below are given their measured line numbers inside the anchored span and their row positions
+outside it.
+Classification stable in all 38 units checked except the third-from-last row:
 
-    4 - 10    7 rows   flat 16, the device's padding
-   11 - 19    9 rows   written blanking
-   20 - 21    2 rows   digitised: the Shuttle's own inserted timing line and line 21
-   22         1 row    written blanking
-   23 - 262 240 rows   digitised: FIELD 1's active picture, exactly the standard's 240
-  263 - 264   2 rows   written blanking          <- the interval between the fields
-  265 - 273   9 rows   flat 16, the device's padding
-  274 - 282   9 rows   written blanking
-  283 - 284   2 rows   digitised: field 2's inserts
-  285         1 row    written blanking
-  286 - 525 240 rows   digitised: FIELD 2's active picture, exactly the standard's 240
-  526         1 row    written blanking
-  527 - 528   2 rows   flat 16, the device's padding
+  rows   1 -   7   7 rows   flat 16, the device's padding          | NO ANCHOR: line numbers
+  rows   8 -  16   9 rows   written blanking                       | unknown above here
+  rows  17 -  18   2 rows   digitised: the device's two inserted lines, the 2nd being the
+                            CEA-608 caption row -- THE FIRST ANCHOR, and the standard puts it
+                            on line 21
+  line  22         1 row    written blanking                       | anchored span begins
+  lines 23 - 262 240 rows   digitised: FIELD 1's active picture, exactly the standard's 240
+  lines 263-264    2 rows   written blanking          <- the two rows in question, INSIDE the span
+  lines 265-273    9 rows   flat 16, the device's padding
+  lines 274-282    9 rows   written blanking
+  lines 283-284    2 rows   digitised: field 2's inserts, the 2nd being its CEA-608 row --
+                            THE SECOND ANCHOR, standard line 284   | anchored span ends
+  rows 282-524   244 rows   written blanking, then FIELD 2's 240 picture rows, then one more
+                            written row and 2 padding rows         | NO ANCHOR below here;
+                            field 2's picture lands on lines 286-525 if +4 continues, which is
+                            the standard's own allocation, but that is consistency not anchoring
 
   484 digitised, 23 written blanking, 18 padding = 525.
 
