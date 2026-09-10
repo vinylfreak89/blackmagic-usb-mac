@@ -317,6 +317,34 @@ presenting them as his to decide made him the bottleneck when the harness was.
 - **Box centring** — gated behind settling where a box's band ends when it meets the switch band, since the
   recentring offset is 4.0, 3.5, 2.5 or 1.5 field lines depending on that boundary alone.
 
+**OPEN — four gaps between the owner's 2026-09-10 rule-8 ruling and the code, reported to him 2026-09-10.**
+His ruling: the bounds are the head switch's; the switch point disappearing after acquisition does not move the
+top line; the hold's test is the count of switch lines OTHER THAN the partial line; from no bounds a valid switch
+geometry acquires them (measured horizontal skew and/or the partial line, ± the RF peak); and the count MAY
+EXPAND where the partial was not present from the beginning.
+
+1. **Both instruments count the partial line, his test excludes it.** Engine:
+   `observed_switch_line_count = band_extent + visible_d` (`field_registration.c:475`). Harness:
+   `n_sw = clip - T + 1` with `T = sw-1 if partial` (`switch_geometry.py:524,526`).
+   **Measured on capture 1** — a partial is present in 87.6% of field-1 and 90.9% of field-2 readings, so it is
+   the norm rather than an exception:
+
+   | | including the partial (both instruments) | excluding it (his test) |
+   |---|---|---|
+   | field 1 | 3×470, 2×29, 4×9 — 38 off the mode | 2×465, 3×43 — **43 off** |
+   | field 2 | 4×443, 3×62 — 62 off the mode | 3×489, 2×16 — **16 off** |
+
+   Across the capture his test roughly halves the hold-invalidating events, 100 → 59 — but that is entirely
+   field 2. **Field 1 gets slightly worse under his rule, 38 → 43**, and that is worth his knowing rather than
+   being averaged away.
+2. **Expansion is flagged as a conflict.** `field_registration.c:924-930` sets `switch_count_conflict` on ANY
+   difference from the frozen count; he says expansion is accepted where the partial was not there from the start.
+3. **Nothing re-acquires.** A count conflict is reported and the lock stands. His ruling makes the hold invalid
+   and requires the switch geometry's bounds to be re-acquired.
+4. **The acquisition routes he named do not exist.** The engine acquires at one site (`:920`), gated on caption
+   confirmation or the comb. There is no RF-peak detector at all — `rf_peak_line` / `rf_peak_position` are
+   declared, initialised to −1, and never assigned (already recorded as A20).
+
 ## A. Engine (Codex writes, Claude reviews)
 
 | # | item | where it is written down | state |
