@@ -3967,6 +3967,34 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   becomes impossible it is because the EVIDENCE is unavailable, never because the observer was switched off, and the
   two have different consequences: unavailable evidence gives Unknown, a disabled observer gives silence that reads
   as no-change. Watch for it wherever a rule gates behaviour on a signal-state class.
+- **PROPERTY 5, THE HALF LINE: the delivered raster CANNOT show it as half a sweep, and that is structural
+  (2026-09-11).** `field_lines.h` already labels row 259 as f1 line **262.5**; the property says treat it as half a
+  HORIZONTAL SWEEP rather than half a row's height. Measured on capture 1's bright programme (6900-7000), content
+  fraction above the source's own blanking and each row's own transition:
+
+  | row | label | content fraction | transition column |
+  |---|---|---:|---:|
+  | 255-256 | f1 259-260 | 0.983 | 716-719 |
+  | 257-258 | f1 261-262 | 0.726 | 719 |
+  | **259** | **262.5, the HALF line** | **0.000** | 542 |
+  | 260 | f2 line 1 | 0.000 | 542 |
+  | 261 | f2 line 2 | 1.000 | 541 |
+
+  **Two findings, and the second is the important one.** Row 259 carries NO content above blanking in this
+  population, so there is nothing there to show a half-sweep structure — and its "transition" at 542 is the
+  finder's artefact on a blank row, the same limit already recorded (reliable only where there is picture to
+  transition FROM).
+  ⚠️ **And structurally the raster cannot express it anyway: the device delivers 720 samples for EVERY row,
+  including the half line.** A half-duration analog line cannot appear as half the samples, because the sample
+  count is fixed by the device rather than by the signal. **The only way a half line could show is as a mid-row
+  DISCONTINUITY — content of one kind for part of the sweep, then another — which requires content on both sides
+  of it, and here there is content on neither.**
+  **So property 5 is not "not yet built": on this source it is NOT OBSERVABLE in the delivered raster**, and an
+  instrument that reported it would be reporting something it cannot see. The labelling in `field_lines.h` stays
+  correct and useful — it is the coordinate truth — but "treating it as half a sweep" has no delivered evidence to
+  act on here. ⚠️ That is a statement about THIS source and THIS raster, not a claim that no source could show it:
+  a half line bracketed by content on both sides would.
+
 - **PROPERTY 7 SPLITS: the partial-line half is open work, the PEAK-LOSS half is CLOSED AS UNBUILDABLE on this
   capture (2026-09-11).** His 09:41:23 rule has two halves with different fates.
   **Survives:** *"the location of the partial line… should not jump. It should have a normal excursion when a line
