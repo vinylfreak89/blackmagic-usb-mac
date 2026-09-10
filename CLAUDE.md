@@ -3087,6 +3087,20 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   the same shape — two places holding one truth, with nothing keeping them in step, and the one that gets READ is
   not the one that is right.** The repair is always to make the reading side execute the other rather than restate
   it: pointers not copies, a probe that runs the guard, a probe that runs the table's mutations. That is the argument that it is structural rather than either being sloppy.
+- **THE ARGUMENT FOR CROSS-CHECKING, in one measured ratio (2026-09-11, the peer session's own count of itself).**
+  A watchdog session relayed findings toward the owner all evening while a second agent checked each against the
+  files. **Eleven of its claims were checked before reaching him; FOUR were wrong** — two counts seeded from a
+  document's illustrations rather than its definitions, a pipeline exit status read from the wrong command, and a
+  compliment contradicted by the checker's own terminal output. In the same window, the checking side had five
+  claims corrected by it: a guard described as built, controls described as running that were comments, an ignored
+  `argv`, an assertion exercised only by a one-shot probe, and a limit sitting in a docstring instead of its output.
+  **Roughly a third of confident statements on both sides were wrong in ways their author could not see and the
+  other could, within minutes.** That ratio is the argument FOR the arrangement, not against it: an unverified
+  relay is not cheaper, it is the same cost paid later by the owner, who has no files in front of him and no way to
+  tell a checked claim from a plausible one. ⚠️ It also says what the arrangement costs — a great many messages —
+  and that the discipline that makes it terminate is naming what will reopen it rather than declaring it closed:
+  both sides wrote "quiet from here" four times in half an hour and then sent again, each message individually
+  worth sending.
 - **THE DIAGNOSIS for the whole answers-a-different-question family, and it is not "same medium" (2026-09-11, the
   peer session's, and better than the hypothesis it replaced).** Every member operated on a **PROXY** that
   coincides with the real property most of the time:
