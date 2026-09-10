@@ -99,8 +99,19 @@ compared.
 
 **Does not establish.** That the document has 27 defects, or 5. That either reader is more reliable.
 That agreement in the primed areas is independent. **Neither read was cold** — both readers inherited
-the project `CLAUDE.md` automatically, both said so, and the Codex reviewer additionally disclosed
-writing its exposure ledger after opening the contract. The structural fix is environmental and is
+the project `CLAUDE.md` automatically and both said so.
+
+⚠️ **The two exposure accounts are NOT of equal standing, and the weaker one is Codex's.** Its
+provenance records a **sequencing deviation**: the prompt required the exposure record before the
+contract was opened, and the reviewer wrote its formal ledger *after the first read*. Its report
+discloses this and the parent did not edit it away or substitute a ledger presented as
+contemporaneous — both of which are creditable. But the consequence stands: **that ledger is a
+reconstruction rather than a record**, produced by a reader already exposed to the document, which is
+exactly what "write it before you look" exists to prevent. The Claude-side ledger was written by the
+reviewer before it opened the file, per its brief.
+**So where the two accounts of exposure differ, Codex's is the less reliable, and this comparison must
+not lean on it as the tighter of the two.** It does not make its five findings wrong; it means its
+account of its own priming is itself informed. The structural fix is environmental and is
 recorded in `CLAUDE.md`: no subagent spawned in this repository can be a cold reader of this contract,
 because the file arrives before the prompt.
 
