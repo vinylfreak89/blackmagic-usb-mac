@@ -410,7 +410,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    **The switch band is not detectable in every unit even of a clean source. Where it is absent the head switch's
    POSITION LINE is HELD, not removed** — moving where the head switch is, in the absence of a line, is a hold.
    The hold is lost when the total NUMBER of bands changes; **ordinary clipping changes do not count** (owner,
-   2026-09-09, narrowing his own earlier wording: "I think I was a bit too harsh on this rule"). The level of the tape's line 22 is a comparator by
+   2026-09-09, narrowing his own earlier wording: "I think I was a bit too harsh on this rule"). **Sharpened by
+   his 2026-09-10 ruling, which rule 8 carries in full: the count that decides is the switch lines OTHER THAN THE
+   PARTIAL LINE.** A change in the partial line alone does not invalidate the hold, and the count may expand where
+   the partial was not present from the beginning. The level of the tape's line 22 is a comparator by
    running count in a fixed array of eight slots; counts never decrement; the most frequent value is the comparator
    and is replaced by a value whose count passes it (owner, 12:52, 12:55, 20:56). No magic numbers, no per-source
    constants typed in.
@@ -470,12 +473,27 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    measured like any other.
    **Read the trigger precisely: it is the ABSENCE OF A LIFT-OFF POINT that holds the bounds, not boxing.** In his
    sentence "it" is the lack of a lift-off point; a box only makes that absence more likely. So a switch measured
-   without a lift-off point **holds the bounds and does not set new ones** ("It just means to hold its bounds, and
-   not to set a new one"), boxed or not, and the agreement test below is the one thing that licenses setting.
-   ⚠️ **NOT SETTLED, and no agent may pick:** whose bounds "its" refers to, what "bounds" names, and what happens
-   where no bounds exist yet. The engine behaves differently under each reading, so this is with the owner, not
-   open for an agent to resolve. Holding must never manufacture an initial bound, and the unit's own current
-   observations are reported either way. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
+   without a lift-off point holds the bounds, boxed or not.
+   **The bounds are THE HEAD SWITCH'S, and the hold, its loss and acquisition from nothing are all settled**
+   (owner, 2026-09-10, ruling on the three things this paragraph previously left open): "**The head switches
+   bounds.** In order words, **if the switch point disappears after being acquired and the number of switch lines
+   other than the partial line doesn't change, the partial line that is no longer partial should stay the top
+   line. If the total number of lines changes other than the partial line, then that hold is invalid and the
+   bounds of the switch geometry need to be reacquired. In the case of no bounds, then a valid switch geometry is
+   needed. Either the measured horizontal skew and/or the partial line with or without the RF peak. That means
+   that the number of switch lines can expand if the partial wasn't present from the beginning and that is
+   accepted.**" So:
+   - **Held**: the switch point disappearing after acquisition does not move the top line. The line that WAS the
+     partial line stays the top line even though it is no longer partial.
+   - **The hold's test is the count of switch lines OTHER THAN the partial line.** Unchanged, the hold stands.
+     Changed, the hold is invalid and the switch geometry's bounds are re-acquired. A change in the partial line
+     itself does not invalidate it.
+   - **From no bounds**: a valid switch geometry acquires them — the measured horizontal skew and/or the partial
+     line, with or without the RF peak. The agreement test is NOT the only route to setting bounds, and an earlier
+     draft of this rule saying so was the misdirection he is correcting here.
+   - **The switch-line count MAY EXPAND** where the partial was not present from the beginning, and that is
+     accepted rather than a fault.
+   The unit's own current observations are reported either way. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
    separates nothing and its switch stays measurable; read the other way, this rule would suppress switch evidence
    on every dark passage of every source. **The gap is created by the box, so the classification comes first and
    any consequence follows from it** — never the reverse.
