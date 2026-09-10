@@ -2928,8 +2928,11 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **The prerequisite, and it is empirical rather than editorial:** temporal soundness needs the position of an
   IDENTIFIED TIMING LANDMARK across successive fields plus evidence it is the same landmark — its line, horizontal
   position, uncertainty and censoring status; tracking in actual field order including the owner's either-field
-  predecessor condition; a SOURCE-DERIVED range of credible continuation, never a travel rate borrowed from another
-  capture (CLAUDE.md already records capture 1 sweeping 1-145 samples per unit against capture 4's 5-6); evidence
+  predecessor condition; a SOURCE-DERIVED range of credible continuation. WARNING, NOT PROOF, and an earlier version of this
+  entry overstated it (Codex, 2026-09-10): capture 1's sequence gave seven measured distances spanning 1 to 145,
+  while capture 4's 5-6 was a description rather than an equivalent fully characterised continuation envelope. The
+  two together warn against borrowing a rate; they do not establish valid source-specific ranges, nor prove that
+  every shared range is invalid; evidence
   that disappearance or emergence at the window edge is consistent with that continuation; and corroboration
   sufficient to separate a switch excursion from whole-field displacement. "Near the edge" is then a measured
   position and uncertainty consistent with the proposed crossing, and "further than expected" needs that justified
@@ -2937,6 +2940,24 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   landmark identity. Until that observable is demonstrated to distinguish genuine upward displacement from a
   stationary-picture head-catch event, including censored endpoints and simultaneous motion, the answer is Unknown
   rather than a forced classification.
+- **The engine's PRIMARY displacement path is the unqualified top reading - measured in the code 2026-09-10, and
+  it is what B5's requirement forbids.** `field_registration.c:873-893` computes `geometry_d = measurement->top -
+  origin` and applies it as `FIELDREG_MODE_GEOMETRY_PLACEMENT` whenever the geometry is measurable and the crop
+  fits the raster. The only holds are geometry unmeasurable and a crop that will not fit. **`switch_measurable`
+  does not gate the displacement at all** - it gates only the two acquisition sites (`:659`, `:916`), the comb's
+  band end (`:641`), the `invariant_residual` diagnostic (`:882`) and the frozen-count comparison (`:924`).
+  So an Unknown switch line does not hold the crop and is not read as a value: it falls back silently onto the
+  top-based reading, which the day's matrix establishes cannot see upward displacement and which returns a
+  constraint dressed as a zero at a clamped top. **This is not created by any pending edit - it is what the engine
+  does today on every unit**, and it is the reason B5's requirement is anchored to behaviour rather than to a rule
+  nobody has implemented.
+  **Ordering that follows, and the reason must travel with the item:** removing the S fallback (cold-read finding
+  18) enlarges the population of readings reaching that path, so it lands AFTER the displacement decision, never
+  before. Landing it first would increase how often an unqualified `d` is applied - the opposite of fail-closed.
+  **The size of that population is NOT established** (Codex's correction to a Claude claim): 484 of 1,016 is
+  switch-measurable coverage, not an independently checked S-population count, and the code can retain S while
+  clearing `switch_measurable`. An unknown current T removes the deductions requiring current T - not every
+  displacement route and not every retained count. Quantifying it needs a keyed export census.
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
   Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
   answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back
