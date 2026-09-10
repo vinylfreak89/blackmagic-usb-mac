@@ -584,6 +584,54 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### PROPOSAL — the level-threshold BASIS, reconciled as he asked (2026-09-11, overnight)
+
+His instruction: *"thats tricky. I will leave it to it to reconcile and propose."* So this is a proposal with the
+measurement behind it and a recommendation, not a settled question.
+
+**The disagreement was two tables giving different tops for the same rasters.** One used an ABSOLUTE cut, the other
+one RELATIVE to the device's blanking. **Measured, it is a THREE-way ambiguity, not two** — because "relative to
+blanking" does not say WHICH STATISTIC of the blanking rows:
+
+| basis | value of a nominal "3" | field 1 line 23 (level 4.02) reads as |
+|---|---:|---|
+| absolute | 3.00 | picture |
+| median of the blanking rows + 3 | 4.00 | **borderline** — its range is 3.22–5.55 |
+| mean of the blanking rows + 3 | 4.38 | blanking |
+
+The same rows give median **1.0000** (sd 0.0000) and mean **1.3754** (sd 0.0036) — 0.375 codes apart on a dithered
+constant — and field 1's line 23 sits at 4.02, so the three cuts bracket it three ways. **Specifying "relative"
+without specifying the statistic reproduces the same ambiguity one level down.**
+
+**What the choice costs, 146 units × 2 fields, at matched nominal thresholds:**
+
+| nominal threshold | readings where the two bases disagree |
+|---:|---:|
+| 3 | 73 (25%) |
+| 4 | 103 (35%) |
+| 6 | 9 (3%) |
+| 8 | 70 (24%) |
+| 12 | 73 (25%) |
+
+**RECOMMENDATION, three parts:**
+
+1. **The basis is RELATIVE to the source's own measured blanking**, and this is not a preference — the contract's
+   own *Source-measured levels* rule already requires it ("The engine establishes, for the source in front of it,
+   what blanking is… No contract value, header constant or calibration file carries them") and rule 4 forbids
+   typed-in numbers. **An absolute cut is a magic number and is already prohibited.**
+2. **The statistic must be named with it.** Recommend the MEAN, because the device writes a *dithered* constant —
+   CLAUDE.md records the lag-1 autocorrelation of −0.33 as the dither signature — and the mean recovers the written
+   level (1.375) where the median quantises it to 1.0 and discards the dither entirely. The median's sd of exactly
+   0.0000 is the tell: it is not measuring a level, it is reporting the modal integer.
+3. ⚠️ **And the contract should rest nothing on a level-threshold top.** Measured over the same 146 units, field 1's
+   top ranges over FIVE lines (23 to 28) across thresholds, and at a single threshold gives three different answers
+   across units. No choice of basis repairs that. **His one-sided-motion ruling already contains the consequence** —
+   a top-only move is a hold, so the fragility does not reach the crop — and that containment, rather than a better
+   threshold, is what makes the top usable at all.
+
+⚠️ **What this proposal does NOT settle:** which nominal threshold. That is gated behind the top detector's own
+work, and picking one against these 146 units would be fitting to the fixture.
+
 ### OPEN — R3's recovery half, Codex's wording, added 2026-09-11
 
 Codex does not accept that "the whole engine shouldn't run" closes the recovery question, and I agree: it neither
