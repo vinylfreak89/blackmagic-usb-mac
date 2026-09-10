@@ -667,6 +667,42 @@ hit it — `7e62502` and `9c7f211`, both describing CLAUDE.md entries whose anch
 exists the queue is NOT empty and the contract-stale-store question stays open** — closing it now would be closing
 on my intention rather than on the file, which is the same thing again one level up.
 
+### THE INSTANT REBUILT ON THE TIMING DISTURBANCE — no window, and it finds the bottom on its own
+
+`experiments/timing_disturbance.py` replaces the retracted peak-first detector with the contract's own
+definition (`:46-47`, `:537`): *"if the blanking extends past its expected horizontal extent or the picture
+extends past its expected horizontal extent, that's the head switch"*. Three demands honoured at named places:
+**variability not just level** — the tolerance IS the reference's own spread of transition positions, so nothing
+is typed in (`:536-537`); **one reference, two consumers** — it imports `source_reference()` rather than
+recomputing, so the switch's extent and the invalid-raster black test read the same object (`:540`); and
+**symmetric** — earlier than expected is blanking into the picture, later is picture into the blanking, both
+reported with their sign.
+
+Capture 1, 60 units, **no row window at all**, departures in units of the source's own spread:
+
+| region | lines | median | reading |
+|---|---|---:|---|
+| top | 23-27 | **−1.45 → −0.59** | blanking into picture |
+| body | 28-32, 251-258 | **≈ +0.1** | no departure |
+| card bar | 216-236 | **−1.7 → −2.2** | blanking into picture |
+| **bottom** | **259-262** | **+0.45 → +0.85** | **picture into the blanking** |
+
+**The bottom four lines are the ONLY positive region in the field, and they are where the contract says the switch
+is — found without being told where to look.** p10 at lines 260-262 is +0.57 to +0.58, so the departure is
+consistent across units rather than a tail. **The SIGN is what separates it from dark content**: every other
+departure in the field is negative, and the largest of them (−2.2, the card's bar) is not the switch at all.
+
+⚠️ **So magnitude alone would pick the wrong region** — a detector taking the largest departure would choose the
+card bar. That is exactly why this reports the profile rather than naming T: **turning a departure into a switch
+line is a separate decision needing its own evidence**, and the peak-first detector's failure was making that leap
+implicitly.
+⚠️ The negative departures at the top and in the bar are an artefact of the transition finder, not measurements of
+blanking: on rows that are dark end to end there is no picture-to-blanking edge, so "steepest fall" fires
+somewhere arbitrary. **That is a known limit of the reference primitive already recorded** — the transition is
+reliable only where there is picture to transition FROM (unit-to-unit sd 0.48 on bright programme against 34.25 on
+the card).
+⚠️ Capture 1 only, 60 units, and the magnitude is modest at 0.85 spreads. Not an acceptance figure.
+
 ### ⚠️⚠️ RETRACTED — property 1 is NOT honoured, and the eight-row window was doing the identifying
 
 Two review findings against `switch_instant.py`, both correct, and the second is worse than it was stated.
