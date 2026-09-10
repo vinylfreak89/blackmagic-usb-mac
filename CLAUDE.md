@@ -2500,6 +2500,58 @@ here with independent code, mean |vertical second difference| over the woven pai
 a 1.30x margin, programme 6960-6990 at 0 with 1.69x, programme 7100-7130 at 0 with 1.73x. So the 449 ambiguous
 readings are not this source being hard, and mask work should be validated on the programme third, not the card.
 
+**A LINE IS A SKEW ACROSS TIME, NOT A ROW RENDERED AT ONCE (owner, 2026-09-11, to both agents): "a line is not a
+line rendered at once as its digital self would imply. it is a skew across time. stop thinking of things spatially
+and think of them temporally."** This reframes the whole T/S dispute and it is worth more than any measurement in
+this entry.
+
+**The structural consequence, which no spatial framing can state.** A delivered row is about 53 microseconds of
+sweep and the head switch is an INSTANT. T and S are therefore not two rows -- they are two quantizations of ONE
+moment: T is the line the instant falls INSIDE, S the first line entirely after it. **So `T = S-1` is the generic
+case and `T = S` is a measure-zero coincidence** (the instant landing exactly on a line boundary). That does not by
+itself adjudicate the six, because a reader can still be wrong about the instant; what it does is remove the idea
+that the two readers describe two equally likely geometries.
+
+**Applied to the 4-2 split, it UNIFIES the six instead of splitting them, and it predicts the split.** In the
+delivered window a normal row's trailing 11-18 blank samples at columns ~702-709 are the NEXT line's blanking
+arriving. If the switch instant falls at column c of a row, everything after c is the other head, whose timebase is
+about 160 samples away, so that trailing blanking is replaced by active picture and DISAPPEARS -- unless c is late
+enough that the trailing run had already begun. Measured: the four keys whose S is at line 261 have their T row's
+trailing run destroyed (longest run 1, 3, 3, 2 samples), and the two whose S is at 260 retain it (12 and 4). Under
+the temporal account those two are not "not partial" -- they are lines whose switch instant fell in the last few
+samples of the delivered window, leaving almost the whole line to the outgoing head, which is also exactly why S
+lands one line earlier for them. Both peak-bearing keys have their spike mid-line (columns 131 and 201) and are in
+the destroyed group, consistent.
+⚠️ **This is a hypothesis that FITS, not a verdict, and it is stated with the test it owes:** it predicts the
+switch column is late (beyond about 700) on 6681 and 6722 and mid-line on the other four, and that the retained
+run's length is a function of that column. Nothing has measured the switch column on the four peak-free keys. The
+relay separately cautions that the 4-2 split may be S re-read under another name; the temporal account is what
+makes it non-circular IF the column prediction holds, and circular-or-not is decided by that measurement rather
+than by argument.
+
+**A second null, recorded with the first.** Tracking a local timebase offset ALONG the sweep -- 96-sample windows,
+lag restricted to +-40, against a known-normal line two rows up -- does not work on picture content: the CONTROL
+row gives 0, 3, 9, -12, 36, 31, -2 across its own sweep, as unstable as the candidate. Adjacent picture rows are
+similar but not identical, so a short-window lag search reports local picture similarity, not phase. **The
+quantity that DOES read phase temporally is the blanking interval's own position in the sweep**, because it is a
+known waveform of known duration rather than content -- which is what makes the displaced-interval route the
+temporally meaningful one and the content-correlation route a dead end.
+
+**The relay's 92.5% coverage figure does not survive the join, and the direction of the error matters.** It reports
+displaced-blanking rows in 222 of 240 field-readings over 120 programme units, against the peak's 23.7%, and
+proposes it as the better witness. Joined to the engine's own export over all 1,016 registerable field-readings
+(counters >= 6667, the same last-eight-picture-lines window, interior runs only): a run of **>=100 samples appears
+in 80.9%**, but a run of **>=147 -- the engine's own run-reader criterion -- in only 12.1%**, and the engine's S is
+known on 47.6%. By regime the two figures move OPPOSITE ways: on bright programme (>=6900) the >=100 rate stays
+high at 76.9% while >=147 collapses to 3.8% and engine S to 15.8%, and field 2 above 6900 has engine S on 3.6%.
+**So the >=100 threshold, not the phenomenon, carries the 92.5%**, and a witness scored at >=100 is not the one the
+engine uses. ⚠️ This does NOT refute the relay's underlying point -- a displaced interval is the band's defining
+property under the owner's own definition and the peak is a sometimes-present transient -- and its structural
+observation is correct and important: a relocated interval is ~150 samples at one level, so it RAISES the row's
+median and MAD and LOWERS the MAD-ratio, which means **the peak statistic is anti-correlated with the displaced
+interval it accompanies**. That is a real defect in the statistic. What the join shows is only that the 92.5%
+figure cannot be quoted as this witness's coverage at the engine's criterion.
+
 **A RULED-OUT ROUTE, measured 2026-09-10 — gating the partial-row test on relocated blanking does not work.**
 The harness declares a partial row where the raw rows show ordinary picture in a class of ~76 readings, and the
 obvious fix is to require the partial candidate to carry some of the other head's relocated blanking. Measured:
