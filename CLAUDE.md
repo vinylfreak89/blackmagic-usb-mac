@@ -3001,6 +3001,14 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   ⚠️ The related principle, worth more than the correction: **a desire to end an unresolved state is not evidence.**
   It cannot justify declaring old bounds valid or manufacturing new ones. Where the observations never resolve the
   ambiguity, the measurement stays unresolved — and that is an outcome, not a failure to reach one.
+- **`grep -o 'word'` counts SUBSTRINGS, not words — third member of the answers-a-different-question family
+  (2026-09-10).** Counting occurrences of "qualified" in the contract, `grep -o -i` returned 26 and the
+  word-boundary count returned 25. The extra was the term inside its own negation, **"unqualified"** — so the one
+  occurrence meaning the OPPOSITE read as an extra use of the term, in a check whose entire purpose was counting.
+  Use `grep -o -E "\b<word>\b"` or a word-boundary regex. (`grep -c` counting LINES rather than matches is a real
+  hazard in the same family and was not what happened here; a line carrying two occurrences is the case it hides.)
+  Same shape as `tail` on a live capture and `&&` after a verification: a command that succeeds quietly while
+  answering a question you did not ask.
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
   Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
   answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back

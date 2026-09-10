@@ -477,6 +477,37 @@ All four are now in the contract; see its Source lock, Comb and rules 11-13.
    signal? ... caption and VBI are kind of part of the same class I think". It would give a caption-less source a
    second confirmation. Answered back to him with the asymmetry that decides it; his ruling pending.
 
+## Qualification audit (2026-09-10) — the contract's `qualified` sites
+
+The contract states the durable requirement (§3, *Qualification*): each qualification applies to a named
+observation and decision, repetition alone does not remove systematic error, and qualification for one purpose does
+not establish qualification for another. This is the dated audit of where the word is used and what each use would
+have to establish. **The shared adjective is not itself the defect** — these are several tests. The defects to
+guard against are a use with no identifiable criteria, and evidence satisfying one qualification being silently
+credited to another.
+
+25 whole-word occurrences (24 lowercase, one capitalised at the head-switch definition). Against at least six
+kinds of object:
+
+| object | what a test would have to establish | state |
+|---|---|---|
+| source-reference provenance and representativeness | that the sampled rows represent the source's blanking rather than device fill or clipped content | not built |
+| caption / VBI semantics | parity, off-insert position, line 22 properly blanked, data rather than skew | stated in Source lock; not built as a test |
+| timing-landmark identity | that the landmark tracked across fields is the SAME landmark | not built; B5's prerequisite |
+| picture-boundary identity and uncertainty | that the detector found the boundary rather than an exposure artefact | not built; "well exposed" |
+| displacement-estimator applicability | that the boundary used represents displacement of the retained geometry rather than independent switch motion | not built; B5 |
+| retained-reference validity after a transition | that a reference measured under the old lock still describes the source | not built |
+
+**Two of these are unbuilt MEASUREMENTS rather than naming work**, and they are the ones where an artefact may
+swamp the signal: qualifying "well exposed" (the box census records the extent moving 5-10 lines with exposure
+against 1-3 lines of genuine displacement — a warning, not a measured ratio, and magnitude alone does not settle
+separability), and qualifying "structureless" (flat-within-one-code fires only on the device's synthetic rows;
+vertical coherence rates text as more coherent than noise; the horizontal-spread statistic's level-independence
+claim was withdrawn on 2026-09-10 when its denominator was found to pin at 1.0).
+
+Also gating behaviour without operational definitions: "lift-off point" (holds the switch's bounds, rule 8c),
+"static, detailed picture" (whether the comb reads), "a source's stable interval" (§8's invariants).
+
 ## C. Recorded elsewhere, still open, outside the v10 acceptance path
 
 - The render and the live path disagree in ~8,400 units, almost all field 2 of the first recording, by one line,
