@@ -27,6 +27,27 @@ not been amended; and the engine's constants and reports are still in the old co
 both sides are converted, a field-1 number in one scheme must never be read against a field-2
 number in the other.
 
+**The head switch's band may move a line or two, and that is expected (2026-09-10).** Verbatim:
+> The head switch can move and as long as the gap is temporally sound, a head catch can jump
+> around by a line or two like that, but when it jumps down as long as the partial line was near
+> an edge when it jumped, this is valid and means that "lost" line should be counted as normal
+> picture geometry. It is not a lost lock or a hold on the switch. It's expected behavior, and
+> since that line or two IF TEMPORALLY SOUND, meaning the partial line boundary doesn't suddenly
+> jump further than is expected during one sampling, then the picture should remain stable in the
+> correct engine and harness
+
+So: a band that moves by a line or two is NOT a fault and NOT a lock loss. The test is TEMPORAL
+SOUNDNESS - the partial line's boundary must not jump further than expected in one sampling, which
+is a per-unit continuity condition on where that boundary sits along the row. Where it holds, the
+line the picture "lost" to the band counts as normal picture geometry, no hold is taken on the
+switch, and THE OUTPUT PICTURE DOES NOT MOVE. That last clause is the acceptance test for both the
+engine and the harness. ⚠️ A correction on the head switch band is owed from the owner and is
+expected to settle the 259-against-260 discrepancy; nothing is implemented against this ruling
+until it lands. ⚠️ "when it jumps down" is directional and is read here as the band's top moving to
+a lower line number, so the picture loses a line to the band - the reading that makes "that 'lost'
+line" refer to something; if he meant the other direction the clause about which line is recovered
+inverts, and that is worth confirming rather than assuming.
+
 **Row 262.5 and field 2's line 1 (2026-09-10).** "Properly label them 262.5 and 1." Field 1's block
 ends with the HALF LINE, written 262.5 and never 263, because a half line is the second half of 262
 and the first half of what follows - which is why a field counts 262.5 lines. The first row of
