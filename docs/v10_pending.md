@@ -344,7 +344,29 @@ EXPAND where the partial was not present from the beginning.
    partial is excluded. Field 2's no-partial readings all place the switch on the same line and stay consistent;
    **field 1's split roughly half-and-half between two lines, and the suspect half places the switch one line
    HIGHER — exactly where an undetected partial would put it.**
-   ⚠️ So the likely cause is MISSED PARTIAL DETECTION in field 1, not a defect in the owner's rule. And it rests
+   ⚠️⚠️ **CONFIRMED BY THE OWNER FROM THE IMAGES, and it is worse than missed detection — the harness both
+   MISSES and INVENTS half-and-half lines, and the discriminator is BRIGHTNESS** (owner, 2026-09-10, shown eight
+   greyscale renders of NTSC lines 255–262 and asked nothing else: "Pictures 1-6 … all look like they have half
+   lines to me. They are the 6 where luma is darker over all. 7 and 8 do not appear to have half lines. Are you
+   sure there are only 2 controls").
+   His discriminator measured across the whole capture — field body brightness against what the harness reported:
+
+   | | readings | median brightness |
+   |---|---:|---:|
+   | field 1, half-and-half line reported | 445 | 107.6 |
+   | field 1, none reported | 63 | **56.7** |
+   | field 2, half-and-half line reported | 459 | 108.3 |
+   | field 2, none reported | 46 | **55.5** |
+
+   The no-half-line readings are **half as bright**, 51 and 53 luma darker at the median, in both fields
+   independently. **A level dependency in a test that is meant to be level-independent.**
+   **And the opposite error is real too, which nobody had raised.** On counters 7012 and 7174 the harness reported
+   a half-and-half line at line 260 and placed the switch at 261 because of it. Line 260 carries NO black gap
+   anywhere across its width there — 55–108 and 59–130 across all 24 measured steps, widest gap 3 samples — while
+   line 261 drops to 1.4 with a gap 144 wide. The switch falls cleanly between the two and no line is
+   half-and-half. **The harness invented one.**
+   ⚠️ So the cause is a brightness-dependent partial test: MISSING them on dark fields and INVENTING them on
+   bright ones. Not a defect in the owner's rule. And it rests
    on the one quantity nothing has independently verified: the census validated the fully-switched line, never the
    partial identification (Codex's caveat, same day). Confirming it needs raw rows on those 34, which is the
    parked partial-row question.
