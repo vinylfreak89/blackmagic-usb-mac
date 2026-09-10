@@ -4103,12 +4103,425 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   it is nearly indistinguishable from a wholly displaced row. **Whether that row is "the partial line" (T) or "the
   first fully displaced line" (S) is exactly what the two readers disagree about** — the phase reader sees a full
   row of relocated blanking and puts T above it; the run reader names the row itself.
-  ⚠️ **This LOCATES the T/S disagreement in the signal rather than in either instrument; it does NOT adjudicate
-  it.** The six disputed keys are an explicit two-agent disagreement and the verdict is Codex's, per the peak-vs-S
-  entry above. What is added here is that the class is not scattered: it is a single, positionally defined
-  population, so a rule that resolves it can be stated in terms of the switch's column rather than tuned per unit.
+  ⚠️⚠️ **THE FRAMING ABOVE IS RETRACTED — Codex reviewed it (`a7760f6`) and the objection is CHECKABLE and
+  CORRECT (2026-09-11).** The 42/42 association reproduces, but **all 42 of those candidates EQUAL THE ENGINE'S S,
+  and on all 42 the engine says T = S−1.** Verified here independently against the schema-20 export: 42 of 42
+  equal S, 0 are anything else. **So the "+1 class" is not a disagreement about a boundary — it is MY RUN-FINDER
+  RETURNING S WHERE THE ENGINE RETURNS T**, and S = T+1 by the engine's own relationship, which is where the whole
+  "+1" comes from.
+  **The mechanism I wrote is therefore backwards.** I said the phase reader sees a full row of relocated blanking
+  and puts T above it; in fact the phase reader put T on the partial line at S−1, correctly, and MY instrument
+  named the row below. **This is the naming defect this file already records — the harness confirming S while
+  calling it the switch line — recurring in a new instrument three sections after it was named.**
+  **What survives**, and it is a real characterisation of a failure mode rather than of the signal: the run reader
+  returns S instead of T exactly when the other head's interval opens in the first 59 delivered samples, i.e. when
+  the row is ~92% other-head and the run dominates it. That is worth knowing about the run route. It is NOT a
+  positional account of the T/S dispute and no column cutoff follows from it — Codex's wording is the right one,
+  *"a column is the right coordinate for an identified timing transition, not automatically for the longest
+  low-run opening"*.
+  ⚠️ **AND THE QUALIFIER MISREADS THE RULE IT CITES.** Contract `:164` says the continuity condition is on
+  **"where that boundary sits along the row"** — the COLUMN — and the sentence before it says a band that moves by
+  a line or two is NOT a fault. **My qualifier tests LINE-NUMBER equality, and a comment I wrote in the code
+  asserts "his rule is about the LINE, and only the line", which is the opposite of what the contract says.** So
+  the instrument is not parameter-free-derived-from-his-rule as claimed; it is an adjacency filter on a quantity
+  the rule permits to change. The measured separation (bounded ±2 against scattered −10..+2) stands as a
+  measurement of that filter; its DERIVATION does not.
+  ⚠️ **Three further defects Codex names, all confirmed by reading the code:** `source_reference.row_transition`
+  searches from a **hardcoded sample 540** — the tenth fixed-place-to-look instance, in the primitive underneath
+  every level and timing number taken tonight; it accepts only **positive** departures, the positive-only defect
+  again; and a **flat row with no falling transition still returns a transition**, so it fabricates one rather
+  than answering Unknown. Its own control also shows adjacency accepting a PERSISTENT false candidate — an
+  internal picture edge, with source blanking fixed on every row, qualifies. **Persistence excludes scattered
+  errors, not persistent ones**, which is this file's own "repetition is not qualification" rule arriving from the
+  instrument side.
+  ⚠️ **And the join table above HIDES FIVE OF THE SIX.** It tests `box` before `cause`, so five readings whose
+  actual cause names an explicit T disagreement are relabelled `box-excluded`. Codex's keyed join reaches five of
+  the six: **6700/f1, 6704/f2, 6749/f1, 6785/f1 match the run reader; 6722/f1 matches the phase reader; 6681/f1 is
+  unqualified.** Split, not resolved — their combined T stays open, and the verdict remains Codex's.
   **What this establishes** is the SHAPE of the answer: qualification plus Unknown, not a universal rule — and
   that his own continuity rule is a working qualifier rather than only a property to check.
+
+- **THE LOCKED RENDER EXISTS — the owner's named deliverable, built from capture 1's first locked run
+  (2026-09-11).** His instruction: *"the only render I want is one that is produced from a locked capture on cap 1.
+  then it may continue on by profiling"*. Capture 1 locks for the first time after the plain-comb change, so this
+  was not buildable before. `experiments/locked_render.py` joins the locked run's own handoff sidecar by device
+  counter and renders **920 units** — the 720x486 output as placed in colour beside the 525-line raster, the box
+  overlaid in field colours with purple on collision at alpha 0.35, and the decision record burned in per unit in
+  NTSC line numbers. The frame builder is `review_frame.build_frame`, imported rather than reimplemented, and the
+  refactor that exposed it was **gated on SHA-256-identical stills before and after**, not assumed.
+  **The read-back is the part that matters**, because the owner's review-copy rule exists for one specific failure
+  — *"a keyframe-cut excerpt offset the band by 12 units and misled the review"*. `locked_render_check.py`
+  compares a frame taken FROM THE VIDEO against an independently rebuilt frame for the counter that frame claims,
+  and scores it against its neighbours: **4 of 4 match their own unit better than ±1 and ±12** (frame 0 MAD 3.995
+  against 26.8 at +1; frame 919 1.843 against 3.896 at −1).
+  ⚠️ **The check's FIRST version gave a false pass and its own defect is the more useful record.** It built the
+  frame→counter map from the SIDECAR (921 Complete rows) rather than from what was RENDERED (920), so every frame
+  after the missing unit was compared against the wrong counter — and its ±12-only control could not see an
+  off-by-one, so it reported MATCH. **The instrument's map came from the wrong store, in the check built to catch
+  exactly that**, and only adding a ±1 control exposed it.
+  **The 921-vs-920 gap is named, not rounded away: counter 6043.** The strict extractor validates a unit by the
+  distance to the NEXT marker, so a Complete unit whose successor is an unframed fragment is never emitted. That
+  is the invariant working, not a loss — but it must be stated, because a renderer that silently drops a unit is
+  how a constant offset gets in.
+  ⚠️ **What this render CANNOT show, and it must not be reported as if it could:** all 920 units apply `(0,0)`, so
+  the owner's acceptance criterion — *"a valid result should keep the first 6 lines vertically stable in
+  position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
+  becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
+
+- **PER-UNIT CALIBRATION WORKS, AND THE REGIMES FALL OUT OF THE MEASUREMENT INSTEAD OF BEING CLASSIFIED
+  (`experiments/per_unit_floor.py`, 2026-09-11).** "Per source" was not fine-grained enough and capture 1 proves
+  it: card and bright programme are the SAME source with switch signals of ~25 and ~1-3 samples, so a per-source
+  constant reinstates exactly what the sweep killed. Per UNIT needs no content classifier — every unit carries
+  ~160 mid-picture rows where no switch can exist, and that is the noise floor OF THAT UNIT, in samples.
+
+  | | readings | asserts | floor median | switch median | false-fire, held out |
+  |---|---:|---:|---:|---:|---:|
+  | card units | 288 | **287 (100%)** | 9.5 | **25.0** | 0.64% |
+  | bright units | 550 | **216 (39%)** | 1.0 | **1.2** | 0.28% |
+  | all | 1,016 | 680 (67%), 336 Unknown | | | **354 of 81,280 = 0.44%** |
+
+  **The instrument is never told which units are which, and coverage separates 100% against 39% exactly where
+  the operating-point sweep said it would.** The floors separate too — 9.5 against 1.0 — so a card unit's large
+  signal clears its own tight floor while a bright unit's ~1.2-sample signal against a 1.0-sample floor mostly
+  does not, and returns Unknown. **Nobody coded that distinction**, which is what makes it defensible on a source
+  neither agent has looked at, and it is `:531`'s "measure things per source" taken one level finer.
+  ⚠️ **THE CALIBRATION AND THE VALIDATION MUST NOT SHARE ROWS, and this nearly did.** The no-switch population
+  does double duty here — it sets the floor AND scores the false-fire rate — and **a threshold fitted to the rows
+  it is then scored on always looks clean on them**, invisibly. The rows are split by ALTERNATING PARITY, floor
+  from one half and false-fire from the other, so the 0.44% is measured on rows the threshold never saw.
+  Alternating rather than top/bottom because picture content varies down a field, so contiguous halves are not
+  exchangeable. `--selftest` asserts the two sets are disjoint, non-empty and interleaved.
+  ⚠️ **Bright's 39% is the honest answer, not a shortfall:** its switch median is 1.2 samples against a floor of
+  1.0. The margin is a fraction of a sample, so most bright units genuinely cannot decide and say so. **Unknown
+  where the evidence is absent is the shape the owner ruled for**, and a version that asserted on all 550 would
+  be the old fabrication wearing a new statistic.
+
+- **THE OPERATING POINT, SWEPT AGAINST THE SOURCE'S OWN KNOWN-NO-SWITCH POPULATION — and the answer is that
+  ONE THRESHOLD CANNOT SERVE BOTH REGIMES (2026-09-11).** A gate asserted before its false-fire rate is measured
+  is a threshold fitted to nothing. The held-out mid-picture population (160 rows × 30 units, no switch possible,
+  cannot shrink when qualification improves) is a calibration set, so the trade-off was swept rather than a
+  number chosen:
+
+  | threshold | BRIGHT false-fire / hit | CARD false-fire / hit |
+  |---|---|---|
+  | 0.5 sd | 14.3% / 99% | **0.0% / 100%** |
+  | 1 sd | 14.3% / 99% | 0.0% / **0%** |
+  | 3 sd | 0.1% / 29% | 0.0% / 0% |
+  | 1 sample | 14.3% / 99% | 43.4% / 100% |
+  | 2 samples | 0.1% / **29%** | 37.7% / 100% |
+  | 12 samples | 0.0% / 0% | 0.1% / 100% |
+  | **20 samples** | 0.0% / 0% | **0.0% / 100%** |
+
+  **1. A WORKING OPERATING POINT EXISTS, in SAMPLES and for the CARD: 20 samples gives 0 of 4,800 false-fires
+  with 100% hit.** Clean separation, no divisor at all. So the statistic is not broken — it works where the signal
+  is large.
+  **2. THE TWO REGIMES NEED OPERATING POINTS AN ORDER OF MAGNITUDE APART.** The card's switch signal is ~25
+  samples, bright's ~1–3. In sd units the card needs 0.5 and loses EVERYTHING at 1.0, while bright needs 3 to
+  suppress its false-fires. In samples the card needs 12–20 and bright needs 2. **No single threshold in either
+  form serves both**, which is a finding about the statistic rather than about a threshold: the quantity it
+  measures differs by 10× between content regimes of the SAME source.
+  **3. BRIGHT HAS NO GOOD OPERATING POINT AT ALL.** Its best is 2 samples — 0.1% false-fire but **29% hit**. At
+  1 sample it keeps 99% of the signal and false-fires on 14.3% of rows where nothing can happen. **The margin is
+  one sample**, because the signal is ~3 samples and the quantisation noise is ~1, and that is not a threshold
+  problem.
+  ⚠️ **The high-false-fire bright units are NOT a class**, so the "find the qualifying property" route that has
+  worked twice tonight does not open here: the 21 units below 10% have median sd 0.54 and median transition 718;
+  the 9 at or above 10% have 0.51 and 717. Indistinguishable by both obvious properties.
+  **What follows for the harness, and it is consistent with the contract rather than a workaround:** the
+  operating point is a PER-SOURCE measurement taken from that source's own no-switch rows, never a constant —
+  which is what `:531`'s "measure things per source, NO MAGIC NUMBERS" already requires. And the divisor should
+  be dropped in favour of samples, since the sd form's card window (0.5 works, 1.0 fails completely) is far
+  narrower than the sample form's (12 to 20 all clean).
+
+- **THE LEVEL REGRESSION WAS ONE NAME SERVING TWO CONSUMERS, and splitting them fixed it (2026-09-11).**
+  `row_transition` returned one index to two consumers wanting different quantities: the POSITION consumer wants
+  the ARRIVAL (where the descent reaches the floor) and the LEVEL consumer wants only SETTLED samples (strictly
+  after the descent finishes). **Measured before building anything, and the prediction was exact: on bright rows
+  the sample AT the arrival sits 27 codes above the floor and the NEXT sample sits 2 above, in 1,972 of 1,972
+  rows.** The arrival is the last RAMP sample. `settled_index()` walks forward while the row still descends —
+  parameter-free, and on an abrupt fall it barely moves.
+
+  | the source level (`:531`'s own quantity) | bright | card |
+  |---|---:|---:|
+  | original, fabricating finder | 1.410 | — |
+  | repaired finder, one index for both | **13.132** | 1.437 |
+  | **after the position/level split** | **1.630** | **1.437** |
+
+  Bright's pool is **213 samples from 200 rows** — one per row, the settled-sample budget exactly.
+  ⚠️ **A control I wrote for it was WRONG and its failure is the useful part:** it required arrival and settled to
+  COINCIDE on an abrupt step. They legitimately differ by a sample there, because the settled walk advances while
+  the row descends and blanking noise descends by a fraction of a code — both indices were at the floor, which is
+  all the level consumer needs. **Requiring index equality tested a PROXY for the requirement and failed a correct
+  implementation.** Rewritten to assert the property (settled is at the floor; arrival is above it only on a
+  ramp), and mutation-verified: undoing the split makes the ramp case report "settled is NOT at the floor" and
+  the selftest exit 1.
+- **THE HELD-OUT CONTROL THAT CANNOT SHRINK — and it VINDICATES F49's original mechanism, which this file had
+  recorded as not-what-happens (2026-09-11).** The unqualified control's base collapsed 62 → 13 when the finder
+  improved, so the 3.6× separation now rests on thirteen readings; a discriminator whose negative class nearly
+  vanishes is harder to falsify, not better. **A population that cannot collapse: the per-row FALSE-POSITIVE rate
+  on MID-PICTURE lines, 160 rows × 30 units, where no switch can exist.**
+
+  | | mid-picture rows firing the 0.5-sd gate | per-unit rate |
+  |---|---:|---|
+  | card | **0 of 4,800 (0.0%)** | median 0%, max 0% |
+  | bright | **686 of 4,800 (14.3%)** | median 3.1%, **p90 43.6%, max 48.1%** |
+
+  **On the card the departure test is clean. On bright it fires on up to half the mid-picture rows of a unit.**
+  The cause is the divisor: bright's `transition_sd` is 0.54 BECAUSE the transitions are pinned at the window
+  edge, so an ordinary one-sample jitter reads as 1.85 sd and crosses a 0.5 gate. ✅ **That is precisely the
+  INFLATION mechanism the peer session proposed in F49 and which this file recorded as "not what happens on the
+  30-unit sample".** Both were true of what was measurable at the time: through a fabricating finder the divisor
+  was 67 and suppressed the signal; through an honest one it is 0.54 and inflates. **The correction to the
+  correction: F49's mechanism was right and was hidden by the defect underneath it.**
+  ⚠️ So the 82%/100% figures above sit on a statistic that, on bright programme, also fires on 14.3% of rows
+  where nothing can be happening. That is not a reason to discard them; it is the bound they must be quoted with.
+
+- **DOWNSTREAM RE-MEASURED AGAINST THE SAVED BASELINES — three figures restored, ONE REGRESSED, and the
+  regression is the one that matters most (2026-09-11).**
+
+  | | asserts | Unknown | exact | within ±1 | beyond ±4 |
+  |---|---:|---:|---:|---:|---:|
+  | qualified, before | 294 | 184 | 69% | 98% | 0% |
+  | **qualified, after** | **465** | **13** | **82%** | **100%** | 0% |
+  | control: unqualified, before | 62 | 416 | 21% | 53% | 11% |
+  | control: unqualified, after | 13 | 465 | 23% | 77% | 0% |
+
+  **Coverage went UP, not down**, which is the opposite of the expected direction: a finder that answers Unknown
+  honestly was expected to speak less, but a finder that answers CONSISTENTLY makes far more readings qualify
+  under adjacency. Where the engine is blind: field 1 **12% → 90%**, field 2 **18% → 94%**, still 0 outside
+  mode ±1 while the unqualified control there puts 7 of 24 and 5 of 18 outside, so the invariant check still
+  discriminates.
+  ⚠️ **The CONTROL's base collapsed from 62 to 13, and that weakens the evidence rather than strengthening it.**
+  The qualified-versus-unqualified separation is still there (82% against 23% exact, 3.6× against the old 3.3×),
+  but it now rests on 13 control readings. **A discriminator whose negative class nearly vanishes is harder to
+  falsify, not better** — this is the "agreement AND count" pair again, applied to the control instead of the
+  result.
+  ⚠️⚠️ **THE REGRESSION: the SOURCE LEVEL on bright programme went 1.41 → 13.13**, and the level is the quantity
+  `:531` actually names. Cause, measured precisely: the repaired finder lands **one sample before** the floor on a
+  multi-sample ramp, because its descent-completion threshold is a midpoint between the pre-crossing level and the
+  floor and a mid-ramp sample satisfies it. On the card that costs nothing — the pool is ~20 samples wide and
+  reads 1.437 (unit-to-unit sd 0.0130). On bright the pool is **one sample wide**, so the single contaminated
+  sample IS the mean. **Same one-sample error, two costs differing by an order of magnitude, because of the
+  one-settled-sample budget already recorded above.**
+  ✅ **AND IT SETTLES F49's OPEN QUESTION, in the direction that peer session named in advance.** Its test: if
+  the `transition_sd` swing survives the repair it was fabrication, if it collapses the censoring account
+  survives. **Measured: bright went from median 67.07 / range 1.31–72.19 (55×) to median 0.54 / range
+  0.50–0.57 (1×).** Collapsed. So bright programme really is PINNED — sd 0.54 across a whole unit's rows —
+  while the card retains genuine spread at 39.98, and the old 55× swing was fabrication noise sitting on top of
+  a real censoring effect rather than being the whole of it.
+  ⚠️ **What this does NOT establish, and the peer named this too: a repair scored on its own downstream output is
+  the weakest of the three kinds of evidence here**, because judging by downstream plausibility is exactly what
+  produced three failed attempts. The load-bearing evidence stays the eight committed controls and the
+  known-answer agreement, not these figures. **Under §14 none of these is quoted as a result until Codex has
+  reviewed the change** — its review already caught the S-versus-T identity and the `:164` misreading in this
+  same thread.
+
+- **THE FINDER IS REPAIRED, and it is the first change tonight whose TEST SET EXISTED BEFORE THE CODE DID
+  (2026-09-11).** Written to the diagnosis below rather than to an intuition: the criterion is ARRIVAL, not
+  magnitude — the row's final downward crossing of its own midpoint, after which it never returns, followed
+  forward to where the descent ends. `floor` is the row's own minimum, `ref` its own median, both midpoints
+  derived from those. **No search origin, no typed level, no fabrication.**
+
+  | | old criterion | repaired |
+  |---|---:|---:|
+  | agrees with the independent answer, card picture rows | **2%** of 300 | **56%** of 300 |
+  | agrees, bright programme | — | **100%** of 300 |
+  | "early" class (fall found in picture) | 44 of 300 | **0** |
+  | speaks on | 300/300 by fabricating | **300/300**, controls clean |
+  | synthetic recoveries at known positions | — | **4 of 4 exact** |
+  | negative controls (flat picture / all blanking / steep interior edge) | — | **3 of 3 return None** |
+
+  **A HIGHER-SCORING VARIANT WAS REJECTED, and that is the part worth keeping.** Referencing the descent
+  threshold at the crossing instead of just before it scores **84%** on the card — but it FAILS a synthetic whose
+  answer is genuinely known (an abrupt transition at 700 read as 717), because on an abrupt fall the crossing is
+  already at the floor, the midpoint becomes floor-to-floor, and the search degenerates into hunting a noise dip
+  inside the settled run. It scores better only because it lands at level 5.0, nearer the reference's 4.4 cut.
+  **Optimising the proxy at the cost of the known answer is the mistake this entire thread is about**, so the
+  56% version ships.
+  ⚠️ **The card residual is DEFINITIONAL, not error.** The repaired finder lands at level 6.0 on a descent that
+  falls about two codes a sample; the independent reference cuts at 4.4. That is a ~4-sample gap between "the
+  descent is complete" and "below 4.4" — median −4, p10 −9, p90 −1 — and it is one-sided, which is what a
+  definitional difference looks like and what scatter does not.
+  ⚠️ **Agreement with the independent method was flagged as a CONSISTENCY CHECK before it was run, not a
+  validation:** both look for arrival at blanking, so they are expected to agree, and what the score can show is
+  that this no longer picks picture edges. The genuine tests are the synthetic recoveries and the Unknown
+  behaviour, and the definition rests on the diagnosis.
+  ⚠️ **NOT YET RE-SCORED DOWNSTREAM, deliberately.** The source reference, the departure profile and the
+  no-jump figures all sit on this primitive and must be re-measured against their saved baselines before any of
+  them is quoted again — 294 / 69% / 98% / 0% remains withdrawn until that runs. Under §14 this harness change is
+  reviewed by Codex.
+  ✅ **THE CONTROLS ARE COMMITTED AND RUNNABLE — `source_reference.py --selftest`, eight of them, and the
+  variant control FIRES.** They were nearly left as prose describing a run, which would have made the single most
+  consequential decision of the night unreproducible: the abrupt-transition fixture is what rejected the 84%
+  variant, so without it the CLAUDE.md paragraph above would be a second store of a decision nothing enforces,
+  and the next reader to notice that 84 > 56 would have had nothing to stop them reverting it. **This project
+  paid for the same shape twice earlier the same night** — an instrument left in `/private/tmp` so a wrong figure
+  could not be re-run, and a conclusion filed in a tracker that is deleted when empty. Both were fixed by moving
+  the artefact, not by describing it better.
+  **The variant control runs the REJECTED criterion rather than describing it** (`_ref_at_crossing`, a flag on
+  the one implementation rather than a copy of it) and requires the abrupt fixture to FAIL under it. **Verified
+  by mutation: reinstating the rejected variant as production makes the recovery test report FAIL and the
+  selftest exit 1.** A control that has never failed on the defect it exists for is a claim, not a check.
+  ⚠️ **Two intermediate versions were caught by their own controls and are recorded so they are not re-tried:**
+  reporting the midpoint CROSSING lands on level 10.5 by construction while the docstring claimed the floor (a
+  docstring asserting what the code does not do — twice paid for tonight); and `argmin` over the tail finds the
+  LOWEST sample rather than the first arrival, overshooting 17 samples into a settled run.
+
+- **THE FINDER'S DEFECT IS DIAGNOSED, and it is the CRITERION rather than a class of row — found by inspecting
+  against an independently known answer instead of inventing a fourth statistic (2026-09-11).** The three failed
+  repairs all invented a better statistic and were judged by whether the output looked right. This did the
+  opposite: run `row_transition` on card PICTURE rows, where the answer is knowable by a method sharing no code
+  with it (the first sample at the blanking floor past 600, which on the card is tight — 600–708, median 703),
+  and look at where they disagree. 300 rows, 30 units, lines 250–259:
+
+  | class | n | share | offset median |
+  |---|---:|---:|---:|
+  | agrees within 4 samples | 6 | **2%** | 0 |
+  | EARLY — fall found in picture (rt < 600) | 44 | 15% | −136 |
+  | LATE — inside the settled run | 1 | 0% | +10 |
+  | **systematically ~14 samples early** | **249** | **83%** | **−14** |
+
+  **A candidate was proposed and REFUTED before the answer was found**, and it is worth recording because it was
+  the plausible one: that the ~14 samples is the blanking RAMP, the finder sitting at the steepest point while
+  the independent method sits at the ramp's end. Measured, the ramp is **1 sample** long (p90 4, max 12), the
+  finder lands inside its own row's ramp in **7 of 256 rows (3%)**, and the correlation between ramp length and
+  earliness is **0.067**. Dead.
+  **THE ACTUAL MECHANISM, and it is single and definite:** the fall the finder chooses is **−4.0 codes** median;
+  the fall into blanking it skips is **−2.0** median; the chosen fall is steeper in **236 of 256 rows (92%)**. It
+  lands on level **17.0** where the card's picture sits at ~20. The descent into blanking on this content is
+  gradual in per-sample terms — 20 to 5 to 1.4, about 2 codes a step — while ordinary picture texture carries
+  steeper single-sample falls. **A "steepest fall" criterion cannot find an edge that is not the steepest one.
+  That is by construction, not by tuning, and no threshold on the same statistic repairs it.**
+  **So the failures do NOT spread across the predicted classes and the function IS repairable in place**, which
+  was the question the exercise was set up to decide. The repair is now specified rather than guessed: **the
+  criterion must be "the fall that LANDS AT the row's own floor", not "the largest fall"** — which is also why
+  the second attempt (require the tail flatter) got closer on bright yet still picked the card's bar, since it
+  went on ranking candidates by drop MAGNITUDE.
+  ⚠️ **Not attempted in this turn, deliberately.** A fourth repair belongs with its test set, and that set now
+  exists: card picture rows scored against first-sample-at-blanking, where the current function agrees on 2%.
+  Any replacement must beat that number on the known answer BEFORE its output is looked at, and under §14 a
+  harness change is reviewed by Codex.
+  ⚠️ **Scope, so this is not read as bigger than it is:** the render the owner has renders the ENGINE's sidecar
+  and is unaffected by any of this. What rests on `row_transition` is the HARNESS REFERENCE — the thing that
+  would score the engine. This is the acceptance path, not the deliverable.
+
+- **AND NO CHOICE OF DIVISOR REPAIRS IT — three candidates from the field's own good picture lines, all
+  overlapping, recorded as a NULL so the route is not re-run (2026-09-11).** `:531` says the blanking reference
+  comes from "qualified blanking intervals on the current source's good picture lines and supplies both level and
+  variability", so the field's own good lines (255–259) are the contract-sanctioned baseline. Three forms were
+  tested against a HELD-OUT non-switch region (lines 250–254), 30 units per regime:
+
+  | statistic | bright: switch vs control | card: switch vs control |
+  |---|---|---|
+  | difference, in samples | [2, 4] vs [−2, 2] | [31, 103] vs [−99, 68] |
+  | ratio to the baseline | [−3, 3] vs [−1, 1] | [−7, 31.7] vs [−6.6, 9] |
+  | (x − base) / base spread | [1.36, 6.12] vs [−2.5, 2.04] | [0.46, 41.4] vs [−76.7, 1.26] |
+  | old (x − exp) / transition_sd | [0.04, 2.28] vs [−0.76, 0.74] | [0.56, 1.64] vs [−1.3, 1.09] |
+
+  **Every one overlaps.** The tightest is the divisor-free difference on bright, where switch min 2.00 and control
+  max 2.00 merely touch; on the card the same form spans [31, 103] against a control spanning [−99, 68].
+  **THE DEGENERACY CONTROL FIRED FIRST AND KILLED THE RATIO SPECIFICALLY**, which is why it was run first: on
+  bright programme the baseline LOCATION has |median| < 1 in **12 of 30 units**, so a ratio to it is undefined or
+  explosive on 40% of the population and computed on only 18 of 30. The baseline SPREAD is < 1 in **26 of 30**, so
+  the contract's own variability form is near-degenerate there too. On the card neither degenerates.
+  ⚠️ **What this points at is the FINDER, not the divisor.** The card's held-out control spans [−99, +68] samples
+  on lines that carry ordinary picture — a non-switch region has no business varying by 167 samples. So the
+  per-row transitions are themselves unreliable, and no normalisation of an unreliable quantity separates
+  anything. That is consistent with the three failed repairs and with the fabrication already confirmed: **the
+  departure statistic's problem is upstream of its divisor.**
+  ⚠️ Credit where it belongs: the peer session that proposed the ratio also named the control that killed it, and
+  named it as the part not to skip. A proposal that arrives with the test most likely to refute it is worth more
+  than one that arrives with supporting numbers.
+
+- **THE DEPARTURE'S DIVISOR IS NOT A NORMALISATION — it varies by a factor of 55 WITHIN one content regime, so
+  departures are not comparable across units at all (2026-09-11).** `timing_disturbance.py` computes
+  `(t − expected)/sd` with `sd = transition_sd` from the source reference, and gates at 0.5. Measured over 30 units
+  of each regime, the switch region against its own baseline:
+
+  | | baseline, lines 255–259 | switch region, 260–262 | in sd units | fires at 0.5? |
+  |---|---:|---:|---:|:--:|
+  | card | +6 … +11 samples | **+42 … +45** | 0.72–0.79 | YES |
+  | bright programme | 0 … +1 samples | **+3** (p10 2.0, p90 3.1) | 0.05 | **no** |
+
+  **IN SAMPLES THE SIGNAL IS PRESENT IN BOTH POPULATIONS.** On the card it is a 4-to-7× jump; on bright programme
+  it is only 3 samples but extremely tight, and it is the sd normalisation that loses it.
+  **THE DEFECT IS THE DIVISOR'S INSTABILITY, not its size.** Across those 30 bright units `transition_sd` runs
+  **1.31 to 72.19** — a factor of 55 inside ONE content regime. So the same physical 3-sample displacement reads
+  anywhere from **0.04 sd to 2.3 sd depending on which unit it lands in**, and a 0.5-sd gate is a threshold whose
+  size in samples swings by more than an order of magnitude between neighbouring units. The card's divisor is
+  stable by comparison (56.13–60.50 across its 30 units).
+  ⚠️ **This inverts the reading that "sd 0.48 on bright against 34.25 on the card" means the reference is solid on
+  programme and unreliable on the card.** A small spread is not stability when the quantity has nowhere to go:
+  measured on the first sample at blanking past 600, bright programme sits at **718–719 with sd 0.06 and ZERO
+  margin to the window's last sample**, while the card runs 600–708 with sd 24.87 and 11 samples of margin. **The
+  card is where the transition is actually observable; bright programme is where it is pinned against the window
+  edge.** This is the same shape as the earlier pinned-at-its-quantization-floor instrument, one level deeper, in
+  the quantity the whole harness rests on.
+  ⚠️ **What is CONFIRMED and what is CORRECTED, kept apart because the mechanism matters:** the peer session's
+  conclusion — the divisor is suspect and the evidence offered for its trustworthiness does not support it — is
+  confirmed. Its proposed mechanism, that a spuriously small divisor INFLATES departures on bright content, is
+  not what happens on the 30-unit sample: there the median divisor is 67.07 and it CRUSHES a real signal to 0.05.
+  Both directions occur, which is the point — with the divisor ranging 1.31–72.19 the statistic inflates on some
+  units and suppresses on others, and that is worse than a consistent bias in either direction.
+  ⚠️ **Also corrected: two different quantities were being compared under one name.** The first-blanking-sample
+  measurement (718–719) and `row_transition`'s steepest-fall output (median 716–717) are not the same observable;
+  the censoring argument applies cleanly to the first, and the second sits near but not at the edge. Do not quote
+  one as evidence about the other.
+  ⚠️ **A probe defect worth recording because this project's convention exists to prevent it:** the first version
+  of this profile labelled its rows `o+4` when the picture origin makes the line `o+23`, so it printed the switch
+  region as lines 241–243 instead of 260–262. The numbers were right and every label was 19 lines wrong.
+
+- **THE HARDCODED-540 REPAIR WAS ATTEMPTED AND FAILED THREE TIMES — a NULL, recorded so nobody rebuilds it,
+  and the measurement it produced is worth more than the repair would have been (2026-09-11).** The argument for
+  repairing first was right: `source_reference.row_transition` is underneath the source reference, the departure
+  profile, the no-jump qualification and the 69/98/0 figures, so a hardcoded constant there is a constant under a
+  published result. The before/after control was set up as asked, with the baseline saved first.
+  ⚠️⚠️ **THE FIRST VERSION OF THIS ENTRY SAID THE ROW "NEVER SETTLES INTO BLANKING" AND THAT IS WRONG —
+  withdrawn within the hour, and the error is instructive enough to keep (2026-09-11).** It rested on a MEDIAN
+  over samples 700–719, a window in which 18 or 19 of the 20 samples are still picture. **Re-measured sample by
+  sample on 1,010 bright mid-picture rows (counters 6960–6969, field 1), the row falls cleanly into blanking at
+  the very end: 176 at sample 711, then 163, 142, 112, 84, 55, 26, and 2 at sample 719.** 922 of 1,010 reach
+  blanking. **A median over a 20-sample window erased a one-sample event** — the same aggregate-hides-the-truth
+  error as the profile-to-decision failure recorded below, three hours later and pointing the OPPOSITE way: there
+  it manufactured a separation no unit carried, here it erased an event every row carries.
+  ⚠️ It also contradicted a measurement of mine from the same night — 978 of 1,010 bright rows yielding a usable
+  blanking sample after their transition, mean 1.410 — which is arithmetically impossible if the rows never
+  arrive. **Two of my own results in direct contradiction, and the one built on a median was the wrong one.**
+  **THE CORRECT FINDING, and it is still a real limit with a stated size: the row reaches blanking in its LAST ONE
+  SAMPLE.** Counting samples at or below 4.4 in the region 690–719: **median 1, p90 1, max 2** — 919 of 1,010 rows
+  get exactly ONE settled sample, 3 get two, 88 get none. The card is the opposite: at blanking by sample 700,
+  with a real edge at ~694 and a run behind it.
+  **That single figure explains both halves at once.** One settled sample per row, pooled across 200 rows, is
+  ample to READ A LEVEL — which is exactly why the source reference works and returns 1.410. It is very likely not
+  enough to LOCATE A TRANSITION, which is a plausible reason all three repairs failed. **The old function returned
+  a position for these rows regardless, and the fall it searches for is not where it is looking.** The
+  fabrication is confirmed; the impossibility is not.
+  ⚠️ **Why the distinction is not a wording quibble, and this is the part worth keeping:** "not observable" makes
+  it a STRUCTURAL IMPOSSIBILITY and closes the line permanently. "One or two samples" makes it a BUDGET — a hard
+  measurement problem with a known size. **A budget can be attacked by a method that needs two samples; an
+  impossibility gets nobody to try.** Written as the first version had it, this entry would have foreclosed the
+  next attempt on the strength of a median.
+  **Three repairs, three different wrong answers, each fixing the symptom the last one produced:**
+
+  | repair | what it did on bright rows | why it failed |
+  |---|---|---|
+  | changepoint + permutation null | returned sample **719** on 200 of 200 | the null tests for STRUCTURE, and picture rows have structure |
+  | + reject extremes, require the tail flatter | bright correctly **0 of 200**, but card moved to **307** | max mean-drop picks the card's long structureless BAR over the short blanking run |
+  | + take the LAST qualifying fall, not the largest | **715** everywhere, both regimes | "last qualifying" is satisfied marginally by noise almost anywhere late |
+
+  **Reverted to the committed, marked-but-unrepaired version.** Shipping the third attempt would have replaced a
+  known constant with an unknown one, and each iteration was a guess dressed as a fix — the thing this file's own
+  rule forbids: *when you cannot name the cause, add a measurement, not a fix.*
+  ⚠️ **THE CONSEQUENCE FOR TONIGHT'S FIGURES, stated plainly: the before/after control CANNOT BE COMPLETED as
+  designed, because there is no correct "after" to compare against.** So 294 / 69% / 98% / 0% is **not
+  validated** — it rests on a finder now shown to fabricate on part of its own population. That is a stronger and
+  more useful statement than either "unchanged" or "moved", and it is the answer to the question the control was
+  built to ask.
+  ⚠️ **One of the three named defects is REFUTED, and refusing to inherit it is the point.** Positive-only
+  acceptance is NOT a defect here: blanking is the floor and picture sits above it, so a picture-to-blanking
+  transition is a fall by physics and there is no inverted-contrast case for THIS quantity. (A relocated
+  interval's trailing edge is a rise, but that is a different observable.) The other two — the hardcoded origin
+  and the fabrication — are real and are confirmed above.
 
 - **WITHIN-UNIT SHAPE DOES NOT RESCUE THE PER-UNIT DECISION EITHER — tested and dead, 2026-09-11.** The
   aggregate-versus-unit failure did NOT rule out using the whole profile a single unit contains: ~240 rows, not
