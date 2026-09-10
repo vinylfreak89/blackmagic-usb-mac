@@ -17,7 +17,14 @@ rather than a line says so.
 Every number is a standard (NTSC, SMPTE RP-202, CEA-608), a measurement on the captures (stated with its value), or a
 memory capacity; any other number in the code is a defect.
 
-## 1. The owner's rules, verbatim
+## 1. Owner rulings and historical record
+
+**Status of this section.** Current requirements are distributed through the definitions (§3) and the operative
+rules (§4); **§4 is not exhaustive**, and this section is neither purely source material nor wholly operative.
+Historical and explicitly superseded passages here preserve provenance and do not independently impose current
+requirements — their status is marked locally, passage by passage, because a global statement cannot resolve a
+paragraph that contradicts itself. The line-numbering convention immediately below IS current.
+
 
 **Line numbering (2026-09-10).** "Field 2's picture should be the same as field 1. I want fucking
 field line numbers. That's the way every one in the industry does it." So every line number in this
@@ -1155,7 +1162,12 @@ recording with the deck's V-stabilize off. A capture passes when the engine's re
 reference on every unit the reference can measure, the capture's invariants hold, and the render's machine
 read-back shows the picture still except at the moves rule 8 allows. **Any engine change and any harness change is
 re-run against all four in this order before it is accepted**, and only when all four pass does the whole-tape run
-begin. The captures themselves, their files and how a slice is re-cut are session logistics and live in CLAUDE.md,
+begin. **Validation proceeds in the prescribed order, with the owner's approval of each render before advancing**
+(owner, 2026-09-09: "the contract is sequential. I should approve a render before you move to the next of the 4
+samples"). Completion of one stage is not final acceptance of the change: the all-four regression requirement
+remains. Measurement of a SOURCE is not staged engine validation and may be authorized separately — the owner
+authorized one such analysis across all four captures on 2026-09-09 ("run that analysis yourself across all 4
+capture"); that grant covers the analysis it names and is not standing permission for every future one. The captures themselves, their files and how a slice is re-cut are session logistics and live in CLAUDE.md,
 not here.
 
 ⚠️ **What capture 1 cannot demonstrate, because it has already cost two instruments (2026-09-10).** The commercial

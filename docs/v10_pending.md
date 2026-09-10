@@ -469,6 +469,23 @@ migrate onto; `field_lines_py_test.py` compiles `field_lines.h` and compares all
 
 ## Blocked on the owner
 
+**The switch below a box's bar — added 2026-09-10, both agents at the limit of what they can decide.**
+Codex's wording, to be put to him as asked:
+
+> "Where an independently identified switch region lies below a box's bar, does the intervening bar prohibit using
+> that switch for displacement through the line account, or only prohibit treating the switch as the immediately
+> adjacent content boundary? Observation and the box-contact test remain available subject to their own
+> qualifications."
+
+Why it cannot be settled between us: his words are "a head switch placed below the actual video is unreliable and
+shouldn't be measured at all", which reads categorical. Claude argued it cannot be categorical, because 8b's contact
+test exists FOR boxed sources and a bar is exactly a region between content and switch, so a categorical reading
+makes 8b inoperable on the class it was written for. Codex accepts that reductio only as far as it goes — it shows a
+bar cannot CATEGORICALLY exclude the switch from the contact test; it does not show that every observed switch
+qualifies for that test, nor that a bar necessarily disqualifies the displacement reading. Deciding the rest would be
+inferring policy from structure on his behalf. Findings 6 and CR-10 close on his answer.
+
+
 Neither agent may resolve these; the process sends contract conflicts to him.
 
 **Cleared 2026-09-10 — items 4, 5 and 8 are ANSWERED. Their rows below are marked ANSWERED in place rather than
