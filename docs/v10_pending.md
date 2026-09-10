@@ -530,6 +530,97 @@ profiling stop that stand whenever it opens.
 
 ## Blocked on the owner
 
+### ✅ 2026-09-11 — ALL SIX ANSWERED. Relayed, not heard directly by this session.
+
+⚠️ **Provenance, stated before the content because it bounds what may be done with it.** These arrived through the
+peer session "Watchdog brief builder", not from the owner in this conversation. Project practice treats his QUOTED
+WORDS in a relay as authoritative and the relaying agent's connective tissue as not — and that distinction earned
+its keep here: the watchdog issued a gloss on item 3, then withdrew it as "the wrong axis" after he corrected it.
+His quotes are verbatim below; every gloss is attributed. **None of these is applied to the contract by this note.**
+A contract edit needs agreement with Codex (§14), and the two that contradict the current text need it most.
+
+**1. The switch below a box's bar — CLOSED, and it also answers the narrowed follow-up.**
+> "yes your understanding of rule 8c is correct. close it. yes of course it may feed `d`."
+
+So 8c's "below = separated by a gap" reading is confirmed, and the narrowed question — given contact holds and the
+switch is measured, may that switch's position feed `d` through the line account, or is it good only for the
+box-contact test — is answered YES, it may feed `d`. Findings 6 and CR-10 close on this.
+
+**2. The invalid-raster condition / B2's residue — the CONTRACT IS WRONG and he says so directly.**
+> "no a peak or partial line is a head switch full and valid. head switch may only be 1 line. perfectly fucking
+> fine. a head switch region is anywhere horizontal timing skews blanking, either picture into it, or blanking into
+> picture. idk how many times I need to repeat this to you. Holy shit, the lines own horizontal blanking is the
+> thing that compares it to. thats the answer to your absensce part. if all the blanking and all the picture belong
+> where they belong, it aint a head switch like area. if its somewhere other than the fucking bottom before the
+> deck, device or [other] blanking, its not a head switch. its normal horizontal tearing."
+
+and, on being told this contradicts the contract:
+> "2 shouldn't contradict the contract. if it does the contract is wrong. The head switch is a band of horizontal
+> timing error at the bottom and how that error skews should have fucking covered it. if it was only one lines
+> timing that leaked, oh well."
+
+**This is a REPAIR to §3's existing definition, not a new exception bolted onto it** — his §3 definition (a band of
+horizontal timing error at the bottom, and how that error skews blanking into picture or picture into blanking)
+already covers the one-line case, and the wording that excludes "a peak or a partial line" from the object whose
+absence is required is an incorrect narrowing of his own rule. The absence test he supplies is concrete and is the
+operative one: **compare against the line's OWN horizontal blanking**; all blanking and all picture where they
+belong ⇒ not a head-switch area; skew anywhere other than the bottom before the regenerated blanking ⇒ ordinary
+horizontal tearing, not a head switch.
+
+**3. The terminal-black-run disposition — CLOSED, and his SECOND sentence supersedes the first reading of it.**
+> "if that condition appears, the whole lock gets reset. it starts from scratch. that was an invalid signal"
+
+then, correcting the relay's gloss:
+> "it throws away nothing. it maintains nothing. the whole engine shouldn't run because that is an invariant that
+> isn't valid NTSC"
+
+⚠️ **So there is no retain-versus-discard decision to implement, because nothing is running to make one.** The
+watchdog's own framing — "this discards it", set against the fade rule as hold-versus-discard — was withdrawn by
+its author as the wrong axis. Take his two sentences together: the raster is not valid NTSC, so the engine has no
+business operating on it; the lock is neither carried forward nor deliberately torn down, and the question of what
+survives does not arise.
+⚠️ His reason is a statement about the SIGNAL — "an invariant that isn't valid NTSC" — not about the engine's
+confidence. An uncertain engine on a VALID raster is a different case and must not be routed here.
+⚠️ The nearest existing shape is **rule 5's gate** (registration does not run on a raster that is not normal
+picture, while observation continues), for the same kind of reason. Whether it IS rule 5's gate or a sibling is a
+wording decision for the two agents; if unsettled, it goes back as one line rather than as an inference. It is NOT
+rule 8a/12's hold-and-reassess, and NOT a bookkeeping reset that enumerates state to clear — he rejects both halves
+of the second explicitly.
+
+**4 and 5 — he considers answered by his earlier VBI and 480/486 rulings** ("answered by you I think", "same").
+
+**6. Negative offsets and the comb.**
+> "the comb is only to maintain the lock. if combing says thats the only way to lock, thems the breaks. thats the
+> valid picture geometry. if it means X lines are missing because they are in the regenerated blanking, then they
+> are in the regenerated blanking and that means the regenerated blanking plus any padding that gets the right
+> fucking lines should be rendered as black, missing picture and the proper 20-22 should be placed on top of that
+> in a 486 render to maintain compliance. The ONLY exception is if sometimes 22 shifts below the real 22 and it
+> contains real picture and not caption garbage then it MAY be rendered. its a broken recording but so be it. that
+> should be the top of the 480 render. if we actually determine real picture lines are gone, they should be
+> blanked out."
+
+**And one correction of his that is about process, recorded because it binds both agents.** Told that a
+contract paragraph had carried two framings for a day and that "one thing lands on you first", he replied:
+> "that sounds like your fuck up."
+
+He is right, and it generalises: an amend-by-addition defect of ours is not an item for his queue, and dressing one
+as a question wastes the attention the queue exists to spend. Log it, do not escalate it.
+
+**His standing correction on HOW to ask, which cost a round to learn.** Item 3 first went to him as "when this
+condition occurs after a lock, should the output retain the last corrective placement or bypass correction, which
+learned state remains valid, and does recovery require reacquisition before correction resumes?" — every noun a
+term of art, none of them named. His reply: *"3 is making my head hurt. what condition. what corrective placement.
+what learned state. ENGLISH"*. Re-put in plain words it was answered immediately. **If a question cannot be asked
+without four in-house nouns, it is not ready to ask.**
+
+⚠️ **A two-stores state now EXISTS between this queue and the contract, deliberately, and it must not be left
+standing.** These rows read ANSWERED while the contract still carries its three `OPEN, and with the owner` markers,
+so `owner_queue_check.py` still reports 3 and 3 — correctly, because the contract genuinely still says they are
+open. Removing those markers is a contract edit and needs agreement with Codex (§14), and two of the answers change
+contract text rather than just closing a question. **Until that edit lands, the contract is the store that is
+WRONG and this one is right — the opposite of the usual direction, and the reason to close it quickly.**
+
+
 ⚠️ **THREE MORE live only as inline markers in the contract and were never mirrored here (found 2026-09-11 by the
 watchdog session, which noticed the queue said three while six were open).** This section is the QUEUE; a question
 that exists only in the contract is invisible to whoever hands him the list, and the count staying at three across
