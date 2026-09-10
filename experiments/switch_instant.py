@@ -35,7 +35,20 @@ from packet_capture_reader import walk_tagged
 UNIT=756_048; HDR=48; ROW=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 BASE={1:19,2:282}
 DELIVERED=720; LINE_SAMPLES=858          # 720 delivered of an 858-sample line; 138 never seen
-BAND_OFFSETS=range(232,240)              # the field's last eight picture lines
+WINDOW_START=122                         # the delivered window begins 122 samples after 0H (CLAUDE.md:2366,
+                                         # "the delivered window starts at 122 samples = 9.037 us"). A column
+                                         # index is NOT a phase until this is added: without it the phase is
+                                         # computed as if the window began at 0H, shifting every value by
+                                         # 122/858 = 0.142 and CAPPING the range at 719/858 = 0.838.
+# ⚠️ THE SEARCH SPANS THE WHOLE PICTURE, not a typed-in window. The first version searched
+# `range(232,240)` -- eight hardcoded rows near the field bottom -- inside the instrument whose stated
+# purpose is that the switch is an INSTANT rather than a set of rows. That is a place to look, asserted
+# rather than derived, and it cannot distinguish "no instant in this field" from "no instant in these
+# eight rows": the same silence-versus-absence conflation refused for T = S. The switch IS at the bottom
+# and the contract says so -- but that must be a MEASURED fact about where instants land, not a bound the
+# instrument imposes before looking.
+PICTURE_LINES=240                        # each field's picture is 240 lines (23-262 / 286-525):
+PICTURE_OFFSETS=range(0,PICTURE_LINES)   # a raster property, not a chosen window
 
 
 def narrow_light_peak(row, floor):
@@ -69,8 +82,9 @@ def instant(Y, field, floor):
     Returns a dict with the instant and both quantisations, or an Unknown with its reason.
     """
     best=None
-    for off in BAND_OFFSETS:
+    for off in PICTURE_OFFSETS:
         r=BASE[field]+off
+        if r >= LINES: break
         p=narrow_light_peak(Y[r].astype(np.float64), floor)
         if p is None: continue
         amp,col,w=p
@@ -79,9 +93,10 @@ def instant(Y, field, floor):
         return {"known":False,"why":"no light peak — the instant has no witness in this field"}
     amp,line,col,w=best
     # the instant as a time: which line, and how far along that line's own sweep
-    phase = col / float(LINE_SAMPLES)
+    phase = (WINDOW_START + col) / float(LINE_SAMPLES)
     unsampled = col >= DELIVERED           # cannot happen for a peak we SAW, but stated explicitly
     return {"known":True,"line":line,"column":col,"phase":phase,"amp":amp,"width":w,
+            "offset_from_bottom":None,
             "T":line,"S":line+1,"unsampled":unsampled,
             "delivered_fraction":DELIVERED/float(LINE_SAMPLES)}
 
@@ -123,7 +138,12 @@ def main():
     print("  ⚠️ Unknown is the honest output where the instant has no witness -- not a fallback to a row.")
     if not known: return 0
     ph=np.array([r[2]["phase"] for r in known]); col=np.array([r[2]["column"] for r in known])
-    print("\n  THE INSTANT, as a position in the line's own sweep:")
+    ln=np.array([r[2]["line"] for r in known])
+    print("\n  WHERE the instants land, now that the whole picture is searched rather than eight rows:")
+    import collections as _c
+    for l,n_ in _c.Counter(ln.tolist()).most_common(6):
+        print("    line %-4d %5d readings"%(l,n_))
+    print("\n  THE INSTANT, as a position in the line's own sweep (phase includes the 122-sample window start):")
     print("    column   median %d   p10 %d   p90 %d   (of %d delivered, %d in the line)"
           %(np.median(col),np.percentile(col,10),np.percentile(col,90),DELIVERED,LINE_SAMPLES))
     print("    phase    median %.3f of the line   p10 %.3f   p90 %.3f"%(np.median(ph),np.percentile(ph,10),np.percentile(ph,90)))

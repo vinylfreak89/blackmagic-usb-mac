@@ -667,6 +667,43 @@ hit it — `7e62502` and `9c7f211`, both describing CLAUDE.md entries whose anch
 exists the queue is NOT empty and the contract-stale-store question stays open** — closing it now would be closing
 on my intention rather than on the file, which is the same thing again one level up.
 
+### ⚠️⚠️ RETRACTED — property 1 is NOT honoured, and the eight-row window was doing the identifying
+
+Two review findings against `switch_instant.py`, both correct, and the second is worse than it was stated.
+
+**F45 — the phase was anchored to the wrong origin.** `phase = col / 858` where `col` indexes the DELIVERED 720
+samples, which begin **122 samples after 0H** (CLAUDE.md:2366). So it computed the phase as if the window began at
+0H: every value shifted by 122/858 = 0.142, and **the range CAPPED at 719/858 = 0.838 by construction** — which is
+why p90 came out 0.811, sitting just under a ceiling the INSTRUMENT imposed. Fixed; the phase now adds
+`WINDOW_START`. ⚠️ A p90 resting just below a structural maximum is a shape that should have prompted a check and
+did not.
+
+**F46 — the instant was searched in eight hardcoded rows, and removing that window DESTROYS the result.** The
+first version searched `range(232,240)` — a place to look, typed in, inside the instrument whose stated purpose is
+that the switch is an instant rather than a set of rows. Searching the whole picture instead:
+
+| | eight-row window | whole picture |
+|---|---|---|
+| instant "measurable" | 429 of 1,016 (42%) | **909 of 1,016 (89%)** |
+| agreement with the engine's T | **82.1%** | **25.0%** |
+| where the instants land | (unasked) | **lines 383, 99, 522, 260, 441, 179 — scattered through the picture** |
+
+**The window was not a bound on a working detector; it WAS the detector.** The statistic finds high-amplitude
+narrow light excursions everywhere in the picture, and constraining it to the eight rows where the switch is known
+to be meant it was TOLD the answer and then found the brightest thing there. **So property 1 is NOT honoured: this
+instrument does not identify the switch, it identifies bright narrow excursions.** The 82.1% is retracted with it —
+it measured the window, not the signal.
+⚠️ **Property 2 survives**, but on a weaker footing than reported: T and S are still derived from one number and
+still cannot disagree with each other. That structure is sound; what it is fed is not.
+**What this forces, and it is the owner's own definition rather than a new idea:** the switch must be identified by
+the TIMING DISTURBANCE — blanking or picture departing from its expected horizontal extent, measured against the
+source's own reference — and the peak can only ever CONFIRM a switch already located that way. This is what
+`:537` and `:46-47` say, and it is why the peak was ruled "not a regime test" in the first place.
+**Credited from the same review, because it is not all fault:** the `--amp 89.0` floor is carried deliberately
+from his dark-peak ruling and disclosed as such; the sub-100-sample width bound is derived from the measured
+bimodality (8 of 3,824 in the 40-119 valley); and `unsampled` is documented in code as unreachable rather than
+left looking meaningful, which is what surfaced the T = S limit instead of shipping an always-false field.
+
 ### SCORECARD UPDATE — properties 1 and 2 HONOURED at one site; 8 has a STRUCTURAL LIMIT worth naming
 
 `experiments/switch_instant.py` measures the switch as **one instant** — a position in the field's own sweep —
