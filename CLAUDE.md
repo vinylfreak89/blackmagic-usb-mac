@@ -3012,6 +3012,27 @@ conclusion the amplitude work reached and now has a mechanism.
 **This is the "something beyond amplitude and width" recorded above as missing.** It is the DURATION of the
 recovery, and it is visible only when the ramp is measured as a time rather than over a window.
 
+✅ **CLOSED BY THE OWNER, 2026-09-11 — DARK PEAKS WILL GO UNDETECTED, AND THAT IS ACCEPTED.** His words: *"fair.
+you're right. the dark samples are much smaller and blend with picture. i accept that it is visible but not visible
+from a statistic. dark peaks will go undetected"*.
+**This is a CLOSED LINE, not an open defect. Do not rebuild a dark-peak detector.** The reason it is written here
+at length is the colour-burst failure this file already records: a conclusion that lived only in a thread was
+re-derived from zero eleven days later, by both agents.
+**The measurement behind the closure**, from the two entries above: amplitude cannot separate dark excursions from
+picture because they are small and sit at levels picture content occupies — signed-blind selection made agreement
+WORSE, 0% exact in the band that was 98% dark against 83-89% where dark excursions were absent. And the settling
+signature is not there either: the band's dark excursions ramp for **4 samples against the control's 9**, SHORTER
+than ordinary content, where light peaks ramp for 37 against 3.
+**What follows, so none of it is re-opened:**
+- The low-amplitude buckets are NOT to be revived by a better dark statistic. That search is over.
+- **The amplitude floor STAYS.** Measured, dropping it to catch dark excursions catches dark CONTENT.
+- "Dark peaks will go undetected" is a **stated bound of the instrument**, and any future note about it is a
+  statement of that bound, never a TODO.
+- ⚠️ **His observation that peaks read black in some units, and the band render's alternating polarity, BOTH
+  STAND and are not contradicted.** The phenomenon is real and visible to the eye; the instrument does not find
+  that half of it, and he has ruled that acceptable. Do not "correct" the polarity observation to match the
+  detector's blindness — that would be the instrument rewriting the signal.
+
 **ONE-SIDED MOTION IS NEVER A DISPLACEMENT -- owner ruling, 2026-09-11, and the engine gets it wrong in BOTH
 directions today.** His words: "top of picture that becomes black without the bottom of the geometry moving should
 be a hold, not unlock geometry, because the levels above block are genuinely not stable in this capture", then the
