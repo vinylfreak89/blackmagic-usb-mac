@@ -92,47 +92,50 @@ FIRST row of field 2's block, not a row past field 1's end. Every anchor lands -
 and row 280 -> line 284, both decoding CEA-608 in 38 of 38 units; row 19 -> 23 and row 258 -> 262;
 row 282 -> 286 and row 521 -> 525.
 
-⚠️ THE MAP IS ANCHORED ONLY BETWEEN THE TWO CAPTION ROWS, and an earlier version of this table
-labelled rows outside that interval as if it were not (owner, 2026-09-10: "How can they not be
-delivered if it gives a 525 raster"). The two anchors are the 18th and 281st delivered rows; the
-count between them is 263 rows and the standard's line count between lines 21 and 284 is also 263,
-so no row is dropped or added inside that span and every row in it has a measured line number.
-OUTSIDE it - the 17 rows above field 1's caption and the 244 below field 2's - there is no anchor,
-and applying +4 there is arithmetic. It produces "lines 526-528" for the last three delivered rows,
-which do not exist in a 525-line frame. So the 525 delivered rows are NOT lines 1-525: the raster
-starts partway into the frame, and where it starts cannot be measured from this side because the
-device delivers decoded YCbCr and no vertical-sync waveform survives to align against. The rows
-below are given their measured line numbers inside the anchored span and their row positions
-outside it.
+NAMING (owner's ruling, 2026-09-10: "Properly label them 262.5 and 1"). Field 1's last row is the
+HALF LINE and is written 262.5, never 263: a half line is the second half of 262 and the first half
+of what follows, which is why a field counts 262.5 lines, and calling it 263 asserts a whole line
+where the standard has half of one. The first row of field 2's block is that field's own line 1.
+An earlier "no anchor below field 2's caption" paragraph here, and its arithmetic "lines 526-528"
+for the last three delivered rows, are both superseded by the block structure above: those three
+rows are field 1's lines 1, 2 and 3, at the start of its block.
+⚠️ WHAT IS NOT SETTLED, and is not swept here: whether FIELD 2's lines are numbered per block too.
+The ruling names the two rows; it does not say whether field 2's picture is 286-525 (the frame-
+continuous numbering CLAUDE.md's coordinate convention states, and which the contract, the engine's
+constants and every field-2 figure measured tonight use) or 23-262 (per block, the same numbers as
+field 1). Those are the same rows under two conventions and renumbering would move every field-2
+line number in the project. That is a decision for the owner and Codex together, not a harness
+sweep, so field 2 is left on the existing convention below and the disagreement is named rather
+than resolved.
 Classification stable in all 38 units checked except the third-from-last row:
 
-  rows   1 -   7   7 rows   flat 16, the device's padding          | NO ANCHOR: line numbers
-  rows   8 -  16   9 rows   written blanking                       | unknown above here
-  rows  17 -  18   2 rows   digitised: the device's two inserted lines, the 2nd being the
-                            CEA-608 caption row -- THE FIRST ANCHOR, and the standard puts it
-                            on line 21
-  line  22         1 row    written blanking                       | anchored span begins
-  lines 23 - 262 240 rows   digitised: FIELD 1's active picture, exactly the standard's 240
-  line  263        1 row    written blanking - field 1's half line, and the last row of its block
-  line  264        1 row    written blanking - the FIRST row of field 2's block
-  lines 265-273    9 rows   flat 16, the device's padding
+  FIELD 1's BLOCK, its own line numbers
+  line    1        1 row    written blanking      (delivered at the END of the unit, rows 522-524
+  lines   2 -  10  9 rows   flat 16, padding       carry lines 1, 2 and 3 - the block wraps there)
+  lines  11 -  19  9 rows   written blanking
+  lines  20 -  21  2 rows   digitised: the device's two inserted lines, the 2nd the CEA-608
+                            caption row, which the standard puts on line 21 - THE ANCHOR
+  line   22        1 row    written blanking
+  lines  23 - 262 240 rows  digitised: FIELD 1's active picture, exactly the standard's 240
+  line  262.5      1 row    written blanking - THE HALF LINE, the last row of field 1's block
+  FIELD 2's BLOCK  (line numbers below on the frame-continuous convention - see the note above)
+  line    1 of f2  1 row    written blanking - the FIRST row of field 2's block (frame-continuous
+                            numbering calls this 264)
+  lines 265-273    9 rows   flat 16, padding
   lines 274-282    9 rows   written blanking
-  lines 283-284    2 rows   digitised: field 2's inserts, the 2nd being its CEA-608 row --
-                            THE SECOND ANCHOR, standard line 284   | anchored span ends
-  rows 282-524   244 rows   written blanking, then FIELD 2's 240 picture rows, then one more
-                            written row and 2 padding rows         | NO ANCHOR below here;
-                            field 2's picture lands on lines 286-525 if +4 continues, which is
-                            the standard's own allocation, but that is consistency not anchoring
+  lines 283-284    2 rows   digitised: field 2's inserts, the 2nd its CEA-608 row (line 284)
+  line  285        1 row    written blanking
+  lines 286-525  240 rows   digitised: FIELD 2's active picture, exactly the standard's 240
 
   484 digitised, 23 written blanking, 18 padding = 525.
 
 NOTHING WRAPS AND NOTHING CARRIES OVER, measured 2026-09-10 after the owner asked whether the
 device is looping around the raster to make these rows. Over 38 units, 874 written-blanking rows
-examined: ZERO exact byte repeats - every written row in every unit is a distinct pattern. Line 263
-of one unit against line 263 of the next correlates +0.054 (max 0.117 over 30 consecutive pairs),
-against line 264 of the next -0.009, against the next unit's first written row -0.002, against the
-next unit's last delivered row +0.010; within one frame, line 263 against every other written row
-peaks at |r| 0.086. The flat-16 padding is the opposite and shows what reuse looks like: ONE
+examined: ZERO exact byte repeats - every written row in every unit is a distinct pattern. The half
+line 262.5 of one unit against the same row of the next correlates +0.054 (max 0.117 over 30
+consecutive pairs), against field 2's line 1 of the next -0.009, against the next unit's first
+written row -0.002, against the next unit's last delivered row +0.010; within one frame, 262.5
+against every other written row peaks at |r| 0.086. The flat-16 padding is the opposite and shows what reuse looks like: ONE
 identical byte pattern in all 38 units.
 What the generator is doing is representable: each written row is about 62% at code 1 and 38% at
 code 2, mean 1.38, because the level falls between two integers. The two codes are deliberately
