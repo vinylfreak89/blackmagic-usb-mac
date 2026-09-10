@@ -68,6 +68,30 @@ put all 480 in one run. The +4 offset is therefore measured WITHIN each block an
 from that block's caption row to the end of its picture (row 17 to row 258 is 242 rows; line 21 to
 line 262 is 242 lines). It does not continue past a field's last line into the next field's.
 
+THE BLOCK BOUNDARY IS SETTLED (owner, 2026-09-10, measured the same day). Walking the 525 rows
+CYCLICALLY - the unit repeats, so a run crossing its end is one run - the structure appears twice,
+identically, and the boundary falls where the two copies align:
+
+   field 1's block                          field 2's block
+     1 written   row 522                      1 written   row 260
+     9 PADDING   rows 523,524,0-6             9 PADDING   rows 261-269
+     9 written   rows 7-15                    9 written   rows 270-278
+     2 inserts   rows 16-17                   2 inserts   rows 279-280
+     1 written   row 18                       1 written   row 281
+   240 picture   rows 19-258                240 picture   rows 282-521
+     1 written   row 259   <- the extra           (none)
+   -----------                              -----------
+   263 rows      lines 1-263                262 rows      lines 264-525
+
+FIELD 1 GETS THE EXTRA ROW, and it is the half line, 263 - which is why: field 1 spans 263
+line-times and field 2 spans 262, so the block sizes are the fields' own line counts rather than
+a rounding. Lines 1, 2 and 3 ARE delivered, at rows 522, 523 and 524, at the END of the unit,
+because a block's start wraps there; an earlier claim here that they are not delivered is
+withdrawn. So is the retraction of row 260's label: 264 IS a field 2 line and row 260 is the
+FIRST row of field 2's block, not a row past field 1's end. Every anchor lands - row 17 -> line 21
+and row 280 -> line 284, both decoding CEA-608 in 38 of 38 units; row 19 -> 23 and row 258 -> 262;
+row 282 -> 286 and row 521 -> 525.
+
 ⚠️ THE MAP IS ANCHORED ONLY BETWEEN THE TWO CAPTION ROWS, and an earlier version of this table
 labelled rows outside that interval as if it were not (owner, 2026-09-10: "How can they not be
 delivered if it gives a 525 raster"). The two anchors are the 18th and 281st delivered rows; the
@@ -89,10 +113,8 @@ Classification stable in all 38 units checked except the third-from-last row:
                             on line 21
   line  22         1 row    written blanking                       | anchored span begins
   lines 23 - 262 240 rows   digitised: FIELD 1's active picture, exactly the standard's 240
-  line  263        1 row    written blanking - field 1's half line, the last line it has
-  (one more row)   1 row    written blanking - PAST field 1's last line, so it carries no NTSC
-                            line number at all; the earlier label "264" names a FIELD 2 line and
-                            is withdrawn
+  line  263        1 row    written blanking - field 1's half line, and the last row of its block
+  line  264        1 row    written blanking - the FIRST row of field 2's block
   lines 265-273    9 rows   flat 16, the device's padding
   lines 274-282    9 rows   written blanking
   lines 283-284    2 rows   digitised: field 2's inserts, the 2nd being its CEA-608 row --
