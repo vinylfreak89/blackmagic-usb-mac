@@ -64,6 +64,18 @@ regardless of which commit the tree sits on. The two fixes that survive it are:
   - adjudicate before the other side commits, so there is nothing to find; or
   - run the adjudicator somewhere the project instructions do not load.
 
+## A process hazard found while running it: parallel adjudicators share one scratch directory
+
+The second adjudicator cleaned up after itself with `rm -rf` on a scratch subdirectory and
+destroyed the first adjudicator's magnified crops, which happened to use the same directory name.
+It reported this itself. Nothing that mattered was lost - the frozen panels, the crops directory
+and both verdict files survived, and the destroyed files were regenerable derivatives - but the
+next collision may not be so cheap.
+
+**Fix.** Give each adjudicator its own scratch directory, named after it, and say so in the task.
+Do not rely on adjudicators choosing non-colliding names, and do not let one clean up a shared
+tree.
+
 ## What agreement and disagreement are worth
 
 If an adjudicator's isolation cannot be certified, its **agreement** with the other side is weak
