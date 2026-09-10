@@ -659,6 +659,36 @@ begins genuinely black at line 23 is the case where 6(b) is weakest, and it has 
 conditionally Shuttle-written ("when its decoder has sync"), which is a different situation from line 22's
 unconditional one and may not carry the same conclusion.
 
+### ⚠️ ACCEPTED — and one thing found while preparing it to land that he should see before it does
+
+He accepted all three parts ("accepted"). Two things from the landing sweep, one good and one that qualifies my
+own proposal.
+
+**GOOD: the engine already complies.** `field_registration.c:359-366` accumulates `blank_mean` by summing
+`row_mean` over the blanking rows and dividing — it is already the mean, not the median. Part 2 needs no engine
+change, only the contract naming what the code already does.
+
+⚠️ **THE QUALIFICATION: my proposal named the DEVICE's blanking, and contract `:531` names the SOURCE's.** Its
+words: "The blanking reference is established from qualified blanking intervals on the current source's good
+picture lines… **device-generated fill never establishes it**", quoting him: "find the blanking on the good lines
+of picture, thats your blanking interval the head switch needs to be measured inside of". **Every measurement I
+took tonight used the device's regenerated rows** (7-15 / 270-278), which is the reference `:531` forbids. The
+mean-versus-median ruling is unaffected — it is a question about the statistic, whichever reference is used — but
+the reference my tables were built on is the wrong one.
+
+⚠️ **And the source's reference is NOT reliably available on capture 1**, which is why this matters rather than
+being a tidy-up. Measured over 1,016 field-readings, hunting each good picture row's own lowest sustained trailing
+level with no threshold and no hardcoded column: it returns **51.97 with sd 41.58** — that is picture, not
+blanking. Many of this capture's picture rows have no clean trailing blanking in the delivered window at all,
+which is independently corroborated: `switch_without_shift.py` excludes **194 of 484** readings as unaskable
+because the learned reference admits a one-sample run.
+So on capture 1 the contract's named reference is often unmeasurable while the device's fill is always available
+at 1.3756 with sd 0.0037. **That is a real tension between `:531` and this source, and it should be his to see
+rather than resolved by quietly using the reference he forbade.**
+⚠️ Two of my three attempts at measuring the source reference were themselves the fixed-place-to-look defect —
+first a hardcoded column 706, then a trailing window from 580. The number above is from the version that hunts
+the level instead, and it is reported as a negative result rather than a value.
+
 ### PROPOSAL — the level-threshold BASIS, reconciled as he asked (2026-09-11, overnight)
 
 His instruction: *"thats tricky. I will leave it to it to reconcile and propose."* So this is a proposal with the
