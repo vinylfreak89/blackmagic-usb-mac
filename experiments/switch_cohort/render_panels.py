@@ -41,10 +41,18 @@ def cell(d,x,y,seg,neigh,z,title):
     for nb in neigh:
         d.line([px(i,v) for i,v in enumerate(nb)],fill=(96,96,112))
     d.line([px(i,v) for i,v in enumerate(seg)],fill=(235,235,245))
-    for i in range(0,len(seg)+1,8):
-        xx=px(min(i,len(seg)-1),0)[0]
+    # ⚠️ FIXED 2026-09-10, found by an adjudicator: this used range(0,len(seg)+1,8) with
+    # px(min(i,len(seg)-1)), which drew a tick labelled 48 on sample 47 - the axis then read 0-48
+    # across 48 samples and anyone interpolating near the right end was off by up to a sample.
+    # The frozen panel set carries that error in its boundary VALUES and is NOT re-rendered, because
+    # the cohort is keyed to those exact images; anything new uses this.
+    for i in range(0,len(seg),8):
+        xx=px(i,0)[0]
         d.line([xx,y+CH-8,xx,y+CH-3],fill=(80,80,95))
         d.text((xx-6,y+CH-3),str(i),fill=(70,70,84))
+    xx=px(len(seg)-1,0)[0]                       # and label the LAST sample where it actually is
+    d.line([xx,y+CH-8,xx,y+CH-3],fill=(80,80,95))
+    d.text((xx-8,y+CH-3),str(len(seg)-1),fill=(70,70,84))
 
 def render(ctr,Y,out):
     want=sorted(ROWS[ctr])
