@@ -528,7 +528,150 @@ this is a two-agent adjudication.**
 instruments, that the bench's gate is vacuous, and that no recorded timing states its load are findings about the
 profiling stop that stand whenever it opens.
 
+## Owner rulings 2026-09-10, reconciled from the transcript (watchdog, one-time owner-authorised edit)
+
+**Why this section exists.** The watchdog's own queues lost items and its audit method was a phrase search, which
+reports a ruling as "recorded nowhere" when the wording differs and cannot tell a CONFLICT from a SILENCE. The
+owner authorised one override to reconcile everything discussed on 2026-09-10 into this file. Every row is his
+words with the timestamp; status is what a re-check by MEANING found, not by phrase.
+
+| # | his words (2026-09-10) | status |
+|---|---|---|
+| 1 | 10:20:30 — "when a source is locked, then its geometry is known, **comb should not need to run**... so comb should not be an all the time running thing" | **OPEN** — the engine measures the comb on every unit; `field_registration.c:984` calls `comb_confirm` with no lock-state guard. Rule 9 already states the requirement. |
+| 2 | 17:06 — "fix the fucking combing... a regular simple comb energy algo... there doesn't need to be a mask or other garbage" | **IN FLIGHT** (Codex `bzxtaxua7`) |
+| 3 | 17:08 — "settle the S and T... get the measurement of the head switch band right" | OPEN |
+| 4 | 17:2x — "**the only render I want is one that is produced from a locked capture on cap 1**. then it may continue on by profiling" | OPEN — sets the order: comb → lock → render → profile |
+| 5 | 16:13 — "your understanding of rule 8c is correct. close it. **yes of course it may feed `d`**" | LANDED (8c's OPEN marker is gone) |
+| 6 | 16:13 — "**a peak or partial line is a head switch full and valid. head switch may only be 1 line**" | OPEN — contract ~:809 still excludes them; he ruled at 16:15 "if it does the contract is wrong" |
+| 7 | 16:13 — "**the lines own horizontal blanking is the thing that compares it to**. thats the answer to your absensce part" | OPEN — `:812` still reads `OPEN, and with the owner` |
+| 8 | 16:16/16:17 — "the whole lock gets reset... **it throws away nothing. it maintains nothing. the whole engine shouldn't run** because that is an invariant that isn't valid NTSC" | OPEN — `:800` still reads `UNSETTLED and with the owner` |
+| 9 | 16:13 — "line 21 being at line 21 on both and line 22 being blank on both... **in other words a valid VBI**" | OPEN — `:1027` still reads `OPEN, and with the owner` |
+| 10 | 16:13 — "**for the 480 render it never renders. yes the 486 render obviously always renders** either the shuttles or the tapes 20-22" | OPEN |
+| 11 | 16:13 — "**the comb is only to maintain the lock**... if it means X lines are missing because they are in the regenerated blanking... **rendered as black**... the proper 20-22 **placed on top of that in a 486 render**... exception is if 22 shifts below the real 22 and contains real picture... **if we actually determine real picture lines are gone, they should be blanked out**" | OPEN |
+| 12 | 09:16:24 — "in any 486 line renders, **real line 20-22 overwrite the shuttles**" | **OPEN AND IN CONFLICT** with `:451`, which says nothing the tape carries above line 23 reaches us. A conflict, not a silence. |
+| 13 | 09:18:05 — "for the test renders... **a valid result should keep the first 6 lines vertically stable in position... always**" | **PARTIAL** — `:167` carries "the output picture does not move", a different observable. No render shown to him today was measured against this. |
+| 14 | 11:13:09 — "it should **draw the bounding box** when it finds it on top of the picture. keeping its field colors... **purple**... **transparentish**" | OPEN (implemented per the harness, not yet in the contract) |
+| 15 | 04:54:51 — "luma stills... **slowed down 5x as a video, both fields side by side**" | **FALLBACK ONLY** — condition: if the peak-near-the-left-edge account fails to explain the switch line appearing to jump to 259. Superseded in practice by the temporal frame. |
+| 16 | 11:05:15 — "if they get `0x0800` or lose the regenerated lines, **they go get it again**" | OPEN |
+| 17 | 12:50:38 B4 — "isn't that **determined from source and/or device and/or horizontal blanking**" | OPEN |
+| 18 | 12:50:38 B5 — "It depends how it falls off. If the horizontally mistimed field is **within normal variance** defined elsewhere that we've already agreed to" | OPEN |
+| 19 | 12:50:38 B6 — "**the harness has a test and definition for what boxed vs structured vs unbounded is**" | OPEN |
+| 20 | 17:0x — "**its not categorical. its an expectation**... its what I saw quickly scrubbing the video but I generally did see occasional half timed lines" | OPEN — §2 records his EXPECTATION as a measurement. Fix the provenance, not the strength; Codex's 11-vs-1,957 is the measurement and the eleven are corroborated by his own viewing. |
+| 21 | 17:00 — "**THESE ARE NOT PICTURES. They are representations of a signal across time**, thats why a .5 row never made sense to me... its half of a horizontal one"; 17:00:57 — "the ribbon is actually **the sweep moving back into its own horizontal blanking interval**" | OPEN — the frame the definitions sit inside; not in the contract |
+| 22 | 17:02 — "**the RF peak is the liftoff**... the skew is because the servo is trying to lock timing of this frame to the other head... **its some of the other fields signal ending up timed to this field**"; 17:0x — "which is why **the peak disappears in the line TBC on captures (mostly)**... fixture A... **their recorded timing was trash**" | OPEN — competing account (phase step introduced by the TBC rather than head geometry) is separated by the V-stabilize A/B, already captured |
+| 23 | 16:58 — "**well the TOP skew row is**" (T) | OPEN — and the DOWNWARD reading of it was the watchdog's invention: measured, a downward scan agrees with the engine's T 0% of the time, landing ~236 rows high; the upward run reaching the clip gets 71.5% exact |
+| 24 | 11:02:49 — "it needs to decide on **the black reference**" | **SATISFIED** under different wording: contract's *Source-measured levels*. Recorded because the watchdog reported it open on a phrase search. |
+| 25 | 09:41:23 — "**the location of the partial line and/or RF peak should not jump**. It should have a normal excursion when a line disappears" | **LANDED** `:164` |
+| 26 | 10:49:16 — "**a head switch existing is the bottom of the tape. thats PHYSICS**" | **LANDED** `:446`/`:702`/`:960` |
+
+**⚠️ RETRACTED, and it must not be quoted again once the comb work clears (owner, 2026-09-10):** the claim that
+`switch_measurable` gating acquisition "excludes capture 1's best evidence" because all 182 gate-open units are card
+units. His ruling: *"the comb does not need a switch to open. it is one of the ORs. the contract directly
+contradicts this. the switch sets or fixes geometry only IF IT IS PRESENT. secondly, the target measurements are old
+and stale and because it didn't know how to measure a headswitch, shouldn't be true."* The 182 figure was produced by
+a switch measurer since shown to be measuring the wrong thing, and an independent measurement on the same capture
+finds displaced blanking in 222 of 240 programme field-readings. The `switch_measurable` condition on the two
+acquisition sites is a code defect against rule 9, not a constraint to design around.
+
+**The profiling stop, four items** (its second precondition — engine and harness agreeing semantically — is not met;
+see the section below): the live path carries NO timing instruments (zero `clock_gettime`/`mach_absolute_time` in
+`frameserver.c`, `frame_publisher.c`, `audio_publisher.c`, `unit_parser.c`, `field_registration.c`,
+`signal_state.c`); `make bench`, named in §11b as the regression gate, reports `registration_calls 0, gated 10000`
+and cannot fail the budget however slow registration becomes; no ms/unit figure on record is comparable to §11b's
+"reference M3 P-core, single-threaded" (all taken under unrecorded load, measured at 4.5-6.75 with Chrome at 97%);
+and three decisions are with the owner — scope (per-stage or worker total), fixture (194 looped units or a real
+slice), host (quiesce before the real run).
+
 ## Blocked on the owner
+
+### PROPOSAL — the coherence ruling's 6(b) names the wrong line, and the contract already says why
+
+His coherence ruling (2026-09-11) gives one exception to the hold: the tape's own vertical interval entering the
+picture is proof positive the tape's geometry changed, in two forms — (a) a waveform becoming decodable on line 20
+or 21, and **(b) "the tapes own blanking which is discrete from device blanking enters on line 22"**.
+
+**The mechanism is sound and its discriminator is measured and strong. The LINE is off by one.**
+
+**Measured, per unit, against each unit's own device blanking rows** — a per-unit comparison against a measured
+reference, never a typed-in cut, as *Source-measured levels* and rule 4 require:
+
+| | capture 1 (card) | fixture A | capture 4 (SP, V-stab off) | device's own rows |
+|---|---:|---:|---:|---:|
+| **line 22** above device blank | **+0.00** | **+0.00** | **−0.00** | — |
+| line 22 row sd | **0.48** | **0.48** | **0.48** | **0.48** |
+| **line 23** above device blank | +1.77 | **+42.21** | **+109.36** | — |
+| line 23 row sd | 2.24 | **47.08** | **33.58** | 0.48 |
+
+**Line 22 is device blanking on all 1,092 field-readings across three captures — p10 to p90 of ±0.01, with the
+device's own dither sd of 0.48 exactly.** Nothing the tape carries reaches it.
+**And the contract already states the reason**, §2's table at `:349`: `| 22 | 18 | 281 | blanking, Y 1.4 |
+Shuttle |` — line 22's origin is the Shuttle, unconditionally, unlike lines 20 and 21 which are qualified "when its
+decoder has sync". **So the tape's blanking cannot enter on line 22: the device overwrites it.**
+
+**Where it DOES become visible is line 23**, the first pass-through position — and CLAUDE.md already records the
+observable there, on fixture A's displaced intro: "the tape's own black line 22 (Y ≈ 4–7, above the 1.4 blanking)
+sits at row 19", and row 19 is NTSC **line 23**. His observable is real; it surfaces one line below where the
+wording puts it, because the device destroys the row above it.
+
+**RECOMMENDATION:** 6(b) should read **line 23 (and 286 in field 2)**, or better, "the first pass-through
+position", so it stays correct if the raster description ever changes. The discriminator itself needs no
+amendment — device-written blanking carries the dither sd of 0.48 and source-carried content at line 23 measures
+2.24 to 47.08, a four- to ninety-eight-fold separation in noise character alone, per unit, with no level typed in.
+
+⚠️ **Its strength varies with content and that bounds it:** on capture 1's dark card top, line 23 sits only +1.77
+above blanking at sd 2.24 — separable, but not by the margin fixture A and capture 4 give. A source whose picture
+begins genuinely black at line 23 is the case where 6(b) is weakest, and it has not been exercised.
+⚠️ I have NOT verified 6(a) — whether a waveform becomes decodable on line 20 or 21 — and those lines are
+conditionally Shuttle-written ("when its decoder has sync"), which is a different situation from line 22's
+unconditional one and may not carry the same conclusion.
+
+### PROPOSAL — the level-threshold BASIS, reconciled as he asked (2026-09-11, overnight)
+
+His instruction: *"thats tricky. I will leave it to it to reconcile and propose."* So this is a proposal with the
+measurement behind it and a recommendation, not a settled question.
+
+**The disagreement was two tables giving different tops for the same rasters.** One used an ABSOLUTE cut, the other
+one RELATIVE to the device's blanking. **Measured, it is a THREE-way ambiguity, not two** — because "relative to
+blanking" does not say WHICH STATISTIC of the blanking rows:
+
+| basis | value of a nominal "3" | field 1 line 23 (level 4.02) reads as |
+|---|---:|---|
+| absolute | 3.00 | picture |
+| median of the blanking rows + 3 | 4.00 | **borderline** — its range is 3.22–5.55 |
+| mean of the blanking rows + 3 | 4.38 | blanking |
+
+The same rows give median **1.0000** (sd 0.0000) and mean **1.3754** (sd 0.0036) — 0.375 codes apart on a dithered
+constant — and field 1's line 23 sits at 4.02, so the three cuts bracket it three ways. **Specifying "relative"
+without specifying the statistic reproduces the same ambiguity one level down.**
+
+**What the choice costs, 146 units × 2 fields, at matched nominal thresholds:**
+
+| nominal threshold | readings where the two bases disagree |
+|---:|---:|
+| 3 | 73 (25%) |
+| 4 | 103 (35%) |
+| 6 | 9 (3%) |
+| 8 | 70 (24%) |
+| 12 | 73 (25%) |
+
+**RECOMMENDATION, three parts:**
+
+1. **The basis is RELATIVE to the source's own measured blanking**, and this is not a preference — the contract's
+   own *Source-measured levels* rule already requires it ("The engine establishes, for the source in front of it,
+   what blanking is… No contract value, header constant or calibration file carries them") and rule 4 forbids
+   typed-in numbers. **An absolute cut is a magic number and is already prohibited.**
+2. **The statistic must be named with it.** Recommend the MEAN, because the device writes a *dithered* constant —
+   CLAUDE.md records the lag-1 autocorrelation of −0.33 as the dither signature — and the mean recovers the written
+   level (1.375) where the median quantises it to 1.0 and discards the dither entirely. The median's sd of exactly
+   0.0000 is the tell: it is not measuring a level, it is reporting the modal integer.
+3. ⚠️ **And the contract should rest nothing on a level-threshold top.** Measured over the same 146 units, field 1's
+   top ranges over FIVE lines (23 to 28) across thresholds, and at a single threshold gives three different answers
+   across units. No choice of basis repairs that. **His one-sided-motion ruling already contains the consequence** —
+   a top-only move is a hold, so the fragility does not reach the crop — and that containment, rather than a better
+   threshold, is what makes the top usable at all.
+
+⚠️ **What this proposal does NOT settle:** which nominal threshold. That is gated behind the top detector's own
+work, and picking one against these 146 units would be fitting to the fixture.
 
 ### OPEN — R3's recovery half, Codex's wording, added 2026-09-11
 

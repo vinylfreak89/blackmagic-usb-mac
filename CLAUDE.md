@@ -2577,12 +2577,37 @@ askable, 0 counterexamples -- **identical** to the version that also required a 
 band-width term is inert and the principled check carries the result, which is what the commit promised to correct
 either way.
 
-**HISTORICAL PRE-CHANGE COMB BRIEF — switch-gate framing WITHDRAWN by the owner on 2026-09-11.**
-The following brief, through "cost before anyone reaches for a mask again", is kept as history. Its
-switch-measurable population describes a fallible old reader, not the source, and cannot legitimize a
-mandatory-switch gate. The current implementation/result is recorded at the start of this section.
-The original brief said the comb's best evidence and the gate's open window did not overlap.
-The owner's ruling is "you a regular simple comb energy algo. its fucking simple. there
+⚠️⚠️ **THE ENTRY BELOW IS RETRACTED IN ITS FRAMING (owner, 2026-09-11) -- read the retraction before the table.**
+His words: "the comb does not need a switch to open. it is one of the ORs. the contract directly contradicts this.
+the switch sets or fixes geometry only IF IT IS PRESENT. secondly, the target measurements are old and stale and
+because it didn't know how to measure a headswitch, shouldn't be true. same is with combing. it is bullshit."
+Three things wrong with what is written below, in order of damage:
+1. **It treats a code defect as a constraint to design around.** Calling `switch_measurable` at `:659` a gate that
+   "excludes the capture's best evidence" grants it a legitimacy it never had. The comb is one of the ORs and the
+   switch fixes geometry only if present, so that condition is simply the superseded clause still standing in the
+   code. The fix is to REMOVE it, not to route around it.
+2. **The 182-of-508 figure is a property of a broken instrument, not of capture 1.** It was produced by the
+   head-switch measurer -- the same one whose peak statistic this file records as anti-correlated with the
+   phenomenon it names. A count of "where the switch is measurable" computed by that measurer is not a fact about
+   the capture.
+3. **So the third outcome the entry names -- "comb decides but the gate stays shut" -- is retracted as framed.** If
+   the lock does not come, the first suspect is the presence of the `switch_measurable` condition at all, not the
+   population it selects.
+⚠️ **One thing in the relayed retraction is itself wrong and is NOT adopted.** It says its 222-of-240
+displaced-blanking result on programme units contradicts the 0-of-275 below. It does not -- they are different
+quantities, and joined they are sharper than either. This file's own join says it directly: on bright programme a
+displaced blanking run of >= 100 samples is present in **76.9%** of field-readings while the engine's export has S
+on **15.8%**. **The evidence is there and the engine does not measure it.** That is not a contradiction to
+resolve; it is point 2's measurer defect quantified on the same units, and it is the strongest single argument for
+removing the condition.
+The measurements below stand as measurements of what plain comb does. Their FRAMING as a constraint does not.
+
+**PLAIN COMB, AND THE GATE IT MUST PASS: the comb's best evidence and the acquisition gate's open window DO NOT
+OVERLAP AT ALL on capture 1 (measured 2026-09-11, BEFORE any engine change, so this is a prediction and not a
+post-hoc reading).** The owner's ruling is "you a regular simple comb energy algo. its fucking simple. there
+⚠️ **Codex's note on merge, kept:** the brief below through "cost before anyone reaches for a mask
+again" is HISTORY. The implemented result and its limitations are recorded at the start of this section and in
+`src/field_registration/tests/PLAIN_COMB.md`.
 doesn't need to be a mask or other garbage", with the acceptance test "so comb should register and cap1 should
 become lockable" -- a FIRST LOCK, against a record of `geometry_lock_known` zero on all 919 units. Plain mean
 |vertical second difference| over the woven frame, no mask, no dominance, no support threshold, counters >= 6667:
@@ -2689,9 +2714,316 @@ files, not assumed (2026-09-11).** `overwrite the shuttles`, `first 6 lines`, `v
 | 09-10 09:41:23 | "The location of the partial line and/or RF peak should not jump. It should have a normal excursion when a line disappears." | NOT RECORDED -- and it bears directly on the S/T work: it is the same continuity property as the measured column drift above |
 | 09-10 10:49:16 | "a head switch existing is the bottom of the tape. thats PHYSICS. if a head switch is there, it marks the bottom of the geometry. where there is blanking below the head switch thats not part of the bottom geometry." | NOT RECORDED -- a physical definition of the bottom, bearing directly on the line account |
 
-⚠️ **The 09:18:05 one is the sharpest loss: an acceptance criterion for every test render, absent for a day, while
-renders were produced and shown.** The 09:41:23 and 10:49:16 rulings are geometry, not rendering, and the second is
-a definition the contract's own bottom-of-geometry wording should be checked against.
+⚠️⚠️ **THAT TABLE IS WRONG AND I BUILT IT THE WRONG WAY -- corrected within the hour, by re-checking the six by
+MEANING instead of by phrase.** I searched for his exact words, found zero hits, and wrote "recorded nowhere" as a
+fact. **Phrase-absence is not ruling-absence**, and it is the proxy defect this file documents a dozen times,
+committed in an audit whose whole purpose was finding lost rulings. The watchdog caught its own instance first --
+it had flagged a `black reference` gate as unlifted, and it is landed under **Source-measured levels** (contract
+:523), wording neither of us searched for. Re-checked, of my six:
+
+| his ruling | actual status |
+|---|---|
+| 09:41:23 the partial line / RF peak must not jump | **ALREADY LANDED**, contract :164 -- "SOUNDNESS - the partial line's boundary must not jump further than expected in one sampling, which is a per-unit continuity condition on where that boundary sits along the row" |
+| 10:49:16 a head switch marks the bottom of the geometry | **ALREADY LANDED**, contract :446 and :960 -- "The partial line is the switch line and the picture bottom is the row above it"; and :702 carries his second half, blanking below the switch not being the picture bottom |
+| 09:18:05 first 6 lines vertically stable, always | **PARTIAL.** Contract :167 has "THE OUTPUT PICTURE DOES NOT MOVE. That last clause is the acceptance test", which is adjacent but is a different observable -- his is the VBI rows holding position in a test render, not the picture |
+| 09:16:24 real line 20-22 overwrite the shuttles in 486 | **OPEN, and it CONFLICTS with contract :451** -- "Nothing the tape carries above line 23 reaches us except the re-encoded bytes on the insert" |
+| 11:13:09 the bounding box, purple, alpha | **OPEN** -- no equivalent wording; now implemented in `review_frame.py` |
+| 04:54:51 luma stills at 5x, both fields side by side | **OPEN**, conditional, never done |
+
+So **two of six were never lost, one is partial, three stand** -- and one of the three conflicts with existing
+contract text rather than merely being absent, which is the more serious finding and the phrase audit could not
+have told them apart. **The rule for any future audit of this kind: a phrase search finds what to READ, never what
+is MISSING.** The only sound negative is a read of the passages that would carry the ruling.
+⚠️ What survives unaltered is 09:18:05's cost: whether partial or absent, no render produced and shown today was
+measured against a stability bar he had already set.
+
+**A SECOND DEFECT IN THE SAME FUNCTION AS THE COMB WORK, verified in the code 2026-09-11: `comb_confirm` runs on
+EVERY unit, including locked ones.** `grep -n comb_confirm src/field_registration/field_registration.c` gives
+:633 (definition), :912 (a comment) and **:984, the only call site, unconditional -- no lock-state guard**. That is
+the owner's 10:20:30 ruling sitting unimplemented: "when a source is locked, then its geometry is known, comb
+should not need to run... so comb should not be an all the time running thing." **Rule 9 already states the
+requirement**, so this is the engine trailing the contract, not a new rule -- the same shape as the two acquisition
+sites implementing a superseded §3 clause.
+⚠️ It bears on the acceptance test rather than being separate housekeeping: if the comb runs on every unit, plain
+comb energy's behaviour under a MAINTAINED LOCK is part of what a first lock has to survive -- and
+`STATIC_MASK.md`'s pan counterexample is exactly a maintained-lock scenario, the one where rule 9 is what stops a
+wrong reading from moving the crop. **Gating the comb on lock state removes that exposure instead of defending
+against it**, which is why it is worth landing with the mask removal rather than after it. Whether it goes in the
+same change is Codex's call and has been put to it as a question, not an assumption.
+
+**TRACK 1: THE HARNESS WAS VALIDATING THE WRONG ROW, and measuring the contract's own object in RAW CODES
+recovers it (2026-09-11, `experiments/peak_line.py`).** The gate, in the owner's words (2026-09-09): "we want
+agreement on the harness about the headswitch. if we get it stable then we can finally lock the harness down. and
+then it just becomes getting codex to build the engine right for capture 1."
+Contract :652 defines the switch line as **the line carrying the peak, the partial line** -- that is **T** -- and
+:656 says **S is NEVER substituted for it**. This file's "the harness's switch line is independently confirmed,
+S exact in 1,013 of 1,013" validates **S**. So the harness has been confirming a row the contract explicitly says
+is not the object, and both engine readers were arguing a partial-line PREDICATE rather than measuring it.
+Measured directly -- largest POSITIVE excursion above each row's own median, in raw codes, positive only because a
+relocated interval is a large NEGATIVE one -- against the engine's T on all 478 readings where the engine has one:
+
+| peak amplitude (raw codes) | n | exact | within one row |
+|---|---:|---:|---:|
+| 6-11 | 47 | 13% | 34% |
+| 15-27 | 47 | 66% | 87% |
+| 52-64 | 47 | **38%** | 64% |
+| 89-120 | 47 | 79% | **100%** |
+| 122-166 | 47 | 72% | **100%** |
+| 167-213 | 47 | 87% | **100%** |
+| 213-236 | 55 | 89% | **100%** |
+
+**Where a peak genuinely exists the harness and the engine agree 79-89% exactly and 100% within one row; where
+there is none the statistic is measuring picture texture and agreement collapses to 13%.** That is exactly the
+structure the contract already has -- :652 for the peak, :655's fallback for its absence -- so the object was
+right and the missing piece was the qualification "is there a peak at all", not a better statistic.
+⚠️ Deciles are reported instead of a cut-off ON PURPOSE: the qualification is the finding, and choosing a threshold
+against these 478 readings would be fitting to the fixture.
+⚠️ **The 52-64 band breaks the monotone at 38% and I have no explanation for it.** Recorded rather than smoothed.
+⚠️ This does NOT adjudicate the six. "Within one row" spans exactly the T-versus-S ambiguity that IS the dispute,
+so the exact column is the one that bears on it, and 79-89% is not agreement.
+
+**AND THE WITHIN-ONE-ROW GAP IS NOT SLOP: EVERY high-amplitude disagreement is a reading where the ENGINE SAYS
+T = S (2026-09-11).** A relay warned that "within one row" would be tempting to read as `T = S-1` with measurement
+slop, when some fraction must be genuinely `T = S` -- the owner's correction, and the contract already carries it
+at :657 ("`T ∈ {S−1, S}` holds only where the one-partial-line relationship is itself established"; "T MAY equal S
+where independent evidence establishes the region begins there with no earlier partial line"). **Checked instead of
+adopted, and the specific claim is refuted while the general warning stands.** Joining the peak-carrying line
+against the engine's own T-versus-S relationship, restricted to a genuine peak (>= 89 raw codes), n = 196:
+
+| peak line − engine T | engine says T = S | engine says T = S−1 |
+|---|---:|---:|
+| −1 | **34** | **0** |
+| 0 | 2 | **159** |
+| +1 | 0 | 1 |
+
+**The disagreement is not spread across the population -- it is exactly the engine's `T = S` readings.** Where the
+engine says `T = S−1` the peak lands on its T in 159 of 161; where the engine says `T = S`, the peak sits one row
+ABOVE it in 34 of 36. So the within-one-row band is not slop and it is not genuine `T = S` agreeing quietly: it is
+the peak witness CONTRADICTING the engine's `T = S` readings, at higher amplitude and in raw codes, and it is the
+same population as the 31 readings recorded above where both engine readers AGREED on `T = S`.
+This is what Codex's engine-side point predicts: the phase reader returns `T = S` when its partial-prefix predicate
+FAILS, and a failed predicate is not positive proof that no partial existed. Measured, that fallback fires on 36 of
+196 high-amplitude readings and the peak disagrees with 34 of them.
+⚠️ **A coincidence worth flagging rather than resolving: the engine's `T = S` rate here is 18% (36 of 196), and the
+arithmetic's predicted rate of GENUINE `T = S` is about 16% -- 10.22 of every 63.56 microseconds unsampled.** Those
+match closely, while the peak says 34 of the 36 are not genuine. Either the peak witness is wrong about them, or
+the agreement of the two rates is chance. Nothing here separates those, and the peak is still not an identified RF
+landmark -- Codex's objection is unretired and this measurement does not retire it.
+⚠️ The relay's general warning DOES stand and is the more useful half: **a detector tuned to "the row above S"
+would be right on most of this population and structurally unable to represent the genuine `T = S` case at all** --
+the same defect as every threshold this project has retired, correct on the population that motivated it and blind
+to the rest. So the agreement figure cannot be driven to 100% and a residual there is not by itself error.
+
+**POSITIVE-ONLY WAS A REAL DEFECT IN MY STATISTIC AND I HAD ALREADY OBSERVED THE THING IT CONTRADICTS -- but
+fixing it does NOT recover dark peaks, and that is the finding (2026-09-11).** I rendered the band, wrote down that
+the peak's "sign alternates between neighbouring units", and then built a POSITIVE-ONLY amplitude statistic. The
+owner's own reason for the original detector being signed-blind is recorded in `rf_peak_census.py`: "it reads pure
+white in some units and pure black in others".
+**Peaks and relocated intervals separate by WIDTH, and the separation is in the data rather than assumed.** Over
+3,824 band-candidate rows the width histogram is bimodal -- a mode at 6-19 samples and a mode at 140-199, with
+**8 readings in the whole 40-119 valley** -- and every excursion at or above 100 samples is NEGATIVE-going, which
+is the relocated interval. So a width bound separates them where a sign filter trades one error for another, and
+32% of narrow high-amplitude excursions are dark, which is what the sign filter was discarding.
+**Re-run signed-blind with that bound, agreement gets WORSE exactly where dark excursions dominate:**
+
+| amplitude (codes) | exact | within one | share dark |
+|---|---:|---:|---:|
+| 21-22 | **0%** | 4% | **98%** |
+| 28-59 | 83% | 98% | **0%** |
+| 87-91 | **21%** | 51% | **77%** |
+| 123-166 | 70% | 98% | 2% |
+| 167-213 | 87% | 100% | **0%** |
+
+⚠️ **So the hypothesis behind the fix is refuted: positive-only was NOT silently dropping genuine dark peaks and
+depressing the low bands.** The bands dominated by dark excursions have the WORST agreement, which argues those
+excursions are mostly dark CONTENT, not peaks. What cannot be concluded is that dark peaks do not exist -- the owner
+observed them and the band render shows polarity alternating between neighbouring units. **The honest position:
+dark peaks exist, and a signed-blind largest-excursion statistic does not isolate them, because it selects dark
+content instead. Separating a dark peak from dark content needs something beyond amplitude and width.**
+**The Track 1 result survives the correction unchanged**, which is why it was worth re-running: at >= 89 codes,
+signed-blind, the peak sits one row above the engine's T on **33 of 35** of its `T = S` readings and on its T in
+**160 of 161** of its `T = S-1` readings. Only 12% of that high-amplitude set are dark. Six new `peak-T = -1`
+readings appear against `T = S-1` where positive-only had none, so the signed-blind version is marginally noisier
+on that axis; reported, not preferred.
+
+**CAPTURE 1 IS LOCKED, AND `(0,0)` EVERYWHERE IS THE CORRECT ANSWER RATHER THAN A SHORTFALL -- scored 2026-09-11
+(Codex implemented at `2a06c9e`, Claude scored).** Plain comb energy, the mandatory-switch condition removed from
+both acquisition routes, and comb confirmation gated to acquisition only, all in one change: **302 locked units of
+919, 296 of 508 from counter 6667, first acquisition at 6811**, against a record of zero locks on every previous
+replay. Source labels, registration eligibility, raw tops, T/S readings, measurability flags and applied pairs
+changed on **zero** units, so the lock is the only thing that moved.
+**All 919 applied pairs are `(0,0)`, and that was flagged to me as "lock acquired but the picture does not move",
+i.e. as a lesser result. Checked, it is not:** the engine's own export over counters >= 6667 measures field 1's
+picture top at **line 23 in 508 of 508 units** and field 2's at **286 in 477 of 508** -- exactly the contract's
+picture origin, so `d = top - origin = 0` is the RIGHT answer for this source and applying it is correct behaviour,
+not an absence of behaviour. The 31 field-2 readings at 287-295 are the dark-scene-top class this file already
+records as content rather than displacement, which the contract says must NOT move the crop; holding `(0,0)`
+through them is the intended behaviour too.
+⚠️ **So capture 1 cannot demonstrate corrective movement, and no replay of it ever will.** That is a property of
+the source, not of the engine: a capture whose picture never leaves the origin exercises acquisition and holding
+but not correction. Corrective movement has to be demonstrated on captures 2-4, where the EP recording sits at
+(+2,+2) and the SP at (+1,0)/(+2,0). Reporting "all pairs (0,0)" as a shortfall on capture 1 would be scoring the
+engine against something this fixture cannot show.
+⚠️ **And the owner's 09:18:05 acceptance criterion -- "a valid result should keep the first 6 lines vertically
+stable in position... always" -- is therefore passed TRIVIALLY here and must not be reported as evidence.** With
+`(0,0)` applied on every unit the 486 window never moves, so the first six lines cannot move; the criterion is
+satisfied without being exercised. It becomes a real test only on a capture where the applied offset changes.
+⚠️ Unretired by this: the synthetic pan still gives a wrong `+2` at acquisition, and Codex carries it as a known
+open acquisition failure rather than defending against it.
+
+**PICTURE IN THE BLANKING: the half of the owner's definition that NO instrument here measured, and it dissolves
+the T = S readings (2026-09-11, `experiments/picture_in_blanking.py`).** His definition has been symmetric since
+2026-09-10 12:43:15 -- "either picture ending up in the blanking window or blanking ending up in the picture
+window. full stop." Every instrument this project built looks at ONE direction only: the peak measures AMPLITUDE,
+the run reader measures PRESENCE, the phase reader's partial-prefix predicate measures ONE END -- and all three
+hunt a blank-level run INSIDE the delivered window. **None measures POSITION, and none looks for picture pushed
+into the retrace interval**, which is why his standing doubt was "I still dont think they are measuring timing
+correctly".
+Measured on the peak-carrying row, inside its own expected blanking region, reference learned per unit per field:
+
+| group | n | elevation above blank | sd |
+|---|---:|---:|---:|
+| **control: an ordinary picture row** | 111 | **0.5 codes** | **0.6** |
+| engine says T = S, peak one row ABOVE its T | 22 | **18.3 codes** | 4.9 |
+| engine says T = S−1, peak ON its T | 88 | **18.9 codes** | 4.8 |
+
+**The two groups are indistinguishable -- 18.3 against 18.9 -- and both sit about thirty times the control.** So
+the peak-carrying row carries picture in its blanking whether the engine calls it T or puts T one row lower. By the
+owner's own symmetric definition it is a head-switch row in BOTH cases, including all 22 where the engine returned
+T = S.
+**That answers his dare** -- "if they are both treating horizontal blanking timing... on EITHER SIDE properly,
+those discrepancies shouldn't exist and I dare it to produce a rendered luma png that shows otherwise". Treating
+both directions and both ends, the discrepancy does not survive: it is an artefact of a prefix-only predicate, not
+a disagreement about the signal. The disturbance on these rows sits at the TRAILING end -- the expected blanking
+region begins past column 700 -- where a leading-end test finds nothing and returns T = S.
+⚠️ This does not make the peak an identified RF landmark; Codex's objection is still unretired. What it does is
+remove the need for the peak to adjudicate anything: **picture-in-the-blanking is a positive timing observable on
+the row itself**, measured against the source's own expected extent, and it agrees with the peak on all 110
+high-amplitude readings without depending on it.
+
+⚠️⚠️ **THE ELEVATION FIGURES ABOVE ARE A SPATIAL SUMMARY AND THE OWNER CALLED IT (2026-09-11): "again its dare is
+measuring wrong... it is trying to smooth a temporal band spatially... again".** Mean elevation across the expected
+blanking region collapses a temporal event into an amplitude -- the same category error as the peak statistic
+retired one entry above, one level in: the peak reported HOW BIG, this reported HOW ELEVATED, and neither reports
+WHEN. His argument is not a niceness: picture pushed into the retrace interval arrives at a PARTICULAR TIME and
+occupies PART of the interval, so two rows where it intrudes 20 samples and 140 samples return the same mean.
+**Re-measured as a BOUNDARY POSITION** -- the sample at which the row settles into blanking, against where this
+source's own good picture lines put it (`experiments/blanking_boundary.py`):
+
+| group | n | boundary phase, median | p10 | p90 | NO boundary in the whole sweep |
+|---|---:|---:|---:|---:|---:|
+| control, ordinary picture row | 111 | **+0** | −4 | +2 | **3** |
+| engine T = S, peak one row above | 22 | −225 | −322 | −127 | **20** |
+| engine T = S−1, peak on T | 88 | −533 | −638 | −128 | **75** |
+
+**The control validates the instrument: 108 of 111 ordinary rows put their blanking exactly where the source says,
++0 with a p10-p90 of −4 to +2.** And the disputed rows do not: **20 of 22 and 75 of 88 have NO blank-level run
+anywhere in the delivered window at all**, so the interval is not merely late or early -- on most of these rows it
+is not in the window.
+⚠️ **He was right that the scalar hid a real difference**: where a boundary IS found the two groups sit at −225 and
+−533, phases that differ by 300 samples while the mean-elevation statistic read them as 18.3 against 18.9. **But
+those medians rest on 2 and 13 readings respectively and must not be leaned on.** The finding that carries weight
+is the absence, not the two medians.
+⚠️ **And the first version of the boundary measurement made the SAME error a third time**: it searched forward from
+`b0 − 60` and returned "absent" for all 22 and 87 of 88, because an interval arriving 660 samples early falls
+outside a window bounded around where it was expected. Bounding a temporal quantity spatially, in the instrument
+built to stop doing that. The search now covers the whole sweep.
+⚠️ Not yet done, and it is the second dispositive test his 09:41:23 continuity ruling implies: whether the
+transient's column WALKS continuously into these units, or the row changes while the column sits still. The band
+render shows the walk (340 -> 660 -> 160 across 6691-6714) but it has not been joined to the disputed readings.
+
+**THE RECOVERY RAMP: real signal, but the control shows it is partly an artefact of selecting an extremum
+(2026-09-11).** The owner's discriminator for the dark-peak problem: "dark peaks (and any peaks) always have a luma
+ramp... because duh... its temporal signal... so to the right of the peak the luma will either ramp up or down
+depending on if its a dark or light peak", which is his 2026-09-05 "the AGC and the DC clamp see a step and settle
+over the next line or two" applied within the line. A transient is followed by the signal RECOVERING; dark content
+is just content sitting at a level. Measured as the slope of the 48 samples after each excursion ends, signed so
+positive means returning toward the row's baseline:
+
+| population | n | median slope | share recovering |
+|---|---:|---:|---:|
+| band, light, amp >= 89 | 258 | +1.209 | **94%** |
+| control picture rows, light, amp >= 89 | 2,705 | +1.042 | **63%** |
+| band, dark, amp >= 89 | 95 | +0.419 | **83%** |
+| control picture rows, dark, amp >= 89 | 635 | +0.133 | **64%** |
+
+**The separation is real -- 94 against 63 for light, 83 against 64 for dark -- but it is not categorical, and the
+control says why: ANY selected extremum is followed by samples regressing toward the median**, so a 63-64%
+"recovery" rate appears on ordinary picture content that contains no transient at all. The statistic is therefore
+measuring the settling behaviour AND the selection artefact together, and the ramp as computed here cannot be used
+as a qualification without separating them.
+⚠️ **Dark is the weaker case, which is the opposite of what was hoped:** the light gap is 31 points, the dark gap
+19. So this does not yet rescue dark peaks, and the amplitude floor cannot be dropped on the strength of it.
+⚠️ **What would separate them, not yet run:** a matched control at non-extremal positions, or monotonicity of the
+ramp rather than its mean slope; and the test that actually decides it -- whether REQUIRING a ramp improves
+peak-line agreement with T among dark excursions specifically. The mechanism is sound and the owner's reasoning
+from the temporal frame is right; this particular estimator of it is confounded.
+
+**CORRECTED SAME DAY, and the correction is his: "you only want to measure the excursion coming off the identified
+peak UNTIL THE RAMP STOPS".** The fixed 48-sample window above is a SPATIAL window -- an arbitrary distance -- and
+that is exactly why the control recovered 63% of the time: over any fixed span a selected extremum drifts back
+toward the median. **The ramp is settling behaviour, so its LENGTH is the observable.** Follow the signal from the
+excursion's end while it keeps approaching baseline; stop when it stops:
+
+| population | n | ramp duration, median | p90 | recovered |
+|---|---:|---:|---:|---:|
+| **band, light, amp >= 89** | 265 | **37 samples** | 52 | 78 codes |
+| control picture rows, light | 2,705 | **3 samples** | 24 | 60 codes |
+| band, dark, amp >= 89 | 95 | **4 samples** | 18 | 58 codes |
+| control picture rows, dark | 635 | 9 samples | 27 | 63 codes |
+
+**A twelve-fold separation on the light peaks -- 37 samples against 3 -- where the fixed window gave 94% against
+63% and no clean cut.** Same data, same excursions; the only change is measuring the ramp temporally instead of
+over a fixed distance. 37 samples is about 2.7 microseconds of sweep, which is the AGC and DC clamp settling, and
+ordinary picture content's largest excursion stops recovering after three.
+⚠️ **And it answers the dark question in a direction nobody proposed: the band's dark excursions do NOT carry the
+settling signature -- 4 samples against the control's 9, SHORTER than content.** So the dark narrow excursions this
+statistic finds in the band are not dark peaks; they are dark content, or the leading edge of the relocated
+interval. That contradicts neither the owner's observation that peaks read black in some units nor the band
+render's alternating polarity -- it says the largest-dark-excursion statistic does not FIND those, which is the
+conclusion the amplitude work reached and now has a mechanism.
+**This is the "something beyond amplitude and width" recorded above as missing.** It is the DURATION of the
+recovery, and it is visible only when the ramp is measured as a time rather than over a window.
+
+**ONE-SIDED MOTION IS NEVER A DISPLACEMENT -- owner ruling, 2026-09-11, and the engine gets it wrong in BOTH
+directions today.** His words: "top of picture that becomes black without the bottom of the geometry moving should
+be a hold, not unlock geometry, because the levels above block are genuinely not stable in this capture", then the
+amendment that generalises it: **"hold not unlock and don't shift. only one part of the geometry shifting without a
+corresponding shift on the other side is a hold. not a shift."**
+So whenever one boundary moves and the other does not move correspondingly: **the lock STANDS (not unlocked, not
+released, not re-acquired) AND the crop DOES NOT MOVE.** A rigid move -- both boundaries together, same amount --
+is what licenses a shift; a one-sided move licenses neither.
+**Verified in the code at HEAD, after Codex's comb change** (`field_registration.c:810-830`):
+`geometry_d = measurement->top - origin`, applied whenever `geometry_measurable && crop_fits_raster`. **The bottom
+is never consulted** -- `expected_bottom` is computed at :812 but only feeds `lines_lost`. So a top-only move
+shifts the crop today, which the ruling forbids; and a top-only change is separately dispositioned `LockBroken`,
+which the ruling also says is wrong. Both halves need repairing, not one.
+**His reason is a measurement and it reproduces independently** (146 title-card units, 6665-6810, row means):
+field 1 reads **4.0 / 4.7 / 10.7 / 10.1 / 10.4 / 16.5 / 27.3** on lines 23-29 and field 2 **2.0 / 10.2 / 10.3 /
+10.7 / 13.5 / 27.0** from 286 -- a flat plateau at the deck's black (~10.1-10.7) before the box bar settles at
+26-27. The top rows are dark and their darkness tracks the card's exposure.
+**Consequence, measured over those same 146 rasters -- the "top" is whatever the threshold says it is:**
+
+| threshold above blanking | field 1's top | field 2's top |
+|---|---|---|
+| 3 | **line 23 in 74, 24 in 43, 25 in 29** | 287 in 146 |
+| 6 | 25 in 139, 24 in 7 | 287 in 146 |
+| 8 | 25 in 110, 28 in 26, 27 in 6 | 287 in 110, 288 in 14, 289 in 13 |
+| 12 | 28 in 127, 25 in 17 | 291 in 84, 290 in 45, 287 in 15 |
+
+**Field 1's top ranges over five lines (23 to 28) on identical rasters**, and at threshold 3 a single threshold
+gives three different answers across the 146 units. ⚠️ And it moves with the threshold's BASIS as well as its
+value: this table is relative to the device's regenerated blanking (~1.38), and a relayed version using an absolute
+cut put field 1 at line 23 in 146 of 146 at threshold 3 where the relative one splits 74/43/29. Same rasters, same
+nominal threshold, different answer -- which is a second instance of the same fragility and strengthens the ruling
+rather than contradicting it.
+⚠️ **The v9 reversal is NOT a counter-argument but the distinction must be written into the contract or the
+regression returns.** This file records that "the top alone never moves the crop" was tried in v9 and reversed
+because it suppressed 2,616 caption placements. A caption placement is an INDEPENDENT ABSOLUTE GAUGE, not a
+one-sided geometry observation, so the ruling does not touch it -- but nothing in the wording says so, and the
+last time that went unsaid the rule was reversed wholesale.
+⚠️ It also confirms a scoring call made earlier tonight: capture 1's 31 field-2 readings at lines 287-295 are the
+dark-scene-top class, and holding `(0,0)` through them is now the ruled behaviour rather than my inference.
 
 **CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
 FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
