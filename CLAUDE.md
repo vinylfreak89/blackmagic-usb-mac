@@ -3064,9 +3064,22 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   ⚠️ **Stated accurately rather than flatteringly, because the peer's version was the generous one and this is the
   same discipline**: control 3 did NOT add a direction — 1 and 3 produce the same failure by different ROUTES. Its
   value is that its route is the one that will actually occur, since nobody deletes a queue row and everybody
-  eventually adds a question and forgets the list. And a gap remains: no control produces `QUEUE ANCHOR BROKEN`
-  alone, because with one row per marker a broken anchor always orphans its marker too. That is a limit of the
-  current coverage, not a proof the case is unreachable. That is the argument that it is structural rather than either being sloppy.
+  eventually adds a question and forgets the list.
+  **The uncovered case, framed as the peer eventually framed it and it is the better framing:** no control produces
+  `QUEUE ANCHOR BROKEN` alone, and that is not an omission — with ONE row per marker a broken anchor necessarily
+  orphans its marker too, so the case is unreachable **by the shape of the data** rather than untested by neglect.
+  **Which means it becomes reachable the day the queue holds two rows for one marker, and the control set would
+  silently stop covering it.** So the shape is now ASSERTED by the instrument (`COVERAGE ASSUMPTION BROKEN`),
+  exercised by duplicating a row. **The general move is worth more than the instance: when a control set is
+  complete only because of a property of the current data, assert that property — otherwise coverage lapses without
+  anything failing**, which is this whole family again one level up.
+- **The two-stores failure appeared THREE distinct times in one evening, and the third was in the documentation of
+  the fix for the first (2026-09-11, the peer's count).** Contract versus queue: the open questions lived in one
+  and the list of them in the other. Note versus guard: CLAUDE.md described a guard that did not exist. Table versus
+  controls: a table in CLAUDE.md described what the controls do, unchecked against what they do. **Every instance is
+  the same shape — two places holding one truth, with nothing keeping them in step, and the one that gets READ is
+  not the one that is right.** The repair is always to make the reading side execute the other rather than restate
+  it: pointers not copies, a probe that runs the guard, a probe that runs the table's mutations. That is the argument that it is structural rather than either being sloppy.
 - **A pipeline reports its LAST command's status, and the usual guard against that is a bash-ism which is SILENTLY
   EMPTY in zsh — sixth, seventh and eighth members of the family (2026-09-11).** The peer session ran
   `python3 check.py old.md | head -8; echo "exit=$?"`, read **exit=0** from `head` rather than from python, and

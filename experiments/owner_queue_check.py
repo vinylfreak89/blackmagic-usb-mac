@@ -94,6 +94,27 @@ def run(contract_path=None, queue_path=None, quiet=False):
 
     uncovered = [(ln, txt) for ln, txt in marks if ln not in matched_marks]
 
+    # THE ASSUMPTION THE CONTROL SET RESTS ON, checked rather than assumed (peer session, 2026-09-11).
+    # No control produces QUEUE ANCHOR BROKEN alone, and that is not an omission: with ONE row per
+    # marker, a broken anchor necessarily orphans its marker too, so the case is unreachable by the
+    # shape of the data. The day the queue holds two rows for one marker it becomes reachable and the
+    # control set would silently stop covering it. So the shape is asserted here, loudly.
+    per_marker = {}
+    for marker_form, phrase in anchors:
+        i = contract.find(phrase)
+        if i < 0:
+            continue
+        ln = contract[:i].count("\n") + 1
+        near = [m for m in marks if abs(m[0] - ln) <= 6]
+        if near:
+            per_marker.setdefault(near[0][0], []).append(phrase)
+    doubled = {ln: ps for ln, ps in per_marker.items() if len(ps) > 1}
+    if doubled and not quiet:
+        print("  ** COVERAGE ASSUMPTION BROKEN: a marker now has more than one queue row.")
+        print("     'QUEUE ANCHOR BROKEN alone' becomes reachable and no control covers it.")
+        for ln, ps in doubled.items():
+            print("     contract line %d has %d rows" % (ln, len(ps)))
+
     if not quiet:
         print("contract: %s" % (contract_path or CONTRACT))
         print("queue:    %s" % (queue_path or QUEUE))
@@ -105,7 +126,7 @@ def run(contract_path=None, queue_path=None, quiet=False):
         for phrase, why in stale:
             print("  ** QUEUE ANCHOR BROKEN: %r" % phrase[:60])
             print("     %s" % why)
-    return 1 if (uncovered or stale) else 0
+    return 1 if (uncovered or stale or doubled) else 0
 
 
 def selftest() -> int:
