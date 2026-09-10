@@ -2255,6 +2255,27 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Owner-ruling proposal review after the plain comb (2026-09-11, harness `70c6746`, merge `c9dbddf`).**
+`docs/reports/2026-09-11_coherence_rulings_review.md` records the per-item agreement and limits; no contract or
+engine code was changed. The invalid-input marker can narrow to the already queued recovery question. The
+one-line head-switch exclusion must be removed, and positive normal timing is the absence test, not failure of
+a detector. Caption-only valid-VBI evidence must name its source provenance and candidate coordinates rather
+than promote generated 21/22 or renderer-composed rows to an independent confirmation. The source-VBI survival
+sentence needs scope, not a claim that a 486 output instruction makes overwritten input samples survive.
+
+The new one-sided-motion ruling is accepted for tracking the same geometry. A synthetic test of the current
+engine proves the shift defect: top 23→24, bottom held at 259, applied pair (0,0)→(1,0). **The lock stays set**;
+`LockBroken` has no live assignment in the current engine. The contrary incoming claim below is corrected in
+place. A separate `box_detected` reset exists, and the contract's independent box-invalidation rules need an
+explicit scope distinction before a blanket “never unlock” amendment; the output-policy question is queued.
+Full-window geometry remains a valid initial candidate and a switch is not made mandatory again by coherence.
+
+**The peer withdrew its entire Part 2C during this review after an owner correction.** Tape line 22 is a source object whose
+surviving position is observed, not a fixed delivered row to inspect. No renumbering to 23/286 or substitution
+of “first pass-through position” is proposed. The queue records the withdrawal and the instrument is untouched.
+Whole-row standard deviation includes picture structure: the supplied 0.48 versus 2.24–47.08 separation alone
+does not identify tape blanking or its line identity. The report preserves that separate measurement limit.
+
 **Plain comb and first capture-1 locks (2026-09-11, engine implementation).**
 The owner corrected the brief during implementation: "the comb does not need a switch to open. it is one of
 the ORs" and "the switch sets or fixes geometry only IF IT IS PRESENT." The mandatory switch condition is
@@ -2985,8 +3006,8 @@ conclusion the amplitude work reached and now has a mechanism.
 **This is the "something beyond amplitude and width" recorded above as missing.** It is the DURATION of the
 recovery, and it is visible only when the ramp is measured as a time rather than over a window.
 
-**ONE-SIDED MOTION IS NEVER A DISPLACEMENT -- owner ruling, 2026-09-11, and the engine gets it wrong in BOTH
-directions today.** His words: "top of picture that becomes black without the bottom of the geometry moving should
+**ONE-SIDED MOTION IS NEVER A DISPLACEMENT -- owner ruling, 2026-09-11; current shift defect verified,
+claimed current `LockBroken` defect withdrawn after code and synthetic checks.** His words: "top of picture that becomes black without the bottom of the geometry moving should
 be a hold, not unlock geometry, because the levels above block are genuinely not stable in this capture", then the
 amendment that generalises it: **"hold not unlock and don't shift. only one part of the geometry shifting without a
 corresponding shift on the other side is a hold. not a shift."**
@@ -2996,8 +3017,13 @@ is what licenses a shift; a one-sided move licenses neither.
 **Verified in the code at HEAD, after Codex's comb change** (`field_registration.c:810-830`):
 `geometry_d = measurement->top - origin`, applied whenever `geometry_measurable && crop_fits_raster`. **The bottom
 is never consulted** -- `expected_bottom` is computed at :812 but only feeds `lines_lost`. So a top-only move
-shifts the crop today, which the ruling forbids; and a top-only change is separately dispositioned `LockBroken`,
-which the ruling also says is wrong. Both halves need repairing, not one.
+shifts the crop today, which the ruling forbids. **The original assertion that it also executes `LockBroken`
+was wrong at this HEAD**: that value occurs only as an enum and display name, not an assigned disposition.
+Codex's synthetic test of the current engine changes top 23→24 with bottom 259 unchanged and gets applied
+(0,0)→(1,0), lock still set, reason `SwitchCountConflict`, comb `not_evaluated`. The live categorical
+`box_detected` reset is a separate path; it does not establish a generic top-only unlock. Both placement and
+lock retention must be tested in the eventual coherence repair, but only the placement failure is reproduced
+here. The detailed probe and contract-scope question are in `docs/reports/2026-09-11_coherence_rulings_review.md`.
 **His reason is a measurement and it reproduces independently** (146 title-card units, 6665-6810, row means):
 field 1 reads **4.0 / 4.7 / 10.7 / 10.1 / 10.4 / 16.5 / 27.3** on lines 23-29 and field 2 **2.0 / 10.2 / 10.3 /
 10.7 / 13.5 / 27.0** from 286 -- a flat plateau at the deck's black (~10.1-10.7) before the box bar settles at

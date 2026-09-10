@@ -584,16 +584,22 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
-### PROPOSAL — the coherence ruling's 6(b) names the wrong line, and the contract already says why
+### WITHDRAWN — Part 2C's proposed line-number correction (not an owner question)
 
-His coherence ruling (2026-09-11) gives one exception to the hold: the tape's own vertical interval entering the
-picture is proof positive the tape's geometry changed, in two forms — (a) a waveform becoming decodable on line 20
-or 21, and **(b) "the tapes own blanking which is discrete from device blanking enters on line 22"**.
+The peer withdrew this entire proposal during Codex's review of `70c6746`, after the owner corrected the
+source-object/delivered-position confusion. The original proposal is preserved in that commit, not operative here.
+The owner's clarification, relayed in the withdrawal:
 
-**The mechanism is sound and its discriminator is measured and strong. The LINE is off by one.**
+> "the line 22 is when the tape's line 22 wanders into the image... NOT the regenerated line 22. of course thats
+> going to always be stable... thats another well no fucking duh"
 
-**Measured, per unit, against each unit's own device blanking rows** — a per-unit comparison against a measured
-reference, never a typed-in cut, as *Source-measured levels* and rule 4 require:
+**No amendment to 6(b), no renumbering to 23/286, and no replacement with “first pass-through position”.** The
+tape's own blanking must be positively identified wherever it survives inside the picture; its position is a
+readout, not a fixed search location. The original “off by one” finding is withdrawn, not a new owner question.
+The instrument is retained unchanged.
+
+The peer's reported measurements of fixed **delivered positions** remain measurements, not evidence for a
+correction to the owner or a per-unit tape-VBI presence test. Codex did not remeasure this census:
 
 | | capture 1 (card) | fixture A | capture 4 (SP, V-stab off) | device's own rows |
 |---|---:|---:|---:|---:|
@@ -602,25 +608,13 @@ reference, never a typed-in cut, as *Source-measured levels* and rule 4 require:
 | **line 23** above device blank | +1.77 | **+42.21** | **+109.36** | — |
 | line 23 row sd | 2.24 | **47.08** | **33.58** | 0.48 |
 
-**Line 22 is device blanking on all 1,092 field-readings across three captures — p10 to p90 of ±0.01, with the
-device's own dither sd of 0.48 exactly.** Nothing the tape carries reaches it.
-**And the contract already states the reason**, §2's table at `:349`: `| 22 | 18 | 281 | blanking, Y 1.4 |
-Shuttle |` — line 22's origin is the Shuttle, unconditionally, unlike lines 20 and 21 which are qualified "when its
-decoder has sync". **So the tape's blanking cannot enter on line 22: the device overwrites it.**
-
-**Where it DOES become visible is line 23**, the first pass-through position — and CLAUDE.md already records the
-observable there, on fixture A's displaced intro: "the tape's own black line 22 (Y ≈ 4–7, above the 1.4 blanking)
-sits at row 19", and row 19 is NTSC **line 23**. His observable is real; it surfaces one line below where the
-wording puts it, because the device destroys the row above it.
-
-**RECOMMENDATION:** 6(b) should read **line 23 (and 286 in field 2)**, or better, "the first pass-through
-position", so it stays correct if the raster description ever changes. The discriminator itself needs no
-amendment — device-written blanking carries the dither sd of 0.48 and source-carried content at line 23 measures
-2.24 to 47.08, a four- to ninety-eight-fold separation in noise character alone, per unit, with no level typed in.
-
-⚠️ **Its strength varies with content and that bounds it:** on capture 1's dark card top, line 23 sits only +1.77
-above blanking at sd 2.24 — separable, but not by the margin fixture A and capture 4 give. A source whose picture
-begins genuinely black at line 23 is the case where 6(b) is weakest, and it has not been exercised.
+The quoted 1,092 field-readings establish the reported behaviour of the device-written delivered line 22;
+they do not follow the tape's line 22. A cross-unit summary of delivered line 23 mixes units carrying different
+source objects and does not establish presence of tape blanking in any particular unit.
+**Separate Codex measurement limit:** whole-row sd includes picture structure, edges and horizontal blanking,
+not just noise. The table alone does not validate a device-versus-tape provenance classifier, and a row being
+unlike the device control does not identify it as tape blanking rather than ordinary picture. Preserve the
+observations, but do not call the 4x–98x range a demonstrated tape-VBI identity discriminator.
 ⚠️ I have NOT verified 6(a) — whether a waveform becomes decodable on line 20 or 21 — and those lines are
 conditionally Shuttle-written ("when its decoder has sync"), which is a different situation from line 22's
 unconditional one and may not carry the same conclusion.
@@ -683,6 +677,22 @@ and to be put in plain words:
 > picture again?"
 
 ⚠️ Do not import rule 5's shape to answer it: that would import rule 5's held-crop behaviour with it.
+
+### PROPOSAL — scope of the new one-sided hold versus established box invalidation (Codex review)
+
+The new ruling says “hold not unlock and don't shift” when only one part of the geometry moves. Rules 8a/12
+already release geometry and its lock when picture is positively established in a previously identified bar,
+or when qualified evidence invalidates the held box. They are different events if the new ruling concerns
+tracking the same outer geometry; a blanket “any one-sided movement never unlocks” fails to distinguish them.
+
+Recommended disposition: preserve the lock and placement on unilateral tracking changes; retain the independent
+box-invalidation rule when the held box is positively invalidated, measuring its replacement separately. The
+output-policy question, not an instrument question, is:
+
+> If real picture appears inside an area previously confirmed to be a letterbox bar, should that still require
+> a new lock under the existing box rule, even when the other edge stays put?
+
+No contract or engine change is made on this proposal. See `docs/reports/2026-09-11_coherence_rulings_review.md`.
 
 ### ✅ 2026-09-11 — ALL SIX ANSWERED. Relayed, not heard directly by this session.
 
