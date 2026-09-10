@@ -3009,6 +3009,24 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   hazard in the same family and was not what happened here; a line carrying two occurrences is the case it hides.)
   Same shape as `tail` on a live capture and `&&` after a verification: a command that succeeds quietly while
   answering a question you did not ask.
+- **Three independent reads, three different errors, none caught by the agent that made it (2026-09-10) — this is
+  the argument for the cold-read discipline, and it is worth more than any of the fixes.** On one clause about an
+  unresolved boundary difference: the watchdog wrote an either/or ("will either never qualify a one-row change or
+  qualify a five-row artefact"), Claude inherited it and added a 2-10x ratio as though magnitude settled
+  separability, and Codex showed that **magnitude alone neither proves nor disproves it** — an independent
+  observable can separate a large artefact from a small signal, and the census demonstrates the TESTED STATISTIC
+  failing, not that no statistic can succeed. Each agent's error was invisible to itself and obvious to the next
+  reader.
+  ⚠️ **And one of the errors was two passages of ONE FILE contradicting each other.** CLAUDE.md carried
+  "separated on one unit only" and, further down, the threshold sweep showing the box verdict holding at 4.0, 4.5
+  and 8.0 with captures 2-4 at zero throughout. The pessimistic sentence was quoted as the sharpest finding of a
+  sweep by an agent that had read the other passage an hour earlier. **The same defect the cold read exists to find
+  — sentences that read correctly alone and contradict each other together — occurs inside a single agent's read of
+  a single file**, so the discipline is not only for documents someone else wrote.
+  The reframing that survived all three passes was Codex's, and it is the one to keep: a shared adjective is not a
+  defect. The defects are a use with **no identifiable criteria**, and evidence satisfying one qualification being
+  **silently credited to another** — a failure mode the other two framings could not express, because both were
+  arguing that the tests must differ rather than asking what happens when one is quietly substituted for another.
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
   Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
   answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back
