@@ -37,6 +37,12 @@ signal is 258 and field 2's is 521, which are exactly NTSC lines 262 and 525 - t
 line of each field in SMPTE RP-202. So the row-to-line map holds inside each field's active
 picture and means nothing past it; those rows are labelled by REGION here rather than given a
 line number that does not exist.
+The written-blanking rows carry NOTHING from the tape, measured rather than assumed: over 38 units
+whose own picture brightness ranges 17.4 to 119.1, their per-unit mean is 1.3818 and 1.3750 with a
+standard deviation of 0.0103 and 0.0080, and its correlation with that brightness is -0.031 and
++0.097 (an ordinary picture row: +0.989). Their bytes do differ unit to unit - 38 distinct patterns
+of 38 - but only as dither; the padding rows are byte-identical in all 38. So neither is readable
+evidence, and the difference between them is only which filler the device chose.
 
   tear_column_census.py <capture.tpc> [--repair] [--from N] [--rows LO HI]
   -> counter, field, line, mean, lead, trail, run_len, run_col, state, region
