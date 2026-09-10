@@ -2670,8 +2670,17 @@ reaches the field edge by construction and lumps the bar, the head switch and th
 **The replacement is a LEVEL test, and the levels separate cleanly** (field 1, three boxed units, per-line mean and
 the census's own `h`): the box bar reads 19–23 at h 2.0–3.5, the head-switch rows 17.0–17.6 at h 6.0–6.8, the
 device's blanking rows below them 1.37–1.38 at h 0.37. On counters 6700, 6731 and 6760 the bar runs continuously
-into the switch with NO blanking interval between them, so his test passes on capture 1 — for a reason visible in
-the levels rather than in an extent comparison. Three units is not a census; the population has not been run.
+into the switch with NO blanking interval between them — bar, then switch, then the device's blanking rows, nothing
+foreign in between — so his test passes on the units measured. ⚠️ **But joined to the saved reference's own T
+(the band's TOP line, which is the quantity the test names) per counter and per field, the three units do not agree
+with each other** (Codex's correction to a Claude claim that they coincided — the first version compared a level
+reading on 6731 against a T from 6687, different units): **6731** T=260 and bottom=259 against a bar whose last line
+reads 259, so the instruments agree and the box meets the band; **6760** T=260 against a bar whose last line reads
+260 (mean 22.49, h 3.49) with the switch level starting at 261, a one-line disagreement about where the band begins
+— contact holds either way, the boundary does not; **6700** has **T = -1, unmeasurable**, so the test cannot be
+asked of it at all. So contact is supported on the units where it can be asked, the boundary line is
+instrument-dependent, and one unit in three is unaskable. Three units is not a census; the population has not been
+run, and the population version must join on T per counter and field rather than on a level-derived edge.
 The test to build: from the content bottom downward, the run at the bar's own level, and whether it reaches the
 switch's first line without a distinct-level interval intervening.
 The superseded table is kept below because its method is the thing that was wrong, and the raw box extents in it
