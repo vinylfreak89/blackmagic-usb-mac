@@ -98,10 +98,32 @@ was running Chrome at 105% CPU, WindowServer at 41%, the Claude app at 37% and a
 this host under conditions nobody wrote down.** A timing without its load is not reproducible, and the
 budget it is compared against assumes a quiet core.
 
-⚠️ **The first `FIELDREG-BENCH` reading of this session — 20.797 ms median, 46.778 ms p95 for
-`fieldreg_process` alone — was taken under that load and is NOT reported as an engine figure.** It is
-far above every number in the record (1.35 ms, ~1.4 ms, 4.853/24.293 ms, 9.617/16.603 ms), and the
-honest reading is that it measures the host, not the engine.
+**3. `fieldreg_process` alone measures ~21 ms median and ~47 ms p95 here, reproducibly — and that is
+far above every figure in the record.** Two runs, `FIELDREG-BENCH` (the engine called unconditionally,
+10,000 samples):
+
+| run | load before | median | p95 | load after |
+|---|---|---:|---:|---|
+| 1 | 6.75 | 20.797 ms | 46.778 ms | — |
+| 2 | 5.99 | 20.992 ms | 47.851 ms | 4.84 |
+
+⚠️ **My first instinct was to dismiss this as host load, and the second run argues against that.** The
+two medians agree to within **0.9%** across different load, which is not the signature of a figure
+dominated by contention. The honest statement is therefore stronger than "it measures the host" and
+weaker than an engine result: **it is reproducible on this host under load, and its cause is not
+established.**
+
+Against the record — 1.35 ms and ~1.4 ms (rounds 8 and 10), 4.853/24.293 ms (the retired v9 engine,
+already called over budget), 9.617/16.603 ms (native classifier+engine) — 21 ms median is far above
+all of them. Three candidates and this document settles none: the engine is slower than when those
+were taken; `FIELDREG-BENCH` measures something the other figures did not; or a quiet core would
+produce a different number.
+
+⚠️ **If it survives a quiet machine, one consequence is immediate: 47 ms p95 exceeds the 33.37 ms unit
+period**, so at p95 the engine alone would not keep up with realtime, before the parser, classifier,
+publisher, audio path and queues are counted. **That is a conditional, not a claim** — the quiet-host
+measurement has not been taken, and taking it needs a machine not running Chrome and a trading
+platform.
 
 ⚠️ **Nothing above is a measurement of the live engine.** It is a statement of what the existing
 measurement covers, what it does not, and what conditions any number here would need to carry.
