@@ -46,9 +46,14 @@ CONTROL_COMMIT = "e6b224f"
 # something the STRUCTURE carries -- quotation rather than a character window, a quoted phrase rather
 # than a line number. This check has no such repair available, so the gap is stated instead.
 PAIRS = [
-    ("the owner's question about absence",
-     "Whether this condition can be satisfied at all on such a source is\n  his to rule on.",
-     "the DISPOSITION when absence cannot be established, not whether it can be"),
+    # ⚠️ RETIRED 2026-09-11, not repaired: this subject's QUESTION was ANSWERED by the contract
+    # amendment `1d124e9`, so both its withdrawn phrasing and its replacement are gone from the
+    # document. A pair whose subject no longer exists cannot be checked, and updating the expected
+    # text to whatever replaced it would silently convert a superseded-claim check into a
+    # does-this-sentence-exist check. The owner's answer -- neither a head switch nor other valid
+    # picture recordable means the registration does not run -- is a RULE now, not a pending
+    # question, and rules are not this instrument's subject.
+    # ("the owner's question about absence", <withdrawn>, <replacement>),
     ("the provenance discriminator",
      "a source row must vary",
      "not a universal discriminator"),

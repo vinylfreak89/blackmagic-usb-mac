@@ -584,6 +584,174 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### THE FOUR CARRIED QUESTIONS — answered. Two resolved, one landed, one absent, one I cannot place.
+
+**R10 — the harness calls S the switch line. ANSWERED AND FIXED.** Contract `:652` defines the switch line as T,
+`:656` says S is never substituted for it. **The defect is in the RECORD, not the instrument**:
+`switch_geometry.py:411` already reads "the top switch line: S−1 where S−1 carries the partial line's evidence…
+else S", which is correct. What was wrong is CLAUDE.md's heading "the harness's switch line is confirmed, S exact
+in 1,013 of 1,013" — a true measurement under a name the contract gives to a different row. **Corrected in place**:
+the heading now reads "the harness's BOUND S", with the whole entry flagged. That is property 2's naming half done;
+the measurement half — representing T and S as two quantisations of one instant — is still not yet.
+
+**R12 — the liftoff mechanism, and whether the instruments reflect it. ANSWERED: NO, and the A/B has NOT been
+used.** Two honest halves:
+- **The rebuild does not treat the peak at all.** Property 6 on the scorecard is PARTIAL for exactly this reason:
+  `rf_peak_census.py` reports the column and `band_render.py` showed it drifting, but nothing in the rebuild uses
+  it, so the mechanism is not reflected in any instrument — it is still prose.
+- **The V-stabilize A/B has NOT separated the two accounts, and CLAUDE.md already records why**: "The three
+  captures do NOT establish that the line TBC causes the misregistration… the within-capture test (does field-1
+  horizontal timing predict which units misregister?) has not returned a usable measurement yet — the first
+  instrument counted integer blanking samples and pinned at its quantization floor." **The quantization floor is
+  the same defect as everything else this week**: integer sample counts are a spatial proxy where the quantity is a
+  phase. The A/B is capturable and the measurement is not blocked — the instrument was wrong.
+
+**O-B5 — LANDED, at `:170-180`.** His "It depends how it falls off" is answered there in his own later words:
+"When the head switch falls off so that the line becomes normal picture or when it moves up to destroy normal
+picture. Two sides of the same coin", with the contract adding that both are valid "when the movement is temporally
+sound and the partial was near an edge", and NEITHER is a lost lock, a hold, or a geometry change. His "within
+normal variance defined elsewhere" is that temporal-soundness condition, whose source-derived continuation range
+CLAUDE.md already specifies. **Nothing to add.**
+
+**O-B6 — GENUINELY ABSENT, and it bears on a passage that says the opposite.** `:1122` states outright: **"What
+makes a region structureless is not settled"**. His B6 — "the harness has a test and definition for what boxed vs
+structured vs unbounded is" — would settle it by pointing at `box_census.py`.
+⚠️ **But it cannot be promoted as written, and this is the part to put to him rather than to the contract.** The
+harness's test is EXPLICITLY FITTED: `--threshold 4.5` is marked "(FITTED; see the report)" and CLAUDE.md records
+"The fitted 6/40/3 limits and 0.28 relative cut are instrument qualifications, **NOT source properties**".
+**Installing it as the contract's definition would install fitted constants as contract, which rule 4 forbids.**
+So B6 is absent, it contradicts `:1122`, and resolving it needs either a source-derived structurelessness test or
+his ruling that the fitted one is acceptable as an instrument qualification rather than a definition.
+
+**O-B4 — I CANNOT PLACE IT, and I am not guessing.** "isnt that determined from source and/or device and/or
+horizontal blanking" is an answer in question form, and without the question it answered I cannot tell whether it
+concerns the level references (`:531`, Source-measured levels — which would make it landed), the invalid-raster
+black test, or something else. **Please supply the question it replied to.** Guessing which passage carries it is
+how the last audit called two landed rulings absent.
+
+### :850 ANSWERED FROM HIS OWN WORDS — derivation CHECKED, accepted, with one citation strengthened
+
+The last owner marker asked: when good video returns, does "starts from scratch" still apply — must a new lock be
+found before correcting again? **Answer: YES.** Checked against the passages rather than taken on authority:
+
+**Verified exactly.** Rule 13 (`:1278-1285`) carries all three of his quotes word for word — *"it resets the
+registration engine full stop (obviously keeping its unit counts but any derived locks, timings, etc)"*, *"losing
+those lines means the entire registration engine should reset as if the capture is brand new"*, *"if they get
+`0x0800` or lose the regenerated lines, they go get it again"* — and its own next sentences say **"Everything the
+engine has derived is discarded: locks, timings, geometry, source references, confirmation state and temporal
+witnesses"** and **"The source references are acquired again from the source, as at the start of a capture."**
+The reasoning that those settle the RECOVERY case is sound: both phrases describe the resumption, not the outage.
+During the invalid signal the engine is not running, so "brand new" can only be a statement about what it is when
+it comes back, and "go get it again" is an instruction to reacquire, which presupposes something to acquire from.
+
+⚠️ **ONE CITATION STRENGTHENED, and the reason matters more than the fix.** The derivation cited `:770` for "with
+no lock, make no corrective placement". Read in place, that clause is stated as a CONSEQUENCE INSIDE the
+one-field-switch rule — *"Positive evidence that the region exists in one field and is absent in the other prevents
+correction: with no lock, make no corrective placement; with a lock, hold…"* — not as a standalone general rule.
+**Citing a scoped clause as though it were general is the same defect as reading `:451`'s first sentence alone**,
+which manufactured a contradiction earlier tonight.
+**The general rule exists and is stronger**: `:861-862`, *"before a lock, standard placement"*, and `:235`,
+*"without it the picture stays at standard placement (line 23)"*. So the chain is rule 13 → no lock survives →
+`:861` → standard placement, not corrective. Same conclusion, on a citation that carries it.
+
+**The marker comes off. Answered from the record, not escalated.** The queue is now empty of owner questions.
+
+### SCORECARD UPDATE — properties 1 and 2 HONOURED at one site; 8 has a STRUCTURAL LIMIT worth naming
+
+`experiments/switch_instant.py` measures the switch as **one instant** — a position in the field's own sweep —
+and DERIVES both quantisations from it: `T` = the line the instant falls inside, `S` = `T + 1`. **A T-versus-S
+disagreement is now structurally impossible rather than adjudicated**, which is the whole point of properties 1
+and 2. Capture 1, counters ≥ 6667:
+
+| | value |
+|---|---|
+| field-readings with a measurable instant | **429 of 1,016 (42%)**; the rest **Unknown**, not guessed |
+| the instant's column | median **393**, p10 218, p90 696 (of 720 delivered, 858 in the line) |
+| the instant's phase | median **0.458** of the line, p10 0.255, p90 **0.811** |
+| derived T against the engine's T | **+0 in 82.1%**, −1 in 17.3%, +1 in 0.5% |
+
+**The phase spans a quarter to four-fifths of the line** — the switch is not concentrated at one point in the
+sweep, which is what a physical event unlocked from the raster should look like, and it is invisible to any
+instrument that reports rows.
+
+⚠️ **PROPERTY 8 IS NOT HONOURED, AND THE REASON IS STRUCTURAL RATHER THAN AN OVERSIGHT: the peak witness CANNOT
+report `T = S`.** `T = S` happens when the instant lands in the 138 samples (16.1% of every line) the device never
+delivers — and a peak in the unsampled interval is BY DEFINITION unseen. So this witness can only ever report
+instants it can see, which are exactly the ones where a partial exists. The schema carries an `unsampled` field
+and it can never be true.
+**Consequence, and it is a design finding rather than a bug: a `T = S` reading requires a witness of a DIFFERENT
+KIND** — positive evidence that a switch occurred combined with positive evidence that no partial is present,
+rather than the absence of a peak, which is also what "no peak this unit" looks like. Until such a witness exists,
+`T = S` must be reported as **Unknown**, never derived from silence. ⚠️ That also means the 34 readings at −1 above
+are NOT thereby shown to be engine errors: they are readings where this witness saw an instant and the engine did
+not, which is a different claim.
+
+⚠️ The 17.3%/82.1% split reproduces the earlier peak-vs-T join, but from ONE measurement instead of two compared
+numbers — so it is the same population arrived at without the structure that made it arguable.
+
+### THE EIGHT TEMPORAL PROPERTIES vs THE REBUILD — sites, or an honest "not yet". 1 honoured, 2 partial, 5 not.
+
+Asked for the SITE, not a restatement. The rebuild is one primitive old, so most of this is "not yet", and saying
+so is the point: an honest not-yet is worth more than a claim, and eight instrument failures in one night came from
+claiming coverage that was not there.
+
+| # | property | status | site, or why not |
+|---|---|---|---|
+| 1 | the switch is an INSTANT, its consequences land on rows | **NOT YET** | nothing in the rebuild touches the switch. `switch_geometry.py`, `displaced_row_census.py` and `top_skew_row.py` all classify ROWS |
+| 2 | T and S are two quantisations of ONE instant | **NOT YET** | `top_skew_row.py` and `peak_line.py` compare them as two independent numbers — the thing that made six readings arguable for a day |
+| 3 | the band is SYMMETRIC | **PARTIAL** | `blanking_boundary.py` measures blanking-in-picture BY POSITION; `picture_in_blanking.py` measures the other half but BY LEVEL, which he corrected. Neither is in the rebuild yet |
+| 4 | the blanking is the RETRACE — position is the observable, level only the tell | ✅ **HONOURED, as of this turn** | `source_reference.py`, `source_reference()` now returns `transition_median/p10/p90/sd`. **Before this turn it computed each row's transition, sliced with it, and DISCARDED it** — keeping the level, throwing away the phase, the property exactly backwards |
+| 5 | the .5 line is half a horizontal SWEEP, not half a row's height | **NOT YET** | `field_lines_py.py` labels row 259 as f1 262.5 and then treats it as a row like any other |
+| 6 | the peak carries the tear, so its COLUMN is the measurement | **PARTIAL** | `rf_peak_census.py` reports the column and `band_render.py` showed it drifting 340→660→160 across 6691-6714, but nothing in the rebuild USES the column, and the drift was measured ad hoc and never committed as an instrument |
+| 7 | position continuity is an INVARIANT; and peak LOSS is evidence | **NOT YET, both halves** | contract `:164` carries the continuity property and no harness instrument tests it. **Recording the loss has never been built anywhere** |
+| 8 | `T = S` is legitimate, ~1 line in 6 | **NOT YET** | the measurements can surface it — 34 of 36 engine `T = S` readings were contradicted — but no detector outputs `T = S` as a first-class outcome, and one that cannot REPRESENT it is wrong even where it agrees |
+
+**What #4 produced the moment the phase was kept**, which is the argument for the other seven:
+
+| population | per-unit median transition | unit-to-unit sd |
+|---|---|---|
+| bright programme (6960+) | sample **716.0** | **0.48 samples** |
+| the title card (6665-6810) | sample 643.2 | **34.25 samples** |
+
+**The transition is a real and extremely stable observable where there is picture to transition FROM — half a
+sample unit-to-unit — and unreliable on the card, by seventy times.** The level hid this completely: it reads 1.430
+with unit-to-unit sd 0.0122 on both populations. ⚠️ Within a unit ~10% of rows still give a wrong transition
+(p10 551.9 against a median of 716), so the per-unit figure must be the MEDIAN across rows; the pooled level is
+separately robust to those rows because the settled-sample selection rejects them.
+
+⚠️ **The honest summary: one of eight, and only because it was found and fixed this turn.** The rebuild does not
+yet honour the other seven, and three of them (1, 2, 8) are the ones that produced the T/S argument.
+
+### STEP 2's THREE DEFECTS — all landed, verified at the call sites. One residue found in the RECORD.
+
+Verified in my own tree at HEAD by reading what the code DOES at each site, not by grepping the defect's name — a
+grep for a name tells you nothing about whether the behaviour still happens under a different identifier.
+
+1. **The static mask is gone.** `comb_static_fraction` survives at exactly two places: `field_registration.c:628`
+   assigning 0, and `field_registration.h:246` marked *"Deprecated: plain comb writes 0, not a reading."* No
+   masking logic remains in `comb_confirm`.
+2. **`comb_confirm` is lock-gated** — `:926`, `if(!maintained_lock)comb_confirm(...)`. **And the `else` branch is
+   the half that matters**: it calls `apply_locked_geometry` and sets `FIELDREG_COMB_NOT_EVALUATED`, so the comb's
+   result PERSISTS as a held geometry adjustment rather than being discarded. That is `:1027`'s
+   registered-once-and-held, implemented.
+3. **`switch_measurable` no longer gates acquisition.** It now appears only as a ternary supplying the count when
+   available (`:600`, `switch_line_count = m[f].switch_measurable ? …`) and selecting an end (`:577`). No lock is
+   conditioned on it.
+
+**Nothing is owed on any of the three. Do not re-open them.**
+
+⚠️ **THE RESIDUE IS REAL AND IT IS IN THE RECORD, not just the header.** A relay flagged the deprecated field as a
+"missing is not a value" hazard documented only in a note. Checked, it is worse than that:
+`frameserver.c:266` emits **`comb_static_fraction` as a schema-21 COLUMN**, and `:450` writes it as
+`have_d ? d.comb_static_fraction : 0.0`. **So the column carries 0.0 for three different states** — the engine
+deprecating it, `have_d` being false (no decision at all), and, in any older run, a genuine zero static fraction
+from the masked comb. **Three meanings, one value, in the artefact a future reader actually reads.** The header
+comment at `:246` is in the code; the CSV column carries no marker at all.
+**Suggestion, not a ruling, and not worth the owner's attention:** either drop the column from the record, or make
+its unmeasured state explicit IN the record. ⚠️ Note the `have_d ? … : 0.0` pattern is the same conflation at a
+second site and would survive dropping the field's deprecation — a decision-absent row and a measured zero are
+indistinguishable there for any column written that way.
+
 ### TWO "MISSING" RULINGS READ BY MEANING — both are ALREADY IN THE CONTRACT. No gap, nothing to add.
 
 A phrase audit reported two of his rulings absent. **A phrase search finds what to READ, never what is MISSING** —

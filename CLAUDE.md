@@ -2459,7 +2459,16 @@ counter >= 6667 the switch is measurable in both fields in 182 of 508 units, so 
 at least one field and 206 in neither. Report the two cases separately; they are different claims.
 
 
-**The harness's switch line is independently confirmed on capture 1, and what got it there (2026-09-10).**
+**⚠️ THE HEADING BELOW IS THE NAMING DEFECT ITSELF — corrected 2026-09-11. What this entry validated is S, and
+contract `:652` defines the switch line as T** ("the horizontal line carrying the peak, the partial line"), with
+`:656` saying **S is NEVER substituted for it** — S is a BOUND. So "the harness's switch line is confirmed, S exact
+in 1,013 of 1,013" states a true measurement under a name the contract gives to a different row, and that naming is
+what let two agents argue six readings for a day using one word for two rows. **Read every "switch line" below as
+"S, the bound".** The instrument is not wrong; `switch_geometry.py:411` already distinguishes them correctly ("the
+top switch line: S−1 where S−1 carries the partial line's evidence… else S"). The defect is in this record, which
+is where it propagates from.
+
+**The harness's BOUND S is independently confirmed on capture 1, and what got it there (2026-09-10).**
 `experiments/displaced_row_census.py` locates the first long run at each field's own blank level and compares it
 with the harness's S. It shares no code with `switch_geometry.py`. **S is exact in 1,013 of 1,013 registerable
 field-readings.** The progression, each step measured rather than argued: **963** as found → **1,009** with
@@ -4297,6 +4306,105 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   at a ruling marked delivered is a reliable smell. The same pass found the tracker misdescribing the code it was
   about — citing `field_registration.c:436` and an assumed `d = 0` where `:474-476` computes
   `visible_d = m->top - origin` from the measured top.
+- **THE CONTRACT AMENDMENT LANDED (`1d124e9`, Codex wrote, 2026-09-11) — and it broke two of MY guards in the way
+  those guards exist to catch.** The amendment replaces the B2 paragraph with the BOTH-unrecordable gate, states
+  registered-once-and-held geometry and valid-VBI interleave, adds coherent tracking and one-sided holding, names
+  the mean of SOURCE blanking, and makes the 486 VBI replacement conditional. Owner markers: **three down to one**.
+  ⚠️ **`owner_queue_check.py`'s positive controls 1 and 2 were FIXTURE-DRIFTED AND SILENTLY DEAD.** Both hardcoded
+  the caption-only question's text; when the amendment replaced that question their `str.replace` calls became
+  **no-ops**, so no mutation happened, the check correctly passed an unmutated file, and both controls reported
+  "did not fire". **A control that hardcodes the text it mutates stops being a control the moment the document
+  moves** — which is this guard's own subject, one level up. Control 4 survived because it derives its target from
+  the file's own formatting; 1 and 2 now do the same and **assert the mutation landed** rather than trusting
+  `replace`. Selftest 5/5.
+  ⚠️ **`superseded_check.py`'s absence subject was RETIRED, not repaired.** Its QUESTION was answered by the
+  amendment, so both the withdrawn phrasing and its replacement are gone. **Updating the expected text to whatever
+  replaced it would silently convert a superseded-claim check into a does-this-sentence-exist check** — a different
+  instrument wearing the same name. 16 subjects now, and the retirement is recorded in the file beside the pair.
+  ⚠️ **A CORRECTION TO MY OWN CLAIM: the engine does NOT already comply with the threshold-basis ruling.** I
+  reported that `field_registration.c:359-366` computes the mean and therefore satisfies part 2. Codex is right
+  that it computes the mean **of the DEVICE's rows**, and `:531` forbids device fill as the reference. **Computing
+  the right statistic from the wrong rows is not compliance**, and it is the same one-name-two-quantities shape as
+  everything else this week: "the blanking reference" naming two different sets of rows. It is recorded as an
+  implementation gap, not a satisfied requirement.
+
+- **THE HARNESS REBUILD, STEP 1: the SOURCE's blanking reference, pooled at each row's own instant
+  (`experiments/source_reference.py`, 2026-09-11).** Every level-derived number taken that night used the DEVICE's
+  regenerated fill; contract `:531` names the SOURCE's own blanking and says "device-generated fill never
+  establishes it". **The operation is the whole finding**: averaging a fixed column range returns 51.97 (picture),
+  counting a run in a fixed window returns "one usable sample", and both bound a temporal quantity spatially. Ask
+  each row for its OWN transition -- its own steepest fall, found not located -- and pool the settled samples after
+  it ACROSS rows, each at its own time:
+
+  | | value |
+  |---|---|
+  | field-readings returning UNKNOWN | **0 of 120** |
+  | source reference level | median **1.430**, p10 1.421, p90 1.451 |
+  | pool per field-reading | **3,183 samples from 200 rows** |
+  | **unit-to-unit sd of the level** | **0.0122** |
+  | a SINGLE row, for comparison | sd **0.492** |
+  | device fill (comparison only, forbidden as reference) | 1.3754, sd 0.0036 |
+
+  **Pooling across rows at each row's own instant takes the reference from sd 0.492 to 0.0122 -- fortyfold -- and
+  within about three times the device fill's stability, while being the reference the contract actually names.**
+  Nothing is typed in: no column, no threshold, no level. The statistic is the MEAN, per his accepted ruling.
+  ⚠️ **METHOD still moves the answer by more than measurement noise does, and that is the open part.** Four
+  estimates of this same quantity now exist: **1.410** (steepest fall, bright programme only), **1.430** (this,
+  pooled over the registerable region), **1.540** (a relay's, using a cut three codes above the device fill -- a
+  typed-in number, which rule 4 forbids), and this file's previously recorded **1.459-1.53**. All sit above the
+  device fill. The spread across methods is about 0.13 codes against a unit-to-unit stability of 0.0122, so **the
+  choice of method dominates the measurement by an order of magnitude** and no estimate is settled yet.
+  ⚠️ This is ONE PRIMITIVE, not the rebuild. Still owed: a top reading that does not rest on a level threshold, a
+  reference that reports T rather than validating S, and an honest Unknown wherever the raw rows do not decide.
+
+- **A QUOTE RECORDED WITHOUT ITS CONTEXT IS NOT A RULING, IT IS A STRING (2026-09-11) — and one carried all
+  night turned out to have no source at all.** "O-B4", recorded as the owner's verbatim words at a timestamp
+  (*"isnt that determined from source and/or device and/or horizontal blanking"*), was searched for across every
+  transcript in the project — this session's and six others. **It appears in ZERO owner messages and ZERO assistant
+  turns anywhere.** Its only occurrences are in the relaying session's own tool calls reading it back out of its own
+  state file, plus the nudge quoting it here. **It is CLOSED AS UNPLACEABLE — not answered, not absent.**
+  ⚠️ **This is the same failure class as the wrong-but-resolving commit hash already flagged in this file**, in
+  prose instead of hex: it passes every existence test because the string genuinely is there, in a store that
+  copied it from somewhere now gone, and it reads exactly like a ruling. **Anything carried as "owner, verbatim"
+  must be findable in a transcript, or be marked unverifiable where it is stored.** If B4 ever matters, the honest
+  move is to ask him the underlying QUESTION fresh, never to reconstruct one that fits the answer.
+  ⚠️ **AND SEARCHING FOR A QUOTE IN A STORE THAT HOLDS YOUR OWN COPY OF IT RETURNS FALSE CONFIRMATIONS
+  (measured on this session's own transcript, 2026-09-11).** Two record-type facts first, both reproduced here:
+  the owner's mid-turn messages are NOT stored as `user` records — this transcript holds **8,794 `attachment` and
+  3,588 `queue-operation` records against 7,407 `user`** — so a search restricted to `user` reads a small fraction
+  of what he said and will conclude "not found" on things he stated plainly.
+  Searching properly, of six owner quotes recorded today, **exactly ONE is verifiable from this side**: the
+  temporal reframing, found in a `queue-operation` record carrying his own framing ("this to both you and codex
+  directly. a line is not a line rendered at once…"). **The one-sided-motion, coherence and `:812` quotes appear
+  ONLY inside relay wrappers — zero occurrences anywhere else.** And two that a naive search reported as "found
+  outside a relay" are **self-referential**: the dark-peak quote's hit is a `tool_result` echoing MY OWN commit
+  output, and the plain-comb quote's is a diff of the relay's own edit to my tracker. **Neither is his words; both
+  are my or its writing read back.** A verification that can be satisfied by the thing it is verifying is not one —
+  the same shape as the engine confirming itself on `(0,0)`, one store further out.
+  ✅ **RESOLVED, and the resolution names the right checker: all six VERIFY against his own records — checked by
+  the relay, which is the side he actually speaks to (2026-09-11).** "Only inside relay wrappers, zero occurrences
+  elsewhere" was therefore the EXPECTED result on this side rather than a defect: the words were said to the
+  watchdog session, so they exist as his own records in ITS transcript and reach this one only inside its wrappers.
+  **This session is structurally the wrong checker for them and could not have verified them however carefully it
+  searched.** The relay applied the circularity rule above to its own corpus before reporting — testing it for
+  contamination with four phrases that are unambiguously the relay's own (queue headers it composed, the gate's
+  output string) and getting **zero hits across 2,433 / 3,034 / 862 records** — so the store it checked against
+  does not contain its own copy, which is the condition.
+  ⚠️ **THE RIGHT MARKING IS "VERIFIED BY THE RELAY AGAINST HIS OWN RECORDS, IN A STORE THIS SESSION CANNOT SEE."**
+  Weaker than first-hand, stronger than unverified — and it is permanent rather than something to clear, because
+  **the asymmetry is structural: he speaks to the watchdog, the watchdog relays here, and neither side can see the
+  other's store. Every ruling this session holds is in that position by construction.** The alternative — leaving
+  his rulings permanently "unverified" to the side that has to implement them — is worse and is not what the
+  evidence says.
+  ⚠️ **Consequence for this file, stated because it is uncomfortable rather than because it is safe: EVERY owner
+  quote added to CLAUDE.md on 2026-09-11 reached this session through the relay, not from him directly.** The
+  tracker entries say so in as many words ("Relayed, not heard directly by this session"); several entries here do
+  not, and read as first-hand. **The one exception is the temporal reframing — "a line is not a line rendered at
+  once as its digital self would imply. it is a skew across time" — which arrived as a genuine user turn.** Treat
+  the rest as relayed-and-unverified rather than transcript-checked. ⚠️ I deliberately give no COUNT of them: the
+  obvious greps overlap and `grep -c` counts lines rather than occurrences, which is the substring defect this file
+  already documents, and a fabricated precise number is exactly what this entry is about.
+
 - **THE BAR FOR REACHING THE OWNER (his standing instruction, 2026-09-11): UNANSWERABLE FROM HIS OWN WORDS, or
   the derived answer was rejected and the two agents cannot converge.** His words: *"seriously, most of this is
   understandable by common sense... my literal words have said this in other parts of the transcript, repeatedly.
