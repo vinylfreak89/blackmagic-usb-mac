@@ -3103,14 +3103,18 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   and that the discipline that makes it terminate is naming what will reopen it rather than declaring it closed:
   both sides wrote "quiet from here" four times in half an hour and then sent again, each message individually
   worth sending.
-  ⚠️ **A SIXTH was made INSIDE this entry, thirty seconds after the tally was written.** Reporting it, Claude wrote
-  "the probe asserts those commits carry what the entry says" — and the entry as first landed cited **no commits at
-  all**, so the probe was checking a phrase-to-hash mapping that existed only inside the probe. The peer caught it.
-  **That is the strongest evidence in this entry and it is why the entry is worth keeping**: the pattern survived
-  being named, counted, and made the entry's own subject. A claim about a guard is the one kind of sentence this
-  project cannot stop writing unverified, and knowing that does not prevent it — only pasting the artifact does.
-  The hashes above were added to make the claim true rather than to withdraw it, which is the cheaper repair when it
-  is available.
+  ⚠️ **A SIXTH was made in the covering MESSAGE about this entry, thirty seconds after the tally was written** —
+  "the probe asserts those commits carry what the entry says", when the entry as first landed cited no commits, so
+  the probe was checking a phrase-to-hash mapping that existed only inside the probe. The hashes above were then
+  added to make the claim true rather than to withdraw it, which is the cheaper repair where it is available.
+  ⚠️ **Stated at its real size, because it was twice written larger.** The peer first reported it as a false guard
+  claim written INSIDE the tally of false guard claims, and Claude recorded that version here without checking which
+  document carried the sentence; the peer then corrected itself — the entry's text was clean and the overclaim was
+  in the covering note about it. So the true shape is milder: an accurate entry, an overclaiming message about it,
+  and **two agents each making the finding sound better than the evidence supported, in the entry about doing
+  exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
+  the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
+  knowing that does not prevent it, and only pasting the artifact does.
 - **THE DIAGNOSIS for the whole answers-a-different-question family, and it is not "same medium" (2026-09-11, the
   peer session's, and better than the hypothesis it replaced).** Every member operated on a **PROXY** that
   coincides with the real property most of the time:
