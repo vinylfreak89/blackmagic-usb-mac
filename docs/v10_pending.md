@@ -495,11 +495,17 @@ watchdog session, which noticed the queue said three while six were open).** Thi
 that exists only in the contract is invisible to whoever hands him the list, and the count staying at three across
 the day was coincidence, not substitution. Pointers, per this file's rule that it holds no content:
 
-| question | where it lives | state |
+| question | anchor (a STABLE quote from the marker; line numbers drift) | state |
 |---|---|---|
-| **B2's residue** — the disposition when the invalid-raster condition's absence cannot be established | contract lines 804-810 | ⚠️ **REFRAMED 2026-09-10 and the reframing must travel with it**: the question is the DISPOSITION when absence cannot be established, NOT whether it can be. Observability is empirical and is not his to rule on. Handing him the older framing asks him to rule on a measurement. |
-| **Terminal-black-run disposition** | contract lines 797-798 | intact: "should the output retain the last corrective placement or bypass correction, which learned state remains valid, and does recovery require reacquisition before correction resumes?" |
-| **Caption-only precedence** | contract lines 1015-1018 | intact: on a caption-only acquisition, what independently established evidence determines the required field interleave; if unavailable, may the lock exist without it, and what placement and rendering is permitted? |
+| **B2's residue** — the disposition when the invalid-raster condition's absence cannot be established | `OPEN, and with the owner` … "his ruling settles the OBJECT whose absence is required" | ⚠️ **REFRAMED 2026-09-10 and the reframing must travel with it**: the question is the DISPOSITION when absence cannot be established, NOT whether it can be. Observability is empirical and is not his to rule on. Handing him the older framing asks him to rule on a measurement. |
+| **Terminal-black-run disposition** | `UNSETTLED and with the owner` … "rule 13 not naming this" | intact: "should the output retain the last corrective placement or bypass correction, which learned state remains valid, and does recovery require reacquisition before correction resumes?" |
+| **Caption-only precedence** | `OPEN, and with the owner:` … "on a caption-only acquisition, what independently established evidence determines" | intact: what evidence determines the required field interleave; if unavailable, may the lock exist without it, and what placement and rendering is permitted? |
+
+⚠️ **The anchors are quotes, not line numbers, and that is the second defect this section had.** The first version
+of these rows cited "contract lines 1015-1018"; by the time `experiments/owner_queue_check.py` was written the
+marker had moved to 1027 — **drifted nine lines in a few hours of editing** — while the other two were inside a
+two-line slack. A pointer that looks correct and lands in the wrong passage is worse than a missing one. The check
+matches on the quoted phrase and reports drift in both directions.
 
 **A fourth was withdrawn rather than asked** (Codex, 2026-09-10): whether a box's fixed extent is taken once from a
 well-exposed unit and held or re-measured per unit. **Rule 8a already answers it** — "measured while the picture is

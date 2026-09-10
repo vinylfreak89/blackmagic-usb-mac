@@ -3119,6 +3119,14 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   it is least likely to be carried to the sites the reviewer did not happen to quote — so the per-site question
   ("what does the document now say about X") must be asked of the CLASS of error, not the instance, and asked
   again after the fix rather than before it.
+- **A probe over prose that records its own corrections needs the USE-versus-MENTION test, every time (four
+  instances on 2026-09-10/11).** These documents deliberately keep what they withdrew — "this previously read X",
+  "the repair then said Y" — so a withdrawn phrase legitimately appears as a QUOTATION. A probe asserting
+  `phrase not in text` then fails on a correctly repaired file, and one asserting `phrase in text` passes on a
+  file where the phrase is only being talked about. Four probes needed it in two days: the withdrawn line
+  numbering, two withdrawn overclaims, and a drifted pointer. **The test that works is structural, not a marker
+  list**: count occurrences and count quoted occurrences, and require them equal. A marker-proximity test was
+  tried and silently passed on a live defect, because these files are full of markers.
 - **A queue that does not ENUMERATE is not a queue, and the failure is invisible from inside it (2026-09-11).**
   `v10_pending.md`'s "Blocked on the owner" section listed three questions for the owner. Six were open: the other
   three — B2's residue, the terminal-black-run disposition, caption-only precedence — lived as inline `OPEN, and
@@ -3128,9 +3136,21 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   changed, which is coincidence rather than substitution. **Whoever hands the owner his list reads the queue, not
   every file**, so an item that is perfectly preserved somewhere else is still an item he never sees.
   The general form: when a document holds both CONTENT and a POINTER to that content elsewhere, nothing keeps them
-  in step, and the pointer is the half that is read. Two guards that would have caught it — enumerate the source of
-  truth (`grep` the contract for its own open markers and compare with the queue's rows), and make the queue's
-  entries pointers rather than copies so a missing pointer is the only failure mode rather than one of two.
+  in step, and the pointer is the half that is read. Both guards are now BUILT rather than described:
+  `experiments/owner_queue_check.py` enumerates the contract's own owner markers and fails on any without a queue
+  row, and the queue's entries are pointers rather than copies.
+  ⚠️ **The first version of that guard was not one, and it was reported as though it were.** It checked three
+  HARDCODED line ranges and asserted `len(markers) >= 2`; a fourth marker would have passed silently, which is the
+  exact defect. It also lived in a scratch directory, so nothing in the repository ran it. It was nevertheless
+  reported as "enumerates the contract's own owner markers and fails if any lacks a queue row" — a claim of an
+  action with no artifact, in the note written about that very failure, caught by the peer session that had found
+  the original. **A probe is reported by RUNNING it**, and the older rule is the same one: a property requested is
+  not a property held.
+  ⚠️ **And line numbers are the wrong pointer.** The queue first cited "contract lines 1015-1018"; by the time the
+  guard existed that marker had moved to 1027 — nine lines in a few hours — while two others had moved two. A
+  pointer that looks correct and lands in the wrong passage is worse than a missing one. The rows now anchor on a
+  QUOTED PHRASE from the marker, which does not move when text above it changes, and the guard reports both a
+  marker with no row and an anchor that no longer lands.
   ⚠️ A related trap in the same fix: **B2's residue had been REFRAMED that day** — from "can absence be
   established" to "what is the disposition when it cannot", because observability is empirical and not his to rule
   on. Mirroring the stale name would have handed him a question asking him to rule on a measurement. A pointer must
