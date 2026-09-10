@@ -2697,6 +2697,38 @@ against these 478 readings would be fitting to the fixture.
 ⚠️ This does NOT adjudicate the six. "Within one row" spans exactly the T-versus-S ambiguity that IS the dispute,
 so the exact column is the one that bears on it, and 79-89% is not agreement.
 
+**AND THE WITHIN-ONE-ROW GAP IS NOT SLOP: EVERY high-amplitude disagreement is a reading where the ENGINE SAYS
+T = S (2026-09-11).** A relay warned that "within one row" would be tempting to read as `T = S-1` with measurement
+slop, when some fraction must be genuinely `T = S` -- the owner's correction, and the contract already carries it
+at :657 ("`T ∈ {S−1, S}` holds only where the one-partial-line relationship is itself established"; "T MAY equal S
+where independent evidence establishes the region begins there with no earlier partial line"). **Checked instead of
+adopted, and the specific claim is refuted while the general warning stands.** Joining the peak-carrying line
+against the engine's own T-versus-S relationship, restricted to a genuine peak (>= 89 raw codes), n = 196:
+
+| peak line − engine T | engine says T = S | engine says T = S−1 |
+|---|---:|---:|
+| −1 | **34** | **0** |
+| 0 | 2 | **159** |
+| +1 | 0 | 1 |
+
+**The disagreement is not spread across the population -- it is exactly the engine's `T = S` readings.** Where the
+engine says `T = S−1` the peak lands on its T in 159 of 161; where the engine says `T = S`, the peak sits one row
+ABOVE it in 34 of 36. So the within-one-row band is not slop and it is not genuine `T = S` agreeing quietly: it is
+the peak witness CONTRADICTING the engine's `T = S` readings, at higher amplitude and in raw codes, and it is the
+same population as the 31 readings recorded above where both engine readers AGREED on `T = S`.
+This is what Codex's engine-side point predicts: the phase reader returns `T = S` when its partial-prefix predicate
+FAILS, and a failed predicate is not positive proof that no partial existed. Measured, that fallback fires on 36 of
+196 high-amplitude readings and the peak disagrees with 34 of them.
+⚠️ **A coincidence worth flagging rather than resolving: the engine's `T = S` rate here is 18% (36 of 196), and the
+arithmetic's predicted rate of GENUINE `T = S` is about 16% -- 10.22 of every 63.56 microseconds unsampled.** Those
+match closely, while the peak says 34 of the 36 are not genuine. Either the peak witness is wrong about them, or
+the agreement of the two rates is chance. Nothing here separates those, and the peak is still not an identified RF
+landmark -- Codex's objection is unretired and this measurement does not retire it.
+⚠️ The relay's general warning DOES stand and is the more useful half: **a detector tuned to "the row above S"
+would be right on most of this population and structurally unable to represent the genuine `T = S` case at all** --
+the same defect as every threshold this project has retired, correct on the population that motivated it and blind
+to the rest. So the agreement figure cannot be driven to 100% and a residual there is not by itself error.
+
 **CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
 FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
 clear it when normal timing returns -- which the engine already does -- and Codex verified upward and downward
