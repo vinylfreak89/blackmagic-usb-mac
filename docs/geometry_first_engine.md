@@ -189,9 +189,10 @@ decided (2026-09-10).** It originated at `1c6b387` awaiting that specific correc
 unstable-timing-region definition landed, but neither agent can identify it AS that correction from subject overlap
 alone, so the promised correction is not declared delivered. Meanwhile §1's later ruling removed the procedural
 implementation gates ("nothing should be gated"), under which this sentence should not stand as an unexplained
-current instruction. Both cannot be true at once: either the correction landed and the prohibition is spent, or it
-did not and the gate-removal has an exception nobody stated. **The unresolved TECHNICAL question — the
-259-against-260 discrepancy itself — is preserved separately and is not retired by whatever happens to the workflow
+current instruction. ⚠️ **These are not two horns.** The procedural gate can have been removed while the technical
+correction remained unresolved — which is exactly the separation the gate-removal ruling draws, and is the likeliest
+reading. So nothing here claims the promised correction arrived. **The unresolved TECHNICAL question — the
+259-against-260 discrepancy itself — is preserved separately and is retired by nothing that happens to the workflow
 sentence.**
 
 **Row 262.5 and field 2's line 1 (2026-09-10).** "Properly label them 262.5 and 1." Field 1's block
@@ -560,7 +561,9 @@ field" phrasing does not.
 - **Picture row**: a recorded row that is neither a VBI row nor a row of the head-switch region. ⚠️ The
   head-switch exclusion is load-bearing and was missing: switch rows ARE recorded and are not VBI, so without it
   they are picture rows by this definition while rule 3 says band rows define no bottom and are not picture — two
-  definitions admitting different rows under one name. **Picture top**: the first picture row (owner: "the first
+  definitions admitting different rows under one name. ⚠️ The definitional repair is not the whole of it: an
+  implementation must distinguish a row POSITIVELY IDENTIFIED as non-switch picture from one whose switch
+  classification is UNRESOLVED, which this definition alone does not force. **Picture top**: the first picture row (owner: "the first
   picture row is the first picture row"). It may be hidden by the Shuttle's overwrite blanking: if the Shuttle's
   insert decodes captions on line 21, the real line 21 is somewhere between lines 20 and 22; a bottom band that does
   not extend to the end of the frame, or a mostly black head-switch area, is suspect that the top landed in the
@@ -593,19 +596,24 @@ field" phrasing does not.
   signature fires on ordinary programme; with them it selects splices. Two limits stated with it: the displacement is known only modulo one line (a late shift and an early one
   differing by a whole line are the same arrangement of samples), and a dark picture edge of a few tens of samples
   cannot be separated from a displacement of the same size when the row's other end shows nothing either.
-- **What the line TBC does to the head-switch band: it removes the PICTURE categorically and most of the READABLE
-  DISPLACEMENT with it.** ⚠️ This heading previously read "it removes the PICTURE, not the displacement" while the
-  body below said "the displacement is gone" — the two asserted opposite things about the same measurement. What was
-  measured: flat rows 768 with the corrector on against 0 with it off (categorical), and displaced rows 11 against
-  1,957 (strong, NOT categorical). So neither absolute is right, and §2's own summary already says so. Both
+- **What the line TBC does to the head-switch band, stated with its populations rather than as a removal claim.**
+  Measured on the sampled fields: with the corrector ON, **768 of 1,076 affected rows are flat** at the deck's black
+  and 14 carry any readable horizontal timing; with it OFF, **0 rows are flat** and 1,022 of 1,042 are readable at
+  ≥ 100 samples. Using the affected-row definition at |d| ≥ 6, displaced rows are **11 with the corrector on against
+  1,957 with it off**. ⚠️ **The SEPARATION between the two passes is categorical for flatness and strong but not
+  categorical for timing** (§2) — which is not the same as the picture being removed throughout the region or on
+  every corrected source, and 768 of 1,076 is 71%, not all. ⚠️ This entry has now overclaimed in both directions:
+  the heading first read "it removes the PICTURE, not the displacement" while the body said "the displacement is
+  gone", and the repair then said "removes the PICTURE categorically", reading §2's word for the SEPARATION as a
+  word for the removal. Both
   instruments behind this were validated first on a synthetic field rebuilt at known displacements, which they
   recovered exactly.
   * **Corrector off:** the band rows are displaced by about a whole line's worth of time, and a complete horizontal
     blanking interval sits inside the delivered window — one whole line delivered late. No flat rows. The partial
     line is the row ABOVE the displaced pair, and its switch column moves only slightly unit to unit.
-  * **Corrector on:** the picture is gone from these rows and readable displacement is largely gone with it (11
+  * **Corrector on:** most of these rows carry no picture and readable displacement is largely gone with it (11
     displaced rows against the corrector-off pass's 1,957 — a strong separation, not a categorical one, so a
-    corrected source is not guaranteed free of displaced rows). Most affected rows are perfectly flat at the
+    corrected source is not guaranteed free of displaced rows, and 308 of the 1,076 are not flat). Most affected rows are perfectly flat at the
     DECK's black, which is distinct from the device's regenerated blanking, and per-aperture testing finds no
     side-versus-side step.
   * **The band's row count is the same either way**, which is what the owner expected. What changes is how many of
@@ -815,6 +823,25 @@ field" phrasing does not.
   Extra black at the bottom is acceptable; rows past the clip read as legal black (owner, 2026-09-03); the source's placement of
   letterboxed content is preserved and registration does not independently recentre it (8a); before a lock,
   standard placement. **Displacement sign**: positive is lower in the raster.
+- **Comb evaluation and validation** (CR-09, 2026-09-10). The ENGINE evaluates the comb during acquisition and
+  reacquisition, not during a maintained lock. Within the authorized validation scope, the HARNESS may independently
+  evaluate specified crops. Each result identifies its producer, unit, tested placement, evaluation status, outcome
+  or inability to decide, and reason. **Lock state is separate.** Retained results identify their originating unit
+  and placement and are never presented as current measurements.
+  An unevaluated unit supplies neither agreement nor disagreement. Reports distinguish **expected non-evaluation**,
+  **inability to decide after evaluation**, and **a missing evaluation the contract required**. Each validation
+  figure states its population, numerator, denominator and exclusions. Conditional agreement rates do not substitute
+  for reporting evaluation coverage and unresolved cases. ⚠️ Mixing evaluated and unevaluated units is not itself a
+  defect — evaluation coverage necessarily includes both. The defect is calling their mixture an agreement rate
+  without defining the denominator; reporting agreement only among decisive readings, which conceals poor coverage;
+  or letting a required-but-absent evaluation disappear behind a denominator that says "evaluated units".
+  ⚠️ **`comb_safe` is not the overlay's authoritative result.** It collapses four situations into one boolean —
+  agreement while not settled, disagreement, no decidable evidence, and never evaluated — and rule 9 makes the last
+  the ordinary case under a lock. The record carries evaluation status, result and reason separately with lock state
+  alongside; any retained `comb_safe` is documented as DERIVED, never as an independent observation. The existing
+  `comb_check` enum is not promoted unchanged until its NOT_APPLICABLE and FLAT paths are audited. (Schema work,
+  proposed and not implemented; the engine currently calls `comb_confirm` on every unit, so rule 9's
+  not-evaluated-under-a-lock is required behaviour rather than current behaviour.)
 - **Comb**: the relative vertical shift between the two fields' crops that minimises the comb energy of their weave on
   static, detailed picture; measured first at standard placement, it confirms a lock when it reads zero at **the CANDIDATE
   crops under test**, not at the crops currently rendered — the code already stages it this way, `comb_confirm`
@@ -1232,11 +1259,13 @@ about what a row IS (a measurement error in one of them) is decided on the raw r
 its rows; a true disagreement about the geometry (the comb not matching the placed crops) is not adjudicated by
 either agent — it is reported to the owner as below. "Output" below means the stabilized visible picture the owner watches, not the crop-origin metadata. Invariants, stated as properties and
 checked per capture from that capture's own record: through a source's stable interval the top is constant, the
-lock's switch-line count is constant, and the switch line moves only with the top and only within the partial
+lock's switch-line count is constant **except for 8c's accepted expansion, which is recorded and is not a violation
+of this invariant**, and the switch line moves only with the top and only within the partial
 line's one-row travel **unless a head-catch excursion is POSITIVELY IDENTIFIED for that unit** — rule 2 permits an
 observed switch boundary to move independently of the picture, and without that qualification an excursion and an
 instrument defect are indistinguishable, which is why the exception is stated as identification rather than as a
-wider bound; initial acquisition or reacquisition may establish placement, including reacquisition
+wider bound. ⚠️ **Failing to identify an excursion means it is not exempted as an established head-catch event; it
+does not by itself establish an instrument defect** — the unexplained reading is reported as unexplained; initial acquisition or reacquisition may establish placement, including reacquisition
 following a positively established change of boxing, and invalidation alone supplies neither replacement geometry
 nor permission to apply it; nothing is placed on
 snow; and field precedence is constant within a lock. The units at which each holds are read from the run, not
