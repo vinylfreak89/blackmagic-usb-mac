@@ -2113,6 +2113,36 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Rule-8 gaps 1–3 review and proposed sequence, not implementation:**
+`993e4ab` corrects the repeated one-acquisition-site claim; source lock and
+head-switch bounds remain different states. The inclusive band count still
+serves the section-3 line account. The new hold criterion needs a distinct
+non-partial count and retained partial-line identity, not a blanket subtraction
+from every observed count or treating an unmeasured partial as proven absent.
+The current equality comparison (`field_registration.c:923–935`) cannot
+express permitted partial-related expansion or invalidate/re-acquire bounds;
+it only reports a conflict. Proposed order: explicit switch-bound observation/
+state and hold criterion; permitted-expansion event; bounds invalidation and
+re-acquisition from valid current geometry. Do not bypass source-lock
+confirmation or silently re-learn its frozen line-account count through these
+new bounds events. Each implementation would have a failing-first lifecycle
+golden, including partial disappearance, later partial appearance with unchanged
+non-partial count, genuine non-partial-count change, and ordinary clipping.
+
+The harness reports off-mode readings 38→43 in field 1 and 62→16 in field 2.
+**100→59 is not yet a count of hold-invalidating events or a demonstrated
+improvement/regression.** Modes ignore acquisition order, holds, re-acquisition,
+Unknowns and runs of repeated observations; each metric also counts a different
+quantity. Keep the fields separate. Next proposed diagnostic: chronological
+shadow replay of both definitions on the same comparable observations, logging
+acquisition, hold, accepted expansion, invalidation and re-acquisition separately;
+audit the full symmetric difference of changed field-1 classifications against
+raw timing/partial/clip evidence, not merely the net five. S is independently
+position-validated but T/partial classification is not, so do not use modal
+stability as truth or conflate T=S fallback with proven partial absence. No
+field-specific threshold, debounce, or change to the owner's count definition
+is justified by these histograms. Production unchanged; capture 1 not accepted.
+
 **The harness's switch line is independently confirmed on capture 1, and what got it there (2026-09-10).**
 `experiments/displaced_row_census.py` locates the first long run at each field's own blank level and compares it
 with the harness's S. It shares no code with `switch_geometry.py`. **S is exact in 1,013 of 1,013 registerable
