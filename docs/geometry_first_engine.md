@@ -410,6 +410,16 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   record suppresses an audit output; never acquiring a lock prevents a new corrective placement; holding an existing
   placement preserves a possibly nonzero correction; and passing through without correction is NOT the same as
   holding that correction. The owner's quotations stay verbatim throughout.
+- **Qualification**: **each qualification applies to a NAMED observation and decision.** Its evidence must
+  distinguish the relevant competing explanations, accounting for measurement uncertainty and demonstrated
+  systematic effects. **Repetition alone does not remove systematic error, and qualification for one purpose does
+  not establish qualification for another.** The word "qualified" appears throughout this document against at least
+  six different objects — source-reference provenance and representativeness, caption and VBI semantics,
+  timing-landmark identity, picture-boundary identity and uncertainty, displacement-estimator applicability, and
+  retained-reference validity after a transition. These are several tests, not one, and the shared adjective is not
+  itself the defect: the defects to guard against are a use with no identifiable criteria, and evidence satisfying
+  one qualification being silently credited to another. The dated audit of each occurrence lives in
+  `docs/v10_pending.md`, not here.
 - **Pedestal**: the tape's black — the other head's black rows at the bottom of the band.
 - **Source-measured levels**: levels are measured per source, at runtime (owner, 2026-09-10): "do not take numbers
   that are in the programs own measured thing as gospel. once again, NO MAGIC NUMBERS. measure things per source.
@@ -873,9 +883,14 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    source centred it (owner, 2026-09-05: "letterboxing or any weirdboxing creates its own geometry and that can
    EASILY be centered in the raster"), never recentred, and black level is never assumed. A box's bands — where they
    fall and how many rows they run — are source dependent and are learned at the lock like any other per-source
-   quantity; no extent belongs here. (What makes a region structureless is a measurement neither agent has yet:
-   flat-within-one-code fires only on the device's four synthetic rows, vertical coherence rates text as MORE
-   coherent than noise, and horizontal spread against sample noise has separated on one unit only.)
+   quantity; no extent belongs here. (What makes a region structureless is not settled: flat-within-one-code fires only on the
+   device's four synthetic rows, and vertical coherence rates text as MORE coherent than noise. ⚠️ The claim that
+   horizontal spread against sample noise "has separated on one unit only" is STALE and withdrawn — the census
+   records the box verdict holding across every threshold from 4.0 to 8.0 on capture 1, with captures 3, 4 and the
+   fixture-A window at zero over that range. That does not establish a generally reliable structurelessness
+   detector or accurate box bounds; it does mean the evidence is not one unit. **Separate the evidence for the box
+   VERDICT from the evidence for its EXTENT, and the old fixed-threshold instrument from the revised
+   source-relative one** — the verdict is the robust part and the extent is the part that moves with exposure.)
 
    **8b. Contact between the box and the head-switch region — the agreement test.**
    The box INCLUDES ITS BARS (owner, 2026-09-10: "box is the bounds of the box, not the content inside the box").
@@ -1006,10 +1021,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
     exposure-dependent detectability is not a tidy side condition — on this source it is the WHOLE test, and it must
     be established to a tolerance finer than the artefact it excludes. Measured: the commercial capture's box top
     band grows from 31 rows to **36-41 rows** on the card's dim pass and at its fades, purely because the WARNING
-    line stops reading as structure, while genuine field displacement on these sources is **1-3 lines**. **The
-    disqualifier is two to ten times the size of the signal it must be separated from.** So a rule that qualifies on
-    uncertainty-against-difference without pinning down what makes a unit WELL EXPOSED will either never qualify a
-    one-row change or will qualify a five-row exposure artefact. Qualifying "well exposed" is the detector work
+    line stops reading as structure, while genuine field displacement on these sources is **1-3 lines**. The reported extent error is 5-10 lines against a
+    comparison displacement range of 1-3, an envelope of roughly 1.7 to 10 times. ⚠️ **These are a WARNING, not a
+    measured error-to-signal ratio**: they are not necessarily paired observations of the same quantity, and
+    magnitude alone neither proves nor disproves separability — a larger artefact can sometimes be distinguished by
+    independent evidence, while a smaller systematic error can still invalidate a decision. What the measurements
+    demonstrate is failure of the TESTED STATISTIC under those conditions, not that missing a one-row change or
+    accepting a five-row artefact are the only possible outcomes for every instrument. Qualifying "well exposed" is the detector work
     already recorded as open against the box census; until it exists this rule states the requirement and does not
     supply a usable test. No attribution of the change to a particular dark unit is needed
     — rule 8a has two invalidation triggers, picture appearing within previously established bar regions AND a band
