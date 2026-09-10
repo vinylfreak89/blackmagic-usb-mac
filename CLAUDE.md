@@ -2954,10 +2954,13 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **Ordering that follows, and the reason must travel with the item:** removing the S fallback (cold-read finding
   18) enlarges the population of readings reaching that path, so it lands AFTER the displacement decision, never
   before. Landing it first would increase how often an unqualified `d` is applied - the opposite of fail-closed.
-  **The size of that population is NOT established** (Codex's correction to a Claude claim): 484 of 1,016 is
-  switch-measurable coverage, not an independently checked S-population count, and the code can retain S while
-  clearing `switch_measurable`. An unknown current T removes the deductions requiring current T - not every
-  displacement route and not every retained count. Quantifying it needs a keyed export census.
+  **MEASURED, and it is negligible.** Codex was right that 484 of 1,016 was switch-measurable coverage rather than
+  an S-population count, so the cost was unquantified. The keyed census over the same export (counter >= 6667,
+  1,016 field readings) settles it: **T known and S known 478; T unknown and S known 6; T unknown and S unknown
+  532; T known and S unknown 0.** So the readings finding 18 turns Unknown are the six with an S and no T -
+  **0.6%**. The 532 already have no switch line by either route and are unaffected, and the 478 with a T are
+  untouched. An earlier framing of this as a large loss confused the harness's S measurement (exact in 1,013 of
+  1,013 registerable readings, a different instrument and population) with the engine's export.
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
   Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
   answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back
