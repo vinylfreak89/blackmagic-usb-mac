@@ -2135,6 +2135,30 @@ blanking variability (E). Capture-1 positional exclusions are instrument/cohort
 limits, not cross-source guarantees. No classifier or cutoff is authorized by
 this review, and captures 2–4 remain behind the owner's source-order gate.
 
+**THE COLOUR BURST IS NOT RECOVERABLE FROM THIS RASTER (owner, 2026-09-10): "experimentally the color
+burst signal is not recoverable from this raster."** Ruled out on normally-timed rows by arithmetic — burst runs
+5.300–7.814 µs after 0H (ITU-R BT.470) and the delivered window starts at 122 samples = 9.037 µs, so it is over
+**16.5 samples before the window begins** — and measured absent inside relocated blanking on displaced rows, which
+is the one case the arithmetic does not cover, because a shifted line carries its burst in with its blanking.
+`experiments/burst_probe.py` over capture 1 from counter 6667: quadrature amplitude at 3.579545 MHz, local linear
+baseline removed, reads **0.147 codes in the predicted window (offset 92–126 inside the run, 9.0 cycles, derived
+from the standard before any data was read) against 0.151 in a same-width control 82 samples away in the same
+run** — indistinguishable, the predicted window marginally the lower. The instrument is not blind and that is
+measured: injecting a synthetic burst at six phases, it recovers 0.25 codes as 0.266, 1.00 as 1.000 and 20.0 as
+19.906, against a substrate floor of 0.131. A burst would have been seen. Probably because burst is chroma and this
+is decoded luma, so the decoder notches it out before delivery — explanation, not measurement.
+⚠️ **Codex answered this to the owner on 2026-08-30** — "Not as a directly measurable waveform in this capture",
+the window "gives the digital active-video window — not an approximately 858-sample, 13.5 MHz representation of the
+entire NTSC line containing sync tip, back porch, and color burst", and "We cannot use burst position as a
+horizontal or vertical registration anchor from this UYVY stream" — **and it was written down nowhere.** Claude then
+asserted the opposite on 09-04 and 09-05, conflating the analogue signal with the delivered raster, and on 09-09
+asserted that a displaced row's blanking in the window is "a complete horizontal blanking interval — front porch,
+sync, colour burst", attributing that to the contract. **The contract contains no such parts list** — it states a
+10.9 µs / 147-sample duration from SMPTE 170M with no components named, and the phrase appears nowhere in the
+repository. The invention lived only in conversation, which is why nothing checked it, and it is what sent both
+agents chasing burst eleven days later. Evidence and the sensitivity proof:
+`experiments/switch_cohort/BURST_RESULT.md`.
+
 **Rule-8 gaps 1–3 review and proposed sequence, not implementation:**
 `993e4ab` corrects the repeated one-acquisition-site claim; source lock and
 head-switch bounds remain different states. The inclusive band count still
@@ -2729,6 +2753,13 @@ two-instrument disagreement, not an accepted detector change. Measurements,
 reproduction, and the precise scope of the old 24.293-ms synthetic engine
 percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
 
+- **A conclusion that closes off a line of investigation is written into THIS FILE at the moment it is
+  reached** — by whichever agent reaches it, in whichever channel, without waiting for a round of work to end. A
+  finding that lives only in a Codex thread is invisible to the harness, and an assertion made in the Claude thread
+  is never checked against it. Cost, 2026-08-30 to 2026-09-10: Codex ruled the colour burst unrecoverable from this
+  raster, recorded it nowhere, Claude asserted the opposite three times, and both agents rebuilt the answer from
+  zero eleven days later. §7's "what earns a note" rule already covers this case — a durable conclusion that would
+  otherwise get re-investigated — and it was re-investigated.
 - **Mutual code-and-intent review is the coding style of this project (owner rule, 2026-09-03).**
   Every change by one agent (Claude or Codex) is reviewed by the other before it is considered
   done, and the review covers **intent as well as code**: the reviewer must be able to state the
