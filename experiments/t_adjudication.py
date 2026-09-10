@@ -39,11 +39,15 @@ from field_lines_py import row_to_field_twice
 
 
 def row_for_line(field, line):
-    for r in range(525):
-        f, t = row_for = row_to_field_twice(r)
-        if f == field and t == 2 * line:
-            return r
-    return None
+    """RUN_TIMING.md's table is in the HARNESS's frame-continuous convention, not field-relative.
+
+    The harness has not migrated (CLAUDE.md §14 forbids flipping it before the coordinated handoff),
+    so its `T`/`S` are `row + 4` for BOTH fields -- which is why field 2's 524 has no field-relative
+    line and a field-relative lookup returned nothing. Convert the way the source document counts.
+    """
+    del field
+    r = line - 4
+    return r if 0 <= r < 525 else None
 
 
 def main():

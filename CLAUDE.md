@@ -2394,9 +2394,10 @@ T disagreements holding Track 1's agreement condition open: both readers agree o
 partial line), the run reader says T = S-1. The peak has no definitional tie to either quantity, and this file already
 records Codex's 2026-09-09 finding that it cannot classify a regime but "where it IS present it confirms the exact
 partial switch line and its position along the row". Positive peaks, by `rf_peak_census.py`'s signed-blind statistic
-(largest excursion from the row's own median in EITHER direction, in that row's own MAD, no amplitude typed in):
+(largest excursion from the row's own median in EITHER direction, **in that row's own MAD units -- NOT
+calibrated sigma**, a mislabel Codex caught and corrected throughout this entry; no amplitude typed in):
 
-| sigma >= | readings | on S-1 | on S |
+| MAD units >= | readings | on S-1 | on S |
 |---|---:|---:|---:|
 | 15 | 255 | 252 (98.8%) | 2 |
 | 30 | 200 | 199 (99.5%) | 1 |
@@ -2404,15 +2405,17 @@ partial switch line and its position along the row". Positive peaks, by `rf_peak
 | 100 | 71 | 71 (100%) | 0 |
 
 Flat across the whole sweep, so no threshold is doing the work. **Two controls.** Over 1,680 readings (counters
-6681-6785, the six keys' neighbourhood, the last eight picture lines of both fields) the >=30 sigma positive peaks
+6681-6785, the six keys' neighbourhood, the last eight picture lines of both fields) the >=30 MAD-unit positive peaks
 land on exactly three of sixteen (field, line) cells -- f1 260 in 36, f2 259 in 37, f2 260 in 9 -- and **zero** on the
 other thirteen, so the peak is a switch-band feature and not bright picture content, which would be spread across all
 eight lines. And joined to the engine's own AGREED T, the peak is exactly ON T in 166 of the 197 readings where the
 engine says T = S-1, and one line ABOVE T in the 31 where it says T = S -- so the T = S answer is contradicted
 wherever a peak is visible, including on readings the two readers did not dispute.
-Two of the six disputed keys carry a peak: **6704/f2 at 77.3 sigma column 131 and 6785/f1 at 67.7 sigma column 201,
-both on S-1**, against a same-window population median of 10.0 sigma. The other four carry no positive peak at all
-(their largest excursion is the end-of-row blanking at -10 to -11 sigma), which is absence of evidence, not evidence
+Two of the six disputed keys carry a peak: **6704/f2 at 77.3 MAD units column 131 and 6785/f1 at 67.7 column 201,
+both on S-1**, against a same-window population median of 10.0. The other four carry no positive peak at all
+(their largest excursion is the end-of-row blanking at -10 to -11 MAD units; Codex ran a separate POSITIVE-only
+search on those four windows and got maxima of 6, 8, 5.5 and 5.5, so the bounded absence holds and is tighter than
+this entry first stated), which is absence of evidence, not evidence
 for T = S. The raw rows were rendered and looked at first (`experiments/t_adjudication_panel.py`): in all six, the row
 the run reader calls T is unbroken picture across all 720 samples, which by itself separates neither reader, because a
 partial row's other-head portion need not be blanking.
@@ -2439,6 +2442,49 @@ terminal runs), but those predicates do not settle timing identity. Separate pos
 give maxima 6, 8, 5.5 and 5.5 MAD within the eight-row window, all below 30; a negative absolute winner alone
 could not have established that. Full evidence, code-path qualifications, and the diagnostic script's separate
 field-2 coordinate bug are in `docs/reports/2026-09-11_peak_witness_adjudication.md`. No engine or contract change.
+
+**CODEX'S ADJUDICATION (`85e37da` on `v10-engine`, report `docs/reports/2026-09-11_peak_witness_adjudication.md`):
+the association reproduces and is NOT accepted as a verdict.** Its objection is the one that matters and it is not
+about the arithmetic: **a large within-row luma excursion is not an identified RF landmark.** The earlier RF-peak
+work included a row-to-row TIMING check -- an otherwise aligned row carried the spike and the next row tore from
+that sample onward -- and this statistic performs no such check, so it establishes an association between a spike
+and S-1, not that the spike IS the landmark whose role this file records. Its verdict: "strong support for T = S-1
+on the two spike-bearing keys, not a six-key verdict."
+Three instrument qualifications, all accepted: it selects the strongest ABSOLUTE excursion and filters sign
+afterwards, so a negative winner can CONCEAL a positive one and the population count of peak-bearing readings may
+undercount; spatial concentration does not exclude picture content, since picture features need not be uniform
+across eight rows, so the three-of-sixteen control is evidence and not proof; and the geometry export includes
+signal-gated diagnostic units, so the join is not automatically a census of live-engine observations.
+**And an engine-side point worth more than the six: the phase reader can return T = S when its partial-prefix
+predicate FAILS, and that failure is not positive proof that no partial existed.** So the 31 readings where both
+readers agreed T = S while the peak sits one line above them are a discrepancy set to be adjudicated, not a settled
+agreement -- while equally, naming an excursion "RF" cannot overturn their agreement on its own.
+
+**THE TIMING QUALIFICATION WAS ATTEMPTED AND THE CONTROL KILLED IT -- a null, recorded so the next attempt does not
+rebuild it (2026-09-11).** The check: split the spike row at the spike's column and test whether the segment BEFORE
+it aligns with the normal row above while the segment AFTER it does not. Read alone it looked decisive -- pre-spike
+against the row above gave lag -3 at r 0.957 and 0.927 on the two keys. **Then the same split was applied to the six
+ordinary picture rows above each spike row, at the same column: every one gives pre-split lag 0 to +-1 at r
+0.89-0.96 and post-split at a large lag (-129 to -206) with r 0.59-0.82.** The spike row is indistinguishable from
+its neighbours; on 6785 its post-split lag of -205 sits inside its neighbours' range of -168 to -206. The large
+post-split lag is a short segment finding a spurious best match against a long row, and it happens on every row.
+**So the pre/post reading is an artefact of the measure, the spikes are still not qualified as the landmark, and
+Codex's gap is open.**
+⚠️ The first version of this check was also arithmetically invalid and announced itself: it centred each row over
+its full length and then sliced, so the slices were not zero-mean and a near-constant reference returned r = 25.9,
+impossible for a normalised correlation. Centre per overlap, and skip overlaps whose reference is flat.
+
+**The association does survive a content-regime split, which was the obvious way for it to be an artefact.**
+Capture 1 is three regimes, measured here rather than taken from the relay that reported them: counters 6400-6599
+are 200 units of flat device blanking (field-1 picture-area mean 1.50, sd 0.9), 6650-6799 the card (mean 37-49),
+and **6900-7174 is about 275 units of bright programme (mean 113-128, sd 34-49)**. Split by the unit's own
+brightness, `peak_line - S` is **93 of 93 on S-1 in dim units and 106 of 107 in bright ones**, so no single content
+regime carries it.
+⚠️ **A consequence for the COMB work rather than the peak work: all three of `COMB_COMPARISON.md`'s ablation
+controls -- 6687, 6690, 6700 -- are CARD units**, and the maskless comb decides cleanly on real programme. Measured
+here with independent code, mean |vertical second difference| over the woven pair: card 6690-6710 minimum at 0 with
+a 1.30x margin, programme 6960-6990 at 0 with 1.69x, programme 7100-7130 at 0 with 1.73x. So the 449 ambiguous
+readings are not this source being hard, and mask work should be validated on the programme third, not the card.
 
 **A RULED-OUT ROUTE, measured 2026-09-10 — gating the partial-row test on relocated blanking does not work.**
 The harness declares a partial row where the raw rows show ordinary picture in a class of ~76 readings, and the
