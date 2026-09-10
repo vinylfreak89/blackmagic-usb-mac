@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-"""The owner's invariant as a TEST (never in the builder): on the commercial tape every unit from counter-based ordinal 551
-onward (counter >= 6593) is a perfectly stable picture, so a geometry record must be constant there wherever it is measurable.
+"""The owner's invariant as a TEST (never in the builder): on the commercial tape every unit of the stable interval is a
+perfectly stable picture, so a geometry record must be constant there wherever it is measurable.
+
+⚠️ THE START COUNTER WAS WRONG AND IS CORRECTED (2026-09-10). This defaulted to 6593, which CLAUDE.md records as a
+measurement error of about 74 units: the commercial tape rewinds at its head, there is no picture at all until counter
+6610, and none the engine may register until 6667 -- the owner ruled that boundary correct ("It's the tape coming in...
+That should stay unregistered"). The contract was fixed to 6667; this tool was not, and its wrong default was never
+exercised because the one clean run passed --from-counter 6667 explicitly. A run without the flag would have checked
+the invariant across the rewind. 6667 is a property of CAPTURE 1, not of the invariant: another source has its own.
 Reads an engine record (switch_geometry.py CSV) and prints, per field, over the stable interval: the histogram of top,
 S, crop_last (top+239 clipped -- the CROP's last line, NOT the measured picture bottom, which is the row
 above the switch line by contract rule 3), the unit-to-unit changes of each, and the unmeasurable units. Exit 1 if any measurable
 top or S differs from the interval's modal value by more than the stated tolerance (S: 1 row, the partial-line ambiguity;
-top: 0). Usage: stable_interval_check.py <sg.csv> [--from-counter 6593] [--clip 262,525]"""
+top: 0). Usage: stable_interval_check.py <sg.csv> [--from-counter 6667] [--clip 262,525]"""
 import sys, csv, argparse, collections
-ap=argparse.ArgumentParser(); ap.add_argument('sg'); ap.add_argument('--from-counter',type=int,default=6593); ap.add_argument('--clip',default='262,525'); A=ap.parse_args()
+ap=argparse.ArgumentParser(); ap.add_argument('sg'); ap.add_argument('--from-counter',type=int,default=6667); ap.add_argument('--clip',default='262,525'); A=ap.parse_args()
 clip={ '1':int(A.clip.split(',')[0]), '2':int(A.clip.split(',')[1]) }
 rows=[r for r in csv.DictReader(open(A.sg)) if int(r['counter'])>=A.from_counter]
 for r in rows:   # the current record names the top switch line T; the earlier records named S

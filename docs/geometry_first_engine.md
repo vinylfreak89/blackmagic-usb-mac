@@ -444,8 +444,12 @@ field" phrasing does not.
 - The Shuttle re-encodes the insert from a caption it slices within one line of the standard line. Units exist that
   carry decoded caption bytes on the insert with no parity-valid raw caption anywhere in the field and a rigid
   one-line displacement of the whole picture; units whose raw caption sits two or three lines low carry nulls on the
-  insert without exception. So the slicer's window reaches one line and not two; the −1 side (the tape's line 21 on raster line 20) is its symmetric case, not
-  separately measured.
+  insert without exception. So the slicer's window reaches one line and not two on the +1 side. That the −1 side (the
+  tape's line 21 on the Shuttle's line 20) behaves symmetrically is an **UNMEASURED HYPOTHESIS**, not an established
+  case. ⚠️ It is not testable by looking for a raw caption one line high: that lands on the line the Shuttle
+  overwrites, so the delivered raster conceals the evidence. Testing it needs an independently established input
+  caption position and payload, then observing the regenerated decode — decode success alone cannot establish where
+  the input caption was.
 - The deck clips each field at its own clip line, constant per source; the pass-through rows below it carry only
   the near-blank remainder and the chroma noise of the decoder.
 - The Shuttle's regenerated rows and recorded rows separate on chroma noise against the blanking rows', with a
@@ -673,7 +677,8 @@ field" phrasing does not.
 - **Comparator**: the value seen most often since the last reset, held in a fixed array of eight slots (owner: "8
   sounds fine"); equal counts do not change the ordering (owner); a ninth distinct value replaces the least-counted
   entry, and an evicted value that returns starts again at one (the fixed array's approximation of the running
-  count; an engineering choice the owner left to the agents, 13:29: "Number I will leave up to you. 8 sounds fine.
+  count, NOT an exact all-history frequency). Counts for retained entries accumulate without decay; only eviction or
+  a reset discards one. (An engineering choice the owner left to the agents, 13:29: "Number I will leave up to you. 8 sounds fine.
   Equal counts do not change ordering."). The comparator, per field: the level of the tape's line 22 where it is
   visible (an integer, the row's luma mean rounded to a unit). The switch-line count is not a comparator (owner,
   20:56).
@@ -909,9 +914,8 @@ field" phrasing does not.
    2026-09-09, narrowing his own earlier wording: "I think I was a bit too harsh on this rule"). **Sharpened by
    his 2026-09-10 ruling, which rule 8 carries in full: the count that decides is the switch lines OTHER THAN THE
    PARTIAL LINE.** A change in the partial line alone does not invalidate the hold, and the count may expand where
-   the partial was not present from the beginning. The level of the tape's line 22 is a comparator by
-   running count in a fixed array of eight slots; counts never decrement; the most frequent value is the comparator
-   and is replaced by a value whose count passes it (owner, 12:52, 12:55, 20:56). No magic numbers, no per-source
+   the partial was not present from the beginning. The level of the tape's line 22 is a comparator, as
+   defined in §3 — that definition governs, and is not restated here (owner, 12:52, 12:55, 20:56). No magic numbers, no per-source
    constants typed in.
 5. **Registration runs only on normal picture.** Where the signal-state layer does not report program, the engine
    computes no displacement, applies none, leaves the crop where it was, and records why. ⚠️ This suspends
@@ -1203,10 +1207,11 @@ its rows; a true disagreement about the geometry (the comb not matching the plac
 either agent — it is reported to the owner as below. "Output" below means the stabilized visible picture the owner watches, not the crop-origin metadata. Invariants, stated as properties and
 checked per capture from that capture's own record: through a source's stable interval the top is constant, the
 lock's switch-line count is constant, and the switch line moves only with the top and only within the partial
-line's one-row travel; the output moves only at a relock and at a real change of boxing; nothing is placed on
+line's one-row travel; initial acquisition or reacquisition may establish placement, including reacquisition
+following a positively established change of boxing, and invalidation alone supplies neither replacement geometry
+nor permission to apply it; nothing is placed on
 snow; and field precedence is constant within a lock. The units at which each holds are read from the run, not
-written here. Every render (two
-captures × two fields per frame, rows doubled, red = picture top and bottom, yellow = the band bottom) is read back
+written here. Each capture's render (two fields per unit, rows doubled, red = picture top and bottom, yellow = the band bottom) is read back
 by machine on every frame — bar positions and decisive picture shifts — before anyone looks at it. The owner's
 watch copy is the live path's output with its record burned in. No work product stands in one instrument alone.
 

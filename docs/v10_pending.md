@@ -469,6 +469,30 @@ migrate onto; `field_lines_py_test.py` compiles `field_lines.h` and compares all
 
 ## Blocked on the owner
 
+**Two more, added 2026-09-10, in Codex's wording so neither agent's preferred consequence is baked in.**
+
+**(a) The 486 render and the tape's line 22.** Rule 7 says "the tape's line 22 never renders". Traced in
+`review_render.py` and measured on capture 2 (d1 = +2), that is false in the 486 mode: the window follows the
+displacement, so the tape's line 22 is inside it and carries video (row 20, mean 60.06, sd 29.24, against device
+blanking at row 18, sd 0.011). It is destroyed only where the Shuttle's own rows occupy that raster line.
+*Codex's recommendation, to be put to him rather than implemented:* scope the prohibition to the 480-line picture
+output and keep the diagnostic 486 window unmasked, since the expanded window's whole value is the evidence it
+exposes. Either choice is a deliverable preference, which is his.
+⚠️ The measurement supports what is DISPLAYED there; it does not independently establish that row's tape-line
+identity.
+
+**(b) Negative offsets under a maintained lock.** The definition of `d` says a `d ≤ 0` reading is "confirmed by the
+comb"; rule 9 says the comb is not measured under a maintained lock; rule 9 also says the band's extent alone never
+moves anything. Claude framed the consequence as "a negative offset can only be acquired, never tracked"; Codex
+rejected that framing — rule 9 explicitly allows geometry tracking without rerunning the comb, "extent alone" can
+mean an unqualified observation rather than every extent-based estimate, and uncertainty does not itself establish
+loss of lock. The question, neutrally:
+
+> "Under a maintained lock, may a qualified extent-based displacement update corrective placement without fresh comb
+> confirmation? If not, is placement held unresolved, and what independently established event permits
+> reacquisition?"
+
+
 **The switch below a box's bar — added 2026-09-10, both agents at the limit of what they can decide.**
 Codex's wording, to be put to him as asked:
 
