@@ -4181,6 +4181,18 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   no-jump figures all sit on this primitive and must be re-measured against their saved baselines before any of
   them is quoted again — 294 / 69% / 98% / 0% remains withdrawn until that runs. Under §14 this harness change is
   reviewed by Codex.
+  ✅ **THE CONTROLS ARE COMMITTED AND RUNNABLE — `source_reference.py --selftest`, eight of them, and the
+  variant control FIRES.** They were nearly left as prose describing a run, which would have made the single most
+  consequential decision of the night unreproducible: the abrupt-transition fixture is what rejected the 84%
+  variant, so without it the CLAUDE.md paragraph above would be a second store of a decision nothing enforces,
+  and the next reader to notice that 84 > 56 would have had nothing to stop them reverting it. **This project
+  paid for the same shape twice earlier the same night** — an instrument left in `/private/tmp` so a wrong figure
+  could not be re-run, and a conclusion filed in a tracker that is deleted when empty. Both were fixed by moving
+  the artefact, not by describing it better.
+  **The variant control runs the REJECTED criterion rather than describing it** (`_ref_at_crossing`, a flag on
+  the one implementation rather than a copy of it) and requires the abrupt fixture to FAIL under it. **Verified
+  by mutation: reinstating the rejected variant as production makes the recovery test report FAIL and the
+  selftest exit 1.** A control that has never failed on the defect it exists for is a claim, not a check.
   ⚠️ **Two intermediate versions were caught by their own controls and are recorded so they are not re-tried:**
   reporting the midpoint CROSSING lands on level 10.5 by construction while the docstring claimed the floor (a
   docstring asserting what the code does not do — twice paid for tonight); and `argmin` over the tail finds the

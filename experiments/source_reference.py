@@ -36,7 +36,7 @@ ORIGIN_ROW={1:19,2:282}          # storage row of each field's picture origin (l
 DEVICE_ROWS={1:list(range(7,16)),2:list(range(270,279))}   # for COMPARISON only, never the reference
 
 
-def row_transition(row):
+def row_transition(row, _ref_at_crossing=False):
     """This row's own transition into blanking, as a TIME in its own sweep -- or None.
 
     REPAIRED 2026-09-11, and the criterion is written to a measurement rather than to an intuition.
@@ -106,7 +106,11 @@ def row_transition(row):
     # midpoint becomes floor-to-floor and the search degenerates into hunting a noise dip 17
     # samples into the settled run. x[t-1] is the last sample still above the midpoint, so the
     # threshold always spans a real descent.
-    done = tail <= 0.5 * (float(x[t - 1]) + floor)
+    # `_ref_at_crossing` exists ONLY so --selftest can run the rejected variant and require it to
+    # fail. Production never passes it. Keeping it as a flag rather than a second function means
+    # the control exercises this code, not a copy of it.
+    ref_level = float(x[t]) if _ref_at_crossing else float(x[t - 1])
+    done = tail <= 0.5 * (ref_level + floor)
     idx = np.flatnonzero(done)
     return t + int(idx[0]) if idx.size else t
 
@@ -159,7 +163,11 @@ def main():
     ap.add_argument("--rows",nargs=2,type=int,default=[20,220],
                     help="offsets into the field's picture used as GOOD picture lines")
     ap.add_argument("--limit",type=int,default=200)
+    ap.add_argument("--selftest",action="store_true",
+                    help="run the controls that decided this function's criterion")
     a=ap.parse_args()
+    if a.selftest:
+        return selftest()
     st={"buf":bytearray()}; out=[]
     def emit(u):
         c=int.from_bytes(u[4:6],"little")
@@ -207,6 +215,63 @@ def main():
     print("    level        median %.4f   unit-to-unit sd %.4f"%(np.median(dev),dev.std()))
     print("\n  the two differ by %.3f codes; :531 forbids the second as a reference."%(np.median(m)-np.median(dev)))
     return 0
+
+
+# ---------------------------------------------------------------------------------------------
+# The controls that DECIDED this function, as runnable fixtures rather than comments about a run.
+#
+# They are here because they did the decisive work: the abrupt-transition case at 700 is what
+# rejected the higher-scoring variant (84% on the card against this one's 56%). A decision recorded
+# in prose and not enforced by a check is a second store -- and this project has already paid for
+# that twice tonight, with an instrument left in /private/tmp and a conclusion filed in a tracker
+# that gets deleted when empty. Both were fixed by moving the artefact, not by describing it better.
+
+def _fixtures():
+    rng = np.random.default_rng(7)
+    return [
+        ("picture 100 -> blanking at 600", 600,
+         np.concatenate([rng.normal(100, 4, 600), rng.normal(1.4, 0.5, 120)])),
+        ("card-like ABRUPT -> blanking at 700", 700,
+         np.concatenate([rng.normal(20, 3, 700), rng.normal(1.4, 0.5, 20)])),
+        ("bright: ONE settled sample, at 719", 719,
+         np.concatenate([rng.normal(120, 5, 719), [2.0]])),
+        ("gradual, two codes a sample, from 690", 700,
+         np.concatenate([rng.normal(20, 3, 690), np.linspace(20, 1.4, 15), rng.normal(1.4, 0.4, 15)])),
+    ], [
+        ("flat picture, no edge", rng.normal(100, 4, 720)),
+        ("all blanking", rng.normal(1.4, 0.5, 720)),
+        ("steep interior edge, never reaches a floor",
+         np.concatenate([rng.normal(120, 4, 300), rng.normal(60, 4, 420)])),
+    ]
+
+
+def selftest():
+    pos, neg = _fixtures()
+    ok = True
+    print("RECOVERY -- known answers, injected:")
+    for name, want, row in pos:
+        got = row_transition(row)
+        good = got is not None and abs(got - want) <= 10
+        ok &= good
+        print("  %-42s -> %-5s want ~%d  %s" % (name, got, want, "PASS" if good else "FAIL"))
+    print("NO FABRICATION -- rows with no transition must return None:")
+    for name, row in neg:
+        got = row_transition(row)
+        ok &= got is None
+        print("  %-42s -> %-5s %s" % (name, got, "PASS" if got is None else "FAIL"))
+    print("THE VARIANT CONTROL -- the rejected criterion must FAIL the abrupt case:")
+    name, want, row = pos[1]
+    bad = row_transition(row, _ref_at_crossing=True)
+    fires = bad is None or abs(bad - want) > 10
+    ok &= fires
+    print("  reference AT the crossing on %-24s -> %-5s want ~%d  %s" % (
+        name.split(' ->')[0], bad, want,
+        "PASS (fails as it must)" if fires else "FAIL: the rejected variant now passes, so this "
+        "control no longer defends the choice"))
+    print("  reason: on an abrupt fall the crossing is already at the floor, so the midpoint")
+    print("          becomes floor-to-floor and the search hunts a noise dip in the settled run.")
+    print("SELFTEST", "PASS" if ok else "FAILED")
+    return 0 if ok else 1
 
 
 if __name__=="__main__":
