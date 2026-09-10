@@ -4381,6 +4381,21 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   output, and the plain-comb quote's is a diff of the relay's own edit to my tracker. **Neither is his words; both
   are my or its writing read back.** A verification that can be satisfied by the thing it is verifying is not one —
   the same shape as the engine confirming itself on `(0,0)`, one store further out.
+  ✅ **RESOLVED, and the resolution names the right checker: all six VERIFY against his own records — checked by
+  the relay, which is the side he actually speaks to (2026-09-11).** "Only inside relay wrappers, zero occurrences
+  elsewhere" was therefore the EXPECTED result on this side rather than a defect: the words were said to the
+  watchdog session, so they exist as his own records in ITS transcript and reach this one only inside its wrappers.
+  **This session is structurally the wrong checker for them and could not have verified them however carefully it
+  searched.** The relay applied the circularity rule above to its own corpus before reporting — testing it for
+  contamination with four phrases that are unambiguously the relay's own (queue headers it composed, the gate's
+  output string) and getting **zero hits across 2,433 / 3,034 / 862 records** — so the store it checked against
+  does not contain its own copy, which is the condition.
+  ⚠️ **THE RIGHT MARKING IS "VERIFIED BY THE RELAY AGAINST HIS OWN RECORDS, IN A STORE THIS SESSION CANNOT SEE."**
+  Weaker than first-hand, stronger than unverified — and it is permanent rather than something to clear, because
+  **the asymmetry is structural: he speaks to the watchdog, the watchdog relays here, and neither side can see the
+  other's store. Every ruling this session holds is in that position by construction.** The alternative — leaving
+  his rulings permanently "unverified" to the side that has to implement them — is worse and is not what the
+  evidence says.
   ⚠️ **Consequence for this file, stated because it is uncomfortable rather than because it is safe: EVERY owner
   quote added to CLAUDE.md on 2026-09-11 reached this session through the relay, not from him directly.** The
   tracker entries say so in as many words ("Relayed, not heard directly by this session"); several entries here do
