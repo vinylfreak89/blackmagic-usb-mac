@@ -584,6 +584,51 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### ⚠️ WITHDRAWN — the ":531 tension" was my seventh fixed-place-to-look defect, not a rule/source conflict
+
+Owner: **"LINES ARE TEMPORAL NOT SPATIAL. of course if you measure across the row and average you aren't going to
+find it."**
+
+I reported that contract `:531`'s named reference — the source's own blanking on its good picture lines — is
+"often unmeasurable on capture 1", and put it on his list as a conflict between a rule and a source. **It is
+neither. The reference is there on essentially every row; I was looking in a fixed place instead of at each row's
+own instant.**
+
+**Verified independently, capture 1 bright programme (6960-6969), 1,010 mid-picture rows of field 1**, finding each
+row's transition as its own steepest fall and reading after it:
+
+| | value |
+|---|---|
+| rows examined | 1,010 |
+| rows with no sample at the device level after their transition | **32 (3.2%)** |
+| the SOURCE's own blanking | mean **1.410**, sd **0.492** |
+| the DEVICE's fill | mean 1.3808, sd 0.0058 |
+| each row's transition | median sample **716**, p10 715, p90 718 |
+
+**The reference exists on 978 of 1,010 rows**, where my fixed-window hunt returned 51.97 — picture. And the
+transition sits within a **three-sample** spread across rows, so it is a common slew rather than many rows
+transitioning at different times.
+⚠️ Two honest differences from the relayed version: it reported **0** rows without a usable sample and I measure
+**32**, and it reported the level at 1.540 where I measure **1.410**. Both are above the device fill; CLAUDE.md's
+recorded range for this quantity is 1.459-1.53, so mine sits a little below it and the relay's a little above.
+Different transition-finders, same conclusion — but "essentially every row", not "every row".
+
+**Consequences:**
+1. **The `:531` item comes OFF his list.** There is nothing to reconcile and nothing to send Codex as a conflict.
+2. **Every number taken tonight against the DEVICE's fill should be re-taken against the source's own blanking**,
+   read per row at its own transition — my threshold tables included. The mean-versus-median ruling is unaffected:
+   it concerns the statistic, not the reference, and the engine already computes the mean.
+3. ⚠️ **A real measurement caveat, not a contract one:** on bright content only one or two samples per row sit at
+   blanking after the transition, so a single row gives a reference of sd **0.492** against the device fill's
+   **0.0058** — about eighty times noisier. If a tighter per-unit reference is needed, accumulate **across rows at
+   each row's own instant**, which is not the same as averaging a fixed column range and is exactly the
+   distinction that broke both attempts.
+
+⚠️ **This is the SEVENTH instance of one defect tonight**, and the count is the finding: a positive-only sign
+filter, a fixed 48-sample ramp window, a boundary search bounded to `b0 − 60`, a fixed row for 6(b), a hardcoded
+column 706, a window from 580, and now a fixed window for the blanking reference. Every one reached for **a place
+to look** instead of letting the signal's own timing say when.
+
 ### :1027 and :451 ANSWERED — and :451 was never a contract contradiction. My error, verified.
 
 **:1027 — caption-only acquisition.** His words: *"D1 - combing. yes a lock may exist without combing. but it is
