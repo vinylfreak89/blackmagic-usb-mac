@@ -2160,6 +2160,119 @@ physically blanking rather than dark content.
 ⚠️ **The ROW is not in doubt where the engine cannot measure it.** The harness's switch line is exact in 1,013 of
 1,013 registerable field-readings on this capture against an instrument sharing no code with it. So this is a
 limit on the engine's independent observation, not an unknown in the geometry.
+**One-ended observation decision — decline implementation on current evidence:**
+the 255-field candidate-failure cohort is not measurable by this engine on
+capture 1. Retain its Unknown T/S readings as a named instrument limitation,
+not fundamental unmeasurability and not an acceptance pass. Both component
+T/S pairs and combined T/S are Unknown on all 255 in the unchanged export.
+The existing phase reader cannot establish its qualified departure, and the
+run reader lacks a qualifying exposed interval. A visible low-prefix endpoint
+does not itself identify blanking rather than black content; no independent
+timing witness resolving that ambiguity has been demonstrated for these keys.
+This is absence of validated evidence in the engine, NOT proof such a witness
+is absent from the capture. A future one-ended reader would need a source-local
+identifiable timing feature corroborating the exposed boundary's displacement,
+with black-rectangle rejection and departure/return controls; missing extent
+would remain Unknown and references would be rebuilt after lock-like loss.
+This is a limitation of this source/engine pairing, not all line-TBC-off sources
+or a prediction for unopened captures. Detailed disposition is appended to
+`src/field_registration/tests/RUN_TOLERANCE.md`. No production change.
+
+**Scattered-code tolerance tested, diagnostic only:** the published reference
+S rows reproduce the harness's 205 short / 42 split / eight uninterrupted
+>=147 partition of the 255 candidate failures. The missing cross-tab is
+decisive: 33 of the 42 split intervals start at sample zero; only nine expose
+both ends (four start 1/2, five farther inside). Of the 205 short runs, 169
+start zero, 36 inside. Six-sigma membership is tested as the harness's
+instrument choice, not a production rule. Candidate-only tolerance leaves
+nine candidates, four with a basis, none with a qualifying predecessor.
+Applying it to porch membership too leaves nine through both porch-loss
+checks, one through predecessor, none through CDF. Hence **0/42 survive**.
+Both stationary interior and edge-connected black rectangles still reject;
+all 34 old controls pass, and ten new negative field-controls reject. The
+two scattered-code positive fields recover only with tolerant porch references.
+The all-populations variant increases whole-capture observation conflicts
+from six to 19; neither variant is promoted. Production unchanged, no capture
+acceptance. Details, preserved diagnostic correction and reproducibility:
+`src/field_registration/tests/RUN_TOLERANCE.md`.
+
+**One-ended timing, design position only:** an identified blanking-to-active
+boundary can supply its position even when the interval's other endpoint is
+outside the delivered window. The missing endpoint/extent remains Unknown;
+147 samples must not be substituted as a measured extent. A blank-level
+prefix alone cannot identify that boundary: edge-connected black content can
+produce the same samples. Source-local independent timing corroboration is
+still required; persistence to the clip alone does not resolve that ambiguity.
+Thus a qualified one-ended observation is possible, but recovery of the 255
+candidate failures is unproved, and they are not declared fundamentally
+unmeasurable or an accepted residue. The harness reports 229/255 starts <=2
+and 205/255 lengths <147; these are not independently re-measured here. Starts
+1/2 are near-edge, not by themselves proof of an off-window endpoint. Also,
+1% out-of-alphabet samples does not exonerate the exact contiguous-run test:
+one excluded code can split a run. Its placement, not just pooled frequency,
+determines the effect. Both-ends remains a minority first-rejection cause
+(4/264, after candidate formation). No implementation,
+contract change, capture acceptance or new lock/hold policy follows.
+
+**Run-route rejection census, no detector change:** on the immutable 264
+remaining `no_disjoint` field readings at `856ec13` (same engine at merge
+`33e102c`), 255 have no exposed interior >=147-sample run in the generated
+blanking alphabet. Only nine reach the candidate stage: four lack a local
+two-ended porch basis, two retain a leading sample, two fail predecessor
+qualification, one fails the measured CDF envelope. Zero are rejected first
+by trailing extent or code support; none is accepted then returned. Thus the
+two-ended reference is NOT the dominant restriction measured here. This does
+not establish that physical blanking is absent: uninterrupted alphabet-run
+length, exposure and physical blanking duration are different measurements.
+All six observation disagreements are about partial T only; both readers
+agree on S, and this trace does not adjudicate T. Geometry and both join
+exports are byte-identical to the prior production exports; all 1,016
+component observations/causes unchanged. Fresh run controls 34/34. Reproduction,
+counts, exact keys and limits: `src/field_registration/tests/RUN_STAGE_CENSUS.md`.
+Capture 1 not accepted; no capture 2, detector change or new lock policy.
+
+**Independent run timing observation, qualified and not a capture pass:**
+the engine now records a second timing reader beside the unchanged phase
+envelope. A unique exposed interior run >=147 samples must agree with the
+unit's source-porch distribution and accompany loss of locally readable end
+porches; a stationary blank-level rectangle alone cannot qualify. The
+two-ended reference is an instrument limitation, not a standards guarantee.
+No 64/200 bounds, new lock/hold policy, top-reader or comb change. Schema 20
+retains both T/S pairs, run start/extent, CDF distance and source-derived
+tolerance, and disagreement. Conflicting T stays Unknown; an agreed S remains.
+Failing-first `23d1ec4`: 6/10; expanded controls 34/34 including sanitizers.
+One of the 265 old non-box `no_disjoint` readings recovers (7034/f2); 264
+remain Unknown. Boxed 6764/f2 also recovers. Six T disagreements are explicit,
+not silently adjudicated; all six S readings agree. Total known T is 478/1016
+(279/199 by field), versus 482 before; live-gated 221/154. This does NOT close
+Track 1's agreement condition. Method, limitations, controls, exact disagreeing
+keys and reproduction: `src/field_registration/tests/RUN_TIMING.md`.
+Paced worker: 919 exact/published, zero drops/log errors, zero locks and zero
+nonzero crops. Registration-call worker median/p95 9.169/13.923 ms; added
+run routine alone over both fields 0.3115/0.372 ms. No speedup or budget-pass
+claim. Plain/instrumented outputs and the schema-20 worker records agree.
+
+**Rule-8 switch observations restored on boxed rasters, no bounds invented:**
+the categorical box flag no longer skips `measure_switch`. T, S, bottom, span
+and visible extent are reported; the flag still supplies no box geometry,
+displacement or initial switch-line count. No acquisition bypass, top-reader
+change, comb promotion or new hold policy. The historical exclusion entry below
+is superseded in that respect. Final observation golden fails 24/31 on the old
+engine, passes 31/31 on the new, also under ASan/UBSan.
+Capture-1 export (counter >= 6667): 1,016 field readings, now 284/198 measurable
+T in f1/f2 (live-gated: 226/153). At 6687 T/S is 260/261 and 522/523.
+Of the prior export's 814 Unknowns, 287 were box exclusions and 527 were
+non-box; these are the actual artifact counts, not the brief's 811/285/526.
+All non-box T/S pairs are unchanged. The non-box Unknown-cause funnel is:
+265 complete-interval candidates never disjoint from the local phase envelope;
+145 departures accepted then cleared by a phase return; 75 with no readable
+local basis at any complete-interval candidate; 39 vetoed as a continuation
+of the previous full phase; 2 retaining a normal prefix; 1 with no complete
+interval. This is execution-path evidence, not a raw-row adjudication or a fix.
+141 of the 145 last returns are at field-2 line 525. Independent plain and
+instrumented C runs have byte-identical geometry exports. Across all 919 exact
+units the analysis probe reports zero locks and zero nonzero applied crops.
+Reproduction, gates, test qualifications and census: `src/field_registration/tests/SWITCH_UNKNOWNS.md`.
 
 **Qualified rule-8 box exclusion implemented, coverage incomplete:** a positive
 box observation suppresses switch measurement and leaves placement Unknown;

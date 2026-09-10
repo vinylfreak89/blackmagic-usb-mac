@@ -86,6 +86,17 @@ typedef enum fieldreg_switch_signature {
     FIELDREG_SWITCH_BLANKING_PARTIAL,
 } fieldreg_switch_signature;
 
+/* Two independent timing observations; line members are raster rows, -1
+ * unknown. Run samples use delivered x coordinates. Distance is the maximum
+ * CDF difference against locally observed source porches, not a confidence. */
+typedef struct fieldreg_switch_observations {
+    int16_t phase_t, phase_s, run_t, run_s;
+    int16_t run_start, run_length;
+    double run_blank_distance;
+    double run_blank_tolerance;
+    bool disagreement;
+} fieldreg_switch_observations;
+
 typedef enum fieldreg_mode {
     FIELDREG_MODE_INVALID_UNIT = 0,
     FIELDREG_MODE_ACQUIRING,
@@ -169,9 +180,10 @@ typedef struct fieldreg_field_decision {
     bool switch_count_agrees;
     bool switch_count_conflict;
     fieldreg_switch_signature switch_signature;
+    fieldreg_switch_observations switch_observations;
     bool switch_measurable;
     bool geometry_measurable;
-    /* Positive qualified exclusion only; false is not proof of no box. */
+    /* Positive qualified verdict only; false is not proof of no box. */
     bool box_detected;
     bool body_witness_valid;
     int8_t body_shift;

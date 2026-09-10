@@ -5,7 +5,10 @@ LDLIBS ?= -lm
 
 .DEFAULT_GOAL := all
 # The private reader must invalidate every active engine build.
-libfieldreg.dylib tests/field_registration_unit tests/field_registration_v10_rule1 tests/field_registration_v10_rule3 tests/field_registration_v10_rule4 tests/comb_test tests/unlocked_placement_test tests/switch_timing_test tests/static_comb_test: box_observation.h
+libfieldreg.dylib tests/field_registration_unit tests/field_registration_v10_rule1 tests/field_registration_v10_rule3 tests/field_registration_v10_rule4 tests/comb_test tests/unlocked_placement_test tests/switch_timing_test tests/static_comb_test tests/box_exclusion_test tests/run_timing_test: box_observation.h run_timing.h
+
+tests/run_timing_test: tests/run_timing_test.c tests/switch_timing_test.c field_registration.c field_registration.h cea608.c cea608.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/run_timing_test.c cea608.c -o $@ $(LDLIBS)
 
 tests/box_exclusion_test: tests/box_exclusion_test.c field_registration.c field_registration.h box_observation.h cea608.c cea608.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/box_exclusion_test.c cea608.c -o $@ $(LDLIBS)
@@ -31,7 +34,7 @@ TRUTH_SRC := $(wildcard tests/field_registration_truth.c)
 TRUTH_DEPS := $(if $(TRUTH_SRC),tests/field_registration_truth tests/libfieldreg_truth.dylib tests/registration_truth.raw)
 
 test: tests/field_registration_unit tests/cea608_unit tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw tests/field_registration_v10_rule3 tests/registration_v10_rule3.raw tests/field_registration_v10_rule4 tests/registration_v10_rule4.raw tests/switch_timing_test tests/comb_test tests/unlocked_placement_test
-test: tests/box_exclusion_test
+test: tests/box_exclusion_test tests/run_timing_test
 	./tests/field_registration_unit
 	./tests/cea608_unit
 	./tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw
@@ -41,6 +44,7 @@ test: tests/box_exclusion_test
 	./tests/comb_test
 	./tests/unlocked_placement_test
 	./tests/box_exclusion_test
+	./tests/run_timing_test
 
 tests/unlocked_placement_test: tests/unlocked_placement_test.c tests/comb_test.c field_registration.c field_registration.h cea608.c cea608.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/unlocked_placement_test.c field_registration.c cea608.c -o $@ $(LDLIBS)

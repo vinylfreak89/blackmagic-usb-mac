@@ -1,5 +1,12 @@
 # Qualified box observation, exclusion only (rule 8)
 
+**Historical implementation below; blanket switch exclusion is superseded.**
+The owner's corrected rule 8 requires the current switch observation on boxed
+rasters too. See `SWITCH_UNKNOWNS.md`: only the exclusion of switch measurement
+is removed; boxed displacement still lacks measured geometry and stays Unknown.
+The old full-card exclusion checker is a historical acceptance test for the
+withdrawn requirement, not the current acceptance criterion.
+
 The categorical observation cannot provide a displacement. A positive reading
 skips the switch reader, leaves all switch/band quantities Unknown, and leaves
 geometry unmeasurable. The raw top reader still runs unchanged and its tentative
