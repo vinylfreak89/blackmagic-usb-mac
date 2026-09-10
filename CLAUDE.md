@@ -3068,15 +3068,25 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   alone, because with one row per marker a broken anchor always orphans its marker too. That is a limit of the
   current coverage, not a proof the case is unreachable. That is the argument that it is structural rather than either being sloppy.
 - **A pipeline reports its LAST command's status, and the usual guard against that is a bash-ism which is SILENTLY
-  EMPTY in zsh — sixth and seventh members of the family, one each (2026-09-11).** The peer session ran
+  EMPTY in zsh — sixth, seventh and eighth members of the family (2026-09-11).** The peer session ran
   `python3 check.py old.md | head -8; echo "exit=$?"`, read **exit=0** from `head` rather than from python, and
   nearly recorded "prints the defect but exits 0" as a defect in a working instrument. Claude, verifying the same
   fix minutes earlier, wrote `... | head -8; echo "exit=${PIPESTATUS[0]}"` — which printed **`exit=`**, blank, and
   read past it. **`PIPESTATUS` is bash; this shell is zsh, where the array is `$pipestatus` and is 1-INDEXED**, so
   `${PIPESTATUS[0]}` is empty here always and that guard is vacuous every time it is written.
-  Working forms under zsh: `cmd | head; echo "exit=${pipestatus[1]}"`, or `set -o pipefail`, or simplest — **do not
-  pipe the command whose status you are checking.** A blank where a number belongs is the tell, and it is easy to
-  miss precisely because nothing failed.
+  ⚠️ **And the EIGHTH member is the other way that guard fails: `pipestatus` is reset by EVERY command, including
+  the `echo` used to read it.** The peer session's first attempt to verify the seventh wrote `false | true`, then
+  echoed, then read — and got a confident `0` for a pipeline whose first element had failed, which would have
+  contradicted a correct finding. Measured here: read immediately → 1; read one command later → **0**; captured
+  into a variable on the next line then used freely → 1; `set -o pipefail` → 1.
+  **So "the check has to be one the shell actually implements" is NECESSARY BUT NOT SUFFICIENT** (the peer's
+  sharpening, and it is the better rule). `${pipestatus[1]}` IS implemented here and still returns a confident
+  wrong answer if anything runs between the pipeline and the read. **Prefer the forms with no window:
+  `set -o pipefail`, or simply do not pipe the command whose status you need.** If you must use the array, capture
+  it on the very next line — `st=(${pipestatus[@]})` — and read `st` thereafter. A form that is correct only when
+  nothing intervenes is a latent member of this family rather than an exit from it.
+  A blank where a number belongs is the tell for the seventh; for the eighth there is no tell at all, which is why
+  the structural fix beats the careful one.
   ⚠️ **The instance worth keeping is that the guard AGAINST this family was itself a member of it**: a construct
   that succeeds, prints something plausible, and answers a question nobody asked. That is the whole family in one
   line, and it is why "check the exit status" is not sufficient advice — the check has to be one this shell
