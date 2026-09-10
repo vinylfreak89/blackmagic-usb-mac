@@ -2957,6 +2957,46 @@ conclusion the amplitude work reached and now has a mechanism.
 **This is the "something beyond amplitude and width" recorded above as missing.** It is the DURATION of the
 recovery, and it is visible only when the ramp is measured as a time rather than over a window.
 
+**ONE-SIDED MOTION IS NEVER A DISPLACEMENT -- owner ruling, 2026-09-11, and the engine gets it wrong in BOTH
+directions today.** His words: "top of picture that becomes black without the bottom of the geometry moving should
+be a hold, not unlock geometry, because the levels above block are genuinely not stable in this capture", then the
+amendment that generalises it: **"hold not unlock and don't shift. only one part of the geometry shifting without a
+corresponding shift on the other side is a hold. not a shift."**
+So whenever one boundary moves and the other does not move correspondingly: **the lock STANDS (not unlocked, not
+released, not re-acquired) AND the crop DOES NOT MOVE.** A rigid move -- both boundaries together, same amount --
+is what licenses a shift; a one-sided move licenses neither.
+**Verified in the code at HEAD, after Codex's comb change** (`field_registration.c:810-830`):
+`geometry_d = measurement->top - origin`, applied whenever `geometry_measurable && crop_fits_raster`. **The bottom
+is never consulted** -- `expected_bottom` is computed at :812 but only feeds `lines_lost`. So a top-only move
+shifts the crop today, which the ruling forbids; and a top-only change is separately dispositioned `LockBroken`,
+which the ruling also says is wrong. Both halves need repairing, not one.
+**His reason is a measurement and it reproduces independently** (146 title-card units, 6665-6810, row means):
+field 1 reads **4.0 / 4.7 / 10.7 / 10.1 / 10.4 / 16.5 / 27.3** on lines 23-29 and field 2 **2.0 / 10.2 / 10.3 /
+10.7 / 13.5 / 27.0** from 286 -- a flat plateau at the deck's black (~10.1-10.7) before the box bar settles at
+26-27. The top rows are dark and their darkness tracks the card's exposure.
+**Consequence, measured over those same 146 rasters -- the "top" is whatever the threshold says it is:**
+
+| threshold above blanking | field 1's top | field 2's top |
+|---|---|---|
+| 3 | **line 23 in 74, 24 in 43, 25 in 29** | 287 in 146 |
+| 6 | 25 in 139, 24 in 7 | 287 in 146 |
+| 8 | 25 in 110, 28 in 26, 27 in 6 | 287 in 110, 288 in 14, 289 in 13 |
+| 12 | 28 in 127, 25 in 17 | 291 in 84, 290 in 45, 287 in 15 |
+
+**Field 1's top ranges over five lines (23 to 28) on identical rasters**, and at threshold 3 a single threshold
+gives three different answers across the 146 units. ⚠️ And it moves with the threshold's BASIS as well as its
+value: this table is relative to the device's regenerated blanking (~1.38), and a relayed version using an absolute
+cut put field 1 at line 23 in 146 of 146 at threshold 3 where the relative one splits 74/43/29. Same rasters, same
+nominal threshold, different answer -- which is a second instance of the same fragility and strengthens the ruling
+rather than contradicting it.
+⚠️ **The v9 reversal is NOT a counter-argument but the distinction must be written into the contract or the
+regression returns.** This file records that "the top alone never moves the crop" was tried in v9 and reversed
+because it suppressed 2,616 caption placements. A caption placement is an INDEPENDENT ABSOLUTE GAUGE, not a
+one-sided geometry observation, so the ruling does not touch it -- but nothing in the wording says so, and the
+last time that went unsaid the rule was reversed wholesale.
+⚠️ It also confirms a scoring call made earlier tonight: capture 1's 31 field-2 readings at lines 287-295 are the
+dark-scene-top class, and holding `(0,0)` through them is now the ruled behaviour rather than my inference.
+
 **CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
 FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
 clear it when normal timing returns -- which the engine already does -- and Codex verified upward and downward
