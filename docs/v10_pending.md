@@ -335,8 +335,19 @@ EXPAND where the partial was not present from the beginning.
    | field 2 | 4×443, 3×62 — 62 off the mode | 3×489, 2×16 — **16 off** |
 
    Across the capture his test roughly halves the hold-invalidating events, 100 → 59 — but that is entirely
-   field 2. **Field 1 gets slightly worse under his rule, 38 → 43**, and that is worth his knowing rather than
-   being averaged away.
+   field 2. Field 1 goes the other way, 38 → 43.
+   **WHY field 1 worsens, measured 2026-09-10 — his rule is EXPOSING a harness fault, not causing one.** Of the
+   43 field-1 readings off-mode under his rule, **34 have no partial line detected** and 9 have one. A field-1
+   reading with no partial is **54%** likely to be off-mode; one with a partial is **2.0%** — a 27× difference.
+   Field 2 has **zero** of its 46 no-partial readings off-mode.
+   The arithmetic: with no partial detected every switched line counts, so the tally runs one higher than when a
+   partial is excluded. Field 2's no-partial readings all place the switch on the same line and stay consistent;
+   **field 1's split roughly half-and-half between two lines, and the suspect half places the switch one line
+   HIGHER — exactly where an undetected partial would put it.**
+   ⚠️ So the likely cause is MISSED PARTIAL DETECTION in field 1, not a defect in the owner's rule. And it rests
+   on the one quantity nothing has independently verified: the census validated the fully-switched line, never the
+   partial identification (Codex's caveat, same day). Confirming it needs raw rows on those 34, which is the
+   parked partial-row question.
 2. **Expansion is flagged as a conflict.** `field_registration.c:924-930` sets `switch_count_conflict` on ANY
    difference from the frozen count; he says expansion is accepted where the partial was not there from the start.
 3. **Nothing re-acquires.** A count conflict is reported and the lock stands. His ruling makes the hold invalid
