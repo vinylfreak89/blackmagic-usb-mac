@@ -27,6 +27,52 @@ not been amended; and the engine's constants and reports are still in the old co
 both sides are converted, a field-1 number in one scheme must never be read against a field-2
 number in the other.
 
+**THE SWITCH TEST IS INVERTED FROM WHAT BOTH INSTRUMENTS DO (2026-09-10).** Verbatim:
+> It is measuring the skewed blanking ending up inside the picture to determine where the head
+> switch is. This is exactly inverted from my intent. It should be measuring where the blanking is
+> overwritten. So if the blanking extends past its expected horizontal extent or the picture
+> extends past its expected horizontal extent, that's the head switch.
+
+and, naming the two cases:
+> Overridden or extended.
+
+and, resolving what establishes blanking rather than merely blank level:
+> Blanking should be measured where it's suspected to occur.
+
+So the switch is marked by the BLANKING'S OWN EXTENT departing from what it should be, in either
+direction — OVERRIDDEN, picture where blanking is expected; EXTENDED, blanking where picture is
+expected — and blanking is identified by POSITION, not by brightness. Blanking is a timing interval
+with an expected place at the row's edges; blank level is a brightness that dark picture shares.
+Testing at the expected position is what separates them, and dark picture elsewhere in the row is
+irrelevant because it is never looked at. The expected extent is fixed by the standard: the 525
+line is 858 samples at 13.5 MHz and horizontal blanking is 10.9 µs = 147.15, so the analog active
+line is 710.85 samples; BT.601's digital active line is 720, wider by 9.15, positioned 122 samples
+after 0H while the picture starts at 126.9 — about 4.90 samples of back porch inside the LEFT edge
+and 4.25 of front porch inside the RIGHT.
+
+*Measured on capture 1, field 1, 25 card units and their neighbours, against the field's own
+written blanking at 1.0 (`experiments/porch_census.py`, and the box levels alongside it).* Where
+the mean row profile first rises above blank+4, from each edge: **off the card, left at sample 5
+and right at sample 718 — one sample dark; on the card, left at sample 5 and right at sample 700 —
+nineteen samples dark.** So the LEFT edge is immune to this material: sample 5 either way, against
+the standard's 4.90. The RIGHT edge is not — the card's side margin stretches the dark region from
+one sample to nineteen, and a level-based trailing test cannot tell that from a real timing
+extension. The box's own letterbox BANDS are not the problem: they measure 22.1 and 27.3 codes
+against blanking at 1.0, above this tape's pedestal of 9–11, so they are dark picture and no level
+test reads them as blanking. (An earlier claim by Claude that the card confounds the level tests
+generally is corrected by this: the bands are clean and it is the side margin only.)
+
+*Codex's conditions on the definition, agreed 2026-09-10 and recorded as its wording:* a
+content-contaminated right-edge measurement is **Unknown, not "normal"**, and a stable left edge
+cannot veto a genuine right-edge override; **zero remaining porch is censored** — it does not
+measure how far the overwrite continued, so neither direction may claim timing identity from level
+alone; the ordinary measurement envelope is derived from **independently identified normal rows,
+separately by edge**, and **candidate switch rows must never train the envelope used to judge
+them**; and **the endpoint of a blank-level run is not automatically the partial row's switch
+point**, so temporal validation must compare the identified boundary rather than substitute porch
+length for its position. Row evidence, locating the first affected row, and the head-catch
+temporal rule below are three separate steps on three axes and are not to be conflated.
+
 **The head switch's band may move a line or two, and that is expected (2026-09-10).** Verbatim:
 > The head switch can move and as long as the gap is temporally sound, a head catch can jump
 > around by a line or two like that, but when it jumps down as long as the partial line was near
