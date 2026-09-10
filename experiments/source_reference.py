@@ -115,6 +115,31 @@ def row_transition(row, _ref_at_crossing=False):
     return t + int(idx[0]) if idx.size else t
 
 
+
+def settled_index(row, t):
+    """The first SETTLED index at or after the arrival `t` -- what the LEVEL consumer needs.
+
+    ONE NAME, TWO QUANTITIES, which is this project's commonest defect class and was this one too.
+    `row_transition` returns the ARRIVAL: where the descent reaches the floor. That is right for the
+    POSITION consumer and its eight controls prove it. The LEVEL consumer needs something different
+    -- samples strictly after the descent has FINISHED -- and was being handed the same index.
+
+    Measured, that is exactly what went wrong: on bright programme the row at the arrival sits 27
+    codes above its floor and the next sample sits 2 above, in 1,972 of 1,972 rows. So the arrival
+    is the last RAMP sample. With a pool ~20 samples wide (the card) one ramp sample is absorbed and
+    the level reads 1.437; with a pool ONE sample wide (bright) it IS the mean, and the level read
+    13.13 instead of 1.41.
+
+    Parameter-free: walk forward while the row is still strictly descending. On an abrupt fall this
+    returns `t` unchanged, so the two quantities coincide exactly where they should.
+    """
+    x = np.asarray(row, dtype=np.float64)
+    i = int(t)
+    while i + 1 < x.size and x[i + 1] < x[i]:
+        i += 1
+    return i
+
+
 def source_reference(field_rows):
     """Pool every row's post-transition samples AT THAT ROW'S OWN INSTANT.
 
@@ -132,6 +157,11 @@ def source_reference(field_rows):
     for row in field_rows:
         t = row_transition(row)
         if t is None or t >= len(row): silent += 1; continue
+        # POSITION and LEVEL are different quantities. The transition is reported as the arrival;
+        # the level must pool only what is SETTLED after the descent finishes. See settled_index.
+        transitions_at = t
+        t = settled_index(row, t)
+        if t >= len(row): silent += 1; continue
         tail = row[t:]
         if len(tail) == 0: silent += 1; continue
         # the row's own settled level after its transition: the lowest sustained part of its tail.
@@ -144,7 +174,7 @@ def source_reference(field_rows):
         else:
             settled = tail
         if len(settled) == 0: silent += 1; continue
-        pool.extend(settled.tolist()); transitions.append(t); contributing += 1
+        pool.extend(settled.tolist()); transitions.append(transitions_at); contributing += 1
     if contributing < 20: return None
     a = np.array(pool, dtype=np.float64); tr = np.array(transitions, dtype=np.float64)
     return {"level": float(a.mean()), "level_sd": float(a.std()), "n": len(a),
@@ -270,6 +300,29 @@ def selftest():
         "control no longer defends the choice"))
     print("  reason: on an abrupt fall the crossing is already at the floor, so the midpoint")
     print("          becomes floor-to-floor and the search hunts a noise dip in the settled run.")
+    print("POSITION vs LEVEL -- the two quantities must separate on a ramp and coincide on a step:")
+    rng2 = np.random.default_rng(11)
+    ramp = np.concatenate([rng2.normal(120, 4, 700), [84.0, 55.0, 26.0], rng2.normal(1.6, 0.3, 17)])
+    step = np.concatenate([rng2.normal(120, 4, 700), rng2.normal(1.6, 0.3, 20)])
+    # ⚠️ Assert the PROPERTY, not an index relationship. The first version of this control required
+    # the two indices to COINCIDE on an abrupt step; they legitimately differ by a sample there,
+    # because the settled walk advances while the row descends and blanking noise descends by a
+    # fraction of a code. Both indices were at the floor, which is all the level consumer needs.
+    # Requiring index equality tested a proxy for the requirement and failed a correct implementation.
+    for nm, row, must_differ in (("multi-sample ramp", ramp, True), ("abrupt step", step, False)):
+        t = row_transition(row)
+        st_ = settled_index(row, t) if t is not None else None
+        floor = float(np.min(row))
+        settled_at_floor = st_ is not None and abs(float(row[st_]) - floor) <= 1.0
+        arrival_above = t is not None and (float(row[t]) - floor) > 5.0
+        good = settled_at_floor and (arrival_above == must_differ)
+        print("  %-20s arrival %-4s settled %-4s  level at arrival %6.1f -> at settled %5.1f  %s" % (
+            nm, t, st_, row[t] if t is not None else float("nan"),
+            row[st_] if st_ is not None else float("nan"),
+            "PASS" if good else ("FAIL: settled is NOT at the floor" if not settled_at_floor
+                                 else "FAIL: arrival should%s be above the floor here"
+                                      % ("" if must_differ else " NOT"))))
+        ok &= good
     print("SELFTEST", "PASS" if ok else "FAILED")
     return 0 if ok else 1
 

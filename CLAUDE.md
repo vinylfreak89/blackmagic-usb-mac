@@ -4147,6 +4147,49 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **THE LEVEL REGRESSION WAS ONE NAME SERVING TWO CONSUMERS, and splitting them fixed it (2026-09-11).**
+  `row_transition` returned one index to two consumers wanting different quantities: the POSITION consumer wants
+  the ARRIVAL (where the descent reaches the floor) and the LEVEL consumer wants only SETTLED samples (strictly
+  after the descent finishes). **Measured before building anything, and the prediction was exact: on bright rows
+  the sample AT the arrival sits 27 codes above the floor and the NEXT sample sits 2 above, in 1,972 of 1,972
+  rows.** The arrival is the last RAMP sample. `settled_index()` walks forward while the row still descends —
+  parameter-free, and on an abrupt fall it barely moves.
+
+  | the source level (`:531`'s own quantity) | bright | card |
+  |---|---:|---:|
+  | original, fabricating finder | 1.410 | — |
+  | repaired finder, one index for both | **13.132** | 1.437 |
+  | **after the position/level split** | **1.630** | **1.437** |
+
+  Bright's pool is **213 samples from 200 rows** — one per row, the settled-sample budget exactly.
+  ⚠️ **A control I wrote for it was WRONG and its failure is the useful part:** it required arrival and settled to
+  COINCIDE on an abrupt step. They legitimately differ by a sample there, because the settled walk advances while
+  the row descends and blanking noise descends by a fraction of a code — both indices were at the floor, which is
+  all the level consumer needs. **Requiring index equality tested a PROXY for the requirement and failed a correct
+  implementation.** Rewritten to assert the property (settled is at the floor; arrival is above it only on a
+  ramp), and mutation-verified: undoing the split makes the ramp case report "settled is NOT at the floor" and
+  the selftest exit 1.
+- **THE HELD-OUT CONTROL THAT CANNOT SHRINK — and it VINDICATES F49's original mechanism, which this file had
+  recorded as not-what-happens (2026-09-11).** The unqualified control's base collapsed 62 → 13 when the finder
+  improved, so the 3.6× separation now rests on thirteen readings; a discriminator whose negative class nearly
+  vanishes is harder to falsify, not better. **A population that cannot collapse: the per-row FALSE-POSITIVE rate
+  on MID-PICTURE lines, 160 rows × 30 units, where no switch can exist.**
+
+  | | mid-picture rows firing the 0.5-sd gate | per-unit rate |
+  |---|---:|---|
+  | card | **0 of 4,800 (0.0%)** | median 0%, max 0% |
+  | bright | **686 of 4,800 (14.3%)** | median 3.1%, **p90 43.6%, max 48.1%** |
+
+  **On the card the departure test is clean. On bright it fires on up to half the mid-picture rows of a unit.**
+  The cause is the divisor: bright's `transition_sd` is 0.54 BECAUSE the transitions are pinned at the window
+  edge, so an ordinary one-sample jitter reads as 1.85 sd and crosses a 0.5 gate. ✅ **That is precisely the
+  INFLATION mechanism the peer session proposed in F49 and which this file recorded as "not what happens on the
+  30-unit sample".** Both were true of what was measurable at the time: through a fabricating finder the divisor
+  was 67 and suppressed the signal; through an honest one it is 0.54 and inflates. **The correction to the
+  correction: F49's mechanism was right and was hidden by the defect underneath it.**
+  ⚠️ So the 82%/100% figures above sit on a statistic that, on bright programme, also fires on 14.3% of rows
+  where nothing can be happening. That is not a reason to discard them; it is the bound they must be quoted with.
+
 - **DOWNSTREAM RE-MEASURED AGAINST THE SAVED BASELINES — three figures restored, ONE REGRESSED, and the
   regression is the one that matters most (2026-09-11).**
 
