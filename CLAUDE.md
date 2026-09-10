@@ -2870,6 +2870,13 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **Nothing reaches 5/5, and the temporal qualification that classifies which event is occurring is therefore
   LOAD-BEARING rather than a tidying-up: the rule is incomplete without it, and there is no fifth quantity to look
   for.**
+  ⚠️ **The required column says "d UNCHANGED", not "d = 0"** (Codex, 2026-09-10). A band-only event means no
+  change in picture displacement — if the picture was already at +2 it stays at +2 — so the zeros above are the
+  zero-start case, not the requirement. The conclusion survives unaltered because every failure in the matrix is a
+  failure to leave `d` UNCHANGED rather than a wrong absolute value.
+  ⚠️ **Picture displacement and independent switch motion can occur TOGETHER.** They are two possible contributions
+  to an observed boundary change, not mutually exclusive classes, and the instrument must accommodate picture
+  motion, switch motion, both, and unresolved evidence.
   ⚠️ **The matrix's `top−23` zeros are OVERSTATED and the "disjoint failure sets" claim with them** (Codex,
   2026-09-10, correcting this entry): **at a clamped top, `top − 23 = 0` is not an observed zero displacement** — it
   means the visible boundary does not resolve zero from upward displacement. That applies to the head-catch and
@@ -2894,8 +2901,21 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   replacing it is a substantive change rather than filling a gap. Testing candidate readings against events whose
   required outcome the rulings already fix is a DECISION PROCEDURE, not a preference; the error both times was
   applying it to three events when five were specified.
-- **The agreed shape for the displacement decision (Codex, 2026-09-10; B5 remains OPEN behind its prerequisite).**
-  Two independently qualified observations feeding ONE decision — never a selector that picks whichever reading
+- **The agreed shape: ONE DISPLACEMENT OBJECTIVE plus DISTINCT SWITCH-STATE UPDATE REQUIREMENTS (Codex,
+  2026-09-10; B5 remains OPEN behind its prerequisite).** Two separate decisions that share observations without
+  becoming one decision, and which may carry different certainty — the picture's displacement can be known while
+  the switch-state qualification is unresolved, or switch motion identified while displacement is Unknown.
+  *Displacement*: what is the picture's displacement, with what evidence and uncertainty? *Switch state*: what
+  boundaries and counts are observed, and does that evidence permit holding, expanding or reacquiring the retained
+  state? The displacement decision need not name which band-only event occurred WHERE independent qualified evidence
+  already establishes the displacement — but ⚠️ **the converse does not follow, and a claim that it did is
+  withdrawn**: needing to distinguish those events is NOT evidence of an instrument built around the arithmetic,
+  because where the switch boundary IS the available displacement witness, relating its motion to picture motion may
+  require exactly that distinction. Two things the displacement result can never license on its own: **accepted
+  expansion**, since permission to change the acquired count cannot come from "the picture did not move", which also
+  fits events where the count must not change; and **hold validity**, since retaining a bound, invalidating it and
+  acquiring a replacement all leave today's crop unchanged.
+  Within the displacement decision: two independently qualified observations feeding ONE result — never a selector that picks whichever reading
   matches the presumed event. Retain the measured top, the raw switch boundary and the raw extent with their
   observability and uncertainty. Derive a top-based displacement only where the source's actual picture origin is
   IDENTIFIED; derive an extent-based one only where the observed boundary is qualified to represent displacement of
