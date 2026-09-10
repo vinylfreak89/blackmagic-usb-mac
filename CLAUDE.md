@@ -2255,6 +2255,21 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Profiling-gate review (2026-09-11).** `docs/reports/2026-09-11_profiling_gate_review.md`
+records the source inspection and read-only fixture diagnostic. The peer's zero-call
+WORKER-BENCH measures a gated path, but the separate FIELDREG-BENCH loop still calls
+registration 10,000 times. Neither timing is enforced: elapsed cost and zero calls
+cannot fail `make bench`. Its worker loop also predates the production queue split
+and does not cover the actual whole worker/publication path. The 193 used synthetic
+units all have hard-padding fraction 0.0, so the classifier's first appearance test
+rejects them; do not relax the classifier to fix the benchmark. Use a hashed real
+capture-1 chronological slice with explicit replay epochs, expected call/phase counts,
+and real-path instrumentation, retaining gated controls. No implementation changed.
+The peer's later 1.690/2.073-ms direct-engine run is below budget for its median/p95;
+it does not establish whole-path conformance or a CPU minimum. Load-paired elapsed
+times support sensitivity to host conditions, not the causal claim "load alone".
+The earlier 20.992/47.851-ms run is retained as an observation, not intrinsic cost.
+
 **Arrival/calibration review (`8be9d89` through `e847da7`, 2026-09-11).** Details and deciding probes are
 `docs/reports/2026-09-11_arrival_calibration_review.md` and `experiments/arrival_review_controls.py`.
 Both supplied selftests pass; forcing the rejected arrival variant into production makes the abrupt-step
