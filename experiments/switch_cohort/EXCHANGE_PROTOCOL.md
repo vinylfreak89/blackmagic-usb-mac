@@ -39,6 +39,31 @@ absolute path. Checking out an older commit isolates nothing.
 An adjudicator told not to look is not blind. That standard is already this project's, applied to
 Codex; it applies to any adjudicator, including this side's own.
 
+## Hole 3 — the project instructions hand over the other side's location
+
+The four adjudicators were described as having "no knowledge that any other adjudication exists".
+That is not what they were given, and it was verified rather than assumed:
+
+    CLAUDE.md:2761   `/private/tmp/blackmagic-v10` on `v10-engine`; the harness tree is the
+                     repository itself on `v10-harness`.
+
+CLAUDE.md loads into every subagent's context automatically. All four adjudicator transcripts
+contain it, and each contains exactly one mention of that path - the instruction line itself,
+arriving as project context rather than as anything the agent went looking for. So every
+adjudicator was told, before reading a panel, that a second agent works in a tree at a named path
+on a named branch.
+
+None of them acted on it: the audit across all four found zero tool calls touching the other
+agent's verdicts, its branch, its worktree, `git show`/`cat-file`/`git log`, or a repository-wide
+search. That is the part which matters for these particular results. The claim about what they knew
+is still wrong and is withdrawn.
+
+**Fix.** This defeats "copy the material outside the repository" whenever the adjudicator still
+RUNS inside the project, because the instructions load regardless of where the panels are and
+regardless of which commit the tree sits on. The two fixes that survive it are:
+  - adjudicate before the other side commits, so there is nothing to find; or
+  - run the adjudicator somewhere the project instructions do not load.
+
 ## What agreement and disagreement are worth
 
 If an adjudicator's isolation cannot be certified, its **agreement** with the other side is weak
