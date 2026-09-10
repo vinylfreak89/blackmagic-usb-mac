@@ -4046,6 +4046,32 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   signature used as a proxy for class membership, coinciding with it most of the time**: the same diagnosis this
   file already carries for the answers-a-different-question family, and the join is the structural fix — the
   engine states its own cause per reading, so nothing has to be inferred from a statistic.
+  **THE ONE-LINE RESIDUAL IS NOT ERROR IN EITHER READER — IT IS WHERE IN THE SWEEP THE INSTANT FALLS, and that
+  is categorical (2026-09-11).** Following his instruction to stop thinking spatially — *"a line is not a line
+  rendered at once as its digital self would imply. it is a skew across time"* — the reference's disagreement with
+  the engine was cut by the switch's position ALONG the row rather than by anything about lines. Cohorts chosen by
+  the reference alone; the engine's T is the comparison only:
+
+  | the reference reads | n | interval left-censored | opens 1–59 into the window | opens ≥60 in |
+  |---|---:|---:|---:|---:|
+  | **one line BELOW the engine (+1)** | **42** | **0** | **42 (100%)** | **0** |
+  | exactly the engine's line (0) | 204 | 86 | 32 (16%) | 86 |
+  | one or two lines ABOVE (−1, −2) | 46 | 21 | 3 (7%) | 22 |
+
+  **Every reading that disagrees by one line has the other head's interval opening in the first 59 samples of the
+  delivered window, and not one of them is censored.** Against a 16% baseline in the agreeing cohort, and the
+  disagreements in the other direction sit at the opposite end of the row.
+  **The arithmetic says what that means, and it is NOT the undelivered lead-in** (the explanation this entry was
+  first about to carry, killed by its own numbers): the window opens 122 samples after 0H, so an interval opening
+  at delivered-sample 1–59 puts the switch at **123–181 samples after 0H — 9.1–13.4 µs, inside the window, within
+  its first ~4.4 µs.** Such a row carries the other head across roughly 660–719 of its 720 delivered samples, so
+  it is nearly indistinguishable from a wholly displaced row. **Whether that row is "the partial line" (T) or "the
+  first fully displaced line" (S) is exactly what the two readers disagree about** — the phase reader sees a full
+  row of relocated blanking and puts T above it; the run reader names the row itself.
+  ⚠️ **This LOCATES the T/S disagreement in the signal rather than in either instrument; it does NOT adjudicate
+  it.** The six disputed keys are an explicit two-agent disagreement and the verdict is Codex's, per the peak-vs-S
+  entry above. What is added here is that the class is not scattered: it is a single, positionally defined
+  population, so a rule that resolves it can be stated in terms of the switch's column rather than tuned per unit.
   **What this establishes** is the SHAPE of the answer: qualification plus Unknown, not a universal rule — and
   that his own continuity rule is a working qualifier rather than only a property to check.
 
