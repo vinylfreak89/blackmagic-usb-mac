@@ -2961,6 +2961,26 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **0.6%**. The 532 already have no switch line by either route and are unaffected, and the 478 with a T are
   untouched. An earlier framing of this as a large loss confused the harness's S measurement (exact in 1,013 of
   1,013 registerable readings, a different instrument and population) with the engine's export.
+- **ONE NAME, SEVERAL QUANTITIES — the commonest defect class in this contract, and a cold read finds them where
+  two builders cannot (2026-09-10).** A term stands for two or more different quantities, the code carries only
+  one of them, and every rule leaning on the name inherits the ambiguity. Found so far, and a sweep of the cold
+  read's remaining findings says these are not the last:
+  - **switch-line count** — the lock's constant with the partial line included, and the hold's test with it
+    excluded. Both feed `d = count − extent`, so two implementers compute different offsets on the same unit.
+  - **precedence** — (1) which physical field and time a transport slot represents, (2) how the two crops
+    interleave spatially, (3) the comb's calibrated zero for evaluating that interleave. `parity_state` and
+    `comb_zero_candidate` are (3) only.
+  - **band** — the head-switch run, the line-account's "bands above/below the picture", a box's letterbox bars,
+    and §8's overlay metrics strip. Rule 4's "the total NUMBER of bands changes" is unreadable across those.
+  - **height** — §1's model says the conserved quantity is the line account "not the height" while §3 asserts
+    picture rows, which is a height, is constant.
+  - **fail open / fail closed** — each used for both dispositions: "do nothing" is called fail open in two places
+    and fail closed in two others.
+  **The tell is that the name reads fine in every individual sentence.** Neither agent found any of these in four
+  review rounds; a cold reader found them by reading the sentences together, which is what neither builder can do.
+  **The fix is always the same shape**: name the quantities separately, say which one each rule and each equation
+  uses, and check what the code actually carries — twice now the code carried exactly one of the meanings and its
+  identifier was named after the ambiguous term.
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
   Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
   answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back

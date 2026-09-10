@@ -1,0 +1,31 @@
+#!/bin/zsh
+# Commit ONLY if a probe script exits 0. The commit lives inside this script, after an explicit
+# exit-status check, so the failing form cannot be written by hand.
+#
+# Three times in one session a `&&` chain broke on a newline and a commit ran after a verification
+# that had thrown -- once landing an unverified contract edit, once committing a message describing
+# two edits that were never written. The artifact rule did not catch it: the probes DID print, and
+# the passing lines were the ones read. A guard that depends on reading output carefully is the
+# thing that failed.
+#
+#   scripts/verified_commit <probe.py> <msg-file> <path> [<path>...]
+#
+# The probe must exit non-zero if anything it checks is absent. `probe_lib.py` gives you `need()`.
+set -u
+probe=$1; msgfile=$2; shift 2
+if [ ! -f "$probe" ] || [ ! -f "$msgfile" ]; then
+  echo "verified_commit: need <probe.py> <msg-file> <paths...>" >&2; exit 2
+fi
+echo "--- running $probe"
+python3 "$probe"
+rc=$?
+if [ $rc -ne 0 ]; then
+  echo >&2
+  echo "VERIFICATION FAILED (exit $rc). NOTHING COMMITTED." >&2
+  echo "The tree is unchanged from git's point of view; fix the edit or the probe and re-run." >&2
+  exit $rc
+fi
+echo "--- verification passed; committing"
+git add -- "$@" || exit 1
+git commit -q -F "$msgfile" || exit 1
+git log --oneline -1
