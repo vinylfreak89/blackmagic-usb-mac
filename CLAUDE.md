@@ -3981,6 +3981,275 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   becomes impossible it is because the EVIDENCE is unavailable, never because the observer was switched off, and the
   two have different consequences: unavailable evidence gives Unknown, a disabled observer gives silence that reads
   as no-change. Watch for it wherever a rule gates behaviour on a signal-state class.
+- **THE PER-UNIT WALL WAS A SELF-INFLICTED REQUIREMENT — the step-3 brief already said not to solve it
+  (2026-09-11).** Two instruments died trying to produce a T for EVERY unit. The brief accepted four hours
+  earlier says: *"say explicitly where the rows do not decide — a reference that answers Unknown where the
+  evidence is absent is worth more than one that answers 23 everywhere."* **A harness reference is not required to
+  decide every unit; it is required to decide only where the evidence supports one.** That reframes the failure:
+  hunting a universal rule was the mistake, and it is the same defect the old reference had — **what was wrong
+  with "top = 23 in 508 of 508" was never the number, it was asserting a value on every unit including those whose
+  raw rows carry none.** A rebuilt reference that also answered everywhere would repeat it with better arithmetic.
+  **QUALIFIED BY HIS OWN NO-JUMP RULE (`:164`), and it is the first instrument tonight to SURVIVE its control.**
+  A reading is qualified when it equals an ADJACENT unit's reading — parameter-free, no threshold, and **the
+  engine's T is used only to score, never to qualify**, which is the circularity that destroyed F46:
+
+  ⚠️ **The first numbers recorded here were WRONG and the instrument behind them was never committed. Both are
+  corrected below (`experiments/no_jump_reference.py`, 2026-09-11).** The scorer returned `23 + offset` as the
+  candidate LINE for BOTH fields, so every field-2 reading was compared 263 lines below its own coordinates —
+  the field spacing. The superseded row read *"294, 47% exact, 58% within 1, 41% beyond ±4"* against a control of
+  *"62, 10%, 29%, 53%"*, and was written up as a bimodality: **"two populations remain inside the qualified set."**
+  There was one population and one bug. The tell was in the printout and was read past: the wrong readings clustered
+  at **−262 to −265**, and 66+37+14+4 = 121 is exactly 41% of 294 — *the entire* beyond-±4 mass, at *exactly* the
+  263-line field offset. A tail that is one number wide is a coordinate error, never a second population.
+
+  | subset | n | exact | within ±1 | beyond ±4 |
+  |---|---:|---:|---:|---:|
+  | **qualified (no jump)** | 294 | **69%** | **98%** | **0%** |
+  | control: unqualified | 62 | 21% | 53% | 11% |
+
+  **The qualification does real work, and the control's shape is the evidence rather than its headline number:**
+  the qualified set's errors are bounded at ±2 with 98% inside ±1, while the unqualified control's are scattered
+  from −10 to +2. Bounded versus scattered is the separation; 69% against 21% exact is the same fact stated less
+  informatively. The rule needs no engine input and no tuned constant, so a reader could apply it without knowing
+  the answer.
+  **The residual is not error — it is the partial line's own one-row travel**, the quantity the T/S dispute is
+  about, and §8's invariant already permits exactly it (`|S − mode| > 1` is zero on this capture).
+  ⚠️ **The two fields disagree in DIRECTION and this is not explained:** field 1 is 80% exact skewed to −1
+  (28 readings), field 2 55% skewed to +1 (37). This file records that field 2's band is one row longer than
+  field 1's on the SP, EP and commercial tapes — a CANDIDATE for the asymmetry, not a measurement of it.
+  ⚠️ **Coverage is on a SELECTED COHORT.** It asserts on 294 of the 478 field-readings where the engine reports a
+  T (62%); the 532 where the engine says Unknown are excluded from the comparison altogether, and whether this
+  instrument speaks there is untested by this table.
+  **The reliability-gating hypothesis is measured and INERT here, reported with its count as required:** gating
+  rows whose own transition is unmeasurable removed **19 rows of 243,840 (0.008%)** and left all three figures
+  identical. Not refuted — it has nothing to act on in this region.
+  **IT SPEAKS WHERE THE ENGINE IS BLIND, and that is the first thing it has done that the engine cannot.**
+  The table above is a cohort SELECTED by the engine having an answer, so the question that decides whether the
+  reference is worth having is coverage on the 538 readings where the engine reports no T at all. Measured on the
+  same pass: it asserts on **27 of 229 field-1 (12%) and 56 of 309 field-2 (18%)** — 83 readings — and **all 83
+  satisfy the contract's own §8 invariant** (within one row of that field's modal switch line), checked without
+  the engine, which has nothing to say there.
+  **A control was needed because "0 outside mode ±1" fits two causes** — the readings are right, or the instrument
+  structurally cannot emit a far value, in which case the check proves nothing. Same population, same instrument,
+  UNQUALIFIED readings: **13 of 37 land outside mode ±1 (60% field 1, 26% field 2)**. So far values are reachable
+  there and the qualification is what excludes them; the invariant check discriminates and 0/83 is a result.
+  ⚠️ **Satisfying the invariant is a NECESSARY condition, not proof the 83 readings are correct** — no instrument
+  scores them, which is the point of the population.
+  **WHICH of the engine's Unknown classes it reaches is now an EXACT JOIN, not an inference** — on (counter, field)
+  against the engine's own `unknown_causes.csv`, which carries a per-reading `cause`:
+
+  | the engine's Unknown class | readings | reference asserts | control: unqualified |
+  |---|---:|---:|---:|
+  | `accepted_then_returned` | 145 | **39 (27%)** | 16 |
+  | `no_basis` | 75 | **22 (29%)** | 6 |
+  | `no_disjoint` (the left-censored class) | 264 | **12 (5%)** | 5 |
+  | `no_accepted` | 39 | 4 | 4 |
+  | box-excluded | 12 | 6 | 6 |
+  | **total** | **538** | **83 (15%)** | 37 |
+
+  **It does NOT rescue the left-censored class, and that is the expected direction rather than a shortfall:** the
+  255 readings whose blanking runs off the delivered window are unread because the device never delivered those
+  samples, and no reader recovers what did not arrive. Where the reference speaks is where the engine's PHASE
+  READER gave up — a departure accepted then cleared by a return, or no readable local basis — which is a
+  different kind of blindness and the kind another instrument can address.
+  ⚠️ **The signature match that preceded this join pointed the WRONG WAY and would have been recorded as a
+  result.** 64 of the 83 (77%) have their blank-run starting at sample 0, which this file records as the
+  left-censored class's signature, and that was read as the reference reaching into it. Measured across the
+  classes, start-at-0 runs **93% (`no_basis`), 75% (`accepted_then_returned`), 71% (`no_disjoint`), 50%, 42%** —
+  it is common everywhere and specific to nothing, so it could not locate a single reading. **A recorded
+  signature used as a proxy for class membership, coinciding with it most of the time**: the same diagnosis this
+  file already carries for the answers-a-different-question family, and the join is the structural fix — the
+  engine states its own cause per reading, so nothing has to be inferred from a statistic.
+  **THE ONE-LINE RESIDUAL IS NOT ERROR IN EITHER READER — IT IS WHERE IN THE SWEEP THE INSTANT FALLS, and that
+  is categorical (2026-09-11).** Following his instruction to stop thinking spatially — *"a line is not a line
+  rendered at once as its digital self would imply. it is a skew across time"* — the reference's disagreement with
+  the engine was cut by the switch's position ALONG the row rather than by anything about lines. Cohorts chosen by
+  the reference alone; the engine's T is the comparison only:
+
+  | the reference reads | n | interval left-censored | opens 1–59 into the window | opens ≥60 in |
+  |---|---:|---:|---:|---:|
+  | **one line BELOW the engine (+1)** | **42** | **0** | **42 (100%)** | **0** |
+  | exactly the engine's line (0) | 204 | 86 | 32 (16%) | 86 |
+  | one or two lines ABOVE (−1, −2) | 46 | 21 | 3 (7%) | 22 |
+
+  **Every reading that disagrees by one line has the other head's interval opening in the first 59 samples of the
+  delivered window, and not one of them is censored.** Against a 16% baseline in the agreeing cohort, and the
+  disagreements in the other direction sit at the opposite end of the row.
+  **The arithmetic says what that means, and it is NOT the undelivered lead-in** (the explanation this entry was
+  first about to carry, killed by its own numbers): the window opens 122 samples after 0H, so an interval opening
+  at delivered-sample 1–59 puts the switch at **123–181 samples after 0H — 9.1–13.4 µs, inside the window, within
+  its first ~4.4 µs.** Such a row carries the other head across roughly 660–719 of its 720 delivered samples, so
+  it is nearly indistinguishable from a wholly displaced row. **Whether that row is "the partial line" (T) or "the
+  first fully displaced line" (S) is exactly what the two readers disagree about** — the phase reader sees a full
+  row of relocated blanking and puts T above it; the run reader names the row itself.
+  ⚠️ **This LOCATES the T/S disagreement in the signal rather than in either instrument; it does NOT adjudicate
+  it.** The six disputed keys are an explicit two-agent disagreement and the verdict is Codex's, per the peak-vs-S
+  entry above. What is added here is that the class is not scattered: it is a single, positionally defined
+  population, so a rule that resolves it can be stated in terms of the switch's column rather than tuned per unit.
+  **What this establishes** is the SHAPE of the answer: qualification plus Unknown, not a universal rule — and
+  that his own continuity rule is a working qualifier rather than only a property to check.
+
+- **WITHIN-UNIT SHAPE DOES NOT RESCUE THE PER-UNIT DECISION EITHER — tested and dead, 2026-09-11.** The
+  aggregate-versus-unit failure did NOT rule out using the whole profile a single unit contains: ~240 rows, not
+  one value, and using them is not aggregating across units. The hypothesis was that the discriminator is the
+  SHAPE of the positive region — contiguous, the only one, its extent and position — rather than any row's
+  magnitude. Diagnosed on each unit's own run structure at 0.5 sd, n = 478:
+
+  | positive runs in the field-reading | share |
+  |---|---:|
+  | 0 | 26% |
+  | **1** | **38%** |
+  | 2-5 | 7% |
+  | **6+** | **30%** |
+
+  The bottom-reaching run's extent is tight and physically plausible — **median 3 rows, p10 3, p90 5** — so the
+  shape LOOKS like the switch band. Then split the answer by the unit's own run count, which is the quality signal
+  the hypothesis predicts:
+
+  | runs | n | exact | beyond ±4 |
+  |---|---:|---:|---:|
+  | **1** | 182 | 43% | **51%** |
+  | 6+ | 142 | 35% | **35%** |
+
+  **It is not a quality signal. A unit with exactly ONE clean contiguous positive run reaching its own bottom gets
+  T wrong by more than four rows HALF the time — and does so MORE often than the six-plus-run units.** (The 4- and
+  5-run rows read 80% and 75% on n = 5 and n = 4; noise, and not to be quoted.)
+  **So the bottom-reaching positive run frequently is not the switch**, and no property of its shape available
+  within the unit says which times. The hypothesis failed for the reason it was offered as possibly failing — the
+  shape varies as much as the values — and it failed differently from the aggregate route, which is why it was
+  worth the test.
+  ⚠️ What survives unchanged: the aggregate departure signal is real and lands where the contract says. **What has
+  now failed twice, by two independent routes, is turning it into a per-unit decision.**
+
+- **PROPERTY 5, THE HALF LINE: the delivered raster CANNOT show it as half a sweep, and that is structural
+  (2026-09-11).** `field_lines.h` already labels row 259 as f1 line **262.5**; the property says treat it as half a
+  HORIZONTAL SWEEP rather than half a row's height. Measured on capture 1's bright programme (6900-7000), content
+  fraction above the source's own blanking and each row's own transition:
+
+  | row | label | content fraction | transition column |
+  |---|---|---:|---:|
+  | 255-256 | f1 259-260 | 0.983 | 716-719 |
+  | 257-258 | f1 261-262 | 0.726 | 719 |
+  | **259** | **262.5, the HALF line** | **0.000** | 542 |
+  | 260 | f2 line 1 | 0.000 | 542 |
+  | 261 | f2 line 2 | 1.000 | 541 |
+
+  **Two findings, and the second is the important one.** Row 259 carries NO content above blanking in this
+  population, so there is nothing there to show a half-sweep structure — and its "transition" at 542 is the
+  finder's artefact on a blank row, the same limit already recorded (reliable only where there is picture to
+  transition FROM).
+  ⚠️ **And structurally the raster cannot express it anyway: the device delivers 720 samples for EVERY row,
+  including the half line.** A half-duration analog line cannot appear as half the samples, because the sample
+  count is fixed by the device rather than by the signal. **The only way a half line could show is as a mid-row
+  DISCONTINUITY — content of one kind for part of the sweep, then another — which requires content on both sides
+  of it, and here there is content on neither.**
+  **So property 5 is not "not yet built": on this source it is NOT OBSERVABLE in the delivered raster**, and an
+  instrument that reported it would be reporting something it cannot see. The labelling in `field_lines.h` stays
+  correct and useful — it is the coordinate truth — but "treating it as half a sweep" has no delivered evidence to
+  act on here. ⚠️ That is a statement about THIS source and THIS raster, not a claim that no source could show it:
+  a half line bracketed by content on both sides would.
+
+- **PROPERTY 7 SPLITS: the partial-line half is open work, the PEAK-LOSS half is CLOSED AS UNBUILDABLE on this
+  capture (2026-09-11).** His 09:41:23 rule has two halves with different fates.
+  **Survives:** *"the location of the partial line… should not jump. It should have a normal excursion when a line
+  disappears"* — the PARTIAL LINE is located by the departure profile, which works, so this half depends on none
+  of the closed routes. Contract `:164` carries it and it is buildable.
+  **Closed:** *"a sudden loss of the peak is information that the geometry has changed. we should be recording
+  this"* (18:25). **Detecting an ABSENCE requires a witness that establishes PRESENCE, and four routes have now
+  failed to identify the transient** — amplitude finds picture, the eight-row window WAS the detector,
+  ramp-qualified sits at a fixed column ~199 in switch and non-switch rows alike, and motion is WEAKER on the T
+  row than on ordinary rows. **With no witness that finds it when present, "suddenly gone" and "never found" are
+  the same observation** — the silence-versus-absence conflation refused for `T = S`, arriving from the other
+  direction. ⚠️ **This is a stated bound with four measurements behind it, not a TODO.** Do not rebuild any of the
+  four to satisfy it.
+  ⚠️ **Why this is NOT an owner question**, since the instinct is to escalate an unbuildable rule: **the peak is
+  not load-bearing.** He ruled it is not a regime test, the contract makes it a confirmation, and the departure
+  profile locates the region without it. Nothing is blocked, so under his standing instruction it is recorded and
+  routed around. ⚠️ And his dark-peak ruling is NOT being extended by fiat to cover this — that ruling was about
+  dark peaks specifically; what makes this non-escalating is the absence of a gate, not an inference from it.
+
+- **THE MOTION ROUTE ALSO FAILS ITS CONTROL — fourth peak route closed, 2026-09-11.** With three static routes
+  dead, the remaining idea was that the transient is identified by its MOTION between units. Tested BEFORE
+  deriving any continuation range, because a range presupposes identity and identity presupposes a range: are
+  CONSECUTIVE units' peak columns closer than the same columns SHUFFLED? The shuffle is a control needing no
+  threshold. On the engine's T row it looked positive — field 1 ratio **0.36**, field 2 **0.15**, field 2's
+  consecutive IQR 4.2-15.8 against a shuffled 16.0-316.0.
+  ⚠️ **Then the control the record demands — the same test on rows with no switch — and it inverts the result:**
+
+  | row | ratio of medians |
+  |---|---:|
+  | T row, field 1 | 0.36 |
+  | T row, field 2 | 0.15 |
+  | **control, mid-picture, field 1** | **0.01** |
+  | **control, mid-picture, field 2** | **0.00** |
+  | control, near the band, field 1 | 0.08 |
+  | control, near the band, field 2 | 0.50 |
+
+  **Ordinary picture rows are MORE column-continuous than the T row, by an order of magnitude.** So the continuity
+  is the SCENE's — adjacent units carry similar picture, so any bright feature's column persists — and the T row
+  has LESS of it, not more. **A continuity signal that ordinary rows exhibit more strongly is not evidence of a
+  tracked landmark.**
+  ⚠️ **And the inversion is not a discriminator either**: near-band field 2 scores 0.50, worse than the T row's
+  0.15, so there is no consistent ordering to exploit. Two control rows, opposite verdicts.
+  **What this leaves standing** is only the negative: no peak-based route — amplitude, width, ramp, or motion —
+  has identified the RF transient on this capture. **The band render's drift remains an observation, not a
+  measurement**, and the file already says an observation cannot validate the instrument built to explain it.
+  ⚠️ Stated dependency: this used the engine's T to select the row, which is a borrowed subject; the shuffle
+  control and the no-switch control are what make the negative sound regardless.
+
+- **THE PEAK STATISTIC DOES NOT FIND THE RF PEAK — third and decisive confirmation, 2026-09-11. The confirmation
+  route is CLOSED as currently built.** With the departure profile locating the region, the peak was tried as a
+  CONFIRMATION carrying the tear's column (his 2026-09-06 words: "measure where the peak is on the line if
+  present"). Two witnesses on the same row, with the control on rows the profile marks negative:
+
+  | rows | n | peak present | peak − transition | within 20 samples |
+  |---|---:|---:|---:|---:|
+  | positive departure | 22,268 | 20.5% | median −513 | **0.3%** |
+  | control, negative | 70,435 | 44.5% | median −288 | **2.0%** |
+
+  **They do not agree, and the CONTROL agrees more.** Qualifying the peak by its recovery ramp — the discriminator
+  that separated light peaks from content at 37 samples against 3 — converged the presence rates (20.5/44.3 →
+  **6.5/7.7%**), so the ramp IS rejecting content, and left non-overlapping `peak − transition` ranges (−533..−483
+  against −438..−344) that looked like a discriminator.
+  ⚠️ **The decisive control says that separation is ARITHMETIC, not real: the PEAK'S OWN COLUMN is identical in
+  both groups — median 199 against 200, p10 157 against 157, p90 203 against 205 — while the transition differs
+  (689 against 569).** The peak does not move; the transition does; `peak − transition` merely reports the
+  transition again. **A quantity that separates two groups only because one of its terms defines them is not a
+  discriminator**, and the ranges not overlapping was the shape that made it look like one.
+  **So the ramp-qualified peak sits at a FIXED column (~199) whether or not the row is a switch row — which is not
+  the RF transient**, because the transient demonstrably MOVES: the band render shows it drifting 340 → 660 → 160
+  across units 6691-6714. **The peak I rendered and the peak this statistic finds are not the same object.** The
+  rendered drift is real; the statistic does not find it.
+  **Three independent confirmations now**: F46 (the eight-row window WAS the detector — removing it collapsed
+  agreement 82.1% → 25.0% and scattered "instants" across the picture), the amplitude test (finds bright picture
+  content), and this (a fixed column that does not move with the switch). ⚠️ **Do not rebuild a peak-based locator
+  or confirmer on amplitude, width or ramp.** What is unbuilt is an identification of the RF transient itself,
+  which would have to key on its MOTION between units — the property the render shows and every static statistic
+  has missed.
+
+- **AN AGGREGATE SEPARATION IS NOT A PER-UNIT DISCRIMINATOR — the sibling of the rule below, measured 2026-09-11.**
+  A departure profile built from MEDIANS ACROSS 60 UNITS separated the switch rows from ordinary picture cleanly
+  and landed exactly where the contract says the switch is. Turning that into a per-unit decision **failed at
+  30% exact**, and a robust-spread repair — IQR/1.349, the right statistic where a tenth of the inputs are known
+  bad — **made it worse at 23%**. Both attempts are recorded as failed so neither is re-derived.
+  **The reason was in the profile table already published and not read:** ordinary line 258 has **p90 +1.07**,
+  switch line 260 has **p10 +0.57**. The medians separate; the per-unit distributions OVERLAP, and **no threshold
+  repairs an overlap.** The aggregate signal is real — this does NOT show the engine's T is wrong or that the
+  departure is not the switch — but *"a per-unit decision can be made from it"* was never established and was
+  assumed by building the profile from an ensemble and then querying single units.
+  **The pair to hold together:** below, repeated readings cannot resolve a systematic error; here, aggregating
+  across units MANUFACTURES a separation no single unit carries. **Both mistake a property of the ensemble for a
+  property of the measurement**, in opposite directions.
+  ⚠️ Recorded HERE rather than in `docs/v10_pending.md`, where it first went: the tracker is temporary by design
+  and is deleted when empty, so a durable conclusion parked there is **a conclusion scheduled for deletion** — the
+  colour-burst failure this file already names, with the filing step as the mechanism instead of the channel.
+- **A LINE-ORIENTED GREP CANNOT SEE A WRAPPED PHRASE, and this file wraps at about 110 characters
+  (2026-09-11).** Searching CLAUDE.md for its own rule "written into THIS FILE at the moment it is reached"
+  returned ZERO — the sentence breaks across a newline between "is" and "reached", and `grep` matches within lines.
+  One step from filing a finding that the rule did not exist. **Any quoted rule longer than a few words is likely
+  to span a line here**, so search on a short fragment that cannot wrap, then READ the passage. Newest member of
+  the family whose other members are `grep -c` counting lines, `grep -o` counting substrings, `tail` on a live
+  capture, and `PIPESTATUS` in zsh: a command that succeeds quietly while answering a different question.
 - **Repetition is not qualification (2026-09-10).** Both Claude and the watchdog independently reasoned that
   repeated well-exposed readings must resolve an unresolved boundary difference — uncertainty falls with
   repetition, exposure-dependence is excluded once the picture is bright again. **Wrong, and wrong the same way:
@@ -4155,6 +4424,24 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   `superseded_check.py` is that case — "the withdrawn phrasing appears bare" proxies for "the document asserts the
   withdrawn claim", and they come apart when a claim is restated in different words — so it now prints its limit
   with every result instead of pointing at its own docstring.
+- **A BUCKET COUNT CANNOT SHOW THAT ITS CONTENTS SIT ON ONE VALUE — ninth member of the
+  answers-a-different-question family, and the proxy is summarisation itself (2026-09-11).** A reference's
+  disagreement with the engine was reported as *"41% beyond ±4"*, and that figure was used to conclude two
+  populations remained inside a qualified set. The distribution was never printed. When it was, **every one of
+  those readings sat at −262 to −265** — one spike at the 263-line field spacing, because the scorer compared
+  field-2 candidates in field 1's line numbers. **"Beyond ±4" is equally consistent with a broad tail and with a
+  single wrong constant, and those have opposite causes: one is noise to be reduced, the other is a bug to be
+  fixed.** The threshold count answered a question nobody needed; the histogram answered the one that mattered and
+  cost one extra line of code.
+  **The rule: never characterise a disagreement by a threshold count alone — print the distribution, and check
+  whether its mass sits on a value that is a known constant of the system.** Here that constant was 263, which
+  appears throughout this file as the field spacing; a tail one number wide is a coordinate error, never a
+  population. Related, and already recorded globally: *two values being comparable is a claim, not a given* — a
+  candidate line and an engine T are only comparable once both are in the SAME field's numbering.
+  ⚠️ The instrument behind the wrong figure had also never been committed; it lived in `/private/tmp`, so nothing
+  could re-run it and the number in this file was unfalsifiable until it was rebuilt. That is the
+  *claim-must-carry-its-artifact* rule failing in its slowest form — the artifact existed for one session and then
+  did not.
 - **A pipeline reports its LAST command's status, and the usual guard against that is a bash-ism which is SILENTLY
   EMPTY in zsh — sixth, seventh and eighth members of the family (2026-09-11).** The peer session ran
   `python3 check.py old.md | head -8; echo "exit=$?"`, read **exit=0** from `head` rather than from python, and
@@ -4341,6 +4628,27 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   the right statistic from the wrong rows is not compliance**, and it is the same one-name-two-quantities shape as
   everything else this week: "the blanking reference" naming two different sets of rows. It is recorded as an
   implementation gap, not a satisfied requirement.
+
+- **A CONTROL THAT BORROWS A LIVE SUBJECT STOPS BEING A CONTROL THE MOMENT THE SUBJECT GOES — three instances in
+  one night, each a level further out (2026-09-11).** All three fired the same way: the guard kept passing, the
+  control reported "did not fire", and nothing was actually being tested.
+  1. **Hardcoded text.** `owner_queue_check.py`'s positives 1 and 2 mutated the queue by `str.replace` on the
+     caption-only question's exact words. The contract amendment replaced that question, the calls became no-ops,
+     and both controls went silently dead.
+  2. **A borrowed live SUBJECT.** Repaired to derive their target from the file's own formatting — which worked
+     until closing the last owner marker left the queue with **no live question to borrow**, killing three
+     controls at once. **A control that requires the defect to already exist in production is not a control.**
+  3. **A borrowed HISTORICAL subject.** `superseded_check.py`'s positive control read the contract at commit
+     `e6b224f`, where the owner's absence question carried both framings. That subject was RETIRED hours earlier
+     when his ruling answered the question, so the control could no longer see anything: "the check cannot see the
+     defect it exists for".
+  **The fix in all three is the same and it is structural: SYNTHESISE the defect, do not borrow it.** The queue
+  guard now injects its own marker/row pair into copies of both files; the superseded check now takes a live pair,
+  removes its replacement and appends the withdrawn phrasing bare. Both exercise the real matching code against a
+  defect whose shape is written in the test and cannot drift with the documents. Selftests 5/5 and 2/2.
+  ⚠️ The historical facts stay recorded where they earned their place — `e6b224f` is still what proved the
+  ±700-character window was a proxy — but a historical fact is not a mechanism, and using one as a mechanism is
+  what broke the control.
 
 - **THE HARNESS REBUILD, STEP 1: the SOURCE's blanking reference, pooled at each row's own instant
   (`experiments/source_reference.py`, 2026-09-11).** Every level-derived number taken that night used the DEVICE's
