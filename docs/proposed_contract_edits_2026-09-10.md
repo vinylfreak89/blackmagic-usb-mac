@@ -65,7 +65,7 @@ count-dependent deduction stays unavailable with it.
 The caption qualifies when it is outside the Shuttle's overwritten lines 20-22, the tape's following
 line 22 is properly blanked, and line 21 carries proper caption data rather than a skew artefact.
 
-**The regenerated insert supplies no evidence of any kind.**
+**Decoded caption data at the regenerated insert supplies no geometry or confirmation evidence.**
 
 > "no the regenerated insert shouldn't count as anything"
 >
@@ -121,10 +121,18 @@ Failure to detect a second bound is not positive evidence that only one exists; 
 
 The box's extent is measured while the picture is well exposed and is then held. A fade shows as the
 picture's overall level falling while the band edges stay put in the rows that still read, and it never
-invalidates anything; only a band edge moving while the level is steady releases the geometry.
+invalidates anything: a band edge that appears to move because the picture dimmed is exposure-dependent
+detectability, not a release. A band edge moving while the level is steady does release the geometry.
 
-When picture appears within established bounds the box is invalid. The geometry then opens to whatever
-is on the screen — not necessarily to full picture, and possibly to another box.
+Picture positively established within the held bounds also invalidates the box. Replacement geometry is
+then measured — it opens to whatever is on the screen, not necessarily to full picture and possibly to
+another box; invalidating the old box does not itself establish its replacement.
+
+The box includes its bars. Its lower outer boundary must meet the head-switch region, with no
+intervening source-blanking interval: "if the box doesn't touch the head switch, then its not valid
+geometry. simple. basically if there's a blanking interval that sits between the box and the head switch
+thats garbage." A demonstrated intervening interval prevents a new acquisition. An unresolved boundary
+does not establish contact.
 
 ### Levels, and what blanking means
 
@@ -150,6 +158,11 @@ picture lines, and supplies both level and variability.
 Nominal standard timing does not establish it and device-generated fill never establishes it. The same
 reference serves the head switch's horizontal extent and the black of the invalid-raster test below.
 
+What is measured against that reference is departure from it in either direction: "It should be measuring
+where the blanking is overwritten. So if the blanking extends past its expected horizontal extent or the
+picture extends past its expected horizontal extent, that's the head switch." The expected extent is the
+source's own, remeasured after the transition events below, never the nominal figure.
+
 ### Warm-up
 
 Before the required source references are qualified, registration and corrective placement are
@@ -158,8 +171,10 @@ inactive. Observation and reference acquisition continue.
 > "the engine can't run on a fresh source until it 'warms up' which means on capture 1, the loss like
 > noise bars during the fade, the entire engine can't run. that is accepted and expected."
 
-This is intended behaviour, at the start of a capture and after every reset. Elapsed time alone does
-not complete warm-up, and completing it does not itself supply geometry confirmation or a lock.
+This is intended behaviour at capture start and after every full engine reset. Following reassessment,
+any required reference that is no longer qualified must be reacquired before registration resumes.
+Elapsed time alone does not complete warm-up, and completing it does not itself supply geometry
+confirmation or a lock.
 
 ### Lock-like loss, and the invalid class
 
@@ -186,12 +201,12 @@ absence, and samples unavailable through transport damage are not absence.
 > "its blanking. they need to figure out what blanking means. deck blanking, chroma, etc, I simply do
 > not care."
 
-The black is measured against the source's own blanking reference above. The limit comes from the field
-structure — "the 24 has nothing to do with what the fuck is delivered. it has to do with 262.5 + 24 =
-23.5, ie PICTURE" — so a trailing black run longer than that has reached where the next field's picture
-begins. The run containing the switch region is the normal case; a run containing nothing is a dead
-raster. Either field failing disables the registration engine: "if EITHER field does that, then the
-registration engine should not operate."
+The condition is a conjunction: **more than 24 qualifying terminal lines, AND positively established
+absence of the unstable-timing region within them.** Unknown switch evidence does not satisfy that
+absence. The black is measured against the source's own blanking reference above. His rationale for the
+number: "the 24 has nothing to do with what the fuck is delivered. it has to do with 262.5 + 24 = 23.5,
+ie PICTURE." Either field meeting the condition disables the registration engine: "if EITHER field does
+that, then the registration engine should not operate."
 
 Legitimate picture meeting the condition also disables correction, and that cost is accepted: "that
 means that a letterboxed picture might fail open on a truly noiseless source which is whatever."
@@ -211,14 +226,13 @@ fail closed than fail open."
 
 ### Rule 4 — independence
 
-Unchanged in text. Its independence requirement excludes counting head-switch evidence twice: evidence
-used to establish the geometry cannot also be the confirmation of that geometry.
+A lock is acquired on two or more independent observations, at least one of which is geometry. Evidence
+used to establish the geometry cannot also serve as the confirmation of that geometry.
 
 ### Rule 9 — the locked state
 
-Rule 9 governs geometry tracking under a maintained lock and refers to the comb definition above for
-comb policy. The obligation for the settled comb to agree again at a moved crop is withdrawn with the
-locked-state measurement it required.
+Under a maintained lock the engine tracks geometry and does not measure the comb. A settled comb is not
+re-measured at a moved crop.
 
 ### Re-measurement
 
@@ -235,7 +249,9 @@ transition event (mute or fade), remeasure." Post-transition remeasurement does 
 geometry change.
 
 Positively established box invalidation releases the affected geometry and its lock; replacement
-geometry requires acquisition. A change of geometry resets the lock, as this document already states.
+geometry requires acquisition. Evidence dependent on invalidated geometry cannot support acquisition
+without renewed qualification. A change of geometry resets the lock: bounding-box geometry becoming full
+picture, or full picture becoming bounding-box geometry.
 
 ### Full reset
 
