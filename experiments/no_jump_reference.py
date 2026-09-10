@@ -62,7 +62,24 @@ def candidate_line(Y, fld, gate=False, gatestat=None):
         else:
             i += 1
     last = [r for r in runs if r[1] >= len(pos) - 2]
-    return (ORIGIN_LINE[fld] + last[-1][0]) if last else None
+    if not last:
+        return None
+    off = last[-1][0]
+    line = ORIGIN_LINE[fld] + off
+    # Where this candidate row's own blank-level run BEGINS. The engine's largest
+    # blind class is recorded as left-censored: the displaced interval runs off the
+    # delivered window, so its run starts at sample 0. This lets a reading be placed
+    # in or out of that class instead of assumed either way.
+    r = rows[off]
+    m = r <= lvl + 3 * lsd
+    best = (0, -1); cur = 0
+    for i, v in enumerate(m):
+        if v:
+            cur += 1
+            if cur > best[0]: best = (cur, i - cur + 1)
+        else:
+            cur = 0
+    return (line, best[1], best[0])
 
 
 def qualified(series, i, idx):
@@ -70,8 +87,12 @@ def qualified(series, i, idx):
     field read the same line. Nothing from the engine enters this decision."""
     c, v = series[i][0], series[i][idx]
     if v is None: return False
-    for j in (i - 1, i + 1):
-        if 0 <= j < len(series) and abs(series[j][0] - c) == 1 and series[j][idx] == v:
+    v = v[0] if isinstance(v, tuple) else v          # his rule is about the LINE, and only
+    for j in (i - 1, i + 1):                          # the line: the run's start and extent
+        if not (0 <= j < len(series)): continue       # are diagnostics carried alongside it
+        w = series[j][idx]                            # and must not tighten the qualifier.
+        if w is None or abs(series[j][0] - c) != 1: continue
+        if (w[0] if isinstance(w, tuple) else w) == v:
             return True
     return False
 
@@ -88,7 +109,7 @@ def score(cand, eng, idx, want_qualified):
                 unknown += 1; continue
             if rec[idx] is None:
                 unknown += 1; continue
-            d = rec[idx] - T
+            d = rec[idx][0] - T
             err[d] += 1; byf[fld][d] += 1
     return err, byf, unknown
 
@@ -136,6 +157,7 @@ def selftest():
             row[edge:] = 1.4
             Y[r] = row
         got = candidate_line(Y, fld)
+        got = got[0] if got else got
         if got != want:
             print("FAIL 2: synthetic field %d switch at line %d read as %s" % (fld, want, got))
             ok = False
@@ -167,6 +189,8 @@ def main():
     ap.add_argument('--geometry', default='/private/tmp/run-timing.DdLgYt/plain/geometry.csv')
     ap.add_argument('--from-counter', type=int, default=6667)
     ap.add_argument('--selftest', action='store_true')
+    ap.add_argument('--csv', help='write per-reading results here, for joining against the '
+                                  "engine's own Unknown-cause export")
     a = ap.parse_args()
     if a.selftest:
         sys.exit(selftest())
@@ -198,6 +222,18 @@ def main():
             del b[:j]
 
     walk_tagged(a.capture, on_video=on_video, progress=False)
+    if a.csv:
+        with open(a.csv, 'w', newline='') as fh:
+            w = csv.writer(fh)
+            w.writerow(['counter','field','line','run_start','run_length','qualified','engine_T'])
+            for fld in (1, 2):
+                for i, rec in enumerate(cand[fld]):
+                    v = rec[1]
+                    w.writerow([rec[0], fld,
+                                v[0] if v else -1, v[1] if v else -1, v[2] if v else -1,
+                                int(qualified(cand[fld], i, 1)),
+                                eng.get((rec[0], fld), -1)])
+        print("wrote %s" % a.csv)
     print("capture %s   from counter %d\n" % (a.capture, a.from_counter))
     print("Candidate lines are in EACH FIELD'S OWN numbering (23.. / 286..).\n")
     report("QUALIFIED (no jump)",  *score(cand, eng, 1, True))
@@ -211,14 +247,14 @@ def main():
     print("  WHERE THE ENGINE REPORTS NO T (it cannot be scored here - coverage IS the result):")
     for fld in (1, 2):
         s_ = cand[fld]
-        vals = [r[1] for r in s_ if r[1] is not None]
+        vals = [r[1][0] for r in s_ if r[1] is not None]
         mode = collections.Counter(vals).most_common(1)[0][0] if vals else None
         tot = q = qfar = u = ufar = 0
         for i, rec in enumerate(s_):
             if eng.get((rec[0], fld), -1) >= 0: continue
             tot += 1
             if rec[1] is None: continue
-            far = mode is not None and abs(rec[1] - mode) > 1
+            far = mode is not None and abs(rec[1][0] - mode) > 1
             if qualified(s_, i, 1):
                 q += 1; qfar += far
             else:
@@ -227,6 +263,20 @@ def main():
             print("        field %d  engine-Unknown %3d | QUALIFIED %3d (%2.0f%%), %d outside mode+-1"
                   "  | CONTROL unqualified %3d, %d outside (%2.0f%%)"
                   % (fld, tot, q, 100*q/tot, qfar, u, ufar, 100*ufar/max(1,u)))
+    print()
+    print("  DO THOSE READINGS SIT IN THE ENGINE'S LEFT-CENSORED CLASS? (run start 0 = off-window)")
+    for fld in (1, 2):
+        s_ = cand[fld]
+        for label, blind in (("engine-blind", True), ("CONTROL: engine has a T", False)):
+            b = collections.Counter(); n = 0
+            for i, rec in enumerate(s_):
+                has = eng.get((rec[0], fld), -1) >= 0
+                if has == blind: continue
+                if rec[1] is None or not qualified(s_, i, 1): continue
+                st_ = rec[1][1]; n += 1
+                b['start 0' if st_ == 0 else ('start 1-2' if st_ <= 2 else 'interior')] += 1
+            if n:
+                print("        field %d %-24s n=%3d   %s" % (fld, label, n, dict(b)))
     print("        mode = this field's own modal candidate line. The control answers whether the")
     print("        invariant check has any power: if unqualified readings there ALSO never leave")
     print("        mode+-1, the instrument cannot emit a far value and the check proves nothing.")

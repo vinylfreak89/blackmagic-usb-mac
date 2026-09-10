@@ -4020,9 +4020,32 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   UNQUALIFIED readings: **13 of 37 land outside mode ±1 (60% field 1, 26% field 2)**. So far values are reachable
   there and the qualification is what excludes them; the invariant check discriminates and 0/83 is a result.
   ⚠️ **Satisfying the invariant is a NECESSARY condition, not proof the 83 readings are correct** — no instrument
-  scores them, which is the point of the population. And 12–18% does not rescue the engine-blind class: the 255
-  readings whose blanking runs off the delivered window are recorded above as an instrument limitation, and
-  **whether these 83 overlap that class is unmeasured**, not shown to be disjoint.
+  scores them, which is the point of the population.
+  **WHICH of the engine's Unknown classes it reaches is now an EXACT JOIN, not an inference** — on (counter, field)
+  against the engine's own `unknown_causes.csv`, which carries a per-reading `cause`:
+
+  | the engine's Unknown class | readings | reference asserts | control: unqualified |
+  |---|---:|---:|---:|
+  | `accepted_then_returned` | 145 | **39 (27%)** | 16 |
+  | `no_basis` | 75 | **22 (29%)** | 6 |
+  | `no_disjoint` (the left-censored class) | 264 | **12 (5%)** | 5 |
+  | `no_accepted` | 39 | 4 | 4 |
+  | box-excluded | 12 | 6 | 6 |
+  | **total** | **538** | **83 (15%)** | 37 |
+
+  **It does NOT rescue the left-censored class, and that is the expected direction rather than a shortfall:** the
+  255 readings whose blanking runs off the delivered window are unread because the device never delivered those
+  samples, and no reader recovers what did not arrive. Where the reference speaks is where the engine's PHASE
+  READER gave up — a departure accepted then cleared by a return, or no readable local basis — which is a
+  different kind of blindness and the kind another instrument can address.
+  ⚠️ **The signature match that preceded this join pointed the WRONG WAY and would have been recorded as a
+  result.** 64 of the 83 (77%) have their blank-run starting at sample 0, which this file records as the
+  left-censored class's signature, and that was read as the reference reaching into it. Measured across the
+  classes, start-at-0 runs **93% (`no_basis`), 75% (`accepted_then_returned`), 71% (`no_disjoint`), 50%, 42%** —
+  it is common everywhere and specific to nothing, so it could not locate a single reading. **A recorded
+  signature used as a proxy for class membership, coinciding with it most of the time**: the same diagnosis this
+  file already carries for the answers-a-different-question family, and the join is the structural fix — the
+  engine states its own cause per reading, so nothing has to be inferred from a statistic.
   **What this establishes** is the SHAPE of the answer: qualification plus Unknown, not a universal rule — and
   that his own continuity rule is a working qualifier rather than only a property to check.
 
