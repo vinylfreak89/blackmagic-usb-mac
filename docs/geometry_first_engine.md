@@ -811,8 +811,10 @@ field" phrasing does not.
   since the same capture's black card sits 16.2 codes above blanking — so in those regions "no displacement
   occurred" may not be separable from "displacement occurred and cannot be seen". ⚠️ **The question for the owner is
   the DISPOSITION when absence cannot be established, not whether it can be**: observability is empirical and is not
-  his to rule on. Whether this condition can be satisfied at all on such a source is
-  his to rule on. "if there are more than 24 lines of black with no head switch, just pure fucking black at the end, its an
+  his to rule on. ⚠️ **A superseded sentence stood here until 2026-09-11** — "Whether this condition can be satisfied
+  at all on such a source is his to rule on" — which is the observability question the sentence above removes from
+  him. It was the ORIGINAL framing (`0924681`), and the correction was added in front of it 84 minutes later
+  (`ab1b711`) instead of replacing it, so the paragraph asked him both things at once for a day. "if there are more than 24 lines of black with no head switch, just pure fucking black at the end, its an
   invalid raster. straight up", with his rationale for the number "the 24 has nothing to do with what the fuck is
   delivered. it has to do with 262.5 + 24 = 23.5, ie PICTURE", the black measured against the source's own blanking
   reference below, and "if EITHER field does that, then the registration engine should not operate". Legitimate
