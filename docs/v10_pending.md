@@ -490,6 +490,23 @@ migrate onto; `field_lines_py_test.py` compiles `field_lines.h` and compares all
 
 ## Blocked on the owner
 
+⚠️ **THREE MORE live only as inline markers in the contract and were never mirrored here (found 2026-09-11 by the
+watchdog session, which noticed the queue said three while six were open).** This section is the QUEUE; a question
+that exists only in the contract is invisible to whoever hands him the list, and the count staying at three across
+the day was coincidence, not substitution. Pointers, per this file's rule that it holds no content:
+
+| question | where it lives | state |
+|---|---|---|
+| **B2's residue** — the disposition when the invalid-raster condition's absence cannot be established | contract lines 804-810 | ⚠️ **REFRAMED 2026-09-10 and the reframing must travel with it**: the question is the DISPOSITION when absence cannot be established, NOT whether it can be. Observability is empirical and is not his to rule on. Handing him the older framing asks him to rule on a measurement. |
+| **Terminal-black-run disposition** | contract lines 797-798 | intact: "should the output retain the last corrective placement or bypass correction, which learned state remains valid, and does recovery require reacquisition before correction resumes?" |
+| **Caption-only precedence** | contract lines 1015-1018 | intact: on a caption-only acquisition, what independently established evidence determines the required field interleave; if unavailable, may the lock exist without it, and what placement and rendering is permitted? |
+
+**A fourth was withdrawn rather than asked** (Codex, 2026-09-10): whether a box's fixed extent is taken once from a
+well-exposed unit and held or re-measured per unit. **Rule 8a already answers it** — "measured while the picture is
+WELL EXPOSED, and it is HELD" — and supplies the fade discriminator. Same class as the three above: a question that
+looks open because its answer is not where one would look for it.
+
+
 **Two more, added 2026-09-10, in Codex's wording so neither agent's preferred consequence is baked in.**
 
 **(a) The 486 render and the tape's line 22.** Rule 7 says "the tape's line 22 never renders". Traced in

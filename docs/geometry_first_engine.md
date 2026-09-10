@@ -184,14 +184,15 @@ are the same phenomenon in the two directions - the 4s the band having taken a l
 shed one - so where the movement is sound the count should hold at 3 and the departure should not
 register as a band event.
 ⚠️ A correction on the head switch band is owed from the owner and is expected to settle the
-259-against-260 discrepancy. ⚠️ **The status of this prohibition is UNRESOLVED and is recorded rather than
-decided (2026-09-10).** It originated at `1c6b387` awaiting that specific correction. A later general
+259-against-260 discrepancy. ⚠️ **The procedural prohibition is REMOVED under §1's later gate-removal ruling** ("nothing should be
+gated"), and that is the current instruction: an implementer is not blocked by this sentence. It originated at
+`1c6b387` awaiting that specific correction, and **removing the procedural gate does NOT declare that correction
+delivered or resolved** — the historical uncertainty is about the correction, never about which workflow instruction
+applies. A later general
 unstable-timing-region definition landed, but neither agent can identify it AS that correction from subject overlap
 alone, so the promised correction is not declared delivered. Meanwhile §1's later ruling removed the procedural
 implementation gates ("nothing should be gated"), under which this sentence should not stand as an unexplained
-current instruction. ⚠️ **These are not two horns.** The procedural gate can have been removed while the technical
-correction remained unresolved — which is exactly the separation the gate-removal ruling draws, and is the likeliest
-reading. So nothing here claims the promised correction arrived. **The unresolved TECHNICAL question — the
+current instruction. **The unresolved TECHNICAL question — the
 259-against-260 discrepancy itself — is preserved separately and is retired by nothing that happens to the workflow
 sentence.**
 
@@ -597,11 +598,14 @@ field" phrasing does not.
   differing by a whole line are the same arrangement of samples), and a dark picture edge of a few tens of samples
   cannot be separated from a displacement of the same size when the row's other end shows nothing either.
 - **What the line TBC does to the head-switch band, stated with its populations rather than as a removal claim.**
-  Measured on the sampled fields: with the corrector ON, **768 of 1,076 affected rows are flat** at the deck's black
-  and 14 carry any readable horizontal timing; with it OFF, **0 rows are flat** and 1,022 of 1,042 are readable at
-  ≥ 100 samples. Using the affected-row definition at |d| ≥ 6, displaced rows are **11 with the corrector on against
-  1,957 with it off**. ⚠️ **The SEPARATION between the two passes is categorical for flatness and strong but not
-  categorical for timing** (§2) — which is not the same as the picture being removed throughout the region or on
+  Two SEPARATE measurements, with different selections, and neither is a denominator for the other:
+  * **Flatness.** With the corrector ON, **768 of 1,076 affected rows are flat** at the deck's black; with it OFF,
+    **0 of the rows examined are flat**. Flat rows occurred only in the sampled corrector-on population — which is
+    not categorical picture removal, since 308 of the 1,076 were not flat.
+  * **Horizontal timing**, a HORIZONTAL SAMPLE DISPLACEMENT and not registration `d`. Readability at ≥ 100 samples:
+    1,022 of 1,042 rows with the corrector off, against 14 of 1,076 with it on. Under the affected-row selection at
+    an absolute horizontal displacement of ≥ 6 samples: **11 rows with the corrector on against 1,957 with it off**.
+  ⚠️ **The separation is strong but not categorical for timing** (§2) — which is not the same as the picture being removed throughout the region or on
   every corrected source, and 768 of 1,076 is 71%, not all. ⚠️ This entry has now overclaimed in both directions:
   the heading first read "it removes the PICTURE, not the displacement" while the body said "the displacement is
   gone", and the repair then said "removes the PICTURE categorically", reading §2's word for the SEPARATION as a
@@ -833,7 +837,9 @@ field" phrasing does not.
   figure states its population, numerator, denominator and exclusions. Conditional agreement rates do not substitute
   for reporting evaluation coverage and unresolved cases. ⚠️ Mixing evaluated and unevaluated units is not itself a
   defect — evaluation coverage necessarily includes both. The defect is calling their mixture an agreement rate
-  without defining the denominator; reporting agreement only among decisive readings, which conceals poor coverage;
+  without defining the denominator; reporting a conditional rate ALONE as overall performance — agreement among decisive readings is legitimate when
+  clearly labelled as conditional and accompanied by evaluation coverage and unresolved counts, and the defect is
+  presenting it without them;
   or letting a required-but-absent evaluation disappear behind a denominator that says "evaluated units".
   ⚠️ **`comb_safe` is not the overlay's authoritative result.** It collapses four situations into one boolean —
   agreement while not settled, disagreement, no decidable evidence, and never evaluated — and rule 9 makes the last
@@ -1201,7 +1207,11 @@ field" phrasing does not.
     storage must be inaccessible as evidence until freshly populated. The source references are acquired again from
     the source, as at the start of a capture.
 
-## 5. Measured every unit, per field (what the record must carry)
+## 5. Recorded every unit, per field (what the record must carry)
+
+⚠️ This section describes a per-unit RECORD, not a per-unit measurement. A field's measurements may be unavailable
+or not evaluated on a given unit; the record carries that fact and its reason, and an absent measurement is never a
+zero or a silence (§3's comb-evaluation rule states the same for the comb).
 
 The recorded region; the picture top with the VBI rows above it and their signatures; the caption line when
 visible; the switch line and the signatures that carried it; the RF peak's line and position along the line when
@@ -1214,7 +1224,8 @@ closed.
 ## 6. The engine deliberately does not have
 
 No zero re-anchoring, no learned numeric offsets, no evidence-voting hierarchy, no body-witness veto of a measurable
-top, no comb correction of a settled crop (under a maintained lock the settled comb confirms and never
+top, no comb correction of a settled crop (under a maintained lock the engine does NOT evaluate the comb — rule 9 and
+§3's comb-evaluation rule; it never
 moves a field; EVALUATING an alignment candidate at acquisition or reacquisition is a different operation from
 COMMITTING one to the output, and only the second moves anything), no position claimed through
 damage (the geometry holds, the position is Unknown),
@@ -1294,7 +1305,9 @@ picture, never over it, the metrics band of `experiments/overlay_sidecar.py` —
 source-lock provenance, the lock's fixed switch-line count, the measured clip line, the conservation equation) and on the right a graph of the applied shift across the
 surrounding ±90 units with a line at zero and guides at ±2, swept by a red vertical RUNNING LINE at the current unit
 (the owner's "the one with the running line and number at the bottom", identified 2026-09-09); the band's first line
-carries the unit, the counter, the unit state, the applied pair and comb_safe. What the graph traces (owner, 2026-09-09):
+carries the unit, the counter, the unit state, the applied pair, and the comb's **evaluation status, result or
+inability to decide, and reason** with lock state beside them — never `comb_safe` as the authoritative result
+(§3's comb-evaluation rule; any retained `comb_safe` is shown as derived). What the graph traces (owner, 2026-09-09):
 BOTH fields' applied shifts, d1 and d2, not d1 alone; and the head-switch band's two edges per field — its top (the
 switch line) and its bottom (the last band row) — drawn so both edges are visible in one element, absent where the
 band is not measurable and omitted where the source has none ("not applicable" is distinct from unmeasurable,

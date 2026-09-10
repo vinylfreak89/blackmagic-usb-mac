@@ -135,10 +135,13 @@ false in the 486 mode for `d ≥ +1`. Traced in `experiments/review_render.py`, 
 | 19 | 23 | 37.710 | 15.60 | the tape's caption at d = +2 |
 | 20 | 24 | 60.062 | 29.24 | **the tape's line 22, carrying video, inside the window** |
 
-The 486 window at d = +2 is a 243-position window starting at field-relative line 22, whose far end crosses the
-physical-field boundary, and row 20 is inside it. (⚠️ This sentence first read "covers lines 22–264" — the
-withdrawn frame-continuous numbering, reintroduced by the same agent who had just removed it from the contract.
-Codex caught it. There is no line 264.) (Row 17, line 21, reads sd 0.125 —
+The 486 window is 243 positions per field at **lines (20 + d) … (262 + d)** (contract §8: "lines 20–262 in each
+field"), so at d = +2 it runs 22 … 264-equivalent and row 20 is inside it. (⚠️ This sentence has now been wrong
+twice. It first read "covers lines 22–264" — the withdrawn frame-continuous numbering, reintroduced by the agent who
+had just removed it from the contract. The repair then read "a 243-position window starting at field-relative line
+22", which is the d = +2 INSTANCE presented as the definition: at d = 0 the window is 20–262, entirely inside the
+field, crossing no boundary at all. First version lost the convention, second lost the variable, one commit apart,
+both inside a note about not doing that. The safe form names `d`.) (Row 17, line 21, reads sd 0.125 —
 that is the device's insert carrying re-encoded tape bytes, not pass-through, and it is not evidence
 either way.)
 
