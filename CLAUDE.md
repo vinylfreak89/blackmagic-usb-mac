@@ -1447,6 +1447,15 @@ delivery edge; wrong one at acquisition.
   unit rows.** Unit row r maps to NTSC line r + 4 in both fields (row 17 = line 21, row 19 =
   line 23, row 256 = line 260; row 280 = line 284, row 282 = line 286, row 518 = line 522). Row
   numbers belong in code and CSV columns only; every number spoken to the owner is a line.
+⚠️ **SUPERSEDED 2026-09-10 — the insert's bytes are not corroboration either.** Owner: "no the regenerated
+insert shouldn't count as anything", and "whether they can decode captions, that could mean the real captions are
+anywhere from 20,21,22 so that should say nothing about geometry". The passages below that call the bytes at line 21
+"corroboration only" or "logged as confirmation" describe what was believed then; under his ruling a successful
+decode at the insert is not geometry evidence, not corroboration and not a tiebreak. Only the tape's own off-insert
+caption, found by the raw whole-field parity search and meeting the VBI semantics, is a gauge. The bytes may still be
+RECORDED as observations — recording them is not using them as confirmation. Kept unrewritten because they are the
+historical claims, not the current rule.
+
   **VBI structure and the crop-start error — MEASURED 2026-09-04 (raw units, both recordings;
   `experiments/picture_envelope_census.py` recognises caption/timing lines by signature):** unit row 16
   (field 1) is the deck's FIXED timing line (narrow pulse far left, wide pulse right), byte-alike
