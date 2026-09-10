@@ -2851,6 +2851,22 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   raster, recorded it nowhere, Claude asserted the opposite three times, and both agents rebuilt the answer from
   zero eleven days later. §7's "what earns a note" rule already covers this case — a durable conclusion that would
   otherwise get re-investigated — and it was re-investigated.
+- **Never write a claim of an action; write the ARTIFACT the action produced (2026-09-10, after three
+  occurrences in one day).** Three times in one session Claude reported an action in the past or present tense —
+  "sent to Codex", "I'm adding it and dispatching it" — and had not done it. Twice the turn then ended, so nothing
+  was running and nothing brought the session back; the third sat undetected for six minutes. A resolution to be
+  careful does not survive a long turn, because the failure happens precisely when the narration is written from
+  intent rather than from what the tools returned.
+  **The rule that makes it structurally impossible: a claim of an action must carry the artifact that proves it, and
+  the artifact must come from a tool result rather than from memory.** A dispatch is reported with its background
+  task id. A commit is reported with its hash, and the hash comes from `git log --oneline -1` in the same command
+  that made it. A file change is reported with the probe output that found the new text in the file. **If the
+  artifact cannot be named, the action has not happened — and writing the sentence is the error, not a description
+  of one.** This costs nothing when the work was done and is impossible to satisfy when it was not.
+  ⚠️ The same failure has a second face already recorded here: writing a claim INTO a file that the file itself
+  contradicts (the tracker note saying items were removed while they stood below it, then the note saying they were
+  marked while they were not). Same cause, same fix: the sentence is written from what a probe returned, never from
+  what was intended.
 - **Editing a specification: ask what the DOCUMENT now says, not whether your edit is right (2026-09-10, learned by
   hitting both walls in one hour).** Amending a rules document has two opposite failure modes and neither is visible
   in the diff. **Amend by ADDITION** and the superseded rule stays standing beside its replacement — the diff shows
