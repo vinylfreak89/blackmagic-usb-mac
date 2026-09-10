@@ -54,6 +54,20 @@ synthetic insert sits where the standard says; it now rests on the waveform deco
 ⚠️ What still cannot be measured from this side is the raster's absolute position against vertical
 sync: the device delivers decoded YCbCr, so no sync waveform survives to align against.
 
+⚠️ THE UNIT IS TWO STACKED FIELD BLOCKS, NOT AN INTERLEAVED FRAME RASTER (owner, 2026-09-10:
+"it sends the two fields stacked one on top of the other"; measured the same day). An earlier
+version of this file claimed one continuous frame raster because the two caption rows correlate at
++1.000 across 263 rows. That test cannot tell the two apart: BOTH predict 263, since the frame's
+two caption lines are 263 apart and so are the 18th rows of two 263-row blocks. The discriminator
+is what lies BETWEEN them - row against row+263 correlates +0.869 mean / +0.933 median, the
+HIGHEST of any offset tested, above row against row+1 (+0.834/+0.908), with a row+131 control at
++0.436. Rows 263 apart are therefore ADJACENT DISPLAY LINES, which is stacking; under interleaving
+they would be 131 display lines apart and look like the control. The structure agrees: each field's
+240 picture rows are CONTIGUOUS, two blocks separated by 23 rows of fill, where interleaving would
+put all 480 in one run. The +4 offset is therefore measured WITHIN each block and runs one-for-one
+from that block's caption row to the end of its picture (row 17 to row 258 is 242 rows; line 21 to
+line 262 is 242 lines). It does not continue past a field's last line into the next field's.
+
 ⚠️ THE MAP IS ANCHORED ONLY BETWEEN THE TWO CAPTION ROWS, and an earlier version of this table
 labelled rows outside that interval as if it were not (owner, 2026-09-10: "How can they not be
 delivered if it gives a 525 raster"). The two anchors are the 18th and 281st delivered rows; the
@@ -75,7 +89,10 @@ Classification stable in all 38 units checked except the third-from-last row:
                             on line 21
   line  22         1 row    written blanking                       | anchored span begins
   lines 23 - 262 240 rows   digitised: FIELD 1's active picture, exactly the standard's 240
-  lines 263-264    2 rows   written blanking          <- the two rows in question, INSIDE the span
+  line  263        1 row    written blanking - field 1's half line, the last line it has
+  (one more row)   1 row    written blanking - PAST field 1's last line, so it carries no NTSC
+                            line number at all; the earlier label "264" names a FIELD 2 line and
+                            is withdrawn
   lines 265-273    9 rows   flat 16, the device's padding
   lines 274-282    9 rows   written blanking
   lines 283-284    2 rows   digitised: field 2's inserts, the 2nd being its CEA-608 row --
