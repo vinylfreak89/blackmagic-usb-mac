@@ -1680,6 +1680,11 @@ historical claims, not the current rule.
   line 286 in ~87% of first-minute units and 100% of the EP slice — and field 1's moves are rigid
   whole-field-line shifts of caption + gap + picture together (parity test on raw units: per-field
   model 202–0 over a whole-picture one-display-line shift).
+- ⚠️ **The hash in the next line is WRONG and it RESOLVES, which is worse than the dead ones above (2026-09-11).**
+  `b7a94d5` is a real ancestor commit whose subject is "gitignore the v9 test binaries and generated fixture" — not
+  the v9 merge this sentence credits it with. A dead citation announces itself; a wrong live one passes every
+  existence check silently. The correct merge commit has NOT been established, so the hash is left as written with
+  this flag rather than replaced by a guess.
 - ✅ **P2 v9 — the line-21 engine (merged to main `b7a94d5`, 2026-09-05 early morning; Codex
   wrote, Claude reviewed, two review rounds, 69/69 goldens, 18/18 API, 3/3 decoder).** Supersedes
   every estimator above. Per field per unit: decode every line of the field (NTSC 12–266 /
@@ -3095,6 +3100,31 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   the same shape — two places holding one truth, with nothing keeping them in step, and the one that gets READ is
   not the one that is right.** The repair is always to make the reading side execute the other rather than restate
   it: pointers not copies, a probe that runs the guard, a probe that runs the table's mutations. That is the argument that it is structural rather than either being sloppy.
+- **A SUBAGENT SPAWNED IN THIS REPOSITORY CANNOT BE A COLD READER, and instructions cannot fix it
+  (2026-09-11, second instance of the class in one day).** The project `CLAUDE.md` reaches a subagent
+  automatically, before any prompt — so a "cold read" of `docs/geometry_first_engine.md` run this way is
+  **informed, not cold**. The round-2 reviewer said so itself: the project file "discusses this exact contract,
+  quotes the same owner rulings and records the same disputes", so "several of the areas I examined were
+  foregrounded for me before I read a line of the target file", and **"'I did not cite it' is not 'I did not know
+  it'"**.
+  ⚠️ **This is a RECURRENCE.** The same mechanism was raised at 07:40Z the same day against a cohort adjudicator
+  described as having "no knowledge that any other adjudication exists" while this file named the other worktree
+  outright. That instance was fixed FOR THAT CASE, which is why it came back eight hours later against a different
+  exercise. §14 records blinding failures as "found and fixed structurally"; one of them was fixed locally.
+  **The fix is ENVIRONMENTAL, never instructional**: read the frozen snapshot from a directory carrying no
+  `CLAUDE.md`, or from a tree that is not this project. A stronger prompt cannot help, because the file arrives
+  first.
+  **Consequence for any two-reader comparison:** both readers here were exposed to the same document — Codex's
+  round-1 provenance says so of its reviewer too — so neither is the blind control for the other, and **agreement
+  between them is worth much less than it looks**. A comparison must separate findings in areas this file
+  discusses from findings that are not; only the second group is corroboration.
+- **An unconditional command after a guard that REFUSED prints success for work that never happened — and unlike
+  the rest of this family it produces a false positive about the WORLD, not a wrong number (2026-09-11).**
+  `scripts/verified_commit ... | tail -4` followed on its own line by `git push -q && echo pushed` printed
+  **"pushed"** while the guard had refused to commit and the tree was unchanged. Nothing failed; the push
+  succeeded, having nothing to push. Every other member of this family returns a misleading VALUE; this one
+  asserts that an action occurred. Put the push inside the same conditional as the commit, or read the guard's
+  status before running it.
 - **THE ARGUMENT FOR CROSS-CHECKING, in one measured ratio (2026-09-11, the peer session's own count of itself).**
   A watchdog session relayed findings toward the owner all evening while a second agent checked each against the
   files. **Eleven of its claims were checked before reaching him; FOUR were wrong** — two counts seeded from a

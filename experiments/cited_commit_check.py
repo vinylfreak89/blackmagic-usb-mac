@@ -17,9 +17,19 @@ WHAT IT CHECKS
   * every cited hash resolves to a commit in this repository
   * that commit is an ANCESTOR of HEAD (a hash from an abandoned branch would otherwise pass)
 
-WHAT IT CANNOT DO. It does not check that a commit does what the surrounding prose says it does --
-that is a claim about meaning and needs a reader. A citation can resolve, be an ancestor, and still be
-attached to the wrong sentence. Reported as unverifiable rather than implied to be verified.
+⚠️ A DEAD CITATION ANNOUNCES ITSELF; A WRONG LIVE ONE DOES NOT. `b7a94d5` resolves and is an ancestor,
+and CLAUDE.md calls it the v9 line-21 engine merge; its actual subject is "gitignore the v9 test
+binaries and generated fixture". Existence is a PROXY for "carries what is attributed to it", and the
+two come apart exactly where it matters (peer session, 2026-09-11).
+
+SO THIS PRINTS EACH COMMIT'S REAL SUBJECT BESIDE THE PROSE THAT CITES IT, and does not try to judge
+the match. A heuristic was tried and REJECTED before shipping: flagging citations whose subject shares
+no content words with the citing sentence MISSES `b7a94d5`, because both contain "test" -- the
+motivating case defeats the obvious rule, which is the fitted-to-instances defect one step earlier
+than usual. Automating the presentation and leaving the judgement to a reader is the honest split.
+
+WHAT IT CANNOT DO. It cannot tell you a citation is attached to the right sentence. It puts the
+evidence side by side so a reader can see; that is all.
 """
 from __future__ import annotations
 import os, re, subprocess, sys
@@ -37,6 +47,15 @@ def cited(text):
         line = text[:m.start()].count("\n") + 1
         out.setdefault(h, []).append(line)
     return out
+
+
+def context(doc, h, span=110):
+    """The prose immediately around the citation, so the reader sees the claim next to the subject."""
+    i = doc.find("`%s`" % h)
+    if i < 0:
+        return "(not found)"
+    seg = " ".join(doc[max(0, i - span):i + span].split())
+    return seg[:200]
 
 
 def main() -> int:
@@ -57,11 +76,16 @@ def main() -> int:
             unreachable.append((h, lines, subj))
         else:
             ok.append((h, lines, subj))
+        del anc
 
     print("CLAUDE.md cites %d distinct commits" % len(hits))
     print("  resolve and reachable: %d" % len(ok))
+    print("  (subject printed beside the citing text; judging the MATCH needs a reader)\n")
     for h, lines, subj in ok:
-        print("    %s  line %-5s %s" % (h, lines[0], subj[:74]))
+        ctx = context(doc, h)
+        print("    %s  line %-5s" % (h, lines[0]))
+        print("        cited as: %s" % ctx)
+        print("        actually: %s" % subj[:100])
     for h, lines in missing:
         print("  ** NOT A COMMIT IN THIS REPOSITORY: %s (cited at line %s)" % (h, lines[0]))
     for h, lines, subj in unreachable:

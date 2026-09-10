@@ -49,3 +49,29 @@ the parent's exposure is a fact about the comparison, not about the reviewer.
 committed so it cannot be lost with the session — **Codex should not open it until its own reviewer's report
 is frozen**, which is the discipline Codex itself demonstrated in round 1. Any comparison is a later analysis
 in a separate artifact, never part of an independent review.
+
+
+## Method note for the comparison — written BEFORE either report was opened
+
+**Both readers were exposed to the same project `CLAUDE.md`.** Codex's round-1 provenance says so of its
+own reviewer: *"Isolation is PARTIAL. The reviewer reports automatically inherited repository instructions
+and project measurements. No claim of stronger isolation than the other reviewer is made."* This round's
+reviewer says the same, in more detail, and names the areas that were foregrounded for it.
+
+**So neither side is the blind control for the other, and agreement between the two reports is worth much
+less than it will appear to be** — precisely because the same document primed both. The temptation to read
+agreement as confirmation arrives with the reports, which is why this is recorded now.
+
+**What the comparison must therefore do:** separate findings that fall in areas the project `CLAUDE.md`
+discusses (the switch-line count, the box census and `box_vs_switch.py`'s retraction, the head-switch
+region, the comb's static mask, the one-name-several-quantities class, the colour-burst ruling, the v10
+process) from findings that do not. **Only the second group is corroboration in the sense this exercise was
+designed to produce.** Agreement in the first group is consistent with two readers having been told the same
+thing.
+
+⚠️ **And the structural fix for future rounds, since instructions cannot repair this:** the project
+`CLAUDE.md` reaches a subagent spawned in this repository automatically, before any prompt. **No subagent
+spawned here can be a cold reader of this contract** — not with better instructions, because the file
+arrives first. The available fix is environmental: read the frozen snapshot from a directory that carries no
+`CLAUDE.md`, or from a tree that is not this project. Cheap, and it is the difference between a cold read
+and an informed one for every round after this one.
