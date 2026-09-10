@@ -2666,6 +2666,37 @@ wrong reading from moving the crop. **Gating the comb on lock state removes that
 against it**, which is why it is worth landing with the mask removal rather than after it. Whether it goes in the
 same change is Codex's call and has been put to it as a question, not an assumption.
 
+**TRACK 1: THE HARNESS WAS VALIDATING THE WRONG ROW, and measuring the contract's own object in RAW CODES
+recovers it (2026-09-11, `experiments/peak_line.py`).** The gate, in the owner's words (2026-09-09): "we want
+agreement on the harness about the headswitch. if we get it stable then we can finally lock the harness down. and
+then it just becomes getting codex to build the engine right for capture 1."
+Contract :652 defines the switch line as **the line carrying the peak, the partial line** -- that is **T** -- and
+:656 says **S is NEVER substituted for it**. This file's "the harness's switch line is independently confirmed,
+S exact in 1,013 of 1,013" validates **S**. So the harness has been confirming a row the contract explicitly says
+is not the object, and both engine readers were arguing a partial-line PREDICATE rather than measuring it.
+Measured directly -- largest POSITIVE excursion above each row's own median, in raw codes, positive only because a
+relocated interval is a large NEGATIVE one -- against the engine's T on all 478 readings where the engine has one:
+
+| peak amplitude (raw codes) | n | exact | within one row |
+|---|---:|---:|---:|
+| 6-11 | 47 | 13% | 34% |
+| 15-27 | 47 | 66% | 87% |
+| 52-64 | 47 | **38%** | 64% |
+| 89-120 | 47 | 79% | **100%** |
+| 122-166 | 47 | 72% | **100%** |
+| 167-213 | 47 | 87% | **100%** |
+| 213-236 | 55 | 89% | **100%** |
+
+**Where a peak genuinely exists the harness and the engine agree 79-89% exactly and 100% within one row; where
+there is none the statistic is measuring picture texture and agreement collapses to 13%.** That is exactly the
+structure the contract already has -- :652 for the peak, :655's fallback for its absence -- so the object was
+right and the missing piece was the qualification "is there a peak at all", not a better statistic.
+⚠️ Deciles are reported instead of a cut-off ON PURPOSE: the qualification is the finding, and choosing a threshold
+against these 478 readings would be fitting to the fixture.
+⚠️ **The 52-64 band breaks the monotone at 38% and I have no explanation for it.** Recorded rather than smoothed.
+⚠️ This does NOT adjudicate the six. "Within one row" spans exactly the T-versus-S ambiguity that IS the dispute,
+so the exact column is the one that bears on it, and 79-89% is not agreement.
+
 **CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
 FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
 clear it when normal timing returns -- which the engine already does -- and Codex verified upward and downward
