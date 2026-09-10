@@ -498,13 +498,26 @@ cues present one frame and absent the next mean they shifted away, near-certain 
     rather than the same frames. The flat-row separation is categorical; the timing separation is strong but not
     categorical. Neither establishes a content-independent, error-free per-unit regime classifier.
 
-- **Head switch**: discontinuous horizontal skew, an RF peak, or both, plus an AGC mismatch where present (owner,
-  2026-09-07 morning); the other head's blanking intruding into the row and the pedestal rows are what the captures
-  show (section 2). **Switch line** (the top switch line): the horizontal line carrying the peak, the partial line;
+- **Head switch**: **the region affected by the other field's horizontal timing intruding into this field**
+  (owner, 2026-09-10: "either picture ending up in the blanking window or blanking ending up in the picture window.
+  full stop"). Qualified horizontal-timing departure, a partial-line boundary, an RF peak or an AGC mismatch may
+  supply EVIDENCE about it; none is an alternative definition and none is automatically sufficient identification.
+  Their absence does not establish absence of the region. Which evidence a source offers varies — section 2 records
+  a line-TBC-corrected pass losing the partial line's displacement and the peak while the region stays observable.
+  The other head's blanking intruding into the row and the pedestal rows are what the captures show (section 2). **Switch line** (the top switch line): the horizontal line carrying the peak, the partial line;
   it keeps being the switch line when the peak moves into the other field or disappears off the edge, even if it
   then holds a fully stable line of picture (owner, afternoon). With the peak absent it is the first measurable
   horizontal-skew discontinuity scanning down from the picture: the partial row whose later part departs from the
-  row above, else S when the first full other-head row is exposed; that one row is the travel. If neither is
+  row above; that one row is the travel. ⚠️ **S is NEVER substituted for it** (2026-09-10, restoring section 2's
+  adjudication, which this fallback had reinstated the error of): where the partial row is not measurable but S is,
+  S is recorded as a BOUND and the current switch line is Unknown. Two qualifications. `T ∈ {S−1, S}` holds only
+  where the one-partial-line relationship is itself established; otherwise S bounds where a fully switched line is
+  OBSERVED and does not prove no earlier affected line exists. And T MAY equal S where independent evidence
+  establishes the region begins there with no earlier partial line — the region definition does not require a
+  partial line universally. **The current observed T is distinct from the RETAINED switch bounds: an unmeasurable
+  current T does not erase a previously qualified held boundary.**
+  Measured cost of removing the substitution, on capture 1 at counter >= 6667 (1,016 field readings): 478 have both
+  T and S, 532 have neither, and **six have S without T** — those six are the entire population this turns Unknown. If neither is
   measurable, the unit's switch line is Unknown and the lock's count is not substituted as an observation. How each
   instrument measures the discontinuity is its own, stated per column (harness) and per golden (engine).
   **Switch lines / the band**: the head-switch lines counted from the top switch line down, the partial line
@@ -629,8 +642,16 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   correct.** Two conditions put a raster there. FIRST, the regenerated rows absent — their absence must be
   POSITIVELY ESTABLISHED, since a failed caption decode is not absence and samples unavailable through transport
   damage are not absence. SECOND, a trailing black run of more than 24 qualifying terminal lines AND positively
-  established absence of the unstable-timing region within them; Unknown switch evidence does not satisfy that
-  absence. "if there are more than 24 lines of black with no head switch, just pure fucking black at the end, its an
+  established absence of the head-switch REGION within them (owner, 2026-09-10: the absence required is of the
+  region as defined in section 3, "a fancier way to say head switch region the way I've defined it", not of a peak
+  or a partial line). **Failure to identify a landmark or a region does not establish absence**; unresolved
+  evidence remains Unknown, and Unknown switch evidence does not satisfy this condition.
+  ⚠️ **OPEN, and with the owner** (2026-09-10): his ruling settles the OBJECT whose absence is required, and
+  presence is establishable by displacement, which is a timing observable. Absence may not be. Section 2 records
+  that on this source black picture content is clipped to exactly the blanking level with the same dither, so no
+  level or texture test separates them — and "no displacement occurred" may therefore not be separable from
+  "displacement occurred and cannot be seen". Whether this condition can be satisfied at all on such a source is
+  his to rule on. "if there are more than 24 lines of black with no head switch, just pure fucking black at the end, its an
   invalid raster. straight up", with his rationale for the number "the 24 has nothing to do with what the fuck is
   delivered. it has to do with 262.5 + 24 = 23.5, ie PICTURE", the black measured against the source's own blanking
   reference below, and "if EITHER field does that, then the registration engine should not operate". Legitimate
@@ -667,6 +688,57 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   comb constrains the two fields' relative registration only, so where both fields are ambiguous by the same amount
   the COMB CANNOT CONFIRM THAT CANDIDATE. Comb ambiguity does not itself prevent acquisition through qualified
   caption confirmation; the candidate must still satisfy the geometry and source-validity requirements.
+- ⚠️ **THE DISPLACEMENT DECISION IS INCOMPLETE. This records what is established so the next attempt starts from
+  it, and what the engine does today, which is the thing it forbids.**
+  **No single quantity can supply `d`.** Four candidate readings were tested against the outcomes the owner's
+  rulings fix; none satisfies all of them. `top − 23` cannot read upward displacement, because rule 11 is that an
+  earlier start cannot be established from evidence the Shuttle overwrote. `count − extent` from the observed top
+  reads a head-catch excursion and the partial's disappearance as displacement. A membership count cannot carry a
+  sign (`0 ≤ E ≤ N`), and membership is not independently observable: the band's lines have no persistent
+  identifiers, so deciding which of this unit's rows belong to the frozen band requires already knowing the
+  displacement.
+  **THE REQUIREMENT IS INVARIANCE, NOT ZERO.** A band-only event requires the picture's displacement to be
+  UNCHANGED — at +2 it stays +2. The worked cases were computed from a zero start and read `d = 0`; those zeros are
+  an instance, not the requirement, and every failure above is a failure to leave `d` unchanged rather than a wrong
+  absolute value.
+  **Two decisions, sharing observations, never fused.** *Displacement*: what is the picture's displacement, with
+  what evidence and uncertainty? *Switch state*: what boundaries and counts are observed, and does that evidence
+  permit holding, expanding or reacquiring the retained state? They may carry different certainty. **Neither
+  accepted expansion nor hold validity may be licensed by the displacement result alone** — "the picture did not
+  move" also fits events where the count must not change, and retaining a bound, invalidating it and acquiring a
+  replacement all leave today's crop identical.
+  **FOUR REQUIRED OUTCOMES**, since picture displacement and independent switch motion are two contributions to an
+  observed boundary change rather than exclusive classes: (1) **picture motion** — displacement derived and applied
+  under the placement rules; (2) **switch motion** — the raw boundary change is recorded and supplies NO
+  displacement reading, and does not become a zero; (3) **both together** — neither observation is usable without
+  evidence separating the contributions, and absent that the outcome is (4); (4) **unresolved** — displacement
+  Unknown, the placement-hold rule applies, and holding placement is NOT evidence that displacement was zero.
+  Where independent switch motion cannot be distinguished from picture displacement in the boundary used by the
+  extent-based estimator, that estimator supplies no displacement reading; another independently qualified
+  observation may still establish displacement, and if none does, displacement is Unknown.
+  **Within the displacement decision: two independently qualified observations feeding one result.** A top-based
+  displacement only where the source's picture origin is IDENTIFIED — at a clamped top, `top − 23 = 0` is a
+  constraint, not an observed zero. An extent-based one only where the boundary is qualified to represent
+  displacement of the retained geometry rather than independent switch motion. Both qualified, they must agree
+  within measurement uncertainty and **disagreement is reported rather than authorising a choice**. One qualified,
+  it is used under its stated conditions. Neither, outcome (4).
+  ⚠️ **WHAT THE ENGINE DOES TODAY, which is outcome (1) unconditionally.** `field_registration.c` computes
+  `geometry_d = top − origin` and applies it whenever the geometry is measurable and the crop fits the raster; the
+  only holds are geometry unmeasurable and a crop that will not fit. `switch_measurable` does not gate the
+  displacement at all — it gates the two acquisition sites, the comb's band end, the invariant residual and the
+  frozen-count comparison. So an Unknown switch line neither holds the crop nor is read as a value: it falls back
+  silently onto the top-based reading, which is the reading this entry establishes is unqualified.
+  **THE PREREQUISITE, empirical rather than editorial.** The qualification needs the position of an IDENTIFIED
+  TIMING LANDMARK across successive fields with evidence it remains the same landmark: its line and horizontal
+  position with uncertainty and censoring status; tracking in actual field order including the either-field
+  predecessor condition; a SOURCE-DERIVED range of credible continuation; evidence that disappearance or emergence
+  at the window edge is consistent with it; and corroboration separating a switch excursion from whole-field
+  displacement. "Near the edge" is a measured position and uncertainty consistent with the proposed crossing;
+  "further than expected" needs that continuation range. Persistence alone does not establish landmark identity.
+  Borrowing a rate between sources is warned against by measurement — capture 1's sequence gave seven distances
+  spanning 1 to 145 samples per unit — though that observation does not by itself establish valid source-specific
+  ranges. Until the observable is demonstrated to distinguish genuine upward displacement from a stationary-picture
+  head-catch event, including censored endpoints and simultaneous motion, the answer is outcome (4).
 - **Body shift**: the vertical shift of a field's picture body against the previous unit of the same field, over
   whatever range is required (never a fixed one); a maybe, not an authority.
 - **Comparator order**: the first observed value leads; a replacement enters at the bottom; equal counts do not change
