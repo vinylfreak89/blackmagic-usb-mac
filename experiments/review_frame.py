@@ -80,12 +80,12 @@ def build_frame(raw, c, capture_name, fields, extra_header=()):
     n=min(len(f1),len(f2)); out486=np.empty((n*2,720,3),dtype=np.uint8)
     out486[0::2]=f1[:n]; out486[1::2]=f2[:n]
     W=720; PAD=16; RH=2
-    img=Image.new("RGB",(W*2+PAD*3,max(n*2,LINES*RH)+150),(16,16,20))
+    img=Image.new("RGB",(W*2+PAD*3+96,max(n*2,LINES*RH)+150),(16,16,20))
     d=ImageDraw.Draw(img)
     d.text((10,8),"REVIEW FRAME  counter %d  --  capture %s"%(c,capture_name),(240,240,246))
     d.text((10,22),"LEFT: 720x486 output AS PLACED (lines 20-262 / 283-525, woven), colour, BT.601 limited.",(180,180,190))
     d.text((10,34),"RIGHT: the full 525-line raster, vertically 2x. Box: field 1 RED, field 2 BLUE, PURPLE where",(180,180,190))
-    d.text((10,46),"they coincide, alpha 0.35 so you see through it. No ratio, no MAD, no sigma anywhere.",(180,180,190))
+    d.text((10,46),"they coincide, alpha 0.35. Head-switch TOP (T, the partial line) and BOTTOM (clip) marked.",(180,180,190))
     y0=64
     # ---- the box goes ON THE PICTURE (owner: "on top of the picture"), and PURPLE is where the
     # two fields' boxes cover the same PICTURE line. In raster coordinates they never can:
@@ -118,6 +118,27 @@ def build_frame(raw, c, capture_name, fields, extra_header=()):
         blend(img,(rx,r0,rx+W-1,r1),col)
         d.rectangle([rx,r0,rx+W-1,r1],outline=col)
     # (the raster keeps plain per-field outlines; collision has no meaning in its coordinates)
+    # ---- THE HEAD SWITCH: its TOP and BOTTOM marked, the owner's third render instruction
+    # ("the overlay band, the marking of the top and bottom of the head switch"). The band runs from
+    # T -- the partial line, contract :652, which is the switch line and NOT S -- down to the deck's
+    # clip. Drawn in the field's own colour on the raster with its line number, and NOT drawn where
+    # the engine reported the quantity Unknown, because an absent reading must look absent rather
+    # than defaulting to a plausible row.
+    for f in (1, 2):
+        e = fields.get(f) or {}
+        col = (255, 215, 90) if f == 1 else (110, 215, 255)
+        for key in ("T", "clip"):
+            try:
+                ln = int(e.get(key))
+            except (TypeError, ValueError):
+                continue
+            if ln < 0:
+                continue
+            yy = y0 + (ln - 4) * RH               # unit row = NTSC line - 4, in both fields
+            if not (y0 <= yy < y0 + LINES * RH):
+                continue
+            d.line([rx, yy, rx + W - 1, yy], fill=col, width=1)
+            d.text((rx + W + 4, yy - 5), "f%d %s %d" % (f, key, ln), col)
     # ---- the decision record, in words and line numbers only
     ty=y0+max(n*2,LINES*RH)+10
     d.text((10,ty),"DECISION RECORD    picture lines where BOTH fields' boxes coincide (purple): %d"%n_pur,(240,240,246))

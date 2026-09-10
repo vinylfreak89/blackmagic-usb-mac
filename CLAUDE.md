@@ -4147,6 +4147,30 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **THE LOCKED RENDER NOW CARRIES ALL THREE RENDER INSTRUCTIONS — the third was genuinely missing
+  (2026-09-11).** Audited against the owner's words rather than assumed: the 720×486-plus-raster in colour was
+  done, the bounding box on the PICTURE with field colours, purple on collision and alpha 0.35 was done, and
+  **"the marking of the top and bottom of the head switch" was NOT** — T and the clip appeared only as text in
+  the decision record. Now drawn on the raster in each field's own colour with its line number, from **T (the
+  partial line, contract `:652`, which is the switch line and NOT S)** down to the deck's clip, and **not drawn
+  at all where the engine reported Unknown**, so an absent reading looks absent rather than defaulting to a
+  plausible row. Verified by pixel count rather than by eye: 718 field-1 and 1,406 field-2 marker pixels on the
+  raster half, panel 1488 → 1584 px. Re-rendered over all 920 units.
+  ⚠️ **The first-six-lines acceptance criterion is passed TRIVIALLY on this capture and is NOT evidence.** Every
+  applied pair is (0,0) so the 486 window never moves and those lines cannot move. It becomes a real test only on
+  a capture where the applied offset changes — captures 2-4.
+- **§11b's `bench` REGRESSION GATE IS VACUOUS, verified from its own output rather than argued (2026-09-11).**
+  §11b names "a `bench` target over a fixed 10,000-unit fixture" as the gate on the 10 ms budget. Its artifact
+  from this session reads **`BENCH-SAMPLES 10000 registration_calls 0 gated 10000`** — the classifier gated every
+  one of the 10,000 units, so `fieldreg_process` was never called and the `WORKER-BENCH median 0.321 ms` is
+  classifier-plus-publish **with the engine skipped**. **The gate cannot fail however slow registration becomes.**
+  ⚠️ The same run's direct engine bench reads **`FIELDREG-BENCH median 20.992 ms p95 47.851 ms`**, which is over
+  §11b's 10 ms — but it was taken at **load average 5.99**, and §11b's budget is specified on a "reference M3
+  P-core, single-threaded". **So neither number is publishable: one measures the wrong thing and the other was
+  measured under unrecorded contention.** A CPU minimum derived from either would be a figure this project's own
+  rule forbids. The instrument is `src/frameserver/tests/worker_bench.c`; the gate needs a fixture the classifier
+  actually calls ProgramLike before any ms/unit figure means anything.
+
 - **CODEX'S §14 REVIEW (`698c11a`) FOUND SIX DEFECTS AND EVERY ONE REPRODUCED — including two I wrote and three
   overclaims I published (2026-09-11).** Its report is `docs/reports/2026-09-11_arrival_calibration_review.md`.
   1. **`per_unit_floor.py` READ THE WRONG FIELD.** `SWITCH_LINES=(260,261,262)` was used for BOTH fields against
