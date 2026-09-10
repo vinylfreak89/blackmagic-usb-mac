@@ -187,8 +187,8 @@ The storage rows this names, measured on capture 1 and identical in all 38 units
 block's line 1 sits 20 rows above its caption row, so field 1's line 1 is the unit's LAST written
 row (its caption is the 18th row of the unit) and field 2's line 1 is the row immediately after
 field 1's 262.5. Each block then runs 1 written, 9 padding (its lines 2-10), 9 written (11-19),
-2 inserts (20-21), 1 written (22), 240 picture (23-262) - and field 1 alone has one more written
-row after its picture, which is the 262.5. So the padding rows are lines 2-10 OF THE BLOCK THEY
+2 inserts (20-21), 1 written (22), 240 pass-through positions (23-262) - and field 1 alone has one
+more written row after its pass-through window, which is the 262.5. So the padding rows are lines 2-10 OF THE BLOCK THEY
 BEGIN, and every row of the unit has a field-relative line number.
 
 **Intent (2026-09-04/06).** Geometry is the authority. Each field's active picture area — its top edge, bottom edge
@@ -763,8 +763,9 @@ field" phrasing does not.
   23 wherever it landed, and whatever the Shuttle put there is what is rendered — its blank at −1, its caption
   insert at −2, its timing line at −3 (owner, 16:20). A source whose own line 22 carries picture keeps its origin at
   23 and that line is dropped ("VBI never rendered").
-  Extra black at the bottom is acceptable; rows past the clip read as legal black (owner, 2026-09-03); a letterboxed
-  picture is centred; before a lock, standard placement. **Displacement sign**: positive is lower in the raster.
+  Extra black at the bottom is acceptable; rows past the clip read as legal black (owner, 2026-09-03); the source's placement of
+  letterboxed content is preserved and registration does not independently recentre it (8a); before a lock,
+  standard placement. **Displacement sign**: positive is lower in the raster.
 - **Comb**: the relative vertical shift between the two fields' crops that minimises the comb energy of their weave on
   static, detailed picture; measured first at standard placement, it confirms a lock when it reads zero at **the CANDIDATE
   crops under test**, not at the crops currently rendered — the code already stages it this way, `comb_confirm`
@@ -944,7 +945,8 @@ field" phrasing does not.
    rows that still read, and a band edge that appears to move because the picture dimmed is exposure-dependent
    detectability, not a release. A band edge moving WHILE THE LEVEL IS STEADY does release the geometry. The two
    look identical at the first unit and one means hold while the other means release.
-   Picture positively established WITHIN the held bounds also invalidates the box (rule 12). Replacement geometry is
+   Picture positively established IN A PREVIOUSLY IDENTIFIED BAR REGION also invalidates the box (rule 12);
+   ordinary content inside the box's own content area does not, since carrying content there is what a box IS. Replacement geometry is
    then measured — it opens to whatever is on the screen, not necessarily to full picture and possibly to another
    box; invalidating the old box does not itself establish its replacement.
    A box is not its own class (owner, 2026-09-09): "it should be left on the tape where it was centered… boxes

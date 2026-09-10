@@ -2436,9 +2436,14 @@ completed. This does not identify the underlying open failure's cause.
 
 **Static-comb prototype quarantined, not a sanctioned first lock:** diagnostic
 confirmation exposed the missing boxed-geometry observation: the card's lower
-structureless band separates structured content from the switch, so rule 8
-excludes that switch evidence even though the band remains recorded picture
-in the line account. Both agents agree on this distinction; no contract edit.
+structureless band separates structured content from the switch.
+⚠️ **The RATIONALE in this entry is SUPERSEDED (2026-09-10) and must not be cited as grounds for
+categorically excluding a boxed source's switch.** The band is part of the box, not a gap in it
+(contract 8d: "A bar lying between content and switch is the box, not a gap in it"), and the
+restoration note below records that the box flag no longer skips `measure_switch`. What such a band
+bears on is whether the switch is QUALIFIED TO BE MEASURED AGAINST THE PICTURE — not whether it may
+be observed at all. The prototype's historical results and limitations stand as recorded; only this
+rationale is withdrawn.
 The earlier prototype's first lock at counter 6668 and eleven field-2 moves
 are a regression. Its 367/508 decisive (365 agreeing) census is NOT a result
 for the final paired-energy correction, which has only synthetic 6/6 and
