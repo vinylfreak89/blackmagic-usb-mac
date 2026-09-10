@@ -28,7 +28,7 @@ prose that uses none of them is invisible to it, and a clean run is not proof th
 exists. The day's other censuses were twice wrong about exactly this kind of scope.
 """
 from __future__ import annotations
-import re, os, sys
+import re, os, sys, tempfile, shutil, subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONTRACT = os.path.join(HERE, "..", "docs", "geometry_first_engine.md")
@@ -71,17 +71,13 @@ def queue_anchors(text):
     return out
 
 
-def main() -> int:
-    contract = open(CONTRACT).read()
+def run(contract_path=None, queue_path=None, quiet=False):
+    contract = open(contract_path or CONTRACT).read()
     lines = contract.split("\n")
-    qtext = open(QUEUE).read()
+    qtext = open(queue_path or QUEUE).read()
     marks = contract_markers(lines)
     anchors = queue_anchors(qtext)
 
-    print("contract markers found: %d" % len(marks))
-    print("queue anchors: %d\n" % len(anchors))
-
-    # Each anchor's quoted phrase must be findable in the contract, near a marker.
     matched_marks = set()
     stale = []
     for marker_form, phrase in anchors:
@@ -98,19 +94,61 @@ def main() -> int:
 
     uncovered = [(ln, txt) for ln, txt in marks if ln not in matched_marks]
 
-    for ln, txt in uncovered:
-        print("  ** NOT IN THE QUEUE: contract line %d" % ln)
-        print("     %s" % txt)
-    for phrase, why in stale:
-        print("  ** QUEUE ANCHOR BROKEN: %r" % phrase[:60])
-        print("     %s" % why)
+    if not quiet:
+        print("contract: %s" % (contract_path or CONTRACT))
+        print("queue:    %s" % (queue_path or QUEUE))
+        print("contract markers found: %d" % len(marks))
+        print("queue anchors: %d\n" % len(anchors))
+        for ln, txt in uncovered:
+            print("  ** NOT IN THE QUEUE: contract line %d" % ln)
+            print("     %s" % txt)
+        for phrase, why in stale:
+            print("  ** QUEUE ANCHOR BROKEN: %r" % phrase[:60])
+            print("     %s" % why)
+    return 1 if (uncovered or stale) else 0
 
-    if uncovered or stale:
-        print("\n%d marker(s) with no queue row, %d broken anchor(s)." % (len(uncovered), len(stale)))
-        return 1
-    print("Every contract owner-marker has a queue row, and every queue anchor still lands on one.")
-    print("NOT proof that no question is elsewhere -- see the docstring.")
-    return 0
+
+def selftest() -> int:
+    """Both controls, run here rather than described. A guard whose controls exist only as a comment
+    is a second store nothing keeps in step with the first -- which is the very defect this file is
+    about."""
+    print("SELFTEST")
+    ok = True
+    rc = run(quiet=True)
+    print("  negative control (live tree): expect clean ... %s" % ("PASS" if rc == 0 else "FAIL"))
+    ok = ok and rc == 0
+
+    with tempfile.TemporaryDirectory() as d:
+        # POSITIVE 1: a marker with no queue row -- the original defect.
+        q = open(QUEUE).read()
+        q2 = q.replace('`OPEN, and with the owner:` … "on a caption-only acquisition, '
+                       'what independently established evidence determines"', "no anchor", 1)
+        qp = os.path.join(d, "q.md"); open(qp, "w").write(q2)
+        r1 = run(queue_path=qp, quiet=True)
+        print("  positive 1 (a marker with no queue row): expect FAIL ... %s" % ("PASS" if r1 else "FAIL"))
+        ok = ok and bool(r1)
+
+        # POSITIVE 2: an anchor that no longer lands -- the drift case.
+        c = open(CONTRACT).read()
+        c2 = c.replace("on a caption-only acquisition, what independently established evidence determines",
+                       "on a caption-only acquisition, WORDING CHANGED", 1)
+        cp = os.path.join(d, "c.md"); open(cp, "w").write(c2)
+        r2 = run(contract_path=cp, quiet=True)
+        print("  positive 2 (an anchor that no longer lands): expect FAIL ... %s" % ("PASS" if r2 else "FAIL"))
+        ok = ok and bool(r2)
+
+    print("SELFTEST %s" % ("OK" if ok else "FAILED"))
+    return 0 if ok else 1
+
+
+def main() -> int:
+    if sys.argv[1:] and sys.argv[1] == "--selftest":
+        return selftest()
+    rc = run()
+    if rc == 0:
+        print("Every contract owner-marker has a queue row, and every queue anchor still lands on one.")
+        print("NOT proof that no question is elsewhere -- see the docstring.")
+    return rc
 
 
 if __name__ == "__main__":

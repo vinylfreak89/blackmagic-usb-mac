@@ -3032,6 +3032,31 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   tell a line label from a count, an offset or a raster standard, so "the 525 line is 858 samples", "offset 263 rows"
   and "written 262.5 and never 263" all scored as withdrawn labels. Classify before converting; the class, not the
   numeral, decides whether anything changes.
+- **The sharper form, from four instruments in one day: an instrument's coverage gets built from THE INSTANCES THAT
+  PROMPTED IT, so none of them can see the next one (2026-09-11, the watchdog session's generalisation).**
+
+  | instrument | coverage defined by | blind to |
+  |---|---|---|
+  | the coordinate census (both agents, independently) | the header's *examples* — 284/286/522-525 | the table row using 274/282 |
+  | the owner-queue probe | three line ranges *observed at the time* | a fourth marker |
+  | `superseded_check.py` | seventeen pairs *found so far* | a superseding phrased differently |
+
+  This says WHERE the wrong set comes from, which "derive the set from the definition" only implies: not
+  carelessness, but building the set out of the very instances that motivated building it. **And it predicts which
+  ones are fixable.** The first two have a definition they failed to use — the withdrawn convention's RANGE, the
+  contract's OWN markers — and were repaired by using it. `superseded_check.py` cannot be repaired that way,
+  because there is no definition of "supersedings" to enumerate: its pairs are irreducibly discovered. So its
+  docstring limit is a STATED LIMIT and the other two were DEFECTS, and treating them alike would either excuse the
+  defects or condemn the limit unfairly.
+  ⚠️ Two of the four are one defect found twice, not two: both agents seeded from the same illustrations
+  independently, within ten minutes. That is the argument that it is structural rather than either being sloppy.
+- **A script that accepts an argument it never uses — fifth member of the answers-a-different-question family
+  (2026-09-11).** A peer session tried to run `superseded_check.py` against an older revision by passing a path.
+  The script ignored `argv` and re-checked HEAD, so the peer read one result as evidence about a different
+  document and concluded the control did not fire. Nothing failed; the exit status was 0 and the number was
+  plausible. Same shape as `grep -c`, `tail` on a live capture, and `&&` after a verification — and the first
+  where the ignored input came from the caller rather than the data. Two fixes, both cheap: honour the argument,
+  and **print which file was actually read**, which alone would have shown the mistake.
 - **"Closed by overlap" is not a disposition — it is a guess wearing one, and it was wrong 4 times in 5
   (2026-09-10).** Two cold reads of the contract produced overlapping findings. Where one reader's finding had been
   repaired, Claude recorded the OTHER reader's overlapping finding as closed too, flagged it in the tracker as "a
@@ -3139,6 +3164,10 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   in step, and the pointer is the half that is read. Both guards are now BUILT rather than described:
   `experiments/owner_queue_check.py` enumerates the contract's own owner markers and fails on any without a queue
   row, and the queue's entries are pointers rather than copies.
+  **Both instruments now carry a runnable `--selftest`** that executes their controls — the queue guard's two
+  mutations, and the superseded check's positive control against the historical commit — because a control that
+  exists only as a comment about a past run is itself a second store nothing keeps in step with the first, which is
+  the defect these files are about.
   ⚠️ **The first version of that guard was not one, and it was reported as though it were.** It checked three
   HARDCODED line ranges and asserted `len(markers) >= 2`; a fourth marker would have passed silently, which is the
   exact defect. It also lived in a scratch directory, so nothing in the repository ran it. It was nevertheless
