@@ -2205,6 +2205,29 @@ they do NOT establish that fixing the comb alone would produce a sanctioned lock
 the other acquisition prerequisites are not shown to have held on those 182 units. Keep the export and replay
 identities beside the figures — they are separate runs and must not be silently combined.
 
+**And the reason no lock follows is that BOTH acquisition sites implement a superseded contract clause
+(2026-09-10, Claude measured, Codex agreed the repair's shape).** The comb site
+(`field_registration.c:657-670`) requires `switch_measurable` in both fields and the caption site (`:916-921`)
+requires it in one; inside each, the lock AND the frozen switch count are set together. That is the text of
+contract §3 at commit `3090b76`, "at a unit whose switch line and band are measurable" — **which `ca47a1c`
+amended.** At HEAD the phrase is gone (`grep -c` returns 0), §2 carries the owner's rule of 2026-09-09 —
+"Some recordings show no head switch at all ... **so a lock must never be conditioned on one**" — and §3
+carries a conditional. The contract is byte-identical on both v10 branches, so this is the engine trailing the
+contract, not a divergence between the agents. **The target state is already representable and already safe:**
+every read of the frozen count (`:926-933`) sits inside `switch_line_count_known && switch_measurable` at
+`:924`, `:797-799` copies the value only beside its known flag, and `:717`/`:965-966` reset it to unknown — so a
+field can be LOCKED with the count Unknown and nothing downstream reads a count that is not there. The repair
+is therefore "separate the source lock from acquiring the switch count", not "relax a threshold".
+⚠️ **What still needs the owner:** §3's conditional is keyed to the source's GEOMETRY CATEGORY (required "only
+where the geometry is not boxed and not all lines are picture"); the owner's 2026-09-10 ruling — "head switch is
+required on both fields if a HEAD SWITCH IS GOING TO PARTICIPATE IN THE CONFIRMATION. not required for a lock.
+head switch as a category is optional" — re-keys it to the CONFIRMATION ROUTE. Different conditions, and the
+second supersedes the first; that is a clause of the lock definition, so it goes to him.
+⚠️ **No fixture exercises a source without a head switch.** All four acceptance captures have one (capture 1:
+measurable in 484 of 1,016 field readings), so this path's failing-first golden is necessarily synthetic and no
+acceptance capture will cover it.
+
+
 **The harness's switch line is independently confirmed on capture 1, and what got it there (2026-09-10).**
 `experiments/displaced_row_census.py` locates the first long run at each field's own blank level and compares it
 with the harness's S. It shares no code with `switch_geometry.py`. **S is exact in 1,013 of 1,013 registerable
