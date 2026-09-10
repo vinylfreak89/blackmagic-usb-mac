@@ -4357,6 +4357,26 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   ⚠️ This is ONE PRIMITIVE, not the rebuild. Still owed: a top reading that does not rest on a level threshold, a
   reference that reports T rather than validating S, and an honest Unknown wherever the raw rows do not decide.
 
+- **A QUOTE RECORDED WITHOUT ITS CONTEXT IS NOT A RULING, IT IS A STRING (2026-09-11) — and one carried all
+  night turned out to have no source at all.** "O-B4", recorded as the owner's verbatim words at a timestamp
+  (*"isnt that determined from source and/or device and/or horizontal blanking"*), was searched for across every
+  transcript in the project — this session's and six others. **It appears in ZERO owner messages and ZERO assistant
+  turns anywhere.** Its only occurrences are in the relaying session's own tool calls reading it back out of its own
+  state file, plus the nudge quoting it here. **It is CLOSED AS UNPLACEABLE — not answered, not absent.**
+  ⚠️ **This is the same failure class as the wrong-but-resolving commit hash already flagged in this file**, in
+  prose instead of hex: it passes every existence test because the string genuinely is there, in a store that
+  copied it from somewhere now gone, and it reads exactly like a ruling. **Anything carried as "owner, verbatim"
+  must be findable in a transcript, or be marked unverifiable where it is stored.** If B4 ever matters, the honest
+  move is to ask him the underlying QUESTION fresh, never to reconstruct one that fits the answer.
+  ⚠️ **Consequence for this file, stated because it is uncomfortable rather than because it is safe: EVERY owner
+  quote added to CLAUDE.md on 2026-09-11 reached this session through the relay, not from him directly.** The
+  tracker entries say so in as many words ("Relayed, not heard directly by this session"); several entries here do
+  not, and read as first-hand. **The one exception is the temporal reframing — "a line is not a line rendered at
+  once as its digital self would imply. it is a skew across time" — which arrived as a genuine user turn.** Treat
+  the rest as relayed-and-unverified rather than transcript-checked. ⚠️ I deliberately give no COUNT of them: the
+  obvious greps overlap and `grep -c` counts lines rather than occurrences, which is the substring defect this file
+  already documents, and a fabricated precise number is exactly what this entry is about.
+
 - **THE BAR FOR REACHING THE OWNER (his standing instruction, 2026-09-11): UNANSWERABLE FROM HIS OWN WORDS, or
   the derived answer was rejected and the two agents cannot converge.** His words: *"seriously, most of this is
   understandable by common sense... my literal words have said this in other parts of the transcript, repeatedly.
