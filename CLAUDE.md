@@ -2160,6 +2160,7 @@ physically blanking rather than dark content.
 ⚠️ **The ROW is not in doubt where the engine cannot measure it.** The harness's switch line is exact in 1,013 of
 1,013 registerable field-readings on this capture against an instrument sharing no code with it. So this is a
 limit on the engine's independent observation, not an unknown in the geometry.
+
 **One-ended observation decision — decline implementation on current evidence:**
 the 255-field candidate-failure cohort is not measurable by this engine on
 capture 1. Retain its Unknown T/S readings as a named instrument limitation,
