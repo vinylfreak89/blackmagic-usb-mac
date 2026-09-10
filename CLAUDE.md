@@ -2255,6 +2255,32 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Contract amendment from `6484b4d` and `0f6e3ef` (2026-09-11).** The contract now replaces B2's open
+disposition with the BOTH-unrecordable gate: no recordable head switch AND no other recordable valid picture ⇒
+registration NOT RUN, timing/status preserved, no registration decisions, level-setting or temporal decision
+witness from that unit. Unknown switch evidence alone with valid picture does not meet it and is not turned
+into positive absence. The existing R3 question is narrowed to recovery, not newly dispatched. Rule 8 now carries
+valid-VBI interleave and acquired-once/held registration without requiring or fabricating a comb reading.
+Coherent top-plus-bottom tracking and one-sided HOLD of both crop and lock are in rule 2 and its dependent
+definitions. Rules 8a–8d and 12 are unchanged; the earlier 8a/12 question is withdrawn with no exception added.
+The source-blanking statistic is named as the mean at each line's own qualified interval, not device fill.
+Warm-up can still acquire references from recordable evidence; the no-level-setting rule is not a warm-up ban.
+
+Rendering clauses now distinguish lost picture (black) from proper 486 VBI, with surviving source VBI replacing
+the device's rows only where measured displacement exposes it; at d=0 there is nothing from the tape to
+substitute. The later real-picture tape-line-22 exception is in rule 7. The input-survival paragraph formerly
+at :451, the existing absence-test clauses, Head switch definition, region-versus-landmark wording and rule 13
+are not redefined. This follows the peer's latest stop on duplicate repairs; no one-line detector qualification
+is claimed from the presence of old wording. The first-six-output-lines stability requirement is named in §8.
+
+**Code status is separate from this amendment.** `comb_zero_candidate` really is held after comb acquisition,
+but that does not prove caption-only VBI interleave is implemented by that variable. `blank_mean` is per-call,
+so there is no retained level accumulator at that site, but it reads device rows 7–16 / 270–279, including the
+timing row; it is not the contract's mean of qualified SOURCE blanking. The top-only shift defect remains
+(`4002a56`'s synthetic test); no engine change or render is part of this amendment. Validation results and
+the document-check fixtures made stale by closing the markers are recorded in
+`docs/reports/2026-09-11_contract_rulings_amendment.md`.
+
 **Owner-ruling proposal review after the plain comb (2026-09-11, harness `70c6746`, merge `c9dbddf`).**
 `docs/reports/2026-09-11_coherence_rulings_review.md` records the per-item agreement and limits; no contract or
 engine code was changed. The invalid-input marker can narrow to the already queued recovery question. The
@@ -2266,8 +2292,8 @@ sentence needs scope, not a claim that a 486 output instruction makes overwritte
 The new one-sided-motion ruling is accepted for tracking the same geometry. A synthetic test of the current
 engine proves the shift defect: top 23→24, bottom held at 259, applied pair (0,0)→(1,0). **The lock stays set**;
 `LockBroken` has no live assignment in the current engine. The contrary incoming claim below is corrected in
-place. A separate `box_detected` reset exists, and the contract's independent box-invalidation rules need an
-explicit scope distinction before a blanket “never unlock” amendment; the output-policy question is queued.
+place. A separate `box_detected` reset exists. **The proposed 8a/12 question is now withdrawn**: the owner's
+answer identifies a changed BOX, not one moving edge. Rules 8a/12 stand without an exception to one-sided hold.
 Full-window geometry remains a valid initial candidate and a switch is not made mandatory again by coherence.
 
 **The peer withdrew its entire Part 2C during this review after an owner correction.** Tape line 22 is a source object whose
@@ -4313,9 +4339,10 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   acceptance moves one instrument up and another down stops and reopens the premise instead of
   adding a rule. The raw 525-line panels of every non-locked decision are looked at before any
   number is reported. None of this needs a human: the contract and the raster are in writing.
-  An owner ruling is asked for only when the contract is silent on what the OUTPUT should do
-  (a deliverable preference, e.g. what the picture does while the raster is torn), never on what
-  the signal is, and it is brought with the measured alternatives and a recommendation. Also
+  Before asking what the OUTPUT should do, search the owner's own words, not just the contract: only a question
+  unanswerable there, or an answer rejected by the peer on which the agents cannot converge, goes to the owner
+  (2026-09-11 standing instruction). What the signal is remains a measurement question. An output question is
+  brought with the measured alternatives and a recommendation. Also
   from the same day: review a commit's message bytes as well as its tree; push every branch the
   docs cite; write timestamps only from a checked clock.
 - **v10 process (owner, 2026-09-07 20:00–20:50 JST; absorbed from `HANDBACK.md`, retired 2026-09-09, plus what
@@ -4329,8 +4356,9 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   carry both agents' work and `docs/geometry_first_engine.md` and `CLAUDE.md` are
   byte-identical on both (checked by `diff` in every review). The contract is edited only by
   agreement: a change is proposed to the other agent with the owner's quote and the measurement
-  behind it and made in place only when both are at extreme confidence; otherwise the turn ends
-  and the owner is asked — "if there is any disagreement, especially on the contract that you are
+  behind it and made in place only when both are at extreme confidence; otherwise first search the owner's own
+  words and attempt convergence with the peer. Only an unanswered or irreconcilable question reaches the owner
+  under the 2026-09-11 standing instruction — "if there is any disagreement, especially on the contract that you are
   unable to resolve the ambiguity on yourselves ask me" (owner, 20:5x). Code is written only to
   settled wording; when code and contract disagree, which one is wrong is shown by a measurement,
   never melded. Both agents must agree in full on the stated plan before any

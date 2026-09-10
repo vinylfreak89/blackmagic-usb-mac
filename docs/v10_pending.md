@@ -537,22 +537,22 @@ words with the timestamp; status is what a re-check by MEANING found, not by phr
 
 | # | his words (2026-09-10) | status |
 |---|---|---|
-| 1 | 10:20:30 — "when a source is locked, then its geometry is known, **comb should not need to run**... so comb should not be an all the time running thing" | **OPEN** — the engine measures the comb on every unit; `field_registration.c:984` calls `comb_confirm` with no lock-state guard. Rule 9 already states the requirement. |
-| 2 | 17:06 — "fix the fucking combing... a regular simple comb energy algo... there doesn't need to be a mask or other garbage" | **IN FLIGHT** (Codex `bzxtaxua7`) |
+| 1 | 10:20:30 — "when a source is locked, then its geometry is known, **comb should not need to run**... so comb should not be an all the time running thing" | **LANDED** in engine `2a06c9e`: maintained-lock guard and explicit non-evaluation. Rule 9 already required it; the stale contract implementation-status claim is removed in this amendment. |
+| 2 | 17:06 — "fix the fucking combing... a regular simple comb energy algo... there doesn't need to be a mask or other garbage" | **LANDED** in engine `2a06c9e`; contract Comb definition now states plain energy without the superseded static-mask prerequisite. |
 | 3 | 17:08 — "settle the S and T... get the measurement of the head switch band right" | OPEN |
 | 4 | 17:2x — "**the only render I want is one that is produced from a locked capture on cap 1**. then it may continue on by profiling" | OPEN — sets the order: comb → lock → render → profile |
 | 5 | 16:13 — "your understanding of rule 8c is correct. close it. **yes of course it may feed `d`**" | LANDED (8c's OPEN marker is gone) |
-| 6 | 16:13 — "**a peak or partial line is a head switch full and valid. head switch may only be 1 line**" | OPEN — contract ~:809 still excludes them; he ruled at 16:15 "if it does the contract is wrong" |
-| 7 | 16:13 — "**the lines own horizontal blanking is the thing that compares it to**. thats the answer to your absensce part" | OPEN — `:812` still reads `OPEN, and with the owner` |
-| 8 | 16:16/16:17 — "the whole lock gets reset... **it throws away nothing. it maintains nothing. the whole engine shouldn't run** because that is an invariant that isn't valid NTSC" | OPEN — `:800` still reads `UNSETTLED and with the owner` |
-| 9 | 16:13 — "line 21 being at line 21 on both and line 22 being blank on both... **in other words a valid VBI**" | OPEN — `:1027` still reads `OPEN, and with the owner` |
-| 10 | 16:13 — "**for the 480 render it never renders. yes the 486 render obviously always renders** either the shuttles or the tapes 20-22" | OPEN |
-| 11 | 16:13 — "**the comb is only to maintain the lock**... if it means X lines are missing because they are in the regenerated blanking... **rendered as black**... the proper 20-22 **placed on top of that in a 486 render**... exception is if 22 shifts below the real 22 and contains real picture... **if we actually determine real picture lines are gone, they should be blanked out**" | OPEN |
-| 12 | 09:16:24 — "in any 486 line renders, **real line 20-22 overwrite the shuttles**" | **OPEN AND IN CONFLICT** with `:451`, which says nothing the tape carries above line 23 reaches us. A conflict, not a silence. |
-| 13 | 09:18:05 — "for the test renders... **a valid result should keep the first 6 lines vertically stable in position... always**" | **PARTIAL** — `:167` carries "the output picture does not move", a different observable. No render shown to him today was measured against this. |
+| 6 | 16:13 — "**a peak or partial line is a head switch full and valid. head switch may only be 1 line**" | **NO EDIT in this batch**, per the latest instruction following `0f6e3ef`: retain the existing region-versus-landmark absence wording and Head switch definition. This is not a new detector qualification or proof from phrase presence. |
+| 7 | 16:13 — "**the lines own horizontal blanking is the thing that compares it to**. thats the answer to your absensce part" | **ALREADY PRESENT**, read by meaning at Source-measured levels and §§1–2. No duplicate absence test added. Separately, the disposition marker is replaced with the BOTH-unrecordable no-registration gate. |
+| 8 | 16:16/16:17 — "the whole lock gets reset... **it throws away nothing. it maintains nothing. the whole engine shouldn't run** because that is an invariant that isn't valid NTSC" | **DURING-INVALID ANSWER LANDED**; the existing R3 marker narrows to recovery only, anchored below. |
+| 9 | 16:13 — "line 21 being at line 21 on both and line 22 being blank on both... **in other words a valid VBI**" | **LANDED** in rule 8: valid source VBI at candidate registration establishes interleave; acquired registration is held, comb not mandatory or fabricated. |
+| 10 | 16:13 — "**for the 480 render it never renders. yes the 486 render obviously always renders** either the shuttles or the tapes 20-22" | **LANDED** in rule 7 and §8; the later real-picture line-22 exception is explicit, with missing picture rendered black. |
+| 11 | 16:13 — "**the comb is only to maintain the lock**... if it means X lines are missing because they are in the regenerated blanking... **rendered as black**... the proper 20-22 **placed on top of that in a 486 render**... exception is if 22 shifts below the real 22 and contains real picture... **if we actually determine real picture lines are gone, they should be blanked out**" | **LANDED** in Crop, rules 7/8 and §8. No render implementation or result is claimed by the text change. |
+| 12 | 09:16:24 — "in any 486 line renders, **real line 20-22 overwrite the shuttles**" | **CONFLICT CLAIM WITHDRAWN.** §2's input-survival paragraph is unchanged. Rule 7/§8 now condition the output overwrite on measured displacement and surviving identified source VBI; at d=0 there is no source VBI to substitute. |
+| 13 | 09:18:05 — "for the test renders... **a valid result should keep the first 6 lines vertically stable in position... always**" | **CONTRACT CRITERION LANDED** in §8. Render verification remains the harness's work, not demonstrated by this amendment. |
 | 14 | 11:13:09 — "it should **draw the bounding box** when it finds it on top of the picture. keeping its field colors... **purple**... **transparentish**" | OPEN (implemented per the harness, not yet in the contract) |
 | 15 | 04:54:51 — "luma stills... **slowed down 5x as a video, both fields side by side**" | **FALLBACK ONLY** — condition: if the peak-near-the-left-edge account fails to explain the switch line appearing to jump to 259. Superseded in practice by the temporal frame. |
-| 16 | 11:05:15 — "if they get `0x0800` or lose the regenerated lines, **they go get it again**" | OPEN |
+| 16 | 11:05:15 — "if they get `0x0800` or lose the regenerated lines, **they go get it again**" | **ALREADY PRESENT** in rule 13, unchanged. No parallel reacquisition rule added. |
 | 17 | 12:50:38 B4 — "isn't that **determined from source and/or device and/or horizontal blanking**" | OPEN |
 | 18 | 12:50:38 B5 — "It depends how it falls off. If the horizontally mistimed field is **within normal variance** defined elsewhere that we've already agreed to" | OPEN |
 | 19 | 12:50:38 B6 — "**the harness has a test and definition for what boxed vs structured vs unbounded is**" | OPEN |
@@ -805,9 +805,9 @@ unconditional one and may not carry the same conclusion.
 He accepted all three parts ("accepted"). Two things from the landing sweep, one good and one that qualifies my
 own proposal.
 
-**GOOD: the engine already complies.** `field_registration.c:359-366` accumulates `blank_mean` by summing
-`row_mean` over the blanking rows and dividing — it is already the mean, not the median. Part 2 needs no engine
-change, only the contract naming what the code already does.
+**Statistic only: the engine already computes a mean, not a median.** `field_registration.c:359-366` sums
+`row_mean` and divides. **This is not source-reference compliance:** those rows are device rows 7–16 / 270–279,
+including the timing row. The mean of qualified SOURCE blanking still needs the correct input samples and tests.
 
 ⚠️ **THE QUALIFICATION: my proposal named the DEVICE's blanking, and contract `:531` names the SOURCE's.** Its
 words: "The blanking reference is established from qualified blanking intervals on the current source's good
@@ -817,18 +817,11 @@ took tonight used the device's regenerated rows** (7-15 / 270-278), which is the
 mean-versus-median ruling is unaffected — it is a question about the statistic, whichever reference is used — but
 the reference my tables were built on is the wrong one.
 
-⚠️ **And the source's reference is NOT reliably available on capture 1**, which is why this matters rather than
-being a tidy-up. Measured over 1,016 field-readings, hunting each good picture row's own lowest sustained trailing
-level with no threshold and no hardcoded column: it returns **51.97 with sd 41.58** — that is picture, not
-blanking. Many of this capture's picture rows have no clean trailing blanking in the delivered window at all,
-which is independently corroborated: `switch_without_shift.py` excludes **194 of 484** readings as unaskable
-because the learned reference admits a one-sample run.
-So on capture 1 the contract's named reference is often unmeasurable while the device's fill is always available
-at 1.3756 with sd 0.0037. **That is a real tension between `:531` and this source, and it should be his to see
-rather than resolved by quietly using the reference he forbade.**
-⚠️ Two of my three attempts at measuring the source reference were themselves the fixed-place-to-look defect —
-first a hardcoded column 706, then a trailing window from 580. The number above is from the version that hunts
-the level instead, and it is reported as a negative result rather than a value.
+⚠️ **The asserted rule/source conflict is WITHDRAWN**, as recorded above with the later per-row-transition
+measurement. The older hunt returned **51.97 with sd 41.58**, picture rather than blanking, and
+`switch_without_shift.py` excluded **194 of 484** readings under its own predicate. Neither establishes that
+the source reference itself is unmeasurable. The newer reported 978/1,010 result locates each line's own
+transition. Do not substitute device fill or send the discarded “:531 tension” back to the owner.
 
 ### PROPOSAL — the level-threshold BASIS, reconciled as he asked (2026-09-11, overnight)
 
@@ -889,21 +882,13 @@ and to be put in plain words:
 
 ⚠️ Do not import rule 5's shape to answer it: that would import rule 5's held-crop behaviour with it.
 
-### PROPOSAL — scope of the new one-sided hold versus established box invalidation (Codex review)
+### WITHDRAWN — Codex's 8a/12 question confused the box with an edge
 
-The new ruling says “hold not unlock and don't shift” when only one part of the geometry moves. Rules 8a/12
-already release geometry and its lock when picture is positively established in a previously identified bar,
-or when qualified evidence invalidates the held box. They are different events if the new ruling concerns
-tracking the same outer geometry; a blanket “any one-sided movement never unlocks” fails to distinguish them.
-
-Recommended disposition: preserve the lock and placement on unilateral tracking changes; retain the independent
-box-invalidation rule when the held box is positively invalidated, measuring its replacement separately. The
-output-policy question, not an instrument question, is:
-
-> If real picture appears inside an area previously confirmed to be a letterbox bar, should that still require
-> a new lock under the existing box rule, even when the other edge stays put?
-
-No contract or engine change is made on this proposal. See `docs/reports/2026-09-11_coherence_rulings_review.md`.
+The owner's answer, relayed in `6484b4d`: "no. its not one side moving. its both sides of the box moving.
+wrong on both fronts. ITS A BOX, not an EDGE or whatever." Rules 8a/12 remain unchanged: a changed box is the
+bounded object, not a unilateral tracking change. No exception is carved into the one-sided-motion rule and no
+question about it remains on the morning list. The earlier review in
+`docs/reports/2026-09-11_coherence_rulings_review.md` is the historical proposal, not its current disposition.
 
 ### ✅ 2026-09-11 — ALL SIX ANSWERED. Relayed, not heard directly by this session.
 
@@ -942,18 +927,17 @@ operative one: **compare against the line's OWN horizontal blanking**; all blank
 belong ⇒ not a head-switch area; skew anywhere other than the bottom before the regenerated blanking ⇒ ordinary
 horizontal tearing, not a head switch.
 
-**3. The terminal-black-run disposition — CLOSED, and his SECOND sentence supersedes the first reading of it.**
+**3. The during-invalid disposition — ANSWERED; recovery remains the narrowed R3 question above.**
 > "if that condition appears, the whole lock gets reset. it starts from scratch. that was an invalid signal"
 
 then, correcting the relay's gloss:
 > "it throws away nothing. it maintains nothing. the whole engine shouldn't run because that is an invariant that
 > isn't valid NTSC"
 
-⚠️ **So there is no retain-versus-discard decision to implement, because nothing is running to make one.** The
-watchdog's own framing — "this discards it", set against the fade rule as hold-versus-discard — was withdrawn by
-its author as the wrong axis. Take his two sentences together: the raster is not valid NTSC, so the engine has no
-business operating on it; the lock is neither carried forward nor deliberately torn down, and the question of what
-survives does not arise.
+⚠️ **No registration decision is made on the invalid raster.** The watchdog's hold-versus-discard framing was
+withdrawn as the wrong axis. Inactivity does not establish which stored state is usable when valid input returns;
+do not infer that the lock is either preserved or erased from the gate alone. Both quotations remain, and the
+existing “starts from scratch” recovery question is not answered by silently dropping the first quotation.
 ⚠️ His reason is a statement about the SIGNAL — "an invariant that isn't valid NTSC" — not about the engine's
 confidence. An uncertain engine on a VALID raster is a different case and must not be routed here.
 ⚠️ The nearest existing shape is **rule 5's gate** (registration does not run on a raster that is not normal
@@ -988,24 +972,21 @@ term of art, none of them named. His reply: *"3 is making my head hurt. what con
 what learned state. ENGLISH"*. Re-put in plain words it was answered immediately. **If a question cannot be asked
 without four in-house nouns, it is not ready to ask.**
 
-⚠️ **A two-stores state now EXISTS between this queue and the contract, deliberately, and it must not be left
-standing.** These rows read ANSWERED while the contract still carries its three `OPEN, and with the owner` markers,
-so `owner_queue_check.py` still reports 3 and 3 — correctly, because the contract genuinely still says they are
-open. Removing those markers is a contract edit and needs agreement with Codex (§14), and two of the answers change
-contract text rather than just closing a question. **Until that edit lands, the contract is the store that is
-WRONG and this one is right — the opposite of the usual direction, and the reason to close it quickly.**
+⚠️ **The earlier two-stores mismatch is repaired by the current contract amendment.** B2 and caption-only
+precedence now carry their answers in place; the during-invalid marker narrows to R3 recovery. The live check
+reports ONE marker and ONE anchor, not the earlier three. This does not assert that the remaining recovery
+question has been answered. Implementation readiness is separate from the document/queue alignment.
 
 
-⚠️ **THREE MORE live only as inline markers in the contract and were never mirrored here (found 2026-09-11 by the
-watchdog session, which noticed the queue said three while six were open).** This section is the QUEUE; a question
-that exists only in the contract is invisible to whoever hands him the list, and the count staying at three across
-the day was coincidence, not substitution. Pointers, per this file's rule that it holds no content:
+⚠️ **Historical discovery:** three questions formerly lived only as inline contract markers and were never
+mirrored here (found 2026-09-11 when the queue said three while six were open). The table now records their
+CURRENT dispositions, with an owner-marker anchor only for the still-open recovery question:
 
 | question | anchor (a STABLE quote from the marker; line numbers drift) | state |
 |---|---|---|
-| **B2's residue** — the disposition when the invalid-raster condition's absence cannot be established | `OPEN, and with the owner` … "his ruling settles the OBJECT whose absence is required" | ⚠️ **REFRAMED 2026-09-10 and the reframing must travel with it**: the question is the DISPOSITION when absence cannot be established, NOT whether it can be. Observability is empirical and is not his to rule on. Handing him the older framing asks him to rule on a measurement. |
-| **Terminal-black-run disposition** | `UNSETTLED and with the owner` … "rule 13 not naming this" | intact: "should the output retain the last corrective placement or bypass correction, which learned state remains valid, and does recovery require reacquisition before correction resumes?" |
-| **Caption-only precedence** | `OPEN, and with the owner:` … "on a caption-only acquisition, what independently established evidence determines" | intact: what evidence determines the required field interleave; if unavailable, may the lock exist without it, and what placement and rendering is permitted? |
+| **B2's residue** | Source lock: No-registration gate when evidence is unrecordable | **ANSWERED, contract amended:** BOTH no recordable head switch AND no other recordable valid picture ⇒ registration NOT RUN; timing/status preserved, no registration decisions, levels or temporal decision witness. Unresolved switch alone with valid picture does not meet it. |
+| **Terminal-black-run disposition / R3 recovery only** | `OPEN, and with the owner — recovery only:` … "when good video returns, does" | **During-invalid disposition ANSWERED; existing recovery question narrowed in place:** must a new lock be found before correcting when valid video returns? Not a new dispatch or an inference from rule 5. |
+| **Caption-only precedence** | Rule 8: Valid VBI establishes the interleave | **ANSWERED, contract amended:** geometry plus qualified VBI may acquire without combing; registration is established once and held, with its evidence identified. No manufactured comb calibration or current reading. |
 
 ⚠️ **The anchors are quotes, not line numbers, and that is the second defect this section had.** The first version
 of these rows cited "contract lines 1015-1018"; by the time `experiments/owner_queue_check.py` was written the
