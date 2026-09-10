@@ -3967,6 +3967,36 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   becomes impossible it is because the EVIDENCE is unavailable, never because the observer was switched off, and the
   two have different consequences: unavailable evidence gives Unknown, a disabled observer gives silence that reads
   as no-change. Watch for it wherever a rule gates behaviour on a signal-state class.
+- **THE PEAK STATISTIC DOES NOT FIND THE RF PEAK — third and decisive confirmation, 2026-09-11. The confirmation
+  route is CLOSED as currently built.** With the departure profile locating the region, the peak was tried as a
+  CONFIRMATION carrying the tear's column (his 2026-09-06 words: "measure where the peak is on the line if
+  present"). Two witnesses on the same row, with the control on rows the profile marks negative:
+
+  | rows | n | peak present | peak − transition | within 20 samples |
+  |---|---:|---:|---:|---:|
+  | positive departure | 22,268 | 20.5% | median −513 | **0.3%** |
+  | control, negative | 70,435 | 44.5% | median −288 | **2.0%** |
+
+  **They do not agree, and the CONTROL agrees more.** Qualifying the peak by its recovery ramp — the discriminator
+  that separated light peaks from content at 37 samples against 3 — converged the presence rates (20.5/44.3 →
+  **6.5/7.7%**), so the ramp IS rejecting content, and left non-overlapping `peak − transition` ranges (−533..−483
+  against −438..−344) that looked like a discriminator.
+  ⚠️ **The decisive control says that separation is ARITHMETIC, not real: the PEAK'S OWN COLUMN is identical in
+  both groups — median 199 against 200, p10 157 against 157, p90 203 against 205 — while the transition differs
+  (689 against 569).** The peak does not move; the transition does; `peak − transition` merely reports the
+  transition again. **A quantity that separates two groups only because one of its terms defines them is not a
+  discriminator**, and the ranges not overlapping was the shape that made it look like one.
+  **So the ramp-qualified peak sits at a FIXED column (~199) whether or not the row is a switch row — which is not
+  the RF transient**, because the transient demonstrably MOVES: the band render shows it drifting 340 → 660 → 160
+  across units 6691-6714. **The peak I rendered and the peak this statistic finds are not the same object.** The
+  rendered drift is real; the statistic does not find it.
+  **Three independent confirmations now**: F46 (the eight-row window WAS the detector — removing it collapsed
+  agreement 82.1% → 25.0% and scattered "instants" across the picture), the amplitude test (finds bright picture
+  content), and this (a fixed column that does not move with the switch). ⚠️ **Do not rebuild a peak-based locator
+  or confirmer on amplitude, width or ramp.** What is unbuilt is an identification of the RF transient itself,
+  which would have to key on its MOTION between units — the property the render shows and every static statistic
+  has missed.
+
 - **AN AGGREGATE SEPARATION IS NOT A PER-UNIT DISCRIMINATOR — the sibling of the rule below, measured 2026-09-11.**
   A departure profile built from MEDIANS ACROSS 60 UNITS separated the switch rows from ordinary picture cleanly
   and landed exactly where the contract says the switch is. Turning that into a per-unit decision **failed at
