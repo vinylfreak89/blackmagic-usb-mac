@@ -2459,7 +2459,16 @@ counter >= 6667 the switch is measurable in both fields in 182 of 508 units, so 
 at least one field and 206 in neither. Report the two cases separately; they are different claims.
 
 
-**The harness's switch line is independently confirmed on capture 1, and what got it there (2026-09-10).**
+**⚠️ THE HEADING BELOW IS THE NAMING DEFECT ITSELF — corrected 2026-09-11. What this entry validated is S, and
+contract `:652` defines the switch line as T** ("the horizontal line carrying the peak, the partial line"), with
+`:656` saying **S is NEVER substituted for it** — S is a BOUND. So "the harness's switch line is confirmed, S exact
+in 1,013 of 1,013" states a true measurement under a name the contract gives to a different row, and that naming is
+what let two agents argue six readings for a day using one word for two rows. **Read every "switch line" below as
+"S, the bound".** The instrument is not wrong; `switch_geometry.py:411` already distinguishes them correctly ("the
+top switch line: S−1 where S−1 carries the partial line's evidence… else S"). The defect is in this record, which
+is where it propagates from.
+
+**The harness's BOUND S is independently confirmed on capture 1, and what got it there (2026-09-10).**
 `experiments/displaced_row_census.py` locates the first long run at each field's own blank level and compares it
 with the harness's S. It shares no code with `switch_geometry.py`. **S is exact in 1,013 of 1,013 registerable
 field-readings.** The progression, each step measured rather than argued: **963** as found → **1,009** with

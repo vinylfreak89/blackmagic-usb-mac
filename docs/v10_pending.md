@@ -584,6 +584,51 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### THE FOUR CARRIED QUESTIONS — answered. Two resolved, one landed, one absent, one I cannot place.
+
+**R10 — the harness calls S the switch line. ANSWERED AND FIXED.** Contract `:652` defines the switch line as T,
+`:656` says S is never substituted for it. **The defect is in the RECORD, not the instrument**:
+`switch_geometry.py:411` already reads "the top switch line: S−1 where S−1 carries the partial line's evidence…
+else S", which is correct. What was wrong is CLAUDE.md's heading "the harness's switch line is confirmed, S exact
+in 1,013 of 1,013" — a true measurement under a name the contract gives to a different row. **Corrected in place**:
+the heading now reads "the harness's BOUND S", with the whole entry flagged. That is property 2's naming half done;
+the measurement half — representing T and S as two quantisations of one instant — is still not yet.
+
+**R12 — the liftoff mechanism, and whether the instruments reflect it. ANSWERED: NO, and the A/B has NOT been
+used.** Two honest halves:
+- **The rebuild does not treat the peak at all.** Property 6 on the scorecard is PARTIAL for exactly this reason:
+  `rf_peak_census.py` reports the column and `band_render.py` showed it drifting, but nothing in the rebuild uses
+  it, so the mechanism is not reflected in any instrument — it is still prose.
+- **The V-stabilize A/B has NOT separated the two accounts, and CLAUDE.md already records why**: "The three
+  captures do NOT establish that the line TBC causes the misregistration… the within-capture test (does field-1
+  horizontal timing predict which units misregister?) has not returned a usable measurement yet — the first
+  instrument counted integer blanking samples and pinned at its quantization floor." **The quantization floor is
+  the same defect as everything else this week**: integer sample counts are a spatial proxy where the quantity is a
+  phase. The A/B is capturable and the measurement is not blocked — the instrument was wrong.
+
+**O-B5 — LANDED, at `:170-180`.** His "It depends how it falls off" is answered there in his own later words:
+"When the head switch falls off so that the line becomes normal picture or when it moves up to destroy normal
+picture. Two sides of the same coin", with the contract adding that both are valid "when the movement is temporally
+sound and the partial was near an edge", and NEITHER is a lost lock, a hold, or a geometry change. His "within
+normal variance defined elsewhere" is that temporal-soundness condition, whose source-derived continuation range
+CLAUDE.md already specifies. **Nothing to add.**
+
+**O-B6 — GENUINELY ABSENT, and it bears on a passage that says the opposite.** `:1122` states outright: **"What
+makes a region structureless is not settled"**. His B6 — "the harness has a test and definition for what boxed vs
+structured vs unbounded is" — would settle it by pointing at `box_census.py`.
+⚠️ **But it cannot be promoted as written, and this is the part to put to him rather than to the contract.** The
+harness's test is EXPLICITLY FITTED: `--threshold 4.5` is marked "(FITTED; see the report)" and CLAUDE.md records
+"The fitted 6/40/3 limits and 0.28 relative cut are instrument qualifications, **NOT source properties**".
+**Installing it as the contract's definition would install fitted constants as contract, which rule 4 forbids.**
+So B6 is absent, it contradicts `:1122`, and resolving it needs either a source-derived structurelessness test or
+his ruling that the fitted one is acceptable as an instrument qualification rather than a definition.
+
+**O-B4 — I CANNOT PLACE IT, and I am not guessing.** "isnt that determined from source and/or device and/or
+horizontal blanking" is an answer in question form, and without the question it answered I cannot tell whether it
+concerns the level references (`:531`, Source-measured levels — which would make it landed), the invalid-raster
+black test, or something else. **Please supply the question it replied to.** Guessing which passage carries it is
+how the last audit called two landed rulings absent.
+
 ### THE EIGHT TEMPORAL PROPERTIES vs THE REBUILD — sites, or an honest "not yet". 1 honoured, 2 partial, 5 not.
 
 Asked for the SITE, not a restatement. The rebuild is one primitive old, so most of this is "not yet", and saying
