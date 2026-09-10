@@ -137,6 +137,18 @@ def selftest() -> int:
         print("  positive 2 (an anchor that no longer lands): expect FAIL ... %s" % ("PASS" if r2 else "FAIL"))
         ok = ok and bool(r2)
 
+        # POSITIVE 3: a NEW owner question added to the contract and never mirrored into the queue.
+        # This is the original defect in its realistic future form -- the other two mutate the queue or
+        # the wording, but what will actually happen is someone adding a question and forgetting the
+        # list. Contributed by the watchdog session, which ran it against this guard before this
+        # selftest had it: the two mutations here tested removal, not addition.
+        c3 = c + ("\n\n   ⚠️ **OPEN, and with the owner:** a question added to the contract and never"
+                  " mirrored into the queue.\n")
+        cp3 = os.path.join(d, "c3.md"); open(cp3, "w").write(c3)
+        r3 = run(contract_path=cp3, quiet=True)
+        print("  positive 3 (a new marker, never mirrored): expect FAIL ... %s" % ("PASS" if r3 else "FAIL"))
+        ok = ok and bool(r3)
+
     print("SELFTEST %s" % ("OK" if ok else "FAILED"))
     return 0 if ok else 1
 
