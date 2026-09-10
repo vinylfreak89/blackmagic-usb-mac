@@ -2495,6 +2495,31 @@ askable, 0 counterexamples -- **identical** to the version that also required a 
 band-width term is inert and the principled check carries the result, which is what the commit promised to correct
 either way.
 
+⚠️⚠️ **THE ENTRY BELOW IS RETRACTED IN ITS FRAMING (owner, 2026-09-11) -- read the retraction before the table.**
+His words: "the comb does not need a switch to open. it is one of the ORs. the contract directly contradicts this.
+the switch sets or fixes geometry only IF IT IS PRESENT. secondly, the target measurements are old and stale and
+because it didn't know how to measure a headswitch, shouldn't be true. same is with combing. it is bullshit."
+Three things wrong with what is written below, in order of damage:
+1. **It treats a code defect as a constraint to design around.** Calling `switch_measurable` at `:659` a gate that
+   "excludes the capture's best evidence" grants it a legitimacy it never had. The comb is one of the ORs and the
+   switch fixes geometry only if present, so that condition is simply the superseded clause still standing in the
+   code. The fix is to REMOVE it, not to route around it.
+2. **The 182-of-508 figure is a property of a broken instrument, not of capture 1.** It was produced by the
+   head-switch measurer -- the same one whose peak statistic this file records as anti-correlated with the
+   phenomenon it names. A count of "where the switch is measurable" computed by that measurer is not a fact about
+   the capture.
+3. **So the third outcome the entry names -- "comb decides but the gate stays shut" -- is retracted as framed.** If
+   the lock does not come, the first suspect is the presence of the `switch_measurable` condition at all, not the
+   population it selects.
+⚠️ **One thing in the relayed retraction is itself wrong and is NOT adopted.** It says its 222-of-240
+displaced-blanking result on programme units contradicts the 0-of-275 below. It does not -- they are different
+quantities, and joined they are sharper than either. This file's own join says it directly: on bright programme a
+displaced blanking run of >= 100 samples is present in **76.9%** of field-readings while the engine's export has S
+on **15.8%**. **The evidence is there and the engine does not measure it.** That is not a contradiction to
+resolve; it is point 2's measurer defect quantified on the same units, and it is the strongest single argument for
+removing the condition.
+The measurements below stand as measurements of what plain comb does. Their FRAMING as a constraint does not.
+
 **PLAIN COMB, AND THE GATE IT MUST PASS: the comb's best evidence and the acquisition gate's open window DO NOT
 OVERLAP AT ALL on capture 1 (measured 2026-09-11, BEFORE any engine change, so this is a prediction and not a
 post-hoc reading).** The owner's ruling is "you a regular simple comb energy algo. its fucking simple. there
