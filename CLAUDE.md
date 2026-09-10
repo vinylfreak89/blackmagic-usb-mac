@@ -2729,6 +2729,38 @@ would be right on most of this population and structurally unable to represent t
 the same defect as every threshold this project has retired, correct on the population that motivated it and blind
 to the rest. So the agreement figure cannot be driven to 100% and a residual there is not by itself error.
 
+**POSITIVE-ONLY WAS A REAL DEFECT IN MY STATISTIC AND I HAD ALREADY OBSERVED THE THING IT CONTRADICTS -- but
+fixing it does NOT recover dark peaks, and that is the finding (2026-09-11).** I rendered the band, wrote down that
+the peak's "sign alternates between neighbouring units", and then built a POSITIVE-ONLY amplitude statistic. The
+owner's own reason for the original detector being signed-blind is recorded in `rf_peak_census.py`: "it reads pure
+white in some units and pure black in others".
+**Peaks and relocated intervals separate by WIDTH, and the separation is in the data rather than assumed.** Over
+3,824 band-candidate rows the width histogram is bimodal -- a mode at 6-19 samples and a mode at 140-199, with
+**8 readings in the whole 40-119 valley** -- and every excursion at or above 100 samples is NEGATIVE-going, which
+is the relocated interval. So a width bound separates them where a sign filter trades one error for another, and
+32% of narrow high-amplitude excursions are dark, which is what the sign filter was discarding.
+**Re-run signed-blind with that bound, agreement gets WORSE exactly where dark excursions dominate:**
+
+| amplitude (codes) | exact | within one | share dark |
+|---|---:|---:|---:|
+| 21-22 | **0%** | 4% | **98%** |
+| 28-59 | 83% | 98% | **0%** |
+| 87-91 | **21%** | 51% | **77%** |
+| 123-166 | 70% | 98% | 2% |
+| 167-213 | 87% | 100% | **0%** |
+
+⚠️ **So the hypothesis behind the fix is refuted: positive-only was NOT silently dropping genuine dark peaks and
+depressing the low bands.** The bands dominated by dark excursions have the WORST agreement, which argues those
+excursions are mostly dark CONTENT, not peaks. What cannot be concluded is that dark peaks do not exist -- the owner
+observed them and the band render shows polarity alternating between neighbouring units. **The honest position:
+dark peaks exist, and a signed-blind largest-excursion statistic does not isolate them, because it selects dark
+content instead. Separating a dark peak from dark content needs something beyond amplitude and width.**
+**The Track 1 result survives the correction unchanged**, which is why it was worth re-running: at >= 89 codes,
+signed-blind, the peak sits one row above the engine's T on **33 of 35** of its `T = S` readings and on its T in
+**160 of 161** of its `T = S-1` readings. Only 12% of that high-amplitude set are dark. Six new `peak-T = -1`
+readings appear against `T = S-1` where positive-only had none, so the signed-blind version is marginally noisier
+on that axis; reported, not preferred.
+
 **CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
 FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
 clear it when normal timing returns -- which the engine already does -- and Codex verified upward and downward
