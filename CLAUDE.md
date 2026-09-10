@@ -4164,10 +4164,19 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   from this session reads **`BENCH-SAMPLES 10000 registration_calls 0 gated 10000`** — the classifier gated every
   one of the 10,000 units, so `fieldreg_process` was never called and the `WORKER-BENCH median 0.321 ms` is
   classifier-plus-publish **with the engine skipped**. **The gate cannot fail however slow registration becomes.**
-  ⚠️ The same run's direct engine bench reads **`FIELDREG-BENCH median 20.992 ms p95 47.851 ms`**, which is over
-  §11b's 10 ms — but it was taken at **load average 5.99**, and §11b's budget is specified on a "reference M3
-  P-core, single-threaded". **So neither number is publishable: one measures the wrong thing and the other was
-  measured under unrecorded contention.** A CPU minimum derived from either would be a figure this project's own
+  ⚠️ The same run's direct engine bench read **`FIELDREG-BENCH median 20.992 ms p95 47.851 ms`** at **load
+  average 5.99**, which looked like a breach of §11b's 10 ms. **RE-RUN AT LOAD 3.12 THE SAME NIGHT, SAME BINARY,
+  SAME FIXTURE: `median 1.690 ms p95 2.073 ms`.** That is **12.4× in the median and 23× in p95 FROM LOAD ALONE**,
+  and it settles the question the other way: the engine is comfortably inside the budget and the apparent breach
+  was contention. It also corroborates — this file already records the engine at 1.35–1.47 ms median historically,
+  so 1.690 is in family and 20.992 was the outlier. **Quoting the high figure as an over-budget result would have
+  been wrong, and quoting either without its load average would have been meaningless.** `WORKER-BENCH` barely
+  moved across the two (0.321 → 0.315 ms), which is itself the tell: a bench that gates everything is insensitive
+  to how fast the thing it skips would have been.
+  ⚠️ **Neither figure is a CPU MINIMUM.** 1.690 ms was still taken at load 3.12 with thinkorswim at 28%, not on a
+  quiesced "reference M3 P-core, single-threaded" host — and quiescing is not available: the contenders are the
+  owner's own applications on his own machine. **So the publishable claim is "inside budget with the load
+  recorded", never a minimum spec.** A CPU minimum derived from either would be a figure this project's own
   rule forbids. The instrument is `src/frameserver/tests/worker_bench.c`; the gate needs a fixture the classifier
   actually calls ProgramLike before any ms/unit figure means anything.
 
