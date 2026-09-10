@@ -2424,6 +2424,22 @@ and must not be quoted against each other. And `peak_vs_s.py`'s own fallback S, 
 disagrees with the engine's S on about 23% of readings; its distribution is printed separately and never merged with
 the engine join.
 
+**Codex review of the RF-witness claim above (2026-09-11, input `7c9d6de`): not yet an adjudication of T.**
+The default-30 join reproduces (199 of 200 positive winners on S-1; the agreed-T split is 166/31/1).
+The two spikes reproduce at 77.333 and 67.667 row-MAD units, columns 131 and 201, with half-extreme widths
+3 and 4. A qualified RF landmark can identify T; the unqualified maximum-luma-excursion statistic has not
+inherited the older row-to-row/timing qualification by being named an RF peak. The six disputed current T
+values are not promoted by this review, and the 31 consensus discrepancies are not yet 31 proved errors.
+The input entry's "never on S" and "166 of the 197 readings where the engine says T = S-1" are transcription
+errors: its table includes S, and 197 groups the peak-on-S-1 readings, of which 31 have engine T=S.
+Its inference excluding bright content from spatial concentration is not established: content need not be
+uniformly distributed over the eight rows. These are review findings against that entry, not new detector rules.
+The four peak-negative keys do retain run-reader evidence (normal leading samples and shortened exact-code
+terminal runs), but those predicates do not settle timing identity. Separate positive searches on those four
+give maxima 6, 8, 5.5 and 5.5 MAD within the eight-row window, all below 30; a negative absolute winner alone
+could not have established that. Full evidence, code-path qualifications, and the diagnostic script's separate
+field-2 coordinate bug are in `docs/reports/2026-09-11_peak_witness_adjudication.md`. No engine or contract change.
+
 **A RULED-OUT ROUTE, measured 2026-09-10 — gating the partial-row test on relocated blanking does not work.**
 The harness declares a partial row where the raw rows show ordinary picture in a class of ~76 readings, and the
 obvious fix is to require the partial candidate to carry some of the other head's relocated blanking. Measured:
