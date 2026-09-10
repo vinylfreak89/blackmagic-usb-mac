@@ -362,7 +362,13 @@ units:
 | 257, 258, 520, 521 — picture | 24.0–25.9 | 13.6–15.8 | control |
 | 140, 400 — picture, mid-field | 59.2–59.5 | 39.9–40.3 | control |
 
-A source row cannot hold a 0.05-wide band while the picture rows beside it swing from 10.8 to 80.
+Each disputed row's mean agrees with the regenerated controls to three decimal places and with their
+between-unit spread, in units whose picture rows swing from 10.8 to 80. ⚠️ **That is measured
+agreement with a control, not a universal discriminator**: the probe reads each row's MEAN, so it
+cannot exclude a source row that stays blank while its neighbours change, and a source delivering
+blanking at the device's own level would read the same. The attribution rests on that agreement
+holding across two captures with different tapes and opposite TBC settings, together with §1's
+independent line account — not on "a source row must vary".
 Reproduced on **capture 3** (the SP recording, a different tape and the opposite line-TBC setting,
 300 units): the same three rows read 1.375–1.382 at sd 0.010–0.011 while mid-field picture sits at
 113.5. So each field's line 1 and field 1's 262.5 are the device's regenerated blanking, §1's line
@@ -371,9 +377,10 @@ The no-input capture is a NULL, not a third arm: with nothing on the input every
 device's floor, so it fixes that floor near 1.4 and discriminates nothing.
 
 ⚠️ **CLAUDE.md's measurement of rows 257–260 and 519–522 as digitized signal cannot decide this and
-does not contradict it.** Each of those groups holds two picture rows and one disputed row, so its
-Y 31 ± 29 comes from the picture rows while the disputed row sits at 1.38 — a group statistic cannot
-separate its own members. That passage also groups rows across a field boundary (519–521 are field
+does not contradict it.** Rows 257–260 are two picture rows (261, 262) and two disputed
+(262.5, field 2's line 1); rows 519–522 are three picture rows (260–262) and one disputed (field 1's
+line 1). So each group's Y 31 ± 29 can come from its picture members while the disputed members sit
+at 1.38 — a group statistic cannot separate its own members. That passage also groups rows across a field boundary (519–521 are field
 2's lines 260–262, 522 is field 1's line 1), so its per-row measurements stand and its "under each
 field" phrasing does not.
 
