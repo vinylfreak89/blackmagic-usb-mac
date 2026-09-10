@@ -557,7 +557,10 @@ field" phrasing does not.
   faint copy is decided by the account (the bands below), never by classifying the row (owner, 2026-09-06). The former
   "grey line 22 under half the brightness of the three rows below" rule was a typed brightness test (Claude's round-3
   audit finding, CLAUDE.md §11, not an owner ruling) and is dropped: the comparator supersedes it.
-- **Picture row**: a recorded row that is not a VBI row. **Picture top**: the first picture row (owner: "the first
+- **Picture row**: a recorded row that is neither a VBI row nor a row of the head-switch region. ⚠️ The
+  head-switch exclusion is load-bearing and was missing: switch rows ARE recorded and are not VBI, so without it
+  they are picture rows by this definition while rule 3 says band rows define no bottom and are not picture — two
+  definitions admitting different rows under one name. **Picture top**: the first picture row (owner: "the first
   picture row is the first picture row"). It may be hidden by the Shuttle's overwrite blanking: if the Shuttle's
   insert decodes captions on line 21, the real line 21 is somewhere between lines 20 and 22; a bottom band that does
   not extend to the end of the frame, or a mostly black head-switch area, is suspect that the top landed in the
@@ -590,13 +593,19 @@ field" phrasing does not.
   signature fires on ordinary programme; with them it selects splices. Two limits stated with it: the displacement is known only modulo one line (a late shift and an early one
   differing by a whole line are the same arrangement of samples), and a dark picture edge of a few tens of samples
   cannot be separated from a displacement of the same size when the row's other end shows nothing either.
-- **What the line TBC does to the head-switch band: it removes the PICTURE, not the displacement.** Both
+- **What the line TBC does to the head-switch band: it removes the PICTURE categorically and most of the READABLE
+  DISPLACEMENT with it.** ⚠️ This heading previously read "it removes the PICTURE, not the displacement" while the
+  body below said "the displacement is gone" — the two asserted opposite things about the same measurement. What was
+  measured: flat rows 768 with the corrector on against 0 with it off (categorical), and displaced rows 11 against
+  1,957 (strong, NOT categorical). So neither absolute is right, and §2's own summary already says so. Both
   instruments behind this were validated first on a synthetic field rebuilt at known displacements, which they
   recovered exactly.
   * **Corrector off:** the band rows are displaced by about a whole line's worth of time, and a complete horizontal
     blanking interval sits inside the delivered window — one whole line delivered late. No flat rows. The partial
     line is the row ABOVE the displaced pair, and its switch column moves only slightly unit to unit.
-  * **Corrector on:** the displacement is gone and so is the picture. Most affected rows are perfectly flat at the
+  * **Corrector on:** the picture is gone from these rows and readable displacement is largely gone with it (11
+    displaced rows against the corrector-off pass's 1,957 — a strong separation, not a categorical one, so a
+    corrected source is not guaranteed free of displaced rows). Most affected rows are perfectly flat at the
     DECK's black, which is distinct from the device's regenerated blanking, and per-aperture testing finds no
     side-versus-side step.
   * **The band's row count is the same either way**, which is what the owner expected. What changes is how many of
@@ -1224,7 +1233,10 @@ its rows; a true disagreement about the geometry (the comb not matching the plac
 either agent — it is reported to the owner as below. "Output" below means the stabilized visible picture the owner watches, not the crop-origin metadata. Invariants, stated as properties and
 checked per capture from that capture's own record: through a source's stable interval the top is constant, the
 lock's switch-line count is constant, and the switch line moves only with the top and only within the partial
-line's one-row travel; initial acquisition or reacquisition may establish placement, including reacquisition
+line's one-row travel **unless a head-catch excursion is POSITIVELY IDENTIFIED for that unit** — rule 2 permits an
+observed switch boundary to move independently of the picture, and without that qualification an excursion and an
+instrument defect are indistinguishable, which is why the exception is stated as identification rather than as a
+wider bound; initial acquisition or reacquisition may establish placement, including reacquisition
 following a positively established change of boxing, and invalidation alone supplies neither replacement geometry
 nor permission to apply it; nothing is placed on
 snow; and field precedence is constant within a lock. The units at which each holds are read from the run, not
