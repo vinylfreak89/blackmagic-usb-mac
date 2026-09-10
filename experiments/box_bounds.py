@@ -51,7 +51,7 @@ def row_means(Y: np.ndarray) -> np.ndarray:
     return Y[:, 24:697].mean(axis=1)
 
 
-def device_level(mean: np.ndarray, f: int) -> float:
+def device_population(Y: np.ndarray, mean: np.ndarray, f: int):
     """The device's own generated blanking level for this unit, from its regenerated rows.
 
     Lines 11-19 (field 1) and 274-282 (field 2) are the Shuttle's regenerated blanking -- the rows
@@ -60,10 +60,14 @@ def device_level(mean: np.ndarray, f: int) -> float:
     for "generated fill", measured in-unit rather than typed in.
     """
     lo, hi = (7, 15) if f == 1 else (270, 278)
-    return float(mean[lo:hi + 1].max())
+    means = mean[lo:hi + 1]
+    # The tolerance is those rows' own within-row noise, measured in this unit -- the right scale for
+    # "is this row at the same level as those rows", and per-source rather than typed in.
+    tol = float(np.median(Y[lo:hi + 1, 24:697].std(axis=1)))
+    return float(means.min()), float(means.max()), tol
 
 
-def profile_below(mean: np.ndarray, content_bot: int, hi: int, dev: float, bar: float):
+def profile_below(mean: np.ndarray, content_bot: int, hi: int, dev):
     """Every row from below the content to the field's end, with generated fill dropped.
 
     The bar, the head-switch region and the device's fill are three different populations and the
@@ -73,14 +77,22 @@ def profile_below(mean: np.ndarray, content_bot: int, hi: int, dev: float, bar: 
     rows, vals = [], []
     for r in range(content_bot + 1, hi + 1):
         m = float(mean[r])
-        # Nearest-population assignment, not a threshold. An earlier version excluded rows at or
-        # below the device reference's MAXIMUM, which failed by hundredths: at counter 6687 field 1
-        # the trailing fill read 1.40 against a reference max near 1.38, so it stayed in the profile
-        # and its 15.9-code plunge outvoted the 2.5-code bar-to-switch step -- returning the clip
-        # line in 31 of 144 field-1 units and 30 of 145 in field 2. The fill is separated from the
-        # bar by an order of magnitude, so asking which population a row is closer to needs no
-        # constant and cannot fail by a hundredth.
-        if abs(m - dev) < abs(m - bar):
+        # MEMBERSHIP of the device's own population, not nearest-of-two. Two earlier versions of
+        # this test failed, in opposite directions:
+        #   * excluding rows at or below the reference's MAXIMUM failed by hundredths -- at counter
+        #     6687 field 1 the trailing fill read 1.40 against a max near 1.38, so it survived into
+        #     the profile and its 15.9-code plunge outvoted the 2.5-code bar-to-switch step,
+        #     returning the clip line in 61 of 289 readings.
+        #   * asking whether a row is NEARER the fill than the bar is worse, and capture 1 cannot
+        #     catch it because its line TBC is off. With the TBC on, CLAUDE.md records the switch
+        #     rows as perfectly flat at the deck's black, luma 11.1, against a bar near 22 and fill
+        #     near 1.4 -- and 11.1 is NEARER the fill (9.7) than the bar (10.9). A nearest-of-two
+        #     rule would exclude the switch rows as fill and stop the walk before the boundary it
+        #     exists to find, which is rule 1's failure returning in a new costume.
+        # So the question is whether the row belongs to the DEVICE's population, anchored on the
+        # rows signal_state reads, with those rows' own within-row noise as the tolerance.
+        dlo, dhi, tol = dev
+        if dlo - tol <= m <= dhi + tol:
             break                      # generated fill runs to the field's end
         rows.append(r); vals.append(m)
     return rows, vals
@@ -111,6 +123,10 @@ def outer_edge(rows, vals):
     # boundary is 259 or 260 and this instrument cannot say which. Report Unknown rather than pick;
     # the contract's "an unresolved boundary does not establish contact" is exactly this case.
     if d[j] > 0 and float(d[i] / d[j]) < 1.5:
+        # UNRESOLVED, which is not absence. A box whose bottom edge is unresolved cannot be
+        # evaluated for contact with the head-switch region; it has NOT failed that test. The
+        # contract's "an unresolved boundary does not establish contact" says exactly this, and it
+        # is the same error class as reading an unmeasured switch as a switch-free source.
         return None, float(d[i]), float(d[i] / d[j])
     others = np.delete(d, i)
     med = float(np.median(others)) if others.size else 0.0
@@ -131,16 +147,14 @@ def field_bounds(Y, f, thr_abs, rel):
     if v != "box" or b["content_top"] < 0:
         return out, h, thr
     mean = row_means(Y)
-    dev = device_level(mean, f)
+    dev = device_population(Y, mean, f)
     # The top bar is bounded by the field's first recorded row, so its outer edge is the window's
     # start; what is measured here is the BOTTOM bar, whose outer edge is the contested one.
-    bar_head = float(np.median([float(mean[r]) for r in
-                                range(b["content_bot"] + 1, min(b["content_bot"] + 4, hi + 1))]))
-    drows, dvals = profile_below(mean, b["content_bot"], hi, dev, bar_head)
+    drows, dvals = profile_below(mean, b["content_bot"], hi, dev)
     de, dstep, dm = outer_edge(drows, dvals)
     out["top_outer"] = lo
-    out["bot_outer"], out["bot_margin"], out["bot_stop"] = de, dm, "step"
-    out["device_level"] = dev
+    out["bot_outer"], out["bot_margin"], out["bot_stop"] = de, dm, ("step" if de is not None else "unresolved")
+    out["device_level"] = round(dev[1], 3)
     uvals = [float(mean[r]) for r in range(max(lo, b["content_top"] - 3), b["content_top"])]
     dvals_head = dvals[:3]
     if uvals: out["top_level"] = float(np.median(uvals))
