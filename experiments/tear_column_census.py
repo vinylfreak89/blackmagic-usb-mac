@@ -44,6 +44,27 @@ standard deviation of 0.0103 and 0.0080, and its correlation with that brightnes
 of 38 - but only as dither; the padding rows are byte-identical in all 38. So neither is readable
 evidence, and the difference between them is only which filler the device chose.
 
+THE WHOLE 525, in NTSC lines (the row-to-line offset is +4, and the two fields' inserts correlate
+at +1.000 across a separation of 263 - the standard's inter-field spacing - so the unit is ONE
+continuous frame raster, not two field blocks). Classification stable in all 38 units checked
+except line 526:
+
+    4 - 10    7 rows   flat 16, the device's padding
+   11 - 19    9 rows   written blanking
+   20 - 21    2 rows   digitised: the Shuttle's own inserted timing line and line 21
+   22         1 row    written blanking
+   23 - 262 240 rows   digitised: FIELD 1's active picture, exactly the standard's 240
+  263 - 264   2 rows   written blanking          <- the interval between the fields
+  265 - 273   9 rows   flat 16, the device's padding
+  274 - 282   9 rows   written blanking
+  283 - 284   2 rows   digitised: field 2's inserts
+  285         1 row    written blanking
+  286 - 525 240 rows   digitised: FIELD 2's active picture, exactly the standard's 240
+  526         1 row    written blanking
+  527 - 528   2 rows   flat 16, the device's padding
+
+  484 digitised, 23 written blanking, 18 padding = 525.
+
   tear_column_census.py <capture.tpc> [--repair] [--from N] [--rows LO HI]
   -> counter, field, line, mean, lead, trail, run_len, run_col, state, region
 """
