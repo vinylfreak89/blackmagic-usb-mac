@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Is the horizontal blanking inside the delivered window on an ORDINARY picture row?
 
+LINE NUMBERS ARE FIELD-RELATIVE (owner's ruling, 2026-09-10: "Field 2's picture should be the same
+as field 1. I want fucking field line numbers. That's the way every one in the industry does it").
+Each field carries its own count, so BOTH fields' pictures are lines 23-262 and both switch bands
+are 260-262. The frame-continuous numbering this file used before - field 2 at 286-525 - is
+withdrawn. Row arithmetic is unchanged; only the printed label is.
+
 Arithmetic from SMPTE 170M / BT.601 first, because it decides the question before any pixel is
 read. The 525 line is 63.5556 us = 858 samples at 13.5 MHz; horizontal blanking is 10.9 us =
 147.15 samples; so the ANALOG active line is 52.6556 us = 710.85 samples. BT.601's digital
@@ -71,8 +77,8 @@ def main():
             if j==UNIT: emit(bytes(b[:UNIT]))
             del b[:j]
     walk_tagged(a.capture,on_video=on_video,progress=False)
-    print(f"picture rows only: NTSC {F1+BODY_LO}-{F1+BODY_HI-1} and {F2+BODY_LO}-{F2+BODY_HI-1}, "
-          f"clear of the head-switch band\n")
+    print(f"picture rows only: lines {F1+BODY_LO}-{F1+BODY_HI-1} in BOTH fields (field-relative "
+          f"numbering), clear of the head-switch band\n")
     for f in (1,2):
         d=acc[f]
         if not d["n"]: continue

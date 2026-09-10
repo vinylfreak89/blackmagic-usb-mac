@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Where, horizontally, the head switch's blanking sits inside the delivered window.
 
+LINE NUMBERS ARE FIELD-RELATIVE (owner's ruling, 2026-09-10: "Field 2's picture should be the same
+as field 1. I want fucking field line numbers. That's the way every one in the industry does it").
+Each field carries its own count, so BOTH fields' pictures are lines 23-262 and both switch bands
+are 260-262. The frame-continuous numbering this file used before - field 2 at 286-525 - is
+withdrawn. Row arithmetic is unchanged; only the printed label is.
+
 ⚠️ CORRECTED 2026-09-10, and the sentence that stood here was wrong. It read "a row whose line
 timing is normal carries no horizontal blanking at all: the blanking interval lies outside the
 window". A correctly timed row DOES carry blanking inside the window, at BOTH ends, and the
@@ -213,8 +219,8 @@ def main():
         z = float(np.median(Y[(BLANK_F1[0]-4)+(origin-F1):(BLANK_F1[1]-4)+(origin-F1)]))
         thr = z + MARGIN
         for off in range(LO,HI):
-            line = origin + off
-            r = Y[line-4].astype(np.float64)
+            line = F1 + off                 # FIELD-RELATIVE: both fields count 23-262
+            r = Y[origin + off - 4].astype(np.float64)
             reg = region(r)
             if reg != "line":
                 # device fill: report it as what it is, never as a blank-run measurement

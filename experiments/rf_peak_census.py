@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """The head switch's RF peak: is there one on this row, and where along the row does it sit.
 
+LINE NUMBERS ARE FIELD-RELATIVE (owner's ruling, 2026-09-10: "Field 2's picture should be the same
+as field 1. I want fucking field line numbers. That's the way every one in the industry does it").
+Each field carries its own count, so BOTH fields' pictures are lines 23-262 and both switch bands
+are 260-262. The frame-continuous numbering this file used before - field 2 at 286-525 - is
+withdrawn. Row arithmetic is unchanged; only the printed label is.
+
 The contract describes the head switch as discontinuous horizontal skew, an RF peak in the luma,
 or both. The peak's polarity is not fixed - it reads pure white in some units and pure black in
 others (owner, 2026-09-09) - so the detector is signed-blind: it looks for the largest excursion
@@ -45,8 +51,8 @@ def main():
     a=ap.parse_args(); st={"buf":bytearray(),"prev":None}
     def do(ctr,Y,origin,fld):
         for off in range(LO,HI):
-            line=origin+off
-            m,md,s,c,sg,ln = peak(Y[line-4].astype(np.float64))
+            line=F1+off                     # FIELD-RELATIVE: both fields count 23-262
+            m,md,s,c,sg,ln = peak(Y[origin+off-4].astype(np.float64))
             print(f"{ctr}\t{fld}\t{line}\t{m:.2f}\t{md:.2f}\t{s:.1f}\t{c}\t{sg:+d}\t{ln}")
     def emit(u):
         ctr=int.from_bytes(u[4:6],"little")

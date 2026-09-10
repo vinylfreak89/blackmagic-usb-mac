@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Where the head boundary falls, measured on the picture rather than on the blanking.
 
+LINE NUMBERS ARE FIELD-RELATIVE (owner's ruling, 2026-09-10: "Field 2's picture should be the same
+as field 1. I want fucking field line numbers. That's the way every one in the industry does it").
+Each field carries its own count, so BOTH fields' pictures are lines 23-262 and both switch bands
+are 260-262. The frame-continuous numbering this file used before - field 2 at 286-525 - is
+withdrawn. Row arithmetic is unchanged; only the printed label is.
+
 The owner, 2026-09-10: testing line 260 against 261 is "the no shit duh case" - both are already
 inside the band. The boundary that carries information is the LAST ORDINARY PICTURE LINE against
 the FIRST LINE OF THE BAND, 259->260 in field 1 and 522->523 in field 2.
@@ -46,10 +52,10 @@ def main():
     ap.add_argument("--from",dest="frm",type=int,default=0)
     ap.add_argument("--to",dest="to",type=int,default=10**9)
     a=ap.parse_args(); st={"buf":bytearray(),"prev":None}
-    def do(ctr,Y,fld,pairs):
+    def do(ctr,Y,fld,pairs,base):
         for u,l in pairs:
-            s=step(Y[l-4].astype(np.float64), Y[u-4].astype(np.float64))
-            print(f"{ctr}\t{fld}\t{u}\t{l}\t{'' if s is None else s}")
+            s=step(Y[u+base+1-4].astype(np.float64), Y[u+base-4].astype(np.float64))
+            print(f"{ctr}\t{fld}\t{u}\t{l}\t{'' if s is None else s}")   # FIELD-RELATIVE labels
     def emit(u):
         ctr=int.from_bytes(u[4:6],"little")
         r=np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,ROW)
@@ -58,10 +64,10 @@ def main():
             if p is None: return
             pctr,pr=p
             if not (a.frm<=pctr<=a.to): return
-            do(pctr,r[:,1::2],1,PAIRS1); do(pctr,pr[:,1::2],2,PAIRS2)
+            do(pctr,r[:,1::2],1,PAIRS1,0); do(pctr,pr[:,1::2],2,PAIRS1,F2-F1)
         else:
             if not (a.frm<=ctr<=a.to): return
-            Y=r[:,1::2]; do(ctr,Y,1,PAIRS1); do(ctr,Y,2,PAIRS2)
+            Y=r[:,1::2]; do(ctr,Y,1,PAIRS1,0); do(ctr,Y,2,PAIRS1,F2-F1)
     def on_video(p):
         b=st["buf"]; b.extend(p)
         while True:
