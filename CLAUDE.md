@@ -2604,9 +2604,28 @@ files, not assumed (2026-09-11).** `overwrite the shuttles`, `first 6 lines`, `v
 | 09-10 09:41:23 | "The location of the partial line and/or RF peak should not jump. It should have a normal excursion when a line disappears." | NOT RECORDED -- and it bears directly on the S/T work: it is the same continuity property as the measured column drift above |
 | 09-10 10:49:16 | "a head switch existing is the bottom of the tape. thats PHYSICS. if a head switch is there, it marks the bottom of the geometry. where there is blanking below the head switch thats not part of the bottom geometry." | NOT RECORDED -- a physical definition of the bottom, bearing directly on the line account |
 
-⚠️ **The 09:18:05 one is the sharpest loss: an acceptance criterion for every test render, absent for a day, while
-renders were produced and shown.** The 09:41:23 and 10:49:16 rulings are geometry, not rendering, and the second is
-a definition the contract's own bottom-of-geometry wording should be checked against.
+⚠️⚠️ **THAT TABLE IS WRONG AND I BUILT IT THE WRONG WAY -- corrected within the hour, by re-checking the six by
+MEANING instead of by phrase.** I searched for his exact words, found zero hits, and wrote "recorded nowhere" as a
+fact. **Phrase-absence is not ruling-absence**, and it is the proxy defect this file documents a dozen times,
+committed in an audit whose whole purpose was finding lost rulings. The watchdog caught its own instance first --
+it had flagged a `black reference` gate as unlifted, and it is landed under **Source-measured levels** (contract
+:523), wording neither of us searched for. Re-checked, of my six:
+
+| his ruling | actual status |
+|---|---|
+| 09:41:23 the partial line / RF peak must not jump | **ALREADY LANDED**, contract :164 -- "SOUNDNESS - the partial line's boundary must not jump further than expected in one sampling, which is a per-unit continuity condition on where that boundary sits along the row" |
+| 10:49:16 a head switch marks the bottom of the geometry | **ALREADY LANDED**, contract :446 and :960 -- "The partial line is the switch line and the picture bottom is the row above it"; and :702 carries his second half, blanking below the switch not being the picture bottom |
+| 09:18:05 first 6 lines vertically stable, always | **PARTIAL.** Contract :167 has "THE OUTPUT PICTURE DOES NOT MOVE. That last clause is the acceptance test", which is adjacent but is a different observable -- his is the VBI rows holding position in a test render, not the picture |
+| 09:16:24 real line 20-22 overwrite the shuttles in 486 | **OPEN, and it CONFLICTS with contract :451** -- "Nothing the tape carries above line 23 reaches us except the re-encoded bytes on the insert" |
+| 11:13:09 the bounding box, purple, alpha | **OPEN** -- no equivalent wording; now implemented in `review_frame.py` |
+| 04:54:51 luma stills at 5x, both fields side by side | **OPEN**, conditional, never done |
+
+So **two of six were never lost, one is partial, three stand** -- and one of the three conflicts with existing
+contract text rather than merely being absent, which is the more serious finding and the phrase audit could not
+have told them apart. **The rule for any future audit of this kind: a phrase search finds what to READ, never what
+is MISSING.** The only sound negative is a read of the passages that would carry the ruling.
+⚠️ What survives unaltered is 09:18:05's cost: whether partial or absent, no render produced and shown today was
+measured against a stability bar he had already set.
 
 **CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
 FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
