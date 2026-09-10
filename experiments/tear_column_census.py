@@ -3,8 +3,10 @@
 
 LINE NUMBERS ARE FIELD-RELATIVE (owner's ruling, 2026-09-10: "Field 2's picture should be the same
 as field 1. I want fucking field line numbers. That's the way every one in the industry does it").
-Each field carries its own count, so BOTH fields' pictures are lines 23-262 and both switch bands
-are 260-262. The frame-continuous numbering this file used before - field 2 at 286-525 - is
+Each field carries its own count, so BOTH fields' pictures are lines 23-262. ⚠️ It does NOT follow
+that both switch bands land on the same lines: renaming cannot move an observation. Measured on
+capture 1, field 1's first FULLY switched line is 261 and field 2's is 260, so field 2's band is
+one line longer - the asymmetry survives the renaming and is a measurement, not a consequence of it. The frame-continuous numbering this file used before - field 2 at 286-525 - is
 withdrawn. Row arithmetic is unchanged; only the printed label is.
 
 ⚠️ CORRECTED 2026-09-10, and the sentence that stood here was wrong. It read "a row whose line

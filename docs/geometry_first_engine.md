@@ -5,8 +5,7 @@ agents' agreement (CLAUDE.md §14, the v10 process). Codex writes the engine (`s
 Claude the harness (`experiments/`, branch `v10-harness`); each reviews the other's code and intent (CLAUDE.md §14;
 the owner, 2026-09-07 20:10: "The roles reverse again ... Codex will go back to owning the code, you owning the test
 harness"). **Line numbers are FIELD-RELATIVE NTSC lines** (owner, 2026-09-10, ruling in §1): each
-field carries its own count, so both fields' pictures are lines 23-262 and both switch bands are
-260-262. Within field 1's block unit row r is line r+4; field 2's block is offset 263 rows and its
+field carries its own count, so both fields' pictures are lines 23-262. Within field 1's block unit row r is line r+4; field 2's block is offset 263 rows and its
 rows are numbered from its own origin the same way. The frame-continuous numbering used before -
 field 2 at 284/286/522-525 - is withdrawn.
 Every number is a standard (NTSC, SMPTE RP-202, CEA-608), a measurement on the captures (stated with its value), or a
@@ -17,7 +16,12 @@ memory capacity; any other number in the code is a defect.
 **Line numbering (2026-09-10).** "Field 2's picture should be the same as field 1. I want fucking
 field line numbers. That's the way every one in the industry does it." So every line number in this
 contract, in the engine and in the harness is field-relative: field 2's picture is 23-262, not
-286-525, and its switch band is 260-262, the same three lines as field 1. ⚠️ This supersedes
+286-525. ⚠️ Renaming settles what a line is CALLED and nothing else: it cannot make the two fields'
+switch bands coincide, and on capture 1 they do not - field 1's first fully switched line measures
+261 and field 2's 260, so field 2's band is one line longer. That asymmetry is a measurement and
+survives the convention change (Codex raised this, 2026-09-10, and is right; an earlier sentence
+here asserted the bands were the same three lines as a consequence of the renaming, which is
+withdrawn). ⚠️ This supersedes
 CLAUDE.md's coordinate convention of 2026-09-04, which states the frame-continuous mapping and has
 not been amended; and the engine's constants and reports are still in the old convention. Until
 both sides are converted, a field-1 number in one scheme must never be read against a field-2
@@ -27,6 +31,13 @@ number in the other.
 ends with the HALF LINE, written 262.5 and never 263, because a half line is the second half of 262
 and the first half of what follows - which is why a field counts 262.5 lines. The first row of
 field 2's block is that field's own line 1.
+The storage rows this names, measured on capture 1 and identical in all 38 units checked: each
+block's line 1 sits 20 rows above its caption row, so field 1's line 1 is the unit's LAST written
+row (its caption is the 18th row of the unit) and field 2's line 1 is the row immediately after
+field 1's 262.5. Each block then runs 1 written, 9 padding (its lines 2-10), 9 written (11-19),
+2 inserts (20-21), 1 written (22), 240 picture (23-262) - and field 1 alone has one more written
+row after its picture, which is the 262.5. So the padding rows are lines 2-10 OF THE BLOCK THEY
+BEGIN, and every row of the unit has a field-relative line number.
 
 **Intent (2026-09-04/06).** Geometry is the authority. Each field's active picture area — its top edge, bottom edge
 and height — measured on every unit places the crop. Everything else (the tape's line 21, its black line 22, static
