@@ -4147,6 +4147,34 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **PER-UNIT CALIBRATION WORKS, AND THE REGIMES FALL OUT OF THE MEASUREMENT INSTEAD OF BEING CLASSIFIED
+  (`experiments/per_unit_floor.py`, 2026-09-11).** "Per source" was not fine-grained enough and capture 1 proves
+  it: card and bright programme are the SAME source with switch signals of ~25 and ~1-3 samples, so a per-source
+  constant reinstates exactly what the sweep killed. Per UNIT needs no content classifier — every unit carries
+  ~160 mid-picture rows where no switch can exist, and that is the noise floor OF THAT UNIT, in samples.
+
+  | | readings | asserts | floor median | switch median | false-fire, held out |
+  |---|---:|---:|---:|---:|---:|
+  | card units | 288 | **287 (100%)** | 9.5 | **25.0** | 0.64% |
+  | bright units | 550 | **216 (39%)** | 1.0 | **1.2** | 0.28% |
+  | all | 1,016 | 680 (67%), 336 Unknown | | | **354 of 81,280 = 0.44%** |
+
+  **The instrument is never told which units are which, and coverage separates 100% against 39% exactly where
+  the operating-point sweep said it would.** The floors separate too — 9.5 against 1.0 — so a card unit's large
+  signal clears its own tight floor while a bright unit's ~1.2-sample signal against a 1.0-sample floor mostly
+  does not, and returns Unknown. **Nobody coded that distinction**, which is what makes it defensible on a source
+  neither agent has looked at, and it is `:531`'s "measure things per source" taken one level finer.
+  ⚠️ **THE CALIBRATION AND THE VALIDATION MUST NOT SHARE ROWS, and this nearly did.** The no-switch population
+  does double duty here — it sets the floor AND scores the false-fire rate — and **a threshold fitted to the rows
+  it is then scored on always looks clean on them**, invisibly. The rows are split by ALTERNATING PARITY, floor
+  from one half and false-fire from the other, so the 0.44% is measured on rows the threshold never saw.
+  Alternating rather than top/bottom because picture content varies down a field, so contiguous halves are not
+  exchangeable. `--selftest` asserts the two sets are disjoint, non-empty and interleaved.
+  ⚠️ **Bright's 39% is the honest answer, not a shortfall:** its switch median is 1.2 samples against a floor of
+  1.0. The margin is a fraction of a sample, so most bright units genuinely cannot decide and say so. **Unknown
+  where the evidence is absent is the shape the owner ruled for**, and a version that asserted on all 550 would
+  be the old fabrication wearing a new statistic.
+
 - **THE OPERATING POINT, SWEPT AGAINST THE SOURCE'S OWN KNOWN-NO-SWITCH POPULATION — and the answer is that
   ONE THRESHOLD CANNOT SERVE BOTH REGIMES (2026-09-11).** A gate asserted before its false-fire rate is measured
   is a threshold fitted to nothing. The held-out mid-picture population (160 rows × 30 units, no switch possible,
