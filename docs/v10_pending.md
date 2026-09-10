@@ -584,6 +584,43 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### :812 ANSWERED — fail closed. Implementation status of its four clauses, checked in the code
+
+> "then if you can't record a head switch or other valid picture, then it is an NTSC destroying signal and the
+> registration does not run (preserving its timing only but recording no decisions and setting no levels)"
+
+⚠️ **The conjunction is the trap and it must survive into the contract text: BOTH must fail** — no head switch
+recordable AND no other valid picture recordable. **An unresolved head switch with valid picture present is NOT
+this condition.** Reading it as "unresolved switch ⇒ invalid raster" is the one-name-two-quantities defect this
+project keeps hitting, and it would fire the reset on ordinary units.
+
+**Clause 4 — "setting no levels" — is the one with the sharpest consequence, and it is ALREADY SATISFIED BY
+CONSTRUCTION in the engine as written.** A poisoned level reference would be silent: every later measurement is
+made against it and nothing downstream would show the corruption. Checked:
+`field_registration.c:359-366` computes `blank_mean` into the per-call **measurement** struct from that unit's own
+blanking rows, and divides. **There is no cross-unit level accumulation in engine state to poison** — the only
+carried per-field value that is level-adjacent is `body_reference_top` (`:799`), and that is a POSITION, not a
+level. So clause 4 needs no new mechanism, only a test that keeps it true.
+
+⚠️ **Clause 3 — "recording no decisions" — is NOT satisfied, and the site is specific.** `:831` sets
+`state->previous_measured_top = measurement->top` inside the geometry-placement branch. That is the engine's
+temporal witness, carried to the next unit and read at `:915-916` to decide whether the top moved. **A unit that
+runs the geometry path on an NTSC-destroying raster writes that witness**, so the next unit's "did the top move"
+test is taken against a raster the ruling says the engine should not have operated on. It is not a logged decision
+in the sidecar sense, but it is state a later decision is made from, which is what clause 3 exists to prevent.
+The three exits at `:836`, `:842` and `:660` already set it to −1, so the mechanism for not writing it exists and
+the new condition needs to reach one of them.
+
+**Clause 2 — "preserving its timing only" — must not be conflated with dropping the unit.** Counter continuity,
+PTS and the audio correlation are untouched; the transport record stays complete. This project has already been
+bitten by the inverse (a gated unit publishing a held crop that scored as if applied), so the record must
+distinguish *not run* from *ran and produced nothing* from *absent*.
+
+**Contract work:** `:812`'s fail-open sentence — "Failure to identify a landmark or a region does not establish
+absence; unresolved evidence remains Unknown" — is now wrong for this case and must be REPLACED, not amended
+beside. The marker comes off. Check what the document says about unresolved switch evidence everywhere it says
+anything, and make its answer unique.
+
 ### ⚠️ WITHDRAWN — the 6(b) "wrong line" proposal below is MY MISREADING, not a defect in his rule
 
 Owner, 2026-09-11: *"AGAIN.... as I've said many times. the line 22 is when the tape's line 22 wanders into the
