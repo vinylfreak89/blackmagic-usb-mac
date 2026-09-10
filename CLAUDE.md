@@ -2223,9 +2223,14 @@ where the geometry is not boxed and not all lines are picture"); the owner's 202
 required on both fields if a HEAD SWITCH IS GOING TO PARTICIPATE IN THE CONFIRMATION. not required for a lock.
 head switch as a category is optional" — re-keys it to the CONFIRMATION ROUTE. Different conditions, and the
 second supersedes the first; that is a clause of the lock definition, so it goes to him.
-⚠️ **No fixture exercises a source without a head switch.** All four acceptance captures have one (capture 1:
-measurable in 484 of 1,016 field readings), so this path's failing-first golden is necessarily synthetic and no
-acceptance capture will cover it.
+⚠️ **No fixture exercises a source without a head switch, but that is TWO cases and only one is uncovered**
+(Codex's correction to a Claude overstatement, same day). A genuinely switch-free SOURCE has no fixture — all
+four acceptance captures have a head switch — so a failing-first golden for it is necessarily synthetic, and
+synthetic tests can show that geometry plus permitted confirmation acquires a lock without inventing a switch
+count, never real-world performance on switch-free material. But a switch-bearing capture still has units where
+the switch is UNMEASURABLE, and those exercise lock acquisition with the count unavailable: on capture 1 at
+counter >= 6667 the switch is measurable in both fields in 182 of 508 units, so 326 units have it unavailable in
+at least one field and 206 in neither. Report the two cases separately; they are different claims.
 
 
 **The harness's switch line is independently confirmed on capture 1, and what got it there (2026-09-10).**
