@@ -463,8 +463,10 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   2026-09-09) and its level references (the blanking level and
   noise, the pedestal, the tape's line-22 level) are measured from the source itself and belong to the current lock.
   No sample position and no luma level is ever typed in or carried from another recording; the numbers quoted in
-  section 2 are measurements on these captures, never test points. A lock-like loss (rule 5b) discards them with the
-  lock, and they are rebuilt from the units after re-acquisition — nothing derived under the old lock survives it.
+  section 2 are measurements on these captures, never test points. A lock-like loss (rule 5b) discards them with the lock.
+  **References invalidated by the loss are rebuilt while registration is inactive and observation continues. They
+  must be qualified before supporting replacement geometry or source-lock reacquisition. Other retained evidence is
+  usable only where its qualification survives; full engine reset follows rule 13.**
 - **Vertical tear**: a field whose horizontal timing departs mid-field and then becomes stable again (owner,
   2026-09-09: "in a vertical tear, horizontal timing goes completely out the window. any field with horizontal
   timing that skews mid frame and then becomes stable again is a vertical tear by nature. this would cover signal,
@@ -650,7 +652,14 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   picture. period". **A raster in the invalid class is not valid NTSC: the engine does not register and does not
   correct.** Two conditions put a raster there. FIRST, the regenerated rows absent — their absence must be
   POSITIVELY ESTABLISHED, since a failed caption decode is not absence and samples unavailable through transport
-  damage are not absence. SECOND, a trailing black run of more than 24 qualifying terminal lines AND positively
+  damage are not absence. SECOND, ⚠️ **its disposition after a lock is UNSETTLED and with the owner** — rule 13 not naming this
+  condition establishes only that it does not expressly mandate the full reset; it does not establish that the lock
+  survives, that references remain qualified, or that recovery is automatic on the next unit. Note also that "does
+  not correct" and "placement is held" are NOT equivalent: with an existing +2 correction, holding preserves +2
+  while bypassing correction delivers without it, and those are different pictures. The question for him: when this
+  condition occurs after a lock, should the output retain the last corrective placement or bypass correction, which
+  learned state remains valid, and does recovery require reacquisition before correction resumes?
+  The condition itself: a trailing black run of more than 24 qualifying terminal lines AND positively
   established absence of the head-switch REGION within them (owner, 2026-09-10: the absence required is of the
   region as defined in section 3, "a fancier way to say head switch region the way I've defined it", not of a peak
   or a partial line). **Failure to identify a landmark or a region does not establish absence**; unresolved
@@ -796,6 +805,16 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    and complete warm-up continue (Warm-up, section 3), or the engine could never learn that the condition had
    cleared (owner, 2026-09-09: "you need to completely turn off registration in anything other than
    normal picture"). Mute, snow, no-signal, device-no-signal and unframed rasters are not inputs to geometry.
+   **A fade is not one of these classes.** Fade observation is distinct from per-unit signal classification: a fade
+   is a temporal condition whose units are classified individually and which may cross appearance classes — capture
+   1's opening rises 24.2 → 27.1 → 28.6 → 30.6 and is called mute until it crosses, first reading programme at
+   counter 6667, which the owner ruled correct ("It's the tape coming in… That should stay unregistered").
+   **During an identified fade, committed geometry is HELD. Observations continue across appearance-class changes.
+   Where edges become unreadable their position is Unknown; disappearance of readable evidence establishes neither
+   movement nor continued validity. After the transition, affected references and geometry are reassessed.**
+   ⚠️ There is a genuine observability limitation in the dark part of a fade — rule 8a's discriminator needs the
+   band edges readable while the level falls — but it follows from EVIDENCE BEING UNAVAILABLE, not from the observer
+   being switched off, and programme-like classification does not by itself permit a geometry update during a fade.
 5b. A loss of source lock or a lock-like loss (the owner's "change of geometry", 2026-09-07 afternoon) resets the
    GEOMETRY immediately, both fields at once — ⚠️ NOT the whole engine: the full reset of rule 13 is a strictly
    larger event with two named causes, and lock-like loss is not one of them (there is no snow in one field only); an ordinary measured

@@ -2981,6 +2981,15 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **The fix is always the same shape**: name the quantities separately, say which one each rule and each equation
   uses, and check what the code actually carries — twice now the code carried exactly one of the meanings and its
   identifier was named after the ambiguous term.
+- **Recurring error of mine: equating REGISTRATION stopping with MEASUREMENT stopping (twice on 2026-09-10).**
+  Rule 5 said the engine "measures nothing" outside normal picture; that was corrected in the morning to suspend
+  registration while device-state and source-reference observation continue, or the engine could never learn that
+  the condition had cleared. Hours later I proposed that during the dark part of a fade "registration stops and so
+  does that measurement" — the same conflation, in a rule I had just fixed for it. **Observing levels, edge
+  visibility and transition completion does not stop when appearance becomes mute.** Where a measurement genuinely
+  becomes impossible it is because the EVIDENCE is unavailable, never because the observer was switched off, and the
+  two have different consequences: unavailable evidence gives Unknown, a disabled observer gives silence that reads
+  as no-change. Watch for it wherever a rule gates behaviour on a signal-state class.
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
   Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
   answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back
