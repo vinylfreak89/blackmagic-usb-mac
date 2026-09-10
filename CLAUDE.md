@@ -3027,6 +3027,13 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   defect. The defects are a use with **no identifiable criteria**, and evidence satisfying one qualification being
   **silently credited to another** — a failure mode the other two framings could not express, because both were
   arguing that the tests must differ rather than asking what happens when one is quietly substituted for another.
+- **Timing claims about ANOTHER agent's message are written from impression and flatter the writer (2026-09-10,
+  twice in ten minutes, once each way).** The watchdog wrote "still running as of 13:39:14" for a reply that had
+  already returned; Claude wrote "already applied twenty minutes before your message" for a commit that landed
+  13:46:58Z against a message sent 13:46:29Z — **29 seconds after, not twenty minutes before.** Each error made its
+  author look current and the other's note look late or redundant. The existing rule ("write timestamps only from a
+  checked clock") covers it; what this adds is that the temptation is strongest in claims about who knew what
+  first, where the flattering answer arrives without being computed. `git log --format=%ad` costs one command.
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
   Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
   answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back
