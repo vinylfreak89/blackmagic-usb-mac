@@ -428,11 +428,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   direction: "It should be measuring where the blanking is overwritten. So if the blanking extends past its expected
   horizontal extent or the picture extends past its expected horizontal extent, that's the head switch." The
   expected extent is the source's own, remeasured after a transition event, never the nominal figure.
-- **Warm-up**: before the required source references are qualified, registration and corrective placement are
-  inactive; observation and reference acquisition continue (owner, 2026-09-10): "the engine can't run on a fresh
+- **Warm-up**: **the phase in which REQUIRED source references are not yet qualified.** Observation and reference
+  acquisition continue while registration and corrective placement are inactive. It occurs at capture start, after
+  a full reset, and **whenever a loss or a reassessment invalidates a required reference** — entering warm-up does
+  not itself prescribe a full reset. "Required" is load-bearing: invalidating an OPTIONAL observation does not
+  disable every otherwise qualified registration route. (owner, 2026-09-10): "the engine can't run on a fresh
   source until it 'warms up' which means on capture 1, the loss like noise bars during the fade, the entire engine
-  can't run. that is accepted and expected." This is intended behaviour at capture start and after every full engine
-  reset. Following reassessment, any required reference that is no longer qualified must be reacquired before
+  can't run. that is accepted and expected." This is intended behaviour. Following reassessment, any required reference that is no longer qualified must be reacquired before
   registration resumes. Elapsed time alone does not complete warm-up, and completing it does not itself supply
   geometry confirmation or a lock.
 - **VBI row**: a recorded row carrying a vertical-interval WAVEFORM, recognised by signature: the CEA-608 waveform
@@ -986,7 +988,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
     observation continues to establish the transition and its completion ("geometry (including the box) can't change
     during a fade. that must be a hold"), and remeasurement follows completion ("IF IT CHANGES which really can only
     happen after some type of transition event (mute or fade), remeasure"). Post-transition remeasurement does not
-    itself establish a geometry change. Positively established box invalidation releases the affected geometry and
+    itself establish a geometry change. **A post-fade difference is assessed for measurement uncertainty and
+    exposure-dependent detectability. If qualified evidence establishes that the held bounds no longer describe the
+    source, the affected geometry is invalidated and reacquired; otherwise the distinction is retained as unresolved
+    and replacement bounds are NOT manufactured.** No attribution of the change to a particular dark unit is needed
+    — rule 8a has two invalidation triggers, picture appearing within previously established bar regions AND a band
+    edge moving while the level is steady, so neither is the exclusive mechanism — and the engine does not reconcile
+    indefinitely once invalidation has been established. Positively established box invalidation releases the affected geometry and
     its lock; replacement geometry requires acquisition; evidence dependent on invalidated geometry cannot support
     acquisition without renewed qualification.
 13. **Full reset** (owner, 2026-09-10). `0x0800`, or positively established absence of the regenerated rows, resets
