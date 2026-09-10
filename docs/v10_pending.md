@@ -410,10 +410,25 @@ above: 19, 20, 22 (`960b5ff`), 8, 11 (`0942d8b`), 25, 28 (`ab1b711`), 23, 32, 35
 without editing the frozen report: 24, 27, 29, and 11's withdrawn attribution. Audited rather than defined: 34
 (`docs/reports/2026-09-10_terminology_audit.md`). With the owner: 6/CR-10, 7, 24.
 
-**Of Codex's 13:** CR-01, CR-05, CR-07, CR-12 landed; CR-10 with the owner; **CR-02, CR-06 and CR-13 are the only
-ones not yet worked** — in flight with Codex. CR-03, CR-04, CR-08, CR-09 and CR-11 overlap findings already closed
-and are treated as closed by that overlap, which is a judgement rather than a verified before/after and is flagged
-to Codex as such.
+**Of Codex's 13:** CR-01, CR-05, CR-07, CR-12 landed; CR-02, CR-06 and CR-13 landed 2026-09-10 in Codex's wording;
+CR-10 with the owner; **CR-08 verified closed** (the rebuilding-order conflict is repaired — references are
+qualified before supporting reacquisition).
+
+⚠️ **FOUR of the five I had treated as "closed by overlap" are NOT closed, and Codex named the surviving text in
+each.** I had flagged that disposition as a judgement rather than a verified before/after; it was wrong, which is
+the argument for never using it again without the diff:
+- **CR-03** — §8 still says the switch moves only with the top and within one-row travel, while the head-catch rule
+  permits independent excursions. The qualified-displacement work does not repair that invariant.
+- **CR-04** — the heading still says "not the displacement"; its body still says "the displacement is gone".
+- **CR-09** — engine versus harness evaluation, current versus retained readings, and the treatment of unevaluated
+  units still need explicit validation semantics. `comb_safe` is part of this finding.
+- **CR-11** — "Picture row: a recorded row that is not a VBI row" still includes source-derived switch rows that
+  another definition excludes.
+
+**Engine work CR-06 and the terminology audit put on Codex's side:** rule 9 says the comb is not measured under a
+maintained lock; `field_registration.c:984` calls `comb_confirm` UNCONDITIONALLY on every unit, with no lock-state
+guard. So that rule is required behaviour the engine does not implement, and `comb_safe`'s repair is an execution-path
+change as well as a record/schema one.
 
 **Engineering work the terminology audit produced, none of it the owner's:**
 - `comb_safe` conflates "evaluated and disagreed" with "never evaluated", and rule 9 makes the second the ordinary

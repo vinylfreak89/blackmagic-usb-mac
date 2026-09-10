@@ -184,7 +184,15 @@ are the same phenomenon in the two directions - the 4s the band having taken a l
 shed one - so where the movement is sound the count should hold at 3 and the departure should not
 register as a band event.
 ⚠️ A correction on the head switch band is owed from the owner and is expected to settle the
-259-against-260 discrepancy; nothing is implemented against this ruling until it lands.
+259-against-260 discrepancy. ⚠️ **The status of this prohibition is UNRESOLVED and is recorded rather than
+decided (2026-09-10).** It originated at `1c6b387` awaiting that specific correction. A later general
+unstable-timing-region definition landed, but neither agent can identify it AS that correction from subject overlap
+alone, so the promised correction is not declared delivered. Meanwhile §1's later ruling removed the procedural
+implementation gates ("nothing should be gated"), under which this sentence should not stand as an unexplained
+current instruction. Both cannot be true at once: either the correction landed and the prohibition is spent, or it
+did not and the gate-removal has an exception nobody stated. **The unresolved TECHNICAL question — the
+259-against-260 discrepancy itself — is preserved separately and is not retired by whatever happens to the workflow
+sentence.**
 
 **Row 262.5 and field 2's line 1 (2026-09-10).** "Properly label them 262.5 and 1." Field 1's block
 ends with the HALF LINE, written 262.5 and never 263, because a half line is the second half of 262
@@ -671,8 +679,14 @@ field" phrasing does not.
   picture bottom placed by the engine is the row above the switch line; the expected bottom is the closure check.
 - **S**: the first row belonging entirely to the other head (an engine measurement; the switch lies in S or the
   partial line above it). **Segment lag**: the horizontal lag, in samples, at which a short segment of a row best
-  matches the row above (the segment's length is the engine's measurement aperture, not a decision constant). **Provenance error**: a capture whose packet accounting is not complete at a unit; the
-  engine emits no record for it (fail closed).
+  matches the row above (the segment's length is the engine's measurement aperture, not a decision constant). **Provenance error**: a capture whose packet accounting is not complete at a unit. **A
+  provenance-ineligible unit supplies no new registration MEASUREMENT.** Where that unit is represented in the
+  review output, its **keyed status record remains present**, identifies the damage and the measurement's
+  unavailability, and distinguishes any RETAINED placement from a newly measured displacement. The transport and
+  assembly layer establishes the unit's identity; the engine never manufactures one from missing bytes, and an
+  unidentifiable gap gets explicit gap accounting rather than an invented frame key. "No measurement" does not mean
+  erasing the audit record, and "no new placement decision" does not mean the retained placement is zero (fail
+  closed on the measurement, never on the record).
 - **Displacement**: the picture top against its standard line, 23 in each field.
 - **Comparator**: the value seen most often since the last reset, held in a fixed array of eight slots (owner: "8
   sounds fine"); equal counts do not change the ordering (owner); a ninth distinct value replaces the least-counted
@@ -1168,7 +1182,10 @@ top, no comb correction of a settled crop (under a maintained lock the settled c
 moves a field; EVALUATING an alignment candidate at acquisition or reacquisition is a different operation from
 COMMITTING one to the output, and only the second moves anything), no position claimed through
 damage (the geometry holds, the position is Unknown),
-no top-reliability history, no windows, no thresholds that are not a stated measurement. Each was measured to fit fixture A rather than the raster.
+no top-reliability history, **no smoothing or decision window that substitutes persistence for qualified
+geometry**, no thresholds that are not a stated measurement. (The ban names a MECHANISM, not a temporal
+extent: the contract elsewhere REQUIRES successive-field evidence — for static detail, head-catch
+continuity and fades — and requires local spatial measurement apertures. Neither is forbidden here.) Each was measured to fit fixture A rather than the raster.
 
 ## 7. (reserved)
 

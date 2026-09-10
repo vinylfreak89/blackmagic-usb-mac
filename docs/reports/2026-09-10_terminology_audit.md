@@ -15,42 +15,58 @@ different things hide under "undefined":
 An existing identifier is not sufficient for A. It must govern the same object and the same phase —
 which `comb_safe` does not, and that is the sharpest thing this audit found.
 
-## The headline: `comb_safe` conflates two opposite meanings
+## The headline: `comb_safe` is a boolean where three separate facts are needed — and the engine does not implement rule 9
 
 `field_registration.c:697` — `out->comb_safe = settled && out->comb_check == FIELDREG_COMB_AGREE;`
 with `FIELDREG_COMB_NOT_APPLICABLE = 0, AGREE, DISAGREE, FLAT`.
 
-So **`comb_safe == false` means EITHER "the comb was evaluated and disagreed" OR "the comb was never
-evaluated"** — and under a maintained lock the comb is deliberately not measured (rule 9), so the
-second is the ordinary case. The contract burns this flag into the review overlay (§8's render spec)
-where a reader will take it as a property of the frame.
+**`comb_safe == false` covers four different situations**, and one of them is not a comb result at all:
+AGREE *while not settled*; DISAGREE; FLAT (no decidable evidence); NOT_APPLICABLE (never evaluated).
+§8 burns this single boolean into the review overlay, where a reader takes it as a property of the
+frame.
 
-This is the "missing is not a value" defect: a flag that conflates *confirmed bad* with *couldn't
-tell*. **Disposition B** — the overlay must distinguish evaluated-and-disagreed from not-evaluated,
-and the contract must say which it shows. Codex flagged the object/phase mismatch; the enum confirms it.
+⚠️ **"Confirmed bad" is too strong for the DISAGREE case** (Codex's correction to this audit's first
+version): a comb disagreement is not a verdict that the source frame is bad. What the overlay needs is
+three facts kept apart — **whether evaluation occurred**, **its result or its inability to decide**,
+and **the reason** — with lock state shown separately rather than folded in. Substituting the existing
+`comb_check` enum is NOT sufficient on its own: it does not establish that every current
+NOT_APPLICABLE and FLAT path carries the meaning the overlay would then assert.
+
+⚠️ **And this is not an overlay relabel. MEASURED in the engine (2026-09-10):**
+`field_registration.c:984` calls `comb_confirm(engine, raster, measurement, out)` **unconditionally on
+every unit**, with no lock-state guard at the call site. Rule 9 says "under a maintained lock the
+engine tracks geometry and does NOT measure the comb". **So COMB NOT EVALUATED under a maintained lock
+is REQUIRED behaviour that this code does not implement** — the audit's first version treated it as
+the ordinary case, which is policy read as implementation. The work is a record/schema change *and* an
+execution-path change, not a label.
 
 ## The rest
 
-| term | sites | disposition | basis |
-|---|---|---|---|
-| `0x0800` | 2 | **A** | the device's no-signal format code, measured and described in CLAUDE.md §5–6. Same object, same phase. Point at it. |
-| `comb_safe` | 1 | **B** | above. |
-| "normal picture" (vs "program") | 9 | **A**, with a naming repair | rule 5 defines the gate operationally — "where the signal-state layer does not report program". The contract then uses two names for one gate. One name, pointing at rule 5. |
-| "a source's stable interval" | 1 | **A/C** | `experiments/stable_interval_check.py` gives an operational test, but its interval is a PER-SOURCE constant (capture 1's is counter ≥ 6667). The contract should say the interval is measured per source, not name one. |
-| "static, detailed picture" | 1 | **C** | implemented (`static_comb_test.c` has `real_picture_fluctuation_does_not_discard_static_detail` and `linear_pan_has_no_static_detail`), but CLAUDE.md records the calibration as UNRESOLVED — the recalibrated mask still preferred a wrong +2 on a coherent pan. What counts as satisfying it is not established. |
-| "WELL EXPOSED" | 2 | **C + D**, split | the empirical half (what exposure makes the box's extent readable) is measurable and unmeasured. The half it feeds — whether a box's fixed value is taken once from a well-exposed unit and held under the lock, or re-measured per unit — is POLICY, and CLAUDE.md already records it as the open design question. Only the second is his. |
-| "lift-off point" | 2 | **B** | 8c makes the hold turn on its ABSENCE, and nothing implements or defines it: `grep -rn lift-off src/` finds one hit, in `SWITCH_UNKNOWNS.md`, which itself records "or a lift-off classifier. Those questions remain open." A hold criterion resting on an undefined absence. |
-| "jump further than expected" | 1 | **C** | §1's TEMPORAL SOUNDNESS test. "Expected" is not stated; CLAUDE.md records the partial line's travel as one row, so it is likely definable from measurements already in hand rather than needing a ruling. |
-| "near an edge" | 1 | **C** | same passage, same footing. |
-| "band event" | 1 | **B** | §1 says a sound departure "should not register as a band event", so the term gates a report, and nothing defines or implements it (`band_event`: 0 hits in `src/`). |
+| term | disposition | basis |
+|---|---|---|
+| `0x0800` | **A** | the device's no-signal format code, measured and described in CLAUDE.md §5–6. Same object, same phase. Point at it. |
+| `comb_safe` | **B** | above — and the execution path, not only the record. |
+| "normal picture" (vs "program") | **A**, with a naming repair | rule 5 defines the gate operationally — "where the signal-state layer does not report program". The contract then uses two names for one gate. |
+| "a source's stable interval" | **B** | ⚠️ corrected: `experiments/stable_interval_check.py` TESTS a supplied interval; it does not establish how an interval is independently IDENTIFIED. So this is not "defined elsewhere" — the identification procedure is missing, and its per-source nature (capture 1's is counter ≥ 6667) is a property of the source, not of the term. |
+| "static, detailed picture" | **C** | implemented (`static_comb_test.c`), but CLAUDE.md records the calibration as UNRESOLVED — the recalibrated mask still preferred a wrong +2 on a coherent pan. What satisfies it is not established. |
+| "WELL EXPOSED" | **already answered — not open** | ⚠️ corrected: this audit's first version sent "held versus re-measured per unit" to the owner. **Rule 8a already answers it** — the extent is measured well exposed and HELD, with reassessment and invalidation elsewhere, and 8a supplies the discriminator: a fade shows the level falling while the band edges stay put and invalidates nothing; only an edge moving *while the level is steady* releases the geometry. What remains is detector work (how "well exposed" is qualified, how the fade is measured), not a ruling. |
+| "lift-off point" | **B/C, distinguished** | 8c makes the hold turn on its ABSENCE. ⚠️ corrected: `grep` finding one hit does NOT establish that no equivalent implementation exists, nor that the term lacks a complete semantic definition. Two separate gaps — a missing DEFINITION and possibly-missing CODE — and they must not be conflated. |
+| "jump further than expected" | **C** | §1's TEMPORAL SOUNDNESS test. ⚠️ corrected: "the partial line's one-row travel" does NOT define it. Temporal qualification also concerns the identified boundary's HORIZONTAL movement, censoring, and field order (CLAUDE.md's B5 prerequisite). |
+| "near an edge" | **C** | same passage, same footing, same correction. |
+| "band event" | **B/C, distinguished** | §1 says a sound departure "should not register as a band event", so it gates a report. Zero hits for `band_event` in `src/` — which, as above, is evidence about that identifier and not about whether equivalent behaviour exists. |
 
 ## What this changes
 
-**Nothing is an owner question except one half of "WELL EXPOSED"**, which is already on his list. The
-rest is engineering: two things to implement or state (`comb_safe`'s two meanings, "lift-off point",
-"band event"), three to qualify by measurement, two to point at existing definitions, and one naming
-repair.
+**Nothing here is an owner question.** The audit's first version sent one half of "WELL EXPOSED" to
+him; rule 8a already answers it, and that is withdrawn. Everything else is engineering, in two kinds
+Codex's distinction keeps apart: **missing implementation or specification** (`comb_safe`'s three
+facts and rule 9's execution path, "lift-off point", "band event") and **missing empirical
+qualification** ("static, detailed picture", "jump further than expected", "near an edge", the
+stable interval's identification procedure).
 
-⚠️ This audit does not fix anything. It sorts. Each B and C row is work, and the C rows in particular
-must not be closed by inventing a threshold — "static, detailed picture" is exactly where a fitted
-constant would look like a definition.
+⚠️ This audit sorts; it fixes nothing. Two standing cautions:
+- The **C** rows must not be closed by inventing a threshold. "Static, detailed picture" is exactly
+  where a fitted constant would look like a definition.
+- **Absence of an identifier is evidence about that identifier.** It establishes neither that a term
+  lacks a definition nor that no equivalent code exists, and this audit's first version used it for
+  both.
