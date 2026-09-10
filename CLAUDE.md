@@ -3050,6 +3050,20 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   defects or condemn the limit unfairly.
   ⚠️ Two of the four are one defect found twice, not two: both agents seeded from the same illustrations
   independently, within ten minutes. That is the argument that it is structural rather than either being sloppy.
+- **A pipeline reports its LAST command's status, and the usual guard against that is a bash-ism which is SILENTLY
+  EMPTY in zsh — sixth and seventh members of the family, one each (2026-09-11).** The peer session ran
+  `python3 check.py old.md | head -8; echo "exit=$?"`, read **exit=0** from `head` rather than from python, and
+  nearly recorded "prints the defect but exits 0" as a defect in a working instrument. Claude, verifying the same
+  fix minutes earlier, wrote `... | head -8; echo "exit=${PIPESTATUS[0]}"` — which printed **`exit=`**, blank, and
+  read past it. **`PIPESTATUS` is bash; this shell is zsh, where the array is `$pipestatus` and is 1-INDEXED**, so
+  `${PIPESTATUS[0]}` is empty here always and that guard is vacuous every time it is written.
+  Working forms under zsh: `cmd | head; echo "exit=${pipestatus[1]}"`, or `set -o pipefail`, or simplest — **do not
+  pipe the command whose status you are checking.** A blank where a number belongs is the tell, and it is easy to
+  miss precisely because nothing failed.
+  ⚠️ **The instance worth keeping is that the guard AGAINST this family was itself a member of it**: a construct
+  that succeeds, prints something plausible, and answers a question nobody asked. That is the whole family in one
+  line, and it is why "check the exit status" is not sufficient advice — the check has to be one this shell
+  actually implements.
 - **A script that accepts an argument it never uses — fifth member of the answers-a-different-question family
   (2026-09-11).** A peer session tried to run `superseded_check.py` against an older revision by passing a path.
   The script ignored `argv` and re-checked HEAD, so the peer read one result as evidence about a different
