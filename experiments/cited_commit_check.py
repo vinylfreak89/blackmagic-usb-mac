@@ -23,10 +23,22 @@ binaries and generated fixture". Existence is a PROXY for "carries what is attri
 two come apart exactly where it matters (peer session, 2026-09-11).
 
 SO THIS PRINTS EACH COMMIT'S REAL SUBJECT BESIDE THE PROSE THAT CITES IT, and does not try to judge
-the match. A heuristic was tried and REJECTED before shipping: flagging citations whose subject shares
-no content words with the citing sentence MISSES `b7a94d5`, because both contain "test" -- the
-motivating case defeats the obvious rule, which is the fitted-to-instances defect one step earlier
-than usual. Automating the presentation and leaving the judgement to a reader is the honest split.
+the match. A heuristic was tried and REJECTED before shipping: flagging citations whose subject
+shares no content words with the citing sentence MISSES `b7a94d5`. The motivating case defeats the
+obvious rule -- the fitted-to-instances defect one step earlier than usual, a RULE built from an
+instance that the instance escapes.
+
+⚠️ THE SHARED WORD IS `v9`, AND THAT IS STRUCTURAL RATHER THAN UNLUCKY (peer session, 2026-09-11,
+correcting a weaker version of this note). A v9-section citation and a v9-fixture commit are
+GUARANTEED to share it. So the rule is weakest exactly where mis-citation is most likely -- between
+near-neighbours in the same subsystem, which is also why the wrong hash was plausible enough to be
+written down. "They happen to share a word" reads as bad luck; `v9` says the rule cannot work here.
+
+⚠️ AND THE FIRST MEASUREMENT OF THIS WAS ITSELF THE PROXY DEFECT. It reported the shared word as
+"test", taken from a +-200-CHARACTER WINDOW around the citation -- which reached backward into an
+unrelated preceding sentence ("parity test on raw units"). A fixed-width character window standing in
+for "the citing sentence" is the same proxy as the +-700-character marker check that once passed on a
+live defect. The measurement used to reject a proxy was made with one. Automating the presentation and leaving the judgement to a reader is the honest split.
 
 WHAT IT CANNOT DO. It cannot tell you a citation is attached to the right sentence. It puts the
 evidence side by side so a reader can see; that is all.

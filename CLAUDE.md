@@ -3164,10 +3164,19 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   |---|---|---|
   | substring count | is this a USE of the term | characters |
   | ±700-character marker check | is this occurrence WITHDRAWN | characters near it |
+  | ±200-character overlap test | what does the CITING SENTENCE say | characters near the citation |
   | `PIPESTATUS` guard | did the first stage FAIL | a name that expands to nothing |
   | late `pipestatus` read | did the first stage FAIL | an array whose lifetime had ended |
   | census seeded from examples | does the document use the convention | the illustrations of it |
 
+  ⚠️ **The ±200 row was produced while REJECTING a proxy, which is the sharpest instance of the lot
+  (2026-09-11).** Testing whether a content-overlap rule could catch a mis-cited commit, the overlap was measured
+  over ±200 characters around the citation — a window that reached backward into an unrelated preceding sentence and
+  returned a shared word absent from the citing sentence. Measured from the sentence itself the shared word is a
+  single one: `v9`. **And `v9` is structural, not unlucky** (the peer's correction): a v9-section citation and a
+  v9-fixture commit are GUARANTEED to share it, so a content-overlap rule is weakest exactly where mis-citation is
+  most likely — between near-neighbours in the same subsystem, which is also why the wrong hash was plausible enough
+  to be written down at all. "They happen to share a word" reads as bad luck; `v9` says the rule cannot work here.
   **A proxy has no way to signal that it has come apart from what it proxies** — which is exactly why every one
   returned a plausible answer rather than an error. Writing the instrument in the same medium as its subject (text
   tools over text, shell over shell, no type boundary) is HOW it happens, not what the defect is; the defect would
