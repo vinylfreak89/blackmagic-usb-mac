@@ -2867,11 +2867,16 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   | partial disappears | 0 | 0 | **+1** | 0 | 0 |
   | accepted expansion | 0 | 0 | 0 | 0 | 0 |
 
-  **Nothing reaches 5/5 and the two live readings fail on DISJOINT sets.** `top − 23` fails only upward
-  displacement, and not as a defect — rule 11 is the owner's ruling that an earlier start cannot be established
-  because the Shuttle overwrites the evidence. `count − extent` fails only the two head-catch events. **So the
-  temporal qualification that classifies which event is occurring is LOAD-BEARING, not a tidying-up: the rule is
-  incomplete without it, and there is no fifth quantity to look for.**
+  **Nothing reaches 5/5, and the temporal qualification that classifies which event is occurring is therefore
+  LOAD-BEARING rather than a tidying-up: the rule is incomplete without it, and there is no fifth quantity to look
+  for.**
+  ⚠️ **The matrix's `top−23` zeros are OVERSTATED and the "disjoint failure sets" claim with them** (Codex,
+  2026-09-10, correcting this entry): **at a clamped top, `top − 23 = 0` is not an observed zero displacement** — it
+  means the visible boundary does not resolve zero from upward displacement. That applies to the head-catch and
+  disappearance rows too, unless a separate observation establishes the picture stayed still. So `top − 23` is a
+  CONSTRAINT there, not a value, and the two readings' failure sets are not demonstrably complementary. The
+  accepted-expansion row likewise assumes count and extent change together, which the account must establish rather
+  than assume. What survives is the load-bearing conclusion above; the complementarity does not.
   ⚠️ Two constraints on building it. It must classify from evidence available in the unit, never from which answer
   keeps `d` still — a classifier tuned so the arithmetic comes out right on those five events is a threshold fitted
   to a fixture and is undefined on the sixth. And the upward case stays hard: when the event is real and the
@@ -2889,6 +2894,29 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   replacing it is a substantive change rather than filling a gap. Testing candidate readings against events whose
   required outcome the rulings already fix is a DECISION PROCEDURE, not a preference; the error both times was
   applying it to three events when five were specified.
+- **The agreed shape for the displacement decision (Codex, 2026-09-10; B5 remains OPEN behind its prerequisite).**
+  Two independently qualified observations feeding ONE decision — never a selector that picks whichever reading
+  matches the presumed event. Retain the measured top, the raw switch boundary and the raw extent with their
+  observability and uncertainty. Derive a top-based displacement only where the source's actual picture origin is
+  IDENTIFIED; derive an extent-based one only where the observed boundary is qualified to represent displacement of
+  the retained geometry rather than independent switch motion. Where both are qualified they must agree within
+  measurement uncertainty, and **disagreement is reported rather than authorising a choice**. Where one is
+  qualified, use it under its stated conditions; where neither is, displacement is Unknown and the placement-hold
+  rule applies. **A positively identified head-catch event explains why the raw extent changed WITHOUT supplying a
+  displacement reading — it does not turn that observation into a zero. Holding placement is not evidence that
+  displacement was zero.**
+  **The prerequisite, and it is empirical rather than editorial:** temporal soundness needs the position of an
+  IDENTIFIED TIMING LANDMARK across successive fields plus evidence it is the same landmark — its line, horizontal
+  position, uncertainty and censoring status; tracking in actual field order including the owner's either-field
+  predecessor condition; a SOURCE-DERIVED range of credible continuation, never a travel rate borrowed from another
+  capture (CLAUDE.md already records capture 1 sweeping 1-145 samples per unit against capture 4's 5-6); evidence
+  that disappearance or emergence at the window edge is consistent with that continuation; and corroboration
+  sufficient to separate a switch excursion from whole-field displacement. "Near the edge" is then a measured
+  position and uncertainty consistent with the proposed crossing, and "further than expected" needs that justified
+  continuation range — neither is fixed by choosing a convenient distance, and persistence alone does not establish
+  landmark identity. Until that observable is demonstrated to distinguish genuine upward displacement from a
+  stationary-picture head-catch event, including censored endpoints and simultaneous motion, the answer is Unknown
+  rather than a forced classification.
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
   Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
   answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back
