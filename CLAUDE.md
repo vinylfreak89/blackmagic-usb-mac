@@ -3060,6 +3060,7 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   | 1 | remove a queue row's anchor | `NOT IN THE QUEUE` |
   | 2 | change the contract's wording under an anchor | `NOT IN THE QUEUE` **and** `QUEUE ANCHOR BROKEN` |
   | 3 | add a marker with no row | `NOT IN THE QUEUE` |
+  | 4 | two queue rows for one marker | `QUEUE ANCHOR BROKEN` **and** `COVERAGE ASSUMPTION BROKEN` |
 
   ⚠️ **Stated accurately rather than flatteringly, because the peer's version was the generous one and this is the
   same discipline**: control 3 did NOT add a direction — 1 and 3 produce the same failure by different ROUTES. Its
@@ -3070,7 +3071,13 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   orphans its marker too, so the case is unreachable **by the shape of the data** rather than untested by neglect.
   **Which means it becomes reachable the day the queue holds two rows for one marker, and the control set would
   silently stop covering it.** So the shape is now ASSERTED by the instrument (`COVERAGE ASSUMPTION BROKEN`),
-  exercised by duplicating a row. **The general move is worth more than the instance: when a control set is
+  and control 4 exercises it IN THE SELFTEST — which it did not at first: the assertion landed with only a one-shot
+  commit probe behind it, and the peer session caught that the selftest still printed four controls. ⚠️ **An
+  assertion nothing exercises is worse than none**, because it reads as protection while its condition could be
+  mis-stated and pass forever, in a file whose whole subject is guards that do not run. Control 4 duplicates a REAL
+  queue row matched from the file's own formatting, so a formatting change makes it report UNAVAILABLE rather than
+  passing quietly. And it confirms the prediction that motivated the assertion: with two rows for one marker,
+  `QUEUE ANCHOR BROKEN` does become reachable. **The general move is worth more than the instance: when a control set is
   complete only because of a property of the current data, assert that property — otherwise coverage lapses without
   anything failing**, which is this whole family again one level up.
 - **The two-stores failure appeared THREE distinct times in one evening, and the third was in the documentation of

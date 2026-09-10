@@ -170,6 +170,22 @@ def selftest() -> int:
         print("  positive 3 (a new marker, never mirrored): expect FAIL ... %s" % ("PASS" if r3 else "FAIL"))
         ok = ok and bool(r3)
 
+        # POSITIVE 4: the COVERAGE ASSUMPTION itself -- two queue rows for one marker. Without this the
+        # assertion above is an assertion nothing exercises, which reads as protection while its
+        # condition could be mis-stated and pass forever. That is worse than no assertion, and it is
+        # the state this file's own docstring is about. Duplicating a REAL row, not a synthetic one, so
+        # the control fails if the queue's actual formatting ever stops matching what the check counts.
+        rows = [l for l in q.split("\n") if l.startswith("| **") and "with the owner" in l]
+        if not rows:
+            print("  positive 4: UNAVAILABLE -- no queue row matched the expected shape")
+            ok = False
+        else:
+            q4 = q.replace(rows[0], rows[0] + "\n" + rows[0], 1)
+            qp4 = os.path.join(d, "q4.md"); open(qp4, "w").write(q4)
+            r4 = run(queue_path=qp4, quiet=True)
+            print("  positive 4 (two rows for one marker): expect FAIL ... %s" % ("PASS" if r4 else "FAIL"))
+            ok = ok and bool(r4)
+
     print("SELFTEST %s" % ("OK" if ok else "FAILED"))
     return 0 if ok else 1
 
