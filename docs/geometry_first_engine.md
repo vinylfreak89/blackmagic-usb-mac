@@ -730,9 +730,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    A structureless band at one end only is not a box: that is full picture. Failure to DETECT a second bound is not
    positive evidence that only one exists; that stays Unknown. "Full picture" does not by itself establish
    displacement or authorize a lock. Structurelessness at ONE end lowers confidence and needs corroboration; at BOTH
-   ends it fixes the geometry and it is a box (owner, 2026-09-09, with "the top of the picture SHOULD be the
-   [warning card's] 'WARNING' label and the bottom the last text line. everything else is too close to blanking.
-   that should properly end up being a fixed size and centered in the middle, which will correct the geometry").
+   ends it fixes the geometry and it is a box (owner, 2026-09-09).
    The box's geometry is the extent measured while the picture is WELL EXPOSED, and it is HELD. A fade never
    invalidates anything — "geometry (including the box) can't change during a fade. that must be a hold" (owner,
    2026-09-09) — because a fade shows as the picture's overall level falling while the band edges stay put in the
@@ -817,7 +815,15 @@ cues present one frame and absent the next mean they shifted away, near-certain 
      bound, is retracted with it.
    - An earlier draft made the agreement test the only route to setting switch bounds; 8c's "from no bounds" is the
      correction.
-   Snow-like signal, splices and relocks are delivered by the signal-state layer; the engine reads the raster only.
+   - A CONTENT-boundary description was once used to support the box's bounds (owner, 2026-09-09: "the top of the
+     picture SHOULD be the [warning card's] 'WARNING' label and the bottom the last text line. everything else is
+     too close to blanking. that should properly end up being a fixed size and centered in the middle, which will
+     correct the geometry"). That describes where the card's CONTENT begins and ends. It is not the box's bounds,
+     which include the bars (8a, 8b) — reading it as the box's extent is the content-versus-box mistake that
+     retracted `experiments/box_vs_switch.py`.
+
+   **Snow-like signal, splices and relocks are delivered by the signal-state layer; the engine reads the raster
+   only.** (Operative, not history: this is the architecture boundary, and it applies throughout.)
 9. Blank lines under the picture could indicate that the field sits high and need confirmation — by the comb at
    acquisition or reacquisition, or by a qualified caption, the two routes of the Source lock (owner); the band's extent alone never moves anything; new luma at the top alone never moves anything either. The
    offset is read every unit from the bands above the picture, or, with the top at line 23, from the band's extent
