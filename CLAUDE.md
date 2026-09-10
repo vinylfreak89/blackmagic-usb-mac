@@ -3049,7 +3049,24 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   docstring limit is a STATED LIMIT and the other two were DEFECTS, and treating them alike would either excuse the
   defects or condemn the limit unfairly.
   ⚠️ Two of the four are one defect found twice, not two: both agents seeded from the same illustrations
-  independently, within ten minutes. That is the argument that it is structural rather than either being sloppy.
+  independently, within ten minutes.
+  **The constructive half, which the table alone does not give: derive the controls from the ways the INVARIANT can
+  be violated, and from the ROUTES to each, rather than from the occurrences observed.** `owner_queue_check.py` is
+  the first instrument here built that way rather than fitted into shape afterwards. Measured, its four controls
+  cover:
+
+  | control | mutation | failure produced |
+  |---|---|---|
+  | 1 | remove a queue row's anchor | `NOT IN THE QUEUE` |
+  | 2 | change the contract's wording under an anchor | `NOT IN THE QUEUE` **and** `QUEUE ANCHOR BROKEN` |
+  | 3 | add a marker with no row | `NOT IN THE QUEUE` |
+
+  ⚠️ **Stated accurately rather than flatteringly, because the peer's version was the generous one and this is the
+  same discipline**: control 3 did NOT add a direction — 1 and 3 produce the same failure by different ROUTES. Its
+  value is that its route is the one that will actually occur, since nobody deletes a queue row and everybody
+  eventually adds a question and forgets the list. And a gap remains: no control produces `QUEUE ANCHOR BROKEN`
+  alone, because with one row per marker a broken anchor always orphans its marker too. That is a limit of the
+  current coverage, not a proof the case is unreachable. That is the argument that it is structural rather than either being sloppy.
 - **A pipeline reports its LAST command's status, and the usual guard against that is a bash-ism which is SILENTLY
   EMPTY in zsh — sixth and seventh members of the family, one each (2026-09-11).** The peer session ran
   `python3 check.py old.md | head -8; echo "exit=$?"`, read **exit=0** from `head` rather than from python, and
