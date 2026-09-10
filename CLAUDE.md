@@ -4245,6 +4245,35 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   at a ruling marked delivered is a reliable smell. The same pass found the tracker misdescribing the code it was
   about — citing `field_registration.c:436` and an assumed `d = 0` where `:474-476` computes
   `visible_d = m->top - origin` from the measured top.
+- **THE HARNESS REBUILD, STEP 1: the SOURCE's blanking reference, pooled at each row's own instant
+  (`experiments/source_reference.py`, 2026-09-11).** Every level-derived number taken that night used the DEVICE's
+  regenerated fill; contract `:531` names the SOURCE's own blanking and says "device-generated fill never
+  establishes it". **The operation is the whole finding**: averaging a fixed column range returns 51.97 (picture),
+  counting a run in a fixed window returns "one usable sample", and both bound a temporal quantity spatially. Ask
+  each row for its OWN transition -- its own steepest fall, found not located -- and pool the settled samples after
+  it ACROSS rows, each at its own time:
+
+  | | value |
+  |---|---|
+  | field-readings returning UNKNOWN | **0 of 120** |
+  | source reference level | median **1.430**, p10 1.421, p90 1.451 |
+  | pool per field-reading | **3,183 samples from 200 rows** |
+  | **unit-to-unit sd of the level** | **0.0122** |
+  | a SINGLE row, for comparison | sd **0.492** |
+  | device fill (comparison only, forbidden as reference) | 1.3754, sd 0.0036 |
+
+  **Pooling across rows at each row's own instant takes the reference from sd 0.492 to 0.0122 -- fortyfold -- and
+  within about three times the device fill's stability, while being the reference the contract actually names.**
+  Nothing is typed in: no column, no threshold, no level. The statistic is the MEAN, per his accepted ruling.
+  ⚠️ **METHOD still moves the answer by more than measurement noise does, and that is the open part.** Four
+  estimates of this same quantity now exist: **1.410** (steepest fall, bright programme only), **1.430** (this,
+  pooled over the registerable region), **1.540** (a relay's, using a cut three codes above the device fill -- a
+  typed-in number, which rule 4 forbids), and this file's previously recorded **1.459-1.53**. All sit above the
+  device fill. The spread across methods is about 0.13 codes against a unit-to-unit stability of 0.0122, so **the
+  choice of method dominates the measurement by an order of magnitude** and no estimate is settled yet.
+  ⚠️ This is ONE PRIMITIVE, not the rebuild. Still owed: a top reading that does not rest on a level threshold, a
+  reference that reports T rather than validating S, and an honest Unknown wherever the raw rows do not decide.
+
 - **THE BAR FOR REACHING THE OWNER (his standing instruction, 2026-09-11): UNANSWERABLE FROM HIS OWN WORDS, or
   the derived answer was rejected and the two agents cannot converge.** His words: *"seriously, most of this is
   understandable by common sense... my literal words have said this in other parts of the transcript, repeatedly.
