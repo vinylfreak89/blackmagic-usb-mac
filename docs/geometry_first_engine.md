@@ -401,6 +401,15 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   reference when present; tape signal cannot reach them; their absence, POSITIVELY ESTABLISHED, puts the raster in the invalid class and triggers the
   full reset (Lock-like loss and rule 13) — it is NOT a lock-like-loss observation, and a failed decode or samples
   unavailable through transport damage are not absence.
+- **"Fail open" and "fail closed" are DESCRIPTIVE terms, not executable dispositions.** Declining to correct can
+  honestly be described either way — failing closed to CORRECTION (no new corrective placement without sufficient
+  evidence) and failing open for DELIVERY (the picture continues to be delivered without it) — because they concern
+  different boundaries, so neither the owner's "fail open" nor his "fail closed" is backwards. **Each rule therefore
+  states separately** whether delivery continues, whether a record is emitted, whether an existing placement is held
+  or correction bypassed, and whether learned state is retained or reset. These are not one behaviour: emitting no
+  record suppresses an audit output; never acquiring a lock prevents a new corrective placement; holding an existing
+  placement preserves a possibly nonzero correction; and passing through without correction is NOT the same as
+  holding that correction. The owner's quotations stay verbatim throughout.
 - **Pedestal**: the tape's black — the other head's black rows at the bottom of the band.
 - **Source-measured levels**: levels are measured per source, at runtime (owner, 2026-09-10): "do not take numbers
   that are in the programs own measured thing as gospel. once again, NO MAGIC NUMBERS. measure things per source.
@@ -769,7 +778,11 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    never re-learned; a unit that disagrees with it is reported (rule 2).
    **The switch band is not detectable in every unit even of a clean source. Where it is absent the head switch's
    POSITION LINE is HELD, not removed** — moving where the head switch is, in the absence of a line, is a hold.
-   The hold is lost when the total NUMBER of bands changes; **ordinary clipping changes do not count** (owner,
+   **The hold is lost when the count of SWITCH LINES OTHER THAN THE PARTIAL LINE changes**, with ordinary clipping
+   excluded and the accepted-expansion qualification below preserved. (This rule read "the total NUMBER of bands
+   changes" in its earlier form; that wording is kept in the quotation that follows as history. It is not a separate
+   band-count requirement — nothing measures a number of bands, and nothing in the code establishes what it meant.)
+   **Ordinary clipping changes do not count** (owner,
    2026-09-09, narrowing his own earlier wording: "I think I was a bit too harsh on this rule"). **Sharpened by
    his 2026-09-10 ruling, which rule 8 carries in full: the count that decides is the switch lines OTHER THAN THE
    PARTIAL LINE.** A change in the partial line alone does not invalidate the hold, and the count may expand where
