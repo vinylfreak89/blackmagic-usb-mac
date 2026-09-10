@@ -2846,6 +2846,31 @@ signed-blind, the peak sits one row above the engine's T on **33 of 35** of its 
 readings appear against `T = S-1` where positive-only had none, so the signed-blind version is marginally noisier
 on that axis; reported, not preferred.
 
+**CAPTURE 1 IS LOCKED, AND `(0,0)` EVERYWHERE IS THE CORRECT ANSWER RATHER THAN A SHORTFALL -- scored 2026-09-11
+(Codex implemented at `2a06c9e`, Claude scored).** Plain comb energy, the mandatory-switch condition removed from
+both acquisition routes, and comb confirmation gated to acquisition only, all in one change: **302 locked units of
+919, 296 of 508 from counter 6667, first acquisition at 6811**, against a record of zero locks on every previous
+replay. Source labels, registration eligibility, raw tops, T/S readings, measurability flags and applied pairs
+changed on **zero** units, so the lock is the only thing that moved.
+**All 919 applied pairs are `(0,0)`, and that was flagged to me as "lock acquired but the picture does not move",
+i.e. as a lesser result. Checked, it is not:** the engine's own export over counters >= 6667 measures field 1's
+picture top at **line 23 in 508 of 508 units** and field 2's at **286 in 477 of 508** -- exactly the contract's
+picture origin, so `d = top - origin = 0` is the RIGHT answer for this source and applying it is correct behaviour,
+not an absence of behaviour. The 31 field-2 readings at 287-295 are the dark-scene-top class this file already
+records as content rather than displacement, which the contract says must NOT move the crop; holding `(0,0)`
+through them is the intended behaviour too.
+⚠️ **So capture 1 cannot demonstrate corrective movement, and no replay of it ever will.** That is a property of
+the source, not of the engine: a capture whose picture never leaves the origin exercises acquisition and holding
+but not correction. Corrective movement has to be demonstrated on captures 2-4, where the EP recording sits at
+(+2,+2) and the SP at (+1,0)/(+2,0). Reporting "all pairs (0,0)" as a shortfall on capture 1 would be scoring the
+engine against something this fixture cannot show.
+⚠️ **And the owner's 09:18:05 acceptance criterion -- "a valid result should keep the first 6 lines vertically
+stable in position... always" -- is therefore passed TRIVIALLY here and must not be reported as evidence.** With
+`(0,0)` applied on every unit the 486 window never moves, so the first six lines cannot move; the criterion is
+satisfied without being exercised. It becomes a real test only on a capture where the applied offset changes.
+⚠️ Unretired by this: the synthetic pan still gives a wrong `+2` at acquisition, and Codex carries it as a known
+open acquisition failure rather than defending against it.
+
 **CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
 FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
 clear it when normal timing returns -- which the engine already does -- and Codex verified upward and downward
