@@ -2255,6 +2255,33 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Arrival/calibration review (`8be9d89` through `e847da7`, 2026-09-11).** Details and deciding probes are
+`docs/reports/2026-09-11_arrival_calibration_review.md` and `experiments/arrival_review_controls.py`.
+Both supplied selftests pass; forcing the rejected arrival variant into production makes the abrupt-step
+test fail at 717 instead of 700, so that control genuinely defends the narrow choice. It does not establish
+the finder as an identified blanking transition. The gradual recovery test permits ±10 samples and currently
+returns 701 for want=700, while the injected ramp floor is at 704; "4/4 exact" is not the test's result.
+Noise-only fixture families yield non-Unknown transitions in 61/1000 seeds. A terminal dark-content step
+trains its level as source blanking. A quantized ramp plateau stops settlement at 26 before the floor 1.6,
+yielding pooled 17.8667; the long-tail selection can also bias a known mean of 3.0 to 1.0.
+
+The per-unit floor has an ACTUAL wrong-field read: field 2's target 260..262 is combined with origin 286,
+so it reads field 1's rows 256..258. Its selftest never calls `unit_reading`. Asymmetric synthetic fields
+reverse the decision under a coordinate-only correction. Capture 1 hides the bug: all 508 keyed field-2
+results are unchanged by that correction because BOTH target triplets have maximum transition 719 on every
+unit. The supplied 680/1016 and 354/81280 figures reproduce. Bright 216/550 is an assertion rate, not yet
+qualified switch coverage; its paired margins are exactly 216 at +1 sample and 334 at zero, not fractions
+inferred by subtracting aggregate medians. Every target maximum is 719, so the bright comparison tests
+whether the calibration maximum is below that endpoint.
+
+The parity split avoids direct threshold resubstitution. Although the reference median sees validation
+rows, that scalar CANCELS in both max comparisons; calling these rates circular through it would be wrong.
+Disjoint parity indices do not prove equal content effects or switch identity, and per-row false fires are
+not the false-assertion rate of a three-row maximum. The earlier operating-point sweep is prose-only in
+`0c72441`; its executable/keyed populations are needed to audit it. The peer's stronger conclusions below
+are not accepted by this review; the measured outputs and their limitations are retained. No engine,
+contract, original harness implementation or render is changed by the review.
+
 **No-jump reference review (`dc339f0` via `f668f0b`, 2026-09-11).** Reproduction and falsifying controls are
 in `docs/reports/2026-09-11_no_jump_reference_review.md`; executable review diagnostics are
 `experiments/no_jump_review_controls.py`. The later peer measurement entries' attribution of adjacent-LINE
