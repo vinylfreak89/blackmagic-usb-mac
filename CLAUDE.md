@@ -3967,6 +3967,25 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   becomes impossible it is because the EVIDENCE is unavailable, never because the observer was switched off, and the
   two have different consequences: unavailable evidence gives Unknown, a disabled observer gives silence that reads
   as no-change. Watch for it wherever a rule gates behaviour on a signal-state class.
+- **PROPERTY 7 SPLITS: the partial-line half is open work, the PEAK-LOSS half is CLOSED AS UNBUILDABLE on this
+  capture (2026-09-11).** His 09:41:23 rule has two halves with different fates.
+  **Survives:** *"the location of the partial line… should not jump. It should have a normal excursion when a line
+  disappears"* — the PARTIAL LINE is located by the departure profile, which works, so this half depends on none
+  of the closed routes. Contract `:164` carries it and it is buildable.
+  **Closed:** *"a sudden loss of the peak is information that the geometry has changed. we should be recording
+  this"* (18:25). **Detecting an ABSENCE requires a witness that establishes PRESENCE, and four routes have now
+  failed to identify the transient** — amplitude finds picture, the eight-row window WAS the detector,
+  ramp-qualified sits at a fixed column ~199 in switch and non-switch rows alike, and motion is WEAKER on the T
+  row than on ordinary rows. **With no witness that finds it when present, "suddenly gone" and "never found" are
+  the same observation** — the silence-versus-absence conflation refused for `T = S`, arriving from the other
+  direction. ⚠️ **This is a stated bound with four measurements behind it, not a TODO.** Do not rebuild any of the
+  four to satisfy it.
+  ⚠️ **Why this is NOT an owner question**, since the instinct is to escalate an unbuildable rule: **the peak is
+  not load-bearing.** He ruled it is not a regime test, the contract makes it a confirmation, and the departure
+  profile locates the region without it. Nothing is blocked, so under his standing instruction it is recorded and
+  routed around. ⚠️ And his dark-peak ruling is NOT being extended by fiat to cover this — that ruling was about
+  dark peaks specifically; what makes this non-escalating is the absence of a gate, not an inference from it.
+
 - **THE MOTION ROUTE ALSO FAILS ITS CONTROL — fourth peak route closed, 2026-09-11.** With three static routes
   dead, the remaining idea was that the transient is identified by its MOTION between units. Tested BEFORE
   deriving any continuation range, because a range presupposes identity and identity presupposes a range: are
