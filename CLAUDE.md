@@ -2494,6 +2494,36 @@ are 200 units of flat device blanking (field-1 picture-area mean 1.50, sd 0.9), 
 and **6900-7174 is about 275 units of bright programme (mean 113-128, sd 34-49)**. Split by the unit's own
 brightness, `peak_line - S` is **93 of 93 on S-1 in dim units and 106 of 107 in bright ones**, so no single content
 regime carries it.
+
+**THE TOP SKEW ROW IS THE ENGINE'S T -- but only under a RUN criterion, and the control is what says so
+(2026-09-11).** The owner, relayed: "every single row the RF peak sits at... there is horizontal skew. every single
+fucking time", "so your 23.7% class is wrong", "well the TOP skew row is". So the peak is a SYMPTOM of the skew
+rather than an independent witness, and peak-bearing versus peak-free was never a partition of the data -- which
+retires every coverage comparison in this thread, mine included, as a category error prior to any threshold
+question.
+Tested over capture 1's 284 askable field-readings with the engine's T, S and clip known, using the owner's own
+absence test with the reference learned per unit per field:
+
+| how the top skew row is found | agrees with the engine's T |
+|---|---|
+| DOWNWARD scan: first off-reference row from the picture top | **0%** -- it lands at T-236 to T-238 in 73% of readings |
+| UPWARD run: topmost row of the contiguous off-reference run reaching the clip | **71.5% exact, 94.0% within one row** |
+
+**The control explains the gap and predicted it: the per-row test fires on 9.6% of ORDINARY picture rows** (2,718
+of 28,400 at field-relative lines 100-200), which is inherent -- the reference is a 5-95% band learned from such
+rows, so about 10% of them must fall outside it. **A test with a 10% per-row false-positive rate cannot support a
+first-crossing scan**, because over 240 picture rows the first false hit arrives within the first ten. That is
+exactly how the relayed detector died (69.8% of ordinary rows scoring disturbed), and it is a general result: the
+downward scan is not a weaker version of the run criterion, it is unusable at any false-positive rate a learned
+band can achieve.
+⚠️ The residual is 22.5% of readings where the run extends ONE ROW ABOVE the engine's T. At a 9.6% per-row rate,
+chance predicts about 9.6%; 22.5% is more than double that, so the row above T is disturbed more often than chance
+and something real sits there. Not resolved: it is either the detector over-reaching or the engine's T being one
+row late, and those have opposite consequences.
+⚠️ The exclusion criterion in `switch_without_shift.py` was ABLATED: `extent >= 2` alone gives 194 unaskable, 290
+askable, 0 counterexamples -- **identical** to the version that also required a start band under 40 samples. The
+band-width term is inert and the principled check carries the result, which is what the commit promised to correct
+either way.
 ⚠️ **A consequence for the COMB work rather than the peak work: all three of `COMB_COMPARISON.md`'s ablation
 controls -- 6687, 6690, 6700 -- are CARD units**, and the maskless comb decides cleanly on real programme. Measured
 here with independent code, mean |vertical second difference| over the woven pair: card 6690-6710 minimum at 0 with
@@ -2513,7 +2543,7 @@ as rendering repairs, but "maintain the lock" does not clearly replace the older
 R3's invalid-signal gate is settled; the relay's inference that recovery has no lifecycle decision is not agreed,
 particularly against the owner's preceding "starts from scratch". R45 needs the operative earlier answer it
 references before caption-only precedence can be rewritten. No contract edits were made in this review.
-The owner's temporal correction is accepted, but the measure-zero inference in the following proposal is NOT:
+The owner's temporal correction is accepted, but the measure-zero inference in the original `86b9fcc` proposal is NOT:
 720 delivered samples cover 53.333 us of an 858-sample, 63.556-us scan, leaving 10.222 us unobserved. A physical
 transition, its first observable affected line, and a fully other-head delivered row are not interchangeable;
 their observation and phase distribution cannot be assumed. A late-crossing explanation remains a hypothesis.
@@ -2521,12 +2551,18 @@ The report also distinguishes failure of the correlation test from falsification
 selected excursion count from a proved lower bound on genuine RF events. These are review findings, not a new
 rule selecting either reader's T.
 
-**The structural consequence, which no spatial framing can state.** A delivered row is about 53 microseconds of
-sweep and the head switch is an INSTANT. T and S are therefore not two rows -- they are two quantizations of ONE
-moment: T is the line the instant falls INSIDE, S the first line entirely after it. **So `T = S-1` is the generic
-case and `T = S` is a measure-zero coincidence** (the instant landing exactly on a line boundary). That does not by
-itself adjudicate the six, because a reader can still be wrong about the instant; what it does is remove the idea
-that the two readers describe two equally likely geometries.
+**The structural consequence.** A delivered row is about 53 microseconds of sweep and the head switch is an
+INSTANT. T and S are therefore not two rows -- they are two quantizations of ONE moment: T is the line the instant
+falls INSIDE, S the first line entirely after it.
+⚠️ **"So `T = S` is measure-zero" was ALSO claimed here and it is WRONG -- Codex corrected it with the arithmetic
+and the correction is substantial (2026-09-11).** The delivered 720 samples cover **53.33 of a 63.56 microsecond
+analog line, leaving 10.22 microseconds -- 16% of every line -- UNOBSERVED.** A physical transition and the first
+wholly-other-head DELIVERED WINDOW are not interchangeable quantities: an instant landing in the unobserved 16%
+produces a delivered row with no partial in it, so `T = S` is a legitimate reading of roughly one line in six, not
+a measure-zero coincidence. Nor has any event-phase distribution been established, so even that fraction is not a
+probability. **`T = S-1` therefore cannot be defaulted to**, and the claim that the two readers do not describe two
+possible geometries is withdrawn. What survives is only that T and S quantize one instant rather than naming two
+independent rows.
 
 **Applied to the 4-2 split, it UNIFIES the six instead of splitting them, and it predicts the split.** In the
 delivered window a normal row's trailing 11-18 blank samples at columns ~702-709 are the NEXT line's blanking
