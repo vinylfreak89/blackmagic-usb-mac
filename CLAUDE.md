@@ -4147,6 +4147,45 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **THE FINDER IS REPAIRED, and it is the first change tonight whose TEST SET EXISTED BEFORE THE CODE DID
+  (2026-09-11).** Written to the diagnosis below rather than to an intuition: the criterion is ARRIVAL, not
+  magnitude — the row's final downward crossing of its own midpoint, after which it never returns, followed
+  forward to where the descent ends. `floor` is the row's own minimum, `ref` its own median, both midpoints
+  derived from those. **No search origin, no typed level, no fabrication.**
+
+  | | old criterion | repaired |
+  |---|---:|---:|
+  | agrees with the independent answer, card picture rows | **2%** of 300 | **56%** of 300 |
+  | agrees, bright programme | — | **100%** of 300 |
+  | "early" class (fall found in picture) | 44 of 300 | **0** |
+  | speaks on | 300/300 by fabricating | **300/300**, controls clean |
+  | synthetic recoveries at known positions | — | **4 of 4 exact** |
+  | negative controls (flat picture / all blanking / steep interior edge) | — | **3 of 3 return None** |
+
+  **A HIGHER-SCORING VARIANT WAS REJECTED, and that is the part worth keeping.** Referencing the descent
+  threshold at the crossing instead of just before it scores **84%** on the card — but it FAILS a synthetic whose
+  answer is genuinely known (an abrupt transition at 700 read as 717), because on an abrupt fall the crossing is
+  already at the floor, the midpoint becomes floor-to-floor, and the search degenerates into hunting a noise dip
+  inside the settled run. It scores better only because it lands at level 5.0, nearer the reference's 4.4 cut.
+  **Optimising the proxy at the cost of the known answer is the mistake this entire thread is about**, so the
+  56% version ships.
+  ⚠️ **The card residual is DEFINITIONAL, not error.** The repaired finder lands at level 6.0 on a descent that
+  falls about two codes a sample; the independent reference cuts at 4.4. That is a ~4-sample gap between "the
+  descent is complete" and "below 4.4" — median −4, p10 −9, p90 −1 — and it is one-sided, which is what a
+  definitional difference looks like and what scatter does not.
+  ⚠️ **Agreement with the independent method was flagged as a CONSISTENCY CHECK before it was run, not a
+  validation:** both look for arrival at blanking, so they are expected to agree, and what the score can show is
+  that this no longer picks picture edges. The genuine tests are the synthetic recoveries and the Unknown
+  behaviour, and the definition rests on the diagnosis.
+  ⚠️ **NOT YET RE-SCORED DOWNSTREAM, deliberately.** The source reference, the departure profile and the
+  no-jump figures all sit on this primitive and must be re-measured against their saved baselines before any of
+  them is quoted again — 294 / 69% / 98% / 0% remains withdrawn until that runs. Under §14 this harness change is
+  reviewed by Codex.
+  ⚠️ **Two intermediate versions were caught by their own controls and are recorded so they are not re-tried:**
+  reporting the midpoint CROSSING lands on level 10.5 by construction while the docstring claimed the floor (a
+  docstring asserting what the code does not do — twice paid for tonight); and `argmin` over the tail finds the
+  LOWEST sample rather than the first arrival, overshooting 17 samples into a settled run.
+
 - **THE FINDER'S DEFECT IS DIAGNOSED, and it is the CRITERION rather than a class of row — found by inspecting
   against an independently known answer instead of inventing a fourth statistic (2026-09-11).** The three failed
   repairs all invented a better statistic and were judged by whether the output looked right. This did the

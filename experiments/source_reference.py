@@ -36,27 +36,79 @@ ORIGIN_ROW={1:19,2:282}          # storage row of each field's picture origin (l
 DEVICE_ROWS={1:list(range(7,16)),2:list(range(270,279))}   # for COMPARISON only, never the reference
 
 
-def row_transition(row, search_from=540):
-    # ⚠️ THREE DEFECTS, named by Codex's review a7760f6 and confirmed by reading this function.
-    # They are recorded here rather than silently carried, because every level and timing number
-    # taken on 2026-09-11 rests on this primitive:
-    #   1. `search_from=540` is a HARDCODED SAMPLE -- the tenth fixed-place-to-look instance in
-    #      this project, and in the one place that claims to read each row at its OWN instant.
-    #   2. It takes argmin of the difference, so it only ever finds a FALLING edge; a positive
-    #      departure is invisible to it. Same positive-only shape already retired twice.
-    #   3. A FLAT row with no transition still returns one. It should answer Unknown; instead it
-    #      fabricates a position, which is "missing is not a value" inverted.
-    # Not repaired in place: the results that rest on it are published, so a change here must be
-    # measured against them rather than slipped in.
-    """This row's own transition into blanking: the steepest fall in its own trailing sweep.
+def row_transition(row):
+    """This row's own transition into blanking, as a TIME in its own sweep -- or None.
 
-    Found, not located -- no column is typed in, and the search start only says "the trailing part
-    of the row" rather than naming where blanking begins.
+    REPAIRED 2026-09-11, and the criterion is written to a measurement rather than to an intuition.
+    Diagnosed on 300 card PICTURE rows against an independent answer (first sample at the blanking
+    floor, sharing no code with this): the previous "steepest fall" criterion agreed on 2% of them.
+    The fall it chose measured -4.0 codes against the blanking edge it skipped at -2.0, and was the
+    steeper of the two in 236 of 256 rows. The descent into blanking is GRADUAL per sample -- about
+    two codes a step -- while ordinary picture texture carries steeper single-sample falls. So a
+    magnitude criterion cannot find this edge BY CONSTRUCTION, and no threshold on it recovers.
+
+    The criterion here is ARRIVAL, not magnitude: the row's FINAL downward crossing of its own
+    midpoint -- after which it never returns -- followed forward to where the descent ENDS, which
+    is where the row attains its floor. Nothing is typed in and nothing supplies a place to look:
+
+      floor = the row's own minimum;  ref = the row's own median;  mid = halfway between them.
+
+    Four defects paid for earlier tonight that this must not reintroduce, and does not:
+      1. NO SEARCH ORIGIN. The old `search_from=540` was the tenth fixed-place-to-look and it
+         created the 15% class where the fall was found in picture, below the card's own 601 floor.
+      2. NO FABRICATION. A row that does not end below its own midpoint has no transition into a
+         floor and returns None. Flat picture and all-blanking rows both return None.
+      3. THE FLOOR IS THE ROW'S OWN. A typed 1.4 or 4.4 would be a magic number under rule 4 and
+         would be wrong on any source whose blanking sits elsewhere.
+      4. IT MUST BE HONEST ON BRIGHT PROGRAMME, where the floor is reached in exactly ONE sample
+         (median 1, p90 1, max 2 of 1,010 rows). A criterion demanding a settled RUN behind the
+         fall would return None across that whole population; this one requires only that the row
+         does not come back, so one sample suffices -- and the coverage is measured, not assumed.
+
+    ⚠️ AGREEMENT WITH THE INDEPENDENT METHOD IS A CONSISTENCY CHECK, NOT A VALIDATION. Both look for
+    the arrival at blanking, so they are expected to agree; what the score can show is that this no
+    longer picks picture edges, not that its definition is right. The definition rests on the
+    diagnosis above. The genuine tests are the synthetic recoveries and the Unknown behaviour.
     """
-    seg = row[search_from:]
-    if len(seg) < 8: return None
-    d = np.diff(seg)
-    return search_from + int(np.argmin(d)) + 1
+    x = np.asarray(row, dtype=np.float64)
+    n = x.size
+    if n < 16:
+        return None
+    floor = float(x.min()); top = float(x.max())
+    if top <= floor:
+        return None                                  # a perfectly flat row has no transition
+    mid = 0.5 * (floor + float(np.median(x)))
+    if mid <= floor:
+        return None                                  # median at the floor: the row IS blanking
+    below = x <= mid
+    if not below[-1]:
+        return None                                  # never arrives: no transition in this window
+    t = n - 1
+    while t > 0 and below[t - 1]:
+        t -= 1
+    if t <= 0:
+        return None
+    # The crossing is where the descent BEGINS; the arrival is where it ENDS. Reporting the
+    # crossing lands on the midpoint by construction -- measured, level 10.5 on card rows whose
+    # floor is 1.0 -- which is not "lands at the row's own floor" however the docstring phrases it.
+    # A docstring asserting what the code does not do is a defect this project has already paid
+    # for twice tonight. So advance to the arrival: the first index at or after the crossing where
+    # the row attains its minimum over the remainder. Parameter-free, and on a row that reaches its
+    # floor in a single sample the crossing and the arrival coincide.
+    # ARRIVAL, not the lowest sample. `argmin` over the tail was tried and a synthetic control
+    # caught it overshooting into the settled run -- on a 20-sample blanking run the minimum sits
+    # wherever noise puts it, which is the LATE class. The arrival is the FIRST sample that has
+    # completed the descent: below the midpoint between the crossing's own level and the floor.
+    # Both come from this row; nothing is typed in.
+    tail = x[t:]
+    # The reference level is the sample BEFORE the crossing, not at it. Using x[t] was tried and a
+    # synthetic control caught it: on an ABRUPT transition x[t] is already at the floor, so the
+    # midpoint becomes floor-to-floor and the search degenerates into hunting a noise dip 17
+    # samples into the settled run. x[t-1] is the last sample still above the midpoint, so the
+    # threshold always spans a real descent.
+    done = tail <= 0.5 * (float(x[t - 1]) + floor)
+    idx = np.flatnonzero(done)
+    return t + int(idx[0]) if idx.size else t
 
 
 def source_reference(field_rows):
