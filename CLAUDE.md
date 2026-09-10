@@ -2871,6 +2871,39 @@ satisfied without being exercised. It becomes a real test only on a capture wher
 ⚠️ Unretired by this: the synthetic pan still gives a wrong `+2` at acquisition, and Codex carries it as a known
 open acquisition failure rather than defending against it.
 
+**PICTURE IN THE BLANKING: the half of the owner's definition that NO instrument here measured, and it dissolves
+the T = S readings (2026-09-11, `experiments/picture_in_blanking.py`).** His definition has been symmetric since
+2026-09-10 12:43:15 -- "either picture ending up in the blanking window or blanking ending up in the picture
+window. full stop." Every instrument this project built looks at ONE direction only: the peak measures AMPLITUDE,
+the run reader measures PRESENCE, the phase reader's partial-prefix predicate measures ONE END -- and all three
+hunt a blank-level run INSIDE the delivered window. **None measures POSITION, and none looks for picture pushed
+into the retrace interval**, which is why his standing doubt was "I still dont think they are measuring timing
+correctly".
+Measured on the peak-carrying row, inside its own expected blanking region, reference learned per unit per field:
+
+| group | n | elevation above blank | sd |
+|---|---:|---:|---:|
+| **control: an ordinary picture row** | 111 | **0.5 codes** | **0.6** |
+| engine says T = S, peak one row ABOVE its T | 22 | **18.3 codes** | 4.9 |
+| engine says T = S−1, peak ON its T | 88 | **18.9 codes** | 4.8 |
+
+**The two groups are indistinguishable -- 18.3 against 18.9 -- and both sit about thirty times the control.** So
+the peak-carrying row carries picture in its blanking whether the engine calls it T or puts T one row lower. By the
+owner's own symmetric definition it is a head-switch row in BOTH cases, including all 22 where the engine returned
+T = S.
+**That answers his dare** -- "if they are both treating horizontal blanking timing... on EITHER SIDE properly,
+those discrepancies shouldn't exist and I dare it to produce a rendered luma png that shows otherwise". Treating
+both directions and both ends, the discrepancy does not survive: it is an artefact of a prefix-only predicate, not
+a disagreement about the signal. The disturbance on these rows sits at the TRAILING end -- the expected blanking
+region begins past column 700 -- where a leading-end test finds nothing and returns T = S.
+⚠️ This does not make the peak an identified RF landmark; Codex's objection is still unretired. What it does is
+remove the need for the peak to adjudicate anything: **picture-in-the-blanking is a positive timing observable on
+the row itself**, measured against the source's own expected extent, and it agrees with the peak on all 110
+high-amplitude readings without depending on it.
+⚠️ Not yet done, and it is the second dispositive test his 09:41:23 continuity ruling implies: whether the
+transient's column WALKS continuously into these units, or the row changes while the column sits still. The band
+render shows the walk (340 -> 660 -> 160 across 6691-6714) but it has not been joined to the disputed readings.
+
 **CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
 FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
 clear it when normal timing returns -- which the engine already does -- and Codex verified upward and downward
