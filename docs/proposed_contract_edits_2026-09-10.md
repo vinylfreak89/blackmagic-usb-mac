@@ -266,3 +266,89 @@ implementation gap is detecting genuine absence and invoking the reset on it.
 
 Also owed at that site: `v10_reset_field`'s comment still carries the superseded rule that a lock
 requires "a unit whose switch line and band are measurable", now wrong twice over (Drafts 2 and 6).
+
+
+---
+
+# Round 3 — Drafts 11 to 13
+
+## Draft 11 — the re-measurement triggers
+
+> Mute, fade and actual picture appearing within previously established letterbox-like bounds trigger
+> reassessment of the source reference and affected geometry. During a fade, committed geometry is
+> held; observations continue to establish the transition and its completion. Post-transition
+> remeasurement does not itself establish a geometry change. Positively established invalidation of
+> the box cannot retain that box as valid geometry; the resulting geometry follows the
+> acquisition/reacquisition requirements.
+
+Owner, 2026-09-10: "not just a transition event, mute or fade. if the boxed geometry becomes invalid,
+then it should reset as well. mute fade, or actual picture appearing in the letterbox-like area
+bounds". The during/after ordering is his earlier ruling: "geometry (including the box can't change
+during a fade. that must be a hold)" against "IF IT CHANGES which really can only happen after some
+type of transition event (mute or fade), remeasure".
+
+**Box invalidation's scope:**
+
+> Positively established box invalidation releases the affected geometry and its lock. Replacement
+> geometry requires acquisition/reacquisition. Source references are reassessed, and evidence
+> dependent on the invalidated geometry cannot support acquisition without renewed qualification.
+> This does not, by itself, require discarding all independent source knowledge.
+
+⚠️ Two Claude inferences were withdrawn here. "The lock survives" contradicts §3's "**A change of
+geometry resets the lock**: bounding-box geometry becoming full picture". And "only the geometry is
+reassessed, the source reference survives" is wrong — this is explicitly a source-reference
+reassessment trigger. A fade not invalidating geometry also does not guarantee the geometry is
+unchanged after it; hold during, reassess after, and if fresh evidence establishes a change the
+geometry-change rule applies. `0x0800`'s authority is his own ruling ("if they get `0x0800` or lose
+the regenerated lines, they go get it again"), not an analogy to these.
+
+## Draft 12 — what a box is
+
+> A box must be **bounded**. A structureless band at one end only is not a box: that is full picture
+> (owner, 2026-09-10: "no it doesn't need to open up to a full picture. it can open up to whatever is
+> on the screen. but it must be bounded. only one side of the picture isn't a box thats full
+> picture").
+>
+> ⚠️ Failure to DETECT the second bound is not positive evidence that only one exists; preserve
+> Unknown where that distinction cannot be established. "Full picture" does not independently
+> establish displacement or authorize a lock.
+
+On invalidation the geometry opens to whatever is on the screen — **not** to "the full picture". A24's
+own phrasing needs amending accordingly; the full-picture reading is wrong rather than merely
+unstated.
+
+This sharpens rather than contradicts his 2026-09-09 words carried in `box_census.py` ("Either the top
+or the bottom, it lowers confidence... on both the top and bottom it FIXES geometry and becomes a
+box"), whose `verdict()` already returns `box` only when both bands clear the minimum. What is new is
+that the one-sided case is positively full picture.
+
+## Draft 13 — the warm-up is intended behaviour
+
+> Before the required source references are qualified, registration and corrective placement remain
+> inactive. Observation and reference acquisition continue; this is the intended warm-up phase,
+> including after a fresh-capture reset. Elapsed time alone does not complete warm-up.
+
+Owner, 2026-09-10: "the engine can't run on a fresh source until it 'warms up' which means on capture
+1, the loss like noise bars during the fade, the entire engine can't run. that is accepted and
+expected." Completing warm-up does not itself supply geometry confirmation or a lock.
+
+---
+
+## The render request, and why it is not built yet
+
+Owner, 2026-09-10: "it should draw the bounding box when it finds it on top of the picture. keeping
+its field colors, meaning if they colide the box should be purple. and it should be like
+transparentish, so you can still see underneath it." Harness work; it does not touch the drafts.
+
+**Blocked on a measurement that does not exist anywhere.** The engine's record carries
+`bool box_detected` (`field_registration.h:186-187`, "Positive qualified verdict only; false is not
+proof of no box") — a flag, no bounds. And `box_census.py` measures the CONTENT: `content_top` /
+`content_bot` bound the retained structured content, and `bot = n - 1 - cb` runs from the content to
+the census window's end, so it neither identifies the box's outer bottom nor separates it from the
+switch and generated rows.
+
+Drawing the overlay from the census coordinates would repeat exactly the content-versus-box error
+already withdrawn for `box_vs_switch.py`. **The box's outer bounds are not measured by any instrument
+in this project.** That measurement is owed first — and it is the same one the owner's contact test
+needs ("if there's a blanking interval that sits between the box and the head switch thats garbage"),
+so one instrument serves both.
