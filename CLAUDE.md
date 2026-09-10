@@ -2255,6 +2255,53 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Contract amendment from `6484b4d` and `0f6e3ef` (2026-09-11).** The contract now replaces B2's open
+disposition with the BOTH-unrecordable gate: no recordable head switch AND no other recordable valid picture ⇒
+registration NOT RUN, timing/status preserved, no registration decisions, level-setting or temporal decision
+witness from that unit. Unknown switch evidence alone with valid picture does not meet it and is not turned
+into positive absence. The existing R3 question is narrowed to recovery, not newly dispatched. Rule 8 now carries
+valid-VBI interleave and acquired-once/held registration without requiring or fabricating a comb reading.
+Coherent top-plus-bottom tracking and one-sided HOLD of both crop and lock are in rule 2 and its dependent
+definitions. Rules 8a–8d and 12 are unchanged; the earlier 8a/12 question is withdrawn with no exception added.
+The source-blanking statistic is named as the mean at each line's own qualified interval, not device fill.
+Warm-up can still acquire references from recordable evidence; the no-level-setting rule is not a warm-up ban.
+
+Rendering clauses now distinguish lost picture (black) from proper 486 VBI, with surviving source VBI replacing
+the device's rows only where measured displacement exposes it; at d=0 there is nothing from the tape to
+substitute. The later real-picture tape-line-22 exception is in rule 7. The input-survival paragraph formerly
+at :451, the existing absence-test clauses, Head switch definition, region-versus-landmark wording and rule 13
+are not redefined. This follows the peer's latest stop on duplicate repairs; no one-line detector qualification
+is claimed from the presence of old wording. The first-six-output-lines stability requirement is named in §8.
+
+**Code status is separate from this amendment.** `comb_zero_candidate` really is held after comb acquisition,
+but that does not prove caption-only VBI interleave is implemented by that variable. `blank_mean` is per-call,
+so there is no retained level accumulator at that site, but it reads device rows 7–16 / 270–279, including the
+timing row; it is not the contract's mean of qualified SOURCE blanking. The top-only shift defect remains
+(`4002a56`'s synthetic test); no engine change or render is part of this amendment. Validation results and
+the document-check fixtures made stale by closing the markers are recorded in
+`docs/reports/2026-09-11_contract_rulings_amendment.md`.
+
+**Owner-ruling proposal review after the plain comb (2026-09-11, harness `70c6746`, merge `c9dbddf`).**
+`docs/reports/2026-09-11_coherence_rulings_review.md` records the per-item agreement and limits; no contract or
+engine code was changed. The invalid-input marker can narrow to the already queued recovery question. The
+one-line head-switch exclusion must be removed, and positive normal timing is the absence test, not failure of
+a detector. Caption-only valid-VBI evidence must name its source provenance and candidate coordinates rather
+than promote generated 21/22 or renderer-composed rows to an independent confirmation. The source-VBI survival
+sentence needs scope, not a claim that a 486 output instruction makes overwritten input samples survive.
+
+The new one-sided-motion ruling is accepted for tracking the same geometry. A synthetic test of the current
+engine proves the shift defect: top 23→24, bottom held at 259, applied pair (0,0)→(1,0). **The lock stays set**;
+`LockBroken` has no live assignment in the current engine. The contrary incoming claim below is corrected in
+place. A separate `box_detected` reset exists. **The proposed 8a/12 question is now withdrawn**: the owner's
+answer identifies a changed BOX, not one moving edge. Rules 8a/12 stand without an exception to one-sided hold.
+Full-window geometry remains a valid initial candidate and a switch is not made mandatory again by coherence.
+
+**The peer withdrew its entire Part 2C during this review after an owner correction.** Tape line 22 is a source object whose
+surviving position is observed, not a fixed delivered row to inspect. No renumbering to 23/286 or substitution
+of “first pass-through position” is proposed. The queue records the withdrawal and the instrument is untouched.
+Whole-row standard deviation includes picture structure: the supplied 0.48 versus 2.24–47.08 separation alone
+does not identify tape blanking or its line identity. The report preserves that separate measurement limit.
+
 **Plain comb and first capture-1 locks (2026-09-11, engine implementation).**
 The owner corrected the brief during implementation: "the comb does not need a switch to open. it is one of
 the ORs" and "the switch sets or fixes geometry only IF IT IS PRESENT." The mandatory switch condition is
@@ -3033,8 +3080,8 @@ than ordinary content, where light peaks ramp for 37 against 3.
   that half of it, and he has ruled that acceptable. Do not "correct" the polarity observation to match the
   detector's blindness — that would be the instrument rewriting the signal.
 
-**ONE-SIDED MOTION IS NEVER A DISPLACEMENT -- owner ruling, 2026-09-11, and the engine gets it wrong in BOTH
-directions today.** His words: "top of picture that becomes black without the bottom of the geometry moving should
+**ONE-SIDED MOTION IS NEVER A DISPLACEMENT -- owner ruling, 2026-09-11; current shift defect verified,
+claimed current `LockBroken` defect withdrawn after code and synthetic checks.** His words: "top of picture that becomes black without the bottom of the geometry moving should
 be a hold, not unlock geometry, because the levels above block are genuinely not stable in this capture", then the
 amendment that generalises it: **"hold not unlock and don't shift. only one part of the geometry shifting without a
 corresponding shift on the other side is a hold. not a shift."**
@@ -3044,8 +3091,13 @@ is what licenses a shift; a one-sided move licenses neither.
 **Verified in the code at HEAD, after Codex's comb change** (`field_registration.c:810-830`):
 `geometry_d = measurement->top - origin`, applied whenever `geometry_measurable && crop_fits_raster`. **The bottom
 is never consulted** -- `expected_bottom` is computed at :812 but only feeds `lines_lost`. So a top-only move
-shifts the crop today, which the ruling forbids; and a top-only change is separately dispositioned `LockBroken`,
-which the ruling also says is wrong. Both halves need repairing, not one.
+shifts the crop today, which the ruling forbids. **The original assertion that it also executes `LockBroken`
+was wrong at this HEAD**: that value occurs only as an enum and display name, not an assigned disposition.
+Codex's synthetic test of the current engine changes top 23→24 with bottom 259 unchanged and gets applied
+(0,0)→(1,0), lock still set, reason `SwitchCountConflict`, comb `not_evaluated`. The live categorical
+`box_detected` reset is a separate path; it does not establish a generic top-only unlock. Both placement and
+lock retention must be tested in the eventual coherence repair, but only the placement failure is reproduced
+here. The detailed probe and contract-scope question are in `docs/reports/2026-09-11_coherence_rulings_review.md`.
 **His reason is a measurement and it reproduces independently** (146 title-card units, 6665-6810, row means):
 field 1 reads **4.0 / 4.7 / 10.7 / 10.1 / 10.4 / 16.5 / 27.3** on lines 23-29 and field 2 **2.0 / 10.2 / 10.3 /
 10.7 / 13.5 / 27.0** from 286 -- a flat plateau at the deck's black (~10.1-10.7) before the box bar settles at
@@ -4316,9 +4368,10 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   acceptance moves one instrument up and another down stops and reopens the premise instead of
   adding a rule. The raw 525-line panels of every non-locked decision are looked at before any
   number is reported. None of this needs a human: the contract and the raster are in writing.
-  An owner ruling is asked for only when the contract is silent on what the OUTPUT should do
-  (a deliverable preference, e.g. what the picture does while the raster is torn), never on what
-  the signal is, and it is brought with the measured alternatives and a recommendation. Also
+  Before asking what the OUTPUT should do, search the owner's own words, not just the contract: only a question
+  unanswerable there, or an answer rejected by the peer on which the agents cannot converge, goes to the owner
+  (2026-09-11 standing instruction). What the signal is remains a measurement question. An output question is
+  brought with the measured alternatives and a recommendation. Also
   from the same day: review a commit's message bytes as well as its tree; push every branch the
   docs cite; write timestamps only from a checked clock.
 - **v10 process (owner, 2026-09-07 20:00–20:50 JST; absorbed from `HANDBACK.md`, retired 2026-09-09, plus what
@@ -4332,8 +4385,9 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   carry both agents' work and `docs/geometry_first_engine.md` and `CLAUDE.md` are
   byte-identical on both (checked by `diff` in every review). The contract is edited only by
   agreement: a change is proposed to the other agent with the owner's quote and the measurement
-  behind it and made in place only when both are at extreme confidence; otherwise the turn ends
-  and the owner is asked — "if there is any disagreement, especially on the contract that you are
+  behind it and made in place only when both are at extreme confidence; otherwise first search the owner's own
+  words and attempt convergence with the peer. Only an unanswered or irreconcilable question reaches the owner
+  under the 2026-09-11 standing instruction — "if there is any disagreement, especially on the contract that you are
   unable to resolve the ambiguity on yourselves ask me" (owner, 20:5x). Code is written only to
   settled wording; when code and contract disagree, which one is wrong is shown by a measurement,
   never melded. Both agents must agree in full on the stated plan before any
