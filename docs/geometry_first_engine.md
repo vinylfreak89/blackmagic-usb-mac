@@ -343,7 +343,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   a rewind rather than guessing.
 - **Black picture content in this source is clipped to exactly the blanking level, with the same dither** (mean 1.40
   against 1.39, standard deviation 0.49 against 0.49, measured inside content runs and band runs). No level test and
-  no texture test can separate content from blanking here; only geometry can.
+  no texture test can separate content from blanking here. ⚠️ **"Only geometry can" is DELETED** (owner,
+  2026-09-10, cutting the circularity a cold read found: the switch measurement cannot depend on geometry when
+  head-switch evidence is an input to geometry). **The head switch is BAD HORIZONTAL TIMING** — "either picture
+  ending up in the blanking window or blanking ending up in the picture window. full stop" — and that is the
+  observable. It is a timing displacement across the window boundary, not a level or texture judgement, so it needs
+  neither a level test that cannot work here nor the geometry it feeds.
 - **A field's horizontal timing is not uniform down the field**, so its variance is measured over a local window of
   rows, never whole-field: the top rows of each field (lines 23–34) carry end levels of median 4.6–6.6 and p95 52–63
   above blanking against median 0.6 and p95 7.6 just above the head switch — the flagging of a VHS field's first
@@ -479,12 +484,16 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   * **The visible "skew" on a corrected source is a wandering picture/black boundary, not a timing skew**: the last
     row still carrying picture stops before the row's end, and that column wanders far more than the row itself
     moves.
-  * **So on a corrected source these rows cannot be identified from timing at all.** They are identifiable by
-    flatness to the row's right end, which is sharply confined to the rows just above the padding. **But that
-    detector reads "this deck wrote black here" — deck behaviour, not a standards property, so it does not transfer
-    to another deck** (CLAUDE.md's rule: generalise by property, never by this deck). The band is therefore found by
-    displacement where the timing survives and by the absence of picture where a corrector has replaced it, and
-    "not applicable" stays distinct from "unmeasurable".
+  * ⚠️ **This was written as "on a corrected source these rows cannot be identified from timing at all", and that
+    is WITHDRAWN** (owner, 2026-09-10, asked directly whether a corrected source has anything to measure: "huh? yes
+    it does. head switch (as I've defined it) and/or picture going to the end and/or blanking"). What the
+    measurement above shows is that the NARROW MARKERS — the partial line's own displacement and the RF peak — do
+    not survive the corrector. **Three observables remain, any of which serves**: the head-switch region as he
+    defines it, bad horizontal timing (picture in the blanking window or blanking in the picture window, section 2's
+    definition above); picture running to the END of the row; and blanking. The flatness-to-the-row's-end detector
+    remains deck behaviour rather than a standards property and does not transfer to another deck (CLAUDE.md's rule:
+    generalise by property, never by this deck), so it is corroboration and never the definition.
+    "Not applicable" stays distinct from "unmeasurable".
   * Caveat stated with it: the two captures compared are not frame-aligned, so this is a distributional comparison
     rather than the same frames. The flat-row separation is categorical; the timing separation is strong but not
     categorical. Neither establishes a content-independent, error-free per-unit regime classifier.
