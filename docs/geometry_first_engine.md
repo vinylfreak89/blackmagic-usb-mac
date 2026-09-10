@@ -327,13 +327,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   Equal counts do not change ordering."). The comparator, per field: the level of the tape's line 22 where it is
   visible (an integer, the row's luma mean rounded to a unit). The switch-line count is not a comparator (owner,
   20:56).
-- **Source lock**: exists only after at least one confirmation that the geometry is correct. **The list is not
-  closed, and a measurable box is itself one of the two** (owner, 2026-09-09T16:40:11Z, transcript uuid d385c50e):
-  "thats your 2 independent confirmations isn't it? **the fact that the harness shows real geometry with a real
-  measurable box means a geometry can be acquired. which means only 1 additional measurement is needed, comb or
-  head switch** and ideally both are generateable and a full lock is acquired on the logo." So where a box is
-  measured it supplies the geometry and **at least one** further observation is required, comb or head switch —
-  at least, not exactly, because his own sentence welcomes both. Where
+- **Source lock**: exists only after at least one confirmation that the geometry is correct. **Where a box is
+  measured it supplies the geometry, and one further measurement completes the lock — comb or head switch, both
+  better than one** (owner, 2026-09-09T16:40:11Z, transcript uuid d385c50e): "**the fact that the harness shows
+  real geometry with a real measurable box means a geometry can be acquired. which means only 1 additional
+  measurement is needed, comb or head switch** and ideally both are generateable and a full lock is acquired on
+  the logo." Where
   there is no box the confirmations are combing, captions, or
   both (owner, 2026-09-09, admitting VBI in one bounded form: **"only admit as confirmation of positive evidence
   of displacement. unless you can get line 22 from the tape's own blanking, not the shuttles"** — the tape's own
@@ -471,9 +470,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    measured like any other.
    **Read the trigger precisely: it is the ABSENCE OF A LIFT-OFF POINT that holds the bounds, not boxing.** In his
    sentence "it" is the lack of a lift-off point; a box only makes that absence more likely. So a switch measured
-   without a lift-off point **holds the bounds already established and does not set new ones**, boxed or not, and
-   the agreement test below is the one thing that licenses setting. ⚠️ Two things this does not yet say, and neither
-   may be invented by an agent: WHICH bounds are held, and what happens where no bounds exist yet — holding must
+   without a lift-off point **holds ITS OWN bounds and does not set new ones** — his words are "hold its bounds",
+   and "its" is the head switch's — boxed or not, and the agreement test below is the one thing that licenses
+   setting. ⚠️ What he did NOT say, and no agent may invent: what happens where no bounds exist yet. Holding must
    never manufacture an initial bound. The unit's own current observations are reported either way. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
    separates nothing and its switch stays measurable; read the other way, this rule would suppress switch evidence
    on every dark passage of every source. **The gap is created by the box, so the classification comes first and

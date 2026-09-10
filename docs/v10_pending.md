@@ -355,30 +355,10 @@ presenting them as his to decide made him the bottleneck when the harness was.
 
 Neither agent may resolve these; the process sends contract conflicts to him.
 
-1–3 **ANSWERED 2026-09-09 and written into the contract**: the switch requirement is conditional (required only
-   where the geometry is not boxed and not all lines are picture); confirmation stays comb-or-caption ⚠️ **— the
-   claim that item 7 supersedes this half is DISPUTED (owner, 2026-09-10) and cannot be relied on while items 6
-   and 7 are disputed below; treat comb-or-caption as standing until he rules** — and a source
-   that never locks is an accepted outcome, fail closed; the hold keeps the head switch's position line and is lost
-   only when the total number of bands changes, ordinary clipping excluded. A change of geometry — box to full
-   picture or back — resets the lock.
-
 4. **Rule 8's box-validity wording is owed** — the bounds where a box is valid and where it is invalidated.
    Neither agent should write it. Asked and explained; answer pending. (Was struck through while its own text said
    pending; un-struck 2026-09-10. The duplicate second "4." was the 486-crop item, which is genuinely closed and
    has been removed — its correction lives in CLAUDE.md §11.)
-⚠️⚠️ **Items 6 and 7 are DISPUTED and OPEN AGAIN (owner, 2026-09-10).** They were written into the contract at
-`604bef7` + `75bdc69` as settled, on transcript-verified quotes. He has since rejected the reasoning built on
-those edits, and one of the quotes reached this session through a watchdog paraphrase that Codex had to correct.
-**Nothing is deleted and neither contract commit is reverted** — that is his call, and the two commits are
-load-bearing for the engine change that followed. What is owed to him is a line-by-line split of which contract
-text rests on his own words and which is inference.
-
-6. **Does a box make the head switch unmeasurable, or does the absence of a lift-off point?** Written into rule 8
-   as the latter. DISPUTED.
-7. **May a measurable box plus one further observation make a lock, or is the list comb-or-caption?** Written
-   into §3 Source lock as the former. DISPUTED, and item 1–3's supersession above depends on it.
-
 8. **What are "the two numbers" on geometry?** The band has an extent, a top switch line and a count; the box has
    bands at both ends. The contract now carries the likely reading — the box's outer edges, top and bottom, per
    field, against where the switch band puts the picture's bounds — **marked as an inference and explicitly NOT an
