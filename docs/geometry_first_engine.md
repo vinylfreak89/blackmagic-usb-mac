@@ -5,9 +5,15 @@ agents' agreement (CLAUDE.md §14, the v10 process). Codex writes the engine (`s
 Claude the harness (`experiments/`, branch `v10-harness`); each reviews the other's code and intent (CLAUDE.md §14;
 the owner, 2026-09-07 20:10: "The roles reverse again ... Codex will go back to owning the code, you owning the test
 harness"). **Line numbers are FIELD-RELATIVE NTSC lines** (owner, 2026-09-10, ruling in §1): each
-field carries its own count, so both fields' pictures are lines 23-262. Within field 1's block unit row r is line r+4; field 2's block is offset 263 rows and its
-rows are numbered from its own origin the same way. The frame-continuous numbering used before -
-field 2 at 284/286/522-525 - is withdrawn.
+field carries its own count, so both fields' pictures are lines 23-262, and an unqualified line
+number in this document means that line in whichever field is under discussion. `r + 4` gives field
+1's line for rows 0-258 only: **row 259 is the half line 262.5, and rows 522-524 are field 1's lines
+1-3**, because field 1's block wraps the end of the storage (its rows are 522-524 then 0-259). Field
+2's block is rows 260-521, numbered from its own origin the same way. The 263-row offset between the
+fields relates corresponding positions inside those windows and does not survive that wrap. The
+frame-continuous numbering used before - field 2 at 284/286/522-525 - is withdrawn.
+`src/field_registration/field_lines.h` is the authority for every row; prose that addresses a row
+rather than a line says so.
 Every number is a standard (NTSC, SMPTE RP-202, CEA-608), a measurement on the captures (stated with its value), or a
 memory capacity; any other number in the code is a defect.
 
@@ -50,7 +56,7 @@ version of this paragraph turned "where to measure" into "position establishes i
 
 ⚠️ If the owner intended position ALONE to establish identity, that is a remaining disagreement
 between the two agents and needs his adjudication; it is flagged rather than resolved here.
-The NOMINAL TIMING EXTENTS come from the standard: the 525 line is 858 samples at 13.5 MHz and
+The NOMINAL TIMING EXTENTS come from the standard: a line of the 525-line system is 858 samples at 13.5 MHz and
 horizontal blanking is 10.9 µs = 147.15, so the analog active line is 710.85 samples; BT.601's
 digital active line is 720, wider by 9.15, positioned 122 samples after 0H while the picture starts
 at 126.9 — about 4.90 samples of back porch inside the LEFT edge and 4.25 of front porch inside the
@@ -205,7 +211,7 @@ displacement, and the bands changing in both fields by the same amount is a disp
 closing its own account (owner, 2026-09-07 15:11: "my original definition of geometry, ie, the number of top bands vs
 bottom bands shifting is the correct answer"); new lines of luma appearing at the top alone never mean the picture moved, unless that shift causes a
 comb disagreement on the settled comb. No lock is claimed without at least one confirmation that the geometry is
-correct — combing, captions, or both; without it the picture stays at standard placement (23/286) and the record
+correct — combing, captions, or both; without it the picture stays at standard placement (line 23) and the record
 says there was not enough to lock on. ⚠️ **SUPERSEDED IN TWO WAYS — read §3 Source lock, not this sentence.**
 (1) The rule is **two measurements, one of which is ALWAYS geometry**, the second being comb or head switch
 (owner, 2026-09-09T16:40:11Z and 2026-09-10: "It was general about the 2 measurement system needed for a lock,
@@ -315,14 +321,37 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 
 ## 2. What the captures show (measured)
 
-| unit rows | NTSC lines | content | origin |
-|---|---|---|---|
-| 0–6, 261–269, 523–524 | 4–10, 265–273, 527–528 | padding, Y 16.0 / C 128.0 exactly | Shuttle |
-| 7–15, 270–278 | 11–19, 274–282 | blanking, Y 1.4 ± 0.5 | Shuttle |
-| 16, 279 | 20, 283 | timing pulse pattern, std 40–54 when present | Shuttle, when its decoder has sync |
-| 17, 280 | 21, 284 | CEA-608 insert: the tape's bytes when it decodes them at the standard line, else nulls | Shuttle, when its decoder has sync |
-| 18, 281 | 22, 285 | blanking, Y 1.4 | Shuttle |
-| 19–260, 282–522 | 23–264, 286–526 | pass-through from the tape and deck | source |
+| line | field 1 rows | field 2 rows | content | origin |
+|---|---|---|---|---|
+| 1 | 522 | 260 | pass-through from the tape and deck | source |
+| 2–10 | 523–524, 0–6 | 261–269 | padding, Y 16.0 / C 128.0 exactly | Shuttle |
+| 11–19 | 7–15 | 270–278 | blanking, Y 1.4 ± 0.5 | Shuttle |
+| 20 | 16 | 279 | timing pulse pattern, std 40–54 when present | Shuttle, when its decoder has sync |
+| 21 | 17 | 280 | CEA-608 insert: the tape's bytes when it decodes them at the standard line, else nulls | Shuttle, when its decoder has sync |
+| 22 | 18 | 281 | blanking, Y 1.4 | Shuttle |
+| 23 to the field's end | 19–259 | 282–521 | pass-through from the tape and deck | source |
+
+**One line column, and why that is only notation.** Under the withdrawn numbering every row of this
+table carried two different labels — the padding was "4–10, 265–273, 527–528", the insert "21, 284" —
+so the device's own generated rows looked like unrelated pairs related by nothing but +263. They are
+the same field-relative line in both fields. That does not make the fields the same, and three
+asymmetries survive the renaming:
+- **The windows end differently.** Field 1's block is 263 rows and ends in the half line 262.5 (row
+  259); field 2's is 262 rows and ends at 262 (row 521).
+- **The last row is a window, not a picture.** "Pass-through from the tape and deck" says what
+  reaches those rows, not what is in them: the window can carry switch activity, blanking relocated
+  by the other head, or clipped content. Field 1's window reaching 262.5 does not establish that its
+  picture does.
+- **The measured switch bands do not coincide** — capture 1 reads 261 in field 1 and 260 in field 2
+  (§1). A convention cannot move a measurement.
+
+**Each field's line 1 is source, not padding**, and it sits directly above that field's own padding
+at lines 2–10 — which the old numbering hid, because row 522 read as the bottom of field 2's region
+rather than the top of field 1's. CLAUDE.md's measurement of rows 257–260 and 519–522 as digitized
+signal (Y ≈ 1.4 with no input, Y 31 ± 29 on the tape) corroborates the pass-through claim at those two
+rows; it does not measure either row on its own, since its statistics summarize the groups. ⚠️ That
+same passage groups rows across a field boundary — 519–521 are field 2's lines 260–262 but 522 is
+field 1's line 1 — so its per-row measurements stand and its "under each field" phrasing does not.
 
 - **The delivered window is narrower than the line but wider than the active picture, and that is what makes
   horizontal timing readable at all** (standards, with the measurement that follows). An NTSC line is 858 samples at
@@ -358,7 +387,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   FULLY other-head row as the switch line, so it counted the partial line as picture. No contract change was needed.
   The other instrument had its own defect, recorded because it is easy to repeat: it counted rows past the delivered
   clip as band rows, which they are not.
-- Nothing the tape carries above line 23 (286) reaches us except the re-encoded bytes on the insert. The tape's own
+- Nothing the tape carries above line 23 reaches us except the re-encoded bytes on the insert. The tape's own
   VBI becomes visible only when the field is displaced downward: at +1 its black line 22 appears on line 23 (luma
   4–7 on fixture A), at +2 its line 21 on 23, at +3 its line 20 on 23 and its line 21 on 24.
 - The Shuttle re-encodes the insert from a caption it slices within one line of the standard line. Units exist that
@@ -397,7 +426,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - **Recorded row**: a pass-through row that came through the analog decoder, told from the Shuttle's regenerated
   rows by the decoder's noise: chroma noise above twice the blanking rows' (section 2's measured separation, at most
   1.48x against at least 2.02x; the 2.0x test sits inside that observed gap, and NOT at its lower bound, which is
-  2.02x), or luma above the blank; padding is neither. The Shuttle's regenerated blanking rows (7–15 / 270–278) are the
+  2.02x), or luma above the blank; padding is neither. The Shuttle's regenerated blanking rows — lines 11–19 of each field, storage rows 7–15 and 270–278 — are the
   reference when present; tape signal cannot reach them; their absence, POSITIVELY ESTABLISHED, puts the raster in the invalid class and triggers the
   full reset (Lock-like loss and rule 13) — it is NOT a lock-like-loss observation, and a failed decode or samples
   unavailable through transport damage are not absence.
@@ -580,7 +609,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   partial line above it). **Segment lag**: the horizontal lag, in samples, at which a short segment of a row best
   matches the row above (the segment's length is the engine's measurement aperture, not a decision constant). **Provenance error**: a capture whose packet accounting is not complete at a unit; the
   engine emits no record for it (fail closed).
-- **Displacement**: the picture top against its standard line (23 / 286).
+- **Displacement**: the picture top against its standard line, 23 in each field.
 - **Comparator**: the value seen most often since the last reset, held in a fixed array of eight slots (owner: "8
   sounds fine"); equal counts do not change the ordering (owner); a ninth distinct value replaces the least-counted
   entry, and an evicted value that returns starts again at one (the fixed array's approximation of the running
@@ -654,7 +683,7 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   candidate mechanism it fed is withdrawn with it. This removes the insert-derived candidate mechanism, not every
   independently justified comb neighbourhood. A caption whose row lies in the pass-through region (line 23 or below) is the tape's own line 21
   and gives d = its line − 21 directly. **Regenerated-row presence** (the
-  Shuttle's timing pattern and insert on lines 20/21 and 283/284, line 22/285 blank) is required decoder evidence,
+  Shuttle's timing pattern and insert on lines 20 and 21 of each field, line 22 blank) is required decoder evidence,
   not a lock: the rewind passage carries the regenerated rows (measured) and has no source-lock confirmation, so it
   stays unlocked — the owner's 12:39 "no stable VBI = no stable lock" as this document states it. **Lock-like loss**:
   snow-like signal, a vertical tear (cross-program or true), a signal-state relock or splice; a unit event, both
@@ -688,8 +717,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   picture meeting the condition also disables correction and that cost is accepted: "that means that a letterboxed
   picture might fail open on a truly noiseless source which is whatever". A transport hole or short unit (a counter discontinuity) is damage under
   rule 6, not a lock-like loss.
-- **Crop**: line 23 (286) is always the output's top line (owner); the crop takes the picture's first line to it, so
-  its origin in the raster is 23 + d (286 + d) for every sign of d: the render's line 23 is the source's real line
+- **Crop**: line 23 is always the output's top line in each field (owner); the crop takes the picture's first line to
+  it, so its field-relative origin is 23 + d for every sign of d, using that field's own displacement: the render's line 23 is the source's real line
   23 wherever it landed, and whatever the Shuttle put there is what is rendered — its blank at −1, its caption
   insert at −2, its timing line at −3 (owner, 16:20). A source whose own line 22 carries picture keeps its origin at
   23 and that line is dropped ("VBI never rendered").
@@ -1106,11 +1135,14 @@ watch copy is the live path's output with its record burned in. No work product 
 picture shift. the one with the running line and number at the bottom, rendered as bwdiff, not nnedi3", and "plus
 all the decision information ... the last type of output this thread was last producing, tweaked slightly". So the
 deliverable review copy of a capture is one frame per unit carrying: the 720×486 output as placed (CLAUDE.md §11's alternate
-mode: lines 20–262 and 283–525, 243 lines per field, so each field carries its timing insert, its caption insert
+mode: lines 20–262 in each field, 243 lines per field, so each field carries its timing insert, its caption insert
 and its regenerated black above the picture — three lines above and none below, in both fields, and the field
-offset is 263 like every other pair in the raster. So what landed on the caption and VBI rows is visible.
+offset is 263 rows like every other corresponding pair inside these windows (it does not survive field 1's wrap at
+the end of the storage). So what landed on the caption and VBI rows is visible.
 **Corrected 2026-09-09** (owner: "yes that is the right crop"): this previously read 21–263 / 283–525 and called
-the 486 raster asymmetric. The raster is not asymmetric — measured on a raw unit both fields carry timing insert,
+the 486 raster asymmetric. ⚠️ **The numbers in this paragraph are the withdrawn frame-continuous ones**, kept as
+written because the defect they record was a defect in that convention's own terms; do not read them as
+field-relative lines. The raster is not asymmetric — measured on a raw unit both fields carry timing insert,
 caption insert, regenerated black and picture at the same relative positions — the CROP was, by one line: field 1
 from 21 against field 2 from 283 is an offset of 262. It put the two caption lines three output rows apart instead
 of adjacent and dropped field 1's line 20 while keeping field 2's line 283, which is how the owner saw field 2 as
@@ -1125,9 +1157,9 @@ BOTH fields' applied shifts, d1 and d2, not d1 alone; and the head-switch band's
 switch line) and its bottom (the last band row) — drawn so both edges are visible in one element, absent where the
 band is not measurable and omitted where the source has none ("not applicable" is distinct from unmeasurable,
 rule 10). The band is "probably the thing that's most likely to be wrong" (owner). The picture top is deliberately
-NOT traced: it must land on line 23 (286), so a jump is obvious on the picture itself, and the 720×486 render shows
+NOT traced: it must land on line 23, so a jump is obvious on the picture itself, and the 720×486 render shows
 lines 20, 21 and 22 anyway (owner). The plotted quantity is the applied displacement, zero meaning the standard
-origin, so the absolute position is 23 + d (286 + d) — the same information shifted by a constant.
+origin, so the absolute position is 23 + d in that field — the same information shifted by a constant.
 
 The band also carries the per-source quantities the placement rests on, so a wrong one is visible where it is used:
 per field, the derived horizontal-phase distribution of the source and the row's own phase measured against it, and
