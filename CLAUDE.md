@@ -1773,6 +1773,14 @@ historical claims, not the current rule.
   no whole-tape re-render except for sanity checks; every non-locked state outside true signal
   loss or a cut is audited against the raw raster before hand-over. The published v9 pair stays
   as the sanity baseline; it is not accepted.
+  ⚠️ **FOUR COMMIT CITATIONS IN THIS v9 SECTION DO NOT RESOLVE (found 2026-09-11 by
+  `experiments/cited_commit_check.py` on its first run): `490877b`, `cb1b4ed`, `a683926`, `7254d58`.** None is a
+  valid object on any ref here. **The WORK survives on `main`** — round 10's bounded relative comb correction is
+  `05bb2c0` with `c031bf9`/`f4f7328`/`ca7310e` beside it, and `render-live`'s tip is `85a413b` — but that mapping
+  is INFERRED FROM COMMIT MESSAGES AND DATES and is **not verified**, so the hashes below are left as written
+  rather than replaced with guesses, which would manufacture history. **The consequence to know: anyone returning
+  to the round-10 fallback BY HASH cannot, and must find it by content.** Since this section names that engine as
+  v10's measured fallback, that is worth more than a tidy citation.
   **✅ v9 rounds 4–8 (`render-live` `490877b`, merged to main `cb1b4ed` 2026-09-05, Codex wrote, Claude measured on
   the raw raster; docs/registration_v9_plan.md carries the round-by-round record).** After the
   owner's review of the first v9 render, every remaining bounce was measured on the 525-line
