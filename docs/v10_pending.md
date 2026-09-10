@@ -584,6 +584,39 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### THE EIGHT TEMPORAL PROPERTIES vs THE REBUILD — sites, or an honest "not yet". 1 honoured, 2 partial, 5 not.
+
+Asked for the SITE, not a restatement. The rebuild is one primitive old, so most of this is "not yet", and saying
+so is the point: an honest not-yet is worth more than a claim, and eight instrument failures in one night came from
+claiming coverage that was not there.
+
+| # | property | status | site, or why not |
+|---|---|---|---|
+| 1 | the switch is an INSTANT, its consequences land on rows | **NOT YET** | nothing in the rebuild touches the switch. `switch_geometry.py`, `displaced_row_census.py` and `top_skew_row.py` all classify ROWS |
+| 2 | T and S are two quantisations of ONE instant | **NOT YET** | `top_skew_row.py` and `peak_line.py` compare them as two independent numbers — the thing that made six readings arguable for a day |
+| 3 | the band is SYMMETRIC | **PARTIAL** | `blanking_boundary.py` measures blanking-in-picture BY POSITION; `picture_in_blanking.py` measures the other half but BY LEVEL, which he corrected. Neither is in the rebuild yet |
+| 4 | the blanking is the RETRACE — position is the observable, level only the tell | ✅ **HONOURED, as of this turn** | `source_reference.py`, `source_reference()` now returns `transition_median/p10/p90/sd`. **Before this turn it computed each row's transition, sliced with it, and DISCARDED it** — keeping the level, throwing away the phase, the property exactly backwards |
+| 5 | the .5 line is half a horizontal SWEEP, not half a row's height | **NOT YET** | `field_lines_py.py` labels row 259 as f1 262.5 and then treats it as a row like any other |
+| 6 | the peak carries the tear, so its COLUMN is the measurement | **PARTIAL** | `rf_peak_census.py` reports the column and `band_render.py` showed it drifting 340→660→160 across 6691-6714, but nothing in the rebuild USES the column, and the drift was measured ad hoc and never committed as an instrument |
+| 7 | position continuity is an INVARIANT; and peak LOSS is evidence | **NOT YET, both halves** | contract `:164` carries the continuity property and no harness instrument tests it. **Recording the loss has never been built anywhere** |
+| 8 | `T = S` is legitimate, ~1 line in 6 | **NOT YET** | the measurements can surface it — 34 of 36 engine `T = S` readings were contradicted — but no detector outputs `T = S` as a first-class outcome, and one that cannot REPRESENT it is wrong even where it agrees |
+
+**What #4 produced the moment the phase was kept**, which is the argument for the other seven:
+
+| population | per-unit median transition | unit-to-unit sd |
+|---|---|---|
+| bright programme (6960+) | sample **716.0** | **0.48 samples** |
+| the title card (6665-6810) | sample 643.2 | **34.25 samples** |
+
+**The transition is a real and extremely stable observable where there is picture to transition FROM — half a
+sample unit-to-unit — and unreliable on the card, by seventy times.** The level hid this completely: it reads 1.430
+with unit-to-unit sd 0.0122 on both populations. ⚠️ Within a unit ~10% of rows still give a wrong transition
+(p10 551.9 against a median of 716), so the per-unit figure must be the MEDIAN across rows; the pooled level is
+separately robust to those rows because the settled-sample selection rejects them.
+
+⚠️ **The honest summary: one of eight, and only because it was found and fixed this turn.** The rebuild does not
+yet honour the other seven, and three of them (1, 2, 8) are the ones that produced the T/S argument.
+
 ### STEP 2's THREE DEFECTS — all landed, verified at the call sites. One residue found in the RECORD.
 
 Verified in my own tree at HEAD by reading what the code DOES at each site, not by grepping the defect's name — a

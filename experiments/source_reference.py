@@ -51,11 +51,17 @@ def row_transition(row, search_from=540):
 def source_reference(field_rows):
     """Pool every row's post-transition samples AT THAT ROW'S OWN INSTANT.
 
-    Returns (mean, sd, n_samples, n_rows_contributing, n_rows_silent) or None when too few rows
-    decide. The pooling is across rows, each at its own time -- NOT an average over a shared column
-    range, which is the distinction that makes this a reference rather than a picture measurement.
+    Returns a dict, or None when too few rows decide. The pooling is across rows, each at its own
+    time -- NOT an average over a shared column range, which is the distinction that makes this a
+    reference rather than a picture measurement.
+
+    ⚠️ IT ALSO RETURNS THE TRANSITIONS THEMSELVES. The first version computed each row's transition,
+    used it to slice, and DISCARDED it -- keeping the level and throwing away the phase. That is the
+    owner's property backwards: "the ribbon is actually the sweep moving back into its own horizontal
+    blanking interval", so the POSITION is the observable and the level is only the tell that you
+    found it. A reference that reports only a level cannot serve a temporal instrument.
     """
-    pool = []; contributing = 0; silent = 0
+    pool = []; transitions = []; contributing = 0; silent = 0
     for row in field_rows:
         t = row_transition(row)
         if t is None or t >= len(row): silent += 1; continue
@@ -71,10 +77,15 @@ def source_reference(field_rows):
         else:
             settled = tail
         if len(settled) == 0: silent += 1; continue
-        pool.extend(settled.tolist()); contributing += 1
+        pool.extend(settled.tolist()); transitions.append(t); contributing += 1
     if contributing < 20: return None
-    a = np.array(pool, dtype=np.float64)
-    return float(a.mean()), float(a.std()), len(a), contributing, silent
+    a = np.array(pool, dtype=np.float64); tr = np.array(transitions, dtype=np.float64)
+    return {"level": float(a.mean()), "level_sd": float(a.std()), "n": len(a),
+            "rows": contributing, "silent": silent,
+            "transition_median": float(np.median(tr)),
+            "transition_p10": float(np.percentile(tr, 10)),
+            "transition_p90": float(np.percentile(tr, 90)),
+            "transition_sd": float(tr.std())}
 
 
 def main():
@@ -112,14 +123,23 @@ def main():
     print("capture %s   counters %d..   field-readings %d"%(os.path.basename(a.capture),a.frm,len(out)))
     print("  UNKNOWN (too few rows decided): %d"%len(unk))
     if not ok: print("  no readable references"); return 0
-    m=np.array([r[0] for _,_,r,_ in ok]); sd=np.array([r[1] for _,_,r,_ in ok])
-    n=np.array([r[2] for _,_,r,_ in ok]); con=np.array([r[3] for _,_,r,_ in ok])
+    m=np.array([r["level"] for _,_,r,_ in ok]); sd=np.array([r["level_sd"] for _,_,r,_ in ok])
+    n=np.array([r["n"] for _,_,r,_ in ok]); con=np.array([r["rows"] for _,_,r,_ in ok])
+    tm=np.array([r["transition_median"] for _,_,r,_ in ok])
+    tsd=np.array([r["transition_sd"] for _,_,r,_ in ok])
+    tlo=np.array([r["transition_p10"] for _,_,r,_ in ok])
+    thi=np.array([r["transition_p90"] for _,_,r,_ in ok])
     dev=np.array([d for _,_,_,d in ok])
     print("\n  SOURCE reference, pooled at each row's own instant:")
     print("    level        median %.3f   p10 %.3f   p90 %.3f"%(np.median(m),np.percentile(m,10),np.percentile(m,90)))
     print("    within-unit  sd median %.3f   -- the spread of the POOL, not of one row"%np.median(sd))
     print("    pool size    median %d samples from %d rows"%(int(np.median(n)),int(np.median(con))))
     print("    unit-to-unit sd of the level itself: %.4f"%m.std())
+    print("\n  THE PHASE the same rows carry -- each row's own transition into retrace:")
+    print("    per-unit median transition   sample %.1f   (p10 %.1f  p90 %.1f within a unit)"
+          %(np.median(tm),np.median(tlo),np.median(thi)))
+    print("    within-unit spread across rows  sd %.2f samples"%np.median(tsd))
+    print("    unit-to-unit spread of that median  sd %.2f samples"%tm.std())
     print("\n  DEVICE fill (comparison only, NEVER the reference):")
     print("    level        median %.4f   unit-to-unit sd %.4f"%(np.median(dev),dev.std()))
     print("\n  the two differ by %.3f codes; :531 forbids the second as a reference."%(np.median(m)-np.median(dev)))
