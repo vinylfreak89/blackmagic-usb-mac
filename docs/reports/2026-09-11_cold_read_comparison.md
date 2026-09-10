@@ -56,9 +56,27 @@ exclusion as a refutation would lose a live finding.**
 - **8b's unresolved boundary.** Codex 4 (optional switch evidence versus the box-contact test when a
   switch exists but its boundary is unresolved) and Claude B3 (agreement licenses acquisition, while an
   unresolved boundary "is not a failure of the test") are the same defect from two directions.
-- **The recorded-row definition is unusable as written.** Codex 3 ("last recorded row" does not uniquely
-  identify the deck clip) and Claude B11 (the reference population is never obtainable) attack the same
-  definition at different points.
+- **The recorded-row / clip definition is unusable as written — THE ONE CORROBORATED FINDING** (see §5;
+  independently re-checked against both reports by a third session). The two readers reach it by
+  genuinely different routes, which is what makes the agreement worth something:
+  - **Codex 3** — the definition **identifies two things as one**: *the last row the deck delivers* and
+    *the last recorded row's constant*. Qualifying the noise populations does not resolve it, because
+    distinguishing recorded material from device fill is a different decision from identifying the end
+    of the picture.
+  - **Claude B11** — "recorded row" is qualified against a reference population the document never says
+    how to obtain: of its two "independently identified reference populations", one is identified by
+    fixed position and, in its words, **"the other of which is the class being defined"** — so the
+    qualification is circular.
+
+  A conflation of two quantities under one name, and a circular reference population: **different
+  failures in the same definition**, not one finding seen twice.
+  ⚠️ **And the conflation half is the ONE-NAME-SEVERAL-QUANTITIES class again — its fifth recorded
+  instance**, after switch-line count, precedence, band, height and fail-open/closed. Two readers who
+  agreed on almost nothing else both landed inside it. ⚠️ It cannot be swept mechanically for the reason
+  `superseded_check.py` cannot: there is no definition of "a name covering two quantities" to enumerate
+  — `definition_sweep.py` finds a term defined TWICE, and this class is one definition naming two
+  things. The instances are irreducibly discovered, so the count is the evidence and a sweep is not
+  available.
 - **The invalid class's second condition.** Codex 1 (no settled post-lock output or recovery disposition)
   and Claude C1 (the class announces "two conditions" and enumerates one) are adjacent rather than
   identical — one is about the missing disposition, the other about the missing enumeration.
