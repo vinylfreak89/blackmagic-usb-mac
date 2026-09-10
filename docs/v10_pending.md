@@ -584,6 +584,152 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### ⚠️ WITHDRAWN — the ":531 tension" was my seventh fixed-place-to-look defect, not a rule/source conflict
+
+Owner: **"LINES ARE TEMPORAL NOT SPATIAL. of course if you measure across the row and average you aren't going to
+find it."**
+
+I reported that contract `:531`'s named reference — the source's own blanking on its good picture lines — is
+"often unmeasurable on capture 1", and put it on his list as a conflict between a rule and a source. **It is
+neither. The reference is there on essentially every row; I was looking in a fixed place instead of at each row's
+own instant.**
+
+**Verified independently, capture 1 bright programme (6960-6969), 1,010 mid-picture rows of field 1**, finding each
+row's transition as its own steepest fall and reading after it:
+
+| | value |
+|---|---|
+| rows examined | 1,010 |
+| rows with no sample at the device level after their transition | **32 (3.2%)** |
+| the SOURCE's own blanking | mean **1.410**, sd **0.492** |
+| the DEVICE's fill | mean 1.3808, sd 0.0058 |
+| each row's transition | median sample **716**, p10 715, p90 718 |
+
+**The reference exists on 978 of 1,010 rows**, where my fixed-window hunt returned 51.97 — picture. And the
+transition sits within a **three-sample** spread across rows, so it is a common slew rather than many rows
+transitioning at different times.
+⚠️ Two honest differences from the relayed version: it reported **0** rows without a usable sample and I measure
+**32**, and it reported the level at 1.540 where I measure **1.410**. Both are above the device fill; CLAUDE.md's
+recorded range for this quantity is 1.459-1.53, so mine sits a little below it and the relay's a little above.
+Different transition-finders, same conclusion — but "essentially every row", not "every row".
+
+**Consequences:**
+1. **The `:531` item comes OFF his list.** There is nothing to reconcile and nothing to send Codex as a conflict.
+2. **Every number taken tonight against the DEVICE's fill should be re-taken against the source's own blanking**,
+   read per row at its own transition — my threshold tables included. The mean-versus-median ruling is unaffected:
+   it concerns the statistic, not the reference, and the engine already computes the mean.
+3. ⚠️ **A real measurement caveat, not a contract one:** on bright content only one or two samples per row sit at
+   blanking after the transition, so a single row gives a reference of sd **0.492** against the device fill's
+   **0.0058** — about eighty times noisier. If a tighter per-unit reference is needed, accumulate **across rows at
+   each row's own instant**, which is not the same as averaging a fixed column range and is exactly the
+   distinction that broke both attempts.
+
+⚠️ **This is the SEVENTH instance of one defect tonight**, and the count is the finding: a positive-only sign
+filter, a fixed 48-sample ramp window, a boundary search bounded to `b0 − 60`, a fixed row for 6(b), a hardcoded
+column 706, a window from 580, and now a fixed window for the blanking reference. Every one reached for **a place
+to look** instead of letting the signal's own timing say when.
+
+### :1027 and :451 ANSWERED — and :451 was never a contract contradiction. My error, verified.
+
+**:1027 — caption-only acquisition.** His words: *"D1 - combing. yes a lock may exist without combing. but it is
+still registered once and then held. it is an adjustment to geometry. remember the rule is geometry and one or more
+other signal"*. Three things, the third general: a lock MAY exist without the comb; the comb is **registered once
+and held**, an adjustment to geometry rather than a per-unit input; and the acquisition rule is **geometry AND one
+or more other signal** — which one is not fixed, none is mandatory.
+**Checked in the code, and what landed already implements it:** `comb_zero_candidate` is ENGINE state (`e->`), set
+once at `field_registration.c:597` during acquisition and read at `:641` to set `out->parity_bias` whenever
+`parity_state == CALIBRATED`. So the result genuinely persists as a held adjustment — it is not merely "not
+evaluated" under a maintained lock, which is a different and weaker thing. Codex's `2a06c9e` gating plus this
+persistence is D1's structure. **Only the WORDING is owed**: it must say registered-once-and-held rather than
+leaving it to be re-derived from two code paths.
+
+⚠️ **:451 — I PUT A CONTRADICTION ON HIS LIST THAT DOES NOT EXIST.** His answer: *"D3 - that contradiction is true
+in the normal non displaced V-Sync. if V-Sync is displaced, yes the tapes real content reaches us because it
+appears N lines below where the shuttles insert is"*.
+**And the contract already says exactly that — in `:451`'s OWN NEXT SENTENCE**, which I did not read:
+
+> "Nothing the tape carries above line 23 reaches us except the re-encoded bytes on the insert. **The tape's own
+> VBI becomes visible only when the field is displaced downward: at +1 its black line 22 appears on line 23 (luma
+> 4–7 on fixture A), at +2 its line 21 on 23, at +3 its line 20 on 23 and its line 21 on 24.**"
+
+So there was never a conflict inside the contract. The conflict was between his UNQUALIFIED instruction and
+`:451`'s first sentence **read alone** — and CLAUDE.md already names this defect class, in its inverse form:
+sentences that read correctly alone and mislead together. Here I read one alone and manufactured a contradiction
+its neighbour resolves. **This item comes OFF his morning list.**
+**Where the repair actually belongs: the RENDER rule, not `:451`.** The 486 overwrite is CONDITIONAL ON A MEASURED
+DISPLACEMENT, and at d = 0 there is nothing to overwrite with.
+
+### :812 ANSWERED — fail closed. Implementation status of its four clauses, checked in the code
+
+> "then if you can't record a head switch or other valid picture, then it is an NTSC destroying signal and the
+> registration does not run (preserving its timing only but recording no decisions and setting no levels)"
+
+⚠️ **The conjunction is the trap and it must survive into the contract text: BOTH must fail** — no head switch
+recordable AND no other valid picture recordable. **An unresolved head switch with valid picture present is NOT
+this condition.** Reading it as "unresolved switch ⇒ invalid raster" is the one-name-two-quantities defect this
+project keeps hitting, and it would fire the reset on ordinary units.
+
+**Clause 4 — "setting no levels" — is the one with the sharpest consequence, and it is ALREADY SATISFIED BY
+CONSTRUCTION in the engine as written.** A poisoned level reference would be silent: every later measurement is
+made against it and nothing downstream would show the corruption. Checked:
+`field_registration.c:359-366` computes `blank_mean` into the per-call **measurement** struct from that unit's own
+blanking rows, and divides. **There is no cross-unit level accumulation in engine state to poison** — the only
+carried per-field value that is level-adjacent is `body_reference_top` (`:799`), and that is a POSITION, not a
+level. So clause 4 needs no new mechanism, only a test that keeps it true.
+
+⚠️ **Clause 3 — "recording no decisions" — is NOT satisfied, and the site is specific.** `:831` sets
+`state->previous_measured_top = measurement->top` inside the geometry-placement branch. That is the engine's
+temporal witness, carried to the next unit and read at `:915-916` to decide whether the top moved. **A unit that
+runs the geometry path on an NTSC-destroying raster writes that witness**, so the next unit's "did the top move"
+test is taken against a raster the ruling says the engine should not have operated on. It is not a logged decision
+in the sidecar sense, but it is state a later decision is made from, which is what clause 3 exists to prevent.
+The three exits at `:836`, `:842` and `:660` already set it to −1, so the mechanism for not writing it exists and
+the new condition needs to reach one of them.
+
+**Clause 2 — "preserving its timing only" — must not be conflated with dropping the unit.** Counter continuity,
+PTS and the audio correlation are untouched; the transport record stays complete. This project has already been
+bitten by the inverse (a gated unit publishing a held crop that scored as if applied), so the record must
+distinguish *not run* from *ran and produced nothing* from *absent*.
+
+**Contract work:** `:812`'s fail-open sentence — "Failure to identify a landmark or a region does not establish
+absence; unresolved evidence remains Unknown" — is now wrong for this case and must be REPLACED, not amended
+beside. The marker comes off. Check what the document says about unresolved switch evidence everywhere it says
+anything, and make its answer unique.
+
+### ⚠️ WITHDRAWN — the 6(b) "wrong line" proposal below is MY MISREADING, not a defect in his rule
+
+Owner, 2026-09-11: *"AGAIN.... as I've said many times. the line 22 is when the tape's line 22 wanders into the
+image... NOT the regenerated line 22. of course thats going to always be stable... thats another well no fucking
+duh"*.
+
+**"The tape's line 22" names AN OBJECT CARRIED ON THE TAPE, not a raster position.** I measured RASTER line 22 —
+which the device writes unconditionally — found it stable across 1,092 readings, and reported that as a correction
+to his rule. It is not a correction; it is the thing he calls obvious.
+
+**The finding is WITHDRAWN, not renumbered.** 6(b) should NOT read "line 23 / 286", and NOT "the first
+pass-through position" either: **both still name a fixed place to look**, which is the same defect one level down
+and **the third instance in this thread** — a fixed window for the ramp, a bounded search for the boundary, now a
+fixed row for the VBI test. His rule needs no line-number amendment from me.
+
+**What the test actually is:** does a row bearing the TAPE'S OWN blanking — identified as the tape's by being
+discrete from the device's — appear ANYWHERE INSIDE THE PICTURE? Its position is not a parameter of the test.
+**Its position IS THE READOUT: where it lands is the displacement.** That is why he wrote it as proof positive that
+the tape's geometry CHANGED rather than as a row to inspect.
+
+⚠️ **A second, separate defect in the same measurement**, worth keeping distinct from the misreading: averaging
+raster line 23 across units gives +42.21 on fixture A at row sd 47.08. **That is PICTURE, not the tape's blanking**,
+which CLAUDE.md puts at Y 4–7. If the tape's line 22 enters the image in only some units, a per-unit average is
+dominated by the units where it does not. The census measures the mean level of a raster row where the test is the
+per-unit PRESENCE of an identified object.
+
+**What survives and is worth keeping: the noise-character discriminator.** Device-written rows carry sd 0.48,
+source-carried rows 2.24–47.08 — a 4× to 98× separation in character alone, per unit, with no level typed in. That
+is a sound answer to "is this row the device's or the tape's", which is exactly the identification step the real
+test needs. Keep the instrument; drop the fixed row it was pointed at.
+
+The superseded proposal is kept below because the method is what was wrong, and its raster measurements are still
+correct measurements of the raster.
+
 ### WITHDRAWN — Part 2C's proposed line-number correction (not an owner question)
 
 The peer withdrew this entire proposal during Codex's review of `70c6746`, after the owner corrected the
@@ -618,6 +764,36 @@ observations, but do not call the 4x–98x range a demonstrated tape-VBI identit
 ⚠️ I have NOT verified 6(a) — whether a waveform becomes decodable on line 20 or 21 — and those lines are
 conditionally Shuttle-written ("when its decoder has sync"), which is a different situation from line 22's
 unconditional one and may not carry the same conclusion.
+
+### ⚠️ ACCEPTED — and one thing found while preparing it to land that he should see before it does
+
+He accepted all three parts ("accepted"). Two things from the landing sweep, one good and one that qualifies my
+own proposal.
+
+**GOOD: the engine already complies.** `field_registration.c:359-366` accumulates `blank_mean` by summing
+`row_mean` over the blanking rows and dividing — it is already the mean, not the median. Part 2 needs no engine
+change, only the contract naming what the code already does.
+
+⚠️ **THE QUALIFICATION: my proposal named the DEVICE's blanking, and contract `:531` names the SOURCE's.** Its
+words: "The blanking reference is established from qualified blanking intervals on the current source's good
+picture lines… **device-generated fill never establishes it**", quoting him: "find the blanking on the good lines
+of picture, thats your blanking interval the head switch needs to be measured inside of". **Every measurement I
+took tonight used the device's regenerated rows** (7-15 / 270-278), which is the reference `:531` forbids. The
+mean-versus-median ruling is unaffected — it is a question about the statistic, whichever reference is used — but
+the reference my tables were built on is the wrong one.
+
+⚠️ **And the source's reference is NOT reliably available on capture 1**, which is why this matters rather than
+being a tidy-up. Measured over 1,016 field-readings, hunting each good picture row's own lowest sustained trailing
+level with no threshold and no hardcoded column: it returns **51.97 with sd 41.58** — that is picture, not
+blanking. Many of this capture's picture rows have no clean trailing blanking in the delivered window at all,
+which is independently corroborated: `switch_without_shift.py` excludes **194 of 484** readings as unaskable
+because the learned reference admits a one-sample run.
+So on capture 1 the contract's named reference is often unmeasurable while the device's fill is always available
+at 1.3756 with sd 0.0037. **That is a real tension between `:531` and this source, and it should be his to see
+rather than resolved by quietly using the reference he forbade.**
+⚠️ Two of my three attempts at measuring the source reference were themselves the fixed-place-to-look defect —
+first a hardcoded column 706, then a trailing window from 580. The number above is from the version that hunts
+the level instead, and it is reported as a negative result rather than a value.
 
 ### PROPOSAL — the level-threshold BASIS, reconciled as he asked (2026-09-11, overnight)
 
