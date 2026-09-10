@@ -13,9 +13,16 @@ THE MEASURE, per row, over the active window samples 24..696 of the luma plane:
 
     h = median(|row - mean(row)|) / median(|diff(row)|)
 
-the row's spread against its own sample-to-sample noise. Both numerator and denominator scale with
-gain, so h is level-independent: a white band and a black band read the same, which is what the
-owner's rule requires. A row carrying picture has structure at scales longer than one sample and
+the row's spread against its own sample-to-sample noise. A white band and a black band read the same,
+which is what the owner's rule requires -- h is invariant to an ADDITIVE level shift.
+⚠️ **It is NOT contrast- or exposure-invariant, and the claim that it was is withdrawn (2026-09-10).**
+This header used to say "both numerator and denominator scale with gain, so h is level-independent".
+`row_threshold` below refutes it from measurement: on 8-bit integer samples the denominator pins at
+1.0 in every row of every unit measured, so h is the spread with a divide-by-one and never normalises
+for contrast. When the picture dims every row's h falls together -- the card's band 2.70 -> 0.72, its
+WARNING text 14.44 -> 3.57. What survives the fade is the SEPARATION, which is why the threshold is a
+fraction of the field's own structured level rather than a constant. Do not cite h as level-independent
+evidence anywhere else; that error was repeated into a contract proposal before it was caught. A row carrying picture has structure at scales longer than one sample and
 its spread runs far ahead of its noise; a structureless row's spread IS its noise.
 
 The VERTICAL form of the same statistic (spread down columns against column-to-column noise) was
