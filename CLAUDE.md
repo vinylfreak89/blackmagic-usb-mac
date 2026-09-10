@@ -2876,8 +2876,17 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   keeps `d` still — a classifier tuned so the arithmetic comes out right on those five events is a threshold fitted
   to a fixture and is undefined on the sixth. And the upward case stays hard: when the event is real and the
   evidence for it does not exist, **Unknown is the acceptable answer and a confident wrong one is not.**
+  ⚠️ **A third constraint, and it reaches further than the quantity it killed: the band's lines carry NO PERSISTENT
+  IDENTIFIERS.** Deciding which of this unit's rows belong to the lock's frozen band requires already knowing the
+  displacement, so membership cannot compute it — transport delivery proves which samples arrived, never their
+  correspondence to previously observed source lines (Codex, 2026-09-10). **Any qualification that classifies an
+  event by asking "are these the same lines" inherits that circularity.** Whatever classifies the event must read
+  something observable in the unit without reference to the frozen set.
   Two definitions of `E` were proposed and killed before the matrix was run — one by a counterexample, one because
-  bounded membership (`0 ≤ E ≤ N`) cannot carry a sign at all. Testing candidate readings against events whose
+  bounded membership (`0 ≤ E ≤ N`) cannot carry a sign at all. A related correction: `E` was NOT undefined, as was
+  claimed at the time. The contract defines the band extent from the top switch line to the clip, inclusive; the
+  defect is that "top switch line" conflates the currently observed boundary with the held accounting one, so
+  replacing it is a substantive change rather than filling a gap. Testing candidate readings against events whose
   required outcome the rulings already fix is a DECISION PROCEDURE, not a preference; the error both times was
   applying it to three events when five were specified.
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
