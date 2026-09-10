@@ -2255,6 +2255,43 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Plain comb and first capture-1 locks (2026-09-11, engine implementation).**
+The owner corrected the brief during implementation: "the comb does not need a switch to open. it is one of
+the ORs" and "the switch sets or fixes geometry only IF IT IS PRESENT." The mandatory switch condition is
+removed from BOTH comb and qualified-caption acquisition; unavailable counts remain Unknown, not zero or a
+seed. The old 182/508 switch-measurable population is an output of the old instrument, not a source property
+or an acquisition target. This implements the ruling rather than routing around that population.
+
+The reader now measures plain mean absolute vertical second difference of the current woven picture, both
+parities and all 720 luma samples within the overlapping picture aperture. No low-pass, temporal mask,
+pairwise dominance or support/margin threshold. Geometry still proposes and must be placeable; no boxed
+bounds are manufactured. The same change implements rule 9's maintained-lock guard: no `comb_confirm` call
+while both fields remain locked. Schema 21 reports `not_evaluated` with Unknown shifts and no current energy,
+distinct from agreement/disagreement and signal-gated `n.a.`. The old `comb_static_fraction` is deprecated;
+zero is a placeholder, not measured static support. `comb_safe` is not a frame-validity verdict.
+
+The final full-path capture-1 replay has 930 observation rows, 919 exact published units, no drops/holes/log
+errors, and 452 registration calls. **302 exact units are locked; all 919 applied pairs are (0,0).** There are
+4 comb agreements, 148 disagreements and 300 maintained-lock non-evaluations. First fresh lock 6269 is in
+the pre-program interval called ProgramLike by the unchanged classifier and is not evidence of clean program.
+From 6667 onward: 508 units, 296 locked, first fresh lock **6811**. Locked intervals 6811-6813 and 6882-7174;
+6882 is retained state returning through the signal gate, NOT another acquisition. The old engine rebuilt
+from `3bc8fe1` has zero locks; an ordinal join shows no changed raw tops, T/S, measurability, source/appearance,
+registration eligibility or applied pairs. This is lock acquisition without demonstrated corrective movement.
+
+The full field-registration suite, new plain reader/energy ASan+UBSan controls, and synthetic frameserver
+signal-gate test pass. Old tests requiring a previous unit, fresh maintained-lock combs, or no caption lock
+without a switch were amended; their failures are recorded in `src/field_registration/tests/PLAIN_COMB.md`.
+The old periodic-alias guarantee is NOT preserved. The constructed fixed-geometry pan still fools plain
+energy (+2 minimum at true displacement 0); it remains an open acquisition case, not a reason to add a mask.
+The historical product-energy margins in `STATIC_MASK.md` are not margins of the new statistic.
+
+Handoff log `/private/tmp/plain-comb.ZNrk82/handoff.csv`, SHA-256
+`0847c8fa14ddd0f73ef44221e4baacbb5d85e8dd0cbc34434dce420cd4a1924f`.
+Reproduction and limitations: `src/field_registration/tests/PLAIN_COMB.md`; scalar audit:
+`plain_comb_replay_check.py` beside it. The contract is unchanged. No diagnostic render or profiling pass;
+the harness owns the locked render next, under the seven recorded instructions, then profiling may follow.
+
 **Field-relative migration started: mapping foundation, not exporter handoff.**
 `src/field_registration/field_lines.h` maps all 525 delivered storage rows to
 their physical field and exact half-line label, including row 259 -> f1 262.5,
@@ -2540,9 +2577,12 @@ askable, 0 counterexamples -- **identical** to the version that also required a 
 band-width term is inert and the principled check carries the result, which is what the commit promised to correct
 either way.
 
-**PLAIN COMB, AND THE GATE IT MUST PASS: the comb's best evidence and the acquisition gate's open window DO NOT
-OVERLAP AT ALL on capture 1 (measured 2026-09-11, BEFORE any engine change, so this is a prediction and not a
-post-hoc reading).** The owner's ruling is "you a regular simple comb energy algo. its fucking simple. there
+**HISTORICAL PRE-CHANGE COMB BRIEF — switch-gate framing WITHDRAWN by the owner on 2026-09-11.**
+The following brief, through "cost before anyone reaches for a mask again", is kept as history. Its
+switch-measurable population describes a fallible old reader, not the source, and cannot legitimize a
+mandatory-switch gate. The current implementation/result is recorded at the start of this section.
+The original brief said the comb's best evidence and the gate's open window did not overlap.
+The owner's ruling is "you a regular simple comb energy algo. its fucking simple. there
 doesn't need to be a mask or other garbage", with the acceptance test "so comb should register and cap1 should
 become lockable" -- a FIRST LOCK, against a record of `geometry_lock_known` zero on all 919 units. Plain mean
 |vertical second difference| over the woven frame, no mask, no dominance, no support threshold, counters >= 6667:

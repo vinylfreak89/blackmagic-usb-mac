@@ -1,4 +1,9 @@
-# Running comb: failed commercial confirmation
+# Historical masked comb: failed commercial confirmation
+
+This report describes the pre-plain-comb engine. It and its private-API probes
+are historical; [PLAIN_COMB.md](PLAIN_COMB.md) describes the current reader,
+schema 21 and first capture-1 locks. The failures below are preserved, not
+claims about the current executable.
 
 This implementation runs a comb measurement; it has **not fixed the commercial
 acceptance failure**. Its synthetic goldens pass, but it confirms **zero** real
