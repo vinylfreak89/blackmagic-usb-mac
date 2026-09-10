@@ -98,6 +98,49 @@ report them.
 
 ---
 
+# Dispositions recorded 2026-09-10 (added after freezing; the findings above are unchanged)
+
+This section records what happened to findings, without editing them. A frozen report stays frozen.
+
+**Not reproduced in the cited version; unsupported as stated.** Findings **27** and **29**. Both were
+checked against `4eed79e`, the version this reader reviewed, by both agents independently.
+- 27 asserts §8's capture-1 coverage argument is contradicted by §2's measurement of the same rows.
+  §8 says capture 1 is line-TBC-off so its switch rows are STRUCTURED; §2 says the flat-row
+  separation is categorical, 768 flat with the corrector on against 0 with it off. Those agree, and
+  no contradicting §2 measurement was located.
+- 29 asserts a caption is authorized to set `d` by itself and forbidden to act alone. Every caption
+  site says confirmation. Permission for captions **as confirmation** does not authorize captions
+  without geometry.
+
+⚠️ These are NOT recorded as "closed by earlier work": that disposition requires a specific
+before/after change demonstrating it, and neither has one. "Not reproduced, unsupported as stated"
+preserves the frozen finding without inventing either a defect or its repair (Codex's discipline,
+adopted).
+
+**Withdrawn attribution.** Finding **11** cites "§1 withholds captures 2–4". No such text exists in
+`4eed79e` either. The conflict it describes is real but sits between §8's all-four regression
+requirement and the owner's sequencing ruling; it was repaired there.
+
+**Corrected by the other reader.** Finding **24** claimed rule 7's "the tape's line 22 never renders"
+contradicts the 486 mode. Codex's reader called them different objects and, on review, BOTH readings
+were wrong: the 486 window follows the displacement (`row = first + d + k - 4`), so it covers lines
+(20+d)–(262+d) and the tape's line 22 at 22+d is always inside it. It is destroyed only when the
+Shuttle's own rows occupy that raster line, i.e. `d ∈ {−2,−1,0}`. So the universal claim in rule 7 is
+false in the 486 mode for `d ≥ +1`. Traced in `experiments/review_render.py`, then MEASURED on capture 2
+(the EP recording, which sits at d1 = +2), 200 units:
+
+| row | line | mean | sd between units | |
+|---|---|---:|---:|---|
+| 18 | 22 | 1.375 | 0.011 | device blanking — the tape's line 22 is **not** here |
+| 19 | 23 | 37.710 | 15.60 | the tape's caption at d = +2 |
+| 20 | 24 | 60.062 | 29.24 | **the tape's line 22, carrying video, inside the window** |
+
+The 486 window at d = +2 covers lines 22–264, so row 20 is inside it. (Row 17, line 21, reads sd 0.125 —
+that is the device's insert carrying re-encoded tape bytes, not pass-through, and it is not evidence
+either way.)
+
+---
+
 # The sort: what a wording fixes, and what it does not
 
 Findings divide into two kinds and they need different handling. Most are contradictions — one term

@@ -415,9 +415,15 @@ field" phrasing does not.
   that the whole blanking interval sits inside the delivered window, reading the bottom this way settles it to
   within one row on almost every measurable unit of a field, flags no picture row as band, and refuses to answer on
   a rewind rather than guessing.
-- **Black picture content in this source is clipped to exactly the blanking level, with the same dither** (mean 1.40
-  against 1.39, standard deviation 0.49 against 0.49, measured inside content runs and band runs). No level test and
-  no texture test can separate content from blanking here. ⚠️ **"Only geometry can" is DELETED** (owner,
+- **In the sampled content runs and band runs of this source, the reported luma means and standard deviations were
+  approximately equal** (mean 1.40 against 1.39, standard deviation 0.49 against 0.49). ⚠️ **This is a local
+  observation, not a property of the source**, and its sample size, counter range and instrument are not recorded
+  here: on this same capture a full-frame black card measures mean 17.699 over 95 units, 16.2 codes above those
+  lines' own blanking — NTSC-M's 7.5 IRE setup arriving intact (CLAUDE.md). So black picture content in this source
+  is NOT generally at the blanking level. Matching two summary statistics also does not establish identical texture:
+  "the same dither" needs its own supporting measurement and does not follow from the means and standard deviations
+  above. What the observation supports is that **in those regions** no level test separated content from blanking;
+  it does not establish that every possible discriminator fails there, nor anything about other regions. ⚠️ **"Only geometry can" is DELETED** (owner,
   2026-09-10, cutting the circularity a cold read found: the switch measurement cannot depend on geometry when
   head-switch evidence is an input to geometry). **The head switch is BAD HORIZONTAL TIMING** — "either picture
   ending up in the blanking window or blanking ending up in the picture window. full stop" — and that is the
@@ -469,9 +475,14 @@ field" phrasing does not.
 ## 3. Definitions
 
 - **Recorded row**: a pass-through row that came through the analog decoder, told from the Shuttle's regenerated
-  rows by the decoder's noise: chroma noise above twice the blanking rows' (section 2's measured separation, at most
-  1.48x against at least 2.02x; the 2.0x test sits inside that observed gap, and NOT at its lower bound, which is
-  2.02x), or luma above the blank; padding is neither. The Shuttle's regenerated blanking rows — lines 11–19 of each field, storage rows 7–15 and 270–278 — are the
+  rows by the decoder's noise: chroma noise qualified against the independently identified
+  reference populations for the CURRENT source — the regenerated rows and the recorded rows — accounting for their
+  uncertainty and for competing explanations, or luma above the blank; padding is neither. §2's measured separation
+  on capture 1 (regenerated at most 1.48x the blanking rows', recorded at least 2.02x) and the historical 2.0x test
+  that sat inside that gap belong to the implementation and evidence record, not to this definition: a threshold
+  chosen inside a measured gap is neither a standard nor a measurement, which is what the header requires. ⚠️ This
+  neither certifies an adaptive replacement nor records that 2.0x failed on the fixtures — neither cold read showed
+  that it did. The Shuttle's regenerated blanking rows — lines 11–19 of each field, storage rows 7–15 and 270–278 — are the
   reference when present; tape signal cannot reach them; their absence, POSITIVELY ESTABLISHED, puts the raster in the invalid class and triggers the
   full reset (Lock-like loss and rule 13) — it is NOT a lock-like-loss observation, and a failed decode or samples
   unavailable through transport damage are not absence.
@@ -756,9 +767,11 @@ field" phrasing does not.
   evidence remains Unknown, and Unknown switch evidence does not satisfy this condition.
   ⚠️ **OPEN, and with the owner** (2026-09-10): his ruling settles the OBJECT whose absence is required, and
   presence is establishable by displacement, which is a timing observable. Absence may not be. Section 2 records
-  that on this source black picture content is clipped to exactly the blanking level with the same dither, so no
-  level or texture test separates them — and "no displacement occurred" may therefore not be separable from
-  "displacement occurred and cannot be seen". Whether this condition can be satisfied at all on such a source is
+  that IN THE SAMPLED REGIONS near the band no level test separated content from blanking — a local observation,
+  since the same capture's black card sits 16.2 codes above blanking — so in those regions "no displacement
+  occurred" may not be separable from "displacement occurred and cannot be seen". ⚠️ **The question for the owner is
+  the DISPOSITION when absence cannot be established, not whether it can be**: observability is empirical and is not
+  his to rule on. Whether this condition can be satisfied at all on such a source is
   his to rule on. "if there are more than 24 lines of black with no head switch, just pure fucking black at the end, its an
   invalid raster. straight up", with his rationale for the number "the 24 has nothing to do with what the fuck is
   delivered. it has to do with 262.5 + 24 = 23.5, ie PICTURE", the black measured against the source's own blanking
