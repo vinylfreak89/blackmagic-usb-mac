@@ -87,10 +87,16 @@ def qualified(series, i, idx):
     field read the same line. Nothing from the engine enters this decision."""
     c, v = series[i][0], series[i][idx]
     if v is None: return False
-    v = v[0] if isinstance(v, tuple) else v          # his rule is about the LINE, and only
-    for j in (i - 1, i + 1):                          # the line: the run's start and extent
-        if not (0 <= j < len(series)): continue       # are diagnostics carried alongside it
-        w = series[j][idx]                            # and must not tighten the qualifier.
+    # ⚠️ THIS COMMENT PREVIOUSLY ASSERTED THE OPPOSITE OF THE CONTRACT and the assertion was wrong.
+    # It read "his rule is about the LINE, and only the line". Contract :164 says the continuity
+    # condition is on "where that boundary sits along the row" -- the COLUMN -- and the sentence
+    # before it says a band that moves by a line or two is NOT a fault. So this filter is adjacency
+    # on a quantity the rule expressly permits to change. It is an adjacency filter that WORKS as
+    # measured; it is NOT derived from :164 as this file once claimed. (Codex, review a7760f6.)
+    v = v[0] if isinstance(v, tuple) else v
+    for j in (i - 1, i + 1):
+        if not (0 <= j < len(series)): continue
+        w = series[j][idx]
         if w is None or abs(series[j][0] - c) != 1: continue
         if (w[0] if isinstance(w, tuple) else w) == v:
             return True
@@ -283,6 +289,17 @@ def main():
 
     print()
     report("ablation: reliability-gated", *score(cand, eng, 2, True), per_field=False)
+    print()
+    print("  LIMITS, printed with the result because a limit in a docstring is a second store:")
+    print("   - the qualifier is LINE adjacency; contract :164's condition is on the boundary's")
+    print("     COLUMN and permits line changes, so this is not derived from that rule.")
+    print("   - adjacency excludes SCATTERED errors, not persistent ones: a stationary internal")
+    print("     picture edge qualifies (Codex's control, review a7760f6).")
+    print("   - readings that disagree with the engine by +1 were measured to equal the engine's S")
+    print("     in 42 of 42, so that class is this reader returning S rather than T.")
+    print("   - source_reference.row_transition searches from a HARDCODED sample 540, accepts only")
+    print("     positive departures, and returns a transition for a flat row instead of Unknown.")
+    print()
     g, k = gatestat['gated'], gatestat['kept']
     print("        gate removed %d rows of %d (%.3f%%) - report count WITH exactness, because"
           % (g, g + k, 100 * g / max(1, g + k)))

@@ -37,6 +37,17 @@ DEVICE_ROWS={1:list(range(7,16)),2:list(range(270,279))}   # for COMPARISON only
 
 
 def row_transition(row, search_from=540):
+    # ⚠️ THREE DEFECTS, named by Codex's review a7760f6 and confirmed by reading this function.
+    # They are recorded here rather than silently carried, because every level and timing number
+    # taken on 2026-09-11 rests on this primitive:
+    #   1. `search_from=540` is a HARDCODED SAMPLE -- the tenth fixed-place-to-look instance in
+    #      this project, and in the one place that claims to read each row at its OWN instant.
+    #   2. It takes argmin of the difference, so it only ever finds a FALLING edge; a positive
+    #      departure is invisible to it. Same positive-only shape already retired twice.
+    #   3. A FLAT row with no transition still returns one. It should answer Unknown; instead it
+    #      fabricates a position, which is "missing is not a value" inverted.
+    # Not repaired in place: the results that rest on it are published, so a change here must be
+    # measured against them rather than slipped in.
     """This row's own transition into blanking: the steepest fall in its own trailing sweep.
 
     Found, not located -- no column is typed in, and the search start only says "the trailing part

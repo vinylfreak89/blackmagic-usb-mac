@@ -4082,12 +4082,70 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   it is nearly indistinguishable from a wholly displaced row. **Whether that row is "the partial line" (T) or "the
   first fully displaced line" (S) is exactly what the two readers disagree about** — the phase reader sees a full
   row of relocated blanking and puts T above it; the run reader names the row itself.
-  ⚠️ **This LOCATES the T/S disagreement in the signal rather than in either instrument; it does NOT adjudicate
-  it.** The six disputed keys are an explicit two-agent disagreement and the verdict is Codex's, per the peak-vs-S
-  entry above. What is added here is that the class is not scattered: it is a single, positionally defined
-  population, so a rule that resolves it can be stated in terms of the switch's column rather than tuned per unit.
+  ⚠️⚠️ **THE FRAMING ABOVE IS RETRACTED — Codex reviewed it (`a7760f6`) and the objection is CHECKABLE and
+  CORRECT (2026-09-11).** The 42/42 association reproduces, but **all 42 of those candidates EQUAL THE ENGINE'S S,
+  and on all 42 the engine says T = S−1.** Verified here independently against the schema-20 export: 42 of 42
+  equal S, 0 are anything else. **So the "+1 class" is not a disagreement about a boundary — it is MY RUN-FINDER
+  RETURNING S WHERE THE ENGINE RETURNS T**, and S = T+1 by the engine's own relationship, which is where the whole
+  "+1" comes from.
+  **The mechanism I wrote is therefore backwards.** I said the phase reader sees a full row of relocated blanking
+  and puts T above it; in fact the phase reader put T on the partial line at S−1, correctly, and MY instrument
+  named the row below. **This is the naming defect this file already records — the harness confirming S while
+  calling it the switch line — recurring in a new instrument three sections after it was named.**
+  **What survives**, and it is a real characterisation of a failure mode rather than of the signal: the run reader
+  returns S instead of T exactly when the other head's interval opens in the first 59 delivered samples, i.e. when
+  the row is ~92% other-head and the run dominates it. That is worth knowing about the run route. It is NOT a
+  positional account of the T/S dispute and no column cutoff follows from it — Codex's wording is the right one,
+  *"a column is the right coordinate for an identified timing transition, not automatically for the longest
+  low-run opening"*.
+  ⚠️ **AND THE QUALIFIER MISREADS THE RULE IT CITES.** Contract `:164` says the continuity condition is on
+  **"where that boundary sits along the row"** — the COLUMN — and the sentence before it says a band that moves by
+  a line or two is NOT a fault. **My qualifier tests LINE-NUMBER equality, and a comment I wrote in the code
+  asserts "his rule is about the LINE, and only the line", which is the opposite of what the contract says.** So
+  the instrument is not parameter-free-derived-from-his-rule as claimed; it is an adjacency filter on a quantity
+  the rule permits to change. The measured separation (bounded ±2 against scattered −10..+2) stands as a
+  measurement of that filter; its DERIVATION does not.
+  ⚠️ **Three further defects Codex names, all confirmed by reading the code:** `source_reference.row_transition`
+  searches from a **hardcoded sample 540** — the tenth fixed-place-to-look instance, in the primitive underneath
+  every level and timing number taken tonight; it accepts only **positive** departures, the positive-only defect
+  again; and a **flat row with no falling transition still returns a transition**, so it fabricates one rather
+  than answering Unknown. Its own control also shows adjacency accepting a PERSISTENT false candidate — an
+  internal picture edge, with source blanking fixed on every row, qualifies. **Persistence excludes scattered
+  errors, not persistent ones**, which is this file's own "repetition is not qualification" rule arriving from the
+  instrument side.
+  ⚠️ **And the join table above HIDES FIVE OF THE SIX.** It tests `box` before `cause`, so five readings whose
+  actual cause names an explicit T disagreement are relabelled `box-excluded`. Codex's keyed join reaches five of
+  the six: **6700/f1, 6704/f2, 6749/f1, 6785/f1 match the run reader; 6722/f1 matches the phase reader; 6681/f1 is
+  unqualified.** Split, not resolved — their combined T stays open, and the verdict remains Codex's.
   **What this establishes** is the SHAPE of the answer: qualification plus Unknown, not a universal rule — and
   that his own continuity rule is a working qualifier rather than only a property to check.
+
+- **THE LOCKED RENDER EXISTS — the owner's named deliverable, built from capture 1's first locked run
+  (2026-09-11).** His instruction: *"the only render I want is one that is produced from a locked capture on cap 1.
+  then it may continue on by profiling"*. Capture 1 locks for the first time after the plain-comb change, so this
+  was not buildable before. `experiments/locked_render.py` joins the locked run's own handoff sidecar by device
+  counter and renders **920 units** — the 720x486 output as placed in colour beside the 525-line raster, the box
+  overlaid in field colours with purple on collision at alpha 0.35, and the decision record burned in per unit in
+  NTSC line numbers. The frame builder is `review_frame.build_frame`, imported rather than reimplemented, and the
+  refactor that exposed it was **gated on SHA-256-identical stills before and after**, not assumed.
+  **The read-back is the part that matters**, because the owner's review-copy rule exists for one specific failure
+  — *"a keyframe-cut excerpt offset the band by 12 units and misled the review"*. `locked_render_check.py`
+  compares a frame taken FROM THE VIDEO against an independently rebuilt frame for the counter that frame claims,
+  and scores it against its neighbours: **4 of 4 match their own unit better than ±1 and ±12** (frame 0 MAD 3.995
+  against 26.8 at +1; frame 919 1.843 against 3.896 at −1).
+  ⚠️ **The check's FIRST version gave a false pass and its own defect is the more useful record.** It built the
+  frame→counter map from the SIDECAR (921 Complete rows) rather than from what was RENDERED (920), so every frame
+  after the missing unit was compared against the wrong counter — and its ±12-only control could not see an
+  off-by-one, so it reported MATCH. **The instrument's map came from the wrong store, in the check built to catch
+  exactly that**, and only adding a ±1 control exposed it.
+  **The 921-vs-920 gap is named, not rounded away: counter 6043.** The strict extractor validates a unit by the
+  distance to the NEXT marker, so a Complete unit whose successor is an unframed fragment is never emitted. That
+  is the invariant working, not a loss — but it must be stated, because a renderer that silently drops a unit is
+  how a constant offset gets in.
+  ⚠️ **What this render CANNOT show, and it must not be reported as if it could:** all 920 units apply `(0,0)`, so
+  the owner's acceptance criterion — *"a valid result should keep the first 6 lines vertically stable in
+  position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
+  becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
 - **WITHIN-UNIT SHAPE DOES NOT RESCUE THE PER-UNIT DECISION EITHER — tested and dead, 2026-09-11.** The
   aggregate-versus-unit failure did NOT rule out using the whole profile a single unit contains: ~240 rows, not
