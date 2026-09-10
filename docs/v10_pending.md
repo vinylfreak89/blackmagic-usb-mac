@@ -584,6 +584,41 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### TWO "MISSING" RULINGS READ BY MEANING — both are ALREADY IN THE CONTRACT. No gap, nothing to add.
+
+A phrase audit reported two of his rulings absent. **A phrase search finds what to READ, never what is MISSING** —
+this project's own rule, established the last time an audit called six rulings "recorded nowhere" and two were
+landed under different wording. So both were read rather than trusted.
+
+**The absence test — the line's own horizontal blanking. ALREADY CARRIED, in three parts.**
+His wording *"the lines own horizontal blanking is the thing that compares it to… if all the blanking and all the
+picture belong where they belong, it aint a head switch like area. if its somewhere other than the fucking bottom
+before the deck, device or [other] blanking, its not a head switch"* is the same rule stated as its negation, and
+each of its three parts is present:
+- **the reference** — `:531`: the blanking reference comes from qualified blanking intervals on the current
+  source's good picture lines, supplying level and variability, and "device-generated fill never establishes it";
+- **the symmetric departure test** — `:46-47` and `:537`, his own earlier words: *"It should be measuring where the
+  blanking is overwritten. So if the blanking extends past its expected horizontal extent or the picture extends
+  past its expected horizontal extent, that's the head switch"*, with `:531` adding "what is measured against it is
+  departure in EITHER direction";
+- **the location qualifier** — `:268`: *"the horizontal skew at the bottom of the frame is evidence of a head
+  switch"*, and `:217` already says horizontal tearing is not a geometry event.
+**"Belong where they belong" IS "does not extend past its expected horizontal extent."** Same test, negated.
+**CLOSED — no gap.**
+
+**"Go get it again" after `0x0800` or lost regenerated rows. ALREADY CARRIED, and it is RULE 13.**
+`:1207`: *"**Full reset** (owner, 2026-09-10). `0x0800`, or positively established absence of the regenerated rows,
+resets the registration engine full stop — 'it resets the registration engine full stop (obviously keeping its unit
+counts but any derived locks, timings, etc)'"*. His 11:05:15 "they go get it again" is that rule, in his own words,
+already quoted in it. **CLOSED — and adding a reacquisition rule beside rule 13 would be exactly the
+amend-by-addition failure that left eight standing contradictions last time.**
+
+⚠️ Worth noting which generic passages did NOT settle these: `:546` ("any required reference no longer qualified
+must be reacquired") and `:217` ("old geometry invalid, back to zero") are ADJACENT but neither names `0x0800` or
+the regenerated rows. Had I stopped at those I would have called item 4 a probable gap. **Rule 13 names both
+triggers explicitly** — which is why the passages have to be read to the specific clause, not to something that
+sounds like it.
+
 ### ⚠️ WITHDRAWN — the ":531 tension" was my seventh fixed-place-to-look defect, not a rule/source conflict
 
 Owner: **"LINES ARE TEMPORAL NOT SPATIAL. of course if you measure across the row and average you aren't going to
