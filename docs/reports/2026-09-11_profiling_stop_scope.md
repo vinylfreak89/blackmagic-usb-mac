@@ -71,9 +71,25 @@ branch every time. The `WORKER-BENCH` figure it then prints is the cost of **cla
 the engine skipped** — it is not a measurement of the path §11b's 10 ms applies to, and it cannot fail
 that budget however slow registration becomes. This is load-independent and reproducible.
 
-⚠️ CLAUDE.md records an earlier run of this same bench with "9,996 of 10,000 units actually invoking
-registration". It is now 0. **Whether that is a regression, a fixture change or a configuration
-difference is NOT established here** — only that the gate now closes on every unit of this fixture.
+**WHY it closes, measured directly** (a standalone probe running only `signal_state_classify` over the
+fixture, sharing no code with the bench):
+
+```
+units 194 | appearance PROGRAM_LIKE 0 | source PRESENT 0 | normal_picture 0
+unit 0: appearance = SIGNAL_APPEARANCE_UNKNOWN (0)
+```
+
+**It is the APPEARANCE that fails, not the source hysteresis.** The classifier calls the fixture
+programme-like on **none** of its 194 units — every one is `SIGNAL_APPEARANCE_UNKNOWN` — so
+`stable_source` can never reach `PRESENT` and `normal_picture` can never be true. No number of units
+and no warm-up changes that; the gate cannot open on this fixture.
+
+That is consistent with what `registration_v9.raw` is: a fixture built to exercise the REGISTRATION
+engine's geometry, not to look like programme to a classifier that was written later.
+
+⚠️ CLAUDE.md records "9,996 of 10,000 units actually invoking registration" for a synthetic worker.
+**That was not this fixture**, and **whether this bench ever exercised registration is NOT established
+here** — only that it cannot now, and why.
 
 **2. No timing taken on this machine is comparable to §11b's budget, and no recorded figure states its
 load.** §11b specifies "the reference M3 P-core, single-threaded". Measured during this work, the host
