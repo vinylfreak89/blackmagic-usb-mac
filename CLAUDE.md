@@ -4152,13 +4152,31 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   repairing first was right: `source_reference.row_transition` is underneath the source reference, the departure
   profile, the no-jump qualification and the 69/98/0 figures, so a hardcoded constant there is a constant under a
   published result. The before/after control was set up as asked, with the baseline saved first.
-  **What the attempt MEASURED, and this is the finding:** on this capture's bright programme the delivered row
-  **never settles into blanking inside the window** — median luma **91.5 at samples 700–719, and 112 across the
-  whole 540–719 region the old function searched**, against blanking at ~1.4. The card is the opposite: 2.2 by
-  sample 700, a real edge at ~694. **So "this row's transition into blanking" IS NOT OBSERVABLE on bright
-  programme**, for the same structural reason as property 5 — the window delivers 720 of 858 samples and the
-  trailing blanking is almost entirely outside it. **The old function returned a position for every one of those
-  rows regardless.** The fabrication is confirmed, and it is not an edge case but a whole content regime.
+  ⚠️⚠️ **THE FIRST VERSION OF THIS ENTRY SAID THE ROW "NEVER SETTLES INTO BLANKING" AND THAT IS WRONG —
+  withdrawn within the hour, and the error is instructive enough to keep (2026-09-11).** It rested on a MEDIAN
+  over samples 700–719, a window in which 18 or 19 of the 20 samples are still picture. **Re-measured sample by
+  sample on 1,010 bright mid-picture rows (counters 6960–6969, field 1), the row falls cleanly into blanking at
+  the very end: 176 at sample 711, then 163, 142, 112, 84, 55, 26, and 2 at sample 719.** 922 of 1,010 reach
+  blanking. **A median over a 20-sample window erased a one-sample event** — the same aggregate-hides-the-truth
+  error as the profile-to-decision failure recorded below, three hours later and pointing the OPPOSITE way: there
+  it manufactured a separation no unit carried, here it erased an event every row carries.
+  ⚠️ It also contradicted a measurement of mine from the same night — 978 of 1,010 bright rows yielding a usable
+  blanking sample after their transition, mean 1.410 — which is arithmetically impossible if the rows never
+  arrive. **Two of my own results in direct contradiction, and the one built on a median was the wrong one.**
+  **THE CORRECT FINDING, and it is still a real limit with a stated size: the row reaches blanking in its LAST ONE
+  SAMPLE.** Counting samples at or below 4.4 in the region 690–719: **median 1, p90 1, max 2** — 919 of 1,010 rows
+  get exactly ONE settled sample, 3 get two, 88 get none. The card is the opposite: at blanking by sample 700,
+  with a real edge at ~694 and a run behind it.
+  **That single figure explains both halves at once.** One settled sample per row, pooled across 200 rows, is
+  ample to READ A LEVEL — which is exactly why the source reference works and returns 1.410. It is very likely not
+  enough to LOCATE A TRANSITION, which is a plausible reason all three repairs failed. **The old function returned
+  a position for these rows regardless, and the fall it searches for is not where it is looking.** The
+  fabrication is confirmed; the impossibility is not.
+  ⚠️ **Why the distinction is not a wording quibble, and this is the part worth keeping:** "not observable" makes
+  it a STRUCTURAL IMPOSSIBILITY and closes the line permanently. "One or two samples" makes it a BUDGET — a hard
+  measurement problem with a known size. **A budget can be attacked by a method that needs two samples; an
+  impossibility gets nobody to try.** Written as the first version had it, this entry would have foreclosed the
+  next attempt on the strength of a median.
   **Three repairs, three different wrong answers, each fixing the symptom the last one produced:**
 
   | repair | what it did on bright rows | why it failed |
