@@ -387,6 +387,52 @@ EXPAND where the partial was not present from the beginning.
    is about the switch geometry's bounds. A source lock still requires geometry plus another observation, per §3.
    Conflating the two would let a bounds acquisition manufacture a lock, which no ruling licenses.
 
+## Pile A — the cold reads' wording findings (both readers)
+
+Two frozen cold reads exist and they are **not** the post-freeze pair the owner's sequencing calls
+for. Mine reviewed `4eed79e` (36 findings), Codex's reviewed `fb4d7bb` (13, prefixed CR). Both are
+INPUT to pile A; the freeze-then-both-read run is still owed and neither agent has done it.
+Both readers report PARTIAL isolation (repository instructions inherited); neither claims more.
+
+**Closed 2026-09-10, each by a landed edit with a guard probe:**
+
+| finding | what it was | closed by |
+|---|---|---|
+| 12 | two live coordinate systems | `91ac8db`, `77a6711` — table rebuilt on one field-relative line column |
+| CR-01 | the table classified three written rows as source | `77a6711` — measured per row; §1's line account was right |
+| CR-07 | the line account silently required clip = 262 | `496afb9` — `P = C − 22 − N`, both identities |
+| 30 | "picture rows" called a per-source constant | `496afb9` — `P` is per-FIELD by construction |
+| 5 | box bars both do and do not recentre | `c9552ee` — half was stale; Crop clause repaired |
+| CR-12 | box invalidation fired on ordinary box content | `c9552ee` — scoped to a previously identified bar region |
+
+**In flight with Codex (one dispatch, not yet answered):** 6 and CR-10 (the two senses of "gap" —
+re-proposed as splitting *observe* from *qualify as a picture-relative gauge*, not as merging the two
+tests, which Codex blocked and 8d already forbids); 19 ("band" as a row count in §1 versus a region
+count in rule 4); 20 (rule 2 versus 8c on whether an expansion is a fault); 22 (rule 2 moves the
+switch position where rule 4 holds it).
+
+**Open, not yet worked:** 7, 8, 11, 23, 24, 25, 27, 28, 29, 32, 33, 34, 35, 36; CR-02, CR-03, CR-04,
+CR-05, CR-06, CR-08, CR-09, CR-11, CR-13. Note 25 and CR-05 are the same finding by two routes, as
+are 15 and CR-08.
+
+**Codex's comparison disputes five of my reader's inferences** (findings 2, 9, 13, 16, 24) — mostly
+that a missing method is not a proof of impossibility. Queued, neither conceded nor contested.
+
+**A defect found while working the above, not from either reader:** rule 4 says its earlier wording
+"is kept in the quotation that follows as history" and **there is no following quotation**; the
+phrase appears nowhere else in the document. Raised with Codex; restoring or dropping it is a
+guess about intent, so it needs agreement.
+
+## Harness coordinate migration — NOT to be done yet
+
+`experiments/coordinate_audit.py` lists the harness scripts that still convert rows to lines by
+adding 4, the withdrawn convention (wrong for every row of field 2 and for field 1's rows 259 and
+522-524). **15 of 53.** CLAUDE.md §14 forbids flipping the harness before the writer/schema
+migration and coordinated handoff, because both agents compare exports. Until then the contract's
+§1 says field-relative and the harness CSVs and panels say frame-continuous, so **no harness line
+number may be quoted as field-relative**. `experiments/field_lines_py.py` is the tested mirror to
+migrate onto; `field_lines_py_test.py` compiles `field_lines.h` and compares all 525 rows.
+
 ## A. Engine (Codex writes, Claude reviews)
 
 | # | item | where it is written down | state |
