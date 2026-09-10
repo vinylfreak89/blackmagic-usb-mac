@@ -629,6 +629,39 @@ concerns the level references (`:531`, Source-measured levels — which would ma
 black test, or something else. **Please supply the question it replied to.** Guessing which passage carries it is
 how the last audit called two landed rulings absent.
 
+### SCORECARD UPDATE — properties 1 and 2 HONOURED at one site; 8 has a STRUCTURAL LIMIT worth naming
+
+`experiments/switch_instant.py` measures the switch as **one instant** — a position in the field's own sweep —
+and DERIVES both quantisations from it: `T` = the line the instant falls inside, `S` = `T + 1`. **A T-versus-S
+disagreement is now structurally impossible rather than adjudicated**, which is the whole point of properties 1
+and 2. Capture 1, counters ≥ 6667:
+
+| | value |
+|---|---|
+| field-readings with a measurable instant | **429 of 1,016 (42%)**; the rest **Unknown**, not guessed |
+| the instant's column | median **393**, p10 218, p90 696 (of 720 delivered, 858 in the line) |
+| the instant's phase | median **0.458** of the line, p10 0.255, p90 **0.811** |
+| derived T against the engine's T | **+0 in 82.1%**, −1 in 17.3%, +1 in 0.5% |
+
+**The phase spans a quarter to four-fifths of the line** — the switch is not concentrated at one point in the
+sweep, which is what a physical event unlocked from the raster should look like, and it is invisible to any
+instrument that reports rows.
+
+⚠️ **PROPERTY 8 IS NOT HONOURED, AND THE REASON IS STRUCTURAL RATHER THAN AN OVERSIGHT: the peak witness CANNOT
+report `T = S`.** `T = S` happens when the instant lands in the 138 samples (16.1% of every line) the device never
+delivers — and a peak in the unsampled interval is BY DEFINITION unseen. So this witness can only ever report
+instants it can see, which are exactly the ones where a partial exists. The schema carries an `unsampled` field
+and it can never be true.
+**Consequence, and it is a design finding rather than a bug: a `T = S` reading requires a witness of a DIFFERENT
+KIND** — positive evidence that a switch occurred combined with positive evidence that no partial is present,
+rather than the absence of a peak, which is also what "no peak this unit" looks like. Until such a witness exists,
+`T = S` must be reported as **Unknown**, never derived from silence. ⚠️ That also means the 34 readings at −1 above
+are NOT thereby shown to be engine errors: they are readings where this witness saw an instant and the engine did
+not, which is a different claim.
+
+⚠️ The 17.3%/82.1% split reproduces the earlier peak-vs-T join, but from ONE measurement instead of two compared
+numbers — so it is the same population arrived at without the structure that made it arguable.
+
 ### THE EIGHT TEMPORAL PROPERTIES vs THE REBUILD — sites, or an honest "not yet". 1 honoured, 2 partial, 5 not.
 
 Asked for the SITE, not a restatement. The rebuild is one primitive old, so most of this is "not yet", and saying
