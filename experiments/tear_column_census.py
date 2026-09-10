@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 """Where, horizontally, the head switch's blanking sits inside the delivered window.
 
-The device delivers 720 of the line's 858 samples, so a row whose line timing is normal carries
-no horizontal blanking at all: the blanking interval (about 147 samples) lies outside the window.
-A row carried by the other head is timed differently, and its blanking slides into the window.
-WHERE it lands is a direct readout of that row's horizontal timing displacement, in samples of the
-13.5 MHz clock (74 ns each).
+⚠️ CORRECTED 2026-09-10, and the sentence that stood here was wrong. It read "a row whose line
+timing is normal carries no horizontal blanking at all: the blanking interval lies outside the
+window". A correctly timed row DOES carry blanking inside the window, at BOTH ends, and the
+standard requires it: the 525 line is 858 samples at 13.5 MHz, horizontal blanking is 10.9 us =
+147.15 samples, so the ANALOG active line is 52.6556 us = 710.85 samples - and BT.601's digital
+active line is 720, WIDER than the picture by 9.15 samples, positioned 122 samples after 0H while
+the picture starts at 126.9. So about 4.9 samples of back porch sit inside the left edge and 4.25
+of front porch inside the right. Measured on 33,150 picture rows of capture 1 per field
+(experiments/porch_census.py): leading run median 4-5 samples, absent in 0.0-0.9% of rows;
+trailing run never zero.
+
+What a normally timed row does NOT carry is the blanking interval's ~147-sample BLOCK inside the
+window. A row carried by the other head is timed differently and that block slides in. WHERE it
+lands is a direct readout of that row's horizontal timing displacement, in samples of the 13.5 MHz
+clock (74 ns each). So this instrument never asks "is blanking present" - it asks for an interior
+run at the blanking interval's scale, or a leading run far larger than the porch.
 
 Per row this reports the leading blank run, the trailing blank run, and the longest interior run
 with the column it starts at, measured against THAT FIELD's own regenerated blanking level - the
@@ -29,8 +40,9 @@ BLANK_F1 = (12,18)             # NTSC lines above the picture that carry no sign
 MARGIN   = 4.0                 # codes above that zero still counted as blanking
 FULL_MIN = 100                 # a run this long is the whole blanking interval, so the row is fully switched
 PART_MIN = 10                  # an interior run shorter than this is not blanking, it is content
-LEAD_MIN = 20                  # every line delivers a few samples of its own front porch (4-10 measured on
-                               # capture 1), so a LEADING run only means displacement once it clearly exceeds that
+LEAD_MIN = 20                  # every line delivers its own back porch inside the window - median 4-5 samples,
+                               # p90 6, max 8 at this threshold over 33,150 picture rows of capture 1 - so a
+                               # LEADING run only means displacement once it clearly exceeds that
 
 def runs(row, thr):
     b = row <= thr; n=len(b)
