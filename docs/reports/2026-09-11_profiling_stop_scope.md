@@ -107,11 +107,18 @@ far above every figure in the record.** Two runs, `FIELDREG-BENCH` (the engine c
 | 1 | 6.75 | 20.797 ms | 46.778 ms | — |
 | 2 | 5.99 | 20.992 ms | 47.851 ms | 4.84 |
 
-⚠️ **My first instinct was to dismiss this as host load, and the second run argues against that.** The
-two medians agree to within **0.9%** across different load, which is not the signature of a figure
-dominated by contention. The honest statement is therefore stronger than "it measures the host" and
-weaker than an engine result: **it is reproducible on this host under load, and its cause is not
-established.**
+⚠️ **Two corrections to my own readings of this, in order.** First I dismissed the figure as host load.
+Then, seeing the medians agree to within **0.9%**, I argued that "across different load" was evidence
+against contention-domination. **That second inference is also wrong, and a third session's independent
+sample during run 2 is why**: load 4.51 with Chrome at 97%, WindowServer 39%, a trading platform at 29%
+— **the same applications as run 1**. The load AVERAGES differed (6.75 against 5.99) but the contention
+PROFILE did not, and the average includes `worker_bench` itself at ~99% of a core.
+
+So the agreement shows the measurement is **stable under this contention profile**; it does NOT show
+the figure is independent of it. Capturing load either side records the contention, it does not remove
+it. The honest statement is narrower than either of my two: **reproducible on this host with these
+applications running, cause not established, and a quiet-host run is still the discriminator** — not a
+formality but the only thing that separates the three candidates below.
 
 Against the record — 1.35 ms and ~1.4 ms (rounds 8 and 10), 4.853/24.293 ms (the retired v9 engine,
 already called over budget), 9.617/16.603 ms (native classifier+engine) — 21 ms median is far above
