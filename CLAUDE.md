@@ -2851,6 +2851,35 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   raster, recorded it nowhere, Claude asserted the opposite three times, and both agents rebuilt the answer from
   zero eleven days later. §7's "what earns a note" rule already covers this case — a durable conclusion that would
   otherwise get re-investigated — and it was re-investigated.
+- **No single quantity can carry the displacement `d` — proved by matrix, 2026-09-10, and it is a result about the
+  SHAPE of the answer rather than another failed attempt.** The contract carries two readings of `d` and requires
+  them to agree: the bands above the picture (`top − 23`), and `count − extent`. A cold read found them giving
+  opposite answers on the same event. Four candidate readings were then tested against the five outcomes the owner's
+  own rulings already fix — genuine displacement down reads positive, genuine displacement up reads negative, a
+  temporally qualified head-catch excursion is not displacement, the partial disappearing does not move the held
+  boundary, and accepted expansion does not manufacture displacement:
+
+  | event | required | `top−23` | `N−E` observed | `N−E` held | membership |
+  |---|---:|---:|---:|---:|---:|
+  | displacement DOWN 1 | +1 | +1 | +1 | 0 | +1 |
+  | displacement UP 1 | −1 | **unobservable** | −1 | 0 | **0** |
+  | head-catch, picture still | 0 | 0 | **−1** | 0 | 0 |
+  | partial disappears | 0 | 0 | **+1** | 0 | 0 |
+  | accepted expansion | 0 | 0 | 0 | 0 | 0 |
+
+  **Nothing reaches 5/5 and the two live readings fail on DISJOINT sets.** `top − 23` fails only upward
+  displacement, and not as a defect — rule 11 is the owner's ruling that an earlier start cannot be established
+  because the Shuttle overwrites the evidence. `count − extent` fails only the two head-catch events. **So the
+  temporal qualification that classifies which event is occurring is LOAD-BEARING, not a tidying-up: the rule is
+  incomplete without it, and there is no fifth quantity to look for.**
+  ⚠️ Two constraints on building it. It must classify from evidence available in the unit, never from which answer
+  keeps `d` still — a classifier tuned so the arithmetic comes out right on those five events is a threshold fitted
+  to a fixture and is undefined on the sixth. And the upward case stays hard: when the event is real and the
+  evidence for it does not exist, **Unknown is the acceptable answer and a confident wrong one is not.**
+  Two definitions of `E` were proposed and killed before the matrix was run — one by a counterexample, one because
+  bounded membership (`0 ≤ E ≤ N`) cannot carry a sign at all. Testing candidate readings against events whose
+  required outcome the rulings already fix is a DECISION PROCEDURE, not a preference; the error both times was
+  applying it to three events when five were specified.
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
   Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
   answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back
