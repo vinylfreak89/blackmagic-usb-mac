@@ -2255,6 +2255,27 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**No-jump reference review (`dc339f0` via `f668f0b`, 2026-09-11).** Reproduction and falsifying controls are
+in `docs/reports/2026-09-11_no_jump_reference_review.md`; executable review diagnostics are
+`experiments/no_jump_review_controls.py`. The later peer measurement entries' attribution of adjacent-LINE
+equality to the owner's temporal no-jump rule is NOT accepted by this review. The cited rule concerns identified
+boundary travel along the row and permits line changes. Persistence can select a stable false candidate: a
+synthetic internal picture edge yields an adjacency-qualified switch while every true source porch stays fixed.
+The builder also accepts only positive departures and its source-reference dependency selects a transition on
+a perfectly flat row. These are measured controls, not grounds to replace engine observations with this reference.
+
+The 42/42 start-at-1–59 association reproduces, but all 42 candidate lines equal the ENGINE'S S, with engine
+T=S−1: the proposed explanation of a late phase-reader T has the opposite sign. Low-run opening is not an
+identified switching instant. Of the six disputed keys, four qualified candidates match the run reader, one
+matches the phase reader, and one is unqualified. This does not adjudicate them. The cause join finds five
+qualified `observation_disagreement` readings; the peer's box-first table hides them inside the box category.
+The 83/538 assertions on engine-Unknowns reproduce; they are not 83 newly identified switches. The negative
+positional cohort differs from the dispatch and is itemized in the report. Candidate and engine labels agree
+numerically in their legacy frame-continuous CSV convention, not the contract's field-relative convention.
+The contract and engine are unchanged. Both incoming document-check selftests now pass; no harness repair
+was made by this review. The peer's earlier claims below are retained as its measurements/interpretations,
+with these current review limits rather than silently promoted to agreed conclusions.
+
 **R3 recovery closed from the local ruling (2026-09-11, review of harness `1137cac`).** A new lock is
 required before correction resumes after the terminal-black-run invalid-raster condition; until acquisition,
 the general Crop rule supplies standard placement. The contract now states the answer where the recovery
