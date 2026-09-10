@@ -2904,6 +2904,33 @@ high-amplitude readings without depending on it.
 transient's column WALKS continuously into these units, or the row changes while the column sits still. The band
 render shows the walk (340 -> 660 -> 160 across 6691-6714) but it has not been joined to the disputed readings.
 
+**THE RECOVERY RAMP: real signal, but the control shows it is partly an artefact of selecting an extremum
+(2026-09-11).** The owner's discriminator for the dark-peak problem: "dark peaks (and any peaks) always have a luma
+ramp... because duh... its temporal signal... so to the right of the peak the luma will either ramp up or down
+depending on if its a dark or light peak", which is his 2026-09-05 "the AGC and the DC clamp see a step and settle
+over the next line or two" applied within the line. A transient is followed by the signal RECOVERING; dark content
+is just content sitting at a level. Measured as the slope of the 48 samples after each excursion ends, signed so
+positive means returning toward the row's baseline:
+
+| population | n | median slope | share recovering |
+|---|---:|---:|---:|
+| band, light, amp >= 89 | 258 | +1.209 | **94%** |
+| control picture rows, light, amp >= 89 | 2,705 | +1.042 | **63%** |
+| band, dark, amp >= 89 | 95 | +0.419 | **83%** |
+| control picture rows, dark, amp >= 89 | 635 | +0.133 | **64%** |
+
+**The separation is real -- 94 against 63 for light, 83 against 64 for dark -- but it is not categorical, and the
+control says why: ANY selected extremum is followed by samples regressing toward the median**, so a 63-64%
+"recovery" rate appears on ordinary picture content that contains no transient at all. The statistic is therefore
+measuring the settling behaviour AND the selection artefact together, and the ramp as computed here cannot be used
+as a qualification without separating them.
+⚠️ **Dark is the weaker case, which is the opposite of what was hoped:** the light gap is 31 points, the dark gap
+19. So this does not yet rescue dark peaks, and the amplitude floor cannot be dropped on the strength of it.
+⚠️ **What would separate them, not yet run:** a matched control at non-extremal positions, or monotonicity of the
+ramp rather than its mean slope; and the test that actually decides it -- whether REQUIRING a ramp improves
+peak-line agreement with T among dark excursions specifically. The mechanism is sound and the owner's reasoning
+from the temporal frame is right; this particular estimator of it is confounded.
+
 **CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
 FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
 clear it when normal timing returns -- which the engine already does -- and Codex verified upward and downward
