@@ -40,6 +40,36 @@ Burst is a chroma signal and this is decoded luma. Any competent NTSC decoder no
 subcarrier out before the luma is delivered, so nothing carrying burst should survive into these
 samples whatever the row's timing. That is consistent with the null and was not tested.
 
+## This was answered eleven days ago and nobody wrote it down
+
+The owner's sentence for the record: **"experimentally the color burst signal is not recoverable
+from this raster."**
+
+The chain, reported to me by the session watchdog from the transcripts. I have verified the parts
+that are checkable from the repository and marked the part that is not:
+
+* **2026-08-30, Codex to the owner, categorically** — asked whether the colour burst is part of this
+  raster, it answered "Not as a directly measurable waveform in this capture", that the delivered
+  window "gives the digital active-video window - not an approximately 858-sample, 13.5 MHz
+  representation of the entire NTSC line containing sync tip, back porch, and color burst", and
+  "We cannot use burst position as a horizontal or vertical registration anchor from this UYVY
+  stream." ⚠️ Quoted as reported; that Codex thread is not something I re-read.
+* **2026-09-04 and 09-05 — Claude asserted the opposite twice**, that every line carries its own
+  burst. True of the analogue signal, not of the delivered raster. That conflation is the error.
+* **2026-09-09 — Claude asserted it specifically and attributed it to this contract**: that a
+  displaced row's blanking in the delivered window is "a complete horizontal blanking interval -
+  front porch, sync, colour burst". ⚠️ **VERIFIED HERE AND FALSE.** The contract contains no such
+  parts list: it states "the analogue horizontal blanking interval is 10.9 µs = 147 samples
+  (SMPTE 170M)" - a duration from a standard, with no components named. `grep` for that phrase
+  finds it nowhere in the repository, so the invention lived only in conversation - which is
+  exactly why it was never checked. It is the seed of the chase this file closes.
+* **2026-09-10 — both agents rebuilt the answer from zero** and wrote it up as new.
+
+The measured version above is now the strongest form, and it is not merely a restatement: Codex's
+2026-08-30 answer covered the delivered window on a normally timed row, which is what the timing
+arithmetic already settles. It did not cover a DISPLACED row carrying its burst into the window,
+which is what the probe measured. So the measurement had value even though the lead never did.
+
 ## What this closes and what it leaves
 
 Two candidate routes to the identification method are now eliminated by measurement rather than by
