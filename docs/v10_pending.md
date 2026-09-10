@@ -584,6 +584,36 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### :1027 and :451 ANSWERED — and :451 was never a contract contradiction. My error, verified.
+
+**:1027 — caption-only acquisition.** His words: *"D1 - combing. yes a lock may exist without combing. but it is
+still registered once and then held. it is an adjustment to geometry. remember the rule is geometry and one or more
+other signal"*. Three things, the third general: a lock MAY exist without the comb; the comb is **registered once
+and held**, an adjustment to geometry rather than a per-unit input; and the acquisition rule is **geometry AND one
+or more other signal** — which one is not fixed, none is mandatory.
+**Checked in the code, and what landed already implements it:** `comb_zero_candidate` is ENGINE state (`e->`), set
+once at `field_registration.c:597` during acquisition and read at `:641` to set `out->parity_bias` whenever
+`parity_state == CALIBRATED`. So the result genuinely persists as a held adjustment — it is not merely "not
+evaluated" under a maintained lock, which is a different and weaker thing. Codex's `2a06c9e` gating plus this
+persistence is D1's structure. **Only the WORDING is owed**: it must say registered-once-and-held rather than
+leaving it to be re-derived from two code paths.
+
+⚠️ **:451 — I PUT A CONTRADICTION ON HIS LIST THAT DOES NOT EXIST.** His answer: *"D3 - that contradiction is true
+in the normal non displaced V-Sync. if V-Sync is displaced, yes the tapes real content reaches us because it
+appears N lines below where the shuttles insert is"*.
+**And the contract already says exactly that — in `:451`'s OWN NEXT SENTENCE**, which I did not read:
+
+> "Nothing the tape carries above line 23 reaches us except the re-encoded bytes on the insert. **The tape's own
+> VBI becomes visible only when the field is displaced downward: at +1 its black line 22 appears on line 23 (luma
+> 4–7 on fixture A), at +2 its line 21 on 23, at +3 its line 20 on 23 and its line 21 on 24.**"
+
+So there was never a conflict inside the contract. The conflict was between his UNQUALIFIED instruction and
+`:451`'s first sentence **read alone** — and CLAUDE.md already names this defect class, in its inverse form:
+sentences that read correctly alone and mislead together. Here I read one alone and manufactured a contradiction
+its neighbour resolves. **This item comes OFF his morning list.**
+**Where the repair actually belongs: the RENDER rule, not `:451`.** The 486 overwrite is CONDITIONAL ON A MEASURED
+DISPLACEMENT, and at d = 0 there is nothing to overwrite with.
+
 ### :812 ANSWERED — fail closed. Implementation status of its four clauses, checked in the code
 
 > "then if you can't record a head switch or other valid picture, then it is an NTSC destroying signal and the
