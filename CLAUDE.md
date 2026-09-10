@@ -1878,12 +1878,17 @@ historical claims, not the current rule.
   Its proper role is narrower and real — where it IS present it confirms the exact partial switch line and its
   position along the row. The regimes are told apart instead by the two categorical signatures already in the
   contract's section 2 (flat replacement rows against whole-line displaced rows), accumulated per source and never
-  decided from one field. ⚠️ **One of section 2's two figures is disputed and the disagreement is unresolved.** The
-  flat-row half (768 against 0) is agreed. The displaced-row half, which the contract states as "0 displaced rows
-  against 1,957" and calls categorical, was NOT reproduced by Codex: "Using the affected-row definition and
+  decided from one field. **✅ SETTLED 2026-09-10, in Codex's favour — this entry previously said the disagreement
+  was live and that it needed the owner, and both halves of that are now false.** One of section 2's two figures was
+  disputed: the flat-row half (768 against 0) was agreed, but the displaced-row half, stated as "0 displaced rows
+  against 1,957" and called categorical, was NOT reproduced by Codex — "Using the affected-row definition and
   |d| >= 6, I measured 11 TBC-on rows versus 1,957 TBC-off rows. The separation is strong, not categorical."
-  (turn 15, 2026-09-09 03:03). The contract text is unamended and its section 9 still reads "Nothing is open", so
-  this is a live contract disagreement that goes to the owner under the v10 process, not a settled measurement.
+  (turn 15, 2026-09-09 03:03). The contract now says exactly that: "The flat-row separation is categorical; the
+  timing separation is strong but not categorical. Neither establishes a content-independent, error-free per-unit
+  regime classifier." Section 9's "Nothing is open" is also gone, replaced by a pointer to the tracker. **So the
+  regimes are told apart by ONE categorical signature and one strong-but-not-categorical one, and neither yields a
+  per-unit classifier.** ⚠️ Nothing here goes to the owner; sending him a settled question is the cost the
+  colour-burst entry in this file already documents.
 
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
