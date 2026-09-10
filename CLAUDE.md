@@ -2388,6 +2388,20 @@ material can be clipped to exactly the blanking level with the same dither.
 ~90% of readings, which is the DEFINITION of the relationship (T is the partial row and need not carry a whole
 relocated interval), not an error.
 
+**Owner correction to both agents: a line is a time interval, not a simultaneous spatial object (2026-09-11).**
+"a line is not a line rendered at once as its digital self would imply. it is a skew across time.
+stop thinking of things spatially and think of them temporally."
+For the switch adjudication, reconstruct the signal in physical field order and sample time: a head/timing
+transition can occur during a line's scan, leaving an earlier prefix and a later suffix under different states.
+T and S are line labels derived from that temporal history, not competing visual classifications of whole rows.
+The stored raster partitions that history; adjacent rendered rows are not simultaneous views, and storage
+adjacency alone does not establish acquisition order. A spatial row-to-row comparison may corroborate timing
+but is not a universal prerequisite for identifying a switch event; an all-picture-looking row does not exclude
+a within-line transition. Codex's preceding review leaned on the older spatial signature as the missing check;
+that signature must not be promoted into a necessary condition. The next measurement must relate the transient
+and the timing states before and after it on the signal's time axis. This correction does not by itself declare
+any of the six disputed observations resolved or change a detector or contract rule.
+
 **The head-switch RF peak lands on S-1, never on S -- measured 2026-09-11 over capture 1's registerable region
 (`experiments/peak_vs_s.py`, joined to the engine's own schema-20 geometry export).** This bears directly on the six
 T disagreements holding Track 1's agreement condition open: both readers agree on S, the phase reader says T = S (no
