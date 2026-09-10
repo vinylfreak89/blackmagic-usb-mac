@@ -602,9 +602,13 @@ field" phrasing does not.
   * **Flatness.** With the corrector ON, **768 of 1,076 affected rows are flat** at the deck's black; with it OFF,
     **0 of the rows examined are flat**. Flat rows occurred only in the sampled corrector-on population — which is
     not categorical picture removal, since 308 of the 1,076 were not flat.
-  * **Horizontal timing**, a HORIZONTAL SAMPLE DISPLACEMENT and not registration `d`. Readability at ≥ 100 samples:
-    1,022 of 1,042 rows with the corrector off, against 14 of 1,076 with it on. Under the affected-row selection at
-    an absolute horizontal displacement of ≥ 6 samples: **11 rows with the corrector on against 1,957 with it off**.
+  * **Horizontal timing**, a HORIZONTAL SAMPLE DISPLACEMENT and not registration `d`. With the corrector OFF,
+    1,022 of 1,042 examined lines had readable horizontal displacement of at least 100 samples. With it ON, 14 of
+    1,076 affected lines had readable horizontal timing AT ALL, including 10 at 6–17 samples. ⚠️ **These two counts
+    do not use a common displacement threshold** and must not be read as one comparison — an earlier version of this
+    entry put both under "≥ 100 samples", which the source record does not say. Separately, under the affected-row
+    selection at an absolute horizontal displacement of ≥ 6 samples: **11 rows with the corrector on against 1,957
+    with it off**.
   ⚠️ **The separation is strong but not categorical for timing** (§2) — which is not the same as the picture being removed throughout the region or on
   every corrected source, and 768 of 1,076 is 71%, not all. ⚠️ This entry has now overclaimed in both directions:
   the heading first read "it removes the PICTURE, not the displacement" while the body said "the displacement is
