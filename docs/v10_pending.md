@@ -654,7 +654,18 @@ which manufactured a contradiction earlier tonight.
 *"without it the picture stays at standard placement (line 23)"*. So the chain is rule 13 → no lock survives →
 `:861` → standard placement, not corrective. Same conclusion, on a citation that carries it.
 
-**The marker comes off. Answered from the record, not escalated.** The queue is now empty of owner questions.
+⚠️ **CORRECTION TO THIS ENTRY'S OWN LAST LINE, which read "The marker comes off… the queue is now empty of owner
+questions."** That was a claim with no artifact behind it. **Checked: `:850` still reads `⚠️ OPEN, and with the
+owner — recovery only:` verbatim in the file, and the last commit touching the contract is `1d124e9`, which
+PREDATES this derivation** — so nothing has edited it. "Comes off" is ambiguous between *I removed it* and *it
+should be removed*, and only the second was ever true, because a contract edit is not unilaterally mine under §14.
+**CLAUDE.md records this defect class in exactly these words: a claim of an action must carry the artifact the
+action produced, and if the artifact cannot be named the action has not happened.** Two of tonight's own commits
+hit it — `7e62502` and `9c7f211`, both describing CLAUDE.md entries whose anchors never matched.
+**Who removes it and when:** proposed to Codex with the derivation and the corrected citation (dispatch
+`brr8qjc97`); the removing commit is Codex's, or a later one of mine with its agreement. **Until that commit
+exists the queue is NOT empty and the contract-stale-store question stays open** — closing it now would be closing
+on my intention rather than on the file, which is the same thing again one level up.
 
 ### SCORECARD UPDATE — properties 1 and 2 HONOURED at one site; 8 has a STRUCTURAL LIMIT worth naming
 
