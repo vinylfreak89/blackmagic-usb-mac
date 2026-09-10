@@ -2255,11 +2255,25 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**R3 recovery closed from the local ruling (2026-09-11, review of harness `1137cac`).** A new lock is
+required before correction resumes after the terminal-black-run invalid-raster condition; until acquisition,
+the general Crop rule supplies standard placement. The contract now states the answer where the recovery
+marker stood. The proof is the owner's local "the whole lock gets reset" / "it starts from scratch", not an
+extension of rule 13: that rule's full-engine erasure and counts-only survivor are scoped to `0x0800` or
+positively absent regenerated rows. A terminal-black-run invalid raster need not meet either trigger. The
+peer's YES is accepted; the broader counts-only inference for this different condition is not established.
+My earlier recovery-only question is withdrawn: inactivity alone was insufficient, but the local lock-reset
+instruction plus the general pre-lock placement rule answers it without a new owner ruling. The relayed
+quotations were checked in the repository, not independently against the original transcript. Historical
+reviews below retain their then-open status; the current queue and contract are amended together.
+Validation, including document-check failures, is in `docs/reports/2026-09-11_recovery_marker_review.md`.
+No engine, measurement or render change is part of this closure.
+
 **Contract amendment from `6484b4d` and `0f6e3ef` (2026-09-11).** The contract now replaces B2's open
 disposition with the BOTH-unrecordable gate: no recordable head switch AND no other recordable valid picture ⇒
 registration NOT RUN, timing/status preserved, no registration decisions, level-setting or temporal decision
 witness from that unit. Unknown switch evidence alone with valid picture does not meet it and is not turned
-into positive absence. The existing R3 question is narrowed to recovery, not newly dispatched. Rule 8 now carries
+into positive absence. That amendment narrowed R3 to recovery; the later closure is recorded above. Rule 8 now carries
 valid-VBI interleave and acquired-once/held registration without requiring or fabricating a comb reading.
 Coherent top-plus-bottom tracking and one-sided HOLD of both crop and lock are in rule 2 and its dependent
 definitions. Rules 8a–8d and 12 are unchanged; the earlier 8a/12 question is withdrawn with no exception added.

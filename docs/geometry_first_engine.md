@@ -847,10 +847,12 @@ field" phrasing does not.
   survive: the record says registration NOT RUN and why, not an applied hold, an observed zero or a missing unit.
   Transport-unavailable samples remain transport damage under rule 6; they are not evidence of a physically
   NTSC-destroying signal. Observation sufficient to recognize returning valid input continues.
-  ⚠️ **OPEN, and with the owner — recovery only:** when good video returns, does "starts from scratch" still
-  apply — must it find a new lock before correcting the picture again? This is the existing R3 recovery question
-  in `docs/v10_pending.md`, not a reopening of the during-invalid disposition. Rule 13's explicit full-reset
-  causes retain their stated recovery requirements.
+  **Recovery after the terminal-black-run invalid-raster condition:** the owner's "the whole lock gets reset"
+  and "it starts from scratch" require a NEW lock when valid video returns, before corrective placement resumes.
+  Until that acquisition, placement is standard (Crop below), not the old corrective placement. Registration
+  not running during the invalid input does not turn the expressly reset lock into a retained lock. Rule 13's
+  full-engine reset, including its enumeration of discarded state, remains scoped to its two named causes;
+  this recovery answer does not extend that enumeration to a different trigger.
 - **Crop**: line 23 is the output picture's standard top line in each field (owner); the ordinary field-relative
   origin is `23 + d` for every sign of d, using that field's qualified displacement. Missing source picture at
   positions overwritten by the Shuttle is rendered black, not as the Shuttle's caption/timing insert. Rule 7
