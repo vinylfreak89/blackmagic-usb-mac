@@ -56,19 +56,25 @@ int main(int argc, char **argv)
         fieldreg_decision decision;
         memset(&decision, 0, sizeof decision);
         assert(fieldreg_process(&engine, unit, &decision));
-        /* These fixtures have no measurable switch and never acquire a
-         * lock. Rule 1 preserves their geometry and caption disagreement;
-         * rule 8 forbids applying the unconfirmed nonzero observation. */
-        assert(decision.field[0].lock_state == FIELDREG_LOCK_UNLOCKED);
-        assert(decision.applied_d1 == 0);
+        /* The first qualified caption confirms the geometry, even without
+         * a switch. Later caption disagreement does not replace geometry. */
+        assert(decision.field[0].lock_state == FIELDREG_LOCK_LOCKED);
+        assert(!decision.field[0].lock_switch_line_count_known);
+        assert(decision.field[0].lock_switch_line_count == -1);
+        assert(decision.applied_d1 == expected_d[i]);
         assert(decision.field[0].measured_d == expected_d[i]);
         assert(decision.field[0].geometry_d == expected_d[i]);
-        assert(decision.field[0].gauge == FIELDREG_GAUGE_HOLD);
+        assert(decision.field[0].gauge == FIELDREG_GAUGE_GEOMETRY);
         assert(decision.field[0].caption_confirmation ==
                expected_confirmation[i]);
     }
 
     assert(fgetc(raw) == EOF);
+    if (!getenv("FIELDREG_BENCHMARK")) {
+        fclose(raw); free(unit);
+        puts("FIELDREG-V10-RULE1: 5/5 (correctness only)");
+        return 0;
+    }
     double timings[BENCHMARK_UNITS];
     for (size_t i = 0; i < BENCHMARK_UNITS; ++i) {
         fieldreg_decision decision;

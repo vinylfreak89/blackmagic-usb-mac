@@ -2255,6 +2255,43 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Plain comb and first capture-1 locks (2026-09-11, engine implementation).**
+The owner corrected the brief during implementation: "the comb does not need a switch to open. it is one of
+the ORs" and "the switch sets or fixes geometry only IF IT IS PRESENT." The mandatory switch condition is
+removed from BOTH comb and qualified-caption acquisition; unavailable counts remain Unknown, not zero or a
+seed. The old 182/508 switch-measurable population is an output of the old instrument, not a source property
+or an acquisition target. This implements the ruling rather than routing around that population.
+
+The reader now measures plain mean absolute vertical second difference of the current woven picture, both
+parities and all 720 luma samples within the overlapping picture aperture. No low-pass, temporal mask,
+pairwise dominance or support/margin threshold. Geometry still proposes and must be placeable; no boxed
+bounds are manufactured. The same change implements rule 9's maintained-lock guard: no `comb_confirm` call
+while both fields remain locked. Schema 21 reports `not_evaluated` with Unknown shifts and no current energy,
+distinct from agreement/disagreement and signal-gated `n.a.`. The old `comb_static_fraction` is deprecated;
+zero is a placeholder, not measured static support. `comb_safe` is not a frame-validity verdict.
+
+The final full-path capture-1 replay has 930 observation rows, 919 exact published units, no drops/holes/log
+errors, and 452 registration calls. **302 exact units are locked; all 919 applied pairs are (0,0).** There are
+4 comb agreements, 148 disagreements and 300 maintained-lock non-evaluations. First fresh lock 6269 is in
+the pre-program interval called ProgramLike by the unchanged classifier and is not evidence of clean program.
+From 6667 onward: 508 units, 296 locked, first fresh lock **6811**. Locked intervals 6811-6813 and 6882-7174;
+6882 is retained state returning through the signal gate, NOT another acquisition. The old engine rebuilt
+from `3bc8fe1` has zero locks; an ordinal join shows no changed raw tops, T/S, measurability, source/appearance,
+registration eligibility or applied pairs. This is lock acquisition without demonstrated corrective movement.
+
+The full field-registration suite, new plain reader/energy ASan+UBSan controls, and synthetic frameserver
+signal-gate test pass. Old tests requiring a previous unit, fresh maintained-lock combs, or no caption lock
+without a switch were amended; their failures are recorded in `src/field_registration/tests/PLAIN_COMB.md`.
+The old periodic-alias guarantee is NOT preserved. The constructed fixed-geometry pan still fools plain
+energy (+2 minimum at true displacement 0); it remains an open acquisition case, not a reason to add a mask.
+The historical product-energy margins in `STATIC_MASK.md` are not margins of the new statistic.
+
+Handoff log `/private/tmp/plain-comb.ZNrk82/handoff.csv`, SHA-256
+`0847c8fa14ddd0f73ef44221e4baacbb5d85e8dd0cbc34434dce420cd4a1924f`.
+Reproduction and limitations: `src/field_registration/tests/PLAIN_COMB.md`; scalar audit:
+`plain_comb_replay_check.py` beside it. The contract is unchanged. No diagnostic render or profiling pass;
+the harness owns the locked render next, under the seven recorded instructions, then profiling may follow.
+
 **Field-relative migration started: mapping foundation, not exporter handoff.**
 `src/field_registration/field_lines.h` maps all 525 delivered storage rows to
 their physical field and exact half-line label, including row 259 -> f1 262.5,
@@ -2388,6 +2425,20 @@ material can be clipped to exactly the blanking level with the same dither.
 ~90% of readings, which is the DEFINITION of the relationship (T is the partial row and need not carry a whole
 relocated interval), not an error.
 
+**Owner correction to both agents: a line is a time interval, not a simultaneous spatial object (2026-09-11).**
+"a line is not a line rendered at once as its digital self would imply. it is a skew across time.
+stop thinking of things spatially and think of them temporally."
+For the switch adjudication, reconstruct the signal in physical field order and sample time: a head/timing
+transition can occur during a line's scan, leaving an earlier prefix and a later suffix under different states.
+T and S are line labels derived from that temporal history, not competing visual classifications of whole rows.
+The stored raster partitions that history; adjacent rendered rows are not simultaneous views, and storage
+adjacency alone does not establish acquisition order. A spatial row-to-row comparison may corroborate timing
+but is not a universal prerequisite for identifying a switch event; an all-picture-looking row does not exclude
+a within-line transition. Codex's preceding review leaned on the older spatial signature as the missing check;
+that signature must not be promoted into a necessary condition. The next measurement must relate the transient
+and the timing states before and after it on the signal's time axis. This correction does not by itself declare
+any of the six disputed observations resolved or change a detector or contract rule.
+
 **The head-switch RF peak lands on S-1, never on S -- measured 2026-09-11 over capture 1's registerable region
 (`experiments/peak_vs_s.py`, joined to the engine's own schema-20 geometry export).** This bears directly on the six
 T disagreements holding Track 1's agreement condition open: both readers agree on S, the phase reader says T = S (no
@@ -2427,6 +2478,22 @@ and must not be quoted against each other. And `peak_vs_s.py`'s own fallback S, 
 disagrees with the engine's S on about 23% of readings; its distribution is printed separately and never merged with
 the engine join.
 
+**Codex review of the RF-witness claim above (2026-09-11, input `7c9d6de`): not yet an adjudication of T.**
+The default-30 join reproduces (199 of 200 positive winners on S-1; the agreed-T split is 166/31/1).
+The two spikes reproduce at 77.333 and 67.667 row-MAD units, columns 131 and 201, with half-extreme widths
+3 and 4. A qualified RF landmark can identify T; the unqualified maximum-luma-excursion statistic has not
+inherited the older row-to-row/timing qualification by being named an RF peak. The six disputed current T
+values are not promoted by this review, and the 31 consensus discrepancies are not yet 31 proved errors.
+The input entry's "never on S" and "166 of the 197 readings where the engine says T = S-1" are transcription
+errors: its table includes S, and 197 groups the peak-on-S-1 readings, of which 31 have engine T=S.
+Its inference excluding bright content from spatial concentration is not established: content need not be
+uniformly distributed over the eight rows. These are review findings against that entry, not new detector rules.
+The four peak-negative keys do retain run-reader evidence (normal leading samples and shortened exact-code
+terminal runs), but those predicates do not settle timing identity. Separate positive searches on those four
+give maxima 6, 8, 5.5 and 5.5 MAD within the eight-row window, all below 30; a negative absolute winner alone
+could not have established that. Full evidence, code-path qualifications, and the diagnostic script's separate
+field-2 coordinate bug are in `docs/reports/2026-09-11_peak_witness_adjudication.md`. No engine or contract change.
+
 **CODEX'S ADJUDICATION (`85e37da` on `v10-engine`, report `docs/reports/2026-09-11_peak_witness_adjudication.md`):
 the association reproduces and is NOT accepted as a verdict.** Its objection is the one that matters and it is not
 about the arithmetic: **a large within-row luma excursion is not an identified RF landmark.** The earlier RF-peak
@@ -2464,6 +2531,21 @@ are 200 units of flat device blanking (field-1 picture-area mean 1.50, sd 0.9), 
 and **6900-7174 is about 275 units of bright programme (mean 113-128, sd 34-49)**. Split by the unit's own
 brightness, `peak_line - S` is **93 of 93 on S-1 in dim units and 106 of 107 in bright ones**, so no single content
 regime carries it.
+
+**Codex review of `f4f24ca` (2026-09-11): terminal-run candidate, not an adopted switch measurement.**
+`docs/reports/2026-09-11_terminal_run_review.md` records the deciding distinctions. First-off-reference hit versus
+terminal suffix changes the decision rule, not just scan direction; the same suffix is found in either direction
+(exhaustive Boolean check 1,024/1,024, not a raster validation). The current engine already cancels mid-field
+departures on return to normal timing. The quoted 71.5% is agreement on an engine-T-known cohort, not independent
+accuracy; that cohort excludes the original six T-Unknown disputes. Neither the 5–95% reference nor the 9.6%
+control rate supplies a calibrated conditional null immediately above T, so 22.5% does not yet prove a real extra
+head-switch row. The missing discriminator is independently identified timing on the disputed preceding scan:
+positive head-switch skew makes the engine late, positive normal timing makes the proxy overreach, and ambiguous
+timing stays Unknown. The new 284-key comparison's executable and keyed output were not located in the supplied
+changes; its rates are reviewed as attributed results, not newly reproduced measurements. The report requests
+them and specifies matched boundary controls. The 16% unobserved duration must not become a frequency of T=S.
+R3's narrow recovery question is approved for the queue as Codex's wording, with the gate ruled and recovery
+clarification pending. No engine or contract change is made by this review.
 
 **THE TOP SKEW ROW IS THE ENGINE'S T -- but only under a RUN criterion, and the control is what says so
 (2026-09-11).** The owner, relayed: "every single row the RF peak sits at... there is horizontal skew. every single
@@ -2523,6 +2605,9 @@ The measurements below stand as measurements of what plain comb does. Their FRAM
 **PLAIN COMB, AND THE GATE IT MUST PASS: the comb's best evidence and the acquisition gate's open window DO NOT
 OVERLAP AT ALL on capture 1 (measured 2026-09-11, BEFORE any engine change, so this is a prediction and not a
 post-hoc reading).** The owner's ruling is "you a regular simple comb energy algo. its fucking simple. there
+⚠️ **Codex's note on merge, kept:** the brief below through "cost before anyone reaches for a mask
+again" is HISTORY. The implemented result and its limitations are recorded at the start of this section and in
+`src/field_registration/tests/PLAIN_COMB.md`.
 doesn't need to be a mask or other garbage", with the acceptance test "so comb should register and cap1 should
 become lockable" -- a FIRST LOCK, against a record of `geometry_lock_known` zero on all 919 units. Plain mean
 |vertical second difference| over the woven frame, no mask, no dominance, no support threshold, counters >= 6667:
@@ -2784,6 +2869,22 @@ readings are not this source being hard, and mask work should be validated on th
 line rendered at once as its digital self would imply. it is a skew across time. stop thinking of things spatially
 and think of them temporally."** This reframes the whole T/S dispute and it is worth more than any measurement in
 this entry.
+
+**Codex review of the proposed ruling application and temporal inference (2026-09-11, input `86b9fcc`).**
+`docs/reports/2026-09-11_owner_rulings_review.md` records the per-item disposition. R1, the one-line-region repair
+R2, and R2b's own-timing/location rule are agreed in substance, with evidence qualifications preserved; this is
+not a detector sign-off. R6's black-fill/486 composition and narrow picture-bearing line-22 exception are actionable
+as rendering repairs, but "maintain the lock" does not clearly replace the older explicit comb phase instruction.
+R3's invalid-signal gate is settled; the relay's inference that recovery has no lifecycle decision is not agreed,
+particularly against the owner's preceding "starts from scratch". R45 needs the operative earlier answer it
+references before caption-only precedence can be rewritten. No contract edits were made in this review.
+The owner's temporal correction is accepted, but the measure-zero inference in the original `86b9fcc` proposal is NOT:
+720 delivered samples cover 53.333 us of an 858-sample, 63.556-us scan, leaving 10.222 us unobserved. A physical
+transition, its first observable affected line, and a fully other-head delivered row are not interchangeable;
+their observation and phase distribution cannot be assumed. A late-crossing explanation remains a hypothesis.
+The report also distinguishes failure of the correlation test from falsification of an RF landmark, and a
+selected excursion count from a proved lower bound on genuine RF events. These are review findings, not a new
+rule selecting either reader's T.
 
 **The structural consequence.** A delivered row is about 53 microseconds of sweep and the head switch is an
 INSTANT. T and S are therefore not two rows -- they are two quantizations of ONE moment: T is the line the instant

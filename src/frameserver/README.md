@@ -1,9 +1,9 @@
 # Frameserver sidecar
 
 The frameserver publishes corrected interlaced UYVY units immediately and writes an optional CSV
-decision sidecar. Schema `13` keeps the transport, signal-state, applied-pair,
-publication, and loss-accounting columns from schema 3. Between them it replaces
-the retired v7 evidence graph with two identical per-field groups:
+decision sidecar. Current schema `21` retains the schema-20 columns and adds
+`comb_check=not_evaluated` for a maintained lock. The per-field groups originated
+in schema 13; the following historical core list is not the complete header:
 
 ```text
 fN_reason,fN_gauge,fN_insert_present,fN_insert_bytes,fN_insert_relation,fN_caption_confirmation,fN_parity_candidates,fN_fallback_candidates,fN_gauge_line,fN_gauge_bytes,fN_gauge_amplitude,fN_geometry_d,fN_blank_mean,fN_blank_chroma_noise,fN_body_witness_valid,fN_body_shift,fN_body_mad,fN_body_geometry_agrees,fN_body_reference_top,fN_body_implied_top,fN_body_differential,fN_body_common_mode,fN_picture_position_valid,fN_measured_picture_top,fN_picture_from_body,fN_recorded_first,fN_recorded_last,fN_raw_top,fN_raw_bottom,fN_switch_line,fN_first_full_other_head_line,fN_rf_peak_line,fN_rf_peak_position,fN_raw_span,fN_picture_rows,fN_band_extent,fN_observed_switch_line_count,fN_switch_count_agrees,fN_switch_count_conflict,fN_switch_signature,fN_switch_measurable,fN_geometry_measurable,fN_lock_state,fN_zero_source,fN_lock_id,fN_lock_top,fN_lock_switch_line_count,fN_lock_switch_line_count_known,fN_clip_state,fN_clip_ceiling,fN_expected_bottom,fN_lines_lost,fN_invariant_residual
@@ -11,11 +11,15 @@ fN_reason,fN_gauge,fN_insert_present,fN_insert_bytes,fN_insert_relation,fN_capti
 
 `drop_reason` is `None`, `PoolFull`, `PublisherFull`, or `RingFullTail`.
 `fN_*_line`, recorded bounds, top, bottom, lock-top, clip, and expected-bottom
-values use NTSC line numbers; `rf_peak_position` is a horizontal sample index.
+values retain the legacy frame-continuous labels in this schema (not the
+pending field-relative migration); `rf_peak_position` is a horizontal sample index.
 The schema also records `comb_correction` and the ordinal where
-the current nonzero correction was installed; `-1` means none. `comb_safe`
-requires valid locks, calibrated parity, and an honored correction. Exact
-semantics are in `../field_registration/README.md`.
+the current nonzero correction was installed; `-1` means none. `comb_safe` is
+derived from calibrated parity and a current agreeing comb reading, not the
+validity of a maintained-lock frame. An unevaluated unit has Unknown best and
+candidate shifts and no current energy measurement. `comb_static_fraction` is
+deprecated, always zero, not measured support. Exact current semantics and
+handoff results are in [PLAIN_COMB.md](../field_registration/tests/PLAIN_COMB.md).
 
 - A pool-full observation retains its own ordinary row, is unpublished, and says `PoolFull`.
 - Ring-full observations cannot reach the worker individually. Their count is attached to the

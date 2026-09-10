@@ -22,12 +22,13 @@ there is no multi-row brightness gate. A caption's decoded row and bytes are ret
 `agrees`/`disagrees`/`ambiguous` confirmation. Geometry is measured without
 using a decoded caption row to choose where its top scan begins.
 
-The round-10 body veto, caption placement, zero re-anchoring, comb calibration,
-and comb crop-correction paths have been removed from the compiled engine.
-Body and comb confirmation will return only as the contract defines them; they
-currently report no observation. Acquisition/reset/damage behavior still has
-the inherited placeholder state and is implemented by rules 5–6, after the
-fixed switch-line count.
+The old body veto, caption placement, zero re-anchoring and comb crop-correction
+paths remain removed. Comb confirmation now uses plain current-unit woven
+energy during acquisition/reacquisition, without a temporal mask or mandatory
+switch. Under a maintained lock it is not evaluated. See
+[tests/PLAIN_COMB.md](tests/PLAIN_COMB.md) for the exact reader, first capture-1
+locks, schema and known motion/alias limitations. Acquisition/reset/damage
+behavior outside that change still has the recorded implementation gaps.
 
 Rule 3 measures the lower geometry horizontally, never from luma level. The
 last recorded row is found from the same per-unit decoder-noise boundary as
@@ -49,8 +50,9 @@ the visible band.
 
 Rule 4 freezes the switch-line count only at a source-lock confirmation on a
 unit whose switch line and band are measurable. The implemented confirmation
-path is a unique pass-through caption agreeing with the current geometry;
-acquisition comb confirmation lands with rules 5–6. Once frozen, every later
+routes are a unique pass-through caption agreeing with the current geometry
+or the acquisition comb. Neither requires the count to exist: a lock may keep
+it Unknown, with its deductions unavailable. Once frozen, every later
 measurable count is compared with the lock. A mismatch is recorded as
 `SwitchCountConflict`; it neither relearns the count nor overrides the
 current-unit top placement. `picture_rows` is then the source constant 240
@@ -58,7 +60,7 @@ minus the locked switch-line count.
 
 There is no bottom censor, luma-derived bottom, or typed fixture-A clip start.
 
-The frameserver decision log is schema 13. Each per-field group records the
+The frameserver decision log is schema 21. Each per-field group records the
 recorded bounds, top and picture bottom, `switch_line`, `S`, RF-peak line and
 horizontal position, span, picture rows, visible band, observed switch-line
 count, its agreement/conflict with the locked count, the locked count itself,

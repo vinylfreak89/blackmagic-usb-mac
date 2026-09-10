@@ -70,6 +70,11 @@ int main(int argc, char **argv)
         assert(field->picture_rows == 237);
     }
     assert(fgetc(raw) == EOF);
+    if (!getenv("FIELDREG_BENCHMARK")) {
+        fclose(raw); free(unit);
+        puts("FIELDREG-V10-RULE3: 2/2 (correctness only)");
+        return 0;
+    }
 
     double timings[BENCHMARK_UNITS];
     for (size_t i = 0; i < BENCHMARK_UNITS; ++i) {

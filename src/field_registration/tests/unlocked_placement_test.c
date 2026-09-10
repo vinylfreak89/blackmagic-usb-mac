@@ -29,14 +29,12 @@ int main(void)
               engine.previous_crop[1] == FIELDREG_FIELD2_START);
     }
 
-    /* The gate must not turn the existing comb acquisition into a dead end:
-     * standard output on the first unit, proposed geometry on confirmation. */
+    /* The current unit can confirm immediately, without a temporal witness. */
     fieldreg_begin_segment(&engine);
     make_unit(0, 0, false);
     fieldreg_decision d = run();
-    check("first detailed unit still holds", !d.geometry_lock_known &&
+    check("first detailed unit can lock", d.geometry_lock_known &&
           d.applied_d1 == 0 && d.applied_d2 == 0);
-    d = run();
     check("comb acquisition still applies its confirmed geometry",
           d.geometry_lock_known && d.comb_check == FIELDREG_COMB_AGREE &&
           d.applied_d1 == 0 && d.applied_d2 == 0);

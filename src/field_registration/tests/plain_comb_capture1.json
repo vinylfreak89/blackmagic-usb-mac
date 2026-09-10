@@ -1,0 +1,86 @@
+{
+  "all_observations": {
+    "applied_pairs": {
+      "(0,0)": 930
+    },
+    "comb": {
+      "agree": 4,
+      "disagree": 148,
+      "n.a.": 478,
+      "not_evaluated": 300
+    },
+    "locked": 302,
+    "locked_applied_pairs": {
+      "(0,0)": 302
+    },
+    "units": 930
+  },
+  "baseline_changed_units": {
+    "appearance": 0,
+    "applied_d1": 0,
+    "applied_d2": 0,
+    "counter_extended": 0,
+    "f1_first_full_other_head_line": 0,
+    "f1_geometry_measurable": 0,
+    "f1_raw_top": 0,
+    "f1_switch_line": 0,
+    "f1_switch_measurable": 0,
+    "f2_first_full_other_head_line": 0,
+    "f2_geometry_measurable": 0,
+    "f2_raw_top": 0,
+    "f2_switch_line": 0,
+    "f2_switch_measurable": 0,
+    "registration_measured": 0,
+    "source": 0
+  },
+  "fresh_comb_lock_units": [
+    {
+      "counter": 6269,
+      "counts_known": [
+        false,
+        false
+      ]
+    },
+    {
+      "counter": 6811,
+      "counts_known": [
+        true,
+        true
+      ]
+    }
+  ],
+  "from_6667": {
+    "applied_pairs": {
+      "(0,0)": 508
+    },
+    "comb": {
+      "agree": 2,
+      "disagree": 143,
+      "n.a.": 68,
+      "not_evaluated": 295
+    },
+    "locked": 296,
+    "locked_applied_pairs": {
+      "(0,0)": 296
+    },
+    "units": 508
+  },
+  "log": "/private/tmp/plain-comb.ZNrk82/handoff.csv",
+  "published": {
+    "applied_pairs": {
+      "(0,0)": 919
+    },
+    "comb": {
+      "agree": 4,
+      "disagree": 148,
+      "n.a.": 467,
+      "not_evaluated": 300
+    },
+    "locked": 302,
+    "locked_applied_pairs": {
+      "(0,0)": 302
+    },
+    "units": 919
+  },
+  "sha256": "0847c8fa14ddd0f73ef44221e4baacbb5d85e8dd0cbc34434dce420cd4a1924f"
+}

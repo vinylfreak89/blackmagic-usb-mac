@@ -65,6 +65,7 @@ typedef enum fieldreg_comb_check {
     FIELDREG_COMB_AGREE,
     FIELDREG_COMB_DISAGREE,
     FIELDREG_COMB_FLAT,
+    FIELDREG_COMB_NOT_EVALUATED, /* Maintained lock; no current comb reading. */
 } fieldreg_comb_check;
 
 typedef enum fieldreg_insert_relation {
@@ -242,7 +243,7 @@ typedef struct fieldreg_decision {
     int8_t comb_correction_field;
     double comb_best_energy;
     double comb_second_energy;
-    double comb_static_fraction;
+    double comb_static_fraction; /* Deprecated: plain comb writes 0, not a reading. */
     uint32_t segment_id;
     fieldreg_field_decision field[2];
 } fieldreg_decision;
@@ -271,7 +272,8 @@ typedef struct fieldreg_field_state {
 typedef struct field_registration {
     fieldreg_config config;
     fieldreg_field_state field[2];
-    /* Full-width low-pass sums, no retained caller input or allocation. */
+    /* Reserved legacy static-reader storage. Plain comb does not read or
+     * populate these luma arrays or require a previous-unit witness. */
     uint16_t previous_luma[FIELDREG_RASTER_LINES * FIELDREG_COMB_COLUMNS];
     uint16_t current_luma[FIELDREG_RASTER_LINES * FIELDREG_COMB_COLUMNS];
     int16_t previous_crop[2], previous_begin[2], previous_end[2];

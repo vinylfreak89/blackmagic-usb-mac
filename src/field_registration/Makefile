@@ -41,7 +41,7 @@ TRUTH_SRC := $(wildcard tests/field_registration_truth.c)
 TRUTH_DEPS := $(if $(TRUTH_SRC),tests/field_registration_truth tests/libfieldreg_truth.dylib tests/registration_truth.raw)
 
 test: tests/field_registration_unit tests/cea608_unit tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw tests/field_registration_v10_rule3 tests/registration_v10_rule3.raw tests/field_registration_v10_rule4 tests/registration_v10_rule4.raw tests/switch_timing_test tests/comb_test tests/unlocked_placement_test
-test: tests/box_exclusion_test tests/run_timing_test test-field-lines
+test: tests/box_exclusion_test tests/run_timing_test test-field-lines tests/plain_comb_test tests/plain_energy_test
 	./tests/field_registration_unit
 	./tests/cea608_unit
 	./tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw
@@ -52,6 +52,8 @@ test: tests/box_exclusion_test tests/run_timing_test test-field-lines
 	./tests/unlocked_placement_test
 	./tests/box_exclusion_test
 	./tests/run_timing_test
+	./tests/plain_comb_test
+	./tests/plain_energy_test
 
 tests/unlocked_placement_test: tests/unlocked_placement_test.c tests/comb_test.c field_registration.c field_registration.h cea608.c cea608.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/unlocked_placement_test.c field_registration.c cea608.c -o $@ $(LDLIBS)
@@ -59,8 +61,11 @@ tests/unlocked_placement_test: tests/unlocked_placement_test.c tests/comb_test.c
 tests/comb_test: tests/comb_test.c field_registration.c field_registration.h cea608.c cea608.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/comb_test.c field_registration.c cea608.c -o $@ $(LDLIBS)
 
-tests/static_comb_test: tests/static_comb_test.c field_registration.c field_registration.h cea608.c cea608.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) tests/static_comb_test.c cea608.c -o $@ $(LDLIBS)
+tests/plain_comb_test: tests/plain_comb_test.c tests/comb_test.c field_registration.c field_registration.h box_observation.h run_timing.h cea608.c cea608.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/plain_comb_test.c field_registration.c cea608.c -o $@ $(LDLIBS)
+
+tests/plain_energy_test: tests/plain_energy_test.c field_registration.c field_registration.h box_observation.h run_timing.h cea608.c cea608.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/plain_energy_test.c cea608.c -o $@ $(LDLIBS)
 
 tests/switch_timing_test: tests/switch_timing_test.c field_registration.c field_registration.h cea608.c cea608.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/switch_timing_test.c cea608.c -o $@ $(LDLIBS)

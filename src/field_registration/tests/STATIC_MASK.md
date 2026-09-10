@@ -1,5 +1,12 @@
 # Static mask: real-picture calibration and a falsifying pan
 
+Historical experiment. The 2026-09-11 owner instruction supersedes the later
+recommendations in this report to retain a mask: production now uses plain
+comb energy. The pan falsification remains a known open acquisition case;
+see [PLAIN_COMB.md](PLAIN_COMB.md) for the current reader and maintained-lock
+guard. The historical margins below are product-energy margins, not the new
+mean-absolute-second-difference measurement.
+
 Diagnostic only; no production comb, classifier, queue or contract change.
 The current brief explicitly requests the four named SP/SP-off controls in
 addition to capture 1. They are tested here, not advanced through acceptance.
