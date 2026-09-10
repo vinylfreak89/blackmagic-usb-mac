@@ -2851,6 +2851,15 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   raster, recorded it nowhere, Claude asserted the opposite three times, and both agents rebuilt the answer from
   zero eleven days later. §7's "what earns a note" rule already covers this case — a durable conclusion that would
   otherwise get re-investigated — and it was re-investigated.
+- **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
+  Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
+  answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back
+  empty" and announcing a re-dispatch that was not needed, because the full reply was on the thread the whole time.
+  Once a newline broke an `&&` chain and an unverified commit went through behind a check that had thrown.
+  **Use `scripts/codex_dispatch`**: it captures everything, refuses to return a reply that is only the turn header,
+  and recovers from `codex-run read` instead. More generally: when a command's output is the evidence for a claim,
+  the command must be unable to succeed quietly with incomplete output. `tail` on a live capture, and any `&&`
+  chain whose earlier link is a verification, both fail that test.
 - **Never write a claim of an action; write the ARTIFACT the action produced (2026-09-10, after three
   occurrences in one day).** Three times in one session Claude reported an action in the past or present tense —
   "sent to Codex", "I'm adding it and dispatching it" — and had not done it. Twice the turn then ended, so nothing

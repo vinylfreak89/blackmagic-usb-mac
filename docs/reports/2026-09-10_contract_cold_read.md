@@ -16,7 +16,12 @@ report them.
    blanking is OVERWRITTEN at the delivered edges and calls the inside-the-picture method "exactly
    inverted from my intent"; §2 keeps that disavowed method as "the primary one"; §3's *Head switch*
    defines a third (first skew discontinuity scanning down, else S). Rules 2, 3, 8c and 9 all use them.
-2. **The mandated edge test can never return anything but Unknown, by the document's own statements.**
+2. **The mandated edge test has no stated method, and the specification as written is circular.**
+   ⚠️ **This finding originally read "can never return anything but Unknown by the document's own statements", and
+   that is CORRECTED** (Codex's reviewer, independently, 2026-09-10): a missing identification method and a circular
+   specification are not the same thing as fundamental impossibility, and only the first two are established here.
+   The document not naming an observable does not prove none exists — which the owner's B1 ruling then demonstrated
+   by naming one. The defect is real and was worth finding; the claim of impossibility was mine to withdraw.
    §1: a blank-level run "does not by itself distinguish blanking extension from contiguous dark
    picture… the edge measurement is Unknown". §2: black content "is clipped to exactly the blanking
    level, with the same dither… only geometry can" separate them. §3: head-switch evidence "is an
@@ -103,11 +108,13 @@ terminate. Those are the owner's to rule on, not ours to word around.
 
 ## PILE B — no wording resolves these (for the owner)
 
-**B1 (finding 2). The mandated edge test can only ever return Unknown.** Separating blanking from
-clipped dark content is possible "only by geometry"; head-switch evidence is "an INPUT TO THE
-GEOMETRY". The measurement depends on the thing it feeds, and the document names no third observable.
-Rules 2, 3, 8b and 9 all rest on it. Either a third observable exists and must be named, or the rule
-must say what happens when the test cannot terminate.
+**B1 (finding 2). RULED AND FIXED — the specification was circular, not impossible.** As written, separating
+blanking from clipped dark content was possible "only by geometry" while head-switch evidence is "an INPUT TO THE
+GEOMETRY", so the measurement depended on what it feeds. ✅ Owner, 2026-09-10: "remove only by gemoetry. the head
+switch is bad horizontal timing, meaning either picture ending up in the blanking window or blanking ending up in
+the picture window. full stop." The clause is deleted and the observable named; nothing is circular and no third
+observable had to be invented. Applied at `7029d6a`. ⚠️ My report claimed the test could never terminate; that
+overclaimed from an unspecified method, and Codex's reviewer was right to separate the three cases.
 
 **B2 (finding 13). Two classes can only be entered by establishing an absence for which no positive
 test exists.** The invalid class's second condition requires "positively established absence of the
@@ -116,9 +123,11 @@ switch — while §3 says "their absence does not establish absence of the regio
 to measure does not establish a switch-free source. As written, neither class can ever be entered,
 and §8's overlay spec requires distinguishing them.
 
-**B3 (finding 17). On a line-TBC-corrected source the mandated test has nothing to measure**, and the
-only detector that works there is disqualified in the same sentence as deck-specific and
-non-transferable. Two of the four acceptance captures are corrected sources.
+**B3 (finding 17). RULED AND FIXED — the same ruling seen twice.** ✅ Owner, 2026-09-10, asked directly: "huh?
+yes it does. head switch (as I've defined it) and/or picture going to the end and/or blanking." What a corrector
+removes is the NARROW MARKERS, the partial line's displacement and the RF peak; three observables remain. The
+flatness-to-row's-end detector stays deck behaviour and is corroboration, never the definition. Applied at
+`7029d6a`.
 
 **B4 (finding 10). A threshold is required, its derivation rule does not exist, and both agents are
 forbidden from choosing one.** The procedural gate that deferred implementation until the rule existed
