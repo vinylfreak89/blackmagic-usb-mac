@@ -44,10 +44,20 @@ standard deviation of 0.0103 and 0.0080, and its correlation with that brightnes
 of 38 - but only as dither; the padding rows are byte-identical in all 38. So neither is readable
 evidence, and the difference between them is only which filler the device chose.
 
-THE WHOLE 525, in NTSC lines (the row-to-line offset is +4, and the two fields' inserts correlate
-at +1.000 across a separation of 263 - the standard's inter-field spacing - so the unit is ONE
-continuous frame raster, not two field blocks). Classification stable in all 38 units checked
-except line 526:
+THE OFFSET IS +4 AND IT IS NOW MEASURED, not carried from the record (2026-09-10). CEA-608 puts
+captions on line 21 of field 1 and line 284 of field 2, by standard. Decoding every candidate row
+at the top of each field as CEA-608 with odd parity over 38 units: exactly one row passes in each
+field, in 38 of 38 units, and no other row passes in any unit. Those two rows are 4 below their
+standard line numbers - the same 4 in BOTH fields, so it is one whole-frame shift and not something
+that accumulates between them. Before this the offset rested on the assumption that the device's
+synthetic insert sits where the standard says; it now rests on the waveform decoding there.
+⚠️ What still cannot be measured from this side is the raster's absolute position against vertical
+sync: the device delivers decoded YCbCr, so no sync waveform survives to align against.
+
+THE WHOLE 525, in NTSC lines. The two fields' inserts correlate at +1.000 across a separation of
+263 - the standard's inter-field spacing - so the unit is ONE continuous frame raster, not two
+field blocks, and NTSC's line numbering runs continuously 1-525 without resetting per field.
+Classification stable in all 38 units checked except line 526:
 
     4 - 10    7 rows   flat 16, the device's padding
    11 - 19    9 rows   written blanking
@@ -64,6 +74,12 @@ except line 526:
   527 - 528   2 rows   flat 16, the device's padding
 
   484 digitised, 23 written blanking, 18 padding = 525.
+
+Lines 1-3 are not delivered at all. Of the rows that ARE delivered above field 1's picture, not one
+carries a sample from the tape: per-pixel standard deviation ACROSS the 38 units is 0.48 on the
+written-blanking rows and 0.53/0.60 on the two inserted lines - the device draws the same waveform
+every unit - against 63-68 on a picture row. The first delivered row containing anything from the
+tape is line 23.
 
   tear_column_census.py <capture.tpc> [--repair] [--from N] [--rows LO HI]
   -> counter, field, line, mean, lead, trail, run_len, run_col, state, region
