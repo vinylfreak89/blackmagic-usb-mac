@@ -83,7 +83,7 @@ length for its position. Row evidence, locating the first affected row, and the 
 temporal rule below are three separate steps on three axes and are not to be conflated.
 
 **Neither instrument may independently choose a cutoff**, and a decision margin is derived and qualified from the
-source rather than typed in (rule 11's no-magic-numbers requirement and the Source-measured levels definition).
+source rather than typed in (rule 4's no-magic-numbers requirement and the Source-measured levels definition).
 ⚠️ The procedural authorization gates formerly recorded here — "GATES IMPLEMENTATION", "EVIDENCE GATHERING ONLY",
 and the requirement of a further agreement round before classification code — are REMOVED (owner, 2026-09-10:
 "nothing should be gated", "no nothing should stay deferred"). What an instrument does not yet measure is a state
@@ -589,13 +589,15 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   **A source lock NEVER requires a measurable head switch line and band** (owner, 2026-09-10, superseding both the
   earlier unconditional wording and the geometry-category condition that replaced it on 2026-09-09): "yeah the head
   switch isn't required". Not every source is VHS; no head switch at all is legitimate and a picture may extend to
-  the last row. Head-switch evidence is an input to the geometry, never the confirmation of it, so the condition is
-  the CONFIRMATION ROUTE and not the source's geometry category. Where a switch IS measured at the confirmed unit
+  the last row. Head-switch evidence is OPTIONAL evidence for the geometry, never the confirmation of it, and there
+  is no route-dependent switch requirement of any kind; positive bilateral asymmetry is handled separately as source
+  validity below. Where a switch IS measured at the confirmed unit
   the lock's count is taken there and never substituted; where it is not, the count stays Unknown and every
   count-dependent deduction stays unavailable with it.
-  ⚠️ **"A boxed picture's framing below the gap is deliberately unmeasured under rule 8" above is WITHDRAWN**
-  (owner, 2026-09-09T16:21:01Z, uuid 12b22361, in rule 8): a box does not make the switch unmeasurable. The
-  sentence is left standing only so the withdrawal is visible where the old wording was; read rule 8, not it.
+  ⚠️ Historical note: an earlier version of the sentence above added "and a boxed picture's framing
+  below the gap is deliberately unmeasured under rule 8". That clause was WITHDRAWN (owner, 2026-09-09T16:21:01Z,
+  uuid 12b22361, in rule 8) — a box does not make the switch unmeasurable — and has since been removed from the
+  text rather than left standing.
   **Confirmation is deliberately narrow, and failing to lock is an accepted outcome** (owner, same day): geometry
   alone cannot decide, and when nothing confirms it the picture stays stable and unmoved, which is correct. "some
   sources may never lock and thats okay. rather fail closed than fail open."
@@ -646,14 +648,15 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   A confirmation disagreement is recorded explicitly. A rejected candidate does not authorize acquisition or move the
   rendered placement. During acquisition or reacquisition, alternative alignments may be evaluated under the
   picture-preserving preference; an alternative is applied only after it satisfies the lock requirements.
-  Field precedence is the half-line order the zero reading fixes (which field's line sits between the other's). On a
-  unit without static detail the comb reads nothing. UNDER A MAINTAINED LOCK the geometry is applied and the unit is
-  marked unconfirmed; at acquisition or reacquisition a comb that reads nothing confirms nothing, and it cannot
-  license a lock — an unconfirmed acquisition is not an acquisition.
+  Field precedence is the half-line order the zero reading fixes (which field's line sits between the other's). At acquisition or reacquisition, a
+  unit without static detail gives the comb nothing to read: it confirms nothing and cannot license a lock — an
+  unconfirmed acquisition is not an acquisition. Under a maintained lock the comb does not run at all, so no such
+  reading arises; the geometry is applied and the unit is marked unconfirmed.
   ⚠️ The three-candidate re-measurement for a caption on the insert is WITHDRAWN with the insert's evidential role
   (owner, 2026-09-10). The
   comb constrains the two fields' relative registration only, so where both fields are ambiguous by the same amount
-  it cannot decide and there is no lock.
+  the COMB CANNOT CONFIRM THAT CANDIDATE. That is not a global veto: a qualified caption may still confirm it, and
+  a lock fails only when neither route does.
 - **Body shift**: the vertical shift of a field's picture body against the previous unit of the same field, over
   whatever range is required (never a fixed one); a maybe, not an authority.
 - **Comparator order**: the first observed value leads; a replacement enters at the bottom; equal counts do not change
@@ -704,7 +707,9 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    geometry — the lock's switch-line count, the line-22 level comparator and the lock — holds through it; the unit's own position is recorded Unknown, the crop
    is left where it was because nothing measurable says to move it (not a claim that the position held), and the
    position is re-measured when the edge returns. Horizontal tearing
-   is not a geometry event. Snow-like signal or a vertical tear is a lost lock: everything resets, both fields at once.
+   is not a geometry event. Snow-like signal or a vertical tear is a lost lock: the GEOMETRY and the lock reset, both fields at
+   once, as rule 5b states — not the whole engine, which is rule 13's strictly larger event with two causes that do
+   not include lock-like loss.
    **A unit carrying a horizontal timing error other than its own head switch may not be the confirmed unit**: it
    holds, and the lock's constants are taken from a clean unit (owner, 2026-09-09: "other horizontal timing error
    should result in a hold rather than a lock"). Holding through such damage is the rule above; this is its other
@@ -816,8 +821,8 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    is never recentred; collapsing letterboxing to geometry means a box establishes geometry like anything else;
    black level is never assumed. Snow-like signal, splices and relocks are delivered by the signal-state layer; the
    engine reads the raster only.
-9. Blank lines under the picture could indicate that the field sits high and need confirmation against the comb
-   (owner); the band's extent alone never moves anything; new luma at the top alone never moves anything either. The
+9. Blank lines under the picture could indicate that the field sits high and need confirmation — by the comb at
+   acquisition or reacquisition, or by a qualified caption, the two routes of the Source lock (owner); the band's extent alone never moves anything; new luma at the top alone never moves anything either. The
    offset is read every unit from the bands above the picture, or, with the top at line 23, from the band's extent
    against the switch-line count (definition of d); under a maintained lock the engine tracks geometry and does NOT
    measure the comb (Comb, section 3); a confirmation disagreement is recorded and reported to the owner (section

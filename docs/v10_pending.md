@@ -406,10 +406,10 @@ EXPAND where the partial was not present from the beginning.
 | A17 | A permanently blocked consumer cannot stall analysis but prevents shutdown drain (`fs_stop` hangs) | `src/frameserver/QUEUES.md`; Codex accepted at `dec922f` | open before shipping; caller-deadlined shutdown with quarantined live resources is the agreed policy, not implemented |
 | A13 | `frameserver_replay --pace-us 0` destroys a whole-tape run and exits 0, printing no capture-level loss | CLAUDE.md §6 | not fixed; use `--pace-us 8000`, or a ring larger than the file for a slice |
 | A23 | The contract's second reading of `d`, count minus extent, is not implemented — `geometry_d = top - origin` (`:792`) is the only one. On capture 1 the top reads 23/286 in every stable unit, so the implemented reading is degenerate there and the informative one is absent | contract rule 3 | not implemented; **tier 2** |
-| A18 | ✅ **ANSWERED 2026-09-10 — the owner-policy blocker is LIFTED and tier 1 is unblocked; the engine work is outstanding.** A source lock never requires head-switch evidence; the head switch is an input to the geometry rather than a confirmation; the both-fields rule is source VALIDITY and fires only on positively established asymmetry, never on abstention. The characterisation below was also wrong before it was answered: the contract at HEAD already carried the conditional (`ca47a1c` amended it), so the engine trailed the contract rather than implementing it faithfully — and the two gates are not identical, the comb path requiring a measurable switch in both fields and the caption path one in the field being acquired. Removing this blocker does not remove every independent tier-1 gate. Original text: **BOTH acquisition sites require a measurable switch on both fields** (`field_registration.c:601–602` for the comb path, `:834` for the caption path), so no source lacking one can lock — boxed pictures, where rule 8 forbids measuring it, and line-TBC-corrected passes, where the owner says there is none. **This is not an engine defect: the contract's Source lock definition requires it in the owner's own words** ("at a unit whose switch line and band are measurable"). The contract contradicts itself and neither agent may resolve it | contract §3 Source lock against §2 and rule 8 | **blocked on the owner**; nothing in tier 1 can proceed until he settles it |
+| A18 | ✅ **ANSWERED 2026-09-10 — the owner-policy blocker is LIFTED and tier 1 is unblocked; the engine work is outstanding.** A source lock never requires head-switch evidence; the head switch is an input to the geometry rather than a confirmation; the both-fields rule is source VALIDITY and fires only on positively established asymmetry, never on abstention. The characterisation below was also wrong before it was answered: the contract at HEAD already carried the conditional (`ca47a1c` amended it), so the engine trailed the contract rather than implementing it faithfully — and the two gates are not identical, the comb path requiring a measurable switch in both fields and the caption path one in the field being acquired. Removing this blocker does not remove every independent tier-1 gate. Original text: **BOTH acquisition sites require a measurable switch on both fields** (`field_registration.c:601–602` for the comb path, `:834` for the caption path), so no source lacking one can lock — boxed pictures, where rule 8 forbids measuring it, and line-TBC-corrected passes, where the owner says there is none. **This is not an engine defect: the contract's Source lock definition requires it in the owner's own words** ("at a unit whose switch line and band are measurable"). The contract contradicts itself and neither agent may resolve it | contract §3 Source lock against §2 and rule 8 | ✅ **ANSWERED 2026-09-10; this item's owner-policy blocker is lifted.** The engine still requires the switch at both acquisition sites, so the implementation is outstanding. Other tier-1 gates are unaffected by this item closing |
 | A19 | The band is not held when the switch is undetectable: absent detection must hold the band, invalidated only when the line count below the head switch changes | contract rule 4 | not implemented; **tier 1** |
 | A20 | **RF-peak confirmation is unimplemented** — there is no detector at all (`field_registration.c:344` initialises both peak fields to −1 and nothing assigns them; `measure_switch:186` uses displaced blanking intervals, not the peak). Claude's "the detector assumes one polarity" was wrong: it tests neither polarity. The record's `f*_rf_peak_line/position` columns are therefore always −1. Building one needs local-departure evidence that separates a genuine peak from an ordinary picture edge, with goldens for BOTH polarities — the owner's black-polarity observation stands and has not been searched for | contract §2 | not built; switch-detector coverage on the non-boxed units |
-| A24 | ⚠️ **PARTLY ANSWERED 2026-09-10; still tier 1.** The invalidation condition is given (picture positively established within the held bounds) and the validity bounds are in the contract (extent measured while well exposed and HELD; a fade never invalidates; a band edge moving while the level is steady releases). **"Must open up to the full picture" below is WRONG** — owner, 2026-09-10: "no it doesn't need to open up to a full picture. it can open up to whatever is on the screen. but it must be bounded." What remains is detector work, not policy: qualifying "well exposed", measuring the fade, and telling genuine picture entering the bounds from exposure-dependent detectability. Original text: A box is not invariant — when the mask changes the geometry must open up to the full picture. The box needs defined bounds for where it is valid and where it is invalidated, and it lives through the fade, which is measured rather than treated as noise | contract rule 8 (wording owed) | not specified, not built; **tier 1** |
+| A24 | ⚠️ **PARTLY ANSWERED 2026-09-10; still tier 1.** The invalidation condition is given (picture positively established within the held bounds) and the validity bounds are in the contract (extent measured while well exposed and HELD; a fade never invalidates; a band edge moving while the level is steady releases). **"Must open up to the full picture" below is WRONG** — owner, 2026-09-10: "no it doesn't need to open up to a full picture. it can open up to whatever is on the screen. but it must be bounded." What remains is detector work, not policy: qualifying "well exposed", measuring the fade, and telling genuine picture entering the bounds from exposure-dependent detectability. Original text: A box is not invariant — when the mask changes the geometry must open up to the full picture. The box needs defined bounds for where it is valid and where it is invalidated, and it lives through the fade, which is measured rather than treated as noise | contract rule 8 (wording owed) | **policy answered 2026-09-10 and in the contract; the detectors are not built — tier 1.** Outstanding: qualifying "well exposed", measuring the fade, and telling genuine picture entering the bounds from exposure-dependent detectability |
 
 ## B. Harness (Claude writes, Codex reviews)
 
@@ -432,16 +432,31 @@ picture positively established within its held bounds, its extent is measured we
 never invalidates. Item 8, "the two numbers": the box's outer bottom bound against the head-switch region, "lining
 up" being contact with no intervening source-blanking interval. Item 5, VBI as a confirmation alongside captions:
 the confirmations are the comb and captions/VBI, one class. A18, the switch requirement at both acquisition sites:
-the head switch is a geometry input rather than a confirmation and a lock never requires one — this was the tier-1
-gate and it is lifted, though the engine still implements the old requirement and that work is outstanding.
+the head switch is a geometry input rather than a confirmation and a lock never requires one — this was a
+tier-1 gate and this item's block is lifted, though the engine still implements the old requirement and that work
+is outstanding. Other tier-1 items are unaffected by it closing.
 All four are now in the contract; see its Source lock, Comb and rules 11-13.
 
-4. **Rule 8's box-validity wording is owed** — the bounds where a box is valid and where it is invalidated.
-   Neither agent should write it. Asked and explained; answer pending. (Was struck through while its own text said
+4. ✅ **ANSWERED 2026-09-10 — in the contract, rule 8 and the Box definition.** A box must be BOUNDED; a
+   structureless band at one end only is full picture, not a weaker box. Its extent is measured while the picture is
+   well exposed and HELD. A fade never invalidates — a band edge that appears to move because the picture dimmed is
+   exposure-dependent detectability — while a band edge moving at a steady level releases the geometry, and picture
+   positively established within the held bounds invalidates the box. Replacement geometry is then measured, opening
+   to whatever is on the screen rather than necessarily to full picture. Original text: **Rule 8's box-validity
+   wording is owed** — the bounds where a box is valid and where it is invalidated. Neither agent should write it.
+   Asked and explained; answer pending. (Was struck through while its own text said
    pending; un-struck 2026-09-10. The duplicate second "4." was the 486-crop item, which is genuinely closed and
    has been removed — its correction lives in CLAUDE.md §11.)
-8. **What are "the two numbers" on geometry?** The band has an extent, a top switch line and a count; the box has
-   bands at both ends. The contract now carries the likely reading — the box's outer edges, top and bottom, per
+8. ✅ **ANSWERED 2026-09-10 — in the contract, rule 8.** The two quantities are the box's lower OUTER boundary —
+   its bar, not its content — and the head-switch region; they "line up" when they meet with no intervening
+   source-blanking interval. A demonstrated intervening interval prevents a new acquisition; an unresolved boundary
+   does not establish contact and is not a failure of the test. The owner: "box is the bounds of the box, not the
+   content inside the box", and "if the box doesn't touch the head switch, then its not valid geometry. simple.
+   basically if there's a blanking interval that sits between the box and the head switch thats garbage." The
+   earlier bottom-must-land-ABOVE-the-band formulation is withdrawn, and `experiments/box_vs_switch.py`, which
+   measured the content bottom rather than the box's, is retracted. Original text: **What are "the two numbers" on
+   geometry?** The band has an extent, a top switch line and a count; the box has bands at both ends. The contract
+   previously carried a likely reading — the box's outer edges, top and bottom, per
    field, against where the switch band puts the picture's bounds — **marked as an inference and explicitly NOT an
    operative acquisition test**, because the owner's words it comes from (uuid 1bd1fc1d) are a question he asked the
    harness, not a definition. What is missing: which bottom is meant (picture bottom, switch line, or recorded
@@ -456,8 +471,9 @@ All four are now in the contract; see its Source lock, Comb and rules 11-13.
    What remains open is reconciling the count's acquisition with the confirmed geometry and with the rule excluding
    the partial line. (Both agents agree this does NOT explain capture 1's zero locks — that is still open.)
 
-5. **Is VBI a confirmation signal alongside captions?** (Un-struck 2026-09-10: its own text says his ruling is
-   pending, so it was never closed.) The owner raised it himself: "isn't VBI another confirmation
+5. ✅ **ANSWERED 2026-09-10 — in the contract, Source lock.** Yes: the permitted confirmations are the comb and
+   qualified captions/VBI, one class, and nothing else. A lock is valid geometry plus one of those two, ideally
+   both. Original text: **Is VBI a confirmation signal alongside captions?** The owner raised it himself: "isn't VBI another confirmation
    signal? ... caption and VBI are kind of part of the same class I think". It would give a caption-less source a
    second confirmation. Answered back to him with the asymmetry that decides it; his ruling pending.
 
