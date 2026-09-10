@@ -4147,6 +4147,46 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **DOWNSTREAM RE-MEASURED AGAINST THE SAVED BASELINES — three figures restored, ONE REGRESSED, and the
+  regression is the one that matters most (2026-09-11).**
+
+  | | asserts | Unknown | exact | within ±1 | beyond ±4 |
+  |---|---:|---:|---:|---:|---:|
+  | qualified, before | 294 | 184 | 69% | 98% | 0% |
+  | **qualified, after** | **465** | **13** | **82%** | **100%** | 0% |
+  | control: unqualified, before | 62 | 416 | 21% | 53% | 11% |
+  | control: unqualified, after | 13 | 465 | 23% | 77% | 0% |
+
+  **Coverage went UP, not down**, which is the opposite of the expected direction: a finder that answers Unknown
+  honestly was expected to speak less, but a finder that answers CONSISTENTLY makes far more readings qualify
+  under adjacency. Where the engine is blind: field 1 **12% → 90%**, field 2 **18% → 94%**, still 0 outside
+  mode ±1 while the unqualified control there puts 7 of 24 and 5 of 18 outside, so the invariant check still
+  discriminates.
+  ⚠️ **The CONTROL's base collapsed from 62 to 13, and that weakens the evidence rather than strengthening it.**
+  The qualified-versus-unqualified separation is still there (82% against 23% exact, 3.6× against the old 3.3×),
+  but it now rests on 13 control readings. **A discriminator whose negative class nearly vanishes is harder to
+  falsify, not better** — this is the "agreement AND count" pair again, applied to the control instead of the
+  result.
+  ⚠️⚠️ **THE REGRESSION: the SOURCE LEVEL on bright programme went 1.41 → 13.13**, and the level is the quantity
+  `:531` actually names. Cause, measured precisely: the repaired finder lands **one sample before** the floor on a
+  multi-sample ramp, because its descent-completion threshold is a midpoint between the pre-crossing level and the
+  floor and a mid-ramp sample satisfies it. On the card that costs nothing — the pool is ~20 samples wide and
+  reads 1.437 (unit-to-unit sd 0.0130). On bright the pool is **one sample wide**, so the single contaminated
+  sample IS the mean. **Same one-sample error, two costs differing by an order of magnitude, because of the
+  one-settled-sample budget already recorded above.**
+  ✅ **AND IT SETTLES F49's OPEN QUESTION, in the direction that peer session named in advance.** Its test: if
+  the `transition_sd` swing survives the repair it was fabrication, if it collapses the censoring account
+  survives. **Measured: bright went from median 67.07 / range 1.31–72.19 (55×) to median 0.54 / range
+  0.50–0.57 (1×).** Collapsed. So bright programme really is PINNED — sd 0.54 across a whole unit's rows —
+  while the card retains genuine spread at 39.98, and the old 55× swing was fabrication noise sitting on top of
+  a real censoring effect rather than being the whole of it.
+  ⚠️ **What this does NOT establish, and the peer named this too: a repair scored on its own downstream output is
+  the weakest of the three kinds of evidence here**, because judging by downstream plausibility is exactly what
+  produced three failed attempts. The load-bearing evidence stays the eight committed controls and the
+  known-answer agreement, not these figures. **Under §14 none of these is quoted as a result until Codex has
+  reviewed the change** — its review already caught the S-versus-T identity and the `:164` misreading in this
+  same thread.
+
 - **THE FINDER IS REPAIRED, and it is the first change tonight whose TEST SET EXISTED BEFORE THE CODE DID
   (2026-09-11).** Written to the diagnosis below rather than to an intuition: the criterion is ARRIVAL, not
   magnitude — the row's final downward crossing of its own midpoint, after which it never returns, followed
