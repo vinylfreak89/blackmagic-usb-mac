@@ -651,12 +651,13 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   Field precedence is the half-line order the zero reading fixes (which field's line sits between the other's). At acquisition or reacquisition, a
   unit without static detail gives the comb nothing to read: it confirms nothing and cannot license a lock — an
   unconfirmed acquisition is not an acquisition. Under a maintained lock the comb does not run at all, so no such
-  reading arises; the geometry is applied and the unit is marked unconfirmed.
+  reading arises: the geometry is applied and the record says COMB NOT EVALUATED, which is distinct from a comb that
+  ran and failed to confirm, and distinct again from an unconfirmed lock.
   ⚠️ The three-candidate re-measurement for a caption on the insert is WITHDRAWN with the insert's evidential role
   (owner, 2026-09-10). The
   comb constrains the two fields' relative registration only, so where both fields are ambiguous by the same amount
-  the COMB CANNOT CONFIRM THAT CANDIDATE. That is not a global veto: a qualified caption may still confirm it, and
-  a lock fails only when neither route does.
+  the COMB CANNOT CONFIRM THAT CANDIDATE. Comb ambiguity does not itself prevent acquisition through qualified
+  caption confirmation; the candidate must still satisfy the geometry and source-validity requirements.
 - **Body shift**: the vertical shift of a field's picture body against the previous unit of the same field, over
   whatever range is required (never a fixed one); a maybe, not an authority.
 - **Comparator order**: the first observed value leads; a replacement enters at the bottom; equal counts do not change
@@ -718,109 +719,105 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    is dropped; at a negative offset the render's first line is whatever the Shuttle put at 23 + d — its blank at −1,
    its caption insert at −2 (owner, 16:16–16:18: "if the shuttle overwrote it, tough noogies"). Rows past the clip
    render as legal black in the output (owner, 2026-09-03), whatever the raster carries there.
-8. The output picture never moves except at a segment's initial lock and after a re-acquisition; field precedence
-   (which field's line sits between the other's) is settled once per lock, by the comb where the comb is the
-   confirmation; where a qualified caption confirms alone, precedence follows from the placed geometry and the comb
-   is not required (Source lock: the second measurement is comb OR captions/VBI); a boxed picture's bars are recorded picture rows inside the 240 and change nothing in the account, and the box is
-   rendered where the account puts it, centred as the source centred it (owner, 2026-09-05: "letterboxing or any
-   weirdboxing creates its own geometry and that can EASILY be centered in the raster"). The sentence here previously read "no acceptance capture carries a boxed picture, so the class
-   is not exercised", and that is false and is withdrawn: the class IS exercised by the acceptance material, so it
-   is not a deferred edge case. A box's bands, where they fall and how many rows they run, are source dependent and
-   are learned at the lock like any other per-source quantity; no extent belongs here. Owner, 2026-09-09: "the top of the picture SHOULD be the [warning card's] 'WARNING' label and the bottom
-   the last text line. everything else is too close to blanking. that should properly end up being a fixed size and
-   centered in the middle, which will correct the geometry", and: structurelessness at ONE end lowers confidence and
-   needs corroboration, at BOTH ends it fixes the geometry and it is a box. **A box's validity, and what a fade does** (owner, 2026-09-09): the box's geometry is the extent
-   measured while the picture is well exposed, and it is HELD. **"geometry (including the box) can't change during
-   a fade. that must be a hold"** — a fade shows as the picture's overall level falling while the band edges stay
-   put in the rows that still read, and it never invalidates anything: a band edge that appears to move because the
-   picture dimmed is exposure-dependent detectability, not a release. A band edge moving **while the level is
-   steady** releases the geometry. This matters because the two look identical at the first unit and one means hold
-   while the other means release. ⚠️ It is no longer the ONLY release: picture positively established WITHIN the
-   held bounds also invalidates the box (rule 12), and replacement geometry is then measured rather than assumed.
-   What makes a region structureless is a
-   measurement neither agent has yet: flat-within-one-code fires only on the device's four synthetic rows, vertical
-   coherence rates text as MORE coherent than noise, and horizontal spread against sample noise has separated on one
-   unit only.
-   **A head switch separated from the picture by a gap is not measured** (owner, 2026-09-09: "a head switch placed
-   below the actual video is unreliable and shouldn't be measured at all", clarified as "where there is a gap between
-   the head switch and picture content, not a head switch directly touching the picture"). ⚠️ **This measurement rule must NOT be read as the box's validity test, and the
-   two were conflated here** (corrected 2026-09-10). His 2026-09-09 answer — asked whether the rows between a
-   card's last content row and its switch line count as a gap, "Yes they count as a gap", and then "But why they
-   count as a gap is important. They are part of a box" — establishes why those rows separate CONTENT from the
-   switch for the purpose of measuring the switch against picture. It does not make the box's own bar a
-   disqualifying gap for the box, because the bar is PART OF THE BOX (owner, 2026-09-10: "box is the bounds of the
-   box, not the content inside the box"). The box's validity test is contact between the box's lower OUTER boundary
-   and the head-switch region, with an intervening SOURCE-BLANKING interval as the disqualifier — rule 8's
-   agreement test below. A bar lying between content and switch is the box, not a gap in it.
-   ⚠️ **This does NOT make a boxed source's head switch unmeasurable, and the earlier wording that said so is
-   withdrawn** (owner, 2026-09-09T16:21:01Z, transcript uuid 12b22361, naming this contradiction and instructing
-   the fix): "In terms of the contract the wording is the problem. **A valid head switch is a reason to be evidence
-   for a lock, not the opposite.** All I was trying to say before is **a box decreases the likelihood of a lift off
-   point and therefore the lack of one doesn't make the head switch invalid. It just means to hold its bounds, and
-   not to set a new one.** So it needs to go and fix that contradiction." So on a boxed picture the switch is
-   measured like any other.
-   **Read the trigger precisely: it is the ABSENCE OF A LIFT-OFF POINT that holds the bounds, not boxing.** In his
-   sentence "it" is the lack of a lift-off point; a box only makes that absence more likely. So a switch measured
-   without a lift-off point holds the bounds, boxed or not.
-   **The bounds are THE HEAD SWITCH'S, and the hold, its loss and acquisition from nothing are all settled**
-   (owner, 2026-09-10, ruling on the three things this paragraph previously left open): "**The head switches
-   bounds.** In order words, **if the switch point disappears after being acquired and the number of switch lines
-   other than the partial line doesn't change, the partial line that is no longer partial should stay the top
-   line. If the total number of lines changes other than the partial line, then that hold is invalid and the
-   bounds of the switch geometry need to be reacquired. In the case of no bounds, then a valid switch geometry is
-   needed. Either the measured horizontal skew and/or the partial line with or without the RF peak. That means
-   that the number of switch lines can expand if the partial wasn't present from the beginning and that is
-   accepted.**" So:
+8. **The output picture never moves except at a segment's initial lock and after a re-acquisition.** Field
+   precedence (which field's line sits between the other's) is settled once per lock, by the comb where the comb is
+   the confirmation; where a qualified caption confirms alone, precedence follows from the placed geometry and the
+   comb is not required (Source lock: the second measurement is comb OR captions/VBI).
+
+   **8a. The box: what it is, what holds it, what invalidates it.**
+   A box must be BOUNDED (owner, 2026-09-10): "no it doesn't need to open up to a full picture. it can open up to
+   whatever is on the screen. but it must be bounded. only one side of the picture isn't a box thats full picture."
+   A structureless band at one end only is not a box: that is full picture. Failure to DETECT a second bound is not
+   positive evidence that only one exists; that stays Unknown. "Full picture" does not by itself establish
+   displacement or authorize a lock. Structurelessness at ONE end lowers confidence and needs corroboration; at BOTH
+   ends it fixes the geometry and it is a box (owner, 2026-09-09, with "the top of the picture SHOULD be the
+   [warning card's] 'WARNING' label and the bottom the last text line. everything else is too close to blanking.
+   that should properly end up being a fixed size and centered in the middle, which will correct the geometry").
+   The box's geometry is the extent measured while the picture is WELL EXPOSED, and it is HELD. A fade never
+   invalidates anything — "geometry (including the box) can't change during a fade. that must be a hold" (owner,
+   2026-09-09) — because a fade shows as the picture's overall level falling while the band edges stay put in the
+   rows that still read, and a band edge that appears to move because the picture dimmed is exposure-dependent
+   detectability, not a release. A band edge moving WHILE THE LEVEL IS STEADY does release the geometry. The two
+   look identical at the first unit and one means hold while the other means release.
+   Picture positively established WITHIN the held bounds also invalidates the box (rule 12). Replacement geometry is
+   then measured — it opens to whatever is on the screen, not necessarily to full picture and possibly to another
+   box; invalidating the old box does not itself establish its replacement.
+   A box is not its own class (owner, 2026-09-09): "it should be left on the tape where it was centered… boxes
+   aren't their own special class. I already said this before." A boxed picture's bars are recorded picture rows
+   inside the 240 and change nothing in the account; the box is rendered where the account puts it, centred as the
+   source centred it (owner, 2026-09-05: "letterboxing or any weirdboxing creates its own geometry and that can
+   EASILY be centered in the raster"), never recentred, and black level is never assumed. A box's bands — where they
+   fall and how many rows they run — are source dependent and are learned at the lock like any other per-source
+   quantity; no extent belongs here. (What makes a region structureless is a measurement neither agent has yet:
+   flat-within-one-code fires only on the device's four synthetic rows, vertical coherence rates text as MORE
+   coherent than noise, and horizontal spread against sample noise has separated on one unit only.)
+
+   **8b. Contact between the box and the head-switch region — the agreement test.**
+   The box INCLUDES ITS BARS (owner, 2026-09-10: "box is the bounds of the box, not the content inside the box").
+   Where a head-switch region is present, the box's lower OUTER boundary must meet it with no intervening
+   SOURCE-BLANKING interval: "if the box doesn't touch the head switch, then its not valid geometry. simple.
+   basically if there's a blanking interval that sits between the box and the head switch thats garbage." These are
+   the two quantities that must "line up" (owner, 2026-09-10): "if the two numbers on geometry LINE UP (the head
+   switch band and the boxed geometry), then this is valid geometry and can write a new picture (which is basically
+   just the full geometry as if the box didn't exist). if they DONT line up, then no, it can not become a new
+   acquisition, only a hold."
+   **Agreeing, they are valid geometry and MAY set a new acquisition. Disagreeing, the unit holds and may not
+   acquire.** A demonstrated intervening interval prevents a new acquisition; an UNRESOLVED boundary does not
+   establish contact and is not a failure of the test. This contact requirement does not make head-switch evidence
+   mandatory on a genuinely switch-free source, and failure to measure a switch does not establish that the source
+   is switch-free.
+
+   **8c. Measuring the switch, and the switch's own bounds.**
+   These are the SWITCH's bounds; acquiring them is not acquiring a source lock, and neither implies the other.
+   A head switch separated from the picture by a GAP is not measured (owner, 2026-09-09: "a head switch placed
+   below the actual video is unreliable and shouldn't be measured at all", clarified as "where there is a gap
+   between the head switch and picture content, not a head switch directly touching the picture"). Darkness is not
+   a gap and neither is the absence of content: a dark scene in an unboxed source separates nothing and its switch
+   stays measurable — read the other way this would suppress switch evidence on every dark passage of every source.
+   A boxed source's switch IS measured like any other; a box does not make it unmeasurable.
+   What holds the switch's bounds is the ABSENCE OF A LIFT-OFF POINT, not boxing. A box only makes that absence more
+   likely, so a switch measured without a lift-off point holds the bounds whether the source is boxed or not.
+   The hold, its loss, and acquisition from nothing (owner, 2026-09-10): "**The head switches bounds.** In order
+   words, **if the switch point disappears after being acquired and the number of switch lines other than the
+   partial line doesn't change, the partial line that is no longer partial should stay the top line. If the total
+   number of lines changes other than the partial line, then that hold is invalid and the bounds of the switch
+   geometry need to be reacquired. In the case of no bounds, then a valid switch geometry is needed. Either the
+   measured horizontal skew and/or the partial line with or without the RF peak. That means that the number of
+   switch lines can expand if the partial wasn't present from the beginning and that is accepted.**" So:
    - **Held**: the switch point disappearing after acquisition does not move the top line. The line that WAS the
      partial line stays the top line even though it is no longer partial.
    - **The hold's test is the count of switch lines OTHER THAN the partial line.** Unchanged, the hold stands.
      Changed, the hold is invalid and the switch geometry's bounds are re-acquired. A change in the partial line
      itself does not invalidate it.
    - **From no bounds**: a valid switch geometry acquires them — the measured horizontal skew and/or the partial
-     line, with or without the RF peak. The agreement test is NOT the only route to setting bounds, and an earlier
-     draft of this rule saying so was the misdirection he is correcting here.
+     line, with or without the RF peak. The agreement test of 8b is NOT the only route to setting bounds.
    - **The switch-line count MAY EXPAND** where the partial was not present from the beginning, and that is
      accepted rather than a fault.
-   The unit's own current observations are reported either way. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
-   separates nothing and its switch stays measurable; read the other way, this rule would suppress switch evidence
-   on every dark passage of every source. **The gap is created by the box, so the classification comes first and
-   any consequence follows from it** — never the reverse.
-   **What the gap changes is acquisition, by AGREEMENT** (owner, 2026-09-10): "if the two numbers on geometry LINE
-   UP (the head switch band and the boxed geometry), then this is valid geometry and can write a new picture
-   (which is basically just the full geometry as if the box didn't exist). if they DONT line up, then no, it can
-   not become a new acquisition, only a hold." So a measurable head switch is evidence FOR a lock, never against
-   one; a box makes an RF lift-off point less likely and the absence of one does not invalidate the switch; and
-   the test is whether the band and the boxed geometry agree. ✅ **"The two numbers" ARE settled** (owner, 2026-09-10, answering the question this passage was
-   holding open): "box is the bounds of the box, not the content inside the box", and "if the box doesn't touch the
-   head switch, then its not valid geometry. simple. basically if there's a blanking interval that sits between the
-   box and the head switch thats garbage." The two quantities are **the box's lower OUTER boundary — its bar, not
-   its content — and the head-switch region**; they "line up" when they meet with no intervening source-blanking
-   interval. A demonstrated intervening interval prevents a new acquisition; an unresolved boundary does not
-   establish contact, and is not a failure of the test. The earlier prohibition on writing this rule, and the
-   measurement owed before it could be written, are both spent. **Agreeing, they are valid geometry and MAY set a
-   new acquisition. Disagreeing, the unit holds and may not acquire.** ⚠️ The old formulation — that the box's
-   bottom must land ABOVE the band with a gap — is withdrawn: the bar IS part of the box, so a gap of bar between
-   content and switch is not a gap at all, and the test is contact rather than clearance.
-   **A box must be BOUNDED** (owner, 2026-09-10): "no it doesn't need to open up to a full picture. it can open up
-   to whatever is on the screen. but it must be bounded. only one side of the picture isn't a box thats full
-   picture." A structureless band at one end only is not a box: that is full picture. Failure to DETECT a second
-   bound is not positive evidence that only one exists; that stays Unknown. "Full picture" does not by itself
-   establish displacement or authorize a lock.
-   **The box includes its bars, and where a head-switch region is present its lower outer boundary must meet it**
-   without an intervening source-blanking interval (owner, same day): "if the box doesn't touch the head switch,
-   then its not valid geometry. simple. basically if there's a blanking interval that sits between the box and the
-   head switch thats garbage", with "box is the bounds of the box, not the content inside the box". A demonstrated
-   intervening interval prevents a new acquisition; an unresolved boundary does not establish contact. This contact
-   requirement does not make head-switch evidence mandatory on a genuinely switch-free source, and failure to
-   measure a switch does not establish that the source is switch-free.
-   **When picture is positively established within the held bounds the box is invalid.** Replacement geometry is
-   then measured — it opens to whatever is on the screen, not necessarily to full picture and possibly to another
-   box; invalidating the old box does not itself establish its replacement.
-   **A box is not its own class** (owner, 2026-09-09): "it should be left on the tape where it was centered… boxes
-   aren't their own special class. I already said this before." The picture is left where the source placed it and
-   is never recentred; collapsing letterboxing to geometry means a box establishes geometry like anything else;
-   black level is never assumed. Snow-like signal, splices and relocks are delivered by the signal-state layer; the
-   engine reads the raster only.
+   The unit's own current observations are reported either way.
+
+   **8d. History — superseded wordings, kept because his words are the contract's substance.**
+   - "No acceptance capture carries a boxed picture, so the class is not exercised" is FALSE and withdrawn: the
+     class IS exercised by the acceptance material, so it is not a deferred edge case.
+   - A boxed source's head switch was once written as unmeasurable. WITHDRAWN (owner, 2026-09-09T16:21:01Z,
+     transcript uuid 12b22361, naming the contradiction and instructing the fix): "In terms of the contract the
+     wording is the problem. **A valid head switch is a reason to be evidence for a lock, not the opposite.** All I
+     was trying to say before is **a box decreases the likelihood of a lift off point and therefore the lack of one
+     doesn't make the head switch invalid. It just means to hold its bounds, and not to set a new one.** So it needs
+     to go and fix that contradiction."
+   - The gap rule of 8c was once read as the box's validity test. The two were CONFLATED and the conflation is
+     corrected (2026-09-10). His 2026-09-09 answer — asked whether the rows between a card's last content row and
+     its switch line count as a gap, "Yes they count as a gap", then "But why they count as a gap is important.
+     They are part of a box" — establishes why those rows separate CONTENT from the switch for the purpose of
+     measuring the switch against picture. It does not make the box's own bar a disqualifying gap for the BOX,
+     because the bar is part of the box. A bar lying between content and switch is the box, not a gap in it.
+   - "The two numbers" were once recorded as unsettled, with a measurement owed before the rule could be written.
+     Both are spent: 8b states them.
+   - The formulation that the box's bottom must land ABOVE the band with a gap is withdrawn — the test is CONTACT,
+     not clearance. `experiments/box_vs_switch.py`, which measured the content bottom rather than the box's outer
+     bound, is retracted with it.
+   - An earlier draft made the agreement test the only route to setting switch bounds; 8c's "from no bounds" is the
+     correction.
+   Snow-like signal, splices and relocks are delivered by the signal-state layer; the engine reads the raster only.
 9. Blank lines under the picture could indicate that the field sits high and need confirmation — by the comb at
    acquisition or reacquisition, or by a qualified caption, the two routes of the Source lock (owner); the band's extent alone never moves anything; new luma at the top alone never moves anything either. The
    offset is read every unit from the bands above the picture, or, with the top at line 23, from the band's extent
