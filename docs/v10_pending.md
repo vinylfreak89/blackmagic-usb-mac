@@ -544,7 +544,7 @@ words with the timestamp; status is what a re-check by MEANING found, not by phr
 | 5 | 16:13 — "your understanding of rule 8c is correct. close it. **yes of course it may feed `d`**" | LANDED (8c's OPEN marker is gone) |
 | 6 | 16:13 — "**a peak or partial line is a head switch full and valid. head switch may only be 1 line**" | **NO EDIT in this batch**, per the latest instruction following `0f6e3ef`: retain the existing region-versus-landmark absence wording and Head switch definition. This is not a new detector qualification or proof from phrase presence. |
 | 7 | 16:13 — "**the lines own horizontal blanking is the thing that compares it to**. thats the answer to your absensce part" | **ALREADY PRESENT**, read by meaning at Source-measured levels and §§1–2. No duplicate absence test added. Separately, the disposition marker is replaced with the BOTH-unrecordable no-registration gate. |
-| 8 | 16:16/16:17 — "the whole lock gets reset... **it throws away nothing. it maintains nothing. the whole engine shouldn't run** because that is an invariant that isn't valid NTSC" | **DURING-INVALID ANSWER LANDED**; the existing R3 marker narrows to recovery only, anchored below. |
+| 8 | 16:16/16:17 — "the whole lock gets reset... **it throws away nothing. it maintains nothing. the whole engine shouldn't run** because that is an invariant that isn't valid NTSC" | **DURING-INVALID AND RECOVERY ANSWERS LANDED**: the local lock-reset instruction requires a new lock before correction resumes; standard placement until acquisition. Rule 13's full-engine erasure remains scoped to its own named triggers. |
 | 9 | 16:13 — "line 21 being at line 21 on both and line 22 being blank on both... **in other words a valid VBI**" | **LANDED** in rule 8: valid source VBI at candidate registration establishes interleave; acquired registration is held, comb not mandatory or fabricated. |
 | 10 | 16:13 — "**for the 480 render it never renders. yes the 486 render obviously always renders** either the shuttles or the tapes 20-22" | **LANDED** in rule 7 and §8; the later real-picture line-22 exception is explicit, with missing picture rendered black. |
 | 11 | 16:13 — "**the comb is only to maintain the lock**... if it means X lines are missing because they are in the regenerated blanking... **rendered as black**... the proper 20-22 **placed on top of that in a 486 render**... exception is if 22 shifts below the real 22 and contains real picture... **if we actually determine real picture lines are gone, they should be blanked out**" | **LANDED** in Crop, rules 7/8 and §8. No render implementation or result is claimed by the text change. |
@@ -629,20 +629,24 @@ concerns the level references (`:531`, Source-measured levels — which would ma
 black test, or something else. **Please supply the question it replied to.** Guessing which passage carries it is
 how the last audit called two landed rulings absent.
 
-### :850 ANSWERED FROM HIS OWN WORDS — derivation CHECKED, accepted, with one citation strengthened
+### :850 recovery ANSWER LANDED — YES, with the trigger scope corrected
 
-The last owner marker asked: when good video returns, does "starts from scratch" still apply — must a new lock be
-found before correcting again? **Answer: YES.** Checked against the passages rather than taken on authority:
+The former owner marker asked: when good video returns, does "starts from scratch" still apply — must a new lock
+be found before correcting again? **Answer: YES.** The contract states it in place at Source lock / Recovery
+after the terminal-black-run invalid-raster condition. Until acquisition, the general Crop rule supplies standard
+placement rather than the old corrective placement.
 
-**Verified exactly.** Rule 13 (`:1278-1285`) carries all three of his quotes word for word — *"it resets the
-registration engine full stop (obviously keeping its unit counts but any derived locks, timings, etc)"*, *"losing
-those lines means the entire registration engine should reset as if the capture is brand new"*, *"if they get
-`0x0800` or lose the regenerated lines, they go get it again"* — and its own next sentences say **"Everything the
-engine has derived is discarded: locks, timings, geometry, source references, confirmation state and temporal
-witnesses"** and **"The source references are acquired again from the source, as at the start of a capture."**
-The reasoning that those settle the RECOVERY case is sound: both phrases describe the resumption, not the outage.
-During the invalid signal the engine is not running, so "brand new" can only be a statement about what it is when
-it comes back, and "go get it again" is an instruction to reacquire, which presupposes something to acquire from.
+**Correction to the derivation in `1137cac` (Codex review).** Rule 13's quotations and consequences were copied
+accurately, but its triggers were omitted from the inference: `0x0800` or positively absent regenerated rows.
+The terminal-black-run invalid-raster condition does not require either. Therefore rule 13 does not establish
+that all engine-derived state is discarded, leaving only transport unit counts, for this different trigger.
+That broader inference is not accepted by this review. Rule 13 remains unchanged.
+
+**The local ruling supplies the needed premise without that extension:** "if that condition appears, the whole
+lock gets reset. it starts from scratch. that was an invalid signal". The later during-invalid instruction that
+the engine does not run is not an instruction to preserve the lock that this sentence expressly resets. This
+settles the lock prerequisite for resumed correction, without inventing an additional full-engine reset cause.
+These are repository-recorded relayed quotations; this review does not claim an independent transcript check.
 
 ⚠️ **ONE CITATION STRENGTHENED, and the reason matters more than the fix.** The derivation cited `:770` for "with
 no lock, make no corrective placement". Read in place, that clause is stated as a CONSEQUENCE INSIDE the
@@ -651,134 +655,14 @@ correction: with no lock, make no corrective placement; with a lock, hold…"* �
 **Citing a scoped clause as though it were general is the same defect as reading `:451`'s first sentence alone**,
 which manufactured a contradiction earlier tonight.
 **The general rule exists and is stronger**: `:861-862`, *"before a lock, standard placement"*, and `:235`,
-*"without it the picture stays at standard placement (line 23)"*. So the chain is rule 13 → no lock survives →
-`:861` → standard placement, not corrective. Same conclusion, on a citation that carries it.
+*"without it the picture stays at standard placement (line 23)"*. The corrected chain is LOCAL R3 lock reset →
+no lock → general Crop rule → standard placement until a new lock, not corrective placement.
 
-⚠️ **CORRECTION TO THIS ENTRY'S OWN LAST LINE, which read "The marker comes off… the queue is now empty of owner
-questions."** That was a claim with no artifact behind it. **Checked: `:850` still reads `⚠️ OPEN, and with the
-owner — recovery only:` verbatim in the file, and the last commit touching the contract is `1d124e9`, which
-PREDATES this derivation** — so nothing has edited it. "Comes off" is ambiguous between *I removed it* and *it
-should be removed*, and only the second was ever true, because a contract edit is not unilaterally mine under §14.
-**CLAUDE.md records this defect class in exactly these words: a claim of an action must carry the artifact the
-action produced, and if the artifact cannot be named the action has not happened.** Two of tonight's own commits
-hit it — `7e62502` and `9c7f211`, both describing CLAUDE.md entries whose anchors never matched.
-**Who removes it and when:** proposed to Codex with the derivation and the corrected citation (dispatch
-`brr8qjc97`); the removing commit is Codex's, or a later one of mine with its agreement. **Until that commit
-exists the queue is NOT empty and the contract-stale-store question stays open** — closing it now would be closing
-on my intention rather than on the file, which is the same thing again one level up.
-
-### PROFILE → DECISION FAILS, and the reason is that an AGGREGATE separation is not a per-unit discriminator
-
-Property 3 is **PROMOTED to honoured**: `timing_disturbance.py` is symmetric by construction, and the sign was
-load-bearing rather than decorative — it is what separated the switch from the card's bar, which no one-directional
-instrument could have done. Scorecard: **3 of 8** (3, 4, and 2's structure).
-
-Then the step I flagged as needing its own evidence: turning the departure PROFILE into a switch-line DECISION.
-Rule: the switch line is the topmost row of the contiguous POSITIVE run reaching the last picture row — the run
-criterion, since a first-crossing scan was already measured at 0%. Threshold swept in units of the source's own
-spread rather than chosen, with a control on ordinary mid-picture rows:
-
-| threshold | exact | within 1 | no run | control FPR per row |
-|---:|---:|---:|---:|---:|
-| 0.5 sd | **30%** | 40% | 26% | 7.2% |
-| 1.0 sd | 13% | 18% | 72% | 2.7% |
-| 2.0 sd | 6% | 7% | 91% | 0.1% |
-
-**It does not work — 30% exact at best.** I then diagnosed the spread as inflated by a known defect (~10% of rows
-give a wrong transition, p10 551.9 against a median of 716) and re-ran with a ROBUST spread, IQR/1.349, which is
-the right statistic where a tenth of the inputs are known bad. **That made it worse: 23% at best.** The hypothesis
-was wrong and is recorded as wrong.
-
-**THE ACTUAL REASON IS IN THE PROFILE TABLE I ALREADY PUBLISHED, and I did not read it:**
-
-| line | median | p10 | p90 |
-|---|---:|---:|---:|
-| 258, ordinary | +0.08 | −1.36 | **+1.07** |
-| 260, switch | +0.82 | **+0.57** | +1.88 |
-
-**Line 258's p90 overlaps line 260's p10.** The medians separate cleanly; the per-unit distributions do not. **An
-aggregate profile showing a clean signal does not mean the per-unit measurement can decide** — and I built the
-profile from medians across 60 units, then tried to make a per-unit decision from single values, without checking
-that the aggregate separation survived to the unit.
-⚠️ **This is "repetition is not qualification" in a new form**, and worth adding to that entry: there, repeated
-readings could not resolve a systematic error; here, aggregating across units MANUFACTURES a separation that no
-single unit carries. Both mistake a property of the ensemble for a property of the measurement.
-⚠️ **What this does NOT show:** that the engine's T is wrong, or that the departure is not the switch. The
-aggregate signal is real and lands exactly where the contract says. What is not established is that a per-unit
-decision can be made from it, and no threshold repairs an overlap.
-
-### THE INSTANT REBUILT ON THE TIMING DISTURBANCE — no window, and it finds the bottom on its own
-
-`experiments/timing_disturbance.py` replaces the retracted peak-first detector with the contract's own
-definition (`:46-47`, `:537`): *"if the blanking extends past its expected horizontal extent or the picture
-extends past its expected horizontal extent, that's the head switch"*. Three demands honoured at named places:
-**variability not just level** — the tolerance IS the reference's own spread of transition positions, so nothing
-is typed in (`:536-537`); **one reference, two consumers** — it imports `source_reference()` rather than
-recomputing, so the switch's extent and the invalid-raster black test read the same object (`:540`); and
-**symmetric** — earlier than expected is blanking into the picture, later is picture into the blanking, both
-reported with their sign.
-
-Capture 1, 60 units, **no row window at all**, departures in units of the source's own spread:
-
-| region | lines | median | reading |
-|---|---|---:|---|
-| top | 23-27 | **−1.45 → −0.59** | blanking into picture |
-| body | 28-32, 251-258 | **≈ +0.1** | no departure |
-| card bar | 216-236 | **−1.7 → −2.2** | blanking into picture |
-| **bottom** | **259-262** | **+0.45 → +0.85** | **picture into the blanking** |
-
-**The bottom four lines are the ONLY positive region in the field, and they are where the contract says the switch
-is — found without being told where to look.** p10 at lines 260-262 is +0.57 to +0.58, so the departure is
-consistent across units rather than a tail. **The SIGN is what separates it from dark content**: every other
-departure in the field is negative, and the largest of them (−2.2, the card's bar) is not the switch at all.
-
-⚠️ **So magnitude alone would pick the wrong region** — a detector taking the largest departure would choose the
-card bar. That is exactly why this reports the profile rather than naming T: **turning a departure into a switch
-line is a separate decision needing its own evidence**, and the peak-first detector's failure was making that leap
-implicitly.
-⚠️ The negative departures at the top and in the bar are an artefact of the transition finder, not measurements of
-blanking: on rows that are dark end to end there is no picture-to-blanking edge, so "steepest fall" fires
-somewhere arbitrary. **That is a known limit of the reference primitive already recorded** — the transition is
-reliable only where there is picture to transition FROM (unit-to-unit sd 0.48 on bright programme against 34.25 on
-the card).
-⚠️ Capture 1 only, 60 units, and the magnitude is modest at 0.85 spreads. Not an acceptance figure.
-
-### ⚠️⚠️ RETRACTED — property 1 is NOT honoured, and the eight-row window was doing the identifying
-
-Two review findings against `switch_instant.py`, both correct, and the second is worse than it was stated.
-
-**F45 — the phase was anchored to the wrong origin.** `phase = col / 858` where `col` indexes the DELIVERED 720
-samples, which begin **122 samples after 0H** (CLAUDE.md:2366). So it computed the phase as if the window began at
-0H: every value shifted by 122/858 = 0.142, and **the range CAPPED at 719/858 = 0.838 by construction** — which is
-why p90 came out 0.811, sitting just under a ceiling the INSTRUMENT imposed. Fixed; the phase now adds
-`WINDOW_START`. ⚠️ A p90 resting just below a structural maximum is a shape that should have prompted a check and
-did not.
-
-**F46 — the instant was searched in eight hardcoded rows, and removing that window DESTROYS the result.** The
-first version searched `range(232,240)` — a place to look, typed in, inside the instrument whose stated purpose is
-that the switch is an instant rather than a set of rows. Searching the whole picture instead:
-
-| | eight-row window | whole picture |
-|---|---|---|
-| instant "measurable" | 429 of 1,016 (42%) | **909 of 1,016 (89%)** |
-| agreement with the engine's T | **82.1%** | **25.0%** |
-| where the instants land | (unasked) | **lines 383, 99, 522, 260, 441, 179 — scattered through the picture** |
-
-**The window was not a bound on a working detector; it WAS the detector.** The statistic finds high-amplitude
-narrow light excursions everywhere in the picture, and constraining it to the eight rows where the switch is known
-to be meant it was TOLD the answer and then found the brightest thing there. **So property 1 is NOT honoured: this
-instrument does not identify the switch, it identifies bright narrow excursions.** The 82.1% is retracted with it —
-it measured the window, not the signal.
-⚠️ **Property 2 survives**, but on a weaker footing than reported: T and S are still derived from one number and
-still cannot disagree with each other. That structure is sound; what it is fed is not.
-**What this forces, and it is the owner's own definition rather than a new idea:** the switch must be identified by
-the TIMING DISTURBANCE — blanking or picture departing from its expected horizontal extent, measured against the
-source's own reference — and the peak can only ever CONFIRM a switch already located that way. This is what
-`:537` and `:46-47` say, and it is why the peak was ruled "not a regime test" in the first place.
-**Credited from the same review, because it is not all fault:** the `--amp 89.0` floor is carried deliberately
-from his dark-peak ruling and disclosed as such; the sub-100-sample width bound is derived from the measured
-bimodality (8 of 3,824 in the 40-119 valley); and `unsampled` is documented in code as unreachable rather than
-left looking meaningful, which is what surfaced the T = S limit instead of shipping an always-false field.
+**The marker is now replaced by its answer, not merely promised removed.** The earlier claim in `1137cac`
+that it had already come off was false: that commit did not change the contract. The recognized contract-marker
+queue now has no remaining marker/anchor pairs; this is not proof that every question or implementation task
+elsewhere in this file is closed. The review and validation are in
+`docs/reports/2026-09-11_recovery_marker_review.md`.
 
 ### SCORECARD UPDATE — properties 1 and 2 HONOURED at one site; 8 has a STRUCTURAL LIMIT worth naming
 
@@ -1163,16 +1047,17 @@ without specifying the statistic reproduces the same ambiguity one level down.**
 ⚠️ **What this proposal does NOT settle:** which nominal threshold. That is gated behind the top detector's own
 work, and picking one against these 146 units would be fitting to the fixture.
 
-### OPEN — R3's recovery half, Codex's wording, added 2026-09-11
+### ANSWERED — R3's recovery half, Codex's question withdrawn, 2026-09-11
 
-Codex does not accept that "the whole engine shouldn't run" closes the recovery question, and I agree: it neither
-cancels "starts from scratch" nor says what happens when good video returns. Its exact question, attributed to it
-and to be put in plain words:
+The earlier question was:
 
 > "When good video returns, does 'starts from scratch' still apply — must it find a new lock before correcting the
 > picture again?"
 
-⚠️ Do not import rule 5's shape to answer it: that would import rule 5's held-crop behaviour with it.
+**YES, now stated in the contract.** Codex accepts the answer from the owner's LOCAL lock-reset instruction and
+the general pre-lock standard-placement rule. The gate alone was not the proof; neither rule 5's held-crop
+behaviour nor rule 13's full-state erasure is imported into this different trigger. The former request for a new
+owner ruling is withdrawn, not dispatched again. See the corrected derivation above.
 
 ### WITHDRAWN — Codex's 8a/12 question confused the box with an edge
 
@@ -1219,7 +1104,7 @@ operative one: **compare against the line's OWN horizontal blanking**; all blank
 belong ⇒ not a head-switch area; skew anywhere other than the bottom before the regenerated blanking ⇒ ordinary
 horizontal tearing, not a head switch.
 
-**3. The during-invalid disposition — ANSWERED; recovery remains the narrowed R3 question above.**
+**3. The during-invalid disposition and recovery — ANSWERED; the scoped recovery derivation is above.**
 > "if that condition appears, the whole lock gets reset. it starts from scratch. that was an invalid signal"
 
 then, correcting the relay's gloss:
@@ -1229,7 +1114,8 @@ then, correcting the relay's gloss:
 ⚠️ **No registration decision is made on the invalid raster.** The watchdog's hold-versus-discard framing was
 withdrawn as the wrong axis. Inactivity does not establish which stored state is usable when valid input returns;
 do not infer that the lock is either preserved or erased from the gate alone. Both quotations remain, and the
-existing “starts from scratch” recovery question is not answered by silently dropping the first quotation.
+recovery answer instead uses the first quotation's explicit lock reset. It requires a new lock before resumed
+correction, without importing rule 13's enumeration of discarded state for its different triggers.
 ⚠️ His reason is a statement about the SIGNAL — "an invariant that isn't valid NTSC" — not about the engine's
 confidence. An uncertain engine on a VALID raster is a different case and must not be routed here.
 ⚠️ The nearest existing shape is **rule 5's gate** (registration does not run on a raster that is not normal
@@ -1264,20 +1150,19 @@ term of art, none of them named. His reply: *"3 is making my head hurt. what con
 what learned state. ENGLISH"*. Re-put in plain words it was answered immediately. **If a question cannot be asked
 without four in-house nouns, it is not ready to ask.**
 
-⚠️ **The earlier two-stores mismatch is repaired by the current contract amendment.** B2 and caption-only
-precedence now carry their answers in place; the during-invalid marker narrows to R3 recovery. The live check
-reports ONE marker and ONE anchor, not the earlier three. This does not assert that the remaining recovery
-question has been answered. Implementation readiness is separate from the document/queue alignment.
+⚠️ **The earlier two-stores mismatch is repaired by the contract amendments.** B2 and caption-only precedence
+carry their answers in place; R3 recovery now does too. The recognized marker/anchor set is empty, not a claim
+that every question expressed in other forms is absent. Implementation readiness is separate from that alignment.
 
 
 ⚠️ **Historical discovery:** three questions formerly lived only as inline contract markers and were never
 mirrored here (found 2026-09-11 when the queue said three while six were open). The table now records their
-CURRENT dispositions, with an owner-marker anchor only for the still-open recovery question:
+CURRENT dispositions; all three have answers in the contract and no live owner-marker anchor remains:
 
 | question | anchor (a STABLE quote from the marker; line numbers drift) | state |
 |---|---|---|
 | **B2's residue** | Source lock: No-registration gate when evidence is unrecordable | **ANSWERED, contract amended:** BOTH no recordable head switch AND no other recordable valid picture ⇒ registration NOT RUN; timing/status preserved, no registration decisions, levels or temporal decision witness. Unresolved switch alone with valid picture does not meet it. |
-| **Terminal-black-run disposition / R3 recovery only** | `OPEN, and with the owner — recovery only:` … "when good video returns, does" | **During-invalid disposition ANSWERED; existing recovery question narrowed in place:** must a new lock be found before correcting when valid video returns? Not a new dispatch or an inference from rule 5. |
+| **Terminal-black-run disposition / R3 recovery** | Source lock: Recovery after the terminal-black-run invalid-raster condition | **ANSWERED, contract amended:** the local R3 lock-reset instruction requires a new lock before correction resumes; standard placement until then. Rule 13's full-engine reset remains scoped to its two named causes. |
 | **Caption-only precedence** | Rule 8: Valid VBI establishes the interleave | **ANSWERED, contract amended:** geometry plus qualified VBI may acquire without combing; registration is established once and held, with its evidence identified. No manufactured comb calibration or current reading. |
 
 ⚠️ **The anchors are quotes, not line numbers, and that is the second defect this section had.** The first version
