@@ -1001,7 +1001,17 @@ cues present one frame and absent the next mean they shifted away, near-certain 
     movement: a qualified current boundary compared against a qualified retained one can establish that the bounds
     changed without locating the change in time. And where the available observations never resolve the ambiguity
     the measurement stays unresolved — **a desire to end that state is not evidence, and cannot justify declaring
-    the old bounds valid or manufacturing new ones.** No attribution of the change to a particular dark unit is needed
+    the old bounds valid or manufacturing new ones.**
+    ⚠️ **THIS RULE LANDS ON A PREREQUISITE NOBODY HAS BUILT, and the magnitudes say so.** Excluding
+    exposure-dependent detectability is not a tidy side condition — on this source it is the WHOLE test, and it must
+    be established to a tolerance finer than the artefact it excludes. Measured: the commercial capture's box top
+    band grows from 31 rows to **36-41 rows** on the card's dim pass and at its fades, purely because the WARNING
+    line stops reading as structure, while genuine field displacement on these sources is **1-3 lines**. **The
+    disqualifier is two to ten times the size of the signal it must be separated from.** So a rule that qualifies on
+    uncertainty-against-difference without pinning down what makes a unit WELL EXPOSED will either never qualify a
+    one-row change or will qualify a five-row exposure artefact. Qualifying "well exposed" is the detector work
+    already recorded as open against the box census; until it exists this rule states the requirement and does not
+    supply a usable test. No attribution of the change to a particular dark unit is needed
     — rule 8a has two invalidation triggers, picture appearing within previously established bar regions AND a band
     edge moving while the level is steady, so neither is the exclusive mechanism — and the engine does not reconcile
     indefinitely once invalidation has been established. Positively established box invalidation releases the affected geometry and
