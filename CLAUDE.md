@@ -2859,6 +2859,33 @@ picture origin, so `d = top - origin = 0` is the RIGHT answer for this source an
 not an absence of behaviour. The 31 field-2 readings at 287-295 are the dark-scene-top class this file already
 records as content rather than displacement, which the contract says must NOT move the crop; holding `(0,0)`
 through them is the intended behaviour too.
+⚠️⚠️ **"`(0,0)` IS THE CORRECT ANSWER" WAS THE ENGINE CONFIRMING ITSELF -- RETRACTED 2026-09-11.** The evidence
+above is the ENGINE's own geometry export putting field 1's top at line 23 in 508 of 508 units. That top reading is
+produced by the very level threshold whose basis was shown the same night to bracket line 23 three ways (cuts of
+3.00 / 4.00 / 4.38 against a row measuring 4.02). **An instrument cannot be its own corroboration**, and using the
+engine's output to validate the engine's output is the plainest form of it.
+**Checked on the raw rows instead** (`/private/tmp/l23raw.py`, 40-sample block means, three card units):
+
+| unit | field 1, line 23 | field 2, line 286 |
+|---|---|---|
+| 6700 | 8.6 8.0 7.9 7.5 7.9 7.8 8.0 5.8 then **1.4 to the end** | 2.3 1.6 2.1 2.2 … **blank end to end** |
+| 6731 | 7.0 7.4 7.7 8.0 6.4 6.2 6.7 4.7 then **1.5-2.0** | 2.8 3.0 3.6 2.2 … blank but for one block |
+| 6760 | 7.0 7.9 7.2 7.0 7.2 6.4 6.8 4.9 then **1.4-1.6** | 2.3 1.9 1.9 2.5 … **blank end to end** |
+
+**Field 1's line 23 is a PARTIAL ROW -- signal for samples 0-319, blanking from ~320 to the row's end -- and field
+2's line 286 is blank end to end.** So "top = 23" is a threshold verdict on an ambiguous row, not a fact about the
+source, and `(0,0)` being right for capture 1 is NOT established. What survives is the weaker and still useful
+statement: the engine applied `(0,0)` on all 919 units and nothing in the raw rows contradicts it -- which is not
+the same claim.
+⚠️ **Two more retractions of my own summary from the same hour.** (a) "The T/S disagreement dissolved" -- it did
+not. The mean-elevation statistic that produced that was ruled wrong hours later; its replacement found the
+evidence ABSENT (20 of 22 and 75 of 88 rows with no blank-level run anywhere) with the two surviving medians on
+n = 2 and n = 13, which I flagged at the time and then wrote up as settled. **Absence of evidence is not the
+question being answered.** (b) "Three instrument failures, corrected mid-flight" -- there were more, and the
+framing flatters the process: **the FIRST instance of each class was caught by the owner every time**, never by my
+controls. My controls caught later repetitions of a class already named for me. A process that reproduces the same
+defect and relies on the owner to notice is not a process that is working.
+
 ⚠️ **So capture 1 cannot demonstrate corrective movement, and no replay of it ever will.** That is a property of
 the source, not of the engine: a capture whose picture never leaves the origin exercises acquisition and holding
 but not correction. Corrective movement has to be demonstrated on captures 2-4, where the EP recording sits at
