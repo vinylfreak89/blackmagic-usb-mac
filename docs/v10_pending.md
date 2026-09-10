@@ -425,6 +425,16 @@ EXPAND where the partial was not present from the beginning.
 
 Neither agent may resolve these; the process sends contract conflicts to him.
 
+**Cleared 2026-09-10 — items 4, 5 and 8 are ANSWERED and their text is removed; A18 above is answered too.**
+Item 4, rule 8's box-validity wording: a box must be bounded (one end only is full picture), it is invalidated by
+picture positively established within its held bounds, its extent is measured well exposed and held, and a fade
+never invalidates. Item 8, "the two numbers": the box's outer bottom bound against the head-switch region, "lining
+up" being contact with no intervening source-blanking interval. Item 5, VBI as a confirmation alongside captions:
+the confirmations are the comb and captions/VBI, one class. A18, the switch requirement at both acquisition sites:
+the head switch is a geometry input rather than a confirmation and a lock never requires one — this was the tier-1
+gate and it is lifted, though the engine still implements the old requirement and that work is outstanding.
+All four are now in the contract; see its Source lock, Comb and rules 11-13.
+
 4. **Rule 8's box-validity wording is owed** — the bounds where a box is valid and where it is invalidated.
    Neither agent should write it. Asked and explained; answer pending. (Was struck through while its own text said
    pending; un-struck 2026-09-10. The duplicate second "4." was the 486-crop item, which is genuinely closed and
@@ -435,11 +445,15 @@ Neither agent may resolve these; the process sends contract conflicts to him.
    operative acquisition test**, because the owner's words it comes from (uuid 1bd1fc1d) are a question he asked the
    harness, not a definition. What is missing: which bottom is meant (picture bottom, switch line, or recorded
    edge), and what "line up" is as an equation. One line from him replaces it. Nothing is blocked on it.
-9. **The switch-line count has no seed the contract authorizes.** With the top at line 23 the offset can only be
-   read as count − extent, and the count comes from the confirmed unit, which needs geometry. The engine already
-   assumes d = 0 at acquisition so count = extent (`field_registration.c:436`), which resolves it in practice and
-   is nowhere in the contract; rule 4 wants the acquisition's geometry to be an observation, not an assumption.
-   (Both agents agree this does NOT explain capture 1's zero locks — that is still open.)
+9. **The switch-line count's acquisition is still unreconciled — and this item misdescribed the code.** ⚠️ Two
+   corrections, 2026-09-10. First, the contract now authorizes a starting geometry CANDIDATE (rule 11, the seed:
+   lines 23-262 with the band optional), which closes the seed half — but a candidate is not a measurement, and
+   starting at 23 does not by itself establish d = 0 or authorize freezing count = extent. Second, the claim that
+   "the engine already assumes d = 0 at acquisition so count = extent (`field_registration.c:436`)" is WRONG on both
+   the line and the behaviour: line 436 is the box observation, and the count is computed at `:474-476` as
+   `visible_d = m->top - origin` then `band_extent + visible_d` — derived from the measured top, not assumed zero.
+   What remains open is reconciling the count's acquisition with the confirmed geometry and with the rule excluding
+   the partial line. (Both agents agree this does NOT explain capture 1's zero locks — that is still open.)
 
 5. **Is VBI a confirmation signal alongside captions?** (Un-struck 2026-09-10: its own text says his ruling is
    pending, so it was never closed.) The owner raised it himself: "isn't VBI another confirmation

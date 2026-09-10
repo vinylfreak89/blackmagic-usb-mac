@@ -236,10 +236,21 @@ pure black in others, and the cause is unknown (owner, 2026-09-09: "The RF peak 
 WHITE. sometimes its pure BLACK. genuinely unknown to me"), so a detector keyed to one polarity misses the other.
 The peak carries the tear with it, so its horizontal position on the line is
 measured when present; it drifts slowly and never jumps from one side to the other; the TBC can smooth it away and
-render the partial line as picture, and then the band's row count is what survives. The head switch is optional (not
-every source is VHS): "not applicable" is distinct from "unmeasurable". Some recordings show no head switch at all
-— on a line-TBC-corrected pass there is torn horizontal timing below the picture and no switch to find (owner,
-2026-09-09) — so a lock must never be conditioned on one. The band is the unreliable part of the
+render the partial line as picture, and then the band's row count is what survives. **"Head-switch region" names the affected region where the other field's horizontal timing intrudes into this
+field** (owner, 2026-09-10: "I'M DEFINING THE HEAD SWITCH AS basically where the other fields horizontal timing gets
+into the wrong field. that is not technically 'the head switch'. the head switch is the RF peak/half line. whereas
+I'm basically just defining it as the unstable timing region"). The partial line and the RF peak are possible
+landmarks within or at its boundary; their absence does not establish absence of the region. This does not broaden
+to any unstable timing: ordinary horizontal tearing and departure-and-return keep their existing distinctions, and a
+region-based definition does not remove the need to identify timing evidence rather than merely dark content.
+The head switch is optional (not
+every source is VHS): "not applicable" is distinct from "unmeasurable", and a lock must never be conditioned on one.
+⚠️ **The example this document gave for a switch-free source is WITHDRAWN** (owner, 2026-09-10): a line-TBC-corrected
+pass is not one. "just because a partial line isn't there, as in the TBC captures, that doesn't mean there is no head
+switch. the horizontal skew at the bottom of the frame is evidence of a head switch." The absence of a partial line
+is not the absence of a switch, and the skew below the picture is positive evidence OF one. No genuinely switch-free
+real-source fixture has been established in the current acceptance inventory; initial regression coverage can be
+synthetic, and real-source qualification remains unestablished. The band is the unreliable part of the
 geometry; its row count is confirmed by secondary signals (comb between the fields, VBI, captions), ideally more
 than one; the band count alone never moves anything. A whole field can mistime and fall out of the Shuttle's raster:
 cues present one frame and absent the next mean they shifted away, near-certain when the top shifts too (owner, 03:34:41).
@@ -390,6 +401,30 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   2.02x), or luma above the blank; padding is neither. The Shuttle's regenerated blanking rows (7–15 / 270–278) are the
   reference when present; tape signal cannot reach them; their absence is a lock-like-loss observation.
 - **Pedestal**: the tape's black — the other head's black rows at the bottom of the band.
+- **Source-measured levels**: levels are measured per source, at runtime (owner, 2026-09-10): "do not take numbers
+  that are in the programs own measured thing as gospel. once again, NO MAGIC NUMBERS. measure things per source.
+  there is obviously going to be a source measured levels section", and "not measure it as a static to put in a
+  file. measure it when a source is first acquired." The engine establishes, for the source in front of it, what
+  blanking is, what black is and where generated fill sits. No contract value, header constant or calibration file
+  carries them. Source blanking, source black and device-generated fill stay SEPARATELY IDENTIFIED: their measured
+  levels may coincide on a given source without their roles becoming interchangeable, and a per-source number can
+  still be wrong if the samples it was estimated from were misidentified.
+  **The blanking reference** is established from qualified blanking intervals on the current source's good picture
+  lines and supplies both level and variability (owner, 2026-09-10): "the CORRECT thing to do is find the blanking
+  on the good lines of picture, thats your blanking interval the head switch needs to be measured inside of... we
+  aren't following a source standard. we are following SOURCES WE ARE CORRECTING." Nominal standard timing does not
+  establish it and device-generated fill never establishes it. The same reference serves the head switch's
+  horizontal extent and the black of the invalid-raster test. What is measured against it is departure in either
+  direction: "It should be measuring where the blanking is overwritten. So if the blanking extends past its expected
+  horizontal extent or the picture extends past its expected horizontal extent, that's the head switch." The
+  expected extent is the source's own, remeasured after a transition event, never the nominal figure.
+- **Warm-up**: before the required source references are qualified, registration and corrective placement are
+  inactive; observation and reference acquisition continue (owner, 2026-09-10): "the engine can't run on a fresh
+  source until it 'warms up' which means on capture 1, the loss like noise bars during the fade, the entire engine
+  can't run. that is accepted and expected." This is intended behaviour at capture start and after every full engine
+  reset. Following reassessment, any required reference that is no longer qualified must be reacquired before
+  registration resumes. Elapsed time alone does not complete warm-up, and completing it does not itself supply
+  geometry confirmation or a lock.
 - **VBI row**: a recorded row carrying a vertical-interval WAVEFORM, recognised by signature: the CEA-608 waveform
   (standard), the run-in burst without data (standard), the tape's line-20 timing pattern (the same pattern as the
   Shuttle's regenerated line 20), the smeared XDS bar (measured on the EP recording). "Line 22" in this document is
@@ -515,9 +550,30 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 - **Source lock**: **two measurements, one of which is ALWAYS geometry.** This is a GENERAL rule, not a statement
   about any one source (owner, 2026-09-10, asked directly whether it was about the warning card: "**No it was not
   about the card. It was general about the 2 measurement system needed for a lock, one of which was always
-  geometry**"). The second may be the comb or the head switch (owner, 2026-09-09T16:40:11Z, uuid d385c50e):
-  "**the fact that the harness shows real geometry with a real measurable box means a geometry can be acquired.
-  which means only 1 additional measurement is needed, comb or head switch** and ideally both are generateable".
+  geometry**"). ⚠️ **The second is the comb OR captions/VBI — NOT the head switch** (owner, 2026-09-10, superseding his
+  2026-09-09T16:40:11Z "only 1 additional measurement is needed, comb or head switch"): "**it should be comb OR
+  caption. valid geometry which may include a switch plus comb or captions, ideally both**", and "**right because
+  the head switch participates in the geometry decision. I've been considering it one of the 3 but its not
+  really**". Head-switch evidence is an INPUT TO THE GEOMETRY; evidence used to establish the geometry cannot be
+  counted again as an independent confirmation of it. Both confirmations is preferred. A source lock therefore does
+  not require head-switch evidence, and acquiring one without it does not manufacture a switch count: an unmeasured
+  count stays Unknown and every count-dependent deduction stays unavailable with it.
+  **A caption that confirms a lock is the tape's own, off the insert, with sound VBI semantics** (owner, same day):
+  it is outside the Shuttle's overwritten lines 20-22, the tape's following line 22 is properly blanked, and line 21
+  carries proper caption data rather than a skew artefact — "it was not over top of the shuttles 20,21,22 and line
+  22 was properly blanked, and line 21 carried the proper caption data, not some weird skew".
+  **Decoded caption data at the regenerated insert supplies no geometry or confirmation evidence** (owner, same
+  day): "no the regenerated insert shouldn't count as anything", and "whether they can decode captions, that could
+  mean the real captions are anywhere from 20,21,22 so that should say nothing about geometry". Its bytes may be
+  recorded as observations; recording them is not using them as confirmation. Independently established
+  regenerated-row PRESENCE remains device-state evidence and is a separate matter.
+  **A head switch present in one field and absent in the other is a broken source** (owner, same day): "a head
+  switch can't be in only one field... again ... PHYSICS. a source with a head switch (or signs of one) in only one
+  field is garbage. fail open. do nothing (or hold if you already acquired a lock)". Positive evidence that the
+  region exists in one field and is absent in the other prevents correction: with no lock, make no corrective
+  placement; with a lock, hold the placement already applied, which neither resets nor reacquires it. A measured
+  region in one field and Unknown in the other is one measurement and one abstention and does not establish this
+  asymmetry.
   **WHAT A LOCK ASSERTS, and what it does not** (owner, 2026-09-09T16:45:35Z, five minutes later): "**its not
   proof dispositive and it never can be.** in any way? **picture that is out of the measurable band is simply
   lost.** the issue here is **we were never asking if the right picture is acquired. we are asking, does the tape
@@ -549,18 +605,29 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   **A change of geometry resets the lock**: bounding-box geometry becoming full picture, or full picture plus a
   head-switch band, or the reverse. A caption confirms the very first unit of a segment when it
   agrees with the geometry (the lock's confirmation); it never places a unit against measurable geometry (owner,
-  2026-09-04 21:26: "assuming the picture itself ALSO MOVES THE SAME AMOUNT"). **A caption on the insert** (bytes
-  decoded on the raster's line 21 / 284) does not say where the tape's line 21 was: the Shuttle slices within one
-  line (section 2), so the tape's row could be 20, 21 or 22 — d ∈ {−1, 0, +1}. It confirms only when the comb,
-  re-measured for that unit at the three candidate placements, agrees with exactly one of them (owner, 21:34: "so
-  only if it agrees with the comb on one of those 3, but comb should be retested in that case"); otherwise it
-  confirms nothing. A caption whose row lies in the pass-through region (line 23 or below) is the tape's own line 21
+  2026-09-04 21:26: "assuming the picture itself ALSO MOVES THE SAME AMOUNT"). ⚠️ **A caption on the insert confirms NOTHING** (owner, 2026-09-10, superseding his 21:34
+  three-candidate procedure recorded here): the regenerated insert counts for nothing, so the d ∈ {−1, 0, +1}
+  candidate mechanism it fed is withdrawn with it. This removes the insert-derived candidate mechanism, not every
+  independently justified comb neighbourhood. A caption whose row lies in the pass-through region (line 23 or below) is the tape's own line 21
   and gives d = its line − 21 directly. **Regenerated-row presence** (the
   Shuttle's timing pattern and insert on lines 20/21 and 283/284, line 22/285 blank) is required decoder evidence,
   not a lock: the rewind passage carries the regenerated rows (measured) and has no source-lock confirmation, so it
   stays unlocked — the owner's 12:39 "no stable VBI = no stable lock" as this document states it. **Lock-like loss**:
-  snow-like signal, a vertical tear (cross-program or true), a signal-state relock or splice, the Shuttle's regenerated
-  rows absent; a unit event, both fields. A transport hole or short unit (a counter discontinuity) is damage under
+  snow-like signal, a vertical tear (cross-program or true), a signal-state relock or splice; a unit event, both
+  fields. It resets the geometry and the engine continues.
+  ⚠️ **The Shuttle's regenerated rows absent is NO LONGER lock-like loss — it is the INVALID class** (owner,
+  2026-09-10): "if they are gone, then the picture is truly unlocked, not lock like loss. it is not a valid NSTC
+  picture. period". **A raster in the invalid class is not valid NTSC: the engine does not register and does not
+  correct.** Two conditions put a raster there. FIRST, the regenerated rows absent — their absence must be
+  POSITIVELY ESTABLISHED, since a failed caption decode is not absence and samples unavailable through transport
+  damage are not absence. SECOND, a trailing black run of more than 24 qualifying terminal lines AND positively
+  established absence of the unstable-timing region within them; Unknown switch evidence does not satisfy that
+  absence. "if there are more than 24 lines of black with no head switch, just pure fucking black at the end, its an
+  invalid raster. straight up", with his rationale for the number "the 24 has nothing to do with what the fuck is
+  delivered. it has to do with 262.5 + 24 = 23.5, ie PICTURE", the black measured against the source's own blanking
+  reference below, and "if EITHER field does that, then the registration engine should not operate". Legitimate
+  picture meeting the condition also disables correction and that cost is accepted: "that means that a letterboxed
+  picture might fail open on a truly noiseless source which is whatever". A transport hole or short unit (a counter discontinuity) is damage under
   rule 6, not a lock-like loss.
 - **Crop**: line 23 (286) is always the output's top line (owner); the crop takes the picture's first line to it, so
   its origin in the raster is 23 + d (286 + d) for every sign of d: the render's line 23 is the source's real line
@@ -571,11 +638,21 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   picture is centred; before a lock, standard placement. **Displacement sign**: positive is lower in the raster.
 - **Comb**: the relative vertical shift between the two fields' crops that minimises the comb energy of their weave on
   static, detailed picture; measured first at standard placement, it confirms a lock when it reads zero at the placed
-  crops; thereafter it stands, confirming or vetoing each move (a veto is reported, never acted on by either agent).
+  crops; **Comb measurement and picture-preserving alignment selection occur during acquisition and reacquisition only**
+  (owner, 2026-09-10): "that is the lock, either initial or reacquisition. when a source is locked, then its geometry
+  is known, comb should not need to run and field geometry shifting obviously is going to move the same way comb
+  detection works. so comb should not be an all the time running thing." Under a maintained lock the comb is not
+  measured, and transient combing alone does not initiate an adjustment. Where an alignment is selected the
+  preference is to shift the combed field down rather than move its partner up — unless that fails to resolve the
+  comb — the governing aim being to preserve observed picture ("If combing happens, it should shift the combed field
+  down not its partner up, unless that won't resolve the comb"; "you prefer the one that doesn't lose picture").
+  A confirmation disagreement is recorded explicitly. A rejected candidate does not authorize acquisition or move the
+  rendered placement. During acquisition or reacquisition, alternative alignments may be evaluated under the
+  picture-preserving preference; an alternative is applied only after it satisfies the lock requirements.
   Field precedence is the half-line order the zero reading fixes (which field's line sits between the other's). On a
   unit without static detail the comb reads nothing, the geometry is applied and the unit is marked unconfirmed.
-  At an acquisition whose only caption is on the insert the comb is re-measured for that unit at each of the three
-  candidate placements (owner, 21:34) and confirms only if exactly one of them weaves without a relative shift. The
+  ⚠️ The three-candidate re-measurement for a caption on the insert is WITHDRAWN with the insert's evidential role
+  (owner, 2026-09-10). The
   comb constrains the two fields' relative registration only, so where both fields are ambiguous by the same amount
   it cannot decide and there is no lock.
 - **Body shift**: the vertical shift of a field's picture body against the previous unit of the same field, over
@@ -706,7 +783,22 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    problem. The agreement test is not implementable until that measurement exists. **Agreeing, they are valid geometry and MAY set a new
    acquisition, taken as the full geometry as if the box were not there. Disagreeing, the unit holds and may not
    acquire.**
-   **A box is not its own class** (owner, same day): "it should be left on the tape where it was centered… boxes
+   **A box must be BOUNDED** (owner, 2026-09-10): "no it doesn't need to open up to a full picture. it can open up
+   to whatever is on the screen. but it must be bounded. only one side of the picture isn't a box thats full
+   picture." A structureless band at one end only is not a box: that is full picture. Failure to DETECT a second
+   bound is not positive evidence that only one exists; that stays Unknown. "Full picture" does not by itself
+   establish displacement or authorize a lock.
+   **The box includes its bars, and where a head-switch region is present its lower outer boundary must meet it**
+   without an intervening source-blanking interval (owner, same day): "if the box doesn't touch the head switch,
+   then its not valid geometry. simple. basically if there's a blanking interval that sits between the box and the
+   head switch thats garbage", with "box is the bounds of the box, not the content inside the box". A demonstrated
+   intervening interval prevents a new acquisition; an unresolved boundary does not establish contact. This contact
+   requirement does not make head-switch evidence mandatory on a genuinely switch-free source, and failure to
+   measure a switch does not establish that the source is switch-free.
+   **When picture is positively established within the held bounds the box is invalid.** Replacement geometry is
+   then measured — it opens to whatever is on the screen, not necessarily to full picture and possibly to another
+   box; invalidating the old box does not itself establish its replacement.
+   **A box is not its own class** (owner, 2026-09-09): "it should be left on the tape where it was centered… boxes
    aren't their own special class. I already said this before." The picture is left where the source placed it and
    is never recentred; collapsing letterboxing to geometry means a box establishes geometry like anything else;
    black level is never assumed. Snow-like signal, splices and relocks are delivered by the signal-state layer; the
@@ -714,12 +806,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 9. Blank lines under the picture could indicate that the field sits high and need confirmation against the comb
    (owner); the band's extent alone never moves anything; new luma at the top alone never moves anything either. The
    offset is read every unit from the bands above the picture, or, with the top at line 23, from the band's extent
-   against the switch-line count (definition of d); the settled comb confirms or vetoes it — it never proposes a
-   move; the geometry's reading is applied either way, and a veto is a true disagreement recorded and reported to
-   the owner (section 8), never a silent hold or a change of the crop; most important is agreement (owner).
+   against the switch-line count (definition of d); under a maintained lock the engine tracks geometry and does NOT
+   measure the comb (Comb, section 3); a confirmation disagreement is recorded and reported to the owner (section
+   8), never a silent hold or a change of the crop; most important is agreement (owner).
    Black rows under the band that the deck's TBC makes are band rows (they define no bottom, rule 3), constant for a
-   field and inside the count; a change against it is the evidence, confirmed by the comb. After a displacement is applied the settled comb stands and
-   must agree again at the moved crop. A field partly out of the raster is a displacement of that field, tracked and
+   field and inside the count; a change against it is the evidence, confirmed by the comb. ⚠️ The obligation for the settled comb to agree again at a moved crop is WITHDRAWN with the
+   locked-state measurement it required (owner, 2026-09-10). A field partly out of the raster is a displacement of that field, tracked and
    confirmed; a field with no measurable picture while the other field's picture continues is a hidden edge (rule
    6; one field black while the other carries picture); snow-like signal is a unit event of the signal-state layer,
    both fields (owner, 15:11: "why would there be snow in one field but not the other"). Switch
@@ -728,6 +820,36 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    interpretation_resolution_a80c7e6.md, whose running-comparator reading of the switch-line count is overruled by
    the owner's 20:56 ruling — and re-settled on the current text at 21:12 and 21:21.)
 10. Not applicable (no head switch on the source) is distinct from unmeasurable.
+11. **The geometry seed** (owner, 2026-09-10). The initial geometry candidate is lines 23-262 in each field, with a
+    head-switch band optional. This is an authorized starting point, not a measured displacement, a switch-count
+    observation or a lock. Positively established picture starting after line 23 adjusts the candidate geometry; an
+    earlier start cannot be established from evidence overwritten by the Shuttle, and the missing evidence must not
+    be reconstructed — this limitation on observing the picture start does not prohibit independently supported
+    geometry tracking. Missing bottom lines alone do not establish displacement: they are treated as padding unless
+    qualified caption or comb evidence establishes otherwise. The candidate acquires a lock only through the stated
+    independent-confirmation requirements. His words: "a full 23-262 geometry including an optional head switch band
+    is fine as a starting point"; "Adjust only when picture starts AFTER 23. You have that backwards. We can't know
+    the inverse cuz the shuttle overwrites it"; "a picture that starts at line 25 absolutely gets its geometry
+    adjusted. Both its own 21, 22 are visible"; "Anything that's missing lines at the bottom... that's just padding
+    until proven otherwise by captions or combing."
+12. **Re-measurement** (owner, 2026-09-10). Mute, fade and actual picture appearing within previously established
+    letterbox-like bounds trigger reassessment of the source reference and the affected geometry — "not just a
+    transition event, mute or fade. if the boxed geometry becomes invalid, then it should reset as well. mute fade,
+    or actual picture appearing in the letterbox-like area bounds". During a fade committed geometry is HELD while
+    observation continues to establish the transition and its completion ("geometry (including the box) can't change
+    during a fade. that must be a hold"), and remeasurement follows completion ("IF IT CHANGES which really can only
+    happen after some type of transition event (mute or fade), remeasure"). Post-transition remeasurement does not
+    itself establish a geometry change. Positively established box invalidation releases the affected geometry and
+    its lock; replacement geometry requires acquisition; evidence dependent on invalidated geometry cannot support
+    acquisition without renewed qualification.
+13. **Full reset** (owner, 2026-09-10). `0x0800`, or positively established absence of the regenerated rows, resets
+    the registration engine full stop — "it resets the registration engine full stop (obviously keeping its unit
+    counts but any derived locks, timings, etc)", "losing those lines means the entire registration engine should
+    reset as if the capture is brand new", "if they get `0x0800` or lose the regenerated lines, they go get it
+    again". Everything the engine has derived is discarded: locks, timings, geometry, source references,
+    confirmation state and temporal witnesses. The transport unit counts are not derived and survive. Retained
+    storage must be inaccessible as evidence until freshly populated. The source references are acquired again from
+    the source, as at the start of a capture.
 
 ## 5. Measured every unit, per field (what the record must carry)
 
@@ -757,6 +879,17 @@ read-back shows the picture still except at the moves rule 8 allows. **Any engin
 re-run against all four in this order before it is accepted**, and only when all four pass does the whole-tape run
 begin. The captures themselves, their files and how a slice is re-cut are session logistics and live in CLAUDE.md,
 not here.
+
+⚠️ **What capture 1 cannot demonstrate, because it has already cost two instruments (2026-09-10).** The commercial
+capture has the deck's line TBC OFF, so its head-switch rows are STRUCTURED and sit far above the device's generated
+fill. Two specific predicates therefore pass on it for the wrong reason and fail on a line-TBC-corrected source,
+where the affected rows are flat at the deck's black. FIRST, a walk that ends a row run at the first STRUCTURED row:
+on a corrected source the switch rows are structureless and the walk runs past them. SECOND, assigning a row to the
+nearer of the generated-fill and picture-bar populations: at the deck's black against a bar far above it and fill far
+below, the switch rows are NEARER THE FILL and are excluded as generated. Both were measured while building
+`experiments/box_bounds.py` and its file carries them. **A predicate that depends on the head-switch rows being
+structured, or on their level being nearer the picture than the fill, is not demonstrated by capture 1 passing.**
+This is a coverage limitation of this fixture, not proof that every structure-dependent predicate is unsound.
 
 Two independent instruments — the engine's record (Codex) and the harness's reference (Claude), independently
 implemented and mutually reviewed, never fused — from the same raw rows and this contract, joined by device counter. Counted per capture per field: the top; S against the reference's first-full-other-head row
@@ -850,10 +983,12 @@ Closed 2026-09-09 (the owner): "the running line" is the red playhead sweeping t
 `overlay_sidecar.py` band under the picture, not a marker on the raster, and the graph must trace both fields. The
 cadence is one frame per unit, 29.97, top field first, which follows from bwdif in `send_frame` mode.
 
-Closed 2026-09-07 21:34 (the owner): a first lock is confirmed by combing, captions or both, and nothing else; the
-earlier "significant non-dirty luma" is withdrawn (the Shuttle's blanking can hide the picture's first lines), and a
-caption on the insert is ambiguous over d ∈ {−1, 0, +1} and confirms only with the comb re-measured (Source lock,
-Comb).
+Closed 2026-09-07 21:34 (the owner): a first lock is confirmed by combing, captions or both; the earlier
+"significant non-dirty luma" is withdrawn (the Shuttle's blanking can hide the picture's first lines).
+⚠️ **AMENDED 2026-09-10**: the caption-on-insert half of this entry — ambiguous over d ∈ {−1, 0, +1}, confirming
+only with the comb re-measured — is superseded, because the regenerated insert now counts for nothing. And "and
+nothing else" is not to be read as exhaustive against the later rulings; the confirmations are the comb and
+captions/VBI, with the head switch a geometry input rather than a third route (Source lock).
 
 Closed 2026-09-07 21:12 (both agents): the V-stabilize-off pass's flagged first lines are recorded, non-VBI rows and
 therefore picture; the top is read through the flagging; the horizontal error is not the engine's (owner: "Horizontal
