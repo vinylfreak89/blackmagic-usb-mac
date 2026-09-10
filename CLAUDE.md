@@ -2656,6 +2656,27 @@ lock (which is what rule 4 does for every other per-source quantity) or re-measu
 the contract previously recorded the bottom band ending at line 260 against this census's 264, the difference
 being exactly the head-switch region that rule 8 says is not measured when a gap separates it.
 
+⚠️⚠️ **RETRACTED 2026-09-10 — THIS TABLE MEASURES THE INSIDE OF THE BOX, NOT THE BOX.** The owner corrected the
+definition the same day: "**box is the bounds of the box, not the content inside the box**", and re-posed the test
+as contact rather than clearance: "**if the box doesn't touch the head switch, then its not valid geometry. simple.
+basically if there's a blanking interval that sits between the box and the head switch thats garbage.**"
+`experiments/box_vs_switch.py` joins on `f{N}_content_bot` and computes `gap = T - (content_bot + 4) - 1`, so on
+counter 6700 it compares the last CONTENT line, 236, against a switch at 260 and calls the 23 lines between them a
+gap. Under his definition those lines ARE the box — its bottom bar — so the box reaches the switch and the
+instrument was measuring the box's interior while naming it the box's extent. **Do not quote the 154/154, 152/152
+or "gap mode 23 lines" figures.** The census's own `bot` cannot replace them either: `box_census.py:163` sets
+`bot = n - 1 - cb`, the count from the content bottom to the WINDOW end (NTSC 264 / 526), so the "bottom band"
+reaches the field edge by construction and lumps the bar, the head switch and the device's blanking rows together.
+**The replacement is a LEVEL test, and the levels separate cleanly** (field 1, three boxed units, per-line mean and
+the census's own `h`): the box bar reads 19–23 at h 2.0–3.5, the head-switch rows 17.0–17.6 at h 6.0–6.8, the
+device's blanking rows below them 1.37–1.38 at h 0.37. On counters 6700, 6731 and 6760 the bar runs continuously
+into the switch with NO blanking interval between them, so his test passes on capture 1 — for a reason visible in
+the levels rather than in an extent comparison. Three units is not a census; the population has not been run.
+The test to build: from the content bottom downward, the run at the bar's own level, and whether it reaches the
+switch's first line without a distinct-level interval intervening.
+The superseded table is kept below because its method is the thing that was wrong, and the raw box extents in it
+are still correct measurements of the content.
+
 **Where the box's bottom lands relative to the head-switch band — measured 2026-09-10, and it is the owner's clean
 case** (`experiments/box_vs_switch.py`, joining `box_census.py --csv` against the switch reference on
 (counter, field)). His question and his acceptance, 2026-09-09T18:25:05Z: "my HOPE is that it lands above the head

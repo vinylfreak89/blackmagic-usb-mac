@@ -1,5 +1,22 @@
 #!/usr/bin/env python3
-"""Where the box's bottom edge lands relative to the head-switch band, per unit, per field.
+"""RETRACTED 2026-09-10 -- this measures the box's CONTENT bottom, not the box's bottom. Do not quote it.
+
+The owner corrected the definition: "box is the bounds of the box, not the content inside the box", and re-posed
+the test as contact rather than clearance: "if the box doesn't touch the head switch, then its not valid geometry.
+simple. basically if there's a blanking interval that sits between the box and the head switch thats garbage."
+This script joins on f{N}_content_bot, so the "gap" it reports is the region between the last content line and the
+band -- which under his definition is the box's own bottom bar. It answers a question about the box's interior
+while naming it the box's extent. Its published 154/154 and 152/152 figures are withdrawn (CLAUDE.md section 14).
+The replacement is a LEVEL test, not an extent comparison: from the content bottom downward, the run at the bar's
+own level, and whether it reaches the switch's first line without a distinct-level interval intervening. Measured
+on three boxed units of capture 1 the levels separate cleanly -- bar 19-23 at h 2.0-3.5, switch 17.0-17.6 at
+h 6.0-6.8, device blanking 1.37-1.38 at h 0.37 -- and the bar runs into the switch with nothing between.
+Note that box_census.py's own `bot` cannot supply the bounds either: it is n - 1 - cb, the count from the content
+bottom to the WINDOW end, so it reaches the field edge by construction and lumps bar, switch and blanking together.
+
+The original docstring follows; the extents it reports are still correct measurements OF THE CONTENT.
+
+Where the box's bottom edge lands relative to the head-switch band, per unit, per field.
 
 The owner's question and his acceptance, 2026-09-09T18:25:05Z: "my HOPE is that it lands above the head switch
 band, in which case its clean. if it doesn't land above the head switch band consistently, then yeah we have a
