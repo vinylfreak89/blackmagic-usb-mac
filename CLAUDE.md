@@ -2494,6 +2494,36 @@ row late, and those have opposite consequences.
 askable, 0 counterexamples -- **identical** to the version that also required a start band under 40 samples. The
 band-width term is inert and the principled check carries the result, which is what the commit promised to correct
 either way.
+
+**PLAIN COMB, AND THE GATE IT MUST PASS: the comb's best evidence and the acquisition gate's open window DO NOT
+OVERLAP AT ALL on capture 1 (measured 2026-09-11, BEFORE any engine change, so this is a prediction and not a
+post-hoc reading).** The owner's ruling is "you a regular simple comb energy algo. its fucking simple. there
+doesn't need to be a mask or other garbage", with the acceptance test "so comb should register and cap1 should
+become lockable" -- a FIRST LOCK, against a record of `geometry_lock_known` zero on all 919 units. Plain mean
+|vertical second difference| over the woven frame, no mask, no dominance, no support threshold, counters >= 6667:
+
+| population | n | winners | median margin |
+|---|---:|---|---:|
+| all | 508 | 0 in 428, +1 in 32, +2 in 48 | 1.31 |
+| switch measurable in BOTH fields (the gate at `field_registration.c:659`) | 182 | **0 in 165 (90.7%)** | 1.30 |
+| not measurable in both | 326 | 0 in 263 | 1.71 |
+
+**Every one of the 182 gate-open units is a CARD unit. Not one of the 275 programme units has the switch measurable
+in both fields.** So the region where plain comb is strongest -- programme, median margin 1.66-1.73 against the
+card's 1.30 -- is exactly where the acquisition gate never opens, and where the gate does open the content is a
+static card. That is an independent, quantitative argument for the `switch_measurable` repair (the owner's
+2026-09-09 ruling that a lock must never be conditioned on a head switch): the gate is not merely superseded in
+principle, it is excluding this capture's best evidence in practice.
+⚠️ **A false alarm of mine, killed by reading the code before voicing it.** The acquisition site does NOT require a
+margin ratio: it requires the comb reading to agree with a separately measured standard order
+(`r.shift==order && standard.measured && standard_order==order`). So "nothing decides at >= 2x" is the HARNESS's
+`comb_census.py` criterion, not a bar the engine applies, and a failure case built on it would have been invented.
+⚠️ `STATIC_MASK.md`'s counterexample is carried forward rather than re-derived: on a SYNTHETIC fixed-geometry
+coherent vertical pan the maskless product picks a wrong +2 at a margin of 1,024,739x, and 83-1,427x with empirical
+picture noise -- maximally confident and wrong. Its status is "a constructed input defeats this", NOT "this source
+defeats this": no pan in the four acceptance captures has been shown to reproduce it, and rule 9 still prevents a
+wrong reading from moving the crop, so the cost is a wrong CONFIRMATION rather than a wrong placement. Measure that
+cost before anyone reaches for a mask again.
 ⚠️ **A consequence for the COMB work rather than the peak work: all three of `COMB_COMPARISON.md`'s ablation
 controls -- 6687, 6690, 6700 -- are CARD units**, and the maskless comb decides cleanly on real programme. Measured
 here with independent code, mean |vertical second difference| over the woven pair: card 6690-6710 minimum at 0 with
