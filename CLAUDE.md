@@ -4297,6 +4297,28 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   at a ruling marked delivered is a reliable smell. The same pass found the tracker misdescribing the code it was
   about — citing `field_registration.c:436` and an assumed `d = 0` where `:474-476` computes
   `visible_d = m->top - origin` from the measured top.
+- **THE CONTRACT AMENDMENT LANDED (`1d124e9`, Codex wrote, 2026-09-11) — and it broke two of MY guards in the way
+  those guards exist to catch.** The amendment replaces the B2 paragraph with the BOTH-unrecordable gate, states
+  registered-once-and-held geometry and valid-VBI interleave, adds coherent tracking and one-sided holding, names
+  the mean of SOURCE blanking, and makes the 486 VBI replacement conditional. Owner markers: **three down to one**.
+  ⚠️ **`owner_queue_check.py`'s positive controls 1 and 2 were FIXTURE-DRIFTED AND SILENTLY DEAD.** Both hardcoded
+  the caption-only question's text; when the amendment replaced that question their `str.replace` calls became
+  **no-ops**, so no mutation happened, the check correctly passed an unmutated file, and both controls reported
+  "did not fire". **A control that hardcodes the text it mutates stops being a control the moment the document
+  moves** — which is this guard's own subject, one level up. Control 4 survived because it derives its target from
+  the file's own formatting; 1 and 2 now do the same and **assert the mutation landed** rather than trusting
+  `replace`. Selftest 5/5.
+  ⚠️ **`superseded_check.py`'s absence subject was RETIRED, not repaired.** Its QUESTION was answered by the
+  amendment, so both the withdrawn phrasing and its replacement are gone. **Updating the expected text to whatever
+  replaced it would silently convert a superseded-claim check into a does-this-sentence-exist check** — a different
+  instrument wearing the same name. 16 subjects now, and the retirement is recorded in the file beside the pair.
+  ⚠️ **A CORRECTION TO MY OWN CLAIM: the engine does NOT already comply with the threshold-basis ruling.** I
+  reported that `field_registration.c:359-366` computes the mean and therefore satisfies part 2. Codex is right
+  that it computes the mean **of the DEVICE's rows**, and `:531` forbids device fill as the reference. **Computing
+  the right statistic from the wrong rows is not compliance**, and it is the same one-name-two-quantities shape as
+  everything else this week: "the blanking reference" naming two different sets of rows. It is recorded as an
+  implementation gap, not a satisfied requirement.
+
 - **THE HARNESS REBUILD, STEP 1: the SOURCE's blanking reference, pooled at each row's own instant
   (`experiments/source_reference.py`, 2026-09-11).** Every level-derived number taken that night used the DEVICE's
   regenerated fill; contract `:531` names the SOURCE's own blanking and says "device-generated fill never

@@ -141,22 +141,42 @@ def selftest() -> int:
 
     with tempfile.TemporaryDirectory() as d:
         # POSITIVE 1: a marker with no queue row -- the original defect.
+        # ⚠️ THIS AND POSITIVE 2 WERE FIXTURE-DRIFTED AND SILENTLY DEAD (2026-09-11). Both hardcoded
+        # the caption-only question's text; when the contract amendment replaced that question the
+        # `replace` calls became NO-OPS, so no mutation happened, the check correctly passed the
+        # unmutated file, and both controls reported "did not fire". A control that hardcodes the
+        # text it mutates stops being a control the moment the document moves -- which is exactly
+        # what this guard exists to catch, one level up. Positive 4 survived because it derives its
+        # target from the file's own formatting; 1 and 2 now do the same, and ASSERT the mutation
+        # landed rather than trusting `replace`.
         q = open(QUEUE).read()
-        q2 = q.replace('`OPEN, and with the owner:` … "on a caption-only acquisition, '
-                       'what independently established evidence determines"', "no anchor", 1)
-        qp = os.path.join(d, "q.md"); open(qp, "w").write(q2)
-        r1 = run(queue_path=qp, quiet=True)
-        print("  positive 1 (a marker with no queue row): expect FAIL ... %s" % ("PASS" if r1 else "FAIL"))
-        ok = ok and bool(r1)
+        anchors = [l for l in q.split("\n") if l.startswith("| **") and "…" in l]
+        if not anchors:
+            print("  positive 1: UNAVAILABLE -- no queue row matched the expected shape")
+            ok = False
+        else:
+            q2 = q.replace(anchors[0], "| **row with its anchor removed** | no anchor | state |", 1)
+            assert q2 != q, "positive 1 mutation did not land"
+            qp = os.path.join(d, "q.md"); open(qp, "w").write(q2)
+            r1 = run(queue_path=qp, quiet=True)
+            print("  positive 1 (a marker with no queue row): expect FAIL ... %s" % ("PASS" if r1 else "FAIL"))
+            ok = ok and bool(r1)
 
-        # POSITIVE 2: an anchor that no longer lands -- the drift case.
+        # POSITIVE 2: an anchor that no longer lands -- the drift case. Mutate the CONTRACT text that
+        # a real queue anchor points at, found from the queue rather than typed in.
         c = open(CONTRACT).read()
-        c2 = c.replace("on a caption-only acquisition, what independently established evidence determines",
-                       "on a caption-only acquisition, WORDING CHANGED", 1)
-        cp = os.path.join(d, "c.md"); open(cp, "w").write(c2)
-        r2 = run(contract_path=cp, quiet=True)
-        print("  positive 2 (an anchor that no longer lands): expect FAIL ... %s" % ("PASS" if r2 else "FAIL"))
-        ok = ok and bool(r2)
+        quoted = re.findall(r'…\s*"([^"]+)"', q)
+        target = next((t for t in quoted if t in c), None)
+        if target is None:
+            print("  positive 2: UNAVAILABLE -- no queue anchor's quote was found in the contract")
+            ok = False
+        else:
+            c2 = c.replace(target, "WORDING CHANGED", 1)
+            assert c2 != c, "positive 2 mutation did not land"
+            cp = os.path.join(d, "c.md"); open(cp, "w").write(c2)
+            r2 = run(contract_path=cp, quiet=True)
+            print("  positive 2 (an anchor that no longer lands): expect FAIL ... %s" % ("PASS" if r2 else "FAIL"))
+            ok = ok and bool(r2)
 
         # POSITIVE 3: a NEW owner question added to the contract and never mirrored into the queue.
         # This is the original defect in its realistic future form -- the other two mutate the queue or
