@@ -2552,6 +2552,36 @@ using the same word for different rows.
 the picture". What my 0%-agreement measurement refuted is a downward scan using MY per-row blanking test at a 9.6%
 false-positive rate. The contract's criterion is narrower -- "the partial row whose later part departs from the row
 above" -- and has NOT been tested. Do not read the null as refuting the contract's own definition.
+
+**THE REVIEW RENDER IS THE 720x486 OUTPUT PLUS THE RASTER, IN COLOUR -- and a luma-only strip was the wrong thing
+(owner, 2026-09-11): "idk what render it thinks its doing but its not the 720x486 plus the other shit we agreed to.
+its some luma only bullshit".** His earlier "remove all this MAD and sigma bullshit" meant strip the STATISTIC, not
+the colour; a relay rendered that as "in raw luma" and a luma strip got built on it. The deliverable is already
+specified in the contract's **Final outputs** (owner, 2026-09-07 21:4x) -- the 720x486 output as placed plus the
+raster that shows the picture shift, one frame per unit, carrying the decision information.
+**`experiments/review_frame.py` builds it**: the 486 weave (lines 20-262 / 283-525) in BT.601 colour beside the
+full 525-line raster, the per-unit record in line numbers and words, and no ratio, MAD or sigma anywhere.
+⚠️ The colour is a STANDARD BT.601 limited-range decode applied to material whose black sits near code 1.4 rather
+than 16. That is what "as placed" means; nothing in the render remaps levels.
+
+**AN OWNER INSTRUCTION THAT WAS NEVER RECORDED ANYWHERE UNTIL NOW (2026-09-10 11:13:09), and its absence was
+verified rather than assumed: `bounding box`, `purple` and `alpha` each appear ZERO times in the contract, and
+`bounding box`/`purple` zero times in this file.** His words: "this is for the render, it should draw the bounding
+box when it finds it on top of the picture. keeping its field colors, meaning if they colide the box should be
+purple. and it should be like transparentish, so you can still see underneath it. i forget what thats called. alpha
+or something like that."
+Implemented in `review_frame.py`, and **the first attempt put it in the wrong coordinate system, which made one
+clause of his instruction unreachable.** Drawing the two boxes on the RASTER, field 2's rows sit 263 below field
+1's, so they can never coincide and PURPLE could never appear -- the collision test there is vacuous. His
+instruction says on top of the PICTURE, and woven, output rows 2p and 2p+1 are field 1 line 20+p and field 2 line
+283+p, the corresponding pair. Tested there, counter 6700 has **182 picture lines where both fields' boxes
+coincide**. The box detector is imported from `box_census.py` rather than reimplemented, so the render and that
+census cannot drift apart.
+⚠️ Two further rulings of his are flagged by the relay as never landed and I have verified only their ABSENCE, not
+their content: a re-acquisition rule ("go get it again" after `0x0800` or lost regenerated rows), and a black
+reference decision he made a gate at 11:02:49 -- "I'm not approving anything or looking at the draft until it comes
+up with that". Neither phrase is in the contract. `brand new` and `unit counts` ARE present, so the full-reset
+ruling did land. Recovering the two is our work before anything is put back to him.
 ⚠️ **A consequence for the COMB work rather than the peak work: all three of `COMB_COMPARISON.md`'s ablation
 controls -- 6687, 6690, 6700 -- are CARD units**, and the maskless comb decides cleanly on real programme. Measured
 here with independent code, mean |vertical second difference| over the woven pair: card 6690-6710 minimum at 0 with
