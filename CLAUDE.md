@@ -4224,6 +4224,26 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   at a ruling marked delivered is a reliable smell. The same pass found the tracker misdescribing the code it was
   about — citing `field_registration.c:436` and an assumed `d = 0` where `:474-476` computes
   `visible_d = m->top - origin` from the measured top.
+- **THE BAR FOR REACHING THE OWNER (his standing instruction, 2026-09-11): UNANSWERABLE FROM HIS OWN WORDS, or
+  the derived answer was rejected and the two agents cannot converge.** His words: *"seriously, most of this is
+  understandable by common sense... my literal words have said this in other parts of the transcript, repeatedly.
+  you try FROM MY OWN WORDS in the transcript to answer these yourself. don't queue things to me directly...
+  nothing should go to the owner unless its unanswerable from his own words or unless the target rejects that
+  answer and can not converge. otherwise I'm going to have 50 decisions to review in the morning."*
+  **Before writing "this needs an owner ruling", go find what he has already said about it — he repeats himself,
+  usually verbatim.** This binds both agents and it supersedes the older, looser rule of bringing him anything the
+  contract is silent on: the contract being silent is not the test, his transcript being silent is.
+  **Two calibrating cases from the night it was issued, both of which reached him and should not have.** (1) The
+  8a/12 question — whether the coherence ruling's one-sided-motion rule accidentally repeals the box invalidation
+  — was answerable by knowing what a box is: *"no. its not one side moving. its both sides of the box moving.
+  wrong on both fronts. ITS A BOX, not an EDGE or whatever."* **A box has BOUNDS; when real picture appears in a
+  strip previously confirmed as bar, THE BOX changed, not one edge of it**, so one-sided-motion never applied and
+  8a/12 stands untouched. ⚠️ **No exception is to be carved into the one-sided-motion rule for it — there was
+  nothing to carve.** The second front is the same category error in another place: 8d already says "A bar lying
+  between content and switch is the box, not a gap in it", so reasoning about a bar shrinking as though it were a
+  boundary drifting mistakes the object. (2) The `:531` blanking "tension", which claimed his named reference was
+  unmeasurable when it was measurable on essentially every row once each row was read at its own instant — the
+  thing he had said four times that night.
 - **Mutual code-and-intent review is the coding style of this project (owner rule, 2026-09-03).**
   Every change by one agent (Claude or Codex) is reviewed by the other before it is considered
   done, and the review covers **intent as well as code**: the reviewer must be able to state the
