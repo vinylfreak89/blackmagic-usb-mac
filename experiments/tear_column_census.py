@@ -26,8 +26,20 @@ A run that touches the left edge is TRUNCATED: its true start is outside the win
 column is a lower bound and its length is not the blanking interval. That is a distinct state
 from "no blanking here", and conflating the two is how a displaced row reads as an ordinary one.
 
+⚠️ NOT EVERY ROW OF THE UNIT IS A LINE OF THE SIGNAL, and an earlier version of this reported
+device fill as if it were (owner, 2026-09-10: "how is it getting readings off line 263 and 264 at
+all"). Measured on capture 1, identical in all 38 units checked: rows 0-6, 261-269 and 523-524 are
+exactly Y16 with zero variance - the device's own digital padding, 18 rows, leaving 507 digitised.
+Rows 259-260 and 522 are the device's WRITTEN blanking, not sampled signal: mean 1.375-1.382 with
+lag-1 autocorrelation -0.30 to -0.34, the dither signature CLAUDE.md uses to tell written from
+digitised (a picture row's own front porch reads 1.716 at -0.089). Field 1's last row carrying
+signal is 258 and field 2's is 521, which are exactly NTSC lines 262 and 525 - the last active
+line of each field in SMPTE RP-202. So the row-to-line map holds inside each field's active
+picture and means nothing past it; those rows are labelled by REGION here rather than given a
+line number that does not exist.
+
   tear_column_census.py <capture.tpc> [--repair] [--from N] [--rows LO HI]
-  -> counter, field, line, mean, lead, trail, run_len, run_col, state
+  -> counter, field, line, mean, lead, trail, run_len, run_col, state, region
 """
 import argparse, sys, os
 import numpy as np
@@ -61,6 +73,12 @@ def runs(row, thr):
         else: i+=1
     return lead, trail, best_len, best_col
 
+def region(row):
+    """what the device put in this row: its own padding, its own written blanking, or a sampled line"""
+    if row.min()==16 and row.max()==16: return "device_padding"      # Y16 exact, zero variance
+    if row.max()<=5 and row.std()<1.0:  return "device_blanking"     # the written dithered 1.375
+    return "line"
+
 def classify(lead, trail, rl, rc):
     if lead >= LEAD_MIN:                       # the run reaches the left edge: start unobservable
         return ("truncated_full" if lead >= FULL_MIN else "truncated_part"), lead, 0
@@ -81,10 +99,15 @@ def main():
         thr = z + MARGIN
         for off in range(LO,HI):
             line = origin + off
-            r = Y[line-4]
-            lead,trail,rl,rc = runs(r.astype(np.float64), thr)
+            r = Y[line-4].astype(np.float64)
+            reg = region(r)
+            if reg != "line":
+                # device fill: report it as what it is, never as a blank-run measurement
+                print(f"{ctr}\t{fld}\t{line}\t{r.mean():.2f}\t-1\t-1\t-1\t-1\tnot_a_line\t{reg}")
+                continue
+            lead,trail,rl,rc = runs(r, thr)
             state, L, C = classify(lead,trail,rl,rc)
-            print(f"{ctr}\t{fld}\t{line}\t{r.mean():.2f}\t{lead}\t{trail}\t{L}\t{C}\t{state}")
+            print(f"{ctr}\t{fld}\t{line}\t{r.mean():.2f}\t{lead}\t{trail}\t{L}\t{C}\t{state}\tline")
     def emit(u):
         ctr=int.from_bytes(u[4:6],"little")
         r=np.frombuffer(u,np.uint8)[HDR:].reshape(LINES,ROW)
