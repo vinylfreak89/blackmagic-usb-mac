@@ -4147,6 +4147,40 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **THE HARDCODED-540 REPAIR WAS ATTEMPTED AND FAILED THREE TIMES — a NULL, recorded so nobody rebuilds it,
+  and the measurement it produced is worth more than the repair would have been (2026-09-11).** The argument for
+  repairing first was right: `source_reference.row_transition` is underneath the source reference, the departure
+  profile, the no-jump qualification and the 69/98/0 figures, so a hardcoded constant there is a constant under a
+  published result. The before/after control was set up as asked, with the baseline saved first.
+  **What the attempt MEASURED, and this is the finding:** on this capture's bright programme the delivered row
+  **never settles into blanking inside the window** — median luma **91.5 at samples 700–719, and 112 across the
+  whole 540–719 region the old function searched**, against blanking at ~1.4. The card is the opposite: 2.2 by
+  sample 700, a real edge at ~694. **So "this row's transition into blanking" IS NOT OBSERVABLE on bright
+  programme**, for the same structural reason as property 5 — the window delivers 720 of 858 samples and the
+  trailing blanking is almost entirely outside it. **The old function returned a position for every one of those
+  rows regardless.** The fabrication is confirmed, and it is not an edge case but a whole content regime.
+  **Three repairs, three different wrong answers, each fixing the symptom the last one produced:**
+
+  | repair | what it did on bright rows | why it failed |
+  |---|---|---|
+  | changepoint + permutation null | returned sample **719** on 200 of 200 | the null tests for STRUCTURE, and picture rows have structure |
+  | + reject extremes, require the tail flatter | bright correctly **0 of 200**, but card moved to **307** | max mean-drop picks the card's long structureless BAR over the short blanking run |
+  | + take the LAST qualifying fall, not the largest | **715** everywhere, both regimes | "last qualifying" is satisfied marginally by noise almost anywhere late |
+
+  **Reverted to the committed, marked-but-unrepaired version.** Shipping the third attempt would have replaced a
+  known constant with an unknown one, and each iteration was a guess dressed as a fix — the thing this file's own
+  rule forbids: *when you cannot name the cause, add a measurement, not a fix.*
+  ⚠️ **THE CONSEQUENCE FOR TONIGHT'S FIGURES, stated plainly: the before/after control CANNOT BE COMPLETED as
+  designed, because there is no correct "after" to compare against.** So 294 / 69% / 98% / 0% is **not
+  validated** — it rests on a finder now shown to fabricate on part of its own population. That is a stronger and
+  more useful statement than either "unchanged" or "moved", and it is the answer to the question the control was
+  built to ask.
+  ⚠️ **One of the three named defects is REFUTED, and refusing to inherit it is the point.** Positive-only
+  acceptance is NOT a defect here: blanking is the floor and picture sits above it, so a picture-to-blanking
+  transition is a fall by physics and there is no inverted-contrast case for THIS quantity. (A relocated
+  interval's trailing edge is a rise, but that is a different observable.) The other two — the hardcoded origin
+  and the fabrication — are real and are confirmed above.
+
 - **WITHIN-UNIT SHAPE DOES NOT RESCUE THE PER-UNIT DECISION EITHER — tested and dead, 2026-09-11.** The
   aggregate-versus-unit failure did NOT rule out using the whole profile a single unit contains: ~240 rows, not
   one value, and using them is not aggregating across units. The hypothesis was that the discriminator is the
