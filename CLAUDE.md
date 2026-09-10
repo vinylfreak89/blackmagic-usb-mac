@@ -4164,11 +4164,27 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   from this session reads **`BENCH-SAMPLES 10000 registration_calls 0 gated 10000`** — the classifier gated every
   one of the 10,000 units, so `fieldreg_process` was never called and the `WORKER-BENCH median 0.321 ms` is
   classifier-plus-publish **with the engine skipped**. **The gate cannot fail however slow registration becomes.**
-  ⚠️ The same run's direct engine bench read **`FIELDREG-BENCH median 20.992 ms p95 47.851 ms`** at **load
-  average 5.99**, which looked like a breach of §11b's 10 ms. **RE-RUN AT LOAD 3.12 THE SAME NIGHT, SAME BINARY,
-  SAME FIXTURE: `median 1.690 ms p95 2.073 ms`.** That is **12.4× in the median and 23× in p95 FROM LOAD ALONE**,
-  and it settles the question the other way: the engine is comfortably inside the budget and the apparent breach
-  was contention. It also corroborates — this file already records the engine at 1.35–1.47 ms median historically,
+  ⚠️ **PRECISION, from Codex's review `eb1cb5d`: only WORKER-BENCH gates. The separate FIELDREG-BENCH loop DOES
+  invoke registration 10,000 times, so the executable is not engine-free** — my earlier wording implied it was.
+  ✅ **AND THE MECHANISM IS FOUND, by Codex rather than guessed: all 193 fixture units carry a hard-padding
+  fraction of 0.0, and the classifier's first appearance test rejects anything below 0.98.** The synthetic
+  generator never supplies the device padding the classifier expects. **A fixture mismatch — explicitly NOT to be
+  repaired by weakening the classifier.** Two further defects it adds: **no elapsed-time threshold can fail
+  `make bench` even with registration active**, and the hand-written worker loop does not exercise the production
+  worker's assembly, queue copies or publication handoff, so replacing the fixture alone would not establish
+  whole-path coverage.
+  ⚠️ The direct engine bench read **`FIELDREG-BENCH median 20.992 ms p95 47.851 ms`** at **load average 5.99**,
+  which looked like a breach of §11b's 10 ms. **RE-RUN AT LOAD 3.12, SAME BINARY, SAME FIXTURE: `median 1.690 ms
+  p95 2.073 ms`.** The engine is comfortably inside the budget and 20.992 is not baseline engine cost.
+  ⚠️⚠️ **"12.4× FROM LOAD ALONE" WAS A CAUSE INFERRED FROM TWO SINGLE RUNS AND IS WITHDRAWN — both the peer
+  session and Codex objected, independently and correctly.** A control was run: **three back-to-back executions
+  at load 2.6-2.8 gave medians 1.731 / 1.777 / 1.776 ms — a spread of 2.7%.** That rules out run-to-run variance,
+  and run 1 being the FASTEST also rules out cold-cache and first-run effects, which would have made it the
+  slowest. **So variance cannot account for a 1,100% gap.** But Codex's objection survives the control: these are
+  ELAPSED-TIME measurements, and two load averages do not separate contention from **core placement, frequency
+  scaling or thermal state**. **"Load" is a proxy for that whole bundle, not an isolated cause.** The defensible
+  statement is: the engine is inside budget, 20.992 was an outlier, run-to-run variance is excluded at 2.7%, and
+  the cause is host-side but not resolved further. It also corroborates — this file already records the engine at 1.35–1.47 ms median historically,
   so 1.690 is in family and 20.992 was the outlier. **Quoting the high figure as an over-budget result would have
   been wrong, and quoting either without its load average would have been meaningless.** `WORKER-BENCH` barely
   moved across the two (0.321 → 0.315 ms), which is itself the tell: a bench that gates everything is insensitive
