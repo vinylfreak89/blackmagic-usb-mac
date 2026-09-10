@@ -3979,19 +3979,36 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   A reading is qualified when it equals an ADJACENT unit's reading — parameter-free, no threshold, and **the
   engine's T is used only to score, never to qualify**, which is the circularity that destroyed F46:
 
-  | subset | n | exact | within 1 | beyond ±4 |
-  |---|---:|---:|---:|---:|
-  | **qualified (no jump)** | 294 | **47%** | 58% | 41% |
-  | control: unqualified | 62 | **10%** | 29% | 53% |
+  ⚠️ **The first numbers recorded here were WRONG and the instrument behind them was never committed. Both are
+  corrected below (`experiments/no_jump_reference.py`, 2026-09-11).** The scorer returned `23 + offset` as the
+  candidate LINE for BOTH fields, so every field-2 reading was compared 263 lines below its own coordinates —
+  the field spacing. The superseded row read *"294, 47% exact, 58% within 1, 41% beyond ±4"* against a control of
+  *"62, 10%, 29%, 53%"*, and was written up as a bimodality: **"two populations remain inside the qualified set."**
+  There was one population and one bug. The tell was in the printout and was read past: the wrong readings clustered
+  at **−262 to −265**, and 66+37+14+4 = 121 is exactly 41% of 294 — *the entire* beyond-±4 mass, at *exactly* the
+  263-line field offset. A tail that is one number wide is a coordinate error, never a second population.
 
-  **The qualification does real work — 10% to 47% exact, a 4.7× separation, from a rule of his that needs no
-  engine input and no tuned constant.** It is derived from evidence present in the sequence, so a reader could
-  apply it without knowing the answer.
-  ⚠️ **It is NOT yet a usable reference, and the honest bound is the bimodality: of what it asserts, 47% is exact
-  and 41% is more than four rows wrong.** Either right or badly wrong, with little in between — which says two
-  populations remain inside the qualified set. **A reference that is wrong by four rows on two readings in five
-  where it speaks cannot score an engine**, so the coverage figure (asserts on 294 of 896, 33%) is not yet a
-  result to report as one.
+  | subset | n | exact | within ±1 | beyond ±4 |
+  |---|---:|---:|---:|---:|
+  | **qualified (no jump)** | 294 | **69%** | **98%** | **0%** |
+  | control: unqualified | 62 | 21% | 53% | 11% |
+
+  **The qualification does real work, and the control's shape is the evidence rather than its headline number:**
+  the qualified set's errors are bounded at ±2 with 98% inside ±1, while the unqualified control's are scattered
+  from −10 to +2. Bounded versus scattered is the separation; 69% against 21% exact is the same fact stated less
+  informatively. The rule needs no engine input and no tuned constant, so a reader could apply it without knowing
+  the answer.
+  **The residual is not error — it is the partial line's own one-row travel**, the quantity the T/S dispute is
+  about, and §8's invariant already permits exactly it (`|S − mode| > 1` is zero on this capture).
+  ⚠️ **The two fields disagree in DIRECTION and this is not explained:** field 1 is 80% exact skewed to −1
+  (28 readings), field 2 55% skewed to +1 (37). This file records that field 2's band is one row longer than
+  field 1's on the SP, EP and commercial tapes — a CANDIDATE for the asymmetry, not a measurement of it.
+  ⚠️ **Coverage is on a SELECTED COHORT.** It asserts on 294 of the 478 field-readings where the engine reports a
+  T (62%); the 532 where the engine says Unknown are excluded from the comparison altogether, and whether this
+  instrument speaks there is untested by this table.
+  **The reliability-gating hypothesis is measured and INERT here, reported with its count as required:** gating
+  rows whose own transition is unmeasurable removed **19 rows of 243,840 (0.008%)** and left all three figures
+  identical. Not refuted — it has nothing to act on in this region.
   **What this establishes** is the SHAPE of the answer: qualification plus Unknown, not a universal rule — and
   that his own continuity rule is a working qualifier rather than only a property to check.
 
@@ -4330,6 +4347,24 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   `superseded_check.py` is that case — "the withdrawn phrasing appears bare" proxies for "the document asserts the
   withdrawn claim", and they come apart when a claim is restated in different words — so it now prints its limit
   with every result instead of pointing at its own docstring.
+- **A BUCKET COUNT CANNOT SHOW THAT ITS CONTENTS SIT ON ONE VALUE — ninth member of the
+  answers-a-different-question family, and the proxy is summarisation itself (2026-09-11).** A reference's
+  disagreement with the engine was reported as *"41% beyond ±4"*, and that figure was used to conclude two
+  populations remained inside a qualified set. The distribution was never printed. When it was, **every one of
+  those readings sat at −262 to −265** — one spike at the 263-line field spacing, because the scorer compared
+  field-2 candidates in field 1's line numbers. **"Beyond ±4" is equally consistent with a broad tail and with a
+  single wrong constant, and those have opposite causes: one is noise to be reduced, the other is a bug to be
+  fixed.** The threshold count answered a question nobody needed; the histogram answered the one that mattered and
+  cost one extra line of code.
+  **The rule: never characterise a disagreement by a threshold count alone — print the distribution, and check
+  whether its mass sits on a value that is a known constant of the system.** Here that constant was 263, which
+  appears throughout this file as the field spacing; a tail one number wide is a coordinate error, never a
+  population. Related, and already recorded globally: *two values being comparable is a claim, not a given* — a
+  candidate line and an engine T are only comparable once both are in the SAME field's numbering.
+  ⚠️ The instrument behind the wrong figure had also never been committed; it lived in `/private/tmp`, so nothing
+  could re-run it and the number in this file was unfalsifiable until it was rebuilt. That is the
+  *claim-must-carry-its-artifact* rule failing in its slowest form — the artifact existed for one session and then
+  did not.
 - **A pipeline reports its LAST command's status, and the usual guard against that is a bash-ism which is SILENTLY
   EMPTY in zsh — sixth, seventh and eighth members of the family (2026-09-11).** The peer session ran
   `python3 check.py old.md | head -8; echo "exit=$?"`, read **exit=0** from `head` rather than from python, and
