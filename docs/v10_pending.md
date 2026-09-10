@@ -528,6 +528,60 @@ this is a two-agent adjudication.**
 instruments, that the bench's gate is vacuous, and that no recorded timing states its load are findings about the
 profiling stop that stand whenever it opens.
 
+## Owner rulings 2026-09-10, reconciled from the transcript (watchdog, one-time owner-authorised edit)
+
+**Why this section exists.** The watchdog's own queues lost items and its audit method was a phrase search, which
+reports a ruling as "recorded nowhere" when the wording differs and cannot tell a CONFLICT from a SILENCE. The
+owner authorised one override to reconcile everything discussed on 2026-09-10 into this file. Every row is his
+words with the timestamp; status is what a re-check by MEANING found, not by phrase.
+
+| # | his words (2026-09-10) | status |
+|---|---|---|
+| 1 | 10:20:30 — "when a source is locked, then its geometry is known, **comb should not need to run**... so comb should not be an all the time running thing" | **OPEN** — the engine measures the comb on every unit; `field_registration.c:984` calls `comb_confirm` with no lock-state guard. Rule 9 already states the requirement. |
+| 2 | 17:06 — "fix the fucking combing... a regular simple comb energy algo... there doesn't need to be a mask or other garbage" | **IN FLIGHT** (Codex `bzxtaxua7`) |
+| 3 | 17:08 — "settle the S and T... get the measurement of the head switch band right" | OPEN |
+| 4 | 17:2x — "**the only render I want is one that is produced from a locked capture on cap 1**. then it may continue on by profiling" | OPEN — sets the order: comb → lock → render → profile |
+| 5 | 16:13 — "your understanding of rule 8c is correct. close it. **yes of course it may feed `d`**" | LANDED (8c's OPEN marker is gone) |
+| 6 | 16:13 — "**a peak or partial line is a head switch full and valid. head switch may only be 1 line**" | OPEN — contract ~:809 still excludes them; he ruled at 16:15 "if it does the contract is wrong" |
+| 7 | 16:13 — "**the lines own horizontal blanking is the thing that compares it to**. thats the answer to your absensce part" | OPEN — `:812` still reads `OPEN, and with the owner` |
+| 8 | 16:16/16:17 — "the whole lock gets reset... **it throws away nothing. it maintains nothing. the whole engine shouldn't run** because that is an invariant that isn't valid NTSC" | OPEN — `:800` still reads `UNSETTLED and with the owner` |
+| 9 | 16:13 — "line 21 being at line 21 on both and line 22 being blank on both... **in other words a valid VBI**" | OPEN — `:1027` still reads `OPEN, and with the owner` |
+| 10 | 16:13 — "**for the 480 render it never renders. yes the 486 render obviously always renders** either the shuttles or the tapes 20-22" | OPEN |
+| 11 | 16:13 — "**the comb is only to maintain the lock**... if it means X lines are missing because they are in the regenerated blanking... **rendered as black**... the proper 20-22 **placed on top of that in a 486 render**... exception is if 22 shifts below the real 22 and contains real picture... **if we actually determine real picture lines are gone, they should be blanked out**" | OPEN |
+| 12 | 09:16:24 — "in any 486 line renders, **real line 20-22 overwrite the shuttles**" | **OPEN AND IN CONFLICT** with `:451`, which says nothing the tape carries above line 23 reaches us. A conflict, not a silence. |
+| 13 | 09:18:05 — "for the test renders... **a valid result should keep the first 6 lines vertically stable in position... always**" | **PARTIAL** — `:167` carries "the output picture does not move", a different observable. No render shown to him today was measured against this. |
+| 14 | 11:13:09 — "it should **draw the bounding box** when it finds it on top of the picture. keeping its field colors... **purple**... **transparentish**" | OPEN (implemented per the harness, not yet in the contract) |
+| 15 | 04:54:51 — "luma stills... **slowed down 5x as a video, both fields side by side**" | **FALLBACK ONLY** — condition: if the peak-near-the-left-edge account fails to explain the switch line appearing to jump to 259. Superseded in practice by the temporal frame. |
+| 16 | 11:05:15 — "if they get `0x0800` or lose the regenerated lines, **they go get it again**" | OPEN |
+| 17 | 12:50:38 B4 — "isn't that **determined from source and/or device and/or horizontal blanking**" | OPEN |
+| 18 | 12:50:38 B5 — "It depends how it falls off. If the horizontally mistimed field is **within normal variance** defined elsewhere that we've already agreed to" | OPEN |
+| 19 | 12:50:38 B6 — "**the harness has a test and definition for what boxed vs structured vs unbounded is**" | OPEN |
+| 20 | 17:0x — "**its not categorical. its an expectation**... its what I saw quickly scrubbing the video but I generally did see occasional half timed lines" | OPEN — §2 records his EXPECTATION as a measurement. Fix the provenance, not the strength; Codex's 11-vs-1,957 is the measurement and the eleven are corroborated by his own viewing. |
+| 21 | 17:00 — "**THESE ARE NOT PICTURES. They are representations of a signal across time**, thats why a .5 row never made sense to me... its half of a horizontal one"; 17:00:57 — "the ribbon is actually **the sweep moving back into its own horizontal blanking interval**" | OPEN — the frame the definitions sit inside; not in the contract |
+| 22 | 17:02 — "**the RF peak is the liftoff**... the skew is because the servo is trying to lock timing of this frame to the other head... **its some of the other fields signal ending up timed to this field**"; 17:0x — "which is why **the peak disappears in the line TBC on captures (mostly)**... fixture A... **their recorded timing was trash**" | OPEN — competing account (phase step introduced by the TBC rather than head geometry) is separated by the V-stabilize A/B, already captured |
+| 23 | 16:58 — "**well the TOP skew row is**" (T) | OPEN — and the DOWNWARD reading of it was the watchdog's invention: measured, a downward scan agrees with the engine's T 0% of the time, landing ~236 rows high; the upward run reaching the clip gets 71.5% exact |
+| 24 | 11:02:49 — "it needs to decide on **the black reference**" | **SATISFIED** under different wording: contract's *Source-measured levels*. Recorded because the watchdog reported it open on a phrase search. |
+| 25 | 09:41:23 — "**the location of the partial line and/or RF peak should not jump**. It should have a normal excursion when a line disappears" | **LANDED** `:164` |
+| 26 | 10:49:16 — "**a head switch existing is the bottom of the tape. thats PHYSICS**" | **LANDED** `:446`/`:702`/`:960` |
+
+**⚠️ RETRACTED, and it must not be quoted again once the comb work clears (owner, 2026-09-10):** the claim that
+`switch_measurable` gating acquisition "excludes capture 1's best evidence" because all 182 gate-open units are card
+units. His ruling: *"the comb does not need a switch to open. it is one of the ORs. the contract directly
+contradicts this. the switch sets or fixes geometry only IF IT IS PRESENT. secondly, the target measurements are old
+and stale and because it didn't know how to measure a headswitch, shouldn't be true."* The 182 figure was produced by
+a switch measurer since shown to be measuring the wrong thing, and an independent measurement on the same capture
+finds displaced blanking in 222 of 240 programme field-readings. The `switch_measurable` condition on the two
+acquisition sites is a code defect against rule 9, not a constraint to design around.
+
+**The profiling stop, four items** (its second precondition — engine and harness agreeing semantically — is not met;
+see the section below): the live path carries NO timing instruments (zero `clock_gettime`/`mach_absolute_time` in
+`frameserver.c`, `frame_publisher.c`, `audio_publisher.c`, `unit_parser.c`, `field_registration.c`,
+`signal_state.c`); `make bench`, named in §11b as the regression gate, reports `registration_calls 0, gated 10000`
+and cannot fail the budget however slow registration becomes; no ms/unit figure on record is comparable to §11b's
+"reference M3 P-core, single-threaded" (all taken under unrecorded load, measured at 4.5-6.75 with Chrome at 97%);
+and three decisions are with the owner — scope (per-stage or worker total), fixture (194 looped units or a real
+slice), host (quiesce before the real run).
+
 ## Blocked on the owner
 
 ### OPEN — R3's recovery half, Codex's wording, added 2026-09-11
