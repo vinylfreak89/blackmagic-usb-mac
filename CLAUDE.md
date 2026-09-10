@@ -2189,6 +2189,22 @@ stability as truth or conflate T=S fallback with proven partial absence. No
 field-specific threshold, debounce, or change to the owner's count definition
 is justified by these histograms. Production unchanged; capture 1 not accepted.
 
+**Capture 1's zero locks do NOT show that acquisition confirmation is missing — settled 2026-09-10 (Claude claimed
+it was absent, Codex read the code, Claude then measured).** Both acquisition paths exist in the engine: the caption
+path at `field_registration.c:916`, gated on `switch_measurable && caption_confirmation == AGREES`, and the comb path
+at `:659`, gated on `switch_measurable` in BOTH fields. The claim that "acquisition confirmation was never
+implemented" is false and so is its narrower repair, "the switch gate is what closes it": on the production geometry
+export at counter >= 6667 (508 units, 1,016 field readings, `/private/tmp/run-timing.DdLgYt/plain/geometry.csv`,
+the schema-20 paced worker of `RUN_TIMING.md`) the switch is measurable in **both fields on 182 of 508 units** and in
+**484 of 1,016 field readings**, so the gate opens 182 times with no lock following. The commercial paced comb replay
+(`COMB.md`, `/private/tmp/v10-comb-final/registration.csv`, SHA-256 `7cf020a1...`, 919 exact units, 452 registration
+invocations) reports **449 ambiguous comb readings, zero decisive agreements, zero calibrated units**, so it supplies
+no successful comb confirmation — the static-mask diagnosis already in this section. ⚠️ **The honest form, agreed by
+both agents:** these findings explain why a lock count of zero cannot diagnose the conditional-switch requirement;
+they do NOT establish that fixing the comb alone would produce a sanctioned lock, because geometry measurability and
+the other acquisition prerequisites are not shown to have held on those 182 units. Keep the export and replay
+identities beside the figures — they are separate runs and must not be silently combined.
+
 **The harness's switch line is independently confirmed on capture 1, and what got it there (2026-09-10).**
 `experiments/displaced_row_census.py` locates the first long run at each field's own blank level and compares it
 with the harness's S. It shares no code with `switch_geometry.py`. **S is exact in 1,013 of 1,013 registerable
