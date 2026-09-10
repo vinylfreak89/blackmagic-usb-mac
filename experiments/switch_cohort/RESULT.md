@@ -21,10 +21,18 @@ aggregate and its per-key file was never read here:
 * verdicts disagree: **272 of 768 (35.4%)**
 * and where the verdict agrees, the same failing test is named in only **168 of 496 (33.9%)**
 
-## The sharpest fact
+## The sharpest fact, with the qualifications Codex added
 
-**Groups 3 and 4 drew from the same strata and returned 186 of 192 and 0 of 192.** Not a shading of
-emphasis — 97% against 0%, with L1 at 0 and 192 respectively.
+**Groups 3 and 4 drew from overlapping strata and returned 186 of 192 and 0 of 192**, with L1 at 0
+and 192 respectively.
+
+⚠️ Two qualifications, both Codex's and both accepted. They reviewed **different keys** within
+those overlapping strata, so this is NOT a same-row repeatability experiment and must not be
+described as one. And the criteria never prescribed which failure to report when several applied,
+so the "same failing test named" figure below cannot measure agreement on each individual test.
+Neither rescues the cohort, but "all adjudication is impossible" would overstate what was shown.
+Codex adds the same discipline to its own side: its universal L2 is a panel-limited judgement, not
+proof of fundamental unmeasurability.
 
 They describe the *same observation* and read it oppositely:
 
@@ -50,7 +58,40 @@ The classifier gate therefore stands untouched, and the critical path is the con
 (4) — whether any observable separates a dark region's endpoint from blanking's — which has to be a
 measurement rather than an adjudication.
 
-## A lead for that measurement, from the adjudication rather than from theory
+## The lead is probably dead, on timing — Codex's prior objection, computed
+
+Before measuring anything, Codex asked whether a burst residual can be in the tested samples at
+all. Worked from the standards figures:
+
+    burst starts        5.300 µs after 0H          (ITU-R BT.470)
+    burst length        2.514 µs                   (9 cycles at 3.579545 MHz)
+    burst ends          7.814 µs
+    window starts       9.037 µs                   (BT.601, 122 samples after 0H)
+    gap                 1.223 µs = 16.5 samples
+
+**Under nominal timing the burst is over 16.5 samples before the delivered window begins**, so
+nothing at a normally-timed row's porch can be burst — and the humps the adjudicators described sit
+on exactly those porches. The lead as originally stated is therefore probably dead: whatever that
+2–10 code hump is, it is not the colour burst. Ringing, filter response and content all remain open
+as explanations and none is measured.
+
+⚠️ This is arithmetic from the standard, not a measurement of this decoder, and it is not a proof
+of absence.
+
+**But the same arithmetic reframes it, and the reframing is better than the original.** A DISPLACED
+row is shifted by far more than 16.5 samples — the relocated blanking runs measured on capture 1
+sit at columns 20–70 with lengths of 147–164 — so a displaced row's burst would be carried INTO the
+window along with its blanking, at a predictable offset inside that run. Dark picture has no reason
+to carry it. That makes burst a candidate positive signature of RELOCATED BLANKING rather than of
+normal blanking, which is the opposite of the original idea and is closer to what the
+identification method actually needs.
+Codex's conditions on any such test stand and are not weakened by the reframing: energy at the
+subcarrier frequency is NOT something dark picture cannot have — picture structure and chroma
+leakage can supply it — so frequency would be supporting evidence, with timing position,
+oscillatory structure and specificity against controls all still to be established. A positive
+result would not by itself close the identification-method gate.
+
+## The original lead, kept for the record
 
 Group 3, unprompted: "nearly every porch carries a 2–10 code hump (burst-like) superimposed on the
 blanking interval". Group 2 saw the same shape from the other side: some left edges "carry a 2-code
@@ -61,6 +102,13 @@ that dark picture cannot have — which is exactly the discriminator the identif
 ⚠️ Recorded as a lead, not a finding. It is not measured, the burst is a chroma signal and whether a
 residual survives into this luma window is unknown, and two adjudicators calling something
 "burst-like" by eye is not evidence that it is.
+
+## A note on the verdict files' key column
+
+The four verdict files name their key column `row_label` rather than `storage_row`. Codex's first
+join failed on that. The values ARE the frozen storage-row indices - verified 768 of 768 exact
+match against COHORT_KEYS.json, zero missing and zero extra - so the join is sound once the column
+is mapped. The files are not renamed, because Codex has already joined against them as they stand.
 
 ## A defect in this instrument, found by group 3
 
