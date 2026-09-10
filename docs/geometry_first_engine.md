@@ -204,8 +204,9 @@ segment's initial lock and after such a re-acquisition.
 
 **The model (2026-09-06 evening, written back and accepted).** One question per field per unit: where does the
 picture start, and did it move since the last unit. The conserved quantity is the line account, not the height:
-the number of bands above the picture and the number of bands below it; a field moved when the bands above it grew
-by X and the bands below it shrank by X (or the reverse), and this holds past the raster bounds — nothing deletes
+the number of bands above the picture and the number of bands below it — COUNTS OF LINES, not of separate regions:
+the recorded lines above the picture, and the observed band extent below it. A field moved when the lines above it
+grew by X and the extent below it shrank by X (or the reverse), and this holds past the raster bounds — nothing deletes
 lines from the middle of a field except a vertical tear. The line account decides: content moving while the bands above and below the picture are unchanged is not a
 displacement, and the bands changing in both fields by the same amount is a displacement of both fields, each
 closing its own account (owner, 2026-09-07 15:11: "my original definition of geometry, ie, the number of top bands vs
@@ -855,10 +856,16 @@ field" phrasing does not.
    make it into a lock. Only after lock does it move the rendered frame's location."). An unconfirmed candidate does
    not move the output, and a source that never locks holds its picture unmoved, which is correct — "rather fail
    closed than fail open". Every other signal confirms or contradicts and is recorded, never acted on alone.
-2. The head switch's position moves with the picture; the source's switch-line count is fixed; the top switch line
-   is the only variable one (the area of travel); the visible switch lines below it stay constant or decrease by the
-   offset; a count change (visible + d against the lock's count) for any other reason than the peak disappearing is
-   reported loudly; the lock's count is kept (not re-learned) and the position goes on being read from the bands
+2. **Switch-position change represents picture displacement only where the displacement qualification establishes
+   that relationship.** A retained switch boundary is not a fresh observation, and the disappearance of its marker
+   does not by itself move or erase that boundary — an observed switch boundary can also move independently of the
+   picture, which is what the head-catch ruling describes. The source's switch-line count is fixed; the top switch
+   line is the only variable one (the area of travel). Under the qualified `d = N − E` the general relation is
+   `ΔE = ΔN − Δd`, so with the retained count `N` unchanged `ΔE = −Δd`, and from a zero-displacement baseline
+   `E = N − d`: an upward displacement GROWS the observed extent, which is the identity rather than a breach of it
+   (§3's worked 3 → 4 example at offset −1 is this case). A count change (visible + d against the lock's count) for
+   any reason other than the peak disappearing, or 8c's accepted expansion, is reported loudly; the accepted
+   expansion is recorded like any other observation and is not a fault. The lock's count is kept (not re-learned) and the position goes on being read from the bands
    above the picture where the top is visible; where the top is hidden and the account cannot close, the unit's
    position is Unknown (rule 6) — it is not a reset, since only snow-like signal or a vertical tear is a lost lock
    (owner, 04:29, and 15:11 "previous geometry (not position) holds through the damage"; both agents at extreme
@@ -867,13 +874,17 @@ field" phrasing does not.
 4. **A lock is acquired on two or more independent observations, at least one of which must be geometry**
    (owner, 2026-09-09: "lock is 2 or more things, one of which HAS to be geometry. thats what will move a lock to
    acquired"). The lock's constant, the switch-line count, is taken at the confirmed unit and kept until a reset,
-   never re-learned; a unit that disagrees with it is reported (rule 2).
+   never re-learned; a unit that disagrees with it is reported (rule 2). 8c's accepted expansion is the one
+   qualification: it is recorded rather than reported as a disagreement, it must meet its own evidence requirements,
+   and unchanged placement does not establish them.
    **The switch band is not detectable in every unit even of a clean source. Where it is absent the head switch's
    POSITION LINE is HELD, not removed** — moving where the head switch is, in the absence of a line, is a hold.
    **The hold is lost when the count of SWITCH LINES OTHER THAN THE PARTIAL LINE changes**, with ordinary clipping
    excluded and the accepted-expansion qualification below preserved. (This rule read "the total NUMBER of bands
-   changes" in its earlier form; that wording is kept in the quotation that follows as history. It is not a separate
-   band-count requirement — nothing measures a number of bands, and nothing in the code establishes what it meant.)
+   changes" in its earlier form, preserved here. It is not a separate band-count requirement: the two quantities the
+   account uses are the **count of RECORDED LINES ABOVE THE PICTURE** and the **OBSERVED BAND EXTENT** below it, and
+   neither is a count of separate regions. The engine implements no region counter — an implementation fact, which is
+   not evidence of what the earlier wording was intended to mean.)
    **Ordinary clipping changes do not count** (owner,
    2026-09-09, narrowing his own earlier wording: "I think I was a bit too harsh on this rule"). **Sharpened by
    his 2026-09-10 ruling, which rule 8 carries in full: the count that decides is the switch lines OTHER THAN THE
