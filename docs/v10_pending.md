@@ -629,6 +629,33 @@ concerns the level references (`:531`, Source-measured levels — which would ma
 black test, or something else. **Please supply the question it replied to.** Guessing which passage carries it is
 how the last audit called two landed rulings absent.
 
+### :850 ANSWERED FROM HIS OWN WORDS — derivation CHECKED, accepted, with one citation strengthened
+
+The last owner marker asked: when good video returns, does "starts from scratch" still apply — must a new lock be
+found before correcting again? **Answer: YES.** Checked against the passages rather than taken on authority:
+
+**Verified exactly.** Rule 13 (`:1278-1285`) carries all three of his quotes word for word — *"it resets the
+registration engine full stop (obviously keeping its unit counts but any derived locks, timings, etc)"*, *"losing
+those lines means the entire registration engine should reset as if the capture is brand new"*, *"if they get
+`0x0800` or lose the regenerated lines, they go get it again"* — and its own next sentences say **"Everything the
+engine has derived is discarded: locks, timings, geometry, source references, confirmation state and temporal
+witnesses"** and **"The source references are acquired again from the source, as at the start of a capture."**
+The reasoning that those settle the RECOVERY case is sound: both phrases describe the resumption, not the outage.
+During the invalid signal the engine is not running, so "brand new" can only be a statement about what it is when
+it comes back, and "go get it again" is an instruction to reacquire, which presupposes something to acquire from.
+
+⚠️ **ONE CITATION STRENGTHENED, and the reason matters more than the fix.** The derivation cited `:770` for "with
+no lock, make no corrective placement". Read in place, that clause is stated as a CONSEQUENCE INSIDE the
+one-field-switch rule — *"Positive evidence that the region exists in one field and is absent in the other prevents
+correction: with no lock, make no corrective placement; with a lock, hold…"* — not as a standalone general rule.
+**Citing a scoped clause as though it were general is the same defect as reading `:451`'s first sentence alone**,
+which manufactured a contradiction earlier tonight.
+**The general rule exists and is stronger**: `:861-862`, *"before a lock, standard placement"*, and `:235`,
+*"without it the picture stays at standard placement (line 23)"*. So the chain is rule 13 → no lock survives →
+`:861` → standard placement, not corrective. Same conclusion, on a citation that carries it.
+
+**The marker comes off. Answered from the record, not escalated.** The queue is now empty of owner questions.
+
 ### SCORECARD UPDATE — properties 1 and 2 HONOURED at one site; 8 has a STRUCTURAL LIMIT worth naming
 
 `experiments/switch_instant.py` measures the switch as **one instant** — a position in the field's own sweep —
