@@ -13,6 +13,14 @@ that was WITHDRAWN and the phrasing that REPLACED it. A withdrawn phrase may sti
 documents deliberately record what they corrected -- but only as a marked quotation. Appearing bare is
 the defect.
 
+⚠️ QUOTATION DOES NOT MEAN NON-OPERATIVE IN THIS DOCUMENT (Codex, 2026-09-11, and it bounds the rule
+above). The contract quotes the OWNER as authority throughout — a quoted sentence there is very often
+the operative rule, not a mention of a withdrawn one. So "quoted is a mention" is NOT a general
+property of this file. It holds for the pairs listed below because none of them is an owner quotation:
+each withdrawn form is engine or contract prose that a later edit replaced. Adding a pair whose
+withdrawn form is something the owner said would break that assumption silently, and the check would
+then read his authority as a withdrawal.
+
 WHAT IT CANNOT DO. It checks the pairs it is given. A superseded statement phrased differently from
 its withdrawn form is invisible to it, and so is a subject nobody added a row for. A clean run means
 the listed pairs are clean; it is not a coherence proof, and the day's censuses were twice wrong about
