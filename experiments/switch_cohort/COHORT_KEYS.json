@@ -1,0 +1,6355 @@
+{
+ "capture": "captures/composite_program_30s.tpc",
+ "note_on_keys": "Keyed by capture, counter, physical field, storage-row index and edge. Storage-row index is NOT a display line number; field-relative line labels are recorded separately and cohort membership does not depend on them, so the numbering migration cannot move this cohort.",
+ "row_positions_within_240": [
+  40,
+  120,
+  200
+ ],
+ "field1_first_storage_row": 19,
+ "field2_first_storage_row": 282,
+ "offcard_quartile_cuts": {
+  "q1": 102.27,
+  "q3": 116.26
+ },
+ "runs": [
+  {
+   "stratum": "card",
+   "partition": "calibration",
+   "counters": [
+    6667,
+    6668,
+    6669,
+    6670
+   ],
+   "field1_mean_min": 31.0,
+   "field1_mean_max": 36.12
+  },
+  {
+   "stratum": "card",
+   "partition": "calibration",
+   "counters": [
+    6714,
+    6715,
+    6716,
+    6717
+   ],
+   "field1_mean_min": 48.34,
+   "field1_mean_max": 48.81
+  },
+  {
+   "stratum": "card",
+   "partition": "validation",
+   "counters": [
+    6760,
+    6761,
+    6762,
+    6763
+   ],
+   "field1_mean_min": 48.37,
+   "field1_mean_max": 48.66
+  },
+  {
+   "stratum": "card",
+   "partition": "validation",
+   "counters": [
+    6807,
+    6808,
+    6809,
+    6810
+   ],
+   "field1_mean_min": 25.48,
+   "field1_mean_max": 31.56
+  },
+  {
+   "stratum": "offcard_interquartile",
+   "partition": "calibration",
+   "counters": [
+    6902,
+    6903,
+    6904,
+    6905
+   ],
+   "field1_mean_min": 103.44,
+   "field1_mean_max": 114.4
+  },
+  {
+   "stratum": "offcard_interquartile",
+   "partition": "calibration",
+   "counters": [
+    7043,
+    7044,
+    7045,
+    7046
+   ],
+   "field1_mean_min": 111.83,
+   "field1_mean_max": 113.05
+  },
+  {
+   "stratum": "offcard_interquartile",
+   "partition": "validation",
+   "counters": [
+    7112,
+    7113,
+    7114,
+    7115
+   ],
+   "field1_mean_min": 112.73,
+   "field1_mean_max": 113.51
+  },
+  {
+   "stratum": "offcard_interquartile",
+   "partition": "validation",
+   "counters": [
+    7166,
+    7167,
+    7168,
+    7169
+   ],
+   "field1_mean_min": 111.71,
+   "field1_mean_max": 114.2
+  },
+  {
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration",
+   "counters": [
+    6811,
+    6812,
+    6813,
+    6814
+   ],
+   "field1_mean_min": 21.4,
+   "field1_mean_max": 23.45
+  },
+  {
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration",
+   "counters": [
+    6840,
+    6841,
+    6842,
+    6843
+   ],
+   "field1_mean_min": 17.25,
+   "field1_mean_max": 17.51
+  },
+  {
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation",
+   "counters": [
+    6869,
+    6870,
+    6871,
+    6872
+   ],
+   "field1_mean_min": 15.98,
+   "field1_mean_max": 16.16
+  },
+  {
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation",
+   "counters": [
+    6898,
+    6899,
+    6900,
+    6901
+   ],
+   "field1_mean_min": 88.15,
+   "field1_mean_max": 98.78
+  },
+  {
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration",
+   "counters": [
+    6906,
+    6907,
+    6908,
+    6909
+   ],
+   "field1_mean_min": 116.43,
+   "field1_mean_max": 123.04
+  },
+  {
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration",
+   "counters": [
+    6931,
+    6932,
+    6933,
+    6934
+   ],
+   "field1_mean_min": 132.44,
+   "field1_mean_max": 132.93
+  },
+  {
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation",
+   "counters": [
+    6957,
+    6958,
+    6959,
+    6960
+   ],
+   "field1_mean_min": 129.37,
+   "field1_mean_max": 131.45
+  },
+  {
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation",
+   "counters": [
+    7171,
+    7172,
+    7173,
+    7174
+   ],
+   "field1_mean_min": 116.88,
+   "field1_mean_max": 121.54
+  }
+ ],
+ "keys": [
+  {
+   "counter": 6667,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6667,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6667,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6667,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6667,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6667,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6667,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6667,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6667,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6667,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6667,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6667,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6668,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6669,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6670,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6714,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6715,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6716,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6717,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6760,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6760,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6760,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6760,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6760,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6760,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6760,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6760,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6760,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6760,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6760,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6760,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6761,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6762,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6763,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6807,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6808,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6809,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6810,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "card",
+   "partition": "validation"
+  },
+  {
+   "counter": 6902,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6902,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6902,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6902,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6902,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6902,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6902,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6902,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6902,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6902,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6902,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6902,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6903,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6904,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6905,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7043,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7044,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7045,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7046,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 7112,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7112,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7112,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7112,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7112,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7112,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7112,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7112,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7112,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7112,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7112,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7112,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7113,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7114,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7115,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7166,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7167,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7168,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7169,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_interquartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6811,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6811,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6811,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6811,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6811,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6811,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6811,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6811,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6811,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6811,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6811,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6811,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6812,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6813,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6814,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6840,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6841,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6842,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6843,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6869,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6869,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6869,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6869,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6869,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6869,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6869,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6869,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6869,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6869,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6869,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6869,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6870,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6871,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6872,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6898,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6899,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6900,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6901,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_lower_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6906,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6906,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6906,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6906,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6906,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6906,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6906,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6906,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6906,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6906,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6906,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6906,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6907,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6908,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6909,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6931,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6932,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6933,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6934,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "calibration"
+  },
+  {
+   "counter": 6957,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6957,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6957,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6957,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6957,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6957,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6957,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6957,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6957,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6957,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6957,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6957,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6958,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6959,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 6960,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7171,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7172,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7173,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 1,
+   "storage_row": 59,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 1,
+   "storage_row": 139,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 1,
+   "storage_row": 219,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 2,
+   "storage_row": 322,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 2,
+   "storage_row": 402,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "left",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  },
+  {
+   "counter": 7174,
+   "field": 2,
+   "storage_row": 482,
+   "edge": "right",
+   "stratum": "offcard_upper_quartile",
+   "partition": "validation"
+  }
+ ]
+}
