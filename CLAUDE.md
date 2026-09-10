@@ -3080,6 +3080,31 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   the same shape — two places holding one truth, with nothing keeping them in step, and the one that gets READ is
   not the one that is right.** The repair is always to make the reading side execute the other rather than restate
   it: pointers not copies, a probe that runs the guard, a probe that runs the table's mutations. That is the argument that it is structural rather than either being sloppy.
+- **THE DIAGNOSIS for the whole answers-a-different-question family, and it is not "same medium" (2026-09-11, the
+  peer session's, and better than the hypothesis it replaced).** Every member operated on a **PROXY** that
+  coincides with the real property most of the time:
+
+  | instrument | property tested | proxy it actually operated on |
+  |---|---|---|
+  | substring count | is this a USE of the term | characters |
+  | ±700-character marker check | is this occurrence WITHDRAWN | characters near it |
+  | `PIPESTATUS` guard | did the first stage FAIL | a name that expands to nothing |
+  | late `pipestatus` read | did the first stage FAIL | an array whose lifetime had ended |
+  | census seeded from examples | does the document use the convention | the illustrations of it |
+
+  **A proxy has no way to signal that it has come apart from what it proxies** — which is exactly why every one
+  returned a plausible answer rather than an error. Writing the instrument in the same medium as its subject (text
+  tools over text, shell over shell, no type boundary) is HOW it happens, not what the defect is; the defect would
+  survive a change of medium if the proxy came too.
+  **The test, cheap and applicable before trusting any of them: can this instrument distinguish the property from
+  its proxy on a case where they DIFFER?** Twice in one evening the answer was no, and both repairs reached for
+  something the STRUCTURE carries rather than something the characters suggest — quotation instead of a character
+  window, a quoted phrase instead of a line number.
+  ⚠️ **Where no such repair exists, the limit must travel WITH the result**, not sit in a docstring: a limit in a
+  second store is the two-stores defect again, and the reading side is the side that has to carry it.
+  `superseded_check.py` is that case — "the withdrawn phrasing appears bare" proxies for "the document asserts the
+  withdrawn claim", and they come apart when a claim is restated in different words — so it now prints its limit
+  with every result instead of pointing at its own docstring.
 - **A pipeline reports its LAST command's status, and the usual guard against that is a bash-ism which is SILENTLY
   EMPTY in zsh — sixth, seventh and eighth members of the family (2026-09-11).** The peer session ran
   `python3 check.py old.md | head -8; echo "exit=$?"`, read **exit=0** from `head` rather than from python, and

@@ -35,6 +35,16 @@ CONTRACT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 CONTROL_COMMIT = "e6b224f"
 
 # (subject, withdrawn phrasing, phrasing that must be present instead)
+#
+# ⚠️ EACH ROW IS A PROXY. "The withdrawn phrasing appears bare" stands in for "the document asserts
+# the withdrawn claim", and a proxy cannot signal that it has come apart from the thing it proxies --
+# which is why every instrument in this family returns a plausible answer rather than an error. These
+# two come apart when a superseded claim is RESTATED IN DIFFERENT WORDS. Adding a pair does not narrow
+# that gap; only reading the passages does.
+# The test to apply before trusting any instrument here: CAN IT DISTINGUISH THE PROPERTY FROM ITS
+# PROXY ON A CASE WHERE THEY DIFFER? Twice tonight the answer was no and the repair was to reach for
+# something the STRUCTURE carries -- quotation rather than a character window, a quoted phrase rather
+# than a line number. This check has no such repair available, so the gap is stated instead.
 PAIRS = [
     ("the owner's question about absence",
      "Whether this condition can be satisfied at all on such a source is\n  his to rule on.",
@@ -202,8 +212,15 @@ def main() -> int:
         print("no such file: %s" % path, file=sys.stderr)
         return 2
     rc = check(path)
-    if rc == 0:
-        print("\nAll listed pairs clean. NOT a coherence proof -- see the docstring for what this misses.")
+    # The limit travels WITH the result, never as a pointer to a docstring nobody opens. A limit in a
+    # second store is the two-stores defect this project hit three times in one evening, and the
+    # reading side is the side that must carry it (peer session, 2026-09-11).
+    print("""
+LIMIT, which is part of this result and not a footnote to it:
+  This tests whether a WITHDRAWN PHRASING appears bare. That is a PROXY for "the document asserts the
+  withdrawn claim", and the two come apart the moment a superseded claim is restated in different
+  words -- which this check cannot see. %d pairs are checked; the pairs are discovered, not derived
+  from any definition, so a clean run means THESE pairs are clean and nothing more.""" % len(PAIRS))
     return rc
 
 
