@@ -4147,6 +4147,44 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **THE FINDER'S DEFECT IS DIAGNOSED, and it is the CRITERION rather than a class of row — found by inspecting
+  against an independently known answer instead of inventing a fourth statistic (2026-09-11).** The three failed
+  repairs all invented a better statistic and were judged by whether the output looked right. This did the
+  opposite: run `row_transition` on card PICTURE rows, where the answer is knowable by a method sharing no code
+  with it (the first sample at the blanking floor past 600, which on the card is tight — 600–708, median 703),
+  and look at where they disagree. 300 rows, 30 units, lines 250–259:
+
+  | class | n | share | offset median |
+  |---|---:|---:|---:|
+  | agrees within 4 samples | 6 | **2%** | 0 |
+  | EARLY — fall found in picture (rt < 600) | 44 | 15% | −136 |
+  | LATE — inside the settled run | 1 | 0% | +10 |
+  | **systematically ~14 samples early** | **249** | **83%** | **−14** |
+
+  **A candidate was proposed and REFUTED before the answer was found**, and it is worth recording because it was
+  the plausible one: that the ~14 samples is the blanking RAMP, the finder sitting at the steepest point while
+  the independent method sits at the ramp's end. Measured, the ramp is **1 sample** long (p90 4, max 12), the
+  finder lands inside its own row's ramp in **7 of 256 rows (3%)**, and the correlation between ramp length and
+  earliness is **0.067**. Dead.
+  **THE ACTUAL MECHANISM, and it is single and definite:** the fall the finder chooses is **−4.0 codes** median;
+  the fall into blanking it skips is **−2.0** median; the chosen fall is steeper in **236 of 256 rows (92%)**. It
+  lands on level **17.0** where the card's picture sits at ~20. The descent into blanking on this content is
+  gradual in per-sample terms — 20 to 5 to 1.4, about 2 codes a step — while ordinary picture texture carries
+  steeper single-sample falls. **A "steepest fall" criterion cannot find an edge that is not the steepest one.
+  That is by construction, not by tuning, and no threshold on the same statistic repairs it.**
+  **So the failures do NOT spread across the predicted classes and the function IS repairable in place**, which
+  was the question the exercise was set up to decide. The repair is now specified rather than guessed: **the
+  criterion must be "the fall that LANDS AT the row's own floor", not "the largest fall"** — which is also why
+  the second attempt (require the tail flatter) got closer on bright yet still picked the card's bar, since it
+  went on ranking candidates by drop MAGNITUDE.
+  ⚠️ **Not attempted in this turn, deliberately.** A fourth repair belongs with its test set, and that set now
+  exists: card picture rows scored against first-sample-at-blanking, where the current function agrees on 2%.
+  Any replacement must beat that number on the known answer BEFORE its output is looked at, and under §14 a
+  harness change is reviewed by Codex.
+  ⚠️ **Scope, so this is not read as bigger than it is:** the render the owner has renders the ENGINE's sidecar
+  and is unaffected by any of this. What rests on `row_transition` is the HARNESS REFERENCE — the thing that
+  would score the engine. This is the acceptance path, not the deliverable.
+
 - **AND NO CHOICE OF DIVISOR REPAIRS IT — three candidates from the field's own good picture lines, all
   overlapping, recorded as a NULL so the route is not re-run (2026-09-11).** `:531` says the blanking reference
   comes from "qualified blanking intervals on the current source's good picture lines and supplies both level and
