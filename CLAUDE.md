@@ -2851,6 +2851,29 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   raster, recorded it nowhere, Claude asserted the opposite three times, and both agents rebuilt the answer from
   zero eleven days later. §7's "what earns a note" rule already covers this case — a durable conclusion that would
   otherwise get re-investigated — and it was re-investigated.
+- **Editing a specification: ask what the DOCUMENT now says, not whether your edit is right (2026-09-10, learned by
+  hitting both walls in one hour).** Amending a rules document has two opposite failure modes and neither is visible
+  in the diff. **Amend by ADDITION** and the superseded rule stays standing beside its replacement — the diff shows
+  only additions and every one of them is correct. **Regenerate from a set of approved changes** and every rule the
+  changes never touched is silently deleted — the diff shows only the file you meant to write. Both leave a document
+  that contradicts itself, and reading your own edits will not find either.
+  **The check that catches both, asked per site: after this edit, what does the document now say about X, counting
+  every place it says anything about X — is its answer unique?** Not "is my change correct".
+  Cost: amending the contract by addition left EIGHT contradictions — rule 1 never amended at all while its
+  consequence was written into three other sections, a box's own bar still recorded as a disqualifying gap beside
+  the new rule that the bar is part of the box, three comb obligations surviving their own withdrawal, and
+  "the two numbers" still marked unsettled with a measurement owed that the answer had already spent. Claude found
+  none of them; Codex found all eight on a cold read of the file. Earlier the same hour, regenerating from the
+  approved document would have deleted the non-partial count and accepted-expansion rules, held switch bounds and
+  the temporal head-catch/VBI distinctions — caught only because Codex said the document was a set of changes and
+  not a replacement specification.
+- **Cross-check a stale OPEN list against the settled document (2026-09-10).** Clearing `v10_pending.md`'s
+  blocked-on-owner items against the day's rulings found a hole in the RULINGS, not the tracker: item 9 said the
+  switch-line count has no seed the contract authorizes, which pointed straight at a ruling that had been delivered,
+  agreed, and then lost from the approved document across three rounds of flattening. An item marked open pointing
+  at a ruling marked delivered is a reliable smell. The same pass found the tracker misdescribing the code it was
+  about — citing `field_registration.c:436` and an assumed `d = 0` where `:474-476` computes
+  `visible_d = m->top - origin` from the measured top.
 - **Mutual code-and-intent review is the coding style of this project (owner rule, 2026-09-03).**
   Every change by one agent (Claude or Codex) is reviewed by the other before it is considered
   done, and the review covers **intent as well as code**: the reviewer must be able to state the
