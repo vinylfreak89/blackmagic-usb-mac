@@ -2539,6 +2539,133 @@ row late, and those have opposite consequences.
 askable, 0 counterexamples -- **identical** to the version that also required a start band under 40 samples. The
 band-width term is inert and the principled check carries the result, which is what the commit promised to correct
 either way.
+
+**PLAIN COMB, AND THE GATE IT MUST PASS: the comb's best evidence and the acquisition gate's open window DO NOT
+OVERLAP AT ALL on capture 1 (measured 2026-09-11, BEFORE any engine change, so this is a prediction and not a
+post-hoc reading).** The owner's ruling is "you a regular simple comb energy algo. its fucking simple. there
+doesn't need to be a mask or other garbage", with the acceptance test "so comb should register and cap1 should
+become lockable" -- a FIRST LOCK, against a record of `geometry_lock_known` zero on all 919 units. Plain mean
+|vertical second difference| over the woven frame, no mask, no dominance, no support threshold, counters >= 6667:
+
+| population | n | winners | median margin |
+|---|---:|---|---:|
+| all | 508 | 0 in 428, +1 in 32, +2 in 48 | 1.31 |
+| switch measurable in BOTH fields (the gate at `field_registration.c:659`) | 182 | **0 in 165 (90.7%)** | 1.30 |
+| not measurable in both | 326 | 0 in 263 | 1.71 |
+
+**Every one of the 182 gate-open units is a CARD unit. Not one of the 275 programme units has the switch measurable
+in both fields.** So the region where plain comb is strongest -- programme, median margin 1.66-1.73 against the
+card's 1.30 -- is exactly where the acquisition gate never opens, and where the gate does open the content is a
+static card. That is an independent, quantitative argument for the `switch_measurable` repair (the owner's
+2026-09-09 ruling that a lock must never be conditioned on a head switch): the gate is not merely superseded in
+principle, it is excluding this capture's best evidence in practice.
+⚠️ **A false alarm of mine, killed by reading the code before voicing it.** The acquisition site does NOT require a
+margin ratio: it requires the comb reading to agree with a separately measured standard order
+(`r.shift==order && standard.measured && standard_order==order`). So "nothing decides at >= 2x" is the HARNESS's
+`comb_census.py` criterion, not a bar the engine applies, and a failure case built on it would have been invented.
+⚠️ `STATIC_MASK.md`'s counterexample is carried forward rather than re-derived: on a SYNTHETIC fixed-geometry
+coherent vertical pan the maskless product picks a wrong +2 at a margin of 1,024,739x, and 83-1,427x with empirical
+picture noise -- maximally confident and wrong. Its status is "a constructed input defeats this", NOT "this source
+defeats this": no pan in the four acceptance captures has been shown to reproduce it, and rule 9 still prevents a
+wrong reading from moving the crop, so the cost is a wrong CONFIRMATION rather than a wrong placement. Measure that
+cost before anyone reaches for a mask again.
+
+**THE PEAK'S COLUMN DRIFTS SMOOTHLY UNIT TO UNIT, AND ITS POLARITY FLIPS -- visible directly in raw luma, and it
+is the instruction the owner says is unimplemented (2026-09-11, `experiments/band_render.py`).** His words of
+2026-09-06 18:25, which appear nowhere in the engine or this record: "the problem is the peak carries the
+horizontal tear with it, so you need to measure where the peak is on the line if present. the peak signal is very
+definitive", and "the peak isn't going to jump from the left to the right immediately. so a sudden loss of the peak
+is information that the geometry has changed. we should be recording this."
+Rendered over capture 1's card units 6690-6730, field 1, the peak is a short bright (or dark) dash on the T row
+that **migrates continuously across the line** -- roughly column 340 at 6691 to 660 by 6701, then back to 160 by
+6714 -- and its sign alternates between neighbouring units, which is why `rf_peak_census.py` had to be
+signed-blind. Under the owner's liftoff account the sign is the RF envelope transient going either way depending
+on head overlap.
+⚠️ **The obvious statistic does NOT track it, measured before claiming otherwise: the largest ABSOLUTE excursion
+on the T row locks onto the relocated blanking, not the peak.** Over units 6685-6740 it reports column 28-41 at
+-19 to -20 raw codes on most units -- that is the blanking at the row's left -- while the peak, when present,
+is a POSITIVE excursion of +138 to +233 raw codes. So the reading he asks for is the largest POSITIVE excursion
+in RAW CODES, and the abs-then-sign ordering already recorded as a defect in the peak statistic is the same defect
+here in a second place.
+**Also settled by looking: the naming defect is real and verified against the contract's own text, not a relay.**
+Contract line 652: "**Switch line** (the top switch line): the horizontal line carrying the peak, the partial
+line", and line 656: "**S is NEVER substituted for it**". So the contract's switch line is **T**, while this file
+and the harness instruments have called **S** "the harness's switch line" throughout. Sixth instance of one name,
+several quantities -- and the one that cost a day, because the six T disagreements were argued between two agents
+using the same word for different rows.
+⚠️ One correction to my own earlier claim while confirming it: contract 652 DOES say the fallback scans "down from
+the picture". What my 0%-agreement measurement refuted is a downward scan using MY per-row blanking test at a 9.6%
+false-positive rate. The contract's criterion is narrower -- "the partial row whose later part departs from the row
+above" -- and has NOT been tested. Do not read the null as refuting the contract's own definition.
+
+**THE REVIEW RENDER IS THE 720x486 OUTPUT PLUS THE RASTER, IN COLOUR -- and a luma-only strip was the wrong thing
+(owner, 2026-09-11): "idk what render it thinks its doing but its not the 720x486 plus the other shit we agreed to.
+its some luma only bullshit".** His earlier "remove all this MAD and sigma bullshit" meant strip the STATISTIC, not
+the colour; a relay rendered that as "in raw luma" and a luma strip got built on it. The deliverable is already
+specified in the contract's **Final outputs** (owner, 2026-09-07 21:4x) -- the 720x486 output as placed plus the
+raster that shows the picture shift, one frame per unit, carrying the decision information.
+**`experiments/review_frame.py` builds it**: the 486 weave (lines 20-262 / 283-525) in BT.601 colour beside the
+full 525-line raster, the per-unit record in line numbers and words, and no ratio, MAD or sigma anywhere.
+⚠️ The colour is a STANDARD BT.601 limited-range decode applied to material whose black sits near code 1.4 rather
+than 16. That is what "as placed" means; nothing in the render remaps levels.
+
+**AN OWNER INSTRUCTION THAT WAS NEVER RECORDED ANYWHERE UNTIL NOW (2026-09-10 11:13:09), and its absence was
+verified rather than assumed: `bounding box`, `purple` and `alpha` each appear ZERO times in the contract, and
+`bounding box`/`purple` zero times in this file.** His words: "this is for the render, it should draw the bounding
+box when it finds it on top of the picture. keeping its field colors, meaning if they colide the box should be
+purple. and it should be like transparentish, so you can still see underneath it. i forget what thats called. alpha
+or something like that."
+Implemented in `review_frame.py`, and **the first attempt put it in the wrong coordinate system, which made one
+clause of his instruction unreachable.** Drawing the two boxes on the RASTER, field 2's rows sit 263 below field
+1's, so they can never coincide and PURPLE could never appear -- the collision test there is vacuous. His
+instruction says on top of the PICTURE, and woven, output rows 2p and 2p+1 are field 1 line 20+p and field 2 line
+283+p, the corresponding pair. Tested there, counter 6700 has **182 picture lines where both fields' boxes
+coincide**. The box detector is imported from `box_census.py` rather than reimplemented, so the render and that
+census cannot drift apart.
+⚠️ Two further rulings of his are flagged by the relay as never landed and I have verified only their ABSENCE, not
+their content: a re-acquisition rule ("go get it again" after `0x0800` or lost regenerated rows), and a black
+reference decision he made a gate at 11:02:49 -- "I'm not approving anything or looking at the draft until it comes
+up with that". Neither phrase is in the contract. `brand new` and `unit counts` ARE present, so the full-reset
+ruling did land. Recovering the two is our work before anything is put back to him.
+
+**STOP THE DIAGNOSTIC RENDERS -- the critical path is single-file (owner, 2026-09-11): "the overlay band, the
+marking of the top and bottom of the head switch, all that shit. the only render I want is one that is produced
+from a locked capture on cap 1. then it may continue on by profiling".** The overlay band and the switch markings
+are FEATURES OF THAT RENDER, not artefacts to build first. Order: **fix the comb (plain energy, no mask) -> first
+lock on capture 1 -> render it -> profile.** Everything else waits. This supersedes the band-render work above:
+`band_render.py` stays in the tree as an instrument but is not a deliverable and nothing is owed from it.
+
+**SEVEN OWNER RENDER/GEOMETRY INSTRUCTIONS, SIX OF WHICH APPEAR NOWHERE -- absence verified by phrase in BOTH
+files, not assumed (2026-09-11).** `overwrite the shuttles`, `first 6 lines`, `vertically stable`, `slowed down 5x`,
+`should not jump` and `bottom of the tape` each return **0** in the contract and 0 in this file.
+
+| when | his words | status |
+|---|---|---|
+| 09-10 09:16:24 | "in any 486 line renders, real line 20-22 overwrite the shuttles" | NOT RECORDED |
+| 09-10 09:18:05 | "for the test renders. It means a valid result should keep the first 6 lines vertically stable in position... always" | NOT RECORDED -- **and it is an ACCEPTANCE CRITERION for every test render**, not a preference |
+| 09-10 11:13:09 | the bounding box, field colours, purple on collision, alpha | recorded and implemented above |
+| 09-10 04:54:51 | "I need the luma stills its been making slowed down 5x as a video, both fields side by side" | NOT RECORDED; conditional, never done |
+| 09-07 21:4x | the 720x486 overlay plus the raster | in the contract's Final outputs |
+| 09-10 09:41:23 | "The location of the partial line and/or RF peak should not jump. It should have a normal excursion when a line disappears." | NOT RECORDED -- and it bears directly on the S/T work: it is the same continuity property as the measured column drift above |
+| 09-10 10:49:16 | "a head switch existing is the bottom of the tape. thats PHYSICS. if a head switch is there, it marks the bottom of the geometry. where there is blanking below the head switch thats not part of the bottom geometry." | NOT RECORDED -- a physical definition of the bottom, bearing directly on the line account |
+
+⚠️ **The 09:18:05 one is the sharpest loss: an acceptance criterion for every test render, absent for a day, while
+renders were produced and shown.** The 09:41:23 and 10:49:16 rulings are geometry, not rendering, and the second is
+a definition the contract's own bottom-of-geometry wording should be checked against.
+
+**CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
+FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
+clear it when normal timing returns -- which the engine already does -- and Codex verified upward and downward
+implementations find the same terminal suffix on all 1,024 ten-flag patterns. "The downward scan is unusable" was
+an overstatement; the distinction is the decision rule, not the direction. (b) 71.5% is AGREEMENT on a selected
+T-known cohort, not independently established accuracy, and that cohort excludes the six disputed T-Unknown
+readings. (c) **The 9.6% middle-picture rate is not the chance baseline immediately above T** -- that needs
+comparable near-boundary rows and an explicit dependence model, since adjacent rows share references and their
+errors may correlate -- so the 22.5%-against-9.6% comparison does NOT decide between detector overreach and T being
+one row late. His separating measurement is independently identified timing on the disputed preceding scan, with
+the three outcomes named: disturbance already on T-1 means the engine's boundary is late; positive normal timing
+there means detector overreach; unreadable timing leaves it Unknown. The executable and keyed output are now
+`experiments/top_skew_row.py` rather than a summary.
 ⚠️ **A consequence for the COMB work rather than the peak work: all three of `COMB_COMPARISON.md`'s ablation
 controls -- 6687, 6690, 6700 -- are CARD units**, and the maskless comb decides cleanly on real programme. Measured
 here with independent code, mean |vertical second difference| over the woven pair: card 6690-6710 minimum at 0 with
