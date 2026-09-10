@@ -323,13 +323,14 @@ cues present one frame and absent the next mean they shifted away, near-certain 
 
 | line | field 1 rows | field 2 rows | content | origin |
 |---|---|---|---|---|
-| 1 | 522 | 260 | pass-through from the tape and deck | source |
+| 1 | 522 | 260 | blanking, Y 1.4 | Shuttle |
 | 2–10 | 523–524, 0–6 | 261–269 | padding, Y 16.0 / C 128.0 exactly | Shuttle |
 | 11–19 | 7–15 | 270–278 | blanking, Y 1.4 ± 0.5 | Shuttle |
 | 20 | 16 | 279 | timing pulse pattern, std 40–54 when present | Shuttle, when its decoder has sync |
 | 21 | 17 | 280 | CEA-608 insert: the tape's bytes when it decodes them at the standard line, else nulls | Shuttle, when its decoder has sync |
 | 22 | 18 | 281 | blanking, Y 1.4 | Shuttle |
-| 23 to the field's end | 19–259 | 282–521 | pass-through from the tape and deck | source |
+| 23–262 | 19–258 | 282–521 | pass-through from the tape and deck | source |
+| 262.5 | 259 | — | blanking, Y 1.4 (field 1 only) | Shuttle |
 
 **One line column, and why that is only notation.** Under the withdrawn numbering every row of this
 table carried two different labels — the padding was "4–10, 265–273, 527–528", the insert "21, 284" —
@@ -345,13 +346,36 @@ asymmetries survive the renaming:
 - **The measured switch bands do not coincide** — capture 1 reads 261 in field 1 and 260 in field 2
   (§1). A convention cannot move a measurement.
 
-**Each field's line 1 is source, not padding**, and it sits directly above that field's own padding
-at lines 2–10 — which the old numbering hid, because row 522 read as the bottom of field 2's region
-rather than the top of field 1's. CLAUDE.md's measurement of rows 257–260 and 519–522 as digitized
-signal (Y ≈ 1.4 with no input, Y 31 ± 29 on the tape) corroborates the pass-through claim at those two
-rows; it does not measure either row on its own, since its statistics summarize the groups. ⚠️ That
-same passage groups rows across a field boundary — 519–521 are field 2's lines 260–262 but 522 is
-field 1's line 1 — so its per-row measurements stand and its "under each field" phrasing does not.
+**The old table claimed three written rows as source, and the picture spans are 240 rows, not 242.**
+Its single cell "unit rows 19–260, 282–522 | pass-through from the tape and deck | source" contained
+rows 259, 260 and 522 — field 1's 262.5 and each field's line 1 — which §1's line account calls
+written. Under the frame-continuous labels "23–264, 286–526" that span looked plausible; the
+field-relative split made it checkable, and it is wrong. Measured per row (`experiments/
+block_row_provenance.py`, capture 1 from counter 6667, 300 units), against controls in the same
+units:
+
+| rows | mean | sd between units | |
+|---|---:|---:|---|
+| 259, 260, 522 — disputed | 1.375–1.382 | 0.010–0.011 | **written** |
+| 10, 18, 273 — regenerated blanking | 1.375–1.376 | 0.010–0.011 | control |
+| 3, 264, 523 — padding | 16.000 | 0.000 | control |
+| 257, 258, 520, 521 — picture | 24.0–25.9 | 13.6–15.8 | control |
+| 140, 400 — picture, mid-field | 59.2–59.5 | 39.9–40.3 | control |
+
+A source row cannot hold a 0.05-wide band while the picture rows beside it swing from 10.8 to 80.
+Reproduced on **capture 3** (the SP recording, a different tape and the opposite line-TBC setting,
+300 units): the same three rows read 1.375–1.382 at sd 0.010–0.011 while mid-field picture sits at
+113.5. So each field's line 1 and field 1's 262.5 are the device's regenerated blanking, §1's line
+account is right, and each field's picture is exactly its 240 rows — 19–258 and 282–521.
+The no-input capture is a NULL, not a third arm: with nothing on the input every row reads the
+device's floor, so it fixes that floor near 1.4 and discriminates nothing.
+
+⚠️ **CLAUDE.md's measurement of rows 257–260 and 519–522 as digitized signal cannot decide this and
+does not contradict it.** Each of those groups holds two picture rows and one disputed row, so its
+Y 31 ± 29 comes from the picture rows while the disputed row sits at 1.38 — a group statistic cannot
+separate its own members. That passage also groups rows across a field boundary (519–521 are field
+2's lines 260–262, 522 is field 1's line 1), so its per-row measurements stand and its "under each
+field" phrasing does not.
 
 - **The delivered window is narrower than the line but wider than the active picture, and that is what makes
   horizontal timing readable at all** (standards, with the measurement that follows). An NTSC line is 858 samples at
