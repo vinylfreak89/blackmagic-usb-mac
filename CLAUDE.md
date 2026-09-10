@@ -3967,6 +3967,35 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   becomes impossible it is because the EVIDENCE is unavailable, never because the observer was switched off, and the
   two have different consequences: unavailable evidence gives Unknown, a disabled observer gives silence that reads
   as no-change. Watch for it wherever a rule gates behaviour on a signal-state class.
+- **THE MOTION ROUTE ALSO FAILS ITS CONTROL — fourth peak route closed, 2026-09-11.** With three static routes
+  dead, the remaining idea was that the transient is identified by its MOTION between units. Tested BEFORE
+  deriving any continuation range, because a range presupposes identity and identity presupposes a range: are
+  CONSECUTIVE units' peak columns closer than the same columns SHUFFLED? The shuffle is a control needing no
+  threshold. On the engine's T row it looked positive — field 1 ratio **0.36**, field 2 **0.15**, field 2's
+  consecutive IQR 4.2-15.8 against a shuffled 16.0-316.0.
+  ⚠️ **Then the control the record demands — the same test on rows with no switch — and it inverts the result:**
+
+  | row | ratio of medians |
+  |---|---:|
+  | T row, field 1 | 0.36 |
+  | T row, field 2 | 0.15 |
+  | **control, mid-picture, field 1** | **0.01** |
+  | **control, mid-picture, field 2** | **0.00** |
+  | control, near the band, field 1 | 0.08 |
+  | control, near the band, field 2 | 0.50 |
+
+  **Ordinary picture rows are MORE column-continuous than the T row, by an order of magnitude.** So the continuity
+  is the SCENE's — adjacent units carry similar picture, so any bright feature's column persists — and the T row
+  has LESS of it, not more. **A continuity signal that ordinary rows exhibit more strongly is not evidence of a
+  tracked landmark.**
+  ⚠️ **And the inversion is not a discriminator either**: near-band field 2 scores 0.50, worse than the T row's
+  0.15, so there is no consistent ordering to exploit. Two control rows, opposite verdicts.
+  **What this leaves standing** is only the negative: no peak-based route — amplitude, width, ramp, or motion —
+  has identified the RF transient on this capture. **The band render's drift remains an observation, not a
+  measurement**, and the file already says an observation cannot validate the instrument built to explain it.
+  ⚠️ Stated dependency: this used the engine's T to select the row, which is a borrowed subject; the shuffle
+  control and the no-switch control are what make the negative sound regardless.
+
 - **THE PEAK STATISTIC DOES NOT FIND THE RF PEAK — third and decisive confirmation, 2026-09-11. The confirmation
   route is CLOSED as currently built.** With the departure profile locating the region, the peak was tried as a
   CONFIRMATION carrying the tear's column (his 2026-09-06 words: "measure where the peak is on the line if
