@@ -2652,6 +2652,20 @@ is MISSING.** The only sound negative is a read of the passages that would carry
 ⚠️ What survives unaltered is 09:18:05's cost: whether partial or absent, no render produced and shown today was
 measured against a stability bar he had already set.
 
+**A SECOND DEFECT IN THE SAME FUNCTION AS THE COMB WORK, verified in the code 2026-09-11: `comb_confirm` runs on
+EVERY unit, including locked ones.** `grep -n comb_confirm src/field_registration/field_registration.c` gives
+:633 (definition), :912 (a comment) and **:984, the only call site, unconditional -- no lock-state guard**. That is
+the owner's 10:20:30 ruling sitting unimplemented: "when a source is locked, then its geometry is known, comb
+should not need to run... so comb should not be an all the time running thing." **Rule 9 already states the
+requirement**, so this is the engine trailing the contract, not a new rule -- the same shape as the two acquisition
+sites implementing a superseded §3 clause.
+⚠️ It bears on the acceptance test rather than being separate housekeeping: if the comb runs on every unit, plain
+comb energy's behaviour under a MAINTAINED LOCK is part of what a first lock has to survive -- and
+`STATIC_MASK.md`'s pan counterexample is exactly a maintained-lock scenario, the one where rule 9 is what stops a
+wrong reading from moving the crop. **Gating the comb on lock state removes that exposure instead of defending
+against it**, which is why it is worth landing with the mask removal rather than after it. Whether it goes in the
+same change is Codex's call and has been put to it as a question, not an assumption.
+
 **CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
 FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
 clear it when normal timing returns -- which the engine already does -- and Codex verified upward and downward
