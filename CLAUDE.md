@@ -2524,6 +2524,34 @@ picture noise -- maximally confident and wrong. Its status is "a constructed inp
 defeats this": no pan in the four acceptance captures has been shown to reproduce it, and rule 9 still prevents a
 wrong reading from moving the crop, so the cost is a wrong CONFIRMATION rather than a wrong placement. Measure that
 cost before anyone reaches for a mask again.
+
+**THE PEAK'S COLUMN DRIFTS SMOOTHLY UNIT TO UNIT, AND ITS POLARITY FLIPS -- visible directly in raw luma, and it
+is the instruction the owner says is unimplemented (2026-09-11, `experiments/band_render.py`).** His words of
+2026-09-06 18:25, which appear nowhere in the engine or this record: "the problem is the peak carries the
+horizontal tear with it, so you need to measure where the peak is on the line if present. the peak signal is very
+definitive", and "the peak isn't going to jump from the left to the right immediately. so a sudden loss of the peak
+is information that the geometry has changed. we should be recording this."
+Rendered over capture 1's card units 6690-6730, field 1, the peak is a short bright (or dark) dash on the T row
+that **migrates continuously across the line** -- roughly column 340 at 6691 to 660 by 6701, then back to 160 by
+6714 -- and its sign alternates between neighbouring units, which is why `rf_peak_census.py` had to be
+signed-blind. Under the owner's liftoff account the sign is the RF envelope transient going either way depending
+on head overlap.
+⚠️ **The obvious statistic does NOT track it, measured before claiming otherwise: the largest ABSOLUTE excursion
+on the T row locks onto the relocated blanking, not the peak.** Over units 6685-6740 it reports column 28-41 at
+-19 to -20 raw codes on most units -- that is the blanking at the row's left -- while the peak, when present,
+is a POSITIVE excursion of +138 to +233 raw codes. So the reading he asks for is the largest POSITIVE excursion
+in RAW CODES, and the abs-then-sign ordering already recorded as a defect in the peak statistic is the same defect
+here in a second place.
+**Also settled by looking: the naming defect is real and verified against the contract's own text, not a relay.**
+Contract line 652: "**Switch line** (the top switch line): the horizontal line carrying the peak, the partial
+line", and line 656: "**S is NEVER substituted for it**". So the contract's switch line is **T**, while this file
+and the harness instruments have called **S** "the harness's switch line" throughout. Sixth instance of one name,
+several quantities -- and the one that cost a day, because the six T disagreements were argued between two agents
+using the same word for different rows.
+⚠️ One correction to my own earlier claim while confirming it: contract 652 DOES say the fallback scans "down from
+the picture". What my 0%-agreement measurement refuted is a downward scan using MY per-row blanking test at a 9.6%
+false-positive rate. The contract's criterion is narrower -- "the partial row whose later part departs from the row
+above" -- and has NOT been tested. Do not read the null as refuting the contract's own definition.
 ⚠️ **A consequence for the COMB work rather than the peak work: all three of `COMB_COMPARISON.md`'s ablation
 controls -- 6687, 6690, 6700 -- are CARD units**, and the maskless comb decides cleanly on real programme. Measured
 here with independent code, mean |vertical second difference| over the woven pair: card 6690-6710 minimum at 0 with
