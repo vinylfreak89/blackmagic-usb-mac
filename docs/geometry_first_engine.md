@@ -991,7 +991,17 @@ cues present one frame and absent the next mean they shifted away, near-certain 
     itself establish a geometry change. **A post-fade difference is assessed for measurement uncertainty and
     exposure-dependent detectability. If qualified evidence establishes that the held bounds no longer describe the
     source, the affected geometry is invalidated and reacquired; otherwise the distinction is retained as unresolved
-    and replacement bounds are NOT manufactured.** No attribution of the change to a particular dark unit is needed
+    and replacement bounds are NOT manufactured.**
+    **An unresolved post-transition difference is reassessed as further evidence becomes available. It resolves
+    when qualified current boundary evidence, compared with the retained boundary and accounting for both
+    measurements' uncertainty, establishes either agreement or that the held bounds no longer describe the source.
+    Repetition may contribute evidence, but neither repetition nor well-exposed appearance alone establishes
+    boundary identity or eliminates systematic error.** Once invalidation is established the affected geometry and
+    lock are released and replacement geometry requires acquisition. ⚠️ The engine need not have OBSERVED the
+    movement: a qualified current boundary compared against a qualified retained one can establish that the bounds
+    changed without locating the change in time. And where the available observations never resolve the ambiguity
+    the measurement stays unresolved — **a desire to end that state is not evidence, and cannot justify declaring
+    the old bounds valid or manufacturing new ones.** No attribution of the change to a particular dark unit is needed
     — rule 8a has two invalidation triggers, picture appearing within previously established bar regions AND a band
     edge moving while the level is steady, so neither is the exclusive mechanism — and the engine does not reconcile
     indefinitely once invalidation has been established. Positively established box invalidation releases the affected geometry and

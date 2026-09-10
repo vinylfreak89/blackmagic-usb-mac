@@ -2990,6 +2990,17 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   becomes impossible it is because the EVIDENCE is unavailable, never because the observer was switched off, and the
   two have different consequences: unavailable evidence gives Unknown, a disabled observer gives silence that reads
   as no-change. Watch for it wherever a rule gates behaviour on a signal-state class.
+- **Repetition is not qualification (2026-09-10).** Both Claude and the watchdog independently reasoned that
+  repeated well-exposed readings must resolve an unresolved boundary difference — uncertainty falls with
+  repetition, exposure-dependence is excluded once the picture is bright again. **Wrong, and wrong the same way:
+  repeated readings can preserve the same systematic error.** Neighbouring units are strongly correlated, and
+  "well exposed" does not establish that the detector identified the correct boundary. Random uncertainty may fall
+  with additional INFORMATIVE observations; bias, ambiguity and exposure-dependent boundary selection need not.
+  Writing "repeated readings rule it out" turns persistence into a guarantee the instrument has not established —
+  the same shape as a threshold fitted to a fixture, arrived at from the other direction.
+  ⚠️ The related principle, worth more than the correction: **a desire to end an unresolved state is not evidence.**
+  It cannot justify declaring old bounds valid or manufacturing new ones. Where the observations never resolve the
+  ambiguity, the measurement stays unresolved — and that is an outcome, not a failure to reach one.
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
   Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
   answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back
