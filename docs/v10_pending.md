@@ -667,6 +667,46 @@ hit it — `7e62502` and `9c7f211`, both describing CLAUDE.md entries whose anch
 exists the queue is NOT empty and the contract-stale-store question stays open** — closing it now would be closing
 on my intention rather than on the file, which is the same thing again one level up.
 
+### PROFILE → DECISION FAILS, and the reason is that an AGGREGATE separation is not a per-unit discriminator
+
+Property 3 is **PROMOTED to honoured**: `timing_disturbance.py` is symmetric by construction, and the sign was
+load-bearing rather than decorative — it is what separated the switch from the card's bar, which no one-directional
+instrument could have done. Scorecard: **3 of 8** (3, 4, and 2's structure).
+
+Then the step I flagged as needing its own evidence: turning the departure PROFILE into a switch-line DECISION.
+Rule: the switch line is the topmost row of the contiguous POSITIVE run reaching the last picture row — the run
+criterion, since a first-crossing scan was already measured at 0%. Threshold swept in units of the source's own
+spread rather than chosen, with a control on ordinary mid-picture rows:
+
+| threshold | exact | within 1 | no run | control FPR per row |
+|---:|---:|---:|---:|---:|
+| 0.5 sd | **30%** | 40% | 26% | 7.2% |
+| 1.0 sd | 13% | 18% | 72% | 2.7% |
+| 2.0 sd | 6% | 7% | 91% | 0.1% |
+
+**It does not work — 30% exact at best.** I then diagnosed the spread as inflated by a known defect (~10% of rows
+give a wrong transition, p10 551.9 against a median of 716) and re-ran with a ROBUST spread, IQR/1.349, which is
+the right statistic where a tenth of the inputs are known bad. **That made it worse: 23% at best.** The hypothesis
+was wrong and is recorded as wrong.
+
+**THE ACTUAL REASON IS IN THE PROFILE TABLE I ALREADY PUBLISHED, and I did not read it:**
+
+| line | median | p10 | p90 |
+|---|---:|---:|---:|
+| 258, ordinary | +0.08 | −1.36 | **+1.07** |
+| 260, switch | +0.82 | **+0.57** | +1.88 |
+
+**Line 258's p90 overlaps line 260's p10.** The medians separate cleanly; the per-unit distributions do not. **An
+aggregate profile showing a clean signal does not mean the per-unit measurement can decide** — and I built the
+profile from medians across 60 units, then tried to make a per-unit decision from single values, without checking
+that the aggregate separation survived to the unit.
+⚠️ **This is "repetition is not qualification" in a new form**, and worth adding to that entry: there, repeated
+readings could not resolve a systematic error; here, aggregating across units MANUFACTURES a separation that no
+single unit carries. Both mistake a property of the ensemble for a property of the measurement.
+⚠️ **What this does NOT show:** that the engine's T is wrong, or that the departure is not the switch. The
+aggregate signal is real and lands exactly where the contract says. What is not established is that a per-unit
+decision can be made from it, and no threshold repairs an overlap.
+
 ### THE INSTANT REBUILT ON THE TIMING DISTURBANCE — no window, and it finds the bottom on its own
 
 `experiments/timing_disturbance.py` replaces the retracted peak-first detector with the contract's own
