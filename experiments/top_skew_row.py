@@ -1,3 +1,31 @@
+#!/usr/bin/env python3
+"""Is the "top skew row" the engine's T? Two decision rules, and the control that separates them.
+
+Committed because Codex asked for the executable and keyed output behind the 284-reading comparison
+rather than a summary. Running it reproduces the table recorded in CLAUDE.md.
+
+⚠️ THREE CORRECTIONS FROM CODEX, all accepted, all about what this does NOT show:
+
+1. The control rejects the FIRST-OFF-REFERENCE decision rule, **not downward traversal**. A downward
+   scan can retain the last departure and clear it when normal timing returns -- the engine already
+   does that -- and Codex verified upward and downward implementations find the same terminal suffix
+   on all 1,024 ten-flag patterns. The distinction is the DECISION RULE, not the direction. An
+   earlier write-up of mine said "the downward scan is unusable", which overstates it.
+2. The 71.5% is AGREEMENT with the engine on a selected, T-known cohort -- not independently
+   established accuracy -- and that cohort EXCLUDES the six disputed T-Unknown readings.
+3. The 9.6% middle-picture rate is NOT the chance baseline immediately above T. That needs
+   comparable near-boundary rows and an explicit dependence model, because adjacent rows share
+   references and their errors may correlate; 5-95% bands do not guarantee a 10% held-out
+   false-positive rate either. So 22.5%-against-9.6% does not decide between detector overreach and
+   the engine's T being one row late.
+
+The separating measurement, in Codex's terms: independently identified timing on the disputed
+preceding scan. Disturbance already on T-1 means the engine's boundary is late; positive normal
+timing there means detector overreach; unreadable timing leaves it Unknown. A percentile cannot
+supply that and neither can agreement with another reader.
+
+  top_skew_row.py
+"""
 import sys, csv, collections
 import numpy as np
 sys.path.insert(0,'/Users/vinylfreak89/Documents/blackmagic-usb-mac/experiments')
