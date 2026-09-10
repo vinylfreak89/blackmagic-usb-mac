@@ -4009,6 +4009,20 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **The reliability-gating hypothesis is measured and INERT here, reported with its count as required:** gating
   rows whose own transition is unmeasurable removed **19 rows of 243,840 (0.008%)** and left all three figures
   identical. Not refuted — it has nothing to act on in this region.
+  **IT SPEAKS WHERE THE ENGINE IS BLIND, and that is the first thing it has done that the engine cannot.**
+  The table above is a cohort SELECTED by the engine having an answer, so the question that decides whether the
+  reference is worth having is coverage on the 538 readings where the engine reports no T at all. Measured on the
+  same pass: it asserts on **27 of 229 field-1 (12%) and 56 of 309 field-2 (18%)** — 83 readings — and **all 83
+  satisfy the contract's own §8 invariant** (within one row of that field's modal switch line), checked without
+  the engine, which has nothing to say there.
+  **A control was needed because "0 outside mode ±1" fits two causes** — the readings are right, or the instrument
+  structurally cannot emit a far value, in which case the check proves nothing. Same population, same instrument,
+  UNQUALIFIED readings: **13 of 37 land outside mode ±1 (60% field 1, 26% field 2)**. So far values are reachable
+  there and the qualification is what excludes them; the invariant check discriminates and 0/83 is a result.
+  ⚠️ **Satisfying the invariant is a NECESSARY condition, not proof the 83 readings are correct** — no instrument
+  scores them, which is the point of the population. And 12–18% does not rescue the engine-blind class: the 255
+  readings whose blanking runs off the delivered window are recorded above as an instrument limitation, and
+  **whether these 83 overlap that class is unmeasured**, not shown to be disjoint.
   **What this establishes** is the SHAPE of the answer: qualification plus Unknown, not a universal rule — and
   that his own continuity rule is a working qualifier rather than only a property to check.
 

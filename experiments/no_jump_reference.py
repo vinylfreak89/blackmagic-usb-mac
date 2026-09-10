@@ -202,6 +202,35 @@ def main():
     print("Candidate lines are in EACH FIELD'S OWN numbering (23.. / 286..).\n")
     report("QUALIFIED (no jump)",  *score(cand, eng, 1, True))
     report("CONTROL: unqualified", *score(cand, eng, 1, False))
+    # Where the ENGINE is blind. These cannot be scored - there is nothing to score
+    # against - so coverage is the result, checked against the contract's OWN invariant
+    # (section 8: the switch line stays within one row of the field's mode) rather than
+    # against the engine. An instrument that only speaks where the engine already has an
+    # answer adds nothing; this is the measurement of whether that is the case.
+    print()
+    print("  WHERE THE ENGINE REPORTS NO T (it cannot be scored here - coverage IS the result):")
+    for fld in (1, 2):
+        s_ = cand[fld]
+        vals = [r[1] for r in s_ if r[1] is not None]
+        mode = collections.Counter(vals).most_common(1)[0][0] if vals else None
+        tot = q = qfar = u = ufar = 0
+        for i, rec in enumerate(s_):
+            if eng.get((rec[0], fld), -1) >= 0: continue
+            tot += 1
+            if rec[1] is None: continue
+            far = mode is not None and abs(rec[1] - mode) > 1
+            if qualified(s_, i, 1):
+                q += 1; qfar += far
+            else:
+                u += 1; ufar += far
+        if tot:
+            print("        field %d  engine-Unknown %3d | QUALIFIED %3d (%2.0f%%), %d outside mode+-1"
+                  "  | CONTROL unqualified %3d, %d outside (%2.0f%%)"
+                  % (fld, tot, q, 100*q/tot, qfar, u, ufar, 100*ufar/max(1,u)))
+    print("        mode = this field's own modal candidate line. The control answers whether the")
+    print("        invariant check has any power: if unqualified readings there ALSO never leave")
+    print("        mode+-1, the instrument cannot emit a far value and the check proves nothing.")
+
     print()
     report("ablation: reliability-gated", *score(cand, eng, 2, True), per_field=False)
     g, k = gatestat['gated'], gatestat['kept']
