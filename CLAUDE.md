@@ -3967,6 +3967,34 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   becomes impossible it is because the EVIDENCE is unavailable, never because the observer was switched off, and the
   two have different consequences: unavailable evidence gives Unknown, a disabled observer gives silence that reads
   as no-change. Watch for it wherever a rule gates behaviour on a signal-state class.
+- **THE PER-UNIT WALL WAS A SELF-INFLICTED REQUIREMENT — the step-3 brief already said not to solve it
+  (2026-09-11).** Two instruments died trying to produce a T for EVERY unit. The brief accepted four hours
+  earlier says: *"say explicitly where the rows do not decide — a reference that answers Unknown where the
+  evidence is absent is worth more than one that answers 23 everywhere."* **A harness reference is not required to
+  decide every unit; it is required to decide only where the evidence supports one.** That reframes the failure:
+  hunting a universal rule was the mistake, and it is the same defect the old reference had — **what was wrong
+  with "top = 23 in 508 of 508" was never the number, it was asserting a value on every unit including those whose
+  raw rows carry none.** A rebuilt reference that also answered everywhere would repeat it with better arithmetic.
+  **QUALIFIED BY HIS OWN NO-JUMP RULE (`:164`), and it is the first instrument tonight to SURVIVE its control.**
+  A reading is qualified when it equals an ADJACENT unit's reading — parameter-free, no threshold, and **the
+  engine's T is used only to score, never to qualify**, which is the circularity that destroyed F46:
+
+  | subset | n | exact | within 1 | beyond ±4 |
+  |---|---:|---:|---:|---:|
+  | **qualified (no jump)** | 294 | **47%** | 58% | 41% |
+  | control: unqualified | 62 | **10%** | 29% | 53% |
+
+  **The qualification does real work — 10% to 47% exact, a 4.7× separation, from a rule of his that needs no
+  engine input and no tuned constant.** It is derived from evidence present in the sequence, so a reader could
+  apply it without knowing the answer.
+  ⚠️ **It is NOT yet a usable reference, and the honest bound is the bimodality: of what it asserts, 47% is exact
+  and 41% is more than four rows wrong.** Either right or badly wrong, with little in between — which says two
+  populations remain inside the qualified set. **A reference that is wrong by four rows on two readings in five
+  where it speaks cannot score an engine**, so the coverage figure (asserts on 294 of 896, 33%) is not yet a
+  result to report as one.
+  **What this establishes** is the SHAPE of the answer: qualification plus Unknown, not a universal rule — and
+  that his own continuity rule is a working qualifier rather than only a property to check.
+
 - **WITHIN-UNIT SHAPE DOES NOT RESCUE THE PER-UNIT DECISION EITHER — tested and dead, 2026-09-11.** The
   aggregate-versus-unit failure did NOT rule out using the whole profile a single unit contains: ~240 rows, not
   one value, and using them is not aggregating across units. The hypothesis was that the discriminator is the
