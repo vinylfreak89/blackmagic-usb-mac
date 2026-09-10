@@ -4147,6 +4147,40 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **CODEX'S §14 REVIEW (`698c11a`) FOUND SIX DEFECTS AND EVERY ONE REPRODUCED — including two I wrote and three
+  overclaims I published (2026-09-11).** Its report is `docs/reports/2026-09-11_arrival_calibration_review.md`.
+  1. **`per_unit_floor.py` READ THE WRONG FIELD.** `SWITCH_LINES=(260,261,262)` was used for BOTH fields against
+     origin 286, so field 2 evaluated `282 + (260−286)` = row 256 — **field 1's bottom rows** — against field 2's
+     own calibration. Fixed to `{1:(260,261,262), 2:(523,524,525)}`. ⚠️ **Inert on this capture** (correcting it
+     changes 0 of 508 field-2 results, because the target maximum is sample 719 in every reading), which is
+     precisely why nothing noticed. **And my selftest never CALLED `unit_reading()`, so it could not have caught
+     it** — a control that does not run the function is a claim about it. It now builds an asymmetric synthetic
+     with a displacement in field 2 ONLY and requires field 2 to assert and field 1 not to; mutation-verified.
+  2. **`settled_index()` stopped on an equal-valued plateau.** Codex's fixture `84,55,26,26,1.6` pooled level
+     **17.87** against a floor of 1.6. Fixed to a non-increasing walk; that fixture now settles at 1.6.
+  3. **"4/4 EXACT" WAS FALSE.** The recovery tolerance was ±10 samples, which cannot validate the one-sample
+     distinction the bright-programme claims rest on. Tightened to ±2; all four still pass.
+  4. **"3/3 NEGATIVE CONTROLS PASS" WAS ONE LUCKY SEED.** Over 200 seeds each the criterion FABRICATES on
+     **12/200 flat-picture, 12/200 all-blanking, 36/200 steep-interior-edge** rows — Codex measured the same
+     class independently at 61 of 1,000. **A non-zero fabrication rate is now a MEASURED, GATED BOUND printed
+     with every run**, failing on any increase, rather than a defect claimed fixed.
+     ⚠️ **A flatness requirement was tried against it and REVERTED**: requiring the after-region to be quieter
+     does cut fabrication, but it REJECTS a legitimate multi-sample ramp, because the ramp's own samples make
+     that region's spread large. **A false negative on a known answer is worse than the false positive it fixes.**
+  5. **THE "FRACTION OF A SAMPLE" MARGIN WAS AN ARTEFACT OF SUBTRACTING TWO MEDIANS.** Paired per reading, the
+     bright margins are **exactly 216 at +1 sample and 334 at zero** — integers. There is no fractional margin.
+  6. **"COVERAGE" WAS THE WRONG WORD.** 216/550 is an ASSERTION RATE of this comparison. It is not demonstrated
+     coverage of identified switches, and it is not proof the other 61% are physically unmeasurable. **Every
+     target maximum is sample 719 in all 1,016 readings**, so what the comparison detects on bright is the row
+     reaching the window edge, which is not the same claim.
+  ⚠️ **What Codex did NOT overturn:** the rejected-variant control "genuinely defends the narrow choice" — forcing
+  that branch into production returns 717 for an injected 700 and fails the selftest, a known-answer
+  counterexample rather than a restated preference. And the parity split is not circular: the reference median
+  includes validation rows but cancels, since the decision is `max(target) > max(calibration)`.
+  ⚠️ **Still open from the review:** `0c72441` recorded the operating-point sweep's PROSE but not its executable
+  or keyed population, so that table is less auditable than the per-unit census — the same
+  instrument-not-committed defect this file has now paid for three times.
+
 - **PER-UNIT CALIBRATION WORKS, AND THE REGIMES FALL OUT OF THE MEASUREMENT INSTEAD OF BEING CLASSIFIED
   (`experiments/per_unit_floor.py`, 2026-09-11).** "Per source" was not fine-grained enough and capture 1 proves
   it: card and bright programme are the SAME source with switch signals of ~25 and ~1-3 samples, so a per-source

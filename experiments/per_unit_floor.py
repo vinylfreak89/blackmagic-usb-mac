@@ -31,7 +31,11 @@ from source_reference import ORIGIN_ROW, row_transition, source_reference
 
 UNIT=756_048; HDR=48; ROW=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 MID=(20, 180)          # offsets from the picture origin: mid-picture, no switch can be here
-SWITCH_LINES=(260, 261, 262)
+# ⚠️ PER FIELD. The first version used (260,261,262) for BOTH fields against origin 286, so field 2
+# read `282 + (260-286)` = row 256 -- FIELD 1's bottom rows -- and compared them with field 2's own
+# calibration. Found by Codex; inert on capture 1 (correcting it changes 0 of 508 field-2 results,
+# because the target maximum is sample 719 in every reading) but wrong on any source where it is not.
+SWITCH_LINES={1: (260, 261, 262), 2: (523, 524, 525)}
 
 
 def unit_reading(Y, field):
@@ -52,7 +56,7 @@ def unit_reading(Y, field):
     floor = float(max(cal))                                  # the margin THIS unit supports
     origin = 23 if field == 1 else 286
     sw = []
-    for ln in SWITCH_LINES:
+    for ln in SWITCH_LINES[field]:
         r = base + (ln - origin)
         if r >= LINES:
             continue
@@ -85,6 +89,28 @@ def selftest():
         print("FAIL: the halves are not interleaved"); ok = False
     else:
         print("PASS: the halves interleave, so vertical content variation hits both equally")
+    # ⚠️ The first selftest never CALLED unit_reading(), so it could not have caught the field-2
+    # indexing defect above. A control that does not run the function is a claim about it.
+    rng = np.random.default_rng(3)
+    Y = np.full((LINES, 720), 120.0) + rng.normal(0, 3, (LINES, 720))
+    # Ordinary picture rows blank from 600; the switch rows blank LATER, at 700, which is the
+    # direction a real head switch displaces them (a positive departure). The first version of this
+    # control displaced them EARLIER and so tested the wrong sign -- it failed a correct field-2 fix.
+    for f in (1, 2):
+        base = ORIGIN_ROW[f]
+        for o in range(200):
+            Y[base + o, 600:] = 1.4
+    for ln in SWITCH_LINES[2]:                           # displacement in FIELD 2 ONLY
+        r = ORIGIN_ROW[2] + (ln - 286)
+        if r < LINES:
+            Y[r, :700] = 120.0 + rng.normal(0, 3, 700); Y[r, 700:] = 1.4
+    r1 = unit_reading(Y, 1); r2 = unit_reading(Y, 2)
+    if r2 is None or not r2["asserts"]:
+        print("FAIL: field 2's own switch rows did not assert"); ok = False
+    elif r1 is not None and r1["asserts"]:
+        print("FAIL: field 1 asserted on a displacement placed only in FIELD 2 -- wrong-field read"); ok = False
+    else:
+        print("PASS: a field-2-only displacement asserts on field 2 and NOT on field 1")
     print("SELFTEST", "PASS" if ok else "FAILED")
     return 0 if ok else 1
 

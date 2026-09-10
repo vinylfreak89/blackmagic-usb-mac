@@ -112,8 +112,14 @@ def row_transition(row, _ref_at_crossing=False):
     ref_level = float(x[t]) if _ref_at_crossing else float(x[t - 1])
     done = tail <= 0.5 * (ref_level + floor)
     idx = np.flatnonzero(done)
+    # A FLATNESS REQUIREMENT WAS TRIED HERE AND REVERTED, recorded so it is not re-tried: requiring
+    # the region after the arrival to be quieter than the region before it does reduce fabrication,
+    # but it REJECTS A LEGITIMATE MULTI-SAMPLE RAMP -- the ramp's own samples (84, 55, 26) make the
+    # after-region's spread large, so a known-good fixture returned None. A false negative on a case
+    # whose answer is known is worse than the false positive it was meant to fix. The fabrication
+    # rate on same-noise synthetic rows therefore stands as a MEASURED, GATED BOUND (see selftest),
+    # not as a defect claimed fixed.
     return t + int(idx[0]) if idx.size else t
-
 
 
 def settled_index(row, t):
@@ -134,8 +140,13 @@ def settled_index(row, t):
     returns `t` unchanged, so the two quantities coincide exactly where they should.
     """
     x = np.asarray(row, dtype=np.float64)
+    # NON-INCREASING, not strictly decreasing. Codex's control (a7760f6 follow-up) constructed a
+    # quantized ramp `84, 55, 26, 26, 1.6` where a strict walk stops on the equal-valued plateau at
+    # 26 and pools it as though it were blanking -- level 17.87 against a floor of 1.6. Blanking
+    # noise is symmetric, so a non-increasing walk still stops within a sample or two of the floor
+    # rather than running to the row's end.
     i = int(t)
-    while i + 1 < x.size and x[i + 1] < x[i]:
+    while i + 1 < x.size and x[i + 1] <= x[i]:
         i += 1
     return i
 
@@ -281,14 +292,35 @@ def selftest():
     print("RECOVERY -- known answers, injected:")
     for name, want, row in pos:
         got = row_transition(row)
-        good = got is not None and abs(got - want) <= 10
+        good = got is not None and abs(got - want) <= 2   # +-10 could not validate a one-sample claim
         ok &= good
         print("  %-42s -> %-5s want ~%d  %s" % (name, got, want, "PASS" if good else "FAIL"))
-    print("NO FABRICATION -- rows with no transition must return None:")
+    print("NO FABRICATION -- rows with no transition must return None, over 200 SEEDS each.")
+    print("  (one seed is not a control: Codex measured 61 of 1,000 seeds fabricating on these)")
     for name, row in neg:
         got = row_transition(row)
         ok &= got is None
-        print("  %-42s -> %-5s %s" % (name, got, "PASS" if got is None else "FAIL"))
+        print("  %-42s seed 7 -> %-5s %s" % (name, got, "PASS" if got is None else "FAIL"))
+    shapes = [("flat picture", lambda r: r.normal(100, 4, 720)),
+              ("all blanking", lambda r: r.normal(1.4, 0.5, 720)),
+              ("steep interior edge", lambda r: np.concatenate([r.normal(120, 4, 300), r.normal(60, 4, 420)]))]
+    # ⚠️ THIS IS A REGRESSION GATE ON A MEASURED BOUND, NOT AN ASPIRATION TO ZERO -- and saying so
+    # is the point. The rate is NOT zero: on synthetic rows engineered so the region after the
+    # candidate carries the SAME noise as the region before it, this criterion cannot always tell a
+    # step-and-stay from a transition into blanking. Claiming "3/3 negative controls pass" was true
+    # of ONE SEED and was luck; Codex measured the same class independently at 61 of 1,000.
+    # The gate fails on any INCREASE, so the bound cannot quietly grow, and it is printed every run
+    # so the limit travels with the result instead of sitting in a docstring.
+    BOUND = {"flat picture": 12, "all blanking": 12, "steep interior edge": 36}
+    for nm, gen in shapes:
+        fab = sum(1 for sd in range(200) if row_transition(gen(np.random.default_rng(sd))) is not None)
+        within = fab <= BOUND[nm]
+        ok &= within
+        print("  %-42s 200 seeds -> fabricated on %2d of 200 (recorded bound %2d)  %s" % (
+            nm, fab, BOUND[nm], "within bound" if within else "FAIL: REGRESSED"))
+    print("  ^ a NON-ZERO fabrication rate on same-noise synthetic rows is a STATED LIMIT of this")
+    print("    criterion. Real blanking is far quieter than picture, which is why it works on the")
+    print("    capture; these fixtures remove that margin deliberately.")
     print("THE VARIANT CONTROL -- the rejected criterion must FAIL the abrupt case:")
     name, want, row = pos[1]
     bad = row_transition(row, _ref_at_crossing=True)
