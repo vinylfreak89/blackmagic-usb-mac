@@ -362,8 +362,9 @@ units:
 | 257, 258, 520, 521 — picture | 24.0–25.9 | 13.6–15.8 | control |
 | 140, 400 — picture, mid-field | 59.2–59.5 | 39.9–40.3 | control |
 
-Each disputed row's mean agrees with the regenerated controls to three decimal places and with their
-between-unit spread, in units whose picture rows swing from 10.8 to 80. ⚠️ **That is measured
+Each disputed row's mean sits close to the regenerated controls' (1.375-1.382 against 1.375-1.376)
+and their reported between-unit spreads overlap (0.010-0.011 in both), in units whose picture rows
+swing from 10.8 to 80. ⚠️ **That is measured
 agreement with a control, not a universal discriminator**: the probe reads each row's MEAN, so it
 cannot exclude a source row that stays blank while its neighbours change, and a source delivering
 blanking at the device's own level would read the same. The attribution rests on that agreement
@@ -373,9 +374,11 @@ Reproduced on **capture 3** (the SP recording, a different tape and the opposite
 300 units): the same three rows read 1.375–1.382 at sd 0.010–0.011 while mid-field picture sits at
 113.5. So each field's line 1 and field 1's 262.5 are the device's regenerated blanking, §1's line
 account is right, and each field's PASS-THROUGH WINDOW is exactly its 240 rows — 19–258 and 282–521.
-⚠️ A 240-row window is not 240 picture-bearing lines: the window is where source content can reach us, and it also
-carries the switch region and whatever blanking arrives with it. The line account's picture quantity is smaller by
-the switch-line count and is defined in §4, not here.
+⚠️ **The delivery window is separate from the line account's picture quantity**: the window contains 240 positions
+per field, lines 23–262, and it also carries the switch region and whatever blanking arrives with it, so it is not
+240 picture-bearing lines. Within that window, the portion beyond a qualified clip is `262 − C` positions; that
+quantity alone establishes neither missing picture nor displacement. The picture quantity itself is `P = C − 22 − N`
+and is defined in §4, not here.
 The no-input capture is a NULL, not a third arm: with nothing on the input every row reads the
 device's floor, so it fixes that floor near 1.4 and discriminates nothing.
 
@@ -627,11 +630,15 @@ field" phrasing does not.
   extent + d (the lines past the clip are the offset's); a unit whose measurement differs from the lock's count is
   reported (rule 2). Worked with three lines: offset 0, picture 23–259, band 260–262 (3 + 0); offset +1, picture 24–260,
   band 261–262, one line past the clip (2 + 1); offset −1, picture from line 22 (overwritten), band 259–262 with a
-  blank row at its bottom (4 − 1). **Picture rows** = 240 − switch-line count, the
-  source's constant under the lock (237 when the lock's confirmed switch-line count is 3; owner 15:22 "237 real picture line + 3
-  head switch lines = 0 offset", and 16:03 "I agree with that interpretation" to "237 is 240 minus the source's
-  switch-line count"). **Span** from line 23 to the row before the switch line = picture rows + d = 240 − the band's
-  extent. Per unit the two readings of d — the bands above the picture, and count − extent — must agree ("most
+  blank row at its bottom (4 − 1). **Picture rows**, the line-account quantity, is `P = C − 22 − N`, where `C` is the
+  field's qualified clip line and `N` its retained switch-line count. This follows from `E = C − T + 1`, `L = T − 23`
+  and the qualified displacement relation `d = N − E`, giving `P = L − d`. Where the required quantities or the
+  displacement relation are unqualified, this identity supplies no measurement. At `C = 262` it reduces to
+  `240 − N`; the owner's worked numerical example is that case (237 when the lock's confirmed switch-line count is 3;
+  owner 15:22 "237 real picture line + 3 head switch lines = 0 offset", and 16:03 "I agree with that interpretation"
+  to "237 is 240 minus the source's switch-line count"). It is not a universal value, although it stays constant
+  while that field's qualified `C` and retained `N` are unchanged. **Span** from line 23 to the row before the switch
+  line is `L = P + d = C − 22 − E`. Per unit the two readings of d — the bands above the picture, and count − extent — must agree ("most
   important is agreement"). The owner's "say to 235" figures are illustrative; the ruling is the count, the partial
   line counted as a switch line ("not 238"). **Bands above the picture**: the recorded rows between line 23
   and the picture top that are not the Shuttle's. **Bands below**: the band's extent. **Clip line**: the last row

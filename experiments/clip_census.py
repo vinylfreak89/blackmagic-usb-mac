@@ -7,13 +7,16 @@ identity span = 240 - extent. With span = line 23 .. switch_line-1 and extent = 
 inclusive, span + extent = clip - 22, so the identity holds only when clip = 262. Codex's frozen
 cold read (CR-07) raised that; whether it matters is a question about the captures.
 
-THE DISCRIMINATOR is the one validated in block_row_provenance.py: a device-regenerated row does not
-vary with the input, a recorded row does. So the clip is the last row, scanning up from the padding,
-whose between-unit spread exceeds the regenerated rows' own -- and the threshold comes from those
-rows in the same units, never typed in.
+WHAT THIS MEASURES, stated so the output is not over-read: the LAST ROW WHOSE BETWEEN-UNIT VARIATION
+EXCEEDS THE REGENERATED ROWS' OWN. That is a diagnostic variation endpoint. It is NOT a qualified
+clip line, and this instrument cannot produce one.
 
-Reported per field: the regenerated reference (its mean and between-unit sd), the last recorded row,
-and clip - 22 against the 240 the identity requires.
+"A device-regenerated row does not vary with the input, a recorded row does" is the intuition behind
+the scan, and it is NOT established -- see the limits below. Do not cite it as a discriminator.
+
+Reported per field: the regenerated reference (its mean and between-unit sd), the variation endpoint,
+and endpoint - 22 against the 240 the old identity assumed. Under the repaired account (section 4,
+P = C - 22 - N) no value of C is privileged, so that column is a comparison, not a test.
 
 LIMITS, both of which bound how far the output may be read (Codex, 2026-09-10):
   * Agreement with the regenerated control is not proof of device origin. A source delivering
@@ -21,7 +24,10 @@ LIMITS, both of which bound how far the output may be read (Codex, 2026-09-10):
     and it would make the reported clip too high up the field, not too low.
   * The measure is each row's MEAN across units, so it cannot exclude a source row that stays
     constant while its neighbours change.
-  * It can never report a clip past line 262: rows 259 and 260 are the device's own written rows, so
+  * The decision threshold is 4x the reference spread. The REFERENCE is measured in the same units;
+    the MULTIPLIER is selected and is not derived from any measurement here. The raw means and
+    spreads are printed beside every verdict so the gap can be judged instead of the factor trusted.
+  * It can never report an endpoint past line 262: rows 259 and 260 are the device's own written rows, so
     262 is the last line the device delivers as source. A reading of 262 therefore says the deck
     delivers to the end of that window, NOT that the deck's own clip was measured at 262.
 """
@@ -64,8 +70,8 @@ def main():
     print("# %s  units=%d" % (a.label or os.path.basename(a.capture), n[0]))
     for f in (1, 2):
         ref_sd = max(sd[r] for r in REF[f]); ref_mu = float(np.mean([mu[r] for r in REF[f]]))
-        # A recorded row must clear the regenerated rows' own worst spread by a wide margin; 4x is
-        # reported alongside the raw numbers so the reader can see the gap, not trust the factor.
+        # SELECTED multiplier, not derived: 4x the reference spread. The raw numbers are printed
+        # beside every verdict so the gap can be judged rather than the factor trusted.
         thr = 4.0 * ref_sd
         rec = [r for r in SCAN[f] if sd[r] > thr]
         if a.verbose:
@@ -73,15 +79,15 @@ def main():
                 print("    f%d row %3d line %-6s mean %8.3f sd %7.4f %s"
                       % (f, r, row_to_line(r), mu[r], sd[r], "REC" if sd[r] > thr else ""))
         if not rec:
-            print("  field %d: no recorded row in the scan window" % f); continue
+            print("  field %d: no varying row in the scan window" % f); continue
         last = max(rec)
         line = row_to_line(last)
         print("  field %d: regenerated ref mean %.3f, worst sd %.4f -> threshold %.4f"
               % (f, ref_mu, ref_sd, thr))
-        print("           last recorded row %d = line %s (mean %.3f, sd %.4f)"
+        print("           variation endpoint  row %d = line %s (mean %.3f, sd %.4f)"
               % (last, line, mu[last], sd[last]))
         try:
-            cl = float(line); print("           clip - 22 = %.1f   (the identity requires 240)"
+            cl = float(line); print("           endpoint - 22 = %.1f   (240 is the C=262 case, not a test)"
                                    % (cl - 22))
         except ValueError:
             pass
