@@ -2495,6 +2495,21 @@ and **6900-7174 is about 275 units of bright programme (mean 113-128, sd 34-49)*
 brightness, `peak_line - S` is **93 of 93 on S-1 in dim units and 106 of 107 in bright ones**, so no single content
 regime carries it.
 
+**Codex review of `f4f24ca` (2026-09-11): terminal-run candidate, not an adopted switch measurement.**
+`docs/reports/2026-09-11_terminal_run_review.md` records the deciding distinctions. First-off-reference hit versus
+terminal suffix changes the decision rule, not just scan direction; the same suffix is found in either direction
+(exhaustive Boolean check 1,024/1,024, not a raster validation). The current engine already cancels mid-field
+departures on return to normal timing. The quoted 71.5% is agreement on an engine-T-known cohort, not independent
+accuracy; that cohort excludes the original six T-Unknown disputes. Neither the 5–95% reference nor the 9.6%
+control rate supplies a calibrated conditional null immediately above T, so 22.5% does not yet prove a real extra
+head-switch row. The missing discriminator is independently identified timing on the disputed preceding scan:
+positive head-switch skew makes the engine late, positive normal timing makes the proxy overreach, and ambiguous
+timing stays Unknown. The new 284-key comparison's executable and keyed output were not located in the supplied
+changes; its rates are reviewed as attributed results, not newly reproduced measurements. The report requests
+them and specifies matched boundary controls. The 16% unobserved duration must not become a frequency of T=S.
+R3's narrow recovery question is approved for the queue as Codex's wording, with the gate ruled and recovery
+clarification pending. No engine or contract change is made by this review.
+
 **THE TOP SKEW ROW IS THE ENGINE'S T -- but only under a RUN criterion, and the control is what says so
 (2026-09-11).** The owner, relayed: "every single row the RF peak sits at... there is horizontal skew. every single
 fucking time", "so your 23.7% class is wrong", "well the TOP skew row is". So the peak is a SYMPTOM of the skew
