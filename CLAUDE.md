@@ -4147,6 +4147,34 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **AND NO CHOICE OF DIVISOR REPAIRS IT — three candidates from the field's own good picture lines, all
+  overlapping, recorded as a NULL so the route is not re-run (2026-09-11).** `:531` says the blanking reference
+  comes from "qualified blanking intervals on the current source's good picture lines and supplies both level and
+  variability", so the field's own good lines (255–259) are the contract-sanctioned baseline. Three forms were
+  tested against a HELD-OUT non-switch region (lines 250–254), 30 units per regime:
+
+  | statistic | bright: switch vs control | card: switch vs control |
+  |---|---|---|
+  | difference, in samples | [2, 4] vs [−2, 2] | [31, 103] vs [−99, 68] |
+  | ratio to the baseline | [−3, 3] vs [−1, 1] | [−7, 31.7] vs [−6.6, 9] |
+  | (x − base) / base spread | [1.36, 6.12] vs [−2.5, 2.04] | [0.46, 41.4] vs [−76.7, 1.26] |
+  | old (x − exp) / transition_sd | [0.04, 2.28] vs [−0.76, 0.74] | [0.56, 1.64] vs [−1.3, 1.09] |
+
+  **Every one overlaps.** The tightest is the divisor-free difference on bright, where switch min 2.00 and control
+  max 2.00 merely touch; on the card the same form spans [31, 103] against a control spanning [−99, 68].
+  **THE DEGENERACY CONTROL FIRED FIRST AND KILLED THE RATIO SPECIFICALLY**, which is why it was run first: on
+  bright programme the baseline LOCATION has |median| < 1 in **12 of 30 units**, so a ratio to it is undefined or
+  explosive on 40% of the population and computed on only 18 of 30. The baseline SPREAD is < 1 in **26 of 30**, so
+  the contract's own variability form is near-degenerate there too. On the card neither degenerates.
+  ⚠️ **What this points at is the FINDER, not the divisor.** The card's held-out control spans [−99, +68] samples
+  on lines that carry ordinary picture — a non-switch region has no business varying by 167 samples. So the
+  per-row transitions are themselves unreliable, and no normalisation of an unreliable quantity separates
+  anything. That is consistent with the three failed repairs and with the fabrication already confirmed: **the
+  departure statistic's problem is upstream of its divisor.**
+  ⚠️ Credit where it belongs: the peer session that proposed the ratio also named the control that killed it, and
+  named it as the part not to skip. A proposal that arrives with the test most likely to refute it is worth more
+  than one that arrives with supporting numbers.
+
 - **THE DEPARTURE'S DIVISOR IS NOT A NORMALISATION — it varies by a factor of 55 WITHIN one content regime, so
   departures are not comparable across units at all (2026-09-11).** `timing_disturbance.py` computes
   `(t − expected)/sd` with `sd = transition_sd` from the source reference, and gates at 0.5. Measured over 30 units
