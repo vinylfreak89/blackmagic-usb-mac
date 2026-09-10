@@ -3092,8 +3092,10 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   files. **Eleven of its claims were checked before reaching him; FOUR were wrong** — two counts seeded from a
   document's illustrations rather than its definitions, a pipeline exit status read from the wrong command, and a
   compliment contradicted by the checker's own terminal output. In the same window, the checking side had five
-  claims corrected by it: a guard described as built, controls described as running that were comments, an ignored
-  `argv`, an assertion exercised only by a one-shot probe, and a limit sitting in a docstring instead of its output.
+  claims corrected by it, each with the commit that repaired it so this entry is checkable rather than a memoir: a
+  guard described as built (`96a6c17`), controls described as running that were comments and an `argv` the script
+  ignored (`c9dc81d`), an assertion exercised only by a one-shot probe (`0cb28ab`), and a limit sitting in a
+  docstring instead of its output (`5a80a9f`).
   **Roughly a third of confident statements on both sides were wrong in ways their author could not see and the
   other could, within minutes.** That ratio is the argument FOR the arrangement, not against it: an unverified
   relay is not cheaper, it is the same cost paid later by the owner, who has no files in front of him and no way to
@@ -3101,6 +3103,14 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   and that the discipline that makes it terminate is naming what will reopen it rather than declaring it closed:
   both sides wrote "quiet from here" four times in half an hour and then sent again, each message individually
   worth sending.
+  ⚠️ **A SIXTH was made INSIDE this entry, thirty seconds after the tally was written.** Reporting it, Claude wrote
+  "the probe asserts those commits carry what the entry says" — and the entry as first landed cited **no commits at
+  all**, so the probe was checking a phrase-to-hash mapping that existed only inside the probe. The peer caught it.
+  **That is the strongest evidence in this entry and it is why the entry is worth keeping**: the pattern survived
+  being named, counted, and made the entry's own subject. A claim about a guard is the one kind of sentence this
+  project cannot stop writing unverified, and knowing that does not prevent it — only pasting the artifact does.
+  The hashes above were added to make the claim true rather than to withdraw it, which is the cheaper repair when it
+  is available.
 - **THE DIAGNOSIS for the whole answers-a-different-question family, and it is not "same medium" (2026-09-11, the
   peer session's, and better than the hypothesis it replaced).** Every member operated on a **PROXY** that
   coincides with the real property most of the time:
