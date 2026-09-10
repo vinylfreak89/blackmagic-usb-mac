@@ -2931,6 +2931,32 @@ ramp rather than its mean slope; and the test that actually decides it -- whethe
 peak-line agreement with T among dark excursions specifically. The mechanism is sound and the owner's reasoning
 from the temporal frame is right; this particular estimator of it is confounded.
 
+**CORRECTED SAME DAY, and the correction is his: "you only want to measure the excursion coming off the identified
+peak UNTIL THE RAMP STOPS".** The fixed 48-sample window above is a SPATIAL window -- an arbitrary distance -- and
+that is exactly why the control recovered 63% of the time: over any fixed span a selected extremum drifts back
+toward the median. **The ramp is settling behaviour, so its LENGTH is the observable.** Follow the signal from the
+excursion's end while it keeps approaching baseline; stop when it stops:
+
+| population | n | ramp duration, median | p90 | recovered |
+|---|---:|---:|---:|---:|
+| **band, light, amp >= 89** | 265 | **37 samples** | 52 | 78 codes |
+| control picture rows, light | 2,705 | **3 samples** | 24 | 60 codes |
+| band, dark, amp >= 89 | 95 | **4 samples** | 18 | 58 codes |
+| control picture rows, dark | 635 | 9 samples | 27 | 63 codes |
+
+**A twelve-fold separation on the light peaks -- 37 samples against 3 -- where the fixed window gave 94% against
+63% and no clean cut.** Same data, same excursions; the only change is measuring the ramp temporally instead of
+over a fixed distance. 37 samples is about 2.7 microseconds of sweep, which is the AGC and DC clamp settling, and
+ordinary picture content's largest excursion stops recovering after three.
+⚠️ **And it answers the dark question in a direction nobody proposed: the band's dark excursions do NOT carry the
+settling signature -- 4 samples against the control's 9, SHORTER than content.** So the dark narrow excursions this
+statistic finds in the band are not dark peaks; they are dark content, or the leading edge of the relocated
+interval. That contradicts neither the owner's observation that peaks read black in some units nor the band
+render's alternating polarity -- it says the largest-dark-excursion statistic does not FIND those, which is the
+conclusion the amplitude work reached and now has a mechanism.
+**This is the "something beyond amplitude and width" recorded above as missing.** It is the DURATION of the
+recovery, and it is visible only when the ramp is measured as a time rather than over a window.
+
 **CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
 FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
 clear it when normal timing returns -- which the engine already does -- and Codex verified upward and downward
