@@ -2388,6 +2388,42 @@ material can be clipped to exactly the blanking level with the same dither.
 ~90% of readings, which is the DEFINITION of the relationship (T is the partial row and need not carry a whole
 relocated interval), not an error.
 
+**The head-switch RF peak lands on S-1, never on S -- measured 2026-09-11 over capture 1's registerable region
+(`experiments/peak_vs_s.py`, joined to the engine's own schema-20 geometry export).** This bears directly on the six
+T disagreements holding Track 1's agreement condition open: both readers agree on S, the phase reader says T = S (no
+partial line), the run reader says T = S-1. The peak has no definitional tie to either quantity, and this file already
+records Codex's 2026-09-09 finding that it cannot classify a regime but "where it IS present it confirms the exact
+partial switch line and its position along the row". Positive peaks, by `rf_peak_census.py`'s signed-blind statistic
+(largest excursion from the row's own median in EITHER direction, in that row's own MAD, no amplitude typed in):
+
+| sigma >= | readings | on S-1 | on S |
+|---|---:|---:|---:|
+| 15 | 255 | 252 (98.8%) | 2 |
+| 30 | 200 | 199 (99.5%) | 1 |
+| 60 | 135 | 135 (100%) | 0 |
+| 100 | 71 | 71 (100%) | 0 |
+
+Flat across the whole sweep, so no threshold is doing the work. **Two controls.** Over 1,680 readings (counters
+6681-6785, the six keys' neighbourhood, the last eight picture lines of both fields) the >=30 sigma positive peaks
+land on exactly three of sixteen (field, line) cells -- f1 260 in 36, f2 259 in 37, f2 260 in 9 -- and **zero** on the
+other thirteen, so the peak is a switch-band feature and not bright picture content, which would be spread across all
+eight lines. And joined to the engine's own AGREED T, the peak is exactly ON T in 166 of the 197 readings where the
+engine says T = S-1, and one line ABOVE T in the 31 where it says T = S -- so the T = S answer is contradicted
+wherever a peak is visible, including on readings the two readers did not dispute.
+Two of the six disputed keys carry a peak: **6704/f2 at 77.3 sigma column 131 and 6785/f1 at 67.7 sigma column 201,
+both on S-1**, against a same-window population median of 10.0 sigma. The other four carry no positive peak at all
+(their largest excursion is the end-of-row blanking at -10 to -11 sigma), which is absence of evidence, not evidence
+for T = S. The raw rows were rendered and looked at first (`experiments/t_adjudication_panel.py`): in all six, the row
+the run reader calls T is unbroken picture across all 720 samples, which by itself separates neither reader, because a
+partial row's other-head portion need not be blanking.
+⚠️ **This is the measurement, NOT the adjudication.** The six are an explicit two-agent disagreement; the verdict is
+not one agent's to declare and is with Codex.
+⚠️ Two limits, unrounded. The peak is present on 241 of 1,016 field-readings here (23.7%), far oftener than the 3.07%
+recorded above for captures 3/4 -- a different source and a different criterion, so the figures are not in conflict
+and must not be quoted against each other. And `peak_vs_s.py`'s own fallback S, used when no `--geometry` is given,
+disagrees with the engine's S on about 23% of readings; its distribution is printed separately and never merged with
+the engine join.
+
 **A RULED-OUT ROUTE, measured 2026-09-10 — gating the partial-row test on relocated blanking does not work.**
 The harness declares a partial row where the raw rows show ordinary picture in a class of ~76 readings, and the
 obvious fix is to require the partial candidate to carry some of the other head's relocated blanking. Measured:
