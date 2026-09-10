@@ -405,15 +405,23 @@ Both readers report PARTIAL isolation (repository instructions inherited); neith
 | 5 | box bars both do and do not recentre | `c9552ee` — half was stale; Crop clause repaired |
 | CR-12 | box invalidation fired on ordinary box content | `c9552ee` — scoped to a previously identified bar region |
 
-**In flight with Codex (one dispatch, not yet answered):** 6 and CR-10 (the two senses of "gap" —
-re-proposed as splitting *observe* from *qualify as a picture-relative gauge*, not as merging the two
-tests, which Codex blocked and 8d already forbids); 19 ("band" as a row count in §1 versus a region
-count in rule 4); 20 (rule 2 versus 8c on whether an expansion is a fault); 22 (rule 2 moves the
-switch position where rule 4 holds it).
+**Pile A from Claude's reader is closed, dispositioned, or with the owner (2026-09-10).** Landed since the table
+above: 19, 20, 22 (`960b5ff`), 8, 11 (`0942d8b`), 25, 28 (`ab1b711`), 23, 32, 35, 36 (`1ff7482`). Dispositioned
+without editing the frozen report: 24, 27, 29, and 11's withdrawn attribution. Audited rather than defined: 34
+(`docs/reports/2026-09-10_terminology_audit.md`). With the owner: 6/CR-10, 7, 24.
 
-**Open, not yet worked:** 7, 8, 11, 23, 24, 25, 27, 28, 29, 32, 33, 34, 35, 36; CR-02, CR-03, CR-04,
-CR-05, CR-06, CR-08, CR-09, CR-11, CR-13. Note 25 and CR-05 are the same finding by two routes, as
-are 15 and CR-08.
+**Of Codex's 13:** CR-01, CR-05, CR-07, CR-12 landed; CR-10 with the owner; **CR-02, CR-06 and CR-13 are the only
+ones not yet worked** — in flight with Codex. CR-03, CR-04, CR-08, CR-09 and CR-11 overlap findings already closed
+and are treated as closed by that overlap, which is a judgement rather than a verified before/after and is flagged
+to Codex as such.
+
+**Engineering work the terminology audit produced, none of it the owner's:**
+- `comb_safe` conflates "evaluated and disagreed" with "never evaluated", and rule 9 makes the second the ordinary
+  case under a maintained lock. §8 burns it into the review overlay. Engine state, so Codex's.
+- "lift-off point" — 8c's hold criterion rests on an absence nothing defines or implements.
+- "band event" — gates a report in §1, zero hits in `src/`.
+- "static, detailed picture", "jump further than expected", "near an edge" — missing empirical qualification;
+  must NOT be closed by fitting a threshold.
 
 **Codex's comparison disputes five of my reader's inferences** (findings 2, 9, 13, 16, 24) — mostly
 that a missing method is not a proof of impossibility. Queued, neither conceded nor contested.
