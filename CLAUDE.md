@@ -2900,6 +2900,34 @@ region begins past column 700 -- where a leading-end test finds nothing and retu
 remove the need for the peak to adjudicate anything: **picture-in-the-blanking is a positive timing observable on
 the row itself**, measured against the source's own expected extent, and it agrees with the peak on all 110
 high-amplitude readings without depending on it.
+
+⚠️⚠️ **THE ELEVATION FIGURES ABOVE ARE A SPATIAL SUMMARY AND THE OWNER CALLED IT (2026-09-11): "again its dare is
+measuring wrong... it is trying to smooth a temporal band spatially... again".** Mean elevation across the expected
+blanking region collapses a temporal event into an amplitude -- the same category error as the peak statistic
+retired one entry above, one level in: the peak reported HOW BIG, this reported HOW ELEVATED, and neither reports
+WHEN. His argument is not a niceness: picture pushed into the retrace interval arrives at a PARTICULAR TIME and
+occupies PART of the interval, so two rows where it intrudes 20 samples and 140 samples return the same mean.
+**Re-measured as a BOUNDARY POSITION** -- the sample at which the row settles into blanking, against where this
+source's own good picture lines put it (`experiments/blanking_boundary.py`):
+
+| group | n | boundary phase, median | p10 | p90 | NO boundary in the whole sweep |
+|---|---:|---:|---:|---:|---:|
+| control, ordinary picture row | 111 | **+0** | −4 | +2 | **3** |
+| engine T = S, peak one row above | 22 | −225 | −322 | −127 | **20** |
+| engine T = S−1, peak on T | 88 | −533 | −638 | −128 | **75** |
+
+**The control validates the instrument: 108 of 111 ordinary rows put their blanking exactly where the source says,
++0 with a p10-p90 of −4 to +2.** And the disputed rows do not: **20 of 22 and 75 of 88 have NO blank-level run
+anywhere in the delivered window at all**, so the interval is not merely late or early -- on most of these rows it
+is not in the window.
+⚠️ **He was right that the scalar hid a real difference**: where a boundary IS found the two groups sit at −225 and
+−533, phases that differ by 300 samples while the mean-elevation statistic read them as 18.3 against 18.9. **But
+those medians rest on 2 and 13 readings respectively and must not be leaned on.** The finding that carries weight
+is the absence, not the two medians.
+⚠️ **And the first version of the boundary measurement made the SAME error a third time**: it searched forward from
+`b0 − 60` and returned "absent" for all 22 and 87 of 88, because an interval arriving 660 samples early falls
+outside a window bounded around where it was expected. Bounding a temporal quantity spatially, in the instrument
+built to stop doing that. The search now covers the whole sweep.
 ⚠️ Not yet done, and it is the second dispositive test his 09:41:23 continuity ruling implies: whether the
 transient's column WALKS continuously into these units, or the row changes while the column sits still. The band
 render shows the walk (340 -> 660 -> 160 across 6691-6714) but it has not been joined to the disputed readings.
