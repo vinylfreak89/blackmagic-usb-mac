@@ -3967,6 +3967,38 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   becomes impossible it is because the EVIDENCE is unavailable, never because the observer was switched off, and the
   two have different consequences: unavailable evidence gives Unknown, a disabled observer gives silence that reads
   as no-change. Watch for it wherever a rule gates behaviour on a signal-state class.
+- **WITHIN-UNIT SHAPE DOES NOT RESCUE THE PER-UNIT DECISION EITHER — tested and dead, 2026-09-11.** The
+  aggregate-versus-unit failure did NOT rule out using the whole profile a single unit contains: ~240 rows, not
+  one value, and using them is not aggregating across units. The hypothesis was that the discriminator is the
+  SHAPE of the positive region — contiguous, the only one, its extent and position — rather than any row's
+  magnitude. Diagnosed on each unit's own run structure at 0.5 sd, n = 478:
+
+  | positive runs in the field-reading | share |
+  |---|---:|
+  | 0 | 26% |
+  | **1** | **38%** |
+  | 2-5 | 7% |
+  | **6+** | **30%** |
+
+  The bottom-reaching run's extent is tight and physically plausible — **median 3 rows, p10 3, p90 5** — so the
+  shape LOOKS like the switch band. Then split the answer by the unit's own run count, which is the quality signal
+  the hypothesis predicts:
+
+  | runs | n | exact | beyond ±4 |
+  |---|---:|---:|---:|
+  | **1** | 182 | 43% | **51%** |
+  | 6+ | 142 | 35% | **35%** |
+
+  **It is not a quality signal. A unit with exactly ONE clean contiguous positive run reaching its own bottom gets
+  T wrong by more than four rows HALF the time — and does so MORE often than the six-plus-run units.** (The 4- and
+  5-run rows read 80% and 75% on n = 5 and n = 4; noise, and not to be quoted.)
+  **So the bottom-reaching positive run frequently is not the switch**, and no property of its shape available
+  within the unit says which times. The hypothesis failed for the reason it was offered as possibly failing — the
+  shape varies as much as the values — and it failed differently from the aggregate route, which is why it was
+  worth the test.
+  ⚠️ What survives unchanged: the aggregate departure signal is real and lands where the contract says. **What has
+  now failed twice, by two independent routes, is turning it into a per-unit decision.**
+
 - **PROPERTY 5, THE HALF LINE: the delivered raster CANNOT show it as half a sweep, and that is structural
   (2026-09-11).** `field_lines.h` already labels row 259 as f1 line **262.5**; the property says treat it as half a
   HORIZONTAL SWEEP rather than half a row's height. Measured on capture 1's bright programme (6900-7000), content
