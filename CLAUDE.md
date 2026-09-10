@@ -4147,6 +4147,44 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **THE DEPARTURE'S DIVISOR IS NOT A NORMALISATION — it varies by a factor of 55 WITHIN one content regime, so
+  departures are not comparable across units at all (2026-09-11).** `timing_disturbance.py` computes
+  `(t − expected)/sd` with `sd = transition_sd` from the source reference, and gates at 0.5. Measured over 30 units
+  of each regime, the switch region against its own baseline:
+
+  | | baseline, lines 255–259 | switch region, 260–262 | in sd units | fires at 0.5? |
+  |---|---:|---:|---:|:--:|
+  | card | +6 … +11 samples | **+42 … +45** | 0.72–0.79 | YES |
+  | bright programme | 0 … +1 samples | **+3** (p10 2.0, p90 3.1) | 0.05 | **no** |
+
+  **IN SAMPLES THE SIGNAL IS PRESENT IN BOTH POPULATIONS.** On the card it is a 4-to-7× jump; on bright programme
+  it is only 3 samples but extremely tight, and it is the sd normalisation that loses it.
+  **THE DEFECT IS THE DIVISOR'S INSTABILITY, not its size.** Across those 30 bright units `transition_sd` runs
+  **1.31 to 72.19** — a factor of 55 inside ONE content regime. So the same physical 3-sample displacement reads
+  anywhere from **0.04 sd to 2.3 sd depending on which unit it lands in**, and a 0.5-sd gate is a threshold whose
+  size in samples swings by more than an order of magnitude between neighbouring units. The card's divisor is
+  stable by comparison (56.13–60.50 across its 30 units).
+  ⚠️ **This inverts the reading that "sd 0.48 on bright against 34.25 on the card" means the reference is solid on
+  programme and unreliable on the card.** A small spread is not stability when the quantity has nowhere to go:
+  measured on the first sample at blanking past 600, bright programme sits at **718–719 with sd 0.06 and ZERO
+  margin to the window's last sample**, while the card runs 600–708 with sd 24.87 and 11 samples of margin. **The
+  card is where the transition is actually observable; bright programme is where it is pinned against the window
+  edge.** This is the same shape as the earlier pinned-at-its-quantization-floor instrument, one level deeper, in
+  the quantity the whole harness rests on.
+  ⚠️ **What is CONFIRMED and what is CORRECTED, kept apart because the mechanism matters:** the peer session's
+  conclusion — the divisor is suspect and the evidence offered for its trustworthiness does not support it — is
+  confirmed. Its proposed mechanism, that a spuriously small divisor INFLATES departures on bright content, is
+  not what happens on the 30-unit sample: there the median divisor is 67.07 and it CRUSHES a real signal to 0.05.
+  Both directions occur, which is the point — with the divisor ranging 1.31–72.19 the statistic inflates on some
+  units and suppresses on others, and that is worse than a consistent bias in either direction.
+  ⚠️ **Also corrected: two different quantities were being compared under one name.** The first-blanking-sample
+  measurement (718–719) and `row_transition`'s steepest-fall output (median 716–717) are not the same observable;
+  the censoring argument applies cleanly to the first, and the second sits near but not at the edge. Do not quote
+  one as evidence about the other.
+  ⚠️ **A probe defect worth recording because this project's convention exists to prevent it:** the first version
+  of this profile labelled its rows `o+4` when the picture origin makes the line `o+23`, so it printed the switch
+  region as lines 241–243 instead of 260–262. The numbers were right and every label was 19 lines wrong.
+
 - **THE HARDCODED-540 REPAIR WAS ATTEMPTED AND FAILED THREE TIMES — a NULL, recorded so nobody rebuilds it,
   and the measurement it produced is worth more than the repair would have been (2026-09-11).** The argument for
   repairing first was right: `source_reference.row_transition` is underneath the source reference, the departure
