@@ -1778,8 +1778,120 @@ historical claims, not the current rule.
   no whole-tape re-render except for sanity checks; every non-locked state outside true signal
   loss or a cut is audited against the raw raster before hand-over. The published v9 pair stays
   as the sanity baseline; it is not accepted.
+  ⚠️ **These four hashes were REWRITTEN and are now corrected from the project's own recorded map
+  (2026-09-11).** `docs/registration_v9_plan.md:809-813` records a `git filter-branch --msg-filter` run on
+  2026-09-05 (owner's order) that repaired a `Co-authored-by` trailer on every commit since 2026-09-04 22:02 and
+  therefore changed every hash, and it lists the old→new pairs. **CLAUDE.md was never updated from that map**, which
+  is why `experiments/cited_commit_check.py` found four dead citations here on its first run. Applied:
+  `490877b→85a413b`, `cb1b4ed→c529ab4`, `7254d58→e8a6f1a`, `a683926→0322323` — each verified to resolve, to be an
+  ancestor of HEAD, and to carry a subject consistent with the sentence citing it.
+  ⚠️ **A second, UNRECORDED rewrite exists and its hashes must not be used.** A relayed map offered
+  `490877b→56edda0`, `cb1b4ed→fb582c9`, `7254d58→5b6ae68`, `a683926→a4a1bec`. Those objects exist and carry the same
+  subjects, but they are **on no ref and are not ancestors of HEAD** — writing them here would have recreated the
+  dead-citation defect with hashes that look right. The recorded map's targets are the reachable ones.
+  ⚠️ **This vindicates refusing to substitute a plausible hash earlier.** The guess offered then was `05bb2c0` for
+  round 10; the recorded map gives `e8a6f1a`. The guess was wrong, and had it been written in, it would have been
+  indistinguishable from a checked citation.
+- ⚠️ **The hash in the next line is WRONG and it RESOLVES, which is worse than the dead ones above (2026-09-11).**
+  `b7a94d5` is a real ancestor commit whose subject is "gitignore the v9 test binaries and generated fixture" — not
+  the v9 merge this sentence credits it with. A dead citation announces itself; a wrong live one passes every
+  existence check silently. The correct merge commit has NOT been established, so the hash is left as written with
+  this flag rather than replaced by a guess.
+- ✅ **P2 v9 — the line-21 engine (merged to main `b7a94d5`, 2026-09-05 early morning; Codex
+  wrote, Claude reviewed, two review rounds, 69/69 goldens, 18/18 API, 3/3 decoder).** Supersedes
+  every estimator above. Per field per unit: decode every line of the field (NTSC 12–266 /
+  272–528) as CEA-608 with parity (`cea608.c`, byte-exact against `experiments/cc608_decode.py`
+  on 3,600 slice units); exactly one parity-valid line off the regenerated 21/284 ⇒ applied
+  `d = line − 21` (`− 284`) at once (`Line21Placement`) and the lock's zero is re-anchored to
+  `top − d`; field 2 without parity uses the frozen smeared-XDS envelope candidate in lines
+  285–290 (`Field2EnvelopePlacement`); otherwise a geometry lock (top, uncensored height, optional
+  clip ceiling fitted from two gauged units saturating at one line) decides by the conservation
+  equation, rigid moves applied, top-only changes `LockBroken`/hold, boundary changes with an
+  unknown clip `ClipUnknownHold`; bytes at 21 are provenance only (`InsertCorroborates` /
+  `InsertContradicted`); more than one candidate `Line21Ambiguous`; insert absent `InsertAbsent`.
+  Lock zero provenance is named (`Parity` / `Envelope` / `Acquired`) and `comb_safe` requires both
+  fields locked and either both zeros physical or both rigid this unit. State 72 bytes,
+  allocation-free; engine 0.32 ms median / 0.33 p95 per unit, whole worker 0.54 / 0.55 ms
+  (§11b budget 10 ms). Sidecar schema 5 (per-field reason, gauge, line, bytes, geometry, raw
+  edges, lock, zero source, clip, residual, `comb_safe`).
+  **Whole-tape acceptance (experiments/line21_truth.py + v9_acceptance.py, 86,293 exact units,
+  0 drops):** field 1 agrees with **40,237 of 40,237** off-insert parity readings (0
+  disagreements; the round-1 engine had 122 of 40,163 — Codex's strict acceptance script then
+  recovered 74 readings that a chance picture hit had mislabelled ambiguous, and it now fails
+  closed on unpublished units, duplicate counters and any disagreement), field 2 25/25. Applied pairs: (0,0) 26,023, (2,2)
+  20,537, (1,0) 18,398, (3,2) 13,962, (3,0) 3,570, (2,0) 3,160 — the (1,0)/(2,0) mass in the
+  first recording matches the 2026-08-30 offline trace's (1,0) 19,265 / (2,0) 2,315
+  independently. Reasons, field 1: GeometryLockDecides 42,481, Line21Placement 40,163,
+  LockBroken 2,657, Acquiring 721, InsertAbsent 137, Line21Ambiguous 74. Zero source: field 1
+  Parity 82,883 / Acquired 3,410; field 2 Envelope 34,871 / Acquired 51,373 (the first recording
+  has no field-2 gauge). comb_safe 75,216/86,294. 7,032 applied transitions, 2,797 one-unit
+  flips: 2,023 parity-placed (the caption line itself moved for one unit), 734 geometry-placed
+  of which 692 rigid (top and bottom moved together) and ~40 top-only under a fitted clip.
+  **`captures/fulltape_render.{mp4,_registration.csv}` re-rendered from v9 (2026-09-05 01:09,
+  `render_fulltape.sh` at `6f7941d`, gate all PASS: clean `-xerror` decode, 2879.410 s and
+  86,297 sidecar rows identical to the v7 pair, 172,592 frames; published by SHA-256-verified
+  copy, old pair deleted).** Render sidecar: field 1 agrees with the parity truth 40,237/40,237
+  too; pairs (0,0) 23,134, (2,2) 20,702, (1,0) 18,361, (3,2) 13,484, (1,1) 2,404; 7,207
+  transitions, 2,791 one-unit flips; comb_safe 80,929/86,296. ⚠️ **OPEN — the render and the
+  live path disagree in ~8,400 units, almost all field 2 of the first recording, by one line:**
+  same engine, same units, both 40,237/40,237 against the truth, but the frameserver calls
+  `fieldreg_begin_segment` at every classifier relock (15 on this tape) while the offline
+  renderer calls it once at the start, so the content-acquired field-2 zero differs. The renderer
+  must make the live path's relock calls (run the same classifier) before its sidecar can be
+  called the live path's output. The renderer's arming detector also broke when the crop origin
+  moved (fixed `6f7941d`; LEARNINGS).
+  **Owner review of the v9 render (2026-09-05 01:30–02:30) — v9 as built FAILS the owner's
+  invariant, and the review artifacts were wrong too.** The invariant (owner): the regenerated
+  raster is identical in every unit and the tape's field position is directly readable every
+  unit (the TAPE's line 21 when visible, else the picture's first line), so the output picture
+  position is `measured − crop = 0` by construction and **can never bounce except during the
+  initial lock of a program segment**; any bounce is a wrong reading or a remembered value
+  substituted for a reading. Measured on the published render at the owner's sites (raw
+  525-line raster inspected): 35:33–35:59 = 229/784 units with a field-1 output jump and XDS in
+  frame; 2:48 field-1 `LockBroken` ×41 on a clean picture from line 24 (bottom-band flicker);
+  43:24 `LockBroken` ×762 with the picture from 26 (lock zero one line off); 7:45 field-2
+  `ClipUnknownHold` ×1,222 with the picture at the standard origin 286 (zero acquired from a dark
+  unit at 287); 21:13 `OutOfRangeHold` ×41 on a night scene at luma 10 (absolute threshold 12
+  called it blank; picture visibly from 24, held 0 = wrong). Honest holds: 24:17 one-field
+  dropout (field 2 all black); 24:20 snow/torn relock (but the classifier stayed ProgramLike).
+  Root causes handed to Codex with failing goldens: (A) VBI-type lines that fail parity or the
+  amplitude gate are taken as the picture top (damaged captions, the smeared XDS bar); (B)
+  bottom flicker inside the deck's near-blank band (lines 260–264 / 522–526) breaks locks; (C)
+  the lock zero is acquired from content instead of the standard origin — the golden rule says
+  assume locked at 23/286 until a gauge re-anchors; (D) absolute luma threshold. Whole-render
+  audit (`experiments/render_stability_audit.py`, detectors still noisy on NNEDI output):
+  1,759 units where the crop followed a moved "top" while the picture did not move (the engine
+  following a VBI/grey line), 34 crop changes on a still edge, 283 raw-top moves not followed.
+  **Round 3 progress (2026-09-05 02:00–04:00, branch `render-live`, not merged):** Codex landed
+  A (VBI-type lines excluded by signature regardless of decode; picture top = first of three
+  picture rows) and B (lines 260–264 / 522–526 censored: bottom flicker cannot break a lock) —
+  disaster-slice `LockBroken` 366 → 0 — then C/D (standard origin 23/286 as the zero from the
+  first unit, gauges re-anchor it, content never does; luma threshold relative to each field's
+  blanking): goldens 86/86, three slices 100% Locked and comb_safe, engine 0.50 ms. Claude's raw
+  audits on that build found: (1) the 45:00 field-2 regression (+2 ×620 → +1 ×69) is the XDS
+  bar with picture bleeding into its right half, so neither the envelope candidate nor the
+  exclusion fires (both demand bins 20–47 ≤ 40), line 286 becomes the geometry's top and the crop
+  lands on the run-in fragment at 287 — the bar's signature is its LEFT half only; (2) the tape's
+  flat grey line 22 (luma ≈ 7, above blank+4) is taken as the picture top when the caption is
+  invisible — a dim flat line under half the brightness of the three rows below is VBI ('gap'),
+  never a top; (3) 37:01 field 2 holds out of range on a dark scene (raw top 291–294); (4) OPEN
+  measurement: at 35:00, 33 parity-placed units moved the crop with the caption while the picture
+  body did not move by the same amount (20 on static content) — either the body measure is
+  confounded or the tape's caption line sometimes moves without the picture; if the latter is
+  real, the owner's rule is that the caption anchors the segment lock and the picture geometry is
+  tracked unit to unit (a design change, owner decision). Instruments: `experiments/follow_audit.py`
+  (raw-raster: at every applied change, did the picture body move by the same amount; content
+  motion = both fields' bodies together), `experiments/engine_audit.py` (crop vs measured top).
+  Process rule learned the hard way (owner): one Codex dispatch at a time, read the reply, rewrite
+  the next brief against it; never stack queued design turns.
+  **Review-copy rules (owner):** the review copy is produced from the LIVE frameserver output
+  with its own sidecar burned in over the ENTIRE tape (never an excerpt — a keyframe-cut
+  excerpt offset the band by 12 units and misled the review), never from `capture_render.py`;
+  no whole-tape re-render except for sanity checks; every non-locked state outside true signal
+  loss or a cut is audited against the raw raster before hand-over. The published v9 pair stays
+  as the sanity baseline; it is not accepted.
   ⚠️ **FOUR COMMIT CITATIONS IN THIS v9 SECTION DO NOT RESOLVE (found 2026-09-11 by
-  `experiments/cited_commit_check.py` on its first run): `490877b`, `cb1b4ed`, `a683926`, `7254d58`.** **Established, not assumed: none is a valid object in this
+  `experiments/cited_commit_check.py` on its first run): `85a413b`, `c529ab4`, `0322323`, `e8a6f1a`.** **Established, not assumed: none is a valid object in this
   repository's object store — which ALL THREE working trees share** (`/private/tmp/blackmagic-v10/.git` is a file
   reading `gitdir: …/blackmagic-usb-mac/.git/worktrees/blackmagic-v10`, so a query in one tree is a query in all),
   **and `git fetch origin <hash>` refuses each of them, so they are not recoverable from the remote either.** What
@@ -1789,7 +1901,7 @@ historical claims, not the current rule.
   rather than replaced with guesses, which would manufacture history. **The consequence to know: anyone returning
   to the round-10 fallback BY HASH cannot, and must find it by content.** Since this section names that engine as
   v10's measured fallback, that is worth more than a tidy citation.
-  **✅ v9 rounds 4–8 (`render-live` `490877b`, merged to main `cb1b4ed` 2026-09-05, Codex wrote, Claude measured on
+  **✅ v9 rounds 4–8 (`render-live` `85a413b`, merged to main `c529ab4` 2026-09-05, Codex wrote, Claude measured on
   the raw raster; docs/registration_v9_plan.md carries the round-by-round record).** After the
   owner's review of the first v9 render, every remaining bounce was measured on the 525-line
   raster with two raw instruments — `experiments/follow_audit.py` (unit-to-unit body shift vs
@@ -1816,9 +1928,9 @@ historical claims, not the current rule.
   recalibrate; a byte hole keeps installed zeros. Two rules were falsified on the tape and
   reversed: "d1 − d2 is a segment constant" (field 1 jitters independently; the constant is
   field 2's zero) and "the top alone never moves the crop" (it suppressed 2,616 caption
-  placements). Whole tape at `490877b`: 86,293/86,293, zero drops; parity acceptance field 1
+  placements). Whole tape at `85a413b`: 86,293/86,293, zero drops; parity acceptance field 1
   40,208 agree + 29 evidence-checked vetoes + 0 disagreements, field 2 24 + 1 + 0; comb
-  misregistered **1,052** of 86,293 unit pairs (`a683926` 1,889; `b8aafe2` ~3,700 by the old
+  misregistered **1,052** of 86,293 unit pairs (`0322323` 1,889; `b8aafe2` ~3,700 by the old
   rule) with 30,213 flat; Calibrated 82,051, bias 0/+1/+2 only; engine 1.35 ms median /
   1.37 p95 per unit, state 168,096 bytes. **Not built:** a raster-damage state — Codex's census
   at the owner's torn units (ordinals 62322–62326) found the Shuttle inserts decoding, tops
@@ -1836,7 +1948,7 @@ historical claims, not the current rule.
   raster displacement). Accepted design, in progress: a bounded RELATIVE crop correction
   installed after three decisive static-comb readings, computed from the current crops, never
   an incremented zero, persisted across flat units, cleared on signal-lock loss.
-  **✅ Round 10 merged (`7254d58`, 2026-09-05 17:35 JST):** the bounded relative comb correction
+  **✅ Round 10 merged (`e8a6f1a`, 2026-09-05 17:35 JST):** the bounded relative comb correction
   (three decisive static-comb readings install a relative crop bias from the current crops,
   never an incremented zero; the field it moves is chosen per unit from current absolute
   testimony so a caption-placed field 1 is never displaced; persists across flat units and

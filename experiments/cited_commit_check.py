@@ -73,11 +73,18 @@ def context(doc, h, span=110):
 def main() -> int:
     doc = open(DOC).read()
     hits = cited(doc)
-    missing, unreachable, ok = [], [], []
+    missing, unreachable, ok, other = [], [], [], []
     for h, lines in sorted(hits.items()):
         r = subprocess.run(["git", "-C", REPO, "cat-file", "-t", h],
                            capture_output=True, text=True)
-        if r.returncode != 0 or r.stdout.strip() != "commit":
+        kind = r.stdout.strip() if r.returncode == 0 else ""
+        if kind and kind != "commit":
+            # A blob or tree citation is legitimate -- provenance files cite the contract's BLOB
+            # hash. Reporting it as a dead commit was this checker's own false positive: "is a
+            # commit" was too coarse a category for "is a real object the document may cite".
+            other.append((h, lines, kind))
+            continue
+        if not kind:
             missing.append((h, lines))
             continue
         anc = subprocess.run(["git", "-C", REPO, "merge-base", "--is-ancestor", h, "HEAD"],
@@ -98,8 +105,10 @@ def main() -> int:
         print("    %s  line %-5s" % (h, lines[0]))
         print("        cited as: %s" % ctx)
         print("        actually: %s" % subj[:100])
+    for h, lines, kind in other:
+        print("  (not a commit, and legitimately so: %s is a %s, cited at line %s)" % (h[:12], kind, lines[0]))
     for h, lines in missing:
-        print("  ** NOT A COMMIT IN THIS REPOSITORY: %s (cited at line %s)" % (h, lines[0]))
+        print("  ** NOT AN OBJECT IN THIS REPOSITORY: %s (cited at line %s)" % (h, lines[0]))
     for h, lines, subj in unreachable:
         print("  ** NOT AN ANCESTOR OF HEAD: %s (line %s) %s" % (h, lines[0], subj[:60]))
     print("""
