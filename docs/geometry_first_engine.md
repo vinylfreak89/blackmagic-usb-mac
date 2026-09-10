@@ -346,7 +346,7 @@ asymmetries survive the renaming:
 - **The measured switch bands do not coincide** — capture 1 reads 261 in field 1 and 260 in field 2
   (§1). A convention cannot move a measurement.
 
-**The old table claimed three written rows as source, and the picture spans are 240 rows, not 242.**
+**The old table claimed three written rows as source, and the pass-through windows are 240 rows, not 242.**
 Its single cell "unit rows 19–260, 282–522 | pass-through from the tape and deck | source" contained
 rows 259, 260 and 522 — field 1's 262.5 and each field's line 1 — which §1's line account calls
 written. Under the frame-continuous labels "23–264, 286–526" that span looked plausible; the
@@ -372,7 +372,10 @@ independent line account — not on "a source row must vary".
 Reproduced on **capture 3** (the SP recording, a different tape and the opposite line-TBC setting,
 300 units): the same three rows read 1.375–1.382 at sd 0.010–0.011 while mid-field picture sits at
 113.5. So each field's line 1 and field 1's 262.5 are the device's regenerated blanking, §1's line
-account is right, and each field's picture is exactly its 240 rows — 19–258 and 282–521.
+account is right, and each field's PASS-THROUGH WINDOW is exactly its 240 rows — 19–258 and 282–521.
+⚠️ A 240-row window is not 240 picture-bearing lines: the window is where source content can reach us, and it also
+carries the switch region and whatever blanking arrives with it. The line account's picture quantity is smaller by
+the switch-line count and is defined in §4, not here.
 The no-input capture is a NULL, not a third arm: with nothing on the input every row reads the
 device's floor, so it fixes that floor near 1.4 and discriminates nothing.
 

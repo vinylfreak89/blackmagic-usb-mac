@@ -3088,6 +3088,15 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   approved document would have deleted the non-partial count and accepted-expansion rules, held switch bounds and
   the temporal head-catch/VBI distinctions — caught only because Codex said the document was a set of changes and
   not a replacement specification.
+  **The same check applies to a correction RECEIVED, and that is the harder half (2026-09-10, same day).** Codex
+  corrected one wording — "do not label that row picture, it is a pass-through window, and field 1's window
+  reaching 262.5 does not establish that its picture does". The correction was applied to the row it named. One
+  edit later, in the prose directly beneath that row, the same error was written fresh —
+  "each field's picture is exactly its 240 rows".
+  A received correction feels finished when the named site is fixed, which is exactly when
+  it is least likely to be carried to the sites the reviewer did not happen to quote — so the per-site question
+  ("what does the document now say about X") must be asked of the CLASS of error, not the instance, and asked
+  again after the fix rather than before it.
 - **Cross-check a stale OPEN list against the settled document (2026-09-10).** Clearing `v10_pending.md`'s
   blocked-on-owner items against the day's rulings found a hole in the RULINGS, not the tracker: item 9 said the
   switch-line count has no seed the contract authorizes, which pointed straight at a ruling that had been delivered,
