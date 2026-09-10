@@ -90,3 +90,55 @@ report them.
     "0x0800", "comb_safe", normal picture vs program, "qualifying"/"qualified".
 35. §2 asserts a symmetric result it says was not measured.
 36. §8's render spec names two captures where the acceptance set has four.
+
+---
+
+# The sort: what a wording fixes, and what it does not
+
+Findings divide into two kinds and they need different handling. Most are contradictions — one term
+defined twice, two rules disagreeing, a coordinate system used two ways — and those are resolved by
+deciding which sentence is right and deleting the other. **Six are not.** They describe rules that
+cannot be satisfied as written, and no choice of wording makes a circular or unsatisfiable test
+terminate. Those are the owner's to rule on, not ours to word around.
+
+## PILE B — no wording resolves these (for the owner)
+
+**B1 (finding 2). The mandated edge test can only ever return Unknown.** Separating blanking from
+clipped dark content is possible "only by geometry"; head-switch evidence is "an INPUT TO THE
+GEOMETRY". The measurement depends on the thing it feeds, and the document names no third observable.
+Rules 2, 3, 8b and 9 all rest on it. Either a third observable exists and must be named, or the rule
+must say what happens when the test cannot terminate.
+
+**B2 (finding 13). Two classes can only be entered by establishing an absence for which no positive
+test exists.** The invalid class's second condition requires "positively established absence of the
+unstable-timing region", and rule 10's "not applicable" requires established absence of a head
+switch — while §3 says "their absence does not establish absence of the region" and §1 says failure
+to measure does not establish a switch-free source. As written, neither class can ever be entered,
+and §8's overlay spec requires distinguishing them.
+
+**B3 (finding 17). On a line-TBC-corrected source the mandated test has nothing to measure**, and the
+only detector that works there is disqualified in the same sentence as deck-specific and
+non-transferable. Two of the four acceptance captures are corrected sources.
+
+**B4 (finding 10). A threshold is required, its derivation rule does not exist, and both agents are
+forbidden from choosing one.** The procedural gate that deferred implementation until the rule existed
+was removed on his instruction; the qualification study it was waiting for is still listed incomplete.
+
+**B5 (finding 4). The head-catch ruling and the line account give opposite results on the same event,
+and one of them is his stated acceptance test.** Choosing between them is overriding a ruling, which
+is his call rather than ours.
+
+**B6 (finding 9). Box classification gates acquisition and rests on a predicate the document says has
+not been measured.** Unlike the others this may be an unbuilt instrument rather than an unsatisfiable
+rule — but rules 8a, 8b and 12 turn on it now, so whether they are inert until it exists is a ruling.
+
+## PILE A — resolvable by choosing a wording (for the two agents)
+
+Findings 1, 3, 5, 6, 7, 8, 11, 12, 14, 15, 16, 18 (severe); 19–31 (moderate); 32–36 (minor). Each is
+a contradiction, a duplicated definition, a term used in two senses, or an undefined term that gates
+behaviour. None requires a ruling: each requires deciding which of two existing statements is the
+rule and removing the other, or defining a term the document already relies on.
+
+⚠️ Finding 12 (two live coordinate systems) is in this pile but is the largest single edit, since
+frame-continuous numbers appear throughout the normative text while the header declares
+field-relative and withdraws them.
