@@ -3967,6 +3967,29 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   becomes impossible it is because the EVIDENCE is unavailable, never because the observer was switched off, and the
   two have different consequences: unavailable evidence gives Unknown, a disabled observer gives silence that reads
   as no-change. Watch for it wherever a rule gates behaviour on a signal-state class.
+- **AN AGGREGATE SEPARATION IS NOT A PER-UNIT DISCRIMINATOR — the sibling of the rule below, measured 2026-09-11.**
+  A departure profile built from MEDIANS ACROSS 60 UNITS separated the switch rows from ordinary picture cleanly
+  and landed exactly where the contract says the switch is. Turning that into a per-unit decision **failed at
+  30% exact**, and a robust-spread repair — IQR/1.349, the right statistic where a tenth of the inputs are known
+  bad — **made it worse at 23%**. Both attempts are recorded as failed so neither is re-derived.
+  **The reason was in the profile table already published and not read:** ordinary line 258 has **p90 +1.07**,
+  switch line 260 has **p10 +0.57**. The medians separate; the per-unit distributions OVERLAP, and **no threshold
+  repairs an overlap.** The aggregate signal is real — this does NOT show the engine's T is wrong or that the
+  departure is not the switch — but *"a per-unit decision can be made from it"* was never established and was
+  assumed by building the profile from an ensemble and then querying single units.
+  **The pair to hold together:** below, repeated readings cannot resolve a systematic error; here, aggregating
+  across units MANUFACTURES a separation no single unit carries. **Both mistake a property of the ensemble for a
+  property of the measurement**, in opposite directions.
+  ⚠️ Recorded HERE rather than in `docs/v10_pending.md`, where it first went: the tracker is temporary by design
+  and is deleted when empty, so a durable conclusion parked there is **a conclusion scheduled for deletion** — the
+  colour-burst failure this file already names, with the filing step as the mechanism instead of the channel.
+- **A LINE-ORIENTED GREP CANNOT SEE A WRAPPED PHRASE, and this file wraps at about 110 characters
+  (2026-09-11).** Searching CLAUDE.md for its own rule "written into THIS FILE at the moment it is reached"
+  returned ZERO — the sentence breaks across a newline between "is" and "reached", and `grep` matches within lines.
+  One step from filing a finding that the rule did not exist. **Any quoted rule longer than a few words is likely
+  to span a line here**, so search on a short fragment that cannot wrap, then READ the passage. Newest member of
+  the family whose other members are `grep -c` counting lines, `grep -o` counting substrings, `tail` on a live
+  capture, and `PIPESTATUS` in zsh: a command that succeeds quietly while answering a different question.
 - **Repetition is not qualification (2026-09-10).** Both Claude and the watchdog independently reasoned that
   repeated well-exposed readings must resolve an unresolved boundary difference — uncertainty falls with
   repetition, exposure-dependence is excluded once the picture is bright again. **Wrong, and wrong the same way:
