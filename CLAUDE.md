@@ -4368,6 +4368,19 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   copied it from somewhere now gone, and it reads exactly like a ruling. **Anything carried as "owner, verbatim"
   must be findable in a transcript, or be marked unverifiable where it is stored.** If B4 ever matters, the honest
   move is to ask him the underlying QUESTION fresh, never to reconstruct one that fits the answer.
+  ⚠️ **AND SEARCHING FOR A QUOTE IN A STORE THAT HOLDS YOUR OWN COPY OF IT RETURNS FALSE CONFIRMATIONS
+  (measured on this session's own transcript, 2026-09-11).** Two record-type facts first, both reproduced here:
+  the owner's mid-turn messages are NOT stored as `user` records — this transcript holds **8,794 `attachment` and
+  3,588 `queue-operation` records against 7,407 `user`** — so a search restricted to `user` reads a small fraction
+  of what he said and will conclude "not found" on things he stated plainly.
+  Searching properly, of six owner quotes recorded today, **exactly ONE is verifiable from this side**: the
+  temporal reframing, found in a `queue-operation` record carrying his own framing ("this to both you and codex
+  directly. a line is not a line rendered at once…"). **The one-sided-motion, coherence and `:812` quotes appear
+  ONLY inside relay wrappers — zero occurrences anywhere else.** And two that a naive search reported as "found
+  outside a relay" are **self-referential**: the dark-peak quote's hit is a `tool_result` echoing MY OWN commit
+  output, and the plain-comb quote's is a diff of the relay's own edit to my tracker. **Neither is his words; both
+  are my or its writing read back.** A verification that can be satisfied by the thing it is verifying is not one —
+  the same shape as the engine confirming itself on `(0,0)`, one store further out.
   ⚠️ **Consequence for this file, stated because it is uncomfortable rather than because it is safe: EVERY owner
   quote added to CLAUDE.md on 2026-09-11 reached this session through the relay, not from him directly.** The
   tracker entries say so in as many words ("Relayed, not heard directly by this session"); several entries here do
