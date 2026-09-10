@@ -335,8 +335,6 @@ presenting them as his to decide made him the bottleneck when the harness was.
 | A16 | `complete_log` calls `abort()` on a completion mis-join — inside OBS that kills the host and the user's recording | `src/frameserver/QUEUES.md`; Codex accepted at `dec922f` | open before shipping; named fatal-session handling is the agreed policy, not implemented |
 | A17 | A permanently blocked consumer cannot stall analysis but prevents shutdown drain (`fs_stop` hangs) | `src/frameserver/QUEUES.md`; Codex accepted at `dec922f` | open before shipping; caller-deadlined shutdown with quarantined live resources is the agreed policy, not implemented |
 | A13 | `frameserver_replay --pace-us 0` destroys a whole-tape run and exits 0, printing no capture-level loss | CLAUDE.md §6 | not fixed; use `--pace-us 8000`, or a ring larger than the file for a slice |
-| A21 | ~~The comb cannot license a lock~~ **WITHDRAWN, Claude was wrong** (Codex, 2026-09-09). There are TWO acquisition sites, not one: `field_registration.c:608` locks from the comb with no caption, and `:839` locks from a caption. The comb is wired to a lock. The claim that three turns of comb work were aimed at a disconnected path was false | — | closed, kept only so the error is not repeated |
-| A22 | ~~Confirmation is caption-only, so a caption-less tape cannot lock~~ **WITHDRAWN, Claude was wrong.** The comb path at `:608` needs no caption. Also wrong in the same brief: confirmation must accept "comb or VBI or caption" — the contract's Source lock definition carries the owner's own words, "combing, captions, or both, and nothing else", so VBI was Claude's invention | contract §3 Source lock | closed |
 | A23 | The contract's second reading of `d`, count minus extent, is not implemented — `geometry_d = top - origin` (`:792`) is the only one. On capture 1 the top reads 23/286 in every stable unit, so the implemented reading is degenerate there and the informative one is absent | contract rule 3 | not implemented; **tier 2** |
 | A18 | **BOTH acquisition sites require a measurable switch on both fields** (`field_registration.c:601–602` for the comb path, `:834` for the caption path), so no source lacking one can lock — boxed pictures, where rule 8 forbids measuring it, and line-TBC-corrected passes, where the owner says there is none. **This is not an engine defect: the contract's Source lock definition requires it in the owner's own words** ("at a unit whose switch line and band are measurable"). The contract contradicts itself and neither agent may resolve it | contract §3 Source lock against §2 and rule 8 | **blocked on the owner**; nothing in tier 1 can proceed until he settles it |
 | A19 | The band is not held when the switch is undetectable: absent detection must hold the band, invalidated only when the line count below the head switch changes | contract rule 4 | not implemented; **tier 1** |
@@ -358,19 +356,28 @@ presenting them as his to decide made him the bottleneck when the harness was.
 Neither agent may resolve these; the process sends contract conflicts to him.
 
 1–3 **ANSWERED 2026-09-09 and written into the contract**: the switch requirement is conditional (required only
-   where the geometry is not boxed and not all lines are picture); ~~confirmation stays comb-or-caption~~ **— that
-   half is superseded by item 7, settled 2026-09-09T16:40:11Z: a measurable box is itself one of the two
-   confirmations and at least one further observation, comb or head switch, completes the lock** — and a source
+   where the geometry is not boxed and not all lines are picture); confirmation stays comb-or-caption ⚠️ **— the
+   claim that item 7 supersedes this half is DISPUTED (owner, 2026-09-10) and cannot be relied on while items 6
+   and 7 are disputed below; treat comb-or-caption as standing until he rules** — and a source
    that never locks is an accepted outcome, fail closed; the hold keeps the head switch's position line and is lost
    only when the total number of bands changes, ordinary clipping excluded. A change of geometry — box to full
    picture or back — resets the lock.
 
-~~4. The contract's 486 crop is off by one~~ — CONFIRMED and corrected 2026-09-09.
-~~4. Rule 8's box-validity wording is owed~~ — the bounds where a box is valid and where it is invalidated. Neither
-   agent should write it. Asked and explained; answer pending.
-⚠️ **Items 6 and 7 are CLOSED**, settled 2026-09-10 on the owner's own words verified from the source transcript
-(`type: user`, `isMeta` unset, with uuid and timestamp) rather than from a relay, and written into the contract at
-`604bef7` + `75bdc69`. They are recorded there, not here. Item 8 stays open and is deliberately non-operative.
+4. **Rule 8's box-validity wording is owed** — the bounds where a box is valid and where it is invalidated.
+   Neither agent should write it. Asked and explained; answer pending. (Was struck through while its own text said
+   pending; un-struck 2026-09-10. The duplicate second "4." was the 486-crop item, which is genuinely closed and
+   has been removed — its correction lives in CLAUDE.md §11.)
+⚠️⚠️ **Items 6 and 7 are DISPUTED and OPEN AGAIN (owner, 2026-09-10).** They were written into the contract at
+`604bef7` + `75bdc69` as settled, on transcript-verified quotes. He has since rejected the reasoning built on
+those edits, and one of the quotes reached this session through a watchdog paraphrase that Codex had to correct.
+**Nothing is deleted and neither contract commit is reverted** — that is his call, and the two commits are
+load-bearing for the engine change that followed. What is owed to him is a line-by-line split of which contract
+text rests on his own words and which is inference.
+
+6. **Does a box make the head switch unmeasurable, or does the absence of a lift-off point?** Written into rule 8
+   as the latter. DISPUTED.
+7. **May a measurable box plus one further observation make a lock, or is the list comb-or-caption?** Written
+   into §3 Source lock as the former. DISPUTED, and item 1–3's supersession above depends on it.
 
 8. **What are "the two numbers" on geometry?** The band has an extent, a top switch line and a count; the box has
    bands at both ends. The contract now carries the likely reading — the box's outer edges, top and bottom, per
@@ -384,7 +391,8 @@ Neither agent may resolve these; the process sends contract conflicts to him.
    is nowhere in the contract; rule 4 wants the acquisition's geometry to be an observation, not an assumption.
    (Both agents agree this does NOT explain capture 1's zero locks — that is still open.)
 
-~~5. Is VBI a confirmation signal alongside captions?~~ The owner raised it himself: "isn't VBI another confirmation
+5. **Is VBI a confirmation signal alongside captions?** (Un-struck 2026-09-10: its own text says his ruling is
+   pending, so it was never closed.) The owner raised it himself: "isn't VBI another confirmation
    signal? ... caption and VBI are kind of part of the same class I think". It would give a caption-less source a
    second confirmation. Answered back to him with the asymmetry that decides it; his ruling pending.
 
