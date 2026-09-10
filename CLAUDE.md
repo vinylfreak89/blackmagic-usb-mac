@@ -3032,6 +3032,18 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   tell a line label from a count, an offset or a raster standard, so "the 525 line is 858 samples", "offset 263 rows"
   and "written 262.5 and never 263" all scored as withdrawn labels. Classify before converting; the class, not the
   numeral, decides whether anything changes.
+- **"Closed by overlap" is not a disposition — it is a guess wearing one, and it was wrong 4 times in 5
+  (2026-09-10).** Two cold reads of the contract produced overlapping findings. Where one reader's finding had been
+  repaired, Claude recorded the OTHER reader's overlapping finding as closed too, flagged it in the tracker as "a
+  judgement rather than a verified before/after", and asked Codex to check. Of the five so dispositioned, **one was
+  closed and four were not** — and Codex named the surviving text in each: an invariant still forbidding what a new
+  rule permitted, a heading still asserting the opposite of its own body, a definition still admitting the rows
+  another definition excluded, and a whole interface still unscoped. **Overlapping findings are reached by different
+  routes and are therefore about different text**; repairing one says nothing about the other's sentences. The
+  discipline that works is the one Codex had already applied in the other direction: a finding is closed only by a
+  specific before/after change, "not reproduced in the cited version" when the evidence does not exist, and nothing
+  in between. Flagging the guess was right and did not make it less wrong — a labelled guess in a tracker is still
+  read as a status by whoever plans from it.
 - **Three independent reads, three different errors, none caught by the agent that made it (2026-09-10) — this is
   the argument for the cold-read discipline, and it is worth more than any of the fixes.** On one clause about an
   unresolved boundary difference: the watchdog wrote an either/or ("will either never qualify a one-row change or
