@@ -2659,9 +2659,16 @@ The gap between the box's bottom and the head switch measured 24 rows on that un
 box at any threshold tested.
 ⚠️ **The verdict is robust; the extent is not.** "Box: yes" holds across every threshold from 4.0 to 8.0, but the
 top band grows from 31 to 36-41 rows on the card's dimmer pass and at its fades, because the WARNING line stops
-reading as structure. Since the owner's rule makes a box FIX the geometry, and the geometry is the extent, this is
-the open design question: whether a box's fixed value is taken once from a well-exposed unit and held under the
-lock (which is what rule 4 does for every other per-source quantity) or re-measured per unit. Also unreconciled:
+reading as structure. ⚠️ **This was recorded as an open design question — "whether a box's fixed value is taken once from a
+well-exposed unit and held under the lock or re-measured per unit" — and that was WRONG: the contract already
+answers it** (Codex, 2026-09-10). Rule 8 says the extent is "measured while the picture is well exposed, and it is
+HELD", and it supplies the discriminator this census's exposure-dependence needs: "a fade shows as the picture's
+overall level falling while the band edges stay put in the rows that still read, and it never invalidates anything.
+Only a band edge moving **while the level is steady** releases the geometry. This matters because the two look
+identical at the first unit and one means hold while the other means release." So the extent growing 31 -> 36-41
+rows on the dim pass is the FADE case, which invalidates nothing. What is genuinely open is detector work rather
+than policy: how "well exposed" is qualified, how the fade is measured, and how genuine picture entering the bounds
+is told from exposure-dependent detectability. Also unreconciled:
 the contract previously recorded the bottom band ending at line 260 against this census's 264, the difference
 being exactly the head-switch region that rule 8 says is not measured when a gap separates it.
 
