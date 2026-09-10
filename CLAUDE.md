@@ -1779,8 +1779,11 @@ historical claims, not the current rule.
   loss or a cut is audited against the raw raster before hand-over. The published v9 pair stays
   as the sanity baseline; it is not accepted.
   ⚠️ **FOUR COMMIT CITATIONS IN THIS v9 SECTION DO NOT RESOLVE (found 2026-09-11 by
-  `experiments/cited_commit_check.py` on its first run): `490877b`, `cb1b4ed`, `a683926`, `7254d58`.** None is a
-  valid object on any ref here. **The WORK survives on `main`** — round 10's bounded relative comb correction is
+  `experiments/cited_commit_check.py` on its first run): `490877b`, `cb1b4ed`, `a683926`, `7254d58`.** **Established, not assumed: none is a valid object in this
+  repository's object store — which ALL THREE working trees share** (`/private/tmp/blackmagic-v10/.git` is a file
+  reading `gitdir: …/blackmagic-usb-mac/.git/worktrees/blackmagic-v10`, so a query in one tree is a query in all),
+  **and `git fetch origin <hash>` refuses each of them, so they are not recoverable from the remote either.** What
+  is NOT established is whether they exist in a clone on another machine. **The WORK survives on `main`** — round 10's bounded relative comb correction is
   `05bb2c0` with `c031bf9`/`f4f7328`/`ca7310e` beside it, and `render-live`'s tip is `85a413b` — but that mapping
   is INFERRED FROM COMMIT MESSAGES AND DATES and is **not verified**, so the hashes below are left as written
   rather than replaced with guesses, which would manufacture history. **The consequence to know: anyone returning
