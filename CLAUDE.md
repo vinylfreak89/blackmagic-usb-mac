@@ -3009,6 +3009,19 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   hazard in the same family and was not what happened here; a line carrying two occurrences is the case it hides.)
   Same shape as `tail` on a live capture and `&&` after a verification: a command that succeeds quietly while
   answering a question you did not ask.
+- **A search is only as complete as the set you search FOR, and building that set from the examples in front of you
+  is how a census undercounts (2026-09-10, fourth member of the same family).** Converting the contract's withdrawn
+  frame-continuous field-2 line numbers, the token list was built from the header's own examples — 284, 286, 522-525
+  — plus what had been noticed by eye. The withdrawn convention numbered field 2's lines **263-525**, so 265-282 and
+  287-521 were never searched for. The census reported 24 lines and missed a whole row of the contract's central
+  geometry table (`| 7-15, 270-278 | 11-19, 274-282 |`), because 274 and 282 were not in the list. Rebuilt over the
+  full range it found 25. **The instrument was not wrong about anything it looked at; it was wrong about what to look
+  at**, which no amount of care in reading its output can catch — the missing row simply never appeared. Derive the
+  search set from the DEFINITION of what is being searched for (here: the range the withdrawn convention spanned),
+  never from a sample of it. The same census also over-counted in the other direction: a bare integer match cannot
+  tell a line label from a count, an offset or a raster standard, so "the 525 line is 858 samples", "offset 263 rows"
+  and "written 262.5 and never 263" all scored as withdrawn labels. Classify before converting; the class, not the
+  numeral, decides whether anything changes.
 - **Three independent reads, three different errors, none caught by the agent that made it (2026-09-10) — this is
   the argument for the cold-read discipline, and it is worth more than any of the fixes.** On one clause about an
   unresolved boundary difference: the watchdog wrote an either/or ("will either never qualify a one-row change or
