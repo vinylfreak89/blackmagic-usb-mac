@@ -967,7 +967,9 @@ closed.
 ## 6. The engine deliberately does not have
 
 No zero re-anchoring, no learned numeric offsets, no evidence-voting hierarchy, no body-witness veto of a measurable
-top, no comb correction of the crop (the settled comb confirms, it never moves a field), no position claimed through
+top, no comb correction of a settled crop (under a maintained lock the settled comb confirms and never
+moves a field; EVALUATING an alignment candidate at acquisition or reacquisition is a different operation from
+COMMITTING one to the output, and only the second moves anything), no position claimed through
 damage (the geometry holds, the position is Unknown),
 no top-reliability history, no windows, no thresholds that are not a stated measurement. Each was measured to fit fixture A rather than the raster.
 
