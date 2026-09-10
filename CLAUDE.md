@@ -3119,6 +3119,22 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   it is least likely to be carried to the sites the reviewer did not happen to quote — so the per-site question
   ("what does the document now say about X") must be asked of the CLASS of error, not the instance, and asked
   again after the fix rather than before it.
+- **A queue that does not ENUMERATE is not a queue, and the failure is invisible from inside it (2026-09-11).**
+  `v10_pending.md`'s "Blocked on the owner" section listed three questions for the owner. Six were open: the other
+  three — B2's residue, the terminal-black-run disposition, caption-only precedence — lived as inline `OPEN, and
+  with the owner` markers in the CONTRACT and had never been mirrored into the list that exists to enumerate them.
+  Not answered, not folded into other wordings, not lost in a flattening — **in a different file from the list**.
+  Caught by the watchdog session, and only because the count happened to stay at three while the three items
+  changed, which is coincidence rather than substitution. **Whoever hands the owner his list reads the queue, not
+  every file**, so an item that is perfectly preserved somewhere else is still an item he never sees.
+  The general form: when a document holds both CONTENT and a POINTER to that content elsewhere, nothing keeps them
+  in step, and the pointer is the half that is read. Two guards that would have caught it — enumerate the source of
+  truth (`grep` the contract for its own open markers and compare with the queue's rows), and make the queue's
+  entries pointers rather than copies so a missing pointer is the only failure mode rather than one of two.
+  ⚠️ A related trap in the same fix: **B2's residue had been REFRAMED that day** — from "can absence be
+  established" to "what is the disposition when it cannot", because observability is empirical and not his to rule
+  on. Mirroring the stale name would have handed him a question asking him to rule on a measurement. A pointer must
+  carry the item's current framing, not the name it was filed under.
 - **Cross-check a stale OPEN list against the settled document (2026-09-10).** Clearing `v10_pending.md`'s
   blocked-on-owner items against the day's rulings found a hole in the RULINGS, not the tracker: item 9 said the
   switch-line count has no seed the contract authorizes, which pointed straight at a ruling that had been delivered,
