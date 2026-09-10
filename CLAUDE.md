@@ -2113,6 +2113,28 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Field-relative migration started: mapping foundation, not exporter handoff.**
+`src/field_registration/field_lines.h` maps all 525 delivered storage rows to
+their physical field and exact half-line label, including row 259 -> f1 262.5,
+row 260 -> f2 1, row 522 -> f1 1 and both padding runs. The inverse round-trips;
+O3 and ASan/UBSan pass 1,075 checks. An explicit old `row+4` negative control
+fails 266 mappings. This is naming only; production writers, detectors, schema
+20 and raw/live exports remain unchanged. `field-relative-v1` is reserved,
+not yet emitted. Do not flip the cross-compared harness until the writer/schema
+migration and coordinated handoff. Existing scans cross physical field ownership
+at the block boundaries, so serialization must preserve both the observation
+field and the addressed coordinate's field, not silently assign every label
+to the caller's field. Details: `src/field_registration/tests/FIELD_LINES.md`.
+
+**Calibration proposal A–H remains under review, not an agreed procedure.**
+Absence of an interior blanking run does not independently identify normal
+timing (B); requiring an observable transition at the nominal position excludes
+the very extended/overridden cases being sought (D). Generated-row noise and
+between-unit variation of its mean do not substitute for digitized-source
+blanking variability (E). Capture-1 positional exclusions are instrument/cohort
+limits, not cross-source guarantees. No classifier or cutoff is authorized by
+this review, and captures 2–4 remain behind the owner's source-order gate.
+
 **Rule-8 gaps 1–3 review and proposed sequence, not implementation:**
 `993e4ab` corrects the repeated one-acquisition-site claim; source lock and
 head-switch bounds remain different states. The inclusive band count still

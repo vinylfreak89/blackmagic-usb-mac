@@ -4,6 +4,13 @@ CPPFLAGS ?=
 LDLIBS ?= -lm
 
 .DEFAULT_GOAL := all
+
+.PHONY: test-field-lines
+test-field-lines: tests/field_lines_test
+	./tests/field_lines_test
+
+tests/field_lines_test: tests/field_lines_test.c field_lines.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/field_lines_test.c -o $@
 # The private reader must invalidate every active engine build.
 libfieldreg.dylib tests/field_registration_unit tests/field_registration_v10_rule1 tests/field_registration_v10_rule3 tests/field_registration_v10_rule4 tests/comb_test tests/unlocked_placement_test tests/switch_timing_test tests/static_comb_test tests/box_exclusion_test tests/run_timing_test: box_observation.h run_timing.h
 
@@ -34,7 +41,7 @@ TRUTH_SRC := $(wildcard tests/field_registration_truth.c)
 TRUTH_DEPS := $(if $(TRUTH_SRC),tests/field_registration_truth tests/libfieldreg_truth.dylib tests/registration_truth.raw)
 
 test: tests/field_registration_unit tests/cea608_unit tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw tests/field_registration_v10_rule3 tests/registration_v10_rule3.raw tests/field_registration_v10_rule4 tests/registration_v10_rule4.raw tests/switch_timing_test tests/comb_test tests/unlocked_placement_test
-test: tests/box_exclusion_test tests/run_timing_test
+test: tests/box_exclusion_test tests/run_timing_test test-field-lines
 	./tests/field_registration_unit
 	./tests/cea608_unit
 	./tests/field_registration_v10_rule1 tests/registration_v10_rule1.raw
