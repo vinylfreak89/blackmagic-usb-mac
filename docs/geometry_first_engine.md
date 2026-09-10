@@ -41,12 +41,26 @@ SOUNDNESS - the partial line's boundary must not jump further than expected in o
 is a per-unit continuity condition on where that boundary sits along the row. Where it holds, the
 line the picture "lost" to the band counts as normal picture geometry, no hold is taken on the
 switch, and THE OUTPUT PICTURE DOES NOT MOVE. That last clause is the acceptance test for both the
-engine and the harness. ⚠️ A correction on the head switch band is owed from the owner and is
-expected to settle the 259-against-260 discrepancy; nothing is implemented against this ruling
-until it lands. ⚠️ "when it jumps down" is directional and is read here as the band's top moving to
-a lower line number, so the picture loses a line to the band - the reading that makes "that 'lost'
-line" refer to something; if he meant the other direction the clause about which line is recovered
-inverts, and that is worth confirming rather than assuming.
+engine and the harness.
+
+**BOTH DIRECTIONS, and they are one event (2026-09-10, answering the question this entry used to
+carry as an ambiguity).** Verbatim:
+> When the head switch falls off so that the line becomes normal picture or when it moves up to
+> destroy normal picture. Two sides of the same coin.
+
+So the rule is symmetric and is not two cases. The band's edge falls off a line and that line
+becomes normal picture - the picture GAINS one; or the edge moves up onto a line and that line
+stops being normal picture - the picture LOSES one. Both are valid and expected when the movement
+is temporally sound and the partial was near an edge when it jumped, and NEITHER is a lost lock, a
+hold, or a geometry change. An earlier version of this entry read "that 'lost' line" as the losing
+direction only; that reading was half the rule and is withdrawn.
+Consequence for what the harness already measures, stated as a reading rather than as his words:
+its switch-line count on capture 1 sits at 3 and departs to 4 in nine units and to 2 in 29. Those
+are the same phenomenon in the two directions - the 4s the band having taken a line, the 2s having
+shed one - so where the movement is sound the count should hold at 3 and the departure should not
+register as a band event.
+⚠️ A correction on the head switch band is owed from the owner and is expected to settle the
+259-against-260 discrepancy; nothing is implemented against this ruling until it lands.
 
 **Row 262.5 and field 2's line 1 (2026-09-10).** "Properly label them 262.5 and 1." Field 1's block
 ends with the HALF LINE, written 262.5 and never 263, because a half line is the second half of 262
