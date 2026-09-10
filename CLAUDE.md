@@ -2677,8 +2677,9 @@ with each other** (Codex's correction to a Claude claim that they coincided — 
 reading on 6731 against a T from 6687, different units): **6731** T=260 and bottom=259 against a bar whose last line
 reads 259, so the instruments agree and the box meets the band; **6760** T=260 against a bar whose last line reads
 260 (mean 22.49, h 3.49) with the switch level starting at 261, a one-line disagreement about where the band begins
-— contact holds either way, the boundary does not; **6700** has **T = -1, unmeasurable**, so the test cannot be
-asked of it at all. So contact is supported on the units where it can be asked, the boundary line is
+— contact holds either way, the boundary does not; **6700** has **T = -1 in the saved reference**, so the test cannot be asked of
+it against that reference — which is a limit of the reference there, not proof that no instrument can resolve
+that unit's band top. So contact is supported on the units where it can be asked, the boundary line is
 instrument-dependent, and one unit in three is unaskable. Three units is not a census; the population has not been
 run, and the population version must join on T per counter and field rather than on a level-derived edge.
 The test to build: from the content bottom downward, the run at the bar's own level, and whether it reaches the
