@@ -584,6 +584,47 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### PROPOSAL — the coherence ruling's 6(b) names the wrong line, and the contract already says why
+
+His coherence ruling (2026-09-11) gives one exception to the hold: the tape's own vertical interval entering the
+picture is proof positive the tape's geometry changed, in two forms — (a) a waveform becoming decodable on line 20
+or 21, and **(b) "the tapes own blanking which is discrete from device blanking enters on line 22"**.
+
+**The mechanism is sound and its discriminator is measured and strong. The LINE is off by one.**
+
+**Measured, per unit, against each unit's own device blanking rows** — a per-unit comparison against a measured
+reference, never a typed-in cut, as *Source-measured levels* and rule 4 require:
+
+| | capture 1 (card) | fixture A | capture 4 (SP, V-stab off) | device's own rows |
+|---|---:|---:|---:|---:|
+| **line 22** above device blank | **+0.00** | **+0.00** | **−0.00** | — |
+| line 22 row sd | **0.48** | **0.48** | **0.48** | **0.48** |
+| **line 23** above device blank | +1.77 | **+42.21** | **+109.36** | — |
+| line 23 row sd | 2.24 | **47.08** | **33.58** | 0.48 |
+
+**Line 22 is device blanking on all 1,092 field-readings across three captures — p10 to p90 of ±0.01, with the
+device's own dither sd of 0.48 exactly.** Nothing the tape carries reaches it.
+**And the contract already states the reason**, §2's table at `:349`: `| 22 | 18 | 281 | blanking, Y 1.4 |
+Shuttle |` — line 22's origin is the Shuttle, unconditionally, unlike lines 20 and 21 which are qualified "when its
+decoder has sync". **So the tape's blanking cannot enter on line 22: the device overwrites it.**
+
+**Where it DOES become visible is line 23**, the first pass-through position — and CLAUDE.md already records the
+observable there, on fixture A's displaced intro: "the tape's own black line 22 (Y ≈ 4–7, above the 1.4 blanking)
+sits at row 19", and row 19 is NTSC **line 23**. His observable is real; it surfaces one line below where the
+wording puts it, because the device destroys the row above it.
+
+**RECOMMENDATION:** 6(b) should read **line 23 (and 286 in field 2)**, or better, "the first pass-through
+position", so it stays correct if the raster description ever changes. The discriminator itself needs no
+amendment — device-written blanking carries the dither sd of 0.48 and source-carried content at line 23 measures
+2.24 to 47.08, a four- to ninety-eight-fold separation in noise character alone, per unit, with no level typed in.
+
+⚠️ **Its strength varies with content and that bounds it:** on capture 1's dark card top, line 23 sits only +1.77
+above blanking at sd 2.24 — separable, but not by the margin fixture A and capture 4 give. A source whose picture
+begins genuinely black at line 23 is the case where 6(b) is weakest, and it has not been exercised.
+⚠️ I have NOT verified 6(a) — whether a waveform becomes decodable on line 20 or 21 — and those lines are
+conditionally Shuttle-written ("when its decoder has sync"), which is a different situation from line 22's
+unconditional one and may not carry the same conclusion.
+
 ### PROPOSAL — the level-threshold BASIS, reconciled as he asked (2026-09-11, overnight)
 
 His instruction: *"thats tricky. I will leave it to it to reconcile and propose."* So this is a proposal with the
