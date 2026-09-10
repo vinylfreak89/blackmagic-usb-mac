@@ -666,8 +666,11 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   Extra black at the bottom is acceptable; rows past the clip read as legal black (owner, 2026-09-03); a letterboxed
   picture is centred; before a lock, standard placement. **Displacement sign**: positive is lower in the raster.
 - **Comb**: the relative vertical shift between the two fields' crops that minimises the comb energy of their weave on
-  static, detailed picture; measured first at standard placement, it confirms a lock when it reads zero at the placed
-  crops; **Comb measurement and picture-preserving alignment selection occur during acquisition and reacquisition only**
+  static, detailed picture; measured first at standard placement, it confirms a lock when it reads zero at **the CANDIDATE
+  crops under test**, not at the crops currently rendered — the code already stages it this way, `comb_confirm`
+  evaluating the proposed pair before `apply_locked_geometry` commits or restores placement. ⚠️ Note what a zero
+  does and does not mean: it is a RELATIVE alignment result, so both fields can share a nonzero displacement while
+  remaining mutually aligned. The comb is common-mode blind and a zero never asserts `d = 0`; **Comb measurement and picture-preserving alignment selection occur during acquisition and reacquisition only**
   (owner, 2026-09-10): "that is the lock, either initial or reacquisition. when a source is locked, then its geometry
   is known, comb should not need to run and field geometry shifting obviously is going to move the same way comb
   detection works. so comb should not be an all the time running thing." Under a maintained lock the comb is not
@@ -801,9 +804,18 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    its caption insert at −2 (owner, 16:16–16:18: "if the shuttle overwrote it, tough noogies"). Rows past the clip
    render as legal black in the output (owner, 2026-09-03), whatever the raster carries there.
 8. **The output picture never moves except at a segment's initial lock and after a re-acquisition.** Field
-   precedence (which field's line sits between the other's) is settled once per lock, by the comb where the comb is
-   the confirmation; where a qualified caption confirms alone, precedence follows from the placed geometry and the
-   comb is not required (Source lock: the second measurement is comb OR captions/VBI).
+   precedence is settled once per lock. ⚠️ **"Where a qualified caption confirms alone, precedence follows from the
+   placed geometry" was added here on 2026-09-10 and is WITHDRAWN as an unsupported assertion** — §1 says geometry
+   does not say which field's lines interleave on top, and nothing established that a caption route supplies it.
+   ⚠️ **"Precedence" is being used for THREE quantities, which must be separated before the sites naming it can be
+   made consistent**: (1) which physical field and time each transport slot represents; (2) how the two selected
+   picture crops interleave spatially; (3) the comb's calibrated zero or bias for evaluating that interleave. The
+   engine's `parity_state` and `comb_zero_candidate` concern (3) — assigned only in `comb_confirm`, with no caption
+   path assigning them — and their names do not establish that they carry (1) or (2).
+   **OPEN, and with the owner:** on a caption-only acquisition, what independently established evidence determines
+   the required field interleave? If that evidence is unavailable, may the source lock exist without it, and what
+   placement and rendering behaviour is permitted? Answering it preserves comb OR captions without silently making
+   the comb mandatory again, and without inventing a geometry-derived precedence measurement.
 
    **8a. The box: what it is, what holds it, what invalidates it.**
    A box must be BOUNDED (owner, 2026-09-10): "no it doesn't need to open up to a full picture. it can open up to
