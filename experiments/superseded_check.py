@@ -186,24 +186,36 @@ def selftest() -> int:
     rc = check(CONTRACT, quiet=True)
     print("  negative control (current contract): expect clean ... %s" % ("PASS" if rc == 0 else "FAIL"))
     ok = rc == 0
-    # Positive control from real history: at e6b224f the owner's question carried both its framings.
-    try:
-        old = subprocess.run(["git", "-C", repo, "show", "%s:docs/geometry_first_engine.md" % CONTROL_COMMIT],
-                             capture_output=True, text=True, check=True).stdout
-    except Exception as e:                                    # noqa: BLE001
-        print("  positive control: UNAVAILABLE (%s)" % e)
+    # POSITIVE CONTROL — SYNTHESISED, not borrowed from history.
+    # ⚠️ It used to read `docs/geometry_first_engine.md` at commit e6b224f, where the owner's absence
+    # question carried both framings in consecutive sentences. That subject was RETIRED on 2026-09-11
+    # when his ruling answered the question, and the control silently stopped being able to fire:
+    # "the check cannot see the defect it exists for". **A control that borrows a live subject stops
+    # being a control the moment the subject goes** — the same class as owner_queue_check's controls
+    # borrowing a live marker, and as the hardcoded text before that. Third instance in one night.
+    # The historical fact is kept in the note above because it is what proved the +-700-character
+    # window was a proxy; it is no longer the mechanism.
+    # The synthetic defect: take a LIVE pair and put its withdrawn phrasing into the document with its
+    # replacement removed — which is exactly the state the check exists to catch.
+    subject, withdrawn, replacement = PAIRS[0]
+    doc = open(CONTRACT).read()
+    if replacement not in doc:
+        print("  positive control: UNAVAILABLE — pair 0's replacement is not in the contract")
         return 1
+    hurt = doc.replace(replacement, "REPLACEMENT REMOVED BY THE SELFTEST", 1)
+    hurt = hurt + "\n\n" + withdrawn + "\n"          # the withdrawn phrasing, bare and unmarked
+    assert hurt != doc, "synthetic mutation did not land"
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as fh:
-        fh.write(old)
-        tmp = fh.name
+        fh.write(hurt); tmp = fh.name
     try:
         rc2 = check(tmp, quiet=True)
-        hit = rc2 != 0
-        print("  positive control (%s, defect live): expect FAIL ... %s"
-              % (CONTROL_COMMIT, "PASS" if hit else "FAIL -- the check cannot see the defect it exists for"))
-        ok = ok and hit
     finally:
         os.unlink(tmp)
+    print("  positive control (synthetic: pair 0 withdrawn-bare, replacement removed): expect FAIL ... %s"
+          % ("PASS" if rc2 else "FAIL"))
+    print("    subject used: %s" % subject)
+    ok = ok and bool(rc2)
+
     print("SELFTEST %s" % ("OK" if ok else "FAILED"))
     return 0 if ok else 1
 

@@ -139,44 +139,35 @@ def selftest() -> int:
     print("  negative control (live tree): expect clean ... %s" % ("PASS" if rc == 0 else "FAIL"))
     ok = ok and rc == 0
 
-    with tempfile.TemporaryDirectory() as d:
-        # POSITIVE 1: a marker with no queue row -- the original defect.
-        # ⚠️ THIS AND POSITIVE 2 WERE FIXTURE-DRIFTED AND SILENTLY DEAD (2026-09-11). Both hardcoded
-        # the caption-only question's text; when the contract amendment replaced that question the
-        # `replace` calls became NO-OPS, so no mutation happened, the check correctly passed the
-        # unmutated file, and both controls reported "did not fire". A control that hardcodes the
-        # text it mutates stops being a control the moment the document moves -- which is exactly
-        # what this guard exists to catch, one level up. Positive 4 survived because it derives its
-        # target from the file's own formatting; 1 and 2 now do the same, and ASSERT the mutation
-        # landed rather than trusting `replace`.
-        q = open(QUEUE).read()
-        anchors = [l for l in q.split("\n") if l.startswith("| **") and "…" in l]
-        if not anchors:
-            print("  positive 1: UNAVAILABLE -- no queue row matched the expected shape")
-            ok = False
-        else:
-            q2 = q.replace(anchors[0], "| **row with its anchor removed** | no anchor | state |", 1)
-            assert q2 != q, "positive 1 mutation did not land"
-            qp = os.path.join(d, "q.md"); open(qp, "w").write(q2)
-            r1 = run(queue_path=qp, quiet=True)
-            print("  positive 1 (a marker with no queue row): expect FAIL ... %s" % ("PASS" if r1 else "FAIL"))
-            ok = ok and bool(r1)
+    # ⚠️ THE CONTROLS SYNTHESISE THEIR OWN MARKER AND ROW (2026-09-11). They used to borrow a LIVE
+    # question from the files, which worked only while one existed -- and closing the last marker left
+    # none, so three controls silently stopped being able to fire. **A control that requires the defect
+    # to already exist in production is not a control**, and this is the fixture-drift class twice over:
+    # first the hardcoded text, now the borrowed subject. The synthetic pair below is added to COPIES of
+    # both files, so the controls exercise the checker's real matching against a marker/row pair whose
+    # shape is written here and cannot drift with the documents.
+    SYN_MARK = ('\n\n  ⚠️ **OPEN, and with the owner:** synthetic control question, "does the selftest '
+                'still exercise the checker".\n')
+    SYN_ROW  = ('\n| **synthetic control** | `OPEN, and with the owner:` … "does the selftest still '
+                'exercise the checker" | control |\n')
 
-        # POSITIVE 2: an anchor that no longer lands -- the drift case. Mutate the CONTRACT text that
-        # a real queue anchor points at, found from the queue rather than typed in.
-        c = open(CONTRACT).read()
-        quoted = re.findall(r'…\s*"([^"]+)"', q)
-        target = next((t for t in quoted if t in c), None)
-        if target is None:
-            print("  positive 2: UNAVAILABLE -- no queue anchor's quote was found in the contract")
-            ok = False
-        else:
-            c2 = c.replace(target, "WORDING CHANGED", 1)
-            assert c2 != c, "positive 2 mutation did not land"
-            cp = os.path.join(d, "c.md"); open(cp, "w").write(c2)
-            r2 = run(contract_path=cp, quiet=True)
-            print("  positive 2 (an anchor that no longer lands): expect FAIL ... %s" % ("PASS" if r2 else "FAIL"))
-            ok = ok and bool(r2)
+    with tempfile.TemporaryDirectory() as d:
+        # POSITIVE 1: a marker with no queue row -- the original defect. The contract gets the
+        # synthetic marker and the queue does NOT, so the pair is created here rather than borrowed.
+        c = open(CONTRACT).read(); q = open(QUEUE).read()
+        cp1 = os.path.join(d, "c1.md"); open(cp1, "w").write(c + SYN_MARK)
+        r1 = run(contract_path=cp1, quiet=True)
+        print("  positive 1 (a marker with no queue row): expect FAIL ... %s" % ("PASS" if r1 else "FAIL"))
+        ok = ok and bool(r1)
+
+        # POSITIVE 2: an anchor that no longer lands -- the drift case. BOTH files get the synthetic
+        # pair, then the contract's copy of the quoted phrase is altered so the anchor misses.
+        cp2 = os.path.join(d, "c2.md")
+        open(cp2, "w").write(c + SYN_MARK.replace("does the selftest", "does the SELFTEST"))
+        qp2 = os.path.join(d, "q2.md"); open(qp2, "w").write(q + SYN_ROW)
+        r2 = run(contract_path=cp2, queue_path=qp2, quiet=True)
+        print("  positive 2 (an anchor that no longer lands): expect FAIL ... %s" % ("PASS" if r2 else "FAIL"))
+        ok = ok and bool(r2)
 
         # POSITIVE 3: a NEW owner question added to the contract and never mirrored into the queue.
         # This is the original defect in its realistic future form -- the other two mutate the queue or
@@ -195,16 +186,13 @@ def selftest() -> int:
         # condition could be mis-stated and pass forever. That is worse than no assertion, and it is
         # the state this file's own docstring is about. Duplicating a REAL row, not a synthetic one, so
         # the control fails if the queue's actual formatting ever stops matching what the check counts.
-        rows = [l for l in q.split("\n") if l.startswith("| **") and "with the owner" in l]
-        if not rows:
-            print("  positive 4: UNAVAILABLE -- no queue row matched the expected shape")
-            ok = False
-        else:
-            q4 = q.replace(rows[0], rows[0] + "\n" + rows[0], 1)
-            qp4 = os.path.join(d, "q4.md"); open(qp4, "w").write(q4)
-            r4 = run(queue_path=qp4, quiet=True)
-            print("  positive 4 (two rows for one marker): expect FAIL ... %s" % ("PASS" if r4 else "FAIL"))
-            ok = ok and bool(r4)
+        # POSITIVE 4: the COVERAGE ASSUMPTION -- two queue rows for one marker. Both files get the
+        # synthetic pair and the queue gets the row TWICE.
+        cp4 = os.path.join(d, "c4.md"); open(cp4, "w").write(c + SYN_MARK)
+        qp4 = os.path.join(d, "q4.md"); open(qp4, "w").write(q + SYN_ROW + SYN_ROW)
+        r4 = run(contract_path=cp4, queue_path=qp4, quiet=True)
+        print("  positive 4 (two rows for one marker): expect FAIL ... %s" % ("PASS" if r4 else "FAIL"))
+        ok = ok and bool(r4)
 
     print("SELFTEST %s" % ("OK" if ok else "FAILED"))
     return 0 if ok else 1

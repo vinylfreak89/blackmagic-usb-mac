@@ -4328,6 +4328,27 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   everything else this week: "the blanking reference" naming two different sets of rows. It is recorded as an
   implementation gap, not a satisfied requirement.
 
+- **A CONTROL THAT BORROWS A LIVE SUBJECT STOPS BEING A CONTROL THE MOMENT THE SUBJECT GOES — three instances in
+  one night, each a level further out (2026-09-11).** All three fired the same way: the guard kept passing, the
+  control reported "did not fire", and nothing was actually being tested.
+  1. **Hardcoded text.** `owner_queue_check.py`'s positives 1 and 2 mutated the queue by `str.replace` on the
+     caption-only question's exact words. The contract amendment replaced that question, the calls became no-ops,
+     and both controls went silently dead.
+  2. **A borrowed live SUBJECT.** Repaired to derive their target from the file's own formatting — which worked
+     until closing the last owner marker left the queue with **no live question to borrow**, killing three
+     controls at once. **A control that requires the defect to already exist in production is not a control.**
+  3. **A borrowed HISTORICAL subject.** `superseded_check.py`'s positive control read the contract at commit
+     `e6b224f`, where the owner's absence question carried both framings. That subject was RETIRED hours earlier
+     when his ruling answered the question, so the control could no longer see anything: "the check cannot see the
+     defect it exists for".
+  **The fix in all three is the same and it is structural: SYNTHESISE the defect, do not borrow it.** The queue
+  guard now injects its own marker/row pair into copies of both files; the superseded check now takes a live pair,
+  removes its replacement and appends the withdrawn phrasing bare. Both exercise the real matching code against a
+  defect whose shape is written in the test and cannot drift with the documents. Selftests 5/5 and 2/2.
+  ⚠️ The historical facts stay recorded where they earned their place — `e6b224f` is still what proved the
+  ±700-character window was a proxy — but a historical fact is not a mechanism, and using one as a mechanism is
+  what broke the control.
+
 - **THE HARNESS REBUILD, STEP 1: the SOURCE's blanking reference, pooled at each row's own instant
   (`experiments/source_reference.py`, 2026-09-11).** Every level-derived number taken that night used the DEVICE's
   regenerated fill; contract `:531` names the SOURCE's own blanking and says "device-generated fill never
