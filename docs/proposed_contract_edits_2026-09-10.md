@@ -128,11 +128,13 @@ Picture positively established within the held bounds also invalidates the box. 
 then measured — it opens to whatever is on the screen, not necessarily to full picture and possibly to
 another box; invalidating the old box does not itself establish its replacement.
 
-The box includes its bars. Its lower outer boundary must meet the head-switch region, with no
-intervening source-blanking interval: "if the box doesn't touch the head switch, then its not valid
-geometry. simple. basically if there's a blanking interval that sits between the box and the head switch
-thats garbage." A demonstrated intervening interval prevents a new acquisition. An unresolved boundary
-does not establish contact.
+The box includes its bars. Where a head-switch region is present, the box's lower outer boundary must
+meet it without an intervening source-blanking interval: "if the box doesn't touch the head switch, then
+its not valid geometry. simple. basically if there's a blanking interval that sits between the box and
+the head switch thats garbage." A demonstrated intervening interval prevents a new acquisition; an
+unresolved boundary does not establish contact. This contact requirement does not make head-switch
+evidence mandatory on a genuinely switch-free source, and failure to measure a switch does not establish
+that the source is switch-free.
 
 ### Levels, and what blanking means
 
@@ -250,8 +252,9 @@ geometry change.
 
 Positively established box invalidation releases the affected geometry and its lock; replacement
 geometry requires acquisition. Evidence dependent on invalidated geometry cannot support acquisition
-without renewed qualification. A change of geometry resets the lock: bounding-box geometry becoming full
-picture, or full picture becoming bounding-box geometry.
+without renewed qualification. A positively established change of geometry resets the lock,
+including a change between boxed and full-picture geometry. Ordinary displacement tracked under a
+maintained geometry is not itself such a change.
 
 ### Full reset
 
