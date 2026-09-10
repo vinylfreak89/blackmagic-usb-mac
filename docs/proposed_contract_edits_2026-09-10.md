@@ -226,6 +226,35 @@ Geometry supplies a candidate; independent confirmation licenses acquisition; un
 not move the output. A source that never locks holds its picture unmoved, which is correct: "rather
 fail closed than fail open."
 
+### The geometry seed
+
+The starting geometry is lines 23-262 per field, with the head-switch band optional.
+
+> "a full 23-262 geometry including an optional head switch band is fine as a starting point. Only if
+> a source comes in with picture lines that start [after] 23 do we need to adjust the geometry."
+
+**The adjustment is one-directional, and the asymmetry is physical.** A picture starting AFTER line 23
+adjusts the geometry; a picture that appears to start before it does not, because that observation
+cannot be made.
+
+> "Adjust only when picture starts AFTER 23. You have that backwards. We can't know the inverse cuz
+> the shuttle overwrites it"
+>
+> "a picture that starts at line 25 absolutely gets its geometry adjusted. Both its own 21, 22 are
+> visible"
+
+So a source whose picture starts late is measurable — its own lines 21 and 22 are visible above the
+picture — while a source whose picture starts early is not, since the Shuttle's regenerated rows have
+overwritten the evidence.
+
+Missing lines at the bottom are not a displacement:
+
+> "Anything that's missing lines at the bottom... that's just padding until proven otherwise by
+> captions or combing."
+
+They are padding until a caption or the comb establishes otherwise. This is what authorizes the
+acquisition's starting geometry as an observation rather than an assumption.
+
 ### Rule 4 — independence
 
 A lock is acquired on two or more independent observations, at least one of which is geometry. Evidence
