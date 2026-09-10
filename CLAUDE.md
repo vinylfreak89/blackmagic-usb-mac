@@ -3400,3 +3400,21 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).
+
+### 2026-09-11 — second-round Codex contract review frozen
+
+The fresh `/root/contract_review_round2` agent reviewed only the neutral snapshot of contract commit
+`5eb9be251bb8339e747a8d5c73c73516edf398b2` (blob `6696fd56dea669cfa0796783c4492ba49f9c5bb7`,
+SHA-256 `3631179a762a55e124a688bbdf81cea05d0254b8d6a540da413686109e6472c4`). Its unedited artifact is
+`docs/reports/2026-09-11_contract_cold_read_codex.md`, SHA-256
+`629624ebaaf67e4f7c1dc8aa85438d0cbdcc291a38ba61f2e6b8e66aef26e2cb`; dispatch and preservation details
+are in `docs/reports/2026-09-11_contract_cold_read_codex_provenance.md`.
+
+The parent had read both earlier reports, but withheld their findings and the current other-side report from
+the fresh reviewer's task (`fork_turns="none"`). Automatically supplied project instructions still informed the
+reviewer, so this is not a context-free read and shared-context agreement cannot establish independent
+corroboration by itself. The reviewer also disclosed that it wrote its exposure ledger after opening the
+contract, rather than beforehand as requested. The frozen artifact is preserved byte-for-byte, including that
+limitation. At this handoff, the parent has not opened the other side's new report or provenance; no comparison
+or contract amendment is part of this review. Any later comparison is a separate artifact and must preserve
+both reviewers' original findings and their actual isolation limits.
