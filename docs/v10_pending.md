@@ -530,6 +530,17 @@ profiling stop that stand whenever it opens.
 
 ## Blocked on the owner
 
+### OPEN — R3's recovery half, Codex's wording, added 2026-09-11
+
+Codex does not accept that "the whole engine shouldn't run" closes the recovery question, and I agree: it neither
+cancels "starts from scratch" nor says what happens when good video returns. Its exact question, attributed to it
+and to be put in plain words:
+
+> "When good video returns, does 'starts from scratch' still apply — must it find a new lock before correcting the
+> picture again?"
+
+⚠️ Do not import rule 5's shape to answer it: that would import rule 5's held-crop behaviour with it.
+
 ### ✅ 2026-09-11 — ALL SIX ANSWERED. Relayed, not heard directly by this session.
 
 ⚠️ **Provenance, stated before the content because it bounds what may be done with it.** These arrived through the

@@ -2582,6 +2582,45 @@ their content: a re-acquisition rule ("go get it again" after `0x0800` or lost r
 reference decision he made a gate at 11:02:49 -- "I'm not approving anything or looking at the draft until it comes
 up with that". Neither phrase is in the contract. `brand new` and `unit counts` ARE present, so the full-reset
 ruling did land. Recovering the two is our work before anything is put back to him.
+
+**STOP THE DIAGNOSTIC RENDERS -- the critical path is single-file (owner, 2026-09-11): "the overlay band, the
+marking of the top and bottom of the head switch, all that shit. the only render I want is one that is produced
+from a locked capture on cap 1. then it may continue on by profiling".** The overlay band and the switch markings
+are FEATURES OF THAT RENDER, not artefacts to build first. Order: **fix the comb (plain energy, no mask) -> first
+lock on capture 1 -> render it -> profile.** Everything else waits. This supersedes the band-render work above:
+`band_render.py` stays in the tree as an instrument but is not a deliverable and nothing is owed from it.
+
+**SEVEN OWNER RENDER/GEOMETRY INSTRUCTIONS, SIX OF WHICH APPEAR NOWHERE -- absence verified by phrase in BOTH
+files, not assumed (2026-09-11).** `overwrite the shuttles`, `first 6 lines`, `vertically stable`, `slowed down 5x`,
+`should not jump` and `bottom of the tape` each return **0** in the contract and 0 in this file.
+
+| when | his words | status |
+|---|---|---|
+| 09-10 09:16:24 | "in any 486 line renders, real line 20-22 overwrite the shuttles" | NOT RECORDED |
+| 09-10 09:18:05 | "for the test renders. It means a valid result should keep the first 6 lines vertically stable in position... always" | NOT RECORDED -- **and it is an ACCEPTANCE CRITERION for every test render**, not a preference |
+| 09-10 11:13:09 | the bounding box, field colours, purple on collision, alpha | recorded and implemented above |
+| 09-10 04:54:51 | "I need the luma stills its been making slowed down 5x as a video, both fields side by side" | NOT RECORDED; conditional, never done |
+| 09-07 21:4x | the 720x486 overlay plus the raster | in the contract's Final outputs |
+| 09-10 09:41:23 | "The location of the partial line and/or RF peak should not jump. It should have a normal excursion when a line disappears." | NOT RECORDED -- and it bears directly on the S/T work: it is the same continuity property as the measured column drift above |
+| 09-10 10:49:16 | "a head switch existing is the bottom of the tape. thats PHYSICS. if a head switch is there, it marks the bottom of the geometry. where there is blanking below the head switch thats not part of the bottom geometry." | NOT RECORDED -- a physical definition of the bottom, bearing directly on the line account |
+
+⚠️ **The 09:18:05 one is the sharpest loss: an acceptance criterion for every test render, absent for a day, while
+renders were produced and shown.** The 09:41:23 and 10:49:16 rulings are geometry, not rendering, and the second is
+a definition the contract's own bottom-of-geometry wording should be checked against.
+
+**CODEX'S CORRECTIONS to the top-skew result, accepted (2026-09-11).** (a) The control rejects the
+FIRST-OFF-REFERENCE decision rule, **not downward traversal**: a downward scan can retain the last departure and
+clear it when normal timing returns -- which the engine already does -- and Codex verified upward and downward
+implementations find the same terminal suffix on all 1,024 ten-flag patterns. "The downward scan is unusable" was
+an overstatement; the distinction is the decision rule, not the direction. (b) 71.5% is AGREEMENT on a selected
+T-known cohort, not independently established accuracy, and that cohort excludes the six disputed T-Unknown
+readings. (c) **The 9.6% middle-picture rate is not the chance baseline immediately above T** -- that needs
+comparable near-boundary rows and an explicit dependence model, since adjacent rows share references and their
+errors may correlate -- so the 22.5%-against-9.6% comparison does NOT decide between detector overreach and T being
+one row late. His separating measurement is independently identified timing on the disputed preceding scan, with
+the three outcomes named: disturbance already on T-1 means the engine's boundary is late; positive normal timing
+there means detector overreach; unreadable timing leaves it Unknown. The executable and keyed output are now
+`experiments/top_skew_row.py` rather than a summary.
 ⚠️ **A consequence for the COMB work rather than the peak work: all three of `COMB_COMPARISON.md`'s ablation
 controls -- 6687, 6690, 6700 -- are CARD units**, and the maskless comb decides cleanly on real programme. Measured
 here with independent code, mean |vertical second difference| over the woven pair: card 6690-6710 minimum at 0 with
