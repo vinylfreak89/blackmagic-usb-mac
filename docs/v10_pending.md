@@ -488,6 +488,46 @@ migrate onto; `field_lines_py_test.py` compiles `field_lines.h` and compares all
 | B3 | The render changes | contract §8 | PARTLY: capture 1 renders end to end at `1d66719` — 919 units, 720×486, colour, band below the picture, band edges as margin ticks, running line, audio in sync to 8 ms. Remaining against §8: the 525-line raster panel beside the picture; the graph traces d1/d2 but not the band's two edges per field; the machine read-back is not run over it; the identity-strip label overlaps the strip. The band also lacks gauge line and decoded bytes, geometry `d`, clip line, the conservation equation and `comb_safe` — all present in the record — and pedestal, the line-22 level with its comparator count and the horizontal phase, which the engine does not emit at all |
 | B4 | The acceptance runs | contract §8 | blocked on B1 and the engine |
 
+## ⚠️ THE PROFILING STOP IS NOT NEXT — its second precondition is not met (corrected 2026-09-11)
+
+The owner's gate, verbatim (2026-09-10T08:22:59Z): *"once this is done and once **the engine and harness agree
+semantically** HARD STOP before moving forward on anything until the entirety of the live engine is profiled. I'm
+not asking for optimizations. I'm asking for profiling numbers."* And: *"I told you to finish getting what we
+discussed in, then profile."*
+
+⚠️ **Provenance of the two halves, kept apart.** The owner's words above reached this session as a RELAY from a
+peer session that read them in a transcript; they are not owner input to this session and were not verified here.
+**What IS verified from this repository is the part that decides the sequencing**: CLAUDE.md:2510 and the six keys
+below. So the correction does not rest on the relay — even without the quote, the project's own record says the
+agreement condition is open.
+
+**Two preconditions, and the second is neither pile A nor the cold reads.** "The engine and harness agree
+semantically" is Track 1's agreement condition, and **CLAUDE.md:2510 records in its own words that it is NOT
+closed.** This session had been treating profiling as the next item; that was wrong, and the error came from
+carrying the gate without its precondition.
+
+**What actually holds it open: six T disagreements**, all on capture 1, all the same shape — the phase reader says
+T = S (no partial line), the run reader says T = S − 1 (the row above S is partial). All six agree on S.
+`src/field_registration/tests/RUN_TIMING.md:88`:
+
+| counter / field | phase T/S | run T/S |
+|---|---|---|
+| 6681 / 1 | 260/260 | 259/260 |
+| 6700 / 1 | 261/261 | 260/261 |
+| 6704 / 2 | 524/524 | 523/524 |
+| 6722 / 1 | 260/260 | 259/260 |
+| 6749 / 1 | 261/261 | 260/261 |
+| 6785 / 1 | 261/261 | 260/261 |
+
+Contract §2 adjudicated that the partial line IS the switch line, so which reader is right decides T, and T feeds
+the line account. `experiments/t_adjudication.py` prints the raw rows for all six with both readers' own
+quantities side by side — the looking step CLAUDE.md requires before any edge claim. **It computes no verdict:
+this is a two-agent adjudication.**
+
+**The profiling scope work already done is not wasted and is not the gate opening.** That the live path carries no
+instruments, that the bench's gate is vacuous, and that no recorded timing states its load are findings about the
+profiling stop that stand whenever it opens.
+
 ## Blocked on the owner
 
 ⚠️ **THREE MORE live only as inline markers in the contract and were never mirrored here (found 2026-09-11 by the
