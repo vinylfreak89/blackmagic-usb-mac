@@ -63,3 +63,12 @@ src/field_registration/tests/cea608_unit
 src/field_registration/tests/field_registration_v9
 src/field_registration/tests/registration_v9.csv
 src/field_registration/tests/registration_v9.raw
+
+# v10 test binaries and their extracted raster fixtures (same class as the v9 entries above)
+src/field_registration/tests/field_registration_v10_rule1
+src/field_registration/tests/field_registration_v10_rule3
+src/field_registration/tests/field_registration_v10_rule4
+src/field_registration/tests/registration_v10_rule1.raw
+src/field_registration/tests/registration_v10_rule3.raw
+src/field_registration/tests/registration_v10_rule4.raw
+src/signal_state/tests/signal_state_test
