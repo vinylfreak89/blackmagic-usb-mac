@@ -584,6 +584,40 @@ slice), host (quiesce before the real run).
 
 ## Blocked on the owner
 
+### ⚠️ WITHDRAWN — the 6(b) "wrong line" proposal below is MY MISREADING, not a defect in his rule
+
+Owner, 2026-09-11: *"AGAIN.... as I've said many times. the line 22 is when the tape's line 22 wanders into the
+image... NOT the regenerated line 22. of course thats going to always be stable... thats another well no fucking
+duh"*.
+
+**"The tape's line 22" names AN OBJECT CARRIED ON THE TAPE, not a raster position.** I measured RASTER line 22 —
+which the device writes unconditionally — found it stable across 1,092 readings, and reported that as a correction
+to his rule. It is not a correction; it is the thing he calls obvious.
+
+**The finding is WITHDRAWN, not renumbered.** 6(b) should NOT read "line 23 / 286", and NOT "the first
+pass-through position" either: **both still name a fixed place to look**, which is the same defect one level down
+and **the third instance in this thread** — a fixed window for the ramp, a bounded search for the boundary, now a
+fixed row for the VBI test. His rule needs no line-number amendment from me.
+
+**What the test actually is:** does a row bearing the TAPE'S OWN blanking — identified as the tape's by being
+discrete from the device's — appear ANYWHERE INSIDE THE PICTURE? Its position is not a parameter of the test.
+**Its position IS THE READOUT: where it lands is the displacement.** That is why he wrote it as proof positive that
+the tape's geometry CHANGED rather than as a row to inspect.
+
+⚠️ **A second, separate defect in the same measurement**, worth keeping distinct from the misreading: averaging
+raster line 23 across units gives +42.21 on fixture A at row sd 47.08. **That is PICTURE, not the tape's blanking**,
+which CLAUDE.md puts at Y 4–7. If the tape's line 22 enters the image in only some units, a per-unit average is
+dominated by the units where it does not. The census measures the mean level of a raster row where the test is the
+per-unit PRESENCE of an identified object.
+
+**What survives and is worth keeping: the noise-character discriminator.** Device-written rows carry sd 0.48,
+source-carried rows 2.24–47.08 — a 4× to 98× separation in character alone, per unit, with no level typed in. That
+is a sound answer to "is this row the device's or the tape's", which is exactly the identification step the real
+test needs. Keep the instrument; drop the fixed row it was pointed at.
+
+The superseded proposal is kept below because the method is what was wrong, and its raster measurements are still
+correct measurements of the raster.
+
 ### PROPOSAL — the coherence ruling's 6(b) names the wrong line, and the contract already says why
 
 His coherence ruling (2026-09-11) gives one exception to the hold: the tape's own vertical interval entering the
