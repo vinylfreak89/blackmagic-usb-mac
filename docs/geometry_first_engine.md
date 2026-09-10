@@ -470,10 +470,12 @@ cues present one frame and absent the next mean they shifted away, near-certain 
    measured like any other.
    **Read the trigger precisely: it is the ABSENCE OF A LIFT-OFF POINT that holds the bounds, not boxing.** In his
    sentence "it" is the lack of a lift-off point; a box only makes that absence more likely. So a switch measured
-   without a lift-off point **holds ITS OWN bounds and does not set new ones** — his words are "hold its bounds",
-   and "its" is the head switch's — boxed or not, and the agreement test below is the one thing that licenses
-   setting. ⚠️ What he did NOT say, and no agent may invent: what happens where no bounds exist yet. Holding must
-   never manufacture an initial bound. The unit's own current observations are reported either way. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
+   without a lift-off point **holds the bounds and does not set new ones** ("It just means to hold its bounds, and
+   not to set a new one"), boxed or not, and the agreement test below is the one thing that licenses setting.
+   ⚠️ **NOT SETTLED, and no agent may pick:** whose bounds "its" refers to, what "bounds" names, and what happens
+   where no bounds exist yet. The engine behaves differently under each reading, so this is with the owner, not
+   open for an agent to resolve. Holding must never manufacture an initial bound, and the unit's own current
+   observations are reported either way. ⚠️ **Darkness is not a gap and neither is the absence of content.** A dark scene in an unboxed source
    separates nothing and its switch stays measurable; read the other way, this rule would suppress switch evidence
    on every dark passage of every source. **The gap is created by the box, so the classification comes first and
    any consequence follows from it** — never the reverse.
