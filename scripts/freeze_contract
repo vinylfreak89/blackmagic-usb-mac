@@ -1,0 +1,65 @@
+#!/bin/zsh
+# Freeze the contract for a cold read, and record provenance a third party can check.
+#
+# The owner's sequencing: when pile A is finished, freeze the file, run BOTH cold reads against the
+# frozen version, withhold each side's findings until the other freezes, and report what each found
+# and what survived being reached twice.
+#
+# Two failures this guards against, both already paid for:
+#   * A reader reviewing a DIFFERENT version than the one reported. Codex's first cold read reviewed
+#     fb4d7bb while mine reviewed 4eed79e, so several of my reader's findings cited text the other
+#     version did not contain - and three of them turned out to be stale rather than real.
+#   * A comparison assembled after one side has seen the other's findings. The freeze must be
+#     recorded BEFORE either report is opened, or "reached twice" means nothing.
+#
+#   scripts/freeze_contract <commit-ish> <out-dir>
+#
+# Writes <out-dir>/contract.md plus contract.provenance.md, and prints the hashes. It does NOT
+# dispatch a reader: who reads, and with what isolation, is the caller's business and is recorded
+# by the caller in the same provenance file.
+set -eu
+# A spawned zsh does not inherit an interactive PATH; name the tools absolutely.
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH
+if [ $# -lt 2 ]; then
+  echo "usage: scripts/freeze_contract <commit-ish> <out-dir>" >&2; exit 2
+fi
+commit=$1; out=$2
+mkdir -p "$out"
+# NOT `path`: in zsh that name is tied to $PATH, so assigning it destroys the command
+# search path and every later `git` fails with 'command not found'.
+contract_path=docs/geometry_first_engine.md
+blob=$(git rev-parse "$commit:$contract_path")
+git show "$commit:$contract_path" > "$out/contract.md"
+# The blob hash is git's own content hash; recomputing it from the written file proves the extract
+# is the committed bytes and not a working-tree copy that drifted.
+check=$(git hash-object "$out/contract.md")
+if [ "$blob" != "$check" ]; then
+  echo "FREEZE FAILED: extracted bytes hash $check, commit says $blob" >&2; exit 1
+fi
+sha=$(shasum -a 256 "$out/contract.md" | awk '{print $1}')
+lines=$(wc -l < "$out/contract.md" | tr -d ' ')
+cat > "$out/contract.provenance.md" <<PROV
+# Frozen contract provenance
+
+- Commit: \`$commit\` = $(git rev-parse "$commit")
+- Path: \`$contract_path\`
+- Git blob: \`$blob\` (re-derived from the written file, not copied from the commit)
+- SHA-256: \`$sha\`
+- Lines: $lines
+- Frozen at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+## To be completed BY THE CALLER before any report is opened
+
+- Reviewer identity and how it was spawned:
+- What the reviewer was and was not given:
+- Isolation claim, and its limits (inherited repository instructions count as a limit):
+- Whether the caller had seen the other side's findings before dispatch:
+- Frozen artifact path and its SHA-256:
+
+Any comparison is a later analysis in a separate file, never part of an independent review.
+PROV
+echo "frozen:  $out/contract.md"
+echo "  blob   $blob"
+echo "  sha256 $sha"
+echo "  lines  $lines"
+echo "provenance stub: $out/contract.provenance.md"
