@@ -31,10 +31,14 @@ closing its own account (owner, 2026-09-07 15:11: "my original definition of geo
 bottom bands shifting is the correct answer"); new lines of luma appearing at the top alone never mean the picture moved, unless that shift causes a
 comb disagreement on the settled comb. No lock is claimed without at least one confirmation that the geometry is
 correct — combing, captions, or both; without it the picture stays at standard placement (23/286) and the record
-says there was not enough to lock on. ⚠️ **"combing, captions, or both" was BROADENED on 2026-09-09T16:40:11Z
-(uuid d385c50e) and this sentence is the superseded half — read §3 Source lock, not this.** A measurable box is
-itself one of the two confirmations, and the list was never closed. The sentence stands unaltered because §1 is a
-record of what he said and when, not a statement of the current rule. The row directly above the picture that sometimes carries data and sometimes
+says there was not enough to lock on. ⚠️ **SUPERSEDED IN TWO WAYS — read §3 Source lock, not this sentence.**
+(1) The rule is **two measurements, one of which is ALWAYS geometry**, the second being comb or head switch
+(owner, 2026-09-09T16:40:11Z and 2026-09-10: "It was general about the 2 measurement system needed for a lock,
+one of which was always geometry"). (2) A lock does NOT assert that the geometry is "correct" in the sense of the
+picture being right — it asserts the tape's geometry is stable and its fields are aligned, and it is never
+dispositive (owner, 2026-09-09T16:45:35Z: "we were never asking if the right picture is acquired. we are asking,
+does the tape have a stable geometry. are the fields properly aligned"). The sentence stands unaltered because §1
+is a record of what he said and when, not a statement of the current rule. The row directly above the picture that sometimes carries data and sometimes
 a faint copy of the line below is decided by geometry, never by classifying the row: if the bands below did not
 change, the field did not move. Captions are confirmation; a caption may confirm the very first unit of a segment when it
 agrees with geometry; a caption that disagrees with measured geometry is logged, geometry wins. Segment events (splice, signal loss, relock)
@@ -327,12 +331,19 @@ cues present one frame and absent the next mean they shifted away, near-certain 
   Equal counts do not change ordering."). The comparator, per field: the level of the tape's line 22 where it is
   visible (an integer, the row's luma mean rounded to a unit). The switch-line count is not a comparator (owner,
   20:56).
-- **Source lock**: exists only after at least one confirmation that the geometry is correct. **Where a box is
-  measured it supplies the geometry, and one further measurement completes the lock — comb or head switch, both
-  better than one** (owner, 2026-09-09T16:40:11Z, transcript uuid d385c50e): "**the fact that the harness shows
-  real geometry with a real measurable box means a geometry can be acquired. which means only 1 additional
-  measurement is needed, comb or head switch** and ideally both are generateable and a full lock is acquired on
-  the logo." Where
+- **Source lock**: **two measurements, one of which is ALWAYS geometry.** This is a GENERAL rule, not a statement
+  about any one source (owner, 2026-09-10, asked directly whether it was about the warning card: "**No it was not
+  about the card. It was general about the 2 measurement system needed for a lock, one of which was always
+  geometry**"). The second may be the comb or the head switch (owner, 2026-09-09T16:40:11Z, uuid d385c50e):
+  "**the fact that the harness shows real geometry with a real measurable box means a geometry can be acquired.
+  which means only 1 additional measurement is needed, comb or head switch** and ideally both are generateable".
+  **WHAT A LOCK ASSERTS, and what it does not** (owner, 2026-09-09T16:45:35Z, five minutes later): "**its not
+  proof dispositive and it never can be.** in any way? **picture that is out of the measurable band is simply
+  lost.** the issue here is **we were never asking if the right picture is acquired. we are asking, does the tape
+  have a stable geometry. are the fields properly aligned.** if there are offset, nothing we can do." So a lock is
+  a claim that the tape's geometry is stable and its fields are aligned — NEVER a claim that the correct picture
+  was acquired, and never dispositive proof of anything. Picture outside the measurable band is lost and no lock
+  recovers it. Where
   there is no box the confirmations are combing, captions, or
   both (owner, 2026-09-09, admitting VBI in one bounded form: **"only admit as confirmation of positive evidence
   of displacement. unless you can get line 22 from the tape's own blanking, not the shuttles"** — the tape's own
