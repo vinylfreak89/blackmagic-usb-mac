@@ -90,6 +90,60 @@ temporal rule below are three separate steps on three axes and are not to be con
 A measured margin need not be guessed now, but the rule for deriving and qualifying it must be
 settled before production implementation.
 
+**WHAT IS AUTHORISED WHILE THE MARGIN IS OPEN (agreed by both agents, 2026-09-10).** The decision
+margin and its calibration/qualification procedure are unresolved and the classifier gate above
+stands. What the two agents agree may proceed is EVIDENCE GATHERING ONLY: a frozen adjudicated
+cohort and a control study. Collecting the panels does not authorise implementation, and no
+switch-classification code is written until the identification method AND the margin procedure have
+both passed review.
+
+*The frozen cohort.* Label each edge separately. A normal-timing label requires positively
+identifiable timing at that edge, with the supporting raw evidence recorded. Agreement with
+neighbouring rows may corroborate it but cannot establish normal timing alone. Interior picture
+transitions and absence of an RF peak are not normal-timing criteria. Where timing identity is
+ambiguous, exclude that edge from calibration and record why. Each panel is keyed by capture
+identity, counter, physical field, storage-row index and edge; the display convention is recorded
+separately so the numbering migration cannot change cohort membership. The cohort is frozen as an
+explicit list of those keys with its panels and is never re-derived from a detector afterwards;
+calibration and validation partitions are disjoint from the start and near-duplicate neighbouring
+material is kept together rather than split between them. An initial pilot of 32 calibration units
+and 32 validation units, covering both fields and the available bright, dim, card and
+ordinary-picture conditions — **a chosen pilot size, not a derived sufficiency threshold**. How many
+edges actually qualify is reported; exclusions are never silently replaced. No sample count alone
+makes the margin qualified. If no edges qualify, that result is reported rather than the criteria
+being relaxed to populate the cohort. The cohort is drawn from capture 1 and is a capture-1
+qualification, never a source-independent rule.
+Both agents adjudicate INDEPENDENTLY: the panels, keys and criteria are exchanged WITHOUT verdicts,
+each side's verdicts are frozen separately, and they are compared afterwards. Unresolved
+disagreements stay excluded from calibration with their reasons recorded. Validation material is
+kept out of subsequent calibration and method tuning.
+
+*What an edge measurement records.* An edge measurement records either an identified timing
+boundary and its position, positively identified overwrite with an unobservable boundary, or
+unresolved timing identity. A visible brightness transition alone does not establish a timing
+boundary. Identified boundaries may subsequently supply extension, shortening or no departure
+evidence under the separately agreed margin rule. Complete overwrite remains censored; its
+displacement is not reconstructed.
+⚠️ This wording does not supply the identification METHOD. Whether any observation separates a
+stationary dark side margin from a genuine blanking extension is unmeasured; if the chosen
+observations cannot, both remain unresolved under that method.
+
+*The measurements still needed to complete this qualification study.* (1) the digitized-source
+blanking variability, sample-level and its spatial variation, with the ADC contribution not claimed
+unless isolated; (2) the adjudicated cohort with its panels; (3) the edge measurement exercised
+against controls — exposure variation, stationary dark content, edge-connected black rectangles,
+true extensions, partial and complete overrides, ordinary horizontal timing variation,
+departure-and-return, and temporally sound head-catch movement without crop movement, with
+generated rows required to supply NO switch evidence rather than to qualify as normal picture, and
+synthetic controls exercising the edge measurement itself rather than inheriting earlier
+displacement-recovery results; (4) whether the card's side-margin transition is separable from a
+real extension's endpoint.
+Order: (2) first, because it establishes which observations can legitimately support (1) rather than
+choosing supposedly blank samples by the predicate being qualified; then (1) on the positively
+identified material; then (3) and (4).
+Captures 2, 3 and 4 are NOT released by this entry: the owner's acceptance order stands and broader
+validation waits on him.
+
 **The head switch's band may move a line or two, and that is expected (2026-09-10).** Verbatim:
 > The head switch can move and as long as the gap is temporally sound, a head catch can jump
 > around by a line or two like that, but when it jumps down as long as the partial line was near
