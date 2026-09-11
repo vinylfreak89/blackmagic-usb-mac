@@ -2776,7 +2776,19 @@ DITHER.** Same rows, same span, selection versus raw:
   **So −0.288 is a selection artefact and +0.662 is a descent artefact, and neither is the quantity.** A correct
   measurement needs samples that are contiguous AND actually at blanking — a population neither the settled
   selection nor the naive span provides.
-  ✅ **The relocated-blanking probe is the one built that way** — contiguous runs selected by being at the
+  ✅ **CLOSED AT THE FUNCTION RATHER THAN RECORDED AS AN INSTANCE (the peer session's framing, and it is the
+  part worth more than the withdrawal).** `settled_samples` is a SHARED implementation the whole reference
+  rests on, and **it is correct for its purpose** — a caller wanting a mean does not care about order. Nothing
+  in its name, its signature or its docstring warned that **its output is non-contiguous in time**, so any
+  future caller computing a temporal statistic inherits this silently, **and the next one will have less reason
+  to suspect it than I did, because a recorded withdrawal reads as a fixed instance rather than a live hazard.**
+  The warning is now at the function, and it names BOTH traps — the mask selection, and the raw span that a
+  temporal caller would reach for instead, which carries the descent.
+  **The general shape: a shared helper that is correct for its purpose, whose OUTPUT SHAPE silently violates a
+  different caller's assumption.** Neither the helper nor the caller is wrong on its own; the contract between
+  them was never written down. The fix is at the helper, because it is the one place every caller passes
+  through.
+    ✅ **The relocated-blanking probe is the one built that way** — contiguous runs selected by being at the
   field's own blank level — which is why its **−0.044 / 56.8%** is the number to keep, and why the withdrawal
   is a withdrawal rather than a tie.
   ⚠️ **And the candidate-witness reading for the 255 goes with it**: a statistic reading 56.8% on the population

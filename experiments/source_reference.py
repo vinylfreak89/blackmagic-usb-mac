@@ -161,6 +161,22 @@ def settled_samples(row, t):
 
     Returns None where the row contributes nothing -- a row whose descent runs to the row's end,
     or whose tail holds no settled samples. None is "this row did not decide", never a level.
+
+    ⚠️⚠️ ITS OUTPUT IS NOT CONTIGUOUS IN TIME. NEVER COMPUTE A TEMPORAL STATISTIC ON IT.
+    The last line is a BOOLEAN MASK -- `tail[tail <= floor + 1.0]` -- so adjacent elements of what
+    comes back were not adjacent in the row. It is correct for a LEVEL (the caller wants a pool, and
+    order is irrelevant to a mean) and silently wrong for anything reading order: autocorrelation,
+    run length, spacing, a transition position. Nothing in the name or the signature says so, which
+    is why this warning is here rather than in a note elsewhere.
+    Cost, 2026-09-11: a lag-1 autocorrelation computed on this output read -0.288 and was reported as
+    the source blanking's dither signature. It is a selection artefact. The same filter also strips
+    code 3 by construction (floor ~1.4 cuts at ~2.4), which produced a "blanking never reaches code
+    3" column that is a property of this function and not of the source.
+    ⚠️ AND THE OBVIOUS ALTERNATIVE IS ALSO WRONG, so a temporal caller must not simply take the raw
+    span instead: `row[settled_index(row, t):]` over the same indices carries codes 22-23 at about
+    10% -- picture, because the index can land before blanking is reached -- and its lag-1 reads
+    +0.662, the descent's correlation rather than the blanking's. A temporal caller needs samples
+    that are contiguous AND actually at blanking; neither this function nor that span provides both.
     """
     x = np.asarray(row, dtype=np.float64)
     t = settled_index(x, t)
