@@ -4982,6 +4982,29 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **A RESULT THAT CLEAN, ON THIS MATERIAL, IS THE TELL — a check to apply BEFORE the number is written down,
+  not a ninth entry in the tally (2026-09-11).** Eight instruments have now produced a beautiful wrong answer by
+  measuring the device's own generated fill. The list is a record of past mistakes; **the tell is usable in the
+  moment**, and it is this: **device fill is CONSTANT, so any statistic computed over it returns a degenerate
+  perfect answer — 100%, 0%, zero variance, a p90 equal to its own ceiling — and NOTHING REAL ON THIS SOURCE IS
+  PERFECT.** Tape through a VHS head, a line TBC and an analogue decoder does not produce 120 of 120 against
+  0 of 2,760. When a number comes out that clean, the population is the first suspect, not the finding.
+  **The rows that do it, so the check is actionable rather than a moral:** the hard-padding ruler at storage rows
+  **0-6, 261-269, 523-524** (Y16/C128, zero variance, present with no deck attached); **row 259** = field 1's
+  half-line 262.5 and **row 260** = field 2's line 1; and the Shuttle's own re-encoded inserts at **lines 20, 21
+  and 284**, whose per-pixel std is 0.6 against 4 for a tape-borne caption. A scan bound that reaches any of them
+  imports a constant into the statistic.
+  **Instances, compressed, because the disguise changes and the cause does not:** the `:531` blanking reference
+  taken from device rows rather than the source's; the comb's static mask calibrated on generated-blanking
+  fluctuation, which then admitted blanking and rejected picture; `blank_mean` computing the right statistic over
+  the wrong rows; and the R12 co-location test scanning to NTSC line 265 and reporting 120 of 120 peak-bearing
+  AND displaced, which was rows 259-261 — half-line, field-2 line 1, and padding — read by a row-MAD statistic
+  as peaks. Excluding them left **four**.
+  ⚠️ **The check has a false-positive of its own and it is worth naming:** a genuinely categorical source
+  property also reads clean — the flat-row separation at 768 against 0, or S being exact in 1,013 of 1,013. **The
+  tell is not "clean means wrong", it is "clean means CHECK THE POPULATION FIRST"**, and the two are separated by
+  asking which rows the statistic actually consumed.
+
 - **THE DIAGNOSIS for the whole answers-a-different-question family, and it is not "same medium" (2026-09-11, the
   peer session's, and better than the hypothesis it replaced).** Every member operated on a **PROXY** that
   coincides with the real property most of the time:
