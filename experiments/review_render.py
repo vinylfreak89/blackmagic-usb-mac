@@ -63,8 +63,10 @@ SPAN = 90                         # units either side of the playhead in the gra
 # It gets its OWN lane, outside the head switch's two, so the two markings are never confused. Both
 # fields share that lane, because the owner's colour rule is about COINCIDENCE: "if they overlap it
 # should be purple, if they are separate it should be the appropriate red or blue".
-BOXLANE_OFF = 8 + 2 * 22          # outside both head-switch lanes
+BOXLANE_OFF = 8 + 2 * 22          # field 1's box lane, outside both head-switch lanes
+BOXLANE2_OFF = 8 + 3 * 22         # field 2's box lane, outside field 1's -- NEVER the same lane
 PURPLE = (200, 110, 235)
+BOX_ALPHA = 0.35                  # "like transparentish, so you can still see underneath it"
 # ⚠️ AND THE BOX IS THE LETTERBOX, NOT THE PICTURE (owner, 2026-09-11: "the box is inverted from
 # what it supposed to be. It is supposed to show the areas of the video that count as letterbox not
 # the active picture"). CLAUDE.md already carries this as a retraction -- "box is the bounds of the
@@ -301,8 +303,47 @@ def main():
                                  yy - 0.344136 * cb - 0.714136 * cr,
                                  yy + 1.772 * cb]) * 255.0, 0, 255).astype(np.uint8)
 
+        # ---- THE BOX, found ONCE and drawn TWICE: over the video AND as ticks in the margins
+        # (owner, 2026-09-11: "it should be a box that sits over top of the video AND ticks to the
+        # side"). BOTH, not either -- an earlier pass drew only the ticks. What is marked is the
+        # LETTERBOX BANDS: the field's edge through the top band, and the bottom band through the
+        # field's edge, never the content between them ("box is the bounds of the box, not the
+        # content inside the box"). The detector is box_census's own, imported not reimplemented.
+        hp = h_profile(R[:, 1::2])
+        bandk, edgek = {}, {}          # field -> every picture line its bands cover / its 4 edges
+        for f, (first, d) in enumerate(((F1_FIRST_LINE, dd1), (F2_FIRST_LINE, dd2))):
+            lo, hi = FIELDS[f + 1]
+            b = bands(hp, lo, hi, row_threshold(hp, lo, hi, 4.5, 0.28), 6)
+            if verdict(b, 6, 40) != "box" or b["content_top"] < 0:
+                continue               # no box in this field: nothing drawn, never a guessed one
+            z = first + d - 4          # storage row -> picture line
+            bandk[f] = {sr - z for sr in
+                        list(range(lo, b["content_top"])) + list(range(b["content_bot"] + 1, hi + 1))}
+            edgek[f] = {sr - z for sr in
+                        (lo, b["content_top"] - 1, b["content_bot"] + 1, hi)}
+
+        pic = np.asarray(Image.fromarray(rgb, "RGB").resize((DW, FH), Image.BILINEAR)).astype(np.float64)
+        # ⚠️ THE COLLISION IS IN THE PICTURE, NOT THE RASTER. Woven, output row 2k carries field 1's
+        # line and 2k+1 field 2's, so both fields' bands CAN cover the same picture line k -- that is
+        # the collision, and it is purple ("keeping its field colors, meaning if they colide the box
+        # should be purple"). On the raster the fields sit 263 apart and can never coincide, which is
+        # what made an earlier render's collision test vacuous.
+        RED_A, BLUE_A, PUR_A = (np.array([255., 90., 90.]), np.array([90., 170., 255.]),
+                                np.array(PURPLE, dtype=float))
+        b1, b2 = bandk.get(0, set()), bandk.get(1, set())
+        for k in b1 | b2:
+            if not (0 <= k < FIELD_ROWS):
+                continue
+            if k in b1 and k in b2:
+                for fr in (k * 2, k * 2 + 1):
+                    pic[fr] = pic[fr] * (1 - BOX_ALPHA) + PUR_A * BOX_ALPHA
+            elif k in b1:
+                pic[k * 2] = pic[k * 2] * (1 - BOX_ALPHA) + RED_A * BOX_ALPHA
+            else:
+                pic[k * 2 + 1] = pic[k * 2 + 1] * (1 - BOX_ALPHA) + BLUE_A * BOX_ALPHA
+
         img = Image.new("RGB", (W, H), (12, 12, 12))
-        img.paste(Image.fromarray(rgb, "RGB").resize((DW, FH), Image.BILINEAR), (PX, 0))
+        img.paste(Image.fromarray(np.clip(pic, 0, 255).astype(np.uint8), "RGB"), (PX, 0))
         dr = ImageDraw.Draw(img)
         for f, (first, d, col) in enumerate(((F1_FIRST_LINE, dd1, (255, 90, 90)),
                                             (F2_FIRST_LINE, dd2, (90, 170, 255)))):
@@ -322,42 +363,27 @@ def main():
                     o = 0 if f == 0 else LANE
                     dr.line([(PX - inner - o - LANE + 2, fr), (PX - inner - o, fr)], fill=col, width=2)
                     dr.line([(PX + DW + inner + o, fr), (PX + DW + inner + o + LANE - 2, fr)], fill=col, width=2)
-        # ---- THE BOX: geometry's other marking, drawn the way the head switch is -----------
-        # The rows marked are the LETTERBOX BANDS -- the field's edge through the top band, and the
-        # bottom band through the field's edge -- NOT the content between them.
-        hp = h_profile(R[:, 1::2])
-        boxk = {}                      # picture line k -> the fields with a box edge on it
-        for f, (first, d) in enumerate(((F1_FIRST_LINE, dd1), (F2_FIRST_LINE, dd2))):
-            lo, hi = FIELDS[f + 1]
-            b = bands(hp, lo, hi, row_threshold(hp, lo, hi, 4.5, 0.28), 6)
-            if verdict(b, 6, 40) != "box" or b["content_top"] < 0:
-                continue               # no box in this field: nothing drawn, never a guessed one
-            for sr in (lo, b["content_top"] - 1, b["content_bot"] + 1, hi):
-                k = sr - (first + d - 4)
-                if 0 <= k < FIELD_ROWS:
-                    boxk.setdefault(k, set()).add(f)
-        # ⚠️ OVERLAP IS IN THE PICTURE, NOT THE RASTER. Woven, field 1 occupies the EVEN output rows
-        # and field 2 the odd, so the two can never share an output row and a collision test there
-        # would be vacuous -- the same mistake an earlier render made by testing coincidence on the
-        # raster, where the fields are 263 apart and can never coincide either. The corresponding
-        # pair is output rows 2k and 2k+1, so the test is on k: both fields marking the same picture
-        # line is the overlap. Owner: "if they overlap it should be purple, if they are separate it
-        # should be the appropriate red or blue".
-        for k, fs in boxk.items():
-            both = len(fs) > 1
-            col = PURPLE if both else ((255, 90, 90) if 0 in fs else (90, 170, 255))
-            fr = k * 2 + (0 if both else (0 if 0 in fs else 1))
-            dr.line([(PX - BOXLANE_OFF - LANE + 2, fr), (PX - BOXLANE_OFF, fr)],
-                    fill=col, width=2 if both else 1)
-            dr.line([(PX + DW + BOXLANE_OFF, fr), (PX + DW + BOXLANE_OFF + LANE - 2, fr)],
-                    fill=col, width=2 if both else 1)
+        # ---- THE BOX'S TICKS: ONE LANE PER FIELD, never superimposed (owner, 2026-09-11: "the
+        # ticks should NOT be on top of one another, they should be separated just like the head
+        # switch"). That is the SAME correction he already made for the head switch in 7202a31,
+        # "review_render: a tick lane per field, not both in one", applied to the box's marks --
+        # the pattern was already in this file. Purple is deliberately NOT used here: separated
+        # lanes cannot collide, so the collision is shown where it is real, on the video above.
+        for f, off in ((0, BOXLANE_OFF), (1, BOXLANE2_OFF)):
+            col = (255, 90, 90) if f == 0 else (90, 170, 255)
+            for k in sorted(edgek.get(f, ())):
+                if not (0 <= k < FIELD_ROWS):
+                    continue
+                fr = k * 2 + f
+                dr.line([(PX - off - LANE + 2, fr), (PX - off, fr)], fill=col, width=2)
+                dr.line([(PX + DW + off, fr), (PX + DW + off + LANE - 2, fr)], fill=col, width=2)
 
         # at the TOP of the margins: band edges sit near the bottom of a field, so a label there
         # was drawn straight through the ticks it names
         dr.text((PX - 8 - 2 * LANE + 2, 3), "f2 f1", font=small, fill=(70, 70, 70))
         dr.text((PX + DW + 10, 3), "f1 f2", font=small, fill=(70, 70, 70))
-        dr.text((PX - BOXLANE_OFF - LANE + 2, 3), "box", font=small, fill=(70, 70, 70))
-        dr.text((PX + DW + BOXLANE_OFF, 3), "box", font=small, fill=(70, 70, 70))
+        dr.text((PX - BOXLANE2_OFF - LANE + 2, 3), "box f2 f1", font=small, fill=(70, 70, 70))
+        dr.text((PX + DW + BOXLANE_OFF, 3), "box f1 f2", font=small, fill=(70, 70, 70))
         draw_band(dr, r, i, dd1, dd2)
         enc.stdin.write(img.tobytes())
 
