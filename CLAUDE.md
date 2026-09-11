@@ -4147,6 +4147,34 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **THE PER-ROW SKEW DETECTOR EXISTS — it fell out of the per-unit floor rather than being built, and it is
+  20× better than the best previous attempt (2026-09-11).** "T is the top skew row" has been a named quantity
+  with no validated per-row measurement for a long time, in the same family as "structureless" and "well
+  exposed". The per-unit floor answers exactly that question — **is THIS row's timing disturbed?** — because the
+  floor is what the unit's own no-switch rows support, and a row above it is disturbed by that unit's own
+  standard.
+
+  | per-row disturbed-timing test | false-positive rate on ordinary picture rows |
+  |---|---:|
+  | the trailing-porch attempt | **69.8%** — failed its own control |
+  | the band-reference attempt | **9.6%** — inherent, since a 5-95% band must fail ~10% of the rows it learned from |
+  | **the per-unit floor** | **0.44%** (354 of 81,280, on HELD-OUT rows) |
+
+  Detection on the switch band: **62% of field-1 rows and 72% of field-2 rows** (939 of 1,524 and 1,097 of
+  1,524), over the whole registerable region of capture 1.
+  **The 9.6% figure was not a bad threshold, it was a floor**: a band learned from a population must
+  misclassify a fixed fraction of that population, so no tuning of that instrument could go below it. The
+  per-unit floor escapes it by being a MAXIMUM over disjoint calibration rows rather than a percentile of the
+  rows it scores.
+  ⚠️ **The detection denominator assumes the band sits at the standard lines** (260-262 / 523-525), so 62%/72%
+  is detection on rows where the band is EXPECTED, not on rows independently shown to carry it. A unit whose band
+  has moved contributes a miss it may not deserve. **The false-positive rate is the sound half** — its rows are
+  held out and its population cannot shrink.
+  ⚠️ And a per-row test is not yet the thing the contract asks for: **T is the TOP skew row**, which needs the
+  topmost disturbed row of the run reaching the clip, not a per-row verdict. The per-row test is the primitive
+  that was missing; assembling it into T is a further step and the run criterion for that is already recorded
+  above (71.5% exact / 94.0% within one row, on a cohort selected by the engine having a T).
+
 - **O-B6: THE HARNESS'S BOXED / STRUCTURED / UNBOUNDED DEFINITION, RECORDED — it existed in code and nowhere
   else, which is why it was asked for three times (2026-09-11).** The owner, 12:50:38: *"the harness has a test
   and definition for what boxed vs structured vs unbounded is."* **He was right** — `experiments/box_census.py`
