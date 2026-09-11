@@ -2,10 +2,10 @@
 """Live synthetic checks originating in the review of b8cedaf / 2517b62.
 
 No captures or detector. The original artifact remains in git and its frozen
-review report. This version adapts input construction to fa281a7's endpoint
-schema without endorsing that schema as the full expected-result interface.
+review report. This version adapts input construction to 289d279's endpoint,
+overall and visibility schema without claiming full validation of that interface.
 Exit 1 means unmet POSITIVE checks, not an expired probe or a capture result.
-In particular the guard-1/4 enforcement obligations survive the schema repair.
+The guard-1/4 enforcement checks now pass and remain live regression checks.
 The paired example is a declared luma model, not analog indistinguishability.
 """
 import argparse
@@ -17,6 +17,7 @@ from unittest.mock import patch
 import numpy as np
 import switch_fixtures as fixtures
 import switch_fixtures_review_controls as positive
+from fixture_review_support import compiled_selftest
 
 
 def run(cases):
@@ -29,21 +30,13 @@ def run(cases):
 def positive_detects_disabled_guard(guard):
     source = inspect.getsource(fixtures.selftest)
     assert source.count(guard) == 1
-    source = source.replace("def selftest()", "def _audit_mutated_selftest()", 1)
     source = source.replace(guard, "ok &= True", 1)
-    # Preserve the REAL module globals: the positive suite patches fixtures.cases.
-    # A copy of the globals would bypass that patch and invalidate this meta-test.
-    exec(compile(source, "<disabled-fixture-guard>", "exec"), fixtures.__dict__)
-    try:
-        with patch.object(fixtures, "selftest", fixtures._audit_mutated_selftest), \
-             contextlib.redirect_stdout(io.StringIO()):
-            try:
-                positive.main()
-            except AssertionError:
-                return True
-        return False
-    finally:
-        del fixtures._audit_mutated_selftest
+    with compiled_selftest(source), contextlib.redirect_stdout(io.StringIO()):
+        try:
+            positive.main()
+        except AssertionError:
+            return True
+    return False
 
 
 def main():
@@ -77,8 +70,10 @@ def main():
     cases.append({"name": "U1 within-jitter translation", "cal": cases[0]["cal"],
                   "row": fixtures._row(np.random.default_rng(311), spans), "spans": spans,
                   "truth": {"start": 1, "end": 1, "dark_at": None},
-                  "require": {"start": fixtures.UNDECIDABLE, "end": fixtures.UNDECIDABLE},
-                  "observable": fixtures.observability(spans),
+                  "require": dict(start=fixtures.UNDECIDABLE, end=fixtures.UNDECIDABLE,
+                                  overall=fixtures.UNDECIDABLE),
+                  "hidden_visible": fixtures.hidden_visibility(spans),
+                  "establishable": fixtures.hidden_visibility(spans),
                   "why": "test unavailable certainty", "censored": "end"})
     status, output = run(cases)
     print("WITHIN-JITTER UNKNOWN CASE: fixture selftest exit", status)

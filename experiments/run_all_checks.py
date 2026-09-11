@@ -67,23 +67,6 @@ EXPECTED_FAIL = {
         "pins blanking_extent at d21f373, before the void marking and the failing-first controls",
     "level_attribution_review_controls.py":
         "pins level_attribution at 386d202, before the holdout repair removed the row overlap",
-    # ⚠️ BOTH OF THESE ARE CODEX'S AND BOTH BROKE ON A RENAME CODEX ITSELF REQUESTED. Its schema
-    # review's finding 2 said to rename `observable` where it describes hidden geometric visibility
-    # rather than a detector obligation; that landed as `hidden_visible` + `establishable`, and its
-    # two instruments still read the old key. The update is MECHANICAL and preserves each check's
-    # semantics exactly -- but they are its files and its findings, so this records the disposition
-    # and the reason instead of editing them. Raised with it; not acted on.
-    "switch_fixture_schema_review.py":
-        "reads c['observable'], the key its own finding 2 asked to split into hidden_visible and "
-        "establishable; needs the field name its request produced",
-    "switch_fixture_censoring_audit.py":
-        "mutates c['observable'], now renamed, so its availability mutations write a key nothing "
-        "reads and the rejections it requires no longer fire",
-    "switch_fixture_repair_audit.py":
-        "live positive checks, adapted by Codex to fa281a7: the obsolete scalar input and text "
-        "lookup are repaired, not retired. Two assertions still fail: disabling guard 1 or 4's "
-        "rejection effect is not detected by the positive suite. These are unresolved enforcement "
-        "defects, not an expired historical probe; a crash is not the expected failure",
 }
 
 
