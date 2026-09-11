@@ -4283,8 +4283,8 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   to be skipped, because nothing reads as false.
 
 - **A MERGE AND A COMMIT IN ONE COMMAND BLOCK PUSHED CONFLICT MARKERS TO THE SHARED BRANCH (2026-09-11, and it
-  is the first thing tonight that actually shipped broken).** `a27bdd0` contains three `<<<<<<<` markers in
-  `CLAUDE.md` and was pushed. The sequence: `git merge` CONFLICTED, a python edit ran on the conflicted file and
+  is the first thing tonight that actually shipped broken).** `a27bdd0` carried ONE unresolved conflict region — three marker
+  lines — in `CLAUDE.md`, and was pushed. The sequence: `git merge` CONFLICTED, a python edit ran on the conflicted file and
   SUCCEEDED, `git add -A` staged the markers, and `git commit` completed the merge around them.
   ⚠️ **The conflict WAS printed. It was not read, because every command had already been composed** — merge,
   edit, add, commit and push were one block, so the merge's outcome could not reach the decision to commit.
@@ -4303,8 +4303,10 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   `CLAUDE.md` carries zero markers, and the exposure window was **15:51:16 → 15:52:07, fifty-one seconds** with
   nothing merged from it. **"I pushed it" and "someone consumed it" are different facts, and only the second
   needs anyone else to act** — so a report of a shipped defect owes its blast radius, not just its existence.
-  ⚠️ **And the count depends on the pattern: TWO open/close markers, THREE if the `=======` separator counts.**
-  Both of us said "three" without saying which, in a report about severity.
+  ⚠️ **SETTLED: ONE conflict region, THREE marker LINES** — counted by type, one `<` marker, one separator, one
+  `>` marker. Both of us wrote "three conflict markers", which is accurate for lines and **reads as three
+  conflicts, making the incident three times worse than it was.** In a sentence whose whole job was severity.
+  **Where a count IS the severity, say what is being counted.**
   ⚠️ **And writing this entry broke the next command too**, which is the same hazard one level out: a commit
   message quoting the literal marker made the shell heredoc unparseable, so the whole block failed and nothing
   ran. That failure was loud and cost nothing; the first one was silent and pushed.
