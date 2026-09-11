@@ -5096,6 +5096,33 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **D16 AND D17 ANSWERED — the rebuild is ungated, and NEITHER HORN WAS RIGHT (owner, 2026-09-11, relayed).**
+  **D16, verbatim:** *"no blanking alone can not establish identity. blanking excursion can but there still needs
+  to be some measureable component of horizontal skew"*.
+  **TWO NECESSARY CONDITIONS, and the second is the one neither agent had.** A blanking **EXCURSION** can
+  establish identity where a blank-level **run** cannot — so Codex's refusal is upheld (a run alone cannot
+  separate blanking extension from contiguous dark picture) but its disposition is superseded: **the answer is
+  not Unknown, it is that the excursion is not self-sufficient and a measurable component of HORIZONTAL SKEW must
+  be found alongside it.** Position-alone is dead; so is stopping at Unknown.
+  **D17, verbatim:** *"A correction on the head switch band is the entire thing you delivered last night about
+  how to measure the head switch. the excursion of blanking, the fact its a temporal signal not a spatial one and
+  the fact that the RF peak has in every instance that I've seen always indicate a partial switch line (S)"*.
+  **So the correction owed at contract `:186` is not a future ruling — he is declaring last night's three results
+  to BE it**, and the 259-against-260 discrepancy is settled by them.
+  ⚠️⚠️ **ONE NAMING COLLISION, verified rather than reconciled, because this word cost this project a day.** He
+  writes *"partial switch line (S)"*. **The contract at `:665` defines the switch line as "the horizontal line
+  carrying the peak, the partial line" — that is T — and `:669` says "S is NEVER substituted for it".** Checked
+  against the measurement: **the peak is exactly ON T in 166 of 197 readings where the engine says T = S−1, and
+  it lands on S−1 NEVER on S.** So read as the contract's S his sentence would contradict the measurement, and
+  **"(S)" is his shorthand for "the switch line" — the row the contract calls T.** The substance is unambiguous:
+  **the peak indicates THE PARTIAL LINE.**
+  ⚠️ **That reading is DERIVED, not his words, and it decides which row the detector marks.** It is recorded as
+  derived so a later reader can overturn it from the raw rows rather than inherit it. It is also the naming
+  defect this file already carries — the harness confirming S while calling it the switch line — surfacing in his
+  own sentence, which is what makes it worth flagging rather than silently correcting.
+  ⚠️ **The contract edits these imply are NOT mine to make alone**: removing `:186`'s "correction owed", and
+  resolving `:64-65`'s flagged two-agent disagreement with D16's answer. Both go to Codex with his quotes.
+
 - **THE SOURCE LEVEL'S VALUE IS SUPPORTED, AND THE FABRICATION BOUND DID NOT REACH IT — measured on the pool's
   COMPOSITION, which is the only thing that can answer it (2026-09-11).** The level half of `source_reference`
   survives `:443` in KIND (a slice point is not a timing claim), but legitimate in kind is not correct in value,
