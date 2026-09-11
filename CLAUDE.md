@@ -5161,10 +5161,25 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   is fixed at storage rows 210–236 — just above the band — and this file already records that the band's length
   differs between fields and its position moves, so on some units that window contains band rows. **A local
   window is right (`:447`); a FIXED local window is the fixed-place-to-look defect at a different scale.**
-  ⚠️ **Diagnosed, NOT fixed.** The repair is to qualify the calibration rows rather than assume their position,
-  and doing that while the coverage number is unsatisfying is exactly when the tuning instinct would quietly
-  convert his conjunction back into extent alone. **The 0.23% held-out false-identification rate is the figure to
-  lean on meanwhile**, and its population cannot shrink.
+  ⚠️ **ELEVENTH INSTANCE OF FIXED-PLACE-TO-LOOK, AND IT IS A NEW FORM: the previous ten were a fixed place in a
+  ROW or a FIELD; this is a fixed place in the CALIBRATION.** The reference is calibrated on rows that may
+  contain the very thing it exists to detect — circular in a way no threshold sweep would have exposed, because
+  the contaminated units simply read normal. **And it is inside the detector written to avoid the tenth**, which
+  says more about the class than any individual instance did: knowing the defect by name does not stop it
+  changing scale.
+  ⚠️ **Diagnosed, NOT fixed**, and the acceptance conditions for the eventual repair are recorded BEFORE it is
+  attempted — pre-specifying them is what made the detector rebuild work and what three earlier repairs lacked:
+  - **THE REPAIR MUST NOT MOVE THE 0.23%.** If qualifying the calibration rows improves identification AND
+    false-identification together, that is a leak to be found rather than a result — the two are traded, not
+    jointly optimised, and a repair that improves both has probably let the calibration see the band.
+  - **THE QUALIFICATION MUST BE DERIVABLE, NOT ANOTHER WINDOW.** "Rows whose own timing reads normal" is
+    CIRCULAR here — it qualifies the calibration by the quantity the calibration defines. Qualifying rows by the
+    source's own reference, the route `:531` already specifies for levels, is not circular; a second fixed span
+    is the same defect a third time.
+  - **The tuning instinct is the hazard, named so it is recognisable in the moment:** repairing a calibration
+    while the coverage number is unsatisfying is exactly when his conjunction quietly becomes extent alone.
+  **The 0.23% held-out false-identification rate is the figure to lean on meanwhile**, and its population cannot
+  shrink.
 
 - **D16 AND D17 ANSWERED — the rebuild is ungated, and NEITHER HORN WAS RIGHT (owner, 2026-09-11, relayed).**
   **D16, verbatim:** *"no blanking alone can not establish identity. blanking excursion can but there still needs
