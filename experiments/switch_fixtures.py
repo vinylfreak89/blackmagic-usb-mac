@@ -94,12 +94,19 @@ def merge(spans):
     return [tuple(s) for s in out]
 
 
-def observability(spans):
-    """What a detector can OBSERVE of the true interval, derived from the geometry rather than from
-    a label. Codex's finding 3: the old guard recognised the string "off-window" and nothing else, so
-    a numerically censored endpoint could be declared observable and every control passed.
+def hidden_visibility(spans):
+    """⚠️ WHETHER THE TRUE BOUNDARY SURVIVES DELIVERY AS AN EDGE -- a fact about the HIDDEN geometry,
+    NOT a detector obligation. The two are different quantities and calling both "observable" is the
+    one-name-several-quantities defect this project records: C3a and C3b are byte-identical rows
+    whose TRUE starts differ in visibility (A's is a real edge at 692; B's true start at 702 has
+    blanking-level content abutting it and leaves no edge), so this field legitimately differs
+    between them while no detector obligation could. `establishable` is the other quantity.
 
-    An endpoint is observable only where it survives as an EDGE of the delivered run: an endpoint off
+    Derived from the geometry rather than from a label. Codex's earlier finding: the old guard
+    recognised the string "off-window" and nothing else, so a numerically censored endpoint could be
+    declared observable and every control passed.
+
+    An endpoint is visible only where it survives as an EDGE of the delivered run: an endpoint off
     the window is gone, an endpoint AT the window edge cannot be told from one beyond it, and an
     endpoint with blanking-level content abutting it leaves no edge to see (C3b's true start).
     """
@@ -131,12 +138,27 @@ def cases(seed=23):
     C = []
 
     def add(name, spans, start, end, req_start, req_end, why,
-            dark=None, censored=None, row=None):
+            dark=None, censored=None, row=None, establishable=None, overall=None):
+        # `require` carries the per-endpoint results AND an overall presence verdict. Codex's
+        # finding 1: the endpoint results were meant to sit ALONGSIDE overall presence, not replace
+        # it -- A5 and B2 can both be overall `undecidable` with visible-start agreement and
+        # unavailable extent, and "no overall `none` in this censored cohort" is a legitimate
+        # outcome rather than something the mixed-answers control should dictate.
+        hv = hidden_visibility(spans)
+        req = {"start": req_start, "end": req_end}
+        if overall is None:
+            overall = (DEPARTURE if DEPARTURE in req.values()
+                       else (NONE if set(req.values()) == {NONE} else UNDECIDABLE))
+        req["overall"] = overall
         C.append({"name": name, "cal": cal, "row": _row(rng, spans) if row is None else row,
                   "spans": spans,
                   "truth": {"start": start, "end": end, "dark_at": dark},
-                  "observable": observability(spans),
-                  "require": {"start": req_start, "end": req_end},
+                  "hidden_visible": hv,
+                  # what a DETECTOR must be able to establish. Defaults to hidden visibility; the
+                  # matched pair overrides it, because a visible edge whose CAUSE is ambiguous is
+                  # delivered without being attributable.
+                  "establishable": dict(hv) if establishable is None else establishable,
+                  "require": req,
                   "why": why, "censored": censored})
 
     # ---- CLASS A: timing changes at BOTH interval ends -------------------------------------
@@ -224,12 +246,14 @@ def cases(seed=23):
         "world A: ONE object, the blanking, whose visible boundary moved 10 samples earlier. The "
         "start is a real edge and is delivered -- yet it must read `undecidable`, because C3b's row "
         "is the same bytes with a different cause",
-        censored="end", row=shared_a)
+        censored="end", row=shared_a,
+        establishable={"start": False, "end": False, "extent": False}, overall=UNDECIDABLE)
     add("C3b unchanged blanking plus ADJACENT dark content", sb, 0, 0,
         UNDECIDABLE, UNDECIDABLE,
         "world B: TWO objects. The blanking is exactly where it belongs and dark content abuts it, "
         "so the true start at the nominal position leaves NO EDGE to see. Byte-identical to C3a",
-        dark=a0 - 10, censored="end", row=shared_b)
+        dark=a0 - 10, censored="end", row=shared_b,
+        establishable={"start": False, "end": False, "extent": False}, overall=UNDECIDABLE)
     return C
 
 
@@ -270,15 +294,27 @@ def selftest() -> int:
     #    below would be reporting on a set whose shape they cannot read.
     mal = []
     for c in C:
-        r, o, t = c.get("require"), c.get("observable"), c.get("truth")
-        if not isinstance(r, dict) or set(r) != {"start", "end"} \
+        n = c.get("name", "?")
+        # EVERY key the controls below read, not only the ones that used to be checked. Removing
+        # `row` passed this guard and then raised KeyError in control 2 -- a crash is not a verdict,
+        # which is the whole reason this control runs first.
+        for k, kind in (("name", str), ("row", np.ndarray), ("cal", list), ("spans", list),
+                        ("why", str)):
+            if not isinstance(c.get(k), kind):
+                mal.append("%s: %s" % (n, k))
+        if not isinstance(c.get("cal"), list) or not c.get("cal"):
+            mal.append("%s: cal empty" % n)
+        r, t = c.get("require"), c.get("truth")
+        if not isinstance(r, dict) or set(r) != {"start", "end", "overall"} \
            or any(v not in (DEPARTURE, NONE, UNDECIDABLE) for v in r.values()):
-            mal.append("%s: require" % c.get("name", "?"))
-        if not isinstance(o, dict) or set(o) != {"start", "end", "extent"} \
-           or any(not isinstance(v, bool) for v in o.values()):
-            mal.append("%s: observable" % c.get("name", "?"))
+            mal.append("%s: require" % n)
+        for field in ("hidden_visible", "establishable"):
+            o = c.get(field)
+            if not isinstance(o, dict) or set(o) != {"start", "end", "extent"} \
+               or any(not isinstance(v, bool) for v in o.values()):
+                mal.append("%s: %s" % (n, field))
         if not isinstance(t, dict) or set(t) != {"start", "end", "dark_at"}:
-            mal.append("%s: truth" % c.get("name", "?"))
+            mal.append("%s: truth" % n)
     print("  0  every case carries the fixture schema             -> %s"
           % ("PASS" if not mal else "FAIL: " + ", ".join(mal[:4])))
     if mal:
@@ -343,11 +379,27 @@ def selftest() -> int:
     #    ⚠️ LIMIT: two rows with the same generative geometry differ in their noise draw, so this is
     #    an equivalence of DISTRIBUTIONS, not of samples. It is the strongest statement available
     #    without asserting that no analog observable separates them.
+    # ⚠️ `id(cal)` IS NOT EVIDENCE EQUALITY (Codex): a value-identical COPY of the calibration made
+    # two cases compare unequal, so a fixture could carry A5's exact row with a copied reference and
+    # demand a different answer while every control passed. The key is now the reference's VALUES.
+    def cal_key(rows):
+        return tuple(np.asarray(r).tobytes() for r in rows)
+
     byspans = {}
     for c in C:
-        key = (tuple(merge(c["spans"])), id(c["cal"]))
-        byspans.setdefault(key, set()).add((c["require"]["start"], c["require"]["end"]))
+        key = (tuple(merge(c["spans"])), cal_key(c["cal"]), c["row"].tobytes())
+        byspans.setdefault(key, set()).add(
+            (c["require"]["start"], c["require"]["end"], c["require"]["overall"],
+             tuple(sorted(c["establishable"].items()))))
     clash = [k for k, v in byspans.items() if len(v) > 1]
+    # and the stronger form the matched pair needs: identical ROWS and references, whatever their
+    # declared geometry, must demand identical answers.
+    byrow = {}
+    for c in C:
+        byrow.setdefault((c["row"].tobytes(), cal_key(c["cal"])), set()).add(
+            (c["require"]["start"], c["require"]["end"], c["require"]["overall"],
+             tuple(sorted(c["establishable"].items()))))
+    clash += [k for k, v in byrow.items() if len(v) > 1]
     ok &= not clash
     print("  4  identical content never demands opposite answers  -> %s"
           % ("PASS" if not clash else "FAIL: %d colliding group(s)" % len(clash)))
@@ -393,9 +445,16 @@ def selftest() -> int:
     # 8. AVAILABILITY MUST AGREE WITH THE GEOMETRY, DERIVED not pattern-matched. The old guard tested
     #    for the string "off-window", so B2's numerically censored end could be declared observable
     #    and every control still passed (Codex's finding 3).
-    inc = [c["name"] for c in C if c["observable"] != observability(c["spans"])]
-    inc += [c["name"] for c in C
-            if c["observable"]["extent"] != (c["observable"]["start"] and c["observable"]["end"])]
+    inc = [c["name"] for c in C if c["hidden_visible"] != hidden_visibility(c["spans"])]
+    for c in C:
+        for f in ("hidden_visible", "establishable"):
+            o = c[f]
+            if o["extent"] != (o["start"] and o["end"]):
+                inc.append("%s: %s extent" % (c["name"], f))
+        # a detector cannot establish an endpoint the window never delivered
+        if any(c["establishable"][k] and not c["hidden_visible"][k]
+               for k in ("start", "end", "extent")):
+            inc.append("%s: establishable exceeds delivery" % c["name"])
     ok &= not inc
     print("  8  availability agrees with the geometry             -> %s"
           % ("PASS" if not inc else "FAIL: " + ", ".join(sorted(set(inc)))))
@@ -435,6 +494,25 @@ def selftest() -> int:
         c12 = False
     ok &= c12
     print("  12 the matched pair is identical but differs in truth -> %s" % ("PASS" if c12 else "FAIL"))
+
+    # 13. A DECISIVE SHIFT AT AN ESTABLISHABLE ENDPOINT CANNOT REQUIRE `none`. Codex: declaring
+    #     A4's clearly displaced end `none` passed every control -- the set could assert that a
+    #     detector must report no departure where the truth moves the boundary well beyond the
+    #     calibration's own wobble AND the endpoint is delivered as an edge. `undecidable` stays
+    #     legal there (evidence can be insufficient); `none` is the one answer the truth forbids.
+    contra = []
+    for c in C:
+        for k in ("start", "end"):
+            v = c["truth"][k]
+            if isinstance(v, int) and abs(v) > JITTER \
+               and c["establishable"][k] and c["require"][k] == NONE:
+                contra.append("%s: %s shift %+d requires none" % (c["name"], k, v))
+        if c["require"]["overall"] == NONE and DEPARTURE in (c["require"]["start"],
+                                                            c["require"]["end"]):
+            contra.append("%s: overall none over a departure" % c["name"])
+    ok &= not contra
+    print("  13 a decisive delivered shift never requires `none`  -> %s"
+          % ("PASS" if not contra else "FAIL: " + ", ".join(contra[:3])))
 
     print("SELFTEST", "PASS" if ok else "FAILED")
     return 0 if ok else 1

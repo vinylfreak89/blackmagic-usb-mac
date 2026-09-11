@@ -83,7 +83,8 @@ def main():
         c["spans"] = [(a0, b0 - 40)]
         c["truth"]["start"] = c["truth"]["end"] = "absent"
         c["row"] = np.random.default_rng(1).normal(fixtures.PICTURE, 4.0, N)
-        c["observable"] = fixtures.observability(c["spans"])
+        c["hidden_visible"] = fixtures.hidden_visibility(c["spans"])
+        c["establishable"] = dict(c["hidden_visible"])
     case("1  invalid span, truth made consistent", 1, m1)
 
     # 2 -- the row no longer contains what the fixture declares.
@@ -112,7 +113,10 @@ def main():
     # 4 -- two fixtures with identical delivered content demanding opposite answers. The matched
     #      pair is exactly that content, so disagreeing there is the collision control 4 exists for.
     def m4(cs):
-        named(cs, "C3b")["require"] = {"start": fixtures.NONE, "end": fixtures.UNDECIDABLE}
+        # a VALID schema that disagrees -- an incomplete `require` trips control 0 first, which is
+        # control 0 working, but then this mutation never reaches the guard it is aimed at.
+        named(cs, "C3b")["require"] = {"start": fixtures.NONE, "end": fixtures.UNDECIDABLE,
+                                       "overall": fixtures.UNDECIDABLE}
     case("4  matched pair made to disagree", 4, m4)
 
     # 5 -- a sub-jitter shift with NO decisive shift anywhere, on a fixture not marked undecidable.
@@ -129,7 +133,8 @@ def main():
         c["spans"] = [(a0 - 30, b0 - 1)]
         c["truth"]["end"] = -1
         c["row"] = fixtures._row(np.random.default_rng(915), c["spans"])
-        c["observable"] = fixtures.observability(c["spans"])
+        c["hidden_visible"] = fixtures.hidden_visibility(c["spans"])
+        c["establishable"] = dict(c["hidden_visible"])
         c["require"]["end"] = fixtures.UNDECIDABLE
     cs = C(); m5b(cs); rc5b, f5b = fired(cs)
     ok5b = rc5b == 0 and not f5b
@@ -157,13 +162,13 @@ def main():
         c["cal"] = [np.full(N, fixtures.PICTURE) for _ in c["cal"]]
     case("7  a single case's reference broken", 7, m7c)
 
-    # 8 -- availability claiming an off-window endpoint is observable.
-    case("8  off-window endpoint declared observable", 8,
-         lambda cs: named(cs, "B1")["observable"].__setitem__("start", True))
+    # 8 -- availability claiming an off-window endpoint is visible.
+    case("8  off-window endpoint declared visible", 8,
+         lambda cs: named(cs, "B1")["hidden_visible"].__setitem__("start", True))
 
     # 8b -- Codex's finding 3: a NUMERICALLY censored endpoint, which the string test could not see.
     def m8b(cs):
-        named(cs, "B2")["observable"] = dict(start=True, end=True, extent=True)
+        named(cs, "B2")["hidden_visible"] = dict(start=True, end=True, extent=True)
     case("8  numerically censored end declared observable", 8, m8b)
 
     # 12 -- the matched pair's rows drifting apart, which silently stops it testing ambiguity.

@@ -237,8 +237,22 @@ def main():
 
     if a.audit:
         print("MUTATION AUDIT -- which controls catch each deliberate break\n")
+        # ⚠️ THE AUDIT MUST BE ABLE TO FAIL. It printed its warnings and exited 0, so a suite in
+        # which NO mutation fired its guard reported exactly like a clean one -- an audit that
+        # cannot fail is the rung-3 defect this project records, inside the instrument written to
+        # verify other guards. It now validates its BASELINE first (an unmutated run that already
+        # fails makes every mutation result meaningless) and exits non-zero on any unmet obligation.
+        ok_all = True
         base, _ = run_controls(a.trials, a.seed)
         names = [n for n, _, _ in base]
+        base_fired = [i for i, (_, ok, _) in enumerate(base) if not ok]
+        if base_fired:
+            print("  ⚠️ BASELINE ALREADY FAILING: controls %s fire with NO mutation applied."
+                  % ", ".join(str(i + 1) for i in base_fired))
+            print("     Every mutation below is uninterpretable until that is fixed.\n")
+            ok_all = False
+        else:
+            print("  baseline: unmutated run passes, no control fires\n")
         for mut, intended in (("texture-aware-mask", 0), ("blind-control", 1),
                               ("cut-blind-mask", 4)):
             MUTATE = mut
@@ -246,6 +260,11 @@ def main():
             fired = [i for i, (_, ok, _) in enumerate(got) if not ok]
             MUTATE = None
             print("  %s" % mut)
+            if intended >= len(names):
+                print("    ⚠️ INTENDED GUARD %d DOES NOT EXIST (%d controls) -- the audit and the"
+                      "\n       control set have drifted apart\n" % (intended + 1, len(names)))
+                ok_all = False
+                continue
             print("    intended guard : %d %s" % (intended + 1, names[intended]))
             print("    fired          : %s" % (", ".join(str(i + 1) for i in fired) or "NONE"))
             if fired == [intended]:
@@ -260,7 +279,9 @@ def main():
                       % (len(fired), ", ".join(names[i] for i in fired)))
             else:
                 print("    ⚠️ THE INTENDED GUARD DID NOT FIRE -- it does not defend what it claims\n")
-        raise SystemExit(0)
+                ok_all = False
+        print("AUDIT %s" % ("PASSED" if ok_all else "FAILED"))
+        raise SystemExit(0 if ok_all else 1)
 
     MUTATE = a.mutate
     controls, (s1, s2, tex_gap, ms) = run_controls(a.trials, a.seed)
