@@ -22,6 +22,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from packet_capture_reader import walk_tagged
 from review_frame import build_frame
 
+# ⚠️ ONE SOURCE OF TRUTH FOR THE DELIVERABLE'S PATH. This and locked_render_check.py each carried
+# the same literal, so they agreed by duplication rather than by sharing -- and a re-render written
+# to an explicit --out left the canonical name holding a SUPERSEDED video while the check went on
+# validating that name. Anyone opening "the locked render" got the stale one. Two stores, one
+# truth, nothing keeping them in step.
+LOCKED_RENDER = "/private/tmp/locked_capture1.mp4"
+
 UNIT=756_048; HDR=48; ROW=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 
 
@@ -49,7 +56,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--capture", default="captures/composite_program_30s.tpc")
     ap.add_argument("--sidecar", default="/private/tmp/plain-comb.ZNrk82/handoff.csv")
-    ap.add_argument("--out", default="/private/tmp/locked_capture1.mp4")
+    ap.add_argument("--out", default=LOCKED_RENDER)
     ap.add_argument("--limit", type=int, default=0, help="render only the first N units (a smoke test)")
     a = ap.parse_args()
 

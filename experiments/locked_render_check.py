@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from packet_capture_reader import walk_tagged
 from review_frame import build_frame
 from locked_render import adapt
+from locked_render import LOCKED_RENDER   # one path, shared, never duplicated
 
 UNIT=756_048; HDR=48; ROW=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 
@@ -55,7 +56,7 @@ def frame_from_video(path, idx, w, h):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--video", default="/private/tmp/locked_capture1.mp4")
+    ap.add_argument("--video", default=LOCKED_RENDER)
     ap.add_argument("--capture", default="captures/composite_program_30s.tpc")
     ap.add_argument("--sidecar", default="/private/tmp/plain-comb.ZNrk82/handoff.csv")
     ap.add_argument("--at", type=int, action="append", default=None)
