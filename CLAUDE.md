@@ -2255,6 +2255,26 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Edge-censored fixture review (`5e8797b`, 2026-09-11).**
+`docs/reports/2026-09-11_switch_fixture_censoring_review.md` and synthetic-only
+`experiments/switch_fixture_censoring_audit.py` record seven findings. Eleven
+supplied checks pass; the new audit has twelve unmet checks, exits 1 (3/15 pass).
+B2's hidden extension cannot establish `none` as positive absence; A5 shares the
+allowed-input ambiguity. Keep tri-state presence and separate visible-start,
+endpoint/extent bounds and uncertainty. `(702,720)` is a useful representative
+edge observation, not a measured full interval: 720 is delivery's bound. The
+generator actually puts 9/24 calibration ends inside delivery. Numeric censoring,
+absent-endpoint availability and inconsistent hidden B2 truth pass; empty,
+wrong-end and later-case-only invalid references pass. A4's large start shift
+with a small end shift is rejected by control 5 alone. Controls 3/5/7/8 can lose
+their rejection effect while the positive verifier still passes on their printed
+FAIL messages. Guard identity AND enforcement must be verified. Control 4 still
+equates masks, not full allowed inputs. A conditional extension/adjacent-dark
+luma pair is buildable without empirical texture claims; the old same-dither
+source assertion survives at the fixture consumer and remains unsupported.
+No capture content opened or remeasured; no engine, supplied-fixture or contract
+repair. The incoming repair claims below are narrowed at their own sentences.
+
 **Dither-comparison review (`f49ce91`, `968d2b5`, 2026-09-11).**
 `docs/reports/2026-09-11_dither_comparison_review.md` and synthetic-only
 `experiments/dither_compare_review.py` record six findings. The candidate feature
@@ -6393,20 +6413,28 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   ⚠️ **B3 carries C3's defect in miniature and I did not see it:** it labels an absent interval as "both
   endpoints off-window", which is the same unsupported causal explanation C3 was withdrawn for. An absent
   interval is absent; saying WHY is a claim.
-  ✅ **REPAIRED, and the verification now reports WHICH GUARD FIRES rather than the exit status.** Eleven
-  controls; seven mutations, each naming the control it is meant to trip, and **7 of 7 fire their intended one
-  while 6 of 7 are isolated to exactly one guard.** The eighth-of-a-case that is not isolated is reported as
+  **PARTIALLY REPAIRED; the verification now reports WHICH GUARD PRINTS FAILURE.** Eleven
+  controls; seven mutations, each naming the control it is meant to trip, and **7 of 7 report their intended one
+  while 6 of 7 report exactly one guard.** These counts reproduce, but enforcement is not verified:
+  Codex's `5e8797b` review disables controls 3/5/7/8's rejection effects individually while preserving
+  their messages, and the positive suite still passes because it ignores the mutated run's exit code.
+  The eighth-of-a-case that is not isolated is reported as
   such — an all-picture A2 with truth `absent` becomes observationally identical to B3 while requiring the
   opposite answer, so control 4 fires alongside control 1. **That is the collision Codex originally found, and
   printing "not isolated: 2 guards" is better than a claim of isolation it does not have.**
-  **The placement is now MEASURED rather than argued:** `NOMINAL = (702, 720)`, from the terminal run's median
-  start of 702 reaching 719 on 11,400 of 11,400 rows. **A2 can only SHORTEN** — a lengthening at the edge is
-  unobservable, so A2 is not A1's mirror and cannot be; **B2 encodes that directly**, a 60-sample lengthening
-  whose disposition is `none` because it is observationally identical to A5 while its truth records what
-  happened. Presence and availability are now two fields, so *"departure established"* and *"extent
-  unavailable"* are independently testable, which was Codex's finding 3. **A6 carries the uncertainty case the
-  blanket jitter ban used to exclude** — a one-sample translation requiring `undecidable` — and control 5 now
-  permits sub-jitter shifts only there.
+  **The placement is empirically motivated:** `NOMINAL = (702, 720)` selects a representative terminal
+  low-run start and delivery's right boundary from the `level + 3.0` measurement below. It does not
+  measure the full interval's end; the fixture remains an authored interval model. Its calibration
+  end jitter actually places 9/24 ends inside delivery, contrary to the all-censored comment.
+  **A2 shortens; B2 lengthens beyond delivery**, which leaves the visible mask unchanged. B2 was
+  assigned `none` by analogy with A5, but Codex's review rejects that as positive absence: hidden
+  motion is not ruled out by those observations, so both need `undecidable` for full-departure
+  presence unless independently qualified. Presence and availability are now separate fields,
+  but numeric censoring can still be marked observable without failing a control. Hidden truth
+  also needs checking before clipping; B2's +60 relabelled +1000 passes unchanged.
+  **A6 adds a one-sample START extension requiring `undecidable`, not the translation its name says.**
+  Control 5 now permits small shifts there, but still wrongly rejects a large, decisive start shift
+  when another endpoint's shift is small. Per-endpoint uncertainty must not force overall Unknown.
   **B3 no longer explains itself:** its truth reads `absent`, not "both endpoints off-window". An absent
   interval is absent; saying why is a claim the row cannot support.
     ✅ **AND THE MATCHED-CONTROL CLASS IS NOT EMPTY, which is why "one construction, not the class" was worth
