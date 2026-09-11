@@ -2255,6 +2255,63 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Blanking-extent review (`c8faa10`, `9f8dd3f`, `d21f373`, 2026-09-11).**
+`docs/reports/2026-09-11_blanking_extent_review.md` and
+`experiments/blanking_extent_review_controls.py` record code inspection and synthetic
+reproduction only; NO capture content was opened or remeasured. The supplied six
+controls pass, but the production reference is `median(Y[0:6])`, device hard padding,
+passed directly into the level mask. Changing only synthetic device padding changes
+six target assertions to zero with source rows unchanged. "Scale only" is false.
+Total low-valued count plus longest-run start does not establish blanking identity
+plus horizontal skew: unchanged true blanking with added dark picture returns extended,
+while a known texture phase change can return skew zero. A translated same-duration
+interval returns normal; a uniform blank-level row returns extended despite censoring.
+Thus the interpretation of 93% zero as absent physical skew is NOT accepted.
+Nor is the 292-position-spread attribution accepted as a diagnosis: extent tolerance,
+not position tolerance, selects normal. Synthetic dark content alone produces that
+position spread with no switch in calibration. The fixed addresses are offsets,
+not storage rows 210..236; field-1 calibration is 229..253, field-2 492..516, step two.
+The actual residue's cause remains to be isolated from keyed interval identities and
+separate extent/position spreads. Level qualification is not automatically circular,
+but changing the level mask changes both timing quantities, and equal blanking levels
+do not establish normal timing. Fitted tol is an operative decision input, not qualified
+by labeling alone. Experimental configured counts are reportable, not validated switch
+counts. The repair MUST NOT be required to preserve 0.23%: joint error improvement
+does not prove leakage. Guard keyed evaluation and attrition instead; a missing
+calibration currently skips whole fields and can report 0/0 with zero Unknown.
+These findings qualify the merged residue/acceptance claims below; no engine,
+contract or supplied detector implementation is changed by this review.
+
+**D16/D17 wording review (2026-09-11; relayed owner quotes recorded at `78e761b` and
+`616e458`).** The contract has NOT been edited by this review. Agree to replace §1's
+position-alone disagreement marker with D16 and to replace the whole correction-owed
+paragraph with D17's explicit identification of the awaited correction. The amendment
+to the proposed D16 gloss is essential: two necessary conditions do not imply Unknown
+only when NEITHER is established. An excursion with no established horizontal-skew
+component does not establish identity by this route; record the observed excursion
+and keep its identification unresolved. D16 supplies a qualification to measure, not
+a default-positive disposition when that qualification is missing. Do not manufacture
+a requirement for two independent detectors; the quote requires measurable skew,
+not a prescribed detector count. Preserve other qualified evidence routes and the
+distinction between Unknown and positively established absence.
+
+Suggested placement: full ruling and operative clarification at §1's :64-65, with a
+short cross-reference in the existing §3 Head switch definition (not a duplicate
+definition in §2's measured record). D17 closes the correction-delivery owner question:
+blanking excursion, temporal interpretation of the line, and the owner's observation
+that the RF peak marks the partial switch line are the promised correction. It does
+not certify every candidate peak or every disputed keyed detector reading. T remains
+the partial/top switch line; S remains the first fully other-head observation/bound,
+with existing qualifications including the possible T=S case preserved. His later
+description establishes the naming choice without rewriting the quoted parenthesis.
+
+The proposed supporting census repeats two already corrected transcription errors:
+the default-30 join had 199 positive winners on S-1 and ONE on S; among known T the
+split was 166/31/1. The 197 are peak-on-S-1 readings, not all engine T=S-1 readings.
+See `docs/reports/2026-09-11_peak_witness_adjudication.md`. Do not use "never on S"
+or the mislabeled denominator to justify the definition. The naming ruling is clear
+without that argument. No engine, contract, or detector change is made here.
+
 **Post-calibration harness review (`0a8fabe` through `91e2372`, 2026-09-11).**
 `docs/reports/2026-09-11_post_calibration_harness_review.md` and
 `experiments/post_calibration_review_controls.py` record the review and reproduction.
