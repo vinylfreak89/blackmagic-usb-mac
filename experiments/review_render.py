@@ -31,10 +31,14 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from packet_capture_reader import walk_tagged
+# The box detector is box_census's own, imported rather than reimplemented, so this render and that
+# census cannot drift apart.
+from box_census import h_profile, row_threshold, bands, verdict, FIELDS
 
 UNIT_BYTES = 756_048; HDR = 48; ROW_BYTES = 1440; RASTER_ROWS = 525
 MARK = b"\x00\x00\xff\xff"
-# 486 mode: field 1 lines 21..263, field 2 lines 283..525, 243 rows each. Unit row = NTSC line - 4.
+# Unit row = NTSC line - 4. The 486 field lines are stated once, in the CORRECTED note below;
+# this line used to restate them as 21..263 and was left behind when they changed.
 # 486 mode, CORRECTED 2026-09-09. The two fields are structurally identical - each carries the
 # Shuttle's line-20 insert, its caption insert, its regenerated black, then picture - and the field
 # spacing is 263 throughout (284-21, 286-23, 283-20, all 263). Starting field 1 at 21 while field 2
@@ -51,6 +55,23 @@ BAND = 190          # three text rows per field, then the legend, then the strip
 MARGIN = 26                       # left/right margin either side of the picture, where ticks live
 LANE = 22                         # one field's tick lane; field 1 inner, field 2 outer, per side
 SPAN = 90                         # units either side of the playhead in the graph
+# ⚠️ THE BOX IS GEOMETRY'S MARKING TOO, so it is drawn the way the head switch is: short ticks in
+# the margins, one per field, never a line or a filled rectangle across the picture (owner: "a small
+# line on either side of the picture rather than across the whole thing", and 2026-09-11: "the box
+# overlay goes along with the ticks. they are geometry's box that marked the box", "one per field
+# just like the head switch").
+# It gets its OWN lane, outside the head switch's two, so the two markings are never confused. Both
+# fields share that lane, because the owner's colour rule is about COINCIDENCE: "if they overlap it
+# should be purple, if they are separate it should be the appropriate red or blue".
+BOXLANE_OFF = 8 + 2 * 22          # outside both head-switch lanes
+PURPLE = (200, 110, 235)
+# ⚠️ AND THE BOX IS THE LETTERBOX, NOT THE PICTURE (owner, 2026-09-11: "the box is inverted from
+# what it supposed to be. It is supposed to show the areas of the video that count as letterbox not
+# the active picture"). CLAUDE.md already carries this as a retraction -- "box is the bounds of the
+# box, not the content inside the box" -- and an earlier render drew box_census's content_top..
+# content_bot, the region BETWEEN the bars, because those were the convenient fields. The rows
+# marked here are the BANDS: the field's first row through the top band, and the bottom band through
+# the field's last row.
 
 def g(r, k, d=""):
     v = r.get(k)
@@ -67,6 +88,26 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("capture"); ap.add_argument("log"); ap.add_argument("out")
     ap.add_argument("--crf", default="14")
+    # ⚠️ THE PRESENTATION DEINTERLACER. This render weaves two temporally separated fields into one
+    # frame, so shown progressive it COMBS on any motion (owner, 2026-09-11: "it combs like crazy").
+    # bwdif is the presentation weaver he asked for.
+    # ⚠️ AND bwdif HAS NO SWITCH FOR ITS SPATIAL CHECK. Its whole option set is mode/parity/deint,
+    # checked in this ffmpeg and not assumed. BOTH weavers run a spatial interlacing check that can
+    # override the temporal decision and smooth a comb the filter judges implausible -- and only
+    # yadif exposes a switch for it. Recorded 2026-09-07, transcript line 24424: "Bwdif has no
+    # switch for it; yadif exposes one, mode=send_frame_nospatial", with the fallback condition
+    # named the same day: "if a registration error ever looks softened rather than combed".
+    # So `yadif_nospatial` is the ONLY choice here that is a weaver with a decision REMOVED: same
+    # temporal prediction, spatial override skipped. bwdif stays the default because that is the
+    # settled presentation choice; it simply cannot express "motion estimation off".
+    # `nnedi` is the intra-field option that invents no motion at all, which is why CLAUDE.md calls
+    # it the diagnostic lens ("it cannot comb, so whatever moves in an NNEDI3 render is in the
+    # signal").
+    ap.add_argument("--deint", default="bwdif",
+                    choices=("bwdif", "yadif_nospatial", "nnedi", "estdif", "none"),
+                    help="presentation deinterlacer; bwdif is motion-adaptive by construction and "
+                         "has no switch for its spatial check; yadif_nospatial is the same weave "
+                         "with the spatial override skipped; nnedi/estdif are intra-field")
     ap.add_argument("--no-machine-strip", dest="machine_strip", action="store_false",
                     help="omit the machine-readable identity barcode. It is DRAWN by default and "
                          "labelled: it encodes the unit ordinal, counter and applied pair so the "
@@ -120,6 +161,16 @@ def main():
             cmd += ["-ss", f"{skip_units * 1001 / 30000:.6f}"]
         cmd += ["-f", "s24le", "-ar", "48000", "-ac", "2", "-i", a.pcm]
         cmd += ["-c:a", "aac", "-b:a", "192k", "-shortest"]
+    # The frames arriving on the pipe are woven fields with no interlace flag, so the field order is
+    # DECLARED rather than detected: setfield=tff, because output row 0 is field 1 and this capture's
+    # order was verified TFF empirically. send_frame keeps one output frame per unit, so the format,
+    # the band and the record stay exactly as they are.
+    VF = {"bwdif": "setfield=tff,bwdif=mode=send_frame:parity=tff",
+          "yadif_nospatial": "setfield=tff,yadif=mode=send_frame_nospatial:parity=tff",
+          "nnedi": "setfield=tff,nnedi=field=tf",
+          "estdif": "setfield=tff,estdif=mode=frame:parity=tff"}
+    if a.deint != "none":
+        cmd += ["-vf", VF[a.deint]]
     cmd += ["-c:v", "libx264", "-crf", a.crf, "-preset", "medium", "-pix_fmt", "yuv420p", a.out]
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
@@ -265,10 +316,42 @@ def main():
                     o = 0 if f == 0 else LANE
                     dr.line([(PX - inner - o - LANE + 2, fr), (PX - inner - o, fr)], fill=col, width=2)
                     dr.line([(PX + DW + inner + o, fr), (PX + DW + inner + o + LANE - 2, fr)], fill=col, width=2)
+        # ---- THE BOX: geometry's other marking, drawn the way the head switch is -----------
+        # The rows marked are the LETTERBOX BANDS -- the field's edge through the top band, and the
+        # bottom band through the field's edge -- NOT the content between them.
+        hp = h_profile(R[:, 1::2])
+        boxk = {}                      # picture line k -> the fields with a box edge on it
+        for f, (first, d) in enumerate(((F1_FIRST_LINE, dd1), (F2_FIRST_LINE, dd2))):
+            lo, hi = FIELDS[f + 1]
+            b = bands(hp, lo, hi, row_threshold(hp, lo, hi, 4.5, 0.28), 6)
+            if verdict(b, 6, 40) != "box" or b["content_top"] < 0:
+                continue               # no box in this field: nothing drawn, never a guessed one
+            for sr in (lo, b["content_top"] - 1, b["content_bot"] + 1, hi):
+                k = sr - (first + d - 4)
+                if 0 <= k < FIELD_ROWS:
+                    boxk.setdefault(k, set()).add(f)
+        # ⚠️ OVERLAP IS IN THE PICTURE, NOT THE RASTER. Woven, field 1 occupies the EVEN output rows
+        # and field 2 the odd, so the two can never share an output row and a collision test there
+        # would be vacuous -- the same mistake an earlier render made by testing coincidence on the
+        # raster, where the fields are 263 apart and can never coincide either. The corresponding
+        # pair is output rows 2k and 2k+1, so the test is on k: both fields marking the same picture
+        # line is the overlap. Owner: "if they overlap it should be purple, if they are separate it
+        # should be the appropriate red or blue".
+        for k, fs in boxk.items():
+            both = len(fs) > 1
+            col = PURPLE if both else ((255, 90, 90) if 0 in fs else (90, 170, 255))
+            fr = k * 2 + (0 if both else (0 if 0 in fs else 1))
+            dr.line([(PX - BOXLANE_OFF - LANE + 2, fr), (PX - BOXLANE_OFF, fr)],
+                    fill=col, width=2 if both else 1)
+            dr.line([(PX + DW + BOXLANE_OFF, fr), (PX + DW + BOXLANE_OFF + LANE - 2, fr)],
+                    fill=col, width=2 if both else 1)
+
         # at the TOP of the margins: band edges sit near the bottom of a field, so a label there
         # was drawn straight through the ticks it names
         dr.text((PX - 8 - 2 * LANE + 2, 3), "f2 f1", font=small, fill=(70, 70, 70))
         dr.text((PX + DW + 10, 3), "f1 f2", font=small, fill=(70, 70, 70))
+        dr.text((PX - BOXLANE_OFF - LANE + 2, 3), "box", font=small, fill=(70, 70, 70))
+        dr.text((PX + DW + BOXLANE_OFF, 3), "box", font=small, fill=(70, 70, 70))
         draw_band(dr, r, i, dd1, dd2)
         enc.stdin.write(img.tobytes())
 
