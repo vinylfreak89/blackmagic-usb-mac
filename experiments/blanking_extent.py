@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+"""The head switch as the BLANKING'S OWN EXTENT departing from the source's, in both directions.
+
+Built to the owner's specification rather than to an intuition. Every clause it implements is his,
+and the citations are to `docs/geometry_first_engine.md`:
+
+  OBSERVABLE (:43-47) -- "if the blanking extends past its expected horizontal extent or the picture
+  extends past its expected horizontal extent, that's the head switch." The quantity is an EXTENT: a
+  duration, not a level. (:443: "a timing displacement across the window boundary, not a level or
+  texture judgement".) This is why nothing here rests on `row_transition`, which returns ONE BOUNDARY
+  -- and a boundary is why the withdrawn detector could only ever see one direction.
+
+  BOTH DIRECTIONS, HIS NAMES (:50) -- "Overridden or extended."
+    OVERRIDDEN: picture where blanking is expected -- the row's blank extent is SHORTER.
+    EXTENDED:   blanking where picture is expected -- LONGER, or an interior run appears.
+
+  LOCAL, NEVER WHOLE-FIELD (:447) -- "its variance is measured over a local window of rows, never
+  whole-field", with his reason: the field's top rows carry p95 52-63 above blanking against 7.6
+  just above the switch, so "judged whole-field, those top rows hide the band". Measured here: a
+  whole-field floor admits the band on 61% of units, a local one on 100%.
+
+  D16, TWO NECESSARY CONDITIONS (owner, 2026-09-11) -- "no blanking alone can not establish
+  identity. blanking excursion can but there still needs to be some measureable component of
+  horizontal skew". So an EXCURSION is necessary and NOT sufficient: a measurable horizontal skew
+  must accompany it. An excursion without established skew is UNKNOWN, and per Codex's amendment
+  "Unknown does not establish absence."
+
+  NO NOMINAL FIGURES (:66-70) -- "These nominal extents do not themselves specify a sample-count
+  decision threshold." The expected EXTENT, the expected POSITION and both of their tolerances come
+  from the local rows themselves, so no sample count is typed in.
+
+  ⚠️ ONE CONSTANT IS TYPED IN AND THIS DOCSTRING PREVIOUSLY DENIED IT: `tol = 3.0`, the level
+  window for "at blanking level". It is not a sample count and not a decision threshold on the
+  observable -- the observable is the extent -- but it IS a magic number under rule 4 and it is
+  labelled FITTED rather than hidden. Deriving it belongs with the source-blanking variability that
+  :531 already says the reference supplies; it is not derived here. Saying "nothing is typed in"
+  while the code types in 3.0 is the docstring-asserts-what-the-code-does-not-do defect this
+  project has paid for twice.
+
+  blanking_extent.py [--capture ...] [--selftest]
+"""
+from __future__ import annotations
+import argparse, os, sys
+import numpy as np
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from packet_capture_reader import walk_tagged
+from source_reference import ORIGIN_ROW
+
+UNIT = 756_048; HDR = 48; ROW = 1440; LINES = 525; MARK = b"\x00\x00\xff\xff"
+FIELD_ORIGIN = {1: 23, 2: 286}
+SWITCH_LINES = {1: (260, 261, 262), 2: (523, 524, 525)}
+
+
+def blank_spans(row, level, tol):
+    """Every run of samples at the row's blanking level, as (start, length). No position assumed."""
+    m = row <= level + tol
+    spans = []
+    i = 0
+    n = m.size
+    while i < n:
+        if m[i]:
+            j = i
+            while j + 1 < n and m[j + 1]:
+                j += 1
+            spans.append((i, j - i + 1))
+            i = j + 1
+        else:
+            i += 1
+    return spans
+
+
+def row_extent(row, level, tol):
+    """This row's blanking EXTENT and POSITION -- a duration and where it sits, not a boundary.
+
+    Returns (total_extent, position) where position is the START of the row's LONGEST blank run.
+    Two numbers, because his test is symmetric and needs both: the extent answers overridden vs
+    extended, the position is the horizontal-skew component D16 requires alongside it.
+    """
+    spans = blank_spans(row, level, tol)
+    if not spans:
+        return 0, None
+    total = sum(l for _, l in spans)
+    start, _ = max(spans, key=lambda s: s[1])
+    return total, start
+
+
+def local_expectation(rows, level, tol):
+    """Expected extent and position from THESE rows -- the local window, never the whole field.
+
+    Returns (extent_med, extent_tol, pos_med, pos_tol) with both tolerances taken from the rows'
+    own spread, so no sample count is typed in. The spread is the full observed range rather than a
+    percentile: a percentile of a population must misclassify that fraction of it, which is the
+    floor a previous instrument could not tune below.
+    """
+    ext, pos = [], []
+    for r in rows:
+        e, p = row_extent(r, level, tol)
+        ext.append(e)
+        if p is not None:
+            pos.append(p)
+    if len(ext) < 6 or len(pos) < 6:
+        return None
+    ext = np.array(ext, float); pos = np.array(pos, float)
+    return (float(np.median(ext)), float(ext.max() - ext.min()),
+            float(np.median(pos)), float(pos.max() - pos.min()))
+
+
+def classify(row, exp, level, tol):
+    """His test, both directions, with D16's two conditions.
+
+    OVERRIDDEN / EXTENDED / normal / Unknown. Unknown is returned when an excursion is present but
+    no horizontal-skew component is established -- which is a REQUIREMENT, not a shortfall, and it
+    does not establish absence.
+    """
+    e_med, e_tol, p_med, p_tol = exp
+    e, p = row_extent(row, level, tol)
+    excursion = e - e_med
+    has_exc = abs(excursion) > e_tol
+    if not has_exc:
+        return "normal", excursion, None
+    if p is None:
+        return "Unknown", excursion, None
+    skew = p - p_med
+    if abs(skew) <= p_tol:
+        return "Unknown", excursion, skew          # excursion without established skew: D16
+    return ("extended" if excursion > 0 else "overridden"), excursion, skew
+
+
+def selftest() -> int:
+    """Controls derived from the ways the SPECIFICATION can be violated, not from what went wrong."""
+    rng = np.random.default_rng(5)
+    ok = True
+
+    def field(n_rows=40, blank_len=16, blank_at=700, jitter=2):
+        """Good rows with REALISTIC jitter. A zero-variance fixture gives a zero tolerance, which
+        makes every excursion significant and every control pass for the wrong reason."""
+        rows = []
+        for _ in range(n_rows):
+            r = rng.normal(90, 4, 720)
+            at = blank_at + int(rng.integers(-jitter, jitter + 1))
+            ln = blank_len + int(rng.integers(-1, 2))
+            r[at:at + ln] = rng.normal(1.4, 0.3, ln)
+            rows.append(r)
+        return rows
+
+    good = field()
+    exp = local_expectation(good, 1.4, 3.0)
+    print("SPECIFICATION CONTROLS")
+    print("  expected extent %.0f (tol %.0f), position %.0f (tol %.0f)" % exp)
+
+    def row_with(at, ln):
+        r = rng.normal(90, 4, 720)
+        ln = min(ln, 720 - at)          # a fixture must not run off the row and silently shorten
+        r[at:at + ln] = rng.normal(1.4, 0.3, ln)
+        return r
+
+    # 1. a normal row -- drawn from the same distribution as the calibration rows
+    v, _, _ = classify(field(1)[0], exp, 1.4, 3.0)
+    ok &= v == "normal"
+    print("  normal row                        -> %-10s %s" % (v, "PASS" if v == "normal" else "FAIL"))
+
+    # 2. EXTENDED: blanking where picture is expected -- longer AND displaced
+    v, _, _ = classify(row_with(540, 150), exp, 1.4, 3.0)
+    ok &= v == "extended"
+    print("  EXTENDED (blanking intrudes)      -> %-10s %s" % (v, "PASS" if v == "extended" else "FAIL"))
+
+    # 3. OVERRIDDEN: picture eats into the blanking -- shorter AND its start moves, which is what
+    #    picture intruding from one side actually does to the run that remains.
+    v, _, _ = classify(row_with(712, 4), exp, 1.4, 3.0)
+    ok &= v == "overridden"
+    print("  OVERRIDDEN (picture intrudes)     -> %-10s %s" % (v, "PASS" if v == "overridden" else "FAIL"))
+
+    # 4. D16, THE LOAD-BEARING ONE: an excursion at the EXPECTED position has no skew component and
+    #    must be Unknown. A detector that called this a switch would be using extent alone, which is
+    #    exactly what he ruled out.
+    v, _, _ = classify(row_with(700, 20), exp, 1.4, 3.0)
+    ok &= v == "Unknown"
+    print("  excursion, position unchanged     -> %-10s %s  (D16: skew required)"
+          % (v, "PASS" if v == "Unknown" else "FAIL"))
+
+    # 5. no blanking at all is Unknown, never 'overridden': absence is not a reading
+    v, _, _ = classify(rng.normal(90, 4, 720), exp, 1.4, 3.0)
+    ok &= v == "Unknown"
+    print("  no blanking anywhere              -> %-10s %s" % (v, "PASS" if v == "Unknown" else "FAIL"))
+
+    # 6. BOTH DIRECTIONS REACHABLE. The withdrawn detector failed exactly here, and a symmetric
+    #    test that can only ever return one of the two names is the defect wearing a new statistic.
+    seen = {classify(row_with(540, 150), exp, 1.4, 3.0)[0],
+            classify(row_with(712, 4), exp, 1.4, 3.0)[0]}
+    both = {"extended", "overridden"} <= seen
+    ok &= both
+    print("  both directions reachable         -> %-10s %s"
+          % (sorted(seen), "PASS" if both else "FAIL: one-directional"))
+    print("SELFTEST", "PASS" if ok else "FAILED")
+    return 0 if ok else 1
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--capture", default="captures/composite_program_30s.tpc")
+    ap.add_argument("--from-counter", type=int, default=6667)
+    ap.add_argument("--selftest", action="store_true")
+    a = ap.parse_args()
+    if a.selftest:
+        return selftest()
+
+    st = {"buf": bytearray()}
+    tally = {"detect": [0, 0], "false": [0, 0], "unknown_sw": 0, "unknown_ctl": 0, "dir": {}}
+
+    def emit(u):
+        c = int.from_bytes(u[4:6], "little")
+        if c < a.from_counter:
+            return
+        Y = np.frombuffer(u, np.uint8)[HDR:].reshape(LINES, ROW)[:, 1::2].astype(np.float64)
+        for f in (1, 2):
+            base = ORIGIN_ROW[f]; origin = FIELD_ORIGIN[f]
+            level = float(np.median(Y[0:6]))          # the device's fill, used ONLY as a scale for
+            tol = 3.0                                  # "at blanking level"; never as the reference
+            # LOCAL window: rows just above the band, calibration and validation DISJOINT by parity
+            cal = [Y[base + o] for o in range(210, 236, 2)]
+            val = [Y[base + o] for o in range(211, 236, 2)]
+            exp = local_expectation(cal, level, tol)
+            if exp is None:
+                continue
+            for r in val:                              # held-out, known no-switch
+                v, _, _ = classify(r, exp, level, tol)
+                tally["false"][1] += 1
+                if v in ("extended", "overridden"):
+                    tally["false"][0] += 1
+                elif v == "Unknown":
+                    tally["unknown_ctl"] += 1
+            for ln in SWITCH_LINES[f]:
+                rr = base + (ln - origin)
+                if rr >= LINES:
+                    continue
+                v, _, _ = classify(Y[rr], exp, level, tol)
+                tally["detect"][1] += 1
+                if v in ("extended", "overridden"):
+                    tally["detect"][0] += 1
+                    tally["dir"][v] = tally["dir"].get(v, 0) + 1
+                elif v == "Unknown":
+                    tally["unknown_sw"] += 1
+
+    def on_video(p):
+        b = st["buf"]; b.extend(p)
+        while True:
+            i = b.find(MARK)
+            if i < 0: return
+            if i > 0: del b[:i]
+            j = b.find(MARK, 4)
+            if j < 0: return
+            if j == UNIT: emit(bytes(b[:UNIT]))
+            del b[:j]
+
+    walk_tagged(a.capture, on_video=on_video, progress=False)
+    d, dn = tally["detect"]; fp, fn = tally["false"]
+    print("BLANKING EXTENT, both directions, local window, D16's two conditions.\n")
+    print("  identified on the switch band : %d of %d = %.0f%%" % (d, dn, 100*d/max(dn,1)))
+    print("     by direction               : %s" % (tally["dir"] or "none"))
+    print("     Unknown there (excursion without established skew) : %d" % tally["unknown_sw"])
+    print("  FALSE identification on held-out no-switch rows : %d of %d = %.2f%%"
+          % (fp, fn, 100*fp/max(fn,1)))
+    print("     Unknown there : %d (%.1f%%)" % (tally["unknown_ctl"], 100*tally["unknown_ctl"]/max(fn,1)))
+    print("\n  Unknown is a REQUIREMENT of D16, not a shortfall, and does not establish absence.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
