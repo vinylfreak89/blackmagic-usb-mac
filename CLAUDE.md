@@ -4065,6 +4065,18 @@ two-instrument disagreement, not an accepted detector change. Measurements,
 reproduction, and the precise scope of the old 24.293-ms synthetic engine
 percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
 
+- **A REFINEMENT COUNTS, NOT ONLY A CONCLUSION — and the milder form is harder to catch because the store is
+  not WRONG, only WIDE (2026-09-11, third instance in one day, the peer session's count).** A measured
+  correction stayed in a message while the durable text kept the looser claim: the `--selftest` discovery
+  predicate matches the QUOTED literal, a probe with the bare form was never discovered, and I reported that to
+  the peer and left `run_all_checks.py`'s own docstring saying "the literal" and "mentions it in prose" at three
+  sites. **`CLAUDE.md` had the refinement; the file it describes did not** — so the two stores disagreed in the
+  direction nobody audits, one being a superset of the other rather than a contradiction.
+  **The test is the same either way: after measuring something that narrows a claim, go and narrow the claim
+  where it is written**, including in the docstring of the thing just repaired. The rule below already says a
+  conclusion goes in the file at the moment it is reached; this adds that a REFINEMENT is the case most likely
+  to be skipped, because nothing reads as false.
+
 - **A conclusion that closes off a line of investigation is written into THIS FILE at the moment it is
   reached** — by whichever agent reaches it, in whichever channel, without waiting for a round of work to end. A
   finding that lives only in a Codex thread is invisible to the harness, and an assertion made in the Claude thread

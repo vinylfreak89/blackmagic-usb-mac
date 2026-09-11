@@ -9,7 +9,8 @@ hand-written, which is this file's other recorded defect -- an instrument whose 
 from the instances that prompted it, so it cannot see the next one.
 
 Discovery is therefore from the DIRECTORY, never from a list:
-  * a module whose SOURCE CONTAINS the literal `--selftest` runs with it
+  * a module whose source contains the QUOTED literal `"--selftest"` (or the single-quoted form)
+    runs with it -- a BARE prose mention is not matched and such a file is not discovered at all
   * a module whose name ends `_check` or `_controls` runs bare -- those ARE the check
 Anything new in `experiments/` is covered the day it lands, without anyone remembering.
 
@@ -21,9 +22,10 @@ half: DO NOT repair the code to match. `owner_queue_check.py:229` and `supersede
 handle `--selftest` through raw `sys.argv` with no argparse option at all, so an argparse-reading
 discovery would silently drop two checks -- including the queue guard whose own subject is coverage
 lapsing without anything failing.
-The residual exposure of the substring test is a file that MENTIONS `--selftest` in prose without
-handling it. That is classified below rather than counted as a failure, and it was zero files when
-this was written.
+The residual exposure is therefore NARROW and was measured with a probe rather than reasoned: a file
+carrying the QUOTED literal in code without wiring it up. A probe with the bare form was not
+discovered; only the quoted form is. That case is classified below rather than counted as a failure,
+and it was zero files when this was written.
 
 ⚠️ EXIT STATUS IS THE VERDICT, never the printed text. The breakage that prompted this printed nine
 PASS lines and "SELFTEST PASS" and then raised; standard output was clean and only the status was
@@ -103,8 +105,8 @@ def main() -> int:
             continue
         err = r.stderr.decode(errors="replace")
         if r.returncode == 2 and "unrecognized arguments" in err and args:
-            # Mentions the flag in prose but does not accept it -- the substring test's one real
-            # exposure. Named, never counted green and never counted against the suite.
+            # Carries the QUOTED literal but does not accept the flag -- the substring test's one
+            # real exposure. Named, never counted green and never counted against the suite.
             mentions.append(fn)
             if not a.quiet:
                 print("  %-42s MENTIONS --selftest ONLY" % fn)
