@@ -5010,6 +5010,38 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **"YOU BOTH HAVE NOT TRIED HARD ENOUGH" — and his text specifies the detector far more than either agent had
+  read out of it (owner, relayed 2026-09-11).** Before rebuilding the withdrawn skew detector, his symmetric
+  definition was read properly instead of quoted. It carries **three clauses, each with its measurement**, and
+  the withdrawn detector violated all three:
+  1. **`:443` — "It is a timing displacement across the window boundary, NOT a level or texture judgement, so it
+     needs NEITHER a level test that cannot work here NOR the geometry it feeds."** The withdrawn detector is
+     built on `row_transition`, which finds a picture-to-blanking edge **by level**. So it is the wrong kind of
+     observable, not merely one-directional — which is Codex's objection reached from the contract's own side.
+  2. **`:443` — "A field's horizontal timing is not uniform down the field, so its variance is measured over a
+     LOCAL WINDOW OF ROWS, never whole-field"**, with the reason stated: the top rows (lines 23–34) carry p95
+     **52–63** above blanking against **7.6** just above the switch, and **"judged whole-field, those top rows
+     hide the band."** The per-unit floor calibrates over mid-picture rows 20–180 as ONE whole-field population.
+  3. **`:660` — a qualified departure, a partial-line boundary, an RF peak or an AGC mismatch "may supply
+     EVIDENCE about it; NONE is an alternative definition and none is automatically sufficient identification."**
+  **CLAUSE 2 IS TESTABLE AND IT REPRODUCES EXACTLY.** Field 1, 508 units, the band's departure against a floor
+  taken from the calibration population:
+
+  | floor taken over | band clears it | detection | held-out false-fire |
+  |---|---:|---:|---:|
+  | mid-picture 20–180 (whole-field) | **61%** | 62% | 0.44% |
+  | a LOCAL window just above the band | **100%** | **99%** | 2.05% |
+
+  **The 62% I reported was the whole-field floor inflated by distant rows, which is what he says happens, stated
+  before I measured it.** A local window takes detection to 99% at a false-fire rate of 2.05% — four times
+  higher, so this is a trade rather than a free gain, and both numbers travel together.
+  ⚠️ **This does NOT resurrect the detector.** Clause 1 still disqualifies it: it is a level-derived statistic
+  where he specifies a timing displacement across the window boundary, and clause 3 makes any departure
+  measure evidence rather than definition. **What the exercise establishes is that the rebuild's shape is
+  already written down** — two windows per row from the source's own good lines, tested in both directions,
+  locally — and that reaching for him was the wrong move twice over: the specification existed, and the reason
+  my version under-detected was in the same paragraph.
+
 - **A CHECK THAT FAILS FOR A REASON UNRELATED TO THE CLAIM IS INDISTINGUISHABLE FROM THE CLAIM BEING FALSE —
   and the damage is a report about someone else's work (2026-09-11).** Two instances in one night, both from the
   peer session and both caught before relay. Its dispatch check was handed a harness task id, globbed the wrong
