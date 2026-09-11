@@ -18,6 +18,15 @@ assumption into a sensitivity result, the move that settled the +3.0 cut -- or i
 control genuinely needs the measurement and is blocked. The second is a result too: it says the
 measurement is load-bearing rather than decorative.
 
+⚠️ AND THE ANSWER IS A MARGIN, NOT A CONSTRUCTION. The first version of this concluded "insensitive
+BY CONSTRUCTION -- a level mask never takes texture as an input". That is FALSE and the peer session
+caught it: the mask is texture-blind PER SAMPLE, but its output is the index set that fell below the
+cut, and that set is a property of the REALIZED SEQUENCE, which texture orders. `--margin` measures
+it: at 2 sigma the identical-mask rate swings 16% -> 55% across rho, a 39-point spread; at the
+committed 6 sigma the spread is zero. So the conclusion holds AT THIS CUT and carries its own
+precondition, where "by construction" would have licensed reusing it at a tight cut -- and this
+project has already measured a tight cut failing (the k=0.5 collapse, 38% of real rows).
+
 TWO SWEEPS, both at FIXED marginal distribution so only temporal structure changes:
   sweep 1  both objects share one texture -- the worst case for a detector, hence the right case for
            a control, but it also assumes away the discriminator, so on its own it cannot separate
@@ -78,16 +87,26 @@ def world_B(rng, blank_rho, dark_rho):
     return r
 
 
-def level_verdict(row):
+def level_verdict(row, cut=None):
     """What a LEVEL-ONLY reading can say: which samples are at or below the cut, and the run's
-    extent -- the quantity a boundary-extension detector actually reads."""
+    extent -- the quantity a boundary-extension detector actually reads.
+
+    ⚠️ THE MASK IS TEXTURE-BLIND PER SAMPLE; ITS OUTPUT IS NOT. The returned index set is a property
+    of the REALIZED SEQUENCE, and texture is what orders a realization -- permute one and the
+    multiset is unchanged while every run changes. So this is insensitive to texture only where the
+    cut is far enough from the level that the mask is effectively deterministic. `margin_sweep()`
+    measures where that stops being true."""
+    c = CUT if cut is None else cut
+    if MUTATE == "cut-blind-mask":
+        # a mask that ignores the cut: flat at EVERY margin, so control 5's second half is false
+        c = BLANK + 3.0
     if MUTATE == "texture-aware-mask":
         # a mask that DOES read texture: keep samples whose local spread is small. Control 1 must
         # fail under this, or "the level verdict never moves" is unfalsifiable.
         loc = np.array([row[max(0, i - 1):i + 2].std() for i in range(row.size)])
-        m = (row <= CUT) & (loc <= 0.45)
+        m = (row <= c) & (loc <= 0.45)
     else:
-        m = row <= CUT
+        m = row <= c
     idx = np.flatnonzero(m)
     if idx.size == 0:
         return (), None
@@ -108,7 +127,7 @@ def texture_verdict(row):
     return float((s[:-1] * s[1:]).sum() / d) if d else 0.0
 
 
-def sweep(shared, trials, seed):
+def sweep(shared, trials, seed, cut=None):
     rng = np.random.default_rng(seed)
     out = []
     for rho in RHOS:
@@ -119,14 +138,37 @@ def sweep(shared, trials, seed):
             bl = rho if shared else BLANK_RHO
             A = world_A(rng, bl)
             B = world_B(rng, bl, rho)
-            mA, eA = level_verdict(A)
-            mB, eB = level_verdict(B)
+            mA, eA = level_verdict(A, cut)
+            mB, eB = level_verdict(B, cut)
             same += (mA == mB)
             ext.append((eA, eB))
             tA, tB = texture_verdict(A), texture_verdict(B)
             if tA is not None and tB is not None:
                 tex.append(tB - tA)
         out.append((rho, same, trials, ext[0], float(np.median(tex)) if tex else float("nan")))
+    return out
+
+
+def margin_sweep(trials=200, seed=5):
+    """Where does the cut stop being far enough? Returns [(k, sigma, [rate per rho], spread)].
+
+    This exists because "insensitive BY CONSTRUCTION" was written here first and is FALSE: it would
+    licence reusing the reasoning at a tight cut, and this project has already been burned by one
+    (the k=0.5 collapse, where 38% of real rows had their terminal run broken by which samples noise
+    pushed over the line). Stated as a margin, the claim carries its own precondition."""
+    out = []
+    for k in (0.25, 0.5, 1.0, 1.5, 2.0, 3.0):
+        cut = BLANK + k
+        rates = []
+        for rho in (-0.8, -0.4, 0.0, 0.4, 0.9):
+            rng = np.random.default_rng(seed)
+            same = 0
+            for _ in range(trials):
+                A = world_A(rng, rho)
+                B = world_B(rng, rho, rho)
+                same += (level_verdict(A, cut)[0] == level_verdict(B, cut)[0])
+            rates.append(same / trials)
+        out.append((k, k / BLANK_SD, rates, max(rates) - min(rates)))
     return out
 
 
@@ -143,6 +185,10 @@ def run_controls(trials, seed):
     _, eB = level_verdict(world_B(rng, BLANK_RHO, DARK_RHO))
     want = NOM[1] - (NOM[0] - EXTEND)
 
+    ms = margin_sweep(trials=120)
+    far_spread = next(sp for k, _, _, sp in ms if abs(k - 3.0) < 1e-9)
+    tight_spread = next(sp for k, _, _, sp in ms if abs(k - 1.0) < 1e-9)
+
     rng = np.random.default_rng(11)
     iid = rng.normal(BLANK, BLANK_SD, 400)
     s = iid - iid.mean()
@@ -157,7 +203,14 @@ def run_controls(trials, seed):
          eA == eB == want, "%s / %s, want %s" % (eA, eB, want)),
         ("i.i.d. asserts rho~0, not the measured %+0.2f" % BLANK_RHO,
          abs(r_iid) < 0.10 and abs(BLANK_RHO) > 0.10, "i.i.d. %+0.2f" % r_iid),
-    ], (s1, s2, tex_gap)
+        # 5 is the precondition, and it must fail in BOTH directions or it is not a claim: the
+        # verdict must be flat at the committed cut AND must MOVE at a tight one. Without the
+        # second half "insensitive" would be unfalsifiable and would licence any cut.
+        ("insensitivity is a MARGIN: flat at %.1f sigma, MOVES at 2 sigma" % (3.0 / BLANK_SD),
+         far_spread < 0.02 and tight_spread > 0.10,
+         "spread %.1f pts at 6 sigma, %.1f pts at 2 sigma"
+         % (100 * far_spread, 100 * tight_spread)),
+    ], (s1, s2, tex_gap, ms)
 
 
 def report(title, rows, label):
@@ -179,14 +232,15 @@ def main():
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--audit", action="store_true",
                     help="run each mutation and NAME the controls it fires (not exit status)")
-    ap.add_argument("--mutate", choices=("texture-aware-mask", "blind-control"))
+    ap.add_argument("--mutate", choices=("texture-aware-mask", "blind-control", "cut-blind-mask"))
     a = ap.parse_args()
 
     if a.audit:
         print("MUTATION AUDIT -- which controls catch each deliberate break\n")
         base, _ = run_controls(a.trials, a.seed)
         names = [n for n, _, _ in base]
-        for mut, intended in (("texture-aware-mask", 0), ("blind-control", 1)):
+        for mut, intended in (("texture-aware-mask", 0), ("blind-control", 1),
+                              ("cut-blind-mask", 4)):
             MUTATE = mut
             got, _ = run_controls(a.trials, a.seed)
             fired = [i for i, (_, ok, _) in enumerate(got) if not ok]
@@ -197,15 +251,19 @@ def main():
             if fired == [intended]:
                 print("    ISOLATED: the intended guard, and only it\n")
             elif intended in fired:
-                print("    ⚠️ not isolated: %d guards. Exit status would not say which caught it;"
-                      "\n       this mutation necessarily changes the run extent too, so controls"
-                      "\n       1 and 3 are not independent for it.\n" % len(fired))
+                # the guard list is DERIVED, never described: a hardcoded explanation naming two
+                # controls went stale the moment a third started firing, which is the
+                # stale-explanatory-text class this project records.
+                print("    ⚠️ not isolated: %d guards (%s). Exit status would not say which caught"
+                      "\n       it. This mutation changes the masked index set, so every control"
+                      "\n       reading that set responds to it.\n"
+                      % (len(fired), ", ".join(names[i] for i in fired)))
             else:
                 print("    ⚠️ THE INTENDED GUARD DID NOT FIRE -- it does not defend what it claims\n")
         raise SystemExit(0)
 
     MUTATE = a.mutate
-    controls, (s1, s2, tex_gap) = run_controls(a.trials, a.seed)
+    controls, (s1, s2, tex_gap, ms) = run_controls(a.trials, a.seed)
 
     report("SWEEP 1 -- both objects share one texture (only temporal structure changes)", s1, "rho")
     report("SWEEP 2 -- blanking held at %+0.2f; the ADJACENT DARK PICTURE's texture swept"
@@ -221,13 +279,27 @@ def main():
     print("  demonstrably HAS power -- the level verdict's flatness is not this test failing to")
     print("  detect movement.")
     print()
-    print("  ⚠️ SCOPE, and it is the whole of what this establishes: the level verdict is")
-    print("     insensitive to texture BY CONSTRUCTION -- a level mask never takes texture as an")
-    print("     input. So a texture measurement can never be a PREREQUISITE for this control's")
-    print("     verdict. It does NOT follow that the two worlds are indistinguishable: the control")
-    print("     column shows a texture-aware reading has a separable quantity available at the")
-    print("     measured textures. This demonstrates LEVEL-ONLY ambiguity and nothing wider --")
-    print("     Codex's own caveat on the old C3, that it does not prove all analog observables")
+    print("MARGIN -- why the verdict is flat, and where it stops being flat")
+    print("  the cut is BLANK+3.0, %.1f sigma above the blanking mean. Sweeping it:" % (3.0 / BLANK_SD))
+    print("  %-14s %-6s %-28s %s" % ("cut", "sigma", "identical masks, rho -0.8..+0.9", "spread"))
+    for k, sig, rates, spread in ms:
+        print("  BLANK+%-8.2f %-6.1f %-28s %5.1f pts"
+              % (k, sig, " ".join("%3.0f%%" % (100 * r) for r in rates), 100 * spread))
+    print()
+    print("  ⚠️ SCOPE, and it is the whole of what this establishes.")
+    print("     The verdict is insensitive to texture AT THIS MARGIN -- NOT by construction. A level")
+    print("     mask is texture-blind PER SAMPLE, but its output is the set of indices that fell")
+    print("     below the cut, and that set is a property of the REALIZED SEQUENCE, which texture")
+    print("     orders: permute a sequence and the multiset is unchanged while every run changes.")
+    print("     The sweep above shows exactly that at 2 sigma. At 6 sigma the mask is effectively")
+    print("     deterministic and texture cannot reach the verdict, so no texture measurement")
+    print("     gates this control AT THIS CUT -- a claim that carries its own precondition.")
+    print("     ⚠️ 'By construction' was written here first and would have licensed reusing the")
+    print("     reasoning at a tight cut, where this project has already measured it failing.")
+    print("     It does NOT follow that the two worlds are indistinguishable: the control column")
+    print("     shows a texture-aware reading has a separable quantity available at the measured")
+    print("     textures. This demonstrates LEVEL-ONLY ambiguity and nothing wider -- Codex's own")
+    print("     caveat on the old C3, that it does not prove all analog observables")
     print("     indistinguishable.")
 
     if a.selftest:
