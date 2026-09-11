@@ -209,6 +209,20 @@ def main():
         if src.count(stmt) != 1:
             return False, "statement %r appears %d times -- cannot neuter exactly one" % (
                 stmt, src.count(stmt))
+        # ⚠️ BOTH HALVES, INSIDE THIS FUNCTION. Testing only the DISABLED direction is vacuous:
+        # Codex emptied guard 13's failure list permanently and the verifier still reported 9/9,
+        # because a guard that never records a failure trivially "passes when disabled". The
+        # bracket this file already documents for mutation verification applies to enforcement too,
+        # and I built one side of it. ENABLED must reject (and the guard must be the one firing);
+        # DISABLED must then accept.
+        cs = C()
+        mutate(cs)
+        rc_on, f_on = fired(cs)
+        if rc_on == 0:
+            return False, "guard %d ENABLED does not reject its own mutation at all -- vacuous" % guard
+        if guard not in f_on:
+            return False, ("guard %d ENABLED does not fire on its own mutation (guards %s)"
+                           % (guard, sorted(f_on)))
         mutated = src.replace("def selftest()", "def _enf_mutant()", 1).replace(stmt, "ok &= True", 1)
         exec(compile(mutated, "<enforcement %d>" % guard, "exec"), fixtures.__dict__)
         cs = C()
@@ -218,9 +232,10 @@ def main():
                 rc, f = fired(cs)
         finally:
             fixtures.__dict__.pop("_enf_mutant", None)
-        return rc == 0, ("suite passes with guard %d disabled" % guard if rc == 0
-                         else "suite STILL fails (exit %d, guards %s) -- another guard rejects it, "
-                              "so guard %d is not what enforces this" % (rc, sorted(f), guard))
+        return rc == 0, ("rejects enabled (guards %s), accepts disabled" % sorted(f_on) if rc == 0
+                         else "rejects enabled, but STILL fails disabled (exit %d, guards %s) -- "
+                              "another guard rejects it, so guard %d is not what enforces this"
+                              % (rc, sorted(f), guard))
 
     print("\nENFORCEMENT -- disable the guard, and its own isolated mutation must stop being caught")
     enf = []

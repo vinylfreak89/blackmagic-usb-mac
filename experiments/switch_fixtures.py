@@ -298,6 +298,12 @@ def selftest() -> int:
         # EVERY key the controls below read, not only the ones that used to be checked. Removing
         # `row` passed this guard and then raised KeyError in control 2 -- a crash is not a verdict,
         # which is the whole reason this control runs first.
+        # `censored` is read by control 9 and is str-or-None, so it is checked by PRESENCE rather
+        # than by type -- deleting it used to raise KeyError there instead of being rejected here.
+        if "censored" not in c:
+            mal.append("%s: censored" % n)
+        elif c["censored"] is not None and not isinstance(c["censored"], str):
+            mal.append("%s: censored" % n)
         for k, kind in (("name", str), ("row", np.ndarray), ("cal", list), ("spans", list),
                         ("why", str)):
             if not isinstance(c.get(k), kind):
@@ -516,8 +522,14 @@ def selftest() -> int:
             if isinstance(v, int) and abs(v) > JITTER \
                and c["establishable"][k] and c["require"][k] == NONE:
                 contra.append("%s: %s shift %+d requires none" % (c["name"], k, v))
-        if c["require"]["overall"] == NONE and DEPARTURE in (c["require"]["start"],
-                                                            c["require"]["end"]):
+        # OVERALL `none` MEANS "no departure anywhere", which an UNDECIDABLE endpoint contradicts
+        # as flatly as a DEPARTURE one does: an unresolved end cannot support a claim of absence.
+        # Codex: setting A5 and B2 overall to `none` despite their undecidable ends passed every
+        # control, so the defaults computed in add() were correct and were not ENFORCED.
+        ends = (c["require"]["start"], c["require"]["end"])
+        if c["require"]["overall"] == NONE and set(ends) != {NONE}:
+            contra.append("%s: overall none over %s" % (c["name"], "/".join(sorted(set(ends)))))
+        if c["require"]["overall"] == NONE and DEPARTURE in ends:
             contra.append("%s: overall none over a departure" % c["name"])
     ok &= not contra
     print("  13 a decisive delivered shift never requires `none`  -> %s"
@@ -538,7 +550,7 @@ def main() -> int:
     print("  the end is right-censored on every normal row, so `none` is NEVER available there\n")
     print("  %-46s %-24s %-18s %s" % ("case", "required start / end", "true shift", "observable"))
     for c in cases():
-        t, r, o = c["truth"], c["require"], c["observable"]
+        t, r, o = c["truth"], c["require"], c["establishable"]
         print("  %-46s %-24s %-18s %s"
               % (c["name"], "%s / %s" % (r["start"], r["end"]),
                  "%s / %s" % (t["start"], t["end"]),

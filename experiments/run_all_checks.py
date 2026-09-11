@@ -162,14 +162,32 @@ def main() -> int:
             # segfault or an abort read exactly like the probe failing as designed -- the runner
             # stayed green on a check that never reached its assertions. The annotation names a
             # disposition, and a crash is not the disposition it names.
-            crashed = r.returncode < 0
+            # ⚠️ AND AN UNEXPECTED EXCEPTION AT EXIT 1 IS ALSO NOT THE ANNOTATED FAILURE. A probe
+            # reports a designed failure by `sys.exit(1)` or by AssertionError; a KeyError is a
+            # broken probe wearing the same exit code, and the annotation was excusing both.
+            # "Has a traceback" is too blunt -- `assert` prints one -- so the test is WHICH
+            # exception terminated it, read from the traceback's last line.
+            def unexpected_exception(text):
+                lines = [l for l in text.strip().splitlines() if l and not l[0].isspace()]
+                if not lines or "Traceback (most recent call last)" not in text:
+                    return None
+                last = lines[-1].split(":")[0].strip()
+                return None if last in ("AssertionError", "SystemExit") else (last or None)
+
+            exc = unexpected_exception(err)
+            crashed = r.returncode < 0 or (expected and exc is not None)
             if expected and not crashed:
                 state = "expected FAIL"
             elif expected and crashed:
-                state = "CRASHED(%d) -- annotation does NOT cover a signal" % r.returncode
-                failed.append((fn, r.returncode,
-                               "killed by signal %d; an expected-fail annotation excuses an "
-                               "assertion failure, not a crash" % -r.returncode))
+                if r.returncode < 0:
+                    state = "CRASHED(%d) -- annotation does NOT cover a signal" % r.returncode
+                    why = ("killed by signal %d; an expected-fail annotation excuses an "
+                           "assertion failure, not a crash" % -r.returncode)
+                else:
+                    state = "CRASHED(%s) -- annotation does NOT cover an unexpected exception" % exc
+                    why = ("terminated by %s, not by its own assertions; the annotation names a "
+                           "disposition and a broken probe is not the one it names" % exc)
+                failed.append((fn, r.returncode, why))
             else:
                 state = "FAIL(%d)" % r.returncode
                 failed.append((fn, r.returncode, err.strip().split("\n")[-1]))

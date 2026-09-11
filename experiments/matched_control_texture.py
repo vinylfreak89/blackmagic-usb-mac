@@ -208,7 +208,7 @@ def run_controls(trials, seed):
          tex_gap >= 0.20, "max %+0.2f" % tex_gap),
         ("both worlds present the SAME run extent to a detector",
          eA == eB == want, "%s / %s, want %s" % (eA, eB, want)),
-        ("i.i.d. asserts rho~0, not the measured %+0.2f" % BLANK_RHO,
+        ("i.i.d. asserts rho~0, not the authored %+0.2f" % BLANK_RHO,
          abs(r_iid) < 0.10 and abs(BLANK_RHO) > 0.10, "i.i.d. %+0.2f" % r_iid),
         # 5 is the precondition, and it must fail in BOTH directions or it is not a claim: the
         # verdict must be flat at the committed cut AND must MOVE at a tight one. Without the
@@ -329,11 +329,19 @@ def main():
     print("                  moves for NOISE reasons and calling that texture-sensitive mislabels")
     print("                  the cause -- the spread there is only ~6 points")
     print("        ~2 sigma  TEXTURE specifically decides: level 24%, spread 31.5 points")
-    print("       >=4 sigma  deterministic; texture cannot reach the verdict at all")
+    print("       >=4 sigma  deterministic FOR DRAWS FROM THIS NOISE MODEL -- see the bound below")
+    print("     ⚠️ AND EVEN THAT IS NARROWER THAN IT SOUNDS, third correction to this one claim.")
+    print("       \"Texture cannot reach the verdict at 6 sigma\" is true of DRAWS, where a 6-sigma")
+    print("       excursion is ~1e-9 likely. It is NOT true of every realization with those")
+    print("       moments: Codex constructed one with exactly this mean and sd whose largest")
+    print("       sample is 4.4614 against the 4.42 cut, and reordering it alone moves the extent")
+    print("       37 -> 38 AT THE UNCHANGED CUT. So the margin bounds what the NOISE MODEL can do,")
+    print("       not what any sequence can do -- and a real source is not obliged to be Gaussian.")
     print("     So the precondition is NOT 'the cut is far enough' on a monotone scale. It is 'the")
-    print("     margin is wide enough that the mask is deterministic', with a middle band where")
-    print("     texture is specifically what decides -- which is why the level is printed beside")
-    print("     the spread. No texture measurement gates this control AT THIS CUT.")
+    print("     margin is wide enough that the mask is deterministic UNDER THE ASSUMED NOISE',")
+    print("     with a middle band where texture is specifically what decides -- which is why the")
+    print("     level is printed beside the spread. No texture measurement gates this control at")
+    print("     this cut FOR DRAWS; a constructed same-moment sequence is outside that bound.")
     print("     ⚠️ 'By construction' was written here first and would have licensed reusing the")
     print("     reasoning at a tight cut, where this project has already measured it failing.")
     print("     It does NOT follow that the two worlds are indistinguishable: the control column")
