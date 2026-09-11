@@ -5315,12 +5315,15 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
     survives is the weaker prompt — joint improvement is a reason to AUDIT, never a reason to disbelieve — and
     its replacement is his: freeze the evaluation populations and audit dependencies, errors and abstentions,
     rather than scoring a repair against the previous error rate.
-    ✅ **AND IT IS NOW REFUTED BY MEASUREMENT, NOT ONLY BY ARGUMENT — see the one-variable table below.**
-    Correcting the level alone, with the calibration rows, the validation rows and the statistic untouched, moves
-    identification **53 → 1,065** AND false-identification **0.38% → 0.10%**. A reference correction improving
-    both is exactly the case this condition would have told the next reader to disbelieve. **Anyone building a
-    brief from this section must not relay the condition: it is dead, and the evidence is in this file rather
-    than in a thread.**
+    ⚠️ **THE CONDITION IS DEAD, BUT "REFUTED BY MEASUREMENT" OVERSTATES HOW — corrected within the hour.** It is
+    withdrawn on CODEX'S ARGUMENT, which stands alone and predates any of this: correcting a reference or
+    improving a discriminator can legitimately reduce both rates, so joint improvement does not prove leakage.
+    The one-variable measurement below (identification **53 → 1,065**, false-identification **0.38% → 0.10%**) is
+    CONSISTENT with that and does not establish it — **because if the tolerance movement IS a leak, both rates
+    improving is exactly what the leak produces.** Using the joint improvement as evidence against the leak
+    hypothesis is using a result equally predicted by the competing hypothesis, which the global rule already
+    names: the first explanation that fits the data is usually one of two that fit it. **Anyone building a brief
+    must not relay the condition — but must not relay the measurement as its refutation either.**
   - **THE QUALIFICATION MUST BE DERIVABLE, NOT ANOTHER WINDOW.** "Rows whose own timing reads normal" is
     CIRCULAR here — it qualifies the calibration by the quantity the calibration defines. Qualifying rows by the
     source's own reference, the route `:531` already specifies for levels, is not circular; a second fixed span
@@ -5491,8 +5494,13 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   | Unknown | 70 | 65 |
   | **false-identification, held out** | **0.38%** | **0.10%** |
 
-  ⚠️⚠️ **BOTH IMPROVED TOGETHER, WHICH IS THE EMPIRICAL VINDICATION OF CODEX'S METHODOLOGICAL OBJECTION AND THE
-  REFUTATION OF THE ACCEPTANCE CONDITION I RECORDED.** That condition said joint improvement is "a leak to be
+  ⚠️⚠️ **BOTH IMPROVED TOGETHER — AND THE TWO IMPROVEMENTS ARE NOT INDEPENDENT EVIDENCE, which is the peer
+  session's catch and it bounds this table's reach.** The 1,065 and the 0.10% come from the SAME corrected
+  reference, so if the tolerance movement is a leak it inflates both; two numbers moving together from one
+  changed input is one observation, not two. **So this CANNOT be read as the empirical refutation of the
+  acceptance condition I recorded, which is how I first wrote it up.** The condition is withdrawn on Codex's
+  independent argument; this measurement is consistent with the withdrawal and does not establish it while the
+  leak question is open with Codex. That condition said joint improvement is "a leak to be
   found rather than a result". Here identification rises twentyfold AND false-identification falls fourfold, from
   **correcting a reference** — with the calibration rows, the validation rows and the statistic all untouched, so
   there is no population for a leak to enter through. **Codex's rule is right and mine was wrong**: correcting a
