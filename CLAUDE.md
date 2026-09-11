@@ -6124,7 +6124,23 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   ⚠️ **B3 carries C3's defect in miniature and I did not see it:** it labels an absent interval as "both
   endpoints off-window", which is the same unsupported causal explanation C3 was withdrawn for. An absent
   interval is absent; saying WHY is a claim.
-  ✅ **AND THE MATCHED-CONTROL CLASS IS NOT EMPTY, which is why "one construction, not the class" was worth
+  ✅ **REPAIRED, and the verification now reports WHICH GUARD FIRES rather than the exit status.** Eleven
+  controls; seven mutations, each naming the control it is meant to trip, and **7 of 7 fire their intended one
+  while 6 of 7 are isolated to exactly one guard.** The eighth-of-a-case that is not isolated is reported as
+  such — an all-picture A2 with truth `absent` becomes observationally identical to B3 while requiring the
+  opposite answer, so control 4 fires alongside control 1. **That is the collision Codex originally found, and
+  printing "not isolated: 2 guards" is better than a claim of isolation it does not have.**
+  **The placement is now MEASURED rather than argued:** `NOMINAL = (702, 720)`, from the terminal run's median
+  start of 702 reaching 719 on 11,400 of 11,400 rows. **A2 can only SHORTEN** — a lengthening at the edge is
+  unobservable, so A2 is not A1's mirror and cannot be; **B2 encodes that directly**, a 60-sample lengthening
+  whose disposition is `none` because it is observationally identical to A5 while its truth records what
+  happened. Presence and availability are now two fields, so *"departure established"* and *"extent
+  unavailable"* are independently testable, which was Codex's finding 3. **A6 carries the uncertainty case the
+  blanket jitter ban used to exclude** — a one-sample translation requiring `undecidable` — and control 5 now
+  permits sub-jitter shifts only there.
+  **B3 no longer explains itself:** its truth reads `absent`, not "both endpoints off-window". An absent
+  interval is absent; saying why is a claim the row cannot support.
+    ✅ **AND THE MATCHED-CONTROL CLASS IS NOT EMPTY, which is why "one construction, not the class" was worth
   insisting on.** Codex reproduced a replacement: **a visible blanking-boundary EXTENSION against unchanged
   blanking plus adjacent dark picture**, retaining normal blanking in both worlds. It tests a level-only
   method's ambiguity without hiding an entire interval — and it does NOT prove every row-local observable

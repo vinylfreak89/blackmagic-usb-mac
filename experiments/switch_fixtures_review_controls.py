@@ -1,110 +1,107 @@
 #!/usr/bin/env python3
-"""Positive controls for switch_fixtures.py, converted from Codex's historical defect probes.
+"""Which control fires? -- mutation verification that reports the GUARD, not the exit status.
 
-Codex wrote this at `ed56ce7` to PIN the defects it found, and its docstring prescribed what happens
-next: "A later fixture repair should make these historical assertions fail and should replace them
-with positive controls." That repair landed at `b8cedaf` and broke this file instead -- it still
-called `matched_pair()`, which the repair removed, so it raised AttributeError at line 35.
+Codex's finding on the previous version: disabling the rejection effect of controls 1, 4 or 5
+individually left the suite failing anyway, because each mutation violated OTHER controls too. So
+"the selftest exits 1" proved something caught the defect, never that control. With the peer
+session's mirror finding -- a mutation that does NOT fire means either a vacuous control or a
+mutation that never created the defect -- exit status is a proxy for "this control works" and it
+comes apart from the property in BOTH directions.
 
-⚠️ THE BREAKAGE READ AS GREEN AND THAT IS THE PART WORTH KEEPING. The nine fixture controls run
-first, all nine print PASS, "SELFTEST PASS" prints, and only then does the crash occur. Standard
-output is clean; the failure exists solely in the exit status. A caller who looked at the terminal
-saw a passing run, and a caller who piped it through `tail` read `tail`'s status instead -- which is
-the pipeline defect CLAUDE.md already carries, committed inside the check for it.
+So this reports, for every mutation, the exact SET of controls that fire. The intended one must be
+in it. Where the set is larger than one, that is printed rather than hidden: a mutation violating
+several guards is information about the mutation, and claiming isolation it does not have is the
+defect this file exists to stop.
 
-Each block below now asserts the REPAIRED state and, where the repair is a guard, that the guard
-FIRES on the defect it exists for. Codex's historical findings are named beside each so the record
-of what was wrong is not lost by fixing it. Synthetic only; no capture I/O.
+Synthetic only; no capture I/O.
 """
-import contextlib
-from fractions import Fraction
-import io
+import contextlib, io, re, sys
 from unittest.mock import patch
 
 import numpy as np
 import switch_fixtures as fixtures
 
 
-def run_selftest(cases=None):
-    output = io.StringIO()
-    with contextlib.ExitStack() as stack:
-        stack.enter_context(contextlib.redirect_stdout(output))
+def fired(cases=None):
+    """The set of control NUMBERS that report FAIL, from the selftest's own printed lines."""
+    out = io.StringIO()
+    with contextlib.ExitStack() as st:
+        st.enter_context(contextlib.redirect_stdout(out))
         if cases is not None:
-            stack.enter_context(patch.object(fixtures, "cases", return_value=cases))
-        result = fixtures.selftest()
-    return result, output.getvalue()
+            st.enter_context(patch.object(fixtures, "cases", return_value=cases))
+        rc = fixtures.selftest()
+    nums = set()
+    for line in out.getvalue().split("\n"):
+        m = re.match(r"\s+(\d+)\s", line)
+        if m and "FAIL" in line:
+            nums.add(int(m.group(1)))
+    return rc, nums
 
 
 def main():
-    status, output = run_selftest()
-    print(output, end="")
-    assert status == 0, "the repaired fixture selftest must pass unmutated"
-    cut = (fixtures.BLANK + fixtures.PICTURE) / 2
-
-    # 1. C3 REMOVED (historical: its two rows differed at all 720 samples while the control compared
-    #    only thresholded blank sets, so "identical observations" was never established).
-    assert not hasattr(fixtures, "matched_pair"), "the matched pair must stay removed, not repaired"
-    print("C3: matched_pair() is absent -- removed, not kept as an illustration")
-
-    # 2. A2 VALID (historical: it declared (700, 677), injected nothing, and the containment control
-    #    dropped the invalid span from its own expectation before comparing).
-    cases = fixtures.cases()
-    a2 = next(c for c in cases if c["name"].startswith("A2"))
-    assert all(b > a for a, b in a2["spans"]), "A2 must declare valid geometry"
-    assert fixtures._blank_spans(a2["row"], cut), "A2 must deliver a real interval"
-    print("A2: declared", a2["spans"], "-> delivered", fixtures._blank_spans(a2["row"], cut))
-
-    # 3. INVALID GEOMETRY NOW FAILS rather than being filtered away.
-    cases = fixtures.cases()
+    rc, f = fired()
+    assert rc == 0 and not f, "the unmutated suite must pass with no control firing"
+    print("unmutated: exit 0, no control fires\n")
     a0, b0 = fixtures.NOMINAL
-    next(c for c in cases if c["name"].startswith("A2"))["spans"] = [(a0, b0 - 40)]
-    status, _ = run_selftest(cases=cases)
-    assert status == 1, "a declared span with b <= a must FAIL, not be normalised out"
-    print("A2 reverted to (%d, %d): fixture selftest exit %d" % (a0, b0 - 40, status))
+    C = fixtures.cases
+    results = []
 
-    # 4. IDENTICAL CONTENT, OPPOSITE ANSWERS now fails (historical: A2 and B3 both delivered nothing
-    #    while demanding `departure` and `undecidable`, and every control passed).
-    cases = fixtures.cases()
-    a5 = next(c for c in cases if c["name"].startswith("A5"))
-    b3 = next(c for c in cases if c["name"].startswith("B3"))
-    a5["row"] = b3["row"].copy()
-    assert a5["require"] != b3["require"]
-    status, _ = run_selftest(cases=cases)
-    assert status == 1, "identical delivered content must not demand opposite dispositions"
-    print("A5 given B3's row, required", a5["require"], "/", b3["require"],
-          ": fixture selftest exit", status)
+    def case(name, intended, mutate):
+        cs = C()
+        mutate(cs)
+        rc, f = fired(cs)
+        ok = intended in f
+        results.append(ok)
+        print("  %-44s controls firing: %-12s intended %d  %s%s"
+              % (name, sorted(f) or "NONE", intended, "PASS" if ok else "FAIL",
+                 "" if len(f) == 1 else "   (not isolated: %d guards)" % len(f)))
 
-    # 5. TRUTH-ONLY MUTATION now fails (historical: relabelling a shift -40 -> -400 without touching
-    #    the samples passed every control, so no control compared truth against samples).
-    cases = fixtures.cases()
-    cases[0]["truth"]["start"] = -400
-    status, _ = run_selftest(cases=cases)
-    assert status == 1, "a truth label that contradicts the samples must FAIL"
-    print("A1 truth relabelled -40 -> -400 with samples untouched: fixture selftest exit", status)
+    # 1 -- invalid declared geometry. Truth is set to absent in the SAME mutation so control 3 is not
+    #      also violated: an invalid span injects nothing, which a numeric truth would contradict.
+    def m1(cs):
+        c = next(x for x in cs if x["name"].startswith("A2"))
+        c["spans"] = [(a0, b0 - 40)]
+        c["truth"]["start"] = c["truth"]["end"] = "absent"
+        c["row"] = np.random.default_rng(1).normal(fixtures.PICTURE, 4.0, fixtures.N)
+        c["observable"] = {"start": False, "end": False, "extent": False}
+    case("1  invalid span, truth made consistent", 1, m1)
 
-    # 6. A SHIFT INSIDE THE CALIBRATION JITTER now fails (historical: A4 moved an end by +2 against
-    #    a jitter of +-2, asking a detector to resolve inside its own noise).
-    cases = fixtures.cases()
-    a4 = next(c for c in cases if c["name"].startswith("A4"))
-    a4["spans"] = [(a0 - 30, b0 + fixtures.JITTER)]
-    a4["truth"]["end"] = fixtures.JITTER
-    status, _ = run_selftest(cases=cases)
-    assert status == 1, "a shift within the calibration jitter must FAIL"
-    print("A4 end shift of +%d against jitter +-%d: fixture selftest exit %d"
-          % (fixtures.JITTER, fixtures.JITTER, status))
+    # 3 -- a truth label contradicting the samples, samples untouched.
+    case("3  truth relabelled, samples untouched", 3,
+         lambda cs: cs[0]["truth"].__setitem__("start", -400))
 
-    # 7. THE ARITHMETIC THAT KEEPS THE PAIR REMOVED, in exact rationals rather than floats. Codex's
-    #    original, preserved: an entire nominal interval cannot fit the omitted gap.
-    omitted = 858 - 720
-    blank = Fraction("10.9") * Fraction("13.5")
-    overlap = blank - omitted
-    assert overlap == Fraction("9.15")
-    assert blank == Fraction(fixtures.NOMINAL_BLANKING).limit_denominator(100), \
-        "the fixture module's constant must match the standards arithmetic"
-    print("nominal blanking", float(blank), "> omitted", omitted,
-          "; minimum overlap", float(overlap), "samples")
+    # 3b -- the CENSORED case the old check skipped entirely.
+    def m3b(cs):
+        next(x for x in cs if x["name"].startswith("B1"))["truth"]["end"] = 1000
+    case("3  censored fixture's visible end relabelled", 3, m3b)
 
-    print("REVIEW CONTROLS PASS: every historical defect is absent AND its guard fires")
+    # 3c -- the DARK-CONTENT case the old check skipped entirely.
+    def m3c(cs):
+        next(x for x in cs if x["name"].startswith("C1"))["truth"]["dark_at"] = 1
+    case("3  dark-content run relabelled", 3, m3c)
+
+    # 5 -- a sub-jitter shift on a fixture that is NOT `undecidable`.
+    def m5(cs):
+        c = next(x for x in cs if x["name"].startswith("A1"))
+        c["spans"] = [(a0 - fixtures.JITTER, b0)]; c["truth"]["start"] = -fixtures.JITTER
+        c["row"] = fixtures._row(np.random.default_rng(5), c["spans"])
+    case("5  sub-jitter shift on a `departure` fixture", 5, m5)
+
+    # 7 -- the calibration replaced by uniform picture, which used to pass all nine.
+    def m7(cs):
+        flat = [np.full(fixtures.N, fixtures.PICTURE) for _ in cs[0]["cal"]]
+        for c in cs: c["cal"] = flat
+    case("7  calibration replaced by uniform picture", 7, m7)
+
+    # 8 -- availability claiming an off-window endpoint is observable.
+    def m8(cs):
+        next(x for x in cs if x["name"].startswith("B1"))["observable"]["start"] = True
+    case("8  off-window endpoint declared observable", 8, m8)
+
+    print("\n%d of %d mutations fired their intended control."
+          % (sum(results), len(results)))
+    assert all(results)
+    print("REVIEW CONTROLS PASS: each guard verified by the control that fires, not by exit status")
 
 
 if __name__ == "__main__":

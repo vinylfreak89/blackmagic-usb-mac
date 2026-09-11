@@ -36,9 +36,13 @@ N = 720                      # the delivered window, a transport fact
 OMITTED = 858 - N            # 138 samples the device never delivers
 NOMINAL_BLANKING = 147.15    # samples, from the contract's 10.9 us at 13.5 MHz
 BLANK, PICTURE = 1.4, 90.0   # synthetic levels; no detector may assume them
-NOMINAL = (660, 677)         # this synthetic source's undisturbed interval, placed to leave room at
-                             # BOTH ends: the first version put it at (700, 717) with three samples
-                             # of headroom, which is why its "move the end" case had nowhere to go.
+# MEASURED, not chosen: `end_observability.py` over 11,400 picture rows finds the terminal blank run
+# starting at median 702 and reaching sample 719 in 100% of them. So the undisturbed interval RUNS TO
+# THE WINDOW EDGE and is right-censored BY CONSTRUCTION on every normal row. (660, 677) was forty
+# samples inside that; (700, 717) ends at 717, which no measured row does. Codex recommended
+# restoring an edge placement from the fixture side while explicitly not claiming which endpoints are
+# observable in the captures -- the measurement supplies that half.
+NOMINAL = (702, 720)
 JITTER = 2                   # the calibration rows' own end-to-end wobble, in samples
 
 DEPARTURE, NONE, UNDECIDABLE = "departure", "none", "undecidable"
@@ -67,9 +71,14 @@ def cases(seed=23):
                        b0 + int(rng.integers(-JITTER, JITTER + 1)))]) for _ in range(24)]
     C = []
 
-    def add(name, spans, start, end, require, why, dark=None, censored=None):
+    def add(name, spans, start, end, require, why, dark=None, censored=None, obs=(True, True, True)):
+        # `truth` is what HAPPENED and stays numeric even where the observation is censored;
+        # `observable` is what a correct detector can establish. Codex's finding 3: "departure
+        # established" and "extent unavailable" must be independently testable, so they are two
+        # fields rather than one three-valued verdict carrying both.
         C.append({"name": name, "cal": cal, "row": _row(rng, spans), "spans": spans,
                   "truth": {"start": start, "end": end, "dark_at": dark},
+                  "observable": {"start": obs[0], "end": obs[1], "extent": obs[2]},
                   "require": require, "why": why, "censored": censored})
 
     # ---- CLASS A: timing changes at BOTH interval ends -------------------------------------
@@ -77,36 +86,51 @@ def cases(seed=23):
     # detector was one-directional. Every shift here exceeds JITTER, so none asks a detector to
     # resolve inside the calibration's own wobble -- A4 previously moved an end by +2 and did.
     add("A1 start moves, end fixed", [(a0 - 40, b0)], -40, 0, DEPARTURE,
-        "the leading boundary moved 40 samples earlier; the trailing one did not")
-    add("A2 end moves, start fixed", [(a0, b0 + 40)], 0, +40, DEPARTURE,
-        "the trailing boundary moved 40 samples later; the leading one did not -- A1's mirror")
+        "the leading boundary moved 40 samples earlier; the trailing one is at the window edge either way",
+        obs=(True, False, False))
+    add("A2 end moves INWARD, start fixed", [(a0, b0 - 11)], 0, -11, DEPARTURE,
+        "the only end-change this source can express: a SHORTENING, which pulls the run off the edge. "
+        "A lengthening is unobservable -- see B2 -- so A2 is not its mirror and cannot be",
+        obs=(True, True, True))
     add("A3 both ends move together (pure translation)", [(a0 - 160, b0 - 160)], -160, -160, DEPARTURE,
-        "a pure translation: the defining case, and the one a summed duration cannot see")
-    add("A4 both ends move by different amounts", [(a0 - 30, b0 + 20)], -30, +20, DEPARTURE,
-        "the interval lengthens unequally: duration changes AND both boundaries move")
+        "a pure translation: the defining case, and the one a summed duration cannot see",
+        obs=(True, True, True))
+    add("A4 both ends move by different amounts", [(a0 - 30, b0 - 11)], -30, -11, DEPARTURE,
+        "the interval moves and shortens unequally: both boundaries move by different amounts",
+        obs=(True, True, True))
     add("A5 nothing moves", [(a0, b0)], 0, 0, NONE,
-        "class A's negative control: a detector that fires here fires on everything")
+        "class A's negative control: a detector that fires here fires on everything",
+        obs=(True, False, False))
+    add("A6 translation of ONE sample", [(a0 - 1, b0)], -1, 0, UNDECIDABLE,
+        "inside the calibration's own jitter, so a correct detector cannot resolve it -- the "
+        "uncertainty case the blanket jitter ban used to exclude from the suite",
+        obs=(True, False, False))
 
     # ---- CLASS B: censored ------------------------------------------------------------------
     # An interval displaced far enough runs off the delivered window. The missing endpoint and the
     # extent stay Unknown, and 147 must never be substituted as a measured extent.
     add("B1 left-censored, leading boundary off-window", [(-60, 80)], "off-window", 80 - b0,
         DEPARTURE, "the trailing boundary is visible and displaced; the extent is NOT measurable",
-        censored="start")
-    add("B2 right-censored, trailing boundary off-window", [(a0 + 30, N + 60)], +30, "off-window",
-        DEPARTURE, "the leading boundary is visible and displaced; the extent is NOT measurable",
-        censored="end")
-    add("B3 no interval delivered", [], "off-window", "off-window", UNDECIDABLE,
-        "no blanking is delivered; absence of the interval is not evidence about its timing",
-        censored="both")
+        censored="start", obs=(False, True, False))
+    add("B2 end extends FURTHER past the window edge", [(a0, N + 60)], 0, +60, NONE,
+        "the truth is a 60-sample lengthening and it is OBSERVATIONALLY IDENTICAL to A5, because the "
+        "undisturbed end is already at the edge. The disposition is what a detector can establish; "
+        "the truth records what happened. They differ here and that is the point",
+        censored="end", obs=(True, False, False))
+    add("B3 no interval delivered", [], "absent", "absent", UNDECIDABLE,
+        "no blanking is delivered. The truth says ABSENT and does NOT say why: labelling this "
+        "'both endpoints off-window' asserts a cause the row cannot support, which is the "
+        "explanation C3 was withdrawn for, one case over",
+        censored="none delivered", obs=(False, False, False))
 
     # ---- CLASS C: unchanged-timing dark content ---------------------------------------------
     # The failure the rebuild exists to avoid: firing on dark picture rather than on a timing
     # departure. This material clips black content to the blanking level with the same dither.
     add("C1 dark content added, timing unchanged", [(a0, b0), (300, 317)], 0, 0, NONE,
-        "the true interval is where it belongs; the dark run is picture content", dark=300)
+        "the true interval is where it belongs; the dark run is picture content", dark=300,
+        obs=(True, False, False))
     add("C2 dark content moved, timing unchanged", [(a0, b0), (200, 217)], 0, 0, NONE,
-        "a moved dark patch with the true blanking fixed", dark=200)
+        "a moved dark patch with the true blanking fixed", dark=200, obs=(True, False, False))
     return C
 
 
@@ -126,99 +150,128 @@ def _blank_spans(row, cut):
 
 
 def selftest() -> int:
-    """Controls derived from the ways a FIXTURE SET fails to be one. Four are new and three of those
-    exist because the first version's controls all passed while the set was inconsistent."""
+    """Controls derived from the ways a FIXTURE SET fails to be one. Eleven now; five exist because
+    Codex reproduced a way the previous nine all passed while the set was inconsistent."""
     ok = True
     cut = (BLANK + PICTURE) / 2
     C = cases()
     a0, b0 = NOMINAL
     print("CONTROLS -- the ways a known-answer fixture set fails to be one")
 
-    # 1. DECLARED GEOMETRY MUST BE VALID. Not filtered -- FAILED. A2 previously declared (700, 677),
-    #    injected nothing, and passed because the verifier dropped the invalid span from its own
-    #    expectation before comparing.
+    def spans_of(row):
+        return _blank_spans(row, cut)
+
+    # 1. DECLARED GEOMETRY MUST BE VALID -- failed, never filtered.
     bad = [c["name"] for c in C for a, b in c["spans"] if b <= a]
     ok &= not bad
-    print("  1 every declared span is valid geometry              -> %s"
+    print("  1  declared spans are valid geometry                 -> %s"
           % ("PASS" if not bad else "FAIL: " + ", ".join(bad)))
 
     # 2. Every fixture contains the geometry it declares.
     miss = []
     for c in C:
-        got = _blank_spans(c["row"], cut)
+        got = spans_of(c["row"])
         want = sorted((max(0, a), min(N, b)) for a, b in c["spans"] if min(N, b) > max(0, a))
         if len(got) != len(want) or any(abs(g[0] - w[0]) > 2 or abs(g[1] - w[1]) > 2
                                         for g, w in zip(got, want)):
             miss.append(c["name"])
     ok &= not miss
-    print("  2 every fixture contains its declared geometry       -> %s"
+    print("  2  every fixture contains its declared geometry      -> %s"
           % ("PASS" if not miss else "FAIL: " + ", ".join(miss)))
 
-    # 3. THE TRUTH LABEL MUST MATCH THE SAMPLES. Codex changed a shift's label from -40 to -400
-    #    without touching the row and every old control still passed.
+    # 3. THE TRUTH LABEL MUST MATCH THE SAMPLES -- INCLUDING censored and dark-content cases, which
+    #    the previous version skipped entirely. Codex relabelled B1's visible end +1000 and C1's
+    #    start +1000 and both passed.
     lie = []
     for c in C:
-        t = c["truth"]
-        if not isinstance(t["start"], int) or not isinstance(t["end"], int) or t["dark_at"]:
+        t = c["truth"]; got = spans_of(c["row"])
+        if t["start"] == "absent" and t["end"] == "absent":
+            if got: lie.append(c["name"])
             continue
-        got = _blank_spans(c["row"], cut)
         if not got:
             lie.append(c["name"]); continue
-        want = (a0 + t["start"], b0 + t["end"])
-        if abs(got[0][0] - want[0]) > 2 or abs(got[-1][1] - want[1]) > 2:
-            lie.append(c["name"])
+        # the interval this fixture declares -- for a dark-content case, the one at the nominal spot
+        iv = min(got, key=lambda g: abs(g[0] - (a0 if not isinstance(t["start"], int)
+                                                else a0 + t["start"])))
+        if isinstance(t["start"], int) and abs(iv[0] - (a0 + t["start"])) > 2:
+            lie.append(c["name"]); continue
+        if isinstance(t["end"], int):
+            want_end = min(N, b0 + t["end"])
+            if abs(iv[1] - want_end) > 2: lie.append(c["name"]); continue
+        if t["dark_at"] is not None:            # the dark run must be where it is declared
+            if not any(abs(g[0] - t["dark_at"]) <= 2 for g in got):
+                lie.append(c["name"])
     ok &= not lie
-    print("  3 the truth label matches the injected samples       -> %s"
+    print("  3  truth matches the samples, censored+dark included -> %s"
           % ("PASS" if not lie else "FAIL: " + ", ".join(lie)))
 
-    # 4. IDENTICAL OBSERVABLE CONTENT MUST NOT DEMAND OPPOSITE ANSWERS. A2 and B3 both delivered
-    #    nothing while demanding `departure` and `undecidable`; hidden truth cannot justify
-    #    different observable certainty.
+    # 4. IDENTICAL OBSERVABLE CONTENT MUST NOT DEMAND OPPOSITE ANSWERS.
     byspans = {}
     for c in C:
-        byspans.setdefault(tuple(_blank_spans(c["row"], cut)), set()).add(c["require"])
+        byspans.setdefault(tuple(spans_of(c["row"])), set()).add(c["require"])
     clash = [k for k, v in byspans.items() if len(v) > 1]
     ok &= not clash
-    print("  4 identical content never demands opposite answers   -> %s"
+    print("  4  identical content never demands opposite answers  -> %s"
           % ("PASS" if not clash else "FAIL: %d colliding group(s)" % len(clash)))
 
-    # 5. NO SHIFT MAY SIT INSIDE THE CALIBRATION'S OWN JITTER, or the fixture asks a detector to
-    #    resolve within its own noise and a correct detector must fail it.
-    tight = [c["name"] for c in C for k in ("start", "end")
+    # 5. A SHIFT INSIDE THE JITTER IS ALLOWED ONLY WHERE THE ANSWER IS `undecidable`. The blanket ban
+    #    rejected the uncertainty cases the suite most needs (Codex's finding 2).
+    tight = [c["name"] for c in C if c["require"] != UNDECIDABLE
+             for k in ("start", "end")
              if isinstance(c["truth"][k], int) and 0 < abs(c["truth"][k]) <= JITTER]
     ok &= not tight
-    print("  5 every nonzero shift exceeds the calibration jitter -> %s"
+    print("  5  sub-jitter shifts only on `undecidable` fixtures  -> %s"
           % ("PASS" if not tight else "FAIL: " + ", ".join(tight)))
 
-    # 6. Required answers must be MIXED, else a constant detector passes the whole set.
+    # 6. Required answers must be MIXED.
     reqs = {c["require"] for c in C}
-    c6 = len(reqs) >= 3
-    ok &= c6
-    print("  6 required answers are mixed                         -> %s %s"
+    c6 = len(reqs) >= 3; ok &= c6
+    print("  6  required answers are mixed                        -> %s %s"
           % (sorted(reqs), "PASS" if c6 else "FAIL"))
 
-    # 7. Censored fixtures must be censored at the window edge.
-    cen = [c for c in C if c["censored"]]
-    c7 = len(cen) == 3 and all(
-        (c["censored"] == "both" and not _blank_spans(c["row"], cut)) or
-        (c["censored"] == "start" and _blank_spans(c["row"], cut)[0][0] == 0) or
-        (c["censored"] == "end" and _blank_spans(c["row"], cut)[-1][1] == N) for c in cen)
-    ok &= c7
-    print("  7 censored fixtures reach the window edge            -> %s" % ("PASS" if c7 else "FAIL"))
+    # 7. THE CALIBRATION MUST CARRY THE NOMINAL INTERVAL. Codex replaced every calibration row with
+    #    uniform picture and all nine controls still passed -- nothing validated the reference.
+    calrows = C[0]["cal"]
+    bad_cal = sum(1 for r in calrows
+                  if not any(abs(g[0] - a0) <= JITTER + 1 for g in spans_of(r)))
+    c7 = bad_cal == 0; ok &= c7
+    print("  7  the calibration rows carry the nominal interval   -> %s"
+          % ("PASS" if c7 else "FAIL: %d of %d do not" % (bad_cal, len(calrows))))
 
-    # 8. Class A must move each end independently, or a one-ended statistic passes the class.
+    # 8. AVAILABILITY MUST AGREE WITH CENSORING: an endpoint off the window is not observable, and
+    #    the extent is not observable unless both endpoints are.
+    inc = []
+    for c in C:
+        o, t = c["observable"], c["truth"]
+        if t["start"] == "off-window" and o["start"]: inc.append(c["name"])
+        if t["end"] == "off-window" and o["end"]: inc.append(c["name"])
+        if o["extent"] and not (o["start"] and o["end"]): inc.append(c["name"])
+    ok &= not inc
+    print("  8  availability agrees with censoring                -> %s"
+          % ("PASS" if not inc else "FAIL: " + ", ".join(sorted(set(inc)))))
+
+    # 9. Censored fixtures must be censored where they say.
+    cen = [c for c in C if c["censored"]]
+    def cen_ok(c):
+        g = spans_of(c["row"])
+        if c["censored"] == "none delivered": return not g
+        if c["censored"] == "start": return g and g[0][0] == 0
+        return g and g[-1][1] == N
+    c9 = len(cen) == 3 and all(cen_ok(c) for c in cen); ok &= c9
+    print("  9  censored fixtures are censored where declared     -> %s" % ("PASS" if c9 else "FAIL"))
+
+    # 10. Class A must move each end independently.
     st = {c["truth"]["start"] for c in C if c["name"].startswith("A")}
     en = {c["truth"]["end"] for c in C if c["name"].startswith("A")}
-    c8 = len([x for x in st if isinstance(x, int) and x]) >= 2 and \
-         len([x for x in en if isinstance(x, int) and x]) >= 2
-    ok &= c8
-    print("  8 class A moves each end independently               -> %s" % ("PASS" if c8 else "FAIL"))
+    c10 = len([x for x in st if isinstance(x, int) and x]) >= 2 and \
+          len([x for x in en if isinstance(x, int) and x]) >= 2
+    ok &= c10
+    print("  10 class A moves each end independently              -> %s" % ("PASS" if c10 else "FAIL"))
 
-    # 9. THE REMOVED PAIR'S PREMISE MUST STAY REFUTED -- arithmetic, so it cannot drift.
-    c9 = NOMINAL_BLANKING > OMITTED
-    ok &= c9
-    print("  9 an interval cannot fit the omitted gap (%.2f > %d)  -> %s"
-          % (NOMINAL_BLANKING, OMITTED, "PASS" if c9 else "FAIL: the matched pair may be revivable"))
+    # 11. The removed pair's premise must stay refuted -- arithmetic, so it cannot drift.
+    c11 = NOMINAL_BLANKING > OMITTED; ok &= c11
+    print("  11 an interval cannot fit the omitted gap (%.2f > %d) -> %s"
+          % (NOMINAL_BLANKING, OMITTED, "PASS" if c11 else "FAIL"))
 
     print("SELFTEST", "PASS" if ok else "FAILED")
     return 0 if ok else 1
