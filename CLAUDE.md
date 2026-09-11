@@ -6054,6 +6054,29 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   one is right before repairing either.** The reflex is to trust the docstring and change the code, and here
   that would have removed two guards while making the file read more honestly.
 
+- **THE FIXTURE'S NOMINAL INTERVAL WAS MOVED FOR A MECHANICAL REASON, AND THE DIFFICULTY MAY HAVE BEEN A
+  PROPERTY OF THE SOURCE RATHER THAN A PROBLEM TO DESIGN AROUND (2026-09-11, open; the peer session's catch).**
+  `switch_fixtures.py` moved `NOMINAL` from `(700, 717)` to `(660, 677)` because at the window's edge the
+  "end moves, start fixed" case had nowhere to go and produced invalid geometry. **The reason I gave Codex for
+  doubting that was WRONG and this file contradicts it in two places:** I wrote that "the whole censoring story
+  is about an interval running off the right edge", and `:3489` records **"210 of the 255 have their blank-level
+  run starting at sample 0, its left endpoint off the delivered window"** with `:3490` — **"an interval
+  displaced leftward runs off the edge"**. The documented, measured censoring is at the LEFT, and the fixtures
+  already encode it (`switch_fixtures.py:93`, B1 left-censored).
+  **THE SOUND REASON IS STRONGER THAN THE ONE I OFFERED.** `:3435` puts a normal row's trailing blank samples at
+  columns **~702-709**, and this file's own source-reference work found bright rows reaching blanking only in
+  their **last one or two samples** (176 at 711, then 163, 142, 112, 84, 55, 26, **2 at 719**). **So the
+  undisturbed interval physically sits at the row's END and is already truncated by the right edge on ordinary
+  rows.** `(700, 717)` is in that neighbourhood; `(660, 677)` is forty samples inside it.
+  ⚠️ **WHICH MAY MAKE THE ORIGINAL DIFFICULTY A FINDING: if the interval's end is at the window edge, an
+  end-shift there is largely UNOBSERVABLE, and moving the nominal inward to make the case constructible HIDES
+  exactly that.** The fixture would then owe the asymmetry rather than a restored symmetry the source does not
+  have — left displacement observable and left-censorable, the right end pinned. **Not settled: it is with
+  Codex, asked as a design question with a request for a recommendation rather than options.**
+  ⚠️ **The dispatch carrying the wrong premise was already in flight when this was found**, and under the
+  one-dispatch-at-a-time rule it was not chased with a correction. **Its reply must be read against these two
+  lines, not against the premise it was asked under.**
+
 - **RECORDING A FINDING ABOUT A TEXT PATTERN DESTROYS ITS OWN EVIDENCE — so such a claim must cite a COMMIT,
   never the file (2026-09-11, the peer session's, found while verifying the entry below).** That entry's
   evidence is that `'and 3,588'` does not appear in `CLAUDE.md`, because the line wraps between the two.
