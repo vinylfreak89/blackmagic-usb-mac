@@ -2758,10 +2758,15 @@ with the harness's S. It shares no code with `switch_geometry.py`. **S is exact 
 field-readings.** The progression, each step measured rather than argued: **963** as found → **1,009** with
 `torn` no longer selecting the switch line → **1,012** with `step` no longer selecting → **1,013** with the
 census's own unjustified 200-sample ceiling removed.
-<<<<<<< HEAD
-⚠️ The census validates **S, which is position**. It does NOT validate T, and it cannot establish that the run is
-physically relocated blanking rather than clipped black content — CLAUDE.md §2 records that black content in this
-material can be clipped to exactly the blanking level with the same dither.
+⚠️ The census validates **S, which is position**. It does NOT validate T, and its low-level run does not by
+itself establish physically relocated blanking rather than black content. The former supporting citation
+"CLAUDE.md §2" for equal dither was unsupported; that assertion is withdrawn, not needed for this distinction.
+⚠️ **THE SAME-DITHER ASSUMPTION IS UNSUPPORTED, BUT THE PROPOSED REFUTATION IS ALSO NOT YET A QUALIFIED
+PHYSICAL COMPARISON** (`f49ce91`/`968d2b5`, reviewed by Codex, 2026-09-11).
+The cited section supplied no such measurement. The existing measured dither entry concerned the DEVICE's
+vertical-interval constant, a different object; contract `:461` already required supporting measurement rather
+than inferring texture from matching mean and variance. `dither_compare.py` reports the following over its
+40-field selection. Counts are preserved as its configured outputs, NOT remeasured or validated by this review:
 ⚠️⚠️⚠️ **THE REFUTATION BELOW IS ITSELF WITHDRAWN — my instrument computed a lag-1 autocorrelation on a
 BOOLEAN-MASK SELECTION rather than a contiguous run, and the population the claim is about shows almost no
 signature (2026-09-11). Read this before any figure in it.**
@@ -2858,18 +2863,6 @@ ALREADY DEMANDED THE MEASUREMENT (2026-09-11).** "CLAUDE.md §2 records" points 
 dither measurement is the DEVICE's vertical-interval constant at `:332` (lag-1 −0.33), a different quantity on
 different rows. Contract `:461` already said the claim *"needs its own supporting measurement and does not
 follow from the means and standard deviations"*. Measured at last, on the same rows, over 40 field-readings:
-=======
-⚠️ The census validates **S, which is position**. It does NOT validate T, and its low-level run does not by
-itself establish physically relocated blanking rather than black content. The former supporting citation
-"CLAUDE.md §2" for equal dither was unsupported; that assertion is withdrawn, not needed for this distinction.
-⚠️ **THE SAME-DITHER ASSUMPTION IS UNSUPPORTED, BUT THE PROPOSED REFUTATION IS ALSO NOT YET A QUALIFIED
-PHYSICAL COMPARISON** (`f49ce91`/`968d2b5`, reviewed by Codex, 2026-09-11).
-The cited section supplied no such measurement. The existing measured dither entry concerned the DEVICE's
-vertical-interval constant, a different object; contract `:461` already required supporting measurement rather
-than inferring texture from matching mean and variance. `dither_compare.py` reports the following over its
-40-field selection. Counts are preserved as its configured outputs, NOT remeasured or validated by this review:
->>>>>>> origin/v10-engine
-
 | | selected terminal-sample arm | selected low-run arm |
 |---|---|---|
 | samples / runs | 108,427 in 7,599 | 32,517 in 2,203 |
