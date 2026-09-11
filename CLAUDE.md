@@ -5246,12 +5246,20 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   adjacent is how it gets quoted back.**
 
 - **THE SYMMETRIC DETECTOR'S TWO RESIDUE CLASSES HAVE DIFFERENT CAUSES, AND ONE OF THEM VINDICATES D16
-  (2026-09-11).** ⚠️⚠️ **BOTH READINGS IN THIS ENTRY ARE RETRACTED — Codex's review, verified independently the
-  same day. Read the retraction at the end of the entry before any figure in it.** The table's measurements
-  stand as measurements; both conclusions drawn from them do not. `experiments/blanking_extent.py` identifies 687 of 3,048 switch-band rows (23%), with 1,156
+  (2026-09-11).** ⚠️⚠️⚠️ **THE WHOLE ENTRY IS VOID, NOT MERELY ITS CONCLUSIONS. Read the two retractions at the
+  end before any figure in it.** Both readings were refuted by Codex and reproduced by me; then the
+  instrument's "blanking level" turned out to be the device's WRITTEN PADDING RULER at code 16, making its
+  mask bound 19 where the source's blanking never exceeds 3 — so the counts and the table below are not
+  measurements of the switch band at all.
+  ⚠️ **AN EARLIER VERSION OF THIS HEADER SAID "the table's measurements stand as measurements; both
+  conclusions drawn from them do not." That was written before the padding ruler was found and is WRONG:
+  the measurements do not stand.** Kept visible because it is the same mistake one level up — salvaging the
+  numbers while withdrawing the conclusions, when the numbers were what was broken. `experiments/blanking_extent.py` identifies 687 of 3,048 switch-band rows (23%), with 1,156
   Unknown and 1,205 normal. Before touching anything, the two readings were separated on the rows themselves:
   either the skew is there and the measurement misses it, or those rows genuinely lack skew and 23% is closer to
   right than it looks.
+
+  ⚠️ **VOID — every number in this table was produced with the mask admitting everything up to code 19:**
 
   | class | n | \|excursion\| median | \|skew\| median | local tolerance |
   |---|---:|---:|---:|---:|
@@ -5292,6 +5300,16 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
     is the same defect a third time.
   - **The tuning instinct is the hazard, named so it is recognisable in the moment:** repairing a calibration
     while the coverage number is unsatisfying is exactly when his conjunction quietly becomes extent alone.
+  - **A REPAIR THAT MAKES POSITION DECIDE THE `normal` CLASS IS A BEHAVIOUR CHANGE, NOT A TUNING — measure that
+    axis before and after, or a real improvement will be indistinguishable from a threshold moving.** The peer
+    session proposed this guard and its premise needed correcting first: it said *"the position tolerance is
+    currently inert — `classify` returns on duration before position is consulted"*, and **that is true only of
+    the rows that FAIL the extent gate.** Measured by varying `p_tol` alone on one row that passes it: 0.0, 4.0
+    and 50.0 all return `extended`; **400.0 returns `Unknown`** on the identical row and skew. So position is not
+    inert — it decides the whole identified-versus-Unknown split, which is where the degenerate-regime finding
+    already shows it doing an enormous amount of work in opposite directions by content. **The guard survives in
+    its corrected form and is sharper for it:** position is inert for ONE class and hair-trigger or dead for the
+    others, so a repair touching it moves three populations at once and must be scored on each separately.
   ⚠️ **WITHDRAWN — The 0.23% held-out false-identification rate is the figure to lean on meanwhile**, and its
   population cannot shrink. **It was produced by a mask admitting everything up to code 19; see the padding-ruler
   finding below. There is no figure from this instrument to lean on.**
@@ -5410,11 +5428,64 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   source's own blanking at 1.42.** `CLAUDE.md` records all three separately and correctly; the detector
   picked the one that is a written constant with zero variance, which is the one reading that cannot be a
   measurement of anything the signal did.
-  ⚠️ **The claim that "neither review had it" is incorrect.** Codex's committed finding 1 explicitly
-  says "device hard padding, not even the device's regenerated blanking intervals", and its main-path
-  synthetic test changes padding from 16 to 2 with source content unchanged. The two-instrument
-  disagreement led Claude to reproduce the distinction; it did not introduce a correction to that
-  finding. The padding, regenerated blanking and source blanking remain three different objects.
+  ⚠️ **MY SENTENCE HERE READ "neither review had it" AND THAT IS WRONG — Codex's review DID have it, in its
+  report though not in its chat summary.** `docs/reports/2026-09-11_blanking_extent_review.md:23` says the
+  selected rows are **"device hard padding, not even the device's regenerated blanking intervals"**, and its
+  main-path synthetic test changes the padding from 16 to 2 with the source rows unchanged. **I read the summary
+  line — "the production reference is device padding" — and not the report, then claimed the finding.** The
+  padding, the regenerated blanking and the source blanking are three different objects and its report
+  distinguished all three; what the two-instrument disagreement did was make me REPRODUCE the distinction, not
+  discover it.
+  **AND THE TWO-INSTRUMENT CHECK IS A REUSABLE ONE RATHER THAN LUCK (the peer session's framing, and it is the
+  better one): WHEN TWO PATHS COMPUTE A QUANTITY THAT OUGHT TO AGREE AND DO NOT, THE DISAGREEMENT IS THE
+  FINDING.** Neither number was chased for its own sake — 8 against 426 was pursued INSTEAD OF being averaged or
+  picked between. **The failure mode it guards against is reconciling rather than investigating**, and it is
+  available for free wherever a probe and an instrument overlap. ⚠️ Here it reproduced a finding that was already
+  written down, which is a smaller claim than the one I made for it and is the one the evidence supports.
+  ⚠️⚠️ **"A MASK THAT CALLS ALMOST EVERYTHING BLANKING RETURNS `normal` ALMOST EVERYWHERE, SO A LOW
+  FALSE-IDENTIFICATION RATE WAS GUARANTEED" IS REFUTED BY COUNTEREXAMPLE.** Codex ran 13 known synthetic
+  negatives at the padding-derived cutoff and **all 13 produced ASSERTIONS**, not `normal`. So the wide mask does
+  not force the verdict either way, and the mechanism the peer session and I both gave for why 0.23% looked
+  unimpeachable is wrong. **The bad reference is established; its being the SOLE cause of either degenerate
+  regime is not**, and correcting it fixes neither the summed-duration blindness nor interval identity.
+  **What survives, in Codex's words: withdraw the historical counts as validated switch measurements, retain them
+  as reproducible outputs of the defective configuration.** That is the right disposition and it does not depend
+  on any mechanism.
+  ⚠️ It does still put a second door on the too-clean tell recorded above — a clean number can come from a
+  constant entering at either end — but **"structurally certain" was an argument, and a counterexample beats it.**
+  **ONE VARIABLE CHANGED — the source reference's level handed to the SAME unchanged classifier, 400
+  field-readings from counter 6667. Run BEFORE any rebuild, so the rebuild cannot be credited with a fix the
+  level alone produces:**
+
+  | verdict on the switch band | padding ruler (bound 19.0) | source level (bound ~4.4) |
+  |---|---:|---:|
+  | identified (extended + overridden) | **53** | **1,065** |
+  | normal | **1,077** | **70** |
+  | Unknown | 70 | 65 |
+  | **false-identification, held out** | **0.38%** | **0.10%** |
+
+  ⚠️⚠️ **BOTH IMPROVED TOGETHER, WHICH IS THE EMPIRICAL VINDICATION OF CODEX'S METHODOLOGICAL OBJECTION AND THE
+  REFUTATION OF THE ACCEPTANCE CONDITION I RECORDED.** That condition said joint improvement is "a leak to be
+  found rather than a result". Here identification rises twentyfold AND false-identification falls fourfold, from
+  **correcting a reference** — with the calibration rows, the validation rows and the statistic all untouched, so
+  there is no population for a leak to enter through. **Codex's rule is right and mine was wrong**: correcting a
+  reference or improving a discriminator legitimately moves both, and the test is a dependency audit rather than
+  a rate comparison.
+  **So the level was the DOMINANT cause of the `normal` class on this capture** — 1,077 of 1,200 band rows, down
+  to 70. ⚠️ **It does NOT exonerate the statistic, and Codex's caution is the operative one:** a pure translation
+  still reads `normal` at ANY level, proven synthetically and untouched by this, so the summed-duration blindness
+  and the interval-identity problem survive the reference correction entirely.
+  ⚠️ **These are NOT switch counts at either level.** A detector that cannot see a timing displacement reporting
+  88.8% on the band is reporting something else. Per Codex's disposition: **the historical counts are withdrawn
+  as validated switch measurements and retained as reproducible outputs of a defective configuration** — and
+  these two columns are the same kind of artefact, one variable apart.
+
+  ✅ **CHECKED NEGATIVE, not an assumption: `blanking_extent.py` is the ONLY instrument with this reading.**
+  Every other level reader in `experiments/` takes rows 7–15 / 270–278 — the device's decoded blanking — or
+  the row's own level: `source_reference`'s `DEVICE_ROWS`, `own_blanking_census`'s `BLANK_ROWS`,
+  `box_bounds.device_population`, `edge_variance`, `porch_census`, `tear_column_census`. The engine's
+  `blank_mean` reads 7–16 / 270–279, which is the separate defect already recorded above (it includes the
+  timing row and is not the contract's mean of qualified SOURCE blanking).
 
   **THE OBSERVABLE'S DESIGN, put to Codex before writing it and answered with a THIRD reading (`66233ee`,
   `docs/reports/2026-09-11_extent_set_observable_review.md`).** I proposed a SET departure from his `:43-47`
