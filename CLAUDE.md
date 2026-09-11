@@ -5539,7 +5539,27 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   ⚠️ **AND THE TWO MOVEMENTS ARE ONE OBSERVATION, NOT TWO (the peer session's catch, kept because it is the
   crispest form):** both metrics come from the SAME changed input, so anything that inflates one inflates the
   other, and joint movement cannot be evidence about its own cause.
-  ⚠️ **THE OVERLAP IS WORSE THAN THE REVIEW REPORTS, verified here by arithmetic rather than taken:** the
+  ✅ **THE LEAK WAS REAL AND INERT ON THIS CAPTURE — re-run after the repair, and every count is IDENTICAL:**
+  Unknown 70/65, extended 46/995, normal 1,077/70, overridden 7/70, assertions 0.38%/0.10%, 400 attempted and
+  **400 admitted paired in both arms, 0 unpaired**. So holdout independence was genuinely violated — Codex's
+  synthetic proves the path is live, five validation rows moving a fitted level from 1.5 to 2.05 and flipping
+  three unchanged candidates — **and on this data it moved nothing.** *A live defect path that did not manifest*
+  is a different statement from *it was fine*, and only the re-run separates them; the first was not available
+  to argument.
+  ⚠️⚠️ **BUT THE COLUMN THE REPAIR ADDED QUALIFIES THE RATE IMPROVEMENT, exactly as Codex predicted: fewer
+  assertions need not mean more correctly identified normal rows.** Held-out rows, 5,200 per arm:
+
+  | arm | asserts | **Unknown** | normal |
+  |---|---:|---:|---:|
+  | padding ruler | 20 | **24** | 5,156 |
+  | source level | 5 | **145** | 5,050 |
+
+  **The source arm asserts 15 fewer times and abstains 121 more**, so `normal` FALLS by 106. The 0.38% → 0.10%
+  is not rows being correctly left alone; it is largely rows moving into Unknown. **Reporting the assertion rate
+  without the abstention beside it made a sixfold rise in abstention look like a fourfold improvement in
+  accuracy** — and the old instrument did not print that column at all, so the qualification was unavailable
+  rather than overlooked.
+    ⚠️ **THE OVERLAP IS WORSE THAN THE REVIEW REPORTS, verified here by arithmetic rather than taken:** the
   reference reads offsets 20–219, and the validation offsets are 211,213,…,235 while the calibration offsets are
   210,212,…,234. **FIVE VALIDATION ROWS (211–219) AND FIVE CALIBRATION ROWS (210–218) BOTH FEED THE LEVEL** that
   is then used to score them. So neither cohort is independent of the fit, and the instrument's own printed
