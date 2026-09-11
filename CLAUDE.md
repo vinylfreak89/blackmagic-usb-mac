@@ -4164,6 +4164,90 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **0.6%**. The 532 already have no switch line by either route and are unaffected, and the 478 with a T are
   untouched. An earlier framing of this as a large loss confused the harness's S measurement (exact in 1,013 of
   1,013 registerable readings, a different instrument and population) with the engine's export.
+- **THE KNOWN-ANSWER FIXTURES EXIST, WRITTEN BEFORE THE ESTIMATOR CHOICES — and the third class proves a BOUND
+  on the observable rather than testing a detector (`experiments/switch_fixtures.py`, 2026-09-11).** Codex's
+  three classes, from its review of the set-departure proposal: timing changes at BOTH interval ends, censored
+  cases, and matched unchanged-timing dark-content controls. **The ordering is the content: a fixture written
+  after the seven unsettled estimator choices is shaped by them invisibly, and neither agent could tell
+  afterwards** — the calibration-fitted-on-its-own-test-rows defect at the level of test design. Each case
+  carries the row, the ground truth and the disposition a correct detector must reach; **no threshold, window or
+  statistic appears in any of them.**
+  **CLASS C3 IS THE RESULT.** A dark-content control is only a control if a level-only reading cannot separate it
+  from a genuine timing change, and the construction that achieves that is FORCED rather than chosen — make the
+  two rows' delivered samples identical:
+
+  | | delivered blanking | ground truth |
+  |---|---|---|
+  | **A** | exactly [540, 557) | the interval TRANSLATED 160 samples earlier |
+  | **B** | exactly [540, 557) | timing NORMAL; its interval fell in the undelivered part of the line, plus clipped dark content at 540 |
+
+  **No function of the delivered row separates them**, so a detector that identifies A must also fire on B.
+  **That is a bound on ROW-LOCAL evidence, established before the detector was written**, and it says what the
+  rebuild needs rather than how to build it: something beyond the row — which is exactly Codex's "evidence
+  establishing a horizontal-timing departure rather than merely a changed low-level mask", and what interval
+  identity is for. A neighbouring row or the previous unit could separate A from B; the delivered row cannot.
+  ⚠️ **Physically motivated, not established as occurring.** B rests on the recorded arithmetic that 10.22 of
+  every 63.56 µs is undelivered — 16% of the line, which this file already accepts as making `T = S` a legitimate
+  reading of roughly one line in six. **Whether B's exact configuration occurs on real material is NOT shown
+  here**, and the bound holds regardless: it is about what the evidence can support, not about frequency.
+  ⚠️ **Control 1 caught a real construction bug on its first run** — C1 and C2 declare the nominal interval
+  first and the dark run second, while the verifier scans in row order, so a positional comparison failed. **A
+  fixture that does not contain what it claims tests nothing and nothing else would have noticed.**
+  Five controls, derived from the ways a FIXTURE SET fails to be one rather than from any detector's behaviour:
+  every fixture contains its injected geometry; the required answers are MIXED (else a constant detector passes
+  the set); the censored fixtures are censored at the window edge; the matched pair is genuinely matched; and
+  class A moves each end independently, else a one-ended statistic passes the class.
+
+- **WHEN A NUMBER IS CONTESTED, BUILD THE THING THAT WOULD SHOW IT WRONG — do not defend it and do not retract
+  it (2026-09-11, three instances in one day, and the pattern prescribes a different action than either
+  instinct).** Each time a figure was withdrawn as a CONCLUSION and then had to be withdrawn again as a NUMBER,
+  and each time what settled it was a built artefact rather than an argument:
+
+  | the figure | withdrawn as a conclusion | then as a number, BY |
+  |---|---|---|
+  | the two-class table, 687 / 1,156 / 1,205 | both readings refuted | a probe that read what `Y[0:6]` actually holds |
+  | the 0.23% false-identification | "the figure to lean on" withdrawn | 13 synthetic negatives asserting at that cutoff |
+  | 0.38% → 0.10% on the repaired arms | "refuted by measurement" withdrawn as an overclaim | an ABSTENTION COLUMN the instrument had never printed |
+
+  **In none of the three did re-reading, re-arguing or retracting produce the answer.** The probe, the synthetic
+  negatives and the abstention column are all things that DID NOT EXIST until someone built them, and each made
+  the qualifying evidence visible rather than making a case for it.
+  ⚠️ **Two distinctions this depends on, both of which collapse into something unfair if compressed:**
+  *"a live defect path that did not manifest" is not "it was fine"* — the holdout leak moved a fitted level
+  1.5 → 2.05 in synthetic and moved nothing on this capture, and **only the re-run separates those, neither
+  reading being available to argument**; and *the abstention column was UNAVAILABLE, not overlooked* — a
+  different failure from misreading evidence in hand, where the fix was building the column and not reading
+  harder.
+  **The rule in one line: a contested number is a request for an instrument, not for a position.**
+
+- **A TRUE STATEMENT ABOUT ONE POPULATION, ASSERTED ABOUT ALL OF THEM — the night's commonest shape, and it is
+  DIFFERENT from one-name-several-quantities (2026-09-11, the peer session's generalisation, and it is the better
+  framing).** Not an ambiguous name: a correct measurement whose SCOPE is silently widened. Three instances in
+  one day, each found only by measuring the population the claim had skipped:
+
+  | the true statement | the scope it was asserted at | what the wider claim cost |
+  |---|---|---|
+  | a whole-field floor admits the band on 61% of units | "the floor is calibrated" | a local window takes it to 100% — `:447` says so and the reason was in the same paragraph |
+  | the calibration window's rows carry no switch | "so the calibration is clean" | eleventh fixed-place-to-look; the rows can carry clipped dark content instead |
+  | removing the position tolerance changes nothing **for the `normal` class** | "the position tolerance is inert" | measured, `p_tol` 50 → 400 flips `extended` → `Unknown`; position decides the whole identified-versus-Unknown split |
+
+  **THE TELL IS THAT THE NARROW STATEMENT IS TRUE, so re-reading it finds nothing** — which is why all three
+  survived a careful author and needed a different population measured instead.
+  ⚠️ **AND THAT IS WHAT SEPARATES THIS CLASS FROM EVERY OTHER ONE IN THIS FILE: the others are catchable on a
+  careful read, and this one is INVISIBLE BY CONSTRUCTION.** A wrapped phrase, a substring count, a proxy window,
+  a borrowed control — each is visible once you look at the right line. Here every line is correct, so **"read it
+  again" is not a defence and reaching for it wastes the attempt.** The only thing that exposes it is measuring
+  the population the claim skipped, which is why the check below is a measurement rather than a re-read.
+  ⚠️ **The third row was committed by the peer session while it was quoting the first two back at me as warnings
+  about scope, and the gap between citing the class and committing it was ONE MESSAGE.** Knowing the class by
+  name does not prevent it — already recorded for fixed-place-to-look, whose eleventh instance landed inside the
+  detector written to avoid the tenth — and this is the tightest interval either has managed.
+  **The check is cheap and is the same one every time: name the population the claim was measured on, then ask
+  what the claim asserts about the populations it was not.** Where those differ, the scope is the finding.
+  ⚠️ It is distinct from one-name-several-quantities and should not be folded into it: there the WORD is
+  ambiguous and the fix is to name the quantities separately; here the word is fine, the measurement is right,
+  and the fix is to carry the population with the claim.
+
 - **ONE NAME, SEVERAL QUANTITIES — the commonest defect class in this contract, and a cold read finds them where
   two builders cannot (2026-09-10).** A term stands for two or more different quantities, the code carries only
   one of them, and every rule leaning on the name inherits the ambiguity. Found so far, and a sweep of the cold
@@ -5316,6 +5400,15 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
     survives is the weaker prompt — joint improvement is a reason to AUDIT, never a reason to disbelieve — and
     its replacement is his: freeze the evaluation populations and audit dependencies, errors and abstentions,
     rather than scoring a repair against the previous error rate.
+    ⚠️ **THE CONDITION IS DEAD, BUT "REFUTED BY MEASUREMENT" OVERSTATES HOW — corrected within the hour.** It is
+    withdrawn on CODEX'S ARGUMENT, which stands alone and predates any of this: correcting a reference or
+    improving a discriminator can legitimately reduce both rates, so joint improvement does not prove leakage.
+    The one-variable measurement below (identification **53 → 1,065**, false-identification **0.38% → 0.10%**) is
+    CONSISTENT with that and does not establish it — **because if the tolerance movement IS a leak, both rates
+    improving is exactly what the leak produces.** Using the joint improvement as evidence against the leak
+    hypothesis is using a result equally predicted by the competing hypothesis, which the global rule already
+    names: the first explanation that fits the data is usually one of two that fit it. **Anyone building a brief
+    must not relay the condition — but must not relay the measurement as its refutation either.**
   - **THE QUALIFICATION MUST BE DERIVABLE, NOT ANOTHER WINDOW.** "Rows whose own timing reads normal" is
     CIRCULAR here — it qualifies the calibration by the quantity the calibration defines. Qualifying rows by the
     source's own reference, the route `:531` already specifies for levels, is not circular; a second fixed span
@@ -5499,6 +5592,46 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **The level substitution strongly changes this program's `normal` frequency on the selected prefix** —
   1,077 of 1,200 candidates down to 70. This is not a whole-capture causal decomposition or a measured
   improvement in switch sensitivity. ⚠️ **It does NOT exonerate the statistic:** a pure translation
+  ⚠️ **AND THE TWO MOVEMENTS ARE ONE OBSERVATION, NOT TWO (the peer session's catch, kept because it is the
+  crispest form):** both metrics come from the SAME changed input, so anything that inflates one inflates the
+  other, and joint movement cannot be evidence about its own cause.
+  ✅ **THE LEAK WAS REAL AND INERT ON THIS CAPTURE — re-run after the repair, and every count is IDENTICAL:**
+  Unknown 70/65, extended 46/995, normal 1,077/70, overridden 7/70, assertions 0.38%/0.10%, 400 attempted and
+  **400 admitted paired in both arms, 0 unpaired**. So holdout independence was genuinely violated — Codex's
+  synthetic proves the path is live, five validation rows moving a fitted level from 1.5 to 2.05 and flipping
+  three unchanged candidates — **and on this data it moved nothing.** *A live defect path that did not manifest*
+  is a different statement from *it was fine*, and only the re-run separates them; the first was not available
+  to argument.
+  ⚠️⚠️ **BUT THE COLUMN THE REPAIR ADDED QUALIFIES THE RATE IMPROVEMENT, exactly as Codex predicted: fewer
+  assertions need not mean more correctly identified normal rows.** Held-out rows, 5,200 per arm:
+
+  | arm | asserts | **Unknown** | normal |
+  |---|---:|---:|---:|
+  | padding ruler | 20 | **24** | 5,156 |
+  | source level | 5 | **145** | 5,050 |
+
+  **The source arm asserts 15 fewer times and abstains 121 more**, so `normal` FALLS by 106. The 0.38% → 0.10%
+  is not rows being correctly left alone; it is largely rows moving into Unknown. **Reporting the assertion rate
+  without the abstention beside it made a sixfold rise in abstention look like a fourfold improvement in
+  accuracy** — and the old instrument did not print that column at all, so the qualification was unavailable
+  rather than overlooked.
+    ⚠️ **THE OVERLAP IS WORSE THAN THE REVIEW REPORTS, verified here by arithmetic rather than taken:** the
+  reference reads offsets 20–219, and the validation offsets are 211,213,…,235 while the calibration offsets are
+  210,212,…,234. **FIVE VALIDATION ROWS (211–219) AND FIVE CALIBRATION ROWS (210–218) BOTH FEED THE LEVEL** that
+  is then used to score them. So neither cohort is independent of the fit, and the instrument's own printed
+  limits said *"the validation rows are NEVER qualified here: their population cannot shrink"* while the
+  reference was reading five of them. **A limit printed with every result is still only as true as the code.**
+  ⚠️ **AND CALLING THAT "the two-stores defect inside its own repair" WAS WRONG — the peer session's correction,
+  and the distinction is the useful part.** Printing the limit DID solve the problem it was built for: a limit in
+  a docstring is a second store nobody opens, and moving it into the output fixed REACHABILITY. What it never
+  touched is TRUTH. **Two different axes, and the repair addressed one of them** — so the same shape has now been
+  hit from both directions in one day: a docstring asserting what the code does not do, and then a printed limit
+  asserting what the code does not do, the second built specifically to escape the first.
+  **The consequence is narrow and worth stating so the next repair does not inherit false confidence: moving a
+  claim closer to the reader does not make it checkable.** Only a control does — which is why the repair's whole
+  content here is an executable refusal (the old range must trip the assertion) rather than a corrected value.
+  ⚠️ **The cost was real rather than hypothetical: that false limit was relayed to the owner as the reason to
+  lean on the false rate.**
   still reads `normal` at ANY level, proven synthetically and untouched by this, so the summed-duration blindness
   and the interval-identity problem survive the reference correction entirely.
   ⚠️ **These are NOT switch counts at either level.** A detector that cannot see a timing displacement reporting
