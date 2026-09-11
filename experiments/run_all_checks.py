@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Run EVERY check in experiments/, discovered rather than listed.
+
+⚠️ WHY THIS EXISTS. "Every selftest green" was reported while
+`switch_fixtures_review_controls.py` exited 1 -- broken by a removal in the same session that did not
+touch its call site. The report was true of the SEVEN SCRIPTS IN A HAND-WRITTEN LOOP and was asserted
+about all of them: the scope class, in the same turn its sharpening was recorded. And the loop was
+hand-written, which is this file's other recorded defect -- an instrument whose coverage is built
+from the instances that prompted it, so it cannot see the next one.
+
+Discovery is therefore from the DIRECTORY, never from a list:
+  * a module offering `--selftest` (found by reading its argparse, not by convention) runs with it
+  * a module whose name ends `_check` or `_controls` runs bare -- those ARE the check
+Anything new in `experiments/` is covered the day it lands, without anyone remembering.
+
+⚠️ EXIT STATUS IS THE VERDICT, never the printed text. The breakage that prompted this printed nine
+PASS lines and "SELFTEST PASS" and then raised; standard output was clean and only the status was
+wrong. Nothing here parses output, and nothing is piped.
+
+  run_all_checks.py [--quiet]
+"""
+from __future__ import annotations
+import argparse, os, subprocess, sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SLOW = {"capture_render.py"}          # needs a capture; not a self-check
+
+# DECLARED DISPOSITIONS, not declared coverage. Discovery stays automatic; only the EXPECTED STATE of
+# a check is something an agent must assert, because nothing in the file distinguishes a probe that
+# expired by design from a genuine regression. Each entry names the commit its subject was pinned at
+# and what moved past it.
+#
+# ⚠️ AN ENTRY THAT STARTS PASSING IS A FAILURE OF THE ANNOTATION, reported as STALE. That is what
+# keeps this list shrinking instead of rotting: convert the probe to positive controls, delete its
+# row, and the runner stops mentioning it.
+EXPECTED_FAIL = {
+    "blanking_extent.py":
+        "failing-first by design: controls 7-9 pin the specification violations the rebuild owes",
+    "arrival_review_controls.py":
+        "pins per_unit_floor at e847da7; it patches SWITCH_LINES as a bare tuple, which the "
+        "field-2 coordinate repair turned into a dict keyed by field",
+    "blanking_extent_review_controls.py":
+        "pins blanking_extent at d21f373, before the void marking and the failing-first controls",
+    "level_attribution_review_controls.py":
+        "pins level_attribution at 386d202, before the holdout repair removed the row overlap",
+}
+
+
+def discover():
+    """Every runnable check, from the directory's own contents."""
+    out = []
+    for fn in sorted(os.listdir(HERE)):
+        if not fn.endswith(".py") or fn == os.path.basename(__file__) or fn in SLOW:
+            continue
+        src = open(os.path.join(HERE, fn), encoding="utf-8", errors="replace").read()
+        if '"--selftest"' in src or "'--selftest'" in src:
+            out.append((fn, ["--selftest"]))
+        elif fn.endswith("_check.py") or fn.endswith("_controls.py"):
+            out.append((fn, []))
+    return out
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--slow", action="store_true", help="allow checks that walk a capture")
+    a = ap.parse_args()
+    checks = discover()
+    failed = []
+    skipped = []
+    slow = []
+    stale = []
+    root = os.path.dirname(HERE)
+    env = dict(os.environ, PYTHONPATH=HERE + os.pathsep + os.environ.get("PYTHONPATH", ""))
+    for fn, args in checks:
+        # From the REPO ROOT, because several checks name a capture by a path relative to it, with
+        # experiments/ on PYTHONPATH so bare sibling imports still resolve. Running from HERE made
+        # two checks fail for a reason that was the runner's, not theirs -- a runner that
+        # manufactures failures is as useless as one that hides them.
+        try:
+            r = subprocess.run([sys.executable, os.path.join(HERE, fn)] + args, cwd=root, env=env,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               timeout=1800 if a.slow else 60)
+        except subprocess.TimeoutExpired:
+            # Slow is not broken. A check that walks a capture is reported as needing --slow rather
+            # than counted against the suite, and never counted green either.
+            slow.append(fn)
+            if not a.quiet:
+                print("  %-42s NEEDS --slow" % fn)
+            continue
+        err = r.stderr.decode(errors="replace")
+        if r.returncode == 2 and "the following arguments are required" in err:
+            # Not a self-check: it needs inputs a caller must supply. Reported, never counted green.
+            skipped.append((fn, err.strip().split("\n")[-1]))
+            if not a.quiet:
+                print("  %-42s NEEDS ARGS" % fn)
+            continue
+        # The STATUS decides. A check may print anything it likes on the way to failing.
+        expected = fn in EXPECTED_FAIL
+        if r.returncode == 0:
+            state = "STALE-ANNOTATION" if expected else "PASS"
+            if expected:
+                stale.append(fn)
+        else:
+            state = "expected FAIL" if expected else "FAIL(%d)" % r.returncode
+            if not expected:
+                failed.append((fn, r.returncode, err.strip().split("\n")[-1]))
+        if not a.quiet or (r.returncode != 0 and not expected) or state == "STALE-ANNOTATION":
+            print("  %-42s %s" % (fn + (" " + " ".join(args) if args else ""), state))
+    print("\n  %d discovered, %d ran, %d FAILED, %d expected-fail, %d need args, %d need --slow"
+          % (len(checks), len(checks) - len(skipped) - len(slow), len(failed),
+             len(EXPECTED_FAIL), len(skipped), len(slow)))
+    for fn in stale:
+        print("    STALE ANNOTATION: %s now PASSES -- convert it and delete its row" % fn)
+    for fn, why in skipped:
+        print("    %-40s %s" % (fn, why[:70]))
+    for fn, rc, last in failed:
+        print("    %-40s exit %d   %s" % (fn, rc, last[:90]))
+    if not checks:
+        print("  NO CHECKS DISCOVERED -- that is a failure, not a clean run")
+        return 2
+    return 1 if (failed or stale) else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

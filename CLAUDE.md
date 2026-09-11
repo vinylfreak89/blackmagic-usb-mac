@@ -5964,6 +5964,49 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   is indistinguishable from a finding. Both of tonight's were caught by re-running before writing, which is the
   only defence when the failure and the finding produce the same output.
 
+- **"EVERY SELFTEST GREEN" WAS A CLAIM ABOUT A HAND-WRITTEN LIST OF SEVEN, AND THE DISCOVERY RUNNER BUILT TO
+  REPLACE IT FOUND FIVE MORE FAILING CHECKS IN ITS FIRST RUN (2026-09-11).** The peer session found
+  `switch_fixtures_review_controls.py` exiting 1: withdrawing C3 removed `matched_pair()` and did not touch the
+  script that calls it.
+  ⚠️ **IT READ GREEN, and that is the part to keep.** The nine fixture controls run first, all nine print PASS,
+  `SELFTEST PASS` prints, and only then does it raise. **Standard output is clean and the failure exists solely
+  in the exit status** — so a terminal showed a passing run, and the peer's own first check piped it through
+  `tail` and read `tail`'s status, which is the pipeline defect this file carries as members six-to-eight of the
+  answers-a-different-question family, committed inside the check for it.
+  ⚠️ **AND MY STATUS REPORT WAS THE SCOPE CLASS AGAIN, IN THE SAME TURN THAT RECORDED ITS SHARPENING.** "Every
+  selftest green" was true of the seven scripts in a loop I typed and asserted about all of them. Previous
+  tightest interval between citing that class and committing it was one message, which this file records; **this
+  is the same turn.**
+  **THE STRUCTURAL FIX IS `experiments/run_all_checks.py`, which DISCOVERS from the directory** — a module
+  offering `--selftest` (found by reading its argparse, not by convention) runs with it; a `_check`/`_controls`
+  module runs bare. **On its first run it found five more failures the list could not see**, and the
+  classification is the useful part:
+
+  | | what it actually was |
+  |---|---|
+  | `blanking_extent.py` | **by design** — failing-first 6/9, pinning the specification violations the rebuild owes |
+  | `locked_render_check.py` | **slow, not broken** — it walks the capture; the earlier failure was my runner's cwd |
+  | `arrival_review_controls.py` | **expired** — patches `SWITCH_LINES` as a bare tuple, which the field-2 repair made a dict |
+  | `blanking_extent_review_controls.py` | **expired** — pins the detector at `d21f373`, before the void marking |
+  | `level_attribution_review_controls.py` | **expired** — pins the instrument at `386d202`, before the holdout repair |
+
+  ⚠️⚠️ **THE EXPIRY PATTERN IS SYSTEMIC AND IS NOT A DEFECT IN EITHER AGENT: A CONTROL THAT PINS A DEFECT HAS A
+  LIFETIME BOUNDED BY THE REPAIR.** Codex writes probes asserting a defect is PRESENT; the repair lands; the
+  probes now fail for the right reason and look like regressions. **Three expired in one session and nothing
+  reported it until a discovery runner existed.** Codex's own fixtures docstring prescribes the disposition —
+  *"a later fixture repair should make these historical assertions fail and should replace them with positive
+  controls"* — which is what `switch_fixtures_review_controls.py` now is: each historical defect asserted ABSENT,
+  and its guard verified to FIRE. **The other three are owed the same conversion and are named in the runner
+  rather than deleted**, because the probes are the evidence that the defects were real.
+  ✅ **The annotation is SELF-RETIRING, which is what stops it rotting into a second store.** `EXPECTED_FAIL`
+  declares DISPOSITIONS, never coverage — discovery stays automatic, and only the expected STATE is asserted,
+  because nothing in a file distinguishes a probe that expired by design from a genuine regression. **An entry
+  that starts PASSING is reported `STALE ANNOTATION` and fails the suite**, so converting a probe forces its row
+  out. Mutation-verified: annotating a passing check reports it stale and exits 1.
+  ✅ **And `locked_render_check.py` now NAMES an absent render instead of failing with "could not extract frame
+  0"** — missing-is-not-a-value, inside a check, where an absent input had been reporting as a defect in the
+  thing it checks.
+
 - **THE FIVE WAYS A CONTROL FAILS TO PROTECT ANYTHING, in increasing order of invisibility — this project has
   now paid for all five, four of them in one night (2026-09-11).**
 

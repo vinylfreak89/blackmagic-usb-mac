@@ -60,6 +60,13 @@ def main():
     ap.add_argument("--sidecar", default="/private/tmp/plain-comb.ZNrk82/handoff.csv")
     ap.add_argument("--at", type=int, action="append", default=None)
     a = ap.parse_args()
+    # Missing is not a value: an absent render is 'nothing to check', not a failed check. It
+    # previously died with "could not extract frame 0", which reads as a defect in the render.
+    if not os.path.exists(a.video):
+        sys.stderr.write("NO RENDER AT %s -- nothing to read back. Produce it with\n"
+                         "locked_render.py, then re-run. This is an absent input, not a failure.\n"
+                         % a.video)
+        return 3
 
     rows = [r for r in csv.DictReader(open(a.sidecar)) if r.get("transport") == "Complete"]
     side = {int(r["counter_extended"]): r for r in rows}
