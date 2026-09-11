@@ -5139,7 +5139,9 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   adjacent is how it gets quoted back.**
 
 - **THE SYMMETRIC DETECTOR'S TWO RESIDUE CLASSES HAVE DIFFERENT CAUSES, AND ONE OF THEM VINDICATES D16
-  (2026-09-11).** `experiments/blanking_extent.py` identifies 687 of 3,048 switch-band rows (23%), with 1,156
+  (2026-09-11).** ⚠️⚠️ **BOTH READINGS IN THIS ENTRY ARE RETRACTED — Codex's review, verified independently the
+  same day. Read the retraction at the end of the entry before any figure in it.** The table's measurements
+  stand as measurements; both conclusions drawn from them do not. `experiments/blanking_extent.py` identifies 687 of 3,048 switch-band rows (23%), with 1,156
   Unknown and 1,205 normal. Before touching anything, the two readings were separated on the rows themselves:
   either the skew is there and the measurement misses it, or those rows genuinely lack skew and 23% is closer to
   right than it looks.
@@ -5150,13 +5152,13 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   | **Unknown** | 1,156 | 161 | **0.0, p90 0.0** | 2 |
   | normal | 1,205 | 81 | not measurable | **292** |
 
-  **1. THE UNKNOWN CLASS IS GENUINE: 93% of those rows have \|skew\| EXACTLY ZERO.** Not present-under-tolerance
+  **1. ⚠️ WITHDRAWN — THE UNKNOWN CLASS IS GENUINE: 93% of those rows have \|skew\| EXACTLY ZERO.** Not present-under-tolerance
   — absent. So the measurement is not missing it, and under his definition those rows **are not switches**.
   **Without D16's conjunction all 1,156 would have been identified on extent alone**, which is precisely what he
   ruled out — so the ruling is doing visible work rather than costing coverage, and the 23% is a truer number
   than a larger one would have been.
-  **2. THE "NORMAL" CLASS IS AN ARTEFACT OF A CONTAMINATED CALIBRATION WINDOW, and it is a defect of mine rather
-  than a property of the source.** Its local tolerance median is **292 samples** against 2 for the other classes:
+  **2. ⚠️ WITHDRAWN — THE "NORMAL" CLASS IS AN ARTEFACT OF A CONTAMINATED CALIBRATION WINDOW, and it is a
+  defect of mine rather than a property of the source.** Its local tolerance median is **292 samples** against 2 for the other classes:
   the calibration rows themselves vary by 292, so nothing can exceed them and every row reads normal. The window
   is fixed at storage rows 210–236 — just above the band — and this file already records that the band's length
   differs between fields and its position moves, so on some units that window contains band rows. **A local
@@ -5169,9 +5171,14 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   changing scale.
   ⚠️ **Diagnosed, NOT fixed**, and the acceptance conditions for the eventual repair are recorded BEFORE it is
   attempted — pre-specifying them is what made the detector rebuild work and what three earlier repairs lacked:
-  - **THE REPAIR MUST NOT MOVE THE 0.23%.** If qualifying the calibration rows improves identification AND
-    false-identification together, that is a leak to be found rather than a result — the two are traded, not
-    jointly optimised, and a repair that improves both has probably let the calibration see the band.
+  - ⚠️ **WITHDRAWN AS STATED — THE REPAIR MUST NOT MOVE THE 0.23%.** If qualifying the calibration rows improves
+    identification AND false-identification together, that is a leak to be found rather than a result — the two
+    are traded, not jointly optimised, and a repair that improves both has probably let the calibration see the
+    band. **Codex rejects this and is right: correcting a reference or improving a discriminator can legitimately
+    reduce false positives and false negatives together, so joint improvement is not evidence of leakage.** What
+    survives is the weaker prompt — joint improvement is a reason to AUDIT, never a reason to disbelieve — and
+    its replacement is his: freeze the evaluation populations and audit dependencies, errors and abstentions,
+    rather than scoring a repair against the previous error rate.
   - **THE QUALIFICATION MUST BE DERIVABLE, NOT ANOTHER WINDOW.** "Rows whose own timing reads normal" is
     CIRCULAR here — it qualifies the calibration by the quantity the calibration defines. Qualifying rows by the
     source's own reference, the route `:531` already specifies for levels, is not circular; a second fixed span
@@ -5180,6 +5187,75 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
     while the coverage number is unsatisfying is exactly when his conjunction quietly becomes extent alone.
   **The 0.23% held-out false-identification rate is the figure to lean on meanwhile**, and its population cannot
   shrink.
+
+  ⚠️⚠️ **THE RETRACTION (Codex reviewed `c8faa10`/`9f8dd3f`/`d21f373` at `1ec97ae`; report
+  `docs/reports/2026-09-11_blanking_extent_review.md`; I then reproduced its two decisive findings with
+  independent code before withdrawing anything).**
+
+  **THE DETECTOR CANNOT SEE A PURE TIMING DISPLACEMENT, WHICH IS THE HEAD SWITCH'S DEFINING PROPERTY.** `classify`
+  gates on the EXTENT excursion and returns `normal` BEFORE position is ever consulted, and the extent is a
+  SUMMED DURATION — so translating a blanking interval leaves it unchanged. Measured on synthetic rows against
+  an expectation of extent 16 (tol 2), position 699 (tol 4):
+
+  | the blanking interval, moved left by | verdict | excursion | skew |
+  |---:|---|---:|---|
+  | 0 | normal | 0.0 | not reached |
+  | 40 | normal | 0.0 | not reached |
+  | 120 | normal | 0.0 | not reached |
+  | 300 | normal | 0.0 | not reached |
+  | **500** | **normal** | **0.0** | **not reached** |
+
+  A 500-sample displacement — the largest this raster can carry — reads normal. Two more from the same probe:
+  splitting the interval into two displaced halves of equal total duration also reads `normal`, and a UNIFORMLY
+  BLANK row, which has no observable boundary at all, reads `extended`.
+
+  **So reading 2 was a correlate reported as a cause.** The 292-sample position tolerance is real and was measured
+  on those rows, but the `normal` branch never reads it: removing it entirely changes nothing. I attributed a
+  class to the quantity that happened to be large on it, in an entry whose own neighbours record *"the first
+  explanation that fits the data is usually one of two that fit it"*. The fixed calibration window is still a
+  fixed place to look and the eleventh instance stands as a defect — it is simply **not what produced the 1,205**.
+
+  **And reading 1 falls with it.** `skew` is the difference between the starts of the LONGEST blank run, so a row
+  whose longest run keeps its start reports `skew == 0` under a real horizontal phase change; Codex produced
+  `('Unknown', 20.0, 0.0)` for exactly that. **A zero from this statistic is not absence of skew — it is absence
+  of a start-difference in one selected run**, which is the proxy-for-a-property defect this file names a dozen
+  times. Whether those 1,156 rows carry skew is UNMEASURED, and D16 is neither vindicated nor damaged by them.
+
+  **THE DESIGN CONSEQUENCE, and it comes from his own words rather than from a new idea, so nothing here goes to
+  the owner.** `:43-47`: *"if the blanking extends past its expected horizontal extent **or the picture extends
+  past its expected horizontal extent**, that's the head switch."* That is a SET departure — blanking occupying
+  samples where picture was expected, and picture occupying samples where blanking was expected — and a
+  translation satisfies it in both directions at once. A summed duration cannot express it and a duration
+  DIFFERENCE is zero on the case that matters most. The observable is the symmetric difference between the row's
+  blank set and the expected blank set, which is directional, is nonzero under translation, and needs no separate
+  skew term to be a timing measure. **Not implemented; recorded as the reading his text supports.**
+
+  **Four further findings, all reproduced by Codex, none disputed here:**
+  - **THE PRODUCTION REFERENCE IS THE DEVICE'S FILL** (`blanking_extent.py:217`). The code comments it as "used
+    ONLY as a scale ... never as the reference", and `median(Y[0:6])` feeds the level mask directly; changing
+    only the device padding moves assertions 6/6 → 0/6 with the source rows untouched. Same shape as the
+    `blank_mean` finding already recorded above, in a file written after it.
+  - **`tol = 3.0` DECIDES, and labelling it FITTED does not qualify it.** 2.5 → 3.0 flips a row from `normal` to
+    `extended`; it determines extent AND position through mask membership. Figures from this instrument are
+    explicitly-configured experimental outputs, not qualified switch counts.
+  - **UNAVAILABLE CALIBRATION SILENTLY REMOVES THE DENOMINATOR** (`:223`): a field whose calibration fails is
+    skipped and the run prints `0 of 0 = 0%` with zero Unknowns, so any qualification can improve an apparent
+    rate purely by attrition. Missing-is-not-a-value, inside an instrument whose whole subject is absence.
+  - **LEVEL-VERSUS-TIMING IS NOT ITSELF A PROOF OF NON-CIRCULARITY.** The level determines the mask and therefore
+    both timing features; equally, independently established timing can legitimately qualify calibration rows.
+    The test is an explicit reference/selection dependency trace, not which word the criterion uses.
+
+  ⚠️ **AND THE INSTRUMENT I BUILT TO CHECK THE DIAGNOSIS MEASURES A QUANTITY THAT DOES NOT DECIDE IT.**
+  `experiments/calibration_qualification.py` measures the POSITION tolerance under five qualifications — and
+  finding 4 says the `normal` class does not depend on it. Answers-a-different-question, in the instrument built
+  to test a claim, which is where it is hardest to notice because the numbers are about the right ROWS.
+  **What survives from it is the circularity measurement, and that part is worth keeping:** over 200
+  field-readings, the two criteria phrased as level tests retain **187 of 600 band rows** while the unqualified
+  baseline retains 600 of 600 — because a row's settled level is defined as the mean of what follows ITS OWN
+  TRANSITION, so a head-switch row, which begins in blanking and ends in picture, has no settled level and is
+  removed by a rule that never mentions timing. The genuinely level-only criterion (the mean of the row's longest
+  run at the reference level) is the only one that keeps it. **A criterion phrased as a level test can be a
+  timing filter on the detector's own question**, and that is now measured rather than argued.
 
 - **D16 AND D17 ANSWERED — the rebuild is ungated, and NEITHER HORN WAS RIGHT (owner, 2026-09-11, relayed).**
   **D16, verbatim:** *"no blanking alone can not establish identity. blanking excursion can but there still needs
@@ -5671,6 +5747,22 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   author look current and the other's note look late or redundant. The existing rule ("write timestamps only from a
   checked clock") covers it; what this adds is that the temptation is strongest in claims about who knew what
   first, where the flattering answer arrives without being computed. `git log --format=%ad` costs one command.
+- **EDITING A SHELL SCRIPT WHILE IT IS RUNNING RESUMES THE OLD PROCESS AT THE SAME BYTE OFFSET IN THE NEW FILE
+  (2026-09-11, caught in the dispatcher that carries every review between the two agents).** A Codex dispatch was
+  in flight; `scripts/codex_dispatch` was rewritten in the same turn to close an unrelated hole. The shell reads a
+  script INCREMENTALLY, so the running process continued at its old file offset into the new bytes and produced
+  `no such file or directory: 89/Documents/codex-app/bin/codex-run` — an absolute path sliced mid-string — then
+  re-entered the script with the arguments shifted, sending the `--cwd` directory as the brief. **The review
+  itself completed and was valid; the garbage was appended after it**, which is the dangerous shape: a correct
+  result with a failure stapled to its end reads as a failed run, or worse, a corrupted second dispatch reads as
+  the first one's answer.
+  **The rule: never edit a script while an invocation of it is in flight.** Check for running instances first, or
+  write the new version to a new path and move it into place — a rename is atomic and the running process keeps
+  the inode it started with, which is the structural fix rather than the careful one.
+  ⚠️ It is not a member of the answers-a-different-question family: nothing here answered a different question.
+  It is a lifetime hazard — the file a process is reading is not a snapshot — and it belongs beside the
+  `pipestatus` entry for the same reason, that the guard against a defect ran in the medium it was guarding.
+
 - **A capture that failed is not a result (2026-09-10, three occurrences, one shape).** Twice a `| tail -N` on a
   Codex dispatch truncated a reply that was still being written, and the truncated text was then reported as the
   answer — once losing findings 1-6 of an eight-finding review, once reading a header-only file as "it came back
