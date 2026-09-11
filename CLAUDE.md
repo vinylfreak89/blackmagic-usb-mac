@@ -2255,6 +2255,28 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Level-attribution review (`386d202`, 2026-09-11).**
+`docs/reports/2026-09-11_level_attribution_review.md` and the synthetic-only
+`experiments/level_attribution_review_controls.py` reject the no-leak claim:
+reference offsets 20..219 include validation offsets 211,213,215,217,219. Mutating
+only those validation rows moves the learned source level 1.5 to 2.05 and changes
+three unchanged candidate verdicts, with calibration/candidate rows unchanged.
+Recomputing masks and tolerances after changing the level IS legitimate mediation;
+calling fitting rows held-out validation is the separate defect. Current-unit
+adaptation itself is not prohibited, but the evaluation claim must match it.
+Per-arm missing expectations can silently produce unequal denominators; the supplied
+totals are consistent with all 400 fields evaluated, so that failure is not claimed
+for the reported run. A common missing-reference gate also selects the cohort, and
+the limit check before both fields can overrun 399 to 401. Equal-level arms agree
+in the synthetic control. The 88.8% is a configured assertion rate on selected
+candidate rows, NOT sensitivity; the observed metric movements do not demonstrate
+joint accuracy improvement. The methodological objection to forbidding joint
+improvement still stands independently. The comparison's runtime output lacks the
+non-switch-count warning in its docstring; the detector main's new acknowledgement
+warning does not cover an importing wrapper. No capture content opened or remeasured,
+no engine/detector/comparison/contract repair. Interpretations below are corrected
+at their sites, with reported counts preserved as program observations.
+
 **Padding-reference follow-up (`fa4f681`, `df74254`, 2026-09-11).**
 `docs/reports/2026-09-11_padding_reference_followup.md` and the synthetic-only
 `experiments/blanking_extent_guard_review.py` record the review. Finding 1 already
@@ -5494,27 +5516,36 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   field-readings from counter 6667. Run BEFORE any rebuild, so the rebuild cannot be credited with a fix the
   level alone produces:**
 
-  | verdict on the switch band | padding ruler (bound 19.0) | source level (bound ~4.4) |
+  | configured verdict on selected candidate rows | padding ruler (bound 19.0) | source-derived level (bound ~4.4) |
   |---|---:|---:|
-  | identified (extended + overridden) | **53** | **1,065** |
+  | asserted (extended + overridden) | **53** | **1,065** |
   | normal | **1,077** | **70** |
   | Unknown | 70 | 65 |
-  | **false-identification, held out** | **0.38%** | **0.10%** |
+  | **assertions on nominal validation rows (partly reused in reference)** | **0.38%** | **0.10%** |
 
-  ⚠️⚠️ **BOTH IMPROVED TOGETHER — AND THE TWO IMPROVEMENTS ARE NOT INDEPENDENT EVIDENCE, which is the peer
-  session's catch and it bounds this table's reach.** The 1,065 and the 0.10% come from the SAME corrected
-  reference, so if the tolerance movement is a leak it inflates both; two numbers moving together from one
-  changed input is one observation, not two. **So this CANNOT be read as the empirical refutation of the
-  acceptance condition I recorded, which is how I first wrote it up.** The condition is withdrawn on Codex's
-  independent argument; this measurement is consistent with the withdrawal and does not establish it while the
-  leak question is open with Codex. That condition said joint improvement is "a leak to be
-  found rather than a result". Here identification rises twentyfold AND false-identification falls fourfold, from
-  **correcting a reference** — with the calibration rows, the validation rows and the statistic all untouched, so
-  there is no population for a leak to enter through. **Codex's rule is right and mine was wrong**: correcting a
-  reference or improving a discriminator legitimately moves both, and the test is a dependency audit rather than
-  a rate comparison.
-  **So the level was the DOMINANT cause of the `normal` class on this capture** — 1,077 of 1,200 band rows, down
-  to 70. ⚠️ **It does NOT exonerate the statistic, and Codex's caution is the operative one:** a pure translation
+  ⚠️⚠️ **THE TWO CONFIGURED METRICS MOVED, NOT TWO VERIFIED ACCURACY RATES.** The former claim that
+  this empirically proved joint accuracy improvement and that there was "no population for a leak to enter
+  through" is withdrawn by the `386d202` review. Five validation offsets feed the source-level fit;
+  a validation-only synthetic mutation changes unchanged candidate verdicts. Unchanged row lists do not
+  establish holdout independence, and the code can omit unavailable expectations separately by arm.
+  The supplied tallies sum to 1,200 in each arm, consistent with complete evaluation of the reported cohort;
+  unequal attrition is a reproduced code path, not claimed as an event in these measurements.
+  Recomputed tolerances are a legitimate consequence of changing the level input, not themselves leakage.
+  **The methodological objection to forbidding joint error improvement still stands**, but these unvalidated
+  candidate assertions and partly reused validation rows are not its empirical proof.
+  **The level substitution strongly changes this program's `normal` frequency on the selected prefix** —
+  1,077 of 1,200 candidates down to 70. This is not a whole-capture causal decomposition or a measured
+  improvement in switch sensitivity. ⚠️ **It does NOT exonerate the statistic:** a pure translation
+  ⚠️ **AND THE TWO MOVEMENTS ARE ONE OBSERVATION, NOT TWO (the peer session's catch, kept because it is the
+  crispest form):** both metrics come from the SAME changed input, so anything that inflates one inflates the
+  other, and joint movement cannot be evidence about its own cause.
+  ⚠️ **THE OVERLAP IS WORSE THAN THE REVIEW REPORTS, verified here by arithmetic rather than taken:** the
+  reference reads offsets 20–219, and the validation offsets are 211,213,…,235 while the calibration offsets are
+  210,212,…,234. **FIVE VALIDATION ROWS (211–219) AND FIVE CALIBRATION ROWS (210–218) BOTH FEED THE LEVEL** that
+  is then used to score them. So neither cohort is independent of the fit, and the instrument's own printed
+  limits said *"the validation rows are NEVER qualified here: their population cannot shrink"* while the
+  reference was reading five of them. **A limit printed with every result is still only as true as the code**,
+  which is the two-stores defect arriving inside the repair for it.
   still reads `normal` at ANY level, proven synthetically and untouched by this, so the summed-duration blindness
   and the interval-identity problem survive the reference correction entirely.
   ⚠️ **These are NOT switch counts at either level.** A detector that cannot see a timing displacement reporting
