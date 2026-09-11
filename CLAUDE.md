@@ -6131,7 +6131,35 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   normal row*, NOT *no interval's end is ever observable*, and both-ends testing belongs on the displaced cases
   where it is expressible.
   ⚠️ It also says `(700, 717)` was wrong in the other direction: its end at 717 sits inside the window, which no
-  measured row does. A faithful nominal runs to the edge.
+  measured row does.
+
+  ⚠️⚠️ **"100.0%" WAS STATED WITHOUT ITS DEPENDENCY AND THE PEER SESSION WAS RIGHT TO PUSH.** The instrument's
+  one typed constant is `cut = ref["level"] + 3.0` — the same fitted `+3.0` labelled FITTED in the detector —
+  and it is NOT neutral here: a generous cut counts more samples as blank and biases toward the run reaching
+  719. Swept over the same rows:
+
+  | k | reaches 719 | **ENDS INSIDE** | no blank | reaches, of rows with any blank |
+  |---:|---:|---:|---:|---:|
+  | 0.5 | 7,042 | **4,358** | 0 | **61.8%** |
+  | 1.0 | 11,370 | 30 | 0 | 99.7% |
+  | 2.0 | 11,399 | 1 | 0 | 100.0% |
+  | 3.0–5.0 | 11,400 | **0** | 0 | 100.0% |
+
+  ✅ **The collapse is the cut slicing into the blanking's own distribution, and the mechanism is arithmetic
+  against a measurement taken hours earlier for a different question.** The source's blanking occupies **codes
+  1–2** with mean 1.416, so `k = 0.5` puts the cut at **1.916 — BELOW code 2** and therefore rejecting every
+  code-2 sample as non-blanking. A row whose sample-719 is a 2 then reads "ends inside". **Predicted rate of
+  such rows from the mean alone: 42%. Observed: 38%.** At `k = 1.0` the cut admits code 2 and the rate is 99.7%;
+  at `k ≥ 2.0` it admits code 3 as well and the exceptions vanish.
+  **So the finding survives for any cut that COVERS the source blanking's own observed range, and fails only for
+  cuts that reject part of it — which is not a defensible operating point for this question.** That grounding is
+  independent: the codes-1–2 composition was measured for the mask-bound work, with its own controls, before this
+  question existed.
+  ⚠️ **AND MY PREDICTED FAILURE MODE WAS WRONG, which is worth more than the confirmation.** I said in advance
+  that a tight cut would REMOVE rows (bright rows reach blanking in only one or two samples), so a collapse
+  would show as absence of evidence rather than as a visible end. **`no blank` is 0 at EVERY k, including 0.5 —
+  the tight cut reclassified rows, it did not drop them.** Pre-specifying how a result would fail and having it
+  fail differently is the useful half: the prediction was the part I was confident about. A faithful nominal runs to the edge.
 
 - **RECORDING A FINDING ABOUT A TEXT PATTERN DESTROYS ITS OWN EVIDENCE — so such a claim must cite a COMMIT,
   never the file (2026-09-11, the peer session's, found while verifying the entry below).** That entry's
