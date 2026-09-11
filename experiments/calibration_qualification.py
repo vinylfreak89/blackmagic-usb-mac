@@ -290,9 +290,11 @@ def main() -> int:
     print("\n  LIMITS. The level reference's own row set (offsets %d-%d) is a fixed window too; it is"
           % (REF_ROWS.start, REF_ROWS.stop))
     print("  not the quantity under repair and is carried unchanged. The validation rows are NEVER")
-    print("  qualified here: their population is the 0.23% figure's and cannot shrink. Band retention")
-    print("  is reported because a criterion that removes band rows is deciding the detector's own")
-    print("  question -- it is information about circularity, never a score to maximise.")
+    print("  qualified here: their population cannot shrink. That population was once described as")
+    print("  the population of a WITHDRAWN figure (0.23%, produced with a mask bound of 19.0 taken")
+    print("  from the device's padding ruler) -- the population stands, the rate does not. Band")
+    print("  retention is reported because a criterion that removes band rows is deciding the")
+    print("  detector's own question -- information about circularity, never a score to maximise.")
     return 0
 
 

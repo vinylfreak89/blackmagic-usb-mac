@@ -4,7 +4,7 @@
 `tail[tail <= floor + 1.0]` -- a BOOLEAN-MASK SELECTION, not a contiguous slice. Adjacent elements of
 what it returns were not adjacent in time, so a lag-1 autocorrelation computed on it is not the
 row's autocorrelation. The peer session's independent measurement on the same rows got -0.014 where
-mine got -0.292, and its blanking reached code 3 where mine never did.
+mine got a WITHDRAWN -0.292, and its blanking reached code 3 where mine never did.
 """
 import sys
 import numpy as np
