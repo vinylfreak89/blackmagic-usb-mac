@@ -5097,6 +5097,28 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **THE AUDIT FOR MORE BESIDE-THE-ERROR CORRECTIONS FOUND NONE — and found a FALSE-POSITIVE PATH IN THE GUARD
+  INSTEAD, which is the better outcome (2026-09-11).** The ones fixed today were found because something cited
+  them; any sitting uncited would never surface. So the test was run generatively rather than from a curated
+  list: extract every quoted span sitting in a CORRECTION context, and ask whether that same text also appears
+  UNQUOTED elsewhere — `superseded_check`'s mechanism, with the pairs discovered instead of hand-collected.
+  **Two candidates, both FALSE POSITIVES, both the same artifact: `"**phrase**"`.** This file quotes things in
+  bold constantly, and a 4-character adjacency test sees `**` between the quote mark and the text, concludes the
+  occurrence is unquoted, and reports a correctly-attributed MENTION as a bare assertion.
+  ⚠️ **That adjacency test IS `superseded_check.quoted()`**, so the guard carried a live false-positive path:
+  measured before fixing, `"phrase"` → True, `"**phrase**"` → **False**, `"*phrase*"` → **False**. **Its
+  direction is the dangerous one for a guard's survival** — it fires on correct prose, and this file already
+  records that an instrument which does that gets ignored or has its subject retired to quiet it.
+  **Fixed by stripping emphasis before testing adjacency, with the two controls that must STILL fail:** bold with
+  no quotes, and no markup at all, are both assertions and must stay flagged. Mutation-verified — reverting the
+  strip makes "bold inside quotes" report FAIL and the selftest exit 1.
+  ⚠️ **And the first version of that control crashed with `UnboundLocalError` because I accumulated into `ok`
+  before it was assigned.** It failed LOUDLY, which is why it took thirty seconds to find. **A control that
+  breaks by crashing is enormously better than one that breaks by passing** — the same asymmetry as a guard that
+  fails closed against one that fails open, arriving from the third direction tonight.
+  **So the read the audit was for came back EMPTY: no other correction in this file is recorded beside a
+  still-standing error.** That is a real negative, from a test that could have found them.
+
 - **A CORRECTION RECORDED BESIDE AN ERROR INSTEAD OF APPLIED TO IT IS A CORRECTION NOBODY GETS — measured on
   this file, three sites, tonight (2026-09-11).** Codex corrected two figures hours ago and the correction went
   in at `:2643` as its own entry. **The erroneous text stayed standing at `:2598` and `:2618`** — the heading
