@@ -2255,6 +2255,24 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Switch-fixture review (`ed56ce7`, 2026-09-11).**
+`docs/reports/2026-09-11_switch_fixtures_review.md` and synthetic-only
+`experiments/switch_fixtures_review_controls.py` record six findings. C3 does NOT
+establish the claimed physical row-local bound: its arrays differ at all 720
+samples, its control compares masks only, and its normal-but-undelivered interval
+conflicts with its shared delivered calibration. The nominal full blanking interval
+is 147.15 samples, larger than the 138-sample undelivered gap; an unobserved instant
+does not imply an unobserved entire interval. This is a check of the fixture's
+physical premise, not a runtime standard-length threshold or a claim about every
+damaged waveform. A2's [700,677) is silently omitted, and all five controls pass
+even with identical A2/B3 or A3/C3-A observable inputs demanding opposite answers.
+Hidden truth must be separated from justified observable certainty. Known injected
+magnitudes are legitimate stimuli, but interval validity and uncertainty still
+matter. The three presence statuses need orthogonal endpoint/magnitude uncertainty
+and censoring; A/B truth fields currently mix deltas and absolute positions.
+No capture content opened or remeasured, no supplied fixture/detector/engine/contract
+repair. The C3 claim below is corrected at its site, not left operative by proximity.
+
 **Level-attribution review (`386d202`, 2026-09-11).**
 `docs/reports/2026-09-11_level_attribution_review.md` and the synthetic-only
 `experiments/level_attribution_review_controls.py` reject the no-leak claim:
@@ -4164,60 +4182,81 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **0.6%**. The 532 already have no switch line by either route and are unaffected, and the 478 with a T are
   untouched. An earlier framing of this as a large loss confused the harness's S measurement (exact in 1,013 of
   1,013 registerable readings, a different instrument and population) with the engine's export.
-- **THE KNOWN-ANSWER FIXTURES EXIST, WRITTEN BEFORE THE ESTIMATOR CHOICES — and the third class proves a BOUND
-  on the observable rather than testing a detector (`experiments/switch_fixtures.py`, 2026-09-11).** Codex's
-  three classes, from its review of the set-departure proposal: timing changes at BOTH interval ends, censored
-  cases, and matched unchanged-timing dark-content controls. **The ordering is the content: a fixture written
-  after the seven unsettled estimator choices is shaped by them invisibly, and neither agent could tell
-  afterwards** — the calibration-fitted-on-its-own-test-rows defect at the level of test design. Each case
-  carries the row, the ground truth and the disposition a correct detector must reach; **no threshold, window or
-  statistic appears in any of them.**
-  **CLASS C3 IS THE RESULT.** A dark-content control is only a control if a level-only reading cannot separate it
-  from a genuine timing change, and the construction that achieves that is FORCED rather than chosen — make the
-  two rows' delivered samples identical:
+- **THE KNOWN-ANSWER FIXTURES EXIST, BUT C3'S CLAIMED PHYSICAL BOUND IS NOT ESTABLISHED**
+  (`experiments/switch_fixtures.py`, `ed56ce7`; reviewed by Codex, 2026-09-11).
+  Timing changes at both interval ends, censored cases and matched unchanged-timing dark-content controls
+  remain the requested test classes. Their construction and epistemic expected answers require review too;
+  writing them before the estimator does not make their physical hypotheses or labels correct.
+  **Correction at the original claim:** C3 was called a result proving that no function of the delivered row
+  separates its A/B worlds. Both have a low-valued run at [540,557), but their arrays differ at ALL 720 samples;
+  the verifier checks equal masks and different truth strings, not identical observations or consistent truth.
+  The Gaussian generator gives them the same conditional distribution by stipulation, not by measurement of
+  source noise/dither. Literal sample equality would establish a mathematical indistinguishability statement
+  only for the supplied inputs; using that as a physical bound also requires both worlds to be admissible under
+  the same reference and observation model. That premise is NOT supplied here.
+  B claims normal timing with its whole interval undelivered, despite sharing calibration that delivers the
+  normal interval near [700,717). Also, the nominal full horizontal blanking interval is 147.15 samples and
+  cannot fit inside the 138-sample omitted gap (contract :416 and the primary standards cited in the report).
+  A 17-sample visible fragment is not that entire interval. The earlier undelivered-INSTANT argument does not
+  establish this configuration, and no event-phase probability such as "one line in six" is established either.
+  Shortening, obscuring or overwriting the interval would need its own explicit model. It is not enough to
+  qualify this as physically motivated but unseen: its possibility under the stated assumptions is at issue.
+  Consequently the earlier claim that C3 forces the rebuild to use evidence beyond the row is not established.
+  **The five selftests still PASS, but do not establish fixture consistency.** A2 asks for an end shift of -40
+  on a 17-sample interval, builds [700,677), silently skips it and then accepts the empty expected set. Making
+  A2 and B3 literally identical leaves opposite required dispositions and all controls passing. The same is
+  true of A3 versus C3-A. Changing A1's truth from -40 to -400 without changing its samples also passes.
+  The earlier scan-order control correction remains historical; it did not validate reversed spans, truth
+  coordinates or epistemic labels. Report and replayable synthetic review probes are linked above. No repair
+  to the supplied fixture has been made by this review.
 
-  | | delivered blanking | ground truth |
+  **REPRODUCED HERE BEFORE WITHDRAWING ANYTHING, and all three hold:** A2 declares `(700, 677)` and injects
+  nothing, so its row's blank spans are `[]` — **identical observable content to B3, with opposite required
+  answers, and control 1 passed both**; C3's two arrays differ at **720 of 720 samples**; and the undelivered
+  gap is **858 − 720 = 138 samples against 147.15 of nominal blanking**, so an interval cannot fall wholly
+  inside it.
+  ⚠️⚠️ **THE CONFLATION THAT PRODUCED IT, named because it is reusable: AN UNOBSERVED INSTANT IS NOT AN
+  UNOBSERVED INTERVAL.** This file records the 16% undelivered fraction as making `T = S` a legitimate reading
+  of roughly one line in six — and that is about a switch INSTANT landing in the gap. I carried it to an entire
+  147-sample INTERVAL, which the same arithmetic forbids. **Both numbers were already in this file**, so the
+  refutation needed no new measurement, only the subtraction I did not do.
+  ⚠️⚠️ **THREE CLAIMS I DERIVED FROM C3 GO WITH IT, and two of them were relayed to the owner:**
+  - **"The first structural result of the rebuild"** — the CATEGORY it introduced (evidence-insufficiency is
+    not estimator-error, and no instrument repairs the first) is still a sound distinction, but **it has lost
+    its instance and is now a concept with nothing behind it.** Kept as a distinction to watch for, not as
+    something demonstrated.
+  - **"What the ordering discipline bought"** — the claim was that fixtures-first produced a result the code
+    could not have. The result was wrong, so it demonstrated nothing. **Writing fixtures before the estimator
+    choices remains defensible on its own reasoning (they cannot be shaped by choices not yet made), and that
+    reasoning is unaffected — but it is now an argument again rather than a demonstration.**
+  - **"Converges with Codex's design-side conclusion from an independent direction"** — dead. The convergence
+    was with a construction that does not hold, and an independent route agreeing with a wrong answer is not
+    corroboration.
+  ⚠️⚠️ **AND CONTROL 1 FAILED IN A NEW WAY WORTH ITS OWN NAME: IT NORMALISED ITS EXPECTATION BEFORE COMPARING.**
+  It built `want` by dropping spans where `b <= a` — the exact defect A2 contains — and then compared the row
+  against that sanitised truth. **A control that cleans up its expectation cannot see a defect in what it
+  cleaned away**, and this one was written the same day, to catch fixtures that do not contain what they claim.
+  The earlier scan-order fix inside it remains historical and validated nothing about reversed spans, truth
+  coordinates or dispositions.
+
+  ✅ **REPAIRED, and the control set is now NINE with the four new ones MUTATION-VERIFIED against the exact
+  defects that produced them** — reintroduce each and the selftest fails, which is the only evidence that a
+  control checks anything:
+
+  | new control | the defect it exists for | fires? |
   |---|---|---|
-  | **A** | exactly [540, 557) | the interval TRANSLATED 160 samples earlier |
-  | **B** | exactly [540, 557) | timing NORMAL; its interval fell in the undelivered part of the line, plus clipped dark content at 540 |
+  | declared geometry must be VALID, not filtered | A2's `(700, 677)` injecting nothing | **yes** |
+  | the truth label must match the injected samples | a shift relabelled −40 → −400, samples untouched | **yes** |
+  | identical content must not demand opposite answers | A2 and B3 both delivering nothing | **yes** |
+  | every nonzero shift must exceed the calibration jitter | A4's +2 end shift inside ±2 | **yes** |
 
-  **No function of the delivered row separates them**, so a detector that identifies A must also fire on B.
-  **That is a bound on ROW-LOCAL evidence, established before the detector was written**, and it says what the
-  rebuild needs rather than how to build it: something beyond the row — which is exactly Codex's "evidence
-  establishing a horizontal-timing departure rather than merely a changed low-level mask", and what interval
-  identity is for. A neighbouring row or the previous unit could separate A from B; the delivered row cannot.
-  ⚠️⚠️ **THIS IS THE FIRST STRUCTURAL RESULT OF THE REBUILD RATHER THAN ANOTHER CORRECTION, and the distinction
-  is a category this file did not have.** Every failure up to now has been an INSTRUMENT defect — a wrong
-  reference, a fitted window, a leaked cohort, a proxy — and each was repairable by building a better
-  instrument. **A known-answer class that collapses into a proof says the EVIDENCE is insufficient, not that the
-  ESTIMATOR is wrong, and no instrument repairs it.** Worth separating whenever a class refuses to be built: the
-  first kind is a defect to fix, the second is a constraint to design around, and treating one as the other
-  wastes the attempt in both directions.
-  ✅ **AND IT IS WHAT THE ORDERING DISCIPLINE BOUGHT, stated as the mechanism rather than as a preference (the
-  peer session's framing): had C3 been built alongside a detector it would have been shaped into something that
-  detector could pass, and the bound would have been INVISIBLE — not argued away, never constructed.** That is
-  what writing fixtures first prevents, and it is a different failure from a fixture being too weak: the
-  question simply never gets asked, so nothing reports its absence.
-  ✅ **It converges with Codex's design-side conclusion from an independent direction** — "evidence establishing
-  a horizontal-timing departure rather than merely a changed low-level mask" reached by reasoning about the
-  specification, and the same requirement reached here by trying to construct a control. **Neither route saw the
-  other's reasoning**, which is the strongest corroboration available between two agents that have been
-  reviewing each other all day.
-  ⚠️ **THE QUESTION THAT DECIDES ITS WEIGHT IS B'S PHYSICALITY, NOT ITS SEPARABILITY.** If B cannot arise on real
-  material the bound is theoretical: *"row-local evidence is insufficient"* and *"row-local evidence is
-  insufficient against an input that may not exist"* are a design constraint and a footnote respectively. That
-  is with Codex and is the more valuable half of the dispatch.
-    ⚠️ **Physically motivated, not established as occurring.** B rests on the recorded arithmetic that 10.22 of
-  every 63.56 µs is undelivered — 16% of the line, which this file already accepts as making `T = S` a legitimate
-  reading of roughly one line in six. **Whether B's exact configuration occurs on real material is NOT shown
-  here**, and the bound holds regardless: it is about what the evidence can support, not about frequency.
-  ⚠️ **Control 1 caught a real construction bug on its first run** — C1 and C2 declare the nominal interval
-  first and the dark run second, while the verifier scans in row order, so a positional comparison failed. **A
-  fixture that does not contain what it claims tests nothing and nothing else would have noticed.**
-  Five controls, derived from the ways a FIXTURE SET fails to be one rather than from any detector's behaviour:
-  every fixture contains its injected geometry; the required answers are MIXED (else a constant detector passes
-  the set); the censored fixtures are censored at the window edge; the matched pair is genuinely matched; and
-  class A moves each end independently, else a one-ended statistic passes the class.
+  Plus a ninth that cannot drift because it is arithmetic: **`147.15 > 138` must stay true, or the removed pair
+  becomes revivable.** The nominal interval also moved from `(700, 717)` to `(660, 677)` — the first version
+  placed it three samples from the window edge, which is why its move-the-end case had nowhere to go and
+  produced invalid geometry instead of a censored one.
+  ⚠️ **The matched pair is REMOVED rather than repaired.** Its B world is not admissible, so there is nothing to
+  repair; keeping it as an "illustration within a stated synthetic model" would preserve the shape of a result
+  without its content, which is how the 0.23% survived three withdrawals.
 
 - **WHEN A NUMBER IS CONTESTED, BUILD THE THING THAT WOULD SHOW IT WRONG — do not defend it and do not retract
   it (2026-09-11, three instances in one day, and the pattern prescribes a different action than either
