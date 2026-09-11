@@ -5138,6 +5138,34 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **The rule: apply a correction where the error IS, then check for restatements of it elsewhere. Recording it
   adjacent is how it gets quoted back.**
 
+- **THE SYMMETRIC DETECTOR'S TWO RESIDUE CLASSES HAVE DIFFERENT CAUSES, AND ONE OF THEM VINDICATES D16
+  (2026-09-11).** `experiments/blanking_extent.py` identifies 687 of 3,048 switch-band rows (23%), with 1,156
+  Unknown and 1,205 normal. Before touching anything, the two readings were separated on the rows themselves:
+  either the skew is there and the measurement misses it, or those rows genuinely lack skew and 23% is closer to
+  right than it looks.
+
+  | class | n | \|excursion\| median | \|skew\| median | local tolerance |
+  |---|---:|---:|---:|---:|
+  | identified | 687 | 177 | 14 (p90 657) | 2 |
+  | **Unknown** | 1,156 | 161 | **0.0, p90 0.0** | 2 |
+  | normal | 1,205 | 81 | not measurable | **292** |
+
+  **1. THE UNKNOWN CLASS IS GENUINE: 93% of those rows have \|skew\| EXACTLY ZERO.** Not present-under-tolerance
+  — absent. So the measurement is not missing it, and under his definition those rows **are not switches**.
+  **Without D16's conjunction all 1,156 would have been identified on extent alone**, which is precisely what he
+  ruled out — so the ruling is doing visible work rather than costing coverage, and the 23% is a truer number
+  than a larger one would have been.
+  **2. THE "NORMAL" CLASS IS AN ARTEFACT OF A CONTAMINATED CALIBRATION WINDOW, and it is a defect of mine rather
+  than a property of the source.** Its local tolerance median is **292 samples** against 2 for the other classes:
+  the calibration rows themselves vary by 292, so nothing can exceed them and every row reads normal. The window
+  is fixed at storage rows 210–236 — just above the band — and this file already records that the band's length
+  differs between fields and its position moves, so on some units that window contains band rows. **A local
+  window is right (`:447`); a FIXED local window is the fixed-place-to-look defect at a different scale.**
+  ⚠️ **Diagnosed, NOT fixed.** The repair is to qualify the calibration rows rather than assume their position,
+  and doing that while the coverage number is unsatisfying is exactly when the tuning instinct would quietly
+  convert his conjunction back into extent alone. **The 0.23% held-out false-identification rate is the figure to
+  lean on meanwhile**, and its population cannot shrink.
+
 - **D16 AND D17 ANSWERED — the rebuild is ungated, and NEITHER HORN WAS RIGHT (owner, 2026-09-11, relayed).**
   **D16, verbatim:** *"no blanking alone can not establish identity. blanking excursion can but there still needs
   to be some measureable component of horizontal skew"*.
