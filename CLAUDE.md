@@ -2761,7 +2761,25 @@ containing no occurrence of "dither", contract `:461` still demands a measuremen
 assumption still propagated on a reference that resolves. **That half needed no instrument and stands.** What
 falls is my answer to it — and the honest state is that the question the contract asked is still open, now with
 one failed attempt recorded against it.
-⚠️ **And the candidate-witness reading for the 255 goes with it**: a statistic reading 56.8% on the population
+⚠️⚠️ **AND THE MECHANISM IS WORSE THAN "THE SELECTION BIASED IT": NEITHER POPULATION MEASURES BLANKING'S
+DITHER.** Same rows, same span, selection versus raw:
+
+  | | SELECTED (what I measured) | RAW contiguous (same span) |
+  |---|---|---|
+  | samples / runs | 79,932 / 5,699, median len 14 | 180,926 / 5,699, median len 20 |
+  | code occupancy | 1:57.6%, 2:42.3%, **3:0.1%** | 1:25.4%, 2:18.7%, **22:5.0%, 23:4.8%** |
+  | lag-1 median | **−0.288** | **+0.662** |
+
+  **The selection discards 28.6% of the span and strips code 3** — which is my "blanking never reaches 3",
+  manufactured. **But the raw span carries codes 22–23 at about 10%, which is PICTURE**: `settled_index` lands
+  before blanking is actually reached, so `+0.662` is the descent's own correlation rather than the dither's.
+  **So −0.288 is a selection artefact and +0.662 is a descent artefact, and neither is the quantity.** A correct
+  measurement needs samples that are contiguous AND actually at blanking — a population neither the settled
+  selection nor the naive span provides.
+  ✅ **The relocated-blanking probe is the one built that way** — contiguous runs selected by being at the
+  field's own blank level — which is why its **−0.044 / 56.8%** is the number to keep, and why the withdrawal
+  is a withdrawal rather than a tie.
+  ⚠️ **And the candidate-witness reading for the 255 goes with it**: a statistic reading 56.8% on the population
 it would be applied to is not an independent timing witness. The dispatch to Codex rests on the withdrawn
 numbers and will be corrected when its reply lands, under the one-dispatch-at-a-time rule.
 
