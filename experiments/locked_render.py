@@ -27,7 +27,11 @@ from review_frame import build_frame
 # to an explicit --out left the canonical name holding a SUPERSEDED video while the check went on
 # validating that name. Anyone opening "the locked render" got the stale one. Two stores, one
 # truth, nothing keeping them in step.
-LOCKED_RENDER = "/private/tmp/locked_capture1.mp4"
+# The OWNER's named location, not a loose scratch path (2026-09-11): "why is it in /private/tmp and
+# not /private/tmp/hw-session/v10/cap1_review.mp4". hw-session/v10 was already the established
+# review location and already held a review render; the locked one went to a loose path because
+# this default said so and nobody checked whether a home existed.
+LOCKED_RENDER = "/private/tmp/hw-session/v10/cap1_review.mp4"
 
 UNIT=756_048; HDR=48; ROW=1440; LINES=525; MARK=b"\x00\x00\xff\xff"
 
