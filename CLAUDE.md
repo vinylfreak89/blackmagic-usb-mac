@@ -5226,12 +5226,20 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   adjacent is how it gets quoted back.**
 
 - **THE SYMMETRIC DETECTOR'S TWO RESIDUE CLASSES HAVE DIFFERENT CAUSES, AND ONE OF THEM VINDICATES D16
-  (2026-09-11).** ⚠️⚠️ **BOTH READINGS IN THIS ENTRY ARE RETRACTED — Codex's review, verified independently the
-  same day. Read the retraction at the end of the entry before any figure in it.** The table's measurements
-  stand as measurements; both conclusions drawn from them do not. `experiments/blanking_extent.py` identifies 687 of 3,048 switch-band rows (23%), with 1,156
+  (2026-09-11).** ⚠️⚠️⚠️ **THE WHOLE ENTRY IS VOID, NOT MERELY ITS CONCLUSIONS. Read the two retractions at the
+  end before any figure in it.** Both readings were refuted by Codex and reproduced by me; then the
+  instrument's "blanking level" turned out to be the device's WRITTEN PADDING RULER at code 16, making its
+  mask bound 19 where the source's blanking never exceeds 3 — so the counts and the table below are not
+  measurements of the switch band at all.
+  ⚠️ **AN EARLIER VERSION OF THIS HEADER SAID "the table's measurements stand as measurements; both
+  conclusions drawn from them do not." That was written before the padding ruler was found and is WRONG:
+  the measurements do not stand.** Kept visible because it is the same mistake one level up — salvaging the
+  numbers while withdrawing the conclusions, when the numbers were what was broken. `experiments/blanking_extent.py` identifies 687 of 3,048 switch-band rows (23%), with 1,156
   Unknown and 1,205 normal. Before touching anything, the two readings were separated on the rows themselves:
   either the skew is there and the measurement misses it, or those rows genuinely lack skew and 23% is closer to
   right than it looks.
+
+  ⚠️ **VOID — every number in this table was produced with the mask admitting everything up to code 19:**
 
   | class | n | \|excursion\| median | \|skew\| median | local tolerance |
   |---|---:|---:|---:|---:|
