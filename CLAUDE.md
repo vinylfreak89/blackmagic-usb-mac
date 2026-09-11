@@ -4147,8 +4147,19 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
-- **THE PER-ROW SKEW DETECTOR EXISTS — it fell out of the per-unit floor rather than being built, and it is
-  20× better than the best previous attempt (2026-09-11).** "T is the top skew row" has been a named quantity
+- ⚠️⚠️ **"THE PER-ROW SKEW DETECTOR EXISTS" IS WITHDRAWN — Codex reproduced every figure and showed the thing
+  measured is not the thing named (2026-09-11).** Three corrections, all checked against what the code does:
+  **(a) IT IS ONE-DIRECTIONAL AND THE CONTRACT'S TEST IS SYMMETRIC.** The statistic "rejects a known earlier
+  blanking arrival while asserting on an equally large later arrival", so it is not the either-direction
+  timing-disturbance test the contract defines — the same half-a-definition error already recorded here for the
+  picture-in-the-blanking work, committed again.
+  **(b) EVERY ASSERTED TARGET RETURNS SAMPLE 719**, the final delivered sample, so what fires is the row reaching
+  the window edge. **(c) 62%/72% are ASSERTION RATES ON PRESELECTED ROWS, not detection coverage**, and the
+  0.44% held-out exceedance measures that selected negative population rather than supplying identification.
+  ⚠️ **"The population cannot shrink" was also wrong**: the implementation can omit unreadable rows and fields.
+  **What survives: a positive-departure assertion rate that reproduces (939/1,524 and 1,097/1,524), on rows chosen
+  in advance. Not a validated per-row skew detector, and SKEW-DETECTOR is NOT closed.**
+- **[WITHDRAWN, see above] The per-unit floor as a skew detector (2026-09-11).** "T is the top skew row" has been a named quantity
   with no validated per-row measurement for a long time, in the same family as "structureless" and "well
   exposed". The per-unit floor answers exactly that question — **is THIS row's timing disturbed?** — because the
   floor is what the unit's own no-switch rows support, and a row above it is disturbed by that unit's own
@@ -4222,8 +4233,10 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
     TBC-on carries neither.
   - **TBC phase step:** the step is introduced BY the corrector, so it should appear **WITH** the TBC.
   **THE SIGN DECIDES BETWEEN THEM AND IT IS ALREADY MEASURED.** Displaced rows: **1,957 with the TBC off against
-  11 with it on**. Peaks: **3.07% off against one or two of 606 on**. Both vanish together when the corrector is
-  engaged. ⚠️ **THOSE ARE NOT PAIRED FIGURES AND WILL READ AS IF THEY WERE.** The two captures are not
+  11 with it on**. Peaks: **3.07% off against one or two of 606 on**. Both drop by about two orders of magnitude when the corrector is engaged. ⚠️ **NOT "both vanish" —
+  Codex's correction: both on-populations RETAIN detections (11 rows, one or two of 606), and the difference is
+  a large ratio on unequal denominators with changed observability, so it is qualified evidence against the
+  narrow prediction rather than adjudication of the mechanism.** ⚠️ **THOSE ARE NOT PAIRED FIGURES AND WILL READ AS IF THEY WERE.** The two captures are not
   frame-aligned — this file records the comparison as distributional, **396 fields against 1,216, best
   field-match correlation 0.07-0.31**. The argument survives that easily, because two orders of magnitude is not
   reachable by an alignment artefact, but the caveat costs a clause now against a re-derivation later. **A step introduced by the TBC would appear when the TBC is on; it does the opposite**, so that account
@@ -4276,7 +4289,9 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   session and Codex objected, independently and correctly.** A control was run: **three back-to-back executions
   at load 2.6-2.8 gave medians 1.731 / 1.777 / 1.776 ms — a spread of 2.7%.** That rules out run-to-run variance,
   and run 1 being the FASTEST also rules out cold-cache and first-run effects, which would have made it the
-  slowest. **So variance cannot account for a 1,100% gap.** But Codex's objection survives the control: these are
+  slowest. ⚠️ **Codex's correction, and it is right: three later fast runs cannot exclude variance or cache effects in the
+  EARLIER run.** The control measures today's conditions, not that run's. So variance is excluded as a
+  description of the current state, NOT as an explanation of the 20.992 observation. But Codex's objection survives the control: these are
   ELAPSED-TIME measurements, and two load averages do not separate contention from **core placement, frequency
   scaling or thermal state**. **"Load" is a proxy for that whole bundle, not an isolated cause.** The defensible
   statement is: the engine is inside budget, 20.992 was an outlier, run-to-run variance is excluded at 2.7%, and
@@ -4292,6 +4307,19 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   rule forbids. The instrument is `src/frameserver/tests/worker_bench.c`; the gate needs a fixture the classifier
   actually calls ProgramLike before any ms/unit figure means anything.
 
+- ⚠️ **"ALL SIX FIXED" DOES NOT HOLD — the second review (`ef7c2bf`) found three of the repairs incomplete
+  (2026-09-11).** The field-2 indexing mutation now fails correctly and the equality plateau settles correctly.
+  But: **a one-code RISE before the ramp finishes still stops the settled walk, producing 18.2 against a true
+  floor of 1.6** (the non-increasing walk stops at the first rise, and blanking noise rises); **the unchanged
+  low-tail selection still turns a known mean of 3.0 into 1.0**; and **tightening the recovery tolerance to ±2
+  does not validate one-sample precision**, which is what the bright-programme claims rest on.
+  ⚠️ **And the fabrication bound's disposition is narrowed, correctly:** a fixed-seed regression guard is
+  acceptable **as that and nothing more** — it is not a general error bound and **it does not qualify the
+  candidates as identified blanking.** The source still says "NO FABRICATION" in a docstring while the gate
+  records 12/12/36, which is the two-stores defect inside the repair for it. Also: **"a false negative is worse
+  than a false positive" was NOT established** by finding one valid ramp that one proposed filter rejected.
+  **So the repairs commit is partially open, which is exactly the class the peer session flagged: changes made
+  in response to a review, where a fix can restate the error in new words.**
 - **CODEX'S §14 REVIEW (`698c11a`) FOUND SIX DEFECTS AND EVERY ONE REPRODUCED — including two I wrote and three
   overclaims I published (2026-09-11).** Its report is `docs/reports/2026-09-11_arrival_calibration_review.md`.
   1. **`per_unit_floor.py` READ THE WRONG FIELD.** `SWITCH_LINES=(260,261,262)` was used for BOTH fields against
@@ -5006,8 +5034,15 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   the case where they come apart.** Both instruments were literal about the words and blind to whether the
   sentence affirmed or denied them.
 
-- **WHEN A THRESHOLD CANNOT BE TUNED BELOW A RATE, CHECK WHETHER THAT RATE IS STRUCTURAL BEFORE TRYING A FOURTH
-  STATISTIC — and the fix is usually the estimator's RELATIONSHIP TO ITS DATA, not a better estimator
+- ⚠️⚠️ **THE "STRUCTURAL FLOOR" RULE BELOW IS WITHDRAWN — Codex (`ef7c2bf`) showed it is false as a general
+  claim, and the error is mine (2026-09-11).** I wrote that a percentile threshold has an error floor no tuning
+  reaches. **It does not: a 5-95% band leaves ~10% outside because THAT band was chosen, and widening it to
+  0.2-99.8% leaves four values of a thousand outside.** There is no immutable 9.6% floor in percentile methods.
+  What actually happened is narrower and still worth having: **that particular band, at that particular setting,
+  could not go below its own tail fraction** — and **disjointness improved EVALUATION INTEGRITY, not accuracy.**
+  Those are different claims and I collapsed them. The paragraph below is kept for the reasoning it contains
+  about the parity split, which stands; its generalisation does not.
+- **[SUPERSEDED, see above] When a threshold cannot be tuned below a rate, check whether that rate is structural
   (2026-09-11).** The band-reference skew test sat at a 9.6% per-row false-positive rate on ordinary picture rows
   and could not be tuned below it. **That was not a badly chosen cut: it was a FLOOR.** The threshold was a 5-95%
   band learned from those same rows, and a percentile of a population must misclassify that fraction of the
