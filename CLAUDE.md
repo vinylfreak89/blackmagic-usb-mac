@@ -2595,7 +2595,7 @@ that signature must not be promoted into a necessary condition. The next measure
 and the timing states before and after it on the signal's time axis. This correction does not by itself declare
 any of the six disputed observations resolved or change a detector or contract rule.
 
-**The head-switch RF peak lands on S-1, never on S -- measured 2026-09-11 over capture 1's registerable region
+**The head-switch RF peak lands on S-1 in 199 of 200 readings at >=30 MAD units and in 135 of 135 at >=60, never on S ONLY above 60 -- measured 2026-09-11 over capture 1's registerable region
 (`experiments/peak_vs_s.py`, joined to the engine's own schema-20 geometry export).** This bears directly on the six
 T disagreements holding Track 1's agreement condition open: both readers agree on S, the phase reader says T = S (no
 partial line), the run reader says T = S-1. The peak has no definitional tie to either quantity, and this file already
@@ -2615,8 +2615,9 @@ Flat across the whole sweep, so no threshold is doing the work. **Two controls.*
 6681-6785, the six keys' neighbourhood, the last eight picture lines of both fields) the >=30 MAD-unit positive peaks
 land on exactly three of sixteen (field, line) cells -- f1 260 in 36, f2 259 in 37, f2 260 in 9 -- and **zero** on the
 other thirteen, so the peak is a switch-band feature and not bright picture content, which would be spread across all
-eight lines. And joined to the engine's own AGREED T, the peak is exactly ON T in 166 of the 197 readings where the
-engine says T = S-1, and one line ABOVE T in the 31 where it says T = S -- so the T = S answer is contradicted
+eight lines. And joined to the engine's own AGREED T, of the 197 peak-on-S-1 readings joined to the engine's own T, 166 are readings where the engine
+says T = S-1 -- the peak is exactly ON T there -- and 31 are readings where it says T = S, where the
+peak sits one line ABOVE T -- so the T = S answer is contradicted
 wherever a peak is visible, including on readings the two readers did not dispute.
 Two of the six disputed keys carry a peak: **6704/f2 at 77.3 MAD units column 131 and 6785/f1 at 67.7 column 201,
 both on S-1**, against a same-window population median of 10.0. The other four carry no positive peak at all
@@ -5096,6 +5097,25 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **A CORRECTION RECORDED BESIDE AN ERROR INSTEAD OF APPLIED TO IT IS A CORRECTION NOBODY GETS — measured on
+  this file, three sites, tonight (2026-09-11).** Codex corrected two figures hours ago and the correction went
+  in at `:2643` as its own entry. **The erroneous text stayed standing at `:2598` and `:2618`** — the heading
+  *"lands on S-1, never on S"* above a table showing 2 on S at ≥15 MAD and 1 at ≥30, and *"166 of the 197
+  readings where the engine says T = S−1"* which is internally impossible, since 166 + 31 = 197 and the 31 are
+  the T = S readings. **So the file simultaneously asserted the error and recorded its correction, and the
+  assertion is the half that gets read.** I then copied both into a NEW entry an hour later while citing that
+  very measurement as settled.
+  **All three sites are now corrected AT the text**, with the mention inside Codex's correction left intact —
+  distinguished programmatically by looking for "transcription error" in its lead-in rather than by eye.
+  ⚠️ **`superseded_check.py` cannot catch this and says so: it tests whether a withdrawn PHRASE reappears, not
+  whether a corrected CLAIM is restated in new words.** That limit prints with every run, and this is the first
+  instance where it mattered — the restatement was my own paraphrase, not the original wording.
+  ⚠️ **The wrapped-phrase hazard bit AGAIN inside the repair**: a literal replace fixed 2 of 3 sites because the
+  third sentence wraps, and only a wrap-tolerant pattern found it. Fourth time tonight, in the fix for a
+  different propagation defect.
+  **The rule: apply a correction where the error IS, then check for restatements of it elsewhere. Recording it
+  adjacent is how it gets quoted back.**
+
 - **D16 AND D17 ANSWERED — the rebuild is ungated, and NEITHER HORN WAS RIGHT (owner, 2026-09-11, relayed).**
   **D16, verbatim:** *"no blanking alone can not establish identity. blanking excursion can but there still needs
   to be some measureable component of horizontal skew"*.
@@ -5112,8 +5132,14 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   ⚠️⚠️ **ONE NAMING COLLISION, verified rather than reconciled, because this word cost this project a day.** He
   writes *"partial switch line (S)"*. **The contract at `:665` defines the switch line as "the horizontal line
   carrying the peak, the partial line" — that is T — and `:669` says "S is NEVER substituted for it".** Checked
-  against the measurement: **the peak is exactly ON T in 166 of 197 readings where the engine says T = S−1, and
-  it lands on S−1 NEVER on S.** So read as the contract's S his sentence would contradict the measurement, and
+  against the measurement: **of the 197 peak-on-S−1 readings joined to the engine's T, 166 are ones where the
+  engine says T = S−1 and the peak is exactly ON T; the peak lands on S−1 in 199 of 200 at >=30 MAD units.**
+  ⚠️ **This sentence first carried "166 of 197 where the engine says T = S−1" and "NEVER on S", BOTH of which
+  are transcription errors this file had ALREADY corrected at its own `:2643` — 197 is the TOTAL, split 166/31,
+  and the table shows 2 on S at >=15 and 1 at >=30.** Codex caught the repeat. **The corrections had been
+  recorded BESIDE the erroneous text instead of applied TO it, so the error was what got read and I copied it
+  into a new entry.** `superseded_check.py` cannot catch this by design — its stated limit is that it tests
+  whether a withdrawn PHRASE reappears, not whether a corrected CLAIM is restated in new words. So read as the contract's S his sentence would contradict the measurement, and
   **"(S)" is his shorthand for "the switch line" — the row the contract calls T.** The substance is unambiguous:
   **the peak indicates THE PARTIAL LINE.**
   ✅ **AND HE THEN SETTLED IT HIMSELF, IN WORDS THAT USE NEITHER LETTER — so this is no longer a derivation**
