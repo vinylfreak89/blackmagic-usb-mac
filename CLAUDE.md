@@ -5280,6 +5280,16 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
     is the same defect a third time.
   - **The tuning instinct is the hazard, named so it is recognisable in the moment:** repairing a calibration
     while the coverage number is unsatisfying is exactly when his conjunction quietly becomes extent alone.
+  - **A REPAIR THAT MAKES POSITION DECIDE THE `normal` CLASS IS A BEHAVIOUR CHANGE, NOT A TUNING — measure that
+    axis before and after, or a real improvement will be indistinguishable from a threshold moving.** The peer
+    session proposed this guard and its premise needed correcting first: it said *"the position tolerance is
+    currently inert — `classify` returns on duration before position is consulted"*, and **that is true only of
+    the rows that FAIL the extent gate.** Measured by varying `p_tol` alone on one row that passes it: 0.0, 4.0
+    and 50.0 all return `extended`; **400.0 returns `Unknown`** on the identical row and skew. So position is not
+    inert — it decides the whole identified-versus-Unknown split, which is where the degenerate-regime finding
+    already shows it doing an enormous amount of work in opposite directions by content. **The guard survives in
+    its corrected form and is sharper for it:** position is inert for ONE class and hair-trigger or dead for the
+    others, so a repair touching it moves three populations at once and must be scored on each separately.
   ⚠️ **WITHDRAWN — The 0.23% held-out false-identification rate is the figure to lean on meanwhile**, and its
   population cannot shrink. **It was produced by a mask admitting everything up to code 19; see the padding-ruler
   finding below. There is no figure from this instrument to lean on.**
@@ -5399,6 +5409,16 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   than that and neither review had it: the code does not use the device fill at all.** Found by resolving a
   two-instrument disagreement — my own probe and my own diagnostic differed on the same quantity, p90 of 8
   against 426 — rather than by reading the line, which both of us had read.
+  **AND THAT IS A REUSABLE CHECK RATHER THAN LUCK (the peer session's framing, and it is the better one): WHEN
+  TWO PATHS COMPUTE A QUANTITY THAT OUGHT TO AGREE AND DO NOT, THE DISAGREEMENT IS THE FINDING.** Neither number
+  was chased for its own sake — 8 against 426 was pursued INSTEAD OF being averaged or picked between, and it led
+  to a defect that reading the line twice had not. **The failure mode it guards against is reconciling rather
+  than investigating**, and it is available for free wherever a probe and an instrument overlap.
+  ⚠️ **It also puts a second door on the too-clean tell already recorded above.** That entry says a degenerate
+  perfect answer usually means the population is the device's own fill. Here the population was fine and the MASK
+  was so wide that `normal` was structurally certain — **so the clean number and the constant behind it are the
+  same fact whichever end the constant enters from**, and 0.23% was leaned on PRECISELY because it looked
+  unimpeachable and its population could not shrink.
   ✅ **CHECKED NEGATIVE, not an assumption: `blanking_extent.py` is the ONLY instrument with this reading.**
   Every other level reader in `experiments/` takes rows 7–15 / 270–278 — the device's decoded blanking — or
   the row's own level: `source_reference`'s `DEVICE_ROWS`, `own_blanking_census`'s `BLANK_ROWS`,
