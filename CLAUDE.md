@@ -4164,6 +4164,40 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **0.6%**. The 532 already have no switch line by either route and are unaffected, and the 478 with a T are
   untouched. An earlier framing of this as a large loss confused the harness's S measurement (exact in 1,013 of
   1,013 registerable readings, a different instrument and population) with the engine's export.
+- **THE KNOWN-ANSWER FIXTURES EXIST, WRITTEN BEFORE THE ESTIMATOR CHOICES — and the third class proves a BOUND
+  on the observable rather than testing a detector (`experiments/switch_fixtures.py`, 2026-09-11).** Codex's
+  three classes, from its review of the set-departure proposal: timing changes at BOTH interval ends, censored
+  cases, and matched unchanged-timing dark-content controls. **The ordering is the content: a fixture written
+  after the seven unsettled estimator choices is shaped by them invisibly, and neither agent could tell
+  afterwards** — the calibration-fitted-on-its-own-test-rows defect at the level of test design. Each case
+  carries the row, the ground truth and the disposition a correct detector must reach; **no threshold, window or
+  statistic appears in any of them.**
+  **CLASS C3 IS THE RESULT.** A dark-content control is only a control if a level-only reading cannot separate it
+  from a genuine timing change, and the construction that achieves that is FORCED rather than chosen — make the
+  two rows' delivered samples identical:
+
+  | | delivered blanking | ground truth |
+  |---|---|---|
+  | **A** | exactly [540, 557) | the interval TRANSLATED 160 samples earlier |
+  | **B** | exactly [540, 557) | timing NORMAL; its interval fell in the undelivered part of the line, plus clipped dark content at 540 |
+
+  **No function of the delivered row separates them**, so a detector that identifies A must also fire on B.
+  **That is a bound on ROW-LOCAL evidence, established before the detector was written**, and it says what the
+  rebuild needs rather than how to build it: something beyond the row — which is exactly Codex's "evidence
+  establishing a horizontal-timing departure rather than merely a changed low-level mask", and what interval
+  identity is for. A neighbouring row or the previous unit could separate A from B; the delivered row cannot.
+  ⚠️ **Physically motivated, not established as occurring.** B rests on the recorded arithmetic that 10.22 of
+  every 63.56 µs is undelivered — 16% of the line, which this file already accepts as making `T = S` a legitimate
+  reading of roughly one line in six. **Whether B's exact configuration occurs on real material is NOT shown
+  here**, and the bound holds regardless: it is about what the evidence can support, not about frequency.
+  ⚠️ **Control 1 caught a real construction bug on its first run** — C1 and C2 declare the nominal interval
+  first and the dark run second, while the verifier scans in row order, so a positional comparison failed. **A
+  fixture that does not contain what it claims tests nothing and nothing else would have noticed.**
+  Five controls, derived from the ways a FIXTURE SET fails to be one rather than from any detector's behaviour:
+  every fixture contains its injected geometry; the required answers are MIXED (else a constant detector passes
+  the set); the censored fixtures are censored at the window edge; the matched pair is genuinely matched; and
+  class A moves each end independently, else a one-ended statistic passes the class.
+
 - **WHEN A NUMBER IS CONTESTED, BUILD THE THING THAT WOULD SHOW IT WRONG — do not defend it and do not retract
   it (2026-09-11, three instances in one day, and the pattern prescribes a different action than either
   instinct).** Each time a figure was withdrawn as a CONCLUSION and then had to be withdrawn again as a NUMBER,
