@@ -2255,6 +2255,29 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Post-calibration harness review (`0a8fabe` through `91e2372`, 2026-09-11).**
+`docs/reports/2026-09-11_post_calibration_harness_review.md` and
+`experiments/post_calibration_review_controls.py` record the review and reproduction.
+Indexing is fixed and its consumer-only mutation fails the new selftest. Equality
+settlement is fixed narrowly; a one-code local rise still pools 18.2 instead of 1.6,
+and low-tail selection still biases a known 3.0 mean to 1.0. The 12/12/36 ceilings
+are fixed-seed regression controls, not general error bounds or qualified identity.
+Both supplied selftests pass; stale no-fabrication/coverage claims remain in source.
+The row census reproduces 939/1524 and 1097/1524, and 354/81280 held-out exceedances.
+EVERY asserted target returns sample 719. These are preselected-row positive-departure
+assertion rates, not independently validated switch detection. The test also misses
+an equally large earlier blanking arrival; it does not implement either-direction skew.
+The new structural-floor rule is false: widening a percentile interval changes its
+tail mass, ties matter, and a maximum is an endpoint order statistic. Disjointness
+improves evaluation integrity, not automatically accuracy. R12's sign remains a
+qualified association against a narrow hypothesis, not unique causal adjudication;
+unpaired populations and different denominators/observability matter, and same row
+does not establish same instant. Three later P3 runs do not exclude variance or cache
+effects in an earlier run. O-B6 `none` permits sub-six-row bars, demonstrated by five
+at both ends. The device-fill warning is useful as a provenance check, not a universal
+constant/perfect-result rule. The detailed report qualifies the newly merged claims
+below; this review does not promote them, amend the contract, or change the engine.
+
 **Profiling-gate review (2026-09-11).** `docs/reports/2026-09-11_profiling_gate_review.md`
 records the source inspection and read-only fixture diagnostic. The peer's zero-call
 WORKER-BENCH measures a gated path, but the separate FIELDREG-BENCH loop still calls
