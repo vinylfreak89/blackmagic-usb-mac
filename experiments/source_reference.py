@@ -151,6 +151,33 @@ def settled_index(row, t):
     return i
 
 
+def settled_samples(row, t):
+    """The samples this row contributes to the reference: those settled after its own descent ends.
+
+    Extracted from `source_reference` so that the reference and anything QUALIFYING a row against
+    it share one implementation instead of two that drift. One format, one loader: a qualification
+    that recomputed "this row's settled level" its own way would be comparing a row against a
+    reference built by a different rule, and the disagreement would read as a property of the row.
+
+    Returns None where the row contributes nothing -- a row whose descent runs to the row's end,
+    or whose tail holds no settled samples. None is "this row did not decide", never a level.
+    """
+    x = np.asarray(row, dtype=np.float64)
+    t = settled_index(x, t)
+    if t >= x.size: return None
+    tail = x[t:]
+    if tail.size == 0: return None
+    # the row's own settled level after its transition: the lowest sustained part of its tail.
+    # No absolute cut -- the row's own tail decides, by its own minimum block.
+    if tail.size >= 4:
+        k = (tail.size // 2) * 2
+        floor = float(tail[:k].reshape(-1, 2).mean(axis=1).min())
+        settled = tail[tail <= floor + 1.0]
+    else:
+        settled = tail
+    return settled if settled.size else None
+
+
 def source_reference(field_rows):
     """Pool every row's post-transition samples AT THAT ROW'S OWN INSTANT.
 
@@ -170,22 +197,9 @@ def source_reference(field_rows):
         if t is None or t >= len(row): silent += 1; continue
         # POSITION and LEVEL are different quantities. The transition is reported as the arrival;
         # the level must pool only what is SETTLED after the descent finishes. See settled_index.
-        transitions_at = t
-        t = settled_index(row, t)
-        if t >= len(row): silent += 1; continue
-        tail = row[t:]
-        if len(tail) == 0: silent += 1; continue
-        # the row's own settled level after its transition: the lowest sustained part of its tail.
-        # No absolute cut -- the row's own tail decides, by its own minimum block.
-        if len(tail) >= 4:
-            k = (len(tail)//2)*2
-            blocks = tail[:k].reshape(-1,2).mean(axis=1)
-            floor = float(blocks.min())
-            settled = tail[tail <= floor + 1.0]
-        else:
-            settled = tail
-        if len(settled) == 0: silent += 1; continue
-        pool.extend(settled.tolist()); transitions.append(transitions_at); contributing += 1
+        settled = settled_samples(row, t)
+        if settled is None: silent += 1; continue
+        pool.extend(settled.tolist()); transitions.append(t); contributing += 1
     if contributing < 20: return None
     a = np.array(pool, dtype=np.float64); tr = np.array(transitions, dtype=np.float64)
     return {"level": float(a.mean()), "level_sd": float(a.std()), "n": len(a),
