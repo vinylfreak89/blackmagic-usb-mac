@@ -28,6 +28,14 @@ qualification that asks only about LEVEL is not circular, but level alone cannot
 dark picture from blanking, because on this material they sit at the same level with the same
 dither. Whether a non-circular qualification exists at all is what the retention columns answer.
 
+  ⚠️ WHAT ITS NUMBERS ARE ABOUT, after the padding-ruler finding (2026-09-11). It deliberately hands
+  the detector's OWN level -- `median(Y[0:6])` -- to `local_expectation`, so that the only variable
+  between rows of its table is which rows calibrate. That level is the device's WRITTEN padding ruler
+  at 16.000, so the mask bound is 19.0. Using it is CORRECT for this instrument's purpose, which is
+  to reproduce what the detector does; but every tolerance it prints is the VOID detector's
+  tolerance, never "the position tolerance of the source's blanking". The two surviving results are
+  read under that: the circularity of the level-phrased criteria, and the two degenerate regimes.
+
   calibration_qualification.py [--capture ...] [--limit N] [--selftest]
 """
 from __future__ import annotations
@@ -36,7 +44,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from packet_capture_reader import walk_tagged
 from source_reference import ORIGIN_ROW, row_transition, settled_samples, source_reference
-from blanking_extent import blank_spans
+from blanking_extent import blank_spans, local_expectation
 
 UNIT = 756_048; HDR = 48; ROW = 1440; LINES = 525; MARK = b"\x00\x00\xff\xff"
 CAL = list(range(210, 236, 2))      # the detector's calibration rows, as offsets into the field
@@ -190,7 +198,7 @@ def main() -> int:
         return selftest()
 
     st = {"buf": bytearray()}
-    acc = {}          # criterion -> lists of (kept, run spread, arrival spread, extent spread)
+    acc = {}          # criterion -> list of (kept, p_tol, e_tol) per field-reading
     band_kept = {}
     seen = [0]
 
@@ -205,16 +213,26 @@ def main() -> int:
             if ref is None:
                 continue
             seen[0] += 1
-            cal = [row_readings(Y[base + o], ref["level"]) for o in CAL]
-            bnd = [row_readings(Y[base + o], ref["level"]) for o in BAND if base + o < LINES]
+            # The detector's OWN level, so the only variable between rows of the table is which
+            # rows calibrate. Its expectation comes from its own local_expectation, so criterion A
+            # IS the current behaviour rather than a reimplementation of it.
+            dev = float(np.median(Y[0:6]))
+            # The field's own brightness, so the table can be split by CONTENT REGIME without a
+            # counter range being typed in. Sampling the first N units was a fixed place to look in
+            # the sampling itself: counters 6667-6767 are all title card, one regime, and the first
+            # version of this measurement reported that regime as the capture.
+            bright = float(Y[base + 40:base + 200].mean())
+            cal_rows = [Y[base + o] for o in CAL]
+            rd = [row_readings(r, dev) for r in cal_rows]
+            bnd = [row_readings(Y[base + o], dev) for o in BAND if base + o < LINES]
             for name, keys, fn in criteria(ref):
-                kept = [r for r in cal if fn(r)]
-                sr, nr = spread([r["pos_run"] for r in kept])
-                sa, na = spread([r["pos_arr"] for r in kept])
-                se, _ = spread([r["extent"] for r in kept])
-                acc.setdefault(name, []).append((keys, len(kept), len(cal), sr, sa, se))
+                kept = [row for row, x in zip(cal_rows, rd) if fn(x)]
+                exp = local_expectation(kept, dev, TOL)
+                acc.setdefault(name, []).append(
+                    (keys, len(kept), None if exp is None else exp[3],
+                     None if exp is None else exp[1], bright))
                 band_kept.setdefault(name, [0, 0])
-                band_kept[name][0] += sum(1 for r in bnd if fn(r))
+                band_kept[name][0] += sum(1 for x in bnd if fn(x))
                 band_kept[name][1] += len(bnd)
 
     def on_video(p):
@@ -230,27 +248,51 @@ def main() -> int:
 
     walk_tagged(a.capture, on_video=on_video, progress=False)
 
-    print("CALIBRATION QUALIFICATION -- a measurement of the repair's premise, not the repair.\n")
+    print("CALIBRATION QUALIFICATION -- a measurement of the repair's premise, not the repair.")
+    print("⚠️ every tolerance below is the VOID detector's, measured at ITS mask bound of ~19 (the")
+    print("   device's padding ruler + 3), never the position tolerance of the source's blanking.\n")
     print("  capture %s, counters from %d, %d field-readings\n"
           % (os.path.basename(a.capture), a.from_counter, seen[0]))
-    print("  %-20s %-6s %-11s %-14s %-14s %-13s %s"
-          % ("criterion", "keys", "cal rows", "run-position", "arrival-position",
-             "extent", "band rows kept"))
-    for name, rows in acc.items():
-        keys = rows[0][0]
-        kept = np.median([r[1] for r in rows]); tot = rows[0][2]
-        def med(i):
-            v = [r[i] for r in rows if r[i] is not None]
-            return ("%8.0f" % np.median(v)) if v else "       -"
-        bk, bn = band_kept[name]
-        print("  %-20s %-6s %2.0f of %-5d %14s %14s %13s   %d of %d"
-              % (name, keys, kept, tot, med(3), med(4), med(5), bk, bn))
-    print("\n  The spreads are the FULL OBSERVED RANGE over the kept rows, the statistic the detector")
-    print("  uses -- so one admitted row sets the column by itself, which is the point.")
+    allb = sorted(r[4] for rows in acc.values() for r in rows)
+    cut = allb[len(allb) // 2] if allb else 0.0
+
+    def table(title, pick):
+        print("  %s" % title)
+        print("  %-22s %-7s %-8s %7s %7s %7s %7s %8s  %s"
+              % ("criterion", "keys", "cal rows", "p50", "p90", "p99", "max", ">100", "band kept"))
+        for name, rows in acc.items():
+            rows = [r for r in rows if pick(r[4])]
+            if not rows: continue
+            keys = rows[0][0]
+            kept = np.median([r[1] for r in rows])
+            v = np.array([r[2] for r in rows if r[2] is not None], float)
+            undec = sum(1 for r in rows if r[2] is None)
+            bk, bn = band_kept[name]
+            if v.size:
+                over = int((v > 100).sum())
+                print("  %-22s %-7s %2.0f of %-3d %7.0f %7.0f %7.0f %7.0f %5d/%-3d  %d of %d%s"
+                      % (name, keys, kept, len(CAL), np.percentile(v, 50), np.percentile(v, 90),
+                         np.percentile(v, 99), v.max(), over, v.size, bk, bn,
+                         "   (%d undecided)" % undec if undec else ""))
+        print()
+
+    print("  THE POSITION TOLERANCE the detector derives, by its own local_expectation.")
+    print("  Split at the fields' own median picture level %.1f, so no counter range is typed in.\n"
+          % cut)
+    table("ALL field-readings", lambda b: True)
+    table("DIM half (picture level below %.1f)" % cut, lambda b: b < cut)
+    table("BRIGHT half (at or above %.1f)" % cut, lambda b: b >= cut)
+    print("  (band-kept counts are whole-capture in every block: a criterion's circularity is a"
+          "\n   property of the criterion, not of the half it is read in)")
+    print("\n  ⚠️ THE DISTRIBUTION IS THE ANSWER AND A MEDIAN HIDES IT. The tolerance is the FULL")
+    print("  OBSERVED RANGE over the kept rows, so one admitted row sets it -- which makes the tail")
+    print("  the whole quantity of interest and the median almost uninformative about it.")
     print("\n  LIMITS. The level reference's own row set (offsets %d-%d) is a fixed window too; it is"
           % (REF_ROWS.start, REF_ROWS.stop))
     print("  not the quantity under repair and is carried unchanged. The validation rows are NEVER")
-    print("  qualified here: their population is the 0.23%% figure's and cannot shrink.")
+    print("  qualified here: their population is the 0.23% figure's and cannot shrink. Band retention")
+    print("  is reported because a criterion that removes band rows is deciding the detector's own")
+    print("  question -- it is information about circularity, never a score to maximise.")
     return 0
 
 
