@@ -6102,6 +6102,37 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   one-dispatch-at-a-time rule it was not chased with a correction. **Its reply must be read against these two
   lines, not against the premise it was asked under.**
 
+  ✅ **MEASURED RATHER THAN ADOPTED, and the inference is CONFIRMED more strongly than it was offered.** The
+  peer session was explicit that *"an end-shift at the window edge is largely unobservable"* was its inference
+  from two recorded positions and not a measurement, and asked for it to be treated as anything else here would
+  be. Over **11,400 picture rows across 60 field-readings of capture 1**, each row's terminal blank run tested
+  against the last delivered sample:
+
+  | | |
+  |---|---:|
+  | terminal blank run REACHES sample 719 | **11,400 — 100.0%** |
+  | last blank sample lies INSIDE the row | **0 — 0.0%** |
+  | no blank sample at all | 0 |
+  | where the run starts | median **702**, p10 699, p90 705, length 18 |
+
+  100% in the dim half and 100% in the bright half. **So on a normal row the undisturbed interval's END is
+  censored by the window ALWAYS — not "largely", and not a statistical tendency.** The start position
+  independently reproduces `:3435`'s "trailing 11-18 blank samples at columns ~702-709" from a different
+  instrument.
+  ⚠️⚠️ **THE CONSEQUENCE FOR THE FIXTURE IS LARGER THAN THE PLACEMENT QUESTION THAT PROMPTED IT: on a normal
+  row the only thing observable about the interval is WHERE IT STARTS.** The end carries no information, so
+  "end moves, start fixed" is not a case the source can express at the nominal position, and a translation is
+  observationally a start-shift. **Class A was built around moving each end independently — Codex's finding 5,
+  which I implemented — and one of those two ends never appears on an undisturbed row.**
+  ⚠️ **WHAT THIS DOES NOT ESTABLISH, stated first because the last time a "the raster cannot show this" claim
+  was made here it was wrong within the hour:** the probe read PICTURE rows (offsets 20-210), not the switch
+  band. **A DISPLACED interval relocated into the row's interior has BOTH endpoints visible** — that is the
+  displaced-row census's whole subject. So the finding is *the undisturbed interval's end is censored on every
+  normal row*, NOT *no interval's end is ever observable*, and both-ends testing belongs on the displaced cases
+  where it is expressible.
+  ⚠️ It also says `(700, 717)` was wrong in the other direction: its end at 717 sits inside the window, which no
+  measured row does. A faithful nominal runs to the edge.
+
 - **RECORDING A FINDING ABOUT A TEXT PATTERN DESTROYS ITS OWN EVIDENCE — so such a claim must cite a COMMIT,
   never the file (2026-09-11, the peer session's, found while verifying the entry below).** That entry's
   evidence is that `'and 3,588'` does not appear in `CLAUDE.md`, because the line wraps between the two.
