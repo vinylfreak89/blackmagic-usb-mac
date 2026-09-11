@@ -5010,6 +5010,31 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **THE SOURCE LEVEL'S VALUE IS SUPPORTED, AND THE FABRICATION BOUND DID NOT REACH IT — measured on the pool's
+  COMPOSITION, which is the only thing that can answer it (2026-09-11).** The level half of `source_reference`
+  survives `:443` in KIND (a slice point is not a timing claim), but legitimate in kind is not correct in value,
+  and the finder's fabrication bound — 12/12/36 of 200 synthetic same-noise seeds — applies to it unchanged. The
+  summary statistics cannot settle that: a mean of 1.6 is consistent with a clean pool and with a mostly-clean
+  pool carrying a few picture samples. **The composition can.**
+
+  | | pooled samples | max | above 4.4 | above 10 |
+  |---|---:|---:|---:|---:|
+  | card | 86,784 from 5,987 rows | **3.00** | 0 | **0** |
+  | bright | 6,136 from 6,000 rows | **8.00** | 3.03% | **0** |
+
+  **Card picture sits at ~20 and bright at ~120, so NO SAMPLE IN EITHER POOL IS PICTURE.** A fabricating row —
+  one with no transition, where the finder returns a position anyway — would contribute samples near that row's
+  own minimum, which on flat bright picture is ~110. The pooled maximum is **8**. So no such row reached these
+  pools. Bright's 3% above 4.4 with a maximum of 8 is the tail of the descent (176 → 2 over about eight samples),
+  consistent with the one-settled-sample budget already recorded.
+  ⚠️ **This does NOT retire the fabrication bound, and the distinction matters:** the bound is a measured
+  property of the finder on synthetic rows, and it stands. What is measured here is that **it did not manifest in
+  the level on THIS capture's real rows** — an observation about this population, not a proof the finder is safe
+  on another. Bright's pool is ~1 sample per row, so a single contaminated row would move the mean visibly, which
+  is why the composition test has power here rather than being a formality.
+  **So the source level of 1.630 (bright) / 1.434 (card) is supported in kind AND in value**, and it is the one
+  figure from tonight's departure work that survives `:443` intact.
+
 - **THE QUEUE GUARD'S MARKER SET WAS AN ENUMERATION, AND WIDENING IT SURFACED A SECOND HIDDEN OWNER ITEM ON THE
   FIRST RUN (2026-09-11).** `owner_queue_check.py`'s `MARKERS` was four regexes collected from the phrasings the
   contract used when it was written — **the coverage-from-observed-instances defect this file documents, in the
