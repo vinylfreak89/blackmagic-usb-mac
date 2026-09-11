@@ -6054,6 +6054,23 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   one is right before repairing either.** The reflex is to trust the docstring and change the code, and here
   that would have removed two guards while making the file read more honestly.
 
+- **A BROKEN CHECK CAN PRODUCE A FALSE NEGATIVE ABOUT YOUR OWN TRUE CLAIM — the inverse of everything else
+  today, and the instinct is to trust the check (2026-09-11).** Having written a cross-reference saying this
+  file "already carries" a record-type fact, I verified it with `grep -c "attachment\` and 3,588"` and got
+  **0** — and moved to correct a statement that was TRUE. The fact sits at `:6557`.
+  ⚠️ **My first explanation was wrong and the trace refuted it**, which is the process working: I proposed that
+  a backtick inside double quotes had started command substitution and eaten the pattern. `set -x` showed the
+  pattern reaching `grep` intact, and the single-quoted form returned 0 too.
+  **The actual cause is the WRAPPED PHRASE — this file's own first member of the answers-a-different-question
+  family, committed while checking a cross-reference.** `'8,794'` matches; `'and 3,588'` does not, because the
+  line breaks between them. The rule already recorded is exactly right and I did not follow it: **search on a
+  short fragment that cannot wrap, then READ the passage.**
+  **What is new is the DIRECTION.** Every other instance today had a check returning something plausible and
+  wrong, so the damage was believing it. Here the check returned a clean negative about my own correct writing,
+  and the damage would have been **withdrawing something true and recording a correction nobody needed** —
+  which no later measurement would have caught, because a withdrawn true claim leaves nothing behind to
+  contradict.
+
 - **A MUTATION THAT FAILS TO FIRE HAS TWO CAUSES AND THEY MUST BE TOLD APART — the failure mode of mutation
   verification itself (2026-09-11, the peer session's, from its own instrument).** This session leaned on
   mutation verification throughout, on the rule that *a control which has never failed on the defect it exists
