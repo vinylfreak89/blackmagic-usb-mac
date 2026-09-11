@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from superseded_check import marked, wrap_finditer  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FIXTURE_PREFIX = "_wfc_fixture_"   # so a leftover from a crashed run is identifiable and sweepable
 
 # (literal as written, what it WAS, where/why it was withdrawn)
 FIGURES = [
@@ -89,14 +90,68 @@ def withdrawn_nearby(doc: str, idx: int, end: int) -> bool:
     return any(w in before for w in LOCAL_WITHDRAWAL) or any(w in after for w in LOCAL_WITHDRAWAL)
 
 
+def scan_outputs():
+    """⚠️ A FIGURE CAN REACH THE READER WITHOUT EVER BEING IN THE FILE. The label that carried a
+    withdrawn value for hours read `"not the measured %+0.2f" % BLANK_RHO` -- the literal -0.29
+    appears nowhere in the source, so a text scan is structurally blind to it while the reader sees
+    it printed. Codex found that one; this check could not have.
+
+    So the instruments that can run themselves are RUN, and their printed output is scanned as a
+    second document. That is where a formatted figure becomes visible, and it is the only place it
+    ever exists.
+
+    Bounded deliberately: only modules carrying the quoted `--selftest` literal, only their own
+    selftest, short timeout, failures ignored -- this is a scan, not a test run, and an instrument
+    that cannot run is reported rather than counted clean.
+    """
+    import subprocess
+    me = os.path.basename(__file__)
+    bare, unrunnable = [], []
+    for rel in SCAN:
+        if not rel.endswith(".py"):
+            continue
+        # ⚠️ NEVER RUN YOURSELF. This module is in SCAN, so running every --selftest included its
+        # own, which re-enters scan_outputs and recurses -- bounded only by the subprocess timeout,
+        # which is not a design.
+        if os.path.basename(rel) == me:
+            continue
+        path = os.path.join(ROOT, rel)
+        # SCAN is built from a directory listing at import, so a file can vanish before it is read
+        # -- a concurrent run's temp fixture, for one. That crashed the whole scan. Missing is not
+        # a value: report it as unreadable rather than losing every later file with it.
+        try:
+            src = open(path, encoding="utf-8", errors="replace").read()
+        except OSError as exc:
+            unrunnable.append((rel, type(exc).__name__))
+            continue
+        if '"--selftest"' not in src and "'--selftest'" not in src:
+            continue
+        try:
+            r = subprocess.run([sys.executable, path, "--selftest"], capture_output=True,
+                               text=True, timeout=90, cwd=os.path.join(ROOT, "experiments"))
+        except Exception as exc:
+            unrunnable.append((rel, type(exc).__name__))
+            continue
+        doc = r.stdout
+        for lit, was, why in FIGURES:
+            for m in wrap_finditer(lit, doc):
+                idx, end = m.start(), m.end()
+                if marked(doc, idx, end) or withdrawn_nearby(doc, idx, end):
+                    continue
+                ctx = " ".join(doc[max(0, idx - 70):end + 40].replace("\n", " ").split())
+                bare.append((rel + " (PRINTED)", 0, lit, was, why, ctx))
+    return bare, unrunnable
+
+
 def scan(quiet: bool = False):
     """Return (bare, mentions) -- bare occurrences are CANDIDATES, not verdicts."""
     bare, mentions = [], 0
     for rel in SCAN:
         path = os.path.join(ROOT, rel)
-        if not os.path.exists(path):
-            continue
-        doc = open(path, encoding="utf-8", errors="replace").read()
+        try:
+            doc = open(path, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue   # exists-then-open is itself a race; ask forgiveness, not permission
         for lit, was, why in FIGURES:
             # ⚠️ wrap_finditer ESCAPES INTERNALLY (re.escape per whitespace-split token), so a
             # pre-escaped literal gets double-escaped and silently matches nothing. Control 1 is
@@ -145,12 +200,23 @@ def report(bare, mentions) -> int:
 
 def selftest() -> int:
     """Controls derived from the ways this check fails to be one."""
+    import glob
     import tempfile
     ok = True
+    # ⚠️ FOLD THE RECOVERY INTO THE TOOL. These controls plant fixtures in experiments/ and unlink
+    # them in `finally` -- which does not run when the process dies hard, and four survived a crash
+    # earlier, where the NEXT scan then reported them as findings. A distinctive prefix makes a
+    # leftover identifiable, and sweeping at start means a crash costs one stale run rather than a
+    # permanent false positive that someone eventually silences.
+    stale_fixtures = glob.glob(os.path.join(ROOT, "experiments", FIXTURE_PREFIX + "*.py"))
+    for f in stale_fixtures:
+        os.unlink(f)
+    if stale_fixtures:
+        print("  (swept %d leftover fixture(s) from an earlier crashed run)" % len(stale_fixtures))
     print("CONTROLS")
 
     # 1. it must FIND a bare use planted in a scanned file
-    fd, tmp = tempfile.mkstemp(suffix=".py", dir=os.path.join(ROOT, "experiments"))
+    fd, tmp = tempfile.mkstemp(prefix=FIXTURE_PREFIX, suffix=".py", dir=os.path.join(ROOT, "experiments"))
     os.close(fd)
     try:
         open(tmp, "w").write("RHO = -0.29  # measured, undisplaced blanking\n")
@@ -179,7 +245,7 @@ def selftest() -> int:
         os.unlink(tmp)
 
     # 5. a marker far AFTER the figure must NOT mark it, or the lookahead excuses anything
-    fd2, tmp2 = tempfile.mkstemp(suffix=".py", dir=os.path.join(ROOT, "experiments"))
+    fd2, tmp2 = tempfile.mkstemp(prefix=FIXTURE_PREFIX, suffix=".py", dir=os.path.join(ROOT, "experiments"))
     os.close(fd2)
     try:
         # the literal below is a control FIXTURE; it is withdrawn and is not a use here. Marking
@@ -199,7 +265,7 @@ def selftest() -> int:
     # 6. THE TABLE LIMIT IS DEMONSTRATED, not asserted. A figure asserted in a table row whose
     #    qualification sits beyond the lookahead must read as UNMARKED -- if this ever starts
     #    passing, the bound has been widened and control 5 needs re-checking.
-    fd3, tmp3 = tempfile.mkstemp(suffix=".py", dir=os.path.join(ROOT, "experiments"))
+    fd3, tmp3 = tempfile.mkstemp(prefix=FIXTURE_PREFIX, suffix=".py", dir=os.path.join(ROOT, "experiments"))
     os.close(fd3)
     try:
         open(tmp3, "w").write(
@@ -214,6 +280,32 @@ def selftest() -> int:
         SCAN.pop()
         os.unlink(tmp3)
 
+    # 7. THE OUTPUT SCAN MUST FIND A FORMATTED FIGURE THAT IS NOWHERE IN THE SOURCE. This is the
+    #    case that motivated it: a label reading `"... %+0.2f" % RHO` carried a withdrawn value to
+    #    the reader for hours while the literal appeared in no file.
+    fd4, tmp4 = tempfile.mkstemp(prefix=FIXTURE_PREFIX, suffix=".py", dir=os.path.join(ROOT, "experiments"))
+    os.close(fd4)
+    try:
+        open(tmp4, "w").write(
+            'import sys\n'
+            'RHO = -29 / 100        # computed, so the literal is in NO file\n'
+            'if "--selftest" in sys.argv:\n'
+            '    print("the measured %+0.2f stands" % RHO)\n')
+        rel4 = os.path.join("experiments", os.path.basename(tmp4))
+        SCAN.append(rel4)
+        src_bare, _ = scan()
+        out_bare, _ = scan_outputs()
+        in_src = any(b[0].endswith(os.path.basename(tmp4)) for b in src_bare)
+        in_out = any(b[0].startswith(rel4) for b in out_bare)
+        c7 = (not in_src) and in_out
+        print("  7 a FORMATTED figure, absent from source, found in output: %s%s"
+              % ("PASS" if c7 else "FAIL",
+                 "" if c7 else "  (source %s, output %s)" % (in_src, in_out)))
+        ok &= c7
+    finally:
+        SCAN.pop()
+        os.unlink(tmp4)
+
     # 4. the registry must not be empty -- an empty one passes everything forever
     c4 = len(FIGURES) >= 3
     print("  4 the registry is non-empty (%d figures)               : %s"
@@ -227,7 +319,19 @@ def selftest() -> int:
 def main() -> int:
     if "--selftest" in sys.argv:
         return selftest()
-    return report(*scan())
+    rc = report(*scan())
+    if "--no-output-scan" not in sys.argv:
+        bare, unrunnable = scan_outputs()
+        print("\nPRINTED OUTPUT -- where a formatted figure is the only place the number exists")
+        if unrunnable:
+            for rel, why in unrunnable:
+                print("    %s could not be run (%s) -- NOT scanned, not clean" % (rel, why))
+        if not bare:
+            print("    no unmarked withdrawn figure in any instrument's own output")
+        else:
+            for rel, _, lit, was, _, ctx in bare:
+                print("    %s  %s  (%s)\n        ...%s..." % (rel, lit, was, ctx[:110]))
+    return rc
 
 
 if __name__ == "__main__":

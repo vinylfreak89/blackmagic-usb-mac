@@ -225,8 +225,14 @@ def report(title, rows, label):
     print("  %-10s %-24s %-22s %s" % (label, "LEVEL verdict: same?", "run extent A / B",
                                       "TEXTURE control: B-A"))
     for rho, same, trials, (eA, eB), dtex in rows:
-        print("  %+ -10.2f %-24s %-22s %+0.2f"
-              % (rho, "YES in %d of %d" % (same, trials), "%s / %s" % (eA, eB), dtex))
+        # ⚠️ THE MARKING GOES IN THE ROW, NOT THE HEADER ABOVE IT. The two authored values appear
+        # here as swept parameters, and a header saying "authored" sits far enough above that a
+        # reader scanning rows -- or an instrument scanning output -- sees a bare figure. That is
+        # the table defect this project found in its own record and then reproduced in its own
+        # output, one level further out.
+        tag = " AUTHORED" if rho in (BLANK_RHO, DARK_RHO) else ""
+        print("  %+ -10.2f%-10s %-24s %-22s %+0.2f"
+              % (rho, tag, "YES in %d of %d" % (same, trials), "%s / %s" % (eA, eB), dtex))
     print()
 
 
