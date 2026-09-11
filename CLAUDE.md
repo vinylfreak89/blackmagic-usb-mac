@@ -4234,7 +4234,23 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **The question to ask of any agreement is not "did they reach it separately" but "WHICH ASSUMPTION DID THE
   SECOND ONE NOT RE-DERIVE".** Two agents, two instruments and two chains of reasoning can all rest on one
   unexamined premise, and then agreeing is evidence about the premise's reach rather than about the conclusion.
-  ✅ **What the three DO establish is narrower and still worth having**, and saying which is the whole
+  ✅ **AND THE CHECK IS A LIST RATHER THAN A JUDGEMENT, which is what makes it usable in the moment — drawn
+  from the three rows above rather than invented (the peer session's).** The caution alone is hard to apply
+  because **all three looked unshared at the time; that is why each needed the other agent.** But the rows name
+  exactly four places an assumption can be common:
+
+  | axis | the row that shows it |
+  |---|---|
+  | the **hypothesis** | 1 — code-2 and one-sigma were one idea in two vocabularies |
+  | the **construction** | 2 — contiguous-at-blank-level, built twice |
+  | the **population** | 1 and 2 both — same rows, same units |
+  | the **instrument or artefact** | 3 — one fixture construction, read from both ends |
+
+  **Name which of the four are common BEFORE claiming independence, and the claim survives or dies on the
+  spot.** Sharing none is the case the clause below protects; sharing any one is the case that has to be said
+  out loud. **It costs one sentence when the claim is written, against an argument afterwards** — and the three
+  retractions tonight each cost several exchanges.
+    ✅ **What the three DO establish is narrower and still worth having**, and saying which is the whole
   discipline: same-construction agreement on different populations rules out a POPULATION-specific artefact and
   nothing else; same-hypothesis agreement rules out nothing at all. **Name the shared inheritance before
   claiming the agreement**, and where nothing is shared — a probe against an instrument, a synthetic against a
