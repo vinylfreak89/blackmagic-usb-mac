@@ -2625,7 +2625,7 @@ that signature must not be promoted into a necessary condition. The next measure
 and the timing states before and after it on the signal's time axis. This correction does not by itself declare
 any of the six disputed observations resolved or change a detector or contract rule.
 
-**The head-switch RF peak lands on S-1, never on S -- measured 2026-09-11 over capture 1's registerable region
+**The head-switch RF peak lands on S-1 in 199 of 200 readings at >=30 MAD units and in 135 of 135 at >=60, never on S ONLY above 60 -- measured 2026-09-11 over capture 1's registerable region
 (`experiments/peak_vs_s.py`, joined to the engine's own schema-20 geometry export).** This bears directly on the six
 T disagreements holding Track 1's agreement condition open: both readers agree on S, the phase reader says T = S (no
 partial line), the run reader says T = S-1. The peak has no definitional tie to either quantity, and this file already
@@ -2645,8 +2645,9 @@ Flat across the whole sweep, so no threshold is doing the work. **Two controls.*
 6681-6785, the six keys' neighbourhood, the last eight picture lines of both fields) the >=30 MAD-unit positive peaks
 land on exactly three of sixteen (field, line) cells -- f1 260 in 36, f2 259 in 37, f2 260 in 9 -- and **zero** on the
 other thirteen, so the peak is a switch-band feature and not bright picture content, which would be spread across all
-eight lines. And joined to the engine's own AGREED T, the peak is exactly ON T in 166 of the 197 readings where the
-engine says T = S-1, and one line ABOVE T in the 31 where it says T = S -- so the T = S answer is contradicted
+eight lines. And joined to the engine's own AGREED T, of the 197 peak-on-S-1 readings joined to the engine's own T, 166 are readings where the engine
+says T = S-1 -- the peak is exactly ON T there -- and 31 are readings where it says T = S, where the
+peak sits one line ABOVE T -- so the T = S answer is contradicted
 wherever a peak is visible, including on readings the two readers did not dispute.
 Two of the six disputed keys carry a peak: **6704/f2 at 77.3 MAD units column 131 and 6785/f1 at 67.7 column 201,
 both on S-1**, against a same-window population median of 10.0. The other four carry no positive peak at all
@@ -5126,6 +5127,139 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **THE AUDIT FOR MORE BESIDE-THE-ERROR CORRECTIONS FOUND NONE — and found a FALSE-POSITIVE PATH IN THE GUARD
+  INSTEAD, which is the better outcome (2026-09-11).** The ones fixed today were found because something cited
+  them; any sitting uncited would never surface. So the test was run generatively rather than from a curated
+  list: extract every quoted span sitting in a CORRECTION context, and ask whether that same text also appears
+  UNQUOTED elsewhere — `superseded_check`'s mechanism, with the pairs discovered instead of hand-collected.
+  **Two candidates, both FALSE POSITIVES, both the same artifact: `"**phrase**"`.** This file quotes things in
+  bold constantly, and a 4-character adjacency test sees `**` between the quote mark and the text, concludes the
+  occurrence is unquoted, and reports a correctly-attributed MENTION as a bare assertion.
+  ⚠️ **That adjacency test IS `superseded_check.quoted()`**, so the guard carried a live false-positive path:
+  measured before fixing, `"phrase"` → True, `"**phrase**"` → **False**, `"*phrase*"` → **False**. **Its
+  direction is the dangerous one for a guard's survival** — it fires on correct prose, and this file already
+  records that an instrument which does that gets ignored or has its subject retired to quiet it.
+  **Fixed by stripping emphasis before testing adjacency, with the two controls that must STILL fail:** bold with
+  no quotes, and no markup at all, are both assertions and must stay flagged. Mutation-verified — reverting the
+  strip makes "bold inside quotes" report FAIL and the selftest exit 1.
+  ⚠️ **And the first version of that control crashed with `UnboundLocalError` because I accumulated into `ok`
+  before it was assigned.** It failed LOUDLY, which is why it took thirty seconds to find. **A control that
+  breaks by crashing is enormously better than one that breaks by passing** — the same asymmetry as a guard that
+  fails closed against one that fails open, arriving from the third direction tonight.
+  **So the read the audit was for came back EMPTY: no other correction in this file is recorded beside a
+  still-standing error.** That is a real negative, from a test that could have found them.
+
+- **A CORRECTION RECORDED BESIDE AN ERROR INSTEAD OF APPLIED TO IT IS A CORRECTION NOBODY GETS — measured on
+  this file, three sites, tonight (2026-09-11).** Codex corrected two figures hours ago and the correction went
+  in at `:2643` as its own entry. **The erroneous text stayed standing at `:2598` and `:2618`** — the heading
+  *"lands on S-1, never on S"* above a table showing 2 on S at ≥15 MAD and 1 at ≥30, and *"166 of the 197
+  readings where the engine says T = S−1"* which is internally impossible, since 166 + 31 = 197 and the 31 are
+  the T = S readings. **So the file simultaneously asserted the error and recorded its correction, and the
+  assertion is the half that gets read.** I then copied both into a NEW entry an hour later while citing that
+  very measurement as settled.
+  **All three sites are now corrected AT the text**, with the mention inside Codex's correction left intact —
+  distinguished programmatically by looking for "transcription error" in its lead-in rather than by eye.
+  ⚠️ **`superseded_check.py` cannot catch this and says so: it tests whether a withdrawn PHRASE reappears, not
+  whether a corrected CLAIM is restated in new words.** That limit prints with every run, and this is the first
+  instance where it mattered — the restatement was my own paraphrase, not the original wording.
+  ⚠️ **The wrapped-phrase hazard bit AGAIN inside the repair**: a literal replace fixed 2 of 3 sites because the
+  third sentence wraps, and only a wrap-tolerant pattern found it. Fourth time tonight, in the fix for a
+  different propagation defect.
+  **The rule: apply a correction where the error IS, then check for restatements of it elsewhere. Recording it
+  adjacent is how it gets quoted back.**
+
+- **THE SYMMETRIC DETECTOR'S TWO RESIDUE CLASSES HAVE DIFFERENT CAUSES, AND ONE OF THEM VINDICATES D16
+  (2026-09-11).** `experiments/blanking_extent.py` identifies 687 of 3,048 switch-band rows (23%), with 1,156
+  Unknown and 1,205 normal. Before touching anything, the two readings were separated on the rows themselves:
+  either the skew is there and the measurement misses it, or those rows genuinely lack skew and 23% is closer to
+  right than it looks.
+
+  | class | n | \|excursion\| median | \|skew\| median | local tolerance |
+  |---|---:|---:|---:|---:|
+  | identified | 687 | 177 | 14 (p90 657) | 2 |
+  | **Unknown** | 1,156 | 161 | **0.0, p90 0.0** | 2 |
+  | normal | 1,205 | 81 | not measurable | **292** |
+
+  **1. THE UNKNOWN CLASS IS GENUINE: 93% of those rows have \|skew\| EXACTLY ZERO.** Not present-under-tolerance
+  — absent. So the measurement is not missing it, and under his definition those rows **are not switches**.
+  **Without D16's conjunction all 1,156 would have been identified on extent alone**, which is precisely what he
+  ruled out — so the ruling is doing visible work rather than costing coverage, and the 23% is a truer number
+  than a larger one would have been.
+  **2. THE "NORMAL" CLASS IS AN ARTEFACT OF A CONTAMINATED CALIBRATION WINDOW, and it is a defect of mine rather
+  than a property of the source.** Its local tolerance median is **292 samples** against 2 for the other classes:
+  the calibration rows themselves vary by 292, so nothing can exceed them and every row reads normal. The window
+  is fixed at storage rows 210–236 — just above the band — and this file already records that the band's length
+  differs between fields and its position moves, so on some units that window contains band rows. **A local
+  window is right (`:447`); a FIXED local window is the fixed-place-to-look defect at a different scale.**
+  ⚠️ **ELEVENTH INSTANCE OF FIXED-PLACE-TO-LOOK, AND IT IS A NEW FORM: the previous ten were a fixed place in a
+  ROW or a FIELD; this is a fixed place in the CALIBRATION.** The reference is calibrated on rows that may
+  contain the very thing it exists to detect — circular in a way no threshold sweep would have exposed, because
+  the contaminated units simply read normal. **And it is inside the detector written to avoid the tenth**, which
+  says more about the class than any individual instance did: knowing the defect by name does not stop it
+  changing scale.
+  ⚠️ **Diagnosed, NOT fixed**, and the acceptance conditions for the eventual repair are recorded BEFORE it is
+  attempted — pre-specifying them is what made the detector rebuild work and what three earlier repairs lacked:
+  - **THE REPAIR MUST NOT MOVE THE 0.23%.** If qualifying the calibration rows improves identification AND
+    false-identification together, that is a leak to be found rather than a result — the two are traded, not
+    jointly optimised, and a repair that improves both has probably let the calibration see the band.
+  - **THE QUALIFICATION MUST BE DERIVABLE, NOT ANOTHER WINDOW.** "Rows whose own timing reads normal" is
+    CIRCULAR here — it qualifies the calibration by the quantity the calibration defines. Qualifying rows by the
+    source's own reference, the route `:531` already specifies for levels, is not circular; a second fixed span
+    is the same defect a third time.
+  - **The tuning instinct is the hazard, named so it is recognisable in the moment:** repairing a calibration
+    while the coverage number is unsatisfying is exactly when his conjunction quietly becomes extent alone.
+  **The 0.23% held-out false-identification rate is the figure to lean on meanwhile**, and its population cannot
+  shrink.
+
+- **D16 AND D17 ANSWERED — the rebuild is ungated, and NEITHER HORN WAS RIGHT (owner, 2026-09-11, relayed).**
+  **D16, verbatim:** *"no blanking alone can not establish identity. blanking excursion can but there still needs
+  to be some measureable component of horizontal skew"*.
+  **TWO NECESSARY CONDITIONS, and the second is the one neither agent had.** A blanking **EXCURSION** can
+  establish identity where a blank-level **run** cannot — so Codex's refusal is upheld (a run alone cannot
+  separate blanking extension from contiguous dark picture) but its disposition is superseded: **the answer is
+  not Unknown, it is that the excursion is not self-sufficient and a measurable component of HORIZONTAL SKEW must
+  be found alongside it.** Position-alone is dead; so is stopping at Unknown.
+  **D17, verbatim:** *"A correction on the head switch band is the entire thing you delivered last night about
+  how to measure the head switch. the excursion of blanking, the fact its a temporal signal not a spatial one and
+  the fact that the RF peak has in every instance that I've seen always indicate a partial switch line (S)"*.
+  **So the correction owed at contract `:186` is not a future ruling — he is declaring last night's three results
+  to BE it**, and the 259-against-260 discrepancy is settled by them.
+  ⚠️⚠️ **ONE NAMING COLLISION, verified rather than reconciled, because this word cost this project a day.** He
+  writes *"partial switch line (S)"*. **The contract at `:665` defines the switch line as "the horizontal line
+  carrying the peak, the partial line" — that is T — and `:669` says "S is NEVER substituted for it".** Checked
+  against the measurement: **of the 197 peak-on-S−1 readings joined to the engine's T, 166 are ones where the
+  engine says T = S−1 and the peak is exactly ON T; the peak lands on S−1 in 199 of 200 at >=30 MAD units.**
+  ⚠️ **This sentence first carried "166 of 197 where the engine says T = S−1" and "NEVER on S", BOTH of which
+  are transcription errors this file had ALREADY corrected at its own `:2643` — 197 is the TOTAL, split 166/31,
+  and the table shows 2 on S at >=15 and 1 at >=30.** Codex caught the repeat. **The corrections had been
+  recorded BESIDE the erroneous text instead of applied TO it, so the error was what got read and I copied it
+  into a new entry.** `superseded_check.py` cannot catch this by design — its stated limit is that it tests
+  whether a withdrawn PHRASE reappears, not whether a corrected CLAIM is restated in new words. So read as the contract's S his sentence would contradict the measurement, and
+  **"(S)" is his shorthand for "the switch line" — the row the contract calls T.** The substance is unambiguous:
+  **the peak indicates THE PARTIAL LINE.**
+  ✅ **AND HE THEN SETTLED IT HIMSELF, IN WORDS THAT USE NEITHER LETTER — so this is no longer a derivation**
+  (owner, same day): *"the partial line is the one that is partially correctly horizontally timed. the other is
+  lines which are incorrectly horizontally timed. in other words, where the liftoff occurs vs fields fully coming
+  from the other head… which one is S and which one is T I will leave to you"*.
+
+  | his description | the contract's name | contract `:665-669` |
+  |---|---|---|
+  | partially correctly timed — **where the liftoff occurs** | **T** | *"the horizontal line carrying the peak, the partial line"* |
+  | incorrectly timed — **fully from the other head** | **S** | a **BOUND**; *"S is NEVER substituted for it"* |
+
+  **Nothing needs changing to make that fit: the contract already says exactly this**, so the naming edit that
+  was going to Codex is not needed. The definitions were right and "(S)" in the D17 ruling was the slip.
+  **THE LESSON, and it is the better form of the naming rule this file already carries: THE DESCRIPTION SURVIVES
+  A NAMING COLLISION, THE LETTER DOES NOT.** The dispute that cost this project a day was never about the
+  signal — both readers agreed on which rows carried what, and disagreed about which row the WORD named. His
+  resolution is to describe the object and hand the labels back, which is the move that ends that class of
+  argument rather than winning it.
+  ⚠️ Kept as the cautionary half: my reading and the peer's both landed on T independently, and **agreement
+  between two agents was still weaker evidence than one sentence of his description** — which is why it was
+  recorded as derived until he supplied it.
+  ⚠️ **The contract edits these imply are NOT mine to make alone**: removing `:186`'s "correction owed", and
+  resolving `:64-65`'s flagged two-agent disagreement with D16's answer. Both go to Codex with his quotes.
+
 - **THE SOURCE LEVEL'S VALUE IS SUPPORTED, AND THE FABRICATION BOUND DID NOT REACH IT — measured on the pool's
   COMPOSITION, which is the only thing that can answer it (2026-09-11).** The level half of `source_reference`
   survives `:443` in KIND (a slice point is not a timing claim), but legitimate in kind is not correct in value,

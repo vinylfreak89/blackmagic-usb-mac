@@ -146,8 +146,13 @@ def quoted(doc: str, idx: int, end: int) -> bool:
     inside quotes is being talked ABOUT; written bare it is being asserted. Three separate probes on
     2026-09-10 reported absence or presence wrongly for want of this distinction.
     """
-    before = doc[max(0, idx - 4):idx].rstrip()
-    after = doc[end:end + 4].lstrip()
+    # ⚠️ MARKDOWN EMPHASIS SITS BETWEEN THE QUOTE MARK AND THE TEXT. This file writes
+    # `"**phrase**"` constantly, and a 4-character adjacency test then sees `**`, concludes the
+    # occurrence is unquoted, and reports a correctly-attributed MENTION as a bare assertion --
+    # a false positive in the guard, found 2026-09-11 by an audit whose only two candidates were
+    # both this artifact. Strip emphasis before testing adjacency.
+    before = doc[max(0, idx - 8):idx].rstrip().rstrip('*_').rstrip()
+    after = doc[end:end + 8].lstrip().lstrip('*_').lstrip()
     return before.endswith(('"', '\u201c')) and after.startswith(('"', '\u201d'))
 
 
@@ -226,6 +231,22 @@ def negation_controls() -> bool:
     wrap_ok = len(list(wrap_finditer(w, wrapped_doc))) == 1
     print("WRAP CONTROL: a phrase broken across a line is still found ... %s"
           % ("PASS" if wrap_ok else "FAIL: a wrapped phrase is invisible"))
+    # EMPHASIS CONTROL. `"**phrase**"` is how this file quotes things, and an adjacency test that
+    # does not strip emphasis calls that mention an assertion. The two that must STILL fail are the
+    # point: bold alone, with no quotes, is not a mention.
+    _w = PAIRS[0][1]
+    emph = [("plain quotes", 'read "%s" here.' % _w, True),
+            ("bold inside quotes", 'read "**%s**" here.' % _w, True),
+            ("italic inside quotes", 'read "*%s*" here.' % _w, True),
+            ("bold but NOT quoted", 'the finding is **%s** and it stands.' % _w, False),
+            ("no markup, asserted", 'the finding is %s and it stands.' % _w, False)]
+    emph_ok = True
+    for _nm, _d, _want in emph:
+        _i = _d.find(_w)
+        _got = quoted(_d, _i, _i + len(_w))
+        _good = _got == _want
+        emph_ok = emph_ok and _good
+        print("  %-24s quoted()=%-5s want %-5s %s" % (_nm, _got, _want, "PASS" if _good else "FAIL"))
     cases = [
         ("bare assertion", "The finding is that %s and it stands." % w, True),
         ("negated, same clause", "It is not the case that %s." % w, False),
@@ -235,7 +256,7 @@ def negation_controls() -> bool:
         ("negation in the PRIOR sentence", "That is not so. Separately, %s." % w, True),
         ("negation AFTER the phrase", "%s, not the other way round." % w, True),
     ]
-    ok = wrap_ok
+    ok = wrap_ok and emph_ok
     print("NEGATION CONTROLS (5 must be rejected, 2 must still be caught):")
     for label, doc, must in cases:
         i = doc.find(w)
