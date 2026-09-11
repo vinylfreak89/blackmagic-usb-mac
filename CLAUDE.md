@@ -4137,6 +4137,10 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
     picture rows, which is a height, is constant.
   - **fail open / fail closed** — each used for both dispositions: "do nothing" is called fail open in two places
     and fail closed in two others.
+  - **blanking level** — the device's padding ruler (a written constant at code 16), the device's decoded
+    blanking (1.375), and the SOURCE's own blanking (1.42). This file records all three correctly and
+    separately; `blanking_extent.py` read the first, which is the one reading that cannot be a measurement of
+    anything the signal did, and every figure it produced was void for a month of session-time.
   **The tell is that the name reads fine in every individual sentence.** Neither agent found any of these in four
   review rounds; a cold reader found them by reading the sentences together, which is what neither builder can do.
   **The fix is always the same shape**: name the quantities separately, say which one each rule and each equation
@@ -5268,8 +5272,9 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
     is the same defect a third time.
   - **The tuning instinct is the hazard, named so it is recognisable in the moment:** repairing a calibration
     while the coverage number is unsatisfying is exactly when his conjunction quietly becomes extent alone.
-  **The 0.23% held-out false-identification rate is the figure to lean on meanwhile**, and its population cannot
-  shrink.
+  ⚠️ **WITHDRAWN — The 0.23% held-out false-identification rate is the figure to lean on meanwhile**, and its
+  population cannot shrink. **It was produced by a mask admitting everything up to code 19; see the padding-ruler
+  finding below. There is no figure from this instrument to lean on.**
 
   ⚠️⚠️ **THE RETRACTION (Codex reviewed `c8faa10`/`9f8dd3f`/`d21f373` at `1ec97ae`; report
   `docs/reports/2026-09-11_blanking_extent_review.md`; I then reproduced its two decisive findings with
@@ -5358,6 +5363,68 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   it. ⚠️ It also explains reading 1's 93%: with the expected position pinned at 719 and a tolerance of zero,
   `skew == 0` means the row's longest run also starts at 719, which is what a band row looks like in this
   statistic whenever its displaced interval is not the longest run present.
+
+  ⚠️⚠️⚠️ **AND THE CAUSE OF BOTH REGIMES IS NEITHER THE WINDOW NOR THE STATISTIC: THE DETECTOR'S
+  "BLANKING LEVEL" IS THE DEVICE'S PADDING RULER AT CODE 16, SO ITS MASK ADMITS EVERYTHING UP TO 19
+  (2026-09-11). Every figure this instrument has produced is void, the 0.23% included.**
+  `blanking_extent.py:217` takes `level = median(Y[0:6])` and adds the fitted 3.0. Measured on counter 6700:
+
+  | rows | what they hold | mean | sd |
+  |---|---|---:|---:|
+  | **0–6** | the device's **padding ruler**, a WRITTEN constant | **16.000** | **0.000** |
+  | 7–15 | the device's decoded blanking | 1.375 | 0.484 |
+  | 229–241 | the calibration window's own content | 31.429 | 34.715 |
+  | — | the SOURCE's own blanking, its samples at codes 1–2 | ~1.42 | — |
+
+  **So the mask bound is 19.0 where the source's blanking never exceeds code 3.** On a title card whose
+  picture sits at 17–22 that admits picture wholesale, which is the dim half's inert tolerance; and it is why
+  a probe using a bound of 4.4 reported 2% of field-readings over 100 where the instrument reported 39%.
+  **The 0.23% false-identification rate is an artefact of the same thing** — a mask that calls almost
+  everything blanking returns `normal` almost everywhere — so *"the figure to lean on meanwhile"* is
+  withdrawn, and an acceptance condition anchored to it could not have worked whatever its methodology.
+  ⚠️ **SIXTH MEMBER OF THE ONE-NAME-SEVERAL-QUANTITIES FAMILY, and the first with THREE readings in one
+  file: "blanking level" names the padding ruler at 16, the device's decoded blanking at 1.375, and the
+  source's own blanking at 1.42.** `CLAUDE.md` records all three separately and correctly; the detector
+  picked the one that is a written constant with zero variance, which is the one reading that cannot be a
+  measurement of anything the signal did.
+  ⚠️ **Codex's finding 1 said the comment was wrong about the device fill being "only a scale". It is worse
+  than that and neither review had it: the code does not use the device fill at all.** Found by resolving a
+  two-instrument disagreement — my own probe and my own diagnostic differed on the same quantity, p90 of 8
+  against 426 — rather than by reading the line, which both of us had read.
+
+  **THE OBSERVABLE'S DESIGN, put to Codex before writing it and answered with a THIRD reading (`66233ee`,
+  `docs/reports/2026-09-11_extent_set_observable_review.md`).** I proposed a SET departure from his `:43-47`
+  — expected blank = the calibration rows' intersection, expected picture = the complement of their union,
+  `b = |row_blank ∩ expected_picture|` and `p = |row_picture ∩ expected_blank|` — and asked which rows carry
+  D16's "measurable component of horizontal skew": both counts over tolerance (A), or a departure adjacent to
+  an expected boundary (B).
+  **Its answer is neither: retain his OR, and require evidence establishing a HORIZONTAL-TIMING DEPARTURE
+  rather than merely a changed low-level mask.** A makes both clauses necessary where his words permit either;
+  B makes adjacency sufficient, and adjacent dark picture can produce exactly the same samples as extended
+  blanking — reproduced synthetically, as was the converse, moving a dark patch making both `b` and `p`
+  positive while the true blanking stays fixed. Per case: (i) qualifies if the translation is ESTABLISHED, not
+  because two counts exceed tolerance; (ii) can qualify through a measurable start displacement, and `p = 0`
+  does not disqualify it; (iii) **the end is CENSORED, not demonstrated unchanged** — so control 4's Unknown
+  stands as an insufficient-evidence result, but *"the start stayed put, therefore no skew"* is not its
+  justification, and that sentence is mine and wrong.
+  **SEVEN THINGS IN THE PROPOSAL ARE MINE RATHER THAN HIS, which is the list I asked for and could not have
+  written:** binary level masks and their complements (not-classified-blank is not identified picture);
+  intersection and complement-of-union as expectations (observed consensus sets, not established identities —
+  persistent dark content can enter the intersection); calling the remainder "jitter" (it can be noise,
+  changing content, misclassification or contaminated calibration); reducing departures to counts (their
+  locations, interval identities and censoring are what timing qualification needs); leave-one-out and its
+  tolerance aggregation — and **leaving a row out of the SETS is insufficient while it still contributes to the
+  learned level cutoff**; adjacency and privileging starts over ends; and the pool maximum.
+  ⚠️ **The set formulation does NOT guarantee a translation exceeds tolerance: ONE contaminated calibration row
+  can expand the union and hide the departure** — the full-range failure mode again, one level in.
+  ⚠️ **The pool maximum is rejected with a counterexample rather than an argument:** `source_reference:154`
+  SELECTS samples, and on a known synthetic noisy-blanking sequence its selected maximum reads 1 where the
+  input's is 3. **A maximum of a selected pool is not the source's support.** The required MEAN stays settled
+  and separate from any proposed mask bound. What would decide it: known-answer timing changes at BOTH interval
+  ends, censored cases, matched unchanged-timing dark-content controls, then held-out reference tests measuring
+  selection errors and maximum stability across pool sizes. **Neither a different percentile nor a typed
+  constant is prescribed**, and the p99-is-exactly-2.000-in-300-of-300 measurement I took does not authorise
+  one.
 
 - **D16 AND D17 ANSWERED — the rebuild is ungated, and NEITHER HORN WAS RIGHT (owner, 2026-09-11, relayed).**
   **D16, verbatim:** *"no blanking alone can not establish identity. blanking excursion can but there still needs

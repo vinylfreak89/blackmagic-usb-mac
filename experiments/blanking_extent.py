@@ -37,7 +37,26 @@ and the citations are to `docs/geometry_first_engine.md`:
   while the code types in 3.0 is the docstring-asserts-what-the-code-does-not-do defect this
   project has paid for twice.
 
-  blanking_extent.py [--capture ...] [--selftest]
+  ⚠️⚠️⚠️ VOID -- THIS INSTRUMENT'S "BLANKING LEVEL" IS THE DEVICE'S PADDING RULER (2026-09-11).
+  `main` takes `level = median(Y[0:6])`, and rows 0-6 are the device's WRITTEN padding ruler --
+  16.000 with sd 0.000 -- not its decoded blanking at 1.375 and not the SOURCE's blanking at 1.42,
+  whose samples sit at codes 1-2. With the fitted 3.0 the mask bound is 19.0, so on a title card
+  whose picture sits at 17-22 the mask admits picture wholesale. EVERY FIGURE THIS INSTRUMENT HAS
+  PRODUCED IS VOID, including the 0.23% false-identification rate that was recorded as the figure to
+  lean on: a mask calling almost everything blanking returns `normal` almost everywhere, so a low
+  false-identification rate was guaranteed by construction rather than earned.
+  `main` therefore REFUSES to print figures without `--acknowledge-void`. It is kept runnable, and
+  not deleted, only because the repair needs something to measure against.
+
+  Two further defects stand, from Codex's review at `1ec97ae`, and they are independent of the level:
+  the observable is a SUMMED DURATION, so a pure translation -- the head switch's defining property --
+  reads `normal` (controls 7-9, committed failing); and `classify` gates on the extent excursion and
+  returns before position is consulted, so no position tolerance can rescue it. The agreed repair's
+  shape is a set departure from `:43-47` plus evidence establishing a horizontal-timing departure
+  rather than a changed low-level mask; seven of its estimator choices are recorded in CLAUDE.md as
+  mine rather than his, and none of them is settled.
+
+  blanking_extent.py [--capture ...] [--selftest] [--acknowledge-void]
 """
 from __future__ import annotations
 import argparse, os, sys
@@ -228,9 +247,20 @@ def main() -> int:
     ap.add_argument("--capture", default="captures/composite_program_30s.tpc")
     ap.add_argument("--from-counter", type=int, default=6667)
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--acknowledge-void", action="store_true",
+                    help="produce figures anyway, knowing the mask bound is the padding ruler + 3")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
+    if not a.acknowledge_void:
+        # Loud and named, rather than a docstring nobody reads at the moment of quoting a number.
+        sys.stderr.write(
+            "VOID: this instrument's blanking level is median(Y[0:6]) -- the device's WRITTEN\n"
+            "padding ruler at 16.000 (sd 0.000), not blanking at ~1.4 -- so with the fitted 3.0 its\n"
+            "mask admits everything up to code 19, where the source's blanking never exceeds 3.\n"
+            "Every figure it has produced is void, the 0.23% included. See CLAUDE.md.\n"
+            "Pass --acknowledge-void to produce numbers anyway, for measuring a repair against.\n")
+        return 2
 
     st = {"buf": bytearray()}
     tally = {"detect": [0, 0], "false": [0, 0], "unknown_sw": 0, "unknown_ctl": 0, "dir": {}}
