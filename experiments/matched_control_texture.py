@@ -101,7 +101,8 @@ def level_verdict(row, cut=None):
     ⚠️ THE MASK IS TEXTURE-BLIND PER SAMPLE; ITS OUTPUT IS NOT. The returned index set is a property
     of the REALIZED SEQUENCE, and texture is what orders a realization -- permute one and the
     multiset is unchanged while every run changes. So this is insensitive to texture only where the
-    cut is far enough from the level that the mask is effectively deterministic. `margin_sweep()`
+    cut is far enough from the level that NO DIFFERENCE IS OBSERVED IN THESE TRIALS -- which is
+    not the same as cannot occur. `margin_sweep()`
     measures where that stops being true."""
     c = CUT if cut is None else cut
     if MUTATE == "cut-blind-mask":
@@ -335,16 +336,20 @@ def main():
     print("                  moves for NOISE reasons and calling that texture-sensitive mislabels")
     print("                  the cause -- the spread there is only ~6 points")
     print("        ~2 sigma  TEXTURE specifically decides: level 24%, spread 31.5 points")
-    print("       >=4 sigma  deterministic FOR DRAWS FROM THIS NOISE MODEL -- see the bound below")
+    print("       >=4 sigma  NO DIFFERENCE OBSERVED IN THESE TRIALS -- and note the 4-sigma row")
+    print("                  itself reads 99%, not 100%: a mismatch was already visible in this")
+    print("                  table while the word 'deterministic' stood above it")
     print("     ⚠️ AND EVEN THAT IS NARROWER THAN IT SOUNDS, third correction to this one claim.")
     print("       \"Texture cannot reach the verdict at 6 sigma\" is true of DRAWS, where a 6-sigma")
     print("       excursion is ~1e-9 likely. It is NOT true of every realization with those")
-    print("       moments: Codex constructed one with exactly this mean and sd whose largest")
+    print("       moments -- and the Gaussian tail at 6 sigma is small but NONZERO, so even for")
+    print("       draws this is an observation over finite trials and never an impossibility.")
+    print("       Codex constructed a sequence with exactly this mean and sd whose largest")
     print("       sample is 4.4614 against the 4.42 cut, and reordering it alone moves the extent")
     print("       37 -> 38 AT THE UNCHANGED CUT. So the margin bounds what the NOISE MODEL can do,")
     print("       not what any sequence can do -- and a real source is not obliged to be Gaussian.")
     print("     So the precondition is NOT 'the cut is far enough' on a monotone scale. It is 'the")
-    print("     margin is wide enough that the mask is deterministic UNDER THE ASSUMED NOISE',")
+    print("     margin is wide enough that NO DIFFERENCE IS OBSERVED IN THESE TRIALS',")
     print("     with a middle band where texture is specifically what decides -- which is why the")
     print("     level is printed beside the spread. No texture measurement gates this control at")
     print("     this cut FOR DRAWS; a constructed same-moment sequence is outside that bound.")

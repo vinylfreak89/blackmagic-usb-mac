@@ -58,10 +58,19 @@ SYNTHETIC_AUDITS = {"switch_fixture_censoring_audit.py", "switch_fixture_repair_
 # keeps this list shrinking instead of rotting: convert the probe to positive controls, delete its
 # row, and the runner stops mentioning it.
 EXPECTED_FAIL = {
+    # ⚠️ AN ANNOTATION MUST NAME WHAT THE EXPECTED FAILURE LOOKS LIKE, NOT MERELY THAT ONE IS
+    # EXPECTED. Exception TYPE is not identity -- Codex reproduced an unrelated AssertionError, a
+    # missing-script exit 2, and a KeyError whose exception note ends "AssertionError", all still
+    # excused. The sound test is that the probe SAYS it failed as designed: each entry carries a
+    # marker its stdout must contain. A probe that reports nothing cannot be verified and is named
+    # as unverifiable rather than excused -- which is the "say WHICH negative it is" rule again.
+    # The text AFTER THE LAST COLON is the failure's IDENTITY and must appear in the child's own
+    # output (stdout or stderr). An entry with no colon declares no identity and is reported as
+    # UNVERIFIABLE -- it would be excusing an exit code rather than a known failure.
     "blanking_extent.py":
-        "failing-first by design: controls 7-9 pin the specification violations the rebuild owes",
+        "failing-first by design, controls 7-9 pin the violations the rebuild owes: SELFTEST FAILED",
     "blanking_extent_review_controls.py":
-        "pins blanking_extent at d21f373, before the void marking and the failing-first controls",
+        "pins blanking_extent at d21f373, before the void marking: SELFTEST FAILED",
     "level_attribution_review_controls.py":
         "pins level_attribution at 386d202, before the holdout repair removed the row overlap",
 }
@@ -102,6 +111,7 @@ def main() -> int:
     slow = []
     hung = []                # timed out even under --slow: a different negative
     stale = []
+    unverified = []          # annotated, but the probe prints nothing to verify the annotation by
     mentions = []
     root = os.path.dirname(HERE)
     env = dict(os.environ, PYTHONPATH=HERE + os.pathsep + os.environ.get("PYTHONPATH", ""))
@@ -172,14 +182,34 @@ def main() -> int:
                 return None if last in ("AssertionError", "SystemExit") else (last or None)
 
             exc = unexpected_exception(err)
-            crashed = r.returncode < 0 or (expected and exc is not None)
+            # THE MARKER IS THE IDENTITY. A probe that failed as designed SAYS so; exception type
+            # cannot separate a designed AssertionError from an unrelated one, a missing script, or
+            # a KeyError whose note happens to end "AssertionError".
+            reason = EXPECTED_FAIL.get(fn, "") if expected else ""
+            marker = reason.rsplit(":", 1)[1].strip() if expected and ":" in reason else None
+            # ⚠️ SEARCH BOTH STREAMS. A probe can report its designed failure two ways: by printing
+            # a summary (stdout) or by carrying a NAMED assertion message (stderr). Codex's design
+            # puts identity in the assertion text and mine put it in a printed marker; requiring
+            # only one excludes the other kind of probe for no reason. Either satisfies it.
+            out = r.stdout.decode(errors="replace") + "\n" + err
+            unverifiable = expected and marker is None
+            wrong_failure = expected and marker is not None and marker not in out
+            crashed = r.returncode < 0 or (expected and exc is not None) or wrong_failure
             if expected and not crashed:
-                state = "expected FAIL"
+                state = ("expected FAIL (UNVERIFIABLE: prints no failure marker)" if unverifiable
+                         else "expected FAIL")
+                if unverifiable:
+                    unverified.append(fn)
             elif expected and crashed:
                 if r.returncode < 0:
                     state = "CRASHED(%d) -- annotation does NOT cover a signal" % r.returncode
                     why = ("killed by signal %d; an expected-fail annotation excuses an "
                            "assertion failure, not a crash" % -r.returncode)
+                elif wrong_failure:
+                    state = ("NOT THE ANNOTATED FAILURE -- did not print %r" % marker)
+                    why = ("exited %d without printing %r, so it did not fail the way the "
+                           "annotation names; exception type is not identity"
+                           % (r.returncode, marker))
                 else:
                     state = "CRASHED(%s) -- annotation does NOT cover an unexpected exception" % exc
                     why = ("terminated by %s, not by its own assertions; the annotation names a "
@@ -196,6 +226,10 @@ def main() -> int:
              len(EXPECTED_FAIL), len(skipped), len(slow), len(unclassified_audits(checks))))
     for fn in mentions:
         print("    %-40s carries the quoted \"--selftest\" in code but does not accept it" % fn)
+    for fn in unverified:
+        print("    ⚠️ %s is annotated expected-fail but prints NO failure marker, so the "
+              "annotation cannot be verified -- it is excusing an exit code, not a known failure"
+              % fn)
     for fn, limit in hung:
         print("    ⚠️ %s did not finish in %ds even under --slow -- treat as HUNG until shown "
               "otherwise; it is running in NOTHING" % (fn, limit))
@@ -215,7 +249,9 @@ def main() -> int:
     # ⚠️ A HUNG CHECK RAN IN NOTHING, so a green board would be asserting coverage it does not
     # have -- the same lapse as a check nobody runs. A 60 s timeout is ordinary and stays green;
     # thirty minutes without finishing does not.
-    return 1 if (failed or stale or hung) else 0
+    # An UNVERIFIABLE annotation excuses an exit code rather than a known failure, so it cannot
+    # leave the board green either -- the same reasoning as a hung check.
+    return 1 if (failed or stale or hung or unverified) else 0
 
 
 if __name__ == "__main__":

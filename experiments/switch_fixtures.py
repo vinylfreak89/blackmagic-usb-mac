@@ -310,6 +310,15 @@ def selftest() -> int:
                 mal.append("%s: %s" % (n, k))
         if not isinstance(c.get("cal"), list) or not c.get("cal"):
             mal.append("%s: cal empty" % n)
+        # ⚠️ NESTED SHAPE, NOT JUST THE TOP LEVEL. `spans=[None]` passed this guard and then crashed
+        # unpacking `for a, b in spans` in control 1 -- the guard checked that `spans` is a list and
+        # not what is IN it, so a malformed element still reached the code this control runs first
+        # to protect. A crash is not a verdict.
+        for sp in (c.get("spans") or []):
+            if not (isinstance(sp, (tuple, list)) and len(sp) == 2
+                    and all(isinstance(v, (int, np.integer)) for v in sp)):
+                mal.append("%s: span %r" % (n, sp))
+                break
         r, t = c.get("require"), c.get("truth")
         if not isinstance(r, dict) or set(r) != {"start", "end", "overall"} \
            or any(v not in (DEPARTURE, NONE, UNDECIDABLE) for v in r.values()):
