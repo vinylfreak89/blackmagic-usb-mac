@@ -2255,6 +2255,33 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Blanking-extent review (`c8faa10`, `9f8dd3f`, `d21f373`, 2026-09-11).**
+`docs/reports/2026-09-11_blanking_extent_review.md` and
+`experiments/blanking_extent_review_controls.py` record code inspection and synthetic
+reproduction only; NO capture content was opened or remeasured. The supplied six
+controls pass, but the production reference is `median(Y[0:6])`, device hard padding,
+passed directly into the level mask. Changing only synthetic device padding changes
+six target assertions to zero with source rows unchanged. "Scale only" is false.
+Total low-valued count plus longest-run start does not establish blanking identity
+plus horizontal skew: unchanged true blanking with added dark picture returns extended,
+while a known texture phase change can return skew zero. A translated same-duration
+interval returns normal; a uniform blank-level row returns extended despite censoring.
+Thus the interpretation of 93% zero as absent physical skew is NOT accepted.
+Nor is the 292-position-spread attribution accepted as a diagnosis: extent tolerance,
+not position tolerance, selects normal. Synthetic dark content alone produces that
+position spread with no switch in calibration. The fixed addresses are offsets,
+not storage rows 210..236; field-1 calibration is 229..253, field-2 492..516, step two.
+The actual residue's cause remains to be isolated from keyed interval identities and
+separate extent/position spreads. Level qualification is not automatically circular,
+but changing the level mask changes both timing quantities, and equal blanking levels
+do not establish normal timing. Fitted tol is an operative decision input, not qualified
+by labeling alone. Experimental configured counts are reportable, not validated switch
+counts. The repair MUST NOT be required to preserve 0.23%: joint error improvement
+does not prove leakage. Guard keyed evaluation and attrition instead; a missing
+calibration currently skips whole fields and can report 0/0 with zero Unknown.
+These findings qualify the merged residue/acceptance claims below; no engine,
+contract or supplied detector implementation is changed by this review.
+
 **D16/D17 wording review (2026-09-11; relayed owner quotes recorded at `78e761b` and
 `616e458`).** The contract has NOT been edited by this review. Agree to replace §1's
 position-alone disagreement marker with D16 and to replace the whole correction-owed
