@@ -4220,6 +4220,22 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   conclusion goes in the file at the moment it is reached; this adds that a REFINEMENT is the case most likely
   to be skipped, because nothing reads as false.
 
+- **A SUMMARY OF AN ACCURATE RECORD IS ITSELF A SECOND STORE, AND IT IS THE HALF THAT GETS READ (2026-09-11,
+  the peer session's, found in its own deliverable and then in this file).** Its digest kept every entry
+  accurate one by one while the HEADER above them still said three decisions were owed that the owner had
+  answered — in the one paragraph guaranteed to be read. **The two-stores defect one level up, where the second
+  store is a summary of the first**, and it is the form this project is most exposed to because maintaining
+  detailed entries is exactly what it does well.
+  ✅ **Audited here rather than only recorded.** 154 entries scanned for a body that opens by withdrawing a
+  claim its own header still asserts: **three candidates, one genuinely stale** — a heading reading *"…AND ONE
+  OF THEM VINDICATES D16"* with the retraction 31 characters later, so a reader scanning headings met the claim
+  and not its withdrawal. Marked at the heading. The other two withdraw a REASON rather than their claim.
+  ⚠️ **The first pass flagged 23 and over-flagged by construction** — it fired on any body MENTIONING a
+  withdrawal, including entries whose entire subject is withdrawals. Use-versus-mention, in the audit probe for
+  a use-versus-mention defect. Narrowing it to "the body OPENS by withdrawing" took 23 to 3, and the narrowing
+  is the finding: **the question is not whether an entry discusses a retraction but whether ITS OWN HEADING
+  survives one.**
+
 - **AGREEMENT IS CHEAP WHEN BOTH INSTRUMENTS INHERIT THE SAME IDEA — the standing hazard of two agents checking
   each other, and the counterweight to everything this method is good at (2026-09-11, the peer session's, after
   three instances in one night).** This file leans hard on independent-route corroboration, and three
@@ -5636,8 +5652,8 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **The rule: apply a correction where the error IS, then check for restatements of it elsewhere. Recording it
   adjacent is how it gets quoted back.**
 
-- **THE SYMMETRIC DETECTOR'S TWO RESIDUE CLASSES HAVE DIFFERENT CAUSES, AND ONE OF THEM VINDICATES D16
-  (2026-09-11).** ⚠️⚠️⚠️ **THE WHOLE ENTRY IS VOID, NOT MERELY ITS CONCLUSIONS. Read the two retractions at the
+- **⚠️ VOID — "THE SYMMETRIC DETECTOR'S TWO RESIDUE CLASSES HAVE DIFFERENT CAUSES, AND ONE OF THEM VINDICATES
+  D16" (2026-09-11).** The claim in this heading is withdrawn; D16 is neither vindicated nor damaged. ⚠️⚠️⚠️ **THE WHOLE ENTRY IS VOID, NOT MERELY ITS CONCLUSIONS. Read the two retractions at the
   end before any figure in it.** Both readings were refuted by Codex and reproduced by me; then the
   instrument's "blanking level" turned out to be the device's WRITTEN PADDING RULER at code 16, making its
   mask bound 19 where the source's blanking never exceeds 3 — so the counts and the table below are not
