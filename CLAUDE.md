@@ -5010,6 +5010,31 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **WHICH CONSUMERS OF `row_transition` LEGITIMATELY WANT A BOUNDARY, AND WHICH HAVE BEEN USING ONE WHERE THE
+  CONTRACT NAMES AN EXTENT — a read, not a rebuild, and the split runs through ONE function (2026-09-11).**
+  `:443` disqualifies a boundary statistic **for the switch**. That is specific, so the question is which of the
+  four consumers it reaches. Traced through the code rather than reasoned about:
+
+  | consumer | what it does with the value | verdict |
+  |---|---|---|
+  | `source_reference` level pooling (`:169`) | a SLICE POINT — "after here, pool settled samples" | **legitimate**: a boundary is exactly what a slice needs, and this is not the switch test |
+  | `source_reference`'s `transition_median/p10/p90/sd` | boundary POSITIONS reported as timing | **disqualified for the switch** — these are the departure's inputs |
+  | `no_jump_reference` (`:54`) | `(t − exp)/sd ≥ K`, the departure | **disqualified** |
+  | `per_unit_floor` (`:50`, `:63`) | the same departure, per unit | **disqualified** |
+
+  **So `source_reference()` returns both kinds of quantity from one call, and only half of it survives `:443`.**
+  The LEVEL half does — `level`, `level_sd`, `n`, `rows`, `silent` rest on the boundary used as a slice point,
+  which is not a timing claim at all. **The source level of 1.630 (bright) / 1.437 (card) therefore stands.**
+  The TIMING half does not: every departure figure tonight descends from `transition_median` and `transition_sd`,
+  which are boundary positions where the contract names an extent.
+  **This is one-name-two-quantities a fourth time, and this instance is structural rather than nominal**: it is
+  not that a word means two things, but that **one function computes a quantity and then serves it to a
+  legitimate consumer and a disqualified one in the same return value.** Splitting `settled_index` from the
+  arrival earlier tonight was the same defect one level in, caught then and not generalised.
+  ⚠️ **The level half carries its own separate caveat and is not thereby validated:** a slice point can be
+  legitimate in KIND and still be wrong in VALUE, and the finder's measured fabrication bound (12/12/36 of 200
+  seeds on same-noise rows) applies to it unchanged.
+
 - **THE SYMMETRIC DETECTOR IS FULLY SPECIFIED IN HIS OWN TEXT — observable, both directions named, where to
   measure, how the expectation is established, and what stays Unknown. Nothing was missing but the reading
   (2026-09-11).** Collected so the rebuild starts from it instead of re-deriving it a fourth time:
