@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Review probes for source_reference/per_unit_floor at e847da7, not detector repairs.
+"""Live synthetic checks originating in the e847da7 arrival review, not detector repairs.
 
-Exercise the real entry points. The optional census changes ONLY field 2's target
-coordinate list in an isolated call, to quantify the wrong-field indexing defect.
-Its output is an ablation of the supplied statistic, not switch ground truth.
+Adapted after the field-keyed coordinate repair: exercise both fields and require
+the wrong-field mutant to fail. Other printed diagnostics retain their limited
+scope; passing these checks does not validate blanking identity or remove the
+reported selection/fabrication limits. Bare execution and --selftest read no capture.
+The optional census compares production with explicit expected field-2 coordinates;
+after the repair this is a consistency check, not a new correction or ground truth.
 """
 import argparse
 import collections
@@ -29,29 +32,62 @@ def synthetic_fields(f1_late=False, f2_late=False):
 
 
 def corrected_field2(y):
-    # Only a coordinate ablation, never a new search or a fitted threshold.
-    with patch.object(floor_module, "SWITCH_LINES", (523, 524, 525)):
+    # Historical name retained for the optional census. The field-keyed schema is
+    # part of the repaired interface; the old bare-tuple patch crashed before
+    # exercising any assertions. Expected coordinates are independent of the
+    # production field-2 list, so this call must not simply copy its current value.
+    lines = dict(floor_module.SWITCH_LINES)
+    lines[2] = (523, 524, 525)
+    with patch.object(floor_module, "SWITCH_LINES", lines):
         return floor_module.unit_reading(y, 2)
+
+
+def coordinate_checks():
+    """Known-answer obligations on actual production calls, not just printed traces."""
+    ok = True
+    for f1, f2 in ((True, False), (False, True)):
+        y = synthetic_fields(f1, f2)
+        for field, late, expected_rows in ((1, f1, [256, 257, 258]),
+                                           (2, f2, [519, 520, 521])):
+            visited = []
+            original = floor_module.row_transition
+
+            def trace(row):
+                visited.append((row.ctypes.data - y.ctypes.data) // y.strides[0])
+                return original(row)
+
+            with patch.object(floor_module, "row_transition", trace):
+                actual = floor_module.unit_reading(y, field)
+            good = (actual is not None and visited[-3:] == expected_rows
+                    and bool(actual["asserts"]) == late)
+            if field == 2:
+                good = good and actual == corrected_field2(y)
+            ok &= good
+            print(f"{'PASS' if good else 'FAIL'} f1_late={f1} f2_late={f2}: "
+                  f"field{field} target storage rows={visited[-3:]}, "
+                  f"asserts={None if actual is None else actual['asserts']}")
+    return ok
 
 
 def probes():
     print("TARGET-ROW OWNERSHIP: actual unit_reading calls")
-    for f1, f2 in ((True, False), (False, True)):
-        y = synthetic_fields(f1, f2)
-        visited = []
-        original = floor_module.row_transition
-
-        def trace(row):
-            visited.append((row.ctypes.data - y.ctypes.data) // y.strides[0])
-            return original(row)
-
-        with patch.object(floor_module, "row_transition", trace):
-            actual = floor_module.unit_reading(y, 2)
-        print(f"f1_late={f1} f2_late={f2}: field2 target storage rows={visited[-3:]}, "
-              f"asserts={actual['asserts']}, own-field-coordinate ablation="
-              f"{corrected_field2(y)['asserts']}")
+    assert coordinate_checks(), "target rows or assertions belong to the wrong field"
+    wrong = dict(floor_module.SWITCH_LINES)
+    wrong[2] = (260, 261, 262)       # the original wrong coordinates, in today's schema
+    with patch.object(floor_module, "SWITCH_LINES", wrong), \
+            contextlib.redirect_stdout(io.StringIO()):
+        rejected = not coordinate_checks()
+    assert rejected, "ownership checks did not detect the wrong-field mutant"
+    print("PASS wrong-field mutation rejected by the same ownership checks")
 
     print("\nVARIANT MUTATION: force the rejected branch through production")
+    baseline_log = io.StringIO()
+    with contextlib.redirect_stdout(baseline_log):
+        baseline_status = reference.selftest()
+    if baseline_status != 0:
+        print(baseline_log.getvalue(), end="")
+    assert baseline_status == 0, "unmutated source selftest fails; mutation is not attributable"
+    print("PASS unmutated source selftest before forcing the rejected variant")
     original = reference.row_transition
 
     def mutant(row, _ref_at_crossing=False):
@@ -68,8 +104,9 @@ def probes():
     pos, _ = reference._fixtures()
     name, want, row = pos[3]
     got = reference.row_transition(row)
+    assert got is not None and abs(got - want) <= 2, "gradual position exceeds the stated tolerance"
     print(name, "fixture_want=", want, "got=", got, "level_at_got=", row[got],
-          "injected_ramp_floor_index=704", "accepted_error_tolerance=10")
+          "injected_ramp_floor_index=704", "checked_error_tolerance=2")
 
     print("\nNEGATIVE POPULATIONS: 1000 independent deterministic seeds")
     for name, mean, sd in (("picture-only noise", 100, 4), ("blanking-only noise", 1.4, 0.5)):
@@ -90,6 +127,8 @@ def probes():
     st = reference.settled_index(plateau, t)
     print("transition=", t, "settled=", st, "level_at_settled=", plateau[st],
           "true_floor_index=719", "pooled_level=", reference.source_reference([plateau] * 200)["level"])
+    assert st == 719 and np.isclose(reference.source_reference([plateau] * 200)["level"], 1.6), \
+        "settlement stopped on the quantized ramp plateau"
     levels = np.array([1.0, 1.0, 5.0, 5.0] * 5)
     stepped = np.concatenate([np.full(700, 120.0), levels])
     print("known settled-tail mean=", levels.mean(), "selected pooled_level=",
@@ -105,9 +144,16 @@ def probes():
         if offset % 2:
             high[19 + offset] = 1.4
             high[19 + offset, :700] = 80
+    readings = []
     for name, y in (("original", low), ("validation-later", high)):
         reading = floor_module.unit_reading(y, 1)
+        assert reading is not None, "shared-center synthetic became unavailable"
+        readings.append(reading)
         print(name, reading, "paired_margin=", reading["switch"] - reading["floor"])
+    assert readings[0]["asserts"] == readings[1]["asserts"]
+    assert readings[0]["switch"] - readings[0]["floor"] == readings[1]["switch"] - readings[1]["floor"]
+    print("ARRIVAL REVIEW PASS: ownership, mutation, position tolerance, settlement and center cancellation")
+    print("Diagnostics above are not acceptance of source identity, fabrication or selected-pool bias.")
 
 
 def census(capture, csv_path):
@@ -160,7 +206,7 @@ def census(capture, csv_path):
             writer.writeheader()
             writer.writerows(records)
         print("wrote", csv_path)
-    print("\nCAPTURE CENSUS: unchanged algorithm; explicit coordinate-only ablation")
+    print("\nCAPTURE CENSUS: unchanged algorithm; explicit expected-coordinate comparison")
     regimes = (("all", lambda c: True), ("card", lambda c: 6667 <= c <= 6810),
                ("bright", lambda c: c >= 6900))
     for name, within in regimes:
@@ -190,7 +236,10 @@ def main():
     parser.add_argument("--capture")
     parser.add_argument("--csv")
     parser.add_argument("--census-only", action="store_true")
+    parser.add_argument("--selftest", action="store_true", help="synthetic checks only; no capture I/O")
     args = parser.parse_args()
+    if args.selftest and (args.capture or args.csv or args.census_only):
+        parser.error("--selftest cannot be combined with capture/census arguments")
     if not args.census_only:
         probes()
     if args.capture:

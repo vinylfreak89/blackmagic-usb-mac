@@ -60,9 +60,6 @@ SYNTHETIC_AUDITS = {"switch_fixture_censoring_audit.py", "switch_fixture_repair_
 EXPECTED_FAIL = {
     "blanking_extent.py":
         "failing-first by design: controls 7-9 pin the specification violations the rebuild owes",
-    "arrival_review_controls.py":
-        "pins per_unit_floor at e847da7; it patches SWITCH_LINES as a bare tuple, which the "
-        "field-2 coordinate repair turned into a dict keyed by field",
     "blanking_extent_review_controls.py":
         "pins blanking_extent at d21f373, before the void marking and the failing-first controls",
     "level_attribution_review_controls.py":

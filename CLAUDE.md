@@ -2255,6 +2255,33 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Expected-failure follow-up (`5edab6b`, `144e611`, 2026-09-11).**
+`docs/reports/2026-09-11_expected_failure_followup.md` records the confirmed
+guard-13 bracket (16/16 mutations, 9/9 enforcement brackets), previous guard
+review 5/5, and remaining failures. Arrival's tuple-patch crash is reproduced and
+repaired in the owned probe, not retired: current dictionary interface, real
+both-field calls, wrong-field mutant rejection, baseline-before-variant test,
+explicit settlement/position/cancellation checks and a synthetic-only selftest.
+Its stale expected-fail annotation is removed. Historical diagnostics remain
+diagnostics, including fabrication and selected-pool bias; this is not detector
+validation. Repair audit zero unmet checks, censoring 15/15, schema 9/9 pass.
+
+The runner's unexpected-KeyError repair closes that case but still excuses an
+unrelated AssertionError, a missing-script exit 2, and a KeyError whose final
+exception note says AssertionError. Type is not expected-failure identity.
+Control 0 rejects missing `censored` but `[None]` as spans still raises later;
+nested value shapes/types remain unvalidated. The texture instrument and
+`5edab6b`'s commit message still call draws deterministic despite Gaussian
+innovations having nonzero tails; its own four-sigma sweep contains a mismatch.
+Six sigma is rare, not impossible, even within that model. Its empirical scope
+must be the specified finite trials, not deterministic draws or a requirement
+that conditional fixtures await empirical texture qualification. Authored rho
+labelling is repaired. Keep the stated +/-2 synthesis tolerance; no request to
+remove noise. Extended timeout correctly fails but cannot diagnose a hang.
+New `runner_disposition_review.py --selftest` reports 3/7 (exit 1), with four
+positive obligations failing and no expected-fail annotation. No full suite or
+capture content opened; no engine or contract edit.
+
 **Guard-enforcement follow-up (`289d279`, `2b31f01`, `5c22e76`, 2026-09-11).**
 `docs/reports/2026-09-11_switch_fixture_enforcement_review.md` records six
 remaining findings and the specific repairs confirmed. All THREE owned review
