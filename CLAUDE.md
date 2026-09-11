@@ -5564,8 +5564,18 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   210,212,…,234. **FIVE VALIDATION ROWS (211–219) AND FIVE CALIBRATION ROWS (210–218) BOTH FEED THE LEVEL** that
   is then used to score them. So neither cohort is independent of the fit, and the instrument's own printed
   limits said *"the validation rows are NEVER qualified here: their population cannot shrink"* while the
-  reference was reading five of them. **A limit printed with every result is still only as true as the code**,
-  which is the two-stores defect arriving inside the repair for it.
+  reference was reading five of them. **A limit printed with every result is still only as true as the code.**
+  ⚠️ **AND CALLING THAT "the two-stores defect inside its own repair" WAS WRONG — the peer session's correction,
+  and the distinction is the useful part.** Printing the limit DID solve the problem it was built for: a limit in
+  a docstring is a second store nobody opens, and moving it into the output fixed REACHABILITY. What it never
+  touched is TRUTH. **Two different axes, and the repair addressed one of them** — so the same shape has now been
+  hit from both directions in one day: a docstring asserting what the code does not do, and then a printed limit
+  asserting what the code does not do, the second built specifically to escape the first.
+  **The consequence is narrow and worth stating so the next repair does not inherit false confidence: moving a
+  claim closer to the reader does not make it checkable.** Only a control does — which is why the repair's whole
+  content here is an executable refusal (the old range must trip the assertion) rather than a corrected value.
+  ⚠️ **The cost was real rather than hypothetical: that false limit was relayed to the owner as the reason to
+  lean on the false rate.**
   still reads `normal` at ANY level, proven synthetically and untouched by this, so the summed-duration blindness
   and the interval-identity problem survive the reference correction entirely.
   ⚠️ **These are NOT switch counts at either level.** A detector that cannot see a timing displacement reporting
