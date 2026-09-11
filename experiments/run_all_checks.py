@@ -109,7 +109,7 @@ def main() -> int:
             # real exposure. Named, never counted green and never counted against the suite.
             mentions.append(fn)
             if not a.quiet:
-                print("  %-42s MENTIONS --selftest ONLY" % fn)
+                print("  %-42s HAS \"--selftest\" UNWIRED" % fn)
             continue
         if r.returncode == 2 and "the following arguments are required" in err:
             # Not a self-check: it needs inputs a caller must supply. Reported, never counted green.
@@ -133,7 +133,7 @@ def main() -> int:
           % (len(checks), len(checks) - len(skipped) - len(slow) - len(mentions), len(failed),
              len(EXPECTED_FAIL), len(skipped), len(slow)))
     for fn in mentions:
-        print("    %-40s mentions --selftest but does not accept it" % fn)
+        print("    %-40s carries the quoted \"--selftest\" in code but does not accept it" % fn)
     for fn in stale:
         print("    STALE ANNOTATION: %s now PASSES -- convert it and delete its row" % fn)
     for fn, why in skipped:

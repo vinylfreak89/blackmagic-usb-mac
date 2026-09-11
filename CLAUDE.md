@@ -4065,6 +4065,23 @@ two-instrument disagreement, not an accepted detector change. Measurements,
 reproduction, and the precise scope of the old 24.293-ms synthetic engine
 percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
 
+- **A COMPLETENESS CLAIM VERIFIED BY SEARCHING FOR WHAT YOU JUST CHANGED CAN ONLY FIND WHAT YOU ALREADY KNEW
+  ABOUT (2026-09-11).** Having narrowed three docstring sites from the bare `--selftest` to the quoted literal,
+  I wrote *"no bare-form claim remains in the file"* — and verified it by grepping for the two PHRASES I had
+  just replaced. **Two remained**, and the peer session found them: the classification's PRINTED STRINGS at
+  `:112` and `:136`, which described the case in bare-mention wording while the code's condition is the quoted
+  literal.
+  **The verification was the defect.** Searching for the instances I had fixed is a check whose coverage is
+  built from what prompted it — the family this file already records for censuses and probes — **and this is it
+  inside the VERIFICATION OF A FIX, which is a new position for it and the one where a completeness claim gets
+  made.** The sound search is for the FORM (`--selftest` not preceded by "quoted"), which finds the sites I did
+  not know about; it returned five, two of them wrong.
+  ⚠️ **And the surface it reached last is the one that matters most at the moment of failure: the PRINTED
+  OUTPUT.** The docstring is read by whoever maintains the file; the printed line is read by whoever is
+  debugging when the case fires, and it would have sent them hunting a prose mention when the cause is a quoted
+  literal in code that was never wired up. **"The reading side is the side that has to carry the limit" landed
+  on the docstring and the inline comment and not on the output**, in the thread that established the rule.
+
 - **A REFINEMENT COUNTS, NOT ONLY A CONCLUSION — and the milder form is harder to catch because the store is
   not WRONG, only WIDE (2026-09-11, third instance in one day, the peer session's count).** A measured
   correction stayed in a message while the durable text kept the looser claim: the `--selftest` discovery
