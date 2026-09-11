@@ -12,16 +12,85 @@
 # the race with the turn, not an empty answer -- this polls `codex-run read` for it instead of
 # reporting the empty file.
 #
-#   scripts/codex_dispatch <thread-id> <brief-path> [--cwd DIR] [--effort E]
+# ⚠️ COMPLETENESS IS NOT SUCCESS, and this script exited 0 on a dispatch that never ran
+# (2026-09-11). Called with `--file <path>` instead of the positional `<thread-id> <brief>`, it
+# sent `--file` as the thread id; the transport answered
+#   thread/turns/list failed: {"code": -32600, "message": "invalid thread id: ..."}
+# and the old guard, which only asked whether anything followed the header, counted that error
+# line as content and reported "capture verified: 2 lines". The reply was complete and there was
+# no reply. So the check now asks BOTH questions: did a turn run, and is what came back whole.
 #
-# Exits non-zero and says why if the reply cannot be shown to be complete.
+#   scripts/codex_dispatch <thread-id> <brief-path> [--cwd DIR] [--effort E]
+#   scripts/codex_dispatch --selftest
+#
+# Exits non-zero and says why if the reply cannot be shown to be a complete answer.
 set -u
 CR=/Users/vinylfreak89/Documents/codex-app/bin/codex-run
+
+# 0 = a complete answer; 1 = header only, the capture lost the race; 2 = no turn ran.
+# ⚠️ LIMIT: case 2 keys on a transport error at the start of a line carrying a JSON `code`, and on
+# a header that could not name its model. Prose beginning `<word> failed: {"code"` at a line start
+# would be misread; control 5 exercises the discrimination that matters and states where it ends.
+verify_reply() {
+  local f=$1 n
+  if grep -qE '^[a-z][a-z/]* failed: \{"code"' "$f" || grep -qE '^turn: model=\?' "$f"; then
+    return 2
+  fi
+  # `grep -vc` PRINTS the count and EXITS 1 when it is zero, so a `|| echo 0` appends a second
+  # line and the comparison below then errors out -- returning the right answer for the wrong
+  # reason, which is the shape this whole script exists to refuse.
+  n=$(grep -vc '^turn: model=' "$f" 2>/dev/null)
+  [ -n "$n" ] || n=0
+  [ "$n" -ge 1 ] || return 1
+  return 0
+}
+
+selftest() {
+  local d rc ok=0
+  d=$(mktemp -d -t codexdispatch)
+  # Controls derived from the ways a dispatch can fail to yield an answer, not from what went wrong.
+  print 'turn: model=gpt-6-astra effort=high approvals=on-request' > "$d/header_only"
+  { print 'turn: model=? effort=xhigh approvals=?  (effort overridden)'
+    print 'thread/turns/list failed: {"code": -32600, "message": "invalid thread id"}' } > "$d/rpc_error"
+  { print 'turn: model=? effort=xhigh approvals=?'
+    print 'some text that is not an error' } > "$d/unresolved"
+  { print 'turn: model=gpt-6-astra effort=xhigh approvals=on-request'
+    print 'Finding 1: the calibration window is fixed.' } > "$d/good"
+  { print 'turn: model=gpt-6-astra effort=xhigh approvals=on-request'
+    print '2. Your control failed: {"code": 0} was never asserted, so it proves nothing.'
+    print 'The guard failed: {"code"...} is prose here, not a transport error.' } > "$d/good_says_failed"
+
+  local -a names wants
+  names=(header_only rpc_error unresolved good good_says_failed)
+  wants=(1 2 2 0 0)
+  print "CONTROLS -- the ways a dispatch fails to yield an answer"
+  local i
+  for i in {1..$#names}; do
+    verify_reply "$d/$names[$i]"; rc=$?
+    if [ "$rc" -eq "$wants[$i]" ]; then
+      printf '  %-18s -> %d  PASS\n' "$names[$i]" "$rc"
+    else
+      printf '  %-18s -> %d  FAIL (wanted %d)\n' "$names[$i]" "$rc" "$wants[$i]"; ok=1
+    fi
+  done
+  rm -rf "$d"
+  print "SELFTEST $([ $ok -eq 0 ] && print PASS || print FAILED)"
+  return $ok
+}
+
+if [ "${1:-}" = "--selftest" ]; then selftest; exit $?; fi
+
 thread=$1; brief=$2; shift 2
 out=$(mktemp -t codexreply)
 "$CR" task "$thread" "$brief" "$@" > "$out" 2>&1
-lines=$(grep -vc '^turn: model=' "$out" 2>/dev/null || echo 0)
-if [ "$lines" -lt 1 ]; then
+verify_reply "$out"; rc=$?
+if [ "$rc" -eq 2 ]; then
+  echo "DISPATCH FAILED: no turn ran. The transport refused it, or the thread did not resolve." >&2
+  echo "This is NOT an empty answer and must not be reported as one. The capture was:" >&2
+  cat "$out" >&2
+  exit 4
+fi
+if [ "$rc" -eq 1 ]; then
   echo "CAPTURE INCOMPLETE: the reply file holds only the turn header." >&2
   echo "The turn may still have been writing. Recovering from the thread itself:" >&2
   "$CR" read "$thread" 2>&1 | tail -120
