@@ -4186,7 +4186,28 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   rebuild needs rather than how to build it: something beyond the row — which is exactly Codex's "evidence
   establishing a horizontal-timing departure rather than merely a changed low-level mask", and what interval
   identity is for. A neighbouring row or the previous unit could separate A from B; the delivered row cannot.
-  ⚠️ **Physically motivated, not established as occurring.** B rests on the recorded arithmetic that 10.22 of
+  ⚠️⚠️ **THIS IS THE FIRST STRUCTURAL RESULT OF THE REBUILD RATHER THAN ANOTHER CORRECTION, and the distinction
+  is a category this file did not have.** Every failure up to now has been an INSTRUMENT defect — a wrong
+  reference, a fitted window, a leaked cohort, a proxy — and each was repairable by building a better
+  instrument. **A known-answer class that collapses into a proof says the EVIDENCE is insufficient, not that the
+  ESTIMATOR is wrong, and no instrument repairs it.** Worth separating whenever a class refuses to be built: the
+  first kind is a defect to fix, the second is a constraint to design around, and treating one as the other
+  wastes the attempt in both directions.
+  ✅ **AND IT IS WHAT THE ORDERING DISCIPLINE BOUGHT, stated as the mechanism rather than as a preference (the
+  peer session's framing): had C3 been built alongside a detector it would have been shaped into something that
+  detector could pass, and the bound would have been INVISIBLE — not argued away, never constructed.** That is
+  what writing fixtures first prevents, and it is a different failure from a fixture being too weak: the
+  question simply never gets asked, so nothing reports its absence.
+  ✅ **It converges with Codex's design-side conclusion from an independent direction** — "evidence establishing
+  a horizontal-timing departure rather than merely a changed low-level mask" reached by reasoning about the
+  specification, and the same requirement reached here by trying to construct a control. **Neither route saw the
+  other's reasoning**, which is the strongest corroboration available between two agents that have been
+  reviewing each other all day.
+  ⚠️ **THE QUESTION THAT DECIDES ITS WEIGHT IS B'S PHYSICALITY, NOT ITS SEPARABILITY.** If B cannot arise on real
+  material the bound is theoretical: *"row-local evidence is insufficient"* and *"row-local evidence is
+  insufficient against an input that may not exist"* are a design constraint and a footnote respectively. That
+  is with Codex and is the more valuable half of the dispatch.
+    ⚠️ **Physically motivated, not established as occurring.** B rests on the recorded arithmetic that 10.22 of
   every 63.56 µs is undelivered — 16% of the line, which this file already accepts as making `T = S` a legitimate
   reading of roughly one line in six. **Whether B's exact configuration occurs on real material is NOT shown
   here**, and the bound holds regardless: it is about what the evidence can support, not about frequency.
