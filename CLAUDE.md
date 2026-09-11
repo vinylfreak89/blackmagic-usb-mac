@@ -6054,6 +6054,21 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   one is right before repairing either.** The reflex is to trust the docstring and change the code, and here
   that would have removed two guards while making the file read more honestly.
 
+- **RECORDING A FINDING ABOUT A TEXT PATTERN DESTROYS ITS OWN EVIDENCE — so such a claim must cite a COMMIT,
+  never the file (2026-09-11, the peer session's, found while verifying the entry below).** That entry's
+  evidence is that `'and 3,588'` does not appear in `CLAUDE.md`, because the line wraps between the two.
+  **Measured: at `15080d4~1` the count is 0; at HEAD it is 2 — and both matches are the entry's own quotations
+  of the pattern.** So the act of writing the finding down made the finding look false to anyone who checks it
+  afterwards.
+  **This is use-versus-mention with a time axis, and the existing guard does not reach it.**
+  `superseded_check.py` HAS a use/mention test — `quoted()` at `:142`, applied at `:187` with a control at
+  `:246` — and it is the right tool for *"does this document still assert a withdrawn claim"* at one instant.
+  It cannot help here, and should not try: the question is not whether an occurrence is quoted but whether the
+  document being examined is the one the claim was made about. **The fix is a citation, not a checker — name
+  the commit the evidence was taken at, the way a measurement names its capture.**
+  ⚠️ This file is unusually exposed to it because it deliberately records its own corrections, so nearly every
+  claim about a phrase's absence here will be contradicted by the entry making the claim.
+
 - **A BROKEN CHECK CAN PRODUCE A FALSE NEGATIVE ABOUT YOUR OWN TRUE CLAIM — the inverse of everything else
   today, and the instinct is to trust the check (2026-09-11).** Having written a cross-reference saying this
   file "already carries" a record-type fact, I verified it with `grep -c "attachment\` and 3,588"` and got
@@ -6063,7 +6078,8 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   pattern reaching `grep` intact, and the single-quoted form returned 0 too.
   **The actual cause is the WRAPPED PHRASE — this file's own first member of the answers-a-different-question
   family, committed while checking a cross-reference.** `'8,794'` matches; `'and 3,588'` does not, because the
-  line breaks between them. The rule already recorded is exactly right and I did not follow it: **search on a
+  line breaks between them. **Measured at `15080d4~1`, and the commit matters: at HEAD the second pattern
+  matches twice, both of them this entry quoting it.** The rule already recorded is exactly right and I did not follow it: **search on a
   short fragment that cannot wrap, then READ the passage.**
   **What is new is the DIRECTION.** Every other instance today had a check returning something plausible and
   wrong, so the damage was believing it. Here the check returned a clean negative about my own correct writing,
