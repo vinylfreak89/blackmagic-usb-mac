@@ -4982,6 +4982,26 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **WHEN A THRESHOLD CANNOT BE TUNED BELOW A RATE, CHECK WHETHER THAT RATE IS STRUCTURAL BEFORE TRYING A FOURTH
+  STATISTIC — and the fix is usually the estimator's RELATIONSHIP TO ITS DATA, not a better estimator
+  (2026-09-11).** The band-reference skew test sat at a 9.6% per-row false-positive rate on ordinary picture rows
+  and could not be tuned below it. **That was not a badly chosen cut: it was a FLOOR.** The threshold was a 5-95%
+  band learned from those same rows, and a percentile of a population must misclassify that fraction of the
+  population BY CONSTRUCTION. No value of the cut reaches under it, so every attempt to tune it was spending
+  effort on the one quantity that could not move.
+  **The escape is structural: take a MAXIMUM over DISJOINT calibration rows instead of a percentile of the
+  scored ones.** Measured, that took the same question from 9.6% to **0.44%** — a rate the percentile form cannot
+  reach at any setting.
+  **This is the SECOND time in one night that changing the estimator's relationship to its data beat repeated
+  attempts at a better statistic.** The other is the parity split: calibrating the per-unit floor on one half of
+  each unit's no-switch rows and validating on the other, which is the same move — **separate the rows that SET
+  the number from the rows that TEST it.** Three attempts at a better transition-finder failed before the
+  diagnosis-against-a-known-answer worked; three candidate divisors all overlapped before the per-unit floor
+  worked. **The pattern is that the estimator kept being asked to do something its relationship to the data made
+  impossible.**
+  **The question to ask early, and it costs nothing: does this number come from the same rows it is scored on?**
+  If yes, its error rate has a floor you cannot tune under, and the repair is disjointness, not arithmetic.
+
 - **A RESULT THAT CLEAN, ON THIS MATERIAL, IS THE TELL — a check to apply BEFORE the number is written down,
   not a ninth entry in the tally (2026-09-11).** Eight instruments have now produced a beautiful wrong answer by
   measuring the device's own generated fill. The list is a record of past mistakes; **the tell is usable in the
