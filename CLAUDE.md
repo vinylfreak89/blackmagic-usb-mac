@@ -2791,6 +2791,15 @@ DITHER.** Same rows, same span, selection versus raw:
     ✅ **The relocated-blanking probe is the one built that way** — contiguous runs selected by being at the
   field's own blank level — which is why its **−0.044 / 56.8%** is the number to keep, and why the withdrawal
   is a withdrawal rather than a tie.
+  ✅ **AND THE SURVIVING NULL IS REPLICATED ON A SECOND POPULATION.** The peer session's instrument used the
+  same sound construction — contiguous runs at the field's own blank level, so no selection break and no
+  descent — on the TERMINAL runs, and read **−0.014**; mine read **−0.044** on the switch-band runs. **Two
+  populations, one construction, the same answer: no signature.**
+  ⚠️ **That is REPLICATION ACROSS POPULATIONS, not method-independence, and the distinction is the one I got
+  wrong earlier today** when two arguments for the same hypothesis were called corroboration. Two instruments
+  built the same way agreeing is a second sample, not a second method — which is still worth having, because
+  the failure mode it rules out is a population-specific artefact, and that was exactly the scope error that
+  produced the withdrawn result.
   ⚠️ **And the candidate-witness reading for the 255 goes with it**: a statistic reading 56.8% on the population
 it would be applied to is not an independent timing witness. The dispatch to Codex rests on the withdrawn
 numbers and will be corrected when its reply lands, under the one-dispatch-at-a-time rule.
