@@ -4147,6 +4147,35 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **O-B6: THE HARNESS'S BOXED / STRUCTURED / UNBOUNDED DEFINITION, RECORDED — it existed in code and nowhere
+  else, which is why it was asked for three times (2026-09-11).** The owner, 12:50:38: *"the harness has a test
+  and definition for what boxed vs structured vs unbounded is."* **He was right** — `experiments/box_census.py`
+  carries it — and the gap was that neither this file nor the contract stated it, so every reader had to find the
+  source. The definition, in its own terms:
+  - **STRUCTURE, per row:** `h = median|row − row.mean| / median|diff(row)|` over the measured columns. ⚠️ **Its
+    denominator is PINNED AT 1.0 on 8-bit samples in every row of every unit measured**, so `h` is a spread with
+    a divide-by-one and **does not normalise for contrast**. Measured on the warning card, NTSC lines 48-61: a
+    well-exposed unit reads band 2.70 / text 14.44; the same rows on the dim pass read 0.72 / 3.57. **The text
+    falls to a quarter of its bright value, under any fixed cut that still admits the band** — which is exactly
+    the observed failure of the top band growing 31 → 36-41 rows and swallowing the WARNING line. Hence the
+    threshold is taken from the FIELD'S OWN rows, not typed.
+  - **PICTURE:** a row in a run of **three or more** consecutive structured rows. Three because the card's grey
+    backdrop has a horizontal STEP for its top edge, which lands structure on two rows, and a two-row edge is not
+    picture.
+  - **A BAND:** every row from the field's edge to the first picture row — **the run that REACHES THE EDGE**, not
+    the first long structureless run scanned inward. Measured: the inward-scan version reads a flat overcast sky
+    179 rows into the tornado footage as a top band and calls an ordinary full-frame shot a box. A letterbox mask
+    begins at the picture's first line; a sky does not.
+  - **THE VERDICTS:** `blank` (one structureless region, or content below the floor) · **`box`** (bands at BOTH
+    ends) · `top-only` · `bottom-only` · **`none`** — which is the unbounded case.
+  ⚠️ **Two constants in it are FITTED and are labelled so in the source:** `minband=6` rows (a floor on what
+  counts as a band; the measured bands are 31 and 28) and `mincontent=40` rows (the floor separating a picture
+  from a mute; the card carries 183). **Under rule 4 they are instrument qualifications, NOT source properties**,
+  and the box VERDICT was separately shown to survive the `--threshold` sweep from 4.0 to 8.0 while the EXTENT
+  was not.
+  ⚠️ Recording this closes the ASK, not the design question: `box_census.py` is a harness instrument and the
+  engine's own box observer is a separate thing with its own recorded history of falsified candidates.
+
 - **R12: THE V-STABILIZE A/B CONTRADICTS THE TBC-PHASE-STEP ACCOUNT AND SUPPORTS LIFTOFF — but by its SIGN,
   not by the co-location test, which is underpowered (2026-09-11).** The discriminator was written down BEFORE
   the data was looked at, so the answer could not be read off it afterwards:
