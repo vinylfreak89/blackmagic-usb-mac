@@ -2741,7 +2741,33 @@ census's own unjustified 200-sample ceiling removed.
 ⚠️ The census validates **S, which is position**. It does NOT validate T, and it cannot establish that the run is
 physically relocated blanking rather than clipped black content — CLAUDE.md §2 records that black content in this
 material can be clipped to exactly the blanking level with the same dither.
-⚠️⚠️ **THE "SAME DITHER" CLAIM IS REFUTED BY MEASUREMENT, ITS CITATION NEVER LANDED, AND THE CONTRACT HAD
+⚠️⚠️⚠️ **THE REFUTATION BELOW IS ITSELF WITHDRAWN — my instrument computed a lag-1 autocorrelation on a
+BOOLEAN-MASK SELECTION rather than a contiguous run, and the population the claim is about shows almost no
+signature (2026-09-11). Read this before any figure in it.**
+**THREE THINGS, IN THE ORDER THEY LANDED.** (1) The peer session's independent measurement on the SAME rows
+got blanking **−0.014** against my −0.292, a factor of twenty, with the two distributions overlapping where my
+p90/p10 showed a gap. (2) It then caught the scope error: **I measured UNDISPLACED blanking against dark
+picture and wrote a conclusion about RELOCATED blanking versus clipped black** — the population the T/S
+question is asked about was never in the measurement. (3) Measured on that population — the switch band's
+interior runs, 361 of them, median 159 samples, ample for the statistic — **lag-1 median −0.044, p10 −0.333,
+p90 +0.223, and only 56.8% negative against 50% by chance. Essentially no signature.**
+⚠️ **The mechanism is in my own code: `settled_samples` returns `tail[tail <= floor + 1.0]`, a MASK SELECTION
+whose adjacent elements were not adjacent in time.** A lag-1 autocorrelation on it is not the row's
+autocorrelation, and the same filter is what Codex separately recorded as truncating a known synthetic's
+maximum from 3 to 1 — **which is exactly why "blanking never reaches code 3" appeared: the selection removes
+them.** So that column was an artefact of the selection, not a property of the source.
+⚠️ **What survives unaltered: the CITATION finding.** "CLAUDE.md §2 records…" still points at a section
+containing no occurrence of "dither", contract `:461` still demands a measurement nobody took, and the
+assumption still propagated on a reference that resolves. **That half needed no instrument and stands.** What
+falls is my answer to it — and the honest state is that the question the contract asked is still open, now with
+one failed attempt recorded against it.
+⚠️ **And the candidate-witness reading for the 255 goes with it**: a statistic reading 56.8% on the population
+it would be applied to is not an independent timing witness. The dispatch to Codex rests on the withdrawn
+numbers and will be corrected when its reply lands, under the one-dispatch-at-a-time rule.
+
+⚠️ **SUPERSEDED — the original entry follows, kept because the citation half stands and because the
+instrument defect is only visible against what it produced.**
+**THE "SAME DITHER" CLAIM IS REFUTED BY MEASUREMENT, ITS CITATION NEVER LANDED, AND THE CONTRACT HAD
 ALREADY DEMANDED THE MEASUREMENT (2026-09-11).** "CLAUDE.md §2 records" points at nothing — the project's only
 dither measurement is the DEVICE's vertical-interval constant at `:332` (lag-1 −0.33), a different quantity on
 different rows. Contract `:461` already said the claim *"needs its own supporting measurement and does not
