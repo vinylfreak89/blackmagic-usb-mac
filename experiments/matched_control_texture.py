@@ -31,8 +31,8 @@ TWO SWEEPS, both at FIXED marginal distribution so only temporal structure chang
   sweep 1  both objects share one texture -- the worst case for a detector, hence the right case for
            a control, but it also assumes away the discriminator, so on its own it cannot separate
            "insensitive" from "the construction removed the thing to be sensitive to"
-  sweep 2  the blanking holds this capture's measured -0.29 while the ADJACENT DARK PICTURE's
-           texture is swept independently, out to the +0.27 measured for clipped dark picture
+  sweep 2  the blanking holds the authored -0.29 while the ADJACENT DARK CONTENT's texture is
+           swept independently, out to the authored +0.27 for dark content
 
 ⚠️ THE CONTROL THAT MUST FIRE. "The verdict did not move" fits two causes: genuinely insensitive, OR
 this sweep has no power. So a texture-SENSITIVE verdict runs over the same worlds and is REQUIRED to
@@ -53,8 +53,15 @@ PICT = 90.0
 CUT = BLANK + 3.0            # the settled +3.0 cut
 NOM = (702, 720)             # the terminal blanking run: measured start 702, reaches 719
 EXTEND = 20                  # samples by which the visible boundary moves earlier in world A
-BLANK_RHO = -0.29            # measured, undisplaced blanking
-DARK_RHO = +0.27             # measured, clipped dark picture
+# ⚠️ THESE TWO ARE AUTHORED SCENARIO PARAMETERS, NOT MEASURED SIGNATURES (Codex's finding 5). They
+# came from the dither comparison WITHDRAWN the same night: its lag-1 ran on a boolean-mask
+# selection whose adjacent elements were not adjacent in time, and the population the claim was
+# actually about reads -0.044 with 56.8% negative against 50% by chance. Citing them as measured
+# would revive a retracted result through a fixture, which is how a withdrawn number comes back --
+# not by anyone re-asserting it, but by a downstream artefact carrying it forward without the
+# retraction. They are plausible textures to sweep THROUGH, and nothing here rests on their values.
+BLANK_RHO = -0.29            # AUTHORED: a blanking-like texture, from a withdrawn figure
+DARK_RHO = +0.27             # AUTHORED: a dark-content-like texture, from a withdrawn figure
 RHOS = (-0.8, -0.4, BLANK_RHO, 0.0, DARK_RHO, 0.6, 0.9)
 
 MUTATE = None                # set by --mutate / --audit; the named control MUST then fail
@@ -287,7 +294,7 @@ def main():
     controls, (s1, s2, tex_gap, ms) = run_controls(a.trials, a.seed)
 
     report("SWEEP 1 -- both objects share one texture (only temporal structure changes)", s1, "rho")
-    report("SWEEP 2 -- blanking held at %+0.2f; the ADJACENT DARK PICTURE's texture swept"
+    report("SWEEP 2 -- blanking held at the authored %+0.2f; the DARK CONTENT's texture swept"
            % BLANK_RHO, s2, "dark rho")
 
     moved1 = sum(1 for _, same, t, _, _ in s1 if same != t)
@@ -318,8 +325,12 @@ def main():
     print("     ⚠️ 'By construction' was written here first and would have licensed reusing the")
     print("     reasoning at a tight cut, where this project has already measured it failing.")
     print("     It does NOT follow that the two worlds are indistinguishable: the control column")
-    print("     shows a texture-aware reading has a separable quantity available at the measured")
-    print("     textures. This demonstrates LEVEL-ONLY ambiguity and nothing wider -- Codex's own")
+    print("     shows a texture-aware reading has a separable quantity available -- but its %+0.2f is"
+          % tex_gap)
+    print("     at rho +0.90, NOT at the authored %+0.2f, so it is the sweep's widest separation and"
+          % DARK_RHO)
+    print("     not a figure for any particular texture. This demonstrates LEVEL-ONLY ambiguity and")
+    print("     nothing wider -- Codex's own")
     print("     caveat on the old C3, that it does not prove all analog observables")
     print("     indistinguishable.")
 
