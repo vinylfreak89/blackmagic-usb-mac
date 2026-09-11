@@ -2255,6 +2255,26 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Dither-comparison review (`f49ce91`, `968d2b5`, 2026-09-11).**
+`docs/reports/2026-09-11_dither_comparison_review.md` and synthetic-only
+`experiments/dither_compare_review.py` record six findings. The candidate feature
+is worth testing; this comparison does not yet validate even blanking identity.
+`settled_samples` deletes values, then `lag1` treats adjacent survivors as adjacent
+times. The other arm keeps contiguous slices. Identical raw processes reproduce
+opposite median signs through the real emitter: -0.483333 versus +0.437679.
+This proves a confound, not the cause of the reported real-data difference.
+The dark label includes sample zero and admits known blanking prefixes; +3, 640
+and minimum length eight are authored selection rules. Finite-length bias and
+undefined-lag abstentions matter; 147 samples alone do not qualify identity.
+`3:0%` can mean a nonzero count rounded down, not absence. There is no keyed
+evaluation of the 255 declined readings. Their engine disposition stands.
+Do not assume every rectangle has positive lag, or replace every ambiguity
+fixture with conveniently distinct noise. Equal-noise controls remain conditional
+synthetic cases, not established source behavior. The earlier same-dither claim
+is unsupported; this selected comparison has not established its physical opposite.
+No capture content opened or remeasured; no engine/instrument/fixture/contract
+repair. The stronger interpretation below is corrected at its own sentences.
+
 **Revised switch-fixture review (`b8cedaf`, `2517b62`, 2026-09-11).**
 `docs/reports/2026-09-11_switch_fixture_repair_review.md` and synthetic-only
 `experiments/switch_fixture_repair_audit.py` record six findings. Both supplied
@@ -2738,6 +2758,7 @@ with the harness's S. It shares no code with `switch_geometry.py`. **S is exact 
 field-readings.** The progression, each step measured rather than argued: **963** as found → **1,009** with
 `torn` no longer selecting the switch line → **1,012** with `step` no longer selecting → **1,013** with the
 census's own unjustified 200-sample ceiling removed.
+<<<<<<< HEAD
 ⚠️ The census validates **S, which is position**. It does NOT validate T, and it cannot establish that the run is
 physically relocated blanking rather than clipped black content — CLAUDE.md §2 records that black content in this
 material can be clipped to exactly the blanking level with the same dither.
@@ -2801,7 +2822,33 @@ DITHER.** Same rows, same span, selection versus raw:
   the failure mode it rules out is a population-specific artefact, and that was exactly the scope error that
   produced the withdrawn result.
   ⚠️ **And the candidate-witness reading for the 255 goes with it**: a statistic reading 56.8% on the population
-it would be applied to is not an independent timing witness. The dispatch to Codex rests on the withdrawn
+it would be applied to is not an independent timing witness.
+
+  ✅ **CODEX REPRODUCED THE CONFOUND INDEPENDENTLY AND FOUND FOUR MORE (`6358c4e`, pinned to `f49ce91`/`968d2b5`,
+  so it had not seen the withdrawal).** Through the real emitter, **identical raw processes give −0.483 after
+  `settled_samples` against +0.438 raw** — the mechanism confirmed from a synthetic rather than from reading the
+  code, which is the independent half my own diagnosis lacked.
+  ⚠️⚠️ **"NEVER REACHES CODE 3" WAS ALSO A FORMATTER ARTEFACT, SEPARATELY FROM THE SELECTION.** My table printed
+  `"%d:%.0f%%"`, so **0.1% renders as `3:0%`** — code 3 was PRESENT and rounded away. Two independent reasons
+  the same claim was false, and the later `settled_bias` run shows it directly: the same population at `%.1f`
+  prints **3:0.1%**. *Never* requires exact counts, and a percentage formatter cannot express it.
+  ⚠️ **The dark-picture population was contaminated at the left edge.** It took runs below reference+3 within
+  samples **0–639**, which INCLUDES sample 0 — so a left-censored blanking prefix, the very population the 255
+  readings are made of, was labelled "dark picture". And the `≥8` length filter is an authored exploratory
+  constant that conditions on both persistence and value.
+  ⚠️ **MY QUESTION ABOUT RECTANGLE REJECTION WAS BACKWARDS.** I asked whether a stationary black rectangle might
+  be positively autocorrelated *in a way that defeats* the statistic. Codex: **positive correlation would HELP
+  rejection, not defeat it** — the problem is the other direction, since a stationary rectangle with alternating
+  acquisition noise gives a NEGATIVE lag and a constant interior gives NaN. **And finite-length estimation
+  carries its own negative bias, so ~147 samples is not an automatic qualification** — which undercuts the
+  run-length bound I had treated as the safe half.
+  **The one-ended decision stands**, and its own terms say why: no join to the 255's keys, no qualified local
+  timing references, no rectangle or departure/return controls.
+  ✅ **Its recommendation for the replacement matched control answers my question 4 and reverses it:** do NOT
+  draw the dark content with conveniently different noise. **That would build the fixture on the assumption that
+  the discriminator works.** Remove the source-wide same-dither assertion, keep equal-observation cases as
+  explicitly CONDITIONAL synthetic ambiguity tests, and add distinguishable and overlapping noise cases only
+  from properly qualified measurements. The dispatch to Codex rests on the withdrawn
 numbers and will be corrected when its reply lands, under the one-dispatch-at-a-time rule.
 
 ⚠️ **SUPERSEDED — the original entry follows, kept because the citation half stands and because the
@@ -2811,41 +2858,58 @@ ALREADY DEMANDED THE MEASUREMENT (2026-09-11).** "CLAUDE.md §2 records" points 
 dither measurement is the DEVICE's vertical-interval constant at `:332` (lag-1 −0.33), a different quantity on
 different rows. Contract `:461` already said the claim *"needs its own supporting measurement and does not
 follow from the means and standard deviations"*. Measured at last, on the same rows, over 40 field-readings:
+=======
+⚠️ The census validates **S, which is position**. It does NOT validate T, and its low-level run does not by
+itself establish physically relocated blanking rather than black content. The former supporting citation
+"CLAUDE.md §2" for equal dither was unsupported; that assertion is withdrawn, not needed for this distinction.
+⚠️ **THE SAME-DITHER ASSUMPTION IS UNSUPPORTED, BUT THE PROPOSED REFUTATION IS ALSO NOT YET A QUALIFIED
+PHYSICAL COMPARISON** (`f49ce91`/`968d2b5`, reviewed by Codex, 2026-09-11).
+The cited section supplied no such measurement. The existing measured dither entry concerned the DEVICE's
+vertical-interval constant, a different object; contract `:461` already required supporting measurement rather
+than inferring texture from matching mean and variance. `dither_compare.py` reports the following over its
+40-field selection. Counts are preserved as its configured outputs, NOT remeasured or validated by this review:
+>>>>>>> origin/v10-engine
 
-| | source blanking | clipped dark picture |
+| | selected terminal-sample arm | selected low-run arm |
 |---|---|---|
 | samples / runs | 108,427 in 7,599 | 32,517 in 2,203 |
 | mean | 1.424 | 2.356 |
 | code occupancy | **1:58%, 2:42%, 3:0%** | 2:33%, 3:26%, 1:24%, **4:17%** |
 | **lag-1 autocorrelation** | **−0.292** | **+0.274** |
 
-**OPPOSITE SIGNS.** Blanking is high-pass — the dither signature — while dark picture is positively correlated,
-which is what content looks like; and blanking never reaches code 3 where dark picture spends 17% at code 4.
-**So the two are NOT the same and the recorded limitation is weaker than it states: a blank-level run is not
-mute about whether it is relocated blanking or clipped black.**
-⚠️ **BOUNDED, because the medians separate while the distributions overlap** (blanking p90 +0.021, dark p10
-−0.125): this is a strong statistical separation on RUNS, not a per-sample discriminator. **It needs a run long
-enough to estimate an autocorrelation** — a relocated interval at ~147 samples qualifies, a bright row's one or
-two terminal samples does not. So it applies exactly where the T/S question is asked and not where the
-end-censoring question is.
-⚠️ **Unreviewed by Codex and not to be leaned on until it is** (§14).
-✅⚠️ **AND THE CONSEQUENCE IS LARGER THAN "A LIMITATION WEAKENS" — the peer session's correction to my own
-write-up, and it is right.** `:3562` declined the one-ended observation for the 255 readings in these words:
+**The output medians have opposite signs; their attribution to different source noise is not established.**
+The terminal arm calls `settled_samples`, which drops higher-valued samples and their indices before `lag1`
+treats survivors as adjacent in time. The low-run arm keeps contiguous slices under a different cutoff.
+Identical raw processes reproduce median signs -0.483333 and +0.437679 through the REAL emitter on synthetic
+rows. This demonstrates a confound, not how much of the reported empirical split it caused. A contiguous,
+unfiltered, keyed comparison with independent population identification is required. The old interpretation
+that negative lag identifies blanking and positive lag identifies content is not accepted.
+The phrase "never reaches code 3" is also not established by the rounded occupancy table: the current formatter
+emits `3:0%` for present but sufficiently rare code 3. Exact counts, with raw/selected provenance, are needed.
+⚠️ **The reported quantiles overlap** (terminal arm p90 +0.021, low-run arm p10 -0.125). No classifier operating
+point or per-run identity confidence follows from that. Runs near 147 samples may help estimation but do not
+qualify identity by length alone; actual adjacent-pair counts, selection, variance and uncertainty matter.
+The code accepts terminal sequences down to length three, selects dark runs at length eight, and drops NaN
+lags. These populations and their abstentions must be accounted for. The fixed 0..639 dark region also includes
+sample zero: known blanking prefixes are labeled dark in the synthetic control.
+**CANDIDATE FEATURE, NOT A VALIDATED WITNESS OR A COMPLETED IDENTITY HALF.** The existing one-ended decision
+declined the 255 readings in these words:
 *"A visible low-prefix endpoint **does not itself identify blanking rather than black content**; no independent
 timing witness resolving that ambiguity has been demonstrated for these keys. **This is absence of validated
-evidence in the engine, NOT proof such a witness is absent from the capture.**"* **A dither signature identifies
-blanking rather than black content. That is the named ambiguity, exactly.** So this is a CANDIDATE WITNESS for a
-decision that was declined for want of one, not a footnote softening a caveat — and the decision's own wording
-left that door open.
+evidence in the engine, NOT proof such a witness is absent from the capture.**"* That leaves room for a
+QUALIFIED texture feature which adds identity evidence; it does not make a negative lag an identifier by
+itself. This instrument's populations have not validated that qualification, and it does not measure the
+keyed 255 bottom candidates at all.
 ⚠️ **What it does NOT yet satisfy, stated because the decision asks for more than the ambiguity it names:**
-`:3564-3566` also requires *"a source-local identifiable timing feature corroborating the exposed boundary's
-displacement, with black-rectangle rejection and departure/return controls"*. Identifying a run as blanking is
-one half; corroborating DISPLACEMENT is the other. **The two may chain** — blanking identified at sample 0,
-against a normal position measured at 702, is displacement — but that chain is not demonstrated and the
-black-rectangle rejection is precisely what a content-versus-blanking statistic would have to do. **Run length
-is not the obstacle:** the 255's runs cluster just below 147 samples, far above what an autocorrelation needs.
-⚠️ The two outcomes were never symmetric in value and the peer named that before the result: indistinguishable
-would have earned an assumption and cost nothing; distinguishable is a finding about the SOURCE.
+the decision also requires *"a source-local identifiable timing feature corroborating the exposed boundary's
+displacement, with black-rectangle rejection and departure/return controls"*. Interval identity and boundary
+displacement may eventually chain using qualified local references, while the missing endpoint/extent stays
+Unknown. Neither part is demonstrated by this comparison. A stationary rectangle does not guarantee positive
+within-row correlation; its sampling noise may be negative, white or undefined for a constant sequence.
+Rectangle rejection is therefore a test, not a free consequence of the names assigned to these populations.
+The 255-reading engine disposition is unchanged. The revised comparison is a measurement task, not an owner
+question or an engine change. Source-wide indistinguishability and source-wide distinguishability are both
+stronger claims than these selected summaries establish.
 **Do not re-derive the T-to-S relationship from scratch:** measuring the relocated row against T reports T+1 in
 ~90% of readings, which is the DEFINITION of the relationship (T is the partial row and need not carry a whole
 relocated interval), not an error.
