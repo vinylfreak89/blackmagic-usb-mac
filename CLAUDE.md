@@ -5010,6 +5010,28 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **THE FOUR WAYS A CONTROL FAILS TO PROTECT ANYTHING, in increasing order of invisibility — this project has
+  now paid for all four, three of them in one night (2026-09-11).**
+
+  | | the control is | how it announces itself |
+  |---|---|---|
+  | 1 | described in prose, never written | it doesn't; the note reads like a result |
+  | 2 | written, never committed (`/private/tmp`) | the number it produced cannot be re-run |
+  | 3 | committed, but never fails on its own defect | never — it is green for an unknown reason |
+  | 4 | **committed, correct, and never executed** | **never, and it looks like coverage** |
+
+  **The fourth is the least visible and it is new tonight**: `review_frame.py`'s absence controls were committed,
+  correct and mutation-verified, and `--counter required=True` meant they only ran as `--selftest --counter 0`.
+  **A control behind an incantation is a control nobody runs** — the same end state as one that was never
+  committed, arrived at more slowly and with more evidence of diligence along the way.
+  **The repairs are specific to the rung.** For 1 and 2, commit it. For 3, run it against the unfixed body first,
+  or mutate the repair afterwards and require the failure. For 4, **make the control the path of least
+  resistance**: no required arguments it does not need, no fixture it cannot build itself, nothing to remember.
+  ⚠️ **And the tell for 3 and 4 is the same: a control that has never been seen to FAIL tells you nothing about
+  what it would catch.** Every selftest added tonight was mutation-verified for that reason, and two of them
+  (`superseded_check`'s negation split, `per_unit_floor`'s field-2 read) were passing green over a live defect
+  until the mutation was run.
+
 - **AN EXCEPTION HANDLER THAT MAKES A MISSING KEY LOOK LIKE A GENUINE UNKNOWN — found by auditing my own
   guards after a peer session found a dead branch in its own (2026-09-11).** Its defect: a call to an attribute
   that does not exist, inside a bare `except Exception`, so a whole nudge trigger had **never fired** and its
