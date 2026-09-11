@@ -6007,6 +6007,24 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   0"** — missing-is-not-a-value, inside a check, where an absent input had been reporting as a defect in the
   thing it checks.
 
+  ⚠️⚠️ **AND THE RUNNER'S OWN DOCSTRING ASSERTED WHAT ITS CODE DOES NOT DO — in the runner built to stop a
+  status claim being wider than what was checked. The correction INVERTS THE USUAL DIRECTION: fix the docstring,
+  NOT the code (the peer session's finding, verified here).** It claimed `--selftest` was found *"by reading its
+  argparse, not by convention"*; `discover()` does a quoted-substring test. **But the code is BETTER than its
+  docstring, which is why this is not a repair:** `owner_queue_check.py:229` and `superseded_check.py:323`
+  handle `--selftest` through raw `sys.argv` with no argparse option at all, so **an honest repair that made
+  discovery read argparse would silently drop two checks** — including the queue guard whose own subject is
+  coverage lapsing without anything failing. Checked directly: three files carry the literal without
+  `add_argument`, and one of them is the runner excluding itself.
+  ✅ **The exposure is also NARROWER than it first looked, measured with a probe rather than reasoned:** the
+  test matches the QUOTED literal, so a file mentioning `--selftest` in bare prose is not discovered at all — a
+  synthetic probe with the bare form was not picked up, and only the quoted form is. So the residual case is a
+  file carrying `"--selftest"` in code without wiring it up, which is classified as `MENTIONS --selftest ONLY`
+  rather than counted as a failure.
+  **The general point is worth more than the instance: when a docstring and its code disagree, establish which
+  one is right before repairing either.** The reflex is to trust the docstring and change the code, and here
+  that would have removed two guards while making the file read more honestly.
+
 - **THE FIVE WAYS A CONTROL FAILS TO PROTECT ANYTHING, in increasing order of invisibility — this project has
   now paid for all five, four of them in one night (2026-09-11).**
 
