@@ -38,7 +38,8 @@ static void dump_audio(void *c, const ap_block *b){
                        b->n_frames, b->flags, (unsigned long long)b->last_resync_counter_ext, (long long)b->correlation_residual);
 }
 int main(int argc, char **argv){
-    if (argc < 2){ fprintf(stderr, "usage: %s <capture.tpc> [decision_log.csv] [--pace-us N] [--ring-mb N] [--pool N]\n", argv[0]); return 9; }
+    if (argc < 2){ fprintf(stderr, "usage: %s <capture.tpc> [decision_log.csv] [--pace-us N] [--ring-mb N] [--pool N]\n"
+                                  "       [--dump-uyvy FILE] [--dump-pcm FILE] [--dump-log FILE] [--limit-units N]\n", argv[0]); return 9; }
     fs_config cfg = {0}; cfg.capture.replay_path = argv[1]; cfg.on_end = on_end;
     for (int i = 2; i < argc; i++){
         if (!strcmp(argv[i], "--pace-us") && i + 1 < argc) cfg.capture.replay_pace_us = atoi(argv[++i]);

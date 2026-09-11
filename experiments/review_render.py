@@ -169,8 +169,14 @@ def main():
           "yadif_nospatial": "setfield=tff,yadif=mode=send_frame_nospatial:parity=tff",
           "nnedi": "setfield=tff,nnedi=field=tf",
           "estdif": "setfield=tff,estdif=mode=frame:parity=tff"}
+    # ⚠️ SAY WHICH FILTERGRAPH RAN. Without this the finished mp4 carries no record of its own
+    # deinterlacer -- the container does not store one -- so "this is the nospatial render" would
+    # rest on the argument someone typed rather than on anything checkable in the artifact.
     if a.deint != "none":
         cmd += ["-vf", VF[a.deint]]
+        print(f"deinterlacer: {a.deint} -> -vf {VF[a.deint]}", flush=True)
+    else:
+        print("deinterlacer: none (fields woven and encoded progressive)", flush=True)
     cmd += ["-c:v", "libx264", "-crf", a.crf, "-preset", "medium", "-pix_fmt", "yuv420p", a.out]
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
