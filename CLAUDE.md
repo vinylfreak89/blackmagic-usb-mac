@@ -2255,6 +2255,35 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Endpoint-schema / texture-sweep review (`fa281a7`, `848f87e`, 2026-09-11).**
+`docs/reports/2026-09-11_switch_fixture_schema_texture_review.md` records eight
+findings. The prior censoring audit now passes 15/15; these are repaired checks,
+not approval of the replacement schema. Endpoint answers should accompany the
+overall presence obligation, not remove it to satisfy a mixed-answer test.
+C3's identical row/reference inputs have different `observable.start` labels:
+geometric visibility of a hidden boundary is not identifiable availability.
+Copying a reference by value bypasses control 4's `id(cal)` key. A4's decisive
+end departure can be labelled `none` without rejection. Control 0 still lets a
+missing row reach `KeyError`. The older repair audit was adapted, NOT retired:
+it no longer crashes but still fails two live enforcement checks, guards 1/4;
+other guards reject the same mutations after their intended guard is disabled.
+Isolated alternatives for both guards are reproduced. Both old audits now have
+real `--selftest` entry points; the runner annotation names live obligations.
+
+The texture selftest reproduces 4/4, but its universal construction argument is
+false. Reordering the SAME synthetic histogram at mean 1.42/sd 0.50 changes the
+actual level mask and reported extent 37 to 38. Fixed marginal does not imply
+fixed ordered threshold outcomes. The finite sweep remains a synthetic result;
+its -0.29/+0.27 labels must not revive withdrawn source-signature claims, and
+its maximum +0.53 occurs at the authored +0.90 scenario, not +0.27. Conditional
+noise models, including explicitly authored i.i.d., need no empirical license
+unless representativeness is claimed. The texture `--audit` prints missing-guard
+warnings but exits 0. The runner accepts a mocked expected-fail child killed
+with -11 as success: known assertion failure and crash are not equivalent.
+New `experiments/switch_fixture_schema_review.py --selftest` reports 3/9 (six
+unmet checks), exit 1; no capture content opened and no full-suite capture-capable
+discovery run launched. No engine, contract, supplied-fixture or texture repair.
+
 **Edge-censored fixture review (`5e8797b`, 2026-09-11).**
 `docs/reports/2026-09-11_switch_fixture_censoring_review.md` and synthetic-only
 `experiments/switch_fixture_censoring_audit.py` record seven findings. Eleven

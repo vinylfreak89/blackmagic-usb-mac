@@ -2,13 +2,14 @@
 """Positive review checks for 5e8797b; synthetic only, no capture I/O.
 
 These demand rejection of inconsistent fixtures and acceptance of an independently
-decidable boundary when another is uncertain. They FAIL against the reviewed
-version. A repair should make the checks pass, not preserve the observed failures.
+decidable boundary when another is uncertain. They FAIL against 5e8797b and pass
+against fa281a7. This is a set of live checks, not full validation of either schema.
 The separate conditional pair tests a declared luma model, not physical identity.
 """
 from __future__ import annotations
 
 import contextlib
+import argparse
 import inspect
 import io
 from unittest.mock import patch
@@ -76,6 +77,8 @@ def main():
         c["spans"] = [(a - 30, b - 1)]
         c["truth"]["end"] = -1
         c["row"] = fixtures._row(np.random.default_rng(915), c["spans"])
+        if isinstance(c["require"], dict):
+            c["require"]["end"] = fixtures.UNDECIDABLE
         # Both positions remain delivered. Only the small end displacement is
         # unresolved against the reference; the large start shift is decisive.
     mutation("large start departure survives uncertain end shift",
@@ -114,8 +117,9 @@ def main():
 
     cut = (fixtures.BLANK + fixtures.PICTURE) / 2
     ends = [fixtures._blank_spans(r, cut)[-1][1] for r in cs[0]["cal"]]
-    print("CALIBRATION: %d/%d ends strictly inside delivery; not all censored"
-          % (sum(e < fixtures.N for e in ends), len(ends)))
+    inside = sum(e < fixtures.N for e in ends)
+    print("CALIBRATION: %d/%d ends strictly inside delivery; %s"
+          % (inside, len(ends), "not all censored" if inside else "all reach delivery's edge"))
 
     # A is an earlier start of a retained, edge-reaching interval. B keeps that
     # interval normal and puts dark picture directly adjacent. An identical luma
@@ -145,4 +149,8 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--selftest", action="store_true",
+                        help="run the same synthetic-only checks as the bare invocation")
+    parser.parse_args()
     raise SystemExit(main())
