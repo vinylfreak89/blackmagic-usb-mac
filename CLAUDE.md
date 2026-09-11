@@ -3259,8 +3259,16 @@ its some luma only bullshit".** His earlier "remove all this MAD and sigma bulls
 the colour; a relay rendered that as "in raw luma" and a luma strip got built on it. The deliverable is already
 specified in the contract's **Final outputs** (owner, 2026-09-07 21:4x) -- the 720x486 output as placed plus the
 raster that shows the picture shift, one frame per unit, carrying the decision information.
-**`experiments/review_frame.py` builds it**: the 486 weave (lines 20-262 / 283-525) in BT.601 colour beside the
-full 525-line raster, the per-unit record in line numbers and words, and no ratio, MAD or sigma anywhere.
+**`experiments/review_render.py` BUILDS IT, and it is the only thing that does** (owner, 2026-09-11: "good
+queue a message to fix that in CLAUDE.md"): the 486 weave (lines 20-262 / 283-525) in BT.601 colour, one frame per
+unit with the two fields woven, the metrics band and graph BELOW the picture, the head switch and the box drawn as
+short ticks in the left and right margins and never as a line across the picture, audio through `--pcm`, canvas
+1000 wide. Its last commits are the owner's own corrections, so **any render wording of his is an AMENDMENT TO THAT
+FILE**, never a specification to build to.
+⚠️ **`review_frame.py` was named here and is DELETED (2026-09-11).** It was a frame builder written from scratch
+while this file already built frames; the render it produced was rejected on format, and it is gone along with
+`locked_render.py` and `locked_render_check.py`. Entries below still cite all three: they are the record of what
+happened, not live pointers.
 ⚠️ The colour is a STANDARD BT.601 limited-range decode applied to material whose black sits near code 1.4 rather
 than 16. That is what "as placed" means; nothing in the render remaps levels.
 
@@ -4914,6 +4922,13 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **What this establishes** is the SHAPE of the answer: qualification plus Unknown, not a universal rule — and
   that his own continuity rule is a working qualifier rather than only a property to check.
 
+- ⚠️⚠️ **SUPERSEDED 2026-09-11 — THE RENDER THIS ENTRY DESCRIBES WAS REJECTED, AND THE THREE FILES IT NAMES ARE
+  DELETED.** Owner: *"this render is garbage... it doesn't come even close to matching the old format... it matches
+  nothing close to the changes I asked to the existing render which is the one it just wrote over top of."* The
+  deliverable's producer is and always was **`experiments/review_render.py`**; `locked_render.py`,
+  `review_frame.py` and `locked_render_check.py` were a renderer, a frame builder and a read-back check written
+  from scratch beside it. The read-back DISCIPLINE below is sound and worth keeping — it is why a stale source was
+  caught later the same day — but read every file name in this entry as history.
 - **THE LOCKED RENDER EXISTS — the owner's named deliverable, built from capture 1's first locked run
   (2026-09-11).** His instruction: *"the only render I want is one that is produced from a locked capture on cap 1.
   then it may continue on by profiling"*. Capture 1 locks for the first time after the plain-comb change, so this
@@ -7287,6 +7302,36 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
   1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).
+
+- **THE REVIEW COPY'S PRODUCER IS NOW NAMED, AND `band_render.py` WAS NOT WRONG (owner, 2026-09-11, his direct
+  instruction to edit this file).** Two of his rulings, recorded because neither was written down and one of them
+  was being mis-stated back to him.
+  **1. The producer.** `review_render.py` appeared **ZERO times in this file and zero times in the contract**, while
+  `locked_render` — a renderer I wrote in error and deleted the same day — appeared FOUR times. Both documents
+  described the deliverable by its PROPERTIES and neither named the file that produces it, **which is exactly how a
+  session arriving late rebuilt it from scratch instead of amending it.** A properties list is not an artifact, and
+  the gap was not a missing sentence: it was the difference between "build something with these properties" and
+  "change this file". Named now at the deliverable's own entry.
+  **2. `band_render.py` was NOT a wrong render** — his correction, verbatim: *"band_render wasn't wrong but it was
+  a 1 off instrument for a different problem"*. It was characterised as a failed render in a relay built on the
+  "raw luma" mis-relay; it is not that. It stays in the tree, its existing disposition here stands, and it is not
+  to be recorded as a render failure or swept in a cleanup.
+  ⚠️ **And the render that was published while this was being written was built from a BAD RECORD, which the
+  provenance file could not have shown.** The offsets came from `cap1_record.csv` — **930 rows, `schema_version`
+  18, `geometry_lock_known` = 0 on every one**, written a day before the plain-comb change that first produced
+  locks. His instruction is *"the only render I want is one that is produced from a LOCKED capture on cap 1"*, and
+  that was not one. **The artifact was sound and its source was stale**: 919 frames, audio, clean `-xerror` decode,
+  a provenance file naming the deinterlacer — and nothing anywhere naming WHICH ENGINE RUN produced the offsets.
+  **A provenance file that records the presentation and not the source lets a stale input look fully documented.**
+  Fixed by re-running the engine (15.5 s at `--pace-us 8000`, against ~70 s of Python for the render itself) for a
+  **schema-21 record with 302 locked units**, re-rendering from it, and putting the record's path, mtime, SHA-256,
+  schema and lock count in the provenance beside the deinterlacer.
+  ✅ **The fresh record is byte-identical to the plain-comb handoff log this file already records at its own
+  `Handoff log` line — SHA-256 `0847c8fa14dd…`.** So the engine reproduced that run exactly, and the render is
+  from the locked capture rather than from something merely newer.
+  ⚠️ Applied pairs are `(0,0)` on every unit in BOTH records, so the picture does not move between them; what
+  changes is the decision record burned into the band. **Nothing here claims the render now shows corrective
+  movement — this source cannot show it**, which this file already records.
 
 ### 2026-09-11 — second-round Codex contract review frozen
 
