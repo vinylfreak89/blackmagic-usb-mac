@@ -2763,9 +2763,24 @@ mute about whether it is relocated blanking or clipped black.**
 enough to estimate an autocorrelation** — a relocated interval at ~147 samples qualifies, a bright row's one or
 two terminal samples does not. So it applies exactly where the T/S question is asked and not where the
 end-censoring question is.
-⚠️ **Unreviewed by Codex and not to be leaned on until it is** (§14). It bears directly on the rebuild: Codex's
-requirement is *"evidence establishing a horizontal-timing departure rather than merely a changed low-level
-mask"*, and this is a candidate for such evidence that costs no new instrument.
+⚠️ **Unreviewed by Codex and not to be leaned on until it is** (§14).
+✅⚠️ **AND THE CONSEQUENCE IS LARGER THAN "A LIMITATION WEAKENS" — the peer session's correction to my own
+write-up, and it is right.** `:3562` declined the one-ended observation for the 255 readings in these words:
+*"A visible low-prefix endpoint **does not itself identify blanking rather than black content**; no independent
+timing witness resolving that ambiguity has been demonstrated for these keys. **This is absence of validated
+evidence in the engine, NOT proof such a witness is absent from the capture.**"* **A dither signature identifies
+blanking rather than black content. That is the named ambiguity, exactly.** So this is a CANDIDATE WITNESS for a
+decision that was declined for want of one, not a footnote softening a caveat — and the decision's own wording
+left that door open.
+⚠️ **What it does NOT yet satisfy, stated because the decision asks for more than the ambiguity it names:**
+`:3564-3566` also requires *"a source-local identifiable timing feature corroborating the exposed boundary's
+displacement, with black-rectangle rejection and departure/return controls"*. Identifying a run as blanking is
+one half; corroborating DISPLACEMENT is the other. **The two may chain** — blanking identified at sample 0,
+against a normal position measured at 702, is displacement — but that chain is not demonstrated and the
+black-rectangle rejection is precisely what a content-versus-blanking statistic would have to do. **Run length
+is not the obstacle:** the 255's runs cluster just below 147 samples, far above what an autocorrelation needs.
+⚠️ The two outcomes were never symmetric in value and the peer named that before the result: indistinguishable
+would have earned an assumption and cost nothing; distinguishable is a finding about the SOURCE.
 **Do not re-derive the T-to-S relationship from scratch:** measuring the relocated row against T reports T+1 in
 ~90% of readings, which is the DEFINITION of the relationship (T is the partial row and need not carry a whole
 relocated interval), not an error.
