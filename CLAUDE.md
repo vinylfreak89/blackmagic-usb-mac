@@ -4154,9 +4154,16 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   | removing the position tolerance changes nothing **for the `normal` class** | "the position tolerance is inert" | measured, `p_tol` 50 → 400 flips `extended` → `Unknown`; position decides the whole identified-versus-Unknown split |
 
   **THE TELL IS THAT THE NARROW STATEMENT IS TRUE, so re-reading it finds nothing** — which is why all three
-  survived a careful author and needed a different population measured instead. ⚠️ **And the third was committed
-  by the agent quoting the first two back at me, inside a warning about scope.** Knowing the class by name does
-  not prevent it, which this file already records for fixed-place-to-look and now records twice.
+  survived a careful author and needed a different population measured instead.
+  ⚠️ **AND THAT IS WHAT SEPARATES THIS CLASS FROM EVERY OTHER ONE IN THIS FILE: the others are catchable on a
+  careful read, and this one is INVISIBLE BY CONSTRUCTION.** A wrapped phrase, a substring count, a proxy window,
+  a borrowed control — each is visible once you look at the right line. Here every line is correct, so **"read it
+  again" is not a defence and reaching for it wastes the attempt.** The only thing that exposes it is measuring
+  the population the claim skipped, which is why the check below is a measurement rather than a re-read.
+  ⚠️ **The third row was committed by the peer session while it was quoting the first two back at me as warnings
+  about scope, and the gap between citing the class and committing it was ONE MESSAGE.** Knowing the class by
+  name does not prevent it — already recorded for fixed-place-to-look, whose eleventh instance landed inside the
+  detector written to avoid the tenth — and this is the tightest interval either has managed.
   **The check is cheap and is the same one every time: name the population the claim was measured on, then ask
   what the claim asserts about the populations it was not.** Where those differ, the scope is the finding.
   ⚠️ It is distinct from one-name-several-quantities and should not be folded into it: there the WORD is
