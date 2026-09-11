@@ -2255,6 +2255,32 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Set-observable proposal review (2026-09-11, after `e5b4468`).**
+`docs/reports/2026-09-11_extent_set_observable_review.md` and the synthetic-only
+`experiments/extent_set_review_controls.py` record the decision: NEITHER A (both
+directional counts required) NOR B (adjacency establishes skew). Keep the owner's
+OR and require a measurable horizontal-timing component on an identified interval.
+One observation may support both conditions; no second detector is mandated.
+The set differences preserve translations that a summed duration loses, but level
+membership is not blanking identity, its complement is not necessarily picture,
+and intersection/union disagreement is not necessarily jitter. A moved dark patch
+can make both counts positive with true blanking unchanged. Start extension and
+adjacent dark-picture addition can produce identical sampled rows. Case (iii)'s
+right end is CENSORED, not demonstrated unchanged; the same start does not establish
+zero skew. Control 4's Unknown is defensible for insufficient evidence, not proof
+of no timing shift. Known interval identity can give a bound even if the end is
+outside delivery. Starts are not privileged over ends.
+The observed pool maximum is a proposed statistic, NOT approved by the earlier
+review; source-reference provenance and the mean requirement do not validate the
+current `source_reference` implementation. Its retained low-tail selection still
+changes the maximum of known synthetic noisy blanking from 3 to 1. LOO must exclude
+the held-out row from learned reference/selection dependencies as well as the set
+envelope, or use an independently qualified reference; separate held-out validation
+and unavailable-row accounting remain necessary. Existing detector selftest exits
+1 with controls 7-9 failing as recorded; proposal algebra probes pass. No capture
+content opened, no detector/engine/contract repair, no new owner question. The set
+design statement below is a candidate observable, not qualified D16 identity.
+
 **Blanking-extent review (`c8faa10`, `9f8dd3f`, `d21f373`, 2026-09-11).**
 `docs/reports/2026-09-11_blanking_extent_review.md` and
 `experiments/blanking_extent_review_controls.py` record code inspection and synthetic
