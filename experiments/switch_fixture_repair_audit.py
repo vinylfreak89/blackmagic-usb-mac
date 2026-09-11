@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Synthetic-only review of b8cedaf / 2517b62; no captures or detector.
+"""Live synthetic checks originating in the review of b8cedaf / 2517b62.
 
-The rejection checks are POSITIVE expectations and currently fail. Exit 1 records
-unfixed fixture-validation defects, not a capture result. The paired-mask example
-is a declared sampled-luma model, not proof of analog indistinguishability.
+No captures or detector. The original artifact remains in git and its frozen
+review report. This version adapts input construction to fa281a7's endpoint
+schema without endorsing that schema as the full expected-result interface.
+Exit 1 means unmet POSITIVE checks, not an expired probe or a capture result.
+In particular the guard-1/4 enforcement obligations survive the schema repair.
+The paired example is a declared luma model, not analog indistinguishability.
 """
+import argparse
 import contextlib
 import inspect
 import io
@@ -73,11 +77,14 @@ def main():
     cases.append({"name": "U1 within-jitter translation", "cal": cases[0]["cal"],
                   "row": fixtures._row(np.random.default_rng(311), spans), "spans": spans,
                   "truth": {"start": 1, "end": 1, "dark_at": None},
-                  "require": fixtures.UNDECIDABLE, "why": "test unavailable certainty",
-                  "censored": None})
+                  "require": {"start": fixtures.UNDECIDABLE, "end": fixtures.UNDECIDABLE},
+                  "observable": fixtures.observability(spans),
+                  "why": "test unavailable certainty", "censored": "end"})
     status, output = run(cases)
     print("WITHIN-JITTER UNKNOWN CASE: fixture selftest exit", status)
-    print(next(line for line in output.splitlines() if "every nonzero shift" in line))
+    check("within-jitter Unknown fixture is accepted", status == 0)
+    if status:
+        print(output, end="")
 
     # Recommendation for the existing ABSTRACT interval tests, not an NTSC
     # waveform: restore the edge case and shorten by 8 (< width 17, > jitter 2).
@@ -111,4 +118,8 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--selftest", action="store_true",
+                        help="run the same synthetic-only checks as the bare invocation")
+    parser.parse_args()
     raise SystemExit(main())

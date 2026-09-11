@@ -68,10 +68,10 @@ EXPECTED_FAIL = {
     "level_attribution_review_controls.py":
         "pins level_attribution at 386d202, before the holdout repair removed the row overlap",
     "switch_fixture_repair_audit.py":
-        "pins switch_fixtures at b8cedaf/2517b62. Its round-1 findings were repaired and Codex "
-        "re-reviewed at 58998ab with a new audit; the per-endpoint `require` schema that came out "
-        "of THAT round retires this one. RETIREMENT IS CODEX'S CALL, not mine -- raised, not acted "
-        "on: it owns the file and the file is the record of round 1",
+        "live positive checks, adapted by Codex to fa281a7: the obsolete scalar input and text "
+        "lookup are repaired, not retired. Two assertions still fail: disabling guard 1 or 4's "
+        "rejection effect is not detected by the positive suite. These are unresolved enforcement "
+        "defects, not an expired historical probe; a crash is not the expected failure",
 }
 
 
