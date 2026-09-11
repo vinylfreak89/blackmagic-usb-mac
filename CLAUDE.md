@@ -4277,6 +4277,26 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   conclusion goes in the file at the moment it is reached; this adds that a REFINEMENT is the case most likely
   to be skipped, because nothing reads as false.
 
+- **A MERGE AND A COMMIT IN ONE COMMAND BLOCK PUSHED CONFLICT MARKERS TO THE SHARED BRANCH (2026-09-11, and it
+  is the first thing tonight that actually shipped broken).** `a27bdd0` contains three `<<<<<<<` markers in
+  `CLAUDE.md` and was pushed. The sequence: `git merge` CONFLICTED, a python edit ran on the conflicted file and
+  SUCCEEDED, `git add -A` staged the markers, and `git commit` completed the merge around them.
+  ⚠️ **The conflict WAS printed. It was not read, because every command had already been composed** — merge,
+  edit, add, commit and push were one block, so the merge's outcome could not reach the decision to commit.
+  **That is the mechanism, and it is not carelessness about output: a command block is written before any of it
+  runs, so nothing later in it can respond to anything earlier.**
+  **The rule: a merge ENDS a command block.** Read its outcome, then compose what follows — and the same holds
+  for anything whose result should change the next step. This file already records the
+  unconditional-command-after-a-refusal family; this is that family with a MERGE as the refused command, and
+  with a push to a shared branch as the consequence rather than a wrong number.
+  ⚠️ **It also defeated a check I had available.** `git status --porcelain` ran in the same block and reported
+  clean — because the commit had already absorbed the conflict. **A status check after the commit cannot see
+  what the commit swallowed**, so the check that belongs immediately after any merge is a grep of the file for
+  markers, not a status.
+  ⚠️ **And writing this entry broke the next command too**, which is the same hazard one level out: a commit
+  message quoting the literal marker made the shell heredoc unparseable, so the whole block failed and nothing
+  ran. That failure was loud and cost nothing; the first one was silent and pushed.
+
 - **A SUMMARY OF AN ACCURATE RECORD IS ITSELF A SECOND STORE, AND IT IS THE HALF THAT GETS READ (2026-09-11,
   the peer session's, found in its own deliverable and then in this file).** Its digest kept every entry
   accurate one by one while the HEADER above them still said three decisions were owed that the owner had
