@@ -48,6 +48,32 @@ NOT_A_QUESTION = (
 )
 
 
+# ⚠️ MARKERS IS AN ENUMERATION AND ENUMERATIONS GO STALE. It was built from the phrasings the
+# contract used when this was written, which is the coverage-from-observed-instances defect this
+# project documents -- and it cost an hour: `:64-65` says a question "needs his adjudication",
+# matches none of the four, and the guard reported a confident ZERO with a live question open.
+# There is no enumerable definition of "a question for him", so the repair is not a fifth regex:
+# it is to SURFACE WHAT THE ENUMERATION CANNOT CLASSIFY instead of letting it vanish. Anything
+# naming him near a deciding word, that no marker matched and no exclusion covers, is reported as
+# a CANDIDATE for a human to classify.
+CANDIDATE_NEAR = re.compile(
+    r'(owner|his|him)\b[^.\n]{0,80}\b(adjudicat|rulin|decid|decision|settle|answer|question)',
+    re.I)
+
+
+def candidates(lines, marked_lines):
+    """Lines naming him near a deciding word that NO marker matched -- the residue, not a finding."""
+    out = []
+    for i, l in enumerate(lines, 1):
+        if i in marked_lines:
+            continue
+        if any(x in l for x in NOT_A_QUESTION):
+            continue
+        if CANDIDATE_NEAR.search(l):
+            out.append((i, l.strip()[:88]))
+    return out
+
+
 def contract_markers(lines):
     out = []
     for i, l in enumerate(lines, 1):
@@ -76,6 +102,7 @@ def run(contract_path=None, queue_path=None, quiet=False):
     lines = contract.split("\n")
     qtext = open(queue_path or QUEUE).read()
     marks = contract_markers(lines)
+    cands = candidates(lines, {i for i, _ in marks})
     anchors = queue_anchors(qtext)
 
     matched_marks = set()
@@ -204,7 +231,23 @@ def main() -> int:
     rc = run()
     if rc == 0:
         print("Every contract owner-marker has a queue row, and every queue anchor still lands on one.")
-        print("NOT proof that no question is elsewhere -- see the docstring.")
+        lines = open(CONTRACT).read().split("\n")
+        cands = candidates(lines, {i for i, _ in contract_markers(lines)})
+        if cands:
+            print()
+            print("CANDIDATES the enumeration could not classify (%d) -- residue, not findings:" % len(cands))
+            for i, t in cands[:12]:
+                print("   :%d  %s" % (i, t))
+            if len(cands) > 12:
+                print("   ... and %d more" % (len(cands) - 12))
+            print("Each is either a question needing a queue row, or belongs in NOT_A_QUESTION by a")
+            print("READ. Leaving it unclassified is how `:64-65` hid behind a clean zero.")
+            print()
+        print("LIMIT, printed here rather than in a docstring because a limit in a second store")
+        print("does not travel: MARKERS is an ENUMERATION of four phrasings. A question phrased any")
+        print("other way is invisible to it -- that is how `:64-65` (\"needs his adjudication\") hid")
+        print("for an hour behind a clean zero. The candidate list below is the residue it cannot")
+        print("classify; a clean marker run with candidates outstanding is NOT a clean board.")
     return rc
 
 

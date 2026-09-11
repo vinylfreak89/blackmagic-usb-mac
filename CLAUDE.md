@@ -5010,6 +5010,26 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **THE QUEUE GUARD'S MARKER SET WAS AN ENUMERATION, AND WIDENING IT SURFACED A SECOND HIDDEN OWNER ITEM ON THE
+  FIRST RUN (2026-09-11).** `owner_queue_check.py`'s `MARKERS` was four regexes collected from the phrasings the
+  contract used when it was written — **the coverage-from-observed-instances defect this file documents, in the
+  guard built to prevent a different instance of it.** It cost an hour: `:64-65` says a question *"needs his
+  adjudication"*, matches none of the four, and the guard reported a confident **ZERO** with that question live.
+  **There is no enumerable definition of "a question for him", so the repair is NOT a fifth regex.** It is to
+  SURFACE WHAT THE ENUMERATION CANNOT CLASSIFY: anything naming him near a deciding word, unmatched by a marker
+  and uncovered by an exclusion, is now printed as a **CANDIDATE** for a human read. The residue is reported as
+  residue — *"a clean marker run with candidates outstanding is NOT a clean board"* — and the limit prints with
+  the result instead of pointing at the docstring, which is the same second-store fix made in
+  `superseded_check.py` hours earlier **and not generalised to this file at the time.**
+  ✅ **It earned itself immediately: 12 candidates, of which `:65` is the known-missed one and `:186` IS A SECOND
+  LIVE ITEM NOBODY HAD** — *"A correction on the head switch band is owed from the owner and is expected to settle
+  the 259-against-260 discrepancy"*, with the contract stating in the same breath that removing its procedural
+  gate **"does NOT declare that correction delivered or resolved."** Phrased "owed from the owner" against the
+  set's "owner ruling owed", so invisible to all four.
+  ⚠️ **The other ten candidates are historical references to settled rulings** ("the owner's 20:56 ruling", "his
+  2026-09-10 ruling") and are residue rather than findings — which is the point of reporting them as candidates
+  rather than as failures. **Classifying them is a READ, and leaving them unclassified is how `:65` hid.**
+
 - **WHICH CONSUMERS OF `row_transition` LEGITIMATELY WANT A BOUNDARY, AND WHICH HAVE BEEN USING ONE WHERE THE
   CONTRACT NAMES AN EXTENT — a read, not a rebuild, and the split runs through ONE function (2026-09-11).**
   `:443` disqualifies a boundary statistic **for the switch**. That is specific, so the question is which of the
