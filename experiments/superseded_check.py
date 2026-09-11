@@ -133,9 +133,37 @@ def quoted(doc: str, idx: int, end: int) -> bool:
     return before.endswith(('"', '\u201c')) and after.startswith(('"', '\u201d'))
 
 
+NEGATORS = ("not ", "never ", "no longer ", "cannot ", "isn't ", "is not ", "was not ",
+            "does not ", "did not ", "rather than ", "instead of ", "false that ", "untrue that ")
+
+
+def negated(doc: str, idx: int) -> bool:
+    """Is this occurrence DENIED by its own clause?
+
+    Added 2026-09-11 after a peer session's owed-work detector accused this session of breaking a
+    promise: its pattern spanned a gap and swallowed the negation in "I'm NOT re-dispatching". This
+    probe had the same hole in a different shape -- no gap-spanning pattern, but no negation
+    awareness at all, so "it is not the case that <withdrawn phrase>" was flagged as an assertion of
+    the withdrawn claim. Mine errs safe (a false alarm rather than a false accusation), but an
+    instrument that fires on correct prose gets ignored, or its subject gets retired to quiet it.
+
+    ⚠️ SAME CLAUSE ONLY. A negator in the PREVIOUS sentence must not protect the phrase -- that is
+    the control the peer's fix turned on ("I'm dispatching it, not waiting" must still count), and
+    without the sentence bound this would licence any withdrawn claim that happened to follow a
+    denial of something else.
+    """
+    span = doc[max(0, idx - 200):idx]
+    cut = max(span.rfind(c) for c in ".!?;:\n")
+    clause = span[cut + 1:].lower() if cut >= 0 else span.lower()
+    return any(n in clause for n in NEGATORS)
+
+
 def marked(doc: str, idx: int, end: int) -> bool:
-    """Is THIS occurrence explicitly named as withdrawn -- quoted, or preceded by a withdrawal verb?"""
+    """Is THIS occurrence explicitly named as withdrawn -- quoted, denied, or preceded by a
+    withdrawal verb?"""
     if quoted(doc, idx, end):
+        return True
+    if negated(doc, idx):
         return True
     return any(w in doc[max(0, idx - LOOKBEHIND):idx] for w in WITHDRAWAL)
 
@@ -169,6 +197,35 @@ def check(path: str, quiet: bool = False) -> int:
         for subject, current in missing:
             print("\n  ** REPLACEMENT ABSENT: %s -- expected %r" % (subject, current[:70]))
     return 1 if (bad or missing) else 0
+
+
+def negation_controls() -> bool:
+    """Seven controls on the clause-bounded negation test: five rejections, two that MUST survive.
+
+    The two survivors are the point. A negator in the PREVIOUS sentence, and a negator AFTER the
+    phrase, must both still be flagged -- otherwise the fix would licence any withdrawn claim that
+    happened to sit near a denial of something else, which is a wider hole than the one it closes.
+    """
+    w = PAIRS[0][1]
+    cases = [
+        ("bare assertion", "The finding is that %s and it stands." % w, True),
+        ("negated, same clause", "It is not the case that %s." % w, False),
+        ("negated, emphatic", "This is NOT true of %s." % w, False),
+        ("'rather than' form", "We use the level rather than %s." % w, False),
+        ("quoted mention", 'The old entry read "%s" and was withdrawn.' % w, False),
+        ("negation in the PRIOR sentence", "That is not so. Separately, %s." % w, True),
+        ("negation AFTER the phrase", "%s, not the other way round." % w, True),
+    ]
+    ok = True
+    print("NEGATION CONTROLS (5 must be rejected, 2 must still be caught):")
+    for label, doc, must in cases:
+        i = doc.find(w)
+        flagged = not marked(doc, i, i + len(w))
+        good = flagged == must
+        ok &= good
+        print("  %-32s -> %-13s %s" % (label, "FLAGGED" if flagged else "not flagged",
+                                       "PASS" if good else "FAIL"))
+    return ok
 
 
 def selftest() -> int:
@@ -217,6 +274,7 @@ def selftest() -> int:
     ok = ok and bool(rc2)
 
     print("SELFTEST %s" % ("OK" if ok else "FAILED"))
+    ok &= negation_controls()
     return 0 if ok else 1
 
 

@@ -4982,6 +4982,30 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **A PROBE THAT CANNOT SEE A NEGATION — the most expensive member of the family, because it asserts about
+  CONDUCT rather than returning a wrong number (2026-09-11).** A peer session's owed-work detector reported
+  *"DECLARED an action and made no dispatch"* against this session, citing the sentence **"I'm not
+  re-dispatching"** — in a turn that explained why not re-dispatching was correct. Its pattern matched a subject
+  marker, then up to eighty characters of anything, then an action verb, and **the gap swallowed the negation**.
+  **Every other member of this family returns a misleading VALUE; this one accuses another agent of breaking a
+  promise, and the reading side cannot tell it from a real finding.** Relayed unchecked it would have reached the
+  owner as a process failure.
+  ⚠️ **THE SAME HOLE WAS IN MY OWN PROBE, in a different shape, and I found it by looking rather than by being
+  told.** `superseded_check.py` has no gap-spanning pattern — but it had no negation awareness at all, so
+  **"it is not the case that ⟨withdrawn phrase⟩" was flagged as an ASSERTION of the withdrawn claim.** Mine errs
+  safe, a false alarm rather than a false accusation, but **an instrument that fires on correct prose gets
+  ignored, or its subject gets retired to quiet it** — which is how a guard dies, and this file already records
+  one subject retired for exactly that reason.
+  **The fix is CLAUSE-BOUNDED, and the controls that matter are the ones that must still FIRE.** A negator
+  disqualifies a match only inside the phrase's own clause, bounded at the nearest `.!?;:` or newline. Seven
+  controls now run in the selftest: five forms that must be rejected, and **two that must still be caught — a
+  negation in the PREVIOUS sentence, and a negation AFTER the phrase.** Without those two the repair would
+  licence any withdrawn claim sitting near a denial of something else, which is a wider hole than the one it
+  closes. The peer's fix turns on the same control ("I'm dispatching it, not waiting" must still count).
+  **The general form: a probe over prose that tests for a PHRASE is testing a proxy for a CLAIM, and negation is
+  the case where they come apart.** Both instruments were literal about the words and blind to whether the
+  sentence affirmed or denied them.
+
 - **WHEN A THRESHOLD CANNOT BE TUNED BELOW A RATE, CHECK WHETHER THAT RATE IS STRUCTURAL BEFORE TRYING A FOURTH
   STATISTIC — and the fix is usually the estimator's RELATIONSHIP TO ITS DATA, not a better estimator
   (2026-09-11).** The band-reference skew test sat at a 9.6% per-row false-positive rate on ordinary picture rows
