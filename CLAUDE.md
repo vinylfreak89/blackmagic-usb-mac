@@ -2833,6 +2833,11 @@ it would be applied to is not an independent timing witness.
   so it had not seen the withdrawal).** Through the real emitter, **identical raw processes give −0.483 after
   `settled_samples` against +0.438 raw** — the mechanism confirmed from a synthetic rather than from reading the
   code, which is the independent half my own diagnosis lacked.
+  ⚠️⚠️ **TWO INDEPENDENT DEFECTS PRODUCING ONE WRONG OUTPUT MEANS FIXING EITHER LEAVES IT UNCHANGED — so the
+  second is invisible to anyone who finds the first (the peer session's sharpening).** The mask excluded code 3
+  AND `%.0f` rounded away what survived; **either alone yields "never reaches code 3"**, so repairing the
+  selection would have left the column reading the same and given no reason to doubt it. **Redundant causes do
+  not announce themselves by partial repair**, which is the usual way a second cause surfaces.
   ⚠️⚠️ **"NEVER REACHES CODE 3" WAS ALSO A FORMATTER ARTEFACT, SEPARATELY FROM THE SELECTION.** My table printed
   `"%d:%.0f%%"`, so **0.1% renders as `3:0%`** — code 3 was PRESENT and rounded away. Two independent reasons
   the same claim was false, and the later `settled_bias` run shows it directly: the same population at `%.1f`
@@ -4293,6 +4298,13 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   clean — because the commit had already absorbed the conflict. **A status check after the commit cannot see
   what the commit swallowed**, so the check that belongs immediately after any merge is a grep of the file for
   markers, not a status.
+  ✅ **CONTAINED, AND CHECKING THAT IS PART OF THE REPORT RATHER THAN AN EXTRA (the peer session checked it; my
+  own report did not).** `git merge-base --is-ancestor a27bdd0 origin/v10-engine` says NO, `v10-engine`'s
+  `CLAUDE.md` carries zero markers, and the exposure window was **15:51:16 → 15:52:07, fifty-one seconds** with
+  nothing merged from it. **"I pushed it" and "someone consumed it" are different facts, and only the second
+  needs anyone else to act** — so a report of a shipped defect owes its blast radius, not just its existence.
+  ⚠️ **And the count depends on the pattern: TWO open/close markers, THREE if the `=======` separator counts.**
+  Both of us said "three" without saying which, in a report about severity.
   ⚠️ **And writing this entry broke the next command too**, which is the same hazard one level out: a commit
   message quoting the literal marker made the shell heredoc unparseable, so the whole block failed and nothing
   ran. That failure was loud and cost nothing; the first one was silent and pushed.
