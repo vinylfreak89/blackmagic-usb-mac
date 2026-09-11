@@ -5010,6 +5010,25 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **AN EXCEPTION HANDLER THAT MAKES A MISSING KEY LOOK LIKE A GENUINE UNKNOWN — found by auditing my own
+  guards after a peer session found a dead branch in its own (2026-09-11).** Its defect: a call to an attribute
+  that does not exist, inside a bare `except Exception`, so a whole nudge trigger had **never fired** and its
+  failure mode was silence. Audited against that shape, **the harness guards carry no bare `except Exception` at
+  all** — but `review_frame.py` had one narrow handler with the same consequence one level down: `int(e.get(key))`
+  in a `try`, so **a key the caller never supplied and a value the engine reported Unknown both produced no
+  marker, indistinguishably.** A renamed sidecar column would have silently stopped marking the head-switch band,
+  and the frame would have looked exactly like an honest Unknown. **"Missing is not a value", in a renderer.**
+  Repaired so absence-by-design stays silent and absence-by-defect is SAID ON THE FRAME: key absent and value
+  unreadable each print a red line beside the raster. Controls, on a synthetic raster with only the tested field
+  varying: `T` known → silent · `T = -1` → **silent** · key missing → **warns** · `T = "n/a"` → **warns**.
+  ⚠️ **My first version of that control was confounded and I caught it by reading the numbers, not the code:**
+  both cases warned, because field 2 was `{}` in both and produced its own warnings. **A control that varies two
+  things measures neither**, and the tell was that the "silent" case was not silent.
+  **The general shape, and it is the same as the wrap fix: the defects found tonight by writing tests that
+  USE a thing rather than read it were both guards quietly not guarding** — a dead branch, and a marker that
+  stops being drawn. Neither announces itself, because the output of a guard that fails open is
+  indistinguishable from a clean result.
+
 - **TWO DOCUMENTED DEFECTS RECURRED INSIDE THE SESSION THAT DOCUMENTED THEM; THREE STRUCTURAL REPAIRS COULD NOT,
   BECAUSE THE CONSTRAINT IS IN THE EXECUTING CODE (2026-09-11).**
   ⚠️ **That is the claim with its mechanism. The first version of this entry headed it "documentation of a defect

@@ -128,12 +128,21 @@ def build_frame(raw, c, capture_name, fields, extra_header=()):
         e = fields.get(f) or {}
         col = (255, 215, 90) if f == 1 else (110, 215, 255)
         for key in ("T", "clip"):
+            # MISSING IS NOT A VALUE. A key the caller never supplied and a value the engine
+            # reported Unknown both produced no marker, indistinguishably -- so a renamed sidecar
+            # column would have silently stopped marking the band and the frame would have looked
+            # exactly like an honest Unknown. Absence-when-Unknown is intended; absence-because-the
+            # -key-is-gone is a schema defect and is now SAID ON THE FRAME rather than swallowed.
+            if key not in e:
+                d.text((rx + W + 4, y0 + 2 + 12 * f), "f%d %s: KEY ABSENT" % (f, key), (255, 90, 90))
+                continue
             try:
-                ln = int(e.get(key))
+                ln = int(e[key])
             except (TypeError, ValueError):
+                d.text((rx + W + 4, y0 + 2 + 12 * f), "f%d %s: UNREADABLE" % (f, key), (255, 90, 90))
                 continue
             if ln < 0:
-                continue
+                continue                      # a genuine Unknown: draw nothing, by design
             yy = y0 + (ln - 4) * RH               # unit row = NTSC line - 4, in both fields
             if not (y0 <= yy < y0 + LINES * RH):
                 continue
