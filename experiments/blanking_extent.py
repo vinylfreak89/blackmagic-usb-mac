@@ -191,6 +191,34 @@ def selftest() -> int:
     ok &= both
     print("  both directions reachable         -> %-10s %s"
           % (sorted(seen), "PASS" if both else "FAIL: one-directional"))
+    # ------------------------------------------------------------------------------------------
+    # FAILING-FIRST, from Codex's review of c8faa10 (1ec97ae). Each is a way the SPECIFICATION can
+    # be violated that controls 1-6 do not reach, and each is expected to FAIL on this revision --
+    # committed failing so the repair has to answer them rather than be argued into place.
+
+    # 7. A PURE TRANSLATION IS THE HEAD SWITCH'S DEFINING PROPERTY and a summed duration cannot see
+    #    it. `classify` also gates on extent and returns before position is consulted, so no
+    #    position tolerance can rescue this.
+    v, _, _ = classify(row_with(400, 16), exp, 1.4, 3.0)
+    t7 = v != "normal"
+    ok &= t7
+    print("  TRANSLATED 300 samples             -> %-10s %s" % (v, "PASS" if t7 else "FAIL: a timing displacement reads normal"))
+
+    # 8. SPLIT into two displaced intervals of the SAME TOTAL DURATION -- zero excursion again.
+    rs = rng.normal(90, 4, 720)
+    rs[400:408] = rng.normal(1.4, 0.3, 8); rs[600:608] = rng.normal(1.4, 0.3, 8)
+    v, _, _ = classify(rs, exp, 1.4, 3.0)
+    t8 = v != "normal"
+    ok &= t8
+    print("  SPLIT, same total duration         -> %-10s %s" % (v, "PASS" if t8 else "FAIL: duration is blind to it"))
+
+    # 9. A UNIFORMLY BLANK ROW HAS NO OBSERVABLE BOUNDARY, and `:443` makes this a timing
+    #    displacement across a boundary. Absence of a boundary is not a reading.
+    v, _, _ = classify(rng.normal(1.4, 0.3, 720), exp, 1.4, 3.0)
+    t9 = v == "Unknown"
+    ok &= t9
+    print("  uniformly blank, no boundary       -> %-10s %s" % (v, "PASS" if t9 else "FAIL: identified with nothing to displace"))
+
     print("SELFTEST", "PASS" if ok else "FAILED")
     return 0 if ok else 1
 
