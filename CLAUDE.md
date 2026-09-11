@@ -5032,8 +5032,22 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   the level on THIS capture's real rows** — an observation about this population, not a proof the finder is safe
   on another. Bright's pool is ~1 sample per row, so a single contaminated row would move the mean visibly, which
   is why the composition test has power here rather than being a formality.
-  **So the source level of 1.630 (bright) / 1.434 (card) is supported in kind AND in value**, and it is the one
-  figure from tonight's departure work that survives `:443` intact.
+  ⚠️ **THE CARD LEVEL WAS QUOTED TWICE AS TWO DIFFERENT NUMBERS — 1.437 and 1.434 — and chasing it rather than
+  averaging it found that only half the gap is a difference of STATISTIC.** Measured in one pass over the same 30
+  units under current code: median of per-unit levels **1.4305**, mean of per-unit levels **1.4338**, mean of all
+  pooled samples concatenated **1.4336**. So **1.434 is the size-weighted pool mean** and is explained. **1.437 is
+  not reproduced by any of the three.** It was taken before the `settled_index` plateau fix, which changed where
+  pooling begins — so the number moved when the code moved, and I quoted the new pool mean beside the old median
+  without noticing they were not the same measurement OR the same build.
+  ⚠️ The gap is 0.007 against a per-unit spread of **sd 0.0141, range 1.414–1.467**, so it is well inside the
+  quantity's own variation and nothing rests on it. **That is the reason to fix it rather than the reason to let
+  it go**: a difference too small to matter is exactly the one that gets smoothed, and then two numbers for one
+  quantity are in the record with no note saying why.
+  **THE FIGURE FOR THE RECORD, with its definition and its build:** under current code, the card's per-unit
+  source level is **median 1.4305, sd 0.0141, range 1.414–1.467** across 30 units; the concatenated pool mean is
+  1.4336. **1.437 is superseded** — same statistic, earlier build. Bright is 1.630 on a pool of ~1 sample per row.
+  **So the source level is supported in kind AND in value**, and it is the one figure from tonight's departure
+  work that survives `:443` intact.
 
 - **THE QUEUE GUARD'S MARKER SET WAS AN ENUMERATION, AND WIDENING IT SURFACED A SECOND HIDDEN OWNER ITEM ON THE
   FIRST RUN (2026-09-11).** `owner_queue_check.py`'s `MARKERS` was four regexes collected from the phrasings the
