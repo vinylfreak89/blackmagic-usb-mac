@@ -6054,6 +6054,23 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   one is right before repairing either.** The reflex is to trust the docstring and change the code, and here
   that would have removed two guards while making the file read more honestly.
 
+- **A MUTATION THAT FAILS TO FIRE HAS TWO CAUSES AND THEY MUST BE TOLD APART — the failure mode of mutation
+  verification itself (2026-09-11, the peer session's, from its own instrument).** This session leaned on
+  mutation verification throughout, on the rule that *a control which has never failed on the defect it exists
+  for is a claim, not a check*. **That rule has a hole: when the mutation does NOT produce a failure, it means
+  either the control is vacuous OR the mutation never created the defect**, and those demand opposite responses
+  — rewrite the control, or rewrite the mutation. Its instance: a mutation meant to exercise a record-type check
+  was rejected earlier, by a string-escaping path, so the intended defect was never reached and the control was
+  never exercised. **A green mutation run reads identically in both cases.**
+  **The check: before trusting a control, confirm the mutation actually produced the state the control is meant
+  to catch** — observe the defect, not merely the mutation. It is the same shape as *the verification was the
+  defect*, arriving from the mutation side rather than the search side.
+  ⚠️ **Also corroborates the record-type fact this file already carries from the READING side** (mid-turn
+  messages land as `attachment` with a `queue-operation` enqueue/remove pair, not as `user`), now confirmed from
+  the SENDING side: a gate scanning `user` only will nag forever on a turn that was answered. And
+  `queue-operation` is deliberately NOT evidence of delivery — `enqueue` proves queuing, never arrival, so
+  crediting it is the exact false positive such a gate exists to prevent.
+
 - **THE FIVE WAYS A CONTROL FAILS TO PROTECT ANYTHING, in increasing order of invisibility — this project has
   now paid for all five, four of them in one night (2026-09-11).**
 
