@@ -4164,6 +4164,28 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **0.6%**. The 532 already have no switch line by either route and are unaffected, and the 478 with a T are
   untouched. An earlier framing of this as a large loss confused the harness's S measurement (exact in 1,013 of
   1,013 registerable readings, a different instrument and population) with the engine's export.
+- **WHEN A NUMBER IS CONTESTED, BUILD THE THING THAT WOULD SHOW IT WRONG — do not defend it and do not retract
+  it (2026-09-11, three instances in one day, and the pattern prescribes a different action than either
+  instinct).** Each time a figure was withdrawn as a CONCLUSION and then had to be withdrawn again as a NUMBER,
+  and each time what settled it was a built artefact rather than an argument:
+
+  | the figure | withdrawn as a conclusion | then as a number, BY |
+  |---|---|---|
+  | the two-class table, 687 / 1,156 / 1,205 | both readings refuted | a probe that read what `Y[0:6]` actually holds |
+  | the 0.23% false-identification | "the figure to lean on" withdrawn | 13 synthetic negatives asserting at that cutoff |
+  | 0.38% → 0.10% on the repaired arms | "refuted by measurement" withdrawn as an overclaim | an ABSTENTION COLUMN the instrument had never printed |
+
+  **In none of the three did re-reading, re-arguing or retracting produce the answer.** The probe, the synthetic
+  negatives and the abstention column are all things that DID NOT EXIST until someone built them, and each made
+  the qualifying evidence visible rather than making a case for it.
+  ⚠️ **Two distinctions this depends on, both of which collapse into something unfair if compressed:**
+  *"a live defect path that did not manifest" is not "it was fine"* — the holdout leak moved a fitted level
+  1.5 → 2.05 in synthetic and moved nothing on this capture, and **only the re-run separates those, neither
+  reading being available to argument**; and *the abstention column was UNAVAILABLE, not overlooked* — a
+  different failure from misreading evidence in hand, where the fix was building the column and not reading
+  harder.
+  **The rule in one line: a contested number is a request for an instrument, not for a position.**
+
 - **A TRUE STATEMENT ABOUT ONE POPULATION, ASSERTED ABOUT ALL OF THEM — the night's commonest shape, and it is
   DIFFERENT from one-name-several-quantities (2026-09-11, the peer session's generalisation, and it is the better
   framing).** Not an ambiguous name: a correct measurement whose SCOPE is silently widened. Three instances in
