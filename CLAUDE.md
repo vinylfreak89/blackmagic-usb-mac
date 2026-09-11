@@ -5010,6 +5010,26 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **DOCUMENTATION OF A DEFECT DOES NOT PREVENT IT — only a structural change does, and tonight is the evidence
+  both ways (2026-09-11).** The wrapped-phrase hazard is recorded in this file in as many words, and it was
+  committed anyway: a `grep -c` for two sentences returned **0** for phrases that were present, because they wrap
+  at ~110 characters, and an entry was nearly duplicated on the strength of it. The half-a-definition error is
+  recorded here too, and it was committed again **three sections later** in the skew detector, which tests one
+  direction against a symmetric contract definition. **Two documented defects, two recurrences, in the session
+  that documented them.**
+  **What HELD were the structural repairs**: clause-bounded negation, which cannot be forgotten because it is in
+  the matcher; the parity split, which cannot be skipped because the calibration rows are not the scored ones;
+  and the rejected-variant control, which runs the rejected code rather than describing it. **What FAILED were
+  the notes.**
+  **So the wrapped-phrase hazard is now fixed structurally rather than noted a third time**: `superseded_check.py`
+  matches every whitespace run as `\s+` against the ORIGINAL document, so a phrase broken across a line is
+  found and the indices stay valid for the quoted/negated tests. **No pair wraps today — the exposure was
+  structural, not observed**, which is the right moment to fix one. A wrap control runs in the selftest.
+  ⚠️ **The corollary names what is still only a note: a phrase-based recurrence check is not a structural guard.**
+  `superseded_check.py` tests whether a withdrawn PHRASE reappears; it cannot see the same CLAIM restated in new
+  words, which is exactly how the half-a-definition error recurred. Its limit prints with every result, and that
+  is the honest position rather than a fix.
+
 - **A PROBE THAT CANNOT SEE A NEGATION — the most expensive member of the family, because it asserts about
   CONDUCT rather than returning a wrong number (2026-09-11).** A peer session's owed-work detector reported
   *"DECLARED an action and made no dispatch"* against this session, citing the sentence **"I'm not

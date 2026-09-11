@@ -27,7 +27,7 @@ the listed pairs are clean; it is not a coherence proof, and the day's censuses 
 exactly this kind of scope.
 """
 from __future__ import annotations
-import sys, os, re, subprocess, tempfile, shutil
+import re, sys, os, re, subprocess, tempfile, shutil
 
 CONTRACT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "..", "docs", "geometry_first_engine.md")
@@ -121,6 +121,24 @@ WITHDRAWAL = ("previously read", "first read", "stood here until", "is withdrawn
 LOOKBEHIND = 320   # a withdrawal note names what it withdraws shortly before quoting it
 
 
+
+def wrap_finditer(phrase: str, doc: str):
+    """Find `phrase` in `doc` ACROSS LINE WRAPS -- every whitespace run matches any whitespace.
+
+    STRUCTURAL FIX, 2026-09-11, and the reason is the point: this file records the hazard already
+    ("a line-oriented grep cannot see a wrapped phrase, and this file wraps at about 110
+    characters") and the session hit it anyway, twice -- once with grep returning 0 for two phrases
+    that were present, and here, where a literal `doc.find()` would report a pair CLEAN because its
+    phrase had wrapped. No pair wraps today; the exposure is structural, and a note is not a guard.
+
+    Returns match objects against the ORIGINAL document, so indices stay valid for quoted(),
+    negated() and marked() -- which is why this is a regex over the real text rather than a search
+    over a normalised copy with an index map.
+    """
+    parts = [re.escape(w) for w in phrase.split()]
+    return re.finditer(r"\s+".join(parts), doc)
+
+
 def quoted(doc: str, idx: int, end: int) -> bool:
     """Is THIS occurrence a MENTION rather than a use -- i.e. inside quotation marks?
 
@@ -172,17 +190,12 @@ def check(path: str, quiet: bool = False) -> int:
     doc = open(path).read()
     bad, ok, missing = [], 0, []
     for subject, withdrawn, current in PAIRS:
-        if current not in doc:
+        if not any(True for _ in wrap_finditer(current, doc)):
             missing.append((subject, current))
         bare = []
-        start = 0
-        while True:
-            i = doc.find(withdrawn, start)
-            if i < 0:
-                break
-            if not marked(doc, i, i + len(withdrawn)):
-                bare.append(i)
-            start = i + 1
+        for m in wrap_finditer(withdrawn, doc):
+            if not marked(doc, m.start(), m.end()):
+                bare.append(m.start())
         if bare:
             bad.append((subject, withdrawn, bare))
         else:
@@ -207,6 +220,12 @@ def negation_controls() -> bool:
     happened to sit near a denial of something else, which is a wider hole than the one it closes.
     """
     w = PAIRS[0][1]
+    # the wrap control: the same phrase broken across a line must still be found, since this file
+    # wraps at ~110 characters and a literal find would report the pair CLEAN
+    wrapped_doc = "Asserted: %s here." % w.replace(" ", "\n  ", 1)
+    wrap_ok = len(list(wrap_finditer(w, wrapped_doc))) == 1
+    print("WRAP CONTROL: a phrase broken across a line is still found ... %s"
+          % ("PASS" if wrap_ok else "FAIL: a wrapped phrase is invisible"))
     cases = [
         ("bare assertion", "The finding is that %s and it stands." % w, True),
         ("negated, same clause", "It is not the case that %s." % w, False),
@@ -216,7 +235,7 @@ def negation_controls() -> bool:
         ("negation in the PRIOR sentence", "That is not so. Separately, %s." % w, True),
         ("negation AFTER the phrase", "%s, not the other way round." % w, True),
     ]
-    ok = True
+    ok = wrap_ok
     print("NEGATION CONTROLS (5 must be rejected, 2 must still be caught):")
     for label, doc, must in cases:
         i = doc.find(w)
