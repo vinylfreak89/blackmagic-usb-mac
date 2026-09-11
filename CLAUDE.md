@@ -6107,6 +6107,29 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   cheaper than the sixth relay**, and the tell was that the item's status had not changed across five rounds
   while both agents were otherwise converging within minutes.
 
+- **CODEX'S REVIEW OF THE FIXTURE REPAIR: six more, and the placement recommendation ARRIVES AT THE SAME SHAPE
+  AS THE MEASUREMENT FROM THE OTHER SIDE (2026-09-11, `58998ab`).** Its review is pinned to `b8cedaf`/`2517b62`
+  and explicitly does NOT cover the three commits that landed during it, including the censored-end measurement;
+  it also bounds its own recommendation as "for the abstract fixtures, not a claim about which endpoints are
+  observable in the captures".
+  ✅ **It recommends restoring the edge placement and SHORTENING A2's end rather than lengthening it** — which
+  is what the measurement independently requires, since a lengthening at the edge is unobservable and a
+  shortening is the only end-change the source can express. Two routes, and neither saw the other.
+  **The four control gaps, all reproduced by it:** the truth check SKIPS censored and dark-content cases
+  entirely (B1's visible end relabelled `+1000` passes; so does C1's start); replacing every calibration row
+  with uniform picture still passes all nine controls, because nothing validates the calibration;
+  "identical content" compares thresholded masks while ignoring calibration and the rest of the samples; and
+  the `JITTER` ban is too blunt — it rejects a consistent small translation **even when its required answer is
+  `undecidable`**, so the suite loses exactly the uncertainty cases it should carry.
+  ⚠️ **B3 carries C3's defect in miniature and I did not see it:** it labels an absent interval as "both
+  endpoints off-window", which is the same unsupported causal explanation C3 was withdrawn for. An absent
+  interval is absent; saying WHY is a claim.
+  ✅ **AND THE MATCHED-CONTROL CLASS IS NOT EMPTY, which is why "one construction, not the class" was worth
+  insisting on.** Codex reproduced a replacement: **a visible blanking-boundary EXTENSION against unchanged
+  blanking plus adjacent dark picture**, retaining normal blanking in both worlds. It tests a level-only
+  method's ambiguity without hiding an entire interval — and it does NOT prove every row-local observable
+  fails, which is the claim C3 overreached into.
+
 - **THE FIXTURE'S NOMINAL INTERVAL WAS MOVED FOR A MECHANICAL REASON, AND THE DIFFICULTY MAY HAVE BEEN A
   PROPERTY OF THE SOURCE RATHER THAN A PROBLEM TO DESIGN AROUND (2026-09-11, open; the peer session's catch).**
   `switch_fixtures.py` moved `NOMINAL` from `(700, 717)` to `(660, 677)` because at the window's edge the
@@ -6221,6 +6244,23 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   and the damage would have been **withdrawing something true and recording a correction nobody needed** —
   which no later measurement would have caught, because a withdrawn true claim leaves nothing behind to
   contradict.
+
+- **AND A MUTATION THAT DOES FIRE MAY FIRE FOR THE WRONG REASON — the other half, found by Codex in the four
+  controls I had just "mutation-verified" (2026-09-11).** I confirmed each by reintroducing a defect and
+  checking the selftest exits 1. **That proves SOMETHING caught it, never THAT control**: Codex disabled the
+  rejection effect of controls 1, 4 and 5 individually and the suite still failed, because each mutation
+  violates other controls too — a changed span retains the old samples, copied samples retain the old truth.
+  **So the exit status is not evidence the intended guard fired.**
+  **Together with the entry below, this brackets mutation verification and both ends need the same discipline:**
+
+  | the mutation | the two readings | what settles it |
+  |---|---|---|
+  | does NOT fire | the control is vacuous, or the mutation never created the defect | observe the DEFECT, not the mutation |
+  | DOES fire | the intended guard fired, or a different one did | observe WHICH guard, not the exit status |
+
+  **Exit status is a proxy for "this control works" and it comes apart from the property in both directions.**
+  The repair is the same shape either way: isolate the mutation so it violates one guard only, and verify that
+  DISABLING that guard defeats that control.
 
 - **A MUTATION THAT FAILS TO FIRE HAS TWO CAUSES AND THEY MUST BE TOLD APART — the failure mode of mutation
   verification itself (2026-09-11, the peer session's, from its own instrument).** This session leaned on
