@@ -47,6 +47,7 @@ src/frameserver/frameserver_replay
 src/frameserver/tests/audio_publisher_test
 src/frameserver/tests/frame_publisher_test
 src/frameserver/tests/frameserver_test
+src/frameserver/tests/worker_bench
 src/frameserver/tests/test_asan
 src/frameserver/tests/test_tsan
 src/frameserver/tests/test_smallring
