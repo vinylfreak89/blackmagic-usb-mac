@@ -5314,6 +5314,25 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   run at the reference level) is the only one that keeps it. **A criterion phrased as a level test can be a
   timing filter on the detector's own question**, and that is now measured rather than argued.
 
+  **AND ITS SECOND SURVIVING RESULT IS SHARPER THAN THE CLAIM IT REPLACES: the position expectation is
+  DEGENERATE IN BOTH CONTENT REGIMES, in opposite directions.** Whole capture, 1,016 field-readings, split at
+  the fields' own median picture level (102.7) so no counter range is typed in:
+
+  | half | p50 | p90 | p99 | max | over 100 |
+  |---|---:|---:|---:|---:|---:|
+  | **bright** (>= 102.7) | **0** | **0** | **0** | **0** | **0 of 508** |
+  | **dim** (< 102.7) | **311** | 473 | 696 | 696 | **396 of 508** |
+
+  On bright programme this file already records that only ONE sample reaches blanking level, at 719 — so every
+  calibration row's longest run starts at 719, the tolerance is exactly zero in all 508 readings, and any row
+  differing by one sample is identified. On dim content clipped black supplies false runs and the tolerance
+  reaches most of the row, so nothing can exceed it. **Neither is a calibration: one is a hair-trigger and the
+  other is inert, and a single fixed window cannot be blamed for both.** This bears on the identified-versus-
+  Unknown split, which the skew branch decides — NOT on the `normal` class, which finding 4 shows never reaches
+  it. ⚠️ It also explains reading 1's 93%: with the expected position pinned at 719 and a tolerance of zero,
+  `skew == 0` means the row's longest run also starts at 719, which is what a band row looks like in this
+  statistic whenever its displaced interval is not the longest run present.
+
 - **D16 AND D17 ANSWERED — the rebuild is ungated, and NEITHER HORN WAS RIGHT (owner, 2026-09-11, relayed).**
   **D16, verbatim:** *"no blanking alone can not establish identity. blanking excursion can but there still needs
   to be some measureable component of horizontal skew"*.
