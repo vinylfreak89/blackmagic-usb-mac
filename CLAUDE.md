@@ -4220,6 +4220,27 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   conclusion goes in the file at the moment it is reached; this adds that a REFINEMENT is the case most likely
   to be skipped, because nothing reads as false.
 
+- **HOW TO READ THIS FILE: A RECORDED FAILURE MAKES A LIVE TRAP LOOK SAFER, and that is a property of the
+  WHOLE DOCUMENT rather than of any entry (2026-09-11, the peer session's, sharpened in the exchange).** This
+  file is very largely recorded failures. **Once a withdrawal is written up it reads as a FIXED INSTANCE, so the
+  next reader has LESS reason to suspect the thing than the agent who hit it did** — the write-up itself is what
+  lowers their guard. Measured instance: `settled_samples` returning a non-contiguous selection was withdrawn
+  at length, and every word of that withdrawal would have made the next temporal caller feel the hazard was
+  handled while the function still gave them no warning.
+  **So the rule for anything this file says went wrong: ask whether the MECHANISM was closed or only the
+  INSTANCE recorded.** If the code, the fixture or the document that produced it is unchanged, the entry is a
+  warning about a live hazard wearing the grammar of a post-mortem. **Where a mechanism can be closed at its
+  own site, close it there and say so in the entry** — the reader who needs it most is the one who never reads
+  this file.
+- **AND A NEW DEFECT CLASS FROM THE SAME EXCHANGE: a shared helper CORRECT FOR ITS PURPOSE whose OUTPUT SHAPE
+  silently violates a different caller's assumption.** `settled_samples` pools levels, where order is
+  irrelevant; a temporal caller read order out of it. **Neither party is wrong on its own — the contract between
+  them was never written down**, which makes it a different class from everything else here, most of which is
+  one party being wrong. The tell is that both the helper's tests and the caller's tests pass. **The fix belongs
+  at the helper**, because it is the one place every caller passes through, and it must name the obvious WRONG
+  alternative too: warning about one trap alone routes the next caller into the other, and a partial warning at
+  a shared site is worse than none because it reads as complete.
+
 - **A conclusion that closes off a line of investigation is written into THIS FILE at the moment it is
   reached** — by whichever agent reaches it, in whichever channel, without waiting for a round of work to end. A
   finding that lives only in a Codex thread is invisible to the harness, and an assertion made in the Claude thread
