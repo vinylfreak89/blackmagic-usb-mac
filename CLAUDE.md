@@ -5010,8 +5010,14 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
-- **DOCUMENTATION OF A DEFECT DOES NOT PREVENT IT — only a structural change does, and tonight is the evidence
-  both ways (2026-09-11).** The wrapped-phrase hazard is recorded in this file in as many words, and it was
+- **TWO DOCUMENTED DEFECTS RECURRED INSIDE THE SESSION THAT DOCUMENTED THEM; THREE STRUCTURAL REPAIRS COULD NOT,
+  BECAUSE THE CONSTRAINT IS IN THE EXECUTING CODE (2026-09-11).**
+  ⚠️ **That is the claim with its mechanism. The first version of this entry headed it "documentation of a defect
+  does not prevent it — only a structural change does", which is a slogan generalised from one night** — and
+  generalising from one night is what cost the floor rule in the entry below. The body carried the narrow
+  evidence while the heading carried the broad claim, which is the header-versus-body mismatch caught earlier the
+  same night in a Codex brief whose summary said "six commits" above an enumeration of ten. **Third instance, and
+  the tell is always the same: the summary is written from intent, the body from the work.** The wrapped-phrase hazard is recorded in this file in as many words, and it was
   committed anyway: a `grep -c` for two sentences returned **0** for phrases that were present, because they wrap
   at ~110 characters, and an entry was nearly duplicated on the strength of it. The half-a-definition error is
   recorded here too, and it was committed again **three sections later** in the skew detector, which tests one
@@ -5024,7 +5030,10 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **So the wrapped-phrase hazard is now fixed structurally rather than noted a third time**: `superseded_check.py`
   matches every whitespace run as `\s+` against the ORIGINAL document, so a phrase broken across a line is
   found and the indices stay valid for the quoted/negated tests. **No pair wraps today — the exposure was
-  structural, not observed**, which is the right moment to fix one. A wrap control runs in the selftest.
+  structural, not observed**, which is the right moment to fix one **in a guard specifically**: a guard that
+  fails CLOSED announces itself, while a guard that fails OPEN is indistinguishable from a clean document. The
+  first observed instance of this one would have been a silent false negative inside the check, so there would
+  have been nothing to notice. Same asymmetry as a false alarm against a false accusation, one level down. A wrap control runs in the selftest.
   ⚠️ **The corollary names what is still only a note: a phrase-based recurrence check is not a structural guard.**
   `superseded_check.py` tests whether a withdrawn PHRASE reappears; it cannot see the same CLAIM restated in new
   words, which is exactly how the half-a-definition error recurred. Its limit prints with every result, and that
