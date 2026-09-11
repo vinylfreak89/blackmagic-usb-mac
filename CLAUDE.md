@@ -5116,10 +5116,26 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   it lands on S−1 NEVER on S.** So read as the contract's S his sentence would contradict the measurement, and
   **"(S)" is his shorthand for "the switch line" — the row the contract calls T.** The substance is unambiguous:
   **the peak indicates THE PARTIAL LINE.**
-  ⚠️ **That reading is DERIVED, not his words, and it decides which row the detector marks.** It is recorded as
-  derived so a later reader can overturn it from the raw rows rather than inherit it. It is also the naming
-  defect this file already carries — the harness confirming S while calling it the switch line — surfacing in his
-  own sentence, which is what makes it worth flagging rather than silently correcting.
+  ✅ **AND HE THEN SETTLED IT HIMSELF, IN WORDS THAT USE NEITHER LETTER — so this is no longer a derivation**
+  (owner, same day): *"the partial line is the one that is partially correctly horizontally timed. the other is
+  lines which are incorrectly horizontally timed. in other words, where the liftoff occurs vs fields fully coming
+  from the other head… which one is S and which one is T I will leave to you"*.
+
+  | his description | the contract's name | contract `:665-669` |
+  |---|---|---|
+  | partially correctly timed — **where the liftoff occurs** | **T** | *"the horizontal line carrying the peak, the partial line"* |
+  | incorrectly timed — **fully from the other head** | **S** | a **BOUND**; *"S is NEVER substituted for it"* |
+
+  **Nothing needs changing to make that fit: the contract already says exactly this**, so the naming edit that
+  was going to Codex is not needed. The definitions were right and "(S)" in the D17 ruling was the slip.
+  **THE LESSON, and it is the better form of the naming rule this file already carries: THE DESCRIPTION SURVIVES
+  A NAMING COLLISION, THE LETTER DOES NOT.** The dispute that cost this project a day was never about the
+  signal — both readers agreed on which rows carried what, and disagreed about which row the WORD named. His
+  resolution is to describe the object and hand the labels back, which is the move that ends that class of
+  argument rather than winning it.
+  ⚠️ Kept as the cautionary half: my reading and the peer's both landed on T independently, and **agreement
+  between two agents was still weaker evidence than one sentence of his description** — which is why it was
+  recorded as derived until he supplied it.
   ⚠️ **The contract edits these imply are NOT mine to make alone**: removing `:186`'s "correction owed", and
   resolving `:64-65`'s flagged two-agent disagreement with D16's answer. Both go to Codex with his quotes.
 
