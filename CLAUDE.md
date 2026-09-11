@@ -4142,6 +4142,27 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   **0.6%**. The 532 already have no switch line by either route and are unaffected, and the 478 with a T are
   untouched. An earlier framing of this as a large loss confused the harness's S measurement (exact in 1,013 of
   1,013 registerable readings, a different instrument and population) with the engine's export.
+- **A TRUE STATEMENT ABOUT ONE POPULATION, ASSERTED ABOUT ALL OF THEM — the night's commonest shape, and it is
+  DIFFERENT from one-name-several-quantities (2026-09-11, the peer session's generalisation, and it is the better
+  framing).** Not an ambiguous name: a correct measurement whose SCOPE is silently widened. Three instances in
+  one day, each found only by measuring the population the claim had skipped:
+
+  | the true statement | the scope it was asserted at | what the wider claim cost |
+  |---|---|---|
+  | a whole-field floor admits the band on 61% of units | "the floor is calibrated" | a local window takes it to 100% — `:447` says so and the reason was in the same paragraph |
+  | the calibration window's rows carry no switch | "so the calibration is clean" | eleventh fixed-place-to-look; the rows can carry clipped dark content instead |
+  | removing the position tolerance changes nothing **for the `normal` class** | "the position tolerance is inert" | measured, `p_tol` 50 → 400 flips `extended` → `Unknown`; position decides the whole identified-versus-Unknown split |
+
+  **THE TELL IS THAT THE NARROW STATEMENT IS TRUE, so re-reading it finds nothing** — which is why all three
+  survived a careful author and needed a different population measured instead. ⚠️ **And the third was committed
+  by the agent quoting the first two back at me, inside a warning about scope.** Knowing the class by name does
+  not prevent it, which this file already records for fixed-place-to-look and now records twice.
+  **The check is cheap and is the same one every time: name the population the claim was measured on, then ask
+  what the claim asserts about the populations it was not.** Where those differ, the scope is the finding.
+  ⚠️ It is distinct from one-name-several-quantities and should not be folded into it: there the WORD is
+  ambiguous and the fix is to name the quantities separately; here the word is fine, the measurement is right,
+  and the fix is to carry the population with the claim.
+
 - **ONE NAME, SEVERAL QUANTITIES — the commonest defect class in this contract, and a cold read finds them where
   two builders cannot (2026-09-10).** A term stands for two or more different quantities, the code carries only
   one of them, and every rule leaning on the name inherits the ambiguity. Found so far, and a sweep of the cold
