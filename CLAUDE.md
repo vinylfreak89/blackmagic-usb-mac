@@ -4220,6 +4220,26 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   conclusion goes in the file at the moment it is reached; this adds that a REFINEMENT is the case most likely
   to be skipped, because nothing reads as false.
 
+- **AGREEMENT IS CHEAP WHEN BOTH INSTRUMENTS INHERIT THE SAME IDEA — the standing hazard of two agents checking
+  each other, and the counterweight to everything this method is good at (2026-09-11, the peer session's, after
+  three instances in one night).** This file leans hard on independent-route corroboration, and three
+  convergences tonight turned out to be one thing wearing two hats:
+
+  | the "two" routes | what they actually shared |
+  |---|---|
+  | my code-2 arithmetic / the peer's one-sigma noise | ONE hypothesis — "the cut sits inside blanking's spread" |
+  | my −0.044 / the peer's −0.014 | ONE construction — contiguous-at-blank-level, on two populations |
+  | C3's fixture-side bound / Codex's design-side requirement | a construction that did not hold, agreed with from both ends |
+
+  **The question to ask of any agreement is not "did they reach it separately" but "WHICH ASSUMPTION DID THE
+  SECOND ONE NOT RE-DERIVE".** Two agents, two instruments and two chains of reasoning can all rest on one
+  unexamined premise, and then agreeing is evidence about the premise's reach rather than about the conclusion.
+  ✅ **What the three DO establish is narrower and still worth having**, and saying which is the whole
+  discipline: same-construction agreement on different populations rules out a POPULATION-specific artefact and
+  nothing else; same-hypothesis agreement rules out nothing at all. **Name the shared inheritance before
+  claiming the agreement**, and where nothing is shared — a probe against an instrument, a synthetic against a
+  capture — the corroboration is real and this file should keep leaning on it.
+
 - **HOW TO READ THIS FILE: A RECORDED FAILURE MAKES A LIVE TRAP LOOK SAFER, and that is a property of the
   WHOLE DOCUMENT rather than of any entry (2026-09-11, the peer session's, sharpened in the exchange).** This
   file is very largely recorded failures. **Once a withdrawal is written up it reads as a FIXED INSTANCE, so the
