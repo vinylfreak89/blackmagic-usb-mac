@@ -5391,6 +5391,12 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   than that and neither review had it: the code does not use the device fill at all.** Found by resolving a
   two-instrument disagreement — my own probe and my own diagnostic differed on the same quantity, p90 of 8
   against 426 — rather than by reading the line, which both of us had read.
+  ✅ **CHECKED NEGATIVE, not an assumption: `blanking_extent.py` is the ONLY instrument with this reading.**
+  Every other level reader in `experiments/` takes rows 7–15 / 270–278 — the device's decoded blanking — or
+  the row's own level: `source_reference`'s `DEVICE_ROWS`, `own_blanking_census`'s `BLANK_ROWS`,
+  `box_bounds.device_population`, `edge_variance`, `porch_census`, `tear_column_census`. The engine's
+  `blank_mean` reads 7–16 / 270–279, which is the separate defect already recorded above (it includes the
+  timing row and is not the contract's mean of qualified SOURCE blanking).
 
   **THE OBSERVABLE'S DESIGN, put to Codex before writing it and answered with a THIRD reading (`66233ee`,
   `docs/reports/2026-09-11_extent_set_observable_review.md`).** I proposed a SET departure from his `:43-47`
