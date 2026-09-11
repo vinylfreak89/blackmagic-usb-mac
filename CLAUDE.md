@@ -2255,6 +2255,92 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Post-calibration harness review (`0a8fabe` through `91e2372`, 2026-09-11).**
+`docs/reports/2026-09-11_post_calibration_harness_review.md` and
+`experiments/post_calibration_review_controls.py` record the review and reproduction.
+Indexing is fixed and its consumer-only mutation fails the new selftest. Equality
+settlement is fixed narrowly; a one-code local rise still pools 18.2 instead of 1.6,
+and low-tail selection still biases a known 3.0 mean to 1.0. The 12/12/36 ceilings
+are fixed-seed regression controls, not general error bounds or qualified identity.
+Both supplied selftests pass; stale no-fabrication/coverage claims remain in source.
+The row census reproduces 939/1524 and 1097/1524, and 354/81280 held-out exceedances.
+EVERY asserted target returns sample 719. These are preselected-row positive-departure
+assertion rates, not independently validated switch detection. The test also misses
+an equally large earlier blanking arrival; it does not implement either-direction skew.
+The new structural-floor rule is false: widening a percentile interval changes its
+tail mass, ties matter, and a maximum is an endpoint order statistic. Disjointness
+improves evaluation integrity, not automatically accuracy. R12's sign remains a
+qualified association against a narrow hypothesis, not unique causal adjudication;
+unpaired populations and different denominators/observability matter, and same row
+does not establish same instant. Three later P3 runs do not exclude variance or cache
+effects in an earlier run. O-B6 `none` permits sub-six-row bars, demonstrated by five
+at both ends. The device-fill warning is useful as a provenance check, not a universal
+constant/perfect-result rule. The detailed report qualifies the newly merged claims
+below; this review does not promote them, amend the contract, or change the engine.
+
+**Profiling-gate review (2026-09-11).** `docs/reports/2026-09-11_profiling_gate_review.md`
+records the source inspection and read-only fixture diagnostic. The peer's zero-call
+WORKER-BENCH measures a gated path, but the separate FIELDREG-BENCH loop still calls
+registration 10,000 times. Neither timing is enforced: elapsed cost and zero calls
+cannot fail `make bench`. Its worker loop also predates the production queue split
+and does not cover the actual whole worker/publication path. The 193 used synthetic
+units all have hard-padding fraction 0.0, so the classifier's first appearance test
+rejects them; do not relax the classifier to fix the benchmark. Use a hashed real
+capture-1 chronological slice with explicit replay epochs, expected call/phase counts,
+and real-path instrumentation, retaining gated controls. No implementation changed.
+The peer's later 1.690/2.073-ms direct-engine run is below budget for its median/p95;
+it does not establish whole-path conformance or a CPU minimum. Load-paired elapsed
+times support sensitivity to host conditions, not the causal claim "load alone".
+The earlier 20.992/47.851-ms run is retained as an observation, not intrinsic cost.
+
+**Arrival/calibration review (`8be9d89` through `e847da7`, 2026-09-11).** Details and deciding probes are
+`docs/reports/2026-09-11_arrival_calibration_review.md` and `experiments/arrival_review_controls.py`.
+Both supplied selftests pass; forcing the rejected arrival variant into production makes the abrupt-step
+test fail at 717 instead of 700, so that control genuinely defends the narrow choice. It does not establish
+the finder as an identified blanking transition. The gradual recovery test permits ±10 samples and currently
+returns 701 for want=700, while the injected ramp floor is at 704; "4/4 exact" is not the test's result.
+Noise-only fixture families yield non-Unknown transitions in 61/1000 seeds. A terminal dark-content step
+trains its level as source blanking. A quantized ramp plateau stops settlement at 26 before the floor 1.6,
+yielding pooled 17.8667; the long-tail selection can also bias a known mean of 3.0 to 1.0.
+
+The per-unit floor has an ACTUAL wrong-field read: field 2's target 260..262 is combined with origin 286,
+so it reads field 1's rows 256..258. Its selftest never calls `unit_reading`. Asymmetric synthetic fields
+reverse the decision under a coordinate-only correction. Capture 1 hides the bug: all 508 keyed field-2
+results are unchanged by that correction because BOTH target triplets have maximum transition 719 on every
+unit. The supplied 680/1016 and 354/81280 figures reproduce. Bright 216/550 is an assertion rate, not yet
+qualified switch coverage; its paired margins are exactly 216 at +1 sample and 334 at zero, not fractions
+inferred by subtracting aggregate medians. Every target maximum is 719, so the bright comparison tests
+whether the calibration maximum is below that endpoint.
+
+The parity split avoids direct threshold resubstitution. Although the reference median sees validation
+rows, that scalar CANCELS in both max comparisons; calling these rates circular through it would be wrong.
+Disjoint parity indices do not prove equal content effects or switch identity, and per-row false fires are
+not the false-assertion rate of a three-row maximum. The earlier operating-point sweep is prose-only in
+`0c72441`; its executable/keyed populations are needed to audit it. The peer's stronger conclusions below
+are not accepted by this review; the measured outputs and their limitations are retained. No engine,
+contract, original harness implementation or render is changed by the review.
+
+**No-jump reference review (`dc339f0` via `f668f0b`, 2026-09-11).** Reproduction and falsifying controls are
+in `docs/reports/2026-09-11_no_jump_reference_review.md`; executable review diagnostics are
+`experiments/no_jump_review_controls.py`. The later peer measurement entries' attribution of adjacent-LINE
+equality to the owner's temporal no-jump rule is NOT accepted by this review. The cited rule concerns identified
+boundary travel along the row and permits line changes. Persistence can select a stable false candidate: a
+synthetic internal picture edge yields an adjacency-qualified switch while every true source porch stays fixed.
+The builder also accepts only positive departures and its source-reference dependency selects a transition on
+a perfectly flat row. These are measured controls, not grounds to replace engine observations with this reference.
+
+The 42/42 start-at-1–59 association reproduces, but all 42 candidate lines equal the ENGINE'S S, with engine
+T=S−1: the proposed explanation of a late phase-reader T has the opposite sign. Low-run opening is not an
+identified switching instant. Of the six disputed keys, four qualified candidates match the run reader, one
+matches the phase reader, and one is unqualified. This does not adjudicate them. The cause join finds five
+qualified `observation_disagreement` readings; the peer's box-first table hides them inside the box category.
+The 83/538 assertions on engine-Unknowns reproduce; they are not 83 newly identified switches. The negative
+positional cohort differs from the dispatch and is itemized in the report. Candidate and engine labels agree
+numerically in their legacy frame-continuous CSV convention, not the contract's field-relative convention.
+The contract and engine are unchanged. Both incoming document-check selftests now pass; no harness repair
+was made by this review. The peer's earlier claims below are retained as its measurements/interpretations,
+with these current review limits rather than silently promoted to agreed conclusions.
+
 **R3 recovery closed from the local ruling (2026-09-11, review of harness `1137cac`).** A new lock is
 required before correction resumes after the terminal-black-run invalid-raster condition; until acquisition,
 the general Crop rule supplies standard placement. The contract now states the answer where the recovery
