@@ -2255,6 +2255,27 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Revised switch-fixture review (`b8cedaf`, `2517b62`, 2026-09-11).**
+`docs/reports/2026-09-11_switch_fixture_repair_review.md` and synthetic-only
+`experiments/switch_fixture_repair_audit.py` record six findings. Both supplied
+suites pass, A2 is now valid, and old C3 is removed. But false B1/C1 visible truth
+and calibration containing no intervals all still pass. Controls 1, 4 and 5 can
+each lose their rejection effect while the positive suite stays green: collateral
+inconsistencies, not necessarily the intended guard, reject its mutations. The new
+audit has SIX unmet positive rejection checks and exits 1; no capture was opened.
+Recommendation: restore the edge-placed abstract reference, shorten A2 (e.g. end
+-8 on a width-17 interval), and retain interior phases as additional cases. Jitter
+is a legitimate synthetic input, not grounds to ban near-jitter Unknown fixtures.
+Keep presence tri-state with separate expected extent/endpoint uncertainty; full
+latent truth stays numeric even when its observation is censored. Reference and
+sample observations, not masks alone, define the consistency interface. Old C3's
+removal does not forbid a visible-boundary-extension/adjacent-dark-content level
+control. A cyclic synthetic example retains normal blanking in both worlds; it
+is not an analog indistinguishability proof. B3's off-window-cause label and the
+source-wide same-dither assertion remain unsupported. No supplied fixture,
+detector, engine or contract repair. The report records an initially invalid
+review meta-test as well; guard-verification claims below are corrected in place.
+
 **Switch-fixture review (`ed56ce7`, 2026-09-11).**
 `docs/reports/2026-09-11_switch_fixtures_review.md` and synthetic-only
 `experiments/switch_fixtures_review_controls.py` record six findings. C3 does NOT
@@ -4245,8 +4266,9 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   gap is **858 − 720 = 138 samples against 147.15 of nominal blanking**, so an interval cannot fall wholly
   inside it.
   ⚠️⚠️ **THE CONFLATION THAT PRODUCED IT, named because it is reusable: AN UNOBSERVED INSTANT IS NOT AN
-  UNOBSERVED INTERVAL.** This file records the 16% undelivered fraction as making `T = S` a legitimate reading
-  of roughly one line in six — and that is about a switch INSTANT landing in the gap. I carried it to an entire
+  UNOBSERVED INTERVAL.** The undelivered fraction permits an unobserved switch instant and hence a legitimate
+  `T = S` reading; it does NOT establish a probability of one in six without an event-phase distribution.
+  The original argument carried that possibility from an instant to an entire
   147-sample INTERVAL, which the same arithmetic forbids. **Both numbers were already in this file**, so the
   refutation needed no new measurement, only the subtraction I did not do.
   ⚠️⚠️ **THREE CLAIMS I DERIVED FROM C3 GO WITH IT, and two of them were relayed to the owner:**
@@ -4268,21 +4290,25 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   The earlier scan-order fix inside it remains historical and validated nothing about reversed spans, truth
   coordinates or dispositions.
 
-  ✅ **REPAIRED, and the control set is now NINE with the four new ones MUTATION-VERIFIED against the exact
-  defects that produced them** — reintroduce each and the selftest fails, which is the only evidence that a
-  control checks anything:
+  **PARTLY REPAIRED at `b8cedaf`; nine controls pass, but the guard-specific verification claim is too broad
+  (Codex review of `b8cedaf`/`2517b62`).** Reintroducing the four supplied mutation bundles makes the whole
+  selftest fail. It does not establish which guard rejects them: the positive suite still passes if the
+  rejection effect of control 1, 4 or 5 is disabled individually. Truth verification also skips censored
+  and dark-content cases, and no calibration construction check exists. The observed bundle rejections are:
 
-  | new control | the defect it exists for | fires? |
+  | intended control | supplied mutation | whole selftest rejects? |
   |---|---|---|
   | declared geometry must be VALID, not filtered | A2's `(700, 677)` injecting nothing | **yes** |
   | the truth label must match the injected samples | a shift relabelled −40 → −400, samples untouched | **yes** |
   | identical content must not demand opposite answers | A2 and B3 both delivering nothing | **yes** |
   | every nonzero shift must exceed the calibration jitter | A4's +2 end shift inside ±2 | **yes** |
 
-  Plus a ninth that cannot drift because it is arithmetic: **`147.15 > 138` must stay true, or the removed pair
-  becomes revivable.** The nominal interval also moved from `(700, 717)` to `(660, 677)` — the first version
-  placed it three samples from the window edge, which is why its move-the-end case had nowhere to go and
-  produced invalid geometry instead of a censored one.
+  The ninth checks the nominal arithmetic `147.15 > 138`; changing an inequality alone would NOT establish
+  the removed pair's other premises. The nominal interval moved from `(700,717)` to `(660,677)` to make room
+  for a +40 end shift. That was not the only way to make A2 valid: shortening the width-17 interval by 8,
+  rather than by 40, preserves the edge case. Recommended: retain edge placement, update its dependent
+  stimuli and add interior phases separately. Jitter is a synthetic parameter, not a reason to exclude
+  Unknown cases within it. The repaired suite still needs an explicit expected measurement schema.
   ⚠️ **The matched pair is REMOVED rather than repaired.** Its B world is not admissible, so there is nothing to
   repair; keeping it as an "illustration within a stated synthetic model" would preserve the shape of a result
   without its content, which is how the 0.23% survived three withdrawals.
@@ -6024,8 +6050,10 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   probes now fail for the right reason and look like regressions. **Three expired in one session and nothing
   reported it until a discovery runner existed.** Codex's own fixtures docstring prescribes the disposition —
   *"a later fixture repair should make these historical assertions fail and should replace them with positive
-  controls"* — which is what `switch_fixtures_review_controls.py` now is: each historical defect asserted ABSENT,
-  and its guard verified to FIRE. **The other three are owed the same conversion and are named in the runner
+  controls"* — `switch_fixtures_review_controls.py` was converted at `2517b62` to assert repair and mutation
+  rejection. **The claim that each intended guard is verified to fire is not established:** Codex's subsequent
+  review disables guards 1, 4 and 5 individually while that entire positive suite stays green, because other
+  inconsistencies in its mutations cause rejection. **The other three are owed the same conversion and are named in the runner
   rather than deleted**, because the probes are the evidence that the defects were real.
   ✅ **The annotation is SELF-RETIRING, which is what stops it rotting into a second store.** `EXPECTED_FAIL`
   declares DISPOSITIONS, never coverage — discovery stays automatic, and only the expected STATE is asserted,
