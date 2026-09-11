@@ -120,6 +120,7 @@ def main() -> int:
     failed = []
     skipped = []
     slow = []
+    hung = []                # timed out even under --slow: a different negative
     stale = []
     mentions = []
     root = os.path.dirname(HERE)
@@ -136,9 +137,21 @@ def main() -> int:
         except subprocess.TimeoutExpired:
             # Slow is not broken. A check that walks a capture is reported as needing --slow rather
             # than counted against the suite, and never counted green either.
+            # ⚠️ BUT SLOW AND HUNG ARE DIFFERENT NEGATIVES AND THIS REPORTED THEM IDENTICALLY. A
+            # check stuck in a loop reads as "needs --slow" and is then permanently invisible: it
+            # never runs, and nothing says so. Halting is undecidable, so this does NOT claim to
+            # tell them apart -- it reports WHICH timeout was hit. Timing out at 60 s is ordinary;
+            # timing out at 1800 s is a check that had thirty minutes and still did not finish,
+            # which is evidence of a hang rather than of a capture walk.
+            limit = 1800 if a.slow else 60
             slow.append(fn)
-            if not a.quiet:
-                print("  %-42s NEEDS --slow" % fn)
+            if a.slow:
+                hung.append((fn, limit))
+            if not a.quiet or a.slow:
+                print("  %-42s %s"
+                      % (fn, "TIMED OUT AT %ds UNDER --slow -- slow or HUNG, and 30 minutes is "
+                             "evidence for hung" % limit if a.slow
+                         else "NEEDS --slow (timed out at %ds)" % limit))
             continue
         err = r.stderr.decode(errors="replace")
         if r.returncode == 2 and "unrecognized arguments" in err and args:
@@ -185,6 +198,9 @@ def main() -> int:
              len(EXPECTED_FAIL), len(skipped), len(slow), len(unclassified_audits(checks))))
     for fn in mentions:
         print("    %-40s carries the quoted \"--selftest\" in code but does not accept it" % fn)
+    for fn, limit in hung:
+        print("    ⚠️ %s did not finish in %ds even under --slow -- treat as HUNG until shown "
+              "otherwise; it is running in NOTHING" % (fn, limit))
     for fn in stale:
         print("    STALE ANNOTATION: %s now PASSES -- convert it and delete its row" % fn)
     unc = unclassified_audits(checks)
@@ -198,7 +214,10 @@ def main() -> int:
     if not checks:
         print("  NO CHECKS DISCOVERED -- that is a failure, not a clean run")
         return 2
-    return 1 if (failed or stale) else 0
+    # ⚠️ A HUNG CHECK RAN IN NOTHING, so a green board would be asserting coverage it does not
+    # have -- the same lapse as a check nobody runs. A 60 s timeout is ordinary and stays green;
+    # thirty minutes without finishing does not.
+    return 1 if (failed or stale or hung) else 0
 
 
 if __name__ == "__main__":
