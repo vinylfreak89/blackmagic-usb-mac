@@ -12,6 +12,11 @@ Discovery is therefore from the DIRECTORY, never from a list:
   * a module whose source contains the QUOTED literal `"--selftest"` (or the single-quoted form)
     runs with it -- a BARE prose mention is not matched and such a file is not discovered at all
   * a module whose name ends `_check` or `_controls` runs bare -- those ARE the check
+  * a module NAMED in `SYNTHETIC_AUDITS` runs bare. ⚠️ That set is an ENUMERATION and therefore
+    cannot see the next audit added, which is this project's own recurring defect -- so the runner
+    REPORTS every `*_audit.py` it cannot classify instead of passing over it in silence. `_audit`
+    was tried as a suffix rule first and is wrong: it names two different kinds of file, synthetic
+    checks and capture-reading instruments, and six of the latter failed for want of a capture
 Anything new in `experiments/` is covered the day it lands, without anyone remembering.
 
 ⚠️ THE LITERAL SUBSTRING IS DELIBERATE AND READING THE ARGPARSE WOULD BE WORSE. This docstring
@@ -39,6 +44,11 @@ import argparse, os, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 SLOW = {"capture_render.py"}          # needs a capture; not a self-check
 
+# Synthetic audits that ARE checks: no capture I/O, runnable bare. Codex's switch-fixture audits are
+# the acceptance instruments for `switch_fixtures.py` and were discovered by nothing, so a
+# regression in the fixtures was silent in the suite built to stop exactly that.
+SYNTHETIC_AUDITS = {"switch_fixture_censoring_audit.py", "switch_fixture_repair_audit.py"}
+
 # DECLARED DISPOSITIONS, not declared coverage. Discovery stays automatic; only the EXPECTED STATE of
 # a check is something an agent must assert, because nothing in the file distinguishes a probe that
 # expired by design from a genuine regression. Each entry names the commit its subject was pinned at
@@ -57,6 +67,11 @@ EXPECTED_FAIL = {
         "pins blanking_extent at d21f373, before the void marking and the failing-first controls",
     "level_attribution_review_controls.py":
         "pins level_attribution at 386d202, before the holdout repair removed the row overlap",
+    "switch_fixture_repair_audit.py":
+        "pins switch_fixtures at b8cedaf/2517b62. Its round-1 findings were repaired and Codex "
+        "re-reviewed at 58998ab with a new audit; the per-endpoint `require` schema that came out "
+        "of THAT round retires this one. RETIREMENT IS CODEX'S CALL, not mine -- raised, not acted "
+        "on: it owns the file and the file is the record of round 1",
 }
 
 
@@ -69,9 +84,19 @@ def discover():
         src = open(os.path.join(HERE, fn), encoding="utf-8", errors="replace").read()
         if '"--selftest"' in src or "'--selftest'" in src:
             out.append((fn, ["--selftest"]))
-        elif fn.endswith("_check.py") or fn.endswith("_controls.py"):
+        elif fn.endswith("_check.py") or fn.endswith("_controls.py") or fn in SYNTHETIC_AUDITS:
             out.append((fn, []))
     return out
+
+
+def unclassified_audits(found):
+    """⚠️ THE ENUMERATION'S OWN RESIDUE. `SYNTHETIC_AUDITS` is a hand-written set, so it is blind to
+    the next audit added -- the coverage-from-observed-instances defect. Nothing can enumerate the
+    audits that are checks, so instead the ones that fall through are NAMED. A clean run with an
+    unclassified audit outstanding is NOT a clean board."""
+    names = {fn for fn, _ in found}
+    return [fn for fn in sorted(os.listdir(HERE))
+            if fn.endswith("_audit.py") and fn not in names and fn not in SLOW]
 
 
 def main() -> int:
@@ -129,13 +154,18 @@ def main() -> int:
                 failed.append((fn, r.returncode, err.strip().split("\n")[-1]))
         if not a.quiet or (r.returncode != 0 and not expected) or state == "STALE-ANNOTATION":
             print("  %-42s %s" % (fn + (" " + " ".join(args) if args else ""), state))
-    print("\n  %d discovered, %d ran, %d FAILED, %d expected-fail, %d need args, %d need --slow"
+    print("\n  %d discovered, %d ran, %d FAILED, %d expected-fail, %d need args, %d need --slow,"
+          "\n  %d audit(s) unclassified"
           % (len(checks), len(checks) - len(skipped) - len(slow) - len(mentions), len(failed),
-             len(EXPECTED_FAIL), len(skipped), len(slow)))
+             len(EXPECTED_FAIL), len(skipped), len(slow), len(unclassified_audits(checks))))
     for fn in mentions:
         print("    %-40s carries the quoted \"--selftest\" in code but does not accept it" % fn)
     for fn in stale:
         print("    STALE ANNOTATION: %s now PASSES -- convert it and delete its row" % fn)
+    unc = unclassified_audits(checks)
+    for fn in unc:
+        print("    UNCLASSIFIED AUDIT: %s runs in nothing -- add it to SYNTHETIC_AUDITS if it is a"
+              " check, or leave it as a capture instrument" % fn)
     for fn, why in skipped:
         print("    %-40s %s" % (fn, why[:70]))
     for fn, rc, last in failed:
