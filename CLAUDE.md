@@ -2741,6 +2741,31 @@ census's own unjustified 200-sample ceiling removed.
 ⚠️ The census validates **S, which is position**. It does NOT validate T, and it cannot establish that the run is
 physically relocated blanking rather than clipped black content — CLAUDE.md §2 records that black content in this
 material can be clipped to exactly the blanking level with the same dither.
+⚠️⚠️ **THE "SAME DITHER" CLAIM IS REFUTED BY MEASUREMENT, ITS CITATION NEVER LANDED, AND THE CONTRACT HAD
+ALREADY DEMANDED THE MEASUREMENT (2026-09-11).** "CLAUDE.md §2 records" points at nothing — the project's only
+dither measurement is the DEVICE's vertical-interval constant at `:332` (lag-1 −0.33), a different quantity on
+different rows. Contract `:461` already said the claim *"needs its own supporting measurement and does not
+follow from the means and standard deviations"*. Measured at last, on the same rows, over 40 field-readings:
+
+| | source blanking | clipped dark picture |
+|---|---|---|
+| samples / runs | 108,427 in 7,599 | 32,517 in 2,203 |
+| mean | 1.424 | 2.356 |
+| code occupancy | **1:58%, 2:42%, 3:0%** | 2:33%, 3:26%, 1:24%, **4:17%** |
+| **lag-1 autocorrelation** | **−0.292** | **+0.274** |
+
+**OPPOSITE SIGNS.** Blanking is high-pass — the dither signature — while dark picture is positively correlated,
+which is what content looks like; and blanking never reaches code 3 where dark picture spends 17% at code 4.
+**So the two are NOT the same and the recorded limitation is weaker than it states: a blank-level run is not
+mute about whether it is relocated blanking or clipped black.**
+⚠️ **BOUNDED, because the medians separate while the distributions overlap** (blanking p90 +0.021, dark p10
+−0.125): this is a strong statistical separation on RUNS, not a per-sample discriminator. **It needs a run long
+enough to estimate an autocorrelation** — a relocated interval at ~147 samples qualifies, a bright row's one or
+two terminal samples does not. So it applies exactly where the T/S question is asked and not where the
+end-censoring question is.
+⚠️ **Unreviewed by Codex and not to be leaned on until it is** (§14). It bears directly on the rebuild: Codex's
+requirement is *"evidence establishing a horizontal-timing departure rather than merely a changed low-level
+mask"*, and this is a candidate for such evidence that costs no new instrument.
 **Do not re-derive the T-to-S relationship from scratch:** measuring the relocated row against T reports T+1 in
 ~90% of readings, which is the DEFINITION of the relationship (T is the partial row and need not carry a whole
 relocated interval), not an error.
