@@ -126,6 +126,16 @@ def report(bare, mentions) -> int:
             print("    %s:%d  %s  (%s)" % (rel, line, lit, was))
             print("        withdrawn: %s" % why)
             print("        ...%s...\n" % ctx[:110])
+    print("  ⚠️ A QUALIFICATION UNDER A TABLE IS OUT OF REACH, and that is structural rather than a")
+    print("     tuning choice. The lookahead is bounded at %d characters because a distant"
+          % LOCAL_LOOKAHEAD)
+    print("     withdrawal must not excuse a bare use (control 5). A PROSE qualification follows")
+    print("     within a clause; a TABLE ROW puts it in the next block. Measured on the one real")
+    print("     instance found: a results table presenting two withdrawn values under a row header,")
+    print("     with its qualification 90 characters later -- 30 beyond the bound. So a figure")
+    print("     asserted in a table and qualified beneath it reads here as UNMARKED, and widening")
+    print("     the bound to catch it would break the control that keeps the bound meaningful.")
+    print("     This is a stated limit, not a defect to fix.")
     print("  ⚠️ LIMIT, which is part of this result and not a footnote to it:")
     print("     the registry is an ENUMERATION and is blind to the next withdrawal; and a NUMBER is")
     print("     far more ambiguous than a phrase, so an unmarked occurrence needs a human read")
@@ -185,6 +195,24 @@ def selftest() -> int:
     finally:
         SCAN.pop()
         os.unlink(tmp2)
+
+    # 6. THE TABLE LIMIT IS DEMONSTRATED, not asserted. A figure asserted in a table row whose
+    #    qualification sits beyond the lookahead must read as UNMARKED -- if this ever starts
+    #    passing, the bound has been widened and control 5 needs re-checking.
+    fd3, tmp3 = tempfile.mkstemp(suffix=".py", dir=os.path.join(ROOT, "experiments"))
+    os.close(fd3)
+    try:
+        open(tmp3, "w").write(
+            'T = """\n| lag-1 autocorrelation | -0.29 |\n\n'
+            'Their attribution to different source noise is not established.\n"""\n')
+        SCAN.append(os.path.join("experiments", os.path.basename(tmp3)))
+        bare, _ = scan()
+        c6 = any(b[0].endswith(os.path.basename(tmp3)) for b in bare)
+        print("  6 a table row qualified BELOW reads unmarked (limit) : %s" % ("PASS" if c6 else "FAIL"))
+        ok &= c6
+    finally:
+        SCAN.pop()
+        os.unlink(tmp3)
 
     # 4. the registry must not be empty -- an empty one passes everything forever
     c4 = len(FIGURES) >= 3
