@@ -4293,6 +4293,14 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
 
   **THE TELL IS THAT THE NARROW STATEMENT IS TRUE, so re-reading it finds nothing** — which is why all three
   survived a careful author and needed a different population measured instead.
+  ⚠️ **AND THE WORST VERSION IS EXTENDING A CLAIM THIS PROJECT HAS ALREADY ACCEPTED, because the narrow form
+  carries institutional credibility the wide one then borrows (2026-09-11, the peer session's sharpening, from
+  the instant-versus-interval case).** The 16% undelivered fraction genuinely licenses an unobserved switch
+  INSTANT — `T = S` rests on it and this file accepts it — so the premise was sound and only its EXTENSION to a
+  whole 147-sample interval was wrong. **It slipped past two agents precisely because the narrower version is
+  already true here**, and neither did the subtraction that refutes the wider one, with both numbers in the
+  file. When a claim's narrow form is something the project already believes, the scope check is more necessary
+  rather than less.
   ⚠️ **AND THAT IS WHAT SEPARATES THIS CLASS FROM EVERY OTHER ONE IN THIS FILE: the others are catchable on a
   careful read, and this one is INVISIBLE BY CONSTRUCTION.** A wrapped phrase, a substring count, a proxy window,
   a borrowed control — each is visible once you look at the right line. Here every line is correct, so **"read it
@@ -5956,8 +5964,8 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   is indistinguishable from a finding. Both of tonight's were caught by re-running before writing, which is the
   only defence when the failure and the finding produce the same output.
 
-- **THE FOUR WAYS A CONTROL FAILS TO PROTECT ANYTHING, in increasing order of invisibility — this project has
-  now paid for all four, three of them in one night (2026-09-11).**
+- **THE FIVE WAYS A CONTROL FAILS TO PROTECT ANYTHING, in increasing order of invisibility — this project has
+  now paid for all five, four of them in one night (2026-09-11).**
 
   | | the control is | how it announces itself |
   |---|---|---|
@@ -5965,6 +5973,17 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   | 2 | written, never committed (`/private/tmp`) | the number it produced cannot be re-run |
   | 3 | committed, but never fails on its own defect | never — it is green for an unknown reason |
   | 4 | **committed, correct, and never executed** | **never, and it looks like coverage** |
+  | 5 | **committed, correct, executed — and it SANITISES ITS SUBJECT BEFORE CHECKING** | **never, and it looks like a pass** |
+
+  ⚠️ **RUNG 5 IS QUALITATIVELY WORSE THAN THE OTHER FOUR AND IS NEW (the peer session's framing).** Rungs 1–4
+  are all a control that DOES NOT LOOK. Rung 5 looks, and **destroys the evidence on the way**: the fixture
+  containment check built `want` by dropping declared spans where `b <= a` — the exact malformation the fixture
+  under test contained — and then compared the row against that cleaned expectation. It ran, it passed, and the
+  defect was gone before the comparison. **A control that normalises its expectation cannot see a defect in what
+  it normalised away**, and nothing distinguishes its pass from a real one.
+  **The check for it: does this control modify, filter or coerce its expected value before comparing?** If it
+  does, whatever it removed is outside its reach — and that is usually the malformed case someone will actually
+  produce.
 
   **The fourth is the least visible and it is new tonight**: `review_frame.py`'s absence controls were committed,
   correct and mutation-verified, and `--counter required=True` meant they only ran as `--selftest --counter 0`.
