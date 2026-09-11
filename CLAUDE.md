@@ -6206,7 +6206,26 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   cuts that reject part of it — which is not a defensible operating point for this question.** That grounding is
   independent: the codes-1–2 composition was measured for the mask-bound work, with its own controls, before this
   question existed.
-  ⚠️ **AND MY PREDICTED FAILURE MODE WAS WRONG, which is worth more than the confirmation.** I said in advance
+  ✅ **WHAT ACTUALLY SETTLED IT IS THE DISCRIMINATOR, NOT THE ARITHMETIC — and calling the two "corroboration"
+  was wrong, mine first and the peer session's correction accepted.** A rate consistent with (b) is also
+  consistent with (a): 38% tells you nothing about WHICH hypothesis unless you know what the excluded samples
+  are. The test that separates them looks at what lies AFTER the supposed end, where the two predictions are
+  orders of magnitude apart and no threshold is needed. Measured on all 4,358 ends-inside rows at k = 0.5:
+
+  | | value |
+  |---|---|
+  | the source's own blanking level | 1.419 |
+  | those rows' own PICTURE level | **29.4** — what (a) predicts the tail to resemble |
+  | the samples after the supposed end | **2.000** exactly, p10 2.000, p90 2.000, max 2.000, median ONE sample |
+  | distance from blanking / from picture | **0.58** / **27.37** codes |
+
+  **(b), decisively.** The cut broke a run that is still blanking.
+  ⚠️ **The `1.419 + 0.58 = 2.00` agreement is a fact about WHICH samples the cut excludes — it is not a second
+  test of the hypothesis.** Both the code-distribution argument and the one-sigma-noise argument say the same
+  thing in different words (the cut sits inside blanking's spread), so their agreeing is one hypothesis
+  described twice. **Two agents reaching it by different reasoning is not two pieces of evidence**, and the
+  distinction matters because this file leans on independent-route corroboration elsewhere where it IS earned.
+    ⚠️ **AND MY PREDICTED FAILURE MODE WAS WRONG, which is worth more than the confirmation.** I said in advance
   that a tight cut would REMOVE rows (bright rows reach blanking in only one or two samples), so a collapse
   would show as absence of evidence rather than as a visible end. **`no blank` is 0 at EVERY k, including 0.5 —
   the tight cut reclassified rows, it did not drop them.** Pre-specifying how a result would fail and having it
