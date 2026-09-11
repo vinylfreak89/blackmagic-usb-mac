@@ -61,8 +61,20 @@ version of this paragraph turned "where to measure" into "position establishes i
 > contiguous dark picture. Where that distinction cannot be established, the edge measurement is
 > Unknown.
 
-⚠️ If the owner intended position ALONE to establish identity, that is a remaining disagreement
-between the two agents and needs his adjudication; it is flagged rather than resolved here.
+**D16 SETTLES IT, and neither horn was right** (owner, 2026-09-11; relayed, and verified by the relay against
+his own records): *"no blanking alone can not establish identity. blanking excursion can but there still needs
+to be some measureable component of horizontal skew"*. So position alone does NOT establish identity, and the
+disposition is not simply Unknown either: **a blanking EXCURSION can establish it, and a measurable component
+of HORIZONTAL SKEW must accompany it.** Two necessary conditions.
+**The operative clarification, and it is the half that is easy to get backwards:** two necessary conditions do
+not mean Unknown only when NEITHER is established. **An excursion with no established horizontal-skew component
+does not establish identity by this route — record the observed excursion and keep its identification
+unresolved.** D16 supplies a qualification to MEASURE, not a default-positive disposition for when that
+qualification is missing.
+**Two things it does NOT say.** It does not require two independent detectors: the quote requires measurable
+skew, not a prescribed detector count, and one qualified observation may support both conditions. And it does
+not retire the other qualified evidence routes, nor the distinction between Unknown and positively established
+ABSENCE — Unknown does not establish absence.
 The NOMINAL TIMING EXTENTS come from the standard: a line of the 525-line system is 858 samples at 13.5 MHz and
 horizontal blanking is 10.9 µs = 147.15, so the analog active line is 710.85 samples; BT.601's
 digital active line is 720, wider by 9.15, positioned 122 samples after 0H while the picture starts
@@ -183,8 +195,18 @@ its switch-line count on capture 1 sits at 3 and departs to 4 in nine units and 
 are the same phenomenon in the two directions - the 4s the band having taken a line, the 2s having
 shed one - so where the movement is sound the count should hold at 3 and the departure should not
 register as a band event.
-⚠️ A correction on the head switch band is owed from the owner and is expected to settle the
-259-against-260 discrepancy. ⚠️ **The procedural prohibition is REMOVED under §1's later gate-removal ruling** ("nothing should be
+**D17 IDENTIFIES THE CORRECTION AND IT IS NOT AWAITED** (owner, 2026-09-11; relayed, relay-verified):
+*"A correction on the head switch band is the entire thing you delivered last night about how to measure the
+head switch. the excursion of blanking, the fact its a temporal signal not a spatial one and the fact that the
+RF peak has in every instance that I've seen always indicate a partial switch line (S)"*. So the promised
+correction is those three results — **the excursion of blanking, the line as a temporal signal rather than a
+spatial one, and the RF peak marking the partial switch line** — and nothing further is owed from him on this.
+⚠️ It does NOT certify every candidate peak or any particular disputed keyed detector reading; it identifies
+what the correction was, not that every instrument claiming a peak has found one.
+⚠️ **On his "(S)": the contract's switch line is T** — *"the horizontal line carrying the peak, the partial
+line"* — and S is a bound that is never substituted for it. His own later description settles the naming
+without rewriting the quoted parenthesis: the partially correctly timed line, where the liftoff occurs, is T;
+the line fully from the other head is S. The quote is preserved as he wrote it. ⚠️ **The procedural prohibition is REMOVED under §1's later gate-removal ruling** ("nothing should be
 gated"), and that is the current instruction: an implementer is not blocked by this sentence. It originated at
 `1c6b387` awaiting that specific correction, and **removing the procedural gate does NOT declare that correction
 delivered or resolved** — the historical uncertainty is about the correction, never about which workflow instruction
@@ -662,7 +684,9 @@ field" phrasing does not.
   supply EVIDENCE about it; none is an alternative definition and none is automatically sufficient identification.
   Their absence does not establish absence of the region. Which evidence a source offers varies — section 2 records
   a line-TBC-corrected pass losing the partial line's displacement and the peak while the region stays observable.
-  The other head's blanking intruding into the row and the pedestal rows are what the captures show (section 2). **Switch line** (the top switch line): the horizontal line carrying the peak, the partial line;
+  The other head's blanking intruding into the row and the pedestal rows are what the captures show (section 2). **Switch line** (the top switch line): the horizontal line carrying the peak, the partial line (identity
+  requires an excursion AND a measurable horizontal-skew component — §1's D16; this is a cross-reference, not a
+  second definition);
   it keeps being the switch line when the peak moves into the other field or disappears off the edge, even if it
   then holds a fully stable line of picture (owner, afternoon). With the peak absent it is the first measurable
   horizontal-skew discontinuity scanning down from the picture: the partial row whose later part departs from the

@@ -6054,6 +6054,31 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   one is right before repairing either.** The reflex is to trust the docstring and change the code, and here
   that would have removed two guards while making the file read more honestly.
 
+- **THE TWO CONTRACT EDITS ARE LANDED, AND THE BLOCKER WAS NEVER AGREEMENT — it was that neither agent made
+  the edit (2026-09-11).** `CODEX-CONTRACT-STALE` had been nudged five times and read as "with Codex". Checking
+  §14 instead of relaying it again: **Codex's own D16/D17 wording review states "Agree to replace §1's
+  position-alone disagreement marker with D16 and to replace the whole correction-owed paragraph with D17's
+  explicit identification of the awaited correction"** — agreement on record, with its amendment and its
+  suggested placement. §14 permits a contract edit once both agents agree; both did, weeks of nudges ago in
+  session time, and the item sat because each side read it as owed by the other.
+  **Landed to Codex's stated constraints rather than to my own reading:** D16 at `:64-65` with the operative
+  clarification it called essential (two necessary conditions do NOT mean Unknown only when neither is
+  established; an excursion without established skew does not establish identity by this route — record the
+  excursion, keep identification unresolved; D16 is a qualification to MEASURE, not a default-positive
+  disposition), explicitly NOT manufacturing a two-detector requirement, and preserving both the other qualified
+  evidence routes and the Unknown-versus-established-absence distinction. D17 replaces the correction-owed
+  paragraph by naming what the correction IS — the excursion of blanking, the line as a temporal signal, the RF
+  peak marking the partial switch line — while NOT certifying any particular candidate peak or disputed reading.
+  His "(S)" is preserved verbatim with the naming noted rather than the quote rewritten. **A short
+  cross-reference in §3's Head switch definition, not a second definition, per its placement note.**
+  ✅ **Owner markers in the contract: 2 → 0**, and `owner_queue_check.py` reports 0 markers with 0 anchors.
+  ⚠️ **The contract is no longer byte-identical across the two branches until Codex merges**, which is the
+  normal state after any contract change rather than a divergence.
+  ⚠️ **The process lesson is the one worth carrying: an item can be blocked by nobody.** Five nudges described
+  it as waiting on Codex; Codex had agreed in writing and was waiting on nothing. **Re-reading the agreement was
+  cheaper than the sixth relay**, and the tell was that the item's status had not changed across five rounds
+  while both agents were otherwise converging within minutes.
+
 - **THE FIXTURE'S NOMINAL INTERVAL WAS MOVED FOR A MECHANICAL REASON, AND THE DIFFICULTY MAY HAVE BEEN A
   PROPERTY OF THE SOURCE RATHER THAN A PROBLEM TO DESIGN AROUND (2026-09-11, open; the peer session's catch).**
   `switch_fixtures.py` moved `NOMINAL` from `(700, 717)` to `(660, 677)` because at the window's edge the
