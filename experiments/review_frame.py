@@ -168,13 +168,62 @@ def build_frame(raw, c, capture_name, fields, extra_header=()):
     return img
 
 
+
+def selftest() -> int:
+    """The absence controls, RUNNABLE. They existed only as prose describing a past run, which is
+    the second-store defect this project has now paid for three times: a control that cannot be
+    re-run is a claim about a control.
+
+    The load-bearing distinction: absence BY DESIGN (the engine reported Unknown) must stay silent,
+    because an absent reading must look absent on the owner's frame; absence BY DEFECT (a key the
+    caller never supplied, or a value that will not parse) must be said ON the frame, because a
+    renamed sidecar column would otherwise stop the band being marked and the frame would look
+    honest.
+
+    ⚠️ ONLY THE TESTED FIELD VARIES. The first version of this control gave field 2 an empty dict in
+    every case, so field 2's own two warnings fired throughout and both cases "warned" -- a control
+    that varies two things measures neither. It was caught from the numbers, not the code: the
+    silent case was not silent.
+    """
+    raw = np.zeros((LINES, ROW), dtype=np.uint8)
+    raw[:, 1::2] = 60
+    F2 = {"T": "522", "S": "523", "top": "286", "clip": "525"}
+
+    def warns(f1):
+        px = np.asarray(build_frame(raw, 6700, "selftest", {1: f1, 2: F2}))
+        return int(((px[:, :, 0] > 230) & (px[:, :, 1] < 130) & (px[:, :, 2] < 130)).sum())
+
+    cases = [
+        ("all present, T known",      {"T": "260", "S": "261", "top": "23", "clip": "262"}, False),
+        ("genuine Unknown, T = -1",   {"T": "-1",  "S": "-1",  "top": "23", "clip": "262"}, False),
+        ("KEY ABSENT, no 'T'",        {"S": "-1",  "top": "23", "clip": "262"},             True),
+        ("UNREADABLE, T = 'n/a'",     {"T": "n/a", "S": "-1",  "top": "23", "clip": "262"}, True),
+    ]
+    ok = True
+    print("ABSENCE CONTROLS -- by design stays silent, by defect is said on the frame:")
+    for label, f1, must in cases:
+        r = warns(f1)
+        good = (r > 0) == must
+        ok &= good
+        print("  %-26s red px %4d -> %-7s %s" % (
+            label, r, "WARNS" if r else "silent", "PASS" if good else "FAIL"))
+    print("SELFTEST", "PASS" if ok else "FAILED")
+    return 0 if ok else 1
+
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("capture",nargs="?",default="captures/composite_program_30s.tpc")
-    ap.add_argument("--counter",type=int,action="append",required=True)
+    ap.add_argument("--counter",type=int,action="append")
     ap.add_argument("--geometry",default="/private/tmp/run-timing.DdLgYt/plain/geometry.csv")
     ap.add_argument("--out",default="/private/tmp")
+    ap.add_argument("--selftest",action="store_true",
+                    help="run the absence controls (no capture needed)")
     a=ap.parse_args()
+    if a.selftest:
+        return selftest()
+    if not a.counter:
+        ap.error('--counter is required unless --selftest')
     eng={}
     if os.path.exists(a.geometry):
         for r in csv.DictReader(open(a.geometry)):

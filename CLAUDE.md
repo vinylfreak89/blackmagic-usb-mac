@@ -5019,8 +5019,18 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   marker, indistinguishably.** A renamed sidecar column would have silently stopped marking the head-switch band,
   and the frame would have looked exactly like an honest Unknown. **"Missing is not a value", in a renderer.**
   Repaired so absence-by-design stays silent and absence-by-defect is SAID ON THE FRAME: key absent and value
-  unreadable each print a red line beside the raster. Controls, on a synthetic raster with only the tested field
-  varying: `T` known → silent · `T = -1` → **silent** · key missing → **warns** · `T = "n/a"` → **warns**.
+  unreadable each print a red line beside the raster. **`review_frame.py --selftest`, RUNNABLE and needing no
+  capture**, on a synthetic raster with only the tested field varying: `T` known → silent · `T = -1` →
+  **silent** · key missing → **warns** · `T = "n/a"` → **warns**.
+  ⚠️ **Those four controls first existed ONLY AS PROSE describing a run I had done by hand — the peer session
+  checked and `--selftest` did not exist.** Third time this project has recorded that defect and the second time
+  I have committed it tonight: **a control that cannot be re-run is a claim about a control.** The confounded
+  first version is the proof it matters — I caught that by running them, and nothing would have run them again.
+  **Mutation-verified, because a control that has never failed on its own defect is a claim too:** reverting to
+  `int(e.get(key))` in a bare try makes both defect cases report **silent** and the selftest exit 1.
+  ⚠️ And `--counter` was `required=True`, so the selftest only ran with a dummy `--counter 0`. **A control behind
+  an incantation is a control nobody runs**, so `--selftest` now stands alone and the capture path errors
+  explicitly when the counter is missing.
   ⚠️ **My first version of that control was confounded and I caught it by reading the numbers, not the code:**
   both cases warned, because field 2 was `{}` in both and produced its own warnings. **A control that varies two
   things measures neither**, and the tell was that the "silent" case was not silent.
