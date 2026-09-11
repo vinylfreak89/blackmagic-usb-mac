@@ -24,7 +24,7 @@ is the defect this file exists to stop.
 
 Synthetic only; no capture I/O.
 """
-import contextlib, io, re, sys
+import contextlib, inspect, io, re, sys
 from unittest.mock import patch
 
 import numpy as np
@@ -82,9 +82,13 @@ def main():
         c = named(cs, "A2")
         c["spans"] = [(a0, b0 - 40)]
         c["truth"]["start"] = c["truth"]["end"] = "absent"
-        c["row"] = np.random.default_rng(1).normal(fixtures.PICTURE, 4.0, N)
+        c["row"] = np.full(N, fixtures.PICTURE)
         c["hidden_visible"] = fixtures.hidden_visibility(c["spans"])
         c["establishable"] = dict(c["hidden_visible"])
+        # Codex's isolation: an A2 declaring nothing has B3's generative geometry, so leaving its
+        # answers unchanged makes control 4 fire too. Matching B3's answers leaves guard 1 alone.
+        c["require"] = dict(start=fixtures.UNDECIDABLE, end=fixtures.UNDECIDABLE,
+                            overall=fixtures.UNDECIDABLE)
     case("1  invalid span, truth made consistent", 1, m1)
 
     # 2 -- the row no longer contains what the fixture declares.
@@ -113,11 +117,18 @@ def main():
     # 4 -- two fixtures with identical delivered content demanding opposite answers. The matched
     #      pair is exactly that content, so disagreeing there is the collision control 4 exists for.
     def m4(cs):
-        # a VALID schema that disagrees -- an incomplete `require` trips control 0 first, which is
-        # control 0 working, but then this mutation never reaches the guard it is aimed at.
+        # Codex's isolated form. The C3a/C3b version fires guard 12 as well, because that guard
+        # separately requires the matched pair's answers to agree. B2 shares A5's generative
+        # geometry and reference with nothing else policing it, so guard 4 stands alone.
+        named(cs, "B2")["require"]["end"] = fixtures.NONE
+    case("4  B2 disagrees with A5 on identical geometry", 4, m4)
+
+    def m4b(cs):
+        # the matched pair, which is a REAL collision but not an isolated one -- kept because it is
+        # the collision the pair exists to make, and reported as non-isolated rather than dropped.
         named(cs, "C3b")["require"] = {"start": fixtures.NONE, "end": fixtures.UNDECIDABLE,
                                        "overall": fixtures.UNDECIDABLE}
-    case("4  matched pair made to disagree", 4, m4)
+    case("4  matched pair made to disagree", 4, m4b)
 
     # 5 -- a sub-jitter shift with NO decisive shift anywhere, on a fixture not marked undecidable.
     def m5(cs):
@@ -178,8 +189,63 @@ def main():
     case("12 matched pair's rows no longer identical", 12, m12)
 
     print("\n%d of %d mutations behaved as required." % (sum(results), len(results)))
-    assert all(results)
-    print("REVIEW CONTROLS PASS: every guard verified by CAUSE and ENFORCEMENT, not exit status")
+
+    # ------------------------------------------------------------------------------------------
+    # ⚠️ ENFORCEMENT PER GUARD -- Codex's finding 4, and the reason "exit non-zero" was never it.
+    # Checking that a mutated run FAILS proves only that SOMETHING rejected it. Disabling guard N's
+    # rejection and re-running its ISOLATED mutation is the test: if the suite then PASSES, guard N
+    # was doing the work; if it still fails, another guard was, and guard N is decorative.
+    # This is why the isolated mutations matter -- a compound mutation cannot be enforcement-tested
+    # at all, because a second guard legitimately rejects it.
+    STATEMENT = {1: "ok &= not bad", 2: "ok &= not miss", 3: "ok &= not lie",
+                 4: "ok &= not clash", 5: "ok &= not tight", 7: "ok &= c7",
+                 8: "ok &= not inc", 12: "ok &= c12", 13: "ok &= not contra"}
+
+    def enforced(guard, mutate):
+        """Disable guard's rejection, run its isolated mutation, and report whether the suite now
+        passes. Returns (ok, detail)."""
+        stmt = STATEMENT[guard]
+        src = inspect.getsource(fixtures.selftest)
+        if src.count(stmt) != 1:
+            return False, "statement %r appears %d times -- cannot neuter exactly one" % (
+                stmt, src.count(stmt))
+        mutated = src.replace("def selftest()", "def _enf_mutant()", 1).replace(stmt, "ok &= True", 1)
+        exec(compile(mutated, "<enforcement %d>" % guard, "exec"), fixtures.__dict__)
+        cs = C()
+        mutate(cs)
+        try:
+            with patch.object(fixtures, "selftest", fixtures._enf_mutant):
+                rc, f = fired(cs)
+        finally:
+            fixtures.__dict__.pop("_enf_mutant", None)
+        return rc == 0, ("suite passes with guard %d disabled" % guard if rc == 0
+                         else "suite STILL fails (exit %d, guards %s) -- another guard rejects it, "
+                              "so guard %d is not what enforces this" % (rc, sorted(f), guard))
+
+    print("\nENFORCEMENT -- disable the guard, and its own isolated mutation must stop being caught")
+    enf = []
+    def m13(cs):
+        # a decisive delivered shift declared `none`: only guard 13 polices it
+        named(cs, "A4")["require"]["end"] = fixtures.NONE
+    for guard, mutate, label in ((1, m1, "invalid declared geometry"),
+                                 (2, m2, "samples away from the declared span"),
+                                 (3, lambda cs: cs[0]["truth"].__setitem__("start", -400),
+                                  "truth relabelled"),
+                                 (4, m4, "B2 disagrees with A5"),
+                                 (5, m5, "sub-jitter-only on a `departure`"),
+                                 (7, m7, "calibration replaced by picture"),
+                                 (8, lambda cs: named(cs, "B1")["hidden_visible"].__setitem__(
+                                     "start", True), "off-window declared visible"),
+                                 (12, m12, "matched pair's rows differ"),
+                                 (13, m13, "decisive shift declared `none`")):
+        ok, detail = enforced(guard, mutate)
+        enf.append(ok)
+        print("  guard %-2d %-38s %s   %s"
+              % (guard, label, "PASS" if ok else "FAIL", detail))
+    print("\n%d of %d guards enforce their own isolated mutation." % (sum(enf), len(enf)))
+
+    assert all(results) and all(enf)
+    print("REVIEW CONTROLS PASS: every guard verified by CAUSE, ENFORCEMENT and isolation")
 
 
 if __name__ == "__main__":

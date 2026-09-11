@@ -363,9 +363,14 @@ def selftest() -> int:
             lie.append(c["name"]); continue
         if t["end"] == "off-window" and hb <= N:
             lie.append(c["name"]); continue
-        got = spans_of(c["row"])              # then the DELIVERED samples against the clipped spans
-        if [(g[0], g[1]) for g in got] != merge(c["spans"]):
-            lie.append(c["name"]); continue
+        # ⚠️ THE DELIVERED GEOMETRY IS CONTROL 2's, NOT THIS ONE'S. This used to re-compare the
+        # samples against the clipped spans EXACTLY, while control 2 compares them with a +-2
+        # tolerance -- so anything control 2 could catch, this caught too, and control 2 could
+        # never fire alone. A guard that no mutation can isolate cannot be enforcement-tested, and
+        # two guards asserting one property is the two-stores defect inside a control set. Control 2
+        # now owns samples-vs-declared; this owns truth-vs-declared. Composed, they still catch a
+        # truth that contradicts the samples, and each can now be disabled and shown to matter.
+        got = spans_of(c["row"])
         if t["dark_at"] is not None and not any(
                 any(abs(x - t["dark_at"]) <= 2 for x in (g[0], g[1])) for g in got):
             lie.append(c["name"])
@@ -387,7 +392,11 @@ def selftest() -> int:
 
     byspans = {}
     for c in C:
-        key = (tuple(merge(c["spans"])), cal_key(c["cal"]), c["row"].tobytes())
+        # ⚠️ NO ROW BYTES IN THIS KEY. Adding them collapsed this into the byrow check below and
+        # silently lost the weaker claim it exists for: two cases with the SAME generative geometry
+        # and the same reference are not the same samples, but no detector can systematically
+        # separate them, so they may not demand opposite answers either. Two different claims.
+        key = (tuple(merge(c["spans"])), cal_key(c["cal"]))
         byspans.setdefault(key, set()).add(
             (c["require"]["start"], c["require"]["end"], c["require"]["overall"],
              tuple(sorted(c["establishable"].items()))))
