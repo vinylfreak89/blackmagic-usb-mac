@@ -2255,6 +2255,32 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes
 
+**Guard-enforcement follow-up (`289d279`, `2b31f01`, `5c22e76`, 2026-09-11).**
+`docs/reports/2026-09-11_switch_fixture_enforcement_review.md` records six
+remaining findings and the specific repairs confirmed. All THREE owned review
+probes were adapted, not just the two direct key readers: expected availability
+maps to `establishable`, construction includes `hidden_visible` and `overall`,
+and source-preserving mutation support fixes the older audit's introspection
+exception. They now report zero unmet repair checks, censoring 15/15 and schema
+9/9; their three expected-fail entries are removed. Guards 1/4 now satisfy the
+previously failing tests. The supplied verifier reproduces 16/16 mutations and
+9/9 disabled runs, and the texture selftest 5/5. No capture content opened.
+
+The fixture's own bare listing still raises `KeyError: 'observable'`; control 0
+still misses `censored`, which raises later. A5/B2 can both be relabelled overall
+`none` despite unknown ends and pass. Guard 13's verifier arm only tests after
+disabling it; permanently clearing its failure list still earns 9/9 because no
+enabled rejection is required for that mutation. The separate adapted schema
+probe covers that regression, but the verifier's standalone claim does not.
+The runner rejects negative signal codes yet still accepts an unexpected Python
+exit-1 traceback under an expected-fail annotation. New synthetic
+`experiments/switch_fixture_guard_review.py --selftest` runs five positive checks,
+all fail (0/5, exit 1); those are distinct from the repaired historical checks.
+The same-cut 37-to-38 texture counterexample still falsifies "cannot reach" at
+six sigma; finite sweep agreement is not deterministic. Control 4 still prints
+the withdrawn rho as "measured" despite the corrected constant. No engine,
+contract, supplied-fixture, verifier or texture-instrument repair in this review.
+
 **Endpoint-schema / texture-sweep review (`fa281a7`, `848f87e`, 2026-09-11).**
 `docs/reports/2026-09-11_switch_fixture_schema_texture_review.md` records eight
 findings. The prior censoring audit now passes 15/15; these are repaired checks,

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Synthetic review checks for fa281a7 / 848f87e; no capture I/O.
 
-Positive rejection checks remain failing until the reviewed obligations are
-implemented. Texture counterexamples are deciding constructions, not assertions
+These positive rejection checks pass at 289d279 after adapting visibility names
+and overall-result fields. Texture counterexamples are deciding constructions, not assertions
 that the detector should ignore sample order. Run bare or with --selftest.
 """
 import argparse
@@ -36,9 +36,9 @@ def main():
         np.array_equal(x, y) for x, y in zip(a["cal"], b["cal"]))
     assert equal_input
     check("matched inputs have consistent expected availability",
-          a["observable"] == b["observable"],
-          "start %s / %s (rename as hidden visibility if not an output obligation)"
-          % (a["observable"]["start"], b["observable"]["start"]))
+          a["establishable"] == b["establishable"],
+          "establishable start %s / %s; hidden visibility may differ"
+          % (a["establishable"]["start"], b["establishable"]["start"]))
 
     cs = fixtures.cases()
     a, b = named(cs, "A5"), named(cs, "B2")
@@ -69,8 +69,10 @@ def main():
     c["spans"] = [(fixtures.NOMINAL[0], fixtures.NOMINAL[1] - 40)]
     c["truth"]["start"] = c["truth"]["end"] = "absent"
     c["row"] = np.full(fixtures.N, fixtures.PICTURE)
-    c["observable"] = fixtures.observability(c["spans"])
-    c["require"] = dict(start=fixtures.UNDECIDABLE, end=fixtures.UNDECIDABLE)
+    c["hidden_visible"] = fixtures.hidden_visibility(c["spans"])
+    c["establishable"] = dict(c["hidden_visible"])
+    c["require"] = dict(start=fixtures.UNDECIDABLE, end=fixtures.UNDECIDABLE,
+                        overall=fixtures.UNDECIDABLE)
     rc, guards = positive.fired(cs)
     check("an isolated guard-1 mutation is available", rc != 0 and guards == {1},
           "exit %d, guards %s" % (rc, sorted(guards)))
@@ -118,6 +120,7 @@ def main():
     child = subprocess.CompletedProcess(["synthetic"], -11, b"", b"synthetic fatal signal")
     output = io.StringIO()
     with patch.object(runner, "discover", return_value=[(expected_name, ["--selftest"])]), \
+            patch.object(runner, "EXPECTED_FAIL", {expected_name: "synthetic assertion failure"}), \
             patch.object(runner, "unclassified_audits", return_value=[]), \
             patch.object(runner.subprocess, "run", return_value=child), \
             patch.object(sys, "argv", ["run_all_checks.py", "--quiet"]), \

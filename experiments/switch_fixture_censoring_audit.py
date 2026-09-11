@@ -4,6 +4,7 @@
 These demand rejection of inconsistent fixtures and acceptance of an independently
 decidable boundary when another is uncertain. They FAIL against 5e8797b and pass
 against fa281a7. This is a set of live checks, not full validation of either schema.
+Adapted to 289d279: expected availability is `establishable`, not hidden visibility.
 The separate conditional pair tests a declared luma model, not physical identity.
 """
 from __future__ import annotations
@@ -12,11 +13,11 @@ import contextlib
 import argparse
 import inspect
 import io
-from unittest.mock import patch
 
 import numpy as np
 import switch_fixtures as fixtures
 import switch_fixtures_review_controls as positive
+from fixture_review_support import compiled_selftest
 
 
 def named(cs, prefix):
@@ -42,7 +43,7 @@ def main():
               "exit %d, guards %s" % (rc, sorted(guards)))
 
     def available(cs, prefix):
-        named(cs, prefix)["observable"] = dict(start=True, end=True, extent=True)
+        named(cs, prefix)["establishable"] = dict(start=True, end=True, extent=True)
 
     mutation("numeric censored B2 cannot expose its end/extent",
              lambda cs: available(cs, "B2"))
@@ -91,11 +92,9 @@ def main():
     for guard, statement in ((3, "ok &= not lie"), (5, "ok &= not tight"),
                              (7, "ok &= c7"), (8, "ok &= not inc")):
         assert original.count(statement) == 1
-        mutated = original.replace("def selftest()", "def _review_mutant()", 1)
-        mutated = mutated.replace(statement, "ok &= True", 1)
-        exec(compile(mutated, "<review guard %d>" % guard, "exec"), fixtures.__dict__)
+        mutated = original.replace(statement, "ok &= True", 1)
         detected = False
-        with patch.object(fixtures, "selftest", fixtures._review_mutant):
+        with compiled_selftest(mutated):
             with contextlib.redirect_stdout(io.StringIO()):
                 try:
                     positive.main()
@@ -103,7 +102,6 @@ def main():
                     detected = True
         check("positive suite detects disabled rejection effect %d" % guard,
               detected, "detected" if detected else "positive suite still passes")
-    del fixtures._review_mutant
 
     cs = fixtures.cases()
     a5, b2 = named(cs, "A5"), named(cs, "B2")
