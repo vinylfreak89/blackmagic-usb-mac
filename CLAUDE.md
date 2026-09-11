@@ -5010,6 +5010,39 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **THE SYMMETRIC DETECTOR IS FULLY SPECIFIED IN HIS OWN TEXT — observable, both directions named, where to
+  measure, how the expectation is established, and what stays Unknown. Nothing was missing but the reading
+  (2026-09-11).** Collected so the rebuild starts from it instead of re-deriving it a fourth time:
+  - **THE OBSERVABLE (`:43-47`, verbatim):** *"It should be measuring where the blanking is overwritten. So if
+    the blanking extends past its expected horizontal extent or the picture extends past its expected horizontal
+    extent, that's the head switch."* So the quantity is **the blanking's own EXTENT departing from what it
+    should be** — a duration, not a level.
+  - **BOTH DIRECTIONS, AND HE NAMES THEM (`:50`):** *"Overridden or extended."* **OVERRIDDEN** = picture where
+    blanking is expected; **EXTENDED** = blanking where picture is expected. **A single transition position
+    measures ONE END of the interval**, which is why the withdrawn detector was one-directional — not a choice
+    anyone made, a consequence of measuring a boundary instead of an extent.
+  - **WHERE TO MEASURE (`:53`):** *"Blanking should be measured where it's suspected to occur"* — refined by
+    Codex's amendment at `:59-62`: *"Measure at the expected blanking positions at the delivered edges. Position
+    constrains where the test is made; a blank-level run there does not by itself distinguish blanking extension
+    from contiguous dark picture. Where that distinction cannot be established, the edge measurement is
+    Unknown."*
+  - **HOW THE EXPECTATION IS ESTABLISHED (`:531-544`):** from qualified blanking intervals on the current
+    source's good picture lines, and **"Each contributing line is read at its OWN identified blanking interval in
+    the temporal sweep, not at a fixed column range assumed to contain it."** The expected extent is **"the
+    source's own, remeasured after a transition event, never the nominal figure."**
+  - **AND THE NOMINAL FIGURES ARE EXPLICITLY NOT A THRESHOLD (`:66-70`):** 858 samples a line, 147.15 of
+    blanking, the delivered window 122 samples after 0H — *"These nominal extents do not themselves specify a
+    sample-count decision threshold."* **So the D14 answer applies here before the question is asked: the
+    expectation is derived per source, never chosen.**
+  ⚠️ **One item flagged in the contract as needing him and NOT resolved by this reading (`:64-65`):** whether
+  position ALONE establishes identity is *"a remaining disagreement between the two agents"*. It bears directly
+  on the rebuild, since it decides whether a blank-level run at an expected position counts without further
+  evidence.
+  ⚠️ **The 99%/2.05% local-window pair is a measurement of clause 2's effect, NOT a candidate.** It rests on
+  `row_transition`, a boundary rather than an extent, which `:443` disqualifies whatever window it uses. **A good
+  number must not pull a dead statistic back in** — the same refusal as the rejected 84% variant, which scored
+  better and failed the known answer.
+
 - **"YOU BOTH HAVE NOT TRIED HARD ENOUGH" — and his text specifies the detector far more than either agent had
   read out of it (owner, relayed 2026-09-11).** Before rebuilding the withdrawn skew detector, his symmetric
   definition was read properly instead of quoted. It carries **three clauses, each with its measurement**, and
