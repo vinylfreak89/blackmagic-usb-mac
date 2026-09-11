@@ -5010,6 +5010,24 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **A CHECK THAT FAILS FOR A REASON UNRELATED TO THE CLAIM IS INDISTINGUISHABLE FROM THE CLAIM BEING FALSE —
+  and the damage is a report about someone else's work (2026-09-11).** Two instances in one night, both from the
+  peer session and both caught before relay. Its dispatch check was handed a harness task id, globbed the wrong
+  namespace, and returned a confident `found: false` — **one step from filing "declared a dispatch, made no
+  call" against work that had been done.** Later, verifying this session's guards through a shell variable, it
+  got **`exit=127, no such file or directory`** and had the makings of a report that the guards were missing.
+  They were where they were said to be; the invocation was wrong.
+  **Neither failure is a wrong answer to the question asked. Both are the question never reaching the subject**,
+  returning the shape of a negative finding. A missing file, an unrecognised identifier, a typo'd path and a
+  genuinely absent guard all exit non-zero and all read as "not there".
+  **The repair is that a negative must say WHICH negative it is.** `no such file` is not `present but failing`,
+  and `unrecognised id` is not `no such dispatch`. A check that cannot distinguish them should say so rather than
+  report the substantive one.
+  ⚠️ **This is why the cost lands on the OTHER agent.** A wrong number is caught by the next measurement; a
+  report that another agent's guards are missing, or that it declared work it never did, is relayed — because it
+  is indistinguishable from a finding. Both of tonight's were caught by re-running before writing, which is the
+  only defence when the failure and the finding produce the same output.
+
 - **THE FOUR WAYS A CONTROL FAILS TO PROTECT ANYTHING, in increasing order of invisibility — this project has
   now paid for all four, three of them in one night (2026-09-11).**
 
