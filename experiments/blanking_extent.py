@@ -252,6 +252,17 @@ def main() -> int:
     a = ap.parse_args()
     if a.selftest:
         return selftest()
+    # Codex's review of the guard: acknowledgement permits EXECUTION, not interpretation as a valid
+    # measurement. The first version suppressed the warning entirely on --acknowledge-void while the
+    # output still said "identified" and "D16's two conditions", so an acknowledged run produced
+    # exactly the numbers someone would quote, with nothing attached saying they are void.
+    if a.acknowledge_void:
+        sys.stderr.write(
+            "VOID, ACKNOWLEDGED: the figures below are DIAGNOSTIC ASSERTIONS of a defective\n"
+            "configuration, not switch measurements. The blanking level is median(Y[0:6]), the\n"
+            "device's WRITTEN padding ruler at 16.000, so the mask admits everything up to code 19.\n"
+            "Independently, the observable is a summed duration and a pure translation reads normal\n"
+            "at ANY level. Do not quote 'identified' as a switch count.\n\n")
     if not a.acknowledge_void:
         # Loud and named, rather than a docstring nobody reads at the moment of quoting a number.
         sys.stderr.write(
