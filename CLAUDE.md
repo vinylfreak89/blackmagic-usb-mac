@@ -4210,6 +4210,185 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   position… always"* — is satisfied TRIVIALLY. The crop never moves, so the first six lines cannot move. It
   becomes a real test only on a capture where the applied offset changes, which means captures 2-4.
 
+- **THE PER-ROW SKEW DETECTOR EXISTS — it fell out of the per-unit floor rather than being built, and it is
+  20× better than the best previous attempt (2026-09-11).** "T is the top skew row" has been a named quantity
+  with no validated per-row measurement for a long time, in the same family as "structureless" and "well
+  exposed". The per-unit floor answers exactly that question — **is THIS row's timing disturbed?** — because the
+  floor is what the unit's own no-switch rows support, and a row above it is disturbed by that unit's own
+  standard.
+
+  | per-row disturbed-timing test | false-positive rate on ordinary picture rows |
+  |---|---:|
+  | the trailing-porch attempt | **69.8%** — failed its own control |
+  | the band-reference attempt | **9.6%** — inherent, since a 5-95% band must fail ~10% of the rows it learned from |
+  | **the per-unit floor** | **0.44%** (354 of 81,280, on HELD-OUT rows) |
+
+  Detection on the switch band: **62% of field-1 rows and 72% of field-2 rows** (939 of 1,524 and 1,097 of
+  1,524), over the whole registerable region of capture 1.
+  **The 9.6% figure was not a bad threshold, it was a floor**: a band learned from a population must
+  misclassify a fixed fraction of that population, so no tuning of that instrument could go below it. The
+  per-unit floor escapes it by being a MAXIMUM over disjoint calibration rows rather than a percentile of the
+  rows it scores.
+  ⚠️ **The detection denominator assumes the band sits at the standard lines** (260-262 / 523-525), so 62%/72%
+  is detection on rows where the band is EXPECTED, not on rows independently shown to carry it. A unit whose band
+  has moved contributes a miss it may not deserve. **The false-positive rate is the sound half** — its rows are
+  held out and its population cannot shrink.
+  ⚠️ And a per-row test is not yet the thing the contract asks for: **T is the TOP skew row**, which needs the
+  topmost disturbed row of the run reaching the clip, not a per-row verdict. The per-row test is the primitive
+  that was missing; assembling it into T is a further step and the run criterion for that is already recorded
+  above (71.5% exact / 94.0% within one row, on a cohort selected by the engine having a T).
+
+- **O-B6: THE HARNESS'S BOXED / STRUCTURED / UNBOUNDED DEFINITION, RECORDED — it existed in code and nowhere
+  else, which is why it was asked for three times (2026-09-11).** The owner, 12:50:38: *"the harness has a test
+  and definition for what boxed vs structured vs unbounded is."* **He was right** — `experiments/box_census.py`
+  carries it — and the gap was that neither this file nor the contract stated it, so every reader had to find the
+  source. The definition, in its own terms:
+  - **STRUCTURE, per row:** `h = median|row − row.mean| / median|diff(row)|` over the measured columns. ⚠️ **Its
+    denominator is PINNED AT 1.0 on 8-bit samples in every row of every unit measured**, so `h` is a spread with
+    a divide-by-one and **does not normalise for contrast**. Measured on the warning card, NTSC lines 48-61: a
+    well-exposed unit reads band 2.70 / text 14.44; the same rows on the dim pass read 0.72 / 3.57. **The text
+    falls to a quarter of its bright value, under any fixed cut that still admits the band** — which is exactly
+    the observed failure of the top band growing 31 → 36-41 rows and swallowing the WARNING line. Hence the
+    threshold is taken from the FIELD'S OWN rows, not typed.
+  - **PICTURE:** a row in a run of **three or more** consecutive structured rows. Three because the card's grey
+    backdrop has a horizontal STEP for its top edge, which lands structure on two rows, and a two-row edge is not
+    picture.
+  - **A BAND:** every row from the field's edge to the first picture row — **the run that REACHES THE EDGE**, not
+    the first long structureless run scanned inward. Measured: the inward-scan version reads a flat overcast sky
+    179 rows into the tornado footage as a top band and calls an ordinary full-frame shot a box. A letterbox mask
+    begins at the picture's first line; a sky does not.
+  - **THE VERDICTS, verbatim:** `blank` (one structureless region, or content below the floor) · **`box`**
+    (bands at BOTH ends) · `top-only` · `bottom-only` · `none`.
+  ⚠️⚠️ **HIS ASK NAMED THREE TERMS AND ONLY TWO ARE DEFINED. `unbounded` APPEARS ZERO TIMES in `experiments/*.py`
+  and zero times in the contract.** The harness's fifth verdict is `none`, and **reading it as "unbounded" is MY
+  inference, not the instrument's definition** — an entirely reasonable reading, since `none` means no band at
+  either end and so a picture reaching both edges, but it is a mapping I made and not a test anyone wrote. The
+  first version of this entry presented all three as covered, which overstated it.
+  **So the residue of O-B6 is exactly one term**, and it is small enough to be answerable from his own words
+  about what a box IS rather than by asking him: "box is the bounds of the box, not the content inside the box",
+  and "if the box doesn't touch the head switch, then its not valid geometry". A source with no bounds at either
+  end is what `none` reports; whether that is what he means by `unbounded` is the only open part.
+  ⚠️ **Two constants in it are FITTED and are labelled so in the source:** `minband=6` rows (a floor on what
+  counts as a band; the measured bands are 31 and 28) and `mincontent=40` rows (the floor separating a picture
+  from a mute; the card carries 183). **Under rule 4 they are instrument qualifications, NOT source properties**,
+  and the box VERDICT was separately shown to survive the `--threshold` sweep from 4.0 to 8.0 while the EXTENT
+  was not.
+  ⚠️ Recording this closes the ASK, not the design question: `box_census.py` is a harness instrument and the
+  engine's own box observer is a separate thing with its own recorded history of falsified candidates.
+
+- **R12: THE V-STABILIZE A/B CONTRADICTS THE TBC-PHASE-STEP ACCOUNT AND SUPPORTS LIFTOFF — but by its SIGN,
+  not by the co-location test, which is underpowered (2026-09-11).** The discriminator was written down BEFORE
+  the data was looked at, so the answer could not be read off it afterwards:
+  - **Liftoff (the owner's):** the peak is RF liftoff as the outgoing head leaves the tape; the skew is the
+    incoming head's signal sampled against this field's timing until the line TBC re-locks. **Both are one
+    instant**, so the line TBC — re-locking every line — removes the displacement, and TBC-off carries both while
+    TBC-on carries neither.
+  - **TBC phase step:** the step is introduced BY the corrector, so it should appear **WITH** the TBC.
+  **THE SIGN DECIDES BETWEEN THEM AND IT IS ALREADY MEASURED.** Displaced rows: **1,957 with the TBC off against
+  11 with it on**. Peaks: **3.07% off against one or two of 606 on**. Both vanish together when the corrector is
+  engaged. ⚠️ **THOSE ARE NOT PAIRED FIGURES AND WILL READ AS IF THEY WERE.** The two captures are not
+  frame-aligned — this file records the comparison as distributional, **396 fields against 1,216, best
+  field-match correlation 0.07-0.31**. The argument survives that easily, because two orders of magnitude is not
+  reachable by an alignment artefact, but the caveat costs a clause now against a re-derivation later. **A step introduced by the TBC would appear when the TBC is on; it does the opposite**, so that account
+  is contradicted and liftoff is the one consistent with the A/B.
+  ⚠️ **THE CO-LOCATION LEG — the strongest available test, that peak-bearing rows must BE displaced rows if the
+  two are one instant — IS UNDERPOWERED AND DECIDES NOTHING.** On capture 4, field 1, 300 units, NTSC lines
+  244-262: **4 peak-bearing rows**, of which **3 are displaced (75%)**; 1% of the 521 displaced rows carry a peak.
+  Consistent with liftoff, n=4, worthless as evidence. The peak's rarity is an instrument limit already recorded
+  here (dark peaks go undetected, owner-accepted), not evidence against the account.
+  ⚠️ **A FALSE 100% NEARLY WENT INTO THIS ENTRY, from my own instrument.** The first run scanned to NTSC line 265
+  and reported **120 of 120 peak-bearing AND displaced at lines 263-264, with a 0-of-2,760 control** — a perfect
+  co-location result. Those rows are **storage rows 259-261: field 1's half-line 262.5, field 2's line 1, and
+  DEVICE PADDING**, whose constant structure reads as a peak under a row-MAD statistic. Excluding them leaves 4.
+  **The clean-looking answer came from measuring the device's own fill**, which is the same class as every other
+  instrument this file records: a plausible number from a population that could not carry it.
+  **So R12's verdict: the TBC-phase-step account is contradicted by the A/B's sign; liftoff is supported by it;
+  and the two-are-one-instant claim at the heart of liftoff is NOT independently confirmed here.** A capture with
+  a higher peak rate would be needed, and none of the four has one.
+
+- **THE LOCKED RENDER NOW CARRIES ALL THREE RENDER INSTRUCTIONS — the third was genuinely missing
+  (2026-09-11).** Audited against the owner's words rather than assumed: the 720×486-plus-raster in colour was
+  done, the bounding box on the PICTURE with field colours, purple on collision and alpha 0.35 was done, and
+  **"the marking of the top and bottom of the head switch" was NOT** — T and the clip appeared only as text in
+  the decision record. Now drawn on the raster in each field's own colour with its line number, from **T (the
+  partial line, contract `:652`, which is the switch line and NOT S)** down to the deck's clip, and **not drawn
+  at all where the engine reported Unknown**, so an absent reading looks absent rather than defaulting to a
+  plausible row. Verified by pixel count rather than by eye: 718 field-1 and 1,406 field-2 marker pixels on the
+  raster half, panel 1488 → 1584 px. Re-rendered over all 920 units.
+  ⚠️ **The first-six-lines acceptance criterion is passed TRIVIALLY on this capture and is NOT evidence.** Every
+  applied pair is (0,0) so the 486 window never moves and those lines cannot move. It becomes a real test only on
+  a capture where the applied offset changes — captures 2-4.
+- **§11b's `bench` REGRESSION GATE IS VACUOUS, verified from its own output rather than argued (2026-09-11).**
+  §11b names "a `bench` target over a fixed 10,000-unit fixture" as the gate on the 10 ms budget. Its artifact
+  from this session reads **`BENCH-SAMPLES 10000 registration_calls 0 gated 10000`** — the classifier gated every
+  one of the 10,000 units, so `fieldreg_process` was never called and the `WORKER-BENCH median 0.321 ms` is
+  classifier-plus-publish **with the engine skipped**. **The gate cannot fail however slow registration becomes.**
+  ⚠️ **PRECISION, from Codex's review `eb1cb5d`: only WORKER-BENCH gates. The separate FIELDREG-BENCH loop DOES
+  invoke registration 10,000 times, so the executable is not engine-free** — my earlier wording implied it was.
+  ✅ **AND THE MECHANISM IS FOUND, by Codex rather than guessed: all 193 fixture units carry a hard-padding
+  fraction of 0.0, and the classifier's first appearance test rejects anything below 0.98.** The synthetic
+  generator never supplies the device padding the classifier expects. **A fixture mismatch — explicitly NOT to be
+  repaired by weakening the classifier.** Two further defects it adds: **no elapsed-time threshold can fail
+  `make bench` even with registration active**, and the hand-written worker loop does not exercise the production
+  worker's assembly, queue copies or publication handoff, so replacing the fixture alone would not establish
+  whole-path coverage.
+  ⚠️ The direct engine bench read **`FIELDREG-BENCH median 20.992 ms p95 47.851 ms`** at **load average 5.99**,
+  which looked like a breach of §11b's 10 ms. **RE-RUN AT LOAD 3.12, SAME BINARY, SAME FIXTURE: `median 1.690 ms
+  p95 2.073 ms`.** The engine is comfortably inside the budget and 20.992 is not baseline engine cost.
+  ⚠️⚠️ **"12.4× FROM LOAD ALONE" WAS A CAUSE INFERRED FROM TWO SINGLE RUNS AND IS WITHDRAWN — both the peer
+  session and Codex objected, independently and correctly.** A control was run: **three back-to-back executions
+  at load 2.6-2.8 gave medians 1.731 / 1.777 / 1.776 ms — a spread of 2.7%.** That rules out run-to-run variance,
+  and run 1 being the FASTEST also rules out cold-cache and first-run effects, which would have made it the
+  slowest. **So variance cannot account for a 1,100% gap.** But Codex's objection survives the control: these are
+  ELAPSED-TIME measurements, and two load averages do not separate contention from **core placement, frequency
+  scaling or thermal state**. **"Load" is a proxy for that whole bundle, not an isolated cause.** The defensible
+  statement is: the engine is inside budget, 20.992 was an outlier, run-to-run variance is excluded at 2.7%, and
+  the cause is host-side but not resolved further. It also corroborates — this file already records the engine at 1.35–1.47 ms median historically,
+  so 1.690 is in family and 20.992 was the outlier. **Quoting the high figure as an over-budget result would have
+  been wrong, and quoting either without its load average would have been meaningless.** `WORKER-BENCH` barely
+  moved across the two (0.321 → 0.315 ms), which is itself the tell: a bench that gates everything is insensitive
+  to how fast the thing it skips would have been.
+  ⚠️ **Neither figure is a CPU MINIMUM.** 1.690 ms was still taken at load 3.12 with thinkorswim at 28%, not on a
+  quiesced "reference M3 P-core, single-threaded" host — and quiescing is not available: the contenders are the
+  owner's own applications on his own machine. **So the publishable claim is "inside budget with the load
+  recorded", never a minimum spec.** A CPU minimum derived from either would be a figure this project's own
+  rule forbids. The instrument is `src/frameserver/tests/worker_bench.c`; the gate needs a fixture the classifier
+  actually calls ProgramLike before any ms/unit figure means anything.
+
+- **CODEX'S §14 REVIEW (`698c11a`) FOUND SIX DEFECTS AND EVERY ONE REPRODUCED — including two I wrote and three
+  overclaims I published (2026-09-11).** Its report is `docs/reports/2026-09-11_arrival_calibration_review.md`.
+  1. **`per_unit_floor.py` READ THE WRONG FIELD.** `SWITCH_LINES=(260,261,262)` was used for BOTH fields against
+     origin 286, so field 2 evaluated `282 + (260−286)` = row 256 — **field 1's bottom rows** — against field 2's
+     own calibration. Fixed to `{1:(260,261,262), 2:(523,524,525)}`. ⚠️ **Inert on this capture** (correcting it
+     changes 0 of 508 field-2 results, because the target maximum is sample 719 in every reading), which is
+     precisely why nothing noticed. **And my selftest never CALLED `unit_reading()`, so it could not have caught
+     it** — a control that does not run the function is a claim about it. It now builds an asymmetric synthetic
+     with a displacement in field 2 ONLY and requires field 2 to assert and field 1 not to; mutation-verified.
+  2. **`settled_index()` stopped on an equal-valued plateau.** Codex's fixture `84,55,26,26,1.6` pooled level
+     **17.87** against a floor of 1.6. Fixed to a non-increasing walk; that fixture now settles at 1.6.
+  3. **"4/4 EXACT" WAS FALSE.** The recovery tolerance was ±10 samples, which cannot validate the one-sample
+     distinction the bright-programme claims rest on. Tightened to ±2; all four still pass.
+  4. **"3/3 NEGATIVE CONTROLS PASS" WAS ONE LUCKY SEED.** Over 200 seeds each the criterion FABRICATES on
+     **12/200 flat-picture, 12/200 all-blanking, 36/200 steep-interior-edge** rows — Codex measured the same
+     class independently at 61 of 1,000. **A non-zero fabrication rate is now a MEASURED, GATED BOUND printed
+     with every run**, failing on any increase, rather than a defect claimed fixed.
+     ⚠️ **A flatness requirement was tried against it and REVERTED**: requiring the after-region to be quieter
+     does cut fabrication, but it REJECTS a legitimate multi-sample ramp, because the ramp's own samples make
+     that region's spread large. **A false negative on a known answer is worse than the false positive it fixes.**
+  5. **THE "FRACTION OF A SAMPLE" MARGIN WAS AN ARTEFACT OF SUBTRACTING TWO MEDIANS.** Paired per reading, the
+     bright margins are **exactly 216 at +1 sample and 334 at zero** — integers. There is no fractional margin.
+  6. **"COVERAGE" WAS THE WRONG WORD.** 216/550 is an ASSERTION RATE of this comparison. It is not demonstrated
+     coverage of identified switches, and it is not proof the other 61% are physically unmeasurable. **Every
+     target maximum is sample 719 in all 1,016 readings**, so what the comparison detects on bright is the row
+     reaching the window edge, which is not the same claim.
+  ⚠️ **What Codex did NOT overturn:** the rejected-variant control "genuinely defends the narrow choice" — forcing
+  that branch into production returns 717 for an injected 700 and fails the selftest, a known-answer
+  counterexample rather than a restated preference. And the parity split is not circular: the reference median
+  includes validation rows but cancels, since the decision is `max(target) > max(calibration)`.
+  ⚠️ **Still open from the review:** `0c72441` recorded the operating-point sweep's PROSE but not its executable
+  or keyed population, so that table is less auditable than the per-unit census — the same
+  instrument-not-committed defect this file has now paid for three times.
+
 - **PER-UNIT CALIBRATION WORKS, AND THE REGIMES FALL OUT OF THE MEASUREMENT INSTEAD OF BEING CLASSIFIED
   (`experiments/per_unit_floor.py`, 2026-09-11).** "Per source" was not fine-grained enough and capture 1 proves
   it: card and bright programme are the SAME source with switch signals of ~25 and ~1-3 samples, so a per-source
@@ -4866,6 +5045,49 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   exactly that.** The mild version is the one that happened and the one worth keeping. What survives unchanged is
   the point it was reached for: a claim about a guard is the sentence this project cannot stop writing unverified,
   knowing that does not prevent it, and only pasting the artifact does.
+- **WHEN A THRESHOLD CANNOT BE TUNED BELOW A RATE, CHECK WHETHER THAT RATE IS STRUCTURAL BEFORE TRYING A FOURTH
+  STATISTIC — and the fix is usually the estimator's RELATIONSHIP TO ITS DATA, not a better estimator
+  (2026-09-11).** The band-reference skew test sat at a 9.6% per-row false-positive rate on ordinary picture rows
+  and could not be tuned below it. **That was not a badly chosen cut: it was a FLOOR.** The threshold was a 5-95%
+  band learned from those same rows, and a percentile of a population must misclassify that fraction of the
+  population BY CONSTRUCTION. No value of the cut reaches under it, so every attempt to tune it was spending
+  effort on the one quantity that could not move.
+  **The escape is structural: take a MAXIMUM over DISJOINT calibration rows instead of a percentile of the
+  scored ones.** Measured, that took the same question from 9.6% to **0.44%** — a rate the percentile form cannot
+  reach at any setting.
+  **This is the SECOND time in one night that changing the estimator's relationship to its data beat repeated
+  attempts at a better statistic.** The other is the parity split: calibrating the per-unit floor on one half of
+  each unit's no-switch rows and validating on the other, which is the same move — **separate the rows that SET
+  the number from the rows that TEST it.** Three attempts at a better transition-finder failed before the
+  diagnosis-against-a-known-answer worked; three candidate divisors all overlapped before the per-unit floor
+  worked. **The pattern is that the estimator kept being asked to do something its relationship to the data made
+  impossible.**
+  **The question to ask early, and it costs nothing: does this number come from the same rows it is scored on?**
+  If yes, its error rate has a floor you cannot tune under, and the repair is disjointness, not arithmetic.
+
+- **A RESULT THAT CLEAN, ON THIS MATERIAL, IS THE TELL — a check to apply BEFORE the number is written down,
+  not a ninth entry in the tally (2026-09-11).** Eight instruments have now produced a beautiful wrong answer by
+  measuring the device's own generated fill. The list is a record of past mistakes; **the tell is usable in the
+  moment**, and it is this: **device fill is CONSTANT, so any statistic computed over it returns a degenerate
+  perfect answer — 100%, 0%, zero variance, a p90 equal to its own ceiling — and NOTHING REAL ON THIS SOURCE IS
+  PERFECT.** Tape through a VHS head, a line TBC and an analogue decoder does not produce 120 of 120 against
+  0 of 2,760. When a number comes out that clean, the population is the first suspect, not the finding.
+  **The rows that do it, so the check is actionable rather than a moral:** the hard-padding ruler at storage rows
+  **0-6, 261-269, 523-524** (Y16/C128, zero variance, present with no deck attached); **row 259** = field 1's
+  half-line 262.5 and **row 260** = field 2's line 1; and the Shuttle's own re-encoded inserts at **lines 20, 21
+  and 284**, whose per-pixel std is 0.6 against 4 for a tape-borne caption. A scan bound that reaches any of them
+  imports a constant into the statistic.
+  **Instances, compressed, because the disguise changes and the cause does not:** the `:531` blanking reference
+  taken from device rows rather than the source's; the comb's static mask calibrated on generated-blanking
+  fluctuation, which then admitted blanking and rejected picture; `blank_mean` computing the right statistic over
+  the wrong rows; and the R12 co-location test scanning to NTSC line 265 and reporting 120 of 120 peak-bearing
+  AND displaced, which was rows 259-261 — half-line, field-2 line 1, and padding — read by a row-MAD statistic
+  as peaks. Excluding them left **four**.
+  ⚠️ **The check has a false-positive of its own and it is worth naming:** a genuinely categorical source
+  property also reads clean — the flat-row separation at 768 against 0, or S being exact in 1,013 of 1,013. **The
+  tell is not "clean means wrong", it is "clean means CHECK THE POPULATION FIRST"**, and the two are separated by
+  asking which rows the statistic actually consumed.
+
 - **THE DIAGNOSIS for the whole answers-a-different-question family, and it is not "same medium" (2026-09-11, the
   peer session's, and better than the hypothesis it replaced).** Every member operated on a **PROXY** that
   coincides with the real property most of the time:
