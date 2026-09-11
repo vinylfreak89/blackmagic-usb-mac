@@ -4166,8 +4166,17 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
     the first long structureless run scanned inward. Measured: the inward-scan version reads a flat overcast sky
     179 rows into the tornado footage as a top band and calls an ordinary full-frame shot a box. A letterbox mask
     begins at the picture's first line; a sky does not.
-  - **THE VERDICTS:** `blank` (one structureless region, or content below the floor) · **`box`** (bands at BOTH
-    ends) · `top-only` · `bottom-only` · **`none`** — which is the unbounded case.
+  - **THE VERDICTS, verbatim:** `blank` (one structureless region, or content below the floor) · **`box`**
+    (bands at BOTH ends) · `top-only` · `bottom-only` · `none`.
+  ⚠️⚠️ **HIS ASK NAMED THREE TERMS AND ONLY TWO ARE DEFINED. `unbounded` APPEARS ZERO TIMES in `experiments/*.py`
+  and zero times in the contract.** The harness's fifth verdict is `none`, and **reading it as "unbounded" is MY
+  inference, not the instrument's definition** — an entirely reasonable reading, since `none` means no band at
+  either end and so a picture reaching both edges, but it is a mapping I made and not a test anyone wrote. The
+  first version of this entry presented all three as covered, which overstated it.
+  **So the residue of O-B6 is exactly one term**, and it is small enough to be answerable from his own words
+  about what a box IS rather than by asking him: "box is the bounds of the box, not the content inside the box",
+  and "if the box doesn't touch the head switch, then its not valid geometry". A source with no bounds at either
+  end is what `none` reports; whether that is what he means by `unbounded` is the only open part.
   ⚠️ **Two constants in it are FITTED and are labelled so in the source:** `minband=6` rows (a floor on what
   counts as a band; the measured bands are 31 and 28) and `mincontent=40` rows (the floor separating a picture
   from a mute; the card carries 183). **Under rule 4 they are instrument qualifications, NOT source properties**,
@@ -4186,7 +4195,10 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   - **TBC phase step:** the step is introduced BY the corrector, so it should appear **WITH** the TBC.
   **THE SIGN DECIDES BETWEEN THEM AND IT IS ALREADY MEASURED.** Displaced rows: **1,957 with the TBC off against
   11 with it on**. Peaks: **3.07% off against one or two of 606 on**. Both vanish together when the corrector is
-  engaged. **A step introduced by the TBC would appear when the TBC is on; it does the opposite**, so that account
+  engaged. ⚠️ **THOSE ARE NOT PAIRED FIGURES AND WILL READ AS IF THEY WERE.** The two captures are not
+  frame-aligned — this file records the comparison as distributional, **396 fields against 1,216, best
+  field-match correlation 0.07-0.31**. The argument survives that easily, because two orders of magnitude is not
+  reachable by an alignment artefact, but the caveat costs a clause now against a re-derivation later. **A step introduced by the TBC would appear when the TBC is on; it does the opposite**, so that account
   is contradicted and liftoff is the one consistent with the A/B.
   ⚠️ **THE CO-LOCATION LEG — the strongest available test, that peak-bearing rows must BE displaced rows if the
   two are one instant — IS UNDERPOWERED AND DECIDES NOTHING.** On capture 4, field 1, 300 units, NTSC lines
