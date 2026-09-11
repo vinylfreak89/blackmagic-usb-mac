@@ -5315,6 +5315,12 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
     survives is the weaker prompt — joint improvement is a reason to AUDIT, never a reason to disbelieve — and
     its replacement is his: freeze the evaluation populations and audit dependencies, errors and abstentions,
     rather than scoring a repair against the previous error rate.
+    ✅ **AND IT IS NOW REFUTED BY MEASUREMENT, NOT ONLY BY ARGUMENT — see the one-variable table below.**
+    Correcting the level alone, with the calibration rows, the validation rows and the statistic untouched, moves
+    identification **53 → 1,065** AND false-identification **0.38% → 0.10%**. A reference correction improving
+    both is exactly the case this condition would have told the next reader to disbelieve. **Anyone building a
+    brief from this section must not relay the condition: it is dead, and the evidence is in this file rather
+    than in a thread.**
   - **THE QUALIFICATION MUST BE DERIVABLE, NOT ANOTHER WINDOW.** "Rows whose own timing reads normal" is
     CIRCULAR here — it qualifies the calibration by the quantity the calibration defines. Qualifying rows by the
     source's own reference, the route `:531` already specifies for levels, is not circular; a second fixed span
