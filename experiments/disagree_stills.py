@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render, as PNGs, the units where the two fields disagree on the envelope line count.
 
-A one-off experiment (owner, 2026-09-11: "those disagreeing frames, render them as pngs" /
+A one-off experiment (owner, 2026-09-13: "those disagreeing frames, render them as pngs" /
 "build another one. this is an experiment, we aren't working on the live engine right now").
 This is NOT the review copy and must never be mistaken for it -- `experiments/review_render.py`
 is the producer of that.

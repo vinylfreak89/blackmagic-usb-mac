@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sweep the per-line statistic and the threshold over a cached pass of one capture.
 
-The owner's question, 2026-09-11: "is what we are measuring wrong? instead of median what
+The owner's question, 2026-09-13: "is what we are measuring wrong? instead of median what
 about p10? do they agree more there?"  This answers it by measurement rather than by
 argument -- every statistic and every cut is run over the SAME cached lines, so the only
 thing varying is the rule.  His original rule is the p50 / 12.0 cell.

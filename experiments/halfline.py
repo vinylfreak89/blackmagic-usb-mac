@@ -1,5 +1,5 @@
 """Both ends of both fields, raw, as block means -- the panel behind the half-line and
-head-switch findings of 2026-09-11.  Device-generated rows (the Shuttle's timing line and
+head-switch findings of 2026-09-13.  Device-generated rows (the Shuttle's timing line and
 caption inserts at NTSC 20/21/283/284, and the padding ruler) are labelled so they are never
 read as tape content.  Reproduces the finding rather than describing it."""
 

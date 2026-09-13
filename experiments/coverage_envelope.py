@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Blank versus not, by COVERAGE: find a threshold on which both fields agree on every unit.
 
-The owner, 2026-09-11: "your %s are better than my p9X. is that computationally quick to run
+The owner, 2026-09-13: "your %s are better than my p9X. is that computationally quick to run
 on each line the same way as our existing test runs. I want something that ends up agreeing on
 100 % of units ... from the time the noise bars disappear to the end".
 
@@ -15,7 +15,7 @@ directly -- the noisiest blank row and the weakest picture row -- rather than on
 because a sweep that happens to hit 100% on a narrow knife-edge is not a result.
 
 Windows start at NTSC 23 / 286: above that the Shuttle writes its own inserts, and they slip
-down a row on unsettled units (measured 2026-09-11), so the top cannot be measured higher.
+down a row on unsettled units (measured 2026-09-13), so the top cannot be measured higher.
 """
 import argparse, sys, time
 import numpy as np

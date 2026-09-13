@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """How many marker intervals in each acceptance capture are NOT exactly one unit?
 
-The owner asked what happens to short units (2026-09-11).  Every Python instrument in
+The owner asked what happens to short units (2026-09-13).  Every Python instrument in
 experiments/ -- including review_render.py -- uses the same extractor shape:
 
     if j == UNIT_BYTES: emit(...)          # j = distance to the next marker

@@ -4494,7 +4494,7 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   alternative too: warning about one trap alone routes the next caller into the other, and a partial warning at
   a shared site is worse than none because it reads as complete.
 
-**LINE 22 IS A DECK INSERT, NOT THE SHUTTLE'S -- measured across five sources, 2026-09-11, and it
+**LINE 22 IS A DECK INSERT, NOT THE SHUTTLE'S -- measured across five sources, 2026-09-13, and it
 REFUTES contract :478.**  The owner's framing, and it is the sharper one: the line is not merely "source-carried",
 it is inserted by the DECK, which is why it holds the deck's own grey when the deck mutes. The owner: "the shuttle only modifies 20 and 21. 22 is inserted by the deck". Mean
 luma at each line, same device throughout:
@@ -4522,7 +4522,7 @@ reads near-black, so absence there shows little. What that capture DOES show, an
 1.0, identical to lines the device never touches. It is corroboration, not the proof; the proof is that line 22
 moves with the source.
 
-**THE 262.5 HALF LINE, MEASURED TWO INDEPENDENT WAYS THAT AGREE TO THREE DECIMALS (2026-09-11).** The owner's
+**THE 262.5 HALF LINE, MEASURED TWO INDEPENDENT WAYS THAT AGREE TO THREE DECIMALS (2026-09-13).** The owner's
 question: "where there is deck grey mute, does field 1 always have 1 more line of picture than field 2?" **Yes --
 205 of 205 units, two separate mute events, both decision rules, zero exceptions:** field 1 NTSC 22..263 = 242
 lines, field 2 NTSC 285..525 = 241, identical endpoints in every unit. In frame coordinates both fields start at
@@ -4537,7 +4537,7 @@ labels "f1 262.5".
 ⚠️ **It needs a full-field fill and is masked on programme**, which reads 240/240 -- not a contradiction, the deck
 clips each field at 262/525 symmetrically so programme never reaches the half-line row. So it is a parity check
 available at mutes and cuts, never continuously.
-⚠️ **NOT tested on capture 4**, the one that pairs a slot later, and it CANNOT be: measured 2026-09-11,
+⚠️ **NOT tested on capture 4**, the one that pairs a slot later, and it CANNOT be: measured 2026-09-13,
 capture 4's line 263 and line 526 both read mean 1.4 with within-line spread 1.0 in all 650 units, as do
 captures 1-3.  The deck clips programme at 262/525 so the half-line row is never filled and the marker has
 nothing to show.  The owner's prediction -- that with the pairing shifted the half line would appear in

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Does field 1 always carry one more line than field 2 on deck grey mute?
 
-The owner's question, 2026-09-11: "does the invariant at line 262.5 hold? in other words,
+The owner's question, 2026-09-13: "does the invariant at line 262.5 hold? in other words,
 where there is deck grey mute, does field 1 always have 1 more line of picture than field 2?"
 
 ANSWER: YES.  205 of 205 units, two separate mute events, both decision rules, zero

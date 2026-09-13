@@ -1,6 +1,6 @@
 """Does the cached statistic match a fresh recomputation from the raw raster?
 
-Written because the owner said "you have to have a math error somewhere" (2026-09-11) and
+Written because the owner said "you have to have a math error somewhere" (2026-09-13) and
 that is a claim to test, not to argue with.  It recomputes p90 straight from the unit's
 luma and compares against experiments/field_line_count.py's cache, and prints COVERAGE --
 the fraction of the row's 720 samples above the blanking codes -- beside it.

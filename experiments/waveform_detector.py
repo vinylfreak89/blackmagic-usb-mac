@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A simple waveform detector: rows that are two levels plus ramps are not picture.
 
-The owner, 2026-09-11: "I think the right thing is a simple waveform detector. that should cut
+The owner, 2026-09-13: "I think the right thing is a simple waveform detector. that should cut
 out lines that are simply not picture. if they show two codes with slight sinusoidal ramps near
 them, thats a waveform and shouldn't count as picture".
 

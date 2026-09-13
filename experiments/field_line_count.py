@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The owner's experiment, 2026-09-11, in his words and nothing else.
+"""The owner's experiment, 2026-09-13, in his words and nothing else.
 
     "count the lines of each field in cap 1 ... for the time being lets use Y=12, simple
      experiment. Any line who's median luma level is > than 12 is not a blanked line. Look
@@ -63,7 +63,7 @@ STATS = ["p10", "p25", "p50", "p75", "p90", "max", "mean",
          "cov2", "cov3", "cov4", "cov6", "cov8", "cov12"]
 QS    = [10, 25, 50, 75, 90, 100]
 # COVERAGE: the percentage of the line's 720 luma samples strictly above each code.
-# This is the owner's own statistic (2026-09-11): "what I really want to know is what %
+# This is the owner's own statistic (2026-09-13): "what I really want to know is what %
 # of samples carry signals above blanking. if its above N % that line shouldn't be
 # considered blanking."  Several code levels are cached so the level AND the percentage
 # can both be swept per source without another walk -- neither is typed in as a constant.
