@@ -32,7 +32,7 @@ trap is measured here rather than asserted.
 
 Coordinates: prose and output are NTSC line numbers.  Storage row r = NTSC line r + 4.
 """
-import argparse, csv, sys
+import argparse, csv, os, sys
 import numpy as np
 from packet_capture_reader import walk_tagged
 
@@ -54,6 +54,13 @@ FIELD_WINDOWS       = {1: (19, 260), 2: (282, 522)}
 FIELD_WINDOWS_PAD   = {1: (19, 269), 2: (282, 524)}
 
 THRESHOLD = 12.0
+
+# Every statistic is computed in ONE walk and cached, so sweeping the statistic or the
+# threshold afterwards costs nothing and never re-reads the capture.  "max" is the literal
+# largest sample on the line; "mean" its average; the rest are percentiles of its 720 luma
+# samples.  p50 IS the median, so the owner's original rule is `--stat p50 --threshold 12`.
+STATS = ["p10", "p25", "p50", "p75", "p90", "max", "mean"]
+QS    = [10, 25, 50, 75, 90, 100]
 
 
 def ntsc(row):
@@ -78,35 +85,24 @@ def scan(med, lo, hi, thr):
     return first, last
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("capture")
-    p.add_argument("--threshold", type=float, default=THRESHOLD)
-    p.add_argument("--with-padding", action="store_true",
-                   help="leave the device's Y=16 padding ruler inside each field's window")
-    p.add_argument("--csv")
-    a = p.parse_args()
+def load_or_walk(capture, cache):
+    """Return (counters, stats[n_units, 525, len(STATS)]).  One walk of the capture, cached."""
+    if cache and os.path.exists(cache):
+        z = np.load(cache)
+        if list(z["stat_names"]) == STATS:
+            print(f"[cache] {cache}", file=sys.stderr)
+            return z["counters"], z["stats"]
+        print(f"[cache] {cache} holds different statistics -- rewalking", file=sys.stderr)
 
-    windows = FIELD_WINDOWS_PAD if a.with_padding else FIELD_WINDOWS
-    if not a.with_padding:
-        for f, (lo, hi) in windows.items():
-            bad = sorted(set(range(lo, hi + 1)) & PADDING_ROWS)
-            assert not bad, f"field {f} window still contains padding rows {bad}"
-
-    rows_out = []
+    counters, per_unit = [], []
     state = {"buf": bytearray()}
 
     def emit(unit):
-        ctr = int.from_bytes(unit[4:6], "little")
+        counters.append(int.from_bytes(unit[4:6], "little"))
         R = np.frombuffer(unit, np.uint8)[HDR:].reshape(RASTER_ROWS, ROW_BYTES)
-        med = np.median(R[:, 1::2], axis=1)          # UYVY: luma is every second byte
-        rec = {"counter": ctr}
-        for f, (lo, hi) in windows.items():
-            fi, la = scan(med, lo, hi, a.threshold)
-            rec[f"f{f}_first"] = ntsc(fi) if fi is not None else ""
-            rec[f"f{f}_last"]  = ntsc(la) if la is not None else ""
-            rec[f"f{f}_count"] = (la - fi + 1) if fi is not None else ""
-        rows_out.append(rec)
+        Y = R[:, 1::2].astype(np.float32)            # UYVY: luma is every second byte
+        pc = np.percentile(Y, QS, axis=1)            # (len(QS), 525)
+        per_unit.append(np.vstack([pc, Y.mean(axis=1)[None, :]]).T.astype(np.float32))
 
     def on_video(pkt):
         b = state["buf"]; b.extend(pkt)
@@ -119,7 +115,46 @@ def main():
             if j == UNIT_BYTES: emit(bytes(b[:UNIT_BYTES]))
             del b[:j]
 
-    walk_tagged(a.capture, on_video=on_video, progress=False)
+    walk_tagged(capture, on_video=on_video, progress=False)
+    counters = np.array(counters); stats = np.stack(per_unit)
+    if cache:
+        np.savez_compressed(cache, counters=counters, stats=stats,
+                            stat_names=np.array(STATS))
+        print(f"[cache] wrote {cache}", file=sys.stderr)
+    return counters, stats
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("capture")
+    p.add_argument("--threshold", type=float, default=THRESHOLD)
+    p.add_argument("--stat", choices=STATS, default="p50",
+                   help="per-line statistic; p50 is the median, the owner's original rule")
+    p.add_argument("--cache", help="npz of every statistic; written on first use, reused after")
+    p.add_argument("--with-padding", action="store_true",
+                   help="leave the device's Y=16 padding ruler inside each field's window")
+    p.add_argument("--csv")
+    a = p.parse_args()
+
+    windows = FIELD_WINDOWS_PAD if a.with_padding else FIELD_WINDOWS
+    if not a.with_padding:
+        for f, (lo, hi) in windows.items():
+            bad = sorted(set(range(lo, hi + 1)) & PADDING_ROWS)
+            assert not bad, f"field {f} window still contains padding rows {bad}"
+
+    counters, stats = load_or_walk(a.capture, a.cache)
+    col = STATS.index(a.stat)
+
+    rows_out = []
+    for u, ctr in enumerate(counters):
+        v = stats[u, :, col]
+        rec = {"counter": int(ctr)}
+        for f, (lo, hi) in windows.items():
+            fi, la = scan(v, lo, hi, a.threshold)
+            rec[f"f{f}_first"] = ntsc(fi) if fi is not None else ""
+            rec[f"f{f}_last"]  = ntsc(la) if la is not None else ""
+            rec[f"f{f}_count"] = (la - fi + 1) if fi is not None else ""
+        rows_out.append(rec)
 
     if a.csv:
         with open(a.csv, "w", newline="") as fh:
@@ -133,7 +168,7 @@ def main():
     disagree = [r for r in both if r["f1_count"] != r["f2_count"]]
 
     print(f"capture              {a.capture}")
-    print(f"threshold            median luma > {a.threshold:g}")
+    print(f"rule                 line's {a.stat} luma > {a.threshold:g}")
     print(f"windows (NTSC lines) f1 {ntsc(windows[1][0])}-{ntsc(windows[1][1])}   "
           f"f2 {ntsc(windows[2][0])}-{ntsc(windows[2][1])}"
           f"{'   [PADDING LEFT IN]' if a.with_padding else ''}")
