@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the owner's whole-line waveform rule (pulse_walker.py) over every exact unit of a capture.
+"""Run the owner's two-code alternation rule (alternation_walker.py) over every exact unit of a capture.
 
 His test: "if you run that over line 20 and 21 it should always discriminate."  So:
   - the Shuttle's inserts, NTSC 20/21 and 283/284, on EVERY unit -- each is reported as
@@ -14,7 +14,7 @@ swept afterwards without re-reading the capture.  Coordinates: storage row r = N
 import argparse, os, sys
 from collections import Counter
 import numpy as np
-from pulse_walker import verdict
+from alternation_walker import walk
 
 UNIT_BYTES, HDR, ROW_BYTES, RASTER_ROWS = 756_048, 48, 1440, 525
 MARK = b"\x00\x00\xff\xff"
@@ -28,7 +28,7 @@ def ntsc(r):
     return r + 4
 
 
-def walk(capture, out):
+def walk_capture(capture, out):
     from packet_capture_reader import walk_tagged
     counters, rows = [], []
     buf = bytearray()
@@ -55,41 +55,30 @@ def walk(capture, out):
     print(f"[walk] {capture}: {len(counters)} exact units -> {out}", flush=True)
 
 
-def analyze(label, npz, near, far, tol, right_edge_top, min_counter=None, show=8):
+def analyze(label, npz, tol, far, min_counter=None, show=8, **kw):
     z = np.load(npz)
     C, Y, idx = z["counters"], z["rows"], list(z["row_index"])
-    units = range(len(C))
-    if min_counter is not None:
-        units = [u for u in units if C[u] >= min_counter]
-    units = list(units)
-    print(f"\n=== {label}   near<={near} far>={far} tol {tol} right_edge_top={right_edge_top}"
+    units = [u for u in range(len(C)) if min_counter is None or C[u] >= min_counter]
+    print(f"\n=== {label}   tol {tol} far {far} {kw}"
           f"{f'  counters>={min_counter}' if min_counter is not None else ''}   units {len(units)}")
     for r in INSERT_ROWS:
-        k = idx.index(r)
-        wave = blank = 0; reasons = Counter(); failed = []
+        k = idx.index(r); why = Counter(); bad = []
         for u in units:
-            w, p, o, ex = verdict(Y[u, k], near, far, tol, right_edge_top)
-            if w:
-                wave += 1
-            elif not ex:
-                blank += 1
-            else:
-                failed.append(int(C[u])); reasons.update(e[3] for e in ex if e[3] != "pulse")
-        print(f"  insert NTSC {ntsc(r)}:  WAVEFORM {wave}   BLANK {blank}   FAILED {len(failed)}"
-              + (f"   reasons {dict(reasons)}   counters {failed[:show]}{' ...' if len(failed) > show else ''}"
-                 if failed else ""))
+            ok, reason, t, h = walk(Y[u, k], tol, far, **kw)
+            why[reason] += 1
+            if not ok: bad.append(int(C[u]))
+        print(f"  insert NTSC {ntsc(r)}:  {dict(why)}" + (f"   not-waveform counters {bad[:show]}" if bad else ""))
     line = []
     for r in TOP_ROWS:
         k = idx.index(r)
-        n = sum(verdict(Y[u, k], near, far, tol, right_edge_top)[0] for u in units)
-        line.append(f"{ntsc(r)}:{n}")
+        line.append(f"{ntsc(r)}:{sum(walk(Y[u, k], tol, far, **kw)[0] for u in units)}")
     print(f"  top-of-picture rows called WAVEFORM (line:units)  {'  '.join(line)}")
     hits = []; total = 0
     for r in CONTROL_ROWS:
         k = idx.index(r)
         for u in units:
             total += 1
-            if verdict(Y[u, k], near, far, tol, right_edge_top, stop_at_other=True)[0]:
+            if walk(Y[u, k], tol, far, **kw)[0]:
                 hits.append((int(C[u]), ntsc(r)))
     print(f"  MID-PICTURE control rows called WAVEFORM  {len(hits)} of {total}"
           + (f"   first {hits[:show]}" if hits else ""))
@@ -103,15 +92,13 @@ def main():
     a = ap.parse_args()
     for cap, out in a.walk:
         if not os.path.exists(out):
-            walk(cap, out)
+            walk_capture(cap, out)
         else:
             print(f"[walk] {out} exists, reused", flush=True)
     mins = {lab: int(c) for lab, c in a.min_counter}
-    settings = [(20, 40, 8, False), (20, 40, 8, True), (10, 40, 8, False),
-                (20, 80, 8, False), (20, 40, 4, False)]
-    for near, far, tol, rt in settings:
+    for tol, far, kw in ((4, 40, {}), (2, 40, {}), (6, 40, {}), (4, 40, {"min_alt": 2})):
         for label, npz in a.analyze:
-            analyze(label, npz, near, far, tol, rt, mins.get(label))
+            analyze(label, npz, tol, far, mins.get(label), **kw)
     print("\nCENSUS DONE", flush=True)
 
 
