@@ -72,6 +72,7 @@ def main():
 
     z = np.load(a.cache); counters = z["counters"]; stats = z["stats"]
     names = list(z["stat_names"]); i90 = names.index("p90")
+    icov = names.index("cov2") if "cov2" in names else None
 
     # picture units only; the rewind carries no picture and is a signal-state question
     peak = stats[:, 19:260, i90].max(axis=1)
@@ -93,7 +94,8 @@ def main():
             continue
         n1 = r[1][1] - r[1][0] + 1; n2 = r[2][1] - r[2][0] + 1
         if explicit is not None or n1 != n2:
-            want[int(ctr)] = (r, n1, n2, v)
+            blank = (100.0 - stats[u, :, icov]) if icov is not None else None
+            want[int(ctr)] = (r, n1, n2, v, blank)
     label = "requested" if explicit is not None else "disagreeing picture"
     print(f"{len(want)} {label} units at p90 > {a.threshold:g}: {sorted(want)}",
           file=sys.stderr)
@@ -104,13 +106,13 @@ def main():
     state = {"buf": bytearray()}; done = set()
 
     def render(ctr, R):
-        r, n1, n2, v = want[ctr]
+        r, n1, n2, v, blank = want[ctr]
         rgb = rgb_from_uyvy(R)
         Y = R[:, 1::2].astype(np.float32)
 
         PW = 700                                    # panel width
         PH = PANEL_LINES * VMAG
-        W, H = 20 + 720 + 26 + PW + 90 + 20, 60 + max(525, 4 * (PH + 34)) + 16
+        W, H = 20 + 720 + 26 + PW + 190 + 20, 60 + max(525, 4 * (PH + 34)) + 16
         img = Image.new("RGB", (W, H), (14, 14, 16)); d = ImageDraw.Draw(img)
 
         d.text((20, 12), f"counter {ctr}", font=big, fill=(240, 240, 240))
@@ -148,8 +150,9 @@ def main():
                 n = top + k + 4
                 yy = y0 + k * VMAG
                 hit = (top + k) == row
+                bl = "" if blank is None else f"  {blank[top+k]:5.1f}% blank"
                 d.text((x0 + PW + 6, yy),
-                       f"{n:>4} {v[top+k]:6.1f}", font=small,
+                       f"{n:>4} p90{v[top+k]:6.1f}{bl}", font=small,
                        fill=(255, 235, 120) if hit else (130, 130, 130))
                 if hit:
                     d.line([(x0 - 6, yy + VMAG // 2), (x0 - 1, yy + VMAG // 2)], fill=col)
