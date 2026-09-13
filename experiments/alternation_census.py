@@ -20,7 +20,8 @@ import numpy as np
 UNIT_BYTES, HDR, ROW_BYTES, RASTER_ROWS = 756_048, 48, 1440, 525
 MARK = b"\x00\x00\xff\xff"
 FEATURES = ["counter", "row", "lo", "hi", "crossings", "min_interval",
-            "blank_start4", "blank_start12", "chroma_mean", "chroma_p95", "walk_ok", "walk_reason"]
+            "blank_start4", "blank_start12", "chroma_mean", "chroma_p95", "walk_ok", "walk_reason",
+            "interior_blank", "end_level"]
 REASONS = ["not-walked", "waveform", "no-holds", "high-not-far", "hold-between-the-codes",
            "excursion-into-the-middle-turns-back", "does-not-alternate"]
 CAPS = [("cap1", "../captures/composite_program_30s.tpc"),
@@ -51,6 +52,10 @@ def unit_features(unit):
     out[:, 6], out[:, 7] = blank_start(Y > 4), blank_start(Y > 12)
     out[:, 8] = cmag.mean(1)
     out[:, 9] = np.percentile(cmag, 95, axis=1)
+    # touches blanking INSIDE the line (clear of the row's own horizontal blanking at both edges)
+    out[:, 12] = np.count_nonzero(Y[:, 20:700] <= 4, axis=1)
+    # where the line sits just before the device's end-of-picture edge (picture falls from ~713 on)
+    out[:, 13] = np.median(Y[:, 709:713], axis=1)
     for r in np.flatnonzero((hi >= 40) & (crossings >= 3)):      # the walk cannot pass anything else
         s = np.flatnonzero(flips[r])
         out[r, 5] = np.diff(s).min() if s.size >= 2 else -1
