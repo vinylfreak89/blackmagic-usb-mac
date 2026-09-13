@@ -62,9 +62,11 @@ for name, path in CAPS:
           f"   ({100.0 * sum(odd.values()) / total:.2f}%)", flush=True)
     for L in sorted(odd):
         kind = "SHORT" if L < UNIT else "LONG "
+        d = abs(UNIT - L)
+        whole = f"  = EXACTLY {d // 1440} whole line{'s' if d // 1440 != 1 else ''}" if d % 1440 == 0 else ""
         print(f"      {kind} {L:>9,} B  x{odd[L]}   "
-              f"({'-' if L < UNIT else '+'}{abs(UNIT - L):,} from a unit)", flush=True)
+              f"({'-' if L < UNIT else '+'}{d:,} from a unit{whole})", flush=True)
     if st["where"]:
-        print(f"  (counter, length) of the first few: {st['where'][:5]}", flush=True)
+        print(f"  (counter, length), first {len(st['where'])}: {st['where']}", flush=True)
     print(f"  trailing bytes after the last marker: {len(st['buf']):,}", flush=True)
 print("\nCENSUS DONE", flush=True)
