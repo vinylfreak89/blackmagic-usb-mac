@@ -4494,6 +4494,63 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   alternative too: warning about one trap alone routes the next caller into the other, and a partial warning at
   a shared site is worse than none because it reads as complete.
 
+**LINE 22 IS THE SOURCE'S, NOT THE SHUTTLE'S -- measured across five sources, 2026-09-11, and it
+REFUTES contract :478.** The owner: "the shuttle only modifies 20 and 21. 22 is inserted by the deck". Mean
+luma at each line, same device throughout:
+
+| source | line 20 | line 21 | **line 22** | line 23 |
+|---|---:|---:|---:|---:|
+| deck grey mute | 22.6 | 27.9 | **123.6** | 123.6 |
+| commercial card | 22.2 | 27.5 | **1.4** | 7.8 |
+| EP recording | 22.0 | 27.2 | **1.4** | 37.5 |
+| SP recording | 22.4 | 28.9 | **1.4** | 30.1 |
+| virgin tape / no RF | 22.4 | 27.6 | **1.4** | 17.0 |
+
+**Lines 20 and 21 hold at 22.0-22.6 and 27.2-28.9 across every source; line 22 moves to 123.6 when the deck
+sends grey.** It tracks the source exactly as line 23 does. Contract :478 says "Nothing the tape carries above
+line 23 reaches us except the re-encoded bytes on the insert" -- FALSE, and it is the clause CLAUDE.md already
+flagged as conflicting with the owner's 09:16:24 ruling that real lines 20-22 overwrite the Shuttle's in a 486
+render. That conflict resolves in favour of the ruling. The contract edit needs Codex's agreement under section 14
+and is NOT made here.
+⚠️ **One positive case, not five.** Four of the five sources read 1.4 at line 22, so only the mute distinguishes
+it; 123.6 against 1.4 at exactly the field's own level is not marginal, and this file separately records the EP's
+second recording carrying video on 22, but a second measured positive would be worth having.
+⚠️ **A deck-powered-off control was offered first and the owner rejected it correctly**: with no signal everything
+reads near-black, so absence there shows little. What that capture DOES show, and it is not vacuous, is that lines
+20 and 21 carry device patterns (within-line spread 63.3 and 44.0) in the very units where line 22 reads spread
+1.0, identical to lines the device never touches. It is corroboration, not the proof; the proof is that line 22
+moves with the source.
+
+**THE 262.5 HALF LINE, MEASURED TWO INDEPENDENT WAYS THAT AGREE TO THREE DECIMALS (2026-09-11).** The owner's
+question: "where there is deck grey mute, does field 1 always have 1 more line of picture than field 2?" **Yes --
+205 of 205 units, two separate mute events, both decision rules, zero exceptions:** field 1 NTSC 22..263 = 242
+lines, field 2 NTSC 285..525 = 241, identical endpoints in every unit. In frame coordinates both fields start at
+22; field 1 ends at 263 and field 2 at 262.
+**The extra row is a HALF row, and the arithmetic settles it.** Field 1's line 263 reads mean 53.0 with a
+within-line spread of 122 -- part grey, part blanking -- while field 2 has nothing at 526. Its fill fraction
+against grey 122.6 and blanking 1.4 is **(53.0-1.4)/(122.6-1.4) = 0.4257**. Predicted from the standard: a half
+line carries signal for the first 429 of 858 samples, the delivered window opens 122 samples after 0H and is 720
+wide, so the visible fraction is **(429-122)/720 = 0.4264**. A level measurement and the NTSC line geometry,
+sharing nothing, agreeing to three decimals. NTSC 263 is storage row 259, which `field_lines.h` independently
+labels "f1 262.5".
+⚠️ **It needs a full-field fill and is masked on programme**, which reads 240/240 -- not a contradiction, the deck
+clips each field at 262/525 symmetrically so programme never reaches the half-line row. So it is a parity check
+available at mutes and cuts, never continuously.
+⚠️ **NOT tested on capture 4**, the one that pairs a slot later, because capture 4 has no mute. Whether the marker
+flips with pairing phase is the test that would make it a pairing detector, and no capture is known that has both
+a pairing anomaly and a full-field fill.
+⚠️ **The mute is in NO capture under `captures/`** -- measured three ways (the engine's classifier reports zero
+`NeutralGrayMuteLike` across the four diagnostic captures; a level check finds nothing at 110-125 that is not
+programme; capture 1's 158 units carrying that label all measure 15-31). The grey mute came from a DECK SETTING
+the owner has since switched off and every file in `captures/` postdates the change. It survives at the very start
+of `captures/fulltape.cap6` and at the 27:18 stop. Cut with `tpc_slice.py --start-bytes 0 --video-bytes 320000000`
+and `--start-bytes 39439481630 --video-bytes 340000000`.
+⚠️ **Select mute by LEVEL AND FLATNESS, never by the classifier's label:** field mean 110-125 with MEDIAN
+within-line spread < 10. Real mute measures 2.0 there, a flat bright scene 44, programme 105. Three detectors were
+wrong before this one -- the mean alone, the mean plus a MEAN of spread (the OSD inflates it), and a temporal
+check whose own control scored moving programme HIGHER than its candidates. `NeutralGrayMuteLike`'s rule tests
+uniformity rather than greyness, which is why its label cannot be used alone.
+
 - **A conclusion that closes off a line of investigation is written into THIS FILE at the moment it is
   reached** — by whichever agent reaches it, in whichever channel, without waiting for a round of work to end. A
   finding that lives only in a Codex thread is invisible to the harness, and an assertion made in the Claude thread
