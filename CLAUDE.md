@@ -4494,8 +4494,9 @@ percentile: `src/field_registration/tests/SWITCH_REVIEW.md`.
   alternative too: warning about one trap alone routes the next caller into the other, and a partial warning at
   a shared site is worse than none because it reads as complete.
 
-**LINE 22 IS THE SOURCE'S, NOT THE SHUTTLE'S -- measured across five sources, 2026-09-11, and it
-REFUTES contract :478.** The owner: "the shuttle only modifies 20 and 21. 22 is inserted by the deck". Mean
+**LINE 22 IS A DECK INSERT, NOT THE SHUTTLE'S -- measured across five sources, 2026-09-11, and it
+REFUTES contract :478.**  The owner's framing, and it is the sharper one: the line is not merely "source-carried",
+it is inserted by the DECK, which is why it holds the deck's own grey when the deck mutes. The owner: "the shuttle only modifies 20 and 21. 22 is inserted by the deck". Mean
 luma at each line, same device throughout:
 
 | source | line 20 | line 21 | **line 22** | line 23 |
@@ -4536,7 +4537,17 @@ labels "f1 262.5".
 ⚠️ **It needs a full-field fill and is masked on programme**, which reads 240/240 -- not a contradiction, the deck
 clips each field at 262/525 symmetrically so programme never reaches the half-line row. So it is a parity check
 available at mutes and cuts, never continuously.
-⚠️ **NOT tested on capture 4**, the one that pairs a slot later, because capture 4 has no mute. Whether the marker
+⚠️ **NOT tested on capture 4**, the one that pairs a slot later, and it CANNOT be: measured 2026-09-11,
+capture 4's line 263 and line 526 both read mean 1.4 with within-line spread 1.0 in all 650 units, as do
+captures 1-3.  The deck clips programme at 262/525 so the half-line row is never filled and the marker has
+nothing to show.  The owner's prediction -- that with the pairing shifted the half line would appear in
+field 2 rather than field 1 -- is therefore neither confirmed nor refuted.  Testing it needs material with
+BOTH a pairing anomaly AND a full-field fill; capture 4 has the anomaly and no fill, the mute slices have
+the fill and come from the V-stabilize-ON pass, and no capture is known to have both.
+**What the cap3/cap4 pair does show** (same recording, one setting apart) is the line TBC's effect on the
+band: with it OFF both fields carry content to 262/525 at within-line spreads near 150 (the head-switch
+band's displaced blanking inside the row); with it ON the bottom is clipped to a flat ~11 at spread 2.
+The band is symmetric between the fields in capture 4, so no parity asymmetry is visible at that end either. Whether the marker
 flips with pairing phase is the test that would make it a pairing detector, and no capture is known that has both
 a pairing anomaly and a full-field fill.
 ⚠️ **The mute is in NO capture under `captures/`** -- measured three ways (the engine's classifier reports zero
