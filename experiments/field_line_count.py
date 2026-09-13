@@ -59,8 +59,15 @@ THRESHOLD = 12.0
 # threshold afterwards costs nothing and never re-reads the capture.  "max" is the literal
 # largest sample on the line; "mean" its average; the rest are percentiles of its 720 luma
 # samples.  p50 IS the median, so the owner's original rule is `--stat p50 --threshold 12`.
-STATS = ["p10", "p25", "p50", "p75", "p90", "max", "mean"]
+STATS = ["p10", "p25", "p50", "p75", "p90", "max", "mean",
+         "cov2", "cov3", "cov4", "cov6", "cov8", "cov12"]
 QS    = [10, 25, 50, 75, 90, 100]
+# COVERAGE: the percentage of the line's 720 luma samples strictly above each code.
+# This is the owner's own statistic (2026-09-11): "what I really want to know is what %
+# of samples carry signals above blanking. if its above N % that line shouldn't be
+# considered blanking."  Several code levels are cached so the level AND the percentage
+# can both be swept per source without another walk -- neither is typed in as a constant.
+COVER = [2, 3, 4, 6, 8, 12]
 
 
 def ntsc(row):
@@ -102,7 +109,8 @@ def load_or_walk(capture, cache):
         R = np.frombuffer(unit, np.uint8)[HDR:].reshape(RASTER_ROWS, ROW_BYTES)
         Y = R[:, 1::2].astype(np.float32)            # UYVY: luma is every second byte
         pc = np.percentile(Y, QS, axis=1)            # (len(QS), 525)
-        per_unit.append(np.vstack([pc, Y.mean(axis=1)[None, :]]).T.astype(np.float32))
+        cov = np.stack([(Y > c).mean(axis=1) * 100.0 for c in COVER])   # (len(COVER), 525)
+        per_unit.append(np.vstack([pc, Y.mean(axis=1)[None, :], cov]).T.astype(np.float32))
 
     def on_video(pkt):
         b = state["buf"]; b.extend(pkt)
