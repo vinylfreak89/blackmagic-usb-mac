@@ -653,10 +653,18 @@ passed.
   harness session through a relay session. Cross-checking caught real errors (four of eleven
   relayed claims checked on 09-11 were wrong), but every finding became messages and work for two
   or three agents.
-- **The engine moved once.** The change that mattered, plain comb energy for acquisition with no
-  mandatory head switch (`2a06c9e`, 09-11 02:55), gave capture 1 its first lock: 302 of 919 units,
-  every applied offset (0,0), so no corrective movement could be shown. No capture passed
-  acceptance; captures 2–4 and the whole tape were never run under it.
+- **There was never a lock, and it was reported as one.** The plain-comb change (`2a06c9e`, 09-11
+  02:55) let the comb "agree" four times on all of capture 1: twice in the rewind (counters
+  6268–6269) and twice at 6810–6811, the start of the fade down after the warning card. At 6811 the
+  best and second-best comb energies were 4.704 and 4.711, a tie; the six units before it had
+  picked shifts of ±212. The engine set its lock flag there, stopped evaluating the comb (it is
+  not re-checked while a lock holds), dropped the flag for the black frames and restored the same
+  held state at 6882 for the programme. The "302 locked units" were that one tie on a fade field
+  carried forward, with every applied offset (0,0). Claude announced "Capture 1 has its first
+  lock" at 02:56, the owner's milestone for the night. The orchestrator objected at 04:01 ("'CAPTURE
+  1 IS LOCKED' IS ACQUISITION, NOT A WORKING ENGINE … one lock that corrects nothing"); Claude
+  retracted other claims from the same summary but kept the lock, and the relay repeated it that
+  morning. No capture passed acceptance; captures 2–4 and the whole tape were never run.
 - **Renders were rebuilt instead of edited.** Three new renderers were written beside the owner's
   existing one; he rejected the result and they were deleted (`36586d3`).
 
@@ -672,6 +680,10 @@ passed.
   constants fitted on the same captures they were judged on (for example the box observer's
   6/40/3 limits and 0.28 cut, and a comb mask calibrated on the device's own blanking), and their
   failures were answered with further instruments.
+- **A state flag was reported as a result.** The lock flag came from a comb tie on one fade field
+  and was held from there. It was announced as the milestone the owner had set, the relay
+  moved the plan on from it ("its gate has opened", with the render next), and it was kept after
+  the orchestrator itself had said it corrected nothing.
 - **CLAUDE.md turned into a failure log.** About 5,300 new lines of post-mortems and rules, too
   much to hold in context; the file itself records documented defects recurring in the same
   session that documented them.
@@ -682,7 +694,8 @@ passed.
 
 - The owner's words in section 1 of the contract remain the requirement. The rules layered on
   them in the other 1,400 lines are unproven.
-- Plain comb energy acquires a lock on capture 1 without requiring a head switch.
+- No capture was ever locked. The plain comb as built showed no real preference on capture 1; its
+  only "agreements" were ties on rewind and fade fields.
 - Main's round-10 engine remains the measured fallback.
 
 # Part IV: back to basics — 2026-09-13 17:32 to 2026-09-14 20:51
