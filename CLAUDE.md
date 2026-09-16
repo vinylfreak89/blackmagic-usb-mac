@@ -160,14 +160,16 @@ to a **renderer bug — not the signal, not the player**: the extractor accepted
 755552-byte unit** (tc 5839, 496 B short of 756048) and **read 756000 B anyway, spilling 496 B
 across the next marker** → horizontal raster slip = the green splice. **Fix:** strict extractor
 invariant — `format==0xe801` **and** `gap==756048` **and** `payload==756000`, **never read past
-the next marker**; short units archived separately, never fed to the fixed-raster renderer. Two
-narrower issues stay OPEN: (a) *why* that unit was short; (b) whether Darwin/libusb callbacks ever
-arrive out of submission order.
+the next marker**; short units archived separately, never fed to the fixed-raster renderer.
+The later byte-complete tagged capture establishes that the device itself emits short units
+(census below). Callback arrival order still needs separate verification; framing alone does
+not establish submission order.
 
 **QUALIFIED by `capture_untagged_ring` (ring buffer + writer thread):**
 - ✅ The writer no longer blocks the libusb callback; the 5-min run reported zero ring overflow
   and zero observed video submission-order inversions.
-- ❗ **That run was not full-rate or lossless.** After counter 25026, every video deficit is an
+- ❗ **That run was not full-rate or lossless.** Loss starts at counter 24983 / 209.4 s; after
+  counter 25026, every video deficit is an
   exact multiple of **24,576 bytes**, the normal payload of one old capture_untagged_ring video transfer. Static
   analysis shows `V_NPK=8`, `XFERS=6` queued only ~6 ms of Darwin video schedule. Darwin assigns
   explicit future USB frame numbers and jumps forward when resubmission misses that horizon; an
@@ -273,61 +275,25 @@ across the entire tape was requested, delivered, and recorded — the first capt
 whose completeness is proven from its own tag stream rather than inferred. The 2,877 tick records
 bound any event-loop stall below ~1.04 s (tick jitter max 38 ms, within the 100 ms loop
 granularity — ticks cannot resolve stalls below that; the dispositive continuity proof is
-GAPS = 0). Deck-health substitute test condition 1 (zero scheduled USB holes) is **met**; the
-remaining conditions (fixed geometry, no field-1 plateaus, line-phase stability, no repeats,
-audio continuity) await the content passes. Analyses stream the file by
-seek-walking records; a raw endpoint split is never materialized.
+GAPS = 0). Analyses stream the file by seek-walking records; a raw endpoint split is never
+materialized. Transport completeness does not establish picture quality or source geometry.
 
-**Whole-tape render/content pass:** two bounded passes over the tagged capture (compact stereo
-PCM only; no endpoint/video split) produced a review MP4 plus a registration decision log. Both passes
-reproduced the 46,075,614-record CAP1 census exactly; a complete decode of the result returned
-zero errors. Output: 720×480, SAR 8:9/DAR 4:3, 60000/1001, 172,600 frames, stereo 48 kHz,
-2879.543333 s, 4,420,351,820 B. **USB byte-complete does not mean decoder-unit-exact:** the video
-endpoint contains 86,293 exact 756,048-byte marker intervals, seven short device-emitted units,
-zero absent counters, and zero counter errors. The shorts are counters 4507=371,568 B,
+**Whole-tape unit census:** USB byte-complete does not mean decoder-unit-exact. Across
+86,300 counter periods, the video endpoint contains **86,293 exact 756,048-byte marker
+intervals, seven device-short units, zero absent counters and zero counter discontinuities**.
+The shorts are counters 4507=371,568 B,
 4508=13,008 B, 4509=371,568 B, 4510=371,568 B, 4515=755,824 B, 4520=755,824 B, and
-4701=755,824 B. They retain their observed prefix and use conspicuous fill only for the undefined
-suffix; CAP1 proves they are not host loss. Arbitrary endpoint edges add a 1,652,048-byte leading
+4701=755,824 B. CAP1 packet provenance establishes that these shorts are device-framed, not
+host loss; this closes the question of whether the Shuttle can itself emit short units.
+Arbitrary endpoint edges add a 1,652,048-byte leading
 fragment and 495,376-byte trailing fragment outside the marker-delimited census.
 
-Audio is continuous, but audio resync *metadata* is not perfectly dense: one
-`DeckLinkAudioResyncT` record is absent at 894→896 (sample index 99,177,246). CAP1 audio sequence
-is still complete and no PCM is discarded. The renderer therefore unwraps counter values and
-looks anchors up by value rather than treating audio-row ordinal as frame time. The selected A/V
-window had 138,212,854 samples for a counter-timed expectation of 138,218,080 (5,226-sample /
-108.9 ms deficit over 48 min); the review copy applies `atempo=0.999962190185`. Raw extraction
-does not conceal or resample this.
+The audio endpoint is also transport-complete, but device audio samples and resync metadata
+have localized deficits (audio census below). Unwrap counters and look anchors up by value,
+not audio-row ordinal. Review apertures, renderer and deinterlacer policy are in §7.
 
-⚠️ **Do not call every registration-render decision a measured deck plateau.** The generalized
-one-pass estimator selected `(d1,d2)` counts `(0,0)=63,476`, `(1,0)=19,265`, `(2,0)=2,315`,
-`(3,0)=1,244`, with 2,165 maximal nonzero constant runs; 1,282 of those runs are only 1–3 units.
-The raw decision log is an auditable correction trace, not by itself deck-health ground truth.
-Using an explicitly diagnostic summary rule (bridge zero gaps shorter than 10 s), selections form
-nine high-level clusters: 15.215–975.641 s (chronic +1/+2), 990.089–999.532, 1017.516–1018.251,
-1046.312–1047.446, 1127.760–1128.427, 1459.458–1461.293, 1880.011–1882.814 (+2),
-2669.600–2704.569 (+1), and 2837.201–2879.543 (+2/+3). An independent field-origin census or
-visual/raw-field check must decide which are physical registration events versus estimator chatter,
-especially fades, flat fields, mute/snow, and the 720 one-unit selections. Thus the earlier
-deck-health condition “no field-1 plateaus” is not met by renderer selections, but deck health is
-not falsified by those selections alone.
-
-**Full-tape render + census:** review MP4 720×480 SAR 8:9 (4:3), TFF bob 59.94p, CRF 12, stereo AAC; full `-xerror` decode clean;
-video and audio both exactly 2879.543 s. Unit census over **86,300 counter periods: 86,293 exact
-756,048-B units, 0 absent counters, 0 counter discontinuities — and SEVEN device-short units**
-(ctr 4507–4510, 4515, 4520, 4701; surviving prefixes rendered, bars only on undefined suffixes).
-With transport provably gapless, those shorts are **device-framed: the Shuttle itself occasionally
-emits a short unit.** That closes §6's old open question (a) — capture_60s's short tc-5839 unit was
-device behaviour, not host loss — and vindicates the strict-extractor policy. Audio: PCM
-continuous; one absent resync record (894→896, zero samples lost); cumulative device-vs-nominal
-clock offset **5,226 samples / 48 min ≈ 36 ppm** (atempo 0.999962 in the watch copy only).
-Registration: the corrector chose nonzero field-1 offsets in 2,165 runs, but **1,282 lasted 1–3
-units — estimator chatter, explicitly NOT deck-health evidence**; after bridging, nine candidate
-regions remain (largest 15.2–975.6 s and 2837 s–end), pending raw-field/visual confirmation.
-Deck-health conditions 2–6 therefore stay OPEN pending that inspection.
-
-**NTSC-M setup: PRESERVED and measured at 7.5 IRE — the earlier "no preserved pedestal" conclusion below rested on
-the wrong zero and is withdrawn (2026-09-09).** It assumed the device digitises blanking at studio black, Y 16, so
-that 7.5 IRE setup would put black near Y 32. **The device puts 0 IRE at code ≈ 1.5, not 16**, established three
+**NTSC-M setup: preserved in the measured black-card sample (2026-09-09).**
+**The measured 0 IRE reference is code ≈ 1.5, not 16**, established three
 independent ways: the vertical-interval lines carry a device-WRITTEN dithered constant 1.375 (identical in all five
 captures, spread 0.0007; its lag-1 autocorrelation of −0.33 is the high-pass signature of dither, so it is written
 rather than digitised); each picture line's own horizontal blanking reads 1.459–1.53; and the relay-muted composite
@@ -345,55 +311,21 @@ clamp would make them lighter. Nothing at code 0 or 255 in any capture.
 under 0 IRE is lost at the floor: the composite capture has 2.576% of samples at code 1 against 0.352% at code 3, a
 ratio of 7.3, traced to composite edge undershoot at sharp white text. With black at 16 those would survive to −7
 IRE. The black level is not squashed; sub-black content is.
-**Attribution remains impossible**, and the spread shows why: within one tape, one deck and one S-Video input, black
+**Attribution is not separated by these measurements:** within one tape, one deck and one S-Video input, black
 sits at ≈ 9 in the SP passage, floor-crushed at 2,100 s, and ≈ 24 at 2,700 s — a range as wide as the pedestal
-itself. The one stage excluded as the composite-versus-S-Video differentiator is the Shuttle: its own generated
-line-21 insert measures 119 codes above blanking on both inputs (117 on the EP captures), so its luma scale is the
-same for both — though it reads 125–126 with no input, so that scale is not constant across device states. The
+itself. The Shuttle's generated line-21 insert measures 119 codes above blanking on both inputs
+(117 on the EP captures), but 125–126 with no input. That establishes an insert-level comparison,
+not an isolated measurement of how its analogue decoder treats source black. The
 device's no-signal output sits at exactly the captures' blanking level (1.3749 against 1.3750–1.3756).
-The superseded reasoning, kept for the record: fade-bottom/black frames in fixture A measure median Y ≈ 12–17 with
-sub-black excursions — with p95 ≈ 22–24 these frames were said to be unable to represent ordinary 7.5 IRE setup
-(expected Y ≈ 16 + 219×0.075 ≈ 32). Against the real zero of 1.5, 12–17 is setup, and the conclusion inverts. That is the supportable claim; the measurement does NOT
-establish where setup vanished, nor that "US black became Y12" (8 frames is thin; dark program
-content can legitimately contain superblack/crushed fades). **THREE unapportioned stages, not
-two:** the 1998 broadcast→cable→VCR chain, the DHX2's playback processing, and **the Shuttle's
-own analog decoder** — a Y16 result from any test downstream of tape cannot separate the last
-two. The commercial-tape capture is a worthwhile *real-world* test (pro duplication makes setup
-plausible, not guaranteed), but the **decisive test is a calibrated NTSC generator into the
-Shuttle directly, with and without setup** — that isolates the Shuttle; then the deck with a
-known signal. Method upgrades for the next pass: gate on low spatial variance + neutral chroma +
-unimodal luma histogram (not just p95); report the histogram mode (median biases on detail);
-measure setup as **black-minus-same-line-porch** (that difference IS setup); require the black
-peak to settle across contiguous frames. **NO LEVEL CORRECTION — the owner's ruling, 2026-09-09:** "nah lets not adjust too much. the standard fix NTSC-J or
-NSTC-M is the only thing that might have been necessary, and its not. they are passing through the signal at the
-proper levels which means the digital file captures them as intended. NSTC-M is a higher level black than NTSC-J and
-that just means those tapes will have more dynamic range, thats just the kicks." So the level-correction option
-raised earlier the same day is withdrawn; nothing in the delivery path remaps levels.
-
-Also (owner, same day): "we don't need to match studio levels LOL. this is consumer grade VHS tape." So conformance
-to BT.601's black and white points is not a goal and the question of whether the device implements the standard
-NTSC-M mapping exactly is not one this project needs to answer — nothing depends on it. The measurements stand as
-measurements: blanking at 1.375–1.53, the commercial tape's black card at 17.70 (16.2 codes above its own lines'
-blanking, i.e. NTSC-M's 7.5 IRE setup intact), a jump rather than a slope between the two, no clipping at black, and
-sub-black excursion truncated at the legal floor. Nothing in the delivery path remaps any of it.
-
-**The acceptance for levels, in the owner's words (2026-09-09): "as long as its not clipping and as long as we dont
-need to fix levels and they are appearing as intended on the tape, we are fine."** Against that: not clipping is
-measured — the black distribution is smooth (16.4/24.8/24.4% at codes 16/17/18) with tails about ten times heavier
-than Gaussian, where a clamp would make them lighter, and no capture has a sample at code 0 or 255. The only thing
-truncated is sub-black excursion, which is edge undershoot rather than picture. No level fix is needed, by the
-ruling above. Appearing as intended is demonstrated on the commercial tape, where NTSC-M's 7.5 IRE setup arrives
-intact. On fixture A black sits at ≈ 9, floor-crushed and ≈ 24 across three passages, a
-spread as wide as the pedestal itself. **Closed without further measurement (owner, 2026-09-09): "I would ignore
-that. that shitty VCR's AGC wrecked the levels I'm sure."** The recording VCR's automatic gain control is the
-explanation, it is a property of the 1998 recording rather than of the capture path, and nothing downstream depends
-on it. Levels are settled; no item is open.
-
-**Renderer implications (adopted):** the Y16/C128
-hard-padding ruler stays valid (device-generated, says nothing about program black); classifiers
-and registration landmarks must treat program black as **relative/adaptive, never assume Y16**;
-any future presentation-side setup removal is an affine remap from measured black/white — and the
-archival stream is never touched.
+The upstream recording chain, deck playback processing and Shuttle decoder are not separately
+identified by a tape measurement; fixture A's level variation is not a calibrated decoder test.
+**No level correction** (owner, September 9): "we don't need to match studio levels LOL. this
+is consumer grade VHS tape." His bar is no unwanted clipping or level fix, with the tape appearing
+as intended. He accepted the recording VCR's AGC as the explanation for fixture A's variation
+and closed the question without further measurement; that attribution is not an isolated-stage
+measurement. Nothing in the delivery path remaps levels. The Y16/C128 hard-padding ruler remains
+valid but says nothing about programme black; source-level measurements use the source reference,
+not an assumed Y16 black point.
 
 **Deterministic replay (`experiments/libusb_replay_shim.c`):** link the unmodified
 capture code against the mock instead of `-lusb-1.0` and it replays a `.tpc` through the REAL
@@ -417,24 +349,15 @@ could never make), 0 iso errors, 0 inversions, 0 HostLoss, ring high-water 0. 47
 corrupt. Shutdown cancellations are now accounted separately from
 errors, and fleet size is reported from before cancellation.
 
-**Damage-review rerender:** the obsolete whole-interval prefix placement is replaced
-by a 24,576-byte transfer-grid reconstruction. Marker endpoints plus **1,890 uniquely placeable
-complete hard-padding blocks** constrain the grid; ordered transfers in the remaining spans use a
-same-position temporal content cost. All **5,225,562,336** captured video bytes in the rendered
-counter range are represented exactly once; **781,239,024** absent bytes are conspicuous synthetic
-color bars. Of 7,945 units, 6,160 are exact, 1,781 partial, and 4 wholly absent. Two damaged
-intervals have no complete padding anchor; three false/inconsistent padding-like runs are rejected.
-The three startup fragments and truncated final interval are not individually 24,576-quantized and
-use a separately named padding-bracketed fallback. **Do not overclaim this reconstruction:** a
-synthetic-drop test falsified temporal matching as byte-position-authoritative on fades/uniform
-gray. Only marker/padding anchors are hard evidence; every other slot choice is labelled diagnostic
-in the decision CSV. Tagged capture_tagged_bench data must use packet provenance instead of this rescue path.
+**Untagged damage reconstruction:** marker endpoints and uniquely placeable hard-padding
+blocks are hard position evidence. Temporal matching between those anchors failed known-answer
+tests on fades/uniform grey; such placements are diagnostic, not byte-position-authoritative.
+Tagged captures use packet provenance instead of this rescue path.
 
 **Design decisions:**
-- **Correction-decision log:** the real-time corrector MAY rely on band modes without a stable
-  video anchor **provided** every per-unit decision `{d1, d2 or Unknown, mode, confidence}` is
-  logged in real time to an optional sidecar — corrections are real-time in the driver; the log
-  is the post-fixup escape hatch, not lookahead.
+- **Correction-decision log:** record per-unit registration decisions, their evidence and
+  unavailable measurements in an optional sidecar. This supports later audit/repair; it does
+  not authorize a particular estimator or lookahead on the live path.
 - **Review-encode damage policy:** never blank or repeat. Render corruption **as-is** (surviving
   bytes at their positions); genuinely absent bytes get an unmistakable standard-NTSC-style
   no-signal fill, documented, with the placement assumption stated for untagged captures. Purpose:
@@ -458,9 +381,9 @@ re-registration of a 480i recording lacks the 1–3 raster lines outside the cro
 in the head-switching / line-21 region, so the accepted archival repair is an edge-duplicated or
 estimated whole-line shift, recorded in the sidecar as a substitution. Where lossless repair is
 actually wanted, a `.tpc` of that segment (explicit debug sink; requires replaying the segment)
-is patched into the recording. Expected consumer need for either path is ~0.1%. The one live-path
-requirement this imposes: the sidecar carries per-unit applied `(d1,d2)`, the observation that
-produced it, and the interval label, so an offline pass can locate and re-shift affected units.
+is patched into the recording. The live-path requirement is that the sidecar carries per-unit
+applied field placements, the observations that produced them and the interval label, so an
+offline pass can locate and re-shift affected units.
 
 ### Untagged video+audio mix is RECOVERABLE (proven with `capture_render.py`)
 
@@ -496,8 +419,7 @@ recovers *what crossed the bus*; it cannot recover what the host never asked for
 "6,160 units, all exactly 756,048 B" result as evidence the capture was lossless — the units that
 *survive* are exact, which is a different claim.
 
-**Field order: TFF, verified empirically** — stored chronological field 1 → **top** field, built as
-720×480 from source lines 17..256 and 280..519, bobbed with `bwdif=mode=send_field:parity=tff`.
+**Field order: TFF in the tested capture** — stored chronological field 1 → **top** field.
 The credit roll is the disambiguator: TFF gives **0.0345 px** mean motion alternation vs **0.759 px
 (±1.7 px excursions)** for BFF. Note this **contradicts the usual NTSC-SD-is-BFF expectation** —
 trust the measurement, and re-measure per capture rather than assuming.
@@ -511,19 +433,20 @@ exercisable against recorded damage (program cut, deck-blank/relock, short units
 ### Signal-state timeline — measured over the full 5-min capture
 
 **❌ The "no-signal rewind" never happened — the assumption was wrong.** With the tape stopped and
-heads disengaged, the deck does **not** drop its output: it emits its own **grey mute screen with
-the Japanese OSD and a running tape counter** (visibly `0:23:58 → 0:25:24 → 0:03:31 → -0:00:13`).
+heads disengaged, the tested deck configuration retains output: a **grey mute screen with
+OSD and a running tape counter**.
 Consequences:
 - **`0x0800` never occurs anywhere in this capture** (0 hits in 5.57 GB); no green pseudo-frames,
   no ~30.13 Hz cadence. Format stayed `0xe801` and the rate stayed **29.97003 fps exactly**
-  throughout the "dead" window. **Device true-no-signal behaviour is UNTESTED** — to exercise it,
-  disconnect the S-Video cable or power the deck off; stopping the tape is not sufficient.
+  throughout that window. Stopping the tape was not a no-input test; the later disconnected-input
+  measurement is recorded below.
 - The blank raster is **near-neutral grey, NOT green** (Y 120.6 ±0.1, U 129.9, V 127.3).
-- Two runs of **exactly 19 frames** bracket the blank period with **sub-blanking luma (Y 1–2,
-  below the 16 black level)** and chroma pinned at 128 — not a legal digitized picture, most
-  likely the deck's output relay muting to 0 V.
+- Two runs of **exactly 19 frames** bracket the blank period with **luma Y 1–2** and chroma
+  pinned at 128, near the measured blanking floor rather than Y16 programme black. The working
+  explanation was the deck's output relay muting to 0 V.
 
-**Deck mute policy (measured; the virgin-tape row is visually observed, not USB-verified):**
+**Deck mute observations (including the later tagged virgin-tape measurement):**
+
 | Deck state | S-Video output |
 |---|---|
 | Non-playback transport mode (stop, rewind, FF) | grey mute + OSD |
@@ -552,11 +475,18 @@ result in §9 — and note the `214/16` status register is still un-probed acros
 
 **→ Signal-state classification is therefore a real design problem. Do NOT reduce it to one
 `signal_valid` boolean.** Three separate layers, each recorded:
+
 1. **Transport state** — exact unit / partial unit / packet hole / absent video / counter discontinuity.
+2. **Raster appearance** — program-like / snow-like / deck-grey / sub-blanking mute / device
+   no-signal / flat-ambiguous.
+3. **Source-state inference** — present / reacquiring / deck-muted / no input / **unknown**, with
+   confidence.
+
 **`SubBlackMuteLike` on a degenerating passage is NOT a mislabel** (owner, 2026-09-09): "the label sub mute black
 like is not a miss. that is actually what the picture looks like before it degenerates into snow." Measured at 27:18 on fixture A (unit
 index = device counter − 4511), the sequence through a signal stop is **programme → wrecked → sub-black →
 snow-like → deck grey mute → programme**, with these boundaries:
+
 | units | time | mean | std | adjacent-row corr | temporal corr | stage |
 |---|---|---|---|---|---|---|
 | 49095–49104 | 27:18.14–.44 | 60–62 | 48–51 | 0.89 | 0.98 | programme |
@@ -564,17 +494,14 @@ snow-like → deck grey mute → programme**, with these boundaries:
 | 49113–49117 | 27:18.74–.87 | 8–16 | 6–29 | 0.93–0.98 | — | sub-black |
 | 49118–49125 | 27:18.90–27:19.14 | 17→41 | 31→48 | 0.62 → 0.18 | 0.77 → 0.21 | snow-like |
 | 49126–49163 | 27:19.17–27:20.41 | 117 | 16 | 0.75 | 0.998 | deck grey mute |
-The sub-black stage is a real appearance of the signal, not the classifier getting the level wrong: do not chase it
-as a defect. (What WAS measured there and is a defect: eight units of wrecked picture at 27:18.47–.70
-classified `ProgramLike`/`Present` with the engine registering on them — units 49105–49112, adjacent-row correlation
-falling from 0.89 to 0.56–0.77 and frame-to-frame correlation from 0.98 to about zero. And the SNOW-LIKE phase, units 49118–49125, is
-classified `SubBlackMuteLike` too — which matters beyond a label, because snow-like signal is a LOCK-LIKE LOSS that
-resets the geometry under rule 5b while a deck mute is not, so a snow phase read as mute means the engine may not
-reset when it must. Separately, 11 units at 27:19.17–.50 whose raster is grey at mean 117 also carry the sub-black
-label; the source state `Muted` is right throughout, so that one is information rather than a defect.)
 
-**Whole-tape signal-state audit — measured 2026-09-09 over all 86,293 units (independent instrument, then joined
-against the live classifier's own decision log).** The owner's expectation was right: **the tape carries three
+The sub-black stage is a real appearance, not a level error to fix. The historical classifier
+also called torn and snow-like units programme or mute, and retained a sub-black label onto
+grey mute. Those are separate classifier observations, not evidence of a registration state.
+
+**Whole-tape signal-state audit — historical results, September 9, over all 86,293 units
+(independent instrument joined to that revision's classifier log).** These are observations and
+failure cases, not the current classifier's score or a replacement specification. **The tape carries three
 genuine non-programme events totalling 10.9 seconds**, every one confirmed on the raw 525-line raster — the tape
 start (units 0–214: deck grey mute with OSD, then a completely black raster, then relock snow), the boundary
 between the two recordings (43,678–43,729, one torn unit then snow then grey mute), and 27:18 (49,105–49,163, nine
@@ -584,67 +511,27 @@ A ~99-run flat list reconstructed to the same shape is **96% ordinary programme*
 throughout, 21 carrying saturated chroma, 15 fade bottoms. Five 9-unit sequences at units 45719/48115/48642/49560/
 57488 have matching statistics in matching order and a large coherent saturated U plane where relock snow carries
 no chroma at all: recorded content, not noise.
-**The classifier's failures are all in one direction — it never calls programme snow.** `SnowLike` fires exactly
-twice on the whole tape (43,693–43,694) and both are real. What it does instead:
-- **The `SnowLike` rule has no temporal and no vertical-coherence term** (`luma_sigma > 35 && spatial_gradient_energy > 30 && program_extent_fraction > 0.50`), so a TORN raster — which keeps high sigma and high gradient — reads as programme. That is the mechanism behind the 27:18 miss and behind units 196–212, the relock snow at tape start. Measured at 49,106/49,109/49,112 the adjacent-row correlation is 0.95–0.97 while the temporal correlation is ≈ 0: **a torn raster is still made of picture rows, so vertical coherence does not collapse and temporal decorrelation is the reliable signal.**
+**In this audit, `SnowLike` fired only twice** (43,693–43,694), both on real snow; no programme
+was labelled snow. The other observed errors were:
+
+- **The tested `SnowLike` rule lacked temporal and vertical-coherence terms** (`luma_sigma > 35 && spatial_gradient_energy > 30 && program_extent_fraction > 0.50`). Torn rasters retaining high sigma/gradient read as programme, including the 27:18 event and tape-start relock units 196–212. At 49,106/49,109/49,112 adjacent-row correlation remained 0.95–0.97 while temporal correlation was ≈ 0: vertical coherence alone did not distinguish those torn rasters, while the temporal measurement separated these examples.
 - **The appearance latch is asymmetric.** The logged appearance is `stable_appearance`; `SubBlackMuteLike` (like `DeviceNoSignal0800`) installs with NO confirmation while leaving it needs three consecutive identical observations. At 49,126–49,136 it therefore persisted 11 units (0.37 s) onto a raster measuring mean 117–118 — the deck grey mute — with confidence 1.00 and nothing in the raster changing at the switch. This is the "sub-black label on grey" the owner saw.
 - **`NeutralGrayMuteLike`'s rule tests uniformity, not greyness**, so 253 units of near-black programme (mean 15–38, against the deck's actual grey mute at 117) carry a label and a `Muted` source that assert a deck mute. 122 false positives in all, none of them snow.
-- **Registration ran on contentless rasters.** Inside the tape-start event the engine derived and recorded crops of **+101 and +118 lines** on a raster measuring Y 1.4 with σ 0.5 and no content whatever, plus +7…+30 across units 175–214, while the classifier's source already read `Muted`. Everywhere else on the tape |d| ≤ 2 with one exception. No picture is corrupted (there is none), but it is the sharpest evidence for contract rule 5's gate.
-**Tool defect found by the same audit: `frameserver_replay --pace-us 0` silently destroys a whole-tape run.** On
+
+**Replay caveat found by the same audit:** unpaced replay overflowed its ring without a failing exit code. On
 `fulltape.cap6` it produced 20,933 holes and only 991 exact units, then **exited 0**: the 256 MB capture ring
 overflows against a reader going at ~1 GB/s, its HostLoss becomes parser holes, and the tool prints no
 capture-level loss counter. Re-run at `--pace-us 8000` (2× realtime) it is 86,293 exact, 0 holes, 0 drops, ring
 high-water 0. Use `--pace-us 8000` for a whole-tape replay, or a ring larger than the file for a slice; never
 trust an unpaced whole-tape run's exit code.
 
-**Rule 5's gate and the snow correction, measured over the whole tape (2026-09-09, Codex wrote,
-Claude reviewed and scored).** `frameserver_replay --pace-us 8000` over `fulltape.cap6`: 86,293
-exact units, 0 holes, 0 drops, ring high-water 0. Scored against
-`experiments/signal_state_acceptance/`, whose fixture is the audit's raster-confirmed units:
-
-| count | before | after | requirement |
-|---|---:|---:|---|
-| confirmed non-picture read as normal picture | 17 | **2** | must not rise |
-| mute label on confirmed programme | 108 | **108** | must not rise |
-| registration MEASURED on confirmed non-picture | 270 | **1** | must be 0 after rule 5 |
-| lock-like loss on confirmed programme | not measurable | **0** | must be 0 |
-
-Nothing regressed, which is the owner's stated bar for this work ("any changes should not introduce
-false positives (or false negatives)", 2026-09-09). ⚠️ **The first version of this table said the
-gate reached 0, and that was a false pass in the scorer, not a result.** It read the APPLIED CROP:
-a gated unit publishes the held crop, often (0,0), and a unit that measured and produced (0,0) is
-indistinguishable from it, so a gate that never applied still scored as applied. Codex found it on
-unit 43,678. The scorer now reads the log's own `registration_measured`, and an absent column is an
-error rather than an inferred pass.
-The one remaining unit is **43,678, which is also one of the two remaining misses**: it is measured
-because it is classified `ProgramLike`/`Present`. So the gate is doing exactly what rule 5 asks —
-it gates on the classifier's verdict — and the residue is upstream in the classification, not in
-the gate. The two misses are units 43,678–43,679, the onset of the recording-boundary event. The
-108 mute labels on dark programme are the pre-existing class and are now the largest one left.
-Not yet through the four-capture acceptance (contract §8).
-
-**The commercial capture's opening is a tape coming in, and its mute labelling is CORRECT (owner ruling,
-2026-09-09).** Measured: counters 6593–6609 carry no picture at all, both fields at mean 1.7–2.5 with sparse white
-specks — the dropout compensator running with no RF, the signature already recorded here for virgin tape. A relay
-mute would be flat with no specks, so the deck is playing and finding nothing rather than muting. The picture
-arrives as a one-unit STEP, not a fade, and the step lands BETWEEN the two fields of counter 6610: field 1 still
-black, field 2 up. It settles at the pedestal, 17.5. Standard deviation stays near 5 throughout, so none of it is
-snow (this tape's snow measures 30–50).
-The classifier then calls the picture a mute for a further 57 units and first says programme at **counter 6667**,
-where field 1's mean has risen 24.2 → 27.1 → 28.6 → **30.6**. That boundary is a rising level crossing a
-threshold, and the owner's ruling is that this is right and not to be fixed: "It's the tape coming in... You are
-trying to do the impossible which is register the difference between the first fade from black on tape and real
-picture. That should stay unregistered." So the 123 mute-labelled units at the head of this capture are correct
-behaviour, registration stays off across them, and the grey-mute rule's uniformity test is NOT a defect here.
-⚠️ Consequence for the contract: §8's invariant reads "on the commercial tape from counter 6593", and there is no
-picture until 6610 and none the engine may register until 6667. The invariant's start counter is a measurement
-error of about 74 units. Raised with Codex; not edited by one agent. (This is the §6 hazard already recorded for
-`shuttle_no_input_45s.tpc`, now measured at scale and with the silent-exit-0 half named.)
-
-2. **Raster appearance** — program-like / snow-like / deck-grey / sub-blanking mute / device
-   no-signal / flat-ambiguous.
-3. **Source-state inference** — present / reacquiring / deck-muted / no input / **unknown**, with
-   confidence.
+**Commercial-capture opening** (owner, September 9): the examined source begins with near-blank
+output and sparse white specks before picture arrives, consistent with the deck playing tape
+without usable RF rather than a flat relay mute. The owner accepted leaving its initial
+mute-labelled interval unregistered: "It's the tape coming in... You are trying to do the
+impossible which is register the difference between the first fade from black on tape and real
+picture. That should stay unregistered." This source-specific decision does not make every
+near-black programme interval a mute. Capture-1 selection and field-arrival details are in §7.
 
 Useful features: exact hard-padding runs + VBI-signature confidence; active-area luma/chroma mean,
 robust variance, percentiles; fraction of neutral-chroma and sub-black pixels; spatial gradient
@@ -667,7 +554,7 @@ duration, transport history.
 ⚠️ **Generalize by property, never by this deck (design rule).** Every state above was measured
 through ONE deck (a JVC D-VHS with a TBC that launders everything into a valid raster). Other
 sources will behave differently: a TBC-less VCR can emit genuinely unlocked signal (and the
-Shuttle's real `0x0800` path, still unexercised, will finally fire); mute screens vary per deck
+Shuttle's response to unlocked video is not established by the no-input test below); mute screens vary per deck
 (grey here, blue elsewhere, black, OSD or none); relock transients differ. Define every classifier
 state by its **observable signal properties** (luma/chroma statistics, coherence, temporal
 behaviour), not by "what the HM-DHX2 does" — deck-specific knowledge may *inform* an inference
@@ -753,35 +640,36 @@ submission-order reconstruction (API now promises callback-completion order + ta
 inversion mock exists); live stats are after-stop-authoritative; the sidecar's full raw-evidence
 columns; audio serving.
 
-**The hard-padding ruler is SHUTTLE-side digital fill — measured 2026-09-03.** All 18 padding lines
-(0–6, 261–269, 523–524) are exactly Y16/C128 with zero variance in every `0xe801` unit, including
-34 units captured with **no deck connected** and 300 with the deck on an unconnected input, so no
-deck signal can ever land there: whatever the deck pushes past line 260 (field 1) or 522 (field 2)
-is gone at the device, and a crop that reads into the padding reads legal black, not a
-substitution. The four near-blank lines under each field (257–260, 519–522) ARE digitized signal:
-Y ≈ 1.4 ± 0.5 with no input, but on the program tape they average Y31 ± 29 — picture reaches into
-them — so any bottom-edge detector must measure against the field's own content, never a fixed
-blank level. Measured per-line geometry (3,000-unit average): field-1 picture lines 20–256, field-2
-282–518; VBI signature lines 17/19 and 280; ~10 lines of decoded blanking above each picture, 4
-below, then padding.
+**The hard-padding ruler is Shuttle-side digital fill — measured September 3.**
+All coordinates in this paragraph are **zero-based storage rows**, not NTSC line numbers
+(convert with §7's rule). The 18 padding rows (0–6, 261–269, 523–524) are exactly Y16/C128
+with zero variance in the examined `0xe801` units, including 34 with no deck connected and
+300 with the deck on an unconnected input. Content beyond row 260 in field 1 or 522 in field 2
+cannot be recovered from those padding rows; reading them returns device fill.
+The four near-blank rows below each field (257–260, 519–522) were not hard padding:
+Y ≈ 1.4 ± 0.5 with no input, but averaging Y31 ± 29 on the programme tape.
+A 3,000-unit average found picture at rows 20–256 / 282–518, VBI signatures at 17/19 and
+280, about ten decoded-blanking rows above and four near-blank rows below, then padding.
+Those are population observations, **not output-aperture definitions or fixed picture bounds**.
 
-**The "36 ppm audio clock offset" was WRONG — measured 2026-09-03 over every resync interval of the
-whole-tape capture (86,302 intervals, transport byte-complete):** 51,773 intervals of 1602 samples
+**Whole-tape audio timing — measured September 3 over all 86,302 resync intervals,
+with transport byte-complete:** 51,773 intervals of 1602 samples
 and 34,522 of 1601 — a steady-state mean of **exactly 1601.6 samples per unit, i.e. the audio
 sample clock is locked to the video unit clock with no measurable rate offset.** The entire
 5,557-sample deficit sits in **seven intervals**: five at capture start (counters 4506–4510:
 1272/787/28/787/787 samples — the same units the device emitted short on the video endpoint, a
 device startup hiccup), one at **1021.5 s** (counter 35119: 1579 samples, 23 short) and one at
-**2066.2 s** (the absent resync record 894→896: 2020 samples over two units, ~1,183 short). The
-two mid-tape events are **audio-endpoint-only device events**: video was Exact/Present/stable
-registration on both sides of each, and neither coincides with a cut, relock or mute in the
-decision log. Not periodic, not a clock. **Consequences:** the whole-tape review copy's global
-`atempo` was the wrong treatment (it smeared ~110 ms of localized loss across 48 min); an A/V
+**2066.2 s** (absent `DeckLinkAudioResyncT` record 894→896, sample index 99,177,246:
+2020 samples over two units, ~1,183 short). The two mid-tape events are **audio-endpoint-only
+device events**: video units remained exact, with no coincident cut/relock/mute identified in
+the audit. Transport completeness does not imply the device supplied every expected audio sample.
+**Consequences:** global tempo correction is not justified by these localized deficits; an A/V
 adapter must apply the audio publisher's **correlation residual only where it steps** (a
 discontinuity event: advance audio time by the lost samples once, flagged) and never resample
 continuously; video timestamps come from the unit counter and audio from the sample count, which
-agree exactly between events. The earlier P4a "audio-as-master, one repeated frame per 15 min"
-reasoning is withdrawn — there is no rate mismatch to absorb.
+agree exactly between events. The earlier ≈36 ppm/`atempo` interpretation and periodic
+video-repeat proposal were withdrawn: these measurements show localized discontinuities, not
+a steady clock-rate mismatch.
 
 **✅ Audio is a viable continuity master** (validates §9's approach): 8,991 resync records,
 counter `18706 → 27696`, **every step exactly +1, zero exceptions** — across the splice, the stop,
@@ -795,8 +683,7 @@ locate every deck event. ⚠️ Caveats: no 16-bit wrap occurred (27,696 < 65,53
 remains untested**, and **counter continuity does not prove audio-payload completeness** — the
 startup intervals are proof that the two are separate claims.
 
-**Transport collapse is worse and earlier than recorded:** loss begins at **ctr 24983 / t 209.4**
-(not ctr 25026), ramps 99%→60%→~40%→~19%, and the video endpoint delivers **zero bytes from ctr
+**Untagged transport collapse:** the delivered fraction falls 99%→60%→~40%→~19%, and the video endpoint delivers **zero bytes from ctr
 26651 / t 265.1 to the end** — 1,046 counters, ~794 MB never requested — while audio continued
 untouched (consistent with the high-rate endpoint suffering far more from the shallow queue, not
 proven). **Everything after t≈209 is excluded from source conclusions.** 730 of 733 short units are
