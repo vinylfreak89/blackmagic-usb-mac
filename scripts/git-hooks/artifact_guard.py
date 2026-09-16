@@ -14,7 +14,9 @@ existing document in a few lines.
 For each added (or renamed/copied-to) path whose path matches no .artifact-allowlist pattern:
   * no results or media files (BLOCKED_EXT);
   * no files inside an output directory (BLOCKED_DIRS);
-  * new Markdown only as README.md anywhere, a top-level file, or a top-level docs/*.md.
+  * new Markdown only as README.md anywhere, a top-level file, or a top-level docs/*.md;
+  * no binary files (a NUL byte in the first 8,000 bytes, git's own test), which catches
+    compiled test programs and media under any name.
 For each added or modified file whose path matches no allowlist pattern: Markdown at most
 MD_CAP, anything else at most ANY_CAP.
 A commit that changes .artifact-allowlist must change nothing else, so every exception is its
@@ -79,6 +81,14 @@ def allow_patterns(repo, spec):
     return [l for l in lines if l and not l.startswith('#')]
 
 
+def is_binary(repo, sha):
+    p = subprocess.Popen(['git', '-C', repo, 'cat-file', 'blob', sha], stdout=subprocess.PIPE)
+    head = p.stdout.read(8000)
+    p.stdout.close()
+    p.wait()
+    return b'\0' in head
+
+
 def md_location_ok(path):
     parts = path.split('/')
     return parts[-1] == 'README.md' or len(parts) == 1 or (len(parts) == 2 and parts[0] == 'docs')
@@ -104,6 +114,8 @@ def problems_for(repo, changes, allow):
                 out.append((path, f'files under {bad[0]}/ are experiment output'))
             if ext == 'md' and not md_location_ok(path):
                 out.append((path, 'new Markdown goes only in README.md, a top-level file or docs/*.md'))
+            if ext not in BLOCKED_EXT and mode not in ('120000', '160000') and is_binary(repo, sha):
+                out.append((path, 'binary file (build output or media)'))
         if mode not in ('120000', '160000') and sha.strip('0'):
             size = int(git(repo, 'cat-file', '-s', sha).stdout)
             cap, kind = (MD_CAP, 'Markdown') if ext == 'md' else (ANY_CAP, 'any file')
@@ -180,10 +192,12 @@ def selftest():
             ('allowlist in the same commit as the file', {ALLOWLIST: 'experiments/a.png\n',
                                                           'experiments/a.png': b'x'}, [], True),
             ('code renamed to CSV', {}, [('mv', 'experiments/old.py', 'experiments/old.csv')], True),
+            ('compiled test program, no extension', {'src/x/tests/x_test': b'\xcf\xfa\xed\xfe\x0c\x00\x00\x01'}, [], True),
             ('new top-level docs/*.md', {'docs/design.md': 'x'}, [], False),
             ('new README.md under src/', {'src/x/README.md': 'x'}, [], False),
             ('new top-level Markdown', {'NOTES.md': 'x'}, [], False),
-            ('new code', {'experiments/probe.py': 'x', 'src/x/y.c': 'x'}, [], False),
+            ('new code and a Makefile', {'experiments/probe.py': 'x', 'src/x/y.c': 'x',
+                                         'src/x/Makefile': 'all:\n\tcc y.c\n'}, [], False),
             ('deleting an existing png', {}, [('rm', 'experiments/old.png')], False),
             ('allowlist change on its own', {ALLOWLIST: 'experiments/a.png\n'}, [], False),
         ]
