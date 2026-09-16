@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 
 static int fails=0;
 #define CHECK(cond,...) do{ if(!(cond)){ fails++; fprintf(stderr,"FAIL: " __VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
@@ -22,6 +23,11 @@ typedef struct { uint64_t pkts; _Atomic int ended; int end_reason; } tally;
 static void t_packet(void *ctx, const cc_packet *p){ tally *t=ctx; (void)p; t->pkts++; }
 static void t_end(void *ctx, enum cc_end r){ tally *t=ctx; t->end_reason=r; atomic_store(&t->ended,1); }
 
+/* Whole-test deadline for everything else (cc_stop, cc_close): SHIM_TEST_TOTAL_S, default 600. */
+static void on_total_alarm(int sig){
+    (void)sig; static const char m[]="FAIL: TIMEOUT: the shim test exceeded SHIM_TEST_TOTAL_S (default 600 s)\n";
+    ssize_t w=write(2,m,sizeof m-1); (void)w; _exit(2);
+}
 static int run_device(cc_stats *st, tally *t, int wait_for_end, int deadline_ms){
     memset(t,0,sizeof *t);
     cc_config cfg={0}; cfg.input=CC_INPUT_SVIDEO; cfg.ring_mb=16; cfg.resubmit_deadline_ms=deadline_ms;
@@ -33,7 +39,11 @@ static int run_device(cc_stats *st, tally *t, int wait_for_end, int deadline_ms)
     if(rc!=CC_OK){ cc_get_stats(s,st); cc_close(s); return rc; }
     if(wait_for_end){
         int guard=0; while(!atomic_load(&t->ended) && guard++<500) usleep(20000);
-        CHECK(atomic_load(&t->ended),"TIMEOUT: on_end was not called within 10 s in run_device (deadline %d ms)",deadline_ms);
+        if(!atomic_load(&t->ended)){
+            fprintf(stderr,"FAIL: TIMEOUT: on_end was not called within 10 s in run_device (deadline %d ms); exiting "
+                           "before cc_stop, which could hang on the same stuck thread\n",deadline_ms);
+            fflush(stderr); _exit(2);
+        }
     }
     else usleep(200000);
     CHECK(cc_stop(s)==CC_OK,"stop");
@@ -44,6 +54,8 @@ static int run_device(cc_stats *st, tally *t, int wait_for_end, int deadline_ms)
 
 int main(int argc, char **argv){
     if(argc<2){ fprintf(stderr,"usage: %s <slice.tpc>\n",argv[0]); return 9; }
+    { const char *e=getenv("SHIM_TEST_TOTAL_S"); unsigned total=e?(unsigned)strtoul(e,NULL,10):600;
+      signal(SIGALRM,on_total_alarm); alarm(total?total:1); }
     setenv("REPLAY_CAPTURE",argv[1],1);
     setenv("REPLAY_MAX_DATA","2000",1);
     cc_stats st; tally t;

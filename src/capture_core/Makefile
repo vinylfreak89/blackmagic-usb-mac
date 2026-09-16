@@ -38,6 +38,10 @@ test-asan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_F
 	$(CC) -O1 -g -fsanitize=address,undefined $(CFLAGS) $(TESTFLAGS) -o test_asan capture_core.c capture_core_test.c $(LIBS)
 	./test_asan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE) $$(cat fixture_meta_exhaust.expect)
 
+# Both test deadlines fail by name.
+test-deadlines: capture_core_test $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
+	sh deadline_test.sh
+
 capture_core_test: capture_core.c capture_core_test.c capture_core.h
 	$(CC) $(CFLAGS) $(TESTFLAGS) -o $@ capture_core.c capture_core_test.c $(LIBS)
 

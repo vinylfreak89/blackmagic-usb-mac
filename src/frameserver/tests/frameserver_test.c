@@ -23,7 +23,17 @@ static _Atomic int hook_arm, hook_empty, hook_release;
  * carrying on would likely hang again in fs_stop. */
 static double wait_limit_s(void){ const char *e = getenv("FS_TEST_WAIT_S"); double v = e ? atof(e) : 60; return v < 0 ? 0 : v; }
 static double mono_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + t.tv_nsec / 1e9; }
+/* A whole-test deadline covers what the per-wait ones cannot (thread joins, fs_stop, fs_close):
+ * FS_TEST_TOTAL_S seconds, default 600, reported with the last phase entered. */
+static const char *volatile phase_msg = "startup"; static volatile size_t phase_len = 7;
+static void set_phase(const char *m){ phase_len = 0; phase_msg = m; phase_len = strlen(m); }
+static void on_total_alarm(int sig){
+    (void)sig; static const char pre[] = "FAIL: TIMEOUT: the whole test exceeded FS_TEST_TOTAL_S (default 600 s); last phase: ";
+    ssize_t w = write(2, pre, sizeof pre - 1); w = write(2, phase_msg, phase_len); w = write(2, "\n", 1); (void)w;
+    _exit(2);
+}
 static void wait_for_end(const char *what){
+    set_phase(what);
     double limit = wait_limit_s(), end = mono_s() + limit;
     while (!done){
         if (mono_s() >= end){
@@ -98,6 +108,8 @@ static unsigned csv_fields(const char *line){
 int main(int argc, char **argv){
     if (argc < 2){ fprintf(stderr, "usage: %s <fixture.tpc>\n", argv[0]); return 9; }
     signal(SIGPIPE, SIG_IGN);   /* the write-failure injection writes to a reader-less pipe */
+    { const char *e = getenv("FS_TEST_TOTAL_S"); unsigned total = e ? (unsigned)strtoul(e, NULL, 10) : 600;
+      signal(SIGALRM, on_total_alarm); alarm(total ? total : 1); }
     int ring_may_drop = getenv("FS_TEST_EXPECT_RING_DROPS") != NULL;
     char logp[] = "/tmp/fs_test_log_XXXXXX"; int fd = mkstemp(logp); close(fd); unlink(logp);
     fs_config cfg = {0}; cfg.capture.replay_path = argv[1]; cfg.decision_log = logp; cfg.on_end = on_end;
@@ -281,7 +293,7 @@ int main(int argc, char **argv){
         CHECK(fs_start(cf)==0,"start (concurrent stop)"); usleep(10000);
         fs_stop_arg a={cf,-99},b={cf,-99}; pthread_t ta,tb;
         pthread_create(&ta,NULL,fs_stop_thread,&a); pthread_create(&tb,NULL,fs_stop_thread,&b);
-        pthread_join(ta,NULL); pthread_join(tb,NULL);
+        set_phase("concurrent stop join"); pthread_join(ta,NULL); pthread_join(tb,NULL);
         CHECK(a.rc==0&&b.rc==0,"concurrent stop results %d/%d",a.rc,b.rc); fs_close(cf);
     }
 
