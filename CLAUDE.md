@@ -1610,6 +1610,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   The replay tools read this atomically, without touching acquisition callbacks or live stats
   structs. Streaming stall budgets allow deliberate pacing; separate CLI watchdogs cover
   startup, stop and final file/terminal flushing. Timeout outputs remain incomplete.
+- **Capture startup honesty:** delivery-buffer allocation happens synchronously in
+  `cc_start`, before either worker is launched. The backend is the sole startup reporter;
+  a failed delivery allocation returns `CC_ERR_NOMEM` and cannot produce `on_end`.
+  The held-allocation test exercises the former success-before-consumer-ready race.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

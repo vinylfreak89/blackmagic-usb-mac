@@ -53,6 +53,7 @@ struct cc_session {
     cc_callbacks cb;
     // ring
     uint8_t *ring; size_t ring_sz;
+    uint8_t *delivery_buffer; /* allocated by start, owned by delivery after pthread_create */
     _Atomic size_t r_head, r_tail;
     size_t r_max;
     pthread_mutex_t sig_m; pthread_cond_t sig_c;
@@ -232,13 +233,7 @@ static void put_meta_(cc_session *s, uint8_t type, uint8_t ep, uint16_t pi,
 static void* delivery_main(void *arg){
     cc_session *s=arg;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
-    size_t cap=1u<<20; uint8_t *buf=cc_test_fail_delivery_allocation(cap)?NULL:malloc(cap);
-    if(!buf){
-        fprintf(stderr,"capture_core: delivery buffer allocation failed\n");
-        atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); atomic_store(&s->stop_req,1);
-        startup_report_(s,CC_ERR_NOMEM);
-        goto out;
-    }
+    size_t cap=1u<<20; uint8_t *buf=s->delivery_buffer;
     for(;;){
         size_t t=atomic_load_explicit(&s->r_tail,memory_order_relaxed);
         size_t h=atomic_load_explicit(&s->r_head,memory_order_acquire);
@@ -297,7 +292,6 @@ static void* delivery_main(void *arg){
         default: break; // SESSION etc: internal
         }
     }
-out:
     free(buf);
     if(atomic_load(&s->started_successfully) && !atomic_exchange(&s->end_fired,1))
         s->cb.on_end(s->cb.ctx,(enum cc_end)atomic_load(&s->end_reason));
@@ -561,7 +555,17 @@ int cc_start(cc_session *s){
     pthread_mutex_lock(&s->life_m);
     if(s->life!=CC_LIFE_OPEN){ pthread_mutex_unlock(&s->life_m); return CC_ERR_STATE; }
     s->life=CC_LIFE_STARTING; pthread_mutex_unlock(&s->life_m);
-    if(pthread_create(&s->delivery_t,NULL,delivery_main,s)) goto thread_fail;
+    /* Establish the consumer before the backend can report success. Only the backend
+     * now reports startup: allocation failure cannot lose a first-report-wins race. */
+    int failure=CC_ERR_STATE;
+    s->delivery_buffer=cc_test_fail_delivery_allocation(1u<<20)?NULL:malloc(1u<<20);
+    if(!s->delivery_buffer){
+        fprintf(stderr,"capture_core: delivery buffer allocation failed\n");
+        failure=CC_ERR_NOMEM; goto thread_fail;
+    }
+    if(pthread_create(&s->delivery_t,NULL,delivery_main,s)) {
+        free(s->delivery_buffer); s->delivery_buffer=NULL; goto thread_fail;
+    }
     s->delivery_created=1;
     void*(*bm)(void*)=s->cfg.replay_path?replay_main:device_main;
     if(pthread_create(&s->backend_t,NULL,bm,s)){
@@ -581,7 +585,7 @@ int cc_start(cc_session *s){
     return rc;
 thread_fail:
     pthread_mutex_lock(&s->life_m); s->life=CC_LIFE_STOPPED; pthread_cond_broadcast(&s->life_c); pthread_mutex_unlock(&s->life_m);
-    return CC_ERR_STATE;
+    return failure;
 }
 int cc_stop(cc_session *s){
     if(!s) return CC_ERR_STATE;

@@ -80,7 +80,8 @@ typedef struct {
 } cc_config;
 
 // Lifecycle: open -> start -> (callbacks) -> stop -> close.
-// start() returns success only after the complete 8+8 transfer fleet is submitted. stop()
+// start() allocates the delivery buffer before launching either worker; allocation failure
+// is synchronous and produces no on_end. Success follows complete 8+8 fleet submission. stop()
 // cancels in-flight transfers, drains and joins; it is idempotent and concurrent stop/close
 // callers wait for the elected stopper. Calling stop/close from a library callback is forbidden
 // and fails/leaks safely rather than self-joining. close performs stop if needed.

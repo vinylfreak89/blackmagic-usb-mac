@@ -35,6 +35,8 @@ typedef struct {
 } tally;
 
 static _Atomic int hook_arm, hook_empty, hook_release, hook_fail_alloc;
+static _Atomic int alloc_hold, alloc_entered, alloc_release, alloc_on_starter;
+static pthread_t starter_thread;
 /* Every wait here has a deadline: CC_TEST_WAIT_S seconds, default 60. On expiry the test fails loudly,
  * names the wait and exits at once (exit 2), rather than hanging or passing silently. */
 static double wait_limit_s(void){ const char *e = getenv("CC_TEST_WAIT_S"); double v = e ? atof(e) : 60; return v < 0 ? 0 : v; }
@@ -67,7 +69,13 @@ void cc_test_before_backend_done(cc_session *s){
     (void)s; if(atomic_load(&hook_arm)) atomic_store(&hook_release,1);
 }
 int cc_test_fail_delivery_allocation(size_t bytes){
-    (void)bytes; return atomic_exchange(&hook_fail_alloc,0);
+    (void)bytes;
+    if(atomic_load(&alloc_hold)) {
+        atomic_store(&alloc_on_starter,pthread_equal(pthread_self(),starter_thread));
+        atomic_store(&alloc_entered,1);
+        while(!atomic_load(&alloc_release)) usleep(100); /* whole-test parent bounds this fault injection */
+    }
+    return atomic_exchange(&hook_fail_alloc,0);
 }
 
 static void t_packet(void *ctx, const cc_packet *p){
@@ -97,6 +105,11 @@ static void t_end(void *ctx, enum cc_end r){
 }
 typedef struct { cc_session *s; int rc; } stop_arg;
 static void *stop_thread(void *p){ stop_arg *a=p; a->rc=cc_stop(a->s); return NULL; }
+typedef struct { cc_session *s; int rc; _Atomic int returned; } start_arg;
+static void *start_thread(void *p){
+    start_arg *a=p; starter_thread=pthread_self();
+    a->rc=cc_start(a->s); atomic_store(&a->returned,1); return NULL;
+}
 static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle,
                            long expected_meta_drops, int fail_stop_on_control_loss){
     memset(t,0,sizeof *t);
@@ -259,7 +272,32 @@ int main(int argc, char **argv){
     CHECK(cc_open(&s,&cfg,&cb)==CC_OK,"open (delivery allocation fault)");
     if(s){
         CHECK(cc_start(s)==CC_ERR_NOMEM,"delivery allocation fault did not fail start as NOMEM");
-        CHECK(af.end_count==0,"on_end fired for failed start"); cc_close(s);
+        cc_close(s); /* Join even on a regression returning OK before reading callback-owned tally. */
+        CHECK(af.end_count==0,"on_end fired for failed start");
+    }
+
+    // Force the former losing ordering: allocation stays unresolved while the backend
+    // would otherwise be free to report success. The preflight must run on the starter,
+    // before worker creation (thread identity makes this assertion scheduler-independent).
+    memset(&af,0,sizeof af); af.main_thread=pthread_self(); cb.ctx=&af; s=NULL;
+    CHECK(cc_open(&s,&cfg,&cb)==CC_OK,"open (held allocation)");
+    if(s){
+        alloc_entered=0; alloc_release=0; alloc_hold=1; hook_fail_alloc=1;
+        start_arg a={.s=s,.rc=-99}; pthread_t thread;
+        int created=pthread_create(&thread,NULL,start_thread,&a);
+        CHECK(created==0,"create held-allocation starter");
+        if(!created){
+            double until=mono_s()+wait_limit_s();
+            while(!atomic_load(&alloc_entered) && mono_s()<until) usleep(100);
+            CHECK(atomic_load(&alloc_entered),"TIMEOUT: held allocation hook not entered");
+            CHECK(atomic_load(&alloc_on_starter),"allocation did not precede worker launch on the starting thread");
+            CHECK(!atomic_load(&a.returned),"cc_start returned while allocation was unresolved");
+            alloc_release=1; pthread_join(thread,NULL);
+            CHECK(a.rc==CC_ERR_NOMEM,"held allocation returned %d, expected NOMEM",a.rc);
+            CHECK(cc_stop(s)==CC_OK,"stop after failed preflight");
+            CHECK(af.end_count==0,"on_end fired after failed allocation preflight");
+        }
+        alloc_hold=0; cc_close(s);
     }
 
     // Concurrent stop callers elect exactly one joiner; the waiter returns only after STOPPED.
