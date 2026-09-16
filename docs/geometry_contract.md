@@ -2,8 +2,9 @@
 
 This draft records the owner's September 13–14 reset discussion: recognize the
 data-like lines, then locate picture geometry. It is not a shortened v10
-contract. Direct quotations and earlier relayed rulings are distinguished;
-the questions below remain open. No new detector or numerical limit is chosen.
+contract. Direct quotations and earlier relayed rulings are distinguished.
+The owner's subsequent answers [6] settle the dispositions below and commission
+empirical recognition work; they do not establish detector performance.
 
 ## First: caption/waveform recognition
 
@@ -52,9 +53,17 @@ and direction, not achieved results or permission to fit limits to the examples.
 
 **Implementation transparency:** any measurement beyond the owner's stated
 observations must be disclosed when proposed, not silently added and explained
-after implementation. This is the rule drawn from his objection in [5]. Which
-descriptions above are operative criteria is question 1; no cutoffs or noise
-tolerances are supplied by this draft.
+after implementation. This is the rule drawn from his objection in [5]. Asked
+which descriptions are the core criteria, the owner answered [6]:
+
+> I don't know. I want codex to analyze this fresh. given the real signal and
+> false positives/negatives we came to in our session, what is the simplest
+> engine that covers the most cases. what is the accuracy and specificity rate.
+> ideally, it will be a simple algorithm
+
+Thus the next step is an empirical comparison, with independently established
+truth and counts behind the rates, not another list of owner-selected clauses.
+No cutoffs or noise tolerances are supplied by this draft.
 
 ## The requested result
 
@@ -62,12 +71,11 @@ tolerances are supplied by this draft.
    line 21, then caption/waveform data or blanking at line 22, then picture
    signal. Waveform recognition matters because this is the proposed fixed
    landmark at the top, not because a decoded caption is the end product. The
-   owner identifies the examined line-22 blanking as deck-generated, not
-   Shuttle-generated. [2]
+   deck attribution is a current hypothesis, as qualified in [6] below. [2]
 2. **Locate the bottom bound.** Find the fully blanked line the owner names as
    the lower bound, accounting for the head-switch line as part of the geometry
-   being followed. The earlier head-switch ruling and this wording need to be
-   reconciled in question 2 below. [1, 2]
+   being followed. The owner's clarification below identifies which blanked
+   line is meant. [1, 2, 6]
 3. **Establish field order and alignment.** The intended result is the two
    fields aligned in the right temporal order (TFF or BFF), weaving into a
    coherent 480-line picture. This is automatic work on the delivered raster,
@@ -86,42 +94,78 @@ per field. [1]
 Agreement between detector outputs is not itself a demonstration of that
 hypothesis. No search range or fitted tolerance is inferred from it. [1, 5]
 
-## Earlier words that narrow the open questions
+## Top reference: device position is not tape position
 
-**Top reference identity.** Direct to Claude, September 13 at 10:01:23:
-"the shuttle only modifies 20 and 21. 22 is inserted by the eck" [sic: deck].
-The earlier September 10 ruling, preserved as relayed, says "no the regenerated
-insert shouldn't count as anything" and "whether they can decode captions,
-that could mean the real captions are anywhere from 20,21,22 so that should
-say nothing about geometry". Thus recognizing an insert as a waveform does
-not make its decoded bytes evidence of the tape's position. This answers the
-regenerated-insert part of the former Q1; it is not reopened as a blank choice.
+The owner's answer [6] supplies the current working assumption:
+
+> line 20/21 are fixed shuttle references. these are the physical NTSC line
+> 20/21 locations. the current hypothesis is that the deck itself is generating
+> line 22 not the shuttle. As far as we have been able to see so far, if captions
+> land within 2 lines of line 21 in the actual raster, the shuttle generates them
+> on line 21. therefore, line 23 captions (the tape's VSYNC shifted) shows
+> duplicate captions. therefore, the existence of captions can only be an
+> indicator the real line 21 VSYNC is are close by, not actually at line 21.
+> we have to assume for now that if there is no other line 21, that what is on
+> the tape is at least close and non-fully blanked rows are just normal picture
+
+**Measurement beside that qualified account:** `c91a10b:CLAUDE.md`, §11's v9
+VBI paragraphs, records 91 units with a rigid +1 picture displacement,
+re-encoded data at raster line 21 and no raw caption elsewhere in the field.
+At +2/+3 the raw caption appeared at 23/24 while the Shuttle's 21 carried its
+null-byte insert. Two caption-shaped lines did not mean duplicate data.
+Those observations do not establish a symmetric ±2 decoding window. They are
+historical measurements, not a substitute for the owner's words or permission
+to use the parity decoder in this recognition experiment.
+
+## Bottom bound
+
+The owner's clarification [6] is:
+
+> the first fully blanked line that does not contain any elements of picture or
+> head switch. so it needs to be pedestal or blanking level luma. probably below
+> Y=32 for NTSC-M on this deck
+
+Y=32 is the owner's estimate to test, **not a settled cutoff**. This describes
+the blanked line bounding the picture/head-switch region, not a blank line
+inside that region.
+
+## Geometry validation experiment, not a bottom-bound detector
+
+The owner commissioned an empirical check [6]:
+
+> again I don't know. we need to empirically test this, probably with a very
+> simple combing engine as a proxy to detect where the picture -should- go...
+> and really, combing detection needs to be a normal deinterlace algorithm,
+> nothing fancy.
+
+He corrected the dispatch's bottom-bound framing in a subsequent message [7]:
+
+> this has nothing to do with the bottom bound. this is fully about checking
+> our geometry calculations. it is NOT at this time intended to be a final part
+> of the engine but that is still tbd.
+
+The plain deinterlacer-style comb check is therefore proposed to validate
+computed geometry, not locate its bottom or become an engine component.
+Recognition comes first; this check is to be proposed before it is run.
+
+## Unavailable geometry, one-sided motion and reset
 
 **One-sided motion.** The September 11 ruling, preserved as relayed, is
 "hold not unlock and don't shift. only one part of the geometry shifting without
 a corresponding shift on the other side is a hold. not a shift." The boxed-source
 clarification is "its both sides of the box moving" and "ITS A BOX, not an EDGE
-or whatever." These are not rulings about genuinely unavailable geometry;
-question 3 distinguishes that gap from the answered one-sided case.
+or whatever."
 
-## Questions before this becomes an executable contract
+The new answers [6] distinguish unavailable geometry and reset:
 
-1. **Which waveform properties are the core criteria?** Your "2, 3 tops" [5]
-   sits beside descriptions of temporal shape, end-of-line blanking, entropy,
-   chroma and symmetry. Which are required decisions, and which are supporting
-   observations to inspect? I have not made them five independent tests or
-   chosen a smaller subset on your behalf.
-2. **How do the bottom descriptions fit together?** September 10, relayed:
-   "if a head switch is there, it marks the bottom of the geometry. where there
-   is blanking below the head switch thats not part of the bottom geometry."
-   September 14, direct: "at the bottom, I'm looking for a fully blanked line"
-   [2]. Is the blanked line evidence locating the end of geometry rather than
-   a line included in it, or does the reset change the earlier definition?
-3. **Does the earlier hold rule carry forward, and what about missing bounds?**
-   "hold not unlock and don't shift" answers observed one-sided motion, not
-   inability to identify a bound. Does that earlier policy still apply in this
-   reset, and what should output do when a bound is genuinely missing or
-   ambiguous, before and after an established placement?
+> if geometry can not be established, the output should not shift. this should
+> be printed in the registration sidecar, but no shifting should be performed.
+
+> if there is a reset, then no the hold rule does not apply. if there is no lock
+> yet, do nothing, as stated above
+
+Do not infer a shift from a missing measurement, or carry the hold rule across
+a reset. These answers do not themselves define additional reset triggers.
 
 ## Owner sources
 
@@ -146,3 +190,9 @@ those quotations. Prior implementation prose is not adopted with them.
 - **[4] 13:11:10** — "take human input... the exact thing we are trying to avoid".
 - **[5] 12:53:00** — "I didn't create 15 measurements of the signal. I created
   like 2, 3 tops. Claude invented the others... without telling me".
+- **[6] September 16 dispatch to Codex** — the owner's six answers, supplied
+  verbatim by Claude: three answering `daa2817`, then three answering
+  `6f5939f`. These are relayed quotations, not a new direct transcript check.
+  The neighbouring historical VBI measurement was checked in `c91a10b`.
+- **[7] Subsequent correction in this turn** — the owner's clarification of
+  the comb check's purpose, relayed verbatim by Claude.
