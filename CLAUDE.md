@@ -1561,6 +1561,11 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   argument change altered results in the waveform work. Known-answer synthetic
   cases helped find instrument defects; they do not establish source prevalence.
   A crash, missing input, expected assertion failure and pass are distinct.
+- **Waveform scores must distinguish device inserts from source-carried data.**
+  A pooled score can mostly measure the easier Shuttle waveforms: the first v11
+  two-band temporal-walk sample recognized inserts while missing the source
+  examples. This limits that baseline, not waveform recognition as a method.
+  Keep visual labels separate from detector decisions and report each population.
 - **Scope negative conclusions.** “This instrument did not establish it on these
   rows” preserves a finding without claiming no method can do so. The same
   applies to positive results: state the measured population, not “solved.”
