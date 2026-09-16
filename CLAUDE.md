@@ -781,7 +781,7 @@ file is a separate, longer input, not a fifth independent source.
 | Capture 1 | Commercial tape, composite input, recorded with V-stabilize/line TBC off. Opening rewind/acquisition, a dark boxed card and brighter programme exercise different visibility and level regimes. A comparison source distinct from the two off-air recordings. | `captures/composite_program_30s.tpc`, captured 2026-09-03. |
 | Capture 2 | EP part of fixture A. Different recording conditions, data-like top lines, sometimes no blank row between data and picture; tests whether an SP-derived gauge generalizes. | `/private/tmp/hw-session/w_2100s_aligned.tpc`, sliced from `captures/fulltape.cap6`, byte start `50811787037`. |
 | Capture 3 | SP part of fixture A, V-stabilize on. Contains the field-position problem, weak recorded timing and the corrected head-switch-region appearance. | `/private/tmp/hw-session/w_300s_aligned.tpc`, sliced from the same whole tape, byte start `7260251349`. |
-| Capture 4 | Another SP pass with V-stabilize off. Exposes stronger horizontal timing disturbance near the switch and a different transport pairing; not a frame-aligned A/B of capture 3. | `/private/tmp/hw-session/sp_vstab_off_aligned.tpc`, from `sp_vstab_off_45s.tpc` captured 2026-09-07, byte start `118907896`. |
+| Capture 4 | Another SP pass with V-stabilize off. Exposes stronger horizontal timing disturbance near the switch and a different transport pairing; not a frame-aligned A/B of capture 3. | `captures/sp_vstab_off_aligned.tpc` (SHA-256 `d6fbd509…`), cut at byte `118907896` from `sp_vstab_off_45s.tpc`, captured 2026-09-07. That original no longer exists, so this and the older, pre-alignment-fix cut `captures/sp_vstab_off_slice.tpc` are the only copies; the working copy is in `/private/tmp/hw-session/`. |
 | Whole tape | Approximately 48 minutes / 69.7 GB, both off-air recordings plus transitions and non-picture intervals. Its wider variation found failures missed by the short selections. | `captures/fulltape.cap6`; older notes/tools also use `whole_tape.tpc`. Verify identity rather than assuming an alias. Historical replay: 86,293 exact units; short/other observations are accounted separately (§6). |
 
 The aligned scratch slices were re-cut on September 9 after the slicer was
@@ -790,8 +790,8 @@ provenance failures were slicing artifacts. `experiments/tpc_slice.py` on the
 v10 branch records that repair. Preserve input hashes, cut lengths and transfer
 alignment when reproducing a selection; the starts above are navigation aids,
 not complete manifests. These paths were inventoried, not re-opened for this
-rewrite. Scratch may disappear; the original off-setting pass is needed to
-recreate capture 4. No new tape run is authorized by this inventory.
+rewrite. Scratch may disappear. Captures 2 and 3 can be re-cut from the whole tape; capture 4 cannot,
+so keep its `captures/` copies (a new one needs another pass on the deck). No new tape run is authorized by this inventory.
 
 Capture 4's recorded best pairing matches its first slot to the earlier pass's
 previous-unit second field (MAD 2.6–3.0 versus 7–12 for other pairings).
