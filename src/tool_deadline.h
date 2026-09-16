@@ -15,9 +15,10 @@
 static pthread_mutex_t tool_deadline_mutex = PTHREAD_MUTEX_INITIALIZER;
 static const char *tool_name, *tool_phase;
 static double tool_expires;
+static int tool_timeout_exit;
 static double tool_clock(void){
     struct timespec t;
-    if (clock_gettime(CLOCK_MONOTONIC, &t)) _exit(3);
+    if (clock_gettime(CLOCK_MONOTONIC, &t)) _exit(2);
     return t.tv_sec + t.tv_nsec / 1e9;
 }
 static void tool_timeout(const char *phase){
@@ -28,7 +29,7 @@ static void tool_timeout(const char *phase){
     (void)write(2,"FAIL: TIMEOUT: ",15);
     (void)write(2,tool_name,strlen(tool_name));
     (void)write(2,": ",2); (void)write(2,phase,strlen(phase)); (void)write(2,"\n",1);
-    _exit(3);
+    _exit(tool_timeout_exit);
 }
 static void tool_guard(const char *phase, double seconds){
     pthread_mutex_lock(&tool_deadline_mutex);
@@ -54,11 +55,11 @@ static double tool_seconds(const char *value, double fallback){
     }
     return n;
 }
-static void tool_deadline_start(const char *name){
-    tool_name=name;
+static void tool_deadline_start(const char *name, int timeout_exit){
+    tool_name=name; tool_timeout_exit=timeout_exit;
     pthread_t thread;
     if (pthread_create(&thread,NULL,tool_watchdog,NULL)) {
-        fprintf(stderr,"%s: cannot start deadline watchdog\n",name); exit(3);
+        fprintf(stderr,"%s: cannot start deadline watchdog\n",name); exit(2);
     }
     pthread_detach(thread);
 }

@@ -45,7 +45,7 @@ static void dump_audio(void *c, const ap_block *b){
                        b->n_frames, b->flags, (unsigned long long)b->last_resync_counter_ext, (long long)b->correlation_residual);
 }
 int main(int argc, char **argv){
-    tool_deadline_start("frameserver_replay");
+    tool_deadline_start("frameserver_replay",3);
     double lifecycle_s=tool_seconds(getenv("FS_LIFECYCLE_S"),60);
     tool_guard("open outputs / fs_open / fs_start",lifecycle_s);
     if (argc < 2){ fprintf(stderr, "usage: %s <capture.tpc> [decision_log.csv] [--pace-us N] [--ring-mb N] [--pool N]\n", argv[0]); return 9; }

@@ -10,6 +10,7 @@ import tempfile
 
 kind, executable = sys.argv[1:]
 executable = os.path.abspath(executable)
+timeout_exit = 6 if kind == 'capture' else 3
 def check(name, args, expected=0, text='', env=None, seconds=8):
     p = subprocess.Popen([executable, *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                          env=dict(os.environ, **(env or {})), start_new_session=True)
@@ -41,12 +42,12 @@ with tempfile.TemporaryDirectory(prefix='transport-deadlines-') as directory:
     pipe = root / 'stuck-input'; os.mkfifo(pipe)
     fd = os.open(pipe,os.O_RDWR|os.O_NONBLOCK)
     try:
-        check('blocked input is a named transport stall',replay(pipe,0,.1),3,'no capture-core packet delivery')
+        check('blocked input is a named transport stall',replay(pipe,0,.1),timeout_exit,'no capture-core packet delivery')
     finally:
         os.close(fd)
     # No writer: the backend's fopen stalls during start, before streaming begins.
     setting = 'CC_LIFECYCLE_S' if kind == 'capture' else 'FS_LIFECYCLE_S'
-    check('startup is independently bounded',replay(pipe,0,1),3,'TIMEOUT',env={setting:'.1'})
+    check('startup is independently bounded',replay(pipe,0,1),timeout_exit,'TIMEOUT',env={setting:'.1'})
     if kind == 'frameserver':
         plain = root / 'plain.tpc'
         generator = Path(__file__).resolve().parents[1] / 'src/unit_parser/tests/gen_unit_parser_capture.py'

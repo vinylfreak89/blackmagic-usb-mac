@@ -47,6 +47,7 @@ typedef struct {
 
 enum cc_life { CC_LIFE_OPEN, CC_LIFE_STARTING, CC_LIFE_RUNNING,
                CC_LIFE_STOPPING, CC_LIFE_STOPPED };
+enum { DELIVERY_BUFFER_BYTES = 1u << 20 };
 
 struct cc_session {
     cc_config cfg;
@@ -233,7 +234,8 @@ static void put_meta_(cc_session *s, uint8_t type, uint8_t ep, uint16_t pi,
 static void* delivery_main(void *arg){
     cc_session *s=arg;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
-    size_t cap=1u<<20; uint8_t *buf=s->delivery_buffer;
+    size_t cap=DELIVERY_BUFFER_BYTES; uint8_t *buf=s->delivery_buffer;
+    s->delivery_buffer=NULL; /* Ownership handed to this thread's local buffer. */
     for(;;){
         size_t t=atomic_load_explicit(&s->r_tail,memory_order_relaxed);
         size_t h=atomic_load_explicit(&s->r_head,memory_order_acquire);
@@ -558,7 +560,7 @@ int cc_start(cc_session *s){
     /* Establish the consumer before the backend can report success. Only the backend
      * now reports startup: allocation failure cannot lose a first-report-wins race. */
     int failure=CC_ERR_STATE;
-    s->delivery_buffer=cc_test_fail_delivery_allocation(1u<<20)?NULL:malloc(1u<<20);
+    s->delivery_buffer=cc_test_fail_delivery_allocation(DELIVERY_BUFFER_BYTES)?NULL:malloc(DELIVERY_BUFFER_BYTES);
     if(!s->delivery_buffer){
         fprintf(stderr,"capture_core: delivery buffer allocation failed\n");
         failure=CC_ERR_NOMEM; goto thread_fail;

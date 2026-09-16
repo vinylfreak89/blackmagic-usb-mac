@@ -3,6 +3,7 @@
 //   shuttle-capture --replay <in.tpc> <out.tpc|/dev/null> [paceUS] [scratchDir]
 // Optional trailing --stall-s N (default 120, at least ten pacing intervals).
 // CC_LIFECYCLE_S overrides the 60 s startup/stop/finalization watchdog for tests.
+// Exit 3: sink write failure. Exit 6: stall or lifecycle/output deadline expired.
 #include "capture_core.h"
 #include <errno.h>
 #include <limits.h>
@@ -95,7 +96,7 @@ static int stage_path(const char *dest,const char *scratch,char staged[PATH_MAX]
     return 0;
 }
 int main(int argc,char**argv){
-    tool_deadline_start("shuttle-capture");
+    tool_deadline_start("shuttle-capture",6);
     double lifecycle_s=tool_seconds(getenv("CC_LIFECYCLE_S"),60), stall_s=120;
     tool_guard("open output / cc_open / cc_start",lifecycle_s);
     cc_config cfg={0}; const char *out=NULL; int secs=0;

@@ -1600,20 +1600,9 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   still an old measurement. A review of a proposed repair is not a review of
   the resulting diff. Keep detailed reports at their own paths rather than
   expanding this section after every exchange.
-- **Test deadlines:** the frameserver and capture-core test executables run under
-  a separate parent (`src/test_supervisor.h`), including direct and sanitizer runs.
-  `FS_TEST_TOTAL_S`, `CC_TEST_TOTAL_S`, and `SHIM_TEST_TOTAL_S` default to 600 seconds;
-  expiration kills the child and reports a named failure. A child's `alarm(0)` cannot
-  cancel that deadline. `test-deadlines` also uses an independent outer process cap.
-- **Tool liveness is transport, not picture:** `cc_packets_delivered()` counts completed
-  packet callbacks on the delivery thread, including zero-length packets on both endpoints.
-  The replay tools read this atomically, without touching acquisition callbacks or live stats
-  structs. Streaming stall budgets allow deliberate pacing; separate CLI watchdogs cover
-  startup, stop and final file/terminal flushing. Timeout outputs remain incomplete.
-- **Capture startup honesty:** delivery-buffer allocation happens synchronously in
-  `cc_start`, before either worker is launched. The backend is the sole startup reporter;
-  a failed delivery allocation returns `CC_ERR_NOMEM` and cannot produce `on_end`.
-  The held-allocation test exercises the former success-before-consumer-ready race.
+- **Capture startup honesty:** allocate delivery storage synchronously in `cc_start`,
+  before launching workers, so failed startup cannot report success or emit `on_end`.
+  Deadline mechanisms: `src/test_supervisor.h` and `src/tool_deadline.h`.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
