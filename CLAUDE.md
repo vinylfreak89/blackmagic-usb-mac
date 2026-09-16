@@ -1600,6 +1600,11 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   still an old measurement. A review of a proposed repair is not a review of
   the resulting diff. Keep detailed reports at their own paths rather than
   expanding this section after every exchange.
+- **Test deadlines:** the frameserver and capture-core test executables run under
+  a separate parent (`src/test_supervisor.h`), including direct and sanitizer runs.
+  `FS_TEST_TOTAL_S`, `CC_TEST_TOTAL_S`, and `SHIM_TEST_TOTAL_S` default to 600 seconds;
+  expiration kills the child and reports a named failure. A child's `alarm(0)` cannot
+  cancel that deadline. `test-deadlines` also uses an independent outer process cap.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

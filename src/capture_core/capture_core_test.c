@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
+#include "../test_supervisor.h"
 
 static int fails=0;
 #define CHECK(cond,...) do{ if(!(cond)){ fails++; fprintf(stderr,"FAIL: " __VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
@@ -38,17 +39,7 @@ static _Atomic int hook_arm, hook_empty, hook_release, hook_fail_alloc;
  * names the wait and exits at once (exit 2), rather than hanging or passing silently. */
 static double wait_limit_s(void){ const char *e = getenv("CC_TEST_WAIT_S"); double v = e ? atof(e) : 60; return v < 0 ? 0 : v; }
 static double mono_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + t.tv_nsec / 1e9; }
-/* A whole-test deadline covers what the per-wait ones cannot (thread joins, cc_stop, cc_close):
- * CC_TEST_TOTAL_S seconds, default 600, reported with the last phase entered. */
-static const char *volatile phase_msg = "startup"; static volatile size_t phase_len = 7;
-static void set_phase(const char *m){ phase_len = 0; phase_msg = m; phase_len = strlen(m); }
-static void on_total_alarm(int sig){
-    (void)sig; static const char pre[] = "FAIL: TIMEOUT: the whole test exceeded CC_TEST_TOTAL_S (default 600 s); last phase: ";
-    ssize_t w = write(2, pre, sizeof pre - 1); w = write(2, phase_msg, phase_len); w = write(2, "\n", 1); (void)w;
-    _exit(2);
-}
 static void wait_ended(_Atomic int *ended, const char *what){
-    set_phase(what);
     double limit = wait_limit_s(), end = mono_s() + limit;
     while(!atomic_load(ended)){
         if(mono_s() >= end){
@@ -142,9 +133,15 @@ static void run_replay(const char *path, int ring_mb, tally *t){
 }
 
 int main(int argc, char **argv){
+    test_supervise(argv, "CC_TEST_TOTAL_S", "capture_core_test");
+    if (argc == 3 && !strcmp(argv[1], "--deadline-probe")) {
+        if (!strcmp(argv[2], "total")) { alarm(0); for (;;) pause(); }
+        setenv("CC_TEST_WAIT_S", "0", 1);
+        if (!strcmp(argv[2], "hook")) { hook_arm=1; cc_test_after_empty_snapshot(NULL); }
+        else { _Atomic int ended=0; wait_ended(&ended,"forced wait probe"); }
+        return 99;
+    }
     if(argc<6){ fprintf(stderr,"usage: %s <slice.tpc> vB vP aB aP [late.tpc [exhaust.tpc vB vP aB aP]]\n",argv[0]); return 9; }
-    { const char *e=getenv("CC_TEST_TOTAL_S"); unsigned total=e?(unsigned)strtoul(e,NULL,10):600;
-      signal(SIGALRM,on_total_alarm); alarm(total?total:1); }
     const char *slice=argv[1];
     uint64_t vB=strtoull(argv[2],0,10), vP=strtoull(argv[3],0,10);
     uint64_t aB=strtoull(argv[4],0,10), aP=strtoull(argv[5],0,10);
@@ -272,7 +269,7 @@ int main(int argc, char **argv){
         CHECK(cc_start(s)==CC_OK,"start (concurrent stop)"); usleep(20000);
         stop_arg a={s,-99}, b={s,-99}; pthread_t ta,tb;
         pthread_create(&ta,NULL,stop_thread,&a); pthread_create(&tb,NULL,stop_thread,&b);
-        set_phase("concurrent stop join"); pthread_join(ta,NULL); pthread_join(tb,NULL);
+        pthread_join(ta,NULL); pthread_join(tb,NULL);
         CHECK(a.rc==CC_OK && b.rc==CC_OK,"concurrent stop results %d/%d",a.rc,b.rc);
         CHECK(ct.end_count==1,"concurrent stop on_end count %d",ct.end_count); cc_close(s);
     }

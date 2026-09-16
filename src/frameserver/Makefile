@@ -21,7 +21,7 @@ tests/audio_publisher_test: audio_publisher.c audio_publisher.h tests/audio_publ
 tests/frame_publisher_test: frame_publisher.c frame_publisher.h tests/frame_publisher_test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) frame_publisher.c tests/frame_publisher_test.c -o $@ -framework IOSurface -framework CoreFoundation
 
-tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h
+tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h ../test_supervisor.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TESTFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o $@ $(LIBS)
 
 test: tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)

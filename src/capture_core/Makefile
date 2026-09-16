@@ -39,17 +39,18 @@ test-asan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_F
 	./test_asan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE) $$(cat fixture_meta_exhaust.expect)
 
 # Both test deadlines fail by name.
-test-deadlines: capture_core_test $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
+test-deadlines: capture_core_test test_shim $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
 	sh deadline_test.sh
 
-capture_core_test: capture_core.c capture_core_test.c capture_core.h
+capture_core_test: capture_core.c capture_core_test.c capture_core.h ../test_supervisor.h
 	$(CC) $(CFLAGS) $(TESTFLAGS) -o $@ capture_core.c capture_core_test.c $(LIBS)
 
 # Device backend against the replay shim (no libusb linked): init, fleet, resubmission,
 # cancellation and teardown run as on hardware, with injected faults. ASan build.
 SHIM=../../experiments/libusb_replay_shim.c
-test-shim: capture_core.c capture_core_shim_test.c capture_core.h $(SHIM) $(FIXTURE)
+test_shim: capture_core.c capture_core_shim_test.c capture_core.h $(SHIM) ../test_supervisor.h
 	$(CC) -O1 -g -fsanitize=address,undefined $(CFLAGS) -o test_shim capture_core.c capture_core_shim_test.c $(SHIM) -lpthread
+test-shim: test_shim $(FIXTURE)
 	./test_shim $(FIXTURE)
 
 clean:

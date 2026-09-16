@@ -15,6 +15,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include "../test_supervisor.h"
 
 static int fails=0;
 #define CHECK(cond,...) do{ if(!(cond)){ fails++; fprintf(stderr,"FAIL: " __VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
@@ -22,12 +23,17 @@ static int fails=0;
 typedef struct { uint64_t pkts; _Atomic int ended; int end_reason; } tally;
 static void t_packet(void *ctx, const cc_packet *p){ tally *t=ctx; (void)p; t->pkts++; }
 static void t_end(void *ctx, enum cc_end r){ tally *t=ctx; t->end_reason=r; atomic_store(&t->ended,1); }
-
-/* Whole-test deadline for everything else (cc_stop, cc_close): SHIM_TEST_TOTAL_S, default 600. */
-static void on_total_alarm(int sig){
-    (void)sig; static const char m[]="FAIL: TIMEOUT: the shim test exceeded SHIM_TEST_TOTAL_S (default 600 s)\n";
-    ssize_t w=write(2,m,sizeof m-1); (void)w; _exit(2);
+static void wait_device_end(tally *t, double seconds){
+    double until=test_clock()+seconds;
+    while (!atomic_load(&t->ended)) {
+        if (test_clock() >= until) {
+            fprintf(stderr,"FAIL: TIMEOUT: shim run_device on_end (%.3g s); exiting before cc_stop\n",seconds);
+            _exit(2);
+        }
+        usleep(20000);
+    }
 }
+
 static int run_device(cc_stats *st, tally *t, int wait_for_end, int deadline_ms){
     memset(t,0,sizeof *t);
     cc_config cfg={0}; cfg.input=CC_INPUT_SVIDEO; cfg.ring_mb=16; cfg.resubmit_deadline_ms=deadline_ms;
@@ -37,14 +43,7 @@ static int run_device(cc_stats *st, tally *t, int wait_for_end, int deadline_ms)
     if(rc!=CC_OK) return rc;
     rc=cc_start(s);
     if(rc!=CC_OK){ cc_get_stats(s,st); cc_close(s); return rc; }
-    if(wait_for_end){
-        int guard=0; while(!atomic_load(&t->ended) && guard++<500) usleep(20000);
-        if(!atomic_load(&t->ended)){
-            fprintf(stderr,"FAIL: TIMEOUT: on_end was not called within 10 s in run_device (deadline %d ms); exiting "
-                           "before cc_stop, which could hang on the same stuck thread\n",deadline_ms);
-            fflush(stderr); _exit(2);
-        }
-    }
+    if(wait_for_end) wait_device_end(t,10);
     else usleep(200000);
     CHECK(cc_stop(s)==CC_OK,"stop");
     cc_get_stats(s,st);
@@ -53,9 +52,13 @@ static int run_device(cc_stats *st, tally *t, int wait_for_end, int deadline_ms)
 }
 
 int main(int argc, char **argv){
+    test_supervise(argv, "SHIM_TEST_TOTAL_S", "capture_core_shim_test");
+    if (argc == 3 && !strcmp(argv[1], "--deadline-probe")) {
+        if (!strcmp(argv[2], "total")) { alarm(0); for (;;) pause(); }
+        tally t={0}; wait_device_end(&t,0);
+        fprintf(stderr,"FAIL: continued after shim timeout\n"); return 99;
+    }
     if(argc<2){ fprintf(stderr,"usage: %s <slice.tpc>\n",argv[0]); return 9; }
-    { const char *e=getenv("SHIM_TEST_TOTAL_S"); unsigned total=e?(unsigned)strtoul(e,NULL,10):600;
-      signal(SIGALRM,on_total_alarm); alarm(total?total:1); }
     setenv("REPLAY_CAPTURE",argv[1],1);
     setenv("REPLAY_MAX_DATA","2000",1);
     cc_stats st; tally t;
