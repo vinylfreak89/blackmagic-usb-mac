@@ -793,22 +793,25 @@ not complete manifests. These paths were inventoried, not re-opened for this
 rewrite. Scratch may disappear. Captures 2 and 3 can be re-cut from the whole tape; capture 4 cannot,
 so keep its `captures/` copies (a new one needs another pass on the deck). No new tape run is authorized by this inventory.
 
-Capture 4 and capture 3 appear to pair their fields one field apart, which is **likely but
-under-measured**. The strongest evidence is the owner's visual review of the side-by-side render (2026-09-16):
-"one of the 3 [corrected by the owner: "one of the 4"] panels was changing at a different time.. and I'd expect 2 to do that, not 1... and I'd
-expect it to match both units". At a scene change, one field slot stepping a unit away from the
-others is the signature of a one-field pairing offset; a whole-unit misalignment would move both of
-a capture's slots. The numeric check (2026-09-06, old pre-alignment-fix cuts, units matched by
-position) is thin. At units 20/150/300/600, capture 4's first slot matched capture 3's previous-unit
-second field (MAD 2.6–3.0 versus 7–12). Unit 77 (a held frame) matched both ways, and unit 450
-matched straight (2.74). The write-up quoted only the four that agreed. The result is relative: the
-two passes disagree about which field sits in the top slot, and it does not say which pass is the
-unusual one. A fuller recheck on the current cuts is to count, at every scene change, which slots
-change in which unit.
-Some harness runs used `--repair`. Every comparison must say whether it uses
-raw slots or repaired pairing; field-number joins can otherwise compare
-different times. This observation does not say every TFF/BFF problem has that
-cause.
+**Captures 3 and 4 pair their fields one field apart** (measured 2026-09-16 on the current cuts).
+The owner saw it first in a side-by-side render: "one of the 3 [corrected by the owner: "one of the 4"]
+panels was changing at a different time.. and I'd expect 2 to do that, not 1... and I'd expect it to
+match both units".
+- The cuts start one unit apart in content: capture 4 unit u lines up with capture 3 unit u−1.
+- Across 63 sampled units, capture 4's slot 1 best matches capture 3's unit u−2 slot 2, and its slot 2
+  matches capture 3's unit u−1 slot 1, each in 56 of 63 units with a clear margin.
+- At all five scene changes checked (capture 3 units 48, 128, 169, 297 and 522), capture 4's two slots
+  switch in the same unit, while capture 3's slot 2 switches one unit before its slot 1. The panel out
+  of step is capture 3's.
+- If the source's cuts fall on frame boundaries (usual for edited video, not guaranteed for
+  film-originated material), capture 4 pairs fields as the source did and capture 3 is the offset pass.
+  That is the reverse of the earlier assumption. It does not settle which pass puts each field on
+  its correct spatial row.
+- An earlier six-unit check (2026-09-06, old cuts) pointed the same way but was reported selectively.
+
+Some v10 harness runs used `--repair` on capture 4. Every comparison must say whether it uses raw
+slots or repaired pairing, and which unit offset; field-number joins can otherwise compare different
+times. This observation does not say every TFF/BFF problem has this cause.
 
 Capture 1's later tests often select counters **≥6667**. That was the chosen
 registration interval, not the first sample of picture: the recorded arrival
@@ -1133,8 +1136,8 @@ proposal, not an established requirement for the current problem.
 **TODO — live field-parity detection (owner, 2026-09-16):** "we need to figure out some live
 detection engine for field parity since our tests at the moment says it can't be guaranteed to be
 either TFF or BFF". What the tests show so far: fixture A measured TFF against the usual NTSC
-expectation (§6), and capture 4 and capture 3 (two passes of the same tape) appear to pair their fields
-one field apart (§7: the owner's visual review plus a thin numeric check). No method has been chosen yet.
+expectation (§6), and captures 3 and 4 (two passes of the same tape) pair their fields one field apart
+(§7, measured). No method has been chosen yet.
 
 The early header census found 6,160 complete headers identical apart from their
 16-bit counter. This did not provide a per-field order/lock flag, but it also
