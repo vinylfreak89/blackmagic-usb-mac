@@ -31,7 +31,10 @@ static int run_device(cc_stats *st, tally *t, int wait_for_end, int deadline_ms)
     if(rc!=CC_OK) return rc;
     rc=cc_start(s);
     if(rc!=CC_OK){ cc_get_stats(s,st); cc_close(s); return rc; }
-    if(wait_for_end){ int guard=0; while(!atomic_load(&t->ended) && guard++<500) usleep(20000); }
+    if(wait_for_end){
+        int guard=0; while(!atomic_load(&t->ended) && guard++<500) usleep(20000);
+        CHECK(atomic_load(&t->ended),"TIMEOUT: on_end was not called within 10 s in run_device (deadline %d ms)",deadline_ms);
+    }
     else usleep(200000);
     CHECK(cc_stop(s)==CC_OK,"stop");
     cc_get_stats(s,st);

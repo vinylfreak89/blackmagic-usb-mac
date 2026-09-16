@@ -12,14 +12,39 @@
 #include <signal.h>
 #include <stdatomic.h>
 #include <pthread.h>
+#include <time.h>
 static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { fails++; fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); } } while (0)
 static _Atomic int done; static _Atomic uint64_t frames_seen; static _Atomic int sink_stall_us, sink_hold;
 static IOSurfaceRef held_surface;
 static _Atomic int hook_arm, hook_empty, hook_release;
+/* Every wait here has a deadline: FS_TEST_WAIT_S seconds, default 60. On expiry the test fails loudly,
+ * names the wait and exits at once (exit 2). A silent timeout would turn a hang into a false pass, and
+ * carrying on would likely hang again in fs_stop. */
+static double wait_limit_s(void){ const char *e = getenv("FS_TEST_WAIT_S"); double v = e ? atof(e) : 60; return v < 0 ? 0 : v; }
+static double mono_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + t.tv_nsec / 1e9; }
+static void wait_for_end(const char *what){
+    double limit = wait_limit_s(), end = mono_s() + limit;
+    while (!done){
+        if (mono_s() >= end){
+            fprintf(stderr, "FAIL: TIMEOUT after %.0f s waiting for on_end (%s); FS_TEST_WAIT_S sets the limit\n", limit, what);
+            fflush(stderr); _exit(2);
+        }
+        usleep(10000);
+    }
+}
 void fs_test_after_empty_snapshot(frameserver *f){
-    (void)f; if(atomic_load(&hook_arm) && !atomic_exchange(&hook_empty,1))
-        while(!atomic_load(&hook_release)) usleep(100);
+    (void)f; if(atomic_load(&hook_arm) && !atomic_exchange(&hook_empty,1)){
+        double limit = wait_limit_s(), end = mono_s() + limit;
+        while(!atomic_load(&hook_release)){
+            if (mono_s() >= end){
+                fprintf(stderr, "FAIL: TIMEOUT after %.0f s in fs_test_after_empty_snapshot: fs_test_before_producer_done "
+                                "never released the worker; FS_TEST_WAIT_S sets the limit\n", limit);
+                fflush(stderr); _exit(2);
+            }
+            usleep(100);
+        }
+    }
 }
 void fs_test_before_producer_done(frameserver *f){ (void)f; if(atomic_load(&hook_arm)) atomic_store(&hook_release,1); }
 static _Atomic int log_stall_us; static _Atomic int log_stalled;   // storage-stall injection: the first row after arming blocks inside the row lock
@@ -81,7 +106,7 @@ int main(int argc, char **argv){
     CHECK(fs_open(&f, &cfg) == 0, "open");
     atomic_store(&hook_arm,!ring_may_drop); atomic_store(&hook_empty,0); atomic_store(&hook_release,0);
     CHECK(fs_start(f) == 0, "start");
-    while (!done) usleep(10000);
+    wait_for_end("main fixture run");
     CHECK(fs_stop(f) == 0, "stop");
     if(!ring_may_drop) CHECK(atomic_load(&hook_empty),"worker empty-snapshot race hook was not exercised");
     atomic_store(&hook_arm,0);
@@ -119,7 +144,7 @@ int main(int argc, char **argv){
     frameserver *q = NULL;
     CHECK(fs_open(&q, &c5) == 0, "open (slow audio sink)");
     CHECK(fs_start(q) == 0, "start (slow audio sink)");
-    while (!done) usleep(10000);
+    wait_for_end("slow audio sink run");
     CHECK(fs_stop(q) == 0, "stop (slow audio sink)");
     atomic_store(&audio_sink_stall_us, 0);
     fs_stats s5; fs_get_stats(q, &s5);
@@ -157,7 +182,7 @@ int main(int argc, char **argv){
     frameserver *g = NULL;
     CHECK(fs_open(&g, &c2) == 0, "open (pool=1)");
     CHECK(fs_start(g) == 0, "start (pool=1)");
-    while (!done) usleep(10000);
+    wait_for_end("one-slot pool run");
     CHECK(fs_stop(g) == 0, "stop (pool=1)");
     CHECK(fs_stop(g) == 0, "second stop is an idempotent no-op");
     atomic_store(&sink_stall_us, 0);
@@ -200,7 +225,7 @@ int main(int argc, char **argv){
         frameserver *r = NULL;
         CHECK(fs_open(&r, &c4) == 0, "open (small ring)");
         CHECK(fs_start(r) == 0, "start (small ring)");
-        while (!done) usleep(10000);
+        wait_for_end("small-ring run");
         CHECK(fs_stop(r) == 0, "stop (small ring)");
         atomic_store(&sink_stall_us, 0);
         fs_stats s4; fs_get_stats(r, &s4);
@@ -235,7 +260,7 @@ int main(int argc, char **argv){
     frameserver *k = NULL; fs_config c3 = cfg; c3.decision_log = NULL;
     CHECK(fs_open(&k, &c3) == 0, "open (close-without-stop)");
     CHECK(fs_start(k) == 0, "start (close-without-stop)");
-    while (!done) usleep(10000);
+    wait_for_end("close-without-stop run");
     fs_close(k);
 
     // Failed start: replay open happens in cc_start.  It must roll the worker back without
@@ -267,7 +292,7 @@ int main(int argc, char **argv){
     fs_config pc=cfg; pc.decision_log=logp4; pc.surface_pool=1; frameserver *pf=NULL;
     CHECK(fs_open(&pf,&pc)==0,"open (publisher full)");
     if(pf){
-        CHECK(fs_start(pf)==0,"start (publisher full)"); while(!done) usleep(10000); CHECK(fs_stop(pf)==0,"stop (publisher full)");
+        CHECK(fs_start(pf)==0,"start (publisher full)"); wait_for_end("publisher-full run"); CHECK(fs_stop(pf)==0,"stop (publisher full)");
         fs_stats ps; fs_get_stats(pf,&ps); CHECK(ps.publisher_dropped>0,"publisher exhaustion not exercised");
         unsigned named=0; L=fopen(logp4,"r"); while(fgets(line,sizeof line,L)) if(strstr(line,",PublisherFull,")) named++; fclose(L);
         CHECK(named==ps.publisher_dropped,"PublisherFull rows %u != drops %llu",named,(unsigned long long)ps.publisher_dropped);
@@ -292,7 +317,7 @@ int main(int argc, char **argv){
         CHECK(wait_frames(base,30),"frames during A");
         CHECK(fs_log_stop(rf)==0,"detach A"); CHECK(wait_frames(base,45),"frames in the gap");
         CHECK(fs_log_start(rf,lb)==0,"attach B");
-        while(!done) usleep(10000);
+        wait_for_end("runtime-log run");
         CHECK(fs_stop(rf)==0,"stop (runtime log)");
         CHECK(fs_log_start(rf,la)==-1,"attach after stop must fail");
         fs_stats rs; fs_get_stats(rf,&rs);
@@ -326,7 +351,7 @@ int main(int argc, char **argv){
         CHECK(atomic_load(&cb_start_rc)==-1&&atomic_load(&cb_stop_rc)==-1,"log start/stop from the worker callback must be refused (%d/%d)",atomic_load(&cb_start_rc),atomic_load(&cb_stop_rc));
         atomic_store(&log_stalled,0); atomic_store(&log_stall_us,1500000);
         CHECK(fs_log_start(sf,lc)==0,"attach C");
-        while(!done) usleep(10000);
+        wait_for_end("log-stall run");
         CHECK(fs_stop(sf)==0,"stop (stall)"); g_cb_target=NULL;
         CHECK(atomic_load(&log_stalled),"the stall hook did not fire");
         fs_stats ss; fs_get_stats(sf,&ss);
@@ -369,7 +394,7 @@ int main(int argc, char **argv){
         /* a second, clean log in the same session, closed by fs_stop: its verdict must be 0 although the session total is not */
         char le[]="/tmp/fs_test_logE_XXXXXX"; fd=mkstemp(le); close(fd); unlink(le);
         CHECK(fs_log_start(bf,le)==0,"attach E (clean after broken)"); CHECK(wait_frames(bbase,60),"frames in the clean log");
-        while(!done) usleep(10000); CHECK(fs_stop(bf)==0,"stop (write failure)");
+        wait_for_end("write-failure run"); CHECK(fs_stop(bf)==0,"stop (write failure)");
         fs_stats bs; fs_get_stats(bf,&bs);
         CHECK(bs.log_write_errors>0,"injected write failures were not counted");
         CHECK(bs.log_last_file_errors==0,"the clean file closed by fs_stop must have a zero verdict (%llu) despite session errors %llu",(unsigned long long)bs.log_last_file_errors,(unsigned long long)bs.log_write_errors);

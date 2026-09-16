@@ -107,6 +107,9 @@ int  fs_log_stop (frameserver *f);        // -1 if none attached, the close fail
 // Authoritative after fs_stop. During streaming worker-owned members are diagnostic only and
 // may be momentarily inconsistent; atomic ingress counters remain individually safe.
 void fs_get_stats(const frameserver *f, fs_stats *out);
+// Video observations so far. Safe to call while the session runs (one atomic read), unlike
+// fs_get_stats, whose struct copy is only authoritative after fs_stop. For liveness checks.
+uint64_t fs_video_observations(const frameserver *f);
 void fs_close(frameserver *f);
 
 #ifdef __cplusplus

@@ -1,5 +1,5 @@
 // frameserver_replay <capture.tpc> [decision_log.csv] [--pace-us N] [--ring-mb N] [--pool N]
-//                    [--dump-uyvy FILE] [--dump-pcm FILE] [--dump-log FILE] [--limit-units N]
+//                    [--dump-uyvy FILE] [--dump-pcm FILE] [--dump-log FILE] [--limit-units N] [--stall-s N]
 // Run the whole P3 pipeline on a recorded capture (no hardware) and print the accounting.
 // --dump-*: write exactly what the frameserver publishes — every 480i UYVY frame (720x480x2 B,
 // TFF, registration-corrected) and every delivered PCM block (S24LE stereo) — as an ordinary
@@ -8,15 +8,19 @@
 // --limit-units N stops after N published frames (from the control thread, never a callback).
 // Unpaced replay streams at disk speed and deliberately overloads the live path (holes and
 // drops are then REAL and reported); --pace-us 16000 is the device's own cadence (realtime),
-// 8000 is 2x. Exit 0 when the pipeline drained.
+// 8000 is 2x. Exit 0 when the pipeline drained; exit 3, naming the stall, when no new video
+// observation arrives for --stall-s seconds (default 120) and the session has not ended.
 #include "frameserver.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdatomic.h>
+#include <time.h>
 #include <IOSurface/IOSurface.h>
 static _Atomic int done;
+static unsigned stall_s = 120;
+static double mono_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + t.tv_nsec / 1e9; }
 static void on_end(void *c, enum cc_end r){ (void)c; done = 1 + (int)r; }
 static FILE *g_vdump, *g_adump, *g_log; static _Atomic unsigned long long g_frames; static unsigned long long g_limit;
 static void dump_frame(void *c, const fp_frame *fr){
@@ -49,6 +53,7 @@ int main(int argc, char **argv){
         else if (!strcmp(argv[i], "--dump-log") && i + 1 < argc){ g_log = fopen(argv[++i], "w"); if (!g_log){ perror("dump-log"); return 1; }
             fprintf(g_log, "kind,counter_or_ordinal,pts_num,pts_den,d1_or_frames,d2_or_flags,transport_or_resync,audio_pts_known_or_residual,audio_pts_num\n"); }
         else if (!strcmp(argv[i], "--limit-units") && i + 1 < argc) g_limit = strtoull(argv[++i], NULL, 10);
+        else if (!strcmp(argv[i], "--stall-s") && i + 1 < argc) stall_s = (unsigned)strtoul(argv[++i], NULL, 10);
         else if (argv[i][0] != '-') cfg.decision_log = argv[i];
     }
     if (g_vdump || g_log || g_limit) cfg.sink.on_frame = dump_frame;
@@ -56,7 +61,22 @@ int main(int argc, char **argv){
     frameserver *f = NULL;
     if (fs_open(&f, &cfg) != 0){ fprintf(stderr, "open failed\n"); return 1; }
     if (fs_start(f) != 0){ fprintf(stderr, "start failed\n"); return 1; }
-    while (!done){ if (g_limit && atomic_load(&g_frames) >= g_limit) break; usleep(20000); }
+    /* Liveness backstop: on_end is the signal; a pipeline that stops producing video observations for
+     * --stall-s seconds without ending is a hang, reported by name and exit 3. fs_stop is skipped then,
+     * because a hung pipeline can hang it too. */
+    uint64_t seen = fs_video_observations(f); double last_progress = mono_s();
+    while (!done){
+        if (g_limit && atomic_load(&g_frames) >= g_limit) break;
+        usleep(20000);
+        uint64_t now = fs_video_observations(f);
+        if (now != seen){ seen = now; last_progress = mono_s(); continue; }
+        if (mono_s() - last_progress >= stall_s){
+            fprintf(stderr, "frameserver_replay: TIMEOUT: no new video observation for %u s (stuck at %llu) and the "
+                            "session never ended (on_end not called); exiting without fs_stop. --stall-s sets the limit.\n",
+                    stall_s, (unsigned long long)now);
+            return 3;
+        }
+    }
     fs_stop(f);
     if (g_vdump && fclose(g_vdump)) perror("dump-uyvy close");
     if (g_adump && fclose(g_adump)) perror("dump-pcm close");

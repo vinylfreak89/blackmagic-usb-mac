@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 static int fails=0;
 #define CHECK(cond,...) do{ if(!(cond)){ fails++; fprintf(stderr,"FAIL: " __VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
@@ -32,10 +33,33 @@ typedef struct {
 } tally;
 
 static _Atomic int hook_arm, hook_empty, hook_release, hook_fail_alloc;
+/* Every wait here has a deadline: CC_TEST_WAIT_S seconds, default 60. On expiry the test fails loudly,
+ * names the wait and exits at once (exit 2), rather than hanging or passing silently. */
+static double wait_limit_s(void){ const char *e = getenv("CC_TEST_WAIT_S"); double v = e ? atof(e) : 60; return v < 0 ? 0 : v; }
+static double mono_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + t.tv_nsec / 1e9; }
+static void wait_ended(_Atomic int *ended, const char *what){
+    double limit = wait_limit_s(), end = mono_s() + limit;
+    while(!atomic_load(ended)){
+        if(mono_s() >= end){
+            fprintf(stderr, "FAIL: TIMEOUT after %.0f s waiting for on_end (%s); CC_TEST_WAIT_S sets the limit\n", limit, what);
+            fflush(stderr); _exit(2);
+        }
+        usleep(20000);
+    }
+}
 void cc_test_after_empty_snapshot(cc_session *s){
     (void)s;
-    if(atomic_load(&hook_arm) && !atomic_exchange(&hook_empty,1))
-        while(!atomic_load(&hook_release)) usleep(100);
+    if(atomic_load(&hook_arm) && !atomic_exchange(&hook_empty,1)){
+        double limit = wait_limit_s(), end = mono_s() + limit;
+        while(!atomic_load(&hook_release)){
+            if(mono_s() >= end){
+                fprintf(stderr, "FAIL: TIMEOUT after %.0f s in cc_test_after_empty_snapshot: cc_test_before_backend_done "
+                                "never released the backend; CC_TEST_WAIT_S sets the limit\n", limit);
+                fflush(stderr); _exit(2);
+            }
+            usleep(100);
+        }
+    }
 }
 void cc_test_before_backend_done(cc_session *s){
     (void)s; if(atomic_load(&hook_arm)) atomic_store(&hook_release,1);
@@ -84,7 +108,7 @@ static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle
     CHECK(cc_open(&s,&cfg,&cb)==CC_OK,"open %s",path);
     if(!s) return;
     CHECK(cc_start(s)==CC_OK,"start");
-    while(!atomic_load(&t->ended)) usleep(20000);
+    wait_ended(&t->ended, "replay run");
     CHECK(cc_stop(s)==CC_OK,"stop");
     cc_stats st; cc_get_stats(s,&st);
     // stats must tell the same story as the callbacks: cumulative loss, not "pending since last flush"
@@ -194,7 +218,7 @@ int main(int argc, char **argv){
     CHECK(cc_stop(s)==CC_ERR_STATE,"stop before start accepted");
     CHECK(cc_start(s)==CC_OK,"start (lifecycle)");
     CHECK(cc_start(s)==CC_ERR_STATE,"double start accepted");
-    while(!atomic_load(&lt.ended)) usleep(20000);
+    wait_ended(&lt.ended, "lifecycle run");
     CHECK(cc_stop(s)==CC_OK,"stop (lifecycle)");
     CHECK(cc_stop(s)==CC_OK,"second stop must be an idempotent no-op");
     cc_close(s);
@@ -203,7 +227,7 @@ int main(int argc, char **argv){
     cc_session *s2=NULL; tally lt2; memset(&lt2,0,sizeof lt2); lt2.main_thread=pthread_self(); cb.ctx=&lt2;
     CHECK(cc_open(&s2,&cfg,&cb)==CC_OK,"open (close-without-stop)");
     CHECK(cc_start(s2)==CC_OK,"start (close-without-stop)");
-    while(!atomic_load(&lt2.ended)) usleep(20000);
+    wait_ended(&lt2.ended, "close-without-stop run");
     cc_close(s2);
     CHECK(lt2.end_count==1,"close-without-stop on_end count %d",lt2.end_count);
     cc_config badin={0}; badin.input=(enum cc_input)77;

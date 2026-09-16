@@ -597,6 +597,7 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->holes = atomic_load(&f->holes); o->unframed = atomic_load(&f->unframed); o->short_units = atomic_load(&f->shorts);
     o->other_format = atomic_load(&f->other_fmt); o->no_signal_0800 = atomic_load(&f->ns0800);
 }
+uint64_t fs_video_observations(const frameserver *f){ return atomic_load(&f->video_obs); }
 void fs_close(frameserver *f){
     if (!f) return;
     if((f->worker_created && pthread_equal(pthread_self(),f->worker)) ||
