@@ -160,14 +160,16 @@ to a **renderer bug — not the signal, not the player**: the extractor accepted
 755552-byte unit** (tc 5839, 496 B short of 756048) and **read 756000 B anyway, spilling 496 B
 across the next marker** → horizontal raster slip = the green splice. **Fix:** strict extractor
 invariant — `format==0xe801` **and** `gap==756048` **and** `payload==756000`, **never read past
-the next marker**; short units archived separately, never fed to the fixed-raster renderer. Two
-narrower issues stay OPEN: (a) *why* that unit was short; (b) whether Darwin/libusb callbacks ever
-arrive out of submission order.
+the next marker**; short units archived separately, never fed to the fixed-raster renderer.
+The later byte-complete tagged capture establishes that the device itself emits short units
+(census below). Callback arrival order still needs separate verification; framing alone does
+not establish submission order.
 
 **QUALIFIED by `capture_untagged_ring` (ring buffer + writer thread):**
 - ✅ The writer no longer blocks the libusb callback; the 5-min run reported zero ring overflow
   and zero observed video submission-order inversions.
-- ❗ **That run was not full-rate or lossless.** After counter 25026, every video deficit is an
+- ❗ **That run was not full-rate or lossless.** Loss starts at counter 24983 / 209.4 s; after
+  counter 25026, every video deficit is an
   exact multiple of **24,576 bytes**, the normal payload of one old capture_untagged_ring video transfer. Static
   analysis shows `V_NPK=8`, `XFERS=6` queued only ~6 ms of Darwin video schedule. Darwin assigns
   explicit future USB frame numbers and jumps forward when resubmission misses that horizon; an
@@ -273,76 +275,57 @@ across the entire tape was requested, delivered, and recorded — the first capt
 whose completeness is proven from its own tag stream rather than inferred. The 2,877 tick records
 bound any event-loop stall below ~1.04 s (tick jitter max 38 ms, within the 100 ms loop
 granularity — ticks cannot resolve stalls below that; the dispositive continuity proof is
-GAPS = 0). Deck-health substitute test condition 1 (zero scheduled USB holes) is **met**; the
-remaining conditions (fixed geometry, no field-1 plateaus, line-phase stability, no repeats,
-audio continuity) await the content passes. Analyses stream the file by
-seek-walking records; a raw endpoint split is never materialized.
+GAPS = 0). Analyses stream the file by seek-walking records; a raw endpoint split is never
+materialized. Transport completeness does not establish picture quality or source geometry.
 
-**Whole-tape render/content pass:** two bounded passes over the tagged capture (compact stereo
-PCM only; no endpoint/video split) produced a review MP4 plus a registration decision log. Both passes
-reproduced the 46,075,614-record CAP1 census exactly; a complete decode of the result returned
-zero errors. Output: 720×480, SAR 8:9/DAR 4:3, 60000/1001, 172,600 frames, stereo 48 kHz,
-2879.543333 s, 4,420,351,820 B. **USB byte-complete does not mean decoder-unit-exact:** the video
-endpoint contains 86,293 exact 756,048-byte marker intervals, seven short device-emitted units,
-zero absent counters, and zero counter errors. The shorts are counters 4507=371,568 B,
+**Whole-tape unit census:** USB byte-complete does not mean decoder-unit-exact. Across
+86,300 counter periods, the video endpoint contains **86,293 exact 756,048-byte marker
+intervals, seven device-short units, zero absent counters and zero counter discontinuities**.
+The shorts are counters 4507=371,568 B,
 4508=13,008 B, 4509=371,568 B, 4510=371,568 B, 4515=755,824 B, 4520=755,824 B, and
-4701=755,824 B. They retain their observed prefix and use conspicuous fill only for the undefined
-suffix; CAP1 proves they are not host loss. Arbitrary endpoint edges add a 1,652,048-byte leading
+4701=755,824 B. CAP1 packet provenance establishes that these shorts are device-framed, not
+host loss; this closes the question of whether the Shuttle can itself emit short units.
+Arbitrary endpoint edges add a 1,652,048-byte leading
 fragment and 495,376-byte trailing fragment outside the marker-delimited census.
 
-Audio is continuous, but audio resync *metadata* is not perfectly dense: one
-`DeckLinkAudioResyncT` record is absent at 894→896 (sample index 99,177,246). CAP1 audio sequence
-is still complete and no PCM is discarded. The renderer therefore unwraps counter values and
-looks anchors up by value rather than treating audio-row ordinal as frame time. The selected A/V
-window had 138,212,854 samples for a counter-timed expectation of 138,218,080 (5,226-sample /
-108.9 ms deficit over 48 min); the review copy applies `atempo=0.999962190185`. Raw extraction
-does not conceal or resample this.
+The audio endpoint is also transport-complete, but device audio samples and resync metadata
+have localized deficits (audio census below). Unwrap counters and look anchors up by value,
+not audio-row ordinal. Review apertures, renderer and deinterlacer policy are in §7.
 
-⚠️ **Do not call every registration-render decision a measured deck plateau.** The generalized
-one-pass estimator selected `(d1,d2)` counts `(0,0)=63,476`, `(1,0)=19,265`, `(2,0)=2,315`,
-`(3,0)=1,244`, with 2,165 maximal nonzero constant runs; 1,282 of those runs are only 1–3 units.
-The raw decision log is an auditable correction trace, not by itself deck-health ground truth.
-Using an explicitly diagnostic summary rule (bridge zero gaps shorter than 10 s), selections form
-nine high-level clusters: 15.215–975.641 s (chronic +1/+2), 990.089–999.532, 1017.516–1018.251,
-1046.312–1047.446, 1127.760–1128.427, 1459.458–1461.293, 1880.011–1882.814 (+2),
-2669.600–2704.569 (+1), and 2837.201–2879.543 (+2/+3). An independent field-origin census or
-visual/raw-field check must decide which are physical registration events versus estimator chatter,
-especially fades, flat fields, mute/snow, and the 720 one-unit selections. Thus the earlier
-deck-health condition “no field-1 plateaus” is not met by renderer selections, but deck health is
-not falsified by those selections alone.
-
-**Full-tape render + census:** review MP4 720×480 SAR 8:9 (4:3), TFF bob 59.94p, CRF 12, stereo AAC; full `-xerror` decode clean;
-video and audio both exactly 2879.543 s. Unit census over **86,300 counter periods: 86,293 exact
-756,048-B units, 0 absent counters, 0 counter discontinuities — and SEVEN device-short units**
-(ctr 4507–4510, 4515, 4520, 4701; surviving prefixes rendered, bars only on undefined suffixes).
-With transport provably gapless, those shorts are **device-framed: the Shuttle itself occasionally
-emits a short unit.** That closes §6's old open question (a) — capture_60s's short tc-5839 unit was
-device behaviour, not host loss — and vindicates the strict-extractor policy. Audio: PCM
-continuous; one absent resync record (894→896, zero samples lost); cumulative device-vs-nominal
-clock offset **5,226 samples / 48 min ≈ 36 ppm** (atempo 0.999962 in the watch copy only).
-Registration: the corrector chose nonzero field-1 offsets in 2,165 runs, but **1,282 lasted 1–3
-units — estimator chatter, explicitly NOT deck-health evidence**; after bridging, nine candidate
-regions remain (largest 15.2–975.6 s and 2837 s–end), pending raw-field/visual confirmation.
-Deck-health conditions 2–6 therefore stay OPEN pending that inspection.
-
-**NTSC-M setup: no preserved pedestal in this capture.** Fade-bottom/black frames in fixture A measure **median Y ≈ 12–17** with
-sub-black excursions — with p95 ≈ 22–24 these frames **cannot represent ordinary 7.5 IRE setup
-(expected Y ≈ 16 + 219×0.075 ≈ 32)**. That is the supportable claim; the measurement does NOT
-establish where setup vanished, nor that "US black became Y12" (8 frames is thin; dark program
-content can legitimately contain superblack/crushed fades). **THREE unapportioned stages, not
-two:** the 1998 broadcast→cable→VCR chain, the DHX2's playback processing, and **the Shuttle's
-own analog decoder** — a Y16 result from any test downstream of tape cannot separate the last
-two. The commercial-tape capture is a worthwhile *real-world* test (pro duplication makes setup
-plausible, not guaranteed), but the **decisive test is a calibrated NTSC generator into the
-Shuttle directly, with and without setup** — that isolates the Shuttle; then the deck with a
-known signal. Method upgrades for the next pass: gate on low spatial variance + neutral chroma +
-unimodal luma histogram (not just p95); report the histogram mode (median biases on detail);
-measure setup as **black-minus-same-line-porch** (that difference IS setup); require the black
-peak to settle across contiguous frames. **Renderer implications (adopted):** the Y16/C128
-hard-padding ruler stays valid (device-generated, says nothing about program black); classifiers
-and registration landmarks must treat program black as **relative/adaptive, never assume Y16**;
-any future presentation-side setup removal is an affine remap from measured black/white — and the
-archival stream is never touched.
+**NTSC-M setup: preserved in the measured black-card sample (2026-09-09).**
+**The measured 0 IRE reference is code ≈ 1.5, not 16**, established three
+independent ways: the vertical-interval lines carry a device-WRITTEN dithered constant 1.375 (identical in all five
+captures, spread 0.0007; its lag-1 autocorrelation of −0.33 is the high-pass signature of dither, so it is written
+rather than digitised); each picture line's own horizontal blanking reads 1.459–1.53; and the relay-muted composite
+units, whose active area goes through the same decode path, read 1.533. Against that zero, 7.5 IRE lands near code
+18, and it is there. Measured on 95 units of a full-frame black card on the commercial tape, using each line's OWN
+blanking as its 0 IRE reference (the classical black-minus-porch measurement, needing no device constant): blanking
+mean 1.459 and finished by code 7; picture black beginning at code 12, peaking at 17–18, mean 17.699; **a separation
+of 16.22 codes against those same lines' blanking and 16.32 against the vertical interval, which is 7.45 IRE at
+BT.601's 219 codes per 100 IRE — NTSC-M setup is 7.5.** It is a jump, not a slope: codes 8–11 carry about five
+samples per million, and the skirt below code 15 is the black's own noise (0.0296% observed in codes 3–12 against
+0.0506% predicted by a Gaussian at the measured mean and sd), not a ramp into blanking. No clipping at black either:
+16.4% at code 16, 24.8% at 17, 24.4% at 18, a smooth distribution with tails ~10× heavier than Gaussian, where a
+clamp would make them lighter. Nothing at code 0 or 255 in any capture.
+**What IS truncated is sub-black.** With 0 IRE at ≈ 1.5 there is half a code below blanking, so every excursion
+under 0 IRE is lost at the floor: the composite capture has 2.576% of samples at code 1 against 0.352% at code 3, a
+ratio of 7.3, traced to composite edge undershoot at sharp white text. With black at 16 those would survive to −7
+IRE. The black level is not squashed; sub-black content is.
+**Attribution is not separated by these measurements:** within one tape, one deck and one S-Video input, black
+sits at ≈ 9 in the SP passage, floor-crushed at 2,100 s, and ≈ 24 at 2,700 s — a range as wide as the pedestal
+itself. The Shuttle's generated line-21 insert measures 119 codes above blanking on both inputs
+(117 on the EP captures), but 125–126 with no input. That establishes an insert-level comparison,
+not an isolated measurement of how its analogue decoder treats source black. The
+device's no-signal output sits at exactly the captures' blanking level (1.3749 against 1.3750–1.3756).
+The upstream recording chain, deck playback processing and Shuttle decoder are not separately
+identified by a tape measurement; fixture A's level variation is not a calibrated decoder test.
+**No level correction** (owner, September 9): "we don't need to match studio levels LOL. this
+is consumer grade VHS tape." His bar is no unwanted clipping or level fix, with the tape appearing
+as intended. He accepted the recording VCR's AGC as the explanation for fixture A's variation
+and closed the question without further measurement; that attribution is not an isolated-stage
+measurement. Nothing in the delivery path remaps levels. The Y16/C128 hard-padding ruler remains
+valid but says nothing about programme black; source-level measurements use the source reference,
+not an assumed Y16 black point.
 
 **Deterministic replay (`experiments/libusb_replay_shim.c`):** link the unmodified
 capture code against the mock instead of `-lusb-1.0` and it replays a `.tpc` through the REAL
@@ -366,24 +349,15 @@ could never make), 0 iso errors, 0 inversions, 0 HostLoss, ring high-water 0. 47
 corrupt. Shutdown cancellations are now accounted separately from
 errors, and fleet size is reported from before cancellation.
 
-**Damage-review rerender:** the obsolete whole-interval prefix placement is replaced
-by a 24,576-byte transfer-grid reconstruction. Marker endpoints plus **1,890 uniquely placeable
-complete hard-padding blocks** constrain the grid; ordered transfers in the remaining spans use a
-same-position temporal content cost. All **5,225,562,336** captured video bytes in the rendered
-counter range are represented exactly once; **781,239,024** absent bytes are conspicuous synthetic
-color bars. Of 7,945 units, 6,160 are exact, 1,781 partial, and 4 wholly absent. Two damaged
-intervals have no complete padding anchor; three false/inconsistent padding-like runs are rejected.
-The three startup fragments and truncated final interval are not individually 24,576-quantized and
-use a separately named padding-bracketed fallback. **Do not overclaim this reconstruction:** a
-synthetic-drop test falsified temporal matching as byte-position-authoritative on fades/uniform
-gray. Only marker/padding anchors are hard evidence; every other slot choice is labelled diagnostic
-in the decision CSV. Tagged capture_tagged_bench data must use packet provenance instead of this rescue path.
+**Untagged damage reconstruction:** marker endpoints and uniquely placeable hard-padding
+blocks are hard position evidence. Temporal matching between those anchors failed known-answer
+tests on fades/uniform grey; such placements are diagnostic, not byte-position-authoritative.
+Tagged captures use packet provenance instead of this rescue path.
 
 **Design decisions:**
-- **Correction-decision log:** the real-time corrector MAY rely on band modes without a stable
-  video anchor **provided** every per-unit decision `{d1, d2 or Unknown, mode, confidence}` is
-  logged in real time to an optional sidecar — corrections are real-time in the driver; the log
-  is the post-fixup escape hatch, not lookahead.
+- **Correction-decision log:** record per-unit registration decisions, their evidence and
+  unavailable measurements in an optional sidecar. This supports later audit/repair; it does
+  not authorize a particular estimator or lookahead on the live path.
 - **Review-encode damage policy:** never blank or repeat. Render corruption **as-is** (surviving
   bytes at their positions); genuinely absent bytes get an unmistakable standard-NTSC-style
   no-signal fill, documented, with the placement assumption stated for untagged captures. Purpose:
@@ -407,9 +381,9 @@ re-registration of a 480i recording lacks the 1–3 raster lines outside the cro
 in the head-switching / line-21 region, so the accepted archival repair is an edge-duplicated or
 estimated whole-line shift, recorded in the sidecar as a substitution. Where lossless repair is
 actually wanted, a `.tpc` of that segment (explicit debug sink; requires replaying the segment)
-is patched into the recording. Expected consumer need for either path is ~0.1%. The one live-path
-requirement this imposes: the sidecar carries per-unit applied `(d1,d2)`, the observation that
-produced it, and the interval label, so an offline pass can locate and re-shift affected units.
+is patched into the recording. The live-path requirement is that the sidecar carries per-unit
+applied field placements, the observations that produced them and the interval label, so an
+offline pass can locate and re-shift affected units.
 
 ### Untagged video+audio mix is RECOVERABLE (proven with `capture_render.py`)
 
@@ -445,8 +419,7 @@ recovers *what crossed the bus*; it cannot recover what the host never asked for
 "6,160 units, all exactly 756,048 B" result as evidence the capture was lossless — the units that
 *survive* are exact, which is a different claim.
 
-**Field order: TFF, verified empirically** — stored chronological field 1 → **top** field, built as
-720×480 from source lines 17..256 and 280..519, bobbed with `bwdif=mode=send_field:parity=tff`.
+**Field order: TFF in the tested capture** — stored chronological field 1 → **top** field.
 The credit roll is the disambiguator: TFF gives **0.0345 px** mean motion alternation vs **0.759 px
 (±1.7 px excursions)** for BFF. Note this **contradicts the usual NTSC-SD-is-BFF expectation** —
 trust the measurement, and re-measure per capture rather than assuming.
@@ -460,19 +433,20 @@ exercisable against recorded damage (program cut, deck-blank/relock, short units
 ### Signal-state timeline — measured over the full 5-min capture
 
 **❌ The "no-signal rewind" never happened — the assumption was wrong.** With the tape stopped and
-heads disengaged, the deck does **not** drop its output: it emits its own **grey mute screen with
-the Japanese OSD and a running tape counter** (visibly `0:23:58 → 0:25:24 → 0:03:31 → -0:00:13`).
+heads disengaged, the tested deck configuration retains output: a **grey mute screen with
+OSD and a running tape counter**.
 Consequences:
 - **`0x0800` never occurs anywhere in this capture** (0 hits in 5.57 GB); no green pseudo-frames,
   no ~30.13 Hz cadence. Format stayed `0xe801` and the rate stayed **29.97003 fps exactly**
-  throughout the "dead" window. **Device true-no-signal behaviour is UNTESTED** — to exercise it,
-  disconnect the S-Video cable or power the deck off; stopping the tape is not sufficient.
+  throughout that window. Stopping the tape was not a no-input test; the later disconnected-input
+  measurement is recorded below.
 - The blank raster is **near-neutral grey, NOT green** (Y 120.6 ±0.1, U 129.9, V 127.3).
-- Two runs of **exactly 19 frames** bracket the blank period with **sub-blanking luma (Y 1–2,
-  below the 16 black level)** and chroma pinned at 128 — not a legal digitized picture, most
-  likely the deck's output relay muting to 0 V.
+- Two runs of **exactly 19 frames** bracket the blank period with **luma Y 1–2** and chroma
+  pinned at 128, near the measured blanking floor rather than Y16 programme black. The working
+  explanation was the deck's output relay muting to 0 V.
 
-**Deck mute policy (measured; the virgin-tape row is visually observed, not USB-verified):**
+**Deck mute observations (including the later tagged virgin-tape measurement):**
+
 | Deck state | S-Video output |
 |---|---|
 | Non-playback transport mode (stop, rewind, FF) | grey mute + OSD |
@@ -501,11 +475,63 @@ result in §9 — and note the `214/16` status register is still un-probed acros
 
 **→ Signal-state classification is therefore a real design problem. Do NOT reduce it to one
 `signal_valid` boolean.** Three separate layers, each recorded:
+
 1. **Transport state** — exact unit / partial unit / packet hole / absent video / counter discontinuity.
 2. **Raster appearance** — program-like / snow-like / deck-grey / sub-blanking mute / device
    no-signal / flat-ambiguous.
 3. **Source-state inference** — present / reacquiring / deck-muted / no input / **unknown**, with
    confidence.
+
+**`SubBlackMuteLike` on a degenerating passage is NOT a mislabel** (owner, 2026-09-09): "the label sub mute black
+like is not a miss. that is actually what the picture looks like before it degenerates into snow." Measured at 27:18 on fixture A (unit
+index = device counter − 4511), the sequence through a signal stop is **programme → wrecked → sub-black →
+snow-like → deck grey mute → programme**, with these boundaries:
+
+| units | time | mean | std | adjacent-row corr | temporal corr | stage |
+|---|---|---|---|---|---|---|
+| 49095–49104 | 27:18.14–.44 | 60–62 | 48–51 | 0.89 | 0.98 | programme |
+| 49105–49112 | 27:18.47–.70 | 17–72, swinging | 31–92 | 0.56–0.77 | −0.17 to +0.26 | wrecked |
+| 49113–49117 | 27:18.74–.87 | 8–16 | 6–29 | 0.93–0.98 | — | sub-black |
+| 49118–49125 | 27:18.90–27:19.14 | 17→41 | 31→48 | 0.62 → 0.18 | 0.77 → 0.21 | snow-like |
+| 49126–49163 | 27:19.17–27:20.41 | 117 | 16 | 0.75 | 0.998 | deck grey mute |
+
+The sub-black stage is a real appearance, not a level error to fix. The historical classifier
+also called torn and snow-like units programme or mute, and retained a sub-black label onto
+grey mute. Those are separate classifier observations, not evidence of a registration state.
+
+**Whole-tape signal-state audit — historical results, September 9, over all 86,293 units
+(independent instrument joined to that revision's classifier log).** These are observations and
+failure cases, not the current classifier's score or a replacement specification. **The tape carries three
+genuine non-programme events totalling 10.9 seconds**, every one confirmed on the raw 525-line raster — the tape
+start (units 0–214: deck grey mute with OSD, then a completely black raster, then relock snow), the boundary
+between the two recordings (43,678–43,729, one torn unit then snow then grey mute), and 27:18 (49,105–49,163, nine
+violently torn rasters then black, snow, grey mute). The deck's grey-mute fingerprint (mean 115–125, σ 14–18,
+temporal r > 0.99 in both fields) matches 228 units in six runs and **every one lies inside those three events**.
+A ~99-run flat list reconstructed to the same shape is **96% ordinary programme**: 54 runs vertically coherent
+throughout, 21 carrying saturated chroma, 15 fade bottoms. Five 9-unit sequences at units 45719/48115/48642/49560/
+57488 have matching statistics in matching order and a large coherent saturated U plane where relock snow carries
+no chroma at all: recorded content, not noise.
+**In this audit, `SnowLike` fired only twice** (43,693–43,694), both on real snow; no programme
+was labelled snow. The other observed errors were:
+
+- **The tested `SnowLike` rule lacked temporal and vertical-coherence terms** (`luma_sigma > 35 && spatial_gradient_energy > 30 && program_extent_fraction > 0.50`). Torn rasters retaining high sigma/gradient read as programme, including the 27:18 event and tape-start relock units 196–212. At 49,106/49,109/49,112 adjacent-row correlation remained 0.95–0.97 while temporal correlation was ≈ 0: vertical coherence alone did not distinguish those torn rasters, while the temporal measurement separated these examples.
+- **The appearance latch is asymmetric.** The logged appearance is `stable_appearance`; `SubBlackMuteLike` (like `DeviceNoSignal0800`) installs with NO confirmation while leaving it needs three consecutive identical observations. At 49,126–49,136 it therefore persisted 11 units (0.37 s) onto a raster measuring mean 117–118 — the deck grey mute — with confidence 1.00 and nothing in the raster changing at the switch. This is the "sub-black label on grey" the owner saw.
+- **`NeutralGrayMuteLike`'s rule tests uniformity, not greyness**, so 253 units of near-black programme (mean 15–38, against the deck's actual grey mute at 117) carry a label and a `Muted` source that assert a deck mute. 122 false positives in all, none of them snow.
+
+**Replay caveat found by the same audit:** unpaced replay overflowed its ring without a failing exit code. On
+`fulltape.cap6` it produced 20,933 holes and only 991 exact units, then **exited 0**: the 256 MB capture ring
+overflows against a reader going at ~1 GB/s, its HostLoss becomes parser holes, and the tool prints no
+capture-level loss counter. Re-run at `--pace-us 8000` (2× realtime) it is 86,293 exact, 0 holes, 0 drops, ring
+high-water 0. Use `--pace-us 8000` for a whole-tape replay, or a ring larger than the file for a slice; never
+trust an unpaced whole-tape run's exit code.
+
+**Commercial-capture opening** (owner, September 9): the examined source begins with near-blank
+output and sparse white specks before picture arrives, consistent with the deck playing tape
+without usable RF rather than a flat relay mute. The owner accepted leaving its initial
+mute-labelled interval unregistered: "It's the tape coming in... You are trying to do the
+impossible which is register the difference between the first fade from black on tape and real
+picture. That should stay unregistered." This source-specific decision does not make every
+near-black programme interval a mute. Capture-1 selection and field-arrival details are in §7.
 
 Useful features: exact hard-padding runs + VBI-signature confidence; active-area luma/chroma mean,
 robust variance, percentiles; fraction of neutral-chroma and sub-black pixels; spatial gradient
@@ -528,7 +554,7 @@ duration, transport history.
 ⚠️ **Generalize by property, never by this deck (design rule).** Every state above was measured
 through ONE deck (a JVC D-VHS with a TBC that launders everything into a valid raster). Other
 sources will behave differently: a TBC-less VCR can emit genuinely unlocked signal (and the
-Shuttle's real `0x0800` path, still unexercised, will finally fire); mute screens vary per deck
+Shuttle's response to unlocked video is not established by the no-input test below); mute screens vary per deck
 (grey here, blue elsewhere, black, OSD or none); relock transients differ. Define every classifier
 state by its **observable signal properties** (luma/chroma statistics, coherence, temporal
 behaviour), not by "what the HM-DHX2 does" — deck-specific knowledge may *inform* an inference
@@ -614,35 +640,36 @@ submission-order reconstruction (API now promises callback-completion order + ta
 inversion mock exists); live stats are after-stop-authoritative; the sidecar's full raw-evidence
 columns; audio serving.
 
-**The hard-padding ruler is SHUTTLE-side digital fill — measured 2026-09-03.** All 18 padding lines
-(0–6, 261–269, 523–524) are exactly Y16/C128 with zero variance in every `0xe801` unit, including
-34 units captured with **no deck connected** and 300 with the deck on an unconnected input, so no
-deck signal can ever land there: whatever the deck pushes past line 260 (field 1) or 522 (field 2)
-is gone at the device, and a crop that reads into the padding reads legal black, not a
-substitution. The four near-blank lines under each field (257–260, 519–522) ARE digitized signal:
-Y ≈ 1.4 ± 0.5 with no input, but on the program tape they average Y31 ± 29 — picture reaches into
-them — so any bottom-edge detector must measure against the field's own content, never a fixed
-blank level. Measured per-line geometry (3,000-unit average): field-1 picture lines 20–256, field-2
-282–518; VBI signature lines 17/19 and 280; ~10 lines of decoded blanking above each picture, 4
-below, then padding.
+**The hard-padding ruler is Shuttle-side digital fill — measured September 3.**
+All coordinates in this paragraph are **zero-based storage rows**, not NTSC line numbers
+(convert with §7's rule). The 18 padding rows (0–6, 261–269, 523–524) are exactly Y16/C128
+with zero variance in the examined `0xe801` units, including 34 with no deck connected and
+300 with the deck on an unconnected input. Content beyond row 260 in field 1 or 522 in field 2
+cannot be recovered from those padding rows; reading them returns device fill.
+The four near-blank rows below each field (257–260, 519–522) were not hard padding:
+Y ≈ 1.4 ± 0.5 with no input, but averaging Y31 ± 29 on the programme tape.
+A 3,000-unit average found picture at rows 20–256 / 282–518, VBI signatures at 17/19 and
+280, about ten decoded-blanking rows above and four near-blank rows below, then padding.
+Those are population observations, **not output-aperture definitions or fixed picture bounds**.
 
-**The "36 ppm audio clock offset" was WRONG — measured 2026-09-03 over every resync interval of the
-whole-tape capture (86,302 intervals, transport byte-complete):** 51,773 intervals of 1602 samples
+**Whole-tape audio timing — measured September 3 over all 86,302 resync intervals,
+with transport byte-complete:** 51,773 intervals of 1602 samples
 and 34,522 of 1601 — a steady-state mean of **exactly 1601.6 samples per unit, i.e. the audio
 sample clock is locked to the video unit clock with no measurable rate offset.** The entire
 5,557-sample deficit sits in **seven intervals**: five at capture start (counters 4506–4510:
 1272/787/28/787/787 samples — the same units the device emitted short on the video endpoint, a
 device startup hiccup), one at **1021.5 s** (counter 35119: 1579 samples, 23 short) and one at
-**2066.2 s** (the absent resync record 894→896: 2020 samples over two units, ~1,183 short). The
-two mid-tape events are **audio-endpoint-only device events**: video was Exact/Present/stable
-registration on both sides of each, and neither coincides with a cut, relock or mute in the
-decision log. Not periodic, not a clock. **Consequences:** the whole-tape review copy's global
-`atempo` was the wrong treatment (it smeared ~110 ms of localized loss across 48 min); an A/V
+**2066.2 s** (absent `DeckLinkAudioResyncT` record 894→896, sample index 99,177,246:
+2020 samples over two units, ~1,183 short). The two mid-tape events are **audio-endpoint-only
+device events**: video units remained exact, with no coincident cut/relock/mute identified in
+the audit. Transport completeness does not imply the device supplied every expected audio sample.
+**Consequences:** global tempo correction is not justified by these localized deficits; an A/V
 adapter must apply the audio publisher's **correlation residual only where it steps** (a
 discontinuity event: advance audio time by the lost samples once, flagged) and never resample
 continuously; video timestamps come from the unit counter and audio from the sample count, which
-agree exactly between events. The earlier P4a "audio-as-master, one repeated frame per 15 min"
-reasoning is withdrawn — there is no rate mismatch to absorb.
+agree exactly between events. The earlier ≈36 ppm/`atempo` interpretation and periodic
+video-repeat proposal were withdrawn: these measurements show localized discontinuities, not
+a steady clock-rate mismatch.
 
 **✅ Audio is a viable continuity master** (validates §9's approach): 8,991 resync records,
 counter `18706 → 27696`, **every step exactly +1, zero exceptions** — across the splice, the stop,
@@ -656,8 +683,7 @@ locate every deck event. ⚠️ Caveats: no 16-bit wrap occurred (27,696 < 65,53
 remains untested**, and **counter continuity does not prove audio-payload completeness** — the
 startup intervals are proof that the two are separate claims.
 
-**Transport collapse is worse and earlier than recorded:** loss begins at **ctr 24983 / t 209.4**
-(not ctr 25026), ramps 99%→60%→~40%→~19%, and the video endpoint delivers **zero bytes from ctr
+**Untagged transport collapse:** the delivered fraction falls 99%→60%→~40%→~19%, and the video endpoint delivers **zero bytes from ctr
 26651 / t 265.1 to the end** — 1,046 counters, ~794 MB never requested — while audio continued
 untouched (consistent with the high-rate endpoint suffering far more from the shallow queue, not
 proven). **Everything after t≈209 is excluded from source conclusions.** 730 of 733 short units are
@@ -673,191 +699,341 @@ stated reason ("the magic occurs inside UYVY content") was wrong for this materi
   pre-host corruption. (Do NOT drop to 1 transfer in flight — it changes scheduling and proves
   nothing.)
 
-## 7. The core problem: unstable field parity on degraded sources
+## 7. Registration: current question, sources and accumulated evidence
 
-Field "**flipping**" is **not source-stable** — it drifts within and across tapes, so **no
-single global BFF/TFF flag can fix it.** Precise terms (keep them distinct):
+This section keeps the useful evidence and the short history, not a prescribed
+replacement algorithm. Measurements below belong to the named material and
+instrument; they are not rules for every tape. Main's implemented behavior and
+the later v10 experiments are distinguished in §11.
 
-- **Spatial parity** — top/even vs bottom/odd raster phase.
-- **Temporal order** — which field occurred first.
-- **Pairing phase** — which two fields the Shuttle grouped into one transport unit.
+### The question we are trying to answer
 
-### ✅ ANSWERED — it is a **spatial field-ORIGIN slip**, not a temporal/order problem
+The owner's September 14 description: find the data-like lines, where real
+picture begins, and the blanking lines between them. Waveform recognition is
+being pursued because it may supply a stable top-of-picture landmark. Automatic
+measurement matters; asking a person for each crop or shift leaves that question
+unanswered.
 
-**The central question of this project is resolved, and the earlier framing below was wrong.**
-The visible "flip"/registration jump is a **spatial vertical registration error measured in whole
-raster lines** — **not** temporal order, **not** pairing phase, **not** cadence.
+The current top pattern being investigated is line 21's caption in both fields,
+then line 22's caption/waveform/blanking, then picture. At the bottom, the owner
+is looking for a fully blanked line bounding the picture, with the head-switch
+region included in the geometry. These name signal objects, not a fixed set of
+storage rows to inspect.
 
-> **⚠️ CORRECTED (full-capture census, 6,160 intact units).**
-> The first version of this section said *"field 2's start line drifts across 274–285."* **That is
-> false.** Measured against three independent anchors:
-> - **The transport raster is rigid.** `f1_origin=17` (99.35%), `f2_origin=280` (99.25%), spacing
->   **263** (99.27%), and **100% of consecutive frame pairs are unchanged** on both fields.
-> - **What actually moves is FIELD 1's PICTURE, translating down 1–2 whole lines** — field 2's
->   picture translated **0 lines in 4,042 of 4,042** rigidly-measurable units. The whole frame
->   never shifts together. So the varying quantity is the **inter-field spacing**, and field 1 is
->   the field that slides.
-> - **It is episodic, not chronic:** confirmed translations occur only in counters 24533–25025
->   (~16 s), as bursts of multi-frame plateaus (median 4 frames, max 44) that return to nominal
->   in between.
-> - **The "274–285 wander" was estimator noise.** Comb/weave scoring **can only ever constrain
->   f2−f1**, never an absolute origin (shifting both fields together leaves the weave intact).
->   42% of its off-263 picks had a median relative margin of **0.027** vs **0.587** for confident
->   picks. **Never report a best-weave candidate as an observed physical VSYNC location.**
->
-> **Anchors that broke the tie** (use these, not comb, for geometry): the device inserts a
-> **hard-padding ruler** — `Y==16 & C==128`, zero variance — at lines **0–6, 261–269, 523–524**
-> (byte-identical in 6,159/6,160 units); decoded analog blanking sits at Y≈1.4; and each field
-> carries a **2-line VBI signature**, with **field 2's a line-for-line replica of field 1's,
-> offset exactly 263**.
->
-> Two traps that produce wrong numbers: dark picture content moving only a field's *top* edge
-> (check the bottom edge too — it stayed put), and a **flat bright field** (counters 23335–24380)
-> flooding the normally-blank lines past any threshold while spacing stays 263.
+The physical idea is that a reliable top and bottom gauge should move together
+when picture position changes: extra blank space below for an upward shift,
+above for a downward shift. An isolated content-edge change is not the same
+observation. This is the owner's current line of investigation, not evidence
+that the existing gauges already implement it correctly. Field order and
+relative alignment also need to be established to produce a coherent weave.
 
-Consequences, all large:
+The September 14 pause is for understanding the accumulation of complexity.
+This rewrite does not authorize another detector or select a new model.
 
-- **The fix is pure spatial line selection**, and its **direction matters**. Correct by holding
-  **field 2 fixed at 280** and moving **field 1's crop**: nominal `17/280`, field-1 displaced +1 →
-  `18/280`, +2 → `19/280`. ⚠️ Holding field 1 at 17 and pulling field 2 to `279`/`278` yields a
-  mathematically identical *weave* but is **backwards** — it makes the stable field chase the
-  displaced one, so absolute program placement jumps. (An earlier `17/278` example here was wrong.)
-  Describe the phenomenon as **field-1 program-layer displacement within a fixed raster, with
-  bottom clipping** — not an unconstrained whole-picture translation. Because nothing is reordered,
-  the correction **cannot disturb cadence or A/V sync** — a whole class of feared damage does not
-  apply. Naming should follow the physics: measure *inter-field registration*, not "field 2 origin";
-  keep the observed transport starts `17/280` immutable; record the chosen correction **separately
-  from the observation**.
-- **No dynamic TFF/BFF, no cadence matching, no field reordering.** Ordering stays chronological.
-  (This retires the §9 worry about Viterbi-scored temporal hypotheses for the *common* case.)
-- **Real-time feasible:** the 12-candidate origin search ran at **6.84 ms/decision in unoptimized
-  Python/NumPy** against a **16.68 ms** field budget (and a decision is usually needed only once
-  per 33.37 ms transport unit). C/NEON/Accelerate leaves ample headroom.
-- **It belongs in the frameserver stage, NOT the USB callback**, and costs ≲1 field of latency.
-- Detection must not rely on comb-scoring alone (motion can fool it). Production detector:
-  VBI/active-line boundary cues + same-parity temporal registration + motion-masked comb scoring
-  + a small discrete offset search + **hysteresis** (keep the previous origin when ambiguous).
-- ⚠️ Also observed: a *localized* H-sync/chroma-phase disturbance at the top active lines of
-  field 2 (line ~21) — **distinct** from the whole-field origin slip, present in the raw fields and
-  on the deck's own HDMI/TV output. So a single event can combine whole-field registration
-  displacement **and** a within-field H-sync/chroma fault. Don't model it as one phenomenon.
+### Coordinates and layers
 
-#### Where the fault lives — the OSD is the witness (re-confirmed on the raw raster, 2026-09-04)
+Use **NTSC line numbers when talking to the owner**, not storage rows.
+For this raster, NTSC line = zero-based storage row + 4 in both fields:
+field-2 rows 279/280/282 are lines 283/284/286.
 
-> **Evidence status (2026-09-04 evening).** For about an hour this section was marked falsified
-> on a chat remark that "the OSD does not stay put"; the owner then re-checked the RAW
-> full-raster render frame by frame (`render_full_raster.py --raw`, no crop shift) and confirmed
-> the original observation: **the OSD itself does not move; the picture content behind it
-> does.** The earlier remark described the CORRECTED render, where the OSD must move by exactly
-> the applied correction because the crop window shifts to hold the picture still — expected,
-> and a usable acceptance check (OSD displacement in the corrected output == applied `d`). The
-> witness therefore stands, with better provenance than before (raw raster, not an `estdif`
-> render). Combined with the measurement that lines 20/21 are the Shuttle's, inserted relative
-> to its detected sync and rigid through the events (§6), the picture is: the Shuttle locks
-> correctly to a stable deck output raster, the deck composites its OSD into that raster, and
-> the program layer is displaced upstream of the OSD compositor. The Shuttle stays ruled out as
-> primary; tape versus deck remains open (second-deck A/B below).
+- **Storage row:** zero-based row in a delivered raster.
+- **Raster line:** NTSC numbering used in a particular report; field-relative
+  numbering and whole-frame numbering must not be mixed.
+- **Source line:** the line carried by the source, which can land at a different
+  raster position after displacement.
+- **Temporal order:** which field happened first; distinct from spatial parity
+  and from which fields the device grouped into a transport unit.
 
-The deck's **OSD stays coherent at nominal raster coordinates while the program picture is
-displaced**, and correcting the whole field repairs the program picture but **tears the OSD**.
-Two layers with *different* registration is decisive: had the Shuttle misdetected output VSYNC it
-would have shifted program **and** OSD together, and could not have produced the split. So the
-fault sits in the **deck's program-video path, upstream of its OSD compositor** — the deck emits a
-**stable regenerated raster** and places the program layer at the wrong line inside it. Consistent
-with the census (rigid transport raster, moving picture content).
+The measured NTSC unit contains 525 rows of 720 UYVY samples after its 48-byte
+header (§6). Main's 480i aperture begins at storage rows 19/282, labelled NTSC
+23/286. Early tools instead called 17/280 their origins because they included
+the insert region. A number from one convention is not a crop in the other.
+The 480-line output has 240 selected rows per field; that does not establish
+which source rows were delivered or where their boundaries lie.
 
-This also explains the CRT question: a CRT locks to the **stable regenerated sync — which never
-moves** — and simply draws displaced content, hidden by overscan and spot size. It only rolls or
-jumps if actual output VSYNC moves, and here it doesn't. *(Corrections to earlier reasoning:
-classical CRT **vertical** sweep is a **triggered relaxation oscillator** — the flywheel/AFC lives
-on **horizontal**, so "vertical flywheel averaging" was wrong. And **flagging is not the analog
-form of this error**: flagging is horizontal line-time error, a separate failure mode that may
-merely share an upstream trigger.)*
+A row is a time sweep. In the recorded timing model, 720 delivered samples cover
+about 53.33 µs of a 63.56 µs line; the full line is 858 samples at 13.5 MHz.
+The omitted 138 samples matter for censoring. An unobserved switch instant is
+not an entirely unobserved blanking interval: the nominal 10.9 µs blanking
+interval is about 147 samples, wider than that omitted region. These numbers
+constrained an earlier synthetic example; they do not locate an actual switch.
 
-**Still unresolved — tape vs deck.** Not settled by this capture: the census cannot separate "the
-deck delivered field 1 one line late" from "the Shuttle sliced field 1 one line differently", and
-the OSD evidence rules the Shuttle out as *primary* without identifying whether the trigger is
-recorded tape timing, control-track/servo trouble, deck misadjustment, or simply this deck
-family's policy for a legal-but-ugly signal. **Cheapest decisive test:** play the same passage on
-a **known-good older analog S-VHS deck** through the same Shuttle and settings — same displacement
-at the same tape location ⇒ tape/recorded-timing origin; clean registration ⇒ the D-VHS deck's
-servo/digital processing. (Gold standard would be a two-channel scope on S-Video Y plus the deck's
-head-switch/PG test point, but the second-deck A/B is cheaper and answers the practical question.)
+**Colour burst:** the normal burst (5.300–7.814 µs after 0H) ends before
+the delivered window starts (122 samples / 9.037 µs). The relocated-blanking
+probe also found no recoverable burst, while recovering injected controls.
+That is the measured limit of this raster/probe, not a result about raw RF.
+See `experiments/burst_probe.py` and `experiments/switch_cohort/BURST_RESULT.md`.
 
-**General registration model (replaces the field-2-origin model in the proof renderer):** per unit,
-estimate a **signed integer program-layer offset per field, or `Unknown`** —
-`{transport field starts (observed) · d1 · d2 · relative = d2−d1}` — searching candidate **pairs**
-`(d1, d2)` over configurable bounds, corrected crops `17+d1`/`280+d2` for this format, **no field
-permanently designated the anchor**. Hard padding + VBI give the transport ruler but cannot see
-program-layer displacement; comb constrains only `d2−d1` (common-mode-blind); **absolute** offsets
-need same-parity temporal registration, active-picture landmarks, or a learned stable segment —
-and when those are insufficient (flat fields, snow, cuts) the estimator publishes `Unknown` or
-relative-only rather than arbitrarily anchoring a field. The segment model *learns* which field
-(if either) is stable, normal placement, plausible offset range, and transition/hysteresis costs.
-This capture resolves as `d1∈{0,+1,+2}, d2=0` — **test data, not policy**. Labels, stricter form:
-observation layer stores `UniformField` + measured `{Y,U,V, variance, chroma_distance,
-temporal_coherence}`; `LikelyMute` and friends live **only** in the inference layer; `0x0800` is
-stored as a device observation, not a universal no-signal description.
+Keep source picture, deck output/OSD, device inserts and hard padding separate.
+Hard padding is a transport ruler, not the source's black or blanking reference.
+Comb can constrain relative alignment without establishing both absolute
+positions. Neither a stable crop nor agreement between related estimators
+establishes that the physical landmarks were identified.
 
-**Second-deck A/B deferred**; the narrower question is only *"is the deck itself going bad?"*. **Substitute test:** capture a
-**known-good tape with the fixed deeper-queue probe** — ideally **both SP and EP material, once
-cold and once warmed** — and validate: zero scheduled USB holes · fixed hard-padding/VBI geometry ·
-no field-1 registration plateaus · stable horizontal line phase · no unexplained repeats or missing
-fields · continuous audio delivery. This doubles as the hardware verification of the queue fix.
+### Capture inventory — keep this even if the experiments are retired
 
-**Deck-health read (evidence favours a healthy deck, with caveats):** ~99.3% of the capture is
-geometrically rigid, the confirmed registration fault is localized and plateau-like, the output
-raster and OSD compositor stay rigid throughout, and two D-VHS decks have shown the same broad
-behaviour → a **tape-triggered edge case or deck-family policy**, not this unit dying. ⚠️ Do not
-over-claim: "a degrading deck would show *pervasive continuous* instability" is **too strong** — a
-marginal deck can misbehave only when warm, only in EP, or only on badly damaged control-track
-sections. And a rigid *output* raster proves the deck's **regenerated raster** is stable; it does
-**not** directly prove the mechanical servo is healthy. A clean known-good-tape run is strong
-evidence of health, but cannot prove this deck handles every damaged tape as well as another design
-would.
+“Fixture A” means the off-air SP/EP test tape described in §2. “Capture 1” in the
+later four-capture work means the commercial tape, not fixture A. The whole-tape
+file is a separate, longer input, not a fifth independent source.
 
-**Deck policy for archival (revised — the earlier "TBC off" advice was backwards):** software
-corrects **discrete vertical registration only**; it does **not** fix within-line time-base error,
-top flagging, chroma phase, or H-sync damage. TBC-off would keep the registration problem *and*
-add flagging. Default: **TBC on, `Vスタビライズ` off** — test V-stabilize *separately*, since JVC's
-own manual says it corrects vertical picture shaking and should be returned to off afterwards,
-which implies a second vertical-concealment path that may help presentation while destroying
-chronology. Move off TBC-on only when an A/B proves it preserves materially better information,
-judged on **unique-field fingerprints, repeats, H-line phase, vertical origin and signal loss —
-not appearance**. And "don't replace the deck" was too categorical: a different deck can have
-better tracking, tape path, sync separator or a less destructive TBC policy, so a second known-good
-S-VHS deck is worth having as an **archival tool, not a spare** — different decks win on different
-pathological tapes.
+| Input | Material and reason it matters | Recorded location / provenance |
+|---|---|---|
+| Capture 1 | Commercial tape, composite input, recorded with V-stabilize/line TBC off. Opening rewind/acquisition, a dark boxed card and brighter programme exercise different visibility and level regimes. A comparison source distinct from the two off-air recordings. | `captures/composite_program_30s.tpc`, captured 2026-09-03. |
+| Capture 2 | EP part of fixture A. Different recording conditions, data-like top lines, sometimes no blank row between data and picture; tests whether an SP-derived gauge generalizes. | `/private/tmp/hw-session/w_2100s_aligned.tpc`, sliced from `captures/fulltape.cap6`, byte start `50811787037`. |
+| Capture 3 | SP part of fixture A, V-stabilize on. Contains the field-position problem, weak recorded timing and the corrected head-switch-region appearance. | `/private/tmp/hw-session/w_300s_aligned.tpc`, sliced from the same whole tape, byte start `7260251349`. |
+| Capture 4 | Another SP pass with V-stabilize off. Exposes stronger horizontal timing disturbance near the switch and a different transport pairing; not a frame-aligned A/B of capture 3. | `/private/tmp/hw-session/sp_vstab_off_aligned.tpc`, from `sp_vstab_off_45s.tpc` captured 2026-09-07, byte start `118907896`. |
+| Whole tape | Approximately 48 minutes / 69.7 GB, both off-air recordings plus transitions and non-picture intervals. Its wider variation found failures missed by the short selections. | `captures/fulltape.cap6`; older notes/tools also use `whole_tape.tpc`. Verify identity rather than assuming an alias. Historical replay: 86,293 exact units; short/other observations are accounted separately (§6). |
 
-**Architecture consequence (supersedes "archival writer + preview" framing in §8–§10):** the final
-shape is a **normal live frameserver**, not an archival writer with a preview bolted on:
-`USB capture → frame parser → field-origin correction → 59.94p frame surfaces + 48 kHz audio →
-CMIO/OBS`. **Recording becomes an optional downstream consumer, exactly like OBS** — it must not
-control acquisition or correction. Per transport unit: archive the untouched 525-line unit
-only when explicit debug transport capture is enabled; otherwise retain it in bounded pipeline
-storage, detect origins on a separate thread, select the corrected windows, publish 480i or
-independent 59.94p spatial bob with monotonic PTS, and **record chosen origins + confidence as
-metadata**. Audio samples are never touched, preserving the A/V clock correlation. Raw transport
-logging stays an optional diagnostic mode, not the defining architecture.
+The aligned scratch slices were re-cut on September 9 after the slicer was
+found to align to CAP1 records but not complete transfers. Their previous
+provenance failures were slicing artifacts. `experiments/tpc_slice.py` on the
+v10 branch records that repair. Preserve input hashes, cut lengths and transfer
+alignment when reproducing a selection; the starts above are navigation aids,
+not complete manifests. These paths were inventoried, not re-opened for this
+rewrite. Scratch may disappear; the original off-setting pass is needed to
+recreate capture 4. No new tape run is authorized by this inventory.
 
----
+Capture 4's recorded best pairing matches its first slot to the earlier pass's
+previous-unit second field (MAD 2.6–3.0 versus 7–12 for other pairings).
+Some harness runs used `--repair`. Every comparison must say whether it uses
+raw slots or repaired pairing; field-number joins can otherwise compare
+different times. This observation does not say every TFF/BFF problem has that
+cause.
 
-*Superseded framing (kept for context — the mechanism guess below was not what the data showed):*
+Capture 1's later tests often select counters **≥6667**. That was the chosen
+registration interval, not the first sample of picture: the recorded arrival
+is between the fields of counter 6610, followed by a dark/fading opening.
+Older “stable from 6593” statements and all-unit results are different
+selections. Keep startup in its own accounting rather than making it vanish.
 
-The visible flip is often a **temporal-order or pairing-phase** change while spatial parity is
-normal. Likely mechanism (from the observed *freeze → vertical jump* on the deck's HDMI output): the
-deck's **fixed-clock HDMI frame-synchronizer** reacting to control-track/line-timing
-instability — it repeats a field to hold its clock, reacquires field phase, resumes with the
-opposite pairing/registration. A **~240-line (NTSC)** jump ⇒ whole-field/pairing slip; a
-**~½-scanline** jump ⇒ field-1/2 vertical-phase reinterpretation. **This can happen while signal
-state stays "Locked"** — so segment boundaries must NOT depend only on signal-loss/`0x0800`/
-timecode.
+Useful whole-tape slices recorded with `tpc_slice.py`:
 
-**Caveat that the torture test (§9 exp 3) must settle:** the Shuttle is itself an analog
-**decoder + frame assembler**, not a raw sampler; its firmware may do its *own* concealment
-(freeze/repeat/crop/resample) when sync gets ugly, which would be baked into the USB raster and
-unrecoverable. Intact-but-mis-grouped fields are repairable; lost/duplicated/truncated/mixed
-fields are not.
+| Passage | Start byte / requested video bytes | Use |
+|---|---|---|
+| Start / unit-300 splice | `0 / 320000000` | Initial acquisition and a recorded tear. |
+| 27:18 signal stop | `39439481630 / 340000000` | Programme → damaged/sub-black → snow-like → grey mute → return. |
+| Recording boundary | `35000331301 / 260000000` | Distinguish transition behavior from ordinary picture movement. |
+
+The late-tape region near minute 43 is also important: intermittent picture on
+nominally blank top lines and long intervals without a usable caption exposed
+one-line ambiguity. See the main v9 history for the exact selections.
+
+The original five-minute untagged capture is an additional historical diagnostic,
+not one of these four. It contains useful OSD/registration observations but also
+host scheduling losses described in §6. Do not use its readable-unit count as
+complete transport coverage.
+
+### Source observations worth carrying forward
+
+**Why the source descriptions matter.** SP and EP are different recordings,
+not interchangeable speed labels on the same signal. The commercial card and
+bright programme are also different regimes within one capture. The comparison
+passes differ in deck processing and pairing. Keeping these distinctions
+prevents a reference learned on one selection from quietly becoming “the tape.”
+
+**Picture displacement versus device raster.** In the early five-minute
+capture, hard padding and the insert spacing remained rigid while the SP
+picture moved in one- and two-line plateaus, predominantly in field 1. The raw OSD
+stayed put while the picture behind it moved. Correcting the picture then
+moved the OSD in the corrected render, which briefly led to the opposite
+interpretation. This is useful evidence about layers on those events, not a
+permanent instruction to hold field 2 fixed or to rule out pairing errors on
+other captures.
+
+**Deck setting.** The later A/B identified `Vスタビライズ` as the relevant line-TBC
+switch on this deck. The old recommendation “TBC on, V-stabilize off” treated
+them as independent controls and should not guide a new session. Record the
+actual setting with each input. Off-setting material exposes peaks and
+horizontal disturbances that the on-setting pass often replaces or suppresses;
+which source geometry remains observable depends on that processing.
+
+**On/off comparison.** The recorded affected-row selections found 768 flat
+rows among 1,076 with the corrector on, against none in the off selection.
+Using a separate absolute horizontal-displacement criterion of ≥6 samples,
+the counts were 11 on versus 1,957 off. The timing difference is substantial,
+not categorical. These are different selections/statistics; 768 is not 100%
+of 1,076, and horizontal sample displacement is not vertical registration
+`d`. The captures were not frame-aligned, so these results do not establish
+what happened to the same instant in both passes. Detailed measurements and
+instrument names remain in the September 9 notes and v10 reports.
+
+**Black and blanking.** The measured levels in §6 are retained. In particular,
+95 units of a commercial full-frame black card gave picture mean **17.699**
+against those lines' own blanking mean **1.459** (difference about 16.2 codes).
+Other selected dark/band runs approached blanking; that does not establish
+source-wide clipping of black picture. The earlier “same dither” claim was not
+established by equal means and standard deviations. Later texture comparisons
+also had selection and adjacency defects, so neither universal identity nor a
+universal texture separator follows. Distinguish the hard-padding code 16,
+device fill near 1.4, and the source's qualified blanking before using a level.
+
+**Device inserts versus tape captions.** Lines 20/283 carry the Shuttle's
+pulse/timing insert; 21/284 carry its re-encoded CEA-608 waveform, not the tape's
+original waveform. They are placed relative to detected sync and can disappear
+when sync is lost (seen at whole-tape play-start mute and with no input).
+The slicer re-encodes decoded bytes, otherwise emitting nulls while the insert
+is present. Identical bytes produced repeatable waveforms; displaced raw tape
+captions were noisier and higher-amplitude in the examined recordings.
+Fixture A demonstrated re-encoding despite a rigid **+1** picture displacement;
+raw captions at +2/+3 instead accompanied null inserts. These observations do
+not establish a symmetric slicer range. Insert bytes therefore do not locate
+the tape's line 21 or prove zero displacement. Source: the v9 VBI measurements
+in `c91a10b:CLAUDE.md`, §11; broader history in `docs/registration_archaeology.md`.
+
+**Line 22.** The September 13 correction identifies the examined line-22
+blanking as deck output, not an unconditional Shuttle-written constant.
+Its luma followed deck grey mute (about 123.6), while the device's lines 20/21
+kept their insert patterns. This is why the older “everything above line 23 is
+overwritten” statement was reconsidered. Keep the measured configuration and
+line coordinates attached; a tape's line 22 wandering into picture is a source
+object, not a command to inspect fixed raster line 22.
+
+**Output apertures** (owner, September 4; 486 origin corrected September 9):
+720×480 is the clean aperture beginning at NTSC 23/286. The alternate
+720×486 mode retains the insert/caption region: lines 20–262 / 283–525.
+For 486 rendering, the tape's real lines 20–22 replace the Shuttle's where
+measured displacement exposes them; at d=0 there is no exposed tape material
+to substitute (owner, September 10; clarification recorded in the v10 contract).
+
+**Top-of-picture observations, September 14.** The transcript's raw-row work
+distinguished the following cases; these are examples, not exhaustive labels:
+
+- Capture 1: the examined programme had picture at nominal 23/286, after the
+  insert region and blank line 22/285. The boxed card was different: at counters
+  6700/6731/6760, line 23 carried signal to about sample 320 then blanking;
+  line 286 was blank throughout. Do not transfer the programme's top to the card.
+- Capture 2: data-like lines around 23/24 and 286/287, sometimes immediately
+  adjacent to picture; a blank separator is not always present.
+- Capture 3: examples of a caption at 23 with a flat low-level row below it.
+- Capture 4: examples of a caption at 286 over a row that begins dark and
+  becomes picture partway through its sweep.
+
+The mixed/pedestal line called “capture 2 line 286” remained a disputed label
+during the waveform experiments. Do not silently make an old score file its
+definition. The useful observation is the actual waveform/picture relationship,
+including whether the intervening line is blank, flat source content, mixed,
+or not yet identified.
+
+**Boxed card.** Capture 1 contains a dark boxed card whose visible content
+extent changed with exposure. At counter 6700 a census read content around
+54–236 in field 1 with corresponding field-2 content. The supposed ~23-line
+“gap to switch” was largely the lower box bar: the instrument had measured
+the content interior and called it the box. Keep the distinction between a
+box and its content, and exposure-dependent visibility and motion. Neither
+that count nor the window-forced bottom was a measured box boundary.
+
+**Half line.** On two grey-mute events, 205 units showed one additional
+partly filled row in field 1. Its fill fraction was about 0.4257, close to
+the 0.4264 predicted from a 429-sample half line and the delivered aperture.
+This was a useful observation on full-field fill, not a continuous order
+detector: the necessary fill was not present in the four programme selections,
+including the pairing-anomalous capture. The whole tape retains the mute
+examples; a classifier's “grey” label alone did not select them reliably.
+
+**Head-switch endpoints.** Earlier work used T for a partial/disturbed row and
+S for a first fully displaced row/bound. Definitions and coordinate conventions
+changed between instruments. A bright excursion, the start of a low-level run,
+and a measured timing boundary are not automatically the same instant.
+Several disagreements were one-row classes; some were field-coordinate bugs.
+Keep the traces and keyed comparisons, rather than inheriting a universal
+T=S or T=S−1 rule. Likewise, the stored “RF peak sensitivity” figures were
+counts from particular excursion detectors, not a general limit on what
+information the capture contains.
+
+Dark peaks were visually apparent but the tried statistics did not separate
+them from dark picture; the owner accepted them going undetected on September 11.
+
+### What was tried — short history, not a blacklist
+
+| Approach | What the work contributed | What limited that version / lesson |
+|---|---|---|
+| Best-weave / origin search | Demonstrated useful relative alignment evidence. | Early reports assigned the difference to one field's absolute origin without an independent anchor. Flat/moving material complicated interpretation. |
+| Dual-edge and rolling-mode models | Exposed whole-line plateaus and gave an initial C implementation. | Brightness changed apparent edges; a 120-unit mode delayed transitions. A stable estimate was not necessarily a correctly placed picture. |
+| Buffered trajectory / lookback | Explored how to bridge missing evidence and isolate publication. | Caller state and backdating created or extended plateaus. Forward-only live output and offline repair were different requirements. |
+| Authority-first and relative-only variants | Separated observed positions from held output and relative evidence. | Field assignment and absolute placement still needed evidence; correcting weave alone could move the wrong field. |
+| Bottom-edge model | Used a physically motivated lower landmark. | Some versions improved relative comb scores while losing caption agreement; bottom visibility and clipping mattered. |
+| v9 captions + geometry + body/comb | Main contains these paths; captions supplied useful absolute gauges and comb helped relative alignment. | A caption may be absent or not CEA-608; line-22 data and dark top rows caused ambiguity. Integrating content motion drifted in one experiment; that is not a theorem against temporal evidence. |
+| Geometry-first / v10 rewrite | Made line accounts, partial rows, source references and censoring explicit. | Engine, reference and contract sometimes described different quantities. Much effort went into reconciling them; the branch's existence is not evidence of a validated replacement. |
+| Plain versus masked comb | Compared a simpler energy with a motion-qualified measurement. | A coherent-pan synthetic could give a confident wrong result; masks also removed usable evidence. Capture behavior and constructed counterexamples answer different questions. |
+| Peak / blank-run / extent references | Made actual horizontal transitions and run positions inspectable. | Padding was once used as the blanking level; total duration missed translations; fixed windows preselected locations; absence of a hit was confused with no event. These findings concern those implementations. |
+| Texture/dither comparison | Asked whether blanking could be identified independently of darkness. | Sample selection altered adjacency and populations; relocated intervals did not reproduce the proposed signature. A valid source-local texture witness remains an empirical question. |
+| September 13–14 waveform walker | Examined pulse ramps, ringing, symmetry and data/picture adjacency. | Histogram/label shortcuts and fitted residual clauses accumulated. A clean short-capture score did not transfer to the whole tape. |
+
+The waveform work grew from a two-level temporal-shape description into
+13 tests with roughly 20 numbers/settings. Successive limits were often
+selected from a “true” set produced by another thresholded detector. Including
+the previously excluded line 286 changed that set substantially. A top scan
+then reached nominal 0/0 on the short captures while sharing a wrong label
+with its scorer; the whole tape exposed weaker captions, ghosting and content
+false positives. The durable lesson is to retain the intended observation
+and identify changes to its meaning, not to prohibit waveform recognition,
+symmetry, thresholds or another entire family of methods.
+
+### Where to find the experiments
+
+These are navigation pointers, not required dependencies of a replacement.
+Main includes `experiments/capture_render.py`, `cc608_decode.py`, the unit
+reader/verifier, and the v9 registration tests. Its archaeology records the
+early origin, trajectory and body/comb work.
+
+On the v10 branch, the relevant experiments include
+`box_census.py` / `box_vs_switch.py` (box versus content bounds),
+`rf_peak_census.py` (excursion census; later keyed comparisons are in the reports),
+`source_reference.py` (horizontal transition and level reference),
+`blanking_extent.py` / `level_attribution.py` (extent observable and reference
+attribution), `switch_fixtures.py` (known-answer/censoring cases), and
+`dither_compare.py` (the withdrawn texture comparison). These names are under
+`experiments/`; their diagnostic/withdrawal status is part of their history.
+`src/field_registration/tests/` also carries the v10 switch, run-timing and
+plain/static-comb reports. Retiring an implementation need not discard a useful
+known-answer input, but its truth and scope need to survive with it.
+
+The September 13–14 waveform work used the committed
+`experiments/alternation_walker.py` and `alternation_census.py`, plus scratch
+`wf/` instruments such as `rule3.py`, `rule4.py`, `symmetry.py`,
+`score.py`, `top_scan*.py` and `tape_scan.py`. The scoring file was itself
+part of the label problem. Scratch outputs are not a durable reproducibility
+record; retain the useful traces/inputs deliberately if that work is retired,
+rather than assuming their filenames will remain available.
+
+### Evidence and review practice for this work
+
+Use the source inventory and compare the same counter, field, pairing and row
+convention. Keep the measured position, applied crop, retained lock and missing
+measurement distinct. Identify the input and code behind a render; changing
+the producer without refreshing its decision log once made a new render show
+old decisions.
+
+**Deinterlacer rule** (owner, September 4): NNEDI3 is the diagnostic lens;
+it reconstructs from one field, so cannot introduce cross-field combing.
+Motion-adaptive methods such as yadif/bwdif/estdif can weave misregistered
+fields and add presentation artifacts; bwdif/estdif produced apparent false
+field inversions on fixture A. Yadif is the intended end presentation, with
+“no combing under yadif” the presentation-level acceptance test, not proof of
+absolute placement. Keep raw fields/row traces available; NNEDI3 also
+interpolates, and neither renderer is registration ground truth.
+
+**Review-render producer:** amend `experiments/review_render.py` on
+v10-harness rather than rebuilding it (owner, September 11). It draws the
+720×486 colour output with metrics below, translucent field-coloured box/bar
+overlays (purple on overlap), and box/head-switch ticks in the margins.
+The inspected producer draws one output panel; it does not currently add a
+side-by-side 525-line raster. Its overlays and decision log are instrument
+outputs, not independent evidence that registration worked.
+
+References and synthetic fixtures are instruments too. Their labels, calibration
+selection, endpoint availability and scoring rules need checking. A conditional
+synthetic establishes behavior within its stated model, not prevalence on tape.
+When a test or reference changes, rerun the affected comparison rather than
+carrying forward its old count.
+
+Detailed older steps are already in `docs/registration_archaeology.md`,
+`docs/registration_v9_plan.md`, `LEARNINGS.md` and the main registration
+README/tests. Later v10 reports and `docs/geometry_first_engine.md` preserve
+that experiment's definitions and disputes; consult them for a specific
+question, not as an automatic list of instructions for a new attempt.
+The branch and report pointers here preserve provenance, not a commitment
+to keep the v10 implementation.
 
 ## 8. Architecture (independently agreed by two analyses)
 
@@ -939,23 +1115,16 @@ capture PTS.
 
 ## 9. Parity detection & A/V sync
 
-**Don't treat the 16-bit timecode as a field counter** (it's once per transport unit, not per
-field). **Segment** on signal-loss/relock, USB/parser gap, format-code change, counter
-discontinuity, or strong pairing-phase-change evidence. Within a segment, weigh evidence in
-order: (1) **device/header** — ❌ **DEAD END, measured:** across all 6,160 complete
-units the 48-byte header is **byte-identical except the 16-bit counter** (`00 00 ff ff | cc cc |
-01 e8` + 40 zero bytes). **No lock flag, no field-marker bit, no status.** Stop hunting *in the
-header*. ⚠️ But an empty header does **not** prove content analysis is the only possible telemetry:
-the **status register `214/index 16` has never been polled across states** and must be sampled
-over program / snow / deck-grey / a real cable-pull before hardware telemetry is written off.
-Preserve the header anyway (cheap, and it proves the
-negative);
-(2) **VBI/raster geometry** — the full 525/625 raster may carry line-21/VITC (but decoded YCbCr
-has no sync-tip waveform, so RF-style tricks are out); (3) **motion/cadence** — split slots, bob
-each, score chronological hypotheses over a **window** with an **HMM/Viterbi** (strong transition
-penalties, relax at relock) — never frame-by-frame flipping; (4) **audio/counters** — locate
-discontinuities, not top/bottom. **The estimator must be allowed to say `Unknown`** — a confident
-wrong flip is worse than an unresolved annotation.
+The source-geometry question and capture inventory are in §7. Keep spatial
+placement, temporal order and transport pairing distinct. Earlier versions of
+this section proposed HMM/Viterbi order inference; that was an experimental
+proposal, not an established requirement for the current problem.
+
+The early header census found 6,160 complete headers identical apart from their
+16-bit counter. This did not provide a per-field order/lock flag, but it also
+did not rule out every hardware status source. Preserve the header and consult
+the actual status-register experiments in §6 before declaring telemetry absent.
+Decoded YCbCr is not raw sync-tip waveform input.
 
 **A/V sync:** keep exact audio sample counts + cumulative ordinal; extend `tc16` only within an
 epoch (record every wrap decision); match non-destructively within a bounded reorder window; fit
@@ -996,6 +1165,18 @@ never silently blank/dup/drop/resample/force-CFR.
   H.264/HEVC access copies, not the master. **Live policy:** bounded jitter buffer; valid
 audio as continuity master; **bob at field rate (59.94p/50p)**; conceal only in the live
 derivative; shed the live consumer before it threatens acquisition.
+
+**Backlog: optional horizontal-damage concealment (owner, 2026-09-09).**
+The owner proposed borrowing a damaged row from the other field, with
+intra-field interpolation when the result combs. The proposed option belongs
+in the frameserver before weaving; repaired rows are marked, all consumers
+receive the selected output, and unchanged transport is retained only when
+debug TPC capture is enabled. Whole-field comb was accepted as a conservative
+substitute for a per-row test in that discussion. The prerequisite was
+substantial measured real-time headroom after registration works. This remains
+a separate presentation feature, not evidence of source geometry and not an
+instruction to build it during the present reset. Recheck cost and the intended
+output before implementing; the previous timing figures were specific runs.
 
 ## 10. Delivery: OBS virtual camera
 
@@ -1074,575 +1255,63 @@ delivery edge; wrong one at acquisition.
 - **P1 `capture_core`** — C library productizing capture_tagged_bench: device backend + replay backend
   (libusb_replay_shim heritage) behind one callback API; tagged transport sink; atomics/QoS/fleet
   discipline as library invariants. Tested by byte-identical replay round-trips.
-- **P2 registration engine in C** — the (d1,d2) per-field model ported from
-  capture_render.py, same anchors (padding ruler, VBI, temporal registration), hysteresis,
-  `Unknown`. Golden-tested against `field_origin_census.tsv` and the
-  whole_tape decision log; must match the offline estimator's confident decisions and stay within
-  the 16.68 ms/field budget in C.
-- ✅ **P1 + initial P2 landed (P2 estimator superseded below).** `src/capture_core/` (capture core as a library: device +
-  replay backends behind one callback API, tpc sink, adversarial suite green under plain/TSAN/
-  ASan+UBSan; two real bugs caught pre-consumer — a ring publication race, and unconfessed loss
-  at termination when the ring is full). `src/field_registration/`: allocation-free dual-edge
-  estimator — full-tape golden **86,293/86,293 units and 56,441/56,441 confident decisions**
-  matching the offline model, untagged_capture census 4,042/4,042 applied offsets correct, all 320 (+1)
-  and 66 (+2) events corrected, **1.29 ms median per unit (~25.8× realtime)**, 185 KB state.
-  **Integration contract:** the signal-state layer MUST call `fieldreg_begin_segment()` after
-  acquisition/relock (registration cannot distinguish a long real displacement from a new source
-  segment); plain byte discontinuities use `fieldreg_discontinuity()` and keep the learned
-  gauge. Note: on the end credits the production dual-edge model stabilizes at (-1,0) where the
-  old sidecar chattered +2/+3 — promising, pending visual confirmation. CMIO startup guidance
-  from P2: suppress samples during Arming; start the device timeline at the first stable A/V
-  epoch; no synthetic startup frames.
-- **P2 trajectory correction (supersedes the 120-unit rolling-mode policy above):**
-  the rolling majority was proven to manufacture delayed plateaus. Production now uses a
-  caller-owned bounded FIFO (30-unit confirmation, 36-unit hard horizon). Strong per-unit
-  absolute geometry and the stable fallback trajectory are separate: a coherent top+bottom
-  `(d1,d2)` candidate may correct a buffered unit even if it lasts only one frame, but an
-  opposite same-parity **differential** motion measurement vetoes it. The differential cancels
-  coherent picture/credit motion and prevents a source-carried edge or overlay phase from moving
-  the whole field against the dominant picture asset. Hysteresis changes only the fallback for
-  abstaining units. Cuts/global-luma steps make the current unit abstain because the measured
-  envelope is source-carried. Between observations, presentation
-  holds the last accepted per-unit phase instead of snapping to an older baseline; the sidecar
-  names this `HeldLastObservation`. A settled fallback is backdated only onto buffered
-  abstentions. At the horizon, the caller flushes the already-held buffered trajectory,
-  labels abstentions `HeldUnresolvedHorizon`, logs `trajectory_reset`, and starts fresh—never
-  rewrite the buffer to raw around isolated observations, and never drop/repeat a unit.
-  Reset invalidates the learned lock but preserves the last actually presented phase (which may
-  differ from the locked baseline); following abstentions cannot create an unobserved snap while
-  the engine reacquires.
-  Neither field is a permanent anchor; `(0,1) -> (1,0)` is legal. Integration is off the USB hot
-  path via preallocated lock-free SPSC pointer handoffs; `field_registration` itself allocates nothing.
-  **Six-minute production-path proof:** 10,800 units through C registration +
-  bounded FIFO + `estdif` produced 54 finalized offset transitions (only five 1–3-unit runs),
-  zero known-observation/applied mismatches, and zero backdates over known observations. A caught
-  caller bug had rewritten buffered abstentions to raw at every hard-horizon reset, manufacturing
-  144 transitions/70 short runs; preserving the already-held trajectory reduced it to the numbers
-  above. untagged_capture golden: 3,784/4,042 overall census agreement, **3,499/3,499 confident**, with all
-  258 disagreements conservative under-corrections and no opposite correction; median 2.58 ms/unit
-  on M3 (~7.7% of one core). The lower overall agreement than the old edge-only result is deliberate:
-  differential dominant-picture motion may veto a rigid envelope edge on a multi-phase raster.
-  Targeted late-tape checks also close the specific delayed-plateau regression: a 7,300-unit
-  tail/credits window finalized three transitions and zero 1--3-unit runs; a 4,500-unit window
-  around a known one-unit registration event at 36:40 stayed `(0,0)` for 4,499 units and applied one directly observed
-  one-unit `(1,0)`, rather than holding a new phase to tape end. Both checks had zero
-  known-observation/application mismatches and zero backdating over observed units. This does
-  not claim one global field offset can reconcile the tape's spatially incompatible layers.
-  **Algorithm v4 horizon fix:** a full v3 sidecar audit found that 936/948 applied
-  transitions began on a matching current-unit observation and six were deliberate backdated
-  locks, but two `RawAwaitingLock` transitions snapped to `(0,0)` after reset with no observation.
-  Reset now invalidates confidence while preserving the last actually presented phase, not just
-  the last locked baseline. A synthetic divergent-baseline/presentation reset test proves the
-  contract; local untagged_capture remains 3,784/4,042 overall and 3,499/3,499 confident. The full v4 golden processed all
-  86,293 exact units at 2.532 ms median (13.2x realtime), matched 50,042/50,042 confident v3
-  evidence decisions, and observed 464 hard resets with **zero reset-induced phase changes**.
-  The five transitions without a same-unit observation were all explicit 30--32-unit convergence
-  commits with backdates, never reset snaps. The pass accounted for all 46,075,614 CAP1 records
-  and 23,036,416 video DATA records with zero sequence/packet gaps and zero status errors.
-  The renderer refuses dataless (File Provider placeholder) inputs rather than triggering a
-  multi-gigabyte cloud fetch.
-- ✅ **P2 authority-first v6 (supersedes the live FIFO/backtracking policy above).**
-  Reconciled raw-field evidence showed that the dominant whole-tape failure was evidence
-  authority, not missing lookahead: a local two-of-three band majority overruled an agreeing
-  coherent full-width envelope and relative phase. The production live engine is now
-  **forward-only with zero presentation FIFO**. A coherent full-width envelope plus relative
-  consensus is authoritative; coherent top+bottom motion in at least two broad bands plus
-  same-parity temporal corroboration follows physical per-unit jitter immediately. A stable raw
-  edge anchor prevents delta integration from walking the crop, and delta authority is bounded
-  to one line around an independently established absolute gauge. Other fixes split structural
-  transport validity from content availability, treat a search-floor top edge as censored and
-  permit a corroborated bottom-only absolute candidate, compare common-mode *displacement*
-  against `(absolute-prior)`, and prevent a lone positive observation from latching through later
-  abstentions. The optional endpoint-constrained retroactive pass remains recording-side only and
-  is gated on real-tape evidence that a coherent positive observation was wrong.
-
-  Public two-truth golden: physical raster **1,017/1,017** (v4: 858/1,017), trajectory oracle
-  **1,130/1,140** (v4: 962/1,140); its ten differences intentionally ask archival hindsight to
-  override the live raster. All physical field/common-mode/multiphase unit-rate FOLLOW classes,
-  false/secondary-edge HOLD classes, upward `-2` classes, blank-with-padding, and the 124-unit
-  stale-latch class pass. Full-tape strict coherent-envelope disagreement fell from
-  **10,547/55,329 to 1,021/55,329**; one-field coherent transitions followed rose from 850/4,128
-  to 2,939/4,128. At 35:00--40:00, follow/hold changed from 0/1,066 to 594/438. Full-pass M3 C
-  timing was 1.466 ms median / 1.569 ms p95 per unit; state is 188,320 bytes, allocation-free.
-  Human sign-off remains required: these are observable-consistency metrics, not proof that every
-  content-derived edge is physical truth. Integer vertical registration does not correct
-  sub-line, horizontal/line-time, flagging, or skew errors.
-  **Residual class found on re-review (2026-09-03 evening, two independent arms reconciled):** a
-  yadif-2x test of the first 5 min from the frameserver's published frames combs wherever the two
-  fields of a unit are misregistered against each other (yadif used as a stress indicator: a
-  weaving deinterlacer combs exactly where the two fields disagree; see the deinterlacer rule
-  below). The hypothesis "the field is pushed down
-  and its bottom landmark falls off the raster" was measured and REFUTED for the common +1/+2
-  events: the lower picture edge moves from row 256 into rows 257/258 — inside the four captured
-  near-blank lines, still measurable — only two units on the whole tape show an apparent top
-  offset beyond +4, and both are multi-edge rasters, not rigid shifts. What remains is a
-  **relative-only misregistration class**: both fields' absolute edges nominal, no gauge, but a
-  noise-tolerant static-region comb search (8-px horizontal low-pass, same-parity static mask,
-  persistence ≥16 columns, reweave −3..+3) finds a clean one- or two-line minimum with a ~40%
-  comb-energy drop. First 100 s of the SP recording, frameserver output: 153 of 2,974 measurable
-  frames (5.1%) in twelve 3–19-frame runs plus 17 single-frame events. **Raw vs corrected on the
-  same frames:** the nominal crop is misregistered in 1,659 of 2,975 (55.8%, +1 ×1,328, +2 ×320)
-  and the engine brings that to 153 — but 132 of the 143 classifiable residual frames are
-  **over-corrections**: the raster had returned to nominal (raw need 0, or −1) while the engine
-  kept its held (1,0) through 3–19 units of abstention (support 0–3, `UnknownPhaseDwell`). The
-  engine follows the steps up on evidence and misses the returns. v6 only *constrains* by
-  relative evidence; it never applies a relative correction — or releases a held phase — without
-  an absolute gauge. Plan (Codex implements, Claude reviews): goldens first for
-  both classes (relative-only A/B with gauge provenance; bottom-censored requiring true boundary
-  censoring + body-temporal corroboration), then a relative-only estimator/authority applied at
-  unit rate with `relative_only`/`gauge_unknown` sidecar provenance, costed against §11b; the
-  presentation acceptance test is `experiments/static_comb_metric.py` on
-  `frameserver_replay --dump-uyvy` output (affected runs move to shift 0, normal frames stay).
-  **Deinterlacer rule (owner, 2026-09-04; supersedes any "deinterlacers comb" wording):**
-  deinterlacing is presentation, downstream of the frameserver, and two classes behave oppositely
-  on a misregistered frame. An intra-field interpolator (NNEDI3) builds each frame from one field
-  alone, makes no weave or motion decision, and invents nothing: a displaced field shows as
-  exactly the physical jump. A motion-adaptive weaver (yadif, bwdif, estdif) interleaves the two
-  fields where it judges the picture static, so a one-line inter-field misregistration combs, and
-  its per-pixel decisions add structure of its own (bwdif and estdif produced false field
-  inversions on fixture A, almost certainly the weaver reacting to misregistered input; re-test
-  once v9 exists). Weaver output on misregistered fields mixes the signal's error with the
-  deinterlacer's inventions and misled early reviews, so **NNEDI3 is the diagnostic lens while the
-  engine is being built** (weights: see `experiments/README.md`): it cannot comb, so whatever
-  moves in an NNEDI3 render is in the signal. **A weaver (yadif, bwdif) is the intended end
-  presentation once registration works** (owner, 2026-09-04): on static picture it outputs all
-  480 recorded lines with nothing interpolated, where NNEDI3 always predicts half of them. "No
-  combing under yadif" is therefore the presentation-level acceptance test for registration, and
-  "not good enough for yadif" was the right bar; yadif is never registration truth, and the OBS
-  plugin's Yadif 2x default is the correct end state.
-  **✅ v7 relative-only authority landed (main `abfa648`, 2026-09-04, three §14 rounds).** Codex's
-  static-region comb estimator releases a held phase at unit rate when the raster returns; it is
-  current-unit authority only (a golden proves a relative presentation never latches into later
-  abstentions); gauge by differential field identity, minimum-crop when unknown; sidecar schema 3
-  carries the provenance. Two threshold changes tuned against tape results were reverted before
-  merge. Deciding measurements (paced replay, zero drops, `static_comb_metric.py`, record-aligned
-  windows cut with `experiments/tpc_slice.py`): misregistered static frames **88 → 29** in the
-  first 100 s, **17 → 13** at 620 s, **803 → 268** in the 2,400 s credits window. The credits
-  raster genuinely jitters by a line unit to unit: of the branch's 97 one-unit phase flips there,
-  87 are correct follows (the flipped frame is registered), 5 unmeasurable, 5 engine noise (main:
-  3 noise of 6); Codex's strict edge oracle found zero noise flips over the whole tape (1,887
-  late-tape flips unknown to it, censored edges). Codex's engine-internal strict-consistency count
-  went 1,021 → 1,128 — a proxy that the frames contradict; it is not an acceptance criterion.
-  Engine cost 3.6 ms median / 5.5 ms p95 per unit on M3 (was 1.5/1.6), inside §11b.
-  **`captures/fulltape_render.{mp4,_registration.csv}` re-rendered from the v7 engine
-  (2026-09-04 02:53, `experiments/render_fulltape.sh` at `b2d0f70`, gate
-  `render_fulltape_gate.sh` all PASS: clean `-xerror` decode, duration 2879.410 s and 86,296
-  sidecar rows identical to the v6 pair, 172,592 frames).** Applied pairs: (0,0) 48,366, (1,0)
-  30,017, (−1,0) 4,068, (2,0) 3,360, (0,−1) 313; 7,461 applied-phase transitions and 2,570
-  one-unit flips (v6: 3,957 / 1,281) — the increase is the engine following per-unit raster
-  jitter, which the credits-window audit above classifies as correct follows. The renderer had
-  to learn that a crop may read into the hard-padding ruler (the engine's +5 bottom-censored
-  class); the v6 pair was deleted, not archived (owner: Time Machine). Owner visual sign-off
-  pending.
-  **Owner visual sign-off (2026-09-03, full forward-only NNEDI3 watch copy of fixture A; NNEDI3
-  because it is intra-field and invents nothing, so what is seen is the signal):** a
-  large improvement over the validated v4 engine; judged representative of what a digitally
-  captured VHS tape should look like. Of the jumps that remain, nearly every one in the SP
-  recording brings *new* lines into the picture (unique luma and chroma, not a shifted copy of
-  lines already present) — dispositive that they are recorded-signal instability, not raster
-  position, and therefore outside any integer registration engine. The EP recording additionally
-  shows line-21 content bleeding into the active picture, forbidden on a compliant broadcast —
-  consistent with a generational copy at the source and/or EP-mode playback; also not a raster
-  fault. Conclusion: not every jump is fixed, and the ones that remain are not registration.
-  **Owner review of the v7 render frame by frame with the sidecar overlaid (2026-09-04):** the
-  engine is severely UNDER-selecting — almost all of its Unknown/abstain decisions fall exactly
-  where the raster is genuinely unstable, i.e. where a decision is needed. Measured with the
-  owner's own placement rule as an instrument (`experiments/bottom_edge_census.py`: per field, the
-  picture's bottom edge = the last raster line whose luma is not mostly digital black), first
-  1,800 units of fixture A, field 1: raw edge at 256 in 1,299 units, 257 in 245, 255 in 42, 259
-  in 169 (deck-mute grey), a handful of dark-picture outliers; unit-to-unit the raw edge moved and
-  the crop followed 80 times, the raw edge moved and the crop HELD 198 times (UnknownSpatialPhase
-  104, StableMotionPhase 65, SceneCutHold 27), the crop changed while the raw edge stood still 69
-  times. Codex independently confirmed the field-1 picture top alternating between lines 20 and
-  21 unit to unit in the SP intro while field 2 stays at 282, and falsified the "hold through
-  abstentions" policy (0 Unknown-row changes but worse presentation in both windows). **Owner
-  direction (supersedes the evidence-authority framing above):** the goal is a stable raster;
-  never duplicate lines, always shift the whole crop window, shifting into digitally degenerate
-  black is acceptable; placement rule to design toward: per field, the crop's final line should
-  be the first mostly-black-luma line under the picture, measured directly per unit, with a
-  hold-last fallback when the edge is unmeasurable (flat/dark pictures). Two renderer defects
-  found in the same review were Claude's and are fixed: `capture_render.py` kept rows 17-18
-  fixed and remapped from 19 (duplicating row 18 on negative offsets, dropping 19 on positive),
-  and the full-raster preview duplicated below its window; `captures/fulltape_render.mp4` still
-  carries the renderer duplication and is re-rendered after the engine work.
-  **Coordinate convention (owner, 2026-09-04): prose uses real NTSC line numbers, never Shuttle
-  unit rows.** Unit row r maps to NTSC line r + 4 in both fields (row 17 = line 21, row 19 =
-  line 23, row 256 = line 260; row 280 = line 284, row 282 = line 286, row 518 = line 522). Row
-  numbers belong in code and CSV columns only; every number spoken to the owner is a line.
-  **VBI structure and the crop-start error — MEASURED 2026-09-04 (raw units, both recordings;
-  `experiments/picture_envelope_census.py` recognises caption/timing lines by signature):** unit row 16
-  (field 1) is the deck's FIXED timing line (narrow pulse far left, wide pulse right), byte-alike
-  across the tape and outside the crop until a negative offset pulls it in ("flicks into frame");
-  row 17 (and 280 for field 2) is the deck's FIXED line-21 insert — a null closed caption (clock
-  run-in + two pulses); the tape's RECORDED caption (run-in + data pulses) sits ON the insert when
-  the field is correctly placed and moves WITH the picture when displaced, always two rows above
-  the picture top (first minute: caption 17 / top 19 in 50/50 units, 19 / 21 in 38/38; EP slice
-  at 1,300 s: 17 / 19 in 500/500); row 18 between them is black line 22. So row 17 = line 21 and
-  the standard first VISIBLE line (SMPTE RP-202 / ATSC A/54A: 480i encodes lines 23–262 and
-  286–525) is row 19 for field 1 and row 282 for field 2 — exactly where the census finds a
-  correctly placed picture (field 2 top at 282 in 1,573/1,800 first-minute units and 1,800/1,800
-  in the EP slice; field 1 at 19 whenever the caption is on the insert). **Output geometry —
-  owner decision 2026-09-04 (after a same-day false alarm and reversal):** **720×480 is clean
-  aperture**: crop origin rows 19/282 = lines 23/286 (SMPTE RP-202's 480-line lattice 23–262 /
-  286–525); captions are not in the 480 render. **720×486 is an alternate output mode** (to be
-  added to the publisher and the OBS source): lines 21–263 / 283–525, captions kept in the
-  picture for downstream decoding. In both modes the PICTURE ORIGIN 19/282 is where registration
-  measures and what "d = 0" means. **The tape's real line 21 (seven-cycle run-in, start bit,
-  two parity bits) is the golden alignment reference: correctly placed, it sits exactly on the
-  deck's generated line 21 (unit row 17) — and that is also the definition of a PICTURE LOCK.**
-  **Golden rule (owner, 2026-09-04):** if the recorded line 21 cannot be found anywhere else in
-  the field (search the whole field, top first, including the bottom — a badly wrapped vertical
-  interval can put it there), assume the picture is locked in the right place: reference = the
-  deck's line 21 (rows 17/280), picture origin 19/282; only a caption found elsewhere can change
-  that lock, which may produce one or two line jumps near the beginning of a recording — each
-  recorded as a sidecar event. Everything derives from the lock: field parity keeps both fields
-  aligned at the correct picture start (field 2 one display line below field 1), so field 2 is
-  placed from the same lock and its own envelope. Reconciled with the envelope: a unique caption
-  off the insert with the envelope displaced by the same amount is a per-unit displacement,
-  corrected on the spot, lock unchanged; a unique caption off the insert while the envelope sits
-  at the origin, consistently over a few units, means this recording's line 21 lives at a
-  nonstandard row — re-lock the caption reference to it once (CaptionRelock), picture untouched;
-  with no caption the envelope measures each unit's displacement from the fixed origin and
-  corrects it every unit (jitter included), the per-lock learned HEIGHT serving validity, never
-  position; ambiguous captions (duplicate, split, skewed, leaking band) never touch the lock or
-  the crop; with no gauge at all, hold the last applied (0 at open). A caption on the insert is
-  logged as confirmation. **"Line 21" means the BLANK waveform** (run-in + start + two null
-  bytes), present on every unit where the source had caption service — no caption data needed;
-  a displaced field shows TWO such rows (insert at 17, tape's at 17+d), an aligned one shows one
-  (measured: SP minute (17,19) in 85 units, 85/85 with picture displacement +2). **Secondary
-  alignment checks** (owner; never the primary gauge): the NEXT field's leaky line-21-like
-  waveform in the head-switch band at the bottom of the field (row 256 in aligned EP units);
-  picture content appearing ABOVE the deck's line-21 insert (rows 7–16 must never carry video);
-  and the black line 22 (row 18, Y ≈ 1.4 when aligned; the gap moves with the content). EP
-  damage measured at 1,300 s: 458/1,800 units carry ≥2 bright leaking-VBI band rows above the
-  picture, 138 carry one — bands, never line 21 or picture.
-  **Whole-tape envelope census (2026-09-04, `picture_envelope_census.py` at `1756fba` over all
-  86,293 exact units; scratch CSV, regenerable in ~100 min).** The tape has two recordings with
-  a boundary at **1,461 s** (unit 43,800; last caption on the insert 1,457 s). *First recording:*
-  whenever a recorded caption is found it is on the insert (5,558 of 6,425) with the picture at
-  19/256 (or 255), except a rigid **+2 class: caption 19, top 21, bottom 257** (395 units) — the
-  bottom moved one line, not two, so **the deck clips field 1's bottom and height is NOT invariant
-  under displacement**; the SP intro's majority top-20/bottom-256 (17,503 units) carries no
-  line-21 waveform at row 18 (first-minute probe: row sets `(17,)` and `(17,19)` only), so it is
-  LOCKED with a blank line 23 in the content — an envelope-top gauge would have called the entire
-  intro +1; this is the strongest single case for the golden rule. **CORRECTED 2026-09-05:** the
-  tape's own black line 22 (Y ≈ 4–7, above the 1.4 blanking) sits at row 19 in those units, the
-  comb audit registers the fields at (1,0) and not at (0,0), and wherever a caption exists the
-  gap reading agrees with it 309/309 — the intro IS displaced +1; the "blank line 23" was the
-  tape's line 22 seen one line low. Row 18 is always black (regenerated, like the inserts); the
-  tape's dark line at row 18 + d is a per-unit displacement gauge for any recording whose line
-  22 is black, gated per segment by agreement with its captions (the second recording carries
-  video on 22 and reads 0 there). Field 2: 282/518 in 23,302
-  of 24,000 intro units, **224 rigid moves in 86,293 (0.26%)**; its 282↔283 top flicker is
-  content. *Second recording (1,461 s–end):* captions **never on the insert**; found in 9,162
-  units at rows 19/20 with the picture top at 20–22 and the bottom fixed at 256 (field 2 at
-  284/518, height 235): caption→top gap 2 in ~1,300 units, gap 1 in ~3,500, caption BELOW the
-  top in 682 — the EP's split/skewed caption class, ambiguous by the plan's own rule, so either
-  CaptionRelock fires from the run-in row or it never fires and the recording renders with its
-  own leaked VBI at the top (owner ruling owed). Field-1 unit-to-unit moves: first recording
-  rigid 2,643 / bottom-only 1,976 (256↔255, content reaching the near-blank rows) / top-only
-  843; second recording top-only 5,089 / bottom-only 2,750 / rigid 2,377 / mixed 1,463.
-  **Horizontal phase of the second recording's line 21 (2,400 s window, 600 units, 48 bins per
-  line): NOT split at half a line.** The complete null-caption waveform (run-in bins 0–11,
-  start/parity pulses at bins 15–17) sits on row 20 in ~300 units or row 19 in ~108, at exactly
-  the deck insert's horizontal layout but ~2× its amplitude; the picture begins on the very next
-  row (line 22 is active video in this recording, no black line); and the row above the caption
-  often carries a burst-only waveform (run-in with no start/data). So the "split with skew" is
-  two adjacent VBI-type rows plus a missing black line 22, not a half-line timing error; a
-  half-line error would displace every line, and a TBC re-locks H per line anyway. Prior art for
-  captions landing on varying rows: FFmpeg `readeia608` (scans `scan_min..scan_max`, default
-  rows 0–29, reports the row it found) and ld-decode/vhs-decode `ld-process-vbi` (reads CC
-  "anywhere in the VBI space"). Neither uses the row as a registration reference; that is ours.
-  **Lines 20 and 21 are generated by the SHUTTLE, not the deck — measured 2026-09-04 evening.**
-  Two different fixed lines: line 20 carries a pulse pattern (bright at the far left and a wide
-  pulse at ~80% of the line), line 21 the null CEA-608 caption (run-in, start bits, parity
-  pulses); field 2's line 284 duplicates line 21. In `shuttle_no_input_45s.tpc` (deck powered
-  off) the Shuttle's 34 exact `0xe801` startup units carry both lines in 12 units and neither in
-  22, at the same layout and levels as with the deck present (`deck_ext_input_nosource_30s`:
-  200/200 units, sub-black raster). So the "deck's line-21 insert" written throughout §6/§7 and
-  the plan is the Shuttle's, inserted relative to its detected vertical sync (in the composite
-  capture both lines sat one line lower for the first 2 units, a lock slip). Nothing in the
-  golden rule changes — the reference is the regenerated raster we sample — but the attribution
-  does, and "the deck's TBC produces the stable raster" is now only supported by the OSD witness
-  (§7), not by these lines. Whether the deck ALSO inserts a line 21 that the Shuttle overwrites
-  is unmeasurable from this side.
-  **The Shuttle DOES lose lines 20/21/284 (owner observation, confirmed 2026-09-04 night):** in
-  the whole-tape capture, units 176–194 (5.87–6.47 s, 19 units — the deck's output relay muting
-  to 0 V at play start, the same 19-unit sub-blanking run first seen in the untagged capture)
-  are all-black rasters (Y 1.4) with **no timing line and no caption insert in either field**,
-  format still `0xe801`, bracketed by device-short units (755,824 B) at units 9, 14 and 195 —
-  the owner's "partial tears". With the deck powered off the inserts appeared in only 12 of 34
-  idle units. So the inserts are conditional on the decoder having sync, not unconditional, and
-  **"no waveform off the insert ⇒ aligned" is only valid when the insert itself is present**; an
-  absent insert is a signal-state fact (mute / no input), a hold, never a gauge. The earlier
-  "rigid through the events" wording above meant rigid while a signal is present.
-  **Second recording, line-by-line (2,100 s window, 600 units; all NTSC lines).** Field 1: the
-  tape's line 21 lands on **line 23** (jittering to 24 with the picture), a full CEA-608 waveform
-  at ~2× the insert's amplitude, data-bearing in ~1/3 of units; the picture starts on the next
-  line (the source had active video on line 22). Where two adjacent lines carry caption energy,
-  the extra line is a complete 7-cycle run-in with no start bit and no data, horizontally in
-  phase — a vertical duplicate of the run-in, NOT a half-line horizontal split (a periodic
-  run-in cannot fix a lag by correlation; its envelope position does). Field 2: **line 286**
-  carries, in ~99% of units, a tape-borne signal (per-pixel std 2.9 across units vs 0.5 for the
-  Shuttle's inserts): a pulse at 2–4 µs, a ~50 IRE bar over 5.5–17.4 µs — exactly the run-in +
-  start-bit span of a caption line — and a ~5 IRE pedestal over the data span. Its shape does
-  NOT track field 1's caption (null vs data-bearing field-1 units give identical line 286: 23.3
-  vs 23.5; corr 0.07), so it is not field-1 leakage; it is the tape's own field-2 caption line
-  (284) displaced +2, smeared at the source. Not a bad record head: field 2's picture is as sharp
-  as field 1's (median field2/field1 horizontal-gradient ratio 0.99–1.00 in three second-
-  recording windows, 1.01 in the first recording). Line 287 carries the run-in fragment in ~25%.
-  Net: the second recording sits at **d1 = +2 (jitter to +3), d2 = +2**, both fields agreeing,
-  with the smeared line-286 envelope (bar edges at 5.5/17.4 µs) a stable field-2 gauge for it.
-  **Field 2 of the second recording carries TWO data lines, and the two fields' displacements
-  differ over the recording (measured 2026-09-04 night, raw units).** Line 286 = the tape's
-  line 284 at +2 (the smeared constant XDS-like bar); line 287 = the tape's line 285, a second
-  608-format waveform: full data bits in some units, run-in only in others (service unknown;
-  1998 US stations did carry data on 22/285). Raw inter-field registration on static content
-  (8-px low-pass, same-parity static mask, weave field 1 from line 23 against field 2 from 286
-  at relative shifts −3..+3): 1,838 s **0 in 199/199** units; 2,100 s 0 in 320, +1 in 256;
-  2,700 s **+1 in 546/593**. Complete-waveform rows agree: at 1,838 s (d1,d2) = (2,2); at
-  2,700 s field 1 at +3 with field 2 still +2. So field 1 moves (+2 ↔ +3) while field 2 holds
-  +2 — the same field that moves in the first recording — and for long stretches the second
-  recording carries a genuine one-line inter-field error, which is exactly what makes a weaver
-  comb there. Registration corrects it as (3,2). The 1,300 s window (first recording) is
-  aligned: 0 in 3/3 measurable static units, captions on the inserts, tops 23/286.
-  **PARITY DECODES THE GAUGE — measured 2026-09-04 night (`experiments/cc608_decode.py`):**
-  decoding each candidate line as CEA-608 (run-in phase by correlation, start bits, 16 data
-  bits at 1.986 µs cells, odd parity per byte) turns "which line is the tape's line 21" into a
-  standards test with no ambiguity left. Second recording, field 1: **exactly one of lines 23/24
-  decodes with valid parity in every unit** — 30:38: 23 in 200/200; 35:00: 23 in 257, 24 in
-  343, never both, never neither; 45:00: 24 in 596, 23 in 4 — carrying real CC1 control codes
-  (0x94 0x2c EDM, 0x94 0x2f EOC, 0x94 0x20 RCL) between nulls; the vertically duplicated
-  run-in line never passes (wrong run-in length or no start bits). So d1 is read per unit
-  (+2 / +3) with no hold needed. First recording (21:40): **line 21 itself decodes with valid
-  parity in 298/300 and carries the tape's own bytes (0xd3 0x20, 0x8f 0xe6 … among nulls)** —
-  the tape's caption passes through AT line 21 when aligned, i.e. the regenerated line 21 is
-  the tape's waveform when one is present and a null otherwise; lines 22–24 never decode ⇒
-  d1 = 0 measured, not assumed. Field 2: 284 decodes as nulls everywhere; the tape's smeared
-  XDS at 286 and the run-in line at 287 never decode, so field 2 has no parity gauge in the
-  second recording and keeps the envelope of its unique 608-like candidate (286 ⇒ +2).
-  **The Shuttle RE-ENCODES line 21/284 — measured 2026-09-04 night.** Across 1,500 first-
-  recording units, every unit whose line 21 decodes to the same two bytes has a byte-identical
-  waveform (per-pixel std 0.6, peak 118 — the same as the synthetic null), while the tape's own
-  caption passing through raw at line 23/24 of the second recording has std ≈ 4 and peak
-  151–169. So the device decodes CEA-608 at the standard line (21/284 only), re-inserts a clean
-  waveform with those bytes, and emits nulls when nothing decodes there; the decoded bytes
-  change every unit (a cycling station-ID text packet in the first recording), so the decoder
-  is not sticky. Consequences (owner correction, same night: the Shuttle's bytes are the
-  Shuttle's DECISION about where line 21 was, not a measurement of ours): non-null bytes on
-  line 21 mean the slicer decoded a caption inside its own window; measured, that window does
-  NOT reach ±2 — in 1,300+ units across both recordings with the raw caption at 23/24, line 21
-  carried nulls every time (first 1,800 units: 202 units with a parity-valid raw caption at 23,
-  89 of them data-bearing, all with nulls at 21) — and ±1 is UNMEASURED (no unit with the raw
-  caption at 22 has been found). So the bytes at 21 are corroboration only; **the authority is
-  the raw whole-field parity search**, which finds a displaced caption at its true line
-  regardless of what the Shuttle emitted at 21, because the device never blanks other lines.
-  Null bytes on 21 cannot separate an aligned null caption from no caption service or a
-  displacement; a displaced caption passes through raw and is never cleaned.
-  **±1 IS inside the slicer's window — measured 2026-09-05 (v9 sidecar vs geometry, first 13k
-  units):** 91 units carry decoded caption data at 21, NO raw parity line anywhere in the field,
-  and a rigid +1 picture (top and bottom together, 24/261 against a 23/260 lock, bottom far from
-  the ADC boundary). So the device slices a caption one line off, re-encodes it at 21, and the
-  raw line is gone; only geometry witnesses that displacement. Consequence for v9: bytes at 21
-  are never a gauge (not even for "0"); with a live lock, geometry decides and the insert bytes
-  are logged as corroboration only; the parity truth set for acceptance uses off-insert lines
-  only (40,169 field-1 units, +2 ×23,492, +3 ×16,670). The SP intro's rigid ±1 class (199 moves
-  in the first minute) is this. The owner's expectation of tape luma "hanging off" the regenerated line 21 cannot
-  occur at line 21 itself (it is synthetic), only on displaced lines. A full-field parity scan
-  (lines 12–266 and 272–528, 300 units each) found the tape's caption only at 21 (first
-  recording) or 23/24 (second); nothing at the bottom of either field in these windows;
-  picture lines pass parity by chance in ~2% of units with run-in amplitude 15–22 against
-  52–60 for real captions — `cc608_decode.py` now gates at 35.
-  **Owner's lock model (2026-09-04 night, to be confirmed by Codex):** the picture's start line
-  and the deck's clip line are constants per source (letterbox included); once a lock exists it
-  is the golden master until its own invariant fails, tested every unit: picture height
-  constant, and any lines lost below the deck's clip must equal the lines added at the top. If
-  the math fails the old lock is dead and acquisition restarts. Line-20/21 data appearing off
-  the regenerated lines, with the picture moved by the same amount, computes the offset and
-  sets a new lock. Line 21 stays gold; the picture geometry is the secondary. Until a lock is
-  settled (a tape bouncing from its first lock) no real-time decision is claimed.
-  **Two design constants frozen from data for v9 (2026-09-04 night):** (1) the field-2
-  "608-like envelope" candidate (used only when no parity-valid field-2 line exists): row mean
-  < 95, 48-bin luma profile, every bin ≥ 20 at most 40, and a run of ≥ 6 consecutive bins > 60
-  within bins 0–19 — fires uniquely at line 286 in the second recording (200/200, 597/600,
-  529/600), never in the first recording (0/600), never on the commercial tape (0/400), once
-  in 2,000 field-1 units (two picture lines ⇒ ambiguous ⇒ hold). (2) Geometry edges by ROW MEAN
-  over blanking (> 12 against the 1.4 floor), not the census's per-line mostly-black rule: with
-  the row-mean rule field 1's top and bottom are still in 599/600 aligned units at 21:40 and in
-  all three second-recording windows, whereas the per-line rule flickered the bottom 256↔255 in
-  4% of units — which would have killed a strict conservation test every few seconds. On the
-  commercial tape the row-mean rule sees top-only moves with a still bottom in 44/400 units
-  (dark scene tops): content, lock broken ⇒ hold ⇒ re-acquire, the intended behaviour.
-  **Owner ruling (same evening):** multiple line-21-like rows or a partial waveform in a unit
-  means the timing signal is too unstable to use — give up on line 21 for that unit; the leaked
-  VBI framing pulses at the bottom of the field and picture-above-the-band are then a real fix
-  point, not just a check (v9 plan, amendment 3). The owner's EP-render observation (waveform
-  sometimes spanning both rows, usually when carrying caption data; occasionally unsplit) does
-  not match Claude's one 600-unit window; the whole second recording must be classified per
-  unit and per field before the detector is written. Damage classes the caption
-  detector must survive: the tape's own vertical-interval pulses leaking into the picture as
-  thick bright bands when horizontal timing is far out of tolerance (also the "severe flagging"
-  bands seen on other tapes), and the EP recording's caption splitting across two lines/fields
-  with heavy horizontal skew — a split, duplicated or skewed caption is ambiguous, never a
-  reference. Consequences for the engine design: the recorded caption row minus 17
-  is a direct, content-independent readout of field 1's displacement whenever a caption exists;
-  the picture envelope (top/bottom/height, VBI-type lines excluded by signature) is the gauge
-  otherwise and for field 2 (no caption on this tape); "field 2 stays put" is physical — it sits at
-  line 286 in ~87% of first-minute units and 100% of the EP slice — and field 1's moves are rigid
-  whole-field-line shifts of caption + gap + picture together (parity test on raw units: per-field
-  model 202–0 over a whole-picture one-display-line shift).
-- ✅ **P2 v9 — the line-21 engine (merged to main `e1c91f6`, 2026-09-05 early morning; Codex
-  wrote, Claude reviewed, two review rounds, 69/69 goldens, 18/18 API, 3/3 decoder).** Supersedes
-  every estimator above. Per field per unit: decode every line of the field (NTSC 12–266 /
-  272–528) as CEA-608 with parity (`cea608.c`, byte-exact against `experiments/cc608_decode.py`
-  on 3,600 slice units); exactly one parity-valid line off the regenerated 21/284 ⇒ applied
-  `d = line − 21` (`− 284`) at once (`Line21Placement`) and the lock's zero is re-anchored to
-  `top − d`; field 2 without parity uses the frozen smeared-XDS envelope candidate in lines
-  285–290 (`Field2EnvelopePlacement`); otherwise a geometry lock (top, uncensored height, optional
-  clip ceiling fitted from two gauged units saturating at one line) decides by the conservation
-  equation, rigid moves applied, top-only changes `LockBroken`/hold, boundary changes with an
-  unknown clip `ClipUnknownHold`; bytes at 21 are provenance only (`InsertCorroborates` /
-  `InsertContradicted`); more than one candidate `Line21Ambiguous`; insert absent `InsertAbsent`.
-  Lock zero provenance is named (`Parity` / `Envelope` / `Acquired`) and `comb_safe` requires both
-  fields locked and either both zeros physical or both rigid this unit. State 72 bytes,
-  allocation-free; engine 0.32 ms median / 0.33 p95 per unit, whole worker 0.54 / 0.55 ms
-  (§11b budget 10 ms). Sidecar schema 5 (per-field reason, gauge, line, bytes, geometry, raw
-  edges, lock, zero source, clip, residual, `comb_safe`).
-  **Whole-tape acceptance (experiments/line21_truth.py + v9_acceptance.py, 86,293 exact units,
-  0 drops):** field 1 agrees with **40,237 of 40,237** off-insert parity readings (0
-  disagreements; the round-1 engine had 122 of 40,163 — Codex's strict acceptance script then
-  recovered 74 readings that a chance picture hit had mislabelled ambiguous, and it now fails
-  closed on unpublished units, duplicate counters and any disagreement), field 2 25/25. Applied pairs: (0,0) 26,023, (2,2)
-  20,537, (1,0) 18,398, (3,2) 13,962, (3,0) 3,570, (2,0) 3,160 — the (1,0)/(2,0) mass in the
-  first recording matches the 2026-08-30 offline trace's (1,0) 19,265 / (2,0) 2,315
-  independently. Reasons, field 1: GeometryLockDecides 42,481, Line21Placement 40,163,
-  LockBroken 2,657, Acquiring 721, InsertAbsent 137, Line21Ambiguous 74. Zero source: field 1
-  Parity 82,883 / Acquired 3,410; field 2 Envelope 34,871 / Acquired 51,373 (the first recording
-  has no field-2 gauge). comb_safe 75,216/86,294. 7,032 applied transitions, 2,797 one-unit
-  flips: 2,023 parity-placed (the caption line itself moved for one unit), 734 geometry-placed
-  of which 692 rigid (top and bottom moved together) and ~40 top-only under a fitted clip.
-  **`captures/fulltape_render.{mp4,_registration.csv}` re-rendered from v9 (2026-09-05 01:09,
-  `render_fulltape.sh` at `6be3103`, gate all PASS: clean `-xerror` decode, 2879.410 s and
-  86,297 sidecar rows identical to the v7 pair, 172,592 frames; published by SHA-256-verified
-  copy, old pair deleted).** Render sidecar: field 1 agrees with the parity truth 40,237/40,237
-  too; pairs (0,0) 23,134, (2,2) 20,702, (1,0) 18,361, (3,2) 13,484, (1,1) 2,404; 7,207
-  transitions, 2,791 one-unit flips; comb_safe 80,929/86,296. ⚠️ **OPEN — the render and the
-  live path disagree in ~8,400 units, almost all field 2 of the first recording, by one line:**
-  same engine, same units, both 40,237/40,237 against the truth, but the frameserver calls
-  `fieldreg_begin_segment` at every classifier relock (15 on this tape) while the offline
-  renderer calls it once at the start, so the content-acquired field-2 zero differs. The renderer
-  must make the live path's relock calls (run the same classifier) before its sidecar can be
-  called the live path's output. The renderer's arming detector also broke when the crop origin
-  moved (fixed `6be3103`; LEARNINGS).
-  **Owner review of the v9 render (2026-09-05 01:30–02:30) — v9 as built FAILS the owner's
-  invariant, and the review artifacts were wrong too.** The invariant (owner): the regenerated
-  raster is identical in every unit and the tape's field position is directly readable every
-  unit (the TAPE's line 21 when visible, else the picture's first line), so the output picture
-  position is `measured − crop = 0` by construction and **can never bounce except during the
-  initial lock of a program segment**; any bounce is a wrong reading or a remembered value
-  substituted for a reading. Measured on the published render at the owner's sites (raw
-  525-line raster inspected): 35:33–35:59 = 229/784 units with a field-1 output jump and XDS in
-  frame; 2:48 field-1 `LockBroken` ×41 on a clean picture from line 24 (bottom-band flicker);
-  43:24 `LockBroken` ×762 with the picture from 26 (lock zero one line off); 7:45 field-2
-  `ClipUnknownHold` ×1,222 with the picture at the standard origin 286 (zero acquired from a dark
-  unit at 287); 21:13 `OutOfRangeHold` ×41 on a night scene at luma 10 (absolute threshold 12
-  called it blank; picture visibly from 24, held 0 = wrong). Honest holds: 24:17 one-field
-  dropout (field 2 all black); 24:20 snow/torn relock (but the classifier stayed ProgramLike).
-  Root causes handed to Codex with failing goldens: (A) VBI-type lines that fail parity or the
-  amplitude gate are taken as the picture top (damaged captions, the smeared XDS bar); (B)
-  bottom flicker inside the deck's near-blank band (lines 260–264 / 522–526) breaks locks; (C)
-  the lock zero is acquired from content instead of the standard origin — the golden rule says
-  assume locked at 23/286 until a gauge re-anchors; (D) absolute luma threshold. Whole-render
-  audit (`experiments/render_stability_audit.py`, detectors still noisy on NNEDI output):
-  1,759 units where the crop followed a moved "top" while the picture did not move (the engine
-  following a VBI/grey line), 34 crop changes on a still edge, 283 raw-top moves not followed.
-  **Round 3 progress (2026-09-05 02:00–04:00, branch `render-live`, not merged):** Codex landed
-  A (VBI-type lines excluded by signature regardless of decode; picture top = first of three
-  picture rows) and B (lines 260–264 / 522–526 censored: bottom flicker cannot break a lock) —
-  disaster-slice `LockBroken` 366 → 0 — then C/D (standard origin 23/286 as the zero from the
-  first unit, gauges re-anchor it, content never does; luma threshold relative to each field's
-  blanking): goldens 86/86, three slices 100% Locked and comb_safe, engine 0.50 ms. Claude's raw
-  audits on that build found: (1) the 45:00 field-2 regression (+2 ×620 → +1 ×69) is the XDS
-  bar with picture bleeding into its right half, so neither the envelope candidate nor the
-  exclusion fires (both demand bins 20–47 ≤ 40), line 286 becomes the geometry's top and the crop
-  lands on the run-in fragment at 287 — the bar's signature is its LEFT half only; (2) the tape's
-  flat grey line 22 (luma ≈ 7, above blank+4) is taken as the picture top when the caption is
-  invisible — a dim flat line under half the brightness of the three rows below is VBI ('gap'),
-  never a top; (3) 37:01 field 2 holds out of range on a dark scene (raw top 291–294); (4) OPEN
-  measurement: at 35:00, 33 parity-placed units moved the crop with the caption while the picture
-  body did not move by the same amount (20 on static content) — either the body measure is
-  confounded or the tape's caption line sometimes moves without the picture; if the latter is
-  real, the owner's rule is that the caption anchors the segment lock and the picture geometry is
-  tracked unit to unit (a design change, owner decision). Instruments: `experiments/follow_audit.py`
-  (raw-raster: at every applied change, did the picture body move by the same amount; content
-  motion = both fields' bodies together), `experiments/engine_audit.py` (crop vs measured top).
-  Process rule learned the hard way (owner): one Codex dispatch at a time, read the reply, rewrite
-  the next brief against it; never stack queued design turns.
-  **Review-copy rules (owner):** the review copy is produced from the LIVE frameserver output
-  with its own sidecar burned in over the ENTIRE tape (never an excerpt — a keyframe-cut
-  excerpt offset the band by 12 units and misled the review), never from `capture_render.py`;
-  no whole-tape re-render except for sanity checks; every non-locked state outside true signal
-  loss or a cut is audited against the raw raster before hand-over. The published v9 pair stays
-  as the sanity baseline; it is not accepted.
-  **✅ v9 rounds 4–8 (`render-live` `490877b`, merged to main `cb1b4ed` 2026-09-05, Codex wrote, Claude measured on
-  the raw raster; docs/registration_v9_plan.md carries the round-by-round record).** After the
-  owner's review of the first v9 render, every remaining bounce was measured on the 525-line
-  raster with two raw instruments — `experiments/follow_audit.py` (unit-to-unit body shift vs
-  applied crop; relative, indicative only: a late correction scores as engine motion) and
-  `experiments/relative_comb_audit.py` (static-region comb of the PUBLISHED crops per unit;
-  absolute; the acceptance figure together with the parity truth join `v9_acceptance.py`) —
-  and fixed with failing-first goldens (122 → 186). What changed in the engine, in order:
-  a 2-D body witness (rows 40–199 / 303–462, integer shifts −3..+3, reliable only when
-  MAD(best)/MAD(second) ≤ 0.8 — measured against caption truth: a reading below 0.8 is wrong in
-  ~1 of 500 units, but 15–17% of true moves lie above it, so a tied witness ABSTAINS and never
-  becomes a hold) anchored on the previous unit's measured position, never on the last applied
-  crop (a wrong hold no longer latches); the picture wins over the caption in both directions
-  when a reliable witness contradicts it (`CaptionOnlyMotion` / `CaptionBodyDisagree`, ~30
-  units on the tape, each recorded with its body evidence); a top edge that moves against a
-  reliable still body never moves the crop (first-visible-line flicker); on a tied body a
-  measurable comb decides (`TopCombCorroborated` / `TopCombVetoed`) and a flat comb leaves the
-  top to place (`TopOnly`); the segment zero is a constant re-anchored only on three
-  consecutive identical gauge readings and bounded to the standard origin ±3 (this recording's
-  line 22 carries flickering video, which had flipped field 1's zero 23↔22 320 times); field 2's
-  zero, which has no parity gauge in the first recording, is calibrated once per segment by
-  static comb against a parity-placed field 1 with field 2 actually on its zero, from observed
-  geometry (an earlier version integrated from the current zero and walked 4 → 41 lines at
-  minute 43), comb thereafter a consistency check only, eight stable disagreements → `Drift` →
-  recalibrate; a byte hole keeps installed zeros. Two rules were falsified on the tape and
-  reversed: "d1 − d2 is a segment constant" (field 1 jitters independently; the constant is
-  field 2's zero) and "the top alone never moves the crop" (it suppressed 2,616 caption
-  placements). Whole tape at `490877b`: 86,293/86,293, zero drops; parity acceptance field 1
-  40,208 agree + 29 evidence-checked vetoes + 0 disagreements, field 2 24 + 1 + 0; comb
-  misregistered **1,052** of 86,293 unit pairs (`a683926` 1,889; `2efc416` ~3,700 by the old
-  rule) with 30,213 flat; Calibrated 82,051, bias 0/+1/+2 only; engine 1.35 ms median /
-  1.37 p95 per unit, state 168,096 bytes. **Not built:** a raster-damage state — Codex's census
-  at the owner's torn units (ordinals 62322–62326) found the Shuttle inserts decoding, tops
-  measurable, body MAD 5.7–11.1 and the same morphology in the neighbours; no observable
-  separates them, so no threshold was tuned to ordinals (owner decision owed). **Instrument
-  review (Codex, ten findings, seven fixed):** one static mask at the previous unit's own crops,
-  uniqueness required for "registered", fail-closed readers, gated content-motion,
-  complete-coverage and evidence-checked vetoes in the acceptance.
-  **Open after the merge (round 9):** one class remains, minute 43 (715 of 1,798 units one
-  line off): with no caption for ~1,740 units both fields' measured tops sit one line below
-  what their zeros predict, because this recording's blank lines 22 and 285 carry intermittent
-  video and the picture top is one line ambiguous; `d = top − zero` inherits it whatever the
-  zero. Claude's body-primary tracking proposal was falsified by Codex's offline simulation
-  (accumulated reliable body shifts drift to (34,36): the witness proves a content match, not
-  raster displacement). Accepted design, in progress: a bounded RELATIVE crop correction
-  installed after three decisive static-comb readings, computed from the current crops, never
-  an incremented zero, persisted across flat units, cleared on signal-lock loss.
-  **✅ Round 10 merged (`7254d58`, 2026-09-05 17:35 JST):** the bounded relative comb correction
-  (three decisive static-comb readings install a relative crop bias from the current crops,
-  never an incremented zero; the field it moves is chosen per unit from current absolute
-  testimony so a caption-placed field 1 is never displaced; persists across flat units and
-  discontinuities, cleared by begin_segment). Whole tape, both agents: parity 40,208 + 29
-  evidence-checked vetoes + 0; comb misregistered **165** of 86,293 pairs (round 8: 1,052; the
-  v8 bottom-edge engine on the same instrument: 326, but with field 1 at the caption's position
-  in only 75.6% of readings — both instruments are needed, the comb sees relative error and the
-  caption absolute). Minute 43 is closed except the unit before the correction installs. Engine
-  ~1.4 ms median. **Open:** the owner's damage ruling (saved good geometry, hold on absent
-  evidence, one re-check on clearing) — round 12, in progress; round 11's contradiction-based
-  damage classifier was falsified (the torn units show absent testimony, not contradiction).
+- ✅ **P1 capture core landed.** `src/capture_core/` provides the device and replay
+  backends, tagged sink, and adversarial/sanitizer tests. The early integration
+  found a ring-publication race and unreported termination loss, with deciding
+  tests. Transport details and later fixes remain in §6 and the component docs.
+- **P2 registration — implemented baseline, research still open.**
+  Remote `main` was verified at
+  `b15b459596e0ea20c15d042835116e2b111587ea` for this rewrite.
+  It contains the v9-family allocation-free C engine, CEA-608 decoder, geometric
+  envelope/lock, bounded previous-unit body witness and relative comb correction.
+  `src/field_registration/README.md`, headers and tests describe that revision;
+  their cutoffs and precedence are implementation choices, not new requirements.
+  `src/frameserver/` already contains assembly, PCM publication and logging;
+  `src/obs_plugin/` already contains a working replay-capable adapter.
+- **What main improved, and what its results mean.** The early C port reproduced
+  the offline model on the 86,293 exact whole-tape units. Later versions recovered
+  caption-anchored positions and reduced the then-defined relative comb errors.
+  The round-10 report recorded 165 such errors against round 8's 1,052, with no
+  unexplained disagreements against its usable parity readings. This comparison
+  has an instrument-defined population, including abstentions; it is useful
+  history, not a claim of universal correct placement or today's score.
+  The minute-43 case motivated a bounded relative correction rather than
+  accumulating body-motion shifts. Startup, clipped boundaries, absent captions,
+  dark rows and source transitions remain important when judging a replacement.
+- **What the v10 branches tried.** They rewrote registration around explicit
+  geometry, source-local references, head-switch measurements and confirmation.
+  Later work simplified comb energy, changed when it ran, and removed a
+  switch-measurable prerequisite from that path. **Capture 1 did not achieve a
+  valid lock; the reported first lock is withdrawn.** Comb agreement occurred
+  only at 6268–6269 (rewind) and 6810–6811 (fade onset). At 6811 the best two
+  energies were nearly tied, 4.704/4.711; the flag was held without rechecking
+  and restored at 6882, with applied offsets (0,0). See
+  `docs/registration_archaeology.md`, Part III, corrected in `a0890c3`.
+  A provisional output record was also once reused after the engine changed.
+  These failures concern the evidence and implementation, not a verdict on
+  whether the physical approach can work.
+- **Integration work must be assessed separately.** v10 also changed
+  `signal_state` and `frameserver`: registration feedback could affect the
+  source-layer settlement claim, a gate/fixture combination could skip engine
+  work in a worker benchmark, and queue/output-isolation repairs were pursued.
+  Main's worker benchmark calls registration; the later skip finding is not
+  automatically a main defect. Likewise, main still has its own registration
+  feedback path. Check each change against its revision before carrying it
+  forward or discarding it with the engine experiment.
+- **Current status.** The owner expects much of v10 may go away; no retirement
+  or replacement algorithm is decided by this document. Main is the comparison
+  baseline, not an oracle. Keep the four captures and whole tape in §7, the
+  implementation-independent observations and reproducible regression cases.
+  Short accounts of approaches and limitations are in §7; round-by-round
+  patches, score tables and historical policy are in the archaeology and tests.
+- **Useful existing checks (not run for this rewrite):**
+  `make -C src/field_registration test`,
+  `make -C src/frameserver test`, and
+  `make -C src/frameserver bench`.
+  They check their specified fixtures and paths; a passing suite is not a
+  substitute for identifying the physical signal. Preserve transport/replay
+  checks when registration changes, and report both placement and abstention
+  rather than using the lock count alone.
 
 - ✅ **P3 landed (parser, classifier, frameserver assembly).**
   `src/unit_parser/` (provenance-aware, allocation-free; split markers, device-short units kept
@@ -1654,11 +1323,9 @@ delivery edge; wrong one at acquisition.
   2× realtime:** 86,305 observations = 86,293 exact + 7 short + 4 unframed + 1 `0x0800`, 0 holes,
   0 drops, 86,293 frames published, pool high-water 2/64; the live applied phases differ from the
   archival log in exactly the 147 rows (five plateau onsets) that forward-only publication implies.
-  **Lookback investigation (two independent arms, reconciled and superseded for live use):** the
-  old caller backdated only abstaining rows and could not revise positive provisional evidence;
-  the lone frame-8169 `(0,1)` then latched for 104 units. V6 fixes the latch forward and follows
-  coherent physical evidence immediately. `TRAJECTORY.md` retains the optional archival-side
-  endpoint-constrained design, but no caller FIFO/backtracking belongs in the CMIO live path.
+  Earlier lookback experiments and the forward-only/live distinction are
+  summarized in §7; `TRAJECTORY.md` retains the historical optional offline
+  design. They are not a request to add a FIFO to the current live path.
 - **P3 frameserver (original plan)** — unit parser + signal-state classifier v0 (three-layer model, §6) +
   registration engine → interlaced UYVY IOSurface publisher + decision log + standard-media
   recorder skeleton; TPC/raw packet persistence is an explicit debug option only. **No
@@ -1792,6 +1459,12 @@ delivery edge; wrong one at acquisition.
      real colour program decoded. Taken over an audio-grade RCA lead (not 75 Ω), so it proves the
      path and the framing, **not** chroma quality — the S-Video-vs-composite chroma A/B still needs
      a proper 75 Ω cable and the same passage on both inputs.
+  5. **V-stabilize comparison:** the later work identified this as the deck's
+     line-TBC switch and recorded both settings. The source inventory, pairing
+     caveat and on/off observations are in §7. Earlier independent “TBC on /
+     V-stabilize off” prescriptions should not be read as two available controls.
+     The already-recorded off-setting pass is a useful comparison; a new hardware
+     session is not required just because an old plan offered one.
   No over-the-air analog exists in Japan since 2011/2012 (cable digi-ana ended 2015), and dead-air
   tapes through this deck yield TBC-locked snow identical to the relock windows already captured.
 - Throughout: **all testing via deterministic replay** (whole_tape.tpc + untagged_capture + libusb_replay_shim +
@@ -1839,24 +1512,25 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 ## 13. Prior art & references
 
 - **bmusb** (protocol ref, GPLv2+): `https://sources.debian.org/src/bmusb/0.7.8-2/` — Nageru.
-- **vhs-decode / ld-decode** (closest metadata-model fit, GPLv3): per-field seq#/first-field/
-  sync-confidence/phase-ID/fault-flags + raw-plus-sidecar. Borrow the *model*, not its
-  duplicate/drop compensation; its best algos need RF sync the Shuttle already decoded away.
-  `https://github.com/oyvindln/vhs-decode/wiki/JSON-metadata-format`
+- **vhs-decode / ld-decode**: useful prior work on per-field metadata and software
+  TBC, but the raw RF/CVBS input differs from the already-decoded raster here.
+  Treat it as related research, not an existing solution to our registration
+  task. `https://github.com/oyvindln/vhs-decode/wiki/JSON-metadata-format`
 - **GStreamer** interlace vocabulary (`DISCONT/RESYNC/CORRUPTED/GAP`, one-field-per-buffer).
 - **V4L2/videobuf2 + em28xx**: `SEQ_TB/SEQ_BT/ALTERNATE`, damaged buffers as errors,
   `NO_SIGNAL/NO_H_LOCK/LOCKED`. (Old drivers trust the hw field marker — less provenance than we need.)
 - **DeckLink SDK** input model: stream-time / hw-ref arrival / validity flags
   (`bmdFrameHasNoInputSource`) / format-change (`bmdVideoInputFieldDominanceChanged`) / timecode.
-- **FFmpeg**: `idet` (motion TFF/BFF/undetermined, ~1.04 threshold, 4-frame vote) as the parity
-  baseline **applied between fields**; `bwdif` was the first bob used for the TFF measurement
-  (it and `estdif` produced false field inversions on fixture A; NNEDI3 is the review
-  presentation, deinterlacer rule in §7); **`fieldmatch` is content-cadence
-  tooling, NOT acquisition truth** (harmful if allowed to "repair" physical field records).
-  `decklink_dec.cpp` for the multi-PTS-source matrix.
+- **FFmpeg / presentation tools:** `idet`, `fieldmatch`, bob and other
+  deinterlacers were useful comparisons but answer different questions about
+  order, cadence or presentation. Some review renders introduced apparent field
+  inversions; compare raw fields before attributing that artifact to the capture.
+  NNEDI3 was used for review presentation, not as registration ground truth.
+  `fieldmatch` is content-cadence tooling; it must not “repair” physical field
+  records. FFmpeg's `decklink_dec.cpp` is the multi-PTS-source reference for A/V.
 - **OBS decklink**: live-adapter reference only.
 
-## 14. Working notes
+## 14. Working notes — retain lessons, not every round
 
 - **Mutual code-and-intent review is the coding style of this project (owner rule, 2026-09-03).**
   Every change by one agent (Claude or Codex) is reviewed by the other before it is considered
@@ -1872,19 +1546,49 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   and the other reviews that *implementation* — the code, not only the decision — before merge.
   If one agent is mid-review of the other's branch, let that review finish before pushing more
   commits under it; then swap roles on the next round.
-- **Premise checks are the agents' job; no round without one (owner, 2026-09-05/06, after the
-  v9 inversion — `docs/registration_archaeology.md` Part II).** Before any engine change, restate
-  the contract from the owner's own words and the measured reference raster and show that the
-  change follows from them; a rule or constant that cannot be derived from the raster geometry
-  and the contract is a fitted default and is labelled so, never contract. A round whose
-  acceptance moves one instrument up and another down stops and reopens the premise instead of
-  adding a rule. The raw 525-line panels of every non-locked decision are looked at before any
-  number is reported. None of this needs a human: the contract and the raster are in writing.
-  An owner ruling is asked for only when the contract is silent on what the OUTPUT should do
-  (a deliverable preference, e.g. what the picture does while the raster is torn), never on what
-  the signal is, and it is brought with the measured alternatives and a recommendation. Also
-  from the same day: review a commit's message bytes as well as its tree; push every branch the
-  docs cite; write timestamps only from a checked clock.
+
+- **Keep evidence separate from policy.** Before another registration change,
+  state what the owner asked to observe and how the proposed measurement bears
+  on it. A fitted rule may be an experiment; it is not an owner ruling. When a
+  counterexample appears, check the interpretation and instrument before
+  absorbing it into another clause.
+- **Source context belongs with the result.** The capture inventory in §7 is
+  retained because input, recording, deck setting, exposure and pairing changed
+  what was observable. These are useful distinctions, not permanent conditions
+  for recognizing an entire class of tape.
+- **Truth and tests also need scrutiny.** Keep the scorer's labels and selection
+  identifiable. An old label cache, mismatched field coordinates or a default
+  argument change altered results in the waveform work. Known-answer synthetic
+  cases helped find instrument defects; they do not establish source prevalence.
+  A crash, missing input, expected assertion failure and pass are distinct.
+- **Scope negative conclusions.** “This instrument did not establish it on these
+  rows” preserves a finding without claiming no method can do so. The same
+  applies to positive results: state the measured population, not “solved.”
+  Record what changed and its remaining uncertainty; avoid carrying a withdrawn
+  interpretation forward inside a confident summary.
+- **Search the owner's words before escalating** (standing instruction,
+  2026-09-11). A question goes to the owner when those words do not answer it,
+  or the agents cannot converge on their application. Relayed quotations and
+  the relaying agent's gloss are different evidence. Do not ask the owner to
+  select a physical fact that the measurements have not established.
+- **Artifacts and review:** inspect the actual producing code, input and output,
+  including commit-message claims. A new render with an old decision log is
+  still an old measurement. A review of a proposed repair is not a review of
+  the resulting diff. Keep detailed reports at their own paths rather than
+  expanding this section after every exchange.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
-- Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous) transfers; the
-  1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial for SuperSpeed).
+  Follow the active turn's shared-checkout/lock instructions, preserve others'
+  edits and stage explicit owned paths. Commit owned work with the required
+  co-author trailer; review and push under the agreed workflow.
+- Preserve the project's privacy convention: capture identifiers and engineering
+  observations, not programme titles, on-screen identities or private tape details.
+- Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous)
+  transfers; the 1080p-throughput concern (SD analog is ~166–242 Mbit/s — trivial
+  for SuperSpeed).
+
+Historical details remain in `LEARNINGS.md`,
+`docs/registration_archaeology.md`, component docs/tests and the reports
+for the relevant branch. Read them when the question calls for them; they are
+not a mandatory accumulated algorithm or an instruction to repeat every
+experiment. Source facts needed to navigate the current work are retained in
+§7. Nothing in this rewrite removes the underlying history.

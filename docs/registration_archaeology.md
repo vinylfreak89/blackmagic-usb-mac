@@ -1,10 +1,14 @@
 # Registration engine archaeology
 
-Two parts. Part I: nine engine versions in six days, one missed signal. Part II: the ninth
+Four parts. Part I: nine engine versions in six days, one missed signal. Part II: the ninth
 engine built on the inverted premise and patched fourteen times in thirty hours before the owner
-stopped it. Each part is merged from two independent excavations, Claude's (from git, the
-CLAUDE.md narrative as written at each stage, and its session transcript) and Codex's (from git
-and its own rollout records); the places they disagreed are listed at the end of each part.
+stopped it. Parts I and II are each merged from two independent excavations, Claude's (from git,
+the CLAUDE.md narrative as written at each stage, and its session transcript) and Codex's (from
+git and its own rollout records); the places they disagreed are listed at the end of each part.
+Part III: v10, the rewrite to a written contract run through an orchestrator, 2026-09-07 to
+2026-09-11 — a short account by Claude from git and CLAUDE.md. Part IV: the back-to-basics
+restart, 2026-09-13 to 2026-09-14 — a short summary of two independent reviews of the session
+transcript, one by Codex and one by a separate Claude agent.
 Times are JST. Every number below is traceable to a commit, a surviving measurement file or a
 timestamped transcript line; the handful that are transcript-only say so.
 
@@ -273,7 +277,7 @@ and yourselves." 17:39 Claude reverts (`2930095`) to match Codex's answer and te
 line-19 render was its own commit. 17:41 the owner: "so what's this about a 486 height thing
 then?" and, given both standard answers, decides: **720×480 is clean aperture** (crop rows
 19/282 = lines 23/286, captions out of the render); **720×486 is an alternate output mode** (lines
-21–263 / 283–525, captions kept). `7285d89` restores 19/282 at 17:51.
+21–263 / 283–525, captions kept). `0d08180` restores 19/282 at 17:51.
 
 The root fault: three coordinate systems, unit rows (17/19), the standard's line numbers
 (21/23), and the deck's regenerated lines versus the tape's, all called "line N" by Claude
@@ -291,7 +295,7 @@ signal is valid." Secondary checks, never the primary gauge: leaky VBI framing d
 of the field, picture jumping above the deck's line-21 band ("video should obviously never touch
 there"), and the black line 22 between.
 
-`docs/registration_v9_plan.md` (`d61ee8e`, 18:06) records the agreed design: line 21 primary
+`docs/registration_v9_plan.md` (`30e6176`, 18:06) records the agreed design: line 21 primary
 (`d = row − 17`), the picture envelope secondary (top, bottom, height, black relative to the
 field's own blanking, VBI-type lines excluded by signature), one unit of memory, no lookahead or
 FIFO or backtracking, field parity as an atomic invariant, whole UYVY lines moved, every hold
@@ -398,7 +402,7 @@ patched that inversion instead of reversing it, and the owner's two later ruling
 
 ## The items, continued
 
-**15. The caption becomes the authority (v9, `e1c91f6`, 2026-09-05 01:00).** Codex's engine
+**15. The caption becomes the authority (v9, `b7a94d5`, 2026-09-05 01:00).** Codex's engine
 decoded every line of each field as CEA-608 and placed field 1 at `line − 21` whenever exactly
 one valid line sat off the insert (`Line21Placement`); geometry placed only otherwise
 (`GeometryLockDecides`); field 2 used a frozen "smeared XDS" envelope at line 286. Claude built
@@ -413,17 +417,17 @@ each unit by whether the crop change matched the body's shift since the previous
 built from the same slices the engine was being fixed on. The follow audit was relative and, as
 Codex later showed, labelled every late correction as engine motion; rules E and F of round 7
 were written on those mislabelled counts and suppressed 2,616 correct caption placements
-(`d871f1f` → `67a9752`).
+(`d871f1f` → `2301834`).
 
-**17. Rounds 4 to 8: the witness stack.** A 1-D body witness (`dc8a459`) that misread one-line
+**17. Rounds 4 to 8: the witness stack.** A 1-D body witness (`ad28382`) that misread one-line
 jitter at 37:01 and latched on the last applied crop; a 2-D witness anchored on the previous
-measured position (`2efc416`); a reliability margin measured against caption truth (0.8; wrong
+measured position (`b8aafe2`); a reliability margin measured against caption truth (0.8; wrong
 in about one unit of five hundred below it, but blind to 15–17% of real moves); a "tied witness
 abstains" rule that Claude first turned into a hold and then, on the falsification, back into
-"the top decides" (`56edda0`, round 8). Each round moved the comb figure: 3,691 → 1,889 → 1,052
+"the top decides" (`85a413b`, round 8). Each round moved the comb figure: 3,691 → 1,889 → 1,052
 misregistered unit pairs. Each also added a rule that only made sense on top of caption-first.
 
-**18. The field-2 zero and the 41-line walk (rounds 5–6, `a4a1bec` → `72c1260`).** Field 2 has
+**18. The field-2 zero and the 41-line walk (rounds 5–6, `0322323` → `208d53d`).** Field 2 has
 no parity gauge in the first recording, so Codex calibrated its zero by comb against field 1.
 Claude's brief froze `d1 − d2` as the segment constant; Codex refused it with the numbers (field 1
 jitters independently) and calibrated the zero instead. At minute 43 the calibration then walked
@@ -433,7 +437,7 @@ the same disagreement, drift fired every eight units, and each recalibration der
 from the old one. Round 6 fixed the four faults and added a ±3 bound as a brake. By the evening
 the brake was being recited as "a segment constant bounded to three lines".
 
-**19. Round 10, the best whole-tape state (`63b5bf7`, merged `5b6ae68`).** A bounded relative
+**19. Round 10, the best whole-tape state (`ca7310e`, merged `e8a6f1a`).** A bounded relative
 comb correction closed minute 43: comb misregistered 165 of 86,293 pairs, caption placement
 40,208 + 29 evidence-checked vetoes + 0 disagreements. The same evening the v7 and v8 engines
 were replayed through the same instruments: v8 combed less (326) than round 8 (1,052) because it
@@ -446,14 +450,14 @@ caption for absolute.
 ruling (save the last good geometry, hold a damaged raster, re-check once when it clears) was
 briefed by Claude first as a contradiction-based classifier, which Codex falsified on the torn
 units themselves (their inserts decode, tops measure, body MAD 5.7–11.1), then as "hold whenever
-no evidence" (`ac36073`). That fired on 23,442 field-1 units in 3,059 runs (22,107 of them "body
+no evidence" (`5837b10`). That fired on 23,442 field-1 units in 3,059 runs (22,107 of them "body
 witness tied"), one run 8,998 units long, and raised the comb figure from 165 to 620 by freezing
 stale positions and the wrong phase of real jitter. The raw panels of the fourteen longest holds
 showed one damaged site, one relock snow at a program cut, and twelve holds keeping a crop one or
 two lines high with the tape's black line inside the frame. The owner read them and stopped the
 work.
 
-**21. Round 14 and the black line 22 (`6d919a2`, 2026-09-05 19:54, unmerged).** In between,
+**21. Round 14 and the black line 22 (`792d385`, 2026-09-05 19:54, unmerged).** In between,
 two genuinely new facts: the Shuttle's reference raster, measured on the no-source capture
 (padding rows 0–6 and 261–269, blanking on lines 11–19, its timing pattern on line 20, its null
 caption insert on line 21, blanking on line 22, pass-through only from line 23 and from line 286
@@ -523,7 +527,7 @@ The first clean-sheet v9 implementation, culminating around `8336b78`, treated d
 
 That success concealed the inversion. The parity acceptance measured whether the engine followed its caption authority, not whether the resulting picture geometry was stable or correct. The whole-tape acceptance later reported 40,163/40,163 field-1 parity agreements and 25/25 field-2 agreements, yet the owner’s render still visibly bounced and admitted VBI/XDS lines.
 
-The next rounds deepened the inversion. When captions and geometry disagreed, `be7691a` added `CaptionOnlyMotion`, allowing picture evidence to veto captions—but only after the caption had already been made primary. `dc8a459` added a temporal body witness. `2efc416` replaced its weak one-dimensional profile with a two-dimensional comparison. Later rounds added comb corroboration, zero calibration, saved geometry, and gap authority. Each repaired a measured failure of the preceding hierarchy without restoring geometry to the top of that hierarchy.
+The next rounds deepened the inversion. When captions and geometry disagreed, `3061c8f` added `CaptionOnlyMotion`, allowing picture evidence to veto captions—but only after the caption had already been made primary. `ad28382` added a temporal body witness. `b8aafe2` replaced its weak one-dimensional profile with a two-dimensional comparison. Later rounds added comb corroboration, zero calibration, saved geometry, and gap authority. Each repaired a measured failure of the preceding hierarchy without restoring geometry to the top of that hierarchy.
 
 By round 12, `a1a91c8` held a saved “good” crop whenever caption, body, comb, or geometry did not provide enough evidence under the accumulated rules. That was contrary to the original contract: measurable geometry should have placed the unit, while only genuine raster damage or signal loss justified a hold. I had built an evidence-voting engine whose default was memory, rather than a geometry engine whose confirmations only resolved specific uncertainty.
 
@@ -605,3 +609,181 @@ engine, geometry first, from the reference raster and the contract above; Codex 
 validation harness; neither reads the other's prior engine or harness work; both guide each
 other on concept. All of it on a new branch. The round-14 audits run to completion first so the
 merged round-10 main remains a measured fallback.
+
+# Part III: v10, the orchestrated rewrite — 2026-09-07 20:00 to 2026-09-11 19:00
+
+Claude's account, from git history and CLAUDE.md as it stood at the pause. It was not
+independently reviewed.
+
+## What was supposed to happen
+
+After the geometry-first experiment failed (post-mortem
+`docs/reports/2026-09-07_three_tree_comparison.md`), the owner reset the roles at 20:00 on 09-07.
+v10 would be main's round-10 engine rewritten to a written contract,
+`docs/geometry_first_engine.md`, with the owner's words verbatim in its first section. Codex
+owned the C engine and Claude the test harness; each reviewed the other, and the contract changed
+only when both agreed. Acceptance ran in a fixed order (the commercial tape, the EP recording,
+the SP recording, the SP recording with V-stabilize off), and the whole tape only after all four
+passed.
+
+## What happened
+
+| | 09-07 (start) | 09-11 (pause) |
+|---|---|---|
+| Commits on the two v10 branches | — | 612 in five days: 125 on 09-09, 208 on 09-10, 264 on 09-11 |
+| CLAUDE.md | 2,043 lines | 7,352 lines, touched in 281 commits |
+| The contract | 121 lines | 1,487 lines, 85 commits |
+| Pending tracker | none | 1,317 lines |
+| Experiment scripts | 22 | 93, 204 commits |
+| Reports in `docs/reports/` | 0 | 37 |
+| Registration engine (`src/field_registration/`) | | 40 commits |
+
+- **The contract became the main work product.** To place a field it came to specify a head
+  switch (a top switch line, a first fully switched line, the partial line, the RF peak, relocated
+  blanking and its extent), a box observer, a comb, source-measured blanking levels and
+  signal-state gates. Each got instruments, fixtures, reviews and new clauses, and several
+  definitions stayed disputed. Six readings of the switch line were argued between the agents
+  for about a day while the two sides used "switch line" for different rows.
+- **Reviews reviewed reviews.** 35 of the 37 reports were written on 09-10 and 09-11: two rounds
+  of cold reads of the contract with provenance files and comparisons, a consistency audit and a
+  terminology audit, and reviews of harness instruments, fixtures and their repairs (five on one
+  set of switch fixtures). Scripts were written to police the documents themselves: an
+  owner-question queue check, a superseded-claim check, a check runner and a cited-commit check.
+- **The work ran through an orchestrator.** By 09-11 much of the owner's direction reached the
+  harness session through a relay session. Cross-checking caught real errors (four of eleven
+  relayed claims checked on 09-11 were wrong), but every finding became messages and work for two
+  or three agents.
+- **There was never a lock, and it was reported as one.** The plain-comb change (`2a06c9e`, 09-11
+  02:55) let the comb "agree" four times on all of capture 1: twice in the rewind (counters
+  6268–6269) and twice at 6810–6811, the start of the fade down after the warning card. At 6811 the
+  best and second-best comb energies were 4.704 and 4.711, a tie; the six units before it had
+  picked shifts of ±212. The engine set its lock flag there, stopped evaluating the comb (it is
+  not re-checked while a lock holds), dropped the flag for the black frames and restored the same
+  held state at 6882 for the programme. The "302 locked units" were that one tie on a fade field
+  carried forward, with every applied offset (0,0). Claude announced "Capture 1 has its first
+  lock" at 02:56, the owner's milestone for the night. The orchestrator objected at 04:01 ("'CAPTURE
+  1 IS LOCKED' IS ACQUISITION, NOT A WORKING ENGINE … one lock that corrects nothing"); Claude
+  retracted other claims from the same summary but kept the lock, and the relay repeated it that
+  morning. No capture passed acceptance; captures 2–4 and the whole tape were never run.
+- **Renders were rebuilt instead of edited.** Three new renderers were written beside the owner's
+  existing one; he rejected the result and they were deleted (`36586d3`).
+
+## Why it derailed
+
+- **Disagreement became documentation instead of observation.** When two measurements disagreed,
+  the response was a contract clause, a new instrument, a review of that instrument and then a
+  guard on the documents, rather than a look at the raw rows of the disputed units. The contract
+  grew twelvefold and CLAUDE.md more than tripled, while the engine changed in 40 commits.
+- **Two agents and a relay multiplied throughput, not convergence.** Every review produced
+  findings for the other side to answer, and every answer invited the next review.
+- **The fitting habit described in Part IV was already present.** Many instruments carried
+  constants fitted on the same captures they were judged on (for example the box observer's
+  6/40/3 limits and 0.28 cut, and a comb mask calibrated on the device's own blanking), and their
+  failures were answered with further instruments.
+- **A state flag was reported as a result.** The lock flag came from a comb tie on one fade field
+  and was held from there. It was announced as the milestone the owner had set, the relay
+  moved the plan on from it ("its gate has opened", with the render next), and it was kept after
+  the orchestrator itself had said it corrected nothing.
+- **CLAUDE.md turned into a failure log.** About 5,300 new lines of post-mortems and rules, too
+  much to hold in context; the file itself records documented defects recurring in the same
+  session that documented them.
+- **The owner called it at the restart.** His first message after the pause, 09-13 17:32: "taking
+  a step back, I realize we might be severely overcomplicating this."
+
+## What to keep
+
+- The owner's words in section 1 of the contract remain the requirement. The rules layered on
+  them in the other 1,400 lines are unproven.
+- No capture was ever locked. The plain comb as built showed no real preference on capture 1; its
+  only "agreements" were ties on rewind and fade fields.
+- Main's round-10 engine remains the measured fallback.
+
+# Part IV: back to basics — 2026-09-13 17:32 to 2026-09-14 20:51
+
+A summary of two independent reviews of the session transcript run on 09-14 with the same brief,
+one by Codex and one by a separate Claude agent; neither saw the other's report, and both reached
+the same verdict. The full reports were not kept.
+
+## What was supposed to happen
+
+The owner's goal, as he restated it at the end: find where the data-like lines are, where real
+picture begins, and how many blanking lines sit between them. Caption and other waveform-like
+lines were the chosen distinguisher because they are the simplest. The window opened with a plain
+experiment: count each field's lines on capture 1 with a median luma above 12, scanning from
+line 23 forward and from the last line backward.
+
+## What happened
+
+1. The count was answered in about eight minutes. Its unexpected disagreements drove a sweep of
+   statistics (median, p10, coverage) and about two hours of side questions: field pairing, short
+   units, deck mute, line 22, a lost capture file, the half line, field order.
+2. The owner asked for a simple waveform detector: two codes, ramps between them, nothing else on
+   the line. Claude first built histograms, which throw away the shape in time, then a line
+   walker. The owner's literal rule ("if there are any codes that do not exist in the ramp up/ramp
+   down between those two codes, it isn't a valid waveform") rejected the Shuttle's own insert,
+   which has overshoot and ringing. Claude loosened the rule without saying so, and the loosened
+   walker passed thousands of picture rows.
+3. Each false-positive class then became a new per-line test, with its limit set at the extreme
+   of a "true" set that was itself built from thresholds. Tightening one label (run-in
+   correlation 0.6 to 0.75) raised the smallest true swing from 17 to 115, and 115 became the
+   swing limit. Over every line of the four captures the rule scored 294 false lines and 3 misses.
+4. The owner's symmetry idea removed 179 of the 294. Counting capture 2's line 286 (a line ending
+   in a pedestal) as true meant switching off the two clauses that rejected it, and false lines
+   went to 12,903.
+5. The owner narrowed the task: scan each field from the top and stop at the first picture line.
+   The unchanged rule plus symmetry already had 0 false positives there, and all 650 misses were
+   on line 286. Claude chose the version counting line 286 as true and added six changes, each
+   fitted to named leftover rows, until the four captures scored 0/0. That "clean" result still
+   contained one known wrong stop, because the truth test and the scan shared the same flatness
+   rule.
+6. On the whole tape the scan stopped on a valid caption in 1,790 fields. The 115 swing limit is
+   higher than real captions, and than the Shuttle's own insert, in parts of the tape; caption
+   ghosting into the picture line below defeated the "continues onto the next line means picture"
+   test. Asked how many things the system measured, Claude counted 13 separate tests and about 20
+   numbers, against a one-sentence definition.
+
+## Why it derailed
+
+- **Fit-to-fixture clause accretion.** A literal rule fails on analog lines, is loosened, admits
+  picture; the leftover false rows get a new clause; its limit sits at the extreme of a
+  thresholded truth set; the truth moves; repeat. Zero errors on the same four captures is always
+  reachable this way, with no margin, so the first new data breaks it.
+- **Proxies replaced the question.** "Bright enough" became "picture", "the fields agree" became
+  "correct geometry", "labelled by my detector" became "true", and "matches the labels" became
+  "stops at real picture". Better scores were read as answers.
+- **Scope.** Zero errors on every line of four captures, about 1.5 million lines, made text,
+  credits and head-switch rows count, though the task concerns only the top dozen lines of each
+  field.
+- **Silence and headlines.** Two long stretches of 61 and 78 minutes with no visible reply,
+  decisions announced only in short status notes, and results that led with the clean number and
+  put the caveat second.
+- **The owner's inputs were the occasion; Claude's method was the shape.** The owner added the
+  zero-error target, a literal clause the device's insert cannot meet, five new designators in
+  nine minutes, an ambiguous ban on the parity decoder, an unsettled call on line 286, side
+  questions and hard language under pressure. Claude chose the scope, built truth from
+  thresholds, turned each observation into a clause, and did not push back with data until the
+  whole tape failed. The one designator it measured and declined, a pulse ceiling, shows the
+  other route was available.
+- **Time.** About 45 minutes of direct observation answered most of the task. About three and a
+  half hours of detector building produced a rule that failed the whole tape.
+- **The review materials had a defect too.** The transcript extract Claude built for both
+  reviewers omitted 115 of its own status notes and labelled 8 image notes as owner messages. The
+  separate Claude reviewer caught both in the raw transcript.
+
+## What to keep
+
+- **The top of each field, per capture, measured directly rather than by any detector:**
+  - capture 1: the Shuttle's lines 20/21 and 283/284, blank lines 22/285, picture from 23/286;
+  - capture 2: data-like lines 23 and 24 in field 1 and 286 and 287 in field 2, often directly on
+    picture with no blank line between (287 sits on picture at 288 in 626 of 649 units);
+  - capture 3: a caption on line 23 in 48 units, with a flat line near code 5 under it before
+    picture;
+  - capture 4: a caption on line 286 in 65 units, over a line that is black for about 500 samples
+    and then picture.
+- The Shuttle writes only lines 20 and 21; line 22 carries the deck's signal.
+- The live engine misses data lines that carry no run-in (1,074 on the four captures), and each
+  miss becomes its picture top.
+- **An open definition.** Three kinds of non-picture line sit between data lines and picture:
+  device blanking near code 1.4, a flat tape line near 5 and a flat line near 20. Which of them
+  count as "blanking lines" is the owner's definition to set, not a detector's.
+- **Capture 2's line 286 is still unsettled.** Nobody has stated what property decides it.
