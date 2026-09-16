@@ -795,7 +795,7 @@ so keep its `captures/` copies (a new one needs another pass on the deck). No ne
 
 Capture 4 and capture 3 appear to pair their fields one field apart, which is **likely but
 under-measured**. The strongest evidence is the owner's visual review of the side-by-side render (2026-09-16):
-"one of the 3 panels was changing at a different time.. and I'd expect 2 to do that, not 1... and I'd
+"one of the 3 [corrected by the owner: "one of the 4"] panels was changing at a different time.. and I'd expect 2 to do that, not 1... and I'd
 expect it to match both units". At a scene change, one field slot stepping a unit away from the
 others is the signature of a one-field pairing offset; a whole-unit misalignment would move both of
 a capture's slots. The numeric check (2026-09-06, old pre-alignment-fix cuts, units matched by
