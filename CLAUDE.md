@@ -1580,6 +1580,12 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
   co-author trailer; review and push under the agreed workflow.
+- **Keep results out of git (owner, 2026-09-16).** Experiment results, per-round reports,
+  image panels and data tables stay in scratch outside the repository; a durable finding
+  goes into an existing document in a few lines. `scripts/git-hooks/artifact_guard.py`, run
+  by the pre-commit and pre-push hooks (`git config core.hooksPath scripts/git-hooks`),
+  refuses them. An exception is the owner's decision and goes into `.artifact-allowlist` in a
+  commit of its own. Never bypass the hooks with `--no-verify`.
 - Preserve the project's privacy convention: capture identifiers and engineering
   observations, not programme titles, on-screen identities or private tape details.
 - Superseded early assumptions: "not a driver / no RE"; bulk (not isochronous)

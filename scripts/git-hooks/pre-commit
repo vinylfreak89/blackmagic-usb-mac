@@ -1,0 +1,3 @@
+#!/bin/sh
+# Refuses experiment results, reports and media; see artifact_guard.py.
+exec python3 "$(git rev-parse --show-toplevel)/scripts/git-hooks/artifact_guard.py" staged

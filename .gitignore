@@ -60,3 +60,46 @@ src/field_registration/tests/cea608_unit
 src/field_registration/tests/field_registration_v9
 src/field_registration/tests/registration_v9.csv
 src/field_registration/tests/registration_v9.raw
+
+# Experiment results, reports and media stay out of the repository (owner, 2026-09-16).
+# scripts/git-hooks/artifact_guard.py refuses them at commit and push time. An owner-approved
+# exception goes in .artifact-allowlist (and needs `git add -f` if a pattern below matches it).
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.tif
+*.tiff
+*.svg
+*.heic
+*.pdf
+*.mov
+*.m4v
+*.mkv
+*.avi
+*.webm
+*.y4m
+*.yuv
+*.raw
+*.csv
+*.tsv
+*.json
+*.jsonl
+*.npz
+*.npy
+*.pkl
+*.pickle
+*.parquet
+*.h5
+*.log
+*.patch
+reports/
+panels/
+scratch/
+scratchpad/
+renders/
+experiments/**/*.md
+!experiments/**/README.md
+src/**/tests/*.md

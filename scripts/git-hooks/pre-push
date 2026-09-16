@@ -1,0 +1,13 @@
+#!/bin/sh
+# Re-checks every commit being pushed that no remote branch already has, so a commit made
+# with --no-verify is still caught; see artifact_guard.py.
+guard="$(git rev-parse --show-toplevel)/scripts/git-hooks/artifact_guard.py"
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$local_sha" in
+    *[!0]*) ;;
+    *) continue ;;   # deleting a remote branch
+  esac
+  python3 "$guard" range "$local_sha" --not --remotes || status=1
+done
+exit $status
