@@ -1120,6 +1120,12 @@ placement, temporal order and transport pairing distinct. Earlier versions of
 this section proposed HMM/Viterbi order inference; that was an experimental
 proposal, not an established requirement for the current problem.
 
+**TODO — live field-parity detection (owner, 2026-09-16):** "we need to figure out some live
+detection engine for field parity since our tests at the moment says it can't be guaranteed to be
+either TFF or BFF". What the tests show so far: fixture A measured TFF against the usual NTSC
+expectation (§6), and capture 4 pairs its fields one field later than capture 3's pass of the same
+tape (§7). No method has been chosen yet.
+
 The early header census found 6,160 complete headers identical apart from their
 16-bit counter. This did not provide a per-field order/lock flag, but it also
 did not rule out every hardware status source. Preserve the header and consult
