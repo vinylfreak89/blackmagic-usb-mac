@@ -16,7 +16,13 @@
 #include "../../test_supervisor.h"
 static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { fails++; fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); } } while (0)
-static _Atomic int done; static _Atomic uint64_t frames_seen; static _Atomic int sink_stall_us, sink_hold;
+static _Atomic int done; static _Atomic uint64_t frames_seen; static _Atomic int sink_hold;
+enum { DROP_POOL=1, DROP_RING=2, DROP_AUDIO=4, RING_DRAINED=8 };
+static pthread_mutex_t drop_mutex=PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t drop_cond=PTHREAD_COND_INITIALIZER;
+static int drops_seen, producer_finished, ring_wait_requested;
+static int video_hold_mask, audio_hold_mask;
+static _Atomic int log_hold_mask;
 static IOSurfaceRef held_surface;
 static _Atomic int hook_arm, hook_empty, hook_release;
 /* Every wait here has a deadline: FS_TEST_WAIT_S seconds, default 60. On expiry the test fails loudly,
@@ -24,6 +30,41 @@ static _Atomic int hook_arm, hook_empty, hook_release;
  * carrying on would likely hang again in fs_stop. */
 static double wait_limit_s(void){ const char *e = getenv("FS_TEST_WAIT_S"); double v = e ? atof(e) : 60; return v < 0 ? 0 : v; }
 static double mono_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + t.tv_nsec / 1e9; }
+static void reset_drops(void){
+    pthread_mutex_lock(&drop_mutex); drops_seen=0; producer_finished=0; ring_wait_requested=0; pthread_mutex_unlock(&drop_mutex);
+}
+static void note_drop(int kind){
+    pthread_mutex_lock(&drop_mutex); drops_seen|=kind; pthread_cond_broadcast(&drop_cond); pthread_mutex_unlock(&drop_mutex);
+}
+void fs_test_pool_drop(void){ note_drop(DROP_POOL); }
+void fs_test_audio_drop(void){ note_drop(DROP_AUDIO); }
+static void hold_until_drop(int mask, const char *site){
+    if(!mask) return;
+    double end=mono_s()+wait_limit_s();
+    pthread_mutex_lock(&drop_mutex);
+    while(!(drops_seen&mask)){
+        double remaining=end-mono_s();
+        if(producer_finished || remaining<=0){
+            fprintf(stderr,"FAIL: %s: %s before required drop (mask %d)\n",site,
+                    producer_finished?"producer ended":"TIMEOUT",mask);
+            _exit(2);
+        }
+        struct timespec relative={(time_t)remaining,(long)((remaining-(time_t)remaining)*1e9)};
+        int rc=pthread_cond_timedwait_relative_np(&drop_cond,&drop_mutex,&relative);
+        if(rc && rc!=ETIMEDOUT){ fprintf(stderr,"FAIL: %s: condition wait error %d\n",site,rc); _exit(2); }
+    }
+    pthread_mutex_unlock(&drop_mutex);
+}
+void fs_test_ring_drop(void){
+    /* In the dedicated ring test, guarantee a retained post-gap row: let the
+     * worker drain after the first loss before the producer resumes. */
+    pthread_mutex_lock(&drop_mutex);
+    int wait=video_hold_mask==DROP_RING && !ring_wait_requested;
+    if(wait) ring_wait_requested=1;
+    pthread_mutex_unlock(&drop_mutex);
+    note_drop(DROP_RING);
+    if(wait) hold_until_drop(RING_DRAINED,"post-ring-loss drain");
+}
 static void wait_for_end(const char *what){
     double limit = wait_limit_s(), end = mono_s() + limit;
     while (!done){
@@ -35,6 +76,9 @@ static void wait_for_end(const char *what){
     }
 }
 void fs_test_after_empty_snapshot(frameserver *f){
+    pthread_mutex_lock(&drop_mutex);
+    if(ring_wait_requested){ drops_seen|=RING_DRAINED; pthread_cond_broadcast(&drop_cond); }
+    pthread_mutex_unlock(&drop_mutex);
     (void)f; if(atomic_load(&hook_arm) && !atomic_exchange(&hook_empty,1)){
         double limit = wait_limit_s(), end = mono_s() + limit;
         while(!atomic_load(&hook_release)){
@@ -47,16 +91,18 @@ void fs_test_after_empty_snapshot(frameserver *f){
         }
     }
 }
-void fs_test_before_producer_done(frameserver *f){ (void)f; if(atomic_load(&hook_arm)) atomic_store(&hook_release,1); }
-static _Atomic int log_stall_us; static _Atomic int log_stalled;   // storage-stall injection: the first row after arming blocks inside the row lock
+void fs_test_before_producer_done(frameserver *f){ (void)f; if(atomic_load(&hook_arm)) atomic_store(&hook_release,1);
+    pthread_mutex_lock(&drop_mutex); producer_finished=1; pthread_cond_broadcast(&drop_cond); pthread_mutex_unlock(&drop_mutex); }
+static _Atomic int log_stalled;   // storage-stall injection: first row after arming holds the row lock until a drop
 static _Atomic int log_break;   // write-failure injection: swap the stream's fd for a pipe with no reader (EPIPE on every write; SIGPIPE ignored), unbuffered so each row fprintf fails
-void fs_test_after_log_row(frameserver *f, FILE *log){ (void)f; int st=atomic_exchange(&log_stall_us,0); if(st){ atomic_store(&log_stalled,1); usleep(st); }
+void fs_test_after_log_row(frameserver *f, FILE *log){ (void)f; int mask=atomic_exchange(&log_hold_mask,0); if(mask){ atomic_store(&log_stalled,1); hold_until_drop(mask,"sidecar hold"); }
     if(atomic_exchange(&log_break,0)){ int p[2]; if(pipe(p)!=0) abort(); close(p[0]); fflush(log); if(dup2(p[1],fileno(log))<0) abort(); close(p[1]); setvbuf(log,NULL,_IONBF,0); } }
 static frameserver *g_cb_target; static _Atomic int cb_try, cb_start_rc, cb_stop_rc;   // callback-refusal probe
+static const char *callback_log;
 static _Atomic int end_calls;
 static void on_end(void *c, enum cc_end r){ (void)c; (void)r; atomic_fetch_add(&end_calls, 1); done = 1; }
 static _Atomic uint64_t audio_frames_seen; static _Atomic int audio_flagged_blocks; static _Atomic uint64_t audio_last_pts; static _Atomic int audio_pts_nonmonotonic;
-static _Atomic int audio_sink_stall_us; static _Atomic int audio_after_end; static _Atomic int ordinal_break;
+static _Atomic int audio_after_end; static _Atomic int ordinal_break;
 static uint64_t audio_next_ordinal; static int audio_have_next;
 #define CORR_MAX 64
 static uint64_t corr_ctr[CORR_MAX], corr_pts[CORR_MAX]; static _Atomic int corr_n;   // first block after resync c: its pts is the audio-clock time of unit c
@@ -65,17 +111,17 @@ static void audio_sink(void *c, const ap_block *b){ (void)c; atomic_fetch_add(&a
     if (audio_have_next && !(b->flags & AP_FLAG_DISCONTINUITY_BEFORE) && b->sample_ordinal != audio_next_ordinal) atomic_store(&ordinal_break, 1);
     audio_next_ordinal = b->sample_ordinal + b->n_frames; audio_have_next = 1;
     if (!(b->flags & AP_FLAG_UNANCHORED) && b->last_resync_counter_ext && atomic_load(&corr_n) < CORR_MAX){ int n = atomic_load(&corr_n); corr_ctr[n] = b->last_resync_counter_ext; corr_pts[n] = b->pts_num; atomic_store(&corr_n, n + 1); }
-    int st = atomic_load(&audio_sink_stall_us); if (st) usleep(st);
+    hold_until_drop(audio_hold_mask,"audio queue hold");
     if (b->flags & AP_FLAG_DISCONTINUITY_BEFORE) atomic_fetch_add(&audio_flagged_blocks, 1);
     if (!(b->flags & (AP_FLAG_UNANCHORED|AP_FLAG_DISCONTINUITY_BEFORE)) && b->pts_num < atomic_load(&audio_last_pts)) atomic_store(&audio_pts_nonmonotonic, 1);
     if (!(b->flags & AP_FLAG_UNANCHORED)) atomic_store(&audio_last_pts, b->pts_num); }
 static uint64_t vf_ctr[CORR_MAX], vf_apts[CORR_MAX]; static _Atomic int vf_n; static _Atomic int video_after_end;
 static void sink(void *c, const fp_frame *fr){ (void)c; if (fr->surface) atomic_fetch_add(&frames_seen, 1);
-    if (atomic_exchange(&cb_try,0) && g_cb_target){ atomic_store(&cb_start_rc, fs_log_start(g_cb_target,"/tmp/fs_test_from_callback.csv")); atomic_store(&cb_stop_rc, fs_log_stop(g_cb_target)); }
+    if (atomic_exchange(&cb_try,0) && g_cb_target){ atomic_store(&cb_start_rc, fs_log_start(g_cb_target,callback_log)); atomic_store(&cb_stop_rc, fs_log_stop(g_cb_target)); }
     if (done) atomic_store(&video_after_end, 1);
     if (fr->audio_pts_known && atomic_load(&vf_n) < CORR_MAX){ int n = atomic_load(&vf_n); vf_ctr[n] = fr->counter_ext; vf_apts[n] = fr->audio_pts_num; atomic_store(&vf_n, n + 1); }
     if(atomic_load(&sink_hold)&&!held_surface){ IOSurfaceIncrementUseCount(fr->surface); held_surface=fr->surface; }
-    int st = atomic_load(&sink_stall_us); if (st) usleep(st); }   // a slow consumer holds the slot
+    hold_until_drop(video_hold_mask,"video slot hold"); }
 /* Observation-driven waits (no fixed sleeps): block until the sink has seen `n` more frames than
  * `base`, or the session ended, or a 20 s cap — so the windows below are defined by delivered
  * frames, not wall time, and survive sanitizer slowdowns. */
@@ -109,6 +155,7 @@ int main(int argc, char **argv){
     signal(SIGPIPE, SIG_IGN);   /* the write-failure injection writes to a reader-less pipe */
     int ring_may_drop = getenv("FS_TEST_EXPECT_RING_DROPS") != NULL;
     char logp[] = "/tmp/fs_test_log_XXXXXX"; int fd = mkstemp(logp); close(fd); unlink(logp);
+    char cbpath[]="/tmp/fs_test_callback_XXXXXX"; fd=mkstemp(cbpath); close(fd); unlink(cbpath); callback_log=cbpath;
     fs_config cfg = {0}; cfg.capture.replay_path = argv[1]; cfg.decision_log = logp; cfg.on_end = on_end;
     cfg.sink.on_frame = sink; cfg.pool_units = 4; cfg.surface_pool = 3; cfg.audio_sink.on_block = audio_sink;
     frameserver *f = NULL;
@@ -148,14 +195,14 @@ int main(int argc, char **argv){
     // Slow audio consumer with a one-block queue: drops happen HERE (explicit, flagged), never upstream.
     done = 0; atomic_store(&frames_seen, 0); atomic_store(&audio_frames_seen, 0); atomic_store(&audio_flagged_blocks, 0);
     atomic_store(&audio_after_end, 0); atomic_store(&video_after_end, 0); audio_have_next = 0;
-    atomic_store(&audio_sink_stall_us, 50000);
+    reset_drops(); audio_hold_mask=DROP_AUDIO;
     fs_config c5 = cfg; c5.decision_log = NULL; c5.audio_queue_blocks = 1;
     frameserver *q = NULL;
     CHECK(fs_open(&q, &c5) == 0, "open (slow audio sink)");
     CHECK(fs_start(q) == 0, "start (slow audio sink)");
     wait_for_end("slow audio sink run");
     CHECK(fs_stop(q) == 0, "stop (slow audio sink)");
-    atomic_store(&audio_sink_stall_us, 0);
+    audio_hold_mask=0;
     fs_stats s5; fs_get_stats(q, &s5);
     CHECK(s5.audio_dropped_blocks > 0, "slow sink with a one-block queue did not exercise the audio drop path");
     CHECK(s5.audio_frames_delivered + s5.audio_dropped_frames == s5.audio_frames_published, "slow sink: every frame delivered or explicitly dropped (%llu+%llu vs %llu)",
@@ -187,14 +234,14 @@ int main(int argc, char **argv){
     done = 0; atomic_store(&frames_seen, 0);
     char logp2[] = "/tmp/fs_test_log2_XXXXXX"; fd = mkstemp(logp2); close(fd); unlink(logp2);
     fs_config c2 = cfg; c2.decision_log = logp2; c2.pool_units = 1;
-    atomic_store(&sink_stall_us, 200000);   // slot held ~200 ms per unit: the next unit MUST find the pool full
+    reset_drops(); video_hold_mask=ring_may_drop?DROP_POOL|DROP_RING:DROP_POOL;
     frameserver *g = NULL;
     CHECK(fs_open(&g, &c2) == 0, "open (pool=1)");
     CHECK(fs_start(g) == 0, "start (pool=1)");
     wait_for_end("one-slot pool run");
     CHECK(fs_stop(g) == 0, "stop (pool=1)");
     CHECK(fs_stop(g) == 0, "second stop is an idempotent no-op");
-    atomic_store(&sink_stall_us, 0);
+    video_hold_mask=0;
     fs_stats s2; fs_get_stats(g, &s2);
     if(!ring_may_drop) CHECK(s2.dropped_pool_full > 0, "pool=1 with a stalled consumer did not exercise pool exhaustion");
     CHECK(s2.log_rows+s2.dropped_ring_full==s2.video_observations+s2.ring_gap_rows,
@@ -230,13 +277,13 @@ int main(int argc, char **argv){
         fs_config c4 = cfg; c4.decision_log = logp3; c4.pool_units = 8;
         c4.capture.replay_path=ringcap;
         c4.capture.replay_pace_us=10000; // loss while stalled, then retained post-gap observations
-        atomic_store(&sink_stall_us, 100000);
+        reset_drops(); video_hold_mask=DROP_RING;
         frameserver *r = NULL;
         CHECK(fs_open(&r, &c4) == 0, "open (small ring)");
         CHECK(fs_start(r) == 0, "start (small ring)");
         wait_for_end("small-ring run");
         CHECK(fs_stop(r) == 0, "stop (small ring)");
-        atomic_store(&sink_stall_us, 0);
+        video_hold_mask=0;
         fs_stats s4; fs_get_stats(r, &s4);
         CHECK(s4.dropped_ring_full > 0, "small ring with a stalled consumer did not exercise ring exhaustion");
         unsigned long long col_sum = 0, last_ordinal=0; rows = 0;
@@ -268,9 +315,15 @@ int main(int argc, char **argv){
     done = 0;
     frameserver *k = NULL; fs_config c3 = cfg; c3.decision_log = NULL;
     CHECK(fs_open(&k, &c3) == 0, "open (close-without-stop)");
+    // No attached log and a fresh path: callback-start refusal cannot pass merely
+    // because a file already exists or a log is already attached. Stop refusal is
+    // separately checked with an attached log in the sidecar-stall session below.
+    g_cb_target=k; atomic_store(&cb_start_rc,99); atomic_store(&cb_try,1);
     CHECK(fs_start(k) == 0, "start (close-without-stop)");
     wait_for_end("close-without-stop run");
+    CHECK(atomic_load(&cb_start_rc)==-1,"log start from callback with no attached log must be refused");
     fs_close(k);
+    g_cb_target=NULL;
 
     // Failed start: replay open happens in cc_start.  It must roll the worker back without
     // presenting on_end for a session that never successfully started.
@@ -351,15 +404,15 @@ int main(int argc, char **argv){
     // deadlock; a row write that stalls (disk hang) stalls the worker and sheds video DOWNSTREAM —
     // PoolFull rows with exact conservation — never acquisition. Rows that failed are never counted.
     done=0; char lc[]="/tmp/fs_test_logC_XXXXXX"; fd=mkstemp(lc); close(fd); unlink(lc);
-    fs_config sc=cfg; sc.decision_log=NULL; sc.capture.replay_path=argc>=3?argv[2]:argv[1]; sc.capture.replay_pace_us=8000; sc.pool_units=4; frameserver *sf=NULL;
+    // Account from session start, including ring losses before the stall is armed.
+    fs_config sc=cfg; sc.decision_log=lc; sc.capture.replay_path=argc>=3?argv[2]:argv[1]; sc.capture.replay_pace_us=8000; sc.pool_units=4; frameserver *sf=NULL;
     CHECK(fs_open(&sf,&sc)==0,"open (stall)");
     if(sf&&argc>=3){
         g_cb_target=sf; atomic_store(&cb_start_rc,99); atomic_store(&cb_stop_rc,99); atomic_store(&cb_try,1);
         unsigned long long sbase=atomic_load(&frames_seen);
-        CHECK(fs_start(sf)==0,"start (stall)"); CHECK(wait_frames(sbase,5),"frames before the stall attach");
+        CHECK(fs_start(sf)==0,"start (stall)"); CHECK(wait_frames(sbase,5),"frames before arming the sidecar stall");
         CHECK(atomic_load(&cb_start_rc)==-1&&atomic_load(&cb_stop_rc)==-1,"log start/stop from the worker callback must be refused (%d/%d)",atomic_load(&cb_start_rc),atomic_load(&cb_stop_rc));
-        atomic_store(&log_stalled,0); atomic_store(&log_stall_us,1500000);
-        CHECK(fs_log_start(sf,lc)==0,"attach C");
+        reset_drops(); atomic_store(&log_stalled,0); atomic_store(&log_hold_mask,DROP_POOL|DROP_RING);
         wait_for_end("log-stall run");
         CHECK(fs_stop(sf)==0,"stop (stall)"); g_cb_target=NULL;
         CHECK(atomic_load(&log_stalled),"the stall hook did not fire");
@@ -368,8 +421,8 @@ int main(int argc, char **argv){
          * normally, the item ring under RING_ITEMS=2. Either way something is shed and accounted. */
         CHECK(ss.dropped_pool_full+ss.dropped_ring_full>0,"a stalled sidecar write must shed video downstream (pool or ring), got 0");
         CHECK(ss.published+ss.dropped_pool_full+ss.publisher_dropped==ss.exact_units,"conservation under stall: %llu+%llu+%llu != %llu",(unsigned long long)ss.published,(unsigned long long)ss.dropped_pool_full,(unsigned long long)ss.publisher_dropped,(unsigned long long)ss.exact_units);
-        /* A long enough stall also fills the item ring; those observations are all PoolFull (the pool
-         * filled first) and are accounted in the next row's preceding_ring_drops rather than as rows. */
+        /* Any item-ring losses are accounted in the next row's preceding_ring_drops
+         * rather than as individual rows. The hold requires a drop, not a duration. */
         unsigned long long poolrows=0,rows=0,obsrows=0,ringdrops=0,firstord=0; int firstrow=1; L=fopen(lc,"r");
         while(fgets(line,sizeof line,L)){ if(!strncmp(line,"ordinal,",8)) continue; rows++; unsigned long long ord=strtoull(line,NULL,10); if(firstrow){firstord=ord;firstrow=0;}
             if(!strstr(line,",RingFullTail,")) obsrows++;   /* the synthetic tail-loss row is a range marker, not an observation */
@@ -413,6 +466,7 @@ int main(int argc, char **argv){
         fs_close(bf);
     }
     unlink(ld);
+    unlink(cbpath);
     if (fails) printf("FAILURES: %d\n", fails);
     else printf("frameserver tests: PASS (obs %llu, exact %llu, published %llu, short %llu, hole %llu, unframed %llu)\n",
            (unsigned long long)s.video_observations, (unsigned long long)s.exact_units, (unsigned long long)s.published,

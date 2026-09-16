@@ -16,7 +16,8 @@ with tempfile.TemporaryDirectory(prefix='supervisor-test-') as tmp:
         ('interrupt', 143, 'TIMEOUT/INTERRUPTED'),
         ('real', 37, ''),
     ]:
-        result = subprocess.run([binary, mode], capture_output=True, text=True, timeout=5,
-                                env=dict(os.environ, SUPERVISOR_TEST_TOTAL_S='2'))
+        result = subprocess.run([binary, mode], capture_output=True, text=True,
+                                timeout=10 if mode == 'real' else 5,
+                                env=dict(os.environ, SUPERVISOR_TEST_TOTAL_S='60' if mode == 'real' else '2'))
         assert result.returncode == code and message in result.stderr, (mode, result)
         print(f'PASS: supervisor {mode} (exit {code})')

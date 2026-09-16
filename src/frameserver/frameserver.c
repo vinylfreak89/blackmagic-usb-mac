@@ -73,10 +73,16 @@ struct frameserver {
 extern void fs_test_after_empty_snapshot(frameserver *f);
 extern void fs_test_before_producer_done(frameserver *f);
 extern void fs_test_after_log_row(frameserver *f, FILE *log);
+extern void fs_test_pool_drop(void);
+extern void fs_test_ring_drop(void);
+extern void fs_test_audio_drop(void);
 #else
 #define fs_test_after_empty_snapshot(f) ((void)(f))
 #define fs_test_before_producer_done(f) ((void)(f))
 #define fs_test_after_log_row(f,L) ((void)(f),(void)(L))
+#define fs_test_pool_drop() ((void)0)
+#define fs_test_ring_drop() ((void)0)
+#define fs_test_audio_drop() ((void)0)
 #endif
 
 // ------------------------------------------------------------ producer side (delivery thread)
@@ -100,6 +106,7 @@ static int push(frameserver *f, const fs_item *it){
     // has to wait for a slow publisher merely to make downstream loss self-describing.
     if (h - t >= RING_ITEMS-1){
         atomic_fetch_add(&f->dropped_ring_full, 1);
+        fs_test_ring_drop();
         if (!f->ring_drops_pending) f->ring_drop_first_ordinal = it->obs.ordinal;
         f->ring_drops_pending++;
         if (it->eligible) f->st.eligible_ring_drops++;
@@ -135,6 +142,7 @@ static void on_video(void *ctx, const unit_video_observation *u){
             // Bytes are shed (§8 property 7) but the OBSERVATION is not: the item still reaches the
             // worker so the sidecar carries an explicit PoolFull row instead of an unmarked hole.
             it.drop = FS_DROP_POOL_FULL;
+            fs_test_pool_drop();
         } else {
             memcpy(f->pool + (size_t)s * UNIT_PARSER_VIDEO_UNIT_BYTES, u->bytes, UNIT_PARSER_VIDEO_UNIT_BYTES);
             it.slot = s;
@@ -155,6 +163,7 @@ static void aq_enqueue(void *ctx, const ap_block *b){
     unsigned t = atomic_load_explicit(&f->aq_tail, memory_order_acquire);
     if (h - t >= f->aq_slots || b->n_frames > f->aq_cap_frames){
         atomic_fetch_add(&f->aq_dropped_blocks, 1); atomic_fetch_add(&f->aq_dropped_frames, b->n_frames);
+        fs_test_audio_drop();
         f->aq_drops_pending++; return;      // consumer too slow: shed HERE, never upstream
     }
     unsigned i = h % f->aq_slots;
