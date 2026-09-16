@@ -31,9 +31,14 @@ test: tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_te
 
 # Deadline behaviour: slow pacing is not a stall, a blocked sink is, and both test deadlines fail by name.
 test-deadlines: frameserver_replay tests/frameserver_test tests/replay_completion_test $(FIXTURE) $(FIXTURE_LONG)
+	python3 ../../scripts/test_supervisor_test.py
 	sh tests/deadline_test.sh
 	python3 ../../scripts/transport_deadline_test.py frameserver ./frameserver_replay
 	python3 ../../scripts/run_deadline.py 5 ./tests/replay_completion_test
+
+.PHONY: test-supervisor
+test-supervisor:
+	python3 ../../scripts/test_supervisor_test.py
 
 tests/replay_completion_test: $(SRCS) tests/replay_completion_test.c frameserver_replay.c ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_completion_test.c -o $@ $(LIBS)

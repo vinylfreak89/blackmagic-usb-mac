@@ -40,8 +40,13 @@ test-asan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_F
 
 # Both test deadlines fail by name.
 test-deadlines: shuttle-capture capture_core_test test_shim $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
+	python3 ../../scripts/test_supervisor_test.py
 	sh deadline_test.sh
 	python3 ../../scripts/transport_deadline_test.py capture ./shuttle-capture
+
+.PHONY: test-supervisor
+test-supervisor:
+	python3 ../../scripts/test_supervisor_test.py
 
 capture_core_test: capture_core.c capture_core_test.c capture_core.h ../test_supervisor.h
 	$(CC) $(CFLAGS) $(TESTFLAGS) -o $@ capture_core.c capture_core_test.c $(LIBS)
