@@ -1605,6 +1605,11 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   `FS_TEST_TOTAL_S`, `CC_TEST_TOTAL_S`, and `SHIM_TEST_TOTAL_S` default to 600 seconds;
   expiration kills the child and reports a named failure. A child's `alarm(0)` cannot
   cancel that deadline. `test-deadlines` also uses an independent outer process cap.
+- **Tool liveness is transport, not picture:** `cc_packets_delivered()` counts completed
+  packet callbacks on the delivery thread, including zero-length packets on both endpoints.
+  The replay tools read this atomically, without touching acquisition callbacks or live stats
+  structs. Streaming stall budgets allow deliberate pacing; separate CLI watchdogs cover
+  startup, stop and final file/terminal flushing. Timeout outputs remain incomplete.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

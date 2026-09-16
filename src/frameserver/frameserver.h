@@ -107,10 +107,9 @@ int  fs_log_stop (frameserver *f);        // -1 if none attached, the close fail
 // Authoritative after fs_stop. During streaming worker-owned members are diagnostic only and
 // may be momentarily inconsistent; atomic ingress counters remain individually safe.
 void fs_get_stats(const frameserver *f, fs_stats *out);
-// Video observations plus audio records ingested so far. Safe to call while the session runs
-// (atomic reads), unlike fs_get_stats, whose struct copy is only authoritative after fs_stop.
-// For liveness checks: it advances whenever the parser hands the pipeline anything.
-uint64_t fs_ingress_events(const frameserver *f);
+// The capture core's completed packet deliveries (both endpoints, including empty packets).
+// Race-free while streaming; independent of whether the parser emits an observation.
+uint64_t fs_packets_delivered(const frameserver *f);
 void fs_close(frameserver *f);
 
 #ifdef __cplusplus

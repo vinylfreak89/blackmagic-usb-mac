@@ -62,6 +62,7 @@ struct cc_session {
     pthread_t backend_t, delivery_t;
     _Atomic int stop_req, backend_done, started_successfully;
     _Atomic int end_reason; _Atomic int end_fired;
+    _Atomic uint64_t packets_delivered; /* delivery thread, not the libusb callback */
     enum cc_life life;
     int delivery_created, backend_created;
     int startup_done, startup_rc, start_gate;
@@ -280,6 +281,7 @@ static void* delivery_main(void *arg){
             cc_packet p={rh.endpoint,rh.pkt_index,rh.submit_seq,rh.status,
                          rh.req_len,rh.actual_len,buf};
             s->cb.on_packet(s->cb.ctx,&p);
+            atomic_fetch_add_explicit(&s->packets_delivered,1,memory_order_relaxed);
             break; }
         case REC_HOSTLOSS:
             if(s->cb.on_loss) s->cb.on_loss(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len);
@@ -464,7 +466,13 @@ static void* replay_main(void *arg){
                     struct timespec now; clock_gettime(CLOCK_MONOTONIC,&now);
                     int64_t elapsed_us=(int64_t)(now.tv_sec-pace_t0.tv_sec)*1000000+(now.tv_nsec-pace_t0.tv_nsec)/1000;
                     int64_t due_us=(int64_t)paced_transfers*s->cfg.replay_pace_us;
-                    if(due_us>elapsed_us) usleep((useconds_t)(due_us-elapsed_us));   // late boundaries are not slept
+                    /* Preserve pacing, but allow stop to interrupt even a very long interval. */
+                    while(due_us>elapsed_us && !atomic_load(&s->stop_req)) {
+                        int64_t left=due_us-elapsed_us;
+                        usleep((useconds_t)(left>20000?20000:left));
+                        clock_gettime(CLOCK_MONOTONIC,&now);
+                        elapsed_us=(int64_t)(now.tv_sec-pace_t0.tv_sec)*1000000+(now.tv_nsec-pace_t0.tv_nsec)/1000;
+                    }
                 } }
             break; }
         case REC_TICK: put_meta_(s,REC_TICK,0,0,0,h.status,NULL,0); break;
@@ -624,6 +632,9 @@ void cc_get_stats(const cc_session *s, cc_stats *o){
     o->ring_high_water=s->r_max; o->ring_size=s->ring_sz;
     o->fleet[0]=s->fleet[0]; o->fleet[1]=s->fleet[1]; o->fleet_size=XFERS;
     o->transfers_allocated=s->xfers_alloc; o->transfers_freed=s->xfers_freed;
+}
+uint64_t cc_packets_delivered(const cc_session *s){
+    return atomic_load_explicit(&s->packets_delivered,memory_order_relaxed);
 }
 const char* cc_strerror(int e){
     switch(e){ case CC_OK:return "ok"; case CC_ERR_ARGS:return "bad arguments";

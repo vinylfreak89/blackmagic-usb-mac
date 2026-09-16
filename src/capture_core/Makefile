@@ -6,7 +6,7 @@ TESTFLAGS=-DCAPTURE_CORE_TEST_HOOKS
 LIBS=$(shell pkg-config --libs libusb-1.0) -lpthread
 CAPTURE?=
 
-shuttle-capture: capture_core.c capture_cli.c capture_core.h
+shuttle-capture: capture_core.c capture_cli.c capture_core.h ../tool_deadline.h
 	$(CC) $(CFLAGS) -o $@ capture_core.c capture_cli.c $(LIBS)
 
 check: shuttle-capture
@@ -39,8 +39,9 @@ test-asan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_F
 	./test_asan $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE) $$(cat fixture_meta_exhaust.expect)
 
 # Both test deadlines fail by name.
-test-deadlines: capture_core_test test_shim $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
+test-deadlines: shuttle-capture capture_core_test test_shim $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
 	sh deadline_test.sh
+	python3 ../../scripts/transport_deadline_test.py capture ./shuttle-capture
 
 capture_core_test: capture_core.c capture_core_test.c capture_core.h ../test_supervisor.h
 	$(CC) $(CFLAGS) $(TESTFLAGS) -o $@ capture_core.c capture_core_test.c $(LIBS)

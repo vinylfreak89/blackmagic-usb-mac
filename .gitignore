@@ -108,3 +108,4 @@ src/**/tests/*.md
 src/capture_core/fixture_meta.expect
 src/capture_core/fixture_meta_exhaust.expect
 src/capture_core/test_shim
+src/frameserver/tests/replay_completion_test

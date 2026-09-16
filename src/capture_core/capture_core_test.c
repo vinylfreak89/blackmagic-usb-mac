@@ -112,6 +112,7 @@ static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle
     CHECK(cc_start(s)==CC_OK,"start");
     wait_ended(&t->ended, "replay run");
     CHECK(cc_stop(s)==CC_OK,"stop");
+    CHECK(cc_packets_delivered(s)==t->pkts[0]+t->pkts[1],"packet progress disagrees with completed callbacks");
     cc_stats st; cc_get_stats(s,&st);
     // stats must tell the same story as the callbacks: cumulative loss, not "pending since last flush"
     CHECK(st.lost_bytes[0]==t->loss_bytes[0] && st.lost_bytes[1]==t->loss_bytes[1],

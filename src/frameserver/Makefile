@@ -12,7 +12,7 @@ FIXTURE_LONG = ../unit_parser/tests/fixture_plain.tpc   # 120 exact units, for t
 $(FIXTURE): ../unit_parser/tests/gen_unit_parser_capture.py
 	python3 $< --output $@
 
-frameserver_replay: $(SRCS) frameserver_replay.c frameserver.h frame_publisher.h
+frameserver_replay: $(SRCS) frameserver_replay.c frameserver.h frame_publisher.h ../capture_core/capture_core.h ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o $@ $(LIBS)
 
 tests/audio_publisher_test: audio_publisher.c audio_publisher.h tests/audio_publisher_test.c
@@ -30,8 +30,13 @@ test: tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_te
 	./tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
 
 # Deadline behaviour: slow pacing is not a stall, a blocked sink is, and both test deadlines fail by name.
-test-deadlines: frameserver_replay tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
+test-deadlines: frameserver_replay tests/frameserver_test tests/replay_completion_test $(FIXTURE) $(FIXTURE_LONG)
 	sh tests/deadline_test.sh
+	python3 ../../scripts/transport_deadline_test.py frameserver ./frameserver_replay
+	python3 ../../scripts/run_deadline.py 5 ./tests/replay_completion_test
+
+tests/replay_completion_test: $(SRCS) tests/replay_completion_test.c frameserver_replay.c ../tool_deadline.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_completion_test.c -o $@ $(LIBS)
 
 # Item ring of 2 so a stalled consumer exhausts it deterministically (ring-full accounting path).
 test-smallring: $(FIXTURE) $(FIXTURE_LONG)

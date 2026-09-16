@@ -1,6 +1,8 @@
 // shuttle-capture — thin CLI over capture_core. Same jobs as capture_tagged_bench, now via the library:
 //   shuttle-capture <input> <secs> <out.tpc> [ringMB] [scratchDir]      capture
 //   shuttle-capture --replay <in.tpc> <out.tpc|/dev/null> [paceUS] [scratchDir]
+// Optional trailing --stall-s N (default 120, at least ten pacing intervals).
+// CC_LIFECYCLE_S overrides the 60 s startup/stop/finalization watchdog for tests.
 #include "capture_core.h"
 #include <errno.h>
 #include <limits.h>
@@ -10,6 +12,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "../tool_deadline.h"
 static cc_session *g_s;
 static cc_tagged_sink *g_k;
 static _Atomic int g_done;
@@ -92,11 +95,17 @@ static int stage_path(const char *dest,const char *scratch,char staged[PATH_MAX]
     return 0;
 }
 int main(int argc,char**argv){
+    tool_deadline_start("shuttle-capture");
+    double lifecycle_s=tool_seconds(getenv("CC_LIFECYCLE_S"),60), stall_s=120;
+    tool_guard("open output / cc_open / cc_start",lifecycle_s);
     cc_config cfg={0}; const char *out=NULL; int secs=0;
     const char *scratch="/private/tmp/blackmagic-usb-mac";
-    if(argc>1 && !strcmp(argv[argc-1],"--fail-stop-control-loss")){
-        cfg.fail_stop_on_control_loss=1;
-        argc--;
+    for (;;) {
+        if(argc>1 && !strcmp(argv[argc-1],"--fail-stop-control-loss")){
+            cfg.fail_stop_on_control_loss=1; argc--;
+        } else if(argc>2 && !strcmp(argv[argc-2],"--stall-s")) {
+            stall_s=tool_seconds(argv[argc-1],120); argc-=2;
+        } else break;
     }
     if(argc>=4 && !strcmp(argv[1],"--replay")){
         cfg.replay_path=argv[2]; out=argv[3];
@@ -108,7 +117,7 @@ int main(int argc,char**argv){
         secs=atoi(argv[2]); out=argv[3];
         if(argc>4) cfg.ring_mb=atoi(argv[4]);
         if(argc>5) scratch=argv[5];
-    } else { fprintf(stderr,"usage: %s <input> <secs> <out> [ringMB] [scratchDir] [--fail-stop-control-loss] | --replay <in> <out> [paceUS] [scratchDir] [--fail-stop-control-loss]\n",argv[0]); return 9; }
+    } else { fprintf(stderr,"usage: %s <input> <secs> <out> [ringMB] [scratchDir] [--fail-stop-control-loss] | --replay <in> <out> [paceUS] [scratchDir] [--stall-s N] [--fail-stop-control-loss]\n",argv[0]); return 9; }
     char staged[PATH_MAX]={0}; const char *sink_path=out;
     int publish=strcmp(out,"/dev/null")!=0;
     if(publish){
@@ -143,9 +152,23 @@ int main(int argc,char**argv){
         if(publish) unlink(staged);
         return 2;
     }
-    if(cfg.replay_path){ while(!atomic_load(&g_done)) usleep(50000); }
+    tool_guard(NULL,0);
+    if(cfg.replay_path){
+        uint64_t seen=cc_packets_delivered(g_s);
+        double last=tool_clock(), limit=tool_stall_seconds(stall_s,cfg.replay_pace_us);
+        while(!atomic_load(&g_done)) {
+            usleep(20000);
+            if(atomic_load(&g_done)) break;
+            uint64_t now=cc_packets_delivered(g_s);
+            if(now!=seen) { seen=now; last=tool_clock(); }
+            else if(tool_clock()-last>=limit && !atomic_load(&g_done))
+                tool_timeout("no capture-core packet delivery before stall deadline; partial capture retained");
+        }
+    }
     else { for(int i=0;i<secs*10 && !atomic_load(&g_done);i++) usleep(100000); }
+    tool_guard("cc_stop",lifecycle_s);
     cc_stop(g_s);
+    tool_guard("final accounting/output, cc_close and sink flush/close",lifecycle_s);
     enum cc_end end_reason=(enum cc_end)atomic_load(&g_end_reason);
     cc_stats st; cc_get_stats(g_s,&st);
     printf("video %.1f MB | audio %.1f MB | iso_err=%ld xfer_err=%ld resub=%ld/%ld\n",
@@ -163,10 +186,12 @@ int main(int argc,char**argv){
         fprintf(stderr,"SINK WRITE FAILURE; partial capture retained at %s\n",sink_path);
         return 3;
     }
+    tool_guard("publish completed capture and flush terminal output",lifecycle_s);
     if(publish && rename(staged,out)<0){
         perror("atomic capture publish");
         fprintf(stderr,"complete capture retained at %s\n",staged);
         return 4;
     }
+    fflush(stdout); fflush(stderr);
     return end_reason==CC_END_STOPPED || end_reason==CC_END_REPLAY_EOF ? 0 : 5;
 }

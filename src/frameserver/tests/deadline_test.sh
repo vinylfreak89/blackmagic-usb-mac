@@ -20,7 +20,7 @@ mkfifo "$tmp/fifo"
 sleep 120 <"$tmp/fifo" & holder=$!
 cap 60 ./frameserver_replay "$FIXL" --dump-uyvy "$tmp/fifo" --stall-s 2 >/dev/null 2>"$tmp/e2"; rc=$?
 kill "$holder" 2>/dev/null; holder=
-[ "$rc" -eq 3 ] && grep -q 'TIMEOUT: no new video or audio record' "$tmp/e2"; check $? "a blocked sink is reported as a stall (exit $rc)"
+[ "$rc" -eq 3 ] && grep -q 'no capture-core packet delivery' "$tmp/e2"; check $? "a blocked sink is reported as a stall (exit $rc)"
 
 # 3. A per-wait deadline names the wait.
 cap 5 ./tests/frameserver_test --deadline-probe wait >/dev/null 2>"$tmp/e3"; rc=$?

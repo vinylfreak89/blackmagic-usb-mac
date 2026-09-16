@@ -88,6 +88,10 @@ int  cc_open (cc_session **out, const cc_config *cfg, const cc_callbacks *cb);
 int  cc_start(cc_session *s);
 int  cc_stop (cc_session *s);
 void cc_close(cc_session *s);
+// Completed on_packet deliveries, both endpoints, including zero-length packets.
+// One race-free atomic load during streaming; unlike cc_get_stats. Updated by the
+// delivery thread only, after the callback returns, never in the libusb hot path.
+uint64_t cc_packets_delivered(const cc_session *s);
 const char *cc_strerror(int err);
 
 typedef struct {
