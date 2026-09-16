@@ -793,8 +793,13 @@ not complete manifests. These paths were inventoried, not re-opened for this
 rewrite. Scratch may disappear. Captures 2 and 3 can be re-cut from the whole tape; capture 4 cannot,
 so keep its `captures/` copies (a new one needs another pass on the deck). No new tape run is authorized by this inventory.
 
-Capture 4's recorded best pairing matches its first slot to the earlier pass's
-previous-unit second field (MAD 2.6–3.0 versus 7–12 for other pairings).
+Capture 4's recorded pairing offset is **not established**. On 2026-09-06, six units of the old,
+pre-alignment-fix cuts were compared, matched by position in each file. At 20/150/300/600, capture 4's
+first slot matched capture 3's previous-unit second field (MAD 2.6–3.0 versus 7–12). Unit 77 (a held
+frame) matched both ways, and unit 450 matched straight (first slot to first field, 2.74). The
+write-up quoted only the four that agreed. Even taken at face value, the result says the two passes
+disagree about which field sits in the top slot, not which pass is the unusual one. Recheck it on
+the current cuts, across all units and aligned by content, before relying on it.
 Some harness runs used `--repair`. Every comparison must say whether it uses
 raw slots or repaired pairing; field-number joins can otherwise compare
 different times. This observation does not say every TFF/BFF problem has that
@@ -1123,8 +1128,8 @@ proposal, not an established requirement for the current problem.
 **TODO — live field-parity detection (owner, 2026-09-16):** "we need to figure out some live
 detection engine for field parity since our tests at the moment says it can't be guaranteed to be
 either TFF or BFF". What the tests show so far: fixture A measured TFF against the usual NTSC
-expectation (§6), and capture 4 pairs its fields one field later than capture 3's pass of the same
-tape (§7). No method has been chosen yet.
+expectation (§6), and an early, thin check suggested that capture 4 and capture 3 (two passes of the
+same tape) put different fields in the top slot (§7, not yet established). No method has been chosen yet.
 
 The early header census found 6,160 complete headers identical apart from their
 16-bit counter. This did not provide a per-field order/lock flag, but it also
