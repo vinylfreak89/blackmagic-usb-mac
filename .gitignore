@@ -103,3 +103,8 @@ renders/
 experiments/**/*.md
 !experiments/**/README.md
 src/**/tests/*.md
+
+# capture_core test outputs
+src/capture_core/fixture_meta.expect
+src/capture_core/fixture_meta_exhaust.expect
+src/capture_core/test_shim
