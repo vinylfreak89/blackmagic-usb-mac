@@ -1532,11 +1532,6 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
 
 ## 14. Working notes — retain lessons, not every round
 
-- **Registration restart (September 16):** `docs/geometry_contract.md` is a draft
-  for owner review, based on his September 14 reset discussion with Codex, not
-  a simplification of the v10 contract. It preserves the paired-boundary model
-  as an untested hypothesis and asks about unresolved boundary/output meanings.
-
 - **Mutual code-and-intent review is the coding style of this project (owner rule, 2026-09-03).**
   Every change by one agent (Claude or Codex) is reviewed by the other before it is considered
   done, and the review covers **intent as well as code**: the reviewer must be able to state the
