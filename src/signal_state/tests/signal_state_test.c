@@ -143,10 +143,11 @@ static void note(signal_state *state, signal_result *result,
                                    applied_d1, applied_d2);
 }
 
-static uint64_t monotonic_ns(void)
+/* Cost excludes descheduling; liveness deadlines elsewhere still use wall time. */
+static uint64_t thread_cpu_ns(void)
 {
     struct timespec value;
-    assert(clock_gettime(CLOCK_MONOTONIC, &value) == 0);
+    assert(clock_gettime(CLOCK_THREAD_CPUTIME_ID, &value) == 0);
     return (uint64_t)value.tv_sec * UINT64_C(1000000000) + value.tv_nsec;
 }
 
@@ -327,16 +328,20 @@ int main(void)
     assert(result.settled_phase_known && result.settled_d1 == 1 &&
            result.settled_d2 == 0);
 
-    uint64_t begin = monotonic_ns();
-    for (unsigned i = 0; i < 100; ++i)
+    uint64_t begin = thread_cpu_ns();
+    for (unsigned i = 0; i < 100; ++i) {
+        /* Cost-control mutations insert work here, inside the measured region. */
         result = classify(state, unit, PATTERN_PROGRAM, 1000 + i, 0);
-    uint64_t elapsed = monotonic_ns() - begin;
+    }
+    uint64_t elapsed = thread_cpu_ns() - begin;
     double microseconds = elapsed / 1000.0 / 100.0;
-    printf("signal_state_test: PASS cost=%.3f us/unit interval=%" PRIu64 "\n",
+    printf("signal_state_test: CPU cost=%.3f us/unit interval=%" PRIu64 "\n",
            microseconds, chatter_interval);
+    fflush(stdout);
 #ifndef SIGNAL_STATE_SANITIZED
     assert(microseconds < 5000.0);
 #endif
+    puts("signal_state_test: PASS");
     free(unit);
     free(state);
     return 0;
