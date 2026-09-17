@@ -83,6 +83,8 @@ extern void fs_test_after_log_row(frameserver *f, FILE *log);
 extern void fs_test_pool_drop(void);
 extern void fs_test_ring_drop(void);
 extern void fs_test_audio_drop(void);
+extern void fs_test_before_video(frameserver *f);
+extern void fs_test_after_item(frameserver *f);
 #else
 #define fs_test_destroyed() ((void)0)
 #define fs_test_after_empty_snapshot(f) ((void)(f))
@@ -91,6 +93,8 @@ extern void fs_test_audio_drop(void);
 #define fs_test_pool_drop() ((void)0)
 #define fs_test_ring_drop() ((void)0)
 #define fs_test_audio_drop() ((void)0)
+#define fs_test_before_video(f) ((void)(f))
+#define fs_test_after_item(f) ((void)(f))
 #endif
 
 // ------------------------------------------------------------ producer side (delivery thread)
@@ -140,6 +144,7 @@ static void push_tail_gap(frameserver *f){
 }
 static void on_video(void *ctx, const unit_video_observation *u){
     frameserver *f = ctx;
+    fs_test_before_video(f);
     atomic_fetch_add(&f->video_obs, 1);
     fs_item it; memset(&it,0,sizeof it); it.slot = -1; it.drop = FS_DROP_NONE; it.obs = *u; it.obs.bytes = NULL; it.obs.payload = NULL;
     if (u->fixed_raster_eligible && u->byte_count == UNIT_PARSER_VIDEO_UNIT_BYTES){
@@ -455,6 +460,7 @@ static void *worker_main(void *arg){
         fs_item it = f->ring[t % RING_ITEMS];
         atomic_store_explicit(&f->r_tail, t + 1, memory_order_release);
         process_item(f, &it);
+        fs_test_after_item(f);
     }
     atomic_store(&f->worker_done, 1);
     if (atomic_fetch_add(&f->workers_terminal, 1) == 1 && atomic_load_explicit(&f->notify_end, memory_order_acquire) && f->cfg.on_end)

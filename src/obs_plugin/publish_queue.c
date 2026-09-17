@@ -79,6 +79,10 @@ void pq_close(publish_queue *q){
     pthread_mutex_lock(&q->m);
     int first = !q->quit; q->quit = 1; pthread_cond_broadcast(&q->c);
     pthread_mutex_unlock(&q->m);
+#ifdef PUBLISH_QUEUE_TEST_HOOKS
+    extern void pq_test_closing(void);
+    pq_test_closing();
+#endif
     if (first) pthread_join(q->thread, NULL);   /* the thread exits only once the queue is empty: every accepted job was published */
 }
 void pq_destroy(publish_queue *q){

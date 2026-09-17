@@ -14,12 +14,52 @@
 #include <pthread.h>
 #include <time.h>
 #include "../../test_supervisor.h"
+#include "../../test_condition.h"
 static int fails = 0;
 extern void fs_test_reuse_worker_ids(frameserver *f);
 static _Atomic int destroyed;
 void fs_test_destroyed(void){ atomic_fetch_add(&destroyed,1); }
 #define CHECK(c, ...) do { if (!(c)) { fails++; fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); } } while (0)
 static _Atomic int done; static _Atomic uint64_t frames_seen; static _Atomic int sink_hold;
+/* These three log scenarios admit one observation at a time, with explicit
+ * completed-row boundaries. No pool/ring size or replay speed defines a window.
+ * The worker hook is AFTER process_item releases the log lock and pool slot. */
+static pthread_mutex_t window_mutex=PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t window_cond=PTHREAD_COND_INITIALIZER;
+static int window_active, window_inflight, window_ended;
+static uint64_t window_rows, window_limit;
+static void window_begin(uint64_t limit){
+    pthread_mutex_lock(&window_mutex);
+    window_active=1; window_inflight=window_ended=0; window_rows=0; window_limit=limit;
+    pthread_mutex_unlock(&window_mutex);
+}
+static void window_release(uint64_t limit,int active){
+    pthread_mutex_lock(&window_mutex); window_limit=limit; window_active=active;
+    pthread_cond_broadcast(&window_cond); pthread_mutex_unlock(&window_mutex);
+}
+void fs_test_before_video(frameserver *f){
+    (void)f; double until=test_until("FS_TEST_WAIT_S");
+    pthread_mutex_lock(&window_mutex);
+    while(window_active&&(window_inflight||window_rows>=window_limit)){
+        char name[96]; snprintf(name,sizeof name,"log window producer release after %llu rows",(unsigned long long)window_rows);
+        test_condition(&window_cond,&window_mutex,until,name);
+    }
+    if(window_active) window_inflight=1;
+    pthread_mutex_unlock(&window_mutex);
+}
+void fs_test_after_item(frameserver *f){
+    (void)f; pthread_mutex_lock(&window_mutex);
+    if(window_active){ window_inflight=0; window_rows++; pthread_cond_broadcast(&window_cond); }
+    pthread_mutex_unlock(&window_mutex);
+}
+static void window_wait(uint64_t rows,const char *name){
+    double until=test_until("FS_TEST_WAIT_S"); pthread_mutex_lock(&window_mutex);
+    while(window_rows<rows){
+        if(window_ended){ fprintf(stderr,"FAIL: %s: session ended before required rows\n",name); _exit(2); }
+        test_condition(&window_cond,&window_mutex,until,name);
+    }
+    pthread_mutex_unlock(&window_mutex);
+}
 enum { DROP_POOL=1, DROP_RING=2, DROP_AUDIO=4, RING_DRAINED=8 };
 static pthread_mutex_t drop_mutex=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t drop_cond=PTHREAD_COND_INITIALIZER;
@@ -106,7 +146,8 @@ static const char *callback_log;
 static _Atomic int end_calls;
 static void on_end(void *c, enum cc_end r){ (void)c; (void)r;
     if(atomic_exchange(&end_life_try,0)){ end_life_rc=fs_stop(g_cb_target); fs_close(g_cb_target); }
-    atomic_fetch_add(&end_calls, 1); done = 1; }
+    atomic_fetch_add(&end_calls, 1); done = 1;
+    pthread_mutex_lock(&window_mutex); window_ended=1; pthread_cond_broadcast(&window_cond); pthread_mutex_unlock(&window_mutex); }
 static _Atomic uint64_t audio_frames_seen; static _Atomic int audio_flagged_blocks; static _Atomic uint64_t audio_last_pts; static _Atomic int audio_pts_nonmonotonic;
 static _Atomic int audio_after_end; static _Atomic int ordinal_break;
 static uint64_t audio_next_ordinal; static int audio_have_next;
@@ -131,13 +172,6 @@ static void sink(void *c, const fp_frame *fr){ (void)c; if (fr->surface) atomic_
     if (fr->audio_pts_known && atomic_load(&vf_n) < CORR_MAX){ int n = atomic_load(&vf_n); vf_ctr[n] = fr->counter_ext; vf_apts[n] = fr->audio_pts_num; atomic_store(&vf_n, n + 1); }
     if(atomic_load(&sink_hold)&&!held_surface){ IOSurfaceIncrementUseCount(fr->surface); held_surface=fr->surface; }
     hold_until_drop(video_hold_mask,"video slot hold"); }
-/* Observation-driven waits (no fixed sleeps): block until the sink has seen `n` more frames than
- * `base`, or the session ended, or a 20 s cap — so the windows below are defined by delivered
- * frames, not wall time, and survive sanitizer slowdowns. */
-static int wait_frames(unsigned long long base, unsigned long long n){
-    for (int i = 0; i < 2000; i++){ if (atomic_load(&frames_seen) >= base + n) return 1; if (done) return 0; usleep(10000); }
-    return 0;
-}
 typedef struct { frameserver *f; int rc; } fs_stop_arg;
 static void *fs_stop_thread(void *p){ fs_stop_arg *a=p; a->rc=fs_stop(a->f); return NULL; }
 static int repeat_fixture(const char *src,const char *dst,int copies){
@@ -390,19 +424,21 @@ int main(int argc, char **argv){
     // between two attachments is genuinely unlogged, and every written row is counted.
     done=0; char la[]="/tmp/fs_test_logA_XXXXXX"; fd=mkstemp(la); close(fd); unlink(la); char lb[]="/tmp/fs_test_logB_XXXXXX"; fd=mkstemp(lb); close(fd); unlink(lb);   /* fs_log_start opens exclusively */
     CHECK(argc>=3,"runtime-log test needs the long plain fixture as argv[2]");
-    fs_config rc=cfg; rc.decision_log=NULL; rc.capture.replay_path=argc>=3?argv[2]:argv[1]; rc.capture.replay_pace_us=30000; frameserver *rf=NULL;
+    fs_config rc=cfg; rc.decision_log=NULL; rc.capture.replay_path=argc>=3?argv[2]:argv[1]; rc.capture.replay_pace_us=0; frameserver *rf=NULL;
     CHECK(fs_open(&rf,&rc)==0,"open (runtime log)");
     if(rf&&argc>=3){
         CHECK(fs_log_stop(rf)==-1,"stop with no log attached must fail");
-        unsigned long long base=atomic_load(&frames_seen);
-        CHECK(fs_start(rf)==0,"start (runtime log)"); CHECK(wait_frames(base,10),"frames before attach A");
+        window_begin(10);
+        CHECK(fs_start(rf)==0,"start (runtime log)"); window_wait(10,"rows before attach A");
         CHECK(fs_log_start(rf,la)==0,"attach A");
         CHECK(fs_log_start(rf,lb)==-1,"second attach while A is attached must fail");
-        CHECK(wait_frames(base,30),"frames during A");
-        CHECK(fs_log_stop(rf)==0,"detach A"); CHECK(wait_frames(base,45),"frames in the gap");
+        window_release(30,1); window_wait(30,"rows during A");
+        CHECK(fs_log_stop(rf)==0,"detach A"); window_release(45,1); window_wait(45,"rows in the gap");
         CHECK(fs_log_start(rf,lb)==0,"attach B");
+        window_release(UINT64_MAX,1);
         wait_for_end("runtime-log run");
         CHECK(fs_stop(rf)==0,"stop (runtime log)");
+        window_release(0,0);
         CHECK(fs_log_start(rf,la)==-1,"attach after stop must fail");
         fs_stats rs; fs_get_stats(rf,&rs);
         unsigned long long rowsA=0,rowsB=0,hdrA=0,hdrB=0,lastA=0,firstB=0,lastB=0; int monoA=1,monoB=1; unsigned long long prev; int first;
@@ -410,6 +446,7 @@ int main(int argc, char **argv){
         L=fopen(lb,"r"); prev=0; first=1; while(fgets(line,sizeof line,L)){ if(!strncmp(line,"ordinal,",8)){hdrB++;continue;} unsigned long long ord=strtoull(line,NULL,10); if(first) firstB=ord; if(!first&&ord<=prev) monoB=0; prev=ord; first=0; rowsB++; lastB=ord; } fclose(L);
         CHECK(hdrA==1&&hdrB==1,"each runtime log carries exactly one header (%llu/%llu)",hdrA,hdrB);
         CHECK(rowsA>0&&rowsB>0,"both attachments logged rows (%llu/%llu)",rowsA,rowsB);
+        CHECK(rowsA==20&&rowsB==75,"event-defined A/B windows changed (%llu/%llu)",rowsA,rowsB);
         CHECK(monoA&&monoB,"ordinals monotonic within each runtime log");
         CHECK(firstB>lastA+1,"the detached interval is unlogged (A ends %llu, B starts %llu)",lastA,firstB);
         CHECK(rowsA+rowsB==rs.log_rows,"runtime log rows on disk %llu != counted %llu",rowsA+rowsB,(unsigned long long)rs.log_rows);
@@ -427,14 +464,15 @@ int main(int argc, char **argv){
     // PoolFull rows with exact conservation — never acquisition. Rows that failed are never counted.
     done=0; char lc[]="/tmp/fs_test_logC_XXXXXX"; fd=mkstemp(lc); close(fd); unlink(lc);
     // Account from session start, including ring losses before the stall is armed.
-    fs_config sc=cfg; sc.decision_log=lc; sc.capture.replay_path=argc>=3?argv[2]:argv[1]; sc.capture.replay_pace_us=8000; sc.pool_units=4; frameserver *sf=NULL;
+    fs_config sc=cfg; sc.decision_log=lc; sc.capture.replay_path=argc>=3?argv[2]:argv[1]; sc.capture.replay_pace_us=0; sc.pool_units=4; frameserver *sf=NULL;
     CHECK(fs_open(&sf,&sc)==0,"open (stall)");
     if(sf&&argc>=3){
         g_cb_target=sf; atomic_store(&cb_start_rc,99); atomic_store(&cb_stop_rc,99); atomic_store(&cb_try,1);
-        unsigned long long sbase=atomic_load(&frames_seen);
-        CHECK(fs_start(sf)==0,"start (stall)"); CHECK(wait_frames(sbase,5),"frames before arming the sidecar stall");
+        window_begin(5);
+        CHECK(fs_start(sf)==0,"start (stall)"); window_wait(5,"rows before arming the sidecar stall");
         CHECK(atomic_load(&cb_start_rc)==-1&&atomic_load(&cb_stop_rc)==-1,"log start/stop from the worker callback must be refused (%d/%d)",atomic_load(&cb_start_rc),atomic_load(&cb_stop_rc));
         reset_drops(); atomic_store(&log_stalled,0); atomic_store(&log_hold_mask,DROP_POOL|DROP_RING);
+        window_release(0,0); /* Deliberately free-running: this scenario requires pressure. */
         wait_for_end("log-stall run");
         CHECK(fs_stop(sf)==0,"stop (stall)"); g_cb_target=NULL;
         CHECK(atomic_load(&log_stalled),"the stall hook did not fire");
@@ -466,19 +504,25 @@ int main(int argc, char **argv){
     // later row fails, is counted in log_write_errors and NOT in log_rows, and fs_log_stop reports
     // the file as incomplete (-1) so a publisher cannot pass it off as complete.
     done=0; char ld[]="/tmp/fs_test_logD_XXXXXX"; fd=mkstemp(ld); close(fd); unlink(ld);
-    fs_config bc=cfg; bc.decision_log=NULL; bc.capture.replay_path=argc>=3?argv[2]:argv[1]; bc.capture.replay_pace_us=8000; frameserver *bf=NULL;
+    fs_config bc=cfg; bc.decision_log=NULL; bc.capture.replay_path=argc>=3?argv[2]:argv[1]; bc.capture.replay_pace_us=0; frameserver *bf=NULL;
     CHECK(fs_open(&bf,&bc)==0,"open (write failure)");
     if(bf&&argc>=3){
-        unsigned long long bbase=atomic_load(&frames_seen);
-        CHECK(fs_start(bf)==0,"start (write failure)"); CHECK(wait_frames(bbase,5),"frames before the failing attach");
+        window_begin(5);
+        CHECK(fs_start(bf)==0,"start (write failure)"); window_wait(5,"rows before the failing attach");
         atomic_store(&log_break,1); CHECK(fs_log_start(bf,ld)==0,"attach D");
-        CHECK(wait_frames(bbase,40),"frames while writes fail");
+        window_release(40,1); window_wait(40,"rows while writes fail");
         CHECK(fs_log_stop(bf)==-1,"fs_log_stop must report a file with failed rows as incomplete");
         fs_stats mid; fs_get_stats(bf,&mid); CHECK(mid.log_last_file_errors>0,"last-file verdict must be nonzero for the broken file");
         /* a second, clean log in the same session, closed by fs_stop: its verdict must be 0 although the session total is not */
         char le[]="/tmp/fs_test_logE_XXXXXX"; fd=mkstemp(le); close(fd); unlink(le);
-        CHECK(fs_log_start(bf,le)==0,"attach E (clean after broken)"); CHECK(wait_frames(bbase,60),"frames in the clean log");
+        CHECK(fs_log_start(bf,le)==0,"attach E (clean after broken)");
+        const char *fault=getenv("FS_TEST_CLEAN_WINDOW");
+        window_release(fault&&!strcmp(fault,"paused")?40:60,1);
+        if(fault&&!strcmp(fault,"ended")) window_release(UINT64_MAX,1);
+        window_wait(fault&&!strcmp(fault,"ended")?UINT64_MAX:60,"rows in the clean log");
+        window_release(UINT64_MAX,1);
         wait_for_end("write-failure run"); CHECK(fs_stop(bf)==0,"stop (write failure)");
+        window_release(0,0);
         fs_stats bs; fs_get_stats(bf,&bs);
         CHECK(bs.log_write_errors>0,"injected write failures were not counted");
         CHECK(bs.log_last_file_errors==0,"the clean file closed by fs_stop must have a zero verdict (%llu) despite session errors %llu",(unsigned long long)bs.log_last_file_errors,(unsigned long long)bs.log_write_errors);

@@ -12,35 +12,40 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <time.h>
+#include "../test_supervisor.h"
+#include "../test_condition.h"
 static int fails;
 #define CHECK(c,...) do{ if(!(c)){ fails++; printf("FAIL: " __VA_ARGS__); printf("\n"); } }while(0)
 static pthread_mutex_t gm = PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t gc = PTHREAD_COND_INITIALIZER; static int gate_open = 1;
 static char log_[16][256]; static _Atomic int nlog;
 static _Atomic int entered_gated;   /* handshake: the publisher has ENTERED the gated job (it is in progress, not queued) */
+static int closing, producers_started;
+void pq_test_closing(void){ pthread_mutex_lock(&gm); closing=1; pthread_cond_broadcast(&gc); pthread_mutex_unlock(&gm); }
 static void publish(void *ctx, const char *partial, const char *final){
     (void)ctx;
-    if (strstr(final, "GATED")){ pthread_mutex_lock(&gm); atomic_store(&entered_gated, 1); pthread_cond_broadcast(&gc); while (!gate_open) pthread_cond_wait(&gc, &gm); pthread_mutex_unlock(&gm); }
+    if (strstr(final, "GATED")){ double until=test_until("PQ_TEST_WAIT_S"); pthread_mutex_lock(&gm); atomic_store(&entered_gated, 1); pthread_cond_broadcast(&gc); while (!gate_open) test_condition(&gc,&gm,until,"publish queue gated job release"); pthread_mutex_unlock(&gm); }
     int i = atomic_fetch_add(&nlog, 1); if (i < 16) snprintf(log_[i], sizeof log_[i], "%s->%s", partial, final);
 }
 static void open_gate(void){ pthread_mutex_lock(&gm); gate_open = 1; pthread_cond_broadcast(&gc); pthread_mutex_unlock(&gm); }
 static void close_gate(void){ pthread_mutex_lock(&gm); gate_open = 0; pthread_mutex_unlock(&gm); }
-static int wait_log(int n){ for (int i = 0; i < 500; i++){ if (atomic_load(&nlog) >= n) return 1; usleep(10000); } return 0; }
 static void *closer_main(void *a){ pq_close(a); return NULL; }
 static publish_queue *race_q; static _Atomic int accepted, refused_cancel, refused_other;
 static double now_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec+t.tv_nsec/1e9; }
 static void *producer_main(void *a){
-    (void)a; double deadline=now_s()+60;
+    (void)a; double deadline=test_until("PQ_TEST_WAIT_S"); int started=0;
     for (;;){
         if(now_s()>=deadline){ fprintf(stderr,"FAIL: TIMEOUT waiting for publish queue ECANCELED\n"); _exit(2); }
         if(pq_enqueue(race_q,"/s/x.partial","/d/x.csv")==0) atomic_fetch_add(&accepted,1);
         else if(errno==ECANCELED){ atomic_fetch_add(&refused_cancel,1); break; }
         else if(errno!=ENOSPC) atomic_fetch_add(&refused_other,1);
+        if(!started){ pthread_mutex_lock(&gm); producers_started++; pthread_cond_broadcast(&gc); pthread_mutex_unlock(&gm); started=1; }
         usleep(100); /* pacing only; termination requires the close event */
     }
     return NULL;
 }
 static int fail_which = -1; static int fail_init(int w){ return w == fail_which; }
-int main(void){
+int main(int argc,char **argv){
+    (void)argc; test_supervise(argv,"PQ_TEST_TOTAL_S","publish_queue_test");
     publish_queue *q = NULL;
     // init failures: each one clean (-1, no queue), then a normal open
     pq_test_fail_init = fail_init;
@@ -53,7 +58,7 @@ int main(void){
     close_gate();
     CHECK(pq_enqueue(q, p1, f1) == 0, "enqueue A");
     memset(p1, 'X', strlen(p1)); free(p1); memset(f1, 'X', strlen(f1)); free(f1);
-    { pthread_mutex_lock(&gm); while (!atomic_load(&entered_gated)) pthread_cond_wait(&gc, &gm); pthread_mutex_unlock(&gm); }   /* A is in progress (observed, not assumed) */
+    { double until=test_until("PQ_TEST_WAIT_S"); pthread_mutex_lock(&gm); while (!atomic_load(&entered_gated)) test_condition(&gc,&gm,until,"publish queue entered A"); pthread_mutex_unlock(&gm); }
     CHECK(pq_pending(q) == 1, "A in progress counts as pending");
     CHECK(pq_reserved(q, "/dst/GATED-a.csv"), "in-progress final is reserved");
     // B and C queue behind the gated A without blocking this thread
@@ -65,7 +70,8 @@ int main(void){
     CHECK(atomic_load(&nlog) == 0, "nothing published while A is gated");
     // close while A is gated: close must drain B, C, D after the gate opens, and return only then
     pthread_t closer; pthread_create(&closer, NULL, closer_main, q);
-    usleep(100000); CHECK(atomic_load(&nlog) == 0, "close must not skip or drop while A is gated");
+    { double until=test_until("PQ_TEST_WAIT_S"); pthread_mutex_lock(&gm); while(!closing) test_condition(&gc,&gm,until,"publish queue close entered"); pthread_mutex_unlock(&gm); }
+    CHECK(atomic_load(&nlog) == 0, "close must not skip or drop while A is gated");
     open_gate();
     pthread_join(closer, NULL);
     CHECK(atomic_load(&nlog) == 4, "close drained all four jobs (%d)", atomic_load(&nlog));
@@ -79,13 +85,14 @@ int main(void){
     publish_queue *r = NULL; CHECK(pq_open(&r, 64, publish, NULL) == 0, "open (race)");
     pthread_t prod[4]; race_q = r;
     for (int i = 0; i < 4; i++) pthread_create(&prod[i], NULL, producer_main, NULL);
-    usleep(20000); pq_close(r);
+    { double until=test_until("PQ_TEST_WAIT_S"); pthread_mutex_lock(&gm); while(producers_started!=4) test_condition(&gc,&gm,until,"publish queue producers entered"); pthread_mutex_unlock(&gm); }
+    pq_close(r);
     int published_at_close = atomic_load(&nlog);
     for (int i = 0; i < 4; i++) pthread_join(prod[i], NULL);
     CHECK(atomic_load(&accepted) == published_at_close, "accepted %d != published-before-close-returned %d", atomic_load(&accepted), published_at_close);
     CHECK(atomic_load(&nlog) == published_at_close, "nothing published after close returned");
     CHECK(atomic_load(&refused_other) == 0, "refusals after close must all be ECANCELED (other errno seen %d times)", atomic_load(&refused_other));
-    CHECK(atomic_load(&refused_cancel) > 0, "at least one enqueue landed after close began (%d)", atomic_load(&refused_cancel));
+    CHECK(atomic_load(&refused_cancel) == 4, "every producer observed close (%d)", atomic_load(&refused_cancel));
     pq_destroy(r);   /* only now: every producer has been joined */
     printf(fails ? "publish_queue tests: FAILURES %d\n" : "publish_queue tests: PASS\n", fails); return fails ? 1 : 0;
 }

@@ -15,13 +15,13 @@ $(FIXTURE): ../unit_parser/tests/gen_unit_parser_capture.py
 frameserver_replay: $(SRCS) frameserver_replay.c frameserver.h frame_publisher.h ../capture_core/capture_core.h ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o $@ $(LIBS)
 
-tests/audio_publisher_test: audio_publisher.c audio_publisher.h tests/audio_publisher_test.c
+tests/audio_publisher_test: audio_publisher.c audio_publisher.h tests/audio_publisher_test.c ../test_supervisor.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) audio_publisher.c tests/audio_publisher_test.c -o $@
 
 tests/frame_publisher_test: frame_publisher.c frame_publisher.h tests/frame_publisher_test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) frame_publisher.c tests/frame_publisher_test.c -o $@ -framework IOSurface -framework CoreFoundation
 
-tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h ../test_supervisor.h
+tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h ../test_supervisor.h ../test_condition.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TESTFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o $@ $(LIBS)
 
 test: tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
@@ -35,6 +35,7 @@ test-deadlines: frameserver_replay tests/frameserver_test tests/replay_completio
 	sh tests/deadline_test.sh
 	python3 ../../scripts/transport_deadline_test.py frameserver ./frameserver_replay
 	python3 ../../scripts/run_deadline.py 5 ./tests/replay_completion_test
+	python3 ../../scripts/test_event_windows.py
 
 .PHONY: test-supervisor
 test-supervisor:
@@ -49,10 +50,14 @@ test-smallring: $(FIXTURE) $(FIXTURE_LONG)
 	FS_TEST_EXPECT_RING_DROPS=1 ./tests/test_smallring $(FIXTURE) $(FIXTURE_LONG)
 
 test-asan: $(FIXTURE) $(FIXTURE_LONG)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra audio_publisher.c tests/audio_publisher_test.c -o tests/audio_publisher_asan
+	./tests/audio_publisher_asan
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined $(TESTFLAGS) -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_asan $(LIBS)
 	./tests/test_asan $(FIXTURE) $(FIXTURE_LONG)
 
 test-tsan: $(FIXTURE) $(FIXTURE_LONG)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra audio_publisher.c tests/audio_publisher_test.c -o tests/audio_publisher_tsan
+	./tests/audio_publisher_tsan
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread $(TESTFLAGS) -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_tsan $(LIBS)
 	./tests/test_tsan $(FIXTURE) $(FIXTURE_LONG)
 
@@ -69,4 +74,5 @@ $(FIXTURE_LONG): ../unit_parser/tests/gen_unit_parser_capture.py
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
 
 clean:
+	rm -f tests/audio_publisher_asan tests/audio_publisher_tsan
 	rm -f frameserver_replay tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring tests/worker_bench

@@ -1605,6 +1605,8 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   Capture-core/frameserver callback refusal uses thread-local session ownership,
   never joined worker IDs (which the OS may reuse).
   Deadline mechanisms: `src/test_supervisor.h` and `src/tool_deadline.h`.
+  Concurrent tests establish overlap/pressure and control windows by event handshakes;
+  deadlines only fail missing events, never supply evidence that a window occurred.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

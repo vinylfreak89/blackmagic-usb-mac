@@ -9,6 +9,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include "../../test_supervisor.h"
 static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { fails++; fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); } } while (0)
 
@@ -34,18 +35,31 @@ static void feed_pcm(audio_publisher *p, uint64_t epoch, uint64_t *ord, int n, u
 }
 // seqlock stress: writer hammers resyncs on a run anchored at (counter 0, ordinal 0) so every entry
 // must satisfy pts == ordinal * 5; a torn read would violate it.
-typedef struct { audio_publisher *p; _Atomic int stop; _Atomic long lookups, hits, torn; } stressctx;
+typedef struct {
+    audio_publisher *p; _Atomic int stop;
+    _Atomic long lookups, hits, torn;
+    _Atomic unsigned long generation, first_hit, later_hit;
+} stressctx;
 static void *stress_reader(void *arg){
     stressctx *c = arg;
     while (!atomic_load(&c->stop)){
         uint64_t pts, ord; uint64_t ctr = (uint64_t)(atomic_load(&c->lookups) % 200);
         atomic_fetch_add(&c->lookups, 1);
-        if (ap_lookup(c->p, 1, ctr, &pts, &ord)){ atomic_fetch_add(&c->hits, 1); if (pts != ord * AP_TICKS_PER_FRAME) atomic_fetch_add(&c->torn, 1); }
+        unsigned long before=atomic_load(&c->generation);
+        if (ap_lookup(c->p, 1, ctr, &pts, &ord)){
+            atomic_fetch_add(&c->hits, 1);
+            if (pts != ord * AP_TICKS_PER_FRAME) atomic_fetch_add(&c->torn, 1);
+            /* Reader-owned acknowledgements. A second hit must follow a new
+             * writer batch, not merely repeat a read after writing has ended. */
+            if(before && !atomic_load(&c->first_hit)) atomic_store(&c->first_hit,before);
+            else if(before>atomic_load(&c->first_hit)) atomic_store(&c->later_hit,before);
+        }
     }
     return NULL;
 }
 
-int main(void){
+int main(int argc,char **argv){
+    (void)argc; test_supervise(argv,"AP_TEST_TOTAL_S","audio_publisher_test");
     sinkstate s; memset(&s, 0, sizeof s);
     ap_sink sink = { on_block, &s };
     audio_publisher *p = NULL;
@@ -163,13 +177,26 @@ int main(void){
     // 6: seqlock stress — concurrent lookups never observe a torn entry
     memset(&s, 0, sizeof s); CHECK(ap_open(&p, 4096, &sink) == 0, "reopen 6");
     stressctx sc; memset(&sc, 0, sizeof sc); sc.p = p;
-    pthread_t rd; pthread_create(&rd, NULL, stress_reader, &sc);
+    pthread_t rd;
+    if(pthread_create(&rd, NULL, stress_reader, &sc)){ fprintf(stderr,"FAIL: stress reader creation\n"); return 2; }
     ord = 0;   // one anchored run (first resync at counter 0, ordinal 0): every entry must satisfy pts == ordinal * 5
-    for (int round = 0; round < 2000; round++)
+    const char *limit=getenv("AP_TEST_WAIT_S");
+    double until=test_clock()+(limit?atof(limit):60);
+    unsigned long overlap_hit=0;
+    for (unsigned long round = 1; ; round++){
         for (uint64_t c = 0; c < 200; c++){ unit_audio_observation o = resync(1, ord, c, 0); ap_on_audio(p, &o); ord += 1601; }
+        atomic_store(&sc.generation,round);
+        overlap_hit=atomic_load(&sc.later_hit);
+        if(round>=2000 && overlap_hit && round>overlap_hit) break;
+        if(test_clock()>=until){ fprintf(stderr,"FAIL: TIMEOUT: seqlock stress missing reader/writer overlap (%ld lookups, %ld hits)\n",atomic_load(&sc.lookups),atomic_load(&sc.hits)); _exit(2); }
+    }
     atomic_store(&sc.stop, 1); pthread_join(rd, NULL);
     CHECK(atomic_load(&sc.hits) > 0, "stress reader never hit an entry (%ld lookups)", atomic_load(&sc.lookups));
+    CHECK(sc.first_hit>0 && overlap_hit>sc.first_hit && sc.generation>overlap_hit,
+          "seqlock stress missing reader/writer overlap");
     CHECK(atomic_load(&sc.torn) == 0, "seqlock let %ld torn entries through (%ld hits)", atomic_load(&sc.torn), atomic_load(&sc.hits));
+    printf("  seqlock stress: %ld lookups, %ld hits, %ld torn; acknowledged writer batches %lu then %lu, final %lu\n",
+           (long)sc.lookups,(long)sc.hits,(long)sc.torn,(unsigned long)sc.first_hit,overlap_hit,(unsigned long)sc.generation);
     ap_close(p);
     if (fails) printf("FAILURES: %d\n", fails); else printf("audio_publisher tests: PASS\n");
     return fails ? 1 : 0;

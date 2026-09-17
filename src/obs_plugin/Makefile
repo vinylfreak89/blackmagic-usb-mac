@@ -45,8 +45,8 @@ $(BUNDLE): shuttle_source.c publish_copy.c publish_copy.h publish_queue.c publis
 
 test: publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_copy.c tests_publish_copy.c -o tests_publish_copy && ./tests_publish_copy
-	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue -lpthread && ./tests_publish_queue
-	$(CC) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue_tsan -lpthread && ./tests_publish_queue_tsan
+	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue -lpthread && ./tests_publish_queue
+	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue_tsan -lpthread && ./tests_publish_queue_tsan
 
 install: $(BUNDLE)
 	mkdir -p "$(INSTALL_DIR)"
