@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <time.h>
 static int fails;
 #define CHECK(c,...) do{ if(!(c)){ fails++; printf("FAIL: " __VA_ARGS__); printf("\n"); } }while(0)
 static pthread_mutex_t gm = PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t gc = PTHREAD_COND_INITIALIZER; static int gate_open = 1;
@@ -26,7 +27,18 @@ static void close_gate(void){ pthread_mutex_lock(&gm); gate_open = 0; pthread_mu
 static int wait_log(int n){ for (int i = 0; i < 500; i++){ if (atomic_load(&nlog) >= n) return 1; usleep(10000); } return 0; }
 static void *closer_main(void *a){ pq_close(a); return NULL; }
 static publish_queue *race_q; static _Atomic int accepted, refused_cancel, refused_other;
-static void *producer_main(void *a){ (void)a; for (int i = 0; i < 400; i++){ if (pq_enqueue(race_q, "/s/x.partial", "/d/x.csv") == 0) atomic_fetch_add(&accepted, 1); else if (errno == ECANCELED){ atomic_fetch_add(&refused_cancel, 1); break; } else if (errno != ENOSPC) atomic_fetch_add(&refused_other, 1); usleep(100); } return NULL; }
+static double now_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec+t.tv_nsec/1e9; }
+static void *producer_main(void *a){
+    (void)a; double deadline=now_s()+60;
+    for (;;){
+        if(now_s()>=deadline){ fprintf(stderr,"FAIL: TIMEOUT waiting for publish queue ECANCELED\n"); _exit(2); }
+        if(pq_enqueue(race_q,"/s/x.partial","/d/x.csv")==0) atomic_fetch_add(&accepted,1);
+        else if(errno==ECANCELED){ atomic_fetch_add(&refused_cancel,1); break; }
+        else if(errno!=ENOSPC) atomic_fetch_add(&refused_other,1);
+        usleep(100); /* pacing only; termination requires the close event */
+    }
+    return NULL;
+}
 static int fail_which = -1; static int fail_init(int w){ return w == fail_which; }
 int main(void){
     publish_queue *q = NULL;

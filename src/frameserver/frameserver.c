@@ -69,7 +69,14 @@ struct frameserver {
     uint64_t comb_correction_install_ordinal;
 };
 
+static _Thread_local frameserver *callback_session;
 #ifdef FRAMESERVER_TEST_HOOKS
+void fs_test_reuse_worker_ids(frameserver *f){
+    /* Caller owns an open (log checks) or stopped (lifecycle checks) session. */
+    f->worker=f->audio_worker=pthread_self();
+    f->worker_created=f->audio_worker_created=1;
+}
+extern void fs_test_destroyed(void);
 extern void fs_test_after_empty_snapshot(frameserver *f);
 extern void fs_test_before_producer_done(frameserver *f);
 extern void fs_test_after_log_row(frameserver *f, FILE *log);
@@ -77,6 +84,7 @@ extern void fs_test_pool_drop(void);
 extern void fs_test_ring_drop(void);
 extern void fs_test_audio_drop(void);
 #else
+#define fs_test_destroyed() ((void)0)
 #define fs_test_after_empty_snapshot(f) ((void)(f))
 #define fs_test_before_producer_done(f) ((void)(f))
 #define fs_test_after_log_row(f,L) ((void)(f),(void)(L))
@@ -176,6 +184,7 @@ static void aq_enqueue(void *ctx, const ap_block *b){
 }
 static void *audio_worker_main(void *arg){
     frameserver *f = arg;
+    callback_session=f;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0);
     for (;;){
         unsigned t = atomic_load_explicit(&f->aq_tail, memory_order_relaxed);
@@ -205,6 +214,7 @@ static void *audio_worker_main(void *arg){
     // on_end means BOTH media workers are terminal: whichever drains second fires it
     if (atomic_fetch_add(&f->workers_terminal, 1) == 1 && atomic_load_explicit(&f->notify_end, memory_order_acquire) && f->cfg.on_end)
         f->cfg.on_end(f->cfg.end_ctx, f->end_reason);
+    callback_session=NULL;
     return NULL;
 }
 static void cc_on_packet(void *ctx, const cc_packet *p){ frameserver *f = ctx; unit_parser_on_packet(f->parser, p); }
@@ -414,6 +424,7 @@ static void process_item(frameserver *f, const fs_item *it){
 }
 static void *worker_main(void *arg){
     frameserver *f = arg;
+    callback_session=f;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0);
     pthread_mutex_lock(&f->life_m);
     while(!f->start_gate) pthread_cond_wait(&f->life_c,&f->life_m);
@@ -448,6 +459,7 @@ static void *worker_main(void *arg){
     atomic_store(&f->worker_done, 1);
     if (atomic_fetch_add(&f->workers_terminal, 1) == 1 && atomic_load_explicit(&f->notify_end, memory_order_acquire) && f->cfg.on_end)
         f->cfg.on_end(f->cfg.end_ctx, f->end_reason);
+    callback_session=NULL;
     return NULL;
 }
 
@@ -541,8 +553,7 @@ fail_no_worker:
 }
 int fs_stop(frameserver *f){
     if(!f) return -1;
-    if((f->worker_created && pthread_equal(pthread_self(),f->worker)) ||
-       (f->audio_worker_created && pthread_equal(pthread_self(),f->audio_worker))) return -1;   // no self-join from a callback
+    if(callback_session==f) return -1;   // no self-join from a callback
     pthread_mutex_lock(&f->life_m);
     while(f->life==FS_LIFE_STOPPING) pthread_cond_wait(&f->life_c,&f->life_m);
     if(f->life==FS_LIFE_STOPPED){ pthread_mutex_unlock(&f->life_m); return 0; }
@@ -560,8 +571,7 @@ int fs_stop(frameserver *f){
 // session). Refused from the worker threads (they hold the row lock while writing) and while a
 // log is attached: one log at a time, and the caller decides when the previous one ends.
 static int fs_log_from_worker(const frameserver *f){
-    return (f->worker_created && pthread_equal(pthread_self(),f->worker)) ||
-           (f->audio_worker_created && pthread_equal(pthread_self(),f->audio_worker));
+    return callback_session==f;
 }
 int fs_log_start(frameserver *f, const char *path){
     if(!f || !path || !*path || fs_log_from_worker(f)) return -1;
@@ -609,8 +619,7 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
 uint64_t fs_packets_delivered(const frameserver *f){ return cc_packets_delivered(f->cap); }
 void fs_close(frameserver *f){
     if (!f) return;
-    if((f->worker_created && pthread_equal(pthread_self(),f->worker)) ||
-       (f->audio_worker_created && pthread_equal(pthread_self(),f->audio_worker))){
+    if(callback_session==f){
         fprintf(stderr,"frameserver: close from a worker callback is forbidden; session retained\n"); return;
     }
     pthread_mutex_lock(&f->life_m); fs_life life=f->life; pthread_mutex_unlock(&f->life_m);
@@ -627,5 +636,6 @@ void fs_close(frameserver *f){
     if(f->m_init) pthread_mutex_destroy(&f->m);
     if(f->life_c_init) pthread_cond_destroy(&f->life_c);
     if(f->life_m_init) pthread_mutex_destroy(&f->life_m);
+    fs_test_destroyed();
     free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f->eng); free(f);
 }

@@ -2,7 +2,7 @@
 //   capture_core_test <slice.tpc> <video_bytes> <video_pkts> <audio_bytes> <audio_pkts>
 // Cases:
 //   1 fidelity     — replay totals must equal the independently computed truth
-//   2 honesty      — 1 MB ring + AFAP replay forces overflow; delivered+lost
+//   2 honesty      — 1 MB ring + condition-held consumer forces overflow; delivered+lost
 //                    must balance to the byte and on_loss must have fired
 //   3 truncation   — prefixes cut mid-header and mid-payload replay to a clean
 //                    REPLAY_EOF with no crash and no over-delivery
@@ -23,6 +23,11 @@
 
 static int fails=0;
 #define CHECK(cond,...) do{ if(!(cond)){ fails++; fprintf(stderr,"FAIL: " __VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
+extern void cc_test_reuse_worker_ids(cc_session *s);
+static _Atomic int destroyed;
+void cc_test_destroyed(void){ atomic_fetch_add(&destroyed,1); }
+static cc_session *callback_target;
+static _Atomic int callback_probe, callback_stop_rc, end_probe, end_stop_rc;
 
 typedef struct {
     uint64_t bytes[2]; uint64_t pkts[2];
@@ -44,7 +49,7 @@ static double mono_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t
 enum { PRESSURE_LOSS=1, PRESSURE_ERROR=2, PRESSURE_META=4 };
 static pthread_mutex_t pressure_mutex=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t pressure_cond=PTHREAD_COND_INITIALIZER;
-static int pressure_mode, pressure_events, pressure_round, loss_round, pressure_ready, input_done;
+static int pressure_mode, pressure_events, pressure_round, loss_round, pressure_ready, input_done, resumed;
 /* Caller holds pressure_mutex. Time only limits liveness, never establishes loss. */
 static void pressure_wait(int *value,int target,const char *what){
     double end=mono_s()+wait_limit_s();
@@ -63,14 +68,22 @@ static void pressure_event(int event){
     if(!pressure_mode) return;
     pthread_mutex_lock(&pressure_mutex);
     pressure_events|=event;
-    if(event==PRESSURE_LOSS) loss_round=pressure_round;
+    if(event==PRESSURE_LOSS && (pressure_round==1 || resumed)) loss_round=pressure_round;
     int required=PRESSURE_LOSS|(pressure_mode==2?PRESSURE_ERROR:PRESSURE_META);
     pressure_ready=(pressure_events&required)==required;
     pthread_cond_broadcast(&pressure_cond);
-    /* Preserve repeated loss/resumption coverage without depending on relative
-     * producer/consumer speeds. The filled ring holds the next callback. */
-    if(pressure_mode==1 && event==PRESSURE_LOSS && pressure_round==1)
-        pressure_wait(&pressure_round,2,"second loss round armed");
+    pthread_mutex_unlock(&pressure_mutex);
+}
+void cc_test_data_resumed(void){
+    if(pressure_mode!=1) return;
+    pthread_mutex_lock(&pressure_mutex);
+    if(!resumed){
+        resumed=1;
+        pthread_cond_broadcast(&pressure_cond);
+        /* A pending loss has been flushed AND a DATA record accepted. Wait
+         * until the consumer holds again before filling the ring a second time. */
+        pressure_wait(&pressure_round,2,"post-resume consumer hold");
+    }
     pthread_mutex_unlock(&pressure_mutex);
 }
 void cc_test_ring_loss(void){ pressure_event(PRESSURE_LOSS); }
@@ -118,15 +131,26 @@ int cc_test_fail_delivery_allocation(size_t bytes){
 
 static void t_packet(void *ctx, const cc_packet *p){
     tally *t=ctx;
+    if(atomic_exchange(&callback_probe,0)){
+        callback_stop_rc=cc_stop(callback_target);
+        cc_close(callback_target); /* must refuse; normal owner still closes it */
+    }
     int e = p->endpoint==CC_EP_AUDIO;
     t->bytes[e]+=p->actual_len; t->pkts[e]++;
     if(pthread_equal(pthread_self(),t->main_thread)) t->cb_on_main=1;
     uint64_t total=t->pkts[0]+t->pkts[1];
-    if((t->throttle==1 && total<=2) || (t->throttle>=2 && total==1)){
+    if(t->throttle==1 || (t->throttle>=2 && total==1)){
         pthread_mutex_lock(&pressure_mutex);
         if(t->throttle==1){
-            pressure_round=(int)total; pthread_cond_broadcast(&pressure_cond);
-            pressure_wait(&loss_round,(int)total,"ring loss round");
+            if(total==1) pressure_wait(&loss_round,1,"first ring loss");
+            else if(t->loss_events && pressure_round==1){
+                /* This callback follows the first HostLoss record, so the
+                 * producer can publish resumed DATA without more draining.
+                 * Wait even if its post-publication hook has not run yet. */
+                pressure_wait(&resumed,1,"accepted DATA after first loss");
+                pressure_round=2; pthread_cond_broadcast(&pressure_cond);
+                pressure_wait(&loss_round,2,"post-resume ring loss");
+            }
         }else pressure_wait(&pressure_ready,1,t->throttle==2?"ring loss and recorded TransferError":"metadata exhaustion");
         pthread_mutex_unlock(&pressure_mutex);
     }
@@ -142,6 +166,7 @@ static void t_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
 }
 static void t_end(void *ctx, enum cc_end r){
     tally *t=ctx;
+    if(atomic_exchange(&end_probe,0)){ end_stop_rc=cc_stop(callback_target); cc_close(callback_target); }
     t->end_count++; t->end_reason=r;
     atomic_store(&t->ended,1);
 }
@@ -157,7 +182,7 @@ static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle
     memset(t,0,sizeof *t);
     t->main_thread=pthread_self();
     t->throttle=throttle;
-    pressure_mode=throttle; pressure_events=0; pressure_round=1; loss_round=0; pressure_ready=0; input_done=0;
+    pressure_mode=throttle; pressure_events=0; pressure_round=1; loss_round=0; pressure_ready=0; input_done=0; resumed=0;
     cc_config cfg={0}; cfg.replay_path=path; cfg.ring_mb=ring_mb;
     cfg.fail_stop_on_control_loss=fail_stop_on_control_loss;
     cc_callbacks cb={0};
@@ -184,7 +209,10 @@ static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle
           st.control_loss_markers,t->control_loss_markers);
     CHECK(!st.teardown_incomplete,"teardown incomplete");
     cc_close(s);
-    if(throttle==1) CHECK(loss_round==2,"periodic pressure did not exercise two loss/resume rounds");
+    if(throttle==1){
+        CHECK(resumed && loss_round==2,"periodic pressure did not exercise loss/resume/loss");
+        CHECK(t->loss_events>=2,"periodic pressure requires two delivered loss records");
+    }
     pressure_mode=0;
 }
 static void run_replay(const char *path, int ring_mb, tally *t){
@@ -205,6 +233,12 @@ int main(int argc, char **argv){
     uint64_t vB=strtoull(argv[2],0,10), vP=strtoull(argv[3],0,10);
     uint64_t aB=strtoull(argv[4],0,10), aP=strtoull(argv[5],0,10);
     tally t;
+    /* A continued loss cannot masquerade as a second round. No worker needed
+     * for this adversarial state transition; the real replay below proves resume. */
+    pressure_mode=1; pressure_round=2; loss_round=1; resumed=0;
+    pressure_event(PRESSURE_LOSS);
+    CHECK(loss_round==1,"continued loss counted as round two without resume");
+    pressure_mode=0;
 
     // 1: fidelity
     run_replay(slice,0,&t);
@@ -218,7 +252,7 @@ int main(int argc, char **argv){
     CHECK(t.end_count==1,"on_end fired %d times",t.end_count);
     CHECK(!t.cb_on_main,"callbacks ran on the caller's thread");
 
-    // 2: honesty under forced overflow (1 MB ring, throttled consumer)
+    // 2: honesty under forced overflow (1 MB ring, condition-held consumer)
     run_replay_opt(slice,1,&t,1,0,0);
     CHECK(t.loss_events>0,"1MB ring produced no overflow — test not exercising loss");
     CHECK(t.bytes[0]+t.loss_bytes[0]==vB,
@@ -284,13 +318,20 @@ int main(int argc, char **argv){
     cc_callbacks cb={0}; tally lt; memset(&lt,0,sizeof lt); lt.main_thread=pthread_self();
     cb.on_packet=t_packet; cb.on_end=t_end; cb.ctx=&lt;
     CHECK(cc_open(&s,&cfg,&cb)==CC_OK,"open (lifecycle)");
+    callback_target=s; callback_stop_rc=end_stop_rc=99; callback_probe=end_probe=1;
     CHECK(cc_stop(s)==CC_ERR_STATE,"stop before start accepted");
     CHECK(cc_start(s)==CC_OK,"start (lifecycle)");
     CHECK(cc_start(s)==CC_ERR_STATE,"double start accepted");
     wait_ended(&lt.ended, "lifecycle run");
+    CHECK(callback_probe==0 && callback_stop_rc==CC_ERR_STATE,"callback stop must be refused");
+    CHECK(end_probe==0 && end_stop_rc==CC_ERR_STATE,"on_end stop must be refused");
     CHECK(cc_stop(s)==CC_OK,"stop (lifecycle)");
     CHECK(cc_stop(s)==CC_OK,"second stop must be an idempotent no-op");
+    int closed_before=destroyed;
+    cc_test_reuse_worker_ids(s);
+    CHECK(cc_stop(s)==CC_OK,"external stop with reused worker IDs must succeed");
     cc_close(s);
+    CHECK(destroyed==closed_before+1,"external close with reused worker IDs must destroy session");
     CHECK(lt.end_count==1,"lifecycle on_end count %d",lt.end_count);
     // close-after-start without stop must stop first (ASan/TSan builds prove no use-after-free)
     cc_session *s2=NULL; tally lt2; memset(&lt2,0,sizeof lt2); lt2.main_thread=pthread_self(); cb.ctx=&lt2;

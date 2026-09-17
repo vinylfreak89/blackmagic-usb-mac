@@ -91,7 +91,17 @@ static void destroy_sync_(cc_session *s){
     if(s->sig_m_init) pthread_mutex_destroy(&s->sig_m);
 }
 
+/* Thread identity is valid only while executing this session's internal thread.
+ * A joined pthread_t may be reused by an unrelated caller. */
+static _Thread_local cc_session *internal_session;
 #ifdef CAPTURE_CORE_TEST_HOOKS
+void cc_test_reuse_worker_ids(cc_session *s){
+    /* Test caller owns a stopped session; no joins or worker reads remain. */
+    s->delivery_t=s->backend_t=pthread_self();
+    s->delivery_created=s->backend_created=1;
+}
+extern void cc_test_destroyed(void);
+extern void cc_test_data_resumed(void);
 extern void cc_test_after_empty_snapshot(cc_session *s);
 extern void cc_test_before_backend_done(cc_session *s);
 extern int cc_test_fail_delivery_allocation(size_t bytes);
@@ -100,6 +110,7 @@ extern void cc_test_recorded_error(void);
 extern void cc_test_meta_exhausted(void);
 extern void cc_test_input_done(void);
 #else
+#define cc_test_destroyed() ((void)0)
 #define cc_test_after_empty_snapshot(s) ((void)(s))
 #define cc_test_before_backend_done(s) ((void)(s))
 #define cc_test_fail_delivery_allocation(n) 0
@@ -202,6 +213,9 @@ static void flush_loss_blocking_(cc_session *s, uint8_t ep){
 static void put_pkt_(cc_session *s, uint8_t ep, uint16_t pi, uint32_t seq,
                      uint32_t st, uint32_t req, const uint8_t *d, uint32_t al){
     int e=ep_i(ep);
+#ifdef CAPTURE_CORE_TEST_HOOKS
+    int resuming=s->lost_pkts[e]!=0;
+#endif
     size_t data_need=sizeof(rec_hdr)+(size_t)al;
     // Keep one contiguous loss run in producer state.  Only publish its compact headers when
     // the resumed DATA record and the control reserve fit as one transaction.  Eagerly writing
@@ -217,6 +231,9 @@ static void put_pkt_(cc_session *s, uint8_t ep, uint16_t pi, uint32_t seq,
     rec_hdr h={REC_MAGIC,REC_DATA,ep,pi,seq,st,req,al};
     ring_put_record_(s,&h,d,al);
     wake_(s);
+#ifdef CAPTURE_CORE_TEST_HOOKS
+    if(resuming) cc_test_data_resumed();
+#endif
 }
 static void put_meta_(cc_session *s, uint8_t type, uint8_t ep, uint16_t pi,
                       uint32_t seq, uint32_t st, const void *p, uint32_t plen){
@@ -244,6 +261,7 @@ static void put_meta_(cc_session *s, uint8_t type, uint8_t ep, uint16_t pi,
 // ---------------- delivery thread: parse ring records -> user callbacks
 static void* delivery_main(void *arg){
     cc_session *s=arg;
+    internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     size_t cap=DELIVERY_BUFFER_BYTES; uint8_t *buf=s->delivery_buffer;
     s->delivery_buffer=NULL; /* Ownership handed to this thread's local buffer. */
@@ -308,6 +326,7 @@ static void* delivery_main(void *arg){
     free(buf);
     if(atomic_load(&s->started_successfully) && !atomic_exchange(&s->end_fired,1))
         s->cb.on_end(s->cb.ctx,(enum cc_end)atomic_load(&s->end_reason));
+    internal_session=NULL;
     return NULL;
 }
 
@@ -358,6 +377,7 @@ static int vout_(libusb_device_handle*h,uint8_t req,uint16_t idx,uint32_t be){
 }
 static void* device_main(void *arg){
     cc_session *s=arg;
+    internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     char note[192];
     snprintf(note,sizeof note,"capture_core v1 input=%d ring=%zuMB V_NPK=%d XFERS=%d",
@@ -431,6 +451,7 @@ stopping:
     cc_test_before_backend_done(s);
     atomic_store_explicit(&s->backend_done,1,memory_order_release); wake_(s);
     pthread_mutex_lock(&s->sig_m); pthread_cond_signal(&s->sig_c); pthread_mutex_unlock(&s->sig_m);
+    internal_session=NULL;
     return NULL;
 startup_failed:
     atomic_store(&s->end_reason,startup_rc==CC_ERR_NODEVICE?CC_END_DEVICE_GONE:CC_END_INTERNAL_ERROR);
@@ -442,6 +463,7 @@ startup_failed:
 // ---------------- replay backend
 static void* replay_main(void *arg){
     cc_session *s=arg;
+    internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     FILE *f=fopen(s->cfg.replay_path,"rb");
     if(!f){ atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,CC_ERR_IO); goto failed_start; }
@@ -504,6 +526,7 @@ done:
     cc_test_before_backend_done(s);
     atomic_store_explicit(&s->backend_done,1,memory_order_release);
     pthread_mutex_lock(&s->sig_m); pthread_cond_signal(&s->sig_c); pthread_mutex_unlock(&s->sig_m);
+    internal_session=NULL;
     return NULL;
 failed_start:
     pthread_mutex_lock(&s->life_m); while(!s->start_gate) pthread_cond_wait(&s->life_c,&s->life_m); pthread_mutex_unlock(&s->life_m);
@@ -604,8 +627,7 @@ thread_fail:
 }
 int cc_stop(cc_session *s){
     if(!s) return CC_ERR_STATE;
-    if((s->delivery_created && pthread_equal(pthread_self(),s->delivery_t)) ||
-       (s->backend_created && pthread_equal(pthread_self(),s->backend_t))) return CC_ERR_STATE;
+    if(internal_session==s) return CC_ERR_STATE;
     pthread_mutex_lock(&s->life_m);
     while(s->life==CC_LIFE_STOPPING) pthread_cond_wait(&s->life_c,&s->life_m);
     if(s->life==CC_LIFE_STOPPED){ pthread_mutex_unlock(&s->life_m); return CC_OK; }
@@ -619,8 +641,7 @@ int cc_stop(cc_session *s){
 }
 void cc_close(cc_session *s){
     if(!s) return;
-    if((s->delivery_created && pthread_equal(pthread_self(),s->delivery_t)) ||
-       (s->backend_created && pthread_equal(pthread_self(),s->backend_t))){
+    if(internal_session==s){
         fprintf(stderr,"capture_core: close from internal callback is forbidden; session retained\n"); return;
     }
     pthread_mutex_lock(&s->life_m); enum cc_life life=s->life; pthread_mutex_unlock(&s->life_m);
@@ -634,6 +655,7 @@ void cc_close(cc_session *s){
     if(s->h){ libusb_release_interface(s->h,0); libusb_close(s->h); }
     if(s->ctx) libusb_exit(s->ctx);
     destroy_sync_(s);
+    cc_test_destroyed();
     free(s->ring); free(s);
 }
 void cc_get_stats(const cc_session *s, cc_stats *o){

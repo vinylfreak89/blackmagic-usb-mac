@@ -1602,6 +1602,8 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   expanding this section after every exchange.
 - **Capture startup honesty:** allocate delivery storage synchronously in `cc_start`,
   before launching workers, so failed startup cannot report success or emit `on_end`.
+  Capture-core/frameserver callback refusal uses thread-local session ownership,
+  never joined worker IDs (which the OS may reuse).
   Deadline mechanisms: `src/test_supervisor.h` and `src/tool_deadline.h`.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'

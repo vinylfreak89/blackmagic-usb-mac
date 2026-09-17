@@ -15,6 +15,9 @@
 #include <time.h>
 #include "../../test_supervisor.h"
 static int fails = 0;
+extern void fs_test_reuse_worker_ids(frameserver *f);
+static _Atomic int destroyed;
+void fs_test_destroyed(void){ atomic_fetch_add(&destroyed,1); }
 #define CHECK(c, ...) do { if (!(c)) { fails++; fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); } } while (0)
 static _Atomic int done; static _Atomic uint64_t frames_seen; static _Atomic int sink_hold;
 enum { DROP_POOL=1, DROP_RING=2, DROP_AUDIO=4, RING_DRAINED=8 };
@@ -98,15 +101,19 @@ static _Atomic int log_break;   // write-failure injection: swap the stream's fd
 void fs_test_after_log_row(frameserver *f, FILE *log){ (void)f; int mask=atomic_exchange(&log_hold_mask,0); if(mask){ atomic_store(&log_stalled,1); hold_until_drop(mask,"sidecar hold"); }
     if(atomic_exchange(&log_break,0)){ int p[2]; if(pipe(p)!=0) abort(); close(p[0]); fflush(log); if(dup2(p[1],fileno(log))<0) abort(); close(p[1]); setvbuf(log,NULL,_IONBF,0); } }
 static frameserver *g_cb_target; static _Atomic int cb_try, cb_start_rc, cb_stop_rc;   // callback-refusal probe
+static _Atomic int cb_life_rc, audio_life_try, audio_life_rc, end_life_try, end_life_rc;
 static const char *callback_log;
 static _Atomic int end_calls;
-static void on_end(void *c, enum cc_end r){ (void)c; (void)r; atomic_fetch_add(&end_calls, 1); done = 1; }
+static void on_end(void *c, enum cc_end r){ (void)c; (void)r;
+    if(atomic_exchange(&end_life_try,0)){ end_life_rc=fs_stop(g_cb_target); fs_close(g_cb_target); }
+    atomic_fetch_add(&end_calls, 1); done = 1; }
 static _Atomic uint64_t audio_frames_seen; static _Atomic int audio_flagged_blocks; static _Atomic uint64_t audio_last_pts; static _Atomic int audio_pts_nonmonotonic;
 static _Atomic int audio_after_end; static _Atomic int ordinal_break;
 static uint64_t audio_next_ordinal; static int audio_have_next;
 #define CORR_MAX 64
 static uint64_t corr_ctr[CORR_MAX], corr_pts[CORR_MAX]; static _Atomic int corr_n;   // first block after resync c: its pts is the audio-clock time of unit c
 static void audio_sink(void *c, const ap_block *b){ (void)c; atomic_fetch_add(&audio_frames_seen, b->n_frames);
+    if(atomic_exchange(&audio_life_try,0)){ audio_life_rc=fs_stop(g_cb_target); fs_close(g_cb_target); }
     if (done) atomic_store(&audio_after_end, 1);
     if (audio_have_next && !(b->flags & AP_FLAG_DISCONTINUITY_BEFORE) && b->sample_ordinal != audio_next_ordinal) atomic_store(&ordinal_break, 1);
     audio_next_ordinal = b->sample_ordinal + b->n_frames; audio_have_next = 1;
@@ -117,7 +124,9 @@ static void audio_sink(void *c, const ap_block *b){ (void)c; atomic_fetch_add(&a
     if (!(b->flags & AP_FLAG_UNANCHORED)) atomic_store(&audio_last_pts, b->pts_num); }
 static uint64_t vf_ctr[CORR_MAX], vf_apts[CORR_MAX]; static _Atomic int vf_n; static _Atomic int video_after_end;
 static void sink(void *c, const fp_frame *fr){ (void)c; if (fr->surface) atomic_fetch_add(&frames_seen, 1);
-    if (atomic_exchange(&cb_try,0) && g_cb_target){ atomic_store(&cb_start_rc, fs_log_start(g_cb_target,callback_log)); atomic_store(&cb_stop_rc, fs_log_stop(g_cb_target)); }
+    if (atomic_exchange(&cb_try,0) && g_cb_target){
+        cb_life_rc=fs_stop(g_cb_target); fs_close(g_cb_target);
+        atomic_store(&cb_start_rc, fs_log_start(g_cb_target,callback_log)); atomic_store(&cb_stop_rc, fs_log_stop(g_cb_target)); }
     if (done) atomic_store(&video_after_end, 1);
     if (fr->audio_pts_known && atomic_load(&vf_n) < CORR_MAX){ int n = atomic_load(&vf_n); vf_ctr[n] = fr->counter_ext; vf_apts[n] = fr->audio_pts_num; atomic_store(&vf_n, n + 1); }
     if(atomic_load(&sink_hold)&&!held_surface){ IOSurfaceIncrementUseCount(fr->surface); held_surface=fr->surface; }
@@ -315,13 +324,22 @@ int main(int argc, char **argv){
     done = 0;
     frameserver *k = NULL; fs_config c3 = cfg; c3.decision_log = NULL;
     CHECK(fs_open(&k, &c3) == 0, "open (close-without-stop)");
+    /* Exercise the shared log guard independently of lifecycle rejection:
+     * logging is allowed on this OPEN session despite deliberately aliased IDs. */
+    fs_test_reuse_worker_ids(k);
+    CHECK(fs_log_start(k,cbpath)==0,"external log start with aliased worker IDs");
+    CHECK(fs_log_stop(k)==0,"external log stop with aliased worker IDs");
+    unlink(cbpath);
     // No attached log and a fresh path: callback-start refusal cannot pass merely
     // because a file already exists or a log is already attached. Stop refusal is
     // separately checked with an attached log in the sidecar-stall session below.
     g_cb_target=k; atomic_store(&cb_start_rc,99); atomic_store(&cb_try,1);
+    cb_life_rc=audio_life_rc=end_life_rc=99; audio_life_try=end_life_try=1;
     CHECK(fs_start(k) == 0, "start (close-without-stop)");
     wait_for_end("close-without-stop run");
     CHECK(atomic_load(&cb_start_rc)==-1,"log start from callback with no attached log must be refused");
+    CHECK(cb_life_rc==-1 && audio_life_rc==-1 && end_life_rc==-1,
+          "video/audio/end callbacks must refuse stop (%d/%d/%d)",(int)cb_life_rc,(int)audio_life_rc,(int)end_life_rc);
     fs_close(k);
     g_cb_target=NULL;
 
@@ -344,7 +362,11 @@ int main(int argc, char **argv){
         fs_stop_arg a={cf,-99},b={cf,-99}; pthread_t ta,tb;
         pthread_create(&ta,NULL,fs_stop_thread,&a); pthread_create(&tb,NULL,fs_stop_thread,&b);
         pthread_join(ta,NULL); pthread_join(tb,NULL);
-        CHECK(a.rc==0&&b.rc==0,"concurrent stop results %d/%d",a.rc,b.rc); fs_close(cf);
+        CHECK(a.rc==0&&b.rc==0,"concurrent stop results %d/%d",a.rc,b.rc);
+        fs_test_reuse_worker_ids(cf);
+        CHECK(fs_stop(cf)==0,"external stop with reused worker IDs must succeed");
+        int before=destroyed; fs_close(cf);
+        CHECK(destroyed==before+1,"external close with reused worker IDs must destroy session");
     }
 
     // Hold the sole IOSurface so the second exact unit is rejected at the publisher edge; the
