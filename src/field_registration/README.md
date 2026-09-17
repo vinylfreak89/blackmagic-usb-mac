@@ -200,7 +200,7 @@ three decisive matching readings. The
 other temporal measurement is the
 bounded previous-unit body profile above: it confirms a current top reading;
 it cannot smooth, vote, or redefine a lock. The old tools
-remain offline diagnostics only; `docs/registration_archaeology*.md` records
+remain in git history (`f504c16`); `docs/registration_archaeology*.md` records
 why those models were retired.
 
 Build and run the deciding tests with:
@@ -211,8 +211,10 @@ make -C src/field_registration test
 
 The synthetic v9 golden landed first and scored 8/29 on v7; later red-first
 extensions exercise each measured defect. The current contract must score
-186/186, the decoder unit test 3/3, and the fixture agreement harness must
+194/194, the decoder unit test 3/3, and `tests/compare_cea608.py` must
 match `experiments/cc608_decode.py` line verdicts and bytes exactly.
+The retired registration port-agreement and trajectory harnesses are
+documented in `tests/TRUTH.md` with their history reference.
 
 ### Round-8 instrument correction (2026-09-05)
 

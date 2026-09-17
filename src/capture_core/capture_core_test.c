@@ -30,7 +30,7 @@ typedef struct {
     uint32_t control_loss_markers;
     int end_count; int end_reason;
     pthread_t main_thread; int cb_on_main;
-    int throttle;              // 1=periodic slowdown, 2=block first callback for reserve test
+    int throttle;              // 1=two loss/resume rounds, 2=loss+error, 3=metadata exhaustion
     _Atomic int ended;
 } tally;
 
@@ -41,6 +41,44 @@ static pthread_t starter_thread;
  * names the wait and exits at once (exit 2), rather than hanging or passing silently. */
 static double wait_limit_s(void){ const char *e = getenv("CC_TEST_WAIT_S"); double v = e ? atof(e) : 60; return v < 0 ? 0 : v; }
 static double mono_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + t.tv_nsec / 1e9; }
+enum { PRESSURE_LOSS=1, PRESSURE_ERROR=2, PRESSURE_META=4 };
+static pthread_mutex_t pressure_mutex=PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t pressure_cond=PTHREAD_COND_INITIALIZER;
+static int pressure_mode, pressure_events, pressure_round, loss_round, pressure_ready, input_done;
+/* Caller holds pressure_mutex. Time only limits liveness, never establishes loss. */
+static void pressure_wait(int *value,int target,const char *what){
+    double end=mono_s()+wait_limit_s();
+    while(*value<target){
+        double left=end-mono_s();
+        if(input_done || left<=0){
+            fprintf(stderr,"FAIL: pressure hold (%s): %s before required event\n",what,input_done?"producer ended":"TIMEOUT");
+            _exit(2);
+        }
+        struct timespec relative={(time_t)left,(long)((left-(time_t)left)*1e9)};
+        int rc=pthread_cond_timedwait_relative_np(&pressure_cond,&pressure_mutex,&relative);
+        if(rc && rc!=ETIMEDOUT){ fprintf(stderr,"FAIL: pressure condition wait: %d\n",rc); _exit(2); }
+    }
+}
+static void pressure_event(int event){
+    if(!pressure_mode) return;
+    pthread_mutex_lock(&pressure_mutex);
+    pressure_events|=event;
+    if(event==PRESSURE_LOSS) loss_round=pressure_round;
+    int required=PRESSURE_LOSS|(pressure_mode==2?PRESSURE_ERROR:PRESSURE_META);
+    pressure_ready=(pressure_events&required)==required;
+    pthread_cond_broadcast(&pressure_cond);
+    /* Preserve repeated loss/resumption coverage without depending on relative
+     * producer/consumer speeds. The filled ring holds the next callback. */
+    if(pressure_mode==1 && event==PRESSURE_LOSS && pressure_round==1)
+        pressure_wait(&pressure_round,2,"second loss round armed");
+    pthread_mutex_unlock(&pressure_mutex);
+}
+void cc_test_ring_loss(void){ pressure_event(PRESSURE_LOSS); }
+void cc_test_recorded_error(void){ pressure_event(PRESSURE_ERROR); }
+void cc_test_meta_exhausted(void){ pressure_event(PRESSURE_META); }
+void cc_test_input_done(void){
+    pthread_mutex_lock(&pressure_mutex); input_done=1; pthread_cond_broadcast(&pressure_cond); pthread_mutex_unlock(&pressure_mutex);
+}
 static void wait_ended(_Atomic int *ended, const char *what){
     double limit = wait_limit_s(), end = mono_s() + limit;
     while(!atomic_load(ended)){
@@ -83,11 +121,15 @@ static void t_packet(void *ctx, const cc_packet *p){
     int e = p->endpoint==CC_EP_AUDIO;
     t->bytes[e]+=p->actual_len; t->pkts[e]++;
     if(pthread_equal(pthread_self(),t->main_thread)) t->cb_on_main=1;
-    // overflow tests must not race: cap consumer throughput well below the
-    // producer's disk speed so a small ring is GUARANTEED to overflow
     uint64_t total=t->pkts[0]+t->pkts[1];
-    if(t->throttle==2 && total==1) usleep(2000000);
-    else if(t->throttle==1 && (total & 255)==0) usleep(2000);
+    if((t->throttle==1 && total<=2) || (t->throttle>=2 && total==1)){
+        pthread_mutex_lock(&pressure_mutex);
+        if(t->throttle==1){
+            pressure_round=(int)total; pthread_cond_broadcast(&pressure_cond);
+            pressure_wait(&loss_round,(int)total,"ring loss round");
+        }else pressure_wait(&pressure_ready,1,t->throttle==2?"ring loss and recorded TransferError":"metadata exhaustion");
+        pthread_mutex_unlock(&pressure_mutex);
+    }
 }
 static void t_loss(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     tally *t=ctx; (void)pk;
@@ -115,6 +157,7 @@ static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle
     memset(t,0,sizeof *t);
     t->main_thread=pthread_self();
     t->throttle=throttle;
+    pressure_mode=throttle; pressure_events=0; pressure_round=1; loss_round=0; pressure_ready=0; input_done=0;
     cc_config cfg={0}; cfg.replay_path=path; cfg.ring_mb=ring_mb;
     cfg.fail_stop_on_control_loss=fail_stop_on_control_loss;
     cc_callbacks cb={0};
@@ -141,6 +184,8 @@ static void run_replay_opt(const char *path, int ring_mb, tally *t, int throttle
           st.control_loss_markers,t->control_loss_markers);
     CHECK(!st.teardown_incomplete,"teardown incomplete");
     cc_close(s);
+    if(throttle==1) CHECK(loss_round==2,"periodic pressure did not exercise two loss/resume rounds");
+    pressure_mode=0;
 }
 static void run_replay(const char *path, int ring_mb, tally *t){
     run_replay_opt(path,ring_mb,t,0,0,0);
@@ -183,8 +228,8 @@ int main(int argc, char **argv){
     CHECK(t.bytes[1]+t.loss_bytes[1]==aB,"audio accounting unbalanced");
     CHECK(t.end_count==1,"on_end fired %d times (overflow run)",t.end_count);
 
-    // A hard two-second callback stall used to consume META_RESERVE as one HostLoss header per
-    // packet and silently discard a later TransferError.  Coalescing must preserve both.
+    // Hold through ring loss AND the recorded late TransferError. Coalescing must
+    // preserve both without assuming a disk speed or a callback duration.
     if(argc>=7){
         run_replay_opt(argv[6],1,&t,2,0,0);
         CHECK(t.loss_events>0,"blocked consumer did not exercise loss coalescing");
@@ -195,14 +240,14 @@ int main(int argc, char **argv){
 
         // Default policy preserves the archive's data path while marking it permanently
         // not-clean exactly once.  Every DATA byte is still either delivered or confessed.
-        run_replay_opt(argv[7],1,&t,2,-1,0);
+        run_replay_opt(argv[7],1,&t,3,-1,0);
         CHECK(t.end_reason==CC_END_REPLAY_EOF,"continuation policy ended %d, expected replay EOF",t.end_reason);
         CHECK(t.control_loss_markers==1,"continuation policy emitted %u control-loss markers",t.control_loss_markers);
         CHECK(t.bytes[0]+t.loss_bytes[0]==ex_vB,"metadata continuation video accounting unbalanced");
         CHECK(t.bytes[1]+t.loss_bytes[1]==ex_aB,"metadata continuation audio accounting unbalanced");
 
         // Operators may explicitly choose the old fail-stop policy.
-        run_replay_opt(argv[7],1,&t,2,-1,1);
+        run_replay_opt(argv[7],1,&t,3,-1,1);
         CHECK(t.end_reason==CC_END_INTERNAL_ERROR,"fail-stop metadata exhaustion ended %d",t.end_reason);
         CHECK(t.control_loss_markers==1,"fail-stop policy emitted %u control-loss markers",t.control_loss_markers);
     }

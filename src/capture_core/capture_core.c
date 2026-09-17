@@ -95,10 +95,18 @@ static void destroy_sync_(cc_session *s){
 extern void cc_test_after_empty_snapshot(cc_session *s);
 extern void cc_test_before_backend_done(cc_session *s);
 extern int cc_test_fail_delivery_allocation(size_t bytes);
+extern void cc_test_ring_loss(void);
+extern void cc_test_recorded_error(void);
+extern void cc_test_meta_exhausted(void);
+extern void cc_test_input_done(void);
 #else
 #define cc_test_after_empty_snapshot(s) ((void)(s))
 #define cc_test_before_backend_done(s) ((void)(s))
 #define cc_test_fail_delivery_allocation(n) 0
+#define cc_test_ring_loss() ((void)0)
+#define cc_test_recorded_error() ((void)0)
+#define cc_test_meta_exhausted() ((void)0)
+#define cc_test_input_done() ((void)0)
 #endif
 
 static uint64_t monotonic_ms_(void){
@@ -203,7 +211,8 @@ static void put_pkt_(cc_session *s, uint8_t ep, uint16_t pi, uint32_t seq,
         if(ring_free_(s)>=META_RESERVE+loss_need+data_need) flush_loss_(s,ep);
     }
     if(s->lost_pkts[e] || ring_free_(s)<META_RESERVE+data_need){
-        s->lost_pkts[e]++; s->lost_bytes[e]+=al; return;   // marked on flush
+        s->lost_pkts[e]++; s->lost_bytes[e]+=al;
+        cc_test_ring_loss(); return;   // marked on flush
     }
     rec_hdr h={REC_MAGIC,REC_DATA,ep,pi,seq,st,req,al};
     ring_put_record_(s,&h,d,al);
@@ -223,10 +232,12 @@ static void put_meta_(cc_session *s, uint8_t type, uint8_t ep, uint16_t pi,
         if(s->cfg.fail_stop_on_control_loss){
             atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); atomic_store(&s->stop_req,1);
         }
+        cc_test_meta_exhausted();
         return;
     }
     rec_hdr h={REC_MAGIC,type,ep,pi,seq,st,0,plen};
     ring_put_record_(s,&h,p,plen);
+    if(type==REC_XFERERR) cc_test_recorded_error();
     wake_(s);
 }
 
@@ -415,6 +426,7 @@ stopping:
         s->teardown_incomplete=1;
         fprintf(stderr,"capture_core: %ld transfers still in flight after cancellation drain\n",(long)atomic_load(&s->inflight));
     }
+    cc_test_input_done();
     flush_loss_blocking_(s,CC_EP_VIDEO); flush_loss_blocking_(s,CC_EP_AUDIO);
     cc_test_before_backend_done(s);
     atomic_store_explicit(&s->backend_done,1,memory_order_release); wake_(s);
@@ -487,6 +499,7 @@ static void* replay_main(void *arg){
     if(atomic_load(&s->end_reason)==CC_END_STOPPED && !atomic_load(&s->stop_req))
         atomic_store(&s->end_reason,CC_END_REPLAY_EOF);
 done:
+    cc_test_input_done();
     flush_loss_blocking_(s,CC_EP_VIDEO); flush_loss_blocking_(s,CC_EP_AUDIO);
     cc_test_before_backend_done(s);
     atomic_store_explicit(&s->backend_done,1,memory_order_release);

@@ -1,4 +1,8 @@
-# Registration trajectory contract
+# Historical registration trajectory contract
+
+This is a retired design, not the live engine contract or a current test gate.
+Its harnesses and generators remain in git at `f504c16`; see `tests/TRUTH.md`
+for the current test entry points.
 
 The live contract is implemented by the allocation-free C estimator: coherent
 physical evidence is followed forward at unit rate with no presentation FIFO.

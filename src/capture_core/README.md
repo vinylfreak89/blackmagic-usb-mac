@@ -40,3 +40,9 @@ fleet is submitted. `stop` is idempotent and drains callbacks; `on_end` fires ex
 Statistics are authoritative after stop. `control_records_dropped > 0` or
 `control_loss_markers == 1` means the archive cannot claim complete control provenance even when
 all DATA bytes balance.
+
+Known lifecycle defect: the callback-thread guard retains joined worker IDs. A later caller
+reusing one can be wrongly rejected by `cc_stop` as `CC_ERR_STATE` (or by `cc_close`). The
+concurrent-stop test reproduced the stop rejection under loaded TSan runs; a diagnostic probe
+confirmed equality with the joined delivery ID in the STOPPED state. Its assertion remains
+enabled. Repairing worker-identity lifetime is separate from the test-pressure changes.
