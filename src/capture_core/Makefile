@@ -48,7 +48,7 @@ test-deadlines: shuttle-capture capture_core_test test_shim $(FIXTURE) $(META_FI
 test-supervisor:
 	python3 ../../scripts/test_supervisor_test.py
 
-capture_core_test: capture_core.c capture_core_test.c capture_core.h ../test_supervisor.h
+capture_core_test: capture_core.c capture_core_test.c capture_core.h ../test_supervisor.h ../test_liveness.h ../test_condition.h
 	$(CC) $(CFLAGS) $(TESTFLAGS) -o $@ capture_core.c capture_core_test.c $(LIBS)
 
 # Device backend against the replay shim (no libusb linked): init, fleet, resubmission,

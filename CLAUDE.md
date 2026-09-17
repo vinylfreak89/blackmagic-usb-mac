@@ -1607,6 +1607,8 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   Deadline mechanisms: `src/test_supervisor.h` and `src/tool_deadline.h`.
   Concurrent tests establish overlap/pressure and control windows by event handshakes;
   deadlines only fail missing events, never supply evidence that a window occurred.
+  Inner pipeline-test deadlines measure lack of progress; the external supervisor
+  separately bounds total runtime. Release admission gates after the last required boundary.
   Asserted CPU-cost gates use the measured thread's CPU time, not wall time;
   host scheduling delays belong to liveness measurements, not CPU-cost regressions.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.

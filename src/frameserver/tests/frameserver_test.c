@@ -14,7 +14,7 @@
 #include <pthread.h>
 #include <time.h>
 #include "../../test_supervisor.h"
-#include "../../test_condition.h"
+#include "../../test_liveness.h"
 static int fails = 0;
 extern void fs_test_reuse_worker_ids(frameserver *f);
 static _Atomic int destroyed;
@@ -24,118 +24,106 @@ static _Atomic int done; static _Atomic uint64_t frames_seen; static _Atomic int
 /* These three log scenarios admit one observation at a time, with explicit
  * completed-row boundaries. No pool/ring size or replay speed defines a window.
  * The worker hook is AFTER process_item releases the log lock and pool slot. */
-static pthread_mutex_t window_mutex=PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t window_cond=PTHREAD_COND_INITIALIZER;
+static test_liveness live=TEST_LIVENESS_INIT("FS_TEST_WAIT_S");
 static int window_active, window_inflight, window_ended;
 static uint64_t window_rows, window_limit;
 static void window_begin(uint64_t limit){
-    pthread_mutex_lock(&window_mutex);
+    pthread_mutex_lock(&live.mutex);
     window_active=1; window_inflight=window_ended=0; window_rows=0; window_limit=limit;
-    pthread_mutex_unlock(&window_mutex);
+    pthread_mutex_unlock(&live.mutex);
 }
 static void window_release(uint64_t limit,int active){
-    pthread_mutex_lock(&window_mutex); window_limit=limit; window_active=active;
-    pthread_cond_broadcast(&window_cond); pthread_mutex_unlock(&window_mutex);
+    pthread_mutex_lock(&live.mutex); window_limit=limit; window_active=active;
+    test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
 }
 void fs_test_before_video(frameserver *f){
-    (void)f; double until=test_until("FS_TEST_WAIT_S");
-    pthread_mutex_lock(&window_mutex);
+    (void)f; double begun=test_now();
+    pthread_mutex_lock(&live.mutex);
     while(window_active&&(window_inflight||window_rows>=window_limit)){
         char name[96]; snprintf(name,sizeof name,"log window producer release after %llu rows",(unsigned long long)window_rows);
-        test_condition(&window_cond,&window_mutex,until,name);
+        test_live_wait(&live,begun,name);
     }
     if(window_active) window_inflight=1;
-    pthread_mutex_unlock(&window_mutex);
+    test_live_note_locked(&live);
+    pthread_mutex_unlock(&live.mutex);
 }
 void fs_test_after_item(frameserver *f){
-    (void)f; pthread_mutex_lock(&window_mutex);
-    if(window_active){ window_inflight=0; window_rows++; pthread_cond_broadcast(&window_cond); }
-    pthread_mutex_unlock(&window_mutex);
+    (void)f;
+    /* Test-only slow-progress control: no change to admission or row accounting. */
+    const char *delay=getenv("FS_TEST_ITEM_DELAY_US");
+    if(delay) usleep((useconds_t)strtoul(delay,NULL,10));
+    pthread_mutex_lock(&live.mutex);
+    if(window_active){ window_inflight=0; window_rows++; }
+    test_live_note_locked(&live);
+    pthread_mutex_unlock(&live.mutex);
 }
 static void window_wait(uint64_t rows,const char *name){
-    double until=test_until("FS_TEST_WAIT_S"); pthread_mutex_lock(&window_mutex);
+    double begun=test_now(); pthread_mutex_lock(&live.mutex);
     while(window_rows<rows){
         if(window_ended){ fprintf(stderr,"FAIL: %s: session ended before required rows\n",name); _exit(2); }
-        test_condition(&window_cond,&window_mutex,until,name);
+        test_live_wait(&live,begun,name);
     }
-    pthread_mutex_unlock(&window_mutex);
+    pthread_mutex_unlock(&live.mutex);
 }
 enum { DROP_POOL=1, DROP_RING=2, DROP_AUDIO=4, RING_DRAINED=8 };
-static pthread_mutex_t drop_mutex=PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t drop_cond=PTHREAD_COND_INITIALIZER;
 static int drops_seen, producer_finished, ring_wait_requested;
 static int video_hold_mask, audio_hold_mask;
 static _Atomic int log_hold_mask;
 static IOSurfaceRef held_surface;
 static _Atomic int hook_arm, hook_empty, hook_release;
-/* Every wait here has a deadline: FS_TEST_WAIT_S seconds, default 60. On expiry the test fails loudly,
+/* Every wait here has a stall deadline: FS_TEST_WAIT_S seconds without progress, default 60. On expiry the test fails loudly,
  * names the wait and exits at once (exit 2). A silent timeout would turn a hang into a false pass, and
  * carrying on would likely hang again in fs_stop. */
-static double wait_limit_s(void){ const char *e = getenv("FS_TEST_WAIT_S"); double v = e ? atof(e) : 60; return v < 0 ? 0 : v; }
-static double mono_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + t.tv_nsec / 1e9; }
 static void reset_drops(void){
-    pthread_mutex_lock(&drop_mutex); drops_seen=0; producer_finished=0; ring_wait_requested=0; pthread_mutex_unlock(&drop_mutex);
+    pthread_mutex_lock(&live.mutex); drops_seen=0; producer_finished=0; ring_wait_requested=0; pthread_mutex_unlock(&live.mutex);
 }
 static void note_drop(int kind){
-    pthread_mutex_lock(&drop_mutex); drops_seen|=kind; pthread_cond_broadcast(&drop_cond); pthread_mutex_unlock(&drop_mutex);
+    pthread_mutex_lock(&live.mutex); drops_seen|=kind; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
 }
 void fs_test_pool_drop(void){ note_drop(DROP_POOL); }
 void fs_test_audio_drop(void){ note_drop(DROP_AUDIO); }
 static void hold_until_drop(int mask, const char *site){
     if(!mask) return;
-    double end=mono_s()+wait_limit_s();
-    pthread_mutex_lock(&drop_mutex);
+    double begun=test_now();
+    pthread_mutex_lock(&live.mutex);
     while(!(drops_seen&mask)){
-        double remaining=end-mono_s();
-        if(producer_finished || remaining<=0){
-            fprintf(stderr,"FAIL: %s: %s before required drop (mask %d)\n",site,
-                    producer_finished?"producer ended":"TIMEOUT",mask);
+        if(producer_finished){
+            fprintf(stderr,"FAIL: %s: producer ended before required drop (mask %d)\n",site,mask);
             _exit(2);
         }
-        struct timespec relative={(time_t)remaining,(long)((remaining-(time_t)remaining)*1e9)};
-        int rc=pthread_cond_timedwait_relative_np(&drop_cond,&drop_mutex,&relative);
-        if(rc && rc!=ETIMEDOUT){ fprintf(stderr,"FAIL: %s: condition wait error %d\n",site,rc); _exit(2); }
+        test_live_wait(&live,begun,site);
     }
-    pthread_mutex_unlock(&drop_mutex);
+    pthread_mutex_unlock(&live.mutex);
 }
 void fs_test_ring_drop(void){
     /* In the dedicated ring test, guarantee a retained post-gap row: let the
      * worker drain after the first loss before the producer resumes. */
-    pthread_mutex_lock(&drop_mutex);
+    pthread_mutex_lock(&live.mutex);
     int wait=video_hold_mask==DROP_RING && !ring_wait_requested;
     if(wait) ring_wait_requested=1;
-    pthread_mutex_unlock(&drop_mutex);
+    pthread_mutex_unlock(&live.mutex);
     note_drop(DROP_RING);
     if(wait) hold_until_drop(RING_DRAINED,"post-ring-loss drain");
 }
 static void wait_for_end(const char *what){
-    double limit = wait_limit_s(), end = mono_s() + limit;
-    while (!done){
-        if (mono_s() >= end){
-            fprintf(stderr, "FAIL: TIMEOUT after %.0f s waiting for on_end (%s); FS_TEST_WAIT_S sets the limit\n", limit, what);
-            fflush(stderr); _exit(2);
-        }
-        usleep(10000);
-    }
+    char name[128]; snprintf(name,sizeof name,"waiting for on_end (%s)",what);
+    double begun=test_now(); pthread_mutex_lock(&live.mutex);
+    while(!done) test_live_wait(&live,begun,name);
+    pthread_mutex_unlock(&live.mutex);
 }
 void fs_test_after_empty_snapshot(frameserver *f){
-    pthread_mutex_lock(&drop_mutex);
-    if(ring_wait_requested){ drops_seen|=RING_DRAINED; pthread_cond_broadcast(&drop_cond); }
-    pthread_mutex_unlock(&drop_mutex);
+    pthread_mutex_lock(&live.mutex);
+    if(ring_wait_requested && !(drops_seen&RING_DRAINED)){ drops_seen|=RING_DRAINED; test_live_note_locked(&live); }
     (void)f; if(atomic_load(&hook_arm) && !atomic_exchange(&hook_empty,1)){
-        double limit = wait_limit_s(), end = mono_s() + limit;
-        while(!atomic_load(&hook_release)){
-            if (mono_s() >= end){
-                fprintf(stderr, "FAIL: TIMEOUT after %.0f s in fs_test_after_empty_snapshot: fs_test_before_producer_done "
-                                "never released the worker; FS_TEST_WAIT_S sets the limit\n", limit);
-                fflush(stderr); _exit(2);
-            }
-            usleep(100);
-        }
+        double begun=test_now();
+        while(!atomic_load(&hook_release))
+            test_live_wait(&live,begun,"fs_test_after_empty_snapshot: fs_test_before_producer_done never released the worker");
     }
+    pthread_mutex_unlock(&live.mutex);
 }
-void fs_test_before_producer_done(frameserver *f){ (void)f; if(atomic_load(&hook_arm)) atomic_store(&hook_release,1);
-    pthread_mutex_lock(&drop_mutex); producer_finished=1; pthread_cond_broadcast(&drop_cond); pthread_mutex_unlock(&drop_mutex); }
+void fs_test_before_producer_done(frameserver *f){ (void)f; pthread_mutex_lock(&live.mutex);
+    if(atomic_load(&hook_arm)) atomic_store(&hook_release,1);
+    producer_finished=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex); }
 static _Atomic int log_stalled;   // storage-stall injection: first row after arming holds the row lock until a drop
 static _Atomic int log_break;   // write-failure injection: swap the stream's fd for a pipe with no reader (EPIPE on every write; SIGPIPE ignored), unbuffered so each row fprintf fails
 void fs_test_after_log_row(frameserver *f, FILE *log){ (void)f; int mask=atomic_exchange(&log_hold_mask,0); if(mask){ atomic_store(&log_stalled,1); hold_until_drop(mask,"sidecar hold"); }
@@ -147,13 +135,14 @@ static _Atomic int end_calls;
 static void on_end(void *c, enum cc_end r){ (void)c; (void)r;
     if(atomic_exchange(&end_life_try,0)){ end_life_rc=fs_stop(g_cb_target); fs_close(g_cb_target); }
     atomic_fetch_add(&end_calls, 1); done = 1;
-    pthread_mutex_lock(&window_mutex); window_ended=1; pthread_cond_broadcast(&window_cond); pthread_mutex_unlock(&window_mutex); }
+    pthread_mutex_lock(&live.mutex); window_ended=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex); }
 static _Atomic uint64_t audio_frames_seen; static _Atomic int audio_flagged_blocks; static _Atomic uint64_t audio_last_pts; static _Atomic int audio_pts_nonmonotonic;
 static _Atomic int audio_after_end; static _Atomic int ordinal_break;
 static uint64_t audio_next_ordinal; static int audio_have_next;
 #define CORR_MAX 64
 static uint64_t corr_ctr[CORR_MAX], corr_pts[CORR_MAX]; static _Atomic int corr_n;   // first block after resync c: its pts is the audio-clock time of unit c
 static void audio_sink(void *c, const ap_block *b){ (void)c; atomic_fetch_add(&audio_frames_seen, b->n_frames);
+    test_live_note(&live);
     if(atomic_exchange(&audio_life_try,0)){ audio_life_rc=fs_stop(g_cb_target); fs_close(g_cb_target); }
     if (done) atomic_store(&audio_after_end, 1);
     if (audio_have_next && !(b->flags & AP_FLAG_DISCONTINUITY_BEFORE) && b->sample_ordinal != audio_next_ordinal) atomic_store(&ordinal_break, 1);
@@ -435,18 +424,25 @@ int main(int argc, char **argv){
         window_release(30,1); window_wait(30,"rows during A");
         CHECK(fs_log_stop(rf)==0,"detach A"); window_release(45,1); window_wait(45,"rows in the gap");
         CHECK(fs_log_start(rf,lb)==0,"attach B");
-        window_release(UINT64_MAX,1);
+        window_release(0,0); /* Final boundary: B logs all remaining observations, including drops. */
         wait_for_end("runtime-log run");
         CHECK(fs_stop(rf)==0,"stop (runtime log)");
         window_release(0,0);
         CHECK(fs_log_start(rf,la)==-1,"attach after stop must fail");
         fs_stats rs; fs_get_stats(rf,&rs);
-        unsigned long long rowsA=0,rowsB=0,hdrA=0,hdrB=0,lastA=0,firstB=0,lastB=0; int monoA=1,monoB=1; unsigned long long prev; int first;
+        unsigned long long rowsA=0,rowsB=0,obsB=0,gapsB=0,hdrA=0,hdrB=0,lastA=0,firstB=0,lastB=0; int monoA=1,monoB=1; unsigned long long prev; int first;
         L=fopen(la,"r"); prev=0; first=1; while(fgets(line,sizeof line,L)){ if(!strncmp(line,"ordinal,",8)){hdrA++;continue;} unsigned long long ord=strtoull(line,NULL,10); if(!first&&ord<=prev) monoA=0; prev=ord; first=0; rowsA++; lastA=ord; } fclose(L);
-        L=fopen(lb,"r"); prev=0; first=1; while(fgets(line,sizeof line,L)){ if(!strncmp(line,"ordinal,",8)){hdrB++;continue;} unsigned long long ord=strtoull(line,NULL,10); if(first) firstB=ord; if(!first&&ord<=prev) monoB=0; prev=ord; first=0; rowsB++; lastB=ord; } fclose(L);
+        L=fopen(lb,"r"); prev=0; first=1; while(fgets(line,sizeof line,L)){ if(!strncmp(line,"ordinal,",8)){hdrB++;continue;} unsigned long long ord=strtoull(line,NULL,10); if(first) firstB=ord; if(!first&&ord<=prev) monoB=0; prev=ord; first=0; rowsB++; lastB=ord;
+            if(!strstr(line,",RingFullTail,")) obsB++;
+            char *last=strrchr(line,','); if(last) gapsB+=strtoull(last+1,NULL,10);
+        } fclose(L);
         CHECK(hdrA==1&&hdrB==1,"each runtime log carries exactly one header (%llu/%llu)",hdrA,hdrB);
         CHECK(rowsA>0&&rowsB>0,"both attachments logged rows (%llu/%llu)",rowsA,rowsB);
-        CHECK(rowsA==20&&rowsB==75,"event-defined A/B windows changed (%llu/%llu)",rowsA,rowsB);
+        /* Normal ring holds the entire remaining fixture, including PoolFull
+         * rows. The deliberate two-slot ring instead records loss ranges. */
+        CHECK(rowsA==20&&obsB+gapsB==75,"event-defined A/B observations changed (%llu/%llu+%llu)",rowsA,obsB,gapsB);
+        if(!ring_may_drop) CHECK(rowsB==75,"B must contain exactly 75 rows (%llu)",rowsB);
+        CHECK(gapsB==rs.dropped_ring_full,"B loss ranges %llu != ring drops %llu",gapsB,(unsigned long long)rs.dropped_ring_full);
         CHECK(monoA&&monoB,"ordinals monotonic within each runtime log");
         CHECK(firstB>lastA+1,"the detached interval is unlogged (A ends %llu, B starts %llu)",lastA,firstB);
         CHECK(rowsA+rowsB==rs.log_rows,"runtime log rows on disk %llu != counted %llu",rowsA+rowsB,(unsigned long long)rs.log_rows);
@@ -518,9 +514,9 @@ int main(int argc, char **argv){
         CHECK(fs_log_start(bf,le)==0,"attach E (clean after broken)");
         const char *fault=getenv("FS_TEST_CLEAN_WINDOW");
         window_release(fault&&!strcmp(fault,"paused")?40:60,1);
-        if(fault&&!strcmp(fault,"ended")) window_release(UINT64_MAX,1);
+        if(fault&&!strcmp(fault,"ended")) window_release(0,0);
         window_wait(fault&&!strcmp(fault,"ended")?UINT64_MAX:60,"rows in the clean log");
-        window_release(UINT64_MAX,1);
+        window_release(0,0); /* No further attach/detach boundary. */
         wait_for_end("write-failure run"); CHECK(fs_stop(bf)==0,"stop (write failure)");
         window_release(0,0);
         fs_stats bs; fs_get_stats(bf,&bs);

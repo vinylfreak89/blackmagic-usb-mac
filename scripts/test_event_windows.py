@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 FS = ROOT / "src/frameserver"
@@ -39,8 +40,20 @@ with tempfile.TemporaryDirectory(prefix="event-window-tests-") as temp:
 fixture = ROOT / "src/unit_parser/tests"
 command = [str(FS / "tests/frameserver_test"), str(fixture / "fixture.tpc"),
            str(fixture / "fixture_plain.tpc")]
-failure(command, {"FS_TEST_CLEAN_WINDOW": "ended"},
+failure(command, {"FS_TEST_CLEAN_WINDOW": "ended", "FS_TEST_WAIT_S": "2"},
         "rows in the clean log: session ended before required rows")
 failure(command, {"FS_TEST_CLEAN_WINDOW": "paused", "FS_TEST_WAIT_S": "2"},
         ("FAIL: TIMEOUT: rows in the clean log",
          "FAIL: TIMEOUT: log window producer release after 40 rows"))
+
+# A's 20 rows alone require >=2 seconds of injected work, while each item
+# pauses only 0.1s. A one-second TOTAL wait fails; a one-second STALL wait passes.
+start = time.monotonic()
+run = subprocess.run(command, env={**os.environ, "FS_TEST_WAIT_S": "1",
+                     "FS_TEST_ITEM_DELAY_US": "100000"}, text=True,
+                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
+elapsed = time.monotonic() - start
+assert run.returncode == 0, (run.returncode, run.stdout)
+assert "A 20 rows" in run.stdout and "B 75 rows" in run.stdout, run.stdout
+assert elapsed > 2, elapsed
+print(f"PASS: slow progressing windows, stall limit 1s, total {elapsed:.2f}s, exit 0")

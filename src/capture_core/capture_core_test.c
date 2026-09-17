@@ -20,6 +20,7 @@
 #include <time.h>
 #include <signal.h>
 #include "../test_supervisor.h"
+#include "../test_liveness.h"
 
 static int fails=0;
 #define CHECK(cond,...) do{ if(!(cond)){ fails++; fprintf(stderr,"FAIL: " __VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
@@ -42,94 +43,87 @@ typedef struct {
 static _Atomic int hook_arm, hook_empty, hook_release, hook_fail_alloc;
 static _Atomic int alloc_hold, alloc_entered, alloc_release, alloc_on_starter;
 static pthread_t starter_thread;
-/* Every wait here has a deadline: CC_TEST_WAIT_S seconds, default 60. On expiry the test fails loudly,
+/* Every wait here has a stall deadline: CC_TEST_WAIT_S seconds without progress, default 60. On expiry the test fails loudly,
  * names the wait and exits at once (exit 2), rather than hanging or passing silently. */
-static double wait_limit_s(void){ const char *e = getenv("CC_TEST_WAIT_S"); double v = e ? atof(e) : 60; return v < 0 ? 0 : v; }
-static double mono_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + t.tv_nsec / 1e9; }
 enum { PRESSURE_LOSS=1, PRESSURE_ERROR=2, PRESSURE_META=4 };
-static pthread_mutex_t pressure_mutex=PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t pressure_cond=PTHREAD_COND_INITIALIZER;
+static test_liveness live=TEST_LIVENESS_INIT("CC_TEST_WAIT_S");
 static int pressure_mode, pressure_events, pressure_round, loss_round, pressure_ready, input_done, resumed;
-/* Caller holds pressure_mutex. Time only limits liveness, never establishes loss. */
+/* Caller holds live.mutex. Time only limits liveness, never establishes loss. */
 static void pressure_wait(int *value,int target,const char *what){
-    double end=mono_s()+wait_limit_s();
+    double begun=test_now();
     while(*value<target){
-        double left=end-mono_s();
-        if(input_done || left<=0){
-            fprintf(stderr,"FAIL: pressure hold (%s): %s before required event\n",what,input_done?"producer ended":"TIMEOUT");
+        if(input_done){
+            fprintf(stderr,"FAIL: pressure hold (%s): producer ended before required event\n",what);
             _exit(2);
         }
-        struct timespec relative={(time_t)left,(long)((left-(time_t)left)*1e9)};
-        int rc=pthread_cond_timedwait_relative_np(&pressure_cond,&pressure_mutex,&relative);
-        if(rc && rc!=ETIMEDOUT){ fprintf(stderr,"FAIL: pressure condition wait: %d\n",rc); _exit(2); }
+        test_live_wait(&live,begun,what);
     }
 }
 static void pressure_event(int event){
     if(!pressure_mode) return;
-    pthread_mutex_lock(&pressure_mutex);
+    pthread_mutex_lock(&live.mutex);
     pressure_events|=event;
     if(event==PRESSURE_LOSS && (pressure_round==1 || resumed)) loss_round=pressure_round;
     int required=PRESSURE_LOSS|(pressure_mode==2?PRESSURE_ERROR:PRESSURE_META);
     pressure_ready=(pressure_events&required)==required;
-    pthread_cond_broadcast(&pressure_cond);
-    pthread_mutex_unlock(&pressure_mutex);
+    test_live_note_locked(&live);
+    pthread_mutex_unlock(&live.mutex);
 }
 void cc_test_data_resumed(void){
     if(pressure_mode!=1) return;
-    pthread_mutex_lock(&pressure_mutex);
+    pthread_mutex_lock(&live.mutex);
     if(!resumed){
         resumed=1;
-        pthread_cond_broadcast(&pressure_cond);
+        test_live_note_locked(&live);
         /* A pending loss has been flushed AND a DATA record accepted. Wait
          * until the consumer holds again before filling the ring a second time. */
         pressure_wait(&pressure_round,2,"post-resume consumer hold");
     }
-    pthread_mutex_unlock(&pressure_mutex);
+    pthread_mutex_unlock(&live.mutex);
 }
 void cc_test_ring_loss(void){ pressure_event(PRESSURE_LOSS); }
 void cc_test_recorded_error(void){ pressure_event(PRESSURE_ERROR); }
 void cc_test_meta_exhausted(void){ pressure_event(PRESSURE_META); }
+void cc_test_packet_progress(void){ test_live_note(&live); }
 void cc_test_input_done(void){
-    pthread_mutex_lock(&pressure_mutex); input_done=1; pthread_cond_broadcast(&pressure_cond); pthread_mutex_unlock(&pressure_mutex);
+    pthread_mutex_lock(&live.mutex); input_done=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
 }
 static void wait_ended(_Atomic int *ended, const char *what){
-    double limit = wait_limit_s(), end = mono_s() + limit;
-    while(!atomic_load(ended)){
-        if(mono_s() >= end){
-            fprintf(stderr, "FAIL: TIMEOUT after %.0f s waiting for on_end (%s); CC_TEST_WAIT_S sets the limit\n", limit, what);
-            fflush(stderr); _exit(2);
-        }
-        usleep(20000);
-    }
+    char name[128]; snprintf(name,sizeof name,"waiting for on_end (%s)",what);
+    double begun=test_now(); pthread_mutex_lock(&live.mutex);
+    while(!atomic_load(ended)) test_live_wait(&live,begun,name);
+    pthread_mutex_unlock(&live.mutex);
 }
 void cc_test_after_empty_snapshot(cc_session *s){
     (void)s;
+    pthread_mutex_lock(&live.mutex);
     if(atomic_load(&hook_arm) && !atomic_exchange(&hook_empty,1)){
-        double limit = wait_limit_s(), end = mono_s() + limit;
-        while(!atomic_load(&hook_release)){
-            if(mono_s() >= end){
-                fprintf(stderr, "FAIL: TIMEOUT after %.0f s in cc_test_after_empty_snapshot: cc_test_before_backend_done "
-                                "never released the backend; CC_TEST_WAIT_S sets the limit\n", limit);
-                fflush(stderr); _exit(2);
-            }
-            usleep(100);
-        }
+        double begun=test_now();
+        while(!atomic_load(&hook_release))
+            test_live_wait(&live,begun,"cc_test_after_empty_snapshot: cc_test_before_backend_done never released the backend");
     }
+    pthread_mutex_unlock(&live.mutex);
 }
 void cc_test_before_backend_done(cc_session *s){
-    (void)s; if(atomic_load(&hook_arm)) atomic_store(&hook_release,1);
+    (void)s; pthread_mutex_lock(&live.mutex);
+    if(atomic_load(&hook_arm)) atomic_store(&hook_release,1);
+    test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
 }
 int cc_test_fail_delivery_allocation(size_t bytes){
     (void)bytes;
     if(atomic_load(&alloc_hold)) {
+        double begun=test_now(); pthread_mutex_lock(&live.mutex);
         atomic_store(&alloc_on_starter,pthread_equal(pthread_self(),starter_thread));
         atomic_store(&alloc_entered,1);
-        while(!atomic_load(&alloc_release)) usleep(100); /* whole-test parent bounds this fault injection */
+        test_live_note_locked(&live);
+        while(!atomic_load(&alloc_release)) test_live_wait(&live,begun,"allocation release");
+        pthread_mutex_unlock(&live.mutex);
     }
     return atomic_exchange(&hook_fail_alloc,0);
 }
 
 static void t_packet(void *ctx, const cc_packet *p){
+    test_live_note(&live);
     tally *t=ctx;
     if(atomic_exchange(&callback_probe,0)){
         callback_stop_rc=cc_stop(callback_target);
@@ -140,7 +134,7 @@ static void t_packet(void *ctx, const cc_packet *p){
     if(pthread_equal(pthread_self(),t->main_thread)) t->cb_on_main=1;
     uint64_t total=t->pkts[0]+t->pkts[1];
     if(t->throttle==1 || (t->throttle>=2 && total==1)){
-        pthread_mutex_lock(&pressure_mutex);
+        pthread_mutex_lock(&live.mutex);
         if(t->throttle==1){
             if(total==1) pressure_wait(&loss_round,1,"first ring loss");
             else if(t->loss_events && pressure_round==1){
@@ -148,18 +142,20 @@ static void t_packet(void *ctx, const cc_packet *p){
                  * producer can publish resumed DATA without more draining.
                  * Wait even if its post-publication hook has not run yet. */
                 pressure_wait(&resumed,1,"accepted DATA after first loss");
-                pressure_round=2; pthread_cond_broadcast(&pressure_cond);
+                pressure_round=2; test_live_note_locked(&live);
                 pressure_wait(&loss_round,2,"post-resume ring loss");
             }
         }else pressure_wait(&pressure_ready,1,t->throttle==2?"ring loss and recorded TransferError":"metadata exhaustion");
-        pthread_mutex_unlock(&pressure_mutex);
+        pthread_mutex_unlock(&live.mutex);
     }
 }
 static void t_loss(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
+    test_live_note(&live);
     tally *t=ctx; (void)pk;
     t->loss_bytes[ep==CC_EP_AUDIO]+=by; t->loss_events++;
 }
 static void t_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
+    test_live_note(&live);
     tally *t=ctx; (void)ep;(void)seq;(void)st;
     t->error_events++;
     if(kind==CC_ERROR_CONTROL_LOSS) t->control_loss_markers++;
@@ -168,7 +164,9 @@ static void t_end(void *ctx, enum cc_end r){
     tally *t=ctx;
     if(atomic_exchange(&end_probe,0)){ end_stop_rc=cc_stop(callback_target); cc_close(callback_target); }
     t->end_count++; t->end_reason=r;
-    atomic_store(&t->ended,1);
+    pthread_mutex_lock(&live.mutex);
+    atomic_store(&t->ended,1); test_live_note_locked(&live);
+    pthread_mutex_unlock(&live.mutex);
 }
 typedef struct { cc_session *s; int rc; } stop_arg;
 static void *stop_thread(void *p){ stop_arg *a=p; a->rc=cc_stop(a->s); return NULL; }
@@ -373,12 +371,12 @@ int main(int argc, char **argv){
         int created=pthread_create(&thread,NULL,start_thread,&a);
         CHECK(created==0,"create held-allocation starter");
         if(!created){
-            double until=mono_s()+wait_limit_s();
-            while(!atomic_load(&alloc_entered) && mono_s()<until) usleep(100);
-            CHECK(atomic_load(&alloc_entered),"TIMEOUT: held allocation hook not entered");
+            double begun=test_now(); pthread_mutex_lock(&live.mutex);
+            while(!atomic_load(&alloc_entered)) test_live_wait(&live,begun,"held allocation hook not entered");
             CHECK(atomic_load(&alloc_on_starter),"allocation did not precede worker launch on the starting thread");
             CHECK(!atomic_load(&a.returned),"cc_start returned while allocation was unresolved");
-            alloc_release=1; pthread_join(thread,NULL);
+            alloc_release=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
+            pthread_join(thread,NULL);
             CHECK(a.rc==CC_ERR_NOMEM,"held allocation returned %d, expected NOMEM",a.rc);
             CHECK(cc_stop(s)==CC_OK,"stop after failed preflight");
             CHECK(af.end_count==0,"on_end fired after failed allocation preflight");

@@ -13,7 +13,7 @@ static double test_now(void){
     struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t);
     return t.tv_sec+t.tv_nsec/1e9;
 }
-static double test_until(const char *setting){
+static inline double test_until(const char *setting){
     const char *s=getenv(setting); char *end=NULL;
     double seconds=s?strtod(s,&end):60;
     if(!isfinite(seconds)||seconds<=0||(s&&(!*s||*end))){

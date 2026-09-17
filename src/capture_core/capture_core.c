@@ -109,6 +109,7 @@ extern void cc_test_ring_loss(void);
 extern void cc_test_recorded_error(void);
 extern void cc_test_meta_exhausted(void);
 extern void cc_test_input_done(void);
+extern void cc_test_packet_progress(void);
 #else
 #define cc_test_destroyed() ((void)0)
 #define cc_test_after_empty_snapshot(s) ((void)(s))
@@ -118,6 +119,7 @@ extern void cc_test_input_done(void);
 #define cc_test_recorded_error() ((void)0)
 #define cc_test_meta_exhausted() ((void)0)
 #define cc_test_input_done() ((void)0)
+#define cc_test_packet_progress() ((void)0)
 #endif
 
 static uint64_t monotonic_ms_(void){
@@ -212,6 +214,7 @@ static void flush_loss_blocking_(cc_session *s, uint8_t ep){
 #define META_RESERVE (64u*1024u)
 static void put_pkt_(cc_session *s, uint8_t ep, uint16_t pi, uint32_t seq,
                      uint32_t st, uint32_t req, const uint8_t *d, uint32_t al){
+    cc_test_packet_progress();
     int e=ep_i(ep);
 #ifdef CAPTURE_CORE_TEST_HOOKS
     int resuming=s->lost_pkts[e]!=0;
