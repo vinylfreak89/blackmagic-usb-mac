@@ -149,3 +149,9 @@ Every bin checked on raw rows (up to 3 units each, all bins).
   (24, 261) in 477 units and (23, 260) in 112: the whole field moves by one line, as in capture 2. No
   detector yet separates the faint row; the label is from raw rows and the owner's displaced-caption
   ruling. Capture 4's torn tops handed to Codex.
+- **Capture 4 field 2, from Codex's raw audit** (E-codex-2026-09-19-1, entry e76052f, report 713d2a4
+  on v11-codex): first picture line 286 in 559 units, 287 in 64 (286 a pulse row), 27 unresolved. Its
+  fragment-matching separator failed (184 of 623; 3 of 30 data controls accepted). Reviewed against its
+  entry: it answers every item and discloses that labels were revised after scoring. Checked on raw rows
+  at 204 (286), 259, 331, 810 (287): agree. Unresolved 236 and 239 show a faint pulse row at 286 like
+  capture 3's line 23; by the displaced-caption reading they would be 287 — a reading, not a measurement.
