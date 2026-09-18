@@ -226,3 +226,24 @@ capture 4's torn tops, capture 2's data lines.
 
 **Material.** Every confident unit of the four captures (capture 1 from 6667). Labels depend on
 bin-level raw checks (up to 3 units per bin), not a per-unit relabel; stated as a limit.
+
+### Report (2026-09-19) — premise partly refuted; no amendment
+
+- **Held:** blanking (median entropy 0.96 bits, level 1) and the filler / near-blank rows (1.9 bits,
+  level 11) are low-entropy and sit apart from picture (median 6.1 bits, 10th percentile 4.0).
+- **Refuted for data:** capture 2's data lines are 4.85 bits (4.3-5.4) at level 127, inside picture's
+  range. **And for faint rows the axis points the wrong way:** capture 1's faint card picture line 23 is
+  2.85 bits at level 8; capture 3's faint pulse row 23, not picture, is higher on both (3.6 bits, 12).
+  Torn capture-4 tops are 6.2 bits, so entropy does help there.
+- **Mixed cells** (minority 20% or more) hold 1,699 non-picture and 1,142 picture rows of 44,889.
+- **Held out by capture**, rows classified correctly, matrix vs entry 2's rule: capture 1 0.890 / 0.992,
+  capture 2 0.840 / 1.000, capture 3 0.956 / 0.966, capture 4 0.994 / 0.974. The rule's figures are
+  inflated: most labels come from its own verified bins; capture 4's (Codex's raw labels) are the fair
+  comparison, and the matrix wins there.
+- **Matrix census through the comb** (decided frames where its shift is the comb minimum): capture 1 248 /
+  370, capture 2 232 / 551, capture 3 201 / 586, capture 4 533 / 590, against entry 3's 229 / 230, 2 /
+  545 (a constant line), 487 / 500, 562 / 567 on confident frames. It calls capture 2's data lines and
+  capture 3's faint pulse row picture in nearly every unit, and loses capture 1's faint card top.
+- **Structural limit:** each hard row type occurs in one capture only, so a matrix built from the other
+  three never sees it; a held-out test cannot learn it, and fitting it in-sample would be memorising.
+- **Amendments:** none. Matrix, rows and frame results in scratch `geometry_exp1/exp4_*`.
