@@ -120,3 +120,26 @@ field, end, line) is checked on raw rows, rare bins included; the census reports
 bins the raw rows contradict.
 
 **Material.** Every exact unit: capture 1 from 6667 (fade 6610-6666 apart), captures 2, 3 and 4 whole.
+
+### Report (2026-09-19) — census premise partly held; stopped to ask the owner
+
+Every bin checked on raw rows (up to 3 units each, all bins).
+- **Held:** capture 1 field 1 first 23 (493 units), field 2 first 286 (322); capture 2 field 1 first
+  24 / 25 (264 / 385), field 2 first 288 (642), bottoms 260 / 261 and 522; capture 3 field 2 first 286
+  (649), bottoms 259-262 and 522-524; capture 4 field 1 first 23 (650), field 2 first 286 (516),
+  bottoms 262 / 525 (switch debris, counted as the head-switch area).
+- **Jumps are real.** Capture 2's field 1 moves as a whole: (first, last) = (25, 261) in 385 units and
+  (24, 260) in 264, no other combination; field 2 stays at (288, 522). Capture 3's bottoms move 259-262
+  and 522-524.
+- **Contradicted:** capture 3 field 1 first 23 (554 units): a faint pulse row, not picture; capture 4
+  field 2 first 288 / 289 (134): torn picture at 286-287 rejected as data; capture 2 field 2 first 286
+  (3): a data line. Uncertain: capture 2 field 2 287 (4), capture 3 field 1 24 (91).
+- **Not observable:** capture 1's card, where 23 / 286 sit at blanking level: field 1 in 15 units,
+  field 2 in 186 (the owner's answer is 23 / 286; the raster cannot show it).
+- **Amendments measured, none built** (none moved forward): spatial coherence along the line (capture
+  3's faint 23 is as coherent as capture 1's card 23: 0.86-0.90 vs 0.96); a wider shift for torn lines
+  (topmost torn lines continue at no shift within 120 samples, 0.16-0.39, while capture 2's data line
+  286 would pass, 0.76); a scale-free pulse test (misses the faint row, flags 180 capture-1 picture
+  rows); the caption run-in (present in only 8-17% of capture 3's line-23 rows).
+- **Question for the owner:** capture 3's faint line 23 against capture 1's card line 23, raw rows in
+  `explore/line23_question.png`.
