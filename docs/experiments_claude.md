@@ -91,3 +91,32 @@ Codex reproduced the reported counts and both counterexample frames independentl
   abstentions. Capture 3 counter 14149 has no following field to pair and was not evaluated. One carried
   top in capture 1 (main) and one in the fade.
 The stop stands: capture 2 prevents "all four comb-free" under this premise.
+
+## E-claude-2026-09-19-2 — census of the first and last line of real picture
+
+**Question (owner, 2026-09-19):** "Right now, what algorithm is it using to separate pictures from not
+picture? What is the census in the 4 caps where the first line of real picture is" — after "I know for
+a fact looking at the captures myself the bottom line in every capture being at 262/525 is wrong. I have
+seen jumps for sure." Every valid unit, no sampling.
+
+**What fell first.** Entry 1's bottom test (level only) called the deck's flat filler row picture, so it
+returned 262 / 525 everywhere; raw rows show the picture ending on a partial line near 261 / 524. Its top
+test rejected capture 1's faint partial line 23 and torn capture-4 lines, and passed some data lines.
+
+**Premise.** Rows the Shuttle or the deck generates (blanking, the filler row) are flat, varying by 3
+codes or less across the line; real picture, even faint or partial, varies by more and rises above
+blanking. Tape data lines at the top are strong rows that do not continue into the picture below, while
+a picture line does continue, allowing a horizontal shift for torn lines.
+
+**Method.** Per field, per row, over samples 40-680: bright = 95th percentile minus the device blanking
+level; spread = 95th minus 5th percentile. A row is picture if bright > 5 and spread > 4. A row with
+spread 40 or more is additionally a data line, and not picture, unless its best correlation with the next
+row over horizontal shifts of -24..+24 samples is 0.5 or more. First line: the first picture row from 22
+(285) down. Last line: the first picture row from 262 (525) up. Settings of this census, not constants.
+
+**Falsifier.** Raw rows of a census bin showing its line is not the first (or last) real picture line:
+a flat or blank row counted, a data line counted, or a picture row above it missed. Every bin (capture,
+field, end, line) is checked on raw rows, rare bins included; the census reports how many units sit in
+bins the raw rows contradict.
+
+**Material.** Every exact unit: capture 1 from 6667 (fade 6610-6666 apart), captures 2, 3 and 4 whole.
