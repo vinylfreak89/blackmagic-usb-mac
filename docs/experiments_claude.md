@@ -195,3 +195,34 @@ unlabelled left out; 56 abstain); capture 2 2 / 545 (642; 7 left out; 97 abstain
 - **Last lines** give the comb shift in 229 / 230, 0 / 545, 36 / 500 and 505 / 567: weaker than the tops
   on captures 2 and 3, where the last line depends on where the head switch falls.
 - Frame-level results: scratch `geometry_exp1/exp3_frames.csv`.
+
+## E-claude-2026-09-19-4 — a level x entropy matrix for picture lines
+
+**Question (owner, 2026-09-19):** "is line entropy a better measure of picture vs no picture. Anything
+that is blanking, near blanking or data will have low entropy so I don't think this test can live in
+isolation, but might allow us to tighten the number of codes above blanking required along with a
+certain entropy value ... come up with a matrix between those 2 values that can hopefully more
+correctly identify picture lines ... the matrix decides which to give more weight".
+
+**Premise (his).** Blanking, near-blanking (filler) and data rows have low line entropy; picture rows,
+including faint and torn ones, sit apart from them in the plane of (level above blanking, entropy), so a
+cell map over that plane classifies rows more correctly than entry 2's level-and-variation rule.
+
+**Method.** Per row, over samples 40-680: level = 95th percentile minus the device blanking rows;
+entropy = Shannon entropy (bits) of the row's 8-bit code histogram. Labelled rows come from the confident
+census (raw-row verified bins; capture 4 field 2 from Codex's raw labels; capture 3's line 23 as
+labelled in the report above; exclusions as in entry 3): at the top, rows from 22 (285) above the first
+picture line are not picture and the first line and the two below are picture; at the bottom, the last
+line and the two above are picture and the rows below it through 263 (526) are not. Matrix: level bins
+0,1,2,3,4,6,8,12,20,40+ codes x entropy in half-bit steps; each cell takes its majority label, or is
+mixed. Each capture is classified by a matrix built from the other three only. The matrix census (first
+picture row from 22 / 285 down, last from 262 / 525 up) is then judged by raw rows and by the comb,
+exactly as entry 3, and compared with entry 2's rule on the same rows.
+
+**Falsifier.** Picture and non-picture rows overlap in the plane (mixed cells hold a material share of
+either class), or on held-out captures the matrix classifies rows no better than entry 2's rule, or it
+still gets the hard rows wrong: capture 3's faint pulse row 23, capture 1's faint card line 23,
+capture 4's torn tops, capture 2's data lines.
+
+**Material.** Every confident unit of the four captures (capture 1 from 6667). Labels depend on
+bin-level raw checks (up to 3 units per bin), not a per-unit relabel; stated as a limit.
