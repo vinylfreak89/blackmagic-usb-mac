@@ -143,3 +143,9 @@ Every bin checked on raw rows (up to 3 units each, all bins).
   rows); the caption run-in (present in only 8-17% of capture 3's line-23 rows).
 - **Question for the owner:** capture 3's faint line 23 against capture 1's card line 23, raw rows in
   `explore/line23_question.png`.
+- **Capture 3 line 23, labelled from raw rows (2026-09-19):** a faint pulse row (displaced caption
+  line: data) in most units, but plainly picture in 120 (runs 13549-13608, 13730-13779, 13877-13894,
+  13940-13973; checked on 9 units across 4 runs). With 23 counted only there, field 1 (first, last) =
+  (24, 261) in 477 units and (23, 260) in 112: the whole field moves by one line, as in capture 2. No
+  detector yet separates the faint row; the label is from raw rows and the owner's displaced-caption
+  ruling. Capture 4's torn tops handed to Codex.
