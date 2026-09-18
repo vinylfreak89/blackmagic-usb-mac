@@ -1590,6 +1590,25 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   applies to positive results: state the measured population, not “solved.”
   Record what changed and its remaining uncertainty; avoid carrying a withdrawn
   interpretation forward inside a confident summary.
+- **Experiment commitments (owner, 2026-09-19).** Before a test meant to decide
+  something, the agent appends an entry to its own ledger (`docs/experiments_claude.md`,
+  `docs/experiments_codex.md`) and commits it: the question in the owner's words; the
+  premise, the claim about the signal that must be true, stated apart from the method;
+  the simplest method; the falsifier; the material it is judged on. Amendments are
+  appended, never edited in, and state before they are built their physical reason,
+  what they should improve and what they must not break. "Multiple amendments are
+  allowed but amendments should create progress in a forward direction. If adding new
+  parts is not pushing closer to the solution, or if amendments introduce regressions,
+  that's when I should be stopped and queried." A falsifier appearing is the result:
+  report the premise refuted; a different premise is a new entry. Every report answers
+  its entry: verdict on the premise (held / refuted / unknown), what the data did, the
+  population with abstentions, each amendment and whether it moved forward, what is not
+  understood, the raw rows it rests on. Raw-row labels are preferred; another
+  instrument's output is named and never treated as truth. A positive claim is checked
+  on material not used to build it where such material exists. The other agent reviews
+  reports against entries; the owner is queried on a stalled or regressing amendment or
+  an unresolved disagreement. The ledger holds commitments and verdicts only; results
+  stay in scratch. It moves out of the repo in one commit if the owner prefers.
 - **Search the owner's words before escalating** (standing instruction,
   2026-09-11). A question goes to the owner when those words do not answer it,
   or the agents cannot converge on their application. Relayed quotations and
