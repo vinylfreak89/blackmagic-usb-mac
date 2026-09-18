@@ -155,3 +155,29 @@ Every bin checked on raw rows (up to 3 units each, all bins).
   entry: it answers every item and discloses that labels were revised after scoring. Checked on raw rows
   at 204 (286), 259, 331, 810 (287): agree. Unresolved 236 and 239 show a faint pulse row at 286 like
   capture 3's line 23; by the displaced-caption reading they would be 287 — a reading, not a measurement.
+
+## E-claude-2026-09-19-3 — comb test redone on the confident census
+
+**Question (owner, 2026-09-19):** "Before I review the census, with the ones it's confident in now, can
+it redo the combing test".
+
+**Premise** (entry 1's, retested with better tops): in every valid frame the two fields' first picture
+lines are the same source line, so weaving them with slot 1 as the top field and the census tops
+aligned is comb-free. Also reported, not the premise: whether the census last lines give the same shift.
+
+**Method.** Tops and last lines from the census as labelled from raw rows: capture 1 23 / 286; capture 2
+field 1 24 or 25, field 2 288; capture 3 field 1 23 where plainly picture (bright and continuing into
+24), otherwise the first picture row from 24 down, field 2 286; capture 4 field 1 23, field 2 Codex's raw
+labels (286 / 287). Slot 1 is the top field; capture 3 pairs slot 1 of u+1 over slot 2 of u, the others
+slot 1 over slot 2 of the same unit. Shift = bottom field's top minus top field's top, in field lines.
+Judge unchanged from entry 1, with its committed lines 30-240: comb minimum over -5..+5, decided at a
+1.5x margin.
+
+**Left out, as unresolved:** capture 1 frames whose field 1 top is not 23 or field 2 top not 286 (the
+card where they cannot be seen); capture 2 frames with a field-2 top of 286 or 287 (3 data, 4 uncertain);
+capture 3 frames whose census first line was 24 beneath a strong caption (the 91 uncertain); capture 4
+frames with no Codex label (27). Counts reported.
+
+**Falsifier.** Decided frames where the census shift is not the comb minimum.
+
+**Material.** Every exact unit of captures 1 (from 6667), 2, 3 and 4 outside those exclusions.
