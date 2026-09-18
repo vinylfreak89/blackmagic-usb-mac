@@ -48,3 +48,23 @@ capture 4 (171-820). Held out, not used to build anything: the whole tape, every
 three non-programme events (counters up to 4725, 48,189-48,240, 53,616-53,674).
 
 Results, panels and renders: session scratch `geometry_exp1/`.
+
+### Report 1 (2026-09-19) — premise refuted; stopped, no amendments
+
+- **Judge** checked on raw rows at 6 frames across all four captures (woven crops at both shifts): its
+  minimum is the clean weave every time.
+- **Part 1 (same source line): refuted** on captures 2 and 3 where the tops are clear. Capture 3 frame
+  13501: tops 286 / 24, both confirmed picture on raw rows, 285 blank; the clean weave (+2) puts field B's
+  first picture line above field A's, the reverse of the committed order. Capture 2 frame 67654: tops 25 /
+  288 confirmed, 287 a data line; the clean weave (-1) puts that data line inside the picture, between
+  25 and 26.
+- **Part 2 (tops readable from the raster): refuted as built** on capture 1 (154 of 508 frames not 23 /
+  286; the near-blank card) and capture 4 (field-2 tops misread on displaced top lines, about 160 frames).
+- **Population**, decided frames and tops' shift = comb shift: capture 1 371, 226 (137 abstained);
+  capture 2 551, 159 (98); capture 3 586, 27 (62); capture 4 590, 466 (60).
+- **Bottoms:** 262 / 525 in every frame of all four; the deck blanks 263 / 526, so the last visible line
+  is the deck's raster edge, not the tape's picture.
+- **Amendments:** none. Detector fixes for captures 1 and 4 cannot reach the goal while part 1 fails on 2
+  and 3. No renders (goal not reached); whole-tape check not run.
+- **Not understood:** why field B's first line leads in capture 3 and lags in capture 2; whether the blank
+  line 22 / 285 hides a first picture line.
