@@ -57,3 +57,21 @@ census CSVs, `census.py`, `explore/bins_cap4.png`, and Claude's entry/report
 are present. Prior census is E-claude-2026-09-19-2 (entry fdb89c2, report
 f71fedd), read from the Documents checkout. This experiment's code, labels,
 checks and detailed report go in `/private/tmp/codex-torn-top.rSVrxF/`.
+
+### Report (2026-09-19) — separator refuted; raw census has abstentions
+
+The unchanged rule rejects definite torn picture (capture 4, 204/286) and
+accepts definite data (capture 2, 67446/23 and /286, 67932/286). No numerical
+amendments or additional clauses. A lower cutoff cannot separate these rows
+on this score; this does not rule out a different simple observable.
+
+Raw census, every unit inspected: 559 first at 286, 64 at 287, 27 unresolved
+between them. The earlier frozen 586/64 visual labels were overconfident:
+enlarged error review exposed faint rows missed in overview strips. All 650
+were re-audited at larger scale; the 27 remain unknown, not relabelled from the
+candidate. Against 623 definite labels: 184 exact tops, 439 misses; 27 unscored.
+Data controls: 27/30 rejected, three false acceptances. Five instrument controls
+and six independent real-row Pearson checks pass. This is not a fully blind
+validation or a completed 650-unit census. Detailed report, individual labels,
+bin checks and the retained original artifacts: the scratch path above,
+`REPORT.md`. No engine change; unresolved faint-row identity needs review.
