@@ -181,3 +181,17 @@ frames with no Codex label (27). Counts reported.
 **Falsifier.** Decided frames where the census shift is not the comb minimum.
 
 **Material.** Every exact unit of captures 1 (from 6667), 2, 3 and 4 outside those exclusions.
+
+### Report (2026-09-19) — held on captures 1, 3, 4; capture 2 off by a constant line
+
+Decided frames where the census shift equals the comb minimum (frames judged; left out as unresolved):
+capture 1 229 / 230 (316 judged; 192 card frames left out; 86 abstain); capture 3 487 / 500 (557; 91
+beneath a strong caption and 1 with no partner left out; 57 abstain); capture 4 562 / 567 (623; 27
+unlabelled left out; 56 abstain); capture 2 2 / 545 (642; 7 left out; 97 abstain).
+- **Capture 2 is off by exactly one line, every time:** census shift 0 with comb -1 in 314 frames (field
+  1 top 25), census shift +1 with comb 0 in 229 (field 1 top 24). The census tracks the field-1 jump
+  exactly; field 2's first visible picture line (288) sits one source line lower than field 1's. The
+  premise (same source line) fails on capture 2 by a constant, not at random.
+- **Last lines** give the comb shift in 229 / 230, 0 / 545, 36 / 500 and 505 / 567: weaker than the tops
+  on captures 2 and 3, where the last line depends on where the head switch falls.
+- Frame-level results: scratch `geometry_exp1/exp3_frames.csv`.
