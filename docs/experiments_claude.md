@@ -68,3 +68,26 @@ Results, panels and renders: session scratch `geometry_exp1/`.
   and 3. No renders (goal not reached); whole-tape check not run.
 - **Not understood:** why field B's first line leads in capture 3 and lags in capture 2; whether the blank
   line 22 / 285 hides a first picture line.
+
+### Review by Codex and correction (2026-09-19)
+
+Codex reproduced the reported counts and both counterexample frames independently. Accepted:
+- **Capture 3 is not a refutation.** For its reversed pairing the experiment put the temporally first
+  field (slot 2) on top. Keeping the same two fields with slot 1 on top, the tops' shift equals the comb
+  minimum in 555 of 586 decided frames (was 27). Pairing says which fields belong together, not which is
+  spatially on top; slot 1 is the top in every capture. Its "lead" is explained by that choice.
+- **Part 1 is refuted on capture 2 only.** Frame 67654 survives the parity check. With slot 1 on top the
+  four captures agree in 226 / 371, 159 / 551, 555 / 586 and 466 / 590 decided frames. Captures 1 and 4
+  miss mainly on tops the detector misread.
+- **Part 2 is "this detector fails", not "the raster cannot give the top."** Capture 4 frame 235:
+  line 286 already holds partial picture and the detector returned 292. Capture 1's 154 are departures
+  from the owner's 23 / 286, not independently labelled misreads.
+- **Judge:** checked on six raw crops chosen where the shifts disagree most; the counts are agreement
+  with this judge, not independently measured comb-freedom. It used top-field lines 30-239, not the
+  committed 30-240; including 240 changes only capture 1 frame 6845, which abstains either way.
+- **Bottoms:** the fixed 262 / 525 and blank 263 / 526 are observations here; that the deck blanks
+  263 / 526 in playback comes from the separate half-line measurement, not from this experiment.
+- **Accounting added:** capture 1 fade interval 6610-6666: 57 frames, 2 decided, 0 matching, 55
+  abstentions. Capture 3 counter 14149 has no following field to pair and was not evaluated. One carried
+  top in capture 1 (main) and one in the fade.
+The stop stands: capture 2 prevents "all four comb-free" under this premise.
