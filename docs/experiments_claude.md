@@ -780,3 +780,60 @@ Genuine T2 catches check out on raw rows: capture 4 597, line 262, extent 576 ->
    method, which is broader than his conditional event.
 Neither finding changes any number or A's verdict. They limit what T2's firing counts mean: T2 as run is
 a brightness-coverage proxy without his "rest held" condition, not his blanking trigger as he stated it.
+
+## E-claude-2026-09-19-11 — the either/or rule: a valid move is top and bottom in tandem
+
+**Question (owner, 2026-09-19, 10:57):** "yeah it should be either/or. ... In order for it to be a valid
+move, both top and bottom half of the field have to move in tandem. otherwise, rerun comb check to
+realign. assuming that answer and also have it reproduce cap1-4 in the same folder assuming the
+experiment and comb check holds. for the full tape it has to be 80% or better. reproducing the same
+result full tape isn't necessary. if we get to like 95 % or better full tape, then the next step will to
+be to build this to an engine." And (11:00): "that tiny variance, losing under 100 frames across the whole
+tape is NOT an invalidation. there are obviously going to be weird one offs we need to figure out."
+
+**Premise.** Re-running the comb whenever a field's top and bottom do not move together, and whenever a
+blank line sits inside the picture, keeps the frames the census gets right and catches enough of the
+rest for 80% or better on the whole tape.
+
+**Method.** Readings A and B, the placement and T1 all as in entry 10. The field-level trigger replaces
+entry 10's T2. It follows the owner's 10:31 and 10:57 words and Codex's two findings on entry 10:
+blanking is judged by a real change on the line, and a move of top and bottom together fires nothing.
+- **Bottom lines, per field and unit.** The field's last 12 lines (NTSC 251-262 / 514-525), samples
+  24-695. A sample is blank when its 8-sample luma average is within 12 codes of the device blanking.
+  The bottom line is the last line with 8 or more non-blank samples.
+- **Changes against the previous unit of the same field:**
+  - A sample gains blanking when it turns blank and its average falls by more than 20 codes. It gains
+    picture when it turns non-blank and its average rises by more than 20. Brightness drifting across
+    the level is not a change.
+  - Bottom move Δb: the change of the bottom line, in lines (+ = down). It counts only if the lines
+    between the old and new bottom lines gained blanking (up) or picture (down) in 8 or more samples;
+    otherwise Δb = 0.
+  - Partial change: Δb = 0, but the old bottom line and the line below it gained blanking or picture
+    in 64 or more samples.
+  - Top move Δt: the change of the first line used for placement.
+- **Classes per field:**
+  - nothing (no top move, no bottom move, no partial change);
+  - valid move (Δt = Δb, not 0, no partial change): no re-run;
+  - bottom only (Δt = 0 with a bottom move or a partial change);
+  - top only (Δt not 0, Δb = 0, no partial change), the owner's either/or;
+  - both but not in tandem (anything else).
+  The last three re-run the comb. With no previous unit, or no first line, nothing fires.
+- **A frame re-runs** on T1 or on a re-run class in either of its fields.
+- **Material and inputs:** as entry 10. Capture 2's field 1 is read one line lower on both the
+  placement and its top moves.
+
+**Report.** For A and B, per capture and for the whole tape:
+- agreement with the comb, against the census's figures and the owner's 80% and 95% marks;
+- every frame lost against the census, listed;
+- what the re-runs catch and miss;
+- how often each class fires, and how the bottom-only firings compare with entry 10's T2.
+
+**Falsifier.** For a reading: the whole tape below 80%, or 100 or more lost frames on the whole tape.
+Fewer than 100 are the owner's one-offs, listed, not a failure.
+
+**Renders if a reading holds.** Captures 1-4 at the same paths, replacing the earlier renders, with the
+reading Codex and I judge better, named. Same renderer (`experiments/geometry_render.py`) and command.
+Each is written under a new name and moved onto the old path in one rename. The placement for every
+render frame comes from the rule set, run on the renders' own per-frame inputs (entry 7's), with the
+comb's correction applied to field 1. The owner: "it doesn't really matter if you shift field 1 or field
+2 against its each. mathematically its the same thing".
