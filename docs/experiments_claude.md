@@ -1247,3 +1247,32 @@ Codex's recount: its scratch `/private/tmp/codex-e13-review-5p0udR/recount.py`.
   - 23 samples at 1,021 s (0.016 frame);
   - 1,183 samples at 2,066 s. After it, audio leads the picture by 0.755 frame (25 ms) to the end.
   Placing audio blocks by their audio-clock time would remove it; not done.
+
+## E-claude-2026-09-19-14 — the full-tape render's audio, stepped at the device's audio-only deficits
+
+**Question.** The watchdog relayed this as a derivation from a recorded rule, not a new owner ruling.
+CLAUDE.md §6 (whole-tape audio timing): an A/V adapter must apply the audio publisher's correlation
+residual "only where it steps (a discontinuity event: advance audio time by the lost samples once,
+flagged) and never resample continuously". The full-tape render places audio by sample ordinal, so after
+the device's 1,183-sample deficit at 2,066 s the audio leads the picture by 0.755 frame (25 ms).
+
+**Premise.** Where the residual steps, the capture lost exactly that much audio and nothing else. Advancing
+audio time once by the lost samples, at those units, puts every frame's audio back within the residual's
+quantization of its picture, without touching the video.
+
+**Method.**
+- The frameserver's v11 log gains, per unit, the audio-clock residual and the step at that unit, in lost
+  samples (Codex; from the audio publisher's own residual). A step is flagged where the residual moves by
+  more than its quantization.
+- The renderer inserts that many silent samples at the unit's audio resync and marks the frame in its
+  band. There is no resampling.
+- The whole tape is replayed and re-rendered, validated as before, and swapped into captures/ atomically.
+
+**Falsifier.** After the change, either of these fails:
+- the A/V offset (each frame's audio-resync output time against its picture output time) stays within
+  0.002 frame across the whole tape;
+- the placement strip is identical frame for frame to the current render.
+If Codex and I conclude the §6 rule does not apply to a review render, the reason is recorded and nothing
+is changed.
+
+**Material.** The whole tape. Expected steps: 1,021 s (about 23 samples) and 2,066 s (about 1,183 samples).
