@@ -128,3 +128,25 @@ lines; capture 3 counters 13501 and 14101 at 23/24; capture 1 counters 6700,
 these and retain uncertainty instead of calling every named site data.
 Results and scripts stay in a new `/private/tmp/codex-entropy-*` directory;
 only this entry and its verdict are committed locally.
+
+### Report (2026-09-19) — histogram explanation holds; class ordering does not
+
+Reproduced all 44,889 CSV entropies exactly. The 2,318 selected data rows have
+median 4.845668 bits; quoted 4.3–5.4 is p10–p90, not the full range. The
+median example (cap2 67654/24) contains 87 codes. Explicit temporal accounting
+attributes 2.532 bits to variation within low/high regions and 1.444 to rounded
+pulses/transitions; occupancy and overlap complete 4.845566. This is descriptive,
+not physical noise attribution: baseline drift, waveform distortion and noise
+are not separately identified. A second row (67446/286) gets most of its
+entropy from within-region variation, not sharp edges. All three precommitted
+code-band widths reconstruct total entropy but change its attribution.
+
+Shuffling all 26 fixed raw rows preserves histogram entropy exactly. Keeping
+sample order lowers empirical conditional entropy, but picture does too:
+cap1 6700/23 and cap4 204/286 are below the median data example at all three
+resolutions. Universal low-data/high-picture conditional ordering is refuted;
+no claim about a validated waveform-conditioned model follows. Five synthetic
+controls pass; temporal accounting includes overlapping phase/code values.
+No amendments or detector. Population labels remain inherited; raw checks are
+the fixed sites, not independent whole-population truth. Detailed accounting,
+traces, limitations and every authored choice: `/private/tmp/codex-entropy-LY1FcP/REPORT.md`.
