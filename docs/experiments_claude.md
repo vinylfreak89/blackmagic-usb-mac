@@ -931,3 +931,38 @@ Numbers below are with both amendments and the fix.
   - geometry_exp1/: `fulltape_exp11.py`, `exp11_w{1..4}.csv`, `exp11d_analysis.py` / `.out`,
     `exp11d_changes.csv`, `exp11d_render_offsets.py`;
   - geometry_renders/: `cap*_offsets_e11dB.csv`, `e11_readback.py`.
+
+## E-claude-2026-09-19-12 — capture 2's one-line offset: a per-frame rule, or one comb check per section?
+
+**Question (owner, 2026-09-19, 11:05):** "how is it fixing cap2 (and that part of the tape's) misaligned
+by 1 line? presumably with a single comb check? assuming thats the case, then the registration engine
+should do a one time comb check "correction" that operates as a fixed offset within a section. as
+always, when any signal loss like event occurs, the whole engine should re[set]."
+
+**How it is fixed today (from entry 5's method, not a new measurement).** Not by a comb check. Entry 5's
+census rule 3 fires per unit. If the tape caption's clock run-in sits directly above field 1's first
+line, and the row directly above field 2's first line is not blank, field 1's top is taken one line
+lower. Where it fires, the census placement is one line from the raw first lines, and the comb agrees.
+
+**Premise (his).** On the EP recording, the misalignment between the raw first lines and the comb-free
+placement is constant within a section. So a comb check at the section's start, applied as a fixed
+offset, does what rule 3 does per frame.
+
+**Method.**
+- Raw first lines: entry 5's rules 1-2 without rule 3 (f1_auto). Comb: entry 5's, at 1.5.
+- Sections: the whole tape's segments, split at every signal-loss-like event the data records: the
+  three non-programme events and any break in exact units.
+- Per section, the fixed offset o is the comb's d minus the raw st at the section's first decided
+  frame. The placement is then raw st + o on every frame.
+- Compared on capture 2's units and on the EP recording (segments B and C) against the comb, and
+  against today's placement with rule 3:
+  1. o alone;
+  2. o inside entry 11's rule set (reading B, as last recorded), with rule 3 dropped and a comb check
+     forced at each section start.
+- Also reported: how constant the comb's d minus raw st is inside each section.
+
+**Falsifier.** The section-fixed offset agrees with the comb on fewer judged frames than today's rule 3
+placement, on capture 2 or on the EP recording, in either comparison.
+
+**Material.** Capture 2's units (67,446-68,094) and whole-tape segments B and C. Segment A is reported
+too, since rule 3 also fires there.
