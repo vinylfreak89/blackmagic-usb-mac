@@ -38,12 +38,16 @@ the frameserver decision log's counter_extended, applied_d1, applied_d2; each un
 --pair-next field 1 takes d1 from the NEXT unit's row. A row with an empty applied value is missing, not
 zero. Duplicate keys in either file are refused.
 
-Only exact 0xe801 units are rendered; a marker is a boundary only when a plausible unit header follows
-it (a marker inside picture bytes is not). Other formats and non-exact spans are counted and reported.
-The timeline follows the device counter: each absent unit inside a gap of up to 120 gets an unmistakable
-fill frame, so picture and audio stay on one clock; a larger jump is reported as a discontinuity.
---av-log (frameserver_replay --dump-log on the same capture) anchors the audio to the first rendered
-frame; without it the anchor is reported as not established.
+Framing and counters mirror src/unit_parser/unit_parser.c (class Framer): a marker is a boundary when
+its format is plausible and its counter follows the previous header's, decided on the same eight bytes
+the parser uses, so the result does not depend on packet boundaries; the counter is extended exactly as
+the parser extends it, short units included, so frames carry the sidecar's counter_extended. Only
+complete 0xe801 units are rendered; other formats, short units and unframed spans are counted.
+The timeline follows the device: between two rendered frames, fill frames make up the elapsed unit
+periods -- from their audio-clock times in --av-log (frameserver_replay --dump-log of the same capture;
+8008 ticks per unit) where both are known, otherwise one per observation between them that is not
+rendered. --av-log also anchors the PCM: sample 0's time comes from the first ANCHORED audio block and
+its sample ordinal. Without it the anchor is reported as not established.
 
 Review fixes 2026-09-19 (Codex, findings 1-6): pair-next engine d1 source unit; 16-bit collisions;
 in-picture marker; timeline across omitted units; black (neutral-chroma) out-of-raster fill; empty
@@ -89,13 +93,14 @@ def read_engine(path):
     out = {}
     if not path:
         return out
-    empty = 0
+    empty = 0; seen = set()
     for r in csv.DictReader(open(path)):
         if r.get("counter_extended", "") in ("", None):
             continue
         k = int(r["counter_extended"])
-        if k in out:
+        if k in seen:
             sys.exit(f"refusing: engine log repeats counter_extended {k}")
+        seen.add(k)
         if r.get("applied_d1", "") in ("", None) or r.get("applied_d2", "") in ("", None):
             empty += 1
             continue
@@ -115,18 +120,85 @@ def weave(f1_raster, f2_raster, d1, d2, fill=0.0):
     return out
 
 
-def plausible_header(b, j):
-    """A marker at j starts a unit only if a unit header follows: a known format code and zeroed
-    header bytes after it. Marker-shaped bytes inside picture do not pass this."""
-    if len(b) < j + 8:
-        return None                       # undecided until the format code has arrived
-    fmt = int.from_bytes(b[j + 6:j + 8], "little")
-    if fmt not in KNOWN_FORMATS:
-        return False
-    tail = bytes(b[j + 8:j + 16])                                # as many as have arrived
-    if fmt == 0x0800:                                            # no-signal header: counter+format repeated
-        return tail == (bytes(b[j + 4:j + 8]) * 2)[:len(tail)]
-    return not any(tail)                                         # picture header: zeroed
+def plausible_format(fmt):
+    """unit_parser.c plausible_video_format."""
+    return fmt == 0x0800 or (fmt & 0xFF00) in (0xE800, 0xE100)
+
+
+class Framer:
+    """A mirror of src/unit_parser/unit_parser.c's video framing and counter extension, so frames carry
+    the counter_extended the frameserver writes into its sidecar and --dump-log. A marker is a boundary
+    once eight bytes of it have arrived, when its format is plausible and -- after a first header -- its
+    counter is the previous header's plus one. A buffer that reaches a unit plus 32 bytes without a
+    boundary is emitted as a hole; with no header yet, a unit's worth of bytes is emitted unframed. Every
+    framed emission, short or complete, extends the counter: a jump of 0 or 0x8000+ advances it by one,
+    any other jump by its size (both flagged discontinuities)."""
+    BUF = UNIT_BYTES + 32
+
+    def __init__(self, emit):
+        self.buf = bytearray(); self.has_marker = False; self.scan = 4; self.emit_cb = emit
+        self.valid = False; self.last16 = 0; self.ext = 0
+
+    def _extend(self, c16):
+        if not self.valid:
+            self.valid = True; self.last16 = c16; self.ext = c16; return self.ext, False
+        delta = (c16 - self.last16) & 0xFFFF
+        if delta == 0 or delta >= 0x8000:
+            self.ext += 1; disc = True
+        else:
+            self.ext += delta; disc = delta != 1
+        self.last16 = c16
+        return self.ext, disc
+
+    def _emit(self, n, framed, hole=False):
+        span = bytes(self.buf[:n])
+        if framed and n >= 8 and span[:4] == MARK:
+            c16 = int.from_bytes(span[4:6], "little"); fmt = int.from_bytes(span[6:8], "little")
+            ext, disc = self._extend(c16)
+            self.emit_cb(dict(framed=True, bytes=span, count=n, counter16=c16, ext=ext, format=fmt,
+                              hole=hole, discontinuity=disc or hole,
+                              complete=(not hole and fmt == 0xE801 and n == UNIT_BYTES)))
+        else:
+            self.emit_cb(dict(framed=False, bytes=None, count=n, ext=None, format=None, hole=hole,
+                              discontinuity=hole, complete=False))
+        del self.buf[:n]
+
+    def feed(self, data):
+        b = self.buf; b.extend(data)
+        while True:
+            if self.has_marker:
+                prev16 = int.from_bytes(b[4:6], "little")
+                limit = min(len(b), self.BUF)
+                j = b.find(MARK, self.scan)
+                acc = None
+                while 0 <= j and j + 8 <= limit:
+                    fmt = int.from_bytes(b[j + 6:j + 8], "little")
+                    c16 = int.from_bytes(b[j + 4:j + 6], "little")
+                    if plausible_format(fmt) and c16 == (prev16 + 1) & 0xFFFF:
+                        acc = j; break
+                    j = b.find(MARK, j + 1)
+                if acc is not None:
+                    self._emit(acc, True); self.scan = 4; continue
+                if len(b) > self.BUF:
+                    self._emit(self.BUF, True, hole=True); self.has_marker = False; self.scan = 4; continue
+                self.scan = max(4, (j if j >= 0 else len(b) - 3)); return
+            else:
+                j = b.find(MARK); acc = None
+                while 0 <= j and j + 8 <= len(b):
+                    if plausible_format(int.from_bytes(b[j + 6:j + 8], "little")):
+                        acc = j; break
+                    j = b.find(MARK, j + 1)
+                if acc is not None:
+                    if acc: self._emit(acc, False)
+                    self.has_marker = True; self.scan = 4; continue
+                if len(b) >= UNIT_BYTES:
+                    self._emit(len(b) - 7, False); continue
+                return
+
+    def finish(self):
+        """unit_parser_finish: whatever is left is reported as an unframed tail."""
+        if self.buf:
+            self._emit(len(self.buf), False)
 
 
 def main():
@@ -147,81 +219,68 @@ def main():
           f"{' (no sidecar)' if not a.engine_log else ''}", flush=True)
     font = ImageFont.truetype(a.font, 12); small = ImageFont.truetype(a.font, 11)
 
-    # ---- pass 1: every accepted unit in stream order, with its unwrapped counter
-    units = []                            # (ext counter, raw counter, format)
-    stats = {"nonexact": 0, "other_format": 0}
+    # ---- pass 1: every observation, in the parser's framing and counter extension
+    obs = []                              # (ext or None, complete e801?, framed?, count)
 
     def walk(handler):
-        st = {"buf": bytearray(), "scan": 4, "last_raw": None, "ext": None}
+        fr = Framer(handler)
+        walk_tagged(a.capture, on_video=lambda p: fr.feed(p), progress=False)
+        fr.finish()
 
-        def accept(u):
-            raw = int.from_bytes(u[4:6], "little")
-            if st["ext"] is None:
-                st["ext"] = raw
-            else:
-                st["ext"] += (raw - st["last_raw"]) % 65536 or 65536
-            st["last_raw"] = raw
-            handler(u, st["ext"], raw, int.from_bytes(u[6:8], "little"))
-
-        def on_video(p):
-            b = st["buf"]; b.extend(p)
-            while True:
-                i = b.find(MARK)
-                if i < 0:
-                    del b[:max(0, len(b) - 3)]; st["scan"] = 4; return
-                if i > 0:
-                    del b[:i]; st["scan"] = 4
-                ok = plausible_header(b, 0)
-                if ok is None: return
-                if not ok:                     # not a unit start: skip this marker
-                    del b[:4]; st["scan"] = 4; continue
-                j = b.find(MARK, st["scan"])
-                while j >= 0:
-                    ok = plausible_header(b, j)
-                    if ok is None: st["scan"] = j; return
-                    if ok: break
-                    j = b.find(MARK, j + 1)
-                if j < 0:
-                    st["scan"] = max(4, len(b) - 3); return
-                if j == UNIT_BYTES:
-                    accept(bytes(b[:UNIT_BYTES]))
-                else:
-                    handler(None, None, None, None)      # a non-exact span
-                del b[:j]; st["scan"] = 4
-        walk_tagged(a.capture, on_video=on_video, progress=False)
-
-    def collect(u, ext, raw, fmt):
-        if u is None:
-            stats["nonexact"] += 1; units.append(None); return
-        if fmt != 0xE801:
-            stats["other_format"] += 1; units.append(None); return
-        units.append((ext, raw, fmt))
+    def collect(o):
+        obs.append((o["ext"], o["complete"], o["framed"], o["count"], o["format"], o["discontinuity"]))
     walk(collect)
+    nonexact = sum(1 for o in obs if o[2] and o[4] == 0xE801 and not o[1])
+    other = sum(1 for o in obs if o[2] and o[4] != 0xE801)
+    unframed = sum(1 for o in obs if not o[2])
 
-    # frames: keyed by this unit's ext counter; under --pair-next field 1 comes from the next unit
-    frames = []
-    seq = [u for u in units]
-    for k, u in enumerate(seq):
-        if u is None: continue
+    # frames: complete e801 units; under --pair-next field 1 is the next observation, which must be the
+    # next complete unit with the next counter
+    frames = []; partnerless = []
+    for k, o in enumerate(obs):
+        if not o[1]: continue
         if a.pair_next:
-            nx = seq[k + 1] if k + 1 < len(seq) else None
-            if nx is None or nx[0] != u[0] + 1: continue
-            frames.append((u[0], nx[0]))
+            nx = obs[k + 1] if k + 1 < len(obs) else None
+            if nx is None or not nx[1] or nx[0] != o[0] + 1:
+                partnerless.append(o[0]); continue
+            frames.append((o[0], nx[0], k))
         else:
-            frames.append((u[0], None))
-    # timeline: fill frames for absent units inside a short gap
-    items = []; discontinuities = []
-    for k, fr in enumerate(frames):
+            frames.append((o[0], None, k))
+
+    # audio-clock times of frames, from the replay's dump log
+    vpts = {}; a_origin = None
+    if a.av_log:
+        for r in csv.reader(open(a.av_log)):
+            if not r or r[0] == "kind": continue
+            if r[0] == "V" and r[7] == "1": vpts[int(r[1])] = int(r[8])
+            if r[0] == "A" and a_origin is None and not (int(r[5]) & 4):          # first ANCHORED block
+                a_origin = int(r[2]) - int(r[1]) * 5                                # pts of PCM sample 0 (1/240000 s)
+
+    # timeline: fills between consecutive frames -- from the audio clock where both times are known
+    # (8008 ticks per unit), otherwise one per observation between them that is not rendered
+    items = []; timeline_notes = []; frame_obs = {f[2] for f in frames}
+    for n, fr in enumerate(frames):
         if items:
-            gap = fr[0] - items[-1][1]
-            if 1 < gap <= MAX_FILL_GAP:
-                for c in range(items[-1][1] + 1, fr[0]): items.append(("fill", c, None))
-            elif gap > MAX_FILL_GAP:
-                discontinuities.append((items[-1][1], fr[0]))
+            pext, pk = frames[n - 1][0], frames[n - 1][2]
+            if fr[0] in vpts and pext in vpts:
+                periods = round((vpts[fr[0]] - vpts[pext]) / 8008)
+                src = "audio clock"
+            else:
+                between = [o for o in obs[pk + 1:fr[2]] if o[2]]
+                periods = 1 + len(between) + sum(max(0, round(o[3] / UNIT_BYTES)) for o in obs[pk + 1:fr[2]] if not o[2])
+                src = "observed units"
+            if periods < 1:
+                timeline_notes.append((pext, fr[0], periods, src)); periods = 1
+            for c in range(periods - 1):
+                missing = pext + 1 + c
+                items.append(("fill", missing, "no partner" if missing in partnerless else "absent"))
+            if periods > 1: timeline_notes.append((pext, fr[0], periods - 1, src))
         items.append(("frame", fr[0], fr[1]))
     nfill = sum(1 for it in items if it[0] == "fill")
-    print(f"{len(frames)} frames, {nfill} fill frames for absent units; skipped {stats['nonexact']} non-exact "
-          f"spans and {stats['other_format']} non-e801 units; discontinuities {discontinuities}", flush=True)
+    print(f"{len(frames)} frames, {nfill} fill frames; skipped {nonexact} non-exact e801 units, {other} other-format "
+          f"units, {unframed} unframed spans; {len(partnerless)} units without a pair partner", flush=True)
+    for note in timeline_notes[:12]:
+        print(f"  gap after {note[0]} before {note[1]}: {note[2]} fill frames ({note[3]})", flush=True)
 
     def placement(ext, nxt):
         o = offsets.get(ext)
@@ -237,22 +296,17 @@ def main():
     print("applied from engine {}, manual {}, none {}".format(*(sum(v[2] == s for v in pl.values())
                                                                for s in ("engine", "manual", "none"))), flush=True)
 
-    # ---- audio anchor from the replay's dump log
+    # ---- audio anchor: output time of the first frame with a known audio-clock time, against the PCM origin
     audio_ss = None
     if a.av_log and a.pcm:
-        a0 = None; vpts = {}
-        for r in csv.reader(open(a.av_log)):
-            if not r or r[0] == "kind": continue
-            if r[0] == "A" and a0 is None: a0 = int(r[2])
-            if r[0] == "V" and r[7] == "1": vpts[int(r[1])] = int(r[8])
         first = next((it[1] for it in items if it[0] == "frame" and it[1] in vpts), None)
-        if a0 is not None and first is not None:
-            k0 = next(k for k, it in enumerate(items) if it[1] == first)
-            audio_ss = (vpts[first] - a0) / 240000.0 - k0 * 1001 / 30000
-            print(f"audio anchor: frame {first} at audio +{(vpts[first] - a0) / 240000.0:.4f} s; "
-                  f"PCM offset {audio_ss:+.4f} s", flush=True)
+        if a_origin is not None and first is not None:
+            k0 = next(k for k, it in enumerate(items) if it[0] == "frame" and it[1] == first)
+            audio_ss = (vpts[first] - a_origin) / 240000.0 - k0 * 1001 / 30000
+            print(f"audio anchor: frame {first} (output index {k0}) at audio +{(vpts[first] - a_origin) / 240000.0:.4f} s "
+                  f"from PCM sample 0; PCM offset {audio_ss:+.4f} s", flush=True)
     if a.pcm and audio_ss is None:
-        print("audio anchor: NOT established (no --av-log); PCM starts with the first frame", flush=True)
+        print("audio anchor: NOT established (no --av-log, or no anchored audio block / matched frame)", flush=True)
 
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", "30000/1001", "-i", "-"]
@@ -308,7 +362,10 @@ def main():
         img = Image.new("RGB", (W, H), (12, 12, 12))
         dr = ImageDraw.Draw(img)
         dr.rectangle([PX, 0, PX + DW - 1, FH - 1], fill=(96, 96, 96))
-        dr.text((PX + 40, FH // 2 - 10), f"unit {ext} absent (not an exact e801 unit)", font=font, fill=(255, 255, 255))
+        why = state.get("fill_why", "absent")
+        msg = (f"unit {ext}: no pair partner (next unit not usable)" if why == "no partner"
+               else f"unit {ext} absent (no exact e801 unit)")
+        dr.text((PX + 40, FH // 2 - 10), msg, font=font, fill=(255, 255, 255))
         dr.rectangle([0, FH, W, H], fill=(8, 8, 8))
         fit(dr, (6, FH + 6), f"ctr {ext:>6}   ABSENT UNIT - fill frame, no placement", font, (230, 230, 230))
         graph_and_strip(dr, i, ext, 0, 0)
@@ -367,18 +424,19 @@ def main():
         while state["item"] < len(items):
             kind, ext, nxt = items[state["item"]]
             if kind == "fill":
-                write_fill(ext); continue
+                state["fill_why"] = nxt; write_fill(ext); continue
             if ext not in held or (nxt is not None and nxt not in held):
                 return
             render(held[nxt] if nxt is not None else held[ext], held[ext], ext, nxt)
             for c in [c for c in held if c < ext]:
                 del held[c]
 
-    def second(u, ext, raw, fmt):
-        if u is None or fmt != 0xE801:
+    def second(o):
+        if not o["complete"]:
             return
+        ext = o["ext"]
         if ext in want or (ext - 1) in want:
-            held[ext] = u
+            held[ext] = o["bytes"]
         emit_ready()
     walk(second)
     enc.stdin.close(); rc = enc.wait()
