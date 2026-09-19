@@ -521,3 +521,43 @@ is reported either way.
 
 **Material.** Every exact unit outside the three non-programme events, as in entry 5 (counters up to
 4725, 48,189-48,240, 53,616-53,674).
+
+### Report on entry 8 (2026-09-19) — premise refuted: 56.9% against 80.7%, a regression
+
+Stopped for the owner: under the §14 rule, an amendment would be needed and the result is a regression.
+A blind reimplementation from this entry's text reproduced every number below.
+- **Population.** Entry 5's first lines were recomputed identically in all 86,028 units, and entry 5's
+  agreement reproduces exactly: 62,017 of 76,886 judged frames. The comb abstains on 9,060, 22 have no
+  top and 1 has no partner. The valid material is 85,969 units: entry 5's report called its 86,028
+  rows "every valid exact unit", but those rows include the 59 units of the 27:18 event. Its results
+  are unaffected.
+- **Overall:** the new rules agree in 43,737 / 76,886 (56.9%), against 80.7%. By segment: A 35.9% (was
+  81.3%), B 74.3% (78.2%), C 78.5% (80.3%). Units of capture 3: 26.9% (was 91.3%). Capture 2: 98.2%
+  (98.5%). Held out: 56.8% (80.4%).
+- **By rule class, frames with no moved-up count:**
+  - decides: 40,687 frames, agreement 96.8% (entry 5's placement: 96.7%);
+  - equal heights: 6,874 frames, 2.6% for both; the comb picks the bottom field's line first in
+    6,607 of them;
+  - contradict: 3,530 frames, 8.8% for both.
+- **Frames with a count:**
+  - decides: 10,090 frames, 37.5% (entry 5: 83.7%);
+  - equal heights: 13,448 frames, 0.5% (entry 5: 86.5%);
+  - contradict: 2,256 frames, 0.5% (entry 5: 93.6%).
+  The whole regression is in frames where rule 2's count is nonzero. Where rule 1 decides without a
+  count, it meets the 95% bar but changes almost nothing.
+- **Why rule 2 misfires.**
+  - In segment A the count is nonzero in 24,915 of 43,463 field-2 units, from only 228 rises; once
+    raised, it carries while both lines hold (runs up to 2,671 units).
+  - Field 2's last line flips 522 / 523 through a partial row at the head switch, whose visible length
+    varies unit to unit while the picture holds (panel below).
+  - In capture 3's range, 12 of field 2's 26 rises and falls have no content move on raw rows. Field
+    1's bottom there does track the picture: rises move up one in 22 of 27, falls move down one in
+    20 of 24.
+  - Rises and falls come in similar numbers (segment A: field 1 959 / 903, field 2 228 / 173). A count
+    floored at 0 turns a return from a downward excursion into a lasting "moved up".
+- **Where entry 5's 14,869 disagreements sit:** 6,696 equal heights (no count), 3,218 contradict (no
+  count), 1,355 where rule 1 decides the same d, 3,600 in frames with a count.
+- **Amendments:** none. **Not understood:** why the comb picks the bottom field first in almost every
+  equal-height frame, and the census edges in the contradicting frames.
+- Per-unit edges: session scratch `geometry_exp1/exp8_w{1..4}.csv`; analysis `exp8_analysis.py` /
+  `.out`, `exp8_diag.py`; panel `e7/e8_field2_bottom_flip.png`.
