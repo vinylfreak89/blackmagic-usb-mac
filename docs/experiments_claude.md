@@ -730,3 +730,35 @@ disagreements the triggers catch and the ones they miss; how often each trigger 
 - Frame by frame: every frame whose verdict changes, and why.
 
 **Falsifier.** Any judged frame the census placement got right and the rule set gets wrong.
+
+### Report on entry 10 (2026-09-19) — A held (no frame lost); B refuted (25 lost)
+
+A blind reimplementation from this entry's text reproduced every number below. It resolved three
+readings the same way I did:
+- A missing last line leaves only the top edge for T1.
+- A change between "no picture line" and a picture line is a T2 change.
+- The judge's 1.5 is inclusive; seven stored margins are exactly 1.5.
+The census placement reproduces entry 3's per-capture figures and entry 8's whole-tape 62,017 / 76,886.
+- **Captures (entry 3's judged frames), A and B identical, no frame lost:**
+  - capture 1: 229 / 230 (census 229);
+  - capture 2: 543 / 545 (543);
+  - capture 3: 498 / 500 (487; caught 13575, 13587, 13601-13603, 13758, 13779, 13939, 13950, 13967,
+    13972);
+  - capture 4: 567 / 567 (562; caught 391, 392, 395, 396, 597).
+  T2 caught capture 4 597, which entry 2's bottom line had missed. Triggers fired on 14 of 316 frames
+  (capture 1), 234 of 642 (capture 2), 72-73 of 557 (capture 3) and 37 of 623 (capture 4).
+- **Whole tape, A:** 67,909 / 76,886 (88.3%, from 80.7%), 0 lost. It caught 5,892 of the census's
+  14,869 disagreements: 3,720 by T1 alone, 993 by T2 alone, 1,179 by both. It missed 8,977, frames
+  where the census is wrong and no trigger fired. By segment: 89.4%, 80.5%, 88.2%. Triggers fired
+  on 14,224 of 85,946 frames (16.5%): T1 6,551, T2 9,200, both 1,527.
+- **Whole tape, B:** 72,348 / 76,886 (94.1%), with 25 lost. It caught 10,356, 3,461 of them by a
+  held correction on untriggered frames, and missed 4,513. Triggers fired on 16,489 frames (19.2%):
+  T1 10,177, T2 9,200. Every lost frame is untriggered, with a held +1 gone stale while the census was
+  right: 16 runs of 1-3 frames, 24 in the first recording (4817-35666) and 1 at 60882.
+- **Verdict.** A: premise held. No judged frame the census got right is lost. That is guaranteed
+  wherever the comb is consulted, and the census is reproduced exactly elsewhere. B: premise refuted,
+  25 frames lost. Neither reaches the 95% bar.
+- **Not understood:** the 8,977 frames A misses, where the census is wrong without either trigger
+  firing. Also why capture 2's bottom changes so often (T2 on 36% of its frames).
+- Scratch: `geometry_exp1/fulltape_exp10.py`, `exp10_w{1..4}.csv`, `exp10_analysis.py` / `.out`,
+  `exp10_changes.csv` (every changed frame).
