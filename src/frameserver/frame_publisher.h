@@ -49,6 +49,7 @@ typedef struct {
     uint8_t  transport;        // enum fp_transport of the source unit
     uint8_t  audio_pts_known;  // 1 if audio_pts_num carries this unit's time on the AUDIO clock
     uint64_t audio_pts_num;    // audio-clock time of this unit's resync (1/240000 s), for audio-as-master consumers
+    unsigned unavailable_rows; // explicit Y16/C128 fill, never captured samples (placed API only)
 } fp_frame;
 
 typedef struct fp_publisher fp_publisher;
@@ -72,12 +73,19 @@ int  fp_open (fp_publisher **out, unsigned pool_size, const fp_sink *sink);
 int  fp_publish(fp_publisher *p, const uint8_t *unit, size_t unit_len,
                 uint64_t counter_ext, int d1, int d2, uint8_t transport,
                 int audio_pts_known, uint64_t audio_pts_num);
+/* v11 placements must not silently change to make the crop fit. Keep the offsets
+ * (int8 range); fill out-of-raster rows with Y16/C128, as geometry_render.py does,
+ * and expose their count. The legacy entry point above retains its clamp policy. */
+int fp_publish_placed(fp_publisher *p, const uint8_t *unit, size_t unit_len,
+                      uint64_t counter_ext, int d1, int d2, uint8_t transport,
+                      int audio_pts_known, uint64_t audio_pts_num);
 void fp_get_stats(const fp_publisher *p, fp_stats *out);
 void fp_close(fp_publisher *p);
 
 // Pure assembly, no IOSurface: writes the 480-line interlaced frame (1440 B/row) into dst.
 // Exposed for tests and for consumers that own their buffers.
 void fp_assemble(uint8_t *dst, const uint8_t *unit, int d1, int d2);
+unsigned fp_assemble_placed(uint8_t *dst, const uint8_t *unit, int d1, int d2);
 
 #ifdef __cplusplus
 }

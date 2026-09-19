@@ -17,21 +17,22 @@ static void emit(const ge_decision *d,double us,double comb_us){
       ge_class_name(d->motion[0]),ge_class_name(d->motion[1]),us,comb_us);
 }
 int main(int argc,char **argv){
-    if(argc!=4){fprintf(stderr,"usage: geometry_probe luma.u8 metadata.txt pair_next\n");return 2;}
+    if(argc!=4 && argc!=5){fprintf(stderr,"usage: geometry_probe luma.u8 metadata.txt pair_next [audit_comb=1]\n");return 2;}
     FILE *raw=fopen(argv[1],"rb"),*meta=fopen(argv[2],"r");
     geometry_engine *g=malloc(ge_size());uint8_t *y=malloc(GE_PIXELS),*prev=malloc(GE_PIXELS);
     if(!raw||!meta||!g||!y||!prev){perror("probe input/allocation");return 2;}
-    int reverse=atoi(argv[3]);ge_init(g,reverse,1);uint64_t pc=0;int have_prev=0;
+    int reverse=atoi(argv[3]),audit=argc==5?atoi(argv[4]):1;ge_init(g,reverse,audit);uint64_t pc=0;int have_prev=0;
     puts("counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,top_unit,has_frame,frame_d1,frame_d2,published_d,held,triggers,comb_ran,comb_d,comb_margin,confidence,f1_first,f2_first,f1_last,f2_last,bl1,bl2,class_f1,class_f2,engine_us,comb_us");
     unsigned long long c;int eligible,reset;ge_decision out[2];
     while(fscanf(meta,"%llu %d %d",&c,&eligible,&reset)==3){
         if(fread(y,1,GE_PIXELS,raw)!=GE_PIXELS){fprintf(stderr,"short raster\n");return 2;}
         if(!eligible){unsigned n=ge_break(g,out);for(unsigned i=0;i<n;i++)emit(out+i,0,0);have_prev=0;continue;}
         double t=cpu();unsigned n=ge_push(g,y,c,reset,out);double us=(cpu()-t)*1e6,cu=0;
+        fprintf(stderr,"UNIT_CPU_US,%llu,%.6f\n",c,us);
         if(!reverse || (have_prev && c==pc+1)){
             t=cpu();ge_comb_result r=ge_comb(y,reverse?prev:y);cu=(cpu()-t)*1e6;
             /* A second call checks determinism, not a substitute oracle. */
-            if(n && out[n-1].has_frame && (r.shift!=out[n-1].comb.shift || r.margin!=out[n-1].comb.margin))abort();
+            if(n && out[n-1].has_frame && !isnan(out[n-1].comb.margin) && (r.shift!=out[n-1].comb.shift || r.margin!=out[n-1].comb.margin))abort();
         }
         for(unsigned i=0;i<n;i++)emit(out+i,us,cu);
         memcpy(prev,y,GE_PIXELS);pc=c;have_prev=1;

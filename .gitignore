@@ -116,3 +116,5 @@ src/frameserver/tests/replay_completion_test
 src/frameserver/tests/worker_bench
 /src/field_registration/tests/geometry_probe
 /src/field_registration/tests/geometry_unit
+/src/frameserver/tests/geometry_replay_asan
+/src/frameserver/tests/geometry_replay_tsan

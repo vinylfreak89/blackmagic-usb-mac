@@ -1630,6 +1630,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   separately bounds total runtime. Release admission gates after the last required boundary.
   Asserted CPU-cost gates use the measured thread's CPU time, not wall time;
   host scheduling delays belong to liveness measurements, not CPU-cost regressions.
+- **v11 engine integration:** `docs/geometry_engine.md` describes the explicit
+  frameserver selection, unit-keyed decisions and reversed-pair boundary handling.
+  Keep a requested crop distinct from unavailable raster rows: silently clamping
+  the whole crop makes the applied-decision log disagree with the published pixels.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

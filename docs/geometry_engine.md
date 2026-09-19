@@ -47,3 +47,46 @@ feature in the external goldens. It prints every mismatch and exits nonzero on
 any difference. Timing uses the calling thread's CPU clock. The audit-mode
 engine cost includes an all-frame comb; production-only timing is separate.
 Neither captured data nor generated results belong in this directory.
+
+## Frameserver integration
+
+Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
+Without this selection the existing v9 path and schema are unchanged. v11 writes
+schema 11, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+field-1 change=4, field-2 change=8, confirmation=16), comb evidence and HIGH/LOW.
+Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
+not change decisions. Frame diagnostic columns refer to the bottom-field unit,
+whereas `applied_d1/d2` always refer to the row's own unit. Ineligible observations
+have empty placement keys, with their original counter in `observed_counter`.
+
+The classifier's DISCONTINUITY and BEGIN_SEGMENT actions are accumulated until
+the next eligible raster. The engine additionally breaks on counter gaps; the
+caller breaks on epoch changes, parser counter-discontinuity flags, ineligible
+rasters and explicit pool/ring loss. Counter flags matter because the parser may
+extend a repeated/backward raw counter by +1; numeric adjacency is insufficient.
+Analysis and log writes run on the processing worker, never the transport callback.
+v11 does not feed its two-valued confidence into v9's phase-settlement heuristic;
+classifier reset actions therefore follow the same independent stream as the oracle.
+
+The frameserver remains a transport-unit publisher, including for reversed pairing.
+It buffers one extra complete unit so each published unit has both of its final
+own-field placements; a consumer weaving reversed material still needs the same
+pairing parameter. EOF/gaps complete the unused boundary fields explicitly.
+The reviewed renderer consumes these unit-keyed rows through `--engine-log`.
+
+v11 publication preserves the requested offset. A crop beyond the delivered raster
+fills only unavailable rows with Y16/C128, matching the renderer, and exposes their
+count as `fp_frame.unavailable_rows`. The legacy publisher's whole-crop clamp remains
+for v9. Clamping a v11 crop would make the pixels disagree with the recorded offset.
+
+For live validation pass `--live-dir SCRATCH` to the golden comparator, with
+`cap1_live.csv` … `cap4_live.csv` produced by the real replay. Use paced replay;
+any downstream loss is a real discontinuity, not an excuse to omit mismatches.
+
+`make -C src/frameserver test-geometry` checks the real path on both synthetic
+fixtures, for both pairings. `test-geometry-asan` and `test-geometry-tsan` exercise
+the same new path with instrumentation. The test reserves the whole fixture's
+possible raster population; a correctness assertion must not race sanitizer
+throughput. Existing frameserver tests separately force pressure and verify loss.
+`scripts/check_geometry_render.py GOLDEN_FRAMES.csv RENDER.mp4` decodes every
+machine strip from the actual review encode and checks its counter and offsets.

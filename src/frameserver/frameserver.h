@@ -4,10 +4,11 @@
 //     --> processing worker: signal_state_classify -> registration actions -> fieldreg_process
 //         -> signal_state_note_registration -> frame_publisher -> decision-log row
 //
-// Policy implemented here is the contract's LOW-LATENCY LIVE policy: every fixed-raster unit is
-// published immediately with the engine's per-unit applied phase (provisional; marked unsettled
-// when the classifier says so), and the sidecar records enough for an archival re-render. The
-// gated trajectory redesign (delayed/corrected policy) plugs in behind the same log schema later.
+// v9 publishes immediately. The explicit v11 path also publishes immediately for
+// aligned fields; reversed pairing delays one unit to finish its own-field offsets.
+// This is a transport-unit publisher, not a temporal field re-pairer. Consumers of
+// reversed-pair material must pair next-unit field 1 over current-unit field 2,
+// as geometry_render.py --pair-next does. Decision rows remain unit-keyed.
 //
 // Threading: the parser runs on capture_core's delivery thread and only copies an eligible unit
 // into a free pool slot and pushes an item onto the SPSC ring; if no slot is free the unit is
@@ -46,6 +47,12 @@ typedef struct {
     void (*on_end)(void *ctx, enum cc_end reason);   // optional; fires once BOTH the video and audio workers have drained
                                                      // (no media callback of either kind follows it); never call fs_stop/fs_close from any callback
     void *end_ctx;
+    /* Explicit v11 selection; zero preserves the v9 path/schema. Reversed pairing
+     * buffers one source unit, not an unbounded lookahead. Published units retain
+     * their own fields; downstream weaving must use the same pairing parameter. */
+    int geometry_v11;
+    int geometry_pair_next;
+    int geometry_audit_comb;    // acceptance only: compute even untriggered combs
 } fs_config;
 
 // Audio: every PCM record the parser emits is published through audio_publisher as bounded
@@ -92,7 +99,9 @@ int  fs_stop (frameserver *f);            // stops capture, drains the worker, c
 // rather than to the session: rows are written only while a log is attached; the first row after
 // fs_log_start is the first unit the worker processed after the call (it anchors the recording on
 // the device clock via counter_extended). Same schema and header as cfg.decision_log. One log at
-// a time: start fails (-1) while one is attached (including cfg.decision_log) — stop it first.
+// a time. For v11 reversed pairing this means the first COMPLETED decision after
+// attachment; its source unit may have arrived one unit earlier.
+// Start fails (-1) while one is attached (including cfg.decision_log) — stop it first.
 // Refused from the worker/audio callbacks and after stop. fs_stop closes an attached log.
 // The path must not exist (opened exclusively: a sidecar is evidence and is never truncated).
 // Control-thread ownership: fs_open/start/stop/close and fs_log_start/stop are serialized

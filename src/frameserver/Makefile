@@ -4,7 +4,7 @@ CFLAGS ?= -O2 -std=c11 -Wall -Wextra
 TESTFLAGS = -DFRAMESERVER_TEST_HOOKS
 CPPFLAGS ?= -I. -I../capture_core -I../unit_parser -I../signal_state -I../field_registration
 LIBS = $(shell pkg-config --libs libusb-1.0) -lpthread -lm -framework IOSurface -framework CoreFoundation
-CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/field_registration.c ../field_registration/cea608.c
+CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/field_registration.c ../field_registration/cea608.c ../field_registration/geometry_engine.c
 SRCS = frame_publisher.c audio_publisher.c frameserver.c $(CORE)
 FIXTURE = ../unit_parser/tests/fixture.tpc
 FIXTURE_LONG = ../unit_parser/tests/fixture_plain.tpc   # 120 exact units, for the runtime-log window test
@@ -12,7 +12,7 @@ FIXTURE_LONG = ../unit_parser/tests/fixture_plain.tpc   # 120 exact units, for t
 $(FIXTURE): ../unit_parser/tests/gen_unit_parser_capture.py
 	python3 $< --output $@
 
-frameserver_replay: $(SRCS) frameserver_replay.c frameserver.h frame_publisher.h ../capture_core/capture_core.h ../tool_deadline.h
+frameserver_replay: $(SRCS) frameserver_replay.c frameserver.h frame_publisher.h ../field_registration/geometry_engine.h ../capture_core/capture_core.h ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o $@ $(LIBS)
 
 tests/audio_publisher_test: audio_publisher.c audio_publisher.h tests/audio_publisher_test.c ../test_supervisor.h
@@ -40,6 +40,19 @@ test-deadlines: frameserver_replay tests/frameserver_test tests/replay_completio
 .PHONY: test-supervisor
 test-supervisor:
 	python3 ../../scripts/test_supervisor_test.py
+
+.PHONY: test-geometry
+test-geometry: frameserver_replay $(FIXTURE) $(FIXTURE_LONG)
+	python3 ../../scripts/test_geometry_pipeline.py ./frameserver_replay
+
+.PHONY: test-geometry-asan test-geometry-tsan
+test-geometry-asan: $(FIXTURE) $(FIXTURE_LONG)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o tests/geometry_replay_asan $(LIBS)
+	python3 ../../scripts/test_geometry_pipeline.py ./tests/geometry_replay_asan
+
+test-geometry-tsan: $(FIXTURE) $(FIXTURE_LONG)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o tests/geometry_replay_tsan $(LIBS)
+	python3 ../../scripts/test_geometry_pipeline.py ./tests/geometry_replay_tsan
 
 tests/replay_completion_test: $(SRCS) tests/replay_completion_test.c frameserver_replay.c ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_completion_test.c -o $@ $(LIBS)

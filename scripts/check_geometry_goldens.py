@@ -42,8 +42,9 @@ def check(cache, gold, scratch, live=None):
                 eligible = int(formats[int(c)]['format'], 16) == 0xe801
                 print(int(c), int(eligible), int(reset.get(int(c), False)), file=f)
         actual = scratch / f'{name}_c.csv'
-        with open(actual, 'w') as f:
-            subprocess.run([str(probe), str(cache / f'{name}_luma.u8'), str(meta), str(int(cap == 3))], stdout=f, check=True)
+        cmd = [str(probe), str(cache / f'{name}_luma.u8'), str(meta), str(int(cap == 3))]
+        with open(actual, 'w') as f, open(scratch / f'{name}_audit_cost.csv', 'w') as timing:
+            subprocess.run(cmd, stdout=f, stderr=timing, check=True)
         observed = rows(actual, 'counter_extended')
         def fail(key, col, got, want):
             failures.append((name, key, col, got, want))
@@ -73,6 +74,17 @@ def check(cache, gold, scratch, live=None):
         for col in ('engine_us', 'comb_us'):
             v = [float(r[col])/1000 for r in observed.values() if float(r[col]) > 0]
             print(name, col, 'CPU ms median/p95', np.percentile(v, [50, 95]).tolist())
+        production = scratch / f'{name}_production.csv'
+        timing_path = scratch / f'{name}_production_cost.csv'
+        with open(production, 'w') as f, open(timing_path, 'w') as timing:
+            subprocess.run(cmd + ['0'], stdout=f, stderr=timing, check=True)
+        pr = rows(production, 'counter_extended')
+        for c, r in observed.items():
+            for col in ('applied_d1','applied_d2','comb_ran','confidence','triggers'):
+                if pr[c][col] != r[col]: fail(c, 'audit vs production '+col, pr[c][col], r[col])
+        times = [float(r[2])/1000 for r in csv.reader(open(timing_path)) if r[0] == 'UNIT_CPU_US']
+        assert len(times) == len(units)
+        print(name, 'production engine CPU ms median/p95', np.percentile(times, [50, 95]).tolist())
         if live:
             # Missing placements on ineligible observations are intentional; renderer
             # treats them as missing, never an invented (0,0) registration decision.
@@ -86,6 +98,11 @@ def check(cache, gold, scratch, live=None):
                     if lr[c][col] != u[col]: fail(c, 'live '+col, lr[c][col], u[col])
             for c, r in frames.items():
                 if c not in lr: continue
+                if r['comb_ran'] == '1':
+                    for col in ('comb_d','comb_decided'):
+                        if lr[c][col] != r[col]: fail(c, 'live '+col, lr[c][col], r[col])
+                    if not math.isclose(float(lr[c]['comb_margin']),float(r['comb_margin']),rel_tol=1e-4):
+                        fail(c,'live comb_margin',lr[c]['comb_margin'],r['comb_margin'])
                 top = int(r['top_unit'])
                 if top not in lr: continue
                 # The renderer takes d1 from top_unit and d2 from bottom_unit.

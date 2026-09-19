@@ -27,6 +27,16 @@ void fp_assemble(uint8_t *dst, const uint8_t *unit, int d1, int d2){
         memcpy(dst + (size_t)(2*k+1) * FP_LINE_BYTES, src + (size_t)(f2 + k) * FP_LINE_BYTES, FP_LINE_BYTES);
     }
 }
+unsigned fp_assemble_placed(uint8_t *dst,const uint8_t *unit,int d1,int d2){
+    unsigned missing=0;
+    for(int k=0;k<FP_FIELD_LINES;k++)for(int f=0;f<2;f++){
+        int row=(f?FP_FIELD2_START+d2:FP_FIELD1_START+d1)+k;
+        uint8_t *out=dst+(2*k+f)*FP_LINE_BYTES;
+        if(row>=0 && row<(int)FP_SOURCE_LINES)memcpy(out,unit+FP_UNIT_HEADER+row*FP_LINE_BYTES,FP_LINE_BYTES);
+        else {for(unsigned x=0;x<FP_LINE_BYTES;x+=2){out[x]=128;out[x+1]=16;}missing++;}
+    }
+    return missing;
+}
 
 static IOSurfaceRef make_surface(void){
     int w = FP_FRAME_WIDTH, h = FP_FRAME_HEIGHT, bpe = 2, bpr = FP_LINE_BYTES;
@@ -61,10 +71,10 @@ int fp_open(fp_publisher **out, unsigned pool_size, const fp_sink *sink){
     *out = p; return 0;
 }
 
-int fp_publish(fp_publisher *p, const uint8_t *unit, size_t unit_len,
+static int publish(fp_publisher *p, const uint8_t *unit, size_t unit_len,
                uint64_t counter_ext, int d1, int d2, uint8_t transport,
-               int audio_pts_known, uint64_t audio_pts_num){
-    if (!p || !unit || unit_len != FP_UNIT_BYTES){ if (p) p->st.rejected_bad_args++; return -1; }
+               int audio_pts_known, uint64_t audio_pts_num,int placed){
+    if (!p || !unit || unit_len != FP_UNIT_BYTES || (placed && (d1<INT8_MIN||d1>INT8_MAX||d2<INT8_MIN||d2>INT8_MAX))){ if (p) p->st.rejected_bad_args++; return -1; }
     IOSurfaceRef s = NULL;
     unsigned in_use = 0;
     for (unsigned i = 0; i < p->n; i++){
@@ -74,14 +84,22 @@ int fp_publish(fp_publisher *p, const uint8_t *unit, size_t unit_len,
     p->st.pool_in_use = in_use;
     if (!s){ p->st.dropped_no_free_surface++; return 1; }
     IOSurfaceLock(s, 0, NULL);
-    fp_assemble((uint8_t *)IOSurfaceGetBaseAddress(s), unit, d1, d2);
+    unsigned missing=0;
+    if(placed)missing=fp_assemble_placed((uint8_t *)IOSurfaceGetBaseAddress(s),unit,d1,d2);
+    else fp_assemble((uint8_t *)IOSurfaceGetBaseAddress(s), unit, d1, d2);
     IOSurfaceUnlock(s, 0, NULL);
     fp_frame f = { s, counter_ext * 1001u, 30000u, counter_ext,
-                   (int8_t)clamp_offset(FP_FIELD1_START, d1), (int8_t)clamp_offset(FP_FIELD2_START, d2), transport,
-                   (uint8_t)(audio_pts_known != 0), audio_pts_num };
+                   (int8_t)(placed?d1:clamp_offset(FP_FIELD1_START,d1)), (int8_t)(placed?d2:clamp_offset(FP_FIELD2_START,d2)), transport,
+                   (uint8_t)(audio_pts_known != 0), audio_pts_num,missing };
     p->st.published++;
     p->sink.on_frame(p->sink.ctx, &f);
     return 0;
+}
+int fp_publish(fp_publisher *p,const uint8_t *u,size_t n,uint64_t c,int d1,int d2,uint8_t tr,int known,uint64_t pts){
+    return publish(p,u,n,c,d1,d2,tr,known,pts,0);
+}
+int fp_publish_placed(fp_publisher *p,const uint8_t *u,size_t n,uint64_t c,int d1,int d2,uint8_t tr,int known,uint64_t pts){
+    return publish(p,u,n,c,d1,d2,tr,known,pts,1);
 }
 
 void fp_get_stats(const fp_publisher *p, fp_stats *o){ *o = p->st; }

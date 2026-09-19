@@ -15,12 +15,13 @@ static uint8_t *make_unit(void){
 }
 static int row_src_line(const uint8_t *frame, int row){ return frame[(size_t)row * FP_LINE_BYTES]; }
 
-typedef struct { int frames; uint64_t last_pts, last_counter; int pts_monotonic; IOSurfaceRef held; int hold; } sink_ctx;
+typedef struct { int frames; uint64_t last_pts, last_counter; int pts_monotonic; IOSurfaceRef held; int hold; int d1,d2;unsigned missing; } sink_ctx;
 static void on_frame(void *ctx, const fp_frame *f){
     sink_ctx *c = ctx; c->frames++;
     if (c->frames > 1 && f->pts_num <= c->last_pts) c->pts_monotonic = 0;
     c->last_pts = f->pts_num;
     c->last_counter = f->counter_ext;
+    c->d1=f->d1;c->d2=f->d2;c->missing=f->unavailable_rows;
     if (c->hold){ IOSurfaceIncrementUseCount(f->surface); c->held = f->surface; }
 }
 
@@ -40,6 +41,11 @@ int main(void){
     CHECK(row_src_line(frame, 1) == 0, "d2 clamped to raster start (line 0)");
     fp_assemble(frame, u, 0, 300);
     CHECK(row_src_line(frame, 1) == ((525 - 240) & 0xFF), "d2 clamped to raster end");
+    // v11 preserves placement beyond the cropable tail, as the review renderer does.
+    CHECK(fp_assemble_placed(frame,u,0,14)==11,"d2=14 has eleven unavailable rows");
+    CHECK(row_src_line(frame,1)==(296&255),"placed d2 must not silently clamp to 3");
+    CHECK(frame[479*FP_LINE_BYTES]==128 && frame[479*FP_LINE_BYTES+1]==16,"unavailable row is neutral fill");
+    CHECK(fp_assemble_placed(frame,u,-20,0)==1 && frame[1]==16,"negative out-of-raster top filled");
 
     // publisher: pool of 2, consumer holds nothing -> everything publishes, PTS monotonic
     sink_ctx c = {0}; c.pts_monotonic = 1;
@@ -77,6 +83,15 @@ int main(void){
     CHECK(fp_publish(p, u, FP_UNIT_BYTES, 2003, 0, 0, FP_TRANSPORT_COMPLETE, 0, 0) == 0, "publish after release");
     // bad args are rejected, not guessed
     CHECK(fp_publish(p, u, FP_UNIT_BYTES - 1, 3000, 0, 0, 0, 0, 0) == -1, "short unit rejected");
+    c.hold=1;
+    CHECK(fp_publish_placed(p,u,FP_UNIT_BYTES,3001,0,14,0,0,0)==0,"placed publish");
+    CHECK(c.d2==14 && c.missing==11,"published placement and unavailable rows not clamped");
+    IOSurfaceLock(c.held,kIOSurfaceLockReadOnly,NULL);
+    const uint8_t *placed=IOSurfaceGetBaseAddress(c.held);
+    CHECK(placed[FP_LINE_BYTES]==(296&255),"placed IOSurface reads the requested source row");
+    CHECK(placed[479*FP_LINE_BYTES]==128 && placed[479*FP_LINE_BYTES+1]==16,"placed IOSurface tail is explicit neutral fill");
+    IOSurfaceUnlock(c.held,kIOSurfaceLockReadOnly,NULL);
+    IOSurfaceDecrementUseCount(c.held);
     fp_close(p); free(u); free(frame);
     printf(fails ? "FAILURES: %d\n" : "frame_publisher tests: PASS\n", fails);
     return fails ? 1 : 0;
