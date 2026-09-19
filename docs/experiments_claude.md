@@ -1112,3 +1112,10 @@ judged frame beyond what a forced comb re-run at a reset can change; changes are
 
 **Not re-run:** the whole-tape figure (99.2%). It has no classifier stream yet; the full-tape engine
 render will produce the real one.
+Result of amendment 5 (goldens regenerated):
+- Resets are applied where the live stream puts them: capture 1 at 6253, 6257, 6259, 6263, 6667 and
+  6882; captures 2-4 at their first unit and the classifier's begin-segment (1914, 13505, 175).
+- Comb runs: 546, 127, 118, 241 (capture 1 up 2, capture 3 up 1).
+- Placement against a decided comb is unchanged: 372 / 373, 549 / 551, 586 / 586, 590 / 590. Frames
+  whose placement differs are still 1, 2, 0, 0.
+- Every unit row is complete; capture 3's two unused boundary fields are marked.
