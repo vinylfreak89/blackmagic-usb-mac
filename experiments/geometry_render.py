@@ -121,6 +121,50 @@ def read_engine(path):
     return out
 
 
+def read_audio_steps(path):
+    """Units where the engine log flags an audio step: {counter_extended: lost samples} from the v11 log's
+    audio_step_samples column (the audio publisher's correlation residual stepping, CLAUDE.md §6). Empty
+    when the log has no such column."""
+    out = {}
+    if not path:
+        return out
+    for r in csv.DictReader(open(path)):
+        if r.get("counter_extended", "") in ("", None) or r.get("audio_step_samples", "") in ("", None, "0"):
+            continue
+        out[int(r["counter_extended"])] = int(r["audio_step_samples"])
+    return out
+
+
+def rebuild_pcm(src, dst, blocks, inserts):
+    """Write the delivered PCM (S24LE stereo, 6 bytes a sample) at each block's sample ordinal, silence
+    where samples were not delivered, plus inserts: {ordinal: n} puts n silent samples immediately before
+    the sample at that ordinal, advancing audio time once by samples the device lost (§6); never resampled.
+    Returns (undelivered stretches, their samples, samples inserted)."""
+    pos = 0; gaps = 0; gap_samples = 0; inserted = 0
+    pending = sorted(inserts.items())
+    for ordinal, nframes in blocks:
+        if ordinal < pos:
+            sys.exit(f"refusing: audio block at sample {ordinal} overlaps the previous one (ends {pos})")
+        if ordinal > pos:
+            dst.write(bytes(6 * (ordinal - pos))); gaps += 1; gap_samples += ordinal - pos
+        data = src.read(6 * nframes)
+        if len(data) != 6 * nframes:
+            sys.exit("refusing: the PCM file is shorter than the dump log's blocks")
+        at = 0
+        while pending and pending[0][0] < ordinal + nframes:
+            k, n = pending.pop(0)
+            if k < ordinal:
+                sys.exit(f"refusing: audio step at sample {k} falls outside the delivered blocks")
+            cut = 6 * (k - ordinal)
+            dst.write(data[at:cut]); dst.write(bytes(6 * n)); inserted += n; at = cut
+        dst.write(data[at:]); pos = ordinal + nframes
+    if src.read(1):
+        sys.exit("refusing: the PCM file is longer than the dump log's blocks")
+    if pending:
+        sys.exit(f"refusing: audio steps beyond the last delivered block: {pending[:3]}")
+    return gaps, gap_samples, inserted
+
+
 def weave(f1_raster, f2_raster, d1, d2, fill=0.0):
     """Each field reads only its own storage rows: field 1 rows 0-261, field 2 rows 262-524 (row 262 is
     field 2's line 266). A placement that runs a field past its own rows gets fill there, never the other
@@ -322,6 +366,7 @@ def main():
     if a.parity is None:
         a.parity = "tff"
     offsets, engine = read_offsets(a.offsets), read_engine(a.engine_log)
+    audio_steps = read_audio_steps(a.engine_log)
     print(f"offsets for {len(offsets)} units; engine decisions for {len(engine)} units"
           f"{' (no sidecar)' if not a.engine_log else ''}", flush=True)
     font = ImageFont.truetype(a.font, 12); small = ImageFont.truetype(a.font, 11)
@@ -440,22 +485,25 @@ def main():
                                            dir=os.path.dirname(os.path.abspath(a.out)))
         # this run created the file exclusively, so it owns it: removed on every exit path, refusals included
         atexit.register(lambda path=aligned_tmp: os.path.exists(path) and os.remove(path))
-        pos = 0; gaps = 0; gap_samples = 0
+        # audio steps (§6): at each unit the engine log flags, the lost samples go in as silence at that
+        # unit's audio resync (its audio-clock time from the dump log), so later audio keeps its picture
+        inserts = {}
+        for c, n in sorted(audio_steps.items()):
+            if n <= 0:
+                sys.exit(f"refusing: audio step of {n} samples at unit {c}; only lost samples are advanced")
+            if c not in vpts or a_origin is None:
+                sys.exit(f"refusing: audio step at unit {c} without an audio-clock time in the dump log")
+            k, rem = divmod(vpts[c] - a_origin, 5)
+            if rem:
+                sys.exit(f"refusing: unit {c}'s audio time is not on a sample boundary")
+            inserts[k] = inserts.get(k, 0) + n
         with open(a.pcm, "rb") as src, os.fdopen(fd, "wb") as dst:
-            for ordinal, nframes in blocks:
-                if ordinal < pos:
-                    sys.exit(f"refusing: audio block at sample {ordinal} overlaps the previous one (ends {pos})")
-                if ordinal > pos:
-                    dst.write(bytes(6 * (ordinal - pos))); gaps += 1; gap_samples += ordinal - pos
-                data = src.read(6 * nframes)
-                if len(data) != 6 * nframes:
-                    sys.exit("refusing: the PCM file is shorter than the dump log's blocks")
-                dst.write(data); pos = ordinal + nframes
-            if src.read(1):
-                sys.exit("refusing: the PCM file is longer than the dump log's blocks")
+            gaps, gap_samples, inserted = rebuild_pcm(src, dst, blocks, inserts)
         pcm_path = aligned_tmp
         print(f"audio: {len(blocks)} blocks placed by sample ordinal; {gaps} undelivered stretches "
-              f"({gap_samples} samples) filled with silence", flush=True)
+              f"({gap_samples} samples) filled with silence; audio steps {len(inserts)}, "
+              f"{inserted} lost samples advanced as silence"
+              + "".join(f"; unit {c} +{n}" for c, n in sorted(audio_steps.items())), flush=True)
 
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", "30000/1001", "-i", "-"]
@@ -585,7 +633,9 @@ def main():
                         dr.line([(PX - off - LANE + 2, fr), (PX - off, fr)], fill=col, width=2)
                         dr.line([(PX + DW + off, fr), (PX + DW + off + LANE - 2, fr)], fill=col, width=2)
         dr.rectangle([0, FH, W, H], fill=(8, 8, 8))
-        fit(dr, (6, FH + 6), f"ctr {ext:>6}   applied ({d1:+d},{d2:+d}) from {src}", font, (230, 230, 230))
+        fit(dr, (6, FH + 6), f"ctr {ext:>6}   applied ({d1:+d},{d2:+d}) from {src}"
+                               + (f"   AUDIO STEP +{audio_steps[ext]} lost samples (device)" if ext in audio_steps else ""),
+            font, (230, 230, 230))
         fit(dr, (6, FH + 24), f"engine  d1 {eng[0] if eng else '--':>3}  d2 {eng[1] if eng else '--':>3}"
                                f"{'   (no sidecar)' if not a.engine_log else ''}", small, (150, 150, 150))
         fit(dr, (6, FH + 40), f"manual  d1 {o['d1'] if o else '--':>3}  d2 {o['d2'] if o else '--':>3}"
