@@ -561,3 +561,18 @@ A blind reimplementation from this entry's text reproduced every number below.
   equal-height frame, and the census edges in the contradicting frames.
 - Per-unit edges: session scratch `geometry_exp1/exp8_w{1..4}.csv`; analysis `exp8_analysis.py` /
   `.out`, `exp8_diag.py`; panel `e7/e8_field2_bottom_flip.png`.
+
+### Review by Codex of entry 8's report (2026-09-19) — three findings, all accepted
+
+Codex reproduced 43,737 / 76,886 with the committed rules. It found the attribution of the regression to
+rule 2's count supported as a net attribution: at unit 13594, line 523 is still partly visible but its
+5-95 spread falls to 3.05, under the census's 4, while the content does not move. Corrections:
+1. **The diagnostic counts.** Using its own 1.1 ambiguity criterion, field 2's 26 events in capture 3's
+   range are 10 with no content move, 9 moving up one and 7 unclear, not 12 with no move. Field 1's
+   rises move up one in 22 of 25 and its falls move down one in 20 of 23, not 22 of 27 and 20 of 24.
+2. **One more valid unit.** The new pass read 85,970 valid units: unit 90806 is an exact 0xe801
+   unit that entry 5 did not reach, so it has no comb verdict and is unjudged. The comparison
+   population stays 85,969.
+3. **The held-out set.** Reversed frame 13500 uses field 1 of unit 13501, inside capture 3. Without it,
+   the held-out set is 75,747 frames: entry 5 60,937, new 43,038 (80.4% and 56.8%, unchanged).
+Codex's evidence: its scratch `/private/tmp/codex-e8-review-P71eRj/REVIEW.md`.
