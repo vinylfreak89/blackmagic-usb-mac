@@ -150,16 +150,16 @@ class _From:
             self.dst.write(b)
 
 
-def rebuild_pcm(src, dst, blocks, inserts, start=0):
-    """Write the delivered PCM (S24LE stereo, 6 bytes a sample) with each block at its sample position,
-    silence where samples were not delivered, plus inserts: {position: n} puts n silent samples immediately
-    before the sample at that position, advancing audio time once by samples the device lost (§6); never
-    resampled. Output begins at rebuilt sample `start` (negative: that many silent samples first).
-    Returns (undelivered stretches, their samples, samples inserted)."""
+def rebuild_pcm(src, dst, blocks, start=0):
+    """Write the delivered PCM (S24LE stereo, 6 bytes a sample) as place_audio laid it out: each block
+    [(output position, samples, [(offset in block, silent samples)])] at its position, silence where samples
+    were not delivered, and each step's silence immediately before the sample at its offset -- audio time
+    advanced once by samples the device lost (§6), never resampled. Output begins at position `start`
+    (negative: that many silent samples first). Returns (undelivered stretches, their samples, samples
+    inserted inside blocks)."""
     out = _From(dst, start)
     pos = 0; gaps = 0; gap_samples = 0; inserted = 0
-    pending = sorted(inserts.items())
-    for at_pos, nframes in blocks:
+    for at_pos, nframes, inner in blocks:
         if at_pos < pos:
             sys.exit(f"refusing: audio block at sample {at_pos} overlaps the previous one (ends {pos})")
         if at_pos > pos:
@@ -168,18 +168,142 @@ def rebuild_pcm(src, dst, blocks, inserts, start=0):
         if len(data) != 6 * nframes:
             sys.exit("refusing: the PCM file is shorter than the dump log's blocks")
         at = 0
-        while pending and pending[0][0] < at_pos + nframes:
-            k, n = pending.pop(0)
-            if k < at_pos:
-                sys.exit(f"refusing: audio step at sample {k} falls outside the delivered blocks")
-            cut = 6 * (k - at_pos)
-            out.write(data[at:cut]); out.write(bytes(6 * n)); inserted += n; at = cut
-        out.write(data[at:]); pos = at_pos + nframes
+        for off, n in inner:
+            out.write(data[at:6 * off]); out.write(bytes(6 * n)); inserted += n; at = 6 * off
+        out.write(data[at:]); pos = at_pos + nframes + sum(n for _, n in inner)
     if src.read(1):
         sys.exit("refusing: the PCM file is longer than the dump log's blocks")
-    if pending:
-        sys.exit(f"refusing: audio steps beyond the last delivered block: {pending[:3]}")
     return gaps, gap_samples, inserted
+
+
+def place_audio(ablocks, vpts0, steps):
+    """Where every delivered audio sample plays (CLAUDE.md §6). ablocks: the dump log's A rows in file order,
+    (sample ordinal, pts, samples, flags); vpts0: {unit: audio-clock pts of its resync}; steps: {unit: samples
+    the device lost there}. Returns (a_origin, blocks for rebuild_pcm, {unit: output position of its resync},
+    {unit: silence before its resync}, notes); positions precede any start trim.
+
+    The frameserver places each audio run on the video timebase at the run's first resync, so an anchored
+    sample's position is its pts on the 48 kHz grid, counted from sample 0 of the first anchored run (a run
+    boundary rounds to the nearest sample). A run is identified by its placement, pts - 5 * ordinal: exactly
+    what its correlation residual is measured against. A step therefore delays the rest of ITS run only, and
+    a fresh anchor places its run by its own pts. A downstream queue drop keeps the placement, so it keeps the
+    run: its gap stays silence.
+
+    Blocks before their run's first resync (UNANCHORED, ordinal-only pts) are placed back from that resync by
+    ordinal distance. The one thing the dump log cannot say is where such a run began: the frameserver flags
+    DISCONTINUITY_BEFORE both for a run break (hole, unframed, epoch) and for a downstream drop. With the
+    ordinal contiguous (or reset) the flag can only be a run break; with the ordinal jumped it is a drop that
+    may coincide with a break, so an unanchored stretch across one is refused rather than guessed. A run that
+    never anchors has no physical time: its first block follows the previous block, the rest keep their
+    ordinal spacing, and they are reported."""
+    notes = []
+    a_origin = next((pts - 5 * o for o, pts, n, fl in ablocks if not fl & AP_UNANCHORED), None)
+    if a_origin is None:
+        if steps:
+            sys.exit("refusing: audio steps, but no anchored audio block in the dump log")
+        if ablocks:
+            notes.append("no anchored audio block: placed by sample ordinal, no audio-clock times")
+        return None, [(o, n, []) for o, pts, n, fl in ablocks], {}, {}, notes
+
+    def pos_of(pts):
+        return (2 * (pts - a_origin) + 5) // 10          # nearest sample, halves up, in exact integers
+
+    anch = sorted((pts, i) for i, (o, pts, n, fl) in enumerate(ablocks) if not fl & AP_UNANCHORED)
+    akeys = [x[0] for x in anch]
+
+    def run_at(pts):                                     # the run of the anchored block at or before pts
+        j = bisect.bisect_right(akeys, pts) - 1
+        if j < 0:
+            return None
+        o, bp, n, fl = ablocks[anch[j][1]]
+        return bp - 5 * o
+
+    where = {c: (pos_of(t), run_at(t)) for c, t in vpts0.items()}
+    ins = {}                                             # run -> [(position, silent samples)]
+    for c, n in sorted(steps.items()):
+        if n <= 0:
+            sys.exit(f"refusing: audio step of {n} samples at unit {c}; only lost samples are advanced")
+        if c not in where or where[c][1] is None:
+            sys.exit(f"refusing: audio step at unit {c} has no audio resync time in the dump log")
+        k, r = where[c]; ins.setdefault(r, []).append((k, n))
+    cum = {}
+    for r, lst in ins.items():
+        lst.sort(); cs = [0]
+        for k, n in lst:
+            cs.append(cs[-1] + n)
+        cum[r] = ([k for k, n in lst], cs)
+
+    def shift(r, k, inclusive):                          # silence run r carries before (or at) position k
+        if r not in cum:
+            return 0
+        ks, cs = cum[r]
+        return cs[(bisect.bisect_right if inclusive else bisect.bisect_left)(ks, k)]
+
+    resync_out, resync_shift, homeless = {}, {}, 0
+    for c, (k, r) in where.items():
+        if r is None:
+            homeless += 1; continue
+        resync_shift[c] = shift(r, k, True); resync_out[c] = k + resync_shift[c]
+    if homeless:
+        notes.append(f"{homeless} units' resync times precede every anchored block; no audio position")
+
+    out = [None] * len(ablocks)
+
+    def end(i):
+        return out[i][0] + ablocks[i][2] + sum(n for _, n in out[i][1])
+
+    def boundary(i):                                     # 'break', 'maybe' (drop, break not excluded) or None
+        if i == 0:
+            return "break"
+        o, pts, n, fl = ablocks[i]; po, pp, pn, pfl = ablocks[i - 1]
+        if not fl & AP_DISCONTINUITY_BEFORE:
+            return None
+        return "maybe" if o > po + pn else "break"
+
+    def place_anchored(i, p, r):
+        n = ablocks[i][2]
+        inner = [(k - p, m) for k, m in ins.get(r, []) if p <= k < p + n]
+        out[i] = (p + shift(r, p, False), inner)
+
+    never = 0; pending = []; pending_maybe = None
+    for i, (o, pts, n, fl) in enumerate(ablocks):
+        b = boundary(i)
+        if pending and b == "break":                     # the pending run ended without a resync
+            for idx, j in enumerate(pending):
+                if j == 0:
+                    out[j] = (ablocks[0][0], [])
+                elif idx == 0:
+                    out[j] = (end(j - 1), [])
+                else:
+                    pj = pending[idx - 1]
+                    out[j] = (out[pj][0] + ablocks[j][0] - ablocks[pj][0], [])
+            never += len(pending); pending = []; pending_maybe = None
+        elif pending and b == "maybe" and pending_maybe is None:
+            pending_maybe = i
+        if fl & AP_UNANCHORED:
+            pending.append(i); continue
+        r = pts - 5 * o; p = pos_of(pts)
+        if pending:
+            if pending_maybe is not None:
+                sys.exit(f"refusing: unanchored audio blocks from sample ordinal {ablocks[pending[0]][0]} meet a "
+                         f"downstream drop before ordinal {ablocks[pending_maybe][0]}; the dump log cannot say "
+                         "whether an audio run also broke there, so their time is unknown")
+            for j in pending:
+                pj = p - (o - ablocks[j][0])
+                out[j] = (pj + shift(r, pj, False), [])
+            pending = []; pending_maybe = None
+        place_anchored(i, p, r)
+    if pending:
+        for idx, j in enumerate(pending):
+            out[j] = ((ablocks[0][0] if j == 0 else end(j - 1)) if idx == 0 else
+                      out[pending[idx - 1]][0] + ablocks[j][0] - ablocks[pending[idx - 1]][0], [])
+        never += len(pending)
+    if never:
+        notes.append(f"{never} blocks in runs with no resync have no physical time; each run follows the previous block")
+    in_gap = sum(n for r, lst in ins.items() for k, n in lst) - sum(n for o_ in out for _, n in o_[1])
+    if in_gap:
+        notes.append(f"{in_gap} lost samples fall where no block was delivered; they lengthen that silence")
+    return a_origin, [(o_[0], ablocks[i][2], o_[1]) for i, o_ in enumerate(out)], resync_out, resync_shift, notes
 
 
 def weave(f1_raster, f2_raster, d1, d2, fill=0.0):
@@ -420,87 +544,21 @@ def main():
         else:
             frames.append((o[0], None, k))
 
-    # audio-clock times of frames, from the replay's dump log
-    vpts = {}; a_origin = None
+    # audio blocks and audio-clock times of frames, from the replay's dump log
+    vpts = {}; ablocks = []                              # ablocks: (sample ordinal, pts, samples, flags), file order
     if a.av_log:
         for r in csv.reader(open(a.av_log)):
             if not r or r[0] == "kind": continue
             if r[0] == "V" and r[7] == "1": vpts[int(r[1])] = int(r[8])
-            if r[0] == "A" and a_origin is None and not (int(r[5]) & 4):          # first ANCHORED block
-                a_origin = int(r[2]) - int(r[1]) * 5                                # pts of PCM sample 0 (1/240000 s)
-
-    # Audio placement (§6). The frameserver places each audio run on the video timebase at the run's first
-    # resync (pts, 1/240000 s); a run's samples are contiguous. The rebuilt PCM puts every sample at its
-    # POSITION: its pts on the 48 kHz grid, counted from sample 0 of the first anchored run. A re-anchored
-    # run therefore plays where the frameserver placed it (a run boundary rounds to the nearest sample,
-    # at most half a sample), and a unit's resync is located from its own pts, whichever run it is in.
-    # Blocks before their run's first resync (UNANCHORED: ordinal-only pts) take their position from the
-    # run's first anchored block; a run that never anchors has no physical time and follows the previous
-    # block, counted and reported. With one run from the start, position == sample ordinal.
-    def pos_of(pts):
-        return (2 * (pts - a_origin) + 5) // 10          # nearest sample, halves up, in exact integers
-
-    ablocks = []                                         # (sample ordinal, pts, samples, flags), file order
-    if a.av_log:
-        for r in csv.reader(open(a.av_log)):
-            if r and r[0] == "A":
-                ablocks.append((int(r[1]), int(r[2]), int(r[4]), int(r[5])))
-    bpos = [None] * len(ablocks); pending = []; unplaced = 0
-
-    def follow(j):
-        """No physical time: a run's first block goes straight after the previous block; later blocks
-        keep their run's ordinal spacing (a block dropped downstream still leaves its gap)."""
-        if j == 0:
-            bpos[j] = ablocks[j][0]
-        elif ablocks[j][3] & AP_DISCONTINUITY_BEFORE:
-            bpos[j] = bpos[j - 1] + ablocks[j - 1][2]
-        else:
-            bpos[j] = bpos[j - 1] + ablocks[j][0] - ablocks[j - 1][0]
-
-    for i, (ordinal, pts, nfr, flags) in enumerate(ablocks):
-        if flags & AP_DISCONTINUITY_BEFORE and pending:  # the previous run ended without a resync
-            for j in pending: follow(j)
-            unplaced += len(pending); pending = []
-        if a_origin is None:                             # no anchored audio at all: ordinal placement
-            bpos[i] = ordinal; continue
-        if flags & AP_UNANCHORED:
-            pending.append(i); continue
-        bpos[i] = pos_of(pts)
-        for j in pending: bpos[j] = bpos[i] - (ordinal - ablocks[j][0])
-        pending = []
-    for j in pending: follow(j)
-    unplaced += len(pending)
-    if unplaced:
-        print(f"audio: {unplaced} blocks in runs with no resync have no physical time; each follows the previous block",
-              flush=True)
-
-    vpts0 = dict(vpts)                    # the dump log's own audio-clock times; vpts is corrected below
-
-    def resync_pos(c):
-        """Rebuilt-PCM position (before inserts) of unit c's audio resync, or None."""
-        return pos_of(vpts0[c]) if c in vpts0 and a_origin is not None else None
-
-    inserts = {}
-    if audio_steps and a.pcm and a.av_log:
-        for c, n in sorted(audio_steps.items()):
-            if n <= 0:
-                sys.exit(f"refusing: audio step of {n} samples at unit {c}; only lost samples are advanced")
-            k = resync_pos(c)
-            if k is None:
-                sys.exit(f"refusing: audio step at unit {c} has no audio resync time in the dump log")
-            inserts[k] = inserts.get(k, 0) + n
-    ins_keys = sorted(inserts); ins_cum = [0]
-    for k in ins_keys:
-        ins_cum.append(ins_cum[-1] + inserts[k])
-
-    def inserted_through(k):
-        """Silent samples the rebuilt PCM carries at or before position k."""
-        return ins_cum[bisect.bisect_right(ins_keys, k)]
-
-    # audio-clock times as the rebuilt PCM will play them: each unit's resync moved by the silence
-    # inserted at or before it (with no steps, identical to the dump log's times)
+            if r[0] == "A": ablocks.append((int(r[1]), int(r[2]), int(r[4]), int(r[5])))
+    a_origin, pblocks, resync_out, resync_shift, anotes = place_audio(
+        ablocks, vpts, audio_steps if (a.pcm and a.av_log) else {})
+    for note in anotes:
+        print(f"audio: {note}", flush=True)
+    # audio-clock times as the rebuilt PCM will play them: each unit's resync moved by the silence its own
+    # run carries at or before it (with no steps, identical to the dump log's times)
     for c in vpts:
-        vpts[c] = vpts0[c] + 5 * inserted_through(resync_pos(c))
+        vpts[c] += 5 * resync_shift.get(c, 0)
 
     # timeline: fills between consecutive frames -- from the audio clock where both times are known
     # (8008 ticks per unit), otherwise one per observation between them that is not rendered
@@ -556,9 +614,9 @@ def main():
     trim = None                           # rebuilt-PCM sample heard at output time 0 (negative: silence first)
     if a.av_log and a.pcm:
         first = next((it[1] for it in items if it[0] == "frame" and it[1] in vpts), None)
-        if a_origin is not None and first is not None:
+        if a_origin is not None and first is not None and first in resync_out:
             k0 = next(k for k, it in enumerate(items) if it[0] == "frame" and it[1] == first)
-            s_first = resync_pos(first) + inserted_through(resync_pos(first))     # its resync, rebuilt PCM
+            s_first = resync_out[first]                                          # its resync, rebuilt PCM
             trim = (2 * (5 * s_first - 8008 * k0) + 5) // 10                      # minus k0 frames, nearest sample
             print(f"audio anchor: frame {first} (output index {k0}) at rebuilt PCM sample {s_first}; output audio "
                   f"starts at rebuilt sample {trim}; PCM offset {trim / 48000:+.6f} s", flush=True)
@@ -570,7 +628,7 @@ def main():
         # The dumped PCM is the delivered blocks back to back; a block the frameserver dropped leaves no
         # bytes. Rebuild it with each block at its position, silence where samples were not delivered,
         # starting at output frame 0's audio.
-        blocks = [(bpos[i], b[2]) for i, b in enumerate(ablocks)]
+        blocks = pblocks
         if not os.path.exists(a.pcm):
             sys.exit(f"refusing: PCM file {a.pcm} does not exist")
         fd, aligned_tmp = tempfile.mkstemp(prefix=os.path.basename(a.out) + ".", suffix=".aligned.pcm",
@@ -578,11 +636,11 @@ def main():
         # this run created the file exclusively, so it owns it: removed on every exit path, refusals included
         atexit.register(lambda path=aligned_tmp: os.path.exists(path) and os.remove(path))
         with open(a.pcm, "rb") as src, os.fdopen(fd, "wb") as dst:
-            gaps, gap_samples, inserted = rebuild_pcm(src, dst, blocks, inserts, trim or 0)
+            gaps, gap_samples, inserted = rebuild_pcm(src, dst, blocks, trim or 0)
         pcm_path = aligned_tmp
         print(f"audio: {len(blocks)} blocks placed by audio-clock position; {gaps} undelivered stretches "
-              f"({gap_samples} samples) filled with silence; audio steps {len(inserts)}, "
-              f"{inserted} lost samples advanced as silence"
+              f"({gap_samples} samples) filled with silence; audio steps {len(audio_steps)}, "
+              f"{inserted} lost samples advanced as silence inside delivered blocks"
               + "".join(f"; unit {c} +{n}" for c, n in sorted(audio_steps.items())), flush=True)
 
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
@@ -674,7 +732,8 @@ def main():
         dr.rectangle([0, FH, W, H], fill=(8, 8, 8))
         label = ("TIMING SLOT" if why.startswith("timing") else
                  "NO PAIR PARTNER" if why == "no partner" else "ABSENT UNIT")
-        fit(dr, (6, FH + 6), f"ctr {ext if ext is not None else '--':>6}   {label} - fill frame, no placement",
+        fit(dr, (6, FH + 6), f"ctr {ext if ext is not None else '--':>6}   {label} - fill frame, no placement"
+                               + (f"   AUDIO STEP +{audio_steps[ext]} lost samples (device)" if ext in audio_steps else ""),
             font, (230, 230, 230))
         graph_and_strip(dr, i, ext if ext is not None else NO_SOURCE_UNIT, 0, 0)
         enc.stdin.write(img.tobytes()); state["written"] += 1; state["item"] += 1
