@@ -995,3 +995,29 @@ too, since rule 3 also fires there.
   idea with a re-check whenever the geometry changes. Keeping rule 3 costs fewer comb runs; dropping it
   gains 0.4-1.3 points on the EP recording for comb runs on most of its frames.
 - Scratch: `geometry_exp1/exp12_analysis.py` / `.out`.
+
+### Amendment 3 to entry 11 (2026-09-19, before testing): a held correction must be confirmed
+
+**What prompted it.** I built the engine's golden reference by running entry 11's rule set (reading B)
+over captures 1-4 with the automatic census, since the engine cannot use hand labels.
+- Capture 4 then loses 55 frames to stale holds: 535 / 590, where reading A gets 590 / 590.
+- Example, capture 4 frames 479-513:
+  - At 479 the census misreads field 1's top as line 24, a one-frame slip with the bottom unchanged.
+    The top-only class fires, the comb says 0, and B stores +1 to cancel the slip.
+  - At 480 the census recovers, and the re-run abstains at 1.26, so the +1 stays.
+  - From 481 nothing fires, and the stale +1 is applied while the comb says 0.
+- The whole tape's 28 losses have the same shape: untriggered frames after a held correction.
+- Captures 1-3 with the automatic census: B 372 / 373, 549 / 551, 586 / 586; A 371, 549, 585.
+
+**The change (reading B only).** After a re-run changes the held correction, the correction is
+provisional. The comb re-runs on each following frame until one decides, and the correction becomes the
+decided d minus the census d on that frame.
+- **Physical reason.** A correction set on one frame is one observation. It may be a lasting offset or a
+  one-frame slip of the census or the picture, and only a later decided comb tells which.
+- **What it should improve.** B's stale holds: capture 4's 55 and the whole tape's 28.
+- **What it must not break.** B's catches: 14,156 on the whole tape. Its whole-tape figure must stay at
+  or above 95%, and no capture may get worse.
+- **Tested on:**
+  - the whole tape, entry 11's inputs;
+  - captures 1-4 with both entry 3's inputs and the automatic census (the golden reference);
+  - the render inputs.
