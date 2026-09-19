@@ -145,7 +145,7 @@ static void audio_sink(void *c, const ap_block *b){ (void)c; atomic_fetch_add(&a
     test_live_note(&live);
     if(atomic_exchange(&audio_life_try,0)){ audio_life_rc=fs_stop(g_cb_target); fs_close(g_cb_target); }
     if (done) atomic_store(&audio_after_end, 1);
-    if (audio_have_next && !(b->flags & AP_FLAG_DISCONTINUITY_BEFORE) && b->sample_ordinal != audio_next_ordinal) atomic_store(&ordinal_break, 1);
+    if (audio_have_next && !(b->flags & (AP_FLAG_DISCONTINUITY_BEFORE|AP_FLAG_DROPPED_BEFORE)) && b->sample_ordinal != audio_next_ordinal) atomic_store(&ordinal_break, 1);
     audio_next_ordinal = b->sample_ordinal + b->n_frames; audio_have_next = 1;
     if (!(b->flags & AP_FLAG_UNANCHORED) && b->last_resync_counter_ext && atomic_load(&corr_n) < CORR_MAX){ int n = atomic_load(&corr_n); corr_ctr[n] = b->last_resync_counter_ext; corr_pts[n] = b->pts_num; atomic_store(&corr_n, n + 1); }
     hold_until_drop(audio_hold_mask,"audio queue hold");

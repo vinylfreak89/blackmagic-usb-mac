@@ -21,7 +21,7 @@ BUNDLE = $(BUILD_DIR)/$(PLUGIN).plugin
 INSTALL_DIR = $(HOME)/Library/Application Support/obs-studio/plugins
 
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c \
-       ../field_registration/field_registration.c ../field_registration/geometry_engine.c ../frameserver/frame_publisher.c \
+       ../field_registration/field_registration.c ../field_registration/cea608.c ../field_registration/geometry_engine.c ../frameserver/frame_publisher.c \
        ../frameserver/audio_publisher.c ../frameserver/frameserver.c ../frameserver/pairing_schedule.c
 CPPFLAGS = -I. -I"$(OBS_HEADERS)" -I"$(OBS_HEADERS)/../frontend" -I"$(SIMDE_DIR)" -I.. -I../capture_core -I../frameserver $(shell pkg-config --cflags libusb-1.0)
 CFLAGS ?= -O2 -std=c11 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden
@@ -33,7 +33,7 @@ LDFLAGS = -bundle -F"$(OBS_APP)/Contents/Frameworks" -framework libobs "$(OBS_AP
 
 all: $(BUNDLE)
 
-$(BUNDLE): shuttle_source.c publish_copy.c publish_copy.h publish_queue.c publish_queue.h obsconfig.h Info.plist $(CORE) ../frameserver/pairing_schedule.h
+$(BUNDLE): shuttle_source.c audio_timing.h publish_copy.c publish_copy.h publish_queue.c publish_queue.h obsconfig.h Info.plist $(CORE) ../frameserver/pairing_schedule.h ../frameserver/audio_publisher.h
 	mkdir -p "$(BUILD_DIR)"; rm -rf $(BUNDLE); mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/locale
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) shuttle_source.c publish_copy.c publish_queue.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
 	cp Info.plist $(BUNDLE)/Contents/Info.plist
@@ -43,10 +43,15 @@ $(BUNDLE): shuttle_source.c publish_copy.c publish_copy.h publish_queue.c publis
 	codesign --force --sign - $(BUNDLE)
 	@echo "built $(BUNDLE)"; otool -L $(BUNDLE)/Contents/MacOS/$(PLUGIN) | grep -E 'libobs|libusb' || true
 
-test: publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
+test: test-audio publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_copy.c tests_publish_copy.c -o tests_publish_copy && ./tests_publish_copy
 	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue -lpthread && ./tests_publish_queue
 	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue_tsan -lpthread && ./tests_publish_queue_tsan
+
+.PHONY: test-audio
+test-audio:
+	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra tests_audio_timing.c -o tests_audio_timing
+	./tests_audio_timing
 
 install: $(BUNDLE)
 	mkdir -p "$(INSTALL_DIR)"
@@ -58,4 +63,4 @@ uninstall:
 	rm -rf "$(INSTALL_DIR)/$(BUNDLE)"
 
 clean:
-	rm -rf $(BUNDLE) tests_publish_copy tests_publish_queue tests_publish_queue_tsan $(PLUGIN).plugin
+	rm -rf $(BUNDLE) tests_publish_copy tests_publish_queue tests_publish_queue_tsan tests_audio_timing $(PLUGIN).plugin

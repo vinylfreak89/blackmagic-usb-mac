@@ -63,7 +63,7 @@ typedef struct {
 // on the capture delivery thread; its blocks are COPIED into a bounded preallocated queue and
 // handed to the user's audio sink by a dedicated audio worker (never the video worker, never
 // the delivery thread), so a slow or blocking consumer can only cause an explicit downstream
-// drop (audio_dropped_blocks, and AP_FLAG_DISCONTINUITY_BEFORE on the next delivered block) —
+// drop (audio_dropped_blocks, and AP_FLAG_DROPPED_BEFORE on the next delivered block) —
 // never upstream HostLoss (§8 properties 7 and 10). Video frames carry the audio-clock time of
 // their unit (fp_frame.audio_pts_*) when the unit's resync has been seen, for audio-as-master
 // consumers.

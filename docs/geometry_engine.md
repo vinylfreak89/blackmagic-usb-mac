@@ -93,6 +93,10 @@ not an instruction to insert startup silence. A run crossing unavailable units
 can locate a step only at the next known unit, not within the unobserved span.
 
 These are metadata only: neither PCM, publisher timestamps nor geometry changes.
+The audio sink distinguishes `AP_FLAG_DROPPED_BEFORE` (downstream queue loss)
+from `AP_FLAG_DISCONTINUITY_BEFORE` (publisher run break). Both may be set if a
+run break occurred in dropped blocks. The next delivered block preserves that
+break; queue loss alone does not reset an adapter's residual correction.
 An A/V review adapter may insert explicitly flagged silence for device deficits,
 as §6 specifies, without resampling or modifying the archival PCM. Negative steps
 are reported too; their downstream handling is not decided by this logger.

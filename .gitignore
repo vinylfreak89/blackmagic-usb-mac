@@ -118,3 +118,5 @@ src/frameserver/tests/worker_bench
 /src/field_registration/tests/geometry_unit
 /src/frameserver/tests/geometry_replay_asan
 /src/frameserver/tests/geometry_replay_tsan
+/src/obs_plugin/tests_audio_timing
+/src/frameserver/tests/audio_queue_flags_test

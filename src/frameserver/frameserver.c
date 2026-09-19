@@ -61,6 +61,7 @@ struct frameserver {
     pthread_mutex_t aq_m; pthread_cond_t aq_c; int aq_m_init, aq_c_init;
     pthread_t audio_worker; int audio_worker_created; _Atomic int audio_done, audio_worker_done;
     uint64_t aq_drops_pending;           // producer-owned: flagged on the next enqueued block
+    uint32_t aq_drop_flags;              // preserve a real run break even if its first block was dropped
     ap_sink user_audio_sink;
     _Atomic uint64_t aq_dropped_blocks, aq_dropped_frames;
     uint64_t aq_delivered_blocks, aq_delivered_frames;   // audio worker owned
@@ -193,13 +194,17 @@ static void aq_enqueue(void *ctx, const ap_block *b){
     if (h - t >= f->aq_slots || b->n_frames > f->aq_cap_frames){
         atomic_fetch_add(&f->aq_dropped_blocks, 1); atomic_fetch_add(&f->aq_dropped_frames, b->n_frames);
         fs_test_audio_drop();
+        f->aq_drop_flags |= b->flags & AP_FLAG_DISCONTINUITY_BEFORE;
         f->aq_drops_pending++; return;      // consumer too slow: shed HERE, never upstream
     }
     unsigned i = h % f->aq_slots;
     uint8_t *dst = f->aq_pcm + (size_t)i * f->aq_cap_frames * AP_BYTES_PER_FRAME;
     memcpy(dst, b->s24le, (size_t)b->n_frames * AP_BYTES_PER_FRAME);
     f->aq[i] = *b; f->aq[i].s24le = dst;
-    if (f->aq_drops_pending){ f->aq[i].flags |= AP_FLAG_DISCONTINUITY_BEFORE; f->aq_drops_pending = 0; }
+    if (f->aq_drops_pending){
+        f->aq[i].flags |= AP_FLAG_DROPPED_BEFORE | f->aq_drop_flags;
+        f->aq_drops_pending = 0; f->aq_drop_flags = 0;
+    }
     atomic_store_explicit(&f->aq_head, h + 1, memory_order_release);
     if (pthread_mutex_trylock(&f->aq_m) == 0){ pthread_cond_signal(&f->aq_c); pthread_mutex_unlock(&f->aq_m); }
 }

@@ -24,7 +24,8 @@ tests/frame_publisher_test: frame_publisher.c frame_publisher.h tests/frame_publ
 tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h ../test_supervisor.h ../test_condition.h ../test_liveness.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TESTFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o $@ $(LIBS)
 
-test: tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
+test: tests/audio_queue_flags_test tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
+	./tests/audio_queue_flags_test
 	./tests/audio_publisher_test
 	./tests/frame_publisher_test
 	./tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
@@ -50,8 +51,12 @@ test-pairing: frameserver_replay
 	python3 ../../scripts/test_pairing_schedule.py ./frameserver_replay
 
 .PHONY: test-audio-steps
-test-audio-steps: frameserver_replay
+test-audio-steps: frameserver_replay tests/audio_queue_flags_test
+	./tests/audio_queue_flags_test
 	python3 ../../scripts/test_audio_steps.py ./frameserver_replay
+
+tests/audio_queue_flags_test: $(SRCS) tests/audio_queue_flags_test.c audio_publisher.h frameserver.h ../obs_plugin/audio_timing.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/audio_queue_flags_test.c -o $@ $(LIBS)
 
 .PHONY: test-geometry-asan test-geometry-tsan
 test-geometry-asan: $(FIXTURE) $(FIXTURE_LONG)
@@ -99,6 +104,7 @@ $(FIXTURE_LONG): ../unit_parser/tests/gen_unit_parser_capture.py
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
 
 clean:
+	rm -f tests/audio_queue_flags_test
 	rm -f tests/audio_publisher_asan tests/audio_publisher_tsan
 	rm -f frameserver_replay tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring tests/worker_bench
 

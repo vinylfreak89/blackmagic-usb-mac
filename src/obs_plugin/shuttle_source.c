@@ -61,7 +61,7 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #define S_SIDECAR     "sidecar_with_recording"
 
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
-#define RESIDUAL_STEP_TICKS 10            /* 2 samples: below this it is quantization, not a lost-sample event */
+#include "audio_timing.h"
 
 typedef struct {
     obs_source_t *source;
@@ -70,8 +70,7 @@ typedef struct {
     int32_t *abuf; uint32_t abuf_frames;   /* S32 interleaved stereo staging */
     float color_matrix[16], color_min[3], color_max[3];
     _Atomic uint64_t frames_out, audio_frames_out, audio_steps;
-    int64_t residual_applied_ticks;        /* accumulated residual steps applied to audio time */
-    int64_t last_residual; int have_residual;
+    shuttle_audio_clock audio_clock;
     _Atomic int ended; enum cc_end end_reason;
     pthread_mutex_t m;                      /* serializes session + sidecar transitions (frontend events, update, destroy) */
     int sidecar_enabled;                    /* property: attach the decision log to each OBS recording */
@@ -108,16 +107,11 @@ static void on_frame(void *ctx, const fp_frame *fr){
 
 static void on_audio(void *ctx, const ap_block *b){
     shuttle_src *s = ctx;
-    if (b->flags & AP_FLAG_UNANCHORED) return;            /* no device time yet: nothing honest to stamp */
     if (b->n_frames > s->abuf_frames) return;             /* cannot happen: publisher capacity == staging capacity */
-    /* correlation residual: apply only where it STEPS (a lost-sample event), never continuously */
-    if (!(b->flags & AP_FLAG_DISCONTINUITY_BEFORE)){
-        if (s->have_residual){
-            int64_t d = b->correlation_residual - s->last_residual;
-            if (d > RESIDUAL_STEP_TICKS || d < -RESIDUAL_STEP_TICKS){ s->residual_applied_ticks += d; atomic_fetch_add(&s->audio_steps, 1); }
-        }
-    } else { s->residual_applied_ticks = 0; }             /* a new run re-anchors to video time on its own */
-    s->last_residual = b->correlation_residual; s->have_residual = 1;
+    uint64_t ticks;
+    int stepped = shuttle_audio_time(&s->audio_clock, b, &ticks);
+    if (stepped < 0) return;                             /* no device time yet */
+    if (stepped) atomic_fetch_add(&s->audio_steps, 1);
     const uint8_t *p = b->s24le;
     for (uint32_t i = 0; i < b->n_frames; i++){
         int32_t l = (int32_t)((uint32_t)p[0] << 8 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 24);
@@ -127,8 +121,7 @@ static void on_audio(void *ctx, const ap_block *b){
     struct obs_source_audio a; memset(&a, 0, sizeof a);
     a.data[0] = (const uint8_t *)s->abuf; a.frames = b->n_frames;
     a.speakers = SPEAKERS_STEREO; a.format = AUDIO_FORMAT_32BIT; a.samples_per_sec = AP_SAMPLE_RATE;
-    int64_t ticks = (int64_t)b->pts_num + s->residual_applied_ticks; if (ticks < 0) ticks = 0;
-    a.timestamp = AP_TICKS_TO_NS((uint64_t)ticks);
+    a.timestamp = AP_TICKS_TO_NS(ticks);
     obs_source_output_audio(s->source, &a);
     atomic_fetch_add(&s->audio_frames_out, b->n_frames);
 }
@@ -278,7 +271,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     cfg.audio_sink.on_block = on_audio; cfg.audio_sink.ctx = s;
     cfg.audio_block_frames = s->abuf_frames;
     cfg.on_end = on_end; cfg.end_ctx = s;
-    atomic_store(&s->ended, 0); s->residual_applied_ticks = 0; s->have_residual = 0;
+    atomic_store(&s->ended, 0); s->audio_clock = (shuttle_audio_clock){0};
     atomic_store(&s->frames_out, 0); atomic_store(&s->audio_frames_out, 0); atomic_store(&s->audio_steps, 0);   /* per-session accounting */
     if (fs_open(&s->fs, &cfg) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL; return -1; }
     if (fs_start(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver start failed"); fs_close(s->fs); s->fs = NULL; return -1; }
