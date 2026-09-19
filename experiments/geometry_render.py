@@ -2,7 +2,8 @@
 """The plain capture, woven where the placement puts it: the owner's review copy, stripped to basics.
 
     geometry_render.py <capture.tpc> <out.mp4> [--offsets manual.csv] [--engine-log sidecar.csv]
-                       [--pair-next] [--parity tff|bff] [--pcm capture.pcm] [--deint bwdif] [--crf 14]
+                       [--pair-next] [--parity tff|bff] [--pairing-schedule schedule.csv]
+                       [--pcm capture.pcm] [--deint bwdif] [--crf 14]
 
 Owner, 2026-09-19: "It should take the spirit of the review render but strip it down to its basics ...
 it should read the registration engine, produce the machine strip, strip out all the box census and
@@ -30,6 +31,13 @@ What it draws, and nothing else:
 --pair-next: a reversed-pairing capture weaves field 1 (slot 1) of the NEXT unit over field 2 (slot 2)
 of this unit; the frame is keyed by this unit's counter. Slot 1 stays the spatial top field.
 
+--pairing-schedule: CSV first_counter,pairing,note (pairing aligned or reversed), sorted by first_counter;
+each frame pairs by the row in effect at its unit, as --pair-next does for reversed rows. The deinterlacer
+gets its field order per run of equal pairing (bff reversed, tff aligned) through one ffmpeg graph that
+splits the frames at the run boundaries, and the band shows each frame's pairing and the row's note. At a
+reversed-to-aligned switch the last reversed frame and the first aligned one share a field 1.
+Exclusive with --pair-next and --parity.
+
 Frames are keyed by the unit counter unwrapped in stream order from the capture's first unit (a
 decrease is a new epoch, never a reuse), so a wrapped or restarted counter can never collide. Offsets
 file columns: counter (that unwrapped counter; for a short slice the stored value), d1, d2, f1_first,
@@ -53,7 +61,7 @@ Review fixes 2026-09-19 (Codex, findings 1-6): pair-next engine d1 source unit; 
 in-picture marker; timeline across omitted units; black (neutral-chroma) out-of-raster fill; empty
 engine cells.
 """
-import argparse, atexit, csv, os, subprocess, sys, tempfile
+import argparse, bisect, atexit, csv, os, subprocess, sys, tempfile
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -215,19 +223,51 @@ class Framer:
             self._emit(len(self.buf), False)
 
 
+def read_schedule(path):
+    """--pairing-schedule rows as [(first_counter, pairing, note)], refusing anything malformed or unsorted."""
+    rows = []
+    with open(path, newline="") as fh:
+        for r in csv.DictReader(fh):
+            try:
+                first, pairing = int(r["first_counter"]), r["pairing"].strip()
+            except (KeyError, ValueError, AttributeError):
+                sys.exit(f"refusing: malformed pairing-schedule row {r}")
+            if pairing not in ("aligned", "reversed"):
+                sys.exit(f"refusing: pairing-schedule pairing must be aligned or reversed, got {pairing!r}")
+            if rows and first <= rows[-1][0]:
+                sys.exit(f"refusing: pairing schedule is not strictly increasing at {first}")
+            rows.append((first, pairing, (r.get("note") or "").strip()))
+    if not rows:
+        sys.exit("refusing: empty pairing schedule")
+    return rows
+
+
+def schedule_at(rows, ext):
+    """The row in effect for unit ext: the last with first_counter <= ext (the first row before any)."""
+    i = bisect.bisect_right([r[0] for r in rows], ext) - 1
+    r = rows[max(i, 0)]
+    return r[1], r[2]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("capture"); ap.add_argument("out")
     ap.add_argument("--offsets", help="manual placement (see module docstring)")
     ap.add_argument("--engine-log", help="the registration engine's decision log (sidecar); applied when present")
     ap.add_argument("--pair-next", action="store_true")
-    ap.add_argument("--parity", default="tff", choices=("tff", "bff"))
+    ap.add_argument("--parity", default=None, choices=("tff", "bff"))
+    ap.add_argument("--pairing-schedule", help="per-counter pairing: CSV first_counter,pairing,note")
     ap.add_argument("--pcm")
     ap.add_argument("--av-log", help="frameserver_replay --dump-log of the same capture: anchors the audio")
     ap.add_argument("--deint", default="bwdif", choices=("bwdif", "yadif_nospatial", "none"))
     ap.add_argument("--crf", default="14")
     ap.add_argument("--font", default="/System/Library/Fonts/Menlo.ttc")
     a = ap.parse_args()
+    if a.pairing_schedule and (a.pair_next or a.parity):
+        sys.exit("refusing: --pairing-schedule sets pairing and field order per frame; drop --pair-next / --parity")
+    schedule = read_schedule(a.pairing_schedule) if a.pairing_schedule else None
+    if a.parity is None:
+        a.parity = "tff"
     offsets, engine = read_offsets(a.offsets), read_engine(a.engine_log)
     print(f"offsets for {len(offsets)} units; engine decisions for {len(engine)} units"
           f"{' (no sidecar)' if not a.engine_log else ''}", flush=True)
@@ -253,7 +293,7 @@ def main():
     frames = []; partnerless = []
     for k, o in enumerate(obs):
         if not o[1]: continue
-        if a.pair_next:
+        if (schedule_at(schedule, o[0])[0] == "reversed") if schedule else a.pair_next:
             nx = obs[k + 1] if k + 1 < len(obs) else None
             if nx is None or not nx[1] or nx[0] != o[0] + 1:
                 partnerless.append(o[0]); continue
@@ -368,12 +408,38 @@ def main():
         cmd += ["-f", "s24le", "-ar", "48000", "-ac", "2", "-i", pcm_path]
         af = "apad" if not (audio_ss is not None and audio_ss < 0) else f"adelay={int(-audio_ss * 1000)}:all=1,apad"
         cmd += ["-af", af, "-shortest", "-c:a", "aac", "-b:a", "192k"]
-    P = a.parity
-    vf = {"bwdif": f"setfield={P},bwdif=mode=send_frame:parity={P}",
-          "yadif_nospatial": f"setfield={P},yadif=mode=send_frame_nospatial:parity={P}"}.get(a.deint)
-    if vf:
-        cmd += ["-vf", vf]
-    print(f"deinterlacer: {a.deint}{' -> -vf ' + vf if vf else ''}", flush=True)
+    def deint(P):
+        return {"bwdif": f"setfield={P},bwdif=mode=send_frame:parity={P}",
+                "yadif_nospatial": f"setfield={P},yadif=mode=send_frame_nospatial:parity={P}"}.get(a.deint)
+    if schedule is None:
+        runs = [(0, len(items), a.parity)]
+    else:
+        # field order per output index: a frame's own pairing; a fill frame inherits the previous one's
+        par = []; cur = None
+        for it in items:
+            if it[0] == "frame":
+                cur = "bff" if it[2] is not None else "tff"
+            par.append(cur)
+        first_known = next((p for p in par if p is not None), "tff")
+        par = [p or first_known for p in par]
+        runs = []
+        for i, p in enumerate(par):
+            if runs and runs[-1][2] == p: runs[-1][1] = i + 1
+            else: runs.append([i, i + 1, p])
+        runs = [tuple(r) for r in runs]
+    if deint(runs[0][2]) and len(runs) > 1:
+        parts = [f"[0:v]split={len(runs)}" + "".join(f"[s{k}]" for k in range(len(runs)))]
+        for k, (b0, b1, P) in enumerate(runs):
+            parts.append(f"[s{k}]trim=start_frame={b0}:end_frame={b1},setpts=PTS-STARTPTS,{deint(P)}[v{k}]")
+        parts.append("".join(f"[v{k}]" for k in range(len(runs))) + f"concat=n={len(runs)}:v=1:a=0[vout]")
+        graph = ";".join(parts)
+        cmd += ["-filter_complex", graph, "-map", "[vout]"] + (["-map", "1:a"] if a.pcm else [])
+        print(f"deinterlacer: {a.deint} per pairing run " + ", ".join(f"{b0}-{b1 - 1} {P}" for b0, b1, P in runs), flush=True)
+    else:
+        vf = deint(runs[0][2])
+        if vf:
+            cmd += ["-vf", vf]
+        print(f"deinterlacer: {a.deint}{' -> -vf ' + vf if vf else ''}", flush=True)
     cmd += ["-c:v", "libx264", "-crf", a.crf, "-preset", "medium", "-pix_fmt", "yuv420p", a.out]
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
@@ -473,6 +539,10 @@ def main():
                 small, col)
         fit(dr, (6, FH + 90), "side ticks: first and last picture line (f1 red inner, f2 blue outer)",
             small, (110, 110, 110))
+        if schedule is not None:
+            pr, note = schedule_at(schedule, ext)
+            fit(dr, (6, FH + 106), f"pairing {pr}: {note}", small,
+                (230, 170, 60) if note.startswith(("likely", "ambiguous")) else (150, 150, 150))
         graph_and_strip(dr, i, ext, d1, d2)
         enc.stdin.write(img.tobytes()); state["written"] += 1; state["item"] += 1
 
