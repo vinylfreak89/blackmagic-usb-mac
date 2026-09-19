@@ -576,3 +576,30 @@ rule 2's count supported as a net attribution: at unit 13594, line 523 is still 
 3. **The held-out set.** Reversed frame 13500 uses field 1 of unit 13501, inside capture 3. Without it,
    the held-out set is 75,747 frames: entry 5 60,937, new 43,038 (80.4% and 56.8%, unchanged).
 Codex's evidence: its scratch `/private/tmp/codex-e8-review-P71eRj/REVIEW.md`.
+
+## E-claude-2026-09-19-9 — does the whole-tape census reproduce captures 2 and 3?
+
+**Question (owner, 2026-09-19):** "does the "whole tape consensus" reproduce the cap2,3 results for
+those same units. if it doesn't, then the algorithm is probably not implemented properly"
+
+**Premise.** Captures 2 and 3 are byte slices of the whole tape. Where the whole-tape pass (entries
+5 and 8) and the capture runs (entries 2, 3 and 7) apply the same rule, they give the same answer on the
+same units. That covers first and last lines by entry 2's rule, the comb's verdict, and the placement
+and edge pairs computed from the same inputs.
+
+**Method.** On every overlapping unit (capture 2: whole-tape counters 67,446-68,094; capture 3:
+13,501-14,149), compare per field:
+1. entry 2's first and last lines, capture census against the whole-tape pass;
+2. the comb verdict and margin per frame (capture 3 reversed, capture 2 aligned), entry 3 / 7 against
+   entry 5;
+3. the first lines used for placement: entry 3's confident tops and the renders' tops against entry 5's
+   automatic tops, with every mismatch classed by the rule difference that produces it;
+4. entry 7's edge-pair classes, recomputed with the whole-tape pass's code from entry 7's inputs, and
+   the reverse.
+Where entries 7 and 8 differ, separate the inputs that differ (tops, rule 2's count carried in from
+units before the capture) from the code.
+
+**Falsifier.** Any mismatch in items 1, 2 or 4, or any item-3 mismatch not produced by a stated rule
+difference. Either is an implementation error to be found.
+
+**Material.** The 649 units of capture 2 and 649 of capture 3 and their frames.
