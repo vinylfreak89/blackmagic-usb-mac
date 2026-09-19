@@ -879,3 +879,55 @@ nothing (590 / 590).
   rule cannot vouch for a held placement.
 - **What it should improve.** B's stale holds after an unmeasured frame, such as capture 4 237-809.
 - **What it must not break.** Reading A anywhere; B's whole-tape 99.0% and its 28 lost frames.
+
+### Report on entry 11 (2026-09-19) — held for both readings; B passes the 95% mark
+
+Checks: a blind reimplementation reproduced the run before the amendments, every number. Codex reviewed
+the run and both amendments, reproduced all totals and all eight render offset files, and chose reading
+B. Its two findings, accepted:
+- Flat rows at Y 10-14 below the picture can be picked as the bottom line, costing extra comb checks,
+  not losses. Example: capture 2 67481, a one-line move of top and bottom classed "not in tandem".
+- Amendment 2's code missed the previous unit's census last line. Now fixed: frame 84310 goes from
+  HIGH to LOW (the comb abstains), and no total changes.
+Numbers below are with both amendments and the fix.
+- **Verdict:** premise held for both readings. A: 89.7% on the whole tape, 0 lost. B: 99.0%, 28 lost,
+  under the owner's 100. Both clear his 80%; only B reaches his 95%.
+- **Captures (entry 3's judged frames), A and B identical, 0 lost:** 229 / 230, 543 / 545, 500 / 500 (from
+  487), 567 / 567 (from 562).
+- **Whole tape by segment:** A 90.2%, 85.5%, 89.8%; B 98.8%, 98.7%, 99.4%. A caught 6,977 of the census's
+  14,869 disagreements and missed 7,892; B caught 14,156 and missed 713.
+- **B's lost frames:** 8600, 11127-11129, 12800, 14371, 14373-14377, 19898-19901, 19903-19905, 32911,
+  33848, 35666, 60882, 60896, 60897, 60910, 60911, 60913, 60914. Every one is untriggered, with a held
+  correction gone stale.
+- **Firing, whole tape (85,946 frames):**
+  - T1: 6,551 (A), 11,255 (B).
+  - Field classes: bottom only 2,690, top only 6,989, not in tandem 1,173, move unclassable 95.
+  - U: 58, always together with an unclassable move.
+  - Any trigger: 14,333 frames (16.7%, A), 15,663 (18.2%, B).
+  - The new bottom-only class fires on 2,690 frames against entry 10's T2 on 9,200; 2,643 are shared.
+  - Captures: 14, 120, 72 and 75 frames. Capture 1's are all unclassable moves.
+- **Amendments:**
+  - Amendment 1 (U) caught no judged disagreement. It placed 5 of the 22 frames with no first line. It
+    regressed B on capture 4's render frames (44 lost).
+  - Amendment 2 moved that forward to 1 lost (794: the re-run at 793 abstained, and B kept the +1 from
+    792). Neither changes the whole tape or the capture totals.
+- **The owner's two-valued confidence:**
+  - Whole tape, A: HIGH 71,613 frames; 64,693 judged, 87.8% agree with the comb. LOW 14,333 frames: the
+    comb decided in 12,193 and abstained in 2,140.
+  - Whole tape, B: HIGH 70,283 frames; 63,708 judged, 98.8% agree. LOW 15,663: decided 13,178, abstained
+    2,485.
+  - Captures: HIGH agrees in 99.5-100%.
+- **Renders (reading B)** replaced captures 1-4 at the same paths, each moved over the old file in one
+  rename.
+  - Frame counts are unchanged: 922, 649, 648 and 650.
+  - The machine strip read back from every frame of every file matches the offsets used: 0 mismatches.
+  - On the render inputs, placement agrees with the comb in 372 / 373, 549 / 551, 586 / 586 and 589 / 590
+    (capture 4's 794).
+  - Each frame's band says whether it is the census, a comb re-run or a held comb correction.
+- **Circularity:** where the comb is consulted, it agrees by construction. B's lead over A comes from
+  corrections held between re-runs, which the comb confirms on 98.8% of HIGH frames.
+- **Not understood:** B's 713 missed frames, and capture 2's two misses.
+- Scratch:
+  - geometry_exp1/: `fulltape_exp11.py`, `exp11_w{1..4}.csv`, `exp11d_analysis.py` / `.out`,
+    `exp11d_changes.csv`, `exp11d_render_offsets.py`;
+  - geometry_renders/: `cap*_offsets_e11dB.csv`, `e11_readback.py`.
