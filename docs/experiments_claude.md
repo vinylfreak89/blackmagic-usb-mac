@@ -259,3 +259,27 @@ line-22 counterpart) carries data. Neither a misread nor a displacement: the sou
 field 1's line 22 and data on field 2's. Taking field 1's top one line lower (source 23), capture 2's
 census shift equals the comb minimum in 543 of 545 decided frames (was 2); the two exceptions, 68025 and
 68026, have margins 1.53 and 1.63. Panel: `geometry_exp1/explore/cap2_woven_top.png`.
+
+## E-claude-2026-09-19-5 — the census against the comb on the whole tape (held out)
+
+**Question (owner, 2026-09-19):** "I am willing to say the previous census we arrived at is the right
+shape ... see the agree/disagree amount on the full tape."
+
+**Premise.** The census, run automatically, finds each field's first picture line on the whole tape
+well enough that weaving the tops together is the comb-free weave on most valid frames, as it was on
+captures 2-4, which came from this tape.
+
+**Method: only the automatic parts of the census** (capture 4's hand labels and capture 1's card do not
+exist on this tape). Per unit and field, from the device blanking level: (1) entry 2's rule, first
+picture row from 22 (285) down; (2) field 1: if that row is 23 and 23 is not plainly picture (more than
+30 codes above blanking on average and correlating 0.5 or more with 24), rescan from 24 (capture 3's
+faint pulse row); (3) line 22: if the tape caption's clock run-in (score 0.5 or more) sits directly
+above field 1's first line AND the row directly above field 2's first line is not blank (brightest
+content more than 5 codes above blanking), field 1's top is taken one line lower (capture 2). Slot 1 is
+the top field. Pairing per segment between deck relocks, by the scene-cut test in the same pass.
+Judge: entry 1's comb over lines 30-240, -5..+5, decided at 1.5x.
+
+**Falsifier.** Fewer than 95% of decided frames agree (the owner's bar for the whole tape).
+
+**Material.** Every exact unit outside the three non-programme events (counters up to 4725,
+48,189-48,240, 53,616-53,674); frames with no top found are counted, not carried.
