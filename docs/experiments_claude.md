@@ -247,3 +247,15 @@ bin-level raw checks (up to 3 units per bin), not a per-unit relabel; stated as 
 - **Structural limit:** each hard row type occurs in one capture only, so a matrix built from the other
   three never sees it; a held-out test cannot learn it, and fitting it in-sample would be memorising.
 - **Amendments:** none. Matrix, rows and frame results in scratch `geometry_exp1/exp4_*`.
+
+### Capture 2's one-line offset, explained (2026-09-19; measured without a prior entry)
+
+The owner asked whether field 1's first picture line in capture 2 is really picture or "that field's
+line 22 being leaky". The tape's caption (source line 21, found by its clock run-in) sits directly above
+field 1's first picture line in every unit: raster 24 when the top is 25 (384 of 385), raster 23 when
+the top is 24 (262 of 264). So field 1's first visible picture line is source line 22 in both states.
+Field 2 has no run-in; by the comb its first picture line 288 is source 286, and 287 (source 285, its
+line-22 counterpart) carries data. Neither a misread nor a displacement: the source carries picture on
+field 1's line 22 and data on field 2's. Taking field 1's top one line lower (source 23), capture 2's
+census shift equals the comb minimum in 543 of 545 decided frames (was 2); the two exceptions, 68025 and
+68026, have margins 1.53 and 1.63. Panel: `geometry_exp1/explore/cap2_woven_top.png`.
