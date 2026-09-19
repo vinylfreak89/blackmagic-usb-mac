@@ -689,3 +689,44 @@ comb search again, where the comb sets d.
   comb finds after an upward move: the other field's line first, and the moved field one line down with
   its bottom recomputed. The first lines cannot show it (they do not change at an upward move), so it
   is neither a trigger nor a placement rule by itself. For him to confirm.
+
+## E-claude-2026-09-19-10 — does the restated rule set reproduce the comb results without regression?
+
+**Question (owner, 2026-09-19):** "lets make sure if we lock down on what the rule set is, we are able to
+get the same combing result since we subtly changed thing so I don't want another regression."
+
+**Premise.** The restated rule set keeps every frame the existing census placement got right and does
+not lose one. The rule set: the census placement between comb searches, the comb's placement where the
+search re-runs, and a re-run at a blank line inside the picture or at a blanking change on the bottom
+line. The comb is also the judge, so wherever the rule set consults it, it agrees by construction. The
+informative results are: frames lost against the census placement; the census placement's
+disagreements the triggers catch and the ones they miss; how often each trigger fires.
+
+**Two readings of "between comb searches", both run.**
+- A: a triggered frame where the comb decides takes the comb's d; every other frame takes the census d.
+- B: at such a frame the correction c = comb d - census d is kept, and every frame takes census d + c
+  until the next decided re-run. c returns to 0 after a gap.
+
+**Triggers, per frame.**
+- T1, a blank line inside the picture: under the placement the frame would otherwise take, an edge
+  pair is broken (entry 7's algebra), d not in {st, st+1} or not in {sl, sl+1}.
+- T2, a blanking change on the bottom line, the owner's 10:31 definition, in either field of the frame
+  against the same field of the previous unit. For each of the field's last 12 lines (NTSC 251-262 /
+  514-525), a line's picture extent is its count of samples 24-695 whose 8-sample luma average is more
+  than 20 codes above the device blanking. The bottom line is the last line with 8 or more.
+  - T2 fires when the bottom line changes: a picture line has gone wholly blank, or a blank line has
+    gained picture.
+  - It also fires when the same bottom line's extent changes by more than 64 samples (partial blanking
+    grows or shrinks).
+  These numbers are this experiment's settings.
+
+**Material and comparison.**
+- Captures 1 (from 6667), 2, 3 and 4 on entry 3's judged frames and inputs: confident tops, capture 2
+  read one line lower, census last lines, entry 3's comb. Entry 3's figures are 229/230, 543/545,
+  487/500 and 562/567.
+- The whole tape on entry 8's judged frames and inputs: entry 5's tops and comb, entry 2's last lines.
+  The census placement's figure is 62,017 / 76,886 (80.7%).
+- The bottom extents are a new pass over every unit (the whole tape) and the capture caches.
+- Frame by frame: every frame whose verdict changes, and why.
+
+**Falsifier.** Any judged frame the census placement got right and the rule set gets wrong.
