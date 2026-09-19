@@ -73,7 +73,7 @@ UNIT_BYTES, HDR, ROW_BYTES, RASTER_ROWS = 756_048, 48, 1440, 525
 MARK = b"\x00\x00\xff\xff"
 F1_FIRST_LINE, F2_FIRST_LINE, FIELD_ROWS = 20, 283, 243
 FIELD2_FIRST_ROW = 262           # storage row of field 2's first line (NTSC 266); field 1 owns rows 0-261
-AP_DISCONTINUITY_BEFORE, AP_UNANCHORED = 1, 4   # audio block flags (src/frameserver/audio_publisher.h)
+AP_DISCONTINUITY_BEFORE, AP_UNANCHORED, AP_DROPPED_BEFORE = 1, 4, 16   # audio block flags (audio_publisher.h)
 KNOWN_FORMATS = (0xE801, 0xE809, 0x0800)
 NO_SOURCE_UNIT = 0xFFFFFFFF      # the strip's counter for a timing slot, which has no source unit
 MAX_FILL_GAP = 120
@@ -180,7 +180,8 @@ def place_audio(ablocks, vpts0, steps):
     """Where every delivered audio sample plays (CLAUDE.md §6). ablocks: the dump log's A rows in file order,
     (sample ordinal, pts, samples, flags); vpts0: {unit: audio-clock pts of its resync}; steps: {unit: samples
     the device lost there}. Returns (a_origin, blocks for rebuild_pcm, {unit: output position of its resync},
-    {unit: silence before its resync}, notes); positions precede any start trim.
+    {unit: silence before its resync}, notes); positions precede any start trim. A unit missing from the two
+    dicts has no determinable audio time (see below) and must not be used as one.
 
     The frameserver places each audio run on the video timebase at the run's first resync, so an anchored
     sample's position is its pts on the 48 kHz grid, counted from sample 0 of the first anchored run (a run
@@ -189,13 +190,18 @@ def place_audio(ablocks, vpts0, steps):
     a fresh anchor places its run by its own pts. A downstream queue drop keeps the placement, so it keeps the
     run: its gap stays silence.
 
+    A unit's resync inside a delivered block is in that block's run. In a gap left by dropped blocks it is in
+    the run on both sides if they agree; if a new run began inside the gap, which side of the break the resync
+    lies on is not in the log, and the unit's time is determined only if both runs would shift it equally;
+    otherwise it is left out (reported), and a step on such a unit is refused.
+
     Blocks before their run's first resync (UNANCHORED, ordinal-only pts) are placed back from that resync by
-    ordinal distance. The one thing the dump log cannot say is where such a run began: the frameserver flags
-    DISCONTINUITY_BEFORE both for a run break (hole, unframed, epoch) and for a downstream drop. With the
-    ordinal contiguous (or reset) the flag can only be a run break; with the ordinal jumped it is a drop that
-    may coincide with a break, so an unanchored stretch across one is refused rather than guessed. A run that
-    never anchors has no physical time: its first block follows the previous block, the rest keep their
-    ordinal spacing, and they are reported."""
+    ordinal distance, unless a run break lies between. A frameserver with 95c916a marks a downstream drop
+    DROPPED_BEFORE and a run break DISCONTINUITY_BEFORE (both, if a break was in the dropped blocks), which is
+    exact. Before it, a drop was also marked DISCONTINUITY_BEFORE: with the ordinal contiguous (or reset) that
+    flag can only be a run break; with the ordinal jumped it may be a drop, a break, or both, so an unanchored
+    stretch across one is refused rather than guessed. A run that never anchors has no physical time: its
+    first block follows the previous block, the rest keep their ordinal spacing, and they are reported."""
     notes = []
     a_origin = next((pts - 5 * o for o, pts, n, fl in ablocks if not fl & AP_UNANCHORED), None)
     if a_origin is None:
@@ -208,24 +214,33 @@ def place_audio(ablocks, vpts0, steps):
     def pos_of(pts):
         return (2 * (pts - a_origin) + 5) // 10          # nearest sample, halves up, in exact integers
 
-    anch = sorted((pts, i) for i, (o, pts, n, fl) in enumerate(ablocks) if not fl & AP_UNANCHORED)
-    akeys = [x[0] for x in anch]
+    spans = sorted((pts, pts + 5 * n, pts - 5 * o) for o, pts, n, fl in ablocks if not fl & AP_UNANCHORED)
+    starts_ = [sp[0] for sp in spans]
 
-    def run_at(pts):                                     # the run of the anchored block at or before pts
-        j = bisect.bisect_right(akeys, pts) - 1
+    def runs_at(t):
+        """The runs a resync at pts t can belong to: one inside a delivered block, or in a gap whose two sides
+        agree; two across a gap where a run began; None before every anchored block (None in a list: a run
+        with no delivered block after the last one)."""
+        j = bisect.bisect_right(starts_, t) - 1
         if j < 0:
             return None
-        o, bp, n, fl = ablocks[anch[j][1]]
-        return bp - 5 * o
+        s0, e0, r = spans[j]
+        if t < e0:
+            return [r]
+        nxt = spans[j + 1][2] if j + 1 < len(spans) else None
+        return [r] if nxt == r else [r, nxt]
 
-    where = {c: (pos_of(t), run_at(t)) for c, t in vpts0.items()}
+    where = {c: (pos_of(t), runs_at(t)) for c, t in vpts0.items()}
     ins = {}                                             # run -> [(position, silent samples)]
     for c, n in sorted(steps.items()):
         if n <= 0:
             sys.exit(f"refusing: audio step of {n} samples at unit {c}; only lost samples are advanced")
         if c not in where or where[c][1] is None:
             sys.exit(f"refusing: audio step at unit {c} has no audio resync time in the dump log")
-        k, r = where[c]; ins.setdefault(r, []).append((k, n))
+        if len(where[c][1]) != 1:
+            sys.exit(f"refusing: audio step at unit {c}: its resync falls in dropped audio where a new run began, "
+                     "and the dump log cannot say which run it belongs to")
+        k, (r,) = where[c]; ins.setdefault(r, []).append((k, n))
     cum = {}
     for r, lst in ins.items():
         lst.sort(); cs = [0]
@@ -239,13 +254,19 @@ def place_audio(ablocks, vpts0, steps):
         ks, cs = cum[r]
         return cs[(bisect.bisect_right if inclusive else bisect.bisect_left)(ks, k)]
 
-    resync_out, resync_shift, homeless = {}, {}, 0
-    for c, (k, r) in where.items():
-        if r is None:
+    resync_out, resync_shift, homeless, unsure = {}, {}, 0, 0
+    for c, (k, rs) in where.items():
+        if rs is None:
             homeless += 1; continue
-        resync_shift[c] = shift(r, k, True); resync_out[c] = k + resync_shift[c]
+        sh = {shift(r, k, True) for r in rs}           # a run with no delivered block carries no step
+        if len(sh) != 1:
+            unsure += 1; continue
+        resync_shift[c] = sh.pop(); resync_out[c] = k + resync_shift[c]
     if homeless:
-        notes.append(f"{homeless} units' resync times precede every anchored block; no audio position")
+        notes.append(f"{homeless} units' resync times precede every anchored block; no audio time for them")
+    if unsure:
+        notes.append(f"{unsure} units' resyncs fall in dropped audio where a new run began and the runs would place "
+                     "them differently; no audio time for them (the timeline counts units there)")
 
     out = [None] * len(ablocks)
 
@@ -256,6 +277,8 @@ def place_audio(ablocks, vpts0, steps):
         if i == 0:
             return "break"
         o, pts, n, fl = ablocks[i]; po, pp, pn, pfl = ablocks[i - 1]
+        if fl & AP_DROPPED_BEFORE:                       # 95c916a on: drops and breaks are marked apart
+            return "break" if fl & AP_DISCONTINUITY_BEFORE else None
         if not fl & AP_DISCONTINUITY_BEFORE:
             return None
         return "maybe" if o > po + pn else "break"
@@ -557,8 +580,11 @@ def main():
         print(f"audio: {note}", flush=True)
     # audio-clock times as the rebuilt PCM will play them: each unit's resync moved by the silence its own
     # run carries at or before it (with no steps, identical to the dump log's times)
-    for c in vpts:
-        vpts[c] += 5 * resync_shift.get(c, 0)
+    for c in list(vpts):
+        if a_origin is not None and c not in resync_shift:
+            del vpts[c]                                  # no determinable audio time: not used as one
+        else:
+            vpts[c] += 5 * resync_shift.get(c, 0)
 
     # timeline: fills between consecutive frames -- from the audio clock where both times are known
     # (8008 ticks per unit), otherwise one per observation between them that is not rendered
