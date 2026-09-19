@@ -864,3 +864,18 @@ detection algorithm"):
 For A and B, reported: HIGH frames and their agreement with the comb, and LOW frames split into decided
 and abstaining. My four-level proposal (11:12) stays on file, unbuilt, as the fallback if his fails
 (owner: "if my proposal fails, we can build its more complex confidence one").
+
+### Amendment 2 to entry 11 (2026-09-19, before the report): an unmeasurable move also re-runs the comb
+
+**What amendment 1 broke.** In reading B, on capture 4's render frames, amendment 1 lost 44 frames
+(546 / 590 against the comb, from 581 / 590). At 236 field 2 has no label, so U re-ran the comb, which
+correctly gave +1 for that frame. From 237 on, field 2's move against the unlabelled 236 cannot be
+classed ("unknown"), so nothing fired, and B held the stale +1 until the next trigger. Reading A lost
+nothing (590 / 590).
+- **The trigger.** A field whose move against the previous unit cannot be classed re-runs the comb.
+  That covers a missing first line, last line or bottom line in either unit, and no previous unit.
+- **Physical reason.** This is the owner's "if one field can't be measured, absolutely the comb checks
+  should be re-run", applied to the move as well as to the unit. Without a measured move, the either/or
+  rule cannot vouch for a held placement.
+- **What it should improve.** B's stale holds after an unmeasured frame, such as capture 4 237-809.
+- **What it must not break.** Reading A anywhere; B's whole-tape 99.0% and its 28 lost frames.
