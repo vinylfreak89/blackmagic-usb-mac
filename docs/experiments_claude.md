@@ -966,3 +966,32 @@ placement, on capture 2 or on the EP recording, in either comparison.
 
 **Material.** Capture 2's units (67,446-68,094) and whole-tape segments B and C. Segment A is reported
 too, since rule 3 also fires there.
+
+### Report on entry 12 (2026-09-19) — a single check per section: refuted; the held correction does it
+
+- **Sections.** The valid material has no break in exact units inside a segment, so each segment is one
+  section. The only signal-loss-like events are the three non-programme events.
+- **The misalignment is not constant within a section.** Comb d minus raw st:
+  - segment C: -1 on 25,083 frames, 0 on 4,413, +1 on 1,915, -2 on 858;
+  - segment B: -1 on 3,777, 0 on 978, +1 on 82, -2 on 20;
+  - segment A: 0 on 31,337, +1 on 4,428, -1 on 2,250, -2 on 430.
+- **Comparison 1, the fixed offset alone: premise refuted.** The first decided check sets +2 in segment B
+  and -2 in segment C. Agreement:
+  - segment B 10 / 4,869 (0.2%) and segment C 858 / 33,450 (2.6%), against rule 3's 78.2% and 80.3%;
+  - capture 2 0 / 551, against 543;
+  - raw first lines with no offset: 20.1%, 13.2% and 0.9%.
+  Even the section's most common offset (-1) would give about 77.6% and 75.0%, below rule 3.
+- **Comparison 2, inside entry 11's rule set (reading B).** Rule 3 is dropped and a comb check is forced at
+  each section start. Agreement:
+  - segment B 4,868 / 4,869 (100.0%), against 4,806 (98.7%) with today's tops;
+  - segment C 33,369 / 33,450 (99.8%), against 33,238 (99.4%);
+  - capture 2 551 / 551, against 549;
+  - segment A unchanged, 98.8%.
+  It gets there by re-running the comb far more often. The raw first lines move by a line so often that
+  the either/or classes fire on about 85% of the EP recording's frames: 4,568 of 5,364 in segment B,
+  31,677 of 37,123 in segment C, 649 of 649 on capture 2. With today's tops that is 744 and 8,828.
+- **Verdict.** His one-time section offset does not reproduce rule 3 on this tape. What does the job is
+  reading B's held correction: set by a comb check, held until a trigger, reset at a gap. That is his
+  idea with a re-check whenever the geometry changes. Keeping rule 3 costs fewer comb runs; dropping it
+  gains 0.4-1.3 points on the EP recording for comb runs on most of its frames.
+- Scratch: `geometry_exp1/exp12_analysis.py` / `.out`.
