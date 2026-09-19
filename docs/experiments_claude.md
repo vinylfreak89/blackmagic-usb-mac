@@ -837,3 +837,30 @@ Each is written under a new name and moved onto the old path in one rename. The 
 render frame comes from the rule set, run on the renders' own per-frame inputs (entry 7's), with the
 comb's correction applied to field 1. The owner: "it doesn't really matter if you shift field 1 or field
 2 against its each. mathematically its the same thing".
+
+### Amendment 1 to entry 11 (2026-09-19, before the report): an unmeasurable field re-runs the comb
+
+**Owner (11:18):** "if one field can't be measured, absolutely the comb checks should be re-run. I noticed
+that looking through its own output."
+- **The trigger, U.** A frame re-runs the comb when either of its fields lacks a first picture line, a
+  last picture line or entry 11's bottom line in that unit.
+- **Physical reason.** Without a field's edges, neither rule 1 nor the either/or classes can say
+  whether the placement still holds, so the comb has to.
+- **What it should improve.** Frames with a missing edge:
+  - capture 4's 9 render frames with no field-2 label;
+  - the whole tape's frames with no field-2 last line, and its 22 frames with no first line. Those
+    had no census placement at all; they are now placed by the comb where it decides, and reported
+    apart from the census comparison.
+- **What it must not break.** Any frame the census gets right. It cannot lose one: where the comb
+  decides, it agrees by construction.
+
+**The owner's two-valued confidence, reported with it** (his 05:42 words: "high confidence decisions
+(where both top and bottom shift at the same time of one field) which results in a standard adjustment
+vs where one shifts or when a line gets partially blanked, resulting in having to run the combing
+detection algorithm"):
+- HIGH: no trigger fired (nothing moved, or a valid move), so the census placement stands.
+- LOW: any trigger fired, so the comb's answer is applied where it decides. Where it abstains, the
+  placement stays unconfirmed.
+For A and B, reported: HIGH frames and their agreement with the comb, and LOW frames split into decided
+and abstaining. My four-level proposal (11:12) stays on file, unbuilt, as the fallback if his fails
+(owner: "if my proposal fails, we can build its more complex confidence one").
