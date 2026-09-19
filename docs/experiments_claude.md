@@ -1043,3 +1043,41 @@ decided d minus the census d on that frame.
   - Pairing is given per capture: capture 3 reversed, the others aligned. Live pairing detection is
     still the open item in CLAUDE.md §9.
   - Captures 2 and 3 agree with the whole-tape run on their units.
+
+### Review by Codex of entry 12, amendment 3 and the golden reference (2026-09-19) — accepted
+
+Codex reproduced amendment 3's whole-tape totals, all four reading-B render offset files and every
+golden column it checked. Findings, all accepted:
+1. **Entry 12, comparison 2: the extra comb runs were misattributed.** With raw first lines the
+   re-runs are 4,568 / 31,677, but the field classes account for only 674 / 5,903. The rest is T1:
+   the held -1 correction sits outside the raw first lines' pair {st, st+1} on every frame, even when
+   neither field moves. On capture 2, 523 of 649 re-runs are T1 alone; at 67447 both fields are
+   "nothing". This corrects my report's "the raw first lines move by a line so often". The refutation of
+   the one-time offset stands.
+2. **The golden includes a unit the parser never registers.** Capture 1's counter 6042 is format
+   0x0800. The real parser registers 919 units; the golden had 920 frames.
+3. **Frame-keyed goldens need mapping to the engine log's unit keys.** Under reversed pairing, golden
+   frame u gives d1 to field 1 of unit u+1, while the renderer's `--engine-log` reads field 1's d1 from
+   unit u+1's own row. Mapping frame to counter directly shifts field 1 on 76 of capture 3's frames.
+4. **44 capture-1 frames have no applied output.** There is no census line, and the comb abstains or
+   cannot place. The engine must still publish a placement. See amendment 4.
+
+### Amendment 4 to entry 11 (2026-09-19, before regenerating the goldens): what is published without a placement
+
+- **The rule.** Every eligible (0xe801, exact) unit gets a published placement.
+  - Relative shift d: as the rule set gives it. Where it gives none, the last published d of the same
+    section, or 0 at a section start.
+  - Field 2's absolute d2: its first line - 286. Where that is unmeasured, the last published d2 of
+    the section, or 0.
+  - d1 = d2 - d.
+  - Sections restart at every reset (a gap here; the engine's signal-loss events).
+- **Physical reason.** A frame with nothing measured is best placed where the last measurement put it
+  (forward-only). Before any measurement, the owner's ruling on capture 1's opening applies: "That should
+  stay unregistered."
+- **What it should improve:** complete golden output on capture 1's 44 frames. **What it must not
+  break:** any judged frame; those frames have no census placement and are not judged.
+- **The golden also changes:**
+  - Units whose format is not 0xe801 are excluded.
+  - A unit-keyed file is written: unit v carries d1 for its field 1 and d2 for its field 2, from
+    whichever frame uses each. Frame-level columns (comb run, confidence) sit on the frame's
+    bottom-field unit.
