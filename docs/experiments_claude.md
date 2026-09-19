@@ -469,3 +469,9 @@ the verdicts:
 6. B's population included 412 capture-1 frames before 6667, outside the entry: 2 decided, 410
    abstaining, no disagreements. The 79 disagreements are unchanged.
 Codex's evidence: its scratch `/private/tmp/codex-e6-e7-review-Je7000/REVIEW.md`.
+Codex's check of this section (2026-09-19): two wording corrections, otherwise accurate.
+- Entry 6's falsifier requires line 23's correlation to be "no higher than both controls". Read
+  literally (no higher than either), it holds in 1 of 8 units (13786), not 5. The 5 counts units not
+  above both. The verdict, unknown for luma, is unchanged.
+- 2(st-d)+1 is the signed separation of the two first lines' output rows (1 means adjacent), not the
+  number of rows between them.
