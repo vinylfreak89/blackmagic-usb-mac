@@ -762,3 +762,21 @@ The census placement reproduces entry 3's per-capture figures and entry 8's whol
   firing. Also why capture 2's bottom changes so often (T2 on 36% of its frames).
 - Scratch: `geometry_exp1/fulltape_exp10.py`, `exp10_w{1..4}.csv`, `exp10_analysis.py` / `.out`,
   `exp10_changes.csv` (every changed frame).
+
+### Review by Codex of entry 10's report (2026-09-19) — two findings, accepted
+
+Codex reproduced the totals and all 29,805 changed-frame records, B's 25 losses included. It agreed that
+T1 and readings A and B follow the entry, and that A's no-loss guarantee is stated with its circularity.
+Genuine T2 catches check out on raw rows: capture 4 597, line 262, extent 576 -> 48. Findings:
+1. **T2 measures brightness coverage, not blanking specifically.** Some firings are brightness crossing
+   the 20-code cutoff on a line whose profile barely changes. Capture 2 67662 -> 67663, line 522: 533 ->
+   602 counted samples, from a median rise of 1.9 codes, profile correlation 0.9997; the line below
+   stays near 11. 67633 -> 67634 reports 581 -> 515 on nearly identical profiles. The 36% on capture 2
+   is the proxy's firing rate, not measured bottom movement.
+2. **T2 lacks the owner's condition that "the rest of the geometry didn't shift".** On 224 of capture 2's
+   234 firings, field 1's first and last lines both move by one line (112 up, 112 down; for example
+   67633 -> 67634, 24 -> 25 and 260 -> 261). These are whole-field moves, which his trigger would
+   exclude. That explains the "not understood" frequency. The implementation follows the committed
+   method, which is broader than his conditional event.
+Neither finding changes any number or A's verdict. They limit what T2's firing counts mean: T2 as run is
+a brightness-coverage proxy without his "rest held" condition, not his blanking trigger as he stated it.
