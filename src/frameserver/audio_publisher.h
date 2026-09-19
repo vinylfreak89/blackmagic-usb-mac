@@ -9,8 +9,9 @@
 //   pts(ordinal n) = c * 8008 + (n - o) * 5     ticks of 1/240000 s   (lcm of 30000 and 48000)
 // and every later frame of the run is pts(previous) + 5. Later resyncs do NOT move the anchor;
 // each one yields a signed CORRELATION RESIDUAL = c' * 8008 - pts(o') — the measured offset
-// between the device's audio and video clocks (the tape-scale number is ~36 ppm, i.e. a fraction
-// of a sample per unit, accumulating). The residual is reported, never applied: applying it would
+// between the device's audio and video clocks. The measured whole-tape change is localized
+// device sample deficits, not continuous drift. The residual is reported, never applied here:
+// applying every quantized measurement would
 // manufacture ±0.6-sample gaps at every unit boundary. A consumer that wants video locked to the
 // audio clock uses ap_lookup: for a video unit counter it returns the audio pts of that unit's
 // resync, so video timestamps can be derived from the audio clock (P4a decision).
@@ -100,6 +101,15 @@ void ap_close(audio_publisher *p);
 // anchored, else 0. A terminal audio-queue drop (blocks dropped with no later block to flag) is
 // reported only through after-stop stats (audio_dropped_*), not through an event.
 int  ap_lookup(const audio_publisher *p, uint64_t epoch, uint64_t counter_ext, uint64_t *pts_num, uint64_t *ordinal);
+
+typedef struct {
+    uint64_t pts_num, sample_ordinal;
+    uint64_t run;                 // publisher-local anchor generation; never compare across runs
+    int64_t residual_ticks;       // video time minus audio time at this exact resync
+} ap_correlation;
+// Same availability/threading contract as ap_lookup; all fields are one seqlock snapshot.
+int ap_lookup_correlation(const audio_publisher *p, uint64_t epoch, uint64_t counter_ext,
+                          ap_correlation *out);
 
 #ifdef __cplusplus
 }

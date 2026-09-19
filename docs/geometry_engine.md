@@ -52,7 +52,7 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 12, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 13, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16), comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
 not change decisions. Frame diagnostic columns refer to the bottom-field unit,
@@ -76,6 +76,28 @@ escaping preserves commas, quotes and newlines). Delayed rows use their own
 unit's note; counterless hole/tail rows use the active setting. Without a schedule
 the note is empty. The applied-offset columns keep their renderer contract.
 Pairing remains supplied configuration, not a live detector.
+
+Unit-keyed rows also carry `audio_residual_ticks` (video minus audio time at that
+unit's own resync, in 1/240000 s) and `audio_step_samples`. Both cells are empty
+if correlation is unavailable; observation-only rows without a placement key
+also leave them empty. Correlations are bounded, race-free publisher snapshots;
+a resync not yet delivered or no longer in history is unknown, not estimated.
+Known residuals are compared to the previous known unit in the same audio run.
+Only an absolute difference **greater than 6 ticks** exceeds the two ±3-tick
+quantization envelopes. Convert that difference to the nearest signed sample
+(5 ticks/sample); positive means audio time needs advancing. Other known rows
+carry step zero. Missing resyncs do not reset the comparison. Audio re-anchors
+(hole/unframed/epoch changes) seed a new baseline; geometry resets, pairing
+changes and sidecar attachment do not reset it. Initial residual is a baseline,
+not an instruction to insert startup silence. A run crossing unavailable units
+can locate a step only at the next known unit, not within the unobserved span.
+
+These are metadata only: neither PCM, publisher timestamps nor geometry changes.
+An A/V review adapter may insert explicitly flagged silence for device deficits,
+as §6 specifies, without resampling or modifying the archival PCM. Negative steps
+are reported too; their downstream handling is not decided by this logger.
+`make -C src/frameserver test-audio-steps` checks quantization, missing resyncs,
+signed steps, own-unit identity under both pairings, and unchanged PCM/timestamps.
 
 The classifier's DISCONTINUITY and BEGIN_SEGMENT actions are accumulated until
 the next eligible raster. The engine additionally breaks on counter gaps; the

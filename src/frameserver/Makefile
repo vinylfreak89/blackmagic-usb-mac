@@ -49,16 +49,22 @@ test-geometry: frameserver_replay $(FIXTURE) $(FIXTURE_LONG)
 test-pairing: frameserver_replay
 	python3 ../../scripts/test_pairing_schedule.py ./frameserver_replay
 
+.PHONY: test-audio-steps
+test-audio-steps: frameserver_replay
+	python3 ../../scripts/test_audio_steps.py ./frameserver_replay
+
 .PHONY: test-geometry-asan test-geometry-tsan
 test-geometry-asan: $(FIXTURE) $(FIXTURE_LONG)
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o tests/geometry_replay_asan $(LIBS)
 	python3 ../../scripts/test_geometry_pipeline.py ./tests/geometry_replay_asan
 	python3 ../../scripts/test_pairing_schedule.py ./tests/geometry_replay_asan
+	python3 ../../scripts/test_audio_steps.py ./tests/geometry_replay_asan
 
 test-geometry-tsan: $(FIXTURE) $(FIXTURE_LONG)
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o tests/geometry_replay_tsan $(LIBS)
 	python3 ../../scripts/test_geometry_pipeline.py ./tests/geometry_replay_tsan
 	python3 ../../scripts/test_pairing_schedule.py ./tests/geometry_replay_tsan
+	python3 ../../scripts/test_audio_steps.py ./tests/geometry_replay_tsan
 
 tests/replay_completion_test: $(SRCS) tests/replay_completion_test.c frameserver_replay.c ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_completion_test.c -o $@ $(LIBS)
@@ -97,3 +103,4 @@ clean:
 	rm -f frameserver_replay tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring tests/worker_bench
 
 frameserver_replay tests/frameserver_test tests/replay_completion_test: pairing_schedule.h
+frameserver_replay tests/frameserver_test tests/replay_completion_test: audio_publisher.h

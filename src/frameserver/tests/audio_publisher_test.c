@@ -43,12 +43,14 @@ typedef struct {
 static void *stress_reader(void *arg){
     stressctx *c = arg;
     while (!atomic_load(&c->stop)){
-        uint64_t pts, ord; uint64_t ctr = (uint64_t)(atomic_load(&c->lookups) % 200);
+        ap_correlation hit; uint64_t ctr = (uint64_t)(atomic_load(&c->lookups) % 200);
         atomic_fetch_add(&c->lookups, 1);
         unsigned long before=atomic_load(&c->generation);
-        if (ap_lookup(c->p, 1, ctr, &pts, &ord)){
+        if (ap_lookup_correlation(c->p, 1, ctr, &hit)){
             atomic_fetch_add(&c->hits, 1);
-            if (pts != ord * AP_TICKS_PER_FRAME) atomic_fetch_add(&c->torn, 1);
+            if (hit.pts_num != hit.sample_ordinal * AP_TICKS_PER_FRAME || hit.run != 1 ||
+                hit.residual_ticks != (int64_t)(ctr*AP_TICKS_PER_UNIT)-(int64_t)hit.pts_num)
+                atomic_fetch_add(&c->torn, 1);
             /* Reader-owned acknowledgements. A second hit must follow a new
              * writer batch, not merely repeat a read after writing has ended. */
             if(before && !atomic_load(&c->first_hit)) atomic_store(&c->first_hit,before);
@@ -102,6 +104,9 @@ int main(int argc,char **argv){
     CHECK(ap_lookup(p, 1, 12, &lp, &lo) && lp == 10ull * AP_TICKS_PER_UNIT + (1601ull + 1602ull) * 5, "lookup(12) contiguous");
     CHECK(!ap_lookup(p, 1, 13, &lp, &lo), "lookup of an unseen counter fails");
     CHECK(!ap_lookup(p, 2, 11, &lp, &lo), "lookup is qualified by epoch");
+    ap_correlation hit, old;
+    CHECK(ap_lookup_correlation(p,1,11,&hit) && hit.residual_ticks==3 && hit.run==1,
+          "correlation snapshot contains publisher residual and anchor generation");
     // byte-order conservation: every PCM record's bytes appear exactly once, in order
     { int ok = s.nbytes == s.frames * 6; for (size_t i = 0; ok && i < s.frames; i++) ok = s.bytes[i*6+5] == (uint8_t)i; CHECK(ok, "PCM bytes delivered in order through block splits"); }
     // timebase constants
@@ -136,7 +141,8 @@ int main(int argc,char **argv){
         CHECK(!(s.blocks[2].flags & (AP_FLAG_DISCONTINUITY_BEFORE|AP_FLAG_UNANCHORED)) && s.blocks[2].anchor_counter_ext == 8 && s.blocks[2].pts_num == 8ull * AP_TICKS_PER_UNIT, "re-anchored at the next resync, at that unit's video time");
     }
     CHECK(st.discontinuities == 1 && st.records_hole == 1 && s.frames == 5, "one discontinuity, conservation 5");
-    CHECK(!ap_lookup(p, 1, 7, &lp, &lo) || 1, "lookup(7) may or may not survive (history) - not asserted");
+    CHECK(ap_lookup_correlation(p,1,7,&old) && ap_lookup_correlation(p,1,8,&hit) &&
+          old.run!=hit.run && hit.residual_ticks==0, "hole changes anchor generation, not an audio step");
 
     // 4: counter gaps: extended jump (20 -> 22) and a parser-flagged discontinuity; PCM stays contiguous, no re-anchor
     ap_close(p); memset(&s, 0, sizeof s); CHECK(ap_open(&p, 64, &sink) == 0, "reopen 4");
@@ -157,6 +163,8 @@ int main(int argc,char **argv){
         CHECK(s.blocks[1].correlation_residual == 2 * 8008 - 4 * 5, "residual shows the jump (%lld)", (long long)s.blocks[1].correlation_residual);
     }
     CHECK(st.counter_gaps == 2, "two counter gaps counted, got %llu", (unsigned long long)st.counter_gaps);
+    CHECK(ap_lookup_correlation(p,1,20,&old) && ap_lookup_correlation(p,1,23,&hit) &&
+          old.run==hit.run && hit.residual_ticks==3*8008-8*5, "missing resync keeps the residual comparable");
 
     // 5: buffer fill -> PARTIAL blocks with contiguous pts; then epoch change flags discontinuity
     ap_close(p); memset(&s, 0, sizeof s); CHECK(ap_open(&p, 4, &sink) == 0, "reopen 5");
@@ -172,6 +180,14 @@ int main(int argc,char **argv){
         CHECK(s.blocks[1].pts_num == 4 * 5 && s.blocks[2].pts_num == 8 * 5, "partial blocks keep contiguous pts");
         CHECK((s.blocks[3].flags & AP_FLAG_DISCONTINUITY_BEFORE) && s.blocks[3].epoch == 2 && (s.blocks[3].flags & AP_FLAG_UNANCHORED), "epoch change flagged and unanchored");
     }
+    { unit_audio_observation o=resync(2,1,1,0); ap_on_audio(p,&o); }
+    CHECK(ap_lookup_correlation(p,1,0,&old) && ap_lookup_correlation(p,2,1,&hit) &&
+          old.run!=hit.run && hit.residual_ticks==0, "epoch re-anchor seeds a new comparison run");
+    old=hit;
+    { unit_audio_observation o=hole(2,1); o.kind=UNIT_AUDIO_UNFRAMED; ap_on_audio(p,&o); }
+    { unit_audio_observation o=resync(2,1,2,0); ap_on_audio(p,&o); }
+    CHECK(ap_lookup_correlation(p,2,2,&hit) && old.run!=hit.run && hit.residual_ticks==0,
+          "unframed audio re-anchor seeds a new comparison run");
     ap_close(p);
 
     // 6: seqlock stress — concurrent lookups never observe a torn entry

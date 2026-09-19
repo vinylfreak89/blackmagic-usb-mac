@@ -5,7 +5,11 @@
 // Entries are read from other threads under a seqlock; the fields themselves are atomics
 // (relaxed) so a concurrent read is never a C11 data race, only a possibly torn snapshot
 // that the sequence check rejects.
-typedef struct { _Atomic uint64_t epoch, counter, ordinal, pts; _Atomic int anchored; } ap_corr;
+typedef struct {
+    _Atomic uint64_t epoch, counter, ordinal, pts, run;
+    _Atomic int64_t residual;
+    _Atomic int anchored;
+} ap_corr;
 
 struct audio_publisher {
     ap_sink sink;
@@ -13,7 +17,7 @@ struct audio_publisher {
     uint64_t first_ordinal;                 // ordinal of buf[0]
     uint64_t epoch; int have_epoch;
     // run timing: pts(ord) = run_pts0 + (ord - run_ord0) * 5 once anchored
-    int anchored; uint64_t run_ord0, run_pts0, anchor_counter;
+    int anchored; uint64_t run_ord0, run_pts0, anchor_counter, run;
     int have_last_resync; uint64_t last_resync_counter; int64_t last_residual;
     uint32_t pending_flags;                 // flags to stamp on the next emitted block
     // correlation history (single writer = delivery thread; readers anywhere)
@@ -70,32 +74,44 @@ static void corr_record_(audio_publisher *p, uint64_t counter, uint64_t ordinal,
     atomic_store_explicit(&p->corr[i].counter, counter, memory_order_relaxed);
     atomic_store_explicit(&p->corr[i].ordinal, ordinal, memory_order_relaxed);
     atomic_store_explicit(&p->corr[i].pts, pts, memory_order_relaxed);
+    atomic_store_explicit(&p->corr[i].run, p->run, memory_order_relaxed);
+    atomic_store_explicit(&p->corr[i].residual, p->last_residual, memory_order_relaxed);
     atomic_store_explicit(&p->corr[i].anchored, anchored, memory_order_relaxed);
     atomic_fetch_add_explicit(&p->corr_seq, 1, memory_order_release);   // even: stable
 }
 
-int ap_lookup(const audio_publisher *p, uint64_t epoch, uint64_t counter_ext, uint64_t *pts_num, uint64_t *ordinal){
+int ap_lookup_correlation(const audio_publisher *p, uint64_t epoch, uint64_t counter_ext, ap_correlation *out){
     if (!p) return 0;
     for (int attempt = 0; attempt < 8; attempt++){
         uint32_t s0 = atomic_load_explicit(&p->corr_seq, memory_order_acquire);
         if (s0 & 1u) continue;
-        uint64_t hpts = 0, hord = 0; int found = 0;
+        ap_correlation hit = {0}; int found = 0;
         for (unsigned i = 0; i < AP_LOOKUP_ENTRIES; i++)
             if (atomic_load_explicit(&p->corr[i].counter, memory_order_relaxed) == counter_ext &&
                 atomic_load_explicit(&p->corr[i].epoch, memory_order_relaxed) == epoch &&
                 atomic_load_explicit(&p->corr[i].anchored, memory_order_relaxed)){
-                hpts = atomic_load_explicit(&p->corr[i].pts, memory_order_relaxed);
-                hord = atomic_load_explicit(&p->corr[i].ordinal, memory_order_relaxed);
+                hit.pts_num = atomic_load_explicit(&p->corr[i].pts, memory_order_relaxed);
+                hit.sample_ordinal = atomic_load_explicit(&p->corr[i].ordinal, memory_order_relaxed);
+                hit.run = atomic_load_explicit(&p->corr[i].run, memory_order_relaxed);
+                hit.residual_ticks = atomic_load_explicit(&p->corr[i].residual, memory_order_relaxed);
                 found = 1; break;
             }
         atomic_thread_fence(memory_order_acquire);
         uint32_t s1 = atomic_load_explicit(&p->corr_seq, memory_order_relaxed);
         if (s0 != s1) continue;                            // torn: retry
         if (!found) return 0;
-        if (pts_num) *pts_num = hpts; if (ordinal) *ordinal = hord;
+        if (out) *out = hit;
         return 1;
     }
     return 0;
+}
+
+int ap_lookup(const audio_publisher *p, uint64_t epoch, uint64_t counter_ext, uint64_t *pts_num, uint64_t *ordinal){
+    ap_correlation hit;
+    if (!ap_lookup_correlation(p, epoch, counter_ext, &hit)) return 0;
+    if (pts_num) *pts_num = hit.pts_num;
+    if (ordinal) *ordinal = hit.sample_ordinal;
+    return 1;
 }
 
 void ap_on_audio(audio_publisher *p, const unit_audio_observation *o){
@@ -123,6 +139,7 @@ void ap_on_audio(audio_publisher *p, const unit_audio_observation *o){
         if (!p->anchored){
             // first resync of a contiguous run: place the run on the video timebase, once
             p->anchored = 1; p->anchor_counter = o->counter_extended;
+            p->run++;
             p->run_ord0 = o->sample_ordinal; p->run_pts0 = video_pts;
             p->last_residual = 0;
         } else {

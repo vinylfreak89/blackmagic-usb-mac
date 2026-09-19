@@ -52,6 +52,10 @@ struct frameserver {
     int geometry_reversed;
     fp_publisher *pub;
     audio_publisher *aud;
+    // Video-worker owned, independent of geometry resets and sidecar attachment.
+    int audio_residual_known;
+    uint64_t audio_residual_epoch, audio_residual_run;
+    int64_t audio_residual_previous;
     // audio queue: single producer (delivery thread, inside the publisher's sink) -> audio worker
     ap_block *aq; uint8_t *aq_pcm; unsigned aq_slots, aq_cap_frames; _Atomic unsigned aq_head, aq_tail;
     pthread_mutex_t aq_m; pthread_cond_t aq_c; int aq_m_init, aq_c_init;
@@ -255,7 +259,7 @@ static const char *transport_name(unit_transport_state t){
                 case UNIT_TRANSPORT_SHORT: return "Short"; default: return "Unframed"; }
 }
 static int log_header(FILE *L, int geometry){
-    if(geometry)return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note\n")<0?-1:0;
+    if(geometry)return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples\n")<0?-1:0;
     return fprintf(L, "ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,"
                "interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,"
                "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,"
@@ -316,7 +320,18 @@ static int log_field(FILE *L, const fieldreg_field_decision *d)
 /* v11 rows are unit-keyed. Frame diagnostics belong to that unit's bottom field;
  * frame_d1 therefore need not equal applied_d1 when pairing is reversed. Ineligible
  * observations keep provenance but have no placement/key for the renderer. */
-static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,int published,const char *drop) {
+static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,int published,const char *drop,const ap_correlation *audio) {
+    int64_t step=0;
+    if(audio) {
+        if(f->audio_residual_known && f->audio_residual_epoch==it->obs.epoch && f->audio_residual_run==audio->run) {
+            int64_t delta=audio->residual_ticks-f->audio_residual_previous;
+            // Each measurement is quantized within +/-3 ticks. A difference must
+            // exceed both envelopes. Round signed ticks to the nearest sample.
+            if(delta>6 || delta<-6)step=delta/5+(delta%5>=3)-(delta%5<=-3);
+        }
+        f->audio_residual_known=1;f->audio_residual_epoch=it->obs.epoch;
+        f->audio_residual_run=audio->run;f->audio_residual_previous=audio->residual_ticks;
+    }
     pthread_mutex_lock(&f->log_m);
     if(f->log) {
         char cell[30][64]={{0}};
@@ -353,18 +368,21 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
         const fs_pairing_row *pair=(d || (!it->gap_only && it->obs.format))?
             fs_pairing_find(&f->pairing,d?d->counter:it->obs.counter_extended):f->pairing_active;
         if(fprintf(f->log,"%s,",(pair?pair->reversed:f->geometry_reversed)?"reversed":"aligned")<0)bad=1;
-        if(fs_pairing_write_note(f->log,pair?pair->note:"")<0 || fputc('\n',f->log)==EOF)bad=1;
+        if(fs_pairing_write_note(f->log,pair?pair->note:"")<0)bad=1;
+        if(audio) {
+            if(fprintf(f->log,",%lld,%lld\n",(long long)audio->residual_ticks,(long long)step)<0)bad=1;
+        } else if(fputs(",,\n",f->log)==EOF)bad=1;
         if(bad){f->st.log_write_errors++;f->log_file_errors++;}else f->st.log_rows++;
         fs_test_after_log_row(f,f->log);
     }
     pthread_mutex_unlock(&f->log_m);
 }
 static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *unit,const ge_decision *d) {
-    uint64_t pts=0;int known=ap_lookup(f->aud,it->obs.epoch,d->counter,&pts,NULL);
+    ap_correlation audio={0};int known=ap_lookup_correlation(f->aud,it->obs.epoch,d->counter,&audio);
     if(known)atomic_fetch_add(&f->audio_master_frames,1);
-    int rc=fp_publish_placed(f->pub,unit,FP_UNIT_BYTES,d->counter,d->d1,d->d2,FP_TRANSPORT_COMPLETE,known,pts);
+    int rc=fp_publish_placed(f->pub,unit,FP_UNIT_BYTES,d->counter,d->d1,d->d2,FP_TRANSPORT_COMPLETE,known,audio.pts_num);
     if(rc==0)f->st.published++;else f->st.publisher_dropped++;
-    geometry_log(f,it,d,rc==0,rc==0?"None":"PublisherFull");
+    geometry_log(f,it,d,rc==0,rc==0?"None":"PublisherFull",known?&audio:NULL);
 }
 static void geometry_flush(frameserver *f) {
     ge_decision out[2];unsigned n=ge_break(f->geometry,out);
@@ -398,7 +416,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     if(!unit) {
         geometry_flush(f);
         if(it->drop==FS_DROP_POOL_FULL){atomic_fetch_add(&f->dropped_pool_full,1);f->st.exact_units++;f->st.discontinuity_calls++;}
-        geometry_log(f,it,NULL,0,it->drop==FS_DROP_POOL_FULL?"PoolFull":transport_name(it->obs.transport));
+        geometry_log(f,it,NULL,0,it->drop==FS_DROP_POOL_FULL?"PoolFull":transport_name(it->obs.transport),NULL);
         return;
     }
     f->st.exact_units++;
@@ -423,7 +441,7 @@ static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
         if(f->geometry){
             geometry_flush(f);f->st.discontinuity_calls++;f->st.ring_drops_logged+=it->preceding_ring_drops;f->st.ring_gap_rows++;
-            geometry_log(f,it,NULL,0,"RingFullTail");return;
+            geometry_log(f,it,NULL,0,"RingFullTail",NULL);return;
         }
         fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++;
         f->st.ring_drops_logged+=it->preceding_ring_drops; f->st.ring_gap_rows++;
