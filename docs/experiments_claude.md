@@ -300,3 +300,16 @@ By segment: first recording 31,349 / 38,567 (81.3%, reversed pairing); after the
   a rescanned field 1, 0% of 1,087. The automatic census is weakest exactly where the confident census
   relied on hand labels.
 - Per-unit results: scratch `geometry_exp1/exp5_w{1..4}.csv`, summary `exp5_summary.py`.
+
+### Observation from the owner's render review (2026-09-19; analysis, no test run)
+
+Raw rows at the frames he flagged: when a field's picture moves UP one line, its first visible line
+does not move, because the line that would become first slides under the fixed blank line above it
+(22 / 285). Capture 4 597, field 1: every line carries the next line down of 596, line 22 stays at
+blanking (1.4), and the switch-debris row 262 goes to 3.1 (from 86.9) because the debris moved to 261.
+Capture 3 13602 slot 1: the same, top still 23, last line 260 -> 259. Downward moves do move the top.
+So the first picture line is one-sided; the census placement used it alone, and each upward move combs
+(capture 3 13575, 13601-13603, 13779; capture 4 597). Separately, the carried placements at capture 2
+1969 and capture 3 13604 / 13783-13789 were the confident-census rule's exclusions, not the signal: in
+13784-13789 the top really is 24 (faint row at 23), a class the rule wrongly lumped with "under a strong
+caption". Panels: session scratch `render_findings/`.
