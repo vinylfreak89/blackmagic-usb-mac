@@ -475,3 +475,49 @@ Codex's check of this section (2026-09-19): two wording corrections, otherwise a
   above both. The verdict, unknown for luma, is unchanged.
 - 2(st-d)+1 is the signed separation of the two first lines' output rows (1 means adjacent), not the
   number of rows between them.
+
+## E-claude-2026-09-19-8 — the whole-tape census with the unbroken-block rules
+
+**Question (owner, 2026-09-19):** "With this new finding, let's run a whole tape census applying these
+new rules."
+
+**Premise.** The owner's two rules, applied to the census's first and last picture lines, give the
+comb-free placement on the whole tape. Rule 1: the picture forms one unbroken block across both fields.
+The deck's own blank line 22 / 285 may sit inside it only where a field's first line has slid under it.
+Rule 2: a field whose last line rises one while its first line holds has moved up. Its real first line
+is under that blank line, so it goes down a line.
+
+**Method.**
+- **Edges, per unit and field.** First lines: entry 5's automatic census exactly (its rules 1-3). They
+  are recomputed in the new pass and must match entry 5's per-unit files unit for unit. Last lines:
+  entry 2's rule, unchanged. Walking up from 262 / 525, take the last line whose 95th percentile is
+  more than 5 codes above the device blanking and whose 5-95 spread is over 4.
+- **Rule 2, per field in unit order.** A count u starts at 0 and returns to 0 after any gap. If the
+  first line equals the previous unit's and the last line is exactly one line higher, u goes up by 1.
+  If the first line holds and the last line is exactly one line lower, u goes down by 1, not below 0.
+  If both hold, u carries; any other change resets u to 0. The field's effective first line is its
+  first line minus u; its last line is unchanged.
+- **Rule 1, per frame,** with pairing per segment as in entry 5. st is the bottom field's effective
+  first line minus the top field's, in field lines, and sl the same for last lines. The top edge
+  allows d in {st, st+1}; the bottom edge allows d in {sl, sl+1}.
+  - One shared value: the rule decides d.
+  - Two shared (equal heights): the rule cannot decide.
+  - None shared: the edges contradict.
+  - Where the rule does not decide, the placement falls back to d = st, the top field's line on top.
+    That is entry 5's placement wherever u = 0 in both fields.
+- **Judge:** entry 5's comb verdicts, from the same frames, decided at 1.5x.
+
+**Report.** Agreement with the comb against entry 5's placement on the same decided frames (80.7%):
+- by segment;
+- by entry 5's top cases;
+- by rule class (decides, equal heights, contradict, no last line), with frames that carry a
+  moved-up count apart.
+Units that are in captures 2 and 3, from which the rules were built, are reported apart from the
+held-out rest.
+
+**Falsifier.** Fewer than 95% of decided frames agree with the comb where the rule decides, or overall
+(the rule where it decides, the fallback elsewhere) below the owner's 95% bar. The change against 80.7%
+is reported either way.
+
+**Material.** Every exact unit outside the three non-programme events, as in entry 5 (counters up to
+4725, 48,189-48,240, 53,616-53,674).
