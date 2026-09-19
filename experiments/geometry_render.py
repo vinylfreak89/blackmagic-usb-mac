@@ -121,7 +121,12 @@ def plausible_header(b, j):
     if len(b) < j + 8:
         return None                       # undecided until the format code has arrived
     fmt = int.from_bytes(b[j + 6:j + 8], "little")
-    return fmt in KNOWN_FORMATS and not any(b[j + 8:j + 16])   # zeroed header bytes, as many as present
+    if fmt not in KNOWN_FORMATS:
+        return False
+    tail = bytes(b[j + 8:j + 16])                                # as many as have arrived
+    if fmt == 0x0800:                                            # no-signal header: counter+format repeated
+        return tail == (bytes(b[j + 4:j + 8]) * 2)[:len(tail)]
+    return not any(tail)                                         # picture header: zeroed
 
 
 def main():
