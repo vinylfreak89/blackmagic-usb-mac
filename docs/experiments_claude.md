@@ -1205,3 +1205,22 @@ that do not trace to resets or pairing.
   comb cannot see temporal mis-pairing.
 - **Verdict.** Premise held. Differences from 99.2% trace to live resets, all of them improvements.
 - Scratch: `fulltape/fulltape_registration.csv`, `exp13_analysis.py` / `.out`, `experiment_frames_B.csv`.
+
+### Review by Codex of entry 13's report (2026-09-19) — two findings, accepted
+
+1. **The three frames between the populations are not boundary flushes.** Frames 60,874, 71,445 and
+   90,127 are published woven frames. Their full-precision comb margins (1.49998849, 1.49964987,
+   1.49987114) are just under 1.5, while entry 5 stored margins rounded to three decimals (1.500), so the
+   experiment counted them as decided. On the identical 76,883-frame population the comparison is engine
+   76,300 against experiment 76,251. The rounding also bears on entries 5-12's whole-tape figures: the
+   seven stored margins of exactly 1.500 moved at most a few frames between decided and abstaining. The
+   engine uses full precision.
+2. **"49 differences, all improvements" holds for the judged frames only.** Across all shared frames, engine
+   and experiment placements differ on 89:
+   - 49 are comb-decided: all improvements, all in the two runs from the live resets at 53,410 and
+     69,517;
+   - 38 are frames where the comb abstains, which cannot be judged;
+   - 2 are the rounding cases 60,874 (experiment 0, engine -1) and 71,445 (-1, engine -2).
+   Neither "all differences trace to resets" nor "all are improvements" holds unqualified. The engine's
+   headline count stands.
+Codex's recount: its scratch `/private/tmp/codex-e13-review-5p0udR/recount.py`.
