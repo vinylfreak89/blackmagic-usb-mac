@@ -384,3 +384,55 @@ upward move, the last line does not rise by one, or the comb's d is not the one 
 **Material.** Captures 1 (from 6667), 2, 3 and 4, as in entry 3. The flagged frames are raw-row
 checked, with panels, before anything is reported about them. The whole tape (held out) is not in this
 entry; its per-unit files hold no last lines.
+
+### Report on entry 6 (2026-09-19) — no picture luma; the colour is the picture's
+
+Verdict: the premise is refuted for picture luma. There is some luma above blanking, but it does not
+follow the picture. The finding the premise did not ask about: the line carries the picture's colour.
+- **Luma.** Line 23's mean is 1.75-2.64 against 1.36-1.39 on the blank lines 22 and 285: within 1 code in
+  7 of 8 units, 1.27 above in 13791. Its SD is 1.3-2.5 against 0.48, from short bursts of 7-18 codes on
+  2-5% of samples. Correlation with line 24 is -0.24 to 0.13. That is above both controls in 2 units by
+  less than the controls' own spread (-0.25 to 0.12). The bursts sit at line 24's 38th brightness
+  percentile against 65th for shifted positions, so they are not the picture's brightest parts
+  showing through.
+- **Colour.** U and V on line 23 correlate 0.66-0.83 and 0.64-0.86 with line 24. That matches line 24
+  against line 25 (0.54-0.90), against about 0 for the blank line 22 and -0.15 to 0.45 for other
+  content. The amplitude also matches: U SD 13-20 against 11-23, with a regression slope of 0.6-1.2.
+  In colour, line 23 is a picture line; in luma, it is blank. Calling it "colour noise" in the sparkle
+  answer was wrong. bwdif's bright speckle is that colour on a luma-black row between the Shuttle's
+  bright insert rows.
+- Not understood: whether the tape, the deck or the Shuttle removed the luma and kept the colour.
+- Raw rows and panel: session scratch `render_findings/e6_line23*.py`, `e7/cap3_13785_line23_colour.png`.
+
+### Report on entry 7 (2026-09-19) — A held; B refuted; C held on raw rows
+
+- **A held.** The comb-free weave leaves both edges unbroken in 230 / 230 decided frames on capture 1,
+  499 / 500 on capture 3, 565 / 567 on capture 4, and 542 / 545 on capture 2. For capture 2 that needs
+  the owner's reading that field 1's visible first line is leaky line 22, not picture; with the raw
+  census tops only 2 / 545 pass. The six exceptions are capture 3 13575, capture 4 395-396 (comb +2 and
+  -1 on nominal lines; not examined) and capture 2 67451 / 68025-68026 (bottom).
+  13575 is real. Field 2 moved up one line in unit 13575 (last line 260 -> 259, top 286 kept, content
+  +1 at a 1.47 ratio), and its first picture line slid under the deck's fixed blank line 285. The
+  comb-free weave then has that blank line inside the picture. The block rule must allow the deck's
+  fixed blank lines (22 / 285) where a moved line was lost.
+- **Structure alone often fixes the placement.** Where the two fields' picture heights differ by one
+  line, the top pair and bottom pair share exactly one d. That happened in 459 / 500 frames on capture
+  3, 544 / 545 on capture 2 (offset), 57 / 567 on capture 4 and 0 / 230 on capture 1; the shared d is
+  the comb's in 1,058 of 1,060. Where the heights are equal, two placements a line apart both leave the
+  block unbroken, and something else has to choose.
+- **B refuted.** Of 79 decided frames whose render placement differs from the comb's, an edge check
+  flags 53: all 52 on capture 3, including all seven the owner flagged (13783-13789, top broken), and
+  capture 2 1969. Ten have an edge the census could not measure. 16 misplacements leave both edges
+  unbroken, every one with equal heights: capture 1 6929; capture 2 2489-2490; capture 3 13587, 13601,
+  13779, 13939, 13950, 13957, 13961, 13972; capture 4 391-392, 395-396, 597.
+- **C held on raw rows, for either field.** Capture 3 unit 13602, field 1 (frames 13601-13603): first
+  line 23 kept, last 260 -> 259, content +1 (1.57); comb +1, field 1 one line down. Capture 3 unit
+  13575, field 2 (frame 13575): as above; comb -1, field 2 one line down. Capture 4 unit 597, field 1:
+  first line 23 kept, raw line 262 91.5 -> 8.5 (last 262 -> 261), content +1 (1.70); comb +1. Entry 2's
+  bottom rule still read 262 there, so that census misses this move. Capture 3 unit 13779, field 1
+  (frame 13778): first line kept, last 260 -> 259, comb +1 but abstaining (1.38).
+  The listed frame 13779 was not an upward move: field 1 of unit 13780 went down, its first line from
+  23 to 25 (24 blank, 23 caption-like) while its content moved about two lines down from 13779's. The
+  census top put d at -2, the comb at -1, and both leave the block unbroken. Not understood.
+- **Amendments:** none. Frame-level results: session scratch `e7/e7_frames.csv`, `e7/e7.out`; panels
+  `e7/cap3_13785_weave_top.png`, `e7/moves_top.png`, `e7/moves_bottom.png`.
