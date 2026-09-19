@@ -1179,3 +1179,29 @@ not model: the live resets and the pairing inside non-programme events.
 that do not trace to resets or pairing.
 
 **Material.** The whole tape.
+
+### Report on entry 13 (2026-09-19) — held: the engine gets 99.24% on the whole tape, above the experiment
+
+- **Replay.** v11-engine e3868e7, `--geometry-v11 --pairing-schedule --audit-comb --pace-us 8000`.
+  - 86,305 observations: 86,293 exact, 7 short, 4 unframed, 1 0x0800.
+  - Published 86,293, with no pool, ring or surface drops.
+  - The registration log has 86,305 rows, schema 12, with pairing and pairing_note on every row.
+  - 20 live resets: begin-segment 15, discontinuity 12, and the pairing switch.
+- **Agreement with the comb**, published placement against every comb-decided frame:
+  - all: 76,546 / 77,129 (99.24%);
+  - first recording 38,174 / 38,567 (98.98%); after the boundary 4,854 / 4,872 (99.63%); after 27:18
+    33,278 / 33,450 (99.49%); tape start and events 240 / 240.
+  - The comb abstains on 9,160 frames.
+- **On the experiment's population:** 76,300 / 76,883 (99.24%), against the experiment's 76,254 /
+  76,886 (99.18%). Three of the experiment's judged frames are not woven frames in the engine: the
+  unit flushed at the pairing switch and reset boundaries.
+- **Engine against experiment, frame by frame.** They differ on 49 frames, and on every one the engine
+  agrees with the comb and the experiment did not. All 49 lie in two runs that start exactly at a live
+  reset the experiment did not model: 53,410-53,462 and 69,517-69,520. At each, the reset's forced
+  re-run found the census one line off, held the correction, confirmed it on the next frame, and held
+  it through the run. The experiment stayed on the census placement there.
+- **Mixed stretch.** The 1,282 units noted as likely mis-paired agree with the comb on 628 of 655 decided
+  frames (95.9%). That checks the vertical shift under the aligned weave, not the pairing itself; the
+  comb cannot see temporal mis-pairing.
+- **Verdict.** Premise held. Differences from 99.2% trace to live resets, all of them improvements.
+- Scratch: `fulltape/fulltape_registration.csv`, `exp13_analysis.py` / `.out`, `experiment_frames_B.csv`.
