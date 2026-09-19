@@ -3,6 +3,7 @@
 #include "../signal_state/signal_state.h"
 #include "../field_registration/field_registration.h"
 #include "../field_registration/geometry_engine.h"
+#include "pairing_schedule.h"
 #include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -46,6 +47,9 @@ struct frameserver {
     int geometry_pending, geometry_reset;
     uint64_t geometry_epoch;
     int geometry_have_epoch;
+    fs_pairing_schedule pairing;
+    const fs_pairing_row *pairing_active;
+    int geometry_reversed;
     fp_publisher *pub;
     audio_publisher *aud;
     // audio queue: single producer (delivery thread, inside the publisher's sink) -> audio worker
@@ -251,7 +255,7 @@ static const char *transport_name(unit_transport_state t){
                 case UNIT_TRANSPORT_SHORT: return "Short"; default: return "Unframed"; }
 }
 static int log_header(FILE *L, int geometry){
-    if(geometry)return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version\n")<0?-1:0;
+    if(geometry)return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note\n")<0?-1:0;
     return fprintf(L, "ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,"
                "interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,"
                "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,"
@@ -340,10 +344,16 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
             }
         }
         CELL(26,"%d",published);CELL(27,"%s",drop);
-        CELL(28,"%llu",(unsigned long long)it->preceding_ring_drops);CELL(29,"%d",11);
+        CELL(28,"%llu",(unsigned long long)it->preceding_ring_drops);CELL(29,"%d",FS_GEOMETRY_LOG_SCHEMA);
 #undef CELL
         int bad=0;
-        for(int i=0;i<30;i++)if(fprintf(f->log,"%s%c",cell[i],i==29?'\n':',')<0)bad=1;
+        for(int i=0;i<30;i++)if(fprintf(f->log,"%s,",cell[i])<0)bad=1;
+        /* Pending reversed rows must retain THEIR note, not the next unit's note.
+         * Counterless hole/tail rows use the active setting, not a fictitious 0. */
+        const fs_pairing_row *pair=(d || (!it->gap_only && it->obs.format))?
+            fs_pairing_find(&f->pairing,d?d->counter:it->obs.counter_extended):f->pairing_active;
+        if(fprintf(f->log,"%s,",(pair?pair->reversed:f->geometry_reversed)?"reversed":"aligned")<0)bad=1;
+        if(fs_pairing_write_note(f->log,pair?pair->note:"")<0 || fputc('\n',f->log)==EOF)bad=1;
         if(bad){f->st.log_write_errors++;f->log_file_errors++;}else f->st.log_rows++;
         fs_test_after_log_row(f,f->log);
     }
@@ -362,6 +372,16 @@ static void geometry_flush(frameserver *f) {
     f->geometry_pending=0;f->geometry_reset=1;
 }
 static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *unit,const signal_result *sr,int classified) {
+    if(it->obs.format) {
+        const fs_pairing_row *pair=fs_pairing_find(&f->pairing,it->obs.counter_extended);
+        if(pair && pair->reversed!=f->geometry_reversed) {
+            geometry_flush(f); /* complete the old pairing's unused boundary first */
+            f->geometry_reversed=pair->reversed;
+            ge_init(f->geometry,f->geometry_reversed,f->cfg.geometry_audit_comb);
+            f->st.discontinuity_calls++;
+        }
+        if(pair)f->pairing_active=pair; /* note-only changes never reset */
+    }
     uint32_t actions=classified?sr->actions:0;
     if(actions&SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT)f->st.begin_segment_calls++;
     else if(actions&SIGNAL_ACTION_REGISTRATION_DISCONTINUITY)f->st.discontinuity_calls++;
@@ -387,7 +407,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     for(unsigned i=0;i<GE_PIXELS;i++)f->geometry_y[i]=p[2*i+1];
     ge_decision out[2];unsigned n=ge_push(f->geometry,f->geometry_y,it->obs.counter_extended,f->geometry_reset,out);
     f->geometry_reset=0;
-    if(f->cfg.geometry_pair_next) {
+    if(f->geometry_reversed) {
         /* Outputs precede replacement of the single pending raster. ge_push flushes
          * a broken counter adjacency, and never attaches the new field to it. */
         for(unsigned i=0;i<n;i++)geometry_publish(f,&f->geometry_item,f->geometry_unit,out+i);
@@ -578,6 +598,9 @@ static void *worker_main(void *arg){
 static void count_sink(void *ctx, const fp_frame *fr){ (void)ctx; (void)fr; }
 int fs_open(frameserver **out, const fs_config *cfg){
     if (!out || !cfg) return -1;
+    if(cfg->pairing_schedule && (!cfg->geometry_v11 || cfg->geometry_pair_next)) {
+        fprintf(stderr,"pairing schedule: requires v11 and excludes --pair-next\n");return -1;
+    }
     frameserver *f = calloc(1, sizeof *f); if (!f) return -1;
     f->comb_correction_install_ordinal = UINT64_MAX;
     f->cfg = *cfg;
@@ -590,6 +613,12 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if(pthread_cond_init(&f->life_c,NULL)) goto sync_fail;
     f->life_c_init=1;
     f->life=FS_LIFE_OPEN;
+    f->geometry_reversed=!!cfg->geometry_pair_next;
+    if(cfg->pairing_schedule) {
+        if(fs_pairing_load(&f->pairing,cfg->pairing_schedule)){fs_close(f);return -1;}
+        f->pairing_active=fs_pairing_find(&f->pairing,0);
+        f->geometry_reversed=f->pairing_active->reversed;
+    }
     f->n_slots = cfg->pool_units ? cfg->pool_units : 16;   // default kept at 16 (~0.5 s): whole-tape high-water was 2; change only on a measured stall (F5 stress matrix)
     f->pool = malloc((size_t)f->n_slots * UNIT_PARSER_VIDEO_UNIT_BYTES);
     f->slot_used = calloc(f->n_slots, sizeof(_Atomic int));
@@ -605,7 +634,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
         f->geometry=malloc(ge_size());f->geometry_y=malloc(GE_PIXELS);
         f->geometry_unit=malloc(FP_UNIT_BYTES);
         if(!f->geometry||!f->geometry_y||!f->geometry_unit){fs_close(f);return -1;}
-        ge_init(f->geometry,cfg->geometry_pair_next,cfg->geometry_audit_comb);
+        ge_init(f->geometry,f->geometry_reversed,cfg->geometry_audit_comb);
     }
     fp_sink sink = cfg->sink.on_frame ? cfg->sink : (fp_sink){ count_sink, NULL };
     if (fp_open(&f->pub, cfg->surface_pool ? cfg->surface_pool : 6, &sink) != 0){ fs_close(f); return -1; }
@@ -755,5 +784,6 @@ void fs_close(frameserver *f){
     if(f->life_m_init) pthread_mutex_destroy(&f->life_m);
     fs_test_destroyed();
     free(f->geometry);free(f->geometry_y);free(f->geometry_unit);
+    fs_pairing_free(&f->pairing);
     free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f->eng); free(f);
 }

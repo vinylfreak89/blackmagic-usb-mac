@@ -32,6 +32,7 @@ extern "C" {
 typedef struct frameserver frameserver;
 
 #define FS_DECISION_LOG_SCHEMA 9
+#define FS_GEOMETRY_LOG_SCHEMA 12
 
 typedef struct {
     cc_config capture;          // device input or replay_path
@@ -53,6 +54,8 @@ typedef struct {
     int geometry_v11;
     int geometry_pair_next;
     int geometry_audit_comb;    // acceptance only: compute even untriggered combs
+    const char *pairing_schedule; // CSV snapshot loaded by fs_open; requires v11,
+                                 // excludes geometry_pair_next. First row starts at 0.
 } fs_config;
 
 // Audio: every PCM record the parser emits is published through audio_publisher as bounded

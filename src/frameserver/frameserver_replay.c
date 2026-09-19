@@ -1,6 +1,6 @@
 // frameserver_replay <capture.tpc> [decision_log.csv] [--pace-us N] [--ring-mb N] [--pool N]
 //                    [--dump-uyvy FILE] [--dump-pcm FILE] [--dump-log FILE] [--limit-units N] [--stall-s N]
-//                    [--geometry-v11 [--pair-next] [--audit-comb]]
+//                    [--geometry-v11 [--pair-next | --pairing-schedule FILE] [--audit-comb]]
 // Run the whole P3 pipeline on a recorded capture (no hardware) and print the accounting.
 // --dump-*: write exactly what the frameserver publishes — every 480i UYVY frame (720x480x2 B,
 // TFF, registration-corrected) and every delivered PCM block (S24LE stereo) — as an ordinary
@@ -57,6 +57,10 @@ int main(int argc, char **argv){
         else if (!strcmp(argv[i], "--pool") && i + 1 < argc) cfg.pool_units = (unsigned)atoi(argv[++i]);
         else if (!strcmp(argv[i], "--geometry-v11")) cfg.geometry_v11=1;
         else if (!strcmp(argv[i], "--pair-next")) cfg.geometry_pair_next=1;
+        else if (!strcmp(argv[i], "--pairing-schedule")) {
+            if(i+1==argc || argv[i+1][0]=='-' || cfg.pairing_schedule){fprintf(stderr,"--pairing-schedule requires one FILE\n");return 9;}
+            cfg.pairing_schedule=argv[++i];
+        }
         else if (!strcmp(argv[i], "--audit-comb")) cfg.geometry_audit_comb=1;
         else if (!strcmp(argv[i], "--dump-uyvy") && i + 1 < argc){ g_vdump = fopen(argv[++i], "wb"); if (!g_vdump){ perror("dump-uyvy"); return 1; } }
         else if (!strcmp(argv[i], "--dump-pcm") && i + 1 < argc){ g_adump = fopen(argv[++i], "wb"); if (!g_adump){ perror("dump-pcm"); return 1; } }
@@ -66,7 +70,8 @@ int main(int argc, char **argv){
         else if (!strcmp(argv[i], "--stall-s") && i + 1 < argc) stall_s = tool_seconds(argv[++i],120);
         else if (argv[i][0] != '-') cfg.decision_log = argv[i];
     }
-    if((cfg.geometry_pair_next || cfg.geometry_audit_comb) && !cfg.geometry_v11){fprintf(stderr,"--pair-next/--audit-comb require --geometry-v11\n");return 9;}
+    if((cfg.geometry_pair_next || cfg.geometry_audit_comb || cfg.pairing_schedule) && !cfg.geometry_v11){fprintf(stderr,"--pair-next/--audit-comb/--pairing-schedule require --geometry-v11\n");return 9;}
+    if(cfg.pairing_schedule && cfg.geometry_pair_next){fprintf(stderr,"--pairing-schedule and --pair-next are mutually exclusive\n");return 9;}
     if (g_vdump || g_log || g_limit) cfg.sink.on_frame = dump_frame;
     if (g_adump || g_log) cfg.audio_sink.on_block = dump_audio;
     frameserver *f = NULL;

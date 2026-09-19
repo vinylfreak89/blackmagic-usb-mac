@@ -22,7 +22,7 @@ INSTALL_DIR = $(HOME)/Library/Application Support/obs-studio/plugins
 
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c \
        ../field_registration/field_registration.c ../field_registration/geometry_engine.c ../frameserver/frame_publisher.c \
-       ../frameserver/audio_publisher.c ../frameserver/frameserver.c
+       ../frameserver/audio_publisher.c ../frameserver/frameserver.c ../frameserver/pairing_schedule.c
 CPPFLAGS = -I. -I"$(OBS_HEADERS)" -I"$(OBS_HEADERS)/../frontend" -I"$(SIMDE_DIR)" -I.. -I../capture_core -I../frameserver $(shell pkg-config --cflags libusb-1.0)
 CFLAGS ?= -O2 -std=c11 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden
 # obs-frontend-api.dylib (recording started/stopped events, recording output) is linked by path;
@@ -33,7 +33,7 @@ LDFLAGS = -bundle -F"$(OBS_APP)/Contents/Frameworks" -framework libobs "$(OBS_AP
 
 all: $(BUNDLE)
 
-$(BUNDLE): shuttle_source.c publish_copy.c publish_copy.h publish_queue.c publish_queue.h obsconfig.h Info.plist $(CORE)
+$(BUNDLE): shuttle_source.c publish_copy.c publish_copy.h publish_queue.c publish_queue.h obsconfig.h Info.plist $(CORE) ../frameserver/pairing_schedule.h
 	mkdir -p "$(BUILD_DIR)"; rm -rf $(BUNDLE); mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/locale
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) shuttle_source.c publish_copy.c publish_queue.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
 	cp Info.plist $(BUNDLE)/Contents/Info.plist

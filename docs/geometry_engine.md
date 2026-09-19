@@ -52,12 +52,30 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 11, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 12, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16), comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
 not change decisions. Frame diagnostic columns refer to the bottom-field unit,
 whereas `applied_d1/d2` always refer to the row's own unit. Ineligible observations
 have empty placement keys, with their original counter in `observed_counter`.
+
+For mixed recordings use `--pairing-schedule FILE` instead of `--pair-next`
+(`fs_config.pairing_schedule` for callers). The CSV header is
+`first_counter,pairing,note`; pairing is `aligned` or `reversed`. Counters are
+unsigned extended counters in strictly increasing order. The first row must
+start at zero, making the setting defined before any delivered unit. At each
+unit the last row whose counter is no greater than that unit's counter applies.
+The file is validated and copied at `fs_open`; later file edits cannot affect a
+running session. Malformed CSV, duplicate/unsorted counters, unknown pairings,
+more than 65,536 rows or fields longer than 4,096 bytes are errors, not truncation.
+
+A pairing change completes any old reversed boundary unit, then clears the
+whole geometry state before the switch unit. A note-only change does not reset.
+Every v11 log row includes `pairing` and an always-quoted `pairing_note` (CSV
+escaping preserves commas, quotes and newlines). Delayed rows use their own
+unit's note; counterless hole/tail rows use the active setting. Without a schedule
+the note is empty. The applied-offset columns keep their renderer contract.
+Pairing remains supplied configuration, not a live detector.
 
 The classifier's DISCONTINUITY and BEGIN_SEGMENT actions are accumulated until
 the next eligible raster. The engine additionally breaks on counter gaps; the
@@ -91,3 +109,9 @@ possible raster population; a correctness assertion must not race sanitizer
 throughput. Existing frameserver tests separately force pressure and verify loss.
 `scripts/check_geometry_render.py GOLDEN_FRAMES.csv RENDER.mp4` decodes every
 machine strip from the actual review encode and checks its counter and offsets.
+
+`make -C src/frameserver test-pairing` checks both switch directions against fresh
+runs, old/new boundary handling, note-only invariance, CSV round trips and input
+rejection. The geometry sanitizer targets also run these schedule tests. For
+capture acceptance, produce the usual `capN_live.csv` with a one-row schedule
+and use the unchanged golden comparator above.

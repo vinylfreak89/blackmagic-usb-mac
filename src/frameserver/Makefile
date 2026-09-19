@@ -5,7 +5,7 @@ TESTFLAGS = -DFRAMESERVER_TEST_HOOKS
 CPPFLAGS ?= -I. -I../capture_core -I../unit_parser -I../signal_state -I../field_registration
 LIBS = $(shell pkg-config --libs libusb-1.0) -lpthread -lm -framework IOSurface -framework CoreFoundation
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/field_registration.c ../field_registration/cea608.c ../field_registration/geometry_engine.c
-SRCS = frame_publisher.c audio_publisher.c frameserver.c $(CORE)
+SRCS = frame_publisher.c audio_publisher.c frameserver.c pairing_schedule.c $(CORE)
 FIXTURE = ../unit_parser/tests/fixture.tpc
 FIXTURE_LONG = ../unit_parser/tests/fixture_plain.tpc   # 120 exact units, for the runtime-log window test
 
@@ -45,14 +45,20 @@ test-supervisor:
 test-geometry: frameserver_replay $(FIXTURE) $(FIXTURE_LONG)
 	python3 ../../scripts/test_geometry_pipeline.py ./frameserver_replay
 
+.PHONY: test-pairing
+test-pairing: frameserver_replay
+	python3 ../../scripts/test_pairing_schedule.py ./frameserver_replay
+
 .PHONY: test-geometry-asan test-geometry-tsan
 test-geometry-asan: $(FIXTURE) $(FIXTURE_LONG)
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o tests/geometry_replay_asan $(LIBS)
 	python3 ../../scripts/test_geometry_pipeline.py ./tests/geometry_replay_asan
+	python3 ../../scripts/test_pairing_schedule.py ./tests/geometry_replay_asan
 
 test-geometry-tsan: $(FIXTURE) $(FIXTURE_LONG)
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o tests/geometry_replay_tsan $(LIBS)
 	python3 ../../scripts/test_geometry_pipeline.py ./tests/geometry_replay_tsan
+	python3 ../../scripts/test_pairing_schedule.py ./tests/geometry_replay_tsan
 
 tests/replay_completion_test: $(SRCS) tests/replay_completion_test.c frameserver_replay.c ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_completion_test.c -o $@ $(LIBS)
@@ -89,3 +95,5 @@ $(FIXTURE_LONG): ../unit_parser/tests/gen_unit_parser_capture.py
 clean:
 	rm -f tests/audio_publisher_asan tests/audio_publisher_tsan
 	rm -f frameserver_replay tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring tests/worker_bench
+
+frameserver_replay tests/frameserver_test tests/replay_completion_test: pairing_schedule.h
