@@ -1148,3 +1148,34 @@ my own worktree at 8547447 with my own comparison script:
   6565-6573), the automatic census puts 93 frames at offsets over 2 lines. 92 are LOW confidence; the
   comb decided 18 of them and agrees with all 18. The capture renders instead used entry 3's confident
   census, which held 0 there.
+
+## E-claude-2026-09-19-13 — the engine on the whole tape: its real figure, with live resets
+
+**Question (owner, 2026-09-19, 10:57):** "Then produce `fulltape_render.mp4` and
+`fulltape_render_registration.csv` in the captures folder, replacing the existing (and doing an atomic
+swap. do not render directly into that folder)". The watchdog asked for the engine's real whole-tape
+figure, with the live classifier's resets, against the experiment's 99.2%.
+
+**Pairing (the watchdog's derivation, applied as given; pairing is still a given setting, CLAUDE.md §9).**
+- The schedule is `S/fulltape/pairing_schedule.csv`: reversed up to 48,188, aligned from the recording
+  boundary at 48,189. That is one pairing change, and it resets the engine.
+- The mixed stretch is aligned by majority (153 aligned scene cuts against 134 reversed). Taking each
+  unit's pairing from its nearest scene cut, 1,282 of the 3,768 units in 81,362-85,129 (34%, in 57
+  spans) read reversed. Those are the likely mis-paired frames, marked by note rows.
+- Two ambiguous edges are noted: 47,996-48,188, and the first cut after the relock at 48,242.
+
+**Premise.** The engine, run live on the whole tape with the classifier's resets and this schedule, agrees
+with the comb about as the experiment did. Any difference from 99.2% traces to what the experiment did
+not model: the live resets and the pairing inside non-programme events.
+
+**Method.**
+- One paced replay of `captures/fulltape.cap6`: `--geometry-v11 --pairing-schedule ... --audit-comb
+  --pace-us 8000`, with PCM and A/V log dumps. The audit comb does not change decisions.
+- Agreement is the published shift against the comb's on every comb-decided frame, overall, per segment,
+  and on the experiment's population (entry 8's judged frames).
+- Frames that differ are listed by cause: reset-adjacent, inside the mixed stretch, other.
+
+**Falsifier.** Agreement on the experiment's population more than 0.5 points below 99.2%, or differences
+that do not trace to resets or pairing.
+
+**Material.** The whole tape.
