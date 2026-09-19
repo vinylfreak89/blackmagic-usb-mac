@@ -313,3 +313,74 @@ So the first picture line is one-sided; the census placement used it alone, and 
 1969 and capture 3 13604 / 13783-13789 were the confident-census rule's exclusions, not the signal: in
 13784-13789 the top really is 24 (faint row at 23), a class the rule wrongly lumped with "under a strong
 caption". Panels: session scratch `render_findings/`.
+
+## E-claude-2026-09-19-6 — does capture 3's line 23 carry luma at 13784-13791?
+
+**Question (owner, 2026-09-19), on the sparkle row above the picture:** "its color noise because thats
+how bwdiff interpolates it, but it absolutely has a real luma component I'm pretty sure."
+
+**Premise (the owner's).** Field 1's line 23 in capture 3 units 13784-13791 carries a luma signal of
+its own, not blanking. Two readings fit a line with little luma and strong colour noise: (a) a picture
+line whose luma follows the picture below it; (b) the tape's own blank line, carried down one line with
+the picture, at blanking level with tape noise, its colour the chroma noise of a line with no colour
+content.
+
+**Method.** Raw slot-1 rows of those eight units (session scratch
+`render_findings/cap3_13782_13791_uyvy.npz`, cut from capture 3's file), samples 24-695. Per unit:
+luma mean and SD of line 23, of line 22 (deck-blanked) and of field 2's line 285 (blank). Following the
+picture: correlation of line 23 with line 24 after an 8-sample moving average, in luma and in each
+colour difference, against two controls: line 22 with line 24 (a blank line), and line 23 with line 24
+of the unit five away (the same kind of line, other content).
+
+**Falsifier.** Line 23's luma mean is within 1 code of the blank lines' and its luma correlation with
+line 24 is no higher than both controls'. If its level or noise differs from the blank lines while it
+does not follow line 24, that is reported as luma that is not picture: reading (b).
+
+**Material.** Capture 3 units 13784-13791, slot 1; controls from the same units.
+
+## E-claude-2026-09-19-7 — a blank line between picture lines means the placement is wrong
+
+**Question (owner, 2026-09-19):** "the important thing is there is a blanked line between the two. that
+is structurally impossible and deifnitely prove the registration is wrong. so the question I have, if
+field order, stays constant, how is it possible that a line of real picture ended up ABOVE a line of
+blanking. is that part of what we are missing in the tracking? does it need to be something more along
+the lines of, if field 2's first picture line is above field 1, that forces field 1 down a line...
+which that recalculates its own geometry because by forcing it down a line one of its bottom lines is
+going to shift down"
+
+**Premise (the owner's).** In a correct weave the picture fills one unbroken block of output rows. The
+two fields' first picture lines sit on adjacent rows with no row of the other field between them, and
+so do their last picture lines. Moving a field to fix one edge moves its other edge too, and that edge
+has to fit as well.
+
+**What it means for a placement.** Let d be the bottom field's shift against the top field, as the comb
+judge measures it (field lines; the weave puts bottom-field line k+d directly under top-field line k).
+Let st be the bottom field's first picture line minus the top field's, and sl the same for the last
+lines (field-2 lines less 263). The top edge is unbroken only for d = st (the top field's line comes
+first) or d = st+1 (the bottom field's line comes first). The bottom edge is unbroken only for d = sl
+or sl+1. Any other d leaves a row of one field that is not picture between picture rows of the other.
+
+**Three claims, tested separately:**
+- A, necessary: the comb-free weave leaves both edges unbroken.
+- B, what the tracking misses: every frame whose render placement differs from the comb's breaks an
+  edge, so a one-frame check would have caught it.
+- C, the rule's second half: at the upward moves from the render review (capture 3 13575,
+  13601-13603 and 13779; capture 4 597), the moved field's last picture line rises by one while its
+  first line stays. The placement that moves that field down one line, putting its last line back
+  where it was against the other field's, is the comb's.
+
+**Method.** Frames and lines as in entry 3 (scratch `geometry_exp1/exp3_frames.csv`: confident census
+tops, census last lines by entry 2's rule, comb verdicts at 1.5x). Count decided frames where the comb's
+d is in the top pair, in the bottom pair and in both, and how often the two pairs together leave
+exactly one d and it is the comb's. Capture 2 is reported with its raw census tops and with field 1's
+top taken one line lower, as the renders do. For B, use each render frame's applied placement (scratch
+`geometry_renders/cap*_offsets.csv`) and the comb verdict for the same frame, recomputed where entry 3
+left the frame out. For C, use the census lines of the units either side of each move and the comb.
+
+**Falsifiers.** A: more than 5% of a capture's decided frames break an edge under the comb's d. B: any
+decided frame whose applied placement differs from the comb's with both edges unbroken. C: at a listed
+upward move, the last line does not rise by one, or the comb's d is not the one that moves the field down.
+
+**Material.** Captures 1 (from 6667), 2, 3 and 4, as in entry 3. The flagged frames are raw-row
+checked, with panels, before anything is reported about them. The whole tape (held out) is not in this
+entry; its per-unit files hold no last lines.
