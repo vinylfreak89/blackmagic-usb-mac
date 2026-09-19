@@ -1313,3 +1313,99 @@ reads back the renderer's claim. So the encoded file is checked directly as well
 decoded and cross-correlated, at points across the tape, against the dump PCM at the sample the rule
 predicts: before, between and after both steps. The expected lag is 0, within the codec's precision.
 Any other lag fails this entry the same way the offset falsifier does.
+
+### Review rounds 2–4 by Codex, and Codex's 95c916a (2026-09-20)
+
+- **Round 2 (on c36f7dc): three findings, accepted.**
+  - A step's silence was carried into a freshly anchored run.
+  - A downstream queue drop was read as a new audio run. The frameserver marked both with
+    DISCONTINUITY_BEFORE.
+  - A step on a unit rendered as a fill was not marked.
+  - Fixed in a19570b: a run is identified by its placement (pts − 5 × ordinal), which is exactly what
+    its residual is measured against.
+- **Round 3 (on a19570b): one finding, accepted.** A resync inside a gap where a new run began was given
+  the previous run's step. Fixed in a556b19: such a unit's time is used only when both candidate runs
+  would place it identically. Otherwise it is left out of the audio clock and reported, and a step on it
+  is refused.
+- **Round 4 (on a556b19): no findings.**
+- **95c916a (Codex, pushed on v11-engine): reviewed and approved.** It separates the two meanings with
+  `AP_FLAG_DROPPED_BEFORE`. The OBS plugin had been resetting its applied correction on every downstream
+  drop, and it now keeps it. The mutation that restores the old flag fails its test. One P3 was left
+  optional: a dropped block's COUNTER_GAP is not carried forward.
+- None of these cases occurs on the whole tape. On the a14 dump, `place_audio()` gives identical output
+  at a19570b and a556b19.
+
+### Report on entry 14 (2026-09-20) — held: the audio stepped once at each device deficit, picture unchanged
+
+**Verdict: the premise held.** Advancing audio once by the lost samples, at the two units where the
+residual steps, puts every frame's audio within 0.002 frame of its picture. The video is not changed.
+
+**Material and producers.**
+- Replay: frameserver f268f26, whole tape, 2× realtime. 0 holes, 0 dropped audio blocks, 0 unanchored
+  blocks. 86,293 exact units.
+- The PCM is byte-identical to the first replay. The dump log has the same rows, with audio and video
+  interleaved differently.
+- The sidecar matches the published one on all 86,305 rows and 31 shared columns. It adds
+  `audio_residual_ticks` and `audio_step_samples`. Only two steps are flagged: counter 35,120 (+23
+  samples) and 66,432 (+1,183).
+- The five startup deficits fall before the first rendered frame (4,511) and are absorbed by the anchor.
+- Render: geometry_render a19570b, whose audio placement equals a556b19's on this tape.
+  - 86,289 frames and 7 fills, as before.
+  - The anchor trim is 5,262 samples, a whole number recomputed from the dump log.
+  - The 1,206 samples of silence are inside delivered blocks. 0 undelivered stretches.
+
+**Falsifier 1, A/V offset: held.** The offset is each frame's audio-resync output time against its
+picture output time, computed exactly in ticks of 1/240,000 s (8,008 per frame) over the same 86,292
+frames that have an audio-clock time. Min / max / median, in frames; negative means the audio is early:
+
+| stretch | before (published render) | after |
+|---|---|---|
+| start – 1,021 s | −0.0020 / +0.0002 / −0.0017 | −0.0020 / +0.0002 / −0.0017 |
+| 1,021 s – 2,066 s | −0.0164 / −0.0159 / −0.0161 | −0.0020 / −0.0015 / −0.0017 |
+| 2,066 s – end | −0.7550 / −0.7545 / −0.7547 | −0.0020 / −0.0015 / −0.0017 |
+| whole tape, max \|offset\| | 0.754995 (6,046 ticks) | 0.001998 (16 ticks) |
+
+No frame is at 17 ticks or more, where 0.002 frame would be exceeded.
+
+The figures measured last night with `av_offset.py` differ by +0.00075 frame. That is a defect in the
+measure, not the render: it took the render's trim from a log line printed to four decimals (0.1096 s),
+while ffmpeg received 0.109625 s. The cross-correlation below confirms the published render's effective
+trim was 5,262 samples. The new render's log carries the trim exactly. `av_offset.py` on the new render
+reads −0.0020 / +0.0002 / −0.0017 in every stretch and a maximum of 0.0020.
+
+**Encoded audio checked directly.** The mp4's AAC track was decoded and cross-correlated in 1-second
+windows against the dump PCM, at the sample the rule predicts. There were 60 checkpoints: every 60 s,
+plus 1.5, 5 and 20 s either side of each step. Correlation peaks were 0.998–1.000, and one window was
+quiet.
+- The same instrument on the published render found 1 sample early before the first step, 24 early
+  after it, and 1,207 early after the second. The differences are exactly 23 and 1,183.
+- On the new render, the lag is 0 samples at all 59 decided checkpoints, including 1 s after each step.
+
+**Falsifier 2, picture unchanged: held.** The machine strips of all 86,296 frames (unit, placement)
+are identical to the published render's, with the same SHA-256. Validation passes: 86,296 frames
+encoded as planned, all 86,289 engine frames at engine placement, schema 13, no applied value missing.
+
+**Amendment 1: moved forward.** It closed Codex's findings with deciding tests, and it did not change
+the whole tape's placement.
+
+**Not understood, or open.**
+- The 0.002 margin is 0.02 tick. The render has a constant 14 ± 2-tick lead (0.0017 frame, 58 µs), and
+  it was already in the published render. It comes from anchoring on the first frame, 4,511, whose
+  residual (21,738 ticks) is still in the device's startup ramp. The residual reaches about 21,750
+  within about ten units and then holds.
+- The ± 2 is the 48 kHz grid against 1,601.6 samples per unit.
+- Anchoring on the steady residual would centre the offset. That is a change to the anchor rule, not
+  made here.
+- A capture where a run break coincides with a downstream drop, in a frameserver older than 95c916a,
+  cannot be placed from its dump log. The renderer refuses it by name.
+
+**Published.** Both files went into `captures/` by one same-filesystem rename each; the inodes were
+preserved and the SHA-256 checked:
+- `captures/fulltape_render.mp4`: 3,524,574,146 B, sha256 dd590315…
+- `captures/fulltape_render_registration.csv`: 19,244,702 B, sha256 0b6e199b…
+
+They replace 4ff10b59… and 4283fb64….
+
+**Raw rows** (scratch, `fulltape/`): `a14/replay.out`, `a14/render.log`, `a14/validate.out`,
+`a14/av_after.out`, `a14/xcorr_after.out`, `xcorr_before.out`, `strips_before.txt`,
+`a14/strips_after.txt`, and the synthetic tests in `a14_tests/check_fix.py`.
