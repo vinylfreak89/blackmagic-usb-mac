@@ -75,3 +75,56 @@ and six independent real-row Pearson checks pass. This is not a fully blind
 validation or a completed 650-unit census. Detailed report, individual labels,
 bin checks and the retained original artifacts: the scratch path above,
 `REPORT.md`. No engine change; unresolved faint-row identity needs review.
+
+## E-codex-2026-09-19-2 — what the data-line entropy counts
+
+**Question (owner, 2026-09-19).** "Why do the data lines come out as high
+entropy. They are only 2 codes plus a sinusoidal ramp all within a noise band.
+Why would that be high entropy?" Reasoning audit, not a detector proposal.
+
+**Premise.** A two-level underlying signal does not imply two delivered luma
+codes: plateau variation and sampled transitions populate additional codes.
+The histogram entropy measures this marginal distribution, not temporal
+waveform complexity. Ordered transitions can contribute substantial histogram
+entropy without being unpredictable. This does not imply every data row is
+less temporally unpredictable than every picture row.
+
+**Method, committed before the deciding run.** Recompute Shannon entropy on
+the exact 640 samples `[40:680]`, check agreement with `exp4_rows.csv`, and
+inspect numerical traces/histograms without programme content. For explicit
+histogram accounting, find the modal code on each side of the midpoint of
+the 5th and 95th percentiles; partition codes into bands around those two
+modes and the remainder. Use authored half-widths 1, 3 and 5 codes, reporting
+all three, not selecting one for separation. Decompose entropy by the chain
+rule into low/high occupancy, within-band variation, remainder occupancy and
+within-remainder variation. These are exact code-bin contributions, NOT an
+identified physical noise/ramp separation. Inspect a fixed row (capture 2,
+67446/286) and the data row closest to the population median; where a temporal
+trace supports plateau/ramp annotations, record those intervals explicitly
+before their entropy accounting, and include conditional-label ambiguity.
+Do not force an ambiguous physical decomposition.
+
+As reasoning controls, shuffle each examined row (seed 20260919): histogram
+entropy must be unchanged. Compute first-order empirical conditional entropy
+of adjacent samples at code bin widths 1, 4 and 8, alongside shuffled values;
+these authored diagnostic resolutions are not thresholds or a classifier.
+Report finite-sample/sparse-context limitations and counterexamples, not a
+claimed entropy-rate estimate or noise model. No fitting a waveform decoder.
+
+**Falsifier.** Histogram disagreement falsifies reproduction; shuffle changing
+histogram entropy falsifies the instrument. A substantial residual in entropy
+accounting falsifies the decomposition. Traces lacking distinguishable
+plateaus/ramps defeat physical attribution. A picture row with lower temporal
+conditional entropy than data defeats a universal low-data/high-picture
+reading of that statistic. No detector amendment follows such a result.
+
+**Material and labels.** All supplied caches and the original `exp4.py`, CSV
+and E-claude-2026-09-19-4 report are present. Audit capture-2 top rows marked
+non-picture in that CSV, NTSC 23/24/286/287, counters 67446–68094; labels are
+Claude's census labels, not independent truth for the whole population.
+Fixed raw checks: capture 2 counters 67446, 67654 and 68094 at those four
+lines; capture 3 counters 13501 and 14101 at 23/24; capture 1 counters 6700,
+6731 and 6760 at 23/24; capture 4 counters 204 and 335 at 286/287. Inspect
+these and retain uncertainty instead of calling every named site data.
+Results and scripts stay in a new `/private/tmp/codex-entropy-*` directory;
+only this entry and its verdict are committed locally.
