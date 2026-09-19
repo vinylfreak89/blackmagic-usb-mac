@@ -63,6 +63,7 @@ from live_overlay_strip import payload as strip_payload, draw as draw_strip
 UNIT_BYTES, HDR, ROW_BYTES, RASTER_ROWS = 756_048, 48, 1440, 525
 MARK = b"\x00\x00\xff\xff"
 F1_FIRST_LINE, F2_FIRST_LINE, FIELD_ROWS = 20, 283, 243
+FIELD2_FIRST_ROW = 262           # storage row of field 2's first line (NTSC 266); field 1 owns rows 0-261
 KNOWN_FORMATS = (0xE801, 0xE809, 0x0800)
 NO_SOURCE_UNIT = 0xFFFFFFFF      # the strip's counter for a timing slot, which has no source unit
 MAX_FILL_GAP = 120
@@ -112,11 +113,15 @@ def read_engine(path):
 
 
 def weave(f1_raster, f2_raster, d1, d2, fill=0.0):
+    """Each field reads only its own storage rows: field 1 rows 0-261, field 2 rows 262-524 (row 262 is
+    field 2's line 266). A placement that runs a field past its own rows gets fill there, never the other
+    field's lines (at field-1 offsets above 11 the old whole-raster bound read field 2's rows 270+)."""
     out = np.full((FH, f1_raster.shape[1]), fill, np.float32)
-    for f, (src, first, d) in enumerate(((f1_raster, F1_FIRST_LINE, d1), (f2_raster, F2_FIRST_LINE, d2))):
+    for f, (src, first, d, lo, hi) in enumerate(((f1_raster, F1_FIRST_LINE, d1, 0, FIELD2_FIRST_ROW),
+                                                 (f2_raster, F2_FIRST_LINE, d2, FIELD2_FIRST_ROW, RASTER_ROWS))):
         for k in range(FIELD_ROWS):
             row = first + d + k - 4
-            if 0 <= row < RASTER_ROWS:
+            if lo <= row < hi:
                 out[k * 2 + f] = src[row]
     return out
 
