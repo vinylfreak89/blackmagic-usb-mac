@@ -283,3 +283,20 @@ Judge: entry 1's comb over lines 30-240, -5..+5, decided at 1.5x.
 
 **Material.** Every exact unit outside the three non-programme events (counters up to 4725,
 48,189-48,240, 53,616-53,674); frames with no top found are counted, not carried.
+
+### Report (2026-09-19) — below the 95% bar: 80.7%
+
+Every valid exact unit (86,028). Decided frames where the automatic census shift is the comb minimum:
+62,017 of 76,886 (80.7%); the comb abstains on 9,060; no top found 22; one frame without a partner.
+By segment: first recording 31,349 / 38,567 (81.3%, reversed pairing); after the boundary to 27:18
+3,808 / 4,869 (78.2%); after 27:18 26,860 / 33,450 (80.3%). Falsifier met.
+- **Pairing** by scene cuts is steady: reversed through 47,995, aligned from 48,188 to 81,361, mixed
+  81,539-85,123 (alternating runs; likely source cadence, not a relock), aligned from 85,130.
+- **Where it holds:** field 1 at 23 by the rule in the first recording, 98.7% of 14,953; field 1 at 25
+  with the line-22 offset and field 2 at 288 after the boundary, 99.4% of 17,268.
+- **Where it fails:** the faint-row rescan (23 not plainly picture, rescanned to 24) in the first
+  recording, 79.2% of 18,351; field 1 at 24 by the rule there, 39.6% of 3,043; field 2's data line 287
+  accepted as picture after the boundary, under 1% of about 2,500; field 2 at 286 after the boundary with
+  a rescanned field 1, 0% of 1,087. The automatic census is weakest exactly where the confident census
+  relied on hand labels.
+- Per-unit results: scratch `geometry_exp1/exp5_w{1..4}.csv`, summary `exp5_summary.py`.
