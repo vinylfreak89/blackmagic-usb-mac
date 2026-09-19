@@ -1224,3 +1224,26 @@ that do not trace to resets or pairing.
    Neither "all differences trace to resets" nor "all are improvements" holds unqualified. The engine's
    headline count stands.
 Codex's recount: its scratch `/private/tmp/codex-e13-review-5p0udR/recount.py`.
+
+### The full-tape render through the engine, swapped into captures/ (2026-09-19)
+
+- **Pipeline.** v11-engine e3868e7 (registration log) and `experiments/geometry_render.py` 330bd51
+  (`--engine-log --pairing-schedule`). The renderer's schedule support was reviewed by Codex over three
+  rounds to "No findings": the switch frame matches the engine's flush, and the loader is a one-to-one
+  port of the engine's.
+- **Validated before the swap:**
+  - 86,296 encoded frames, as planned: 86,289 woven plus 7 fills.
+  - Every frame's machine strip decoded in order; all 86,289 woven frames carry the engine's placement.
+  - Field order bff for output frames 0-43,677 (reversed), tff from 43,678.
+  - Audio 2,879.40 s against video 2,879.41 s.
+  - Registration log: 86,305 rows, 86,293 units, every unit with applied d1/d2, schema 12. Pairing and
+    note on every row; 1,282 units carry the likely-mis-paired note.
+- **Swap.** Scratch and captures/ are on one filesystem (device 16777232). Each file moved in one
+  rename: the inode was unchanged across the move (render 127830637, log 127823701) and SHA-256 matched
+  (render 4ff10b59..., log 4283fb64...). They replaced the 2026-09-05 files `captures/fulltape_render.mp4`
+  (3,524,569,727 bytes) and `captures/fulltape_render_registration.csv` (18,554,296 bytes).
+- **Known limitation, measured.** The renderer places audio by sample ordinal, so it does not advance
+  audio past the device's audio-only deficits:
+  - 23 samples at 1,021 s (0.016 frame);
+  - 1,183 samples at 2,066 s. After it, audio leads the picture by 0.755 frame (25 ms) to the end.
+  Placing audio blocks by their audio-clock time would remove it; not done.
