@@ -35,7 +35,8 @@ of this unit; the frame is keyed by this unit's counter. Slot 1 stays the spatia
 each frame pairs by the row in effect at its unit, as --pair-next does for reversed rows. The deinterlacer
 gets its field order per run of equal pairing (bff reversed, tff aligned) through one ffmpeg graph that
 splits the frames at the run boundaries, and the band shows each frame's pairing and the row's note. At a
-reversed-to-aligned switch the last reversed frame and the first aligned one share a field 1.
+reversed-to-aligned switch the last reversed unit has no partner, as in the engine (which resets there),
+and gets a no-partner fill frame. The schedule is validated as the engine validates it.
 Exclusive with --pair-next and --parity.
 
 Frames are keyed by the unit counter unwrapped in stream order from the capture's first unit (a
@@ -224,19 +225,35 @@ class Framer:
 
 
 def read_schedule(path):
-    """--pairing-schedule rows as [(first_counter, pairing, note)], refusing anything malformed or unsorted."""
+    """--pairing-schedule rows as [(first_counter, pairing, note)]. Validation matches the engine's
+    (frameserver --pairing-schedule, e3868e7): header exactly first_counter,pairing,note; three fields a
+    row; well-formed quoting; counters >= 0, strictly increasing, the first at 0 (pairing is always defined)."""
     rows = []
     with open(path, newline="") as fh:
-        for r in csv.DictReader(fh):
-            try:
-                first, pairing = int(r["first_counter"]), r["pairing"].strip()
-            except (KeyError, ValueError, AttributeError):
-                sys.exit(f"refusing: malformed pairing-schedule row {r}")
-            if pairing not in ("aligned", "reversed"):
-                sys.exit(f"refusing: pairing-schedule pairing must be aligned or reversed, got {pairing!r}")
-            if rows and first <= rows[-1][0]:
-                sys.exit(f"refusing: pairing schedule is not strictly increasing at {first}")
-            rows.append((first, pairing, (r.get("note") or "").strip()))
+        rd = csv.reader(fh, strict=True)
+        try:
+            header = next(rd, None)
+            if header != ["first_counter", "pairing", "note"]:
+                sys.exit(f"refusing: pairing-schedule header must be first_counter,pairing,note, got {header}")
+            for r in rd:
+                if len(r) != 3:
+                    sys.exit(f"refusing: pairing-schedule row must have three fields: {r}")
+                try:
+                    first = int(r[0])
+                except ValueError:
+                    sys.exit(f"refusing: pairing-schedule counter is not an integer: {r}")
+                pairing = r[1]
+                if first < 0:
+                    sys.exit(f"refusing: negative pairing-schedule counter {first}")
+                if pairing not in ("aligned", "reversed"):
+                    sys.exit(f"refusing: pairing-schedule pairing must be aligned or reversed, got {pairing!r}")
+                if rows and first <= rows[-1][0]:
+                    sys.exit(f"refusing: pairing schedule is not strictly increasing at {first}")
+                if not rows and first != 0:
+                    sys.exit(f"refusing: the first pairing-schedule row must start at counter 0, not {first}")
+                rows.append((first, pairing, r[2]))
+        except csv.Error as e:
+            sys.exit(f"refusing: malformed pairing schedule ({e})")
     if not rows:
         sys.exit("refusing: empty pairing schedule")
     return rows
@@ -245,7 +262,7 @@ def read_schedule(path):
 def schedule_at(rows, ext):
     """The row in effect for unit ext: the last with first_counter <= ext (the first row before any)."""
     i = bisect.bisect_right([r[0] for r in rows], ext) - 1
-    r = rows[max(i, 0)]
+    r = rows[i]                                   # the first row starts at 0, so i >= 0 for every unit
     return r[1], r[2]
 
 
@@ -296,6 +313,10 @@ def main():
         if (schedule_at(schedule, o[0])[0] == "reversed") if schedule else a.pair_next:
             nx = obs[k + 1] if k + 1 < len(obs) else None
             if nx is None or not nx[1] or nx[0] != o[0] + 1:
+                partnerless.append(o[0]); continue
+            if schedule and schedule_at(schedule, nx[0])[0] != "reversed":
+                # the engine resets at a pairing change and flushes this unit without a partner; the
+                # frame is not decided there, so it is not woven here either (a no-partner fill)
                 partnerless.append(o[0]); continue
             frames.append((o[0], nx[0], k))
         else:
