@@ -1276,3 +1276,40 @@ If Codex and I conclude the §6 rule does not apply to a review render, the reas
 is changed.
 
 **Material.** The whole tape. Expected steps: 1,021 s (about 23 samples) and 2,066 s (about 1,183 samples).
+
+### Review by Codex of the renderer change (f1c7d0e), and amendment 1 to entry 14 (2026-09-19, before the whole-tape render)
+
+**Review.** Codex confirmed two things: the section 6 rule applies to a review render, and the two
+whole-tape steps map to sample ordinals 49,028,611 and 99,176,727. It found three P2 defects with
+synthetic probes:
+- a step after an audio re-anchor was located against the first run's origin, and refused;
+- the fill timeline used audio times without the inserted silence, so a deficit next to a short unit
+  dropped a fill and left the audio 1.000125 frames late;
+- the start trim was computed before an insertion at the first rendered frame, leaving the audio
+  23 samples late.
+
+All three are accepted. None of them occurs on the whole tape, which is one audio run whose first frame
+carries no step. They are defects in the rule's implementation, not in its premise.
+
+**Amendment (built in c36f7dc before this entry; written before the whole-tape render).** The physical
+reason: the frameserver places each audio run on the video timebase, so a sample's physical time is its
+pts, not its ordinal in the dump. Every sample now has one position: its pts on the 48 kHz grid. The PCM,
+the steps, the timeline and the anchor all use that position.
+- A re-anchored run plays where the frameserver placed it, rounded to the nearest sample.
+- A block with no anchor yet takes its position from its run's first resync.
+- A run that never anchors follows the previous block and is reported.
+- An overlap is refused.
+- The start trim is applied while the PCM is written, exact to a sample, instead of through ffmpeg's
+  `-ss`, or an `adelay` truncated to whole milliseconds.
+
+It should close the three findings. It must not change the whole tape's placement. There, pts minus
+5 × ordinal is constant over all 86,303 dump-log blocks, so position equals ordinal. With no steps, the
+rebuilt PCM must be the dump PCM from the anchor on. Deciding tests are synthetic and in scratch. They
+pass on c36f7dc; on f1c7d0e the three findings' tests, plus re-anchor placement and the overlap
+refusal, fail.
+
+**Added to the method.** The offset measure reads the renderer's anchor from its log. On its own, that
+reads back the renderer's claim. So the encoded file is checked directly as well. The mp4's AAC audio is
+decoded and cross-correlated, at points across the tape, against the dump PCM at the sample the rule
+predicts: before, between and after both steps. The expected lag is 0, within the codec's precision.
+Any other lag fails this entry the same way the offset falsifier does.
