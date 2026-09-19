@@ -1021,3 +1021,25 @@ decided d minus the census d on that frame.
   - the whole tape, entry 11's inputs;
   - captures 1-4 with both entry 3's inputs and the automatic census (the golden reference);
   - the render inputs.
+
+### Result of amendment 3 to entry 11 (2026-09-19): forward on every measure
+
+- **Whole tape, reading B:** 76,254 / 76,886 (99.2%, from 99.0%). Lost 11, from 28; caught 14,248, from
+  14,156; missed 621, from 713. The comb runs on 17,339 frames (20.2%, from 18.2%), 5,331 of them
+  confirmation re-runs. HIGH-confidence frames agree with the comb in 98.98%, from 98.84%. Reading A is
+  unchanged at 89.7%.
+- **Captures, entry 3's inputs:** unchanged, 229 / 230, 543 / 545, 500 / 500, 567 / 567, 0 lost.
+- **Captures, automatic census (the engine's golden reference):** 372 / 373, 549 / 551, 586 / 586,
+  590 / 590 (capture 4 from 535). Frames where the placement differs from a decided comb: 1, 2, 0, 0.
+  Comb runs: 545, 127, 117, 241.
+- **Render inputs:** 372 / 373, 549 / 551, 586 / 586, 590 / 590. Only capture 4's 794 changed placement.
+  The four renders were re-made with it; every frame's strip reads back as the offsets used, and they
+  replaced the earlier files by rename.
+- **Golden reference:** `goldens/<capture>_frames.csv` (session scratch) holds one row per woven frame,
+  made by `geometry_exp1/golden_ref.py` over each capture's luma cache. Each row carries the automatic
+  census lines, bottom lines, field classes, T1, U, comb shift and margin, whether the comb ran, the held
+  correction, the applied shift and d1 / d2, and the owner's two-valued confidence.
+  - The rule set is entry 11 with amendments 1-3 and Codex's last-line fix, reading B.
+  - Pairing is given per capture: capture 3 reversed, the others aligned. Live pairing detection is
+    still the open item in CLAUDE.md §9.
+  - Captures 2 and 3 agree with the whole-tape run on their units.
