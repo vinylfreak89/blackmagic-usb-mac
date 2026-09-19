@@ -53,7 +53,7 @@ Review fixes 2026-09-19 (Codex, findings 1-6): pair-next engine d1 source unit; 
 in-picture marker; timeline across omitted units; black (neutral-chroma) out-of-raster fill; empty
 engine cells.
 """
-import argparse, csv, os, subprocess, sys
+import argparse, atexit, csv, os, subprocess, sys, tempfile
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -64,6 +64,7 @@ UNIT_BYTES, HDR, ROW_BYTES, RASTER_ROWS = 756_048, 48, 1440, 525
 MARK = b"\x00\x00\xff\xff"
 F1_FIRST_LINE, F2_FIRST_LINE, FIELD_ROWS = 20, 283, 243
 KNOWN_FORMATS = (0xE801, 0xE809, 0x0800)
+NO_SOURCE_UNIT = 0xFFFFFFFF      # the strip's counter for a timing slot, which has no source unit
 MAX_FILL_GAP = 120
 FW, FH = 720, FIELD_ROWS * 2
 DW = 640                                  # 720 samples displayed at 8:9
@@ -198,7 +199,9 @@ class Framer:
                     if acc: self._emit(acc, False)
                     self.has_marker = True; self.scan = 4; self.detect_from = 0; continue
                 if len(b) >= UNIT_BYTES:
-                    self._emit(UNIT_BYTES - 7, False); self.detect_from = 7; continue
+                    # the parser checks for a completed marker after keeping seven bytes, so a marker whose
+                    # last byte is the flush-triggering byte (retained index 6) is still seen
+                    self._emit(UNIT_BYTES - 7, False); self.detect_from = 6; continue
                 return
 
     def finish(self):
@@ -279,9 +282,15 @@ def main():
                 src = "observed units"
             if periods < 1:
                 timeline_notes.append((pext, fr[0], periods, src)); periods = 1
+            # a slot stands for a missing source unit only while the counter says one is missing;
+            # any further slot is the audio clock's elapsed time, with no source unit behind it
+            missing = fr[0] - pext - 1
             for c in range(periods - 1):
-                missing = pext + 1 + c
-                items.append(("fill", missing, "no partner" if missing in partnerless else "absent"))
+                if c < missing:
+                    u = pext + 1 + c
+                    items.append(("fill", u, "no partner" if u in partnerless else "absent"))
+                else:
+                    items.append(("fill", None, f"timing after {pext}"))
             if periods > 1: timeline_notes.append((pext, fr[0], periods - 1, src))
         items.append(("frame", fr[0], fr[1]))
         if base is None and fr[0] in vpts:
@@ -325,8 +334,12 @@ def main():
         blocks = [(int(r[1]), int(r[4])) for r in csv.reader(open(a.av_log)) if r and r[0] == "A"]
         if not os.path.exists(a.pcm):
             sys.exit(f"refusing: PCM file {a.pcm} does not exist")
-        aligned_tmp = a.out + ".aligned.pcm"; pos = 0; gaps = 0; gap_samples = 0
-        with open(a.pcm, "rb") as src, open(aligned_tmp, "wb") as dst:
+        fd, aligned_tmp = tempfile.mkstemp(prefix=os.path.basename(a.out) + ".", suffix=".aligned.pcm",
+                                           dir=os.path.dirname(os.path.abspath(a.out)))
+        # this run created the file exclusively, so it owns it: removed on every exit path, refusals included
+        atexit.register(lambda path=aligned_tmp: os.path.exists(path) and os.remove(path))
+        pos = 0; gaps = 0; gap_samples = 0
+        with open(a.pcm, "rb") as src, os.fdopen(fd, "wb") as dst:
             for ordinal, nframes in blocks:
                 if ordinal < pos:
                     sys.exit(f"refusing: audio block at sample {ordinal} overlaps the previous one (ends {pos})")
@@ -397,13 +410,19 @@ def main():
         dr = ImageDraw.Draw(img)
         dr.rectangle([PX, 0, PX + DW - 1, FH - 1], fill=(96, 96, 96))
         why = state.get("fill_why", "absent")
-        msg = (f"unit {ext}: no pair partner (next unit not usable)" if why == "no partner"
-               else f"unit {ext} absent (no exact e801 unit)")
+        if why.startswith("timing"):
+            msg = f"timing slot {why[7:]} (audio clock; no source unit)"
+        elif why == "no partner":
+            msg = f"unit {ext}: no pair partner (next unit not usable)"
+        else:
+            msg = f"unit {ext} absent (no exact e801 unit)"
         dr.text((PX + 40, FH // 2 - 10), msg, font=font, fill=(255, 255, 255))
         dr.rectangle([0, FH, W, H], fill=(8, 8, 8))
-        fit(dr, (6, FH + 6), f"ctr {ext:>6}   " + ("NO PAIR PARTNER" if why == "no partner" else "ABSENT UNIT")
-                              + " - fill frame, no placement", font, (230, 230, 230))
-        graph_and_strip(dr, i, ext, 0, 0)
+        label = ("TIMING SLOT" if why.startswith("timing") else
+                 "NO PAIR PARTNER" if why == "no partner" else "ABSENT UNIT")
+        fit(dr, (6, FH + 6), f"ctr {ext if ext is not None else '--':>6}   {label} - fill frame, no placement",
+            font, (230, 230, 230))
+        graph_and_strip(dr, i, ext if ext is not None else NO_SOURCE_UNIT, 0, 0)
         enc.stdin.write(img.tobytes()); state["written"] += 1; state["item"] += 1
 
     held = {}
