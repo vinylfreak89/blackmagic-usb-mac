@@ -436,3 +436,13 @@ follow the picture. The finding the premise did not ask about: the line carries 
   census top put d at -2, the comb at -1, and both leave the block unbroken. Not understood.
 - **Amendments:** none. Frame-level results: session scratch `e7/e7_frames.csv`, `e7/e7.out`; panels
   `e7/cap3_13785_weave_top.png`, `e7/moves_top.png`, `e7/moves_bottom.png`.
+
+### Corrections to the reports on entries 6 and 7 (2026-09-19, from an independent recount)
+
+A blind recount from the raw data, with its own code, matched every number except these:
+- Entry 6: the luma bursts on line 23 are 7-24 codes on 1.6-7.0% of samples, not 7-18 on 2-5%.
+  13791's mean is 1.26 above its own line 22.
+- Entry 7, B: 14 of the 16 misplacements with both edges unbroken have equal heights, not all 16.
+  Capture 2 2489-2490 (whole-tape 68025-68026) have unequal heights. There the edges alone leave the
+  applied d = -1, and the comb, decided at 1.53 and 1.63, gives 0. These are the two capture-2 frames
+  where the shared d is not the comb's, and two of A's six exceptions. Not examined on raw rows.
