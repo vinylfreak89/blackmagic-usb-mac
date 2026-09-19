@@ -7,6 +7,16 @@ LDLIBS ?= -lm
 
 all: libfieldreg.dylib tests/field_registration_unit tests/cea608_unit tests/field_registration_v9
 
+tests/geometry_probe: geometry_engine.c geometry_engine.h tests/geometry_probe.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) geometry_engine.c tests/geometry_probe.c -o $@ $(LDLIBS)
+
+tests/geometry_unit: geometry_engine.c geometry_engine.h tests/geometry_unit.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) geometry_engine.c tests/geometry_unit.c -o $@ $(LDLIBS)
+
+.PHONY: geometry-test
+geometry-test: tests/geometry_unit tests/geometry_probe
+	./tests/geometry_unit
+
 libfieldreg.dylib: field_registration.c field_registration.h cea608.c cea608.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -dynamiclib field_registration.c cea608.c -o $@ $(LDLIBS)
 
