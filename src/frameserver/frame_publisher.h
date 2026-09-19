@@ -27,6 +27,7 @@ extern "C" {
 #define FP_UNIT_HEADER    48u
 #define FP_LINE_BYTES     1440u
 #define FP_SOURCE_LINES   525u
+#define FP_FIELD2_FIRST_ROW 262  // field 1 owns [0,262), field 2 [262,525)
 // Crop start = the standard's first VISIBLE line of each field: SMPTE RP-202 / ATSC A/54A encode
 // lines 23-262 (field 1) and 286-525 (field 2) for 480i. In the Shuttle's unit the deck's line-21
 // (caption) insert is row 17 and the field-2 equivalent (line 284) is row 280, so line 23 is row 19
@@ -74,7 +75,7 @@ int  fp_publish(fp_publisher *p, const uint8_t *unit, size_t unit_len,
                 uint64_t counter_ext, int d1, int d2, uint8_t transport,
                 int audio_pts_known, uint64_t audio_pts_num);
 /* v11 placements must not silently change to make the crop fit. Keep the offsets
- * (int8 range); fill out-of-raster rows with Y16/C128, as geometry_render.py does,
+ * (int8 range); fill rows outside that field with Y16/C128, as geometry_render.py does,
  * and expose their count. The legacy entry point above retains its clamp policy. */
 int fp_publish_placed(fp_publisher *p, const uint8_t *unit, size_t unit_len,
                       uint64_t counter_ext, int d1, int d2, uint8_t transport,

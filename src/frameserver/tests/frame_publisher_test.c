@@ -15,6 +15,38 @@ static uint8_t *make_unit(void){
 }
 static int row_src_line(const uint8_t *frame, int row){ return frame[(size_t)row * FP_LINE_BYTES]; }
 
+static void test_field_bounds(void){
+    uint8_t *u=malloc(FP_UNIT_BYTES),*frame=malloc(FP_FRAME_HEIGHT*FP_LINE_BYTES);
+    uint8_t *nominal=malloc(FP_FRAME_HEIGHT*FP_LINE_BYTES);
+    if(!u || !frame || !nominal){CHECK(0,"field-bound test allocation");free(u);free(frame);free(nominal);return;}
+    memset(u,0,FP_UNIT_HEADER);
+    // Distinct fields, including the padding region: accidental cross-field reads
+    // cannot hide behind the real device's neutral padding.
+    for(unsigned r=0;r<FP_SOURCE_LINES;r++)for(unsigned x=0;x<FP_LINE_BYTES;x+=2){
+        uint8_t *p=u+FP_UNIT_HEADER+r*FP_LINE_BYTES+x;
+        p[0]=r<262?90:160;p[1]=r<262?30:210;
+    }
+    fp_assemble(nominal,u,0,0);
+    CHECK(fp_assemble_placed(frame,u,0,0)==0 && !memcmp(frame,nominal,FP_FRAME_HEIGHT*FP_LINE_BYTES),
+          "nominal placement unchanged at field bounds");
+    CHECK(fp_assemble_placed(frame,u,15,0)==12,"d1=15 must fill twelve field-1 tail rows");
+    CHECK(frame[454*FP_LINE_BYTES+1]==30,"field-1 row 261 remains available");
+    int neutral=1;
+    for(int k=228;k<240;k++)for(unsigned x=0;x<FP_LINE_BYTES;x+=2)
+        if(frame[2*k*FP_LINE_BYTES+x]!=128 || frame[2*k*FP_LINE_BYTES+x+1]!=16)neutral=0;
+    CHECK(neutral,"d1=15 must fill, never copy field 2");
+    CHECK(frame[479*FP_LINE_BYTES+1]==210,"d1=15 must leave field 2 unchanged");
+    CHECK(fp_assemble_placed(frame,u,3,0)==0 && frame[478*FP_LINE_BYTES+1]==30,"field-1 upper bound inclusive row 261");
+    CHECK(fp_assemble_placed(frame,u,4,0)==1 && frame[478*FP_LINE_BYTES+1]==16,"field 1 excludes row 262");
+    CHECK(fp_assemble_placed(frame,u,0,-20)==0 && frame[FP_LINE_BYTES+1]==210,"field 2 includes row 262");
+    CHECK(fp_assemble_placed(frame,u,0,-21)==1 && frame[FP_LINE_BYTES]==128 && frame[FP_LINE_BYTES+1]==16,
+          "field 2 excludes row 261");
+    CHECK(frame[3*FP_LINE_BYTES+1]==210,"field 2 resumes at row 262");
+    CHECK(fp_assemble_placed(frame,u,-19,3)==0,"outer rows 0 and 524 remain available");
+    CHECK(fp_assemble_placed(frame,u,-20,4)==2,"outer rows -1 and 525 filled");
+    free(u);free(frame);free(nominal);
+}
+
 typedef struct { int frames; uint64_t last_pts, last_counter; int pts_monotonic; IOSurfaceRef held; int hold; int d1,d2;unsigned missing; } sink_ctx;
 static void on_frame(void *ctx, const fp_frame *f){
     sink_ctx *c = ctx; c->frames++;
@@ -26,6 +58,7 @@ static void on_frame(void *ctx, const fp_frame *f){
 }
 
 int main(void){
+    test_field_bounds();
     uint8_t *u = make_unit();
     uint8_t *frame = malloc(FP_FRAME_HEIGHT * FP_LINE_BYTES);
 

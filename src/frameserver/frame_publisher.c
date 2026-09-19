@@ -32,7 +32,8 @@ unsigned fp_assemble_placed(uint8_t *dst,const uint8_t *unit,int d1,int d2){
     for(int k=0;k<FP_FIELD_LINES;k++)for(int f=0;f<2;f++){
         int row=(f?FP_FIELD2_START+d2:FP_FIELD1_START+d1)+k;
         uint8_t *out=dst+(2*k+f)*FP_LINE_BYTES;
-        if(row>=0 && row<(int)FP_SOURCE_LINES)memcpy(out,unit+FP_UNIT_HEADER+row*FP_LINE_BYTES,FP_LINE_BYTES);
+        int lo=f?FP_FIELD2_FIRST_ROW:0,hi=f?(int)FP_SOURCE_LINES:FP_FIELD2_FIRST_ROW;
+        if(row>=lo && row<hi)memcpy(out,unit+FP_UNIT_HEADER+row*FP_LINE_BYTES,FP_LINE_BYTES);
         else {for(unsigned x=0;x<FP_LINE_BYTES;x+=2){out[x]=128;out[x+1]=16;}missing++;}
     }
     return missing;

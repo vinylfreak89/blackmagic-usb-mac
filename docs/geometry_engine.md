@@ -74,7 +74,8 @@ own-field placements; a consumer weaving reversed material still needs the same
 pairing parameter. EOF/gaps complete the unused boundary fields explicitly.
 The reviewed renderer consumes these unit-keyed rows through `--engine-log`.
 
-v11 publication preserves the requested offset. A crop beyond the delivered raster
+v11 publication preserves the requested offset. Each field reads only its own
+storage rows (field 1: 0–261; field 2: 262–524). A crop beyond those bounds
 fills only unavailable rows with Y16/C128, matching the renderer, and exposes their
 count as `fp_frame.unavailable_rows`. The legacy publisher's whole-crop clamp remains
 for v9. Clamping a v11 crop would make the pixels disagree with the recorded offset.
