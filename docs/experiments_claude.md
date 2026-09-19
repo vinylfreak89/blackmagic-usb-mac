@@ -657,3 +657,35 @@ or the entire line being blanked as the bottom line rising". Entry 8 measured so
 
 So entry 8 tested my inference, not his rule, and its regression says nothing for or against his rule.
 Entry 8's rule 1 results and its measurements stand as reported.
+
+### Owner's rulings on the bottom rule and the blank line (2026-09-19, relayed verbatim by the watchdog)
+
+- 10:31, the bottom: "if 523 was blank and then it becomes partially blank, then the bottom should shift
+  DOWN to 523, which basically means both the top and bottom moved right. ... what I meant was a line
+  that had normal luma/chroma and BECAME blank, but the inverse (what i discussed above) is absolutely
+  evidence that the shift went in the OPPOSITE direction. but yes, my intent originally was if a line
+  suddenly increased blanking and the rest of the geometry didn't shift, then yes, re-run the comb
+  search". "Above" means the woven frame.
+- 10:38, the light line: "the light line should be field 1. the important property is a blank line
+  can't sit between the light line and the next real picture line." He hedged the geometry: "don't
+  quote me on that".
+- 10:44, after the comb put the black line (field 2's deck-blanked 285) between the light line and
+  the picture at 13783-13790, one line from his fix: "I guess if the deck blanked it... I guess it
+  doesn't really matter if you shift field 1 or field 2 against its each. mathematically its the same
+  thing. yeah in that case the existing blank line was a red herring... my bad. it can't be used to
+  proxy anything, except its existence should absolutely mean rerun the comb because that is extremely
+  nonstandard".
+
+**The rule as it now stands.** "Placement" means a rule that sets d; "re-run" means a reason to run the
+comb search again, where the comb sets d.
+- A blank line between picture lines in the woven frame (10:44): **re-run**. It is not a placement
+  gauge, since a deck-blanked line can sit inside a correct weave (13575, 13783-13790).
+- Rule 1, the unbroken block: the same observation, so by the 10:44 ruling it is **re-run**, not
+  placement. On the whole tape, where it decided it matched entry 5's placement (96.8% against
+  96.7%), so as a placement rule it added nothing measured.
+- A line on the bottom gaining blanking while the rest holds (10:31): **re-run**. It is evidence the
+  picture moved up. A blank line gaining picture is evidence it moved down; the comb decides.
+- The top relation (05:59): **describes the result, not placement or re-run.** It describes the placement the
+  comb finds after an upward move: the other field's line first, and the moved field one line down with
+  its bottom recomputed. The first lines cannot show it (they do not change at an upward move), so it
+  is neither a trigger nor a placement rule by itself. For him to confirm.
