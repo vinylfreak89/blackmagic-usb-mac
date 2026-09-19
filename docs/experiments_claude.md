@@ -1081,3 +1081,34 @@ golden column it checked. Findings, all accepted:
   - A unit-keyed file is written: unit v carries d1 for its field 1 and d2 for its field 2, from
     whichever frame uses each. Frame-level columns (comb run, confidence) sit on the frame's
     bottom-field unit.
+
+### Amendment 5 to entry 11 (2026-09-19, before regenerating the goldens): reset on the live signal events
+
+**What prompted it.** Codex's engine preflight stopped on two conflicts in the golden reference.
+- The golden reset only at counter gaps. The owner's rule (11:05) is "when any signal loss like event
+  occurs, the whole engine should re[set]". The live classifier, compiled unchanged from 857dd74,
+  emits REGISTRATION_BEGIN_SEGMENT when the source enters Present: capture 1 at 6263, 6667 and 6882
+  (after muted stretches); captures 2-4 once each a few units in (1914, 13505, 175). It also emits
+  DISCONTINUITY around ineligible units.
+- Under reversed pairing, the unit-keyed golden left each boundary unit's unused field empty, and the
+  renderer drops any engine row with an empty value.
+
+**The change.**
+- **Resets.** The reference takes the classifier's per-unit actions, as the engine will receive them
+  (Codex's `reset_probe` output: `goldens/signal/cap*_signal.csv`, parser and classifier unchanged from
+  857dd74). Any action (DISCONTINUITY or BEGIN_SEGMENT) on or before an eligible unit resets the whole
+  state before the first frame that contains that unit: the held correction, the provisional flag,
+  the previous-unit features (the next move is therefore unclassable and re-runs the comb), and the
+  published placement. Counter gaps still reset as before.
+- **Boundary rows.** A field no frame uses carries that unit's own census placement (first line - 23 /
+  - 286, or 0 if unmeasured), marked unused, so every engine row is complete. No displayed frame
+  uses it.
+
+**Physical reason.** The owner's rule, applied to the events the live path actually reports, so the
+reference and the engine share one reset stream.
+
+**Should improve:** agreement between reference and engine at segment starts. **Must not break:** any
+judged frame beyond what a forced comb re-run at a reset can change; changes are reported.
+
+**Not re-run:** the whole-tape figure (99.2%). It has no classifier stream yet; the full-tape engine
+render will produce the real one.
