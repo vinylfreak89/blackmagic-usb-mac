@@ -137,6 +137,7 @@ class Framer:
 
     def __init__(self, emit):
         self.buf = bytearray(); self.has_marker = False; self.scan = 4; self.emit_cb = emit
+        self.detect_from = 0          # a marker is detectable only if its last byte arrived at or after this index
         self.valid = False; self.last16 = 0; self.ext = 0
 
     def _extend(self, c16):
@@ -180,19 +181,24 @@ class Framer:
                 if acc is not None:
                     self._emit(acc, True); self.scan = 4; continue
                 if len(b) > self.BUF:
-                    self._emit(self.BUF, True, hole=True); self.has_marker = False; self.scan = 4; continue
+                    self._emit(self.BUF, True, hole=True); self.has_marker = False; self.scan = 4
+                    self.detect_from = 0; continue
                 self.scan = max(4, (j if j >= 0 else len(b) - 3)); return
             else:
-                j = b.find(MARK); acc = None
-                while 0 <= j and j + 8 <= len(b):
+                # The parser applies its unframed limit before it validates a candidate: a candidate is
+                # validated when eight bytes of it have arrived, which must happen before the buffer
+                # reaches a unit's worth; otherwise all but seven bytes are flushed and markers already
+                # complete in those seven are never seen again.
+                j = b.find(MARK, max(0, self.detect_from - 3)); acc = None
+                while 0 <= j and j + 8 <= len(b) and j + 8 < UNIT_BYTES:
                     if plausible_format(int.from_bytes(b[j + 6:j + 8], "little")):
                         acc = j; break
                     j = b.find(MARK, j + 1)
                 if acc is not None:
                     if acc: self._emit(acc, False)
-                    self.has_marker = True; self.scan = 4; continue
+                    self.has_marker = True; self.scan = 4; self.detect_from = 0; continue
                 if len(b) >= UNIT_BYTES:
-                    self._emit(len(b) - 7, False); continue
+                    self._emit(UNIT_BYTES - 7, False); self.detect_from = 7; continue
                 return
 
     def finish(self):
@@ -259,11 +265,13 @@ def main():
     # timeline: fills between consecutive frames -- from the audio clock where both times are known
     # (8008 ticks per unit), otherwise one per observation between them that is not rendered
     items = []; timeline_notes = []; frame_obs = {f[2] for f in frames}
+    base = None                           # (output index, audio pts) of the first frame with a known time
     for n, fr in enumerate(frames):
         if items:
             pext, pk = frames[n - 1][0], frames[n - 1][2]
-            if fr[0] in vpts and pext in vpts:
-                periods = round((vpts[fr[0]] - vpts[pext]) / 8008)
+            if fr[0] in vpts and base is not None:
+                # cumulative: the frame's own index on the audio clock, so rounding never accumulates
+                periods = round((vpts[fr[0]] - base[1]) / 8008) + base[0] - (len(items) - 1)
                 src = "audio clock"
             else:
                 between = [o for o in obs[pk + 1:fr[2]] if o[2]]
@@ -276,6 +284,8 @@ def main():
                 items.append(("fill", missing, "no partner" if missing in partnerless else "absent"))
             if periods > 1: timeline_notes.append((pext, fr[0], periods - 1, src))
         items.append(("frame", fr[0], fr[1]))
+        if base is None and fr[0] in vpts:
+            base = (len(items) - 1, vpts[fr[0]])
     nfill = sum(1 for it in items if it[0] == "fill")
     print(f"{len(frames)} frames, {nfill} fill frames; skipped {nonexact} non-exact e801 units, {other} other-format "
           f"units, {unframed} unframed spans; {len(partnerless)} units without a pair partner", flush=True)
@@ -308,12 +318,36 @@ def main():
     if a.pcm and audio_ss is None:
         print("audio anchor: NOT established (no --av-log, or no anchored audio block / matched frame)", flush=True)
 
+    pcm_path = a.pcm; aligned_tmp = None
+    if a.pcm and a.av_log:
+        # The dumped PCM is the delivered blocks back to back; a block the frameserver dropped leaves no
+        # bytes. Rebuild it at each block's sample ordinal, silence where samples were not delivered.
+        blocks = [(int(r[1]), int(r[4])) for r in csv.reader(open(a.av_log)) if r and r[0] == "A"]
+        if not os.path.exists(a.pcm):
+            sys.exit(f"refusing: PCM file {a.pcm} does not exist")
+        aligned_tmp = a.out + ".aligned.pcm"; pos = 0; gaps = 0; gap_samples = 0
+        with open(a.pcm, "rb") as src, open(aligned_tmp, "wb") as dst:
+            for ordinal, nframes in blocks:
+                if ordinal < pos:
+                    sys.exit(f"refusing: audio block at sample {ordinal} overlaps the previous one (ends {pos})")
+                if ordinal > pos:
+                    dst.write(bytes(6 * (ordinal - pos))); gaps += 1; gap_samples += ordinal - pos
+                data = src.read(6 * nframes)
+                if len(data) != 6 * nframes:
+                    sys.exit("refusing: the PCM file is shorter than the dump log's blocks")
+                dst.write(data); pos = ordinal + nframes
+            if src.read(1):
+                sys.exit("refusing: the PCM file is longer than the dump log's blocks")
+        pcm_path = aligned_tmp
+        print(f"audio: {len(blocks)} blocks placed by sample ordinal; {gaps} undelivered stretches "
+              f"({gap_samples} samples) filled with silence", flush=True)
+
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", "30000/1001", "-i", "-"]
     if a.pcm:
         if audio_ss is not None and audio_ss > 0:
             cmd += ["-ss", f"{audio_ss:.6f}"]
-        cmd += ["-f", "s24le", "-ar", "48000", "-ac", "2", "-i", a.pcm]
+        cmd += ["-f", "s24le", "-ar", "48000", "-ac", "2", "-i", pcm_path]
         af = "apad" if not (audio_ss is not None and audio_ss < 0) else f"adelay={int(-audio_ss * 1000)}:all=1,apad"
         cmd += ["-af", af, "-shortest", "-c:a", "aac", "-b:a", "192k"]
     P = a.parity
@@ -367,7 +401,8 @@ def main():
                else f"unit {ext} absent (no exact e801 unit)")
         dr.text((PX + 40, FH // 2 - 10), msg, font=font, fill=(255, 255, 255))
         dr.rectangle([0, FH, W, H], fill=(8, 8, 8))
-        fit(dr, (6, FH + 6), f"ctr {ext:>6}   ABSENT UNIT - fill frame, no placement", font, (230, 230, 230))
+        fit(dr, (6, FH + 6), f"ctr {ext:>6}   " + ("NO PAIR PARTNER" if why == "no partner" else "ABSENT UNIT")
+                              + " - fill frame, no placement", font, (230, 230, 230))
         graph_and_strip(dr, i, ext, 0, 0)
         enc.stdin.write(img.tobytes()); state["written"] += 1; state["item"] += 1
 
@@ -440,6 +475,8 @@ def main():
         emit_ready()
     walk(second)
     enc.stdin.close(); rc = enc.wait()
+    if aligned_tmp and os.path.exists(aligned_tmp):
+        os.remove(aligned_tmp)
     if state["written"] != len(items):
         sys.exit(f"refusing: wrote {state['written']} frames against {len(items)} planned")
     print(f"wrote {a.out} ({len(frames)} frames + {nfill} fill = {state['written']}, rc={rc})")
