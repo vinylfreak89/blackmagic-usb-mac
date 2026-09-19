@@ -640,3 +640,20 @@ The promised comparison, now run over every render frame (`e9_repro.py` item 3b)
     frame. The whole-tape rule applies it only when the line above field 2's first line is not blank,
     and line 285 is blank there.
   These are differences between rule versions, not code errors; neither involves rule 2's count.
+
+### Correction to entries 7 and 8: rule 2 was not the owner's rule (2026-09-19)
+
+Entry 8's premise called both rules "the owner's". Rule 2 was mine. His sentence (05:59) puts the cause
+at the top: "if field 2's first picture line is above field 1, that forces field 1 down a line...
+which that recalculates its own geometry because by forcing it down a line one of its bottom lines is
+going to shift down". The bottom shifting is the consequence of the move, and the geometry is recomputed
+after it. Entry 7's claim C made the bottom the evidence, because an upward move cannot be seen at the
+top when the field's first line slides under 22 / 285. Entry 8 made that the trigger, through a
+running count.
+
+His later message (10:17) defines the bottom line rising as blanking: "partial blanking along a line
+or the entire line being blanked as the bottom line rising". Entry 8 measured something else: entry
+2's threshold line (5 codes, spread 4) moving by one.
+
+So entry 8 tested my inference, not his rule, and its regression says nothing for or against his rule.
+Entry 8's rule 1 results and its measurements stand as reported.
