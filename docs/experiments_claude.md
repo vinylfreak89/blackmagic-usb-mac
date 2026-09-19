@@ -603,3 +603,24 @@ units before the capture) from the code.
 difference. Either is an implementation error to be found.
 
 **Material.** The 649 units of capture 2 and 649 of capture 3 and their frames.
+
+### Report on entry 9 (2026-09-19) — reproduced; no implementation error found
+
+Verdict: the premise held. A blind recount from the data files, with its own code, matched every number.
+1. Entry 2's lines, capture census against the whole-tape pass: identical on all 649 units of each
+   capture, first and last line, both fields.
+2. Comb verdicts: identical in shift and margin on every frame (entry 3: capture 2 642, capture 3 557;
+   the renders: 649 and 648).
+3. Placement first lines: identical on every frame entry 3 judged (capture 2 642, with its one-line-
+   lower reading; capture 3 557). The only differences are frames entry 3 left out by rule. Capture 2:
+   7 with field 2 at 286 / 287. Capture 3: 91 with field 1's first line 24 by rule, and 1 with no
+   partner. Entry 5 places those automatically.
+4. Rule 1's pair classes: identical frame by frame whether entry 7's inputs or the whole-tape inputs
+   go through entry 8's code (capture 2 543 / 545 agree with the comb, capture 3 491 / 500).
+- **The only difference between entries 7 and 8 on these units is rule 2's count.** Entry 7 checked
+  upward moves one by one and never ran the count. With the count, capture 3 falls to 150 / 500 as
+  carried in from the tape (field 1 at 1, field 2 at 2 when capture 3 begins). Restarted at capture 3's
+  first unit, it still falls to 174 / 500. The count is nonzero on 378 of capture 3's 649 units for
+  field 1 and 550 for field 2. Capture 2 stays at 541 / 545. Entry 8's regression is rule 2 as
+  committed, on the capture as on the whole tape, not the whole-tape code.
+- Scratch: `geometry_exp1/e9_repro.py` / `.out`.
