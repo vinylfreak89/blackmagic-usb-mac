@@ -624,3 +624,19 @@ Verdict: the premise held. A blind recount from the data files, with its own cod
   field 1 and 550 for field 2. Capture 2 stays at 541 / 545. Entry 8's regression is rule 2 as
   committed, on the capture as on the whole tape, not the whole-tape code.
 - Scratch: `geometry_exp1/e9_repro.py` / `.out`.
+
+### Review by Codex of entry 9's report (2026-09-19) — one finding, accepted; the missing comparison run
+
+Codex: the entry promised to compare the renders' tops as well, but the script compared only entry 3's.
+So "the only difference ... is rule 2's count" holds for entry 3's 545 / 500 judged frames, not all
+render inputs. Codex reproduced 543 -> 541 / 545, 491 -> 150 / 500 and 174 / 500 within that scope.
+The promised comparison, now run over every render frame (`e9_repro.py` item 3b):
+- Capture 3: the renders' first lines equal the whole-tape pass's on all 648 frames, both fields.
+  That includes the 91 frames entry 3 left out, where the renders took the raw census's 24.
+- Capture 2: 642 of 649 frames equal. The 7 that differ are exactly those entry 3 left out:
+  - At all 7, the renders have no field-2 top, while the whole-tape pass has 286 / 287.
+  - At 3 of them (67467, 67557, 68065, field 2 at 286), field 1's top differs as well: 26 in the
+    renders, 25 in the whole-tape pass. The renders applied capture 2's one-line-lower reading to every
+    frame. The whole-tape rule applies it only when the line above field 2's first line is not blank,
+    and line 285 is blank there.
+  These are differences between rule versions, not code errors; neither involves rule 2's count.
