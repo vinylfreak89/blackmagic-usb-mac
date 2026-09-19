@@ -1119,3 +1119,32 @@ Result of amendment 5 (goldens regenerated):
 - Placement against a decided comb is unchanged: 372 / 373, 549 / 551, 586 / 586, 590 / 590. Frames
   whose placement differs are still 1, 2, 0, 0.
 - Every unit row is complete; capture 3's two unused boundary fields are marked.
+
+### The engine matches the goldens (2026-09-19)
+
+Codex wrote the C engine and I reviewed it: `v11-engine` 3d685ba, bed92b6 and 8547447, pushed. v9 stays
+the default; select `frameserver_replay --geometry-v11`, plus `--pair-next` for capture 3. Checked from
+my own worktree at 8547447 with my own comparison script:
+- **Live path.** Real replays (`--pace-us 4000`) published every eligible unit with 0 drops, against
+  `goldens/cap*_units.csv` and `_frames.csv`.
+  - Every unit's applied d1/d2, unused and reset flags are identical.
+  - Every frame's comb run, confidence, comb shift and decided are identical. Comb margins are within
+    5.4e-7 relative, none within 1.5e-4 of 1.5.
+  - The owner's counts, engine against golden: comb runs 546 / 127 / 118 / 241, identical; frames whose
+    placement differs from a decided comb 1 / 2 / 0 / 0, identical (the audit replays compute the comb
+    on every frame). The differing frames are capture 1 6929 and capture 2 2489-2490.
+- **Renders from the engine logs alone** (`geometry_render.py --engine-log`): every frame's strip equals
+  the golden placement.
+- **Tests.** field_registration test, frameserver test-geometry (normal / ASan / TSan) and frameserver
+  test pass. Codex's comparator also reports 0 mismatches.
+- **Cost on this M3.** A comb search takes 0.24 ms median, 0.26 ms p95. The whole engine takes 0.07-0.17 ms
+  median and 0.33-0.42 ms p95 per unit, against the 10 ms budget of CLAUDE.md §11b.
+- **Review finding, fixed.** The v11 publisher and the renderer bounded rows by the whole raster, not the
+  field. At field-1 offsets above 11 (capture 1 reaches 15, on 2 units), field 1 showed field 2's
+  lines. Both now fill outside the field's own rows: renderer b3b3232, publisher 8547447, each with a
+  deciding test, matching byte for byte across 80 offset pairs. Placements are unaffected. So are the four
+  capture renders, whose offsets never cross a field boundary.
+- **Observation, not an engine defect.** On capture 1's opening rewind and acquisition (6254-6326,
+  6565-6573), the automatic census puts 93 frames at offsets over 2 lines. 92 are LOW confidence; the
+  comb decided 18 of them and agrees with all 18. The capture renders instead used entry 3's confident
+  census, which held 0 there.
