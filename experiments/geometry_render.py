@@ -224,36 +224,72 @@ class Framer:
             self._emit(len(self.buf), False)
 
 
+MAX_SCHEDULE_CELL, MAX_SCHEDULE_ROWS, UINT64_MAX = 4096, 65536, (1 << 64) - 1
+
+
+def _schedule_records(data):
+    """The engine's strict CSV record reader (src/frameserver/pairing_schedule.c record()), ported one to
+    one so both loaders accept the same files: three fields a record, "" escapes and embedded newlines only
+    inside quotes, nothing after a closing quote but a delimiter, CR only before LF, no NUL, cells of at
+    most 4096 bytes. Yields lists of three byte strings; raises ValueError on anything else."""
+    i, n = 0, len(data)
+    while True:
+        cells = [bytearray(), bytearray(), bytearray()]; col = 0; quoted = closed = anyc = False
+        while True:
+            if i >= n:
+                if quoted: raise ValueError("unterminated quote")
+                if not anyc: return
+                if col != 2: raise ValueError("record without three fields")
+                yield [bytes(c) for c in cells]; return
+            c = data[i]; i += 1; anyc = True
+            if c == 0: raise ValueError("NUL byte")
+            if quoted:
+                if c == 0x22:
+                    if i < n and data[i] == 0x22: i += 1
+                    else: quoted = False; closed = True; continue
+            else:
+                if c in (0x2C, 0x0A, 0x0D):
+                    if c == 0x2C:
+                        col += 1
+                        if col == 3: raise ValueError("more than three fields")
+                        closed = False; continue
+                    if c == 0x0D:
+                        if i >= n or data[i] != 0x0A: raise ValueError("CR not followed by LF")
+                        i += 1
+                    if col != 2: raise ValueError("record without three fields")
+                    yield [bytes(x) for x in cells]; break
+                if closed: raise ValueError("text after a closing quote")
+                if c == 0x22:
+                    if cells[col]: raise ValueError("quote inside an unquoted field")
+                    quoted = True; continue
+            if len(cells[col]) == MAX_SCHEDULE_CELL: raise ValueError("field exceeds 4096 bytes")
+            cells[col].append(c)
+
+
 def read_schedule(path):
-    """--pairing-schedule rows as [(first_counter, pairing, note)]. Validation matches the engine's
-    (frameserver --pairing-schedule, e3868e7): header exactly first_counter,pairing,note; three fields a
-    row; well-formed quoting; counters >= 0, strictly increasing, the first at 0 (pairing is always defined)."""
+    """--pairing-schedule rows as [(first_counter, pairing, note)], accepting exactly what the engine's
+    loader accepts: header first_counter,pairing,note; counters unsigned 64-bit decimal digits, strictly
+    increasing, the first at 0 (pairing is always defined); pairing aligned or reversed; at most 65536 rows."""
+    try:
+        recs = list(_schedule_records(open(path, "rb").read()))
+    except (OSError, ValueError) as e:
+        sys.exit(f"refusing: malformed pairing schedule {path} ({e})")
+    if not recs or recs[0] != [b"first_counter", b"pairing", b"note"]:
+        sys.exit("refusing: pairing-schedule header must be first_counter,pairing,note")
     rows = []
-    with open(path, newline="") as fh:
-        rd = csv.reader(fh, strict=True)
-        try:
-            header = next(rd, None)
-            if header != ["first_counter", "pairing", "note"]:
-                sys.exit(f"refusing: pairing-schedule header must be first_counter,pairing,note, got {header}")
-            for r in rd:
-                if len(r) != 3:
-                    sys.exit(f"refusing: pairing-schedule row must have three fields: {r}")
-                try:
-                    first = int(r[0])
-                except ValueError:
-                    sys.exit(f"refusing: pairing-schedule counter is not an integer: {r}")
-                pairing = r[1]
-                if first < 0:
-                    sys.exit(f"refusing: negative pairing-schedule counter {first}")
-                if pairing not in ("aligned", "reversed"):
-                    sys.exit(f"refusing: pairing-schedule pairing must be aligned or reversed, got {pairing!r}")
-                if rows and first <= rows[-1][0]:
-                    sys.exit(f"refusing: pairing schedule is not strictly increasing at {first}")
-                if not rows and first != 0:
-                    sys.exit(f"refusing: the first pairing-schedule row must start at counter 0, not {first}")
-                rows.append((first, pairing, r[2]))
-        except csv.Error as e:
-            sys.exit(f"refusing: malformed pairing schedule ({e})")
+    for r in recs[1:]:
+        if not r[0] or not all(0x30 <= ch <= 0x39 for ch in r[0]) or int(r[0]) > UINT64_MAX:
+            sys.exit(f"refusing: first_counter must be an unsigned 64-bit decimal, got {r[0]!r}")
+        first = int(r[0])
+        if not rows and first != 0:
+            sys.exit(f"refusing: the first pairing-schedule row must start at counter 0, not {first}")
+        if rows and first <= rows[-1][0]:
+            sys.exit(f"refusing: pairing schedule is not strictly increasing at {first}")
+        if r[1] not in (b"aligned", b"reversed"):
+            sys.exit(f"refusing: pairing-schedule pairing must be aligned or reversed, got {r[1]!r}")
+        if len(rows) == MAX_SCHEDULE_ROWS:
+            sys.exit("refusing: more than 65536 pairing-schedule rows")
+        rows.append((first, r[1].decode(), r[2].decode("utf-8", "replace")))
     if not rows:
         sys.exit("refusing: empty pairing schedule")
     return rows
