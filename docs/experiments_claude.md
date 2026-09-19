@@ -446,3 +446,26 @@ A blind recount from the raw data, with its own code, matched every number excep
   Capture 2 2489-2490 (whole-tape 68025-68026) have unequal heights. There the edges alone leave the
   applied d = -1, and the comb, decided at 1.53 and 1.63, gives 0. These are the two capture-2 frames
   where the shared d is not the comb's, and two of A's six exceptions. Not examined on raw rows.
+
+### Review by Codex (2026-09-19) — six findings, all accepted
+
+Codex agreed with the pair algebra (the rows between the fields' first lines are 2(st-d)+1). It also
+agreed that frame 13575 is field 2 moving up under the deck's blank line 285 (occlusion; the erased
+line cannot be inspected), and that "13779" was a frame-versus-unit slip. Its findings, now part of
+the verdicts:
+1. Entry 6's verdict was stronger than its committed falsifier allows. The falsifier holds in 5 of 8
+   units. It fails in 13784 and 13788, where the luma correlation with line 24 (0.128, 0.106) is above
+   both controls, and in 13791, 1.26 above blanking. Excusing those by the controls' spread was a
+   tolerance not in the entry. Amended verdict: unknown for luma, with no consistent picture-following
+   luma shown. The colour result stands.
+2. Burst range (already corrected above).
+3. Entry 7 A, capture 2 with its raw tops: both edges unbroken in 0 / 545, not 2 (2 is the top edge
+   alone). A holds on capture 2 only when field 1's top visible line is read as leaky line 22.
+4. The unequal heights at capture 2 2489-2490 (already corrected above).
+5. C held at the three decided upward moves (capture 3 unit 13602 field 1, unit 13575 field 2, capture
+   4 unit 597 field 1). The fourth, unit 13779 field 1 (frame 13778), abstains at 1.378. The listed frame
+   13779 was not an upward move. Unit 13780's content moved down, but `moves.py` searched only +-2
+   lines; searched wider, it weakly prefers three (MAD 10.50 against 11.15). The size is unresolved.
+6. B's population included 412 capture-1 frames before 6667, outside the entry: 2 decided, 410
+   abstaining, no disagreements. The 79 disagreements are unchanged.
+Codex's evidence: its scratch `/private/tmp/codex-e6-e7-review-Je7000/REVIEW.md`.
