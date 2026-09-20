@@ -1877,3 +1877,16 @@ first line on 5.54% of frames — but nothing tried tonight separates it from or
 number placed by hand. The comb-confidence rule from entry 16 stands on its own measurements and is
 unaffected by all of this; it needs no threshold derived from the source, because 1.5 is a ratio the
 owner has already accepted.
+
+### Correction (2026-09-20): the per-unit derivation's figures, completed
+
+The report on entry 18 quoted the per-unit level derivation from a run that was **still in progress**:
+"1.02 to 63.00 with a median of 7.5 over 51,619 units, and changes 181 field-1 and 116 field-2
+decisions, 0.35% and 0.22%". Those were partial. Completed over all 86,293 units the bar ranges
+**1.02 to 66.55 with a median of 13.00**, and it changes **1,794 field-1 tops (2.08%) and 2,567 field-2
+tops (2.97%)**.
+
+So the third derivation form fails the owner's bar by a wider margin than reported, not a narrower one,
+and the second half of the tape is where it diverges. The conclusion is unchanged and stronger: the
+level bar cannot be derived from this source without changing decisions. Quoting a running job's output
+as a result was the error; figures now come from finished runs only.
