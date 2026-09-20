@@ -1845,3 +1845,35 @@ which is itself measured from the tape rather than chosen.
 - where it fires and the comb then moves the placement, raw rows must show the move is right.
 
 **Material.** The whole tape, and the known cases above.
+
+### Report on entry 19 (2026-09-20) — refuted: the vacated-line signature is not rare, and carries no information about the placement
+
+**Verdict: refuted on the whole tape, on every arm of its falsifier.**
+
+Measured over all 86,289 adjacent unit pairs:
+- The ratio's median is 1.20 in field 1 and 1.18 in field 2, but its **90th percentile is 8.83 and
+  4.86**. The four known move units sit at 6.0, 7.3, 9.0 and 9.3 — that is the **85th to 95th
+  percentile of the tape's own distribution**, not the tail.
+- A bar low enough to catch them, 6.0, **flags 17,788 units — 20.6% of the tape.** A bar rare enough to
+  be a trigger, the 99.5th percentile, flags **none of the four**.
+- And the signature does not distinguish a wrong placement from a right one. Against the comb's own
+  verdict: where the published placement is excluded by the comb (1,338 frames) the ratio's median is
+  **1.25** and its 90th percentile 10.53; where the placement is fine (83,325 frames) they are **1.47**
+  and 11.30. The distributions are the same.
+
+So the six-unit comparison that suggested this — known cases at 6 to 9 against "ordinary units" at 0.8
+to 1.3 — was unrepresentative: those ordinary units came from quiet passages. Across the tape, ordinary
+content at the top of frame moves as much as a vacated line does.
+
+**The night's lesson, recorded because it is the same mistake twice.** Entry 17's derivation looked exact
+on 199 units and changed hundreds of decisions on the tape; entry 19's signature looked clean on six
+units and separates nothing on the tape. Both were caught by the owner's rule that the population is the
+whole tape, not a sample chosen after the fact. Any further threshold or trigger proposed here is
+measured on the tape before it is reported, not after.
+
+**Where this leaves the line-top question.** Three level-based derivations and one temporal rule are
+refuted. The census defect the owner reported is real and measured — Codex's whole-tape pass puts a blank
+first line on 5.54% of frames — but nothing tried tonight separates it from ordinary content without a
+number placed by hand. The comb-confidence rule from entry 16 stands on its own measurements and is
+unaffected by all of this; it needs no threshold derived from the source, because 1.5 is a ratio the
+owner has already accepted.
