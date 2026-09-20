@@ -1923,3 +1923,53 @@ Any fix to it therefore changes about 5.5% of frames — by definition it cannot
 change anything". The two conditions cannot both hold for this class. A fix has to be justified as a fix,
 on raw rows, at whatever size it turns out to be; it cannot arrive disguised as a derivation that changes
 nothing.
+
+## E-claude-2026-09-21-20 — the tape's own horizontal blanking as the reference (the owner's proposal)
+
+**Question (owner, 2026-09-20).** "Why wouldn't we just use the horizontal blanking as a swap in…" and,
+on the population, "How is it thin against 720… there's 240 lines of it", and on the threshold, "that
+will not be constant because it's a noisy edge so that should not be a fixed but a derived threshold",
+and on how to derive it: "It shouldn't be a distribution. It should decide per unit what to include and
+what to exclude. If it includes samples that are conceivably picture or will throw the whole thing off."
+
+**Why this and not the dark-end rule.** Mine measured the candidate line's own dark end against the
+device's synthetic blanking, and it changed 21.5% of field-1 tops whole-tape. His uses a different
+quantity entirely: the tail of the source's own horizontal blanking that begins every delivered line.
+CLAUDE.md §6 already establishes it as measurable here — the NTSC setup measurement used "each line's
+OWN blanking as its 0 IRE reference (the classical black-minus-porch measurement, needing no device
+constant)". It carries the source's own noise by construction, which is the quantity the census lacks.
+
+**Measured before writing this entry, to know the experiment is worth running:** on this raster the
+delivered line begins with about six samples of blanking, rising to picture level by sample 12 to 14 —
+not the 25 the nominal timing implies. Pooled over a field that is roughly 1,400 samples of the source's
+own blanking per unit.
+
+**Premise.** Pooled over one field, those leading samples measure what the source's blanking actually
+reaches on that unit, dropout speckle included. A line carries picture only if its body rises above that
+level. No device constant enters, and the reference is re-measured every unit.
+
+**Method.** Per unit and field:
+- **Selection**, per his instruction, deciding what to include rather than fitting: column 0 is blanking
+  by construction; include each further leading column while its across-line median stays within column
+  0's own across-line spread, and stop at the first that does not. Anything conceivably picture is
+  excluded by that test rather than by a sample count.
+- **Reference**: pool the included columns over all the field's lines; take a high quantile as the level
+  blanking reaches. Reported at the 99th, 99.5th and 99.9th so its sensitivity is visible.
+- **Decision**: the first picture line is the first row of the search window whose body 95th percentile
+  exceeds that level. The existing continuity test is retained; nothing else changes.
+
+**Falsifier.**
+- The selection finds fewer than two safe columns on more than a few per cent of units: the reference
+  cannot be measured and the premise fails.
+- The known cases are not fixed: 9040, 13,284 and 13,449 must move field 2 from 286 to 287, and the
+  late-top run at 10,988–11,001 must return 23 for field 1.
+- The whole-tape disagreement with the engine's current tops is far larger than the measured size of the
+  class, about 5.5% of frames: anything in the tens of per cent means it is moving frames that are not
+  in the class, as my dark-end rule did.
+- A sample of the disagreements is not supported by raw rows.
+
+**Material.** The whole tape, all 86,293 exact units. The known cases above. Capture 1 as the external
+check.
+
+**Pre-registered before the deciding run**, unlike the two dark-end passes, which ran before the note
+covering them was written. That was a departure from §14 and is recorded here as one.
