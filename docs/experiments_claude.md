@@ -1786,3 +1786,62 @@ fix the blank-line class — so the test is not "changes zero". It is:
 
 **Material.** The whole tape, all 86,293 exact units. The seven blank-line edges measured tonight, and
 the late-top run at 10,988–11,001, as known cases. Capture 1 as the external check.
+
+### Report on entry 18 (2026-09-20) — refuted: temporal change cannot find the first picture line
+
+**Verdict: the premise is refuted, and the reason is worth more than the experiment.**
+
+The rule was that a picture line changes between units and a blanking line does not. Measured on the
+known cases, it fixes the late-top class — at 10,990, 10,995 and 11,000 it returns field 1's top as 23,
+which is what the raw rows say and one line above what the engine logs — and it fails the blank-line
+class outright.
+
+**Why it fails.** At 9040, field 2 line 286 has the **largest inter-unit change of any row in the field,
+122.9 against the picture body's 13.6**, because the line carried picture in the previous unit and is
+blank in this one. The same at 13,284 (148.7) and 13,449. A line that the picture has just vacated
+changes more than picture does, so any rule of the form "changing means picture" calls it picture.
+The premise fails exactly at the event it was meant to catch.
+
+Two references were tried and both fail for this reason: the device's blanking rows as a floor (they are
+nearly noiseless, so any source-blank line clears them) and a floor/ceiling midpoint against the picture
+body. Neither is a threshold problem; the signal points the wrong way.
+
+**The by-product, which is the useful part.** That same measurement identifies the event. Taking the
+largest inter-unit change among the rows just above the picture, against the picture body's own change in
+the same pair:
+
+| case | ratio |
+|---|---|
+| 9040, 13,284, 13,449 — the blank-line frames | 9.0, 7.3, 9.3 |
+| 10,988 — where the late-top run begins | 6.0 |
+| 10,987 and 10,989, either side of it | 0.8 |
+| ordinary units (9037, 10,284, 11,124, 13,281, 13,446) | 0.8 to 1.3 |
+
+The picture moving leaves a signature six to nine times the body's own change, on the unit where it
+happens, and ordinary units sit at about one. That is the trigger the rule set does not have: nothing
+currently fires when the picture jumps but the census does not see it.
+
+**Also measured, closing entry 17's line of argument.** The per-unit level derivation — the bar taken
+from each unit's own rows, so it cannot drift with pool size — ranges from 1.02 to 63.00 with a median of
+7.5 over 51,619 units, and changes 181 field-1 and 116 field-2 decisions, 0.35% and 0.22%. So the level
+bar cannot be derived from this source without changing decisions, in any of the three forms tried.
+
+## E-claude-2026-09-20-19 — the vacated line as the trigger the rule set lacks
+
+**Premise.** When the picture moves by a line, the line it vacates changes far more than the picture body
+does, and the engine can see this without knowing where the picture starts. Used as a trigger it fires
+the comb on exactly the units where the census is about to be wrong, which is the class that today
+publishes at HIGH confidence with nothing firing.
+
+**Method.** Per unit and field: the largest inter-unit change among the eight rows above the nominal
+picture start, divided by the median inter-unit change of the picture body. No level: it is a ratio of
+the source against itself. A unit is flagged when the ratio exceeds the ratio seen on ordinary units,
+which is itself measured from the tape rather than chosen.
+
+**Falsifier.**
+- the flagged units must be rare — more than a few per cent of the tape means it is firing on ordinary
+  content and is useless as a trigger;
+- the known move units (9040, 13,284, 13,449, 10,988) must be flagged;
+- where it fires and the comb then moves the placement, raw rows must show the move is right.
+
+**Material.** The whole tape, and the known cases above.
