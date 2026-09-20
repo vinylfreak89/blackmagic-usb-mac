@@ -1528,3 +1528,48 @@ exactly the frames where the comb has no luma information to work with.
 in the reference gives 23 and the raw row shows line 23 is picture (lift 122, correlation 0.93, 100%
 of samples above blanking+20). The C and the reference implement the same tests, so this is a
 borderline numeric divergence worth checking.
+
+## E-claude-2026-09-20-16 — the owner's three rulings: the woven frame, comb confidence, and after a fade
+
+**Question (owner, 2026-09-20, verbatim).** "one thing we need to add is after a fade, comb check should
+run on every frame until it is confirmed. the engine knows about fades right? it should reconfirm things
+after fades." And: "ABSOLUTELY we should be considering how things look in the final raster. I thought
+this is what the comb test does? or are you saying on frames where we don't run the comb as well?" And:
+"I think if both comb decisions are at a wildly high threshold, the answer should be to abstain. the
+whole engine as it exists today is working better because it has confidence scoring. why shouldn't combs
+have their own confidence scoring".
+
+**Premise.** The engine publishes a placement the comb can already judge, on every frame, because the
+comb is computed on every frame. Judging the published placement against the comb's own confidence —
+accepting it only where the comb does not exclude it, and holding where the comb knows nothing —
+corrects the frames the owner found without disturbing the frames that are right today.
+
+**The design being tested.**
+- **The comb runs on every frame** (it is already computed for the log; this makes the engine act on it).
+- **The comb carries a confidence** built from its eleven energies: the minimum's level, the ratio of
+  second-best to best, and the spread, max over min. Three verdicts: *decided* (ratio at least 1.5),
+  *no information* (spread under 1.5 — every shift within half of the best), *narrowed* (neither: no
+  winner, but most shifts excluded).
+- **The published placement is accepted only if the comb does not exclude it** — its energy within 1.5×
+  the minimum. Otherwise the placement moves to the comb's best. On *no information* the placement is
+  held and nothing moves.
+- **After a fade**: no separate fade detector is proposed. A fade to black reads as *no information*
+  while it is dark, so the placement holds; the first frames with information test the held placement
+  and correct it if the comb excludes it. If the owner wants an explicit fade state, that is a separate
+  decision; this entry tests the simpler rule.
+
+**Falsifier.** Any of these fails it:
+- on the control set — frames where the comb decided and the published placement already equals its best
+  — the rule moves any frame;
+- on the passages with no information (the black part of the fade span, the scene cut at 10,282, the
+  held frames 9041 and 13,285) the rule moves any frame;
+- on a sample of the frames it does move, the raw rows do not show the moved placement to be the better
+  weave.
+
+**Material.** The whole tape's schema-14 sidecar (all eleven energies per frame), the owner's combed set
+(9040, 10,989–11,001, 11,127–11,129, 13,284, 13,449), the fade span 48,064–48,187, and the two failure
+classes as counted in entry 15.
+
+**Open choices, to the owner before building.** What "confirmed" means (the comb deciding and agreeing,
+against the weaker test used here: the comb merely not excluding the published shift), what the comb's
+confidence is made of, and whether he wants an explicit fade state at all given the above.
