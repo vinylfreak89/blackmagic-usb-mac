@@ -1613,3 +1613,57 @@ raw rows above support the weaker test.
 
 **Not decided here.** Whether an explicit fade state is wanted anyway; the exact factor (1.5 was reused
 from the decide rule, not fitted); and whether the engine should also record the verdict per frame.
+
+### Amendment 1 to entry 16 (2026-09-20, after the capture-1 regression fired): a minimum at the window edge is not an answer
+
+**Physical reason.** The comb searches shifts −5 to +5. When its minimum sits at ±5 the true minimum may
+lie outside the window, so the value is a boundary artefact, not a measurement. The engine's own search
+range is the source of this, not a fitted number.
+
+**What it should improve.** The owner's capture-1 regression: with the minimum trusted at the edge, the
+rule moved 102 of capture 1's 919 frames and **81 of them away from zero, 77 landing on +5**. With an
+edge minimum treated as no information, capture 1 moves 25 and the whole tape 1,284 instead of 1,338 —
+so the guard removes the damage and costs 54 frames on the tape.
+
+**What it must not break.** The control and no-information arms stay at zero moved, and the frames
+measured on raw rows still move: 9040, 13,284, 13,449, the 10,989–11,001 run, 11,127–11,129 and the
+fade span are unaffected by the guard.
+
+**Result: the falsifier fired and was answered.** Reported as such, not as an improvement.
+
+### Capture 1 against entry 16 (2026-09-20)
+
+**Capture 1 does not come out at zero today, before any change.** Published relative shift over its 919
+frames: 0 on 492 (54%), −1 on 332 (36%), and the rest spread from −14 to +10. Applied field-1 shifts run
+0 to 15. So "the engine produces 0 shifts on capture 1" is not the current state, and this measurement
+is the baseline, not a regression caused by the rule.
+
+**With the edge guard, the rule moves 25 of 919 frames.** 23 are in the opening, counters 6253–6390 —
+the acquisition and dark fade-in the owner ruled should stay unregistered ("It's the tape coming in…
+That should stay unregistered"). Their comb minima are 0.3–0.8 against 60–110 on programme. The other
+two, 6929 and 6930, sit on a flat grey card with no vertical structure; woven at either placement they
+look identical (`ctr9040/cap1_moves.png`).
+
+**A source-derived "not enough detail" guard was tried and did not work**: holding back frames whose own
+comb maximum falls below a fraction of a running median of that capture's maxima. At 5%, 10% and 20% it
+left capture 1's 25 moves untouched (its whole opening is dark, so the running median is low there) while
+holding back 168, 632 and 1,674 frames on the tape. Not proposed; a threshold that separated them would
+have to be fitted, which is what the owner asked us not to do.
+
+### The hard-coded numbers, audited against the code (2026-09-20)
+
+| number | where | constant or derived | can it be derived from the source |
+|---|---|---|---|
+| 5 codes above blanking, spread over 4 | picture test, `geometry_engine.c` | constant | **yes** — from the source's own blank-line spread, 10–14 codes here against the device's blanking at 1.0. This is the threshold the wrong-blank class clears; a derived bar separated 12 of 12 wrong edges from 377 right ones |
+| 30 codes | plain-23 lift | constant | **yes**, same derivation |
+| 0.5 correlation | plain-23 | constant | **no help**. The body's own adjacent-line correlation is 0.74–0.76 median with 2–4% of lines below 0.5; line 23 in the 10,989–11,001 run measures 0.43–0.46, in that bottom few percent. Deriving the bar from the body would reject line 23 harder. The question is the rule, not the number |
+| 0.5 run-in power, 5 codes | run-in correction | constant | **yes** — the detector reads 0.005 median and 0.027 maximum on this material, so a floor plus a margin is measurable per source |
+| 12 codes blank margin, 20-code change | bottom test | constant | **yes**, same noise derivation |
+| 8 samples of 12, 64 samples | bottom test extents | constant | **no** — these are extents, not levels. They say how much of a line must change; expressing them as fractions of the line is a rewrite, not a derivation |
+| ±5 | comb search window | constant | **no** — it is the search itself. Amendment 1 makes its limit explicit instead of hiding it |
+| 1.5 | comb decide, and the exclusion test | constant, accepted by the owner | **not needed** — a dimensionless ratio that does not scale with level or noise |
+
+**What derivation would mean in practice.** Measure the source's blank-line spread and the run-in floor
+at registration start and again after every reset the engine already takes (classifier discontinuity,
+begin-segment, counter gap). Where the source is black or flat there is nothing to measure: hold the
+last derived set, and if none has been established yet, do not register rather than invent one.
