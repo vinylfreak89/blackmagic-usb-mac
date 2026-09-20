@@ -1483,3 +1483,48 @@ own blanking) against the engine's logged edges; and for the fade span, the pict
 
 **Raw rows** (scratch, `ctr9040/`): `combset.out`, `census_recheck.out`, `chroma_and_trigger.py`
 output, `fade_span.out`, and the panels `ctr9040_panel.png`, `ctr10282_chroma.png`.
+
+### Correction to entry 15, and the noise and chroma measurements (2026-09-20)
+
+**Correction.** Entry 15 said the late-reported field-1 top at 10,988–11,001 "comes from the +1
+run-in correction". That is wrong. Measured over 195 cached units, the +1 correction fires on
+**none** of them. The mechanism is the plain-23 test: line 23 counts as picture only if it lifts
+more than 30 codes above blanking **and** correlates at least 0.5 with line 24; otherwise the scan
+restarts at line 24. Through that run line 23 lifts 150–155 codes — unmistakably picture — while its
+correlation with line 24 measures **0.40 to 0.48**, just under the bar, so the detector steps over
+it. In the same sample line 23 passes the test on 16% of units, and 103 of 195 units have a bright
+line 23 (lift above 30) rejected by the correlation term alone.
+
+**Noise (owner: "is there a way to measure noise that will lower confidence and force the comb to
+re-run?").** Measured per field on 389 edges:
+- The field's own blanking rows are not the place to look: their spread is **1.0 code in every unit**,
+  so it separates nothing. The noise that fools the detector is the source's blank line, 10–14 codes.
+- What does separate is the detector's own headroom, the accepted line's 95th percentile above
+  blanking: **wrong edges sit at 9–12 codes (median 5.0 above the 5-code bar, 10th percentile 4.0),
+  right edges at 25–180 (median 55)**. A single threshold at 9 catches 12 of 12 wrong edges and fires
+  on 0 of 377 right ones in this sample.
+- It would have caught 9040 (margins 3.1 and 6.0), 13284 (7.0 and 9.0) and 13449's field 2 (5.0). It
+  would NOT catch 10,989–11,001 or 11,127–11,129, whose edges lift 175–180 codes: that class is the
+  correlation term above, not noise.
+
+**Chroma in the comb (owner: "should the comb be matching on chroma as well?").** His instinct is
+right. On the same frames and a control set where the luma comb decided cleanly:
+- chroma margins are flat — **median 1.02 against luma's 3.00** — because NTSC chroma is
+  band-limited and barely changes when a field moves one line;
+- on the control frames chroma agrees with the luma verdict on **1 of 8**, so as a comb input it
+  would add noise, not information;
+- the one exception is the held frame 13,449, where luma is tied (margin 1.00) and chroma is sharp
+  (**margin 37.6 on U, 30.6 on V**) — but its answer disagrees with luma's, and one frame is not
+  enough to say which is right.
+
+**A sudden chroma change as its own signal: yes, and it is clean.** Over 48 units the field-to-field
+difference is luma median 12.18, U 13.14, V 8.61. Only **3 of 48** units have a luma difference below
+2.0 — 9041, 13285 and 13449 — and all three are held frames, with chroma differences of 2.1–3.7,
+i.e. **3.2 to 3.8 times their luma difference** against about 0.9 for ordinary units. "The two fields
+carry the same luma but different chroma" is therefore detectable on this material, and it marks
+exactly the frames where the comb has no luma information to work with.
+
+**Open, for the engine's author.** At 13,449 the engine logs field 1's top as 24, while the same rule
+in the reference gives 23 and the raw row shows line 23 is picture (lift 122, correlation 0.93, 100%
+of samples above blanking+20). The C and the reference implement the same tests, so this is a
+borderline numeric divergence worth checking.
