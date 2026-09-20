@@ -1409,3 +1409,77 @@ They replace 4ff10b59… and 4283fb64….
 **Raw rows** (scratch, `fulltape/`): `a14/replay.out`, `a14/render.log`, `a14/validate.out`,
 `a14/av_after.out`, `a14/xcorr_after.out`, `xcorr_before.out`, `strips_before.txt`,
 `a14/strips_after.txt`, and the synthetic tests in `a14_tests/check_fix.py`.
+
+## E-claude-2026-09-20-15 — the frames the owner found combed in the full-tape render
+
+**Question (owner, 2026-09-20, watching the render).** "First combed frame I see is on ctr 9040",
+then "string of badly combed frames at 10989-11001", "more combed frames 11127-11129", "13284",
+"13449", and "48064-48187 ... that is definitely misregisterd". Also: "I think in some of those
+frames, it needs to go back and re-examine if top and bottom are found properly. I definitely saw
+jumps in at least some of those"; "is it running the comb against luma only or chroma"; "after a
+fade, comb check should run on every frame until it is confirmed. the engine knows about fades
+right?"
+
+**Note on this entry.** These are diagnostic measurements on frames the owner identified, written
+with their report. They are not a premise test of a new rule, and nothing in the rule set was
+changed. What they decide is where the existing rule set fails and why.
+
+**Method.** Each named unit was read from the capture. For every frame: the comb's eleven energies
+at both pairings, computed here, against the engine's logged decision; each field's first and last
+picture line measured from the raw rows (fraction of samples more than 20 codes above that field's
+own blanking) against the engine's logged edges; and for the fade span, the picture level per unit.
+
+**What the data did.**
+
+1. **Every frame he named is misplaced by the comb's own measure.** The published placement measures
+   3.5× to 81× the comb's minimum: 9040 5.9×, 10989–11001 3.5×, 11127–11129 3.9×, 13284 6.1×,
+   13449 81×, and 78 frames of 48,110–48,187 above 2×. 10282 is the exception: every shift there
+   measures above 4,000, so its two fields are different pictures — a scene cut, not a placement.
+
+2. **Two failure classes, both measurable from the published sidecar** (the replay logs the comb for
+   every frame, whether or not the engine used it):
+   - the comb ran and abstained on a near-tie, and the census placement stood: **1,885 frames,
+     2.18%**, in 604 clusters;
+   - nothing fired, so the comb never ran and a held correction went stale: **583 frames, 0.68%**,
+     404 of them in runs of five or more, the longest 48,108–48,187.
+
+3. **The census misses one-line jumps, in two ways.** Its edge test is "95th percentile more than 5
+   codes above blanking, spread more than 4", and a blank line in this material carries 10–14 codes
+   of noise, so a blank line passes as picture. In the units around his frames, 10 of 110 reported
+   first lines are a blank line with the picture on the next line; 26 of 110 are reported one line
+   late, including every frame of 10,988–11,001, where the engine reads field 1 as starting at 24
+   while line 23 is 100% picture. That one comes from the +1 run-in correction.
+
+4. **The signature he described is real and invisible to the triggers.** At 10,990, 10,995 and
+   11,000 the woven frame reads, in output order, f1 23 picture, f2 285 blank, f1 24 picture,
+   f2 286 picture — his field/blank/field. T1 stayed silent because it compares the published shift
+   only with the census's own tops and bottoms, and the census was wrong in exactly the way that
+   makes them agree. With the true edges, T1 fires on every frame of that run.
+
+5. **The comb reads luma only**, in the engine and in the reference. At 13,449 the two fields differ
+   by 0.80 in luma, against 10.9 and 11.3 either side and 14.5 line-to-line inside one field: a held
+   frame, as the owner read it. Its only real difference is chroma, which nothing in the rule set
+   measures — not the comb, not the census, not the bottom test.
+
+6. **The sparkle is at both ends.** At 11,127–11,129 the fraction of samples more than 20 codes off
+   neutral chroma is 57–93% at the top lines and 82–95% at the bottom lines.
+
+7. **The fade span.** 48,064–48,187 fades to black (level 39 → 12), holds ~35 frames, then returns
+   to 63. In the black part the comb has no information (energies 29–34 at every shift, margins
+   1.01–1.04) and the held +1 costs nothing. As the picture returns, the published +1 goes to 1.8×
+   the minimum at 48,108 and 3.1–3.3× thereafter, and the comb decides d1=0 from 48,108 on — but
+   confidence is HIGH and no trigger fires for the whole span. The pairing label is not implicated:
+   averaged over the span the best energy is 53.8 reversed against 353.3 aligned.
+
+8. **Nothing in the engine's inputs identifies a fade.**
+
+**What is not understood, or not decided here.**
+- Whether the decide rule should reject a placement the comb excludes (rather than requiring a
+  winner), and what "confirmed" should mean after a fade, are the owner's calls. Both are reported,
+  neither is changed.
+- A whole-tape rate for the census defects is not measured; 110 edges around his frames is the
+  sample.
+- Why the +1 run-in correction fires on a picture that already starts at 23 is not established.
+
+**Raw rows** (scratch, `ctr9040/`): `combset.out`, `census_recheck.out`, `chroma_and_trigger.py`
+output, `fade_span.out`, and the panels `ctr9040_panel.png`, `ctr10282_chroma.png`.
