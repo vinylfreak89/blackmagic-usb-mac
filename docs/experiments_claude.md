@@ -1749,3 +1749,40 @@ Two things complicate the count and he should know them: the measured last pictu
 (259 to 262 in field 1 on this tape), so "how many lines would be lost" is a per-unit measurement, not a
 constant; and the lowest lines are the head-switch region, which is not picture in the ordinary sense,
 so losing them may not be a loss at all. No number is proposed here.
+
+## E-claude-2026-09-20-18 — the first picture line from the source's own temporal behaviour
+
+**Question (owner, 2026-09-20, 11:03, before sleeping).** "If it can come up with a new experiment for
+the line top derivation, and successfully prove that, I'm happy to let the gate keep going so long as we
+settle on a render that doesn't regress any of the previous fixes."
+
+**Why a new experiment.** Entry 17's derivation failed its whole-tape test: the candidate bar changed
+463 field-1 and 496 field-2 tops, and the finder did not converge — 0.5 at first, 25.57 at a thousand
+units, 26.25 at ten thousand, 0.5 from fifty thousand on. Pooling levels cannot work: with 1.6 million
+row values every level fills in. This entry drops levels entirely.
+
+**Premise.** A line carrying picture changes from one unit to the next. A line carrying only blanking
+does not, beyond the noise the device's own blanking rows show in the same pair of units. So the first
+picture line can be found by comparing each candidate row's change between consecutive units against
+that unit's own blanking rows — a comparison with no level written into it, calibrated by the source at
+every unit rather than once at startup.
+
+**Method.** For each pair of consecutive exact units and each field:
+- reference: for each of the field's blanking rows (storage 7–15, 270–278), the mean absolute difference
+  between this unit and the previous one over samples 40–680; take the largest, call it R.
+- candidate: the same quantity for each row of the top search window.
+- the first picture line is the first row whose change exceeds R, requiring the row below it to exceed R
+  as well, so that a single noisy line does not decide it.
+Where the previous unit is absent, or a reset intervenes, the rule abstains for that unit and the
+engine's existing behaviour stands.
+
+**Falsifier.** His two bars pull in opposite directions — a derivation that changes nothing cannot also
+fix the blank-line class — so the test is not "changes zero". It is:
+- where the rule agrees with the current engine, it must agree on the overwhelming majority: more than
+  1% of units disagreeing without cause refutes it;
+- where it disagrees, **raw rows must show the new answer right and the old one wrong**. Disagreements
+  that raw rows do not support refute it, however few.
+- it must abstain, not guess, where the source gives nothing: black, mute and fade passages.
+
+**Material.** The whole tape, all 86,293 exact units. The seven blank-line edges measured tonight, and
+the late-top run at 10,988–11,001, as known cases. Capture 1 as the external check.
