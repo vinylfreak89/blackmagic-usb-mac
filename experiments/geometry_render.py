@@ -62,7 +62,7 @@ Review fixes 2026-09-19 (Codex, findings 1-6): pair-next engine d1 source unit; 
 in-picture marker; timeline across omitted units; black (neutral-chroma) out-of-raster fill; empty
 engine cells.
 """
-import argparse, bisect, atexit, csv, os, subprocess, sys, tempfile
+import argparse, bisect, atexit, csv, math, os, subprocess, sys, tempfile
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -102,9 +102,10 @@ def read_offsets(path):
 
 
 def read_engine(path):
-    out = {}
+    """(placements, rows): the applied shift per unit, and the row behind it, so the render can show why."""
+    out, rows = {}, {}
     if not path:
-        return out
+        return out, rows
     empty = 0; seen = set()
     for r in csv.DictReader(open(path)):
         if r.get("counter_extended", "") in ("", None):
@@ -117,9 +118,37 @@ def read_engine(path):
             empty += 1
             continue
         out[k] = (int(float(r["applied_d1"])), int(float(r["applied_d2"])))
+        rows[k] = r
     if empty:
         print(f"engine log: {empty} rows with an empty applied value treated as missing", flush=True)
-    return out
+    return out, rows
+
+
+TRIGGER_NAMES = ((1, "T1"), (2, "unmeasurable"), (4, "f1 moved"), (8, "f2 moved"), (16, "confirm"))
+
+
+def trigger_words(v):
+    """The engine's trigger bits as words (GE_T1 .. GE_CONFIRM in geometry_engine.h)."""
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        return "--"
+    if v == 0:
+        return "no trigger"
+    return "+".join(n for b, n in TRIGGER_NAMES if v & b)
+
+
+def comb_energies(row):
+    """The eleven comb energies, shifts -5..+5, or None where the engine did not compute them."""
+    if not row:
+        return None
+    v = (row.get("comb_energies") or "").split()
+    if len(v) != 11:
+        return None
+    try:
+        return [float(x) for x in v]
+    except ValueError:
+        return None
 
 
 def read_audio_steps(path):
@@ -529,7 +558,8 @@ def main():
     schedule = read_schedule(a.pairing_schedule) if a.pairing_schedule else None
     if a.parity is None:
         a.parity = "tff"
-    offsets, engine = read_offsets(a.offsets), read_engine(a.engine_log)
+    offsets = read_offsets(a.offsets)
+    engine, erow = read_engine(a.engine_log)
     audio_steps = read_audio_steps(a.engine_log)
     print(f"offsets for {len(offsets)} units; engine decisions for {len(engine)} units"
           f"{' (no sidecar)' if not a.engine_log else ''}", flush=True)
@@ -695,7 +725,8 @@ def main():
             else: runs.append([i, i + 1, p])
         runs = [tuple(r) for r in runs]
     if deint(runs[0][2]) and len(runs) > 1:
-        parts = [f"[0:v]split={len(runs)}" + "".join(f"[s{k}]" for k in range(len(runs)))]
+        # 4:2:2 into the deinterlacer: at 4:2:0 one chroma sample spans two lines of OPPOSITE fields
+        parts = [f"[0:v]format=yuv422p,split={len(runs)}" + "".join(f"[s{k}]" for k in range(len(runs)))]
         for k, (b0, b1, P) in enumerate(runs):
             parts.append(f"[s{k}]trim=start_frame={b0}:end_frame={b1},setpts=PTS-STARTPTS,{deint(P)}[v{k}]")
         parts.append("".join(f"[v{k}]" for k in range(len(runs))) + f"concat=n={len(runs)}:v=1:a=0[vout]")
@@ -705,7 +736,7 @@ def main():
     else:
         vf = deint(runs[0][2])
         if vf:
-            cmd += ["-vf", vf]
+            cmd += ["-vf", "format=yuv422p," + vf]        # 4:2:2 into the deinterlacer (see above)
         print(f"deinterlacer: {a.deint}{' -> -vf ' + vf if vf else ''}", flush=True)
     cmd += ["-c:v", "libx264", "-crf", a.crf, "-preset", "medium", "-pix_fmt", "yuv420p", a.out]
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
@@ -714,11 +745,39 @@ def main():
     STRIP_Y = H - 14; STRIP_LABEL_Y = STRIP_Y - 13; LEGEND_Y = STRIP_LABEL_Y - 14
     gy0, gh = FH + 10, (LEGEND_Y - 3) - (FH + 10)
 
-    def fit(dr, xy, text, fnt, fill):
-        limit = gx0 - 10 - xy[0]
+    def fit(dr, xy, text, fnt, fill, right=None):
+        limit = (right if right is not None else gx0) - 10 - xy[0]
         while text and dr.textlength(text, font=fnt) > limit:
             text = text[:-1]
         dr.text(xy, text, font=fnt, fill=fill)
+
+    CB_X0, CB_W = gx0 - 228, 208
+
+    def comb_bar(dr, energies, published):
+        """The comb's own eleven numbers: one bar per shift -5..+5, log height. The published shift is
+        outlined, the comb's minimum marked, so a placement the comb excludes is visible at a glance."""
+        pass
+        if not energies:
+            dr.text((CB_X0, gy0 + gh // 2 - 6), "no comb energies in this sidecar", font=small, fill=(90, 90, 90))
+            fit(dr, (CB_X0, LEGEND_Y), "comb energy by shift (log)", small, (120, 120, 120))
+            return
+        lo = max(min(energies), 1e-6); hi = max(max(energies), lo * 1.0001)
+        best = min(range(11), key=lambda k: energies[k])
+        w = CB_W / 11.0
+        for k, e in enumerate(energies):
+            frac = math.log(max(e, lo) / lo) / math.log(hi / lo) if hi > lo else 0.0
+            h = max(1, int(frac * (gh - 12)))
+            x0 = CB_X0 + k * w; x1 = x0 + w - 3
+            y1 = gy0 + gh - 10
+            col = (235, 180, 90) if k == best else (110, 110, 110)
+            dr.rectangle([x0, y1 - h, x1, y1], fill=col)
+            if k - 5 == published:
+                dr.rectangle([x0 - 1, gy0, x1 + 1, y1 + 1], outline=(255, 60, 60))
+            if k == best:
+                dr.text((x0, y1 + 1), "^", font=small, fill=(235, 180, 90))
+        fit(dr, (CB_X0, LEGEND_Y), f"comb log  min {energies[best]:.0f} at d1{-(best - 5):+d}"
+                                   + (f"  box {energies[published + 5]:.0f}" if -5 <= published <= 5 else ""),
+            small, (150, 150, 150))
 
     def graph_and_strip(dr, i, ext, d1, d2):
         dr.rectangle([gx0, gy0, gx0 + gw, gy0 + gh], outline=(60, 60, 60))
@@ -761,6 +820,7 @@ def main():
         fit(dr, (6, FH + 6), f"ctr {ext if ext is not None else '--':>6}   {label} - fill frame, no placement"
                                + (f"   AUDIO STEP +{audio_steps[ext]} lost samples (device)" if ext in audio_steps else ""),
             font, (230, 230, 230))
+        dr.text((CB_X0, LEGEND_Y), "fill frame: no engine decision", font=small, fill=(90, 90, 90))
         graph_and_strip(dr, i, ext if ext is not None else NO_SOURCE_UNIT, 0, 0)
         enc.stdin.write(img.tobytes()); state["written"] += 1; state["item"] += 1
 
@@ -782,37 +842,75 @@ def main():
         img = Image.new("RGB", (W, H), (12, 12, 12))
         img.paste(Image.fromarray(rgb, "RGB").resize((DW, FH), Image.BILINEAR), (PX, 0))
         dr = ImageDraw.Draw(img)
-        if o is not None:
-            for f, (first, d, col, keys) in enumerate(((F1_FIRST_LINE, d1, RED, ("f1_first", "f1_last")),
-                                                     (F2_FIRST_LINE, d2, BLUE, ("f2_first", "f2_last")))):
-                for key in keys:
+        # each field's first and last picture line AS THE ENGINE MEASURED THEM, on the row it lands on here:
+        # field 1 comes from the frame's top unit, field 2 from this unit (the manual offsets file, when one is
+        # given, still supplies them for a unit the engine log does not cover)
+        top_unit = nxt if nxt is not None else ext
+        edges = []
+        for f, (first, d, col, src_unit, keys) in enumerate((
+                (F1_FIRST_LINE, d1, RED, top_unit, ("f1_first", "f1_last")),
+                (F2_FIRST_LINE, d2, BLUE, ext, ("f2_first", "f2_last")))):
+            row = erow.get(src_unit)
+            vals = []
+            for key in keys:
+                line = None
+                if row is not None and row.get(key) not in ("", None):
+                    line = int(row[key])
+                elif o is not None and o.get(key) is not None:
                     line = o[key]
-                    if line is None:
-                        continue
-                    k = line - (first + d)
-                    if 0 <= k < FIELD_ROWS:
-                        fr = k * 2 + f
-                        off = 8 + f * LANE
-                        dr.line([(PX - off - LANE + 2, fr), (PX - off, fr)], fill=col, width=2)
-                        dr.line([(PX + DW + off, fr), (PX + DW + off + LANE - 2, fr)], fill=col, width=2)
+                vals.append(line)
+                if line is None:
+                    continue
+                k = line - (first + d)
+                if 0 <= k < FIELD_ROWS:
+                    fr = k * 2 + f
+                    off = 8 + f * LANE
+                    dr.line([(PX - off - LANE + 2, fr), (PX - off, fr)], fill=col, width=2)
+                    dr.line([(PX + DW + off, fr), (PX + DW + off + LANE - 2, fr)], fill=col, width=2)
+                    dr.text((PX - off - LANE - 26, fr - 6), str(line), font=small, fill=col)
+            edges.append(vals)
         dr.rectangle([0, FH, W, H], fill=(8, 8, 8))
         fit(dr, (6, FH + 6), f"ctr {ext:>6}   applied ({d1:+d},{d2:+d}) from {src}"
                                + (f"   AUDIO STEP +{audio_steps[ext]} lost samples (device)" if ext in audio_steps else ""),
-            font, (230, 230, 230))
-        fit(dr, (6, FH + 24), f"engine  d1 {eng[0] if eng else '--':>3}  d2 {eng[1] if eng else '--':>3}"
-                               f"{'   (no sidecar)' if not a.engine_log else ''}", small, (150, 150, 150))
-        fit(dr, (6, FH + 40), f"manual  d1 {o['d1'] if o else '--':>3}  d2 {o['d2'] if o else '--':>3}"
-                               f"   {o['note'] if o else ''}", small, (150, 150, 150))
-        for f, (col, keys) in enumerate(((RED, ("f1_first", "f1_last")), (BLUE, ("f2_first", "f2_last")))):
-            v = [o[k] if o and o[k] is not None else "--" for k in keys]
-            fit(dr, (6, FH + 58 + 14 * f), f"f{f+1}  first picture line {v[0]}   last picture line {v[1]}",
-                small, col)
-        fit(dr, (6, FH + 90), "side ticks: first and last picture line (f1 red inner, f2 blue outer)",
-            small, (110, 110, 110))
+            font, (230, 230, 230), right=CB_X0)
+        rowB, rowT = erow.get(ext), erow.get(top_unit)
+        pub = d2 - d1                                     # the published shift, in the comb's own convention
+        st = sl = None
+        if rowT is not None and rowB is not None:
+            if rowT.get("f1_first") not in ("", None) and rowB.get("f2_first") not in ("", None):
+                st = (int(rowB["f2_first"]) - 263) - int(rowT["f1_first"])
+            if rowT.get("f1_last") not in ("", None) and rowB.get("f2_last") not in ("", None):
+                sl = (int(rowB["f2_last"]) - 263) - int(rowT["f1_last"])
+        held = None if st is None else pub - st
+        def num(v, w=0): return f"{v:{w}}" if v is not None else "--"
+        fit(dr, (6, FH + 24), f"census {top_unit} tops {num(edges[0][0])}/{num(edges[1][0])}"
+                              f" bots {num(edges[0][1])}/{num(edges[1][1])}"
+                              f" st{('%+d' % st) if st is not None else '--'}"
+                              f" sl{('%+d' % sl) if sl is not None else '--'}"
+                              f" pub{pub:+d} held{('%+d' % held) if held is not None else '--'}",
+            small, (170, 170, 170), right=CB_X0)
+        if rowB is not None:
+            ran = rowB.get("comb_ran") == "1"; dec = rowB.get("comb_decided") == "1"
+            cd = rowB.get("comb_d"); mg = rowB.get("comb_margin")
+            mgs = f"{float(mg):.2f}" if mg not in ("", None) else "--"
+            what = (f"comb {'ran' if ran else 'audit'} d1{-int(cd):+d} m{mgs}"
+                    f" {'decided' if dec else 'undecided'}" if cd not in ("", None) else "comb --")
+            differs = cd not in ("", None) and int(cd) != pub
+            fit(dr, (6, FH + 40), f"{rowB.get('confidence','--'):4s} {trigger_words(rowB.get('triggers'))}"
+                                  f" | {what}" + (" DIFFERS" if differs else "")
+                                  + (" RESET" if rowB.get("reset_before") == "1" else ""),
+                small, (235, 180, 90) if (differs or rowB.get("reset_before") == "1") else (170, 170, 170),
+                right=CB_X0)
+        for f, col in enumerate((RED, BLUE)):
+            v = [x if x is not None else "--" for x in edges[f]]
+            fit(dr, (6, FH + 58 + 14 * f), f"f{f+1} engine picture lines  first {v[0]}  last {v[1]}",
+                small, col, right=CB_X0)
+        fit(dr, (6, FH + 90), "ticks: f1 red inner, f2 blue outer", small, (110, 110, 110), right=CB_X0)
+        comb_bar(dr, comb_energies(rowB), pub)
         if schedule is not None:
             pr, note = schedule_at(schedule, ext)
             fit(dr, (6, FH + 106), f"pairing {pr}: {note}", small,
-                (230, 170, 60) if note.startswith(("likely", "ambiguous")) else (150, 150, 150))
+                (230, 170, 60) if note.startswith(("likely", "ambiguous")) else (150, 150, 150), right=CB_X0)
         graph_and_strip(dr, i, ext, d1, d2)
         enc.stdin.write(img.tobytes()); state["written"] += 1; state["item"] += 1
 
