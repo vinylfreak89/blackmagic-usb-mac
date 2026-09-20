@@ -264,7 +264,7 @@ static const char *transport_name(unit_transport_state t){
                 case UNIT_TRANSPORT_SHORT: return "Short"; default: return "Unframed"; }
 }
 static int log_header(FILE *L, int geometry){
-    if(geometry)return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples\n")<0?-1:0;
+    if(geometry)return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies\n")<0?-1:0;
     return fprintf(L, "ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,"
                "interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,"
                "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,"
@@ -375,8 +375,13 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
         if(fprintf(f->log,"%s,",(pair?pair->reversed:f->geometry_reversed)?"reversed":"aligned")<0)bad=1;
         if(fs_pairing_write_note(f->log,pair?pair->note:"")<0)bad=1;
         if(audio) {
-            if(fprintf(f->log,",%lld,%lld\n",(long long)audio->residual_ticks,(long long)step)<0)bad=1;
-        } else if(fputs(",,\n",f->log)==EOF)bad=1;
+            if(fprintf(f->log,",%lld,%lld",(long long)audio->residual_ticks,(long long)step)<0)bad=1;
+        } else if(fputs(",,",f->log)==EOF)bad=1;
+        if(fputc(',',f->log)==EOF)bad=1;
+        if(d && d->has_frame && !isnan(d->comb.margin))
+            for(int i=0;i<11;i++)
+                if(fprintf(f->log,"%s%.9g",i?" ":"",d->comb.energies[i])<0)bad=1;
+        if(fputc('\n',f->log)==EOF)bad=1;
         if(bad){f->st.log_write_errors++;f->log_file_errors++;}else f->st.log_rows++;
         fs_test_after_log_row(f,f->log);
     }

@@ -129,7 +129,9 @@ ge_comb_result ge_comb(const uint8_t *t,const uint8_t *b) {
         else if(energy[i]<energy[second])second=i;
     }
     double margin=energy[best]>0?energy[second]/energy[best]:(energy[second]>0?INFINITY:1);
-    return (ge_comb_result){best-5,margin>=1.5,margin};
+    ge_comb_result result={.shift=best-5,.decided=margin>=1.5,.margin=margin};
+    memcpy(result.energies,energy,sizeof energy);
+    return result;
 }
 static void reset_frame_state(geometry_engine *g) {
     g->held=0;g->provisional=0;g->have_placement=0;g->last_d=g->last_d2=0;

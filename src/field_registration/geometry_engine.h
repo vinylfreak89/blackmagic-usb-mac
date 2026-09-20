@@ -11,7 +11,11 @@
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
 enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16 };
-typedef struct { int shift, decided; double margin; } ge_comb_result;
+typedef struct {
+    int shift, decided;
+    double margin;
+    double energies[11]; /* shift order -5..+5; valid iff margin is not NAN */
+} ge_comb_result;
 typedef struct {
     int first[2], last[2], bottom[2], rule_first, auto_first, plain23;
     double blank[2], runin;

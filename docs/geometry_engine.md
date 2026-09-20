@@ -52,12 +52,21 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 13, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 14, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16), comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
 not change decisions. Frame diagnostic columns refer to the bottom-field unit,
 whereas `applied_d1/d2` always refer to the row's own unit. Ineligible observations
 have empty placement keys, with their original counter in `observed_counter`.
+`comb_energies` appends eleven space-separated values in shift order -5..+5,
+formatted with nine significant digits (the energies are float32-rounded).
+It is present exactly when the comb was computed, including audit-only searches;
+otherwise it is empty. Zero minima give margin infinity if the second minimum
+is positive, or margin 1 if both are zero. `comb_ran` still denotes a trigger,
+not an audit-only computation. Existing columns retain their meanings.
+Within the same row, the published relative shift is `frame_d2 - frame_d1`;
+compare it to `comb_d`, with `comb_decided` indicating whether the minimum was
+decisive. This requires no cross-unit join even under reversed pairing.
 
 For mixed recordings use `--pairing-schedule FILE` instead of `--pair-next`
 (`fs_config.pairing_schedule` for callers). The CSV header is
