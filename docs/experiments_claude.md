@@ -1890,3 +1890,36 @@ So the third derivation form fails the owner's bar by a wider margin than report
 and the second half of the tape is where it diverges. The conclusion is unchanged and stronger: the
 level bar cannot be derived from this source without changing decisions. Quoting a running job's output
 as a result was the error; figures now come from finished runs only.
+
+### The blank-line class: the mechanism, and what a fix costs (2026-09-20)
+
+**Question (owner).** "What is causing real blank lines to fall outside of measurement?"
+
+**Mechanism, measured.** The census judges every line against the **device's** blanking rows, whose own
+spread is **1.0 code** — they are synthetic. The tape's blank lines carry dropout speckle 9 to 14 codes
+high. The test asks for a 95th percentile more than 5 codes above that noiseless reference with a spread
+over 4, and a speckled blank line satisfies both. Nothing in the census measures the source's own
+blank-line noise, so it has no quantity in which a blank tape line differs from a faint picture line.
+
+What marks those rows: their **dark end sits exactly at blanking — the 5th percentile minus blanking is
+0.00 on all seven** — while the bright end reaches only 9 to 14. Real picture lines lift the dark end as
+well: median 34 codes, 10th percentile 7. Of 376 correctly taken picture lines only 6 touch blanking at
+the dark end, and each of those has a bright end at 23 or more. The signature is the pair; the census
+reads only the bright end. Panels: `ctr9040/panel_blank_zoom.png` and `panel_vacated_line.png`.
+
+**A fix by that signature, measured whole-tape, twice.**
+- Rejecting a line whose dark end is at blanking and whose bright end is under 20: field 2 changes
+  **888 tops (1.03%)** and fixes every known case, but field 1 changes **18,703 (21.67%)**, almost all
+  line 23 moving to 24. On 88% of the units where the census reports 23, line 23 is blanking plus
+  speckle; the rule moves the top down whether or not real picture sits below.
+- Qualifying it — only when the line below is picture — as written barely helped: **18,555 (21.50%)**.
+  The qualifier was too weak: it accepted a line below with 5% of its samples bright, where the defect
+  needs a majority.
+- With the strong qualifier, the whole-tape figure is already known from Codex's census, which used
+  exactly that test: **3.79% of field-1 edges and 2.02% of field-2 edges, 5.54% of frames.**
+
+**What follows, and it is the owner's to weigh.** The class is real and affects about 5.5% of frames.
+Any fix to it therefore changes about 5.5% of frames — by definition it cannot also satisfy "must not
+change anything". The two conditions cannot both hold for this class. A fix has to be justified as a fix,
+on raw rows, at whatever size it turns out to be; it cannot arrive disguised as a derivation that changes
+nothing.
