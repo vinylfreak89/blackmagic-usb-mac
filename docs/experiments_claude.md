@@ -1573,3 +1573,43 @@ classes as counted in entry 15.
 **Open choices, to the owner before building.** What "confirmed" means (the comb deciding and agreeing,
 against the weaker test used here: the comb merely not excluding the published shift), what the comb's
 confidence is made of, and whether he wants an explicit fade state at all given the above.
+
+### Report on entry 16 (2026-09-20) — held: the comb's own confidence corrects the reported frames and moves nothing that is right
+
+**Verdict: the premise held on all three arms of the falsifier.** Measured over the whole tape's
+schema-14 sidecar, 86,289 frames.
+
+**What the rule changes: 1,338 frames, 1.55%.**
+- 583 are the class-B frames from entry 15 — nothing fired, the comb had decided otherwise. All move.
+- 755 are *narrowed* frames: the comb cannot pick a winner but excludes the published shift.
+- 430 of entry 15's 1,885 class-A frames move; the other 1,455 keep their placement, because the comb
+  does not exclude it.
+- **908 of the moved frames are HIGH confidence today** — the silent class.
+- The move is one line on 767 frames, two on 329, three or more on 242. The published shift was 3 to 10
+  times the comb's minimum on 489 of them, and more than 10 times on 26.
+
+**What it does not touch.**
+- **Control, 76,546 frames** where the comb decided and the placement is already its best: **0 moved.**
+- **No information, 1,621 frames** (every shift within half of the best): **0 moved.** This covers the
+  black part of the fade span (36 frames, none moved), the scene cut at 10,282, and the held frames
+  9041 and 13,285, whose placement is already the comb's best.
+
+**The owner's frames.** 9040 moves to d1 −2 (published 5.9× the minimum), 13,284 to −1 (6.1×), 13,449 to
+0 (80.7×), and 10,990 / 10,995 / 11,000 / 11,128 to 0 (3.3–3.9×). The fade span moves on
+**48,106–48,187, 82 frames**, and not one frame of its dark part.
+
+**Raw rows.** Six moved frames were woven at the published and the proposed placement and looked at:
+9040, 13,284, 13,449, 10,995, 11,128 and 48,150. In all six the published placement is visibly combed
+and the proposed one is clean (`ctr9040/rulings_panel.png`).
+
+**Cost.** The comb is already computed on every frame for the log. Acting on it adds nothing; making the
+search unconditional costs 0.24 ms per frame against a 33.37 ms period, about 21 seconds of CPU across
+the tape.
+
+**The two readings of "confirmed", measured.** Moving only where the comb DECIDED and disagrees changes
+583 frames and leaves 9040, 13,284 and 13,449 — the frames the owner reported — wrong. The weaker test
+used here, moving wherever the comb EXCLUDES the published shift, changes 1,338 and corrects them. The
+raw rows above support the weaker test.
+
+**Not decided here.** Whether an explicit fade state is wanted anyway; the exact factor (1.5 was reused
+from the decide rule, not fitted); and whether the engine should also record the verdict per frame.
