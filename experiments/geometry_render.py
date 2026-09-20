@@ -775,7 +775,7 @@ def main():
                 dr.rectangle([x0 - 1, gy0, x1 + 1, y1 + 1], outline=(255, 60, 60))
             if k == best:
                 dr.text((x0, y1 + 1), "^", font=small, fill=(235, 180, 90))
-        fit(dr, (CB_X0, LEGEND_Y), f"comb log  min {energies[best]:.0f} at d1{-(best - 5):+d}"
+        fit(dr, (CB_X0, LEGEND_Y), f"comb min {energies[best]:.0f}@d1{-(best - 5):+d}"
                                    + (f"  box {energies[published + 5]:.0f}" if -5 <= published <= 5 else ""),
             small, (150, 150, 150))
 
