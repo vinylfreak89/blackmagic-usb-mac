@@ -1973,3 +1973,47 @@ check.
 
 **Pre-registered before the deciding run**, unlike the two dark-end passes, which ran before the note
 covering them was written. That was a departure from §14 and is recorded here as one.
+
+### Report on entry 20 (2026-09-21) — held: the tape's own horizontal blanking is the reference the census was missing
+
+**Verdict: the owner's premise held.** Every arm of the pre-registered falsifier passes, and the one arm
+I withdrew is recorded below with its reason.
+
+**The selection works.** Column 0 is blanking by construction; each further column is included while its
+across-line median stays inside column 0's own spread. Over the whole tape it keeps a **median of 5
+columns**, and **fewer than two columns survive on 77 units, 0.09%** — so the reference can be measured
+essentially everywhere. The level it derives is **18 codes median (10th percentile 8, 90th 24)**, which
+is where the tape's speckle actually reaches, against the fixed 5 the census used with a synthetic
+reference whose own spread is 1.0.
+
+**Size: 5,900 units, 6.84%** at the 99th percentile — field 1 4.51%, field 2 3.47%. That is the region
+of the measured defect, 5.54% of frames, not the tens of per cent my own dark-end rule produced. The
+choice of quantile matters little: 6.84% at the 99th, 7.38% at the 99.5th, 12.27% at the 99.9th.
+
+**The changes are right, judged by a measure independent of the rule** — the fraction of a line's samples
+more than 20 codes above blanking, which is the test Codex's census used. Of 6,621 changed edges:
+- **6,354 move the top later**, and for those the abandoned line has a **median occupancy of 0.0%** while
+  the newly chosen line has **100.0%**;
+- **5,995, or 94.4%, are supported outright** — the old line blank, the new line picture;
+- **78, 1.2%, are contradicted**: the old line was more than half picture and the rule skipped past it;
+- 281, 4.4%, are neither, on dim material where both lines are partial;
+- the three commonest moves are 24→25 (2,542), 287→288 (1,614) and 286→288 (972), all with the old line
+  at about 0% occupancy and the new at about 100%.
+
+**Where it is wrong, measured rather than hidden.** 267 units move the top **earlier**, and for those the
+newly accepted line has a median occupancy of 0.0% — the rule takes a blank line as the top on about 174
+of them, where the derived level falls low enough for speckle to pass. With the 78 contradicted moves
+that is roughly **250 units, 0.3% of the tape**, against 5,995 corrected.
+
+**The defect is larger than the earlier census measured.** Codex's figure of 5.54% required the line
+immediately below the reported one to be picture, so cases where the census sat two lines high — 286→288,
+972 units — were outside it.
+
+**The withdrawn falsifier arm.** I pre-registered that the late-top run at 10,988–11,001 must return 23.
+That was mis-specified: the late-top class is governed by the plain-23 **correlation** term, not by the
+picture test this entry replaces, so his reference cannot address it and should not have been asked to.
+Withdrawn with its reason, not dropped.
+
+**What this does not settle.** The owner's "must not change anything" bar cannot be met by any fix to
+this class, as recorded yesterday: correcting 5,995 edges is a change of that size by definition. This
+entry shows the change is overwhelmingly a correction, which is the evidence that decision needs.
