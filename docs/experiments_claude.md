@@ -1719,3 +1719,33 @@ the actual video footage." He is right; my crop had auto-selected a flat sky ban
 of the frame the comb energy falls from 10.2 to 5.2 at 6929 and from 22.4 to 15.2 at 6930 when the move
 is applied, and at 6930 the line-pitch striping on a fence post and branches visibly clears. The move is
 sound on both.
+
+### For the stabilisation entry, when it is written (2026-09-20): the owner's crop ruling, and his premise checked
+
+**His ruling, verbatim.** "For vacated lines, just crop. Obviously this should only be a problem at the
+bottom because a picture should never shift up from line 23. In other words, at top you can only add
+blank lines if too much picture gets lost."
+
+**His premise, checked on raw rows.** Over 219 units spanning both recordings on the tape and capture 1,
+the picture never reaches above line 23 in field 1 or 286 in field 2: line 22 is over half occupied on
+**0 of 219** units (median occupancy 0.0%), and line 285 on **0 of 219**. Lines 23 and 286 are occupied
+on 152 and 160 of them, the rest being dark, fade or mute units. The Shuttle's own inserts behave as
+expected — line 20 never over half occupied, line 21 (the caption waveform) on 21 units.
+
+So the tape agrees with him, on this sample. Two qualifications: the engine cannot test this itself,
+because its scan starts at NTSC 22 and 285 and so can never report a top above them — only raw rows can;
+and 219 units is a sample, not the whole tape. A whole-tape check costs one capture pass.
+
+**What "too much picture gets lost" would have to mean.** The stabiliser moves the pair of fields by a
+common shift. Moving the picture down pushes its bottom past the end of the delivered raster, and those
+lines are gone; moving it up costs nothing at the top, because above line 23 there is no picture to lose.
+So the only real choice is at the bottom, and it is: how many picture lines may fall outside the output
+window before the stabiliser pads at the top instead of cropping at the bottom. Three ways he could say
+it, and the choice is his:
+- never lose a line: pad the top as soon as one picture line would fall off;
+- lose up to a stated number of lines before padding;
+- judge by proportion of the picture's height rather than a count.
+Two things complicate the count and he should know them: the measured last picture line itself moves
+(259 to 262 in field 1 on this tape), so "how many lines would be lost" is a per-unit measurement, not a
+constant; and the lowest lines are the head-switch region, which is not picture in the ordinary sense,
+so losing them may not be a loss at all. No number is proposed here.
