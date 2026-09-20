@@ -1667,3 +1667,55 @@ have to be fitted, which is what the owner asked us not to do.
 at registration start and again after every reset the engine already takes (classifier discontinuity,
 begin-segment, counter gap). Where the source is black or flat there is nothing to measure: hold the
 last derived set, and if none has been established yet, do not register rather than invent one.
+
+## E-claude-2026-09-20-17 — deriving the engine's thresholds from the source at startup
+
+**Question (owner, 2026-09-20, verbatim).** "When we say these are derived from source does the engine
+auto derive these on static startup. It should." And: "My guess is there will be a run in period for
+several dozen units where the engine finds its values and locks in. Functionally this should change 0
+decisions in the current engine." And: "Obviously, if noise is detected, it will wait until there is a
+stable signal or non mute picture."
+
+**Premise.** The picture test's bar is a property of the source, not of the engine. The rows in each
+field's top search window fall into two groups — lines with no picture, a few codes above blanking, and
+lines with picture, tens to hundreds above — and the bar belongs between them. Measuring it from the
+source at startup reproduces the decisions the fixed constant produces on this tape.
+
+**Falsifier (his prediction).** A derived bar that changes any decision on this tape. A difference is
+the falsifier firing, not an improvement.
+
+**Method.** For each unit, the 95th percentile above blanking of every row in the field-1 search window
+(NTSC 22–40). Pool the rows over the first N units, place the bar in the widest empty stretch between
+the two groups, and re-run the engine's own top rule — `first()`, then plain-23, then the run-in step —
+against the logged tops, keyed to each frame's `frame_top_unit`.
+
+**Report: the premise held, and his prediction with it.**
+- The rows do separate: 7% sit under 20 codes (median 1.0, maximum 18.0) and the rest above (median 57,
+  2nd percentile 22).
+- The bar settles almost at once: 5.53 after one unit, **4.53 from the fifth unit onward**, unchanged at
+  10, 20, 50, 100 and 199 units. His "several dozen" is an over-estimate; about five units suffice on
+  this material.
+- It lands at **4.53 against the fixed 5**, and reproduces the engine's logged field-1 top on
+  **189 of 189 units — zero decisions changed.**
+- A different placement of the same derivation, between the two clusters at 20.0, changes 4 of 189, and
+  those four are wrong-blank edges. **So the two conditions pull apart**: derive to reproduce today's
+  decisions (4.5, nothing changes, the wrong-blank class stays), or derive to separate the clusters
+  (20, the class is fixed, decisions change). That is the owner's choice, not ours.
+- Waiting on noise: the derivation needs rows with picture in them. Where the source is black, muted or
+  flat the two groups do not separate and no bar can be placed; the engine holds the last derived set,
+  and registers nothing if none has been established.
+
+**Correction to entries 15 and the census figures I reported.** For a reversed-pairing frame the row's
+`f1_first` belongs to the frame's **top unit**, not to the row's own counter. My sample figures compared
+it against the wrong unit's rows. Corrected, over 383 edges: a first line on a blank row occurs on
+**7 (1.8%)**, not the 9% I reported, and a first line reported late on **107 (27.9%)**, against 24%.
+Codex's whole-tape census keyed this correctly from the start, so its figures — 5.54% of frames with a
+blank first line, 44.95% late — stand unchanged. The headroom finding also survives the correction and
+is stronger: wrong edges clear the 5-code bar by at most 9, right edges by 20 to 175, and a threshold at
+9 catches 7 of 7 while firing on none of 376.
+
+**Correction on capture 1's 6929 and 6930.** The owner: "6929 and 6930 are not flat grey cards. They are
+the actual video footage." He is right; my crop had auto-selected a flat sky band. On the detailed part
+of the frame the comb energy falls from 10.2 to 5.2 at 6929 and from 22.4 to 15.2 at 6930 when the move
+is applied, and at 6930 the line-pitch striping on a fence post and branches visibly clears. The move is
+sound on both.
