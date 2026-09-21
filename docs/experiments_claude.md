@@ -2052,3 +2052,35 @@ frame, from the schema-14 sidecar, and whether the implied placement is excluded
 
 **Material.** All 86,293 exact units: `hblank.csv` for both top sets, `hblank_check.csv` for the raw-row
 occupancy that defines the error classes, and the published schema-14 sidecar for the comb energies.
+
+### Report on entry 21 (2026-09-21) — split: his prediction holds, the rescue does not
+
+**Verdict: the premise is refuted for both error classes; the owner's separate prediction is confirmed.**
+
+**The comb does not rescue the mistakes.**
+- **skips** (the rule moves the top past a line more than half picture): 68 judgeable, the comb excludes
+  the resulting placement on **31, 46%**.
+- **early** (the rule moves the top onto a blank line): 170 judgeable, excluded on **84, 49%**.
+Both are below the two-thirds the falsifier required, so the premise fails, and it fails for each class
+on its own terms. The two classes behave the same within noise, 46% against 49%, so the concern that an
+average would hide one of them did not arise.
+
+**And where it does flag one, it does not repair it.** Of the 84 rescued *early* cases, the comb's
+preferred shift equals the correct census placement on **12**. On the other **72** it prefers a third
+value — neither the rule's answer nor the right one. Excluding a placement and knowing the right one are
+different things, and the comb only does the first.
+
+**His prediction is confirmed.** Over 85,742 frames where both placements can be judged, the fraction
+whose implied placement the comb does **not** exclude rises from **81.54% under the current census tops
+to 83.42% under entry 20's**, a gain of **1.88 points**. The census does agree with the comb more after
+the horizontal-blanking reference, exactly as he expected.
+
+**A qualification on those two percentages.** They are computed on the placement the tops imply on their
+own, with no held correction — that is what isolates the tops' effect and what makes the before and after
+comparable. They are not the engine's published agreement, which was 99.24% on comb-decided frames, and
+should not be read as a fall from it.
+
+**What follows for his consequence.** The comb cannot be the thing that keeps the top stable: it sees
+about half the errors and points at the right answer in a seventh of those. The reference and the comb
+are complementary rather than redundant — the reference gets 94.4% of its changes right, and the comb
+catches part of the remainder without being able to fix it.
