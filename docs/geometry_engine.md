@@ -76,10 +76,22 @@ quantile. Only the top brightness bar changes to `p95(row) > level`; spread,
 correlation, plain23/run-in logic, device blanking, bottom search and bottom
 profiles retain their existing rules. Noisy leading columns can inflate the
 level; this known limitation is deliberately retained for review, not repaired.
-The required `spread > 4` guard remains: the experiment-20 `hblank.py` omitted
-it in its new-rule branch, so that script's tops are not an exact golden for
-this top-only substitution. Its `.1f` level output also cannot establish
-floating-point-level agreement; acceptance needs unrounded reference levels.
+The required `spread > 4` guard remains. Acceptance uses the corrected
+`expected_tops.csv`, which retains that guard; the original experiment-20
+`hblank.py` omitted it and rounded levels to one decimal. Compare levels with
+floating-point tolerance, not equality of differently formatted decimal strings.
+
+`tests/hblank_probe` accepts a streaming luma record (uint64 counter, uint32
+reset, uint32 reversed-pairing flag, then 525×720 luma bytes) and reports census
+features and thread-CPU costs. An optional output path enables a separate
+all-frame-audit engine's frame CSV. The measured engine stays non-audit; frame
+agreement uses `frame_d2 - frame_d1`, never the two unit-owned placements.
+Feed old and new builds the same rasters, pairing schedule and live reset flags,
+and verify the old frame output against the published log before comparing rates.
+Exact census agreement does not establish preserved placement quality: separately
+compare published frame shifts with decided comb minima at margins 1.5, 3, 5 and 8.
+A regression in that gate needs owner review; do not alter the specified census
+rule to make the acceptance numbers fit.
 
 Beside the existing bottom-line coordinates `bl1`/`bl2`, schema 15 adds
 `hblank_level_f1`, `hblank_cols_f1`, `hblank_level_f2`, `hblank_cols_f2`.
