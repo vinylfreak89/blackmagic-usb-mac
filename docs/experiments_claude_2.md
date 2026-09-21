@@ -348,3 +348,50 @@ every edge.
 The arm is therefore evaluated at both values and neither is chosen to suit the answer. The split barely
 matters for the arm that decides the entry — 1.78% of clean edges change at 46.7, 1.77% at 27 — and it
 matters a great deal for how much inflation survives, which is reported both ways.
+
+### Report on entry 24 (2026-09-21) — refuted: the diagnosis holds, the cure does not
+
+**Verdict: the premise is refuted.** The cause entry 23 identified is confirmed — the level really is
+inflated by including samples that are conceivably picture, and excluding them at the gap collapses it.
+But the same operation moves the level on clean material too, so it fails the owner's own acceptance bar
+and makes the bottom worse. The diagnosis is worth keeping; this cure is not.
+
+**The inflation is real and the exclusion does remove most of it.** On the 1,726 field edges above entry
+20's 99th percentile, the level falls from a median of **134 to 34.5**. A gap was found on every one of
+the 172,586 field edges, and the exclusion is small — a median of 243 lines kept of about 244, with
+fewer than 20 kept on 475 edges (0.28%). So the mechanism is what entry 23 said it was.
+
+**But it does not stay put on clean units, and that is his bar.** On the 170,860 edges that never had
+the inflation the gap level sits **+3.2 codes from entry 20's (median), above it on 77%**, and the
+first picture line changes on **3,038 edges, 1.78%**. His words were that it "must not change anything
+across the tape … it should be extremely close". Three thousand changed placements on units that never
+had the problem is not extremely close: it is nearly half the size of entry 20's entire correction. The
+arm fires at both splits — 1.78% at 46.7 codes, 1.77% at 27.
+
+**Not understood, and recorded rather than smoothed over.** Of the changed tops, 1,625 move **earlier**
+and 1,005 later, although the level is higher on 77% of clean edges, where a higher level should move
+tops later. Moving the level down evidently changes a decision more readily than moving it up. Whether
+those 3,038 changes are right or wrong was not measured — the arm decides the entry either way, and
+asserting them as improvements without the occupancy check is exactly the move this ledger exists to
+prevent.
+
+**And it does not repair the damage it was aimed at.** Re-running entry 23's bottom measurement with
+this level:
+
+| at the bottom | changes | abandons a >90% lit line | >50% lit | steps over a lit line | lands on a lit line from a dimmer one |
+|---|---|---|---|---|---|
+| entry 20's level | 762 | 21 | 41 | 127 | 285 |
+| entry 24's gap level | 465 | **43** | **78** | 107 | **142** |
+
+It makes fewer changes and cuts more picture: twice as many fully lit lines abandoned, half as many
+corrections. The reason is the same +3.2 codes — at the bottom a higher level is the stricter test, so
+it trims harder. The arm fires.
+
+**What survives.** Entry 23's diagnosis, now confirmed: the level is inflated on noisy material by
+samples that are conceivably picture, and it is measurable and collapsible. What is refuted is taking
+the level at the gap, because that is not only an exclusion — it also relocates the level to the top of
+the blanking cluster on every unit, including the ones that were fine. A cure has to remove the
+excursions **without** moving the level where there are none, and this one does not separate those two
+effects.
+
+**Files.** `gaplevel.py`, `bottom2.py`, `gaplevel.csv`, `bottom2.csv` in scratch.
