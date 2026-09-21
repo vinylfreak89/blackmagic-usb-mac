@@ -2017,3 +2017,38 @@ Withdrawn with its reason, not dropped.
 **What this does not settle.** The owner's "must not change anything" bar cannot be met by any fix to
 this class, as recorded yesterday: correcting 5,995 edges is a change of that size by definition. This
 entry shows the change is overwhelmingly a correction, which is the evidence that decision needs.
+
+## E-claude-2026-09-21-21 — does the comb rescue the horizontal-blanking rule's mistakes?
+
+**Question (owner, 2026-09-21).** "On the 5.5 % conflict / 0.3 % wrong result, does the combing check
+rescue those wrong decisions? If it does, then we can use that to properly keep the top stable right? It
+would be nice to have it try to falsify that assumption. Presumably, the whole census should say more
+samples are in agreement at this point"
+
+**Premise.** A wrong top produces a wrong placement, and the comb measures placement directly. So where
+entry 20's rule places the top wrongly, the comb should exclude the placement that follows, and entry
+16's comb-confidence rule should correct it. If that holds, the comb — not the reference alone — is what
+keeps the top stable.
+
+**The two error classes are tested separately**, because they are different faults and a comb that sees
+one need not see the other:
+- **skips**: 78 units where the rule moves the top past a line that is more than half picture;
+- **early**: about 174 units where it moves the top earlier onto a blank line.
+
+**Method**, from files already measured, with no new pass over the capture: for each frame, the census
+placement implied by the tops, `st = (field 2 top − 263) − field 1 top`, computed under the current
+census and under entry 20's rule, with the frame's own pairing. Then the comb's eleven energies for that
+frame, from the schema-14 sidecar, and whether the implied placement is excluded — its energy more than
+1.5 times the minimum, entry 16's test, the only threshold involved and one the owner has accepted.
+
+**Falsifier.**
+- For either class, the comb fails to exclude the wrong placement on more than a third of its units: the
+  premise fails for that class and is reported as failing, not averaged with the other.
+- Where the comb does exclude it, the shift the comb prefers must agree with the raw rows on a sample
+  looked at, not merely differ from the wrong one.
+- **His prediction, tested as stated**: over the whole tape the fraction of frames whose implied
+  placement the comb does NOT exclude must be higher under entry 20's tops than under the current census.
+  If it falls, that is reported as the prediction failing, whatever the rescue rates say.
+
+**Material.** All 86,293 exact units: `hblank.csv` for both top sets, `hblank_check.csv` for the raw-row
+occupancy that defines the error classes, and the published schema-14 sidecar for the comb energies.
