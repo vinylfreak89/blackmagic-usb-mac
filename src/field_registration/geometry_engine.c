@@ -2,6 +2,11 @@
 #include <math.h>
 #include <string.h>
 
+double ge_top_margin=0.0;
+int ge_top_guard=0;
+int ge_top_plain23=1;
+int ge_top_runin=1;
+
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
     int basis_valid, basis_first[2]; /* tops of the frame that derived held */
@@ -50,15 +55,38 @@ static double horizontal_level(const uint8_t *y,int off,int *columns) {
     }
     return quantile(pool,244*(unsigned)*columns,.99);
 }
+static int chunk_agreement(const uint8_t *a,const uint8_t *b) {
+    unsigned agree=0;
+    for(int i=0;i<16;i++) {
+        unsigned sa=0,sb=0;
+        for(int x=0;x<40;x++){sa+=a[i*40+x];sb+=b[i*40+x];}
+        double ma=sa/40.0,mb=sb/40.0;
+        agree+=fabs(ma-mb)/fmax(fabs(mb),1.0)<=.20;
+    }
+    return agree>=11;
+}
+static double body_sd(const uint8_t *p) {
+    unsigned sum=0,squares=0;
+    for(int x=0;x<640;x++){unsigned v=p[x];sum+=v;squares+=v*v;}
+    double mean=sum/640.0;
+    return sqrt(fmax(squares/640.0-mean*mean,0.0));
+}
 static int picture(const uint8_t *y,int row,double reference,int top) {
     unsigned h[256]; const uint8_t *p=y+row*720;
     histogram(p+40,640,h);
     double hi=quantile(h,640,.95),spread=hi-quantile(h,640,.05);
-    if((top ? hi<=reference : hi-reference<=5) || spread<=4) return 0;
-    if(top && spread>=40) {
+    if((top ? hi-reference<=ge_top_margin : hi-reference<=5) || spread<=4) return 0;
+    if(!top)return 1;
+    if(ge_top_guard==0 && spread>=40) {
         for(int lag=-24;lag<=24;lag++)
             if(correlation(p+64,p+720+64+lag,592)>=.5) return 1;
         return 0;
+    }
+    if(ge_top_guard==3 || (ge_top_guard==2 && spread>=40))
+        return chunk_agreement(p+40,p+720+40);
+    if(ge_top_guard==4) {
+        double s=body_sd(p+40)/fmax(body_sd(p+720+40),1e-6);
+        return s>.5 && s<2.0;
     }
     return 1;
 }
@@ -99,12 +127,12 @@ void ge_measure(const uint8_t *y,ge_features *f) {
     f->rule_first=f->first[0];
     unsigned sum=0; for(int x=40;x<680;x++)sum+=y[19*720+x];
     f->plain23=sum/640.0-f->blank[0]>30 && correlation(y+19*720+40,y+20*720+40,640)>=.5;
-    if(f->first[0]==23 && !f->plain23) f->first[0]=first(y,20,37,f->hblank_level[0]);
+    if(ge_top_plain23 && f->first[0]==23 && !f->plain23) f->first[0]=first(y,20,37,f->hblank_level[0]);
     f->auto_first=f->first[0];
     if(f->first[0] && f->first[1]) {
         unsigned h[256]; histogram(y+(f->first[1]-5)*720+40,640,h);
         f->runin=runin(y+(f->first[0]-5)*720);
-        if(f->runin>=.5 && quantile(h,640,.95)-f->blank[1]>5) f->first[0]++;
+        if(ge_top_runin && f->runin>=.5 && quantile(h,640,.95)-f->blank[1]>5) f->first[0]++;
     }
 }
 static ge_class classify(const ge_features *a,const ge_features *b,int f) {

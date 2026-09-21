@@ -8,6 +8,14 @@
 #include <stddef.h>
 #include <stdint.h>
 #define GE_PIXELS (525u * 720u)
+/* Process-wide experiment controls. Configure once before any measurement or
+ * worker starts; never write concurrently with an engine call. Library code
+ * does not read the environment. Defaults preserve the current top search. */
+extern double ge_top_margin; /* 0.0; finite values only */
+extern int ge_top_guard; /* 0: lag correlation, 1: none, 2: high-spread chunks,
+                         * 3: all-row chunks, 4: all-row structure ratio */
+extern int ge_top_plain23; /* 1: apply plain23 re-search; 0: evidence only */
+extern int ge_top_runin; /* 1: apply run-in step; 0: evidence only */
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
 enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16,

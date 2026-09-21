@@ -117,6 +117,7 @@ src/frameserver/tests/worker_bench
 /src/field_registration/tests/geometry_probe
 /src/field_registration/tests/geometry_unit
 /src/field_registration/tests/geometry_basis
+/src/field_registration/tests/geometry_guards
 /src/frameserver/tests/geometry_replay_asan
 /src/frameserver/tests/geometry_replay_tsan
 /src/obs_plugin/tests_audio_timing

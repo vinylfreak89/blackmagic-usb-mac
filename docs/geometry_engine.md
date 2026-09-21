@@ -106,6 +106,24 @@ compare published frame shifts with decided comb minima at margins 1.5, 3, 5 and
 A regression in that gate needs owner review; do not alter the specified census
 rule to make the acceptance numbers fit.
 
+The probe alone reads `GE_TOP_MARGIN` (finite number, default 0), `GE_TOP_GUARD`
+(0..4, default 0), `GE_TOP_PLAIN23` and `GE_TOP_RUNIN` (each 0/1, default 1).
+Both probe CSVs begin with a `# GE_TOP_MARGIN=... GE_TOP_GUARD=...
+GE_TOP_PLAIN23=... GE_TOP_RUNIN=...` provenance line before the CSV header;
+skip this comment when parsing. The unit CSV also includes `rule_first`,
+`auto_first`, `plain23` and `runin` to distinguish raw scan, re-search and final
+placement. Disabling either final-stage switch retains its evidence computation.
+
+The library exposes corresponding process-wide `ge_top_*` variables, not
+environment reads. Set them before measurement/worker startup and never mutate
+them concurrently. Guard 0 keeps the existing high-spread lag correlation; 1
+disables coherence; 2 requires 11 of 16 chunk means to agree within 20% of the
+next-row mean on high-spread rows; 3 applies that chunk test on every candidate;
+4 requires the row/next-row population-standard-deviation ratio strictly between
+0.5 and 2. Only one row below is read. The margin applies only to top brightness;
+spread >4 remains mandatory. None of these controls changes bottom measurements
+or derived blanking provenance. All-default settings reproduce the prior rule.
+
 Beside the existing bottom-line coordinates `bl1`/`bl2`, schema 15 adds
 `hblank_level_f1`, `hblank_cols_f1`, `hblank_level_f2`, `hblank_cols_f2`.
 These describe the row's **own unit**, including unused boundary fields; they
