@@ -1882,3 +1882,40 @@ implementation.
 
 **Material.** All 86,293 exact units; `captures/fulltape_render_registration.csv` for the published
 placements and the comb; `profile.csv` for the per-line occupancy behind the diagnosis.
+
+## E-claude-2026-09-21-26 — the amplitude check on the line above the top
+
+**Ruling (owner, 2026-09-21):** "since correct placement lands that line at 22 which by the standard as
+the blanked line, it should not be included. so I guess we need that additional check in the engine. if
+the first picture line is displaced below 22, is it correlated at the same amplitude as the line below.
+if not, throw it out and it shouldn't be in a final 480p render"
+
+**What the rows showed, on ten cases he asked to see.** Where the tape's caption sits at raster 23 (the
+picture displaced +2, device insert at 21, raster 22 empty at 0% lit and p95 2.0 on all ten), the line at
+raster 24 — the tape's own line 22 — is lit and tracks the line below it at **0.90 to 0.99**, with a
+run-in of 0.03–0.22, so it is not a data line. But its level is a systematic **69–86% of the line below**,
+while genuine adjacent picture lines sit at about 1.0. It carries the picture's content at reduced
+amplitude, which is what the standard's blanked line looks like when the deck does not fully suppress it.
+
+**Premise.** A line that correlates with the picture below but at materially reduced amplitude is the
+blanked line, not the first picture line. Correlation alone cannot tell them apart, because the content
+is the same; the amplitude is what separates them.
+
+**Method.** Whole tape. For every candidate line above the engine's top, the 8-chunk profile correlation
+with the line below and the ratio of their 95th percentiles. Genuine adjacent picture lines supply the
+control distribution — deep inside the picture that ratio should sit at about 1.0, and the separation
+between it and the 0.69–0.86 band is what the rule depends on.
+
+**Falsifier.**
+- The two do not separate: the amplitude ratio of known-bleed lines overlaps materially with that of
+  adjacent picture lines, so no bar excludes one without cutting the other.
+- Or it changes placements outside the class it is aimed at, counted and reported rather than netted.
+- Or it excludes lines the raw rows show to be real picture.
+- Or the owner's own gate fails: comb agreement, filtered to high confidence, does not hold or improve.
+
+**Not settled here.** His bottom ruling — "31 % lit row absolutely counts as last picture line" — pulls
+the other way for a partially present line, and the two rules meet if a line can be partly present at
+full amplitude but not at reduced amplitude. That distinction is his, is recorded, and is not resolved
+by this entry.
+
+**Material.** All 86,293 exact units; the ten cases above as the worked examples.
