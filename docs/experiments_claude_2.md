@@ -266,3 +266,51 @@ as the bottom and the derived level stopping one line higher, correctly). Each l
 fraction of it that is lit.
 
 **Files.** `bottom.py`, `bot_panel.py`, `bottom.csv`, `panel_bottom.png` in scratch.
+
+## E-claude-2026-09-21-24 — excluding the samples that are conceivably picture, as he specified
+
+**Question.** Entry 23 measured a defect in entry 20's reference: its level has a median of 18 codes
+across the tape but 101 on the cases where it cuts picture, reaching 247. On noisy material the leading
+columns carry noise, and a quantile over the pool absorbs it.
+
+**His instruction, which entry 20 did not fully implement (owner, 2026-09-21, on the horizontal-blanking
+experiment):** "that will not be constant because it's a noisy edge so that should not be a fixed but a
+derived threshold" and "It shouldn't be a distribution. It should decide per unit what to include and
+what to exclude. If it includes samples that are conceivably picture or will throw the whole thing off."
+
+Entry 20 decides per unit which **columns** to include, then pools every sample from those columns over
+the whole field and takes the 99th percentile — a distribution, and the exact thing he said not to do.
+The inflation entry 23 found is that decision failing in the way he predicted, so this is not a new idea
+of mine; it is the unimplemented half of his.
+
+**Premise.** The inflation is caused by including samples that are conceivably picture, and the blanking
+samples separate from them: on a unit whose leading columns carry noise, the sorted samples show a gap
+between the blanking floor and the excursions above it. Excluding everything above that gap — a decision
+per unit, taken from the source, with no threshold written in — removes the inflation **without changing
+the level on units that never had it**.
+
+**Method.** One pass, all 86,293 exact units. Entry 20's column selection unchanged. Then, in place of
+the 99th percentile, the level is taken at the **widest empty stretch in the sorted samples**: the
+largest value below the widest gap. Two variants are measured, because "exclude the samples" and
+"exclude the lines they came from" are different readings of his sentence — (B) the sample-level
+exclusion just described, and (C) the same gap used to drop whole lines whose leading columns contain an
+excluded sample. Reported against entry 20's level and its tops for the same units.
+
+**Falsifier.** His acceptance bar governs the first arm, in his words: it "must not change anything
+across the tape (there might be small variance as it's not a hard coded full source derived number but
+it should be extremely close)".
+- **It disturbs what entry 20 got right.** On units whose current level is inside the tape's ordinary
+  range — at or below the 99th percentile of 27 codes, a description of entry 20's own measurement and
+  not a threshold in the rule — the first-picture-line placements must be essentially unchanged. More
+  than a small variance there and the premise fails, whatever it does for the noisy units.
+- **Or the inflation survives.** On the units entry 23 identified, the level must fall into the ordinary
+  range. If it does not, the cause was not the inclusion of conceivably-picture samples and the premise
+  is refuted rather than the method adjusted.
+- **Or the repair does not reach the damage.** The bottom cases entry 23 measured — 127 changes stepping
+  over a lit line, 21 abandoning one more than 90% lit — must fall. If the level comes down and those do
+  not, the inflation was not what caused them.
+- **Or the level becomes unmeasurable.** If a gap cannot be found on more than a small fraction of units,
+  the rule has traded one failure for another and that is the result.
+
+**Material.** All 86,293 exact units; entry 20's levels and tops and entry 23's `bottom.csv` as the
+baselines to compare against, both already measured.
