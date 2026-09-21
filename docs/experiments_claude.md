@@ -1383,6 +1383,34 @@ instrument which is the right thing for a pass/fail check":
 
 **Material.** All 86,293 exact units, `scratchpad/ctr9040/combcensus.py`.
 
+
+### Report on amendment 1 to entry 20 (2026-09-22) — the margin is not carried by the gate that judged it
+
+**Verdict: unresolved, and weaker than the amendment claimed.** The margin was registered to fix the
+blank-top class and field 2's placement. Measured on the whole tape through the engine itself, it does
+neither on its own.
+
+- **Comb is indifferent.** Margins 3, 5 and 8 sit on today's agreement to three decimal places in every
+  confidence band. That was predicted — comb sees only relative alignment — so it is not evidence
+  against the margin, but it is not evidence for it either.
+- **The independent gate is mildly against it.** Late tops: today 5,498, margin 3 → 5,553, margin 5 →
+  5,564, margin 8 → 5,560, of 172,586 edges judged per arm. The margin alone makes placement slightly
+  worse by the one instrument that never chose a top.
+- **It does not fix field 2 alone.** On the owner's four labelled units the margin alone gives field 2 =
+  290, overshooting his 288 by two lines. Only the margin together with the per-chunk test lands on 288.
+- **Its remaining support is a different instrument.** 1,383 of entry 20's 1,695 blank tops sit inside
+  the deleted margin, measured by occupancy — which CLAUDE.md already records as blind to dark picture.
+
+**What was not tested, and should have been:** every arm supporting the margin also carried the
+per-chunk test. The chunk rule at margin 0 was never measured, so the margin's contribution to the
+candidate is not isolated. That is a defect in my experimental design, not a result.
+
+**Population:** all 86,293 exact units; 172,586 field edges per arm; engine abstentions 893 → 1,380
+between today and the candidate.
+
+**Raw rows:** `scratchpad/ctr9040/arms/*.units.csv`, each naming its arm on its first line;
+`gate_arms.csv` for the verdicts.
+
 ## E-claude-2026-09-21-21 — does the comb rescue the horizontal-blanking rule's mistakes? — **REFUTED.** Comb agreement does not recover either error class of the derived-level rule; the owner's separate prediction about the class was confirmed. Compacted 2026-09-21.
 
 ## E-claude-2026-09-21-22 — coherence with the line below as a second stage for marginal cases — **REFUTED as a rescue.** Banding the derived level and deciding the margin by whole-line correlation does not fix the classes it was aimed at. The same correlation used differently is live work (see entry 30). Compacted 2026-09-21.
@@ -1654,3 +1682,60 @@ there, which is precisely why the whole tape has to separate them.
 
 **Material.** All 86,293 exact units, scored jointly with amendment 1 in `scratchpad/ctr9040/combcensus.py`.
 The four units above are the build material and are therefore not the judge.
+
+### Report on entry 30 (2026-09-22) — refuted for a characterized class, held elsewhere
+
+**Verdict: the premise is refuted, and the class where it fails is identified.**
+
+The premise was the owner's: real picture resembles the line immediately below it *at every horizontal
+position*, so "one line should always be near coherent on real picture". The falsifier registered was
+"either form rejects real picture: its top lands later than the amplitude-only top on frames whose
+amplitude-only top is already correct by the independent gate". **It fired.**
+
+**What the data did.** Judged by the independent gate over 172,586 field edges per arm, the per-chunk
+rule with plain-23 and run-in removed takes late tops from **5,498 to 2,261**. But the error set is
+**replaced, not reduced**: 5,326 fixed, **2,089 newly wrong**, 172 wrong in both. The new failures fall
+in 319 runs, the largest being 11537–11798, 484 edges.
+
+**Why it fails there, from the raw rows and confirmed by render.** At counter 11540 field 1 the picture
+begins at line 24 — visible, and today's engine gets it right. The new rule takes 29. Lines 24–28 clear
+amplitude comfortably and fail on chunk count, and they fail honestly: their chunk means span 2.4 to
+182.4 across the width, and the maximum absolute difference to the line below reaches **170 codes**. The
+material is a bright curved edge against black, so the boundary moves further than one 40-sample chunk
+per line. Real picture genuinely disagrees with the line below. The premise is false on steep
+high-contrast boundaries.
+
+The gate disagrees with the instrument for a reason that is not a contradiction: it correlates chunk
+means, which is scale- and offset-invariant, so a boundary that merely shifts horizontally still
+correlates at 0.996. Both instruments are right by their own definitions.
+
+**The two forms did not tie, and the structure ratio lost.** By comb it looked best at margin ≥1.5
+(99.177%) and worst at ≥8 (98.655% against the per-chunk rule's 99.978%), moving 39,412 field-1
+placements. The gate then showed why: 312 "wrong" but **62,598 abstentions**, 36% of its tops landing
+where the gate cannot judge either way against ~9% for every other arm. A rule whose placements are
+mostly unjudgeable is not conservative.
+
+**What the entry did establish, and it is not nothing.** Removing plain-23 and run-in is required for
+the per-chunk test to help at all, and those two guards are independently and **exactly additively**
+harmful: of 5,760 late tops they cause together, plain-23 accounts for 3,474 and run-in for 2,286
+(3,474 + 2,286 = 5,760 exactly). Their combined effect on field 1 is a **+1 on 15,621 of 15,743 moved
+units** — plain-23's re-search window begins at line 24 and structurally cannot return 23, and run-in is
+literally `first[0]++`. On the fade at 48055–48195 comb agreement at confidence goes from 6 of 86 to
+86 of 86, because the misregistration is never introduced rather than corrected.
+
+**What is not understood.** The remaining 318 new runs are not characterized; only 11537–11798 was
+rendered. Whether the amplitude margin contributes to these failures is unknown, because the chunk rule
+at margin 0 was never measured (see amendment 1's report).
+
+**A premise that would survive this counterexample**, for a future entry rather than a patch here: a
+chunk straddling a blanking-to-bright boundary is a *detected edge*, not a disagreement, and should be
+excluded from the count rather than failing it. That is a different claim about the signal and needs its
+own entry, falsifier and material.
+
+**Material.** All 86,293 exact units, twelve whole-tape arms. The four build units (69566, 69568, 69570,
+69573) were not the judge. Raw rows: `scratchpad/ctr9040/arms/*.units.csv`, `gate_arms.csv`, and the
+rendered rows at counter 11540.
+
+**Built into the engine as the default** at `d5c9f08` on `v11-engine`, local, not pushed, carrying this
+regression knowingly and reported to the owner with the render.
+
