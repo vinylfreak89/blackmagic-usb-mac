@@ -1340,504 +1340,56 @@ Withdrawn with its reason, not dropped.
 this class, as recorded yesterday: correcting 5,995 edges is a change of that size by definition. This
 entry shows the change is overwhelmingly a correction, which is the evidence that decision needs.
 
-## E-claude-2026-09-21-21 — does the comb rescue the horizontal-blanking rule's mistakes?
-
-**Question (owner, 2026-09-21).** "On the 5.5 % conflict / 0.3 % wrong result, does the combing check
-rescue those wrong decisions? If it does, then we can use that to properly keep the top stable right? It
-would be nice to have it try to falsify that assumption. Presumably, the whole census should say more
-samples are in agreement at this point"
-
-**Premise.** A wrong top produces a wrong placement, and the comb measures placement directly. So where
-entry 20's rule places the top wrongly, the comb should exclude the placement that follows, and entry
-16's comb-confidence rule should correct it. If that holds, the comb — not the reference alone — is what
-keeps the top stable.
-
-**The two error classes are tested separately**, because they are different faults and a comb that sees
-one need not see the other:
-- **skips**: 78 units where the rule moves the top past a line that is more than half picture;
-- **early**: about 174 units where it moves the top earlier onto a blank line.
-
-**Method**, from files already measured, with no new pass over the capture: for each frame, the census
-placement implied by the tops, `st = (field 2 top − 263) − field 1 top`, computed under the current
-census and under entry 20's rule, with the frame's own pairing. Then the comb's eleven energies for that
-frame, from the schema-14 sidecar, and whether the implied placement is excluded — its energy more than
-1.5 times the minimum, entry 16's test, the only threshold involved and one the owner has accepted.
-
-**Falsifier.**
-- For either class, the comb fails to exclude the wrong placement on more than a third of its units: the
-  premise fails for that class and is reported as failing, not averaged with the other.
-- Where the comb does exclude it, the shift the comb prefers must agree with the raw rows on a sample
-  looked at, not merely differ from the wrong one.
-- **His prediction, tested as stated**: over the whole tape the fraction of frames whose implied
-  placement the comb does NOT exclude must be higher under entry 20's tops than under the current census.
-  If it falls, that is reported as the prediction failing, whatever the rescue rates say.
-
-**Material.** All 86,293 exact units: `hblank.csv` for both top sets, `hblank_check.csv` for the raw-row
-occupancy that defines the error classes, and the published schema-14 sidecar for the comb energies.
-
-### Report on entry 21 (2026-09-21) — split: his prediction holds, the rescue does not
-
-**Verdict: the premise is refuted for both error classes; the owner's separate prediction is confirmed.**
-
-**The comb does not rescue the mistakes.**
-- **skips** (the rule moves the top past a line more than half picture): 68 judgeable, the comb excludes
-  the resulting placement on **31, 46%**.
-- **early** (the rule moves the top onto a blank line): 170 judgeable, excluded on **84, 49%**.
-Both are below the two-thirds the falsifier required, so the premise fails, and it fails for each class
-on its own terms. The two classes behave the same within noise, 46% against 49%, so the concern that an
-average would hide one of them did not arise.
-
-**And where it does flag one, it does not repair it.** Of the 84 rescued *early* cases, the comb's
-preferred shift equals the correct census placement on **12**. On the other **72** it prefers a third
-value — neither the rule's answer nor the right one. Excluding a placement and knowing the right one are
-different things, and the comb only does the first.
-
-**His prediction is confirmed.** Over 85,742 frames where both placements can be judged, the fraction
-whose implied placement the comb does **not** exclude rises from **81.54% under the current census tops
-to 83.42% under entry 20's**, a gain of **1.88 points**. The census does agree with the comb more after
-the horizontal-blanking reference, exactly as he expected.
-
-**A qualification on those two percentages.** They are computed on the placement the tops imply on their
-own, with no held correction — that is what isolates the tops' effect and what makes the before and after
-comparable. They are not the engine's published agreement, which was 99.24% on comb-decided frames, and
-should not be read as a fall from it.
-
-**What follows for his consequence.** The comb cannot be the thing that keeps the top stable: it sees
-about half the errors and points at the right answer in a seventh of those. The reference and the comb
-are complementary rather than redundant — the reference gets 94.4% of its changes right, and the comb
-catches part of the remainder without being able to fix it.
-
-## E-claude-2026-09-21-22 — coherence with the line below, as a second stage for marginal cases
-
-**Question (owner, 2026-09-21, two minutes after entry 21).** "does it help to not just compare to the
-blanking reference but also to the line below and if they are a certain amount coherent, call that a
-picture line? Does that rescue the bad class?" And, after the comb result: "I'm saying it should do both.
-The brightness test as a first pass but anything that is on the margins gets this second level check"
-
-**Same investigation as entry 21**, which asked whether the errors could be caught afterwards. They
-cannot — the comb sees about half and names the right placement in a seventh of those — so the only
-route left is getting the first pass right, which is what this tests.
-
-**Is the coherence quantity new?** No, and saying so matters because conflating quantities is how the
-last two rules went wrong. The engine already computes exactly this: `continues()` takes the maximum
-correlation between a row and the row below it over lags of ±24 samples and asks for 0.5. Today it is
-applied only to high-contrast lines, as a guard inside the picture test, and the plain-23 rule uses the
-same correlation at lag 0 for one specific pair. His proposal points the existing measurement at a
-different set of rows: those whose brightness leaves them **on the margin** of his derived level.
-
-**Premise.** Real picture resembles the line beneath it; blanking with speckle does not. So among lines
-whose brightness alone cannot decide, coherence with the line below separates the two, and applying it
-only to those lines leaves the confident cases untouched.
-
-**Method.** Per unit and field, in one pass: the horizontal-blanking level of entry 20, then for each row
-of the search window its body 95th percentile. A row is decided by brightness when it sits clearly above
-or clearly below that level; a row **within a band around it** falls through to the coherence test, which
-is `continues()` unchanged — maximum correlation with the row below over lags of ±24, threshold 0.5.
-Because the owner has not specified the band and it must not be invented, three widths are measured —
-±25%, ±50% and ±100% of the level — and the result is reported for each.
-
-**Falsifier.**
-- It rescues neither error class: for both the 78 skips and the ~174 early cases, fewer than half are
-  corrected at every band. Reported per class, never averaged.
-- Or the whole-tape change rate moves materially beyond entry 20's 6.84% — more than about a point —
-  which would mean the second stage is deciding confident cases too, the failure that made both dark-end
-  rules change 21% of the tape.
-- Or the rescues are not supported by raw-row occupancy.
-- If no band satisfies these, that is the result: no band works.
-
-**Material.** All 86,293 exact units; the error classes as defined in `hblank_check.csv`; entry 20's tops
-as the baseline.
-
-### Report on entry 22 (2026-09-21) — refuted as a rescue; the same test corrects a larger population
-
-**Verdict: the premise is refuted for the question it was asked.** Coherence with the line below does
-not rescue either error class at any band that survives the change-rate arm. It does something else,
-measured here and not claimed beyond it: it corrects about a thousand tops the brightness rule and the
-census both got wrong, which is a different population and belongs to a different entry.
-
-**The rescue, per class and per band, never averaged.**
-
-| band | skips (78) | early (170) |
-|---|---|---|
-| ±25% | 18, 23.1% | 24, 14.1% |
-| ±50% | 24, 30.8% | 42, 24.7% |
-| ±100% | 26, 33.3% | 87, 51.2% |
-
-Only one cell clears half, and it is the band the next arm excludes.
-
-**The change-rate arm fires on ±100%.** Against the current census, in entry 20's own convention:
-entry 20 5,900 units 6.84%, ±25% 6,239 7.23%, ±50% 6,304 7.31%, **±100% 7,085 8.21%** — 1.37 points
-beyond, past the "about a point" the entry allowed. The two narrow bands sit within half a point.
-The instrument reproduces entry 20's 5,900 exactly, which is what makes the comparison meaningful.
-
-**Why the class is not rescued — two mechanisms, both measured.**
-- The blank lines the brightness rule accepts sit **far above** the derived level, not near it, so a band
-  around that level never reaches them: at ±50%, **122 of the 170** early cases are left exactly where
-  entry 20 put them, never having entered the second stage at all.
-- The coherence test **cannot see flat picture**. A dim, nearly flat picture line has too little variance
-  to correlate with anything, so the second stage rejects it. That is the skip class: 54 of 78 unrescued
-  at ±50%, on lines whose occupancy is 1.000 — real picture, invisible to this test.
-
-**What it does instead, and this is the substantial result.** At ±50% the second stage moves 1,484 edges
-off entry 20's answer: **1,152 land on picture, 9 land off it, 323 neither.** Of those 1,152, the census
-and entry 20 **agreed with each other on 1,062** — tops both rules left on a blank line, which neither
-previous measurement counted, because the error classes were defined from the places those two rules
-*differed*. The blank-line defect is therefore substantially larger than entry 20 measured.
-
-**Control arm, every changed edge judged by occupancy** (independent of the rule): entry 20 6,621 edges,
-90.6% supported, 4.7% contradicted; ±25% 89.8% / 4.1%; **±50% 7,712 edges, 92.1% supported, 4.4%
-contradicted**; ±100% 85.1% / 11.4%. Entry 20's report quoted 94.4% for the same thing — that was
-5,995 over the 6,354 later-moves alone; over all its edges it is 5,996 of 6,621, one edge from this
-pass's count.
-
-**The regressions, named rather than netted.** Nine edges at ±50% go the wrong way: all field 2, all
-accepting line 286 where entry 20 had picture at 288. Blanking can correlate with blanking, so the
-second stage admits a blank line on the strength of its resemblance to the blank line beneath it. Nine
-against 1,152 is the ratio, and it is not zero.
-
-**Raw rows.** `panel_coherence.png` shows four of them at the top of the picture: 69511 field 2, where
-both existing rules stop on a blank line; 70274 field 2, one of the nine regressions; 4812 field 1, a
-flat dim picture line the coherence test cannot see; 82404 field 1, a blank line it correctly rejects.
-
-**What is not understood.** Why the band that helps most on the wider population (±50%) helps least on
-the classes is explained by the two mechanisms above, but the size of the 1,062 was not predicted by
-anything in entries 20 or 21 and has not been checked against material outside this tape.
-
-**Files.** `coherence.py`, `coherence_report.py`, `coherence.csv`, `coherence_cases.csv`,
-`panel_coherence.png` in scratch.
-
-#### Amendment 1 to the entry-22 report (2026-09-21) — the raw rows found a new error class I had not measured
-
-Looking at the panel before sending it caught two things the report above stated without checking. Both
-are corrected here rather than in the text above, which stands as written.
-
-**A new error class, and it fires the owner's "no new errors" condition.** A move is only clean if it did
-not step over picture on the way. Measuring the highest occupancy of the lines **strictly between** the
-census top and each rule's top, the same way for both rules and split by direction:
-
-| | later moves | vault over a picture line | moves of 3+ lines later | of those, vaulting picture |
-|---|---|---|---|---|
-| entry 20 | 6,354 | 185, 2.9% | 138 | 60, 43% |
-| two-stage ±50% | 7,491 | **387, 5.2%** | 321 | **221, 69%** |
-
-The second stage more than doubles the count of tops that land late past real picture, and its long moves
-are wrong about seven times in ten. This is one mechanism, not two: the coherence test's false negatives
-on real picture are its dominant cost, and a band exists precisely to route more lines into it. The
-±50% trade is therefore **+1,152 edges corrected onto picture against 202 new late tops and 9 blank-line
-regressions** — net positive by count, and not something to adopt on that count alone.
-
-**Entry 20's own figure was measured differently.** Its check included the abandoned line in that
-maximum; excluding both endpoints, which is what makes the two rules comparable, gives the 185 above.
-
-**The skip class is partly an artifact of the run-in step.** On **62 of the 78** skips the census's
-finished top is not the line its picture test accepted, and on **46** the line it accepted is blank
-(occupancy < 0.05) — the run-in +1 step moved it onto picture. The class still correctly identifies a
-picture line that entry 20 passed, so entries 20 and 21 stand; but the census's agreement with that line
-is accidental on 46 of 78, and reports should not read it as the census having found the top.
-
-**What bounds the rescue.** On **29 of the 78** skips the skipped line is vetoed by the **existing**
-high-contrast guard (spread ≥ 40 and correlation with the line below < 0.5), which runs after the second
-stage. No band can rescue those: the veto is downstream of the whole question this entry asked.
-
-**A correction to my own caption.** I described counter 4812's line 25 as flat dim picture. It is not:
-p95 179, spread 90, occupancy 1.000 — bright, high-contrast picture. It is rejected by the guard above,
-not by darkness. The panel is what caught it.
-
-**An instrument defect, disclosed.** `coherence.py` opened its output files at import, so importing it
-from the analysis script truncated the results it was about to read. Both files were regenerated and
-every figure in the report above reproduced identically; the module no longer writes anything at import.
-
-## E-claude-2026-09-21-23 — the same derived reference at the bottom of the field
-
-**Question (owner, 2026-09-21):** "Are we using the same newly derived blanking levels for the bottom
-too?"
-
-**The factual half, answered from the source before any run.** No. In the C engine, `measure_field`
-computes `picture_threshold = blank_mean + 4.0` where `blank_mean` is the mean of the rows above the
-picture (NTSC 11–20 in field 1, 274–283 in field 2), and the bottom scan compares each row's mean to
-that same threshold. The census instrument does the same with its own constant. So the bottom is judged
-against blanking measured at the **top** of the field and has never had a reference of its own, and
-nothing from entry 20 reached it — that entry was measured, judged and reported entirely on
-first-picture-line placement.
-
-**Two ways the bottom test is weaker than the top, which matter here.** The top requires three
-consecutive qualifying rows and applies the high-contrast guard; the bottom accepts a single row. The
-top uses a body percentile; the bottom uses the row mean. A reference change at the bottom therefore
-lands on a coarser test, and the two cannot be compared line for line.
-
-**The cost is nil, and that is a fact about the instrument, not an argument for the change.** Entry 20's
-level is already pooled over the leading blanking columns of **every line of the field**, bottom lines
-included, so the number the bottom would use is the one already computed. Nothing new is measured to
-make it available.
-
-**Premise.** The derived level describes the source's blanking on every line, not where picture begins,
-so it is the correct reference at the bottom as well; substituting it for the top-derived constant
-should move last-picture-line placements onto picture in the same direction and proportion it achieved
-at the top.
-
-**The direction is opposite, and that is the risk.** The derived level (median 18 codes) is well above
-the census's effective bar, so at the bottom it is the **stricter** test and will pull bottoms **up**,
-discarding dim lines. The rows just above the clip band are exactly where the tape carries dark content
-(§6 records those rows averaging about 31 codes on the programme tape against 1.4 with no input), so
-this rule can cut real dark picture off the bottom. That is what the falsifier is aimed at.
-
-**Method.** One pass, all 86,293 exact units, the same instrument as entries 20 and 22: the bottom under
-the current rule and under the derived level, per unit and field. Every change judged by the independent
-occupancy measure — the fraction of a line's samples more than 20 codes above blanking — on the line
-abandoned, the line chosen, and the lines **strictly between** them, which is how amendment 1 caught the
-top rule vaulting over picture. Censored bottoms (landing in the clip band, NTSC 260/522 and below) are
-counted and reported separately and never netted into the totals.
-
-**Falsifier.**
-- The changes are not supported: among changed bottoms, fewer than half abandon a line that is blank for
-  one that is picture, by occupancy. The top achieved this on the large majority and the bottom is being
-  claimed to behave the same way.
-- Or it cuts picture off: more than a small minority of changes abandon a line whose occupancy is above
-  half, or step over such a line, measured the same way as amendment 1 and reported by direction.
-- Or the correction is concentrated in the clip band, where the bottom is known-unmeasurable — a change
-  there is not evidence the reference works.
-- Or the change rate is far from the top's 6.84% with no account of why.
-- A refuted premise here is a complete result: it would mean the reference is a top-of-picture
-  instrument, not a property of the field, which is itself worth knowing.
-
-**Material.** All 86,293 exact units of `captures/fulltape.cap6`.
-
-### Report on entry 23 (2026-09-21) — refuted: the reference is a top-of-picture instrument
-
-**Verdict: the premise is refuted.** Every arm of the falsifier fires. The derived level does not behave
-at the bottom the way it behaves at the top, and the reason is not a threshold that needs tuning — the
-bottom of this raster is a different object from the top.
-
-**Size and direction.** 762 changed edges, 636 units, **0.74% of units** against the top's 6.84%.
-**All 762 move the bottom up**, as registered.
-
-**The clip band arm fires decisively.** On **741 of the 762** changes the census's bottom was already
-inside the clip band, where the bottom is known unmeasurable. The change is almost entirely a decision
-about the two or three lines the engine already marks `bottom_censored`.
-
-**The support arm fires, and my own test was the wrong instrument for it.** I pre-registered a
-blank-versus-picture classification carried over from the top. At the bottom it does not adjudicate:
-
-| abandoned → chosen | count | share |
-|---|---|---|
-| blank → partly lit | 282 | 37.0% |
-| partly lit → fully lit | 253 | 33.2% |
-| partly lit → partly lit | 151 | 19.8% |
-| blank → fully lit | 32 | 4.2% |
-| blank → blank | 23 | 3.0% |
-| fully lit → fully lit | 18 | 2.4% |
-| fully lit → partly lit | 3 | 0.4% |
-
-Only 4.2% is the clean blank→picture correction the top achieved on the large majority, so the arm fires
-as written. But **456 of 762 have dim lines at both ends**: the bottom of this picture *fades* rather
-than ending, so a brightness level lands inside a gradient instead of on an edge. That is the finding,
-and it is not a result my classification was built to express — recorded as a limitation of the entry,
-not repaired after the fact.
-
-**The cutting arm fires, and it exposes a defect in the reference itself.** Of the 362 changes that span
-a line, **127 step over a line more than half lit**, and 21 abandon a line more than 90% lit. These are
-not spread evenly: the derived level's median is **18 codes** across the tape, but on the cases that cut
-picture its median is **101, with a 90th percentile of 164 and a maximum of 247**. On noisy material the
-blanking columns are full of noise, so the pool's 99th percentile is inflated and the bottom scan skips
-every real picture line to stop at the noisiest one. Counter 4704 is the panel case: level 229.4, the
-scan passes a flat grey block at lines 250–254 and stops at 246 inside relock noise.
-
-**This is a defect in entry 20's reference, not only in its use here.** The inflated level exists at the
-top of those same units. Entry 20 measured 94.4% of its changes supported, so it is a minority effect
-there, but it was never isolated and it has not been looked for. That is a new entry, not a claim.
-
-**What it does get right.** 285 changes replace a blank or partly lit last line with a fully lit one, and
-32 of those are the census over-extending one line into speckle at the bottom — the same over-extension
-defect entry 20 found at the top, in the other direction.
-
-**A question for the owner, not for me to settle.** The commonest single change is trimming a partly
-filled final row (261→260, 188 times; 522→521, 109). Counter 4919 in the panel is one: line 261 is 31%
-lit — content across the left of the sweep and black after it, the half line. His rule says the geometry
-includes the head-switch area. So whether that row is the last picture line or is excluded is his call,
-and the derived level currently excludes it.
-
-**Raw rows.** `panel_bottom.png`: counter 4704 field 1 (the inflated level cutting into noise), 4919
-field 1 (the half line, both answers inside the clip band), 7344 field 2 (the census taking a blank line
-as the bottom and the derived level stopping one line higher, correctly). Each line is labelled with the
-fraction of it that is lit.
-
-**Files.** `bottom.py`, `bot_panel.py`, `bottom.csv`, `panel_bottom.png` in scratch.
-
-## E-claude-2026-09-21-24 — excluding the samples that are conceivably picture, as he specified
-
-**Question.** Entry 23 measured a defect in entry 20's reference: its level has a median of 18 codes
-across the tape but 101 on the cases where it cuts picture, reaching 247. On noisy material the leading
-columns carry noise, and a quantile over the pool absorbs it.
-
-**His instruction, which entry 20 did not fully implement (owner, 2026-09-21, on the horizontal-blanking
-experiment):** "that will not be constant because it's a noisy edge so that should not be a fixed but a
-derived threshold" and "It shouldn't be a distribution. It should decide per unit what to include and
-what to exclude. If it includes samples that are conceivably picture or will throw the whole thing off."
-
-Entry 20 decides per unit which **columns** to include, then pools every sample from those columns over
-the whole field and takes the 99th percentile — a distribution, and the exact thing he said not to do.
-The inflation entry 23 found is that decision failing in the way he predicted, so this is not a new idea
-of mine; it is the unimplemented half of his.
-
-**Premise.** The inflation is caused by including samples that are conceivably picture, and the blanking
-samples separate from them: on a unit whose leading columns carry noise, the sorted samples show a gap
-between the blanking floor and the excursions above it. Excluding everything above that gap — a decision
-per unit, taken from the source, with no threshold written in — removes the inflation **without changing
-the level on units that never had it**.
-
-**Method.** One pass, all 86,293 exact units. Entry 20's column selection unchanged. Then, in place of
-the 99th percentile, the level is taken at the **widest empty stretch in the sorted samples**: the
-largest value below the widest gap. Two variants are measured, because "exclude the samples" and
-"exclude the lines they came from" are different readings of his sentence — (B) the sample-level
-exclusion just described, and (C) the same gap used to drop whole lines whose leading columns contain an
-excluded sample. Reported against entry 20's level and its tops for the same units.
-
-**Falsifier.** His acceptance bar governs the first arm, in his words: it "must not change anything
-across the tape (there might be small variance as it's not a hard coded full source derived number but
-it should be extremely close)".
-- **It disturbs what entry 20 got right.** On units whose current level is inside the tape's ordinary
-  range — at or below the 99th percentile of 27 codes, a description of entry 20's own measurement and
-  not a threshold in the rule — the first-picture-line placements must be essentially unchanged. More
-  than a small variance there and the premise fails, whatever it does for the noisy units.
-- **Or the inflation survives.** On the units entry 23 identified, the level must fall into the ordinary
-  range. If it does not, the cause was not the inclusion of conceivably-picture samples and the premise
-  is refuted rather than the method adjusted.
-- **Or the repair does not reach the damage.** The bottom cases entry 23 measured — 127 changes stepping
-  over a lit line, 21 abandoning one more than 90% lit — must fall. If the level comes down and those do
-  not, the inflation was not what caused them.
-- **Or the level becomes unmeasurable.** If a gap cannot be found on more than a small fraction of units,
-  the rule has traded one failure for another and that is the result.
-
-**Material.** All 86,293 exact units; entry 20's levels and tops and entry 23's `bottom.csv` as the
-baselines to compare against, both already measured.
-
-#### Amendment 1 to entry 24, written before the run — what the gap is taken over, and why
-
-**Physical reason.** The gap must separate lines whose horizontal blanking is clean from lines whose
-blanking carries noise. Taken over every sample it cannot do that: the samples are integers and a field
-carries thousands of them, so nearly every adjacent pair differs by 0 or 1, "the widest gap" is a tie
-broken arbitrarily, and on a clean unit it lands near the bottom and returns a level of about zero,
-which accepts every row. The gap is therefore taken over the **per-line maxima** — the highest blanking
-sample on each line, a few hundred values — which is the granularity at which the separation exists.
-
-**What this should improve and what it must not break.** It should leave the level where it is on clean
-units and pull it down where noise has inflated it; it must not start excluding large numbers of lines,
-since a level measured from a handful of lines is not the field's blanking.
-
-**Consequence for the registered variants.** Once the gap is taken over per-line maxima, "exclude the
-samples" and "exclude the lines they came from" are the same operation and return the same number. The
-two variants collapse into one rule and are reported as one; the entry above asked for both, and this
-records that the distinction does not exist rather than reporting a duplicate as a second result.
-
-**Tie-break, stated because it is a choice.** Where several gaps are equally wide the highest is taken:
-the separation being sought lies above the blanking bulk, and a higher level is the stricter picture
-test, so it is the conservative direction.
-
-#### Amendment 2 to entry 24 — a figure in its own falsifier was wrong
-
-The falsifier above calls 27 codes "the 99th percentile" of entry 20's level. That was taken from the
-population entry 23 happened to analyse — the edges where both bottoms were found — and the ~1,089 edges
-it excluded are almost all extreme, so removing them pulled the figure down. Over all 172,586 field
-edges the 99th percentile is **46.7**, confirmed identical between `bottom.csv` and `gaplevel.csv` on
-every edge.
-
-The arm is therefore evaluated at both values and neither is chosen to suit the answer. The split barely
-matters for the arm that decides the entry — 1.78% of clean edges change at 46.7, 1.77% at 27 — and it
-matters a great deal for how much inflation survives, which is reported both ways.
-
-### Report on entry 24 (2026-09-21) — refuted: the diagnosis holds, the cure does not
-
-**Verdict: the premise is refuted.** The cause entry 23 identified is confirmed — the level really is
-inflated by including samples that are conceivably picture, and excluding them at the gap collapses it.
-But the same operation moves the level on clean material too, so it fails the owner's own acceptance bar
-and makes the bottom worse. The diagnosis is worth keeping; this cure is not.
-
-**The inflation is real and the exclusion does remove most of it.** On the 1,726 field edges above entry
-20's 99th percentile, the level falls from a median of **134 to 34.5**. A gap was found on every one of
-the 172,586 field edges, and the exclusion is small — a median of 243 lines kept of about 244, with
-fewer than 20 kept on 475 edges (0.28%). So the mechanism is what entry 23 said it was.
-
-**But it does not stay put on clean units, and that is his bar.** On the 170,860 edges that never had
-the inflation the gap level sits **+3.2 codes from entry 20's (median), above it on 77%**, and the
-first picture line changes on **3,038 edges, 1.78%**. His words were that it "must not change anything
-across the tape … it should be extremely close". Three thousand changed placements on units that never
-had the problem is not extremely close: it is nearly half the size of entry 20's entire correction. The
-arm fires at both splits — 1.78% at 46.7 codes, 1.77% at 27.
-
-**Not understood, and recorded rather than smoothed over.** Of the changed tops, 1,625 move **earlier**
-and 1,005 later, although the level is higher on 77% of clean edges, where a higher level should move
-tops later. Moving the level down evidently changes a decision more readily than moving it up. Whether
-those 3,038 changes are right or wrong was not measured — the arm decides the entry either way, and
-asserting them as improvements without the occupancy check is exactly the move this ledger exists to
-prevent.
-
-**And it does not repair the damage it was aimed at.** Re-running entry 23's bottom measurement with
-this level:
-
-| at the bottom | changes | abandons a >90% lit line | >50% lit | steps over a lit line | lands on a lit line from a dimmer one |
-|---|---|---|---|---|---|
-| entry 20's level | 762 | 21 | 41 | 127 | 285 |
-| entry 24's gap level | 465 | **43** | **78** | 107 | **142** |
-
-It makes fewer changes and cuts more picture: twice as many fully lit lines abandoned, half as many
-corrections. The reason is the same +3.2 codes — at the bottom a higher level is the stricter test, so
-it trims harder. The arm fires.
-
-**What survives.** Entry 23's diagnosis, now confirmed: the level is inflated on noisy material by
-samples that are conceivably picture, and it is measurable and collapsible. What is refuted is taking
-the level at the gap, because that is not only an exclusion — it also relocates the level to the top of
-the blanking cluster on every unit, including the ones that were fine. A cure has to remove the
-excursions **without** moving the level where there are none, and this one does not separate those two
-effects.
-
-**Files.** `gaplevel.py`, `bottom2.py`, `gaplevel.csv`, `bottom2.csv` in scratch.
-
-## Correction (2026-09-21) — categorizing entry 20's defects, and two attributions of mine that were wrong
-
-**Asked by the owner:** "can I get some sort of categorization on what entry 20's defects are". Measured
-over all 86,293 units, classifying each rule against the rows rather than against the other rule, because
-every count before this was defined by where the two DIFFER and is blind to both being wrong the same way.
-
-**Entry 20's defects are one quantity failing in two directions, and they are small.**
-- **The level too low — 1,818 field edges, 1.05%.** The line called first picture is under 5% lit. Level
-  median 11 codes on this class against 20 on clean. The census has 7,853 (4.55%), so his reference fixed
-  most of this class; the 1,062 from entry 22 sit inside what remains, and the earlier 78 / 174 / 1,062
-  split was an artifact of differencing two rules.
-- **The level too high — 1,726 field edges** above entry 20's own 99th percentile, median 134 against 18
-  tape-wide. This is entry 23's inflation, and entry 24 confirmed its cause and refuted its cure.
-
-Together about 2% of field edges. Everything else attributed to his reference belongs elsewhere.
-
-**The large class is not his reference, and probably not a defect at all.** 43,977 edges start picture
-below a lit run. 15,417 of those have a caption or data line above the top, not picture. Of the remaining
-28,684, **28,675 are field 1** — 9 in field 2 — and attributing each to a step:
-
-| step that produced it | edges | share |
-|---|---|---|
-| the run-in +1 | 22,112 | 77.1% |
-| the plain-23 rule | 6,318 | 22.0% |
-| both | 220 | 0.8% |
-| the picture test itself | **25** | **0.1%** |
-
-The picture test — the only part entry 20 changed — produces 25 of them. And the run-in detector is not
-marginal where it fires: median 0.934 against a 0.5 bar, 0.059 where it does not fire, with 0.1% of cases
-within 0.05 of the bar. It is identifying lines that carry a 0.5035 MHz run-in, which are data lines, and
-stepping past them is what it is for. Occupancy cannot tell a data line from picture, which is why this
-class looked like a defect; the comb's 83.42% agreement on tops alone is consistent with the placements
-being right, and that reconciles the two instruments rather than leaving them in conflict.
-
-**Two attributions of mine were wrong, both recorded here rather than quietly dropped.**
-- I wrote that the run-in +1 "fires on 0 of 195 units". Over the whole tape it fires on **33,713 units,
-  39.1%**, and it is the dominant producer of the late class. The 195-unit sample did not contain its
-  firing cases, and I generalised from it.
-- I then named the plain-23 correlation term, "0.40–0.48 against its 0.5 bar", as the real cause. On the
-  cases plain-23 actually moves, that correlation has a **median of 0.169** and only **13%** reach 0.40.
-  The range I quoted described a handful of cases I had looked at, not the class.
-
-Both errors have the same shape: a figure from a small hand-picked sample stated as a property of the
-tape. The whole-tape rule exists for this and I did not apply it to my own corrections.
-
-**Files.** `categorize.py`, `profile.py`, `sep.py`, `steps.py` and their CSVs in scratch.
+### Amendment 1 to entry 20 (2026-09-21) — the margin that the reference swap deleted
+
+**Registered before it is built, as §14 requires.**
+
+**The defect, and its physical reason.** The task I wrote for the engine said: "the brightness bar
+becomes `hi > level` in place of `hi - blank > 5`." That replaced the reference and deleted the noise
+margin in the same sentence, and the deletion was not deliberate — I treated the `> 5` as belonging to
+the device constant it sat next to. It does not. The derived level is a **99th percentile of the leading
+blanking columns**; the quantity compared against it is the **body's 95th percentile**. Two statistics
+over two different populations, so a dim row's body clears a blanking-column percentile by a code or
+two without carrying any picture. Measured on the whole tape from `margins.csv`: **2,100 of 171,693
+field edges have their chosen line clearing the level by 5 codes or less**, and **1,383 of the 1,695
+blank tops — 81.6% of that error class — are inside that band.** Field 2 has 1,052 edges at a margin of
+3 or less against field 1's 525, which is the two-line field-2 error appearing in the statistic.
+
+Worked instance, counter 69566 field 2: the derived level is 12.0; line 286 has body p95 **13**, line
+287 has **15**, and the first real picture line, 288, has **93**. The rule as shipped takes 286.
+
+**What the amendment changes.** One term: the top test becomes `p95 - level > margin`. The bottom, the
+spread test, the high-contrast correlation guard, `plain23`, the run-in step and the logged level and
+column count are all untouched.
+
+**What it should improve.** The blank-top class, and field 2's placement specifically.
+
+**What it must not break, and the reason this is not free.** **717 currently-lit tops also sit inside
+that band** and a margin pushes every one of them later. A genuinely dim picture line clearing the level
+by 3 would be skipped. That is the cost to measure, not to assume, and it is why the margin is swept
+(0, 3, 5, 8) rather than chosen.
+
+**Falsifier.** Judged by the owner's own gate — "the real test is our comb agreement statistic …
+especially if we filter to only when the comb confidence is high … its a specific but not sensitive
+instrument which is the right thing for a pass/fail check":
+- Comb self-consistency does not improve at high comb confidence, or regresses in any confidence band.
+  The engine's published shift cannot be re-derived outside the engine, so the quantity measured is
+  engine-free and stricter: a rule's own two field tops imply `rel = (t1 + 263) - t2`, and the comb,
+  computed directly from the rasters, says which shift is right.
+- Or the lit tops it pushes later outnumber the blank tops it fixes.
+- Or the independent gate (line above the top full-amplitude coherent ⇒ the top is late) does not improve.
+- Or no single margin works for both fields, which would mean the level is not the common reference the
+  entry claims.
+
+**Material.** All 86,293 exact units, `scratchpad/ctr9040/combcensus.py`.
+
+## E-claude-2026-09-21-21 — does the comb rescue the horizontal-blanking rule's mistakes? — **REFUTED.** Comb agreement does not recover either error class of the derived-level rule; the owner's separate prediction about the class was confirmed. Compacted 2026-09-21.
+
+## E-claude-2026-09-21-22 — coherence with the line below as a second stage for marginal cases — **REFUTED as a rescue.** Banding the derived level and deciding the margin by whole-line correlation does not fix the classes it was aimed at. The same correlation used differently is live work (see entry 30). Compacted 2026-09-21.
+
+## E-claude-2026-09-21-23 — the same derived reference at the bottom of the field — **REFUTED.** The derived level is a top-of-picture instrument: at the bottom it is the stricter test and excludes a partly-lit last line, which the owner then ruled is picture ("31 % lit row absolutely counts as last picture line"). The bottom keeps the device constant. Compacted 2026-09-21.
+
+## E-claude-2026-09-21-24 — excluding the samples that are conceivably picture, as he specified — **diagnosis confirmed, cure REFUTED.** The derived level really does inflate on noisy material (median 134 codes on the affected edges against 18 tape-wide, maximum 247); collapsing the selection further does not cure it without changing edges outside the class, which was his acceptance bar. Shipped knowingly in entry 20. Compacted 2026-09-21.
 
 ## E-claude-2026-09-21-25 — freezing the geometry through a fade
 
@@ -2055,3 +1607,50 @@ is 28.
 - Or it finds no settle point on more than a small fraction of units.
 
 **Material.** All 86,293 exact units.
+
+## E-claude-2026-09-21-30 — one line below, per chunk: does any chunk disagree?
+
+**Question (owner, 2026-09-21).** "I think the instrument for coherence is wrong. its not do all of the
+chunks agree when averaged together. its... does any chunk disagree". On symmetry: "it can be brighter.
+thats too overfit. the whole point is does it disagree. no chunk may be substantially brighter OR darker
+than its corresponding shunk". On how many lines to read: "read one line. as I asked. 5 lines is exactly
+the kind of thing that fucks up an instrument that has moving picture. one line should always be near
+coherent on real picture". And on the structure ratio: "why drop the structure ratio? it didn't measure
+the right thing so make it measure the right thing".
+
+**Premise.** Real picture resembles the line immediately below it *at every horizontal position*, not
+only in its line average. A caption, a data line or blanking does not: it disagrees with the line below
+somewhere along the sweep, whatever its average. One line below is the whole instrument — averaging
+several brings moving picture into a test about the current line.
+
+**Why a second instrument at all, given amendment 1 to entry 20.** They reject different things and
+neither is sufficient. Amplitude rejects blanking and dim pedestal rows, which is 82% of the blank-top
+class. Captions and data lines are *bright*, clear any amplitude bar comfortably, and are the remaining
+312. This is the owner's own division: "you are trying to run one instrument when you need multiple".
+
+**Method — two forms of the same one-line idea, measured against each other.**
+- **Per-chunk agreement.** Split the line and the line below into 16 chunks of equal width, take each
+  chunk's mean, and count the chunks agreeing within a relative tolerance. A line is picture only if at
+  least 11 of 16 agree. Symmetric by construction: the test is on |a-b|, so brighter and darker fail alike.
+- **The repaired structure ratio**, `std(line) / std(the next line)`, read over one line rather than the
+  median of five it previously used. Scale-free, so it measures structure rather than level: a caption
+  over blanking explodes, blanking over picture collapses, picture over picture sits near one.
+
+**What each is expected to do, stated before the run.** On four hand-checked units (69566, 69568, 69570,
+69573) the separation is clean and identical for both: caption 1-4 of 16 chunks agreeing and a ratio of
+20-24; blanking 0 of 16 and a ratio of 0.01-0.08; the first picture line 11 of 16 and a ratio of
+1.44-1.54; deep picture 16 of 16 and a ratio near one. Four units is not a result, and both forms tie
+there, which is precisely why the whole tape has to separate them.
+
+**Falsifier.**
+- Neither form improves comb self-consistency at high comb confidence over amplitude alone, in which
+  case the second instrument is not earning its place.
+- Or either form rejects real picture: its top lands later than the amplitude-only top on frames whose
+  amplitude-only top is already correct by the independent gate.
+- Or the two forms disagree with each other on a large population without the raw rows supporting one of
+  them, which would mean neither is measuring what the entry claims.
+- Or the 11-of-16 threshold and the ratio band cannot be justified from the tape's own distributions and
+  remain fitted to the four units.
+
+**Material.** All 86,293 exact units, scored jointly with amendment 1 in `scratchpad/ctr9040/combcensus.py`.
+The four units above are the build material and are therefore not the judge.
