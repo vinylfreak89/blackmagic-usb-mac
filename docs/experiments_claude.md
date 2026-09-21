@@ -1955,3 +1955,27 @@ trigger, place the picture correctly where the engine currently does not.
 - Or raw rows on a sample of the changed frames show the new placement worse.
 
 **Material.** All 86,293 exact units, on top of the entry-20 draft `91a5b64`.
+
+#### Amendment 1 to entry 27 — two figures of mine were wrong, and the owner has dropped the override
+
+**The scope figure was measured with the wrong columns, for the third time today.** I wrote 1,595 frames
+where the comb is decided, no trigger fired, and the published shift disagrees. That came from
+`applied_d2 - applied_d1`. The published shift is `frame_d2 - frame_d1`; Codex's preflight recomputed it
+as **583** on the published baseline and **743** on entry 20. I had already corrected this column choice
+for the agreement baseline this morning and failed to carry it into the scope measurement.
+
+**The worked-case falsifier was wrong.** I required 11126–11131 to agree with the comb after the change.
+At **11126 the comb abstains** — margin 1.00049, winner +3 — so it cannot be forced to agree with a
+winner it does not have; and **11130–11131 already agree** with its winner of +1. The correction the
+entry should require is **11127–11129** and nothing else.
+
+**A conflict the entry did not anticipate, raised by Codex before writing any code.** Dropping the
+`comb_ran &&` guard makes `--audit-comb` change placements, which breaks the standing rule that the
+audit comb does not change decisions. Always computing and adopting avoids that, but then agreement with
+a decided comb is **100% by construction**, which destroys the owner's own acceptance gate as independent
+validation. The gate and the override cannot both be measured on the same quantity.
+
+**Owner's ruling (2026-09-21):** "lets leave 27b out for now. and see where the render puts us once those
+changes are in place". So the comb override is withdrawn from this build and the entry is carried by its
+first change alone — invalidating the held correction when the top moves. The override, and the
+circularity above, are open and unresolved rather than refuted.
