@@ -150,3 +150,58 @@ not by darkness. The panel is what caught it.
 **An instrument defect, disclosed.** `coherence.py` opened its output files at import, so importing it
 from the analysis script truncated the results it was about to read. Both files were regenerated and
 every figure in the report above reproduced identically; the module no longer writes anything at import.
+
+## E-claude-2026-09-21-23 — the same derived reference at the bottom of the field
+
+**Question (owner, 2026-09-21):** "Are we using the same newly derived blanking levels for the bottom
+too?"
+
+**The factual half, answered from the source before any run.** No. In the C engine, `measure_field`
+computes `picture_threshold = blank_mean + 4.0` where `blank_mean` is the mean of the rows above the
+picture (NTSC 11–20 in field 1, 274–283 in field 2), and the bottom scan compares each row's mean to
+that same threshold. The census instrument does the same with its own constant. So the bottom is judged
+against blanking measured at the **top** of the field and has never had a reference of its own, and
+nothing from entry 20 reached it — that entry was measured, judged and reported entirely on
+first-picture-line placement.
+
+**Two ways the bottom test is weaker than the top, which matter here.** The top requires three
+consecutive qualifying rows and applies the high-contrast guard; the bottom accepts a single row. The
+top uses a body percentile; the bottom uses the row mean. A reference change at the bottom therefore
+lands on a coarser test, and the two cannot be compared line for line.
+
+**The cost is nil, and that is a fact about the instrument, not an argument for the change.** Entry 20's
+level is already pooled over the leading blanking columns of **every line of the field**, bottom lines
+included, so the number the bottom would use is the one already computed. Nothing new is measured to
+make it available.
+
+**Premise.** The derived level describes the source's blanking on every line, not where picture begins,
+so it is the correct reference at the bottom as well; substituting it for the top-derived constant
+should move last-picture-line placements onto picture in the same direction and proportion it achieved
+at the top.
+
+**The direction is opposite, and that is the risk.** The derived level (median 18 codes) is well above
+the census's effective bar, so at the bottom it is the **stricter** test and will pull bottoms **up**,
+discarding dim lines. The rows just above the clip band are exactly where the tape carries dark content
+(§6 records those rows averaging about 31 codes on the programme tape against 1.4 with no input), so
+this rule can cut real dark picture off the bottom. That is what the falsifier is aimed at.
+
+**Method.** One pass, all 86,293 exact units, the same instrument as entries 20 and 22: the bottom under
+the current rule and under the derived level, per unit and field. Every change judged by the independent
+occupancy measure — the fraction of a line's samples more than 20 codes above blanking — on the line
+abandoned, the line chosen, and the lines **strictly between** them, which is how amendment 1 caught the
+top rule vaulting over picture. Censored bottoms (landing in the clip band, NTSC 260/522 and below) are
+counted and reported separately and never netted into the totals.
+
+**Falsifier.**
+- The changes are not supported: among changed bottoms, fewer than half abandon a line that is blank for
+  one that is picture, by occupancy. The top achieved this on the large majority and the bottom is being
+  claimed to behave the same way.
+- Or it cuts picture off: more than a small minority of changes abandon a line whose occupancy is above
+  half, or step over such a line, measured the same way as amendment 1 and reported by direction.
+- Or the correction is concentrated in the clip band, where the bottom is known-unmeasurable — a change
+  there is not evidence the reference works.
+- Or the change rate is far from the top's 6.84% with no account of why.
+- A refuted premise here is a complete result: it would mean the reference is a top-of-picture
+  instrument, not a property of the field, which is itself worth knowing.
+
+**Material.** All 86,293 exact units of `captures/fulltape.cap6`.
