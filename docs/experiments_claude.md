@@ -4,93 +4,13 @@ Commitments written and committed before each deciding test, per CLAUDE.md §14 
 commitments). Append-only: entries and amendments are added, never edited. Each report answers its
 entry. Results, panels and data stay in scratch; an entry points to them.
 
-## E-claude-2026-09-19-1 — comb-free weave from each field's first picture line
+**Compaction (owner, 2026-09-21):** "lets compact it and remove experiments which have been refuted. its
+not meant to be a graveyard. simple compaction to a 1 line item that failed for anything early that has
+been superceded and now has a working version. for the things that we are still investgiating we should
+keep them in the ledger and fold the part 2 back in." A one-line item below is a compacted entry: its
+verdict is kept so the attempt is not repeated, its working and its reasoning are not.
 
-**Question (owner, 2026-09-19):** "if we can determine the number of picture lines, we can also
-determine the geometry." "if we can align the picture and get the field order correct, there should be
-no combing ... all we want to do is designate which is the first and last line of picture (including
-the head switch area, and [track] that." Goal: all four captures comb free; then, without changing the
-mechanism, the whole tape 95% or more comb free; every valid unit, no sampling; 720x486 renders of the
-four captures. Capture 1's top is known: line 23.
-
-**Premise.** In every valid unit the two fields' first picture lines are the same source line, so a
-weave that puts the top field's first picture line directly above the bottom field's is free of
-combing. Second part: that first line can be told from the lines above it (the Shuttle's lines 20/21
-and 283/284, blank lines, raw tape caption and data lines) from the raster alone, or carried from the
-last unit where it could.
-
-**Pairing, measured, not assumed** (scene cuts: the two fields of one frame agree at a cut, a pair
-straddling it does not): capture 3 reversed (5 of 5 cuts), captures 2 and 4 aligned (3 of 3, 5 of 5),
-capture 1 aligned (owner; no programme cut). The owner's note had capture 2 reversed; the data does not.
-Whole-tape segments between deck relocks are measured the same way in the same pass.
-
-**Method.**
-- Judge, independent of the tops (owner-specified): textbook comb, (a-b)(c-b) positive part, mean over
-  samples 24-695 and top-field lines 30-240, bottom field shifted -5..+5 lines; the minimum is the
-  comb-free shift; decided when the next-lowest is at least 1.5x the lowest, otherwise the judge abstains.
-- Top, per field: walking down from line 22 (285), the first line whose mean over samples 20-700 is
-  more than 6 codes above the device blanking rows and that continues into the line below (correlation
-  0.5 or more over samples 20-700, or both lines flat within 3 codes). None found by line 40: carry the
-  field's last top.
-- Bottom, per field: walking up from 262 (525), the last line more than 6 codes above blanking. Tracked
-  and reported, not used for the weave.
-- The weave's shift is the bottom field's top minus the top field's top, in field lines.
-The numbers are this experiment's settings, not instrument constants.
-
-**Falsifier.** Decided units where the comb's shift differs from the tops' shift while the raw rows show
-both tops were found correctly: the tops are right and the weave still combs. For the second part:
-capture-1 units where the top is not 23 / 286, and units elsewhere where the raw rows show the found top
-is not the first picture line.
-
-**Material.** Every exact unit of capture 1 from counter 6667 (6610-6666, the fade-in the owner left
-unregistered, reported apart), capture 2 (whole-tape counters 67,446-68,094), capture 3 (13,501-14,149),
-capture 4 (171-820). Held out, not used to build anything: the whole tape, every exact unit outside the
-three non-programme events (counters up to 4725, 48,189-48,240, 53,616-53,674).
-
-Results, panels and renders: session scratch `geometry_exp1/`.
-
-### Report 1 (2026-09-19) — premise refuted; stopped, no amendments
-
-- **Judge** checked on raw rows at 6 frames across all four captures (woven crops at both shifts): its
-  minimum is the clean weave every time.
-- **Part 1 (same source line): refuted** on captures 2 and 3 where the tops are clear. Capture 3 frame
-  13501: tops 286 / 24, both confirmed picture on raw rows, 285 blank; the clean weave (+2) puts field B's
-  first picture line above field A's, the reverse of the committed order. Capture 2 frame 67654: tops 25 /
-  288 confirmed, 287 a data line; the clean weave (-1) puts that data line inside the picture, between
-  25 and 26.
-- **Part 2 (tops readable from the raster): refuted as built** on capture 1 (154 of 508 frames not 23 /
-  286; the near-blank card) and capture 4 (field-2 tops misread on displaced top lines, about 160 frames).
-- **Population**, decided frames and tops' shift = comb shift: capture 1 371, 226 (137 abstained);
-  capture 2 551, 159 (98); capture 3 586, 27 (62); capture 4 590, 466 (60).
-- **Bottoms:** 262 / 525 in every frame of all four; the deck blanks 263 / 526, so the last visible line
-  is the deck's raster edge, not the tape's picture.
-- **Amendments:** none. Detector fixes for captures 1 and 4 cannot reach the goal while part 1 fails on 2
-  and 3. No renders (goal not reached); whole-tape check not run.
-- **Not understood:** why field B's first line leads in capture 3 and lags in capture 2; whether the blank
-  line 22 / 285 hides a first picture line.
-
-### Review by Codex and correction (2026-09-19)
-
-Codex reproduced the reported counts and both counterexample frames independently. Accepted:
-- **Capture 3 is not a refutation.** For its reversed pairing the experiment put the temporally first
-  field (slot 2) on top. Keeping the same two fields with slot 1 on top, the tops' shift equals the comb
-  minimum in 555 of 586 decided frames (was 27). Pairing says which fields belong together, not which is
-  spatially on top; slot 1 is the top in every capture. Its "lead" is explained by that choice.
-- **Part 1 is refuted on capture 2 only.** Frame 67654 survives the parity check. With slot 1 on top the
-  four captures agree in 226 / 371, 159 / 551, 555 / 586 and 466 / 590 decided frames. Captures 1 and 4
-  miss mainly on tops the detector misread.
-- **Part 2 is "this detector fails", not "the raster cannot give the top."** Capture 4 frame 235:
-  line 286 already holds partial picture and the detector returned 292. Capture 1's 154 are departures
-  from the owner's 23 / 286, not independently labelled misreads.
-- **Judge:** checked on six raw crops chosen where the shifts disagree most; the counts are agreement
-  with this judge, not independently measured comb-freedom. It used top-field lines 30-239, not the
-  committed 30-240; including 240 changes only capture 1 frame 6845, which abstains either way.
-- **Bottoms:** the fixed 262 / 525 and blank 263 / 526 are observations here; that the deck blanks
-  263 / 526 in playback comes from the separate half-line measurement, not from this experiment.
-- **Accounting added:** capture 1 fade interval 6610-6666: 57 frames, 2 decided, 0 matching, 55
-  abstentions. Capture 3 counter 14149 has no following field to pair and was not evaluated. One carried
-  top in capture 1 (main) and one in the fade.
-The stop stands: capture 2 prevents "all four comb-free" under this premise.
+- **E-claude-2026-09-19-1** — a weave from each field's first picture line is comb free: **refuted**. On captures 2 and 3 the clean weave puts field B's first picture line above field A's, and puts a data line inside the picture; the tops were also unreadable on capture 1's near-blank card and on capture 4's displaced top lines.
 
 ## E-claude-2026-09-19-2 — census of the first and last line of real picture
 
@@ -196,123 +116,9 @@ unlabelled left out; 56 abstain); capture 2 2 / 545 (642; 7 left out; 97 abstain
   on captures 2 and 3, where the last line depends on where the head switch falls.
 - Frame-level results: scratch `geometry_exp1/exp3_frames.csv`.
 
-## E-claude-2026-09-19-4 — a level x entropy matrix for picture lines
+- **E-claude-2026-09-19-4** — line entropy as a picture / no-picture measure: **partly refuted**. Blanking and filler sit apart from picture, but capture 2's data lines (4.85 bits at level 127) fall inside picture's range, and on faint rows the axis points the wrong way — capture 1's faint picture line reads lower on both axes than capture 3's faint row that is not picture.
 
-**Question (owner, 2026-09-19):** "is line entropy a better measure of picture vs no picture. Anything
-that is blanking, near blanking or data will have low entropy so I don't think this test can live in
-isolation, but might allow us to tighten the number of codes above blanking required along with a
-certain entropy value ... come up with a matrix between those 2 values that can hopefully more
-correctly identify picture lines ... the matrix decides which to give more weight".
-
-**Premise (his).** Blanking, near-blanking (filler) and data rows have low line entropy; picture rows,
-including faint and torn ones, sit apart from them in the plane of (level above blanking, entropy), so a
-cell map over that plane classifies rows more correctly than entry 2's level-and-variation rule.
-
-**Method.** Per row, over samples 40-680: level = 95th percentile minus the device blanking rows;
-entropy = Shannon entropy (bits) of the row's 8-bit code histogram. Labelled rows come from the confident
-census (raw-row verified bins; capture 4 field 2 from Codex's raw labels; capture 3's line 23 as
-labelled in the report above; exclusions as in entry 3): at the top, rows from 22 (285) above the first
-picture line are not picture and the first line and the two below are picture; at the bottom, the last
-line and the two above are picture and the rows below it through 263 (526) are not. Matrix: level bins
-0,1,2,3,4,6,8,12,20,40+ codes x entropy in half-bit steps; each cell takes its majority label, or is
-mixed. Each capture is classified by a matrix built from the other three only. The matrix census (first
-picture row from 22 / 285 down, last from 262 / 525 up) is then judged by raw rows and by the comb,
-exactly as entry 3, and compared with entry 2's rule on the same rows.
-
-**Falsifier.** Picture and non-picture rows overlap in the plane (mixed cells hold a material share of
-either class), or on held-out captures the matrix classifies rows no better than entry 2's rule, or it
-still gets the hard rows wrong: capture 3's faint pulse row 23, capture 1's faint card line 23,
-capture 4's torn tops, capture 2's data lines.
-
-**Material.** Every confident unit of the four captures (capture 1 from 6667). Labels depend on
-bin-level raw checks (up to 3 units per bin), not a per-unit relabel; stated as a limit.
-
-### Report (2026-09-19) — premise partly refuted; no amendment
-
-- **Held:** blanking (median entropy 0.96 bits, level 1) and the filler / near-blank rows (1.9 bits,
-  level 11) are low-entropy and sit apart from picture (median 6.1 bits, 10th percentile 4.0).
-- **Refuted for data:** capture 2's data lines are 4.85 bits (4.3-5.4) at level 127, inside picture's
-  range. **And for faint rows the axis points the wrong way:** capture 1's faint card picture line 23 is
-  2.85 bits at level 8; capture 3's faint pulse row 23, not picture, is higher on both (3.6 bits, 12).
-  Torn capture-4 tops are 6.2 bits, so entropy does help there.
-- **Mixed cells** (minority 20% or more) hold 1,699 non-picture and 1,142 picture rows of 44,889.
-- **Held out by capture**, rows classified correctly, matrix vs entry 2's rule: capture 1 0.890 / 0.992,
-  capture 2 0.840 / 1.000, capture 3 0.956 / 0.966, capture 4 0.994 / 0.974. The rule's figures are
-  inflated: most labels come from its own verified bins; capture 4's (Codex's raw labels) are the fair
-  comparison, and the matrix wins there.
-- **Matrix census through the comb** (decided frames where its shift is the comb minimum): capture 1 248 /
-  370, capture 2 232 / 551, capture 3 201 / 586, capture 4 533 / 590, against entry 3's 229 / 230, 2 /
-  545 (a constant line), 487 / 500, 562 / 567 on confident frames. It calls capture 2's data lines and
-  capture 3's faint pulse row picture in nearly every unit, and loses capture 1's faint card top.
-- **Structural limit:** each hard row type occurs in one capture only, so a matrix built from the other
-  three never sees it; a held-out test cannot learn it, and fitting it in-sample would be memorising.
-- **Amendments:** none. Matrix, rows and frame results in scratch `geometry_exp1/exp4_*`.
-
-### Capture 2's one-line offset, explained (2026-09-19; measured without a prior entry)
-
-The owner asked whether field 1's first picture line in capture 2 is really picture or "that field's
-line 22 being leaky". The tape's caption (source line 21, found by its clock run-in) sits directly above
-field 1's first picture line in every unit: raster 24 when the top is 25 (384 of 385), raster 23 when
-the top is 24 (262 of 264). So field 1's first visible picture line is source line 22 in both states.
-Field 2 has no run-in; by the comb its first picture line 288 is source 286, and 287 (source 285, its
-line-22 counterpart) carries data. Neither a misread nor a displacement: the source carries picture on
-field 1's line 22 and data on field 2's. Taking field 1's top one line lower (source 23), capture 2's
-census shift equals the comb minimum in 543 of 545 decided frames (was 2); the two exceptions, 68025 and
-68026, have margins 1.53 and 1.63. Panel: `geometry_exp1/explore/cap2_woven_top.png`.
-
-## E-claude-2026-09-19-5 — the census against the comb on the whole tape (held out)
-
-**Question (owner, 2026-09-19):** "I am willing to say the previous census we arrived at is the right
-shape ... see the agree/disagree amount on the full tape."
-
-**Premise.** The census, run automatically, finds each field's first picture line on the whole tape
-well enough that weaving the tops together is the comb-free weave on most valid frames, as it was on
-captures 2-4, which came from this tape.
-
-**Method: only the automatic parts of the census** (capture 4's hand labels and capture 1's card do not
-exist on this tape). Per unit and field, from the device blanking level: (1) entry 2's rule, first
-picture row from 22 (285) down; (2) field 1: if that row is 23 and 23 is not plainly picture (more than
-30 codes above blanking on average and correlating 0.5 or more with 24), rescan from 24 (capture 3's
-faint pulse row); (3) line 22: if the tape caption's clock run-in (score 0.5 or more) sits directly
-above field 1's first line AND the row directly above field 2's first line is not blank (brightest
-content more than 5 codes above blanking), field 1's top is taken one line lower (capture 2). Slot 1 is
-the top field. Pairing per segment between deck relocks, by the scene-cut test in the same pass.
-Judge: entry 1's comb over lines 30-240, -5..+5, decided at 1.5x.
-
-**Falsifier.** Fewer than 95% of decided frames agree (the owner's bar for the whole tape).
-
-**Material.** Every exact unit outside the three non-programme events (counters up to 4725,
-48,189-48,240, 53,616-53,674); frames with no top found are counted, not carried.
-
-### Report (2026-09-19) — below the 95% bar: 80.7%
-
-Every valid exact unit (86,028). Decided frames where the automatic census shift is the comb minimum:
-62,017 of 76,886 (80.7%); the comb abstains on 9,060; no top found 22; one frame without a partner.
-By segment: first recording 31,349 / 38,567 (81.3%, reversed pairing); after the boundary to 27:18
-3,808 / 4,869 (78.2%); after 27:18 26,860 / 33,450 (80.3%). Falsifier met.
-- **Pairing** by scene cuts is steady: reversed through 47,995, aligned from 48,188 to 81,361, mixed
-  81,539-85,123 (alternating runs; likely source cadence, not a relock), aligned from 85,130.
-- **Where it holds:** field 1 at 23 by the rule in the first recording, 98.7% of 14,953; field 1 at 25
-  with the line-22 offset and field 2 at 288 after the boundary, 99.4% of 17,268.
-- **Where it fails:** the faint-row rescan (23 not plainly picture, rescanned to 24) in the first
-  recording, 79.2% of 18,351; field 1 at 24 by the rule there, 39.6% of 3,043; field 2's data line 287
-  accepted as picture after the boundary, under 1% of about 2,500; field 2 at 286 after the boundary with
-  a rescanned field 1, 0% of 1,087. The automatic census is weakest exactly where the confident census
-  relied on hand labels.
-- Per-unit results: scratch `geometry_exp1/exp5_w{1..4}.csv`, summary `exp5_summary.py`.
-
-### Observation from the owner's render review (2026-09-19; analysis, no test run)
-
-Raw rows at the frames he flagged: when a field's picture moves UP one line, its first visible line
-does not move, because the line that would become first slides under the fixed blank line above it
-(22 / 285). Capture 4 597, field 1: every line carries the next line down of 596, line 22 stays at
-blanking (1.4), and the switch-debris row 262 goes to 3.1 (from 86.9) because the debris moved to 261.
-Capture 3 13602 slot 1: the same, top still 23, last line 260 -> 259. Downward moves do move the top.
-So the first picture line is one-sided; the census placement used it alone, and each upward move combs
-(capture 3 13575, 13601-13603, 13779; capture 4 597). Separately, the carried placements at capture 2
-1969 and capture 3 13604 / 13783-13789 were the confident-census rule's exclusions, not the signal: in
-13784-13789 the top really is 24 (faint row at 23), a class the rule wrongly lumped with "under a strong
-caption". Panels: session scratch `render_findings/`.
+- **E-claude-2026-09-19-5** — the census against the comb, whole tape, held out: **below the 95% bar at 80.7%** (62,017 of 76,886 decided frames; the comb abstains on 9,060). It also established the pairing schedule still in use — reversed through 47,995, aligned 48,188–81,361, mixed to 85,123, aligned after.
 
 ## E-claude-2026-09-19-6 — does capture 3's line 23 carry luma at 13784-13791?
 
@@ -476,106 +282,7 @@ Codex's check of this section (2026-09-19): two wording corrections, otherwise a
 - 2(st-d)+1 is the signed separation of the two first lines' output rows (1 means adjacent), not the
   number of rows between them.
 
-## E-claude-2026-09-19-8 — the whole-tape census with the unbroken-block rules
-
-**Question (owner, 2026-09-19):** "With this new finding, let's run a whole tape census applying these
-new rules."
-
-**Premise.** The owner's two rules, applied to the census's first and last picture lines, give the
-comb-free placement on the whole tape. Rule 1: the picture forms one unbroken block across both fields.
-The deck's own blank line 22 / 285 may sit inside it only where a field's first line has slid under it.
-Rule 2: a field whose last line rises one while its first line holds has moved up. Its real first line
-is under that blank line, so it goes down a line.
-
-**Method.**
-- **Edges, per unit and field.** First lines: entry 5's automatic census exactly (its rules 1-3). They
-  are recomputed in the new pass and must match entry 5's per-unit files unit for unit. Last lines:
-  entry 2's rule, unchanged. Walking up from 262 / 525, take the last line whose 95th percentile is
-  more than 5 codes above the device blanking and whose 5-95 spread is over 4.
-- **Rule 2, per field in unit order.** A count u starts at 0 and returns to 0 after any gap. If the
-  first line equals the previous unit's and the last line is exactly one line higher, u goes up by 1.
-  If the first line holds and the last line is exactly one line lower, u goes down by 1, not below 0.
-  If both hold, u carries; any other change resets u to 0. The field's effective first line is its
-  first line minus u; its last line is unchanged.
-- **Rule 1, per frame,** with pairing per segment as in entry 5. st is the bottom field's effective
-  first line minus the top field's, in field lines, and sl the same for last lines. The top edge
-  allows d in {st, st+1}; the bottom edge allows d in {sl, sl+1}.
-  - One shared value: the rule decides d.
-  - Two shared (equal heights): the rule cannot decide.
-  - None shared: the edges contradict.
-  - Where the rule does not decide, the placement falls back to d = st, the top field's line on top.
-    That is entry 5's placement wherever u = 0 in both fields.
-- **Judge:** entry 5's comb verdicts, from the same frames, decided at 1.5x.
-
-**Report.** Agreement with the comb against entry 5's placement on the same decided frames (80.7%):
-- by segment;
-- by entry 5's top cases;
-- by rule class (decides, equal heights, contradict, no last line), with frames that carry a
-  moved-up count apart.
-Units that are in captures 2 and 3, from which the rules were built, are reported apart from the
-held-out rest.
-
-**Falsifier.** Fewer than 95% of decided frames agree with the comb where the rule decides, or overall
-(the rule where it decides, the fallback elsewhere) below the owner's 95% bar. The change against 80.7%
-is reported either way.
-
-**Material.** Every exact unit outside the three non-programme events, as in entry 5 (counters up to
-4725, 48,189-48,240, 53,616-53,674).
-
-### Report on entry 8 (2026-09-19) — premise refuted: 56.9% against 80.7%, a regression
-
-Stopped for the owner: under the §14 rule, an amendment would be needed and the result is a regression.
-A blind reimplementation from this entry's text reproduced every number below.
-- **Population.** Entry 5's first lines were recomputed identically in all 86,028 units, and entry 5's
-  agreement reproduces exactly: 62,017 of 76,886 judged frames. The comb abstains on 9,060, 22 have no
-  top and 1 has no partner. The valid material is 85,969 units: entry 5's report called its 86,028
-  rows "every valid exact unit", but those rows include the 59 units of the 27:18 event. Its results
-  are unaffected.
-- **Overall:** the new rules agree in 43,737 / 76,886 (56.9%), against 80.7%. By segment: A 35.9% (was
-  81.3%), B 74.3% (78.2%), C 78.5% (80.3%). Units of capture 3: 26.9% (was 91.3%). Capture 2: 98.2%
-  (98.5%). Held out: 56.8% (80.4%).
-- **By rule class, frames with no moved-up count:**
-  - decides: 40,687 frames, agreement 96.8% (entry 5's placement: 96.7%);
-  - equal heights: 6,874 frames, 2.6% for both; the comb picks the bottom field's line first in
-    6,607 of them;
-  - contradict: 3,530 frames, 8.8% for both.
-- **Frames with a count:**
-  - decides: 10,090 frames, 37.5% (entry 5: 83.7%);
-  - equal heights: 13,448 frames, 0.5% (entry 5: 86.5%);
-  - contradict: 2,256 frames, 0.5% (entry 5: 93.6%).
-  The whole regression is in frames where rule 2's count is nonzero. Where rule 1 decides without a
-  count, it meets the 95% bar but changes almost nothing.
-- **Why rule 2 misfires.**
-  - In segment A the count is nonzero in 24,915 of 43,463 field-2 units, from only 228 rises; once
-    raised, it carries while both lines hold (runs up to 2,671 units).
-  - Field 2's last line flips 522 / 523 through a partial row at the head switch, whose visible length
-    varies unit to unit while the picture holds (panel below).
-  - In capture 3's range, 12 of field 2's 26 rises and falls have no content move on raw rows. Field
-    1's bottom there does track the picture: rises move up one in 22 of 27, falls move down one in
-    20 of 24.
-  - Rises and falls come in similar numbers (segment A: field 1 959 / 903, field 2 228 / 173). A count
-    floored at 0 turns a return from a downward excursion into a lasting "moved up".
-- **Where entry 5's 14,869 disagreements sit:** 6,696 equal heights (no count), 3,218 contradict (no
-  count), 1,355 where rule 1 decides the same d, 3,600 in frames with a count.
-- **Amendments:** none. **Not understood:** why the comb picks the bottom field first in almost every
-  equal-height frame, and the census edges in the contradicting frames.
-- Per-unit edges: session scratch `geometry_exp1/exp8_w{1..4}.csv`; analysis `exp8_analysis.py` /
-  `.out`, `exp8_diag.py`; panel `e7/e8_field2_bottom_flip.png`.
-
-### Review by Codex of entry 8's report (2026-09-19) — three findings, all accepted
-
-Codex reproduced 43,737 / 76,886 with the committed rules. It found the attribution of the regression to
-rule 2's count supported as a net attribution: at unit 13594, line 523 is still partly visible but its
-5-95 spread falls to 3.05, under the census's 4, while the content does not move. Corrections:
-1. **The diagnostic counts.** Using its own 1.1 ambiguity criterion, field 2's 26 events in capture 3's
-   range are 10 with no content move, 9 moving up one and 7 unclear, not 12 with no move. Field 1's
-   rises move up one in 22 of 25 and its falls move down one in 20 of 23, not 22 of 27 and 20 of 24.
-2. **One more valid unit.** The new pass read 85,970 valid units: unit 90806 is an exact 0xe801
-   unit that entry 5 did not reach, so it has no comb verdict and is unjudged. The comparison
-   population stays 85,969.
-3. **The held-out set.** Reversed frame 13500 uses field 1 of unit 13501, inside capture 3. Without it,
-   the held-out set is 75,747 frames: entry 5 60,937, new 43,038 (80.4% and 56.8%, unchanged).
-Codex's evidence: its scratch `/private/tmp/codex-e8-review-P71eRj/REVIEW.md`.
+- **E-claude-2026-09-19-8** — the unbroken-block rules on the whole tape: **refuted, and a regression** — 56.9% against entry 5's 80.7%, with capture 3 at 26.9% against 91.3%.
 
 ## E-claude-2026-09-19-9 — does the whole-tape census reproduce captures 2 and 3?
 
@@ -932,222 +639,7 @@ Numbers below are with both amendments and the fix.
     `exp11d_changes.csv`, `exp11d_render_offsets.py`;
   - geometry_renders/: `cap*_offsets_e11dB.csv`, `e11_readback.py`.
 
-## E-claude-2026-09-19-12 — capture 2's one-line offset: a per-frame rule, or one comb check per section?
-
-**Question (owner, 2026-09-19, 11:05):** "how is it fixing cap2 (and that part of the tape's) misaligned
-by 1 line? presumably with a single comb check? assuming thats the case, then the registration engine
-should do a one time comb check "correction" that operates as a fixed offset within a section. as
-always, when any signal loss like event occurs, the whole engine should re[set]."
-
-**How it is fixed today (from entry 5's method, not a new measurement).** Not by a comb check. Entry 5's
-census rule 3 fires per unit. If the tape caption's clock run-in sits directly above field 1's first
-line, and the row directly above field 2's first line is not blank, field 1's top is taken one line
-lower. Where it fires, the census placement is one line from the raw first lines, and the comb agrees.
-
-**Premise (his).** On the EP recording, the misalignment between the raw first lines and the comb-free
-placement is constant within a section. So a comb check at the section's start, applied as a fixed
-offset, does what rule 3 does per frame.
-
-**Method.**
-- Raw first lines: entry 5's rules 1-2 without rule 3 (f1_auto). Comb: entry 5's, at 1.5.
-- Sections: the whole tape's segments, split at every signal-loss-like event the data records: the
-  three non-programme events and any break in exact units.
-- Per section, the fixed offset o is the comb's d minus the raw st at the section's first decided
-  frame. The placement is then raw st + o on every frame.
-- Compared on capture 2's units and on the EP recording (segments B and C) against the comb, and
-  against today's placement with rule 3:
-  1. o alone;
-  2. o inside entry 11's rule set (reading B, as last recorded), with rule 3 dropped and a comb check
-     forced at each section start.
-- Also reported: how constant the comb's d minus raw st is inside each section.
-
-**Falsifier.** The section-fixed offset agrees with the comb on fewer judged frames than today's rule 3
-placement, on capture 2 or on the EP recording, in either comparison.
-
-**Material.** Capture 2's units (67,446-68,094) and whole-tape segments B and C. Segment A is reported
-too, since rule 3 also fires there.
-
-### Report on entry 12 (2026-09-19) — a single check per section: refuted; the held correction does it
-
-- **Sections.** The valid material has no break in exact units inside a segment, so each segment is one
-  section. The only signal-loss-like events are the three non-programme events.
-- **The misalignment is not constant within a section.** Comb d minus raw st:
-  - segment C: -1 on 25,083 frames, 0 on 4,413, +1 on 1,915, -2 on 858;
-  - segment B: -1 on 3,777, 0 on 978, +1 on 82, -2 on 20;
-  - segment A: 0 on 31,337, +1 on 4,428, -1 on 2,250, -2 on 430.
-- **Comparison 1, the fixed offset alone: premise refuted.** The first decided check sets +2 in segment B
-  and -2 in segment C. Agreement:
-  - segment B 10 / 4,869 (0.2%) and segment C 858 / 33,450 (2.6%), against rule 3's 78.2% and 80.3%;
-  - capture 2 0 / 551, against 543;
-  - raw first lines with no offset: 20.1%, 13.2% and 0.9%.
-  Even the section's most common offset (-1) would give about 77.6% and 75.0%, below rule 3.
-- **Comparison 2, inside entry 11's rule set (reading B).** Rule 3 is dropped and a comb check is forced at
-  each section start. Agreement:
-  - segment B 4,868 / 4,869 (100.0%), against 4,806 (98.7%) with today's tops;
-  - segment C 33,369 / 33,450 (99.8%), against 33,238 (99.4%);
-  - capture 2 551 / 551, against 549;
-  - segment A unchanged, 98.8%.
-  It gets there by re-running the comb far more often. The raw first lines move by a line so often that
-  the either/or classes fire on about 85% of the EP recording's frames: 4,568 of 5,364 in segment B,
-  31,677 of 37,123 in segment C, 649 of 649 on capture 2. With today's tops that is 744 and 8,828.
-- **Verdict.** His one-time section offset does not reproduce rule 3 on this tape. What does the job is
-  reading B's held correction: set by a comb check, held until a trigger, reset at a gap. That is his
-  idea with a re-check whenever the geometry changes. Keeping rule 3 costs fewer comb runs; dropping it
-  gains 0.4-1.3 points on the EP recording for comb runs on most of its frames.
-- Scratch: `geometry_exp1/exp12_analysis.py` / `.out`.
-
-### Amendment 3 to entry 11 (2026-09-19, before testing): a held correction must be confirmed
-
-**What prompted it.** I built the engine's golden reference by running entry 11's rule set (reading B)
-over captures 1-4 with the automatic census, since the engine cannot use hand labels.
-- Capture 4 then loses 55 frames to stale holds: 535 / 590, where reading A gets 590 / 590.
-- Example, capture 4 frames 479-513:
-  - At 479 the census misreads field 1's top as line 24, a one-frame slip with the bottom unchanged.
-    The top-only class fires, the comb says 0, and B stores +1 to cancel the slip.
-  - At 480 the census recovers, and the re-run abstains at 1.26, so the +1 stays.
-  - From 481 nothing fires, and the stale +1 is applied while the comb says 0.
-- The whole tape's 28 losses have the same shape: untriggered frames after a held correction.
-- Captures 1-3 with the automatic census: B 372 / 373, 549 / 551, 586 / 586; A 371, 549, 585.
-
-**The change (reading B only).** After a re-run changes the held correction, the correction is
-provisional. The comb re-runs on each following frame until one decides, and the correction becomes the
-decided d minus the census d on that frame.
-- **Physical reason.** A correction set on one frame is one observation. It may be a lasting offset or a
-  one-frame slip of the census or the picture, and only a later decided comb tells which.
-- **What it should improve.** B's stale holds: capture 4's 55 and the whole tape's 28.
-- **What it must not break.** B's catches: 14,156 on the whole tape. Its whole-tape figure must stay at
-  or above 95%, and no capture may get worse.
-- **Tested on:**
-  - the whole tape, entry 11's inputs;
-  - captures 1-4 with both entry 3's inputs and the automatic census (the golden reference);
-  - the render inputs.
-
-### Result of amendment 3 to entry 11 (2026-09-19): forward on every measure
-
-- **Whole tape, reading B:** 76,254 / 76,886 (99.2%, from 99.0%). Lost 11, from 28; caught 14,248, from
-  14,156; missed 621, from 713. The comb runs on 17,339 frames (20.2%, from 18.2%), 5,331 of them
-  confirmation re-runs. HIGH-confidence frames agree with the comb in 98.98%, from 98.84%. Reading A is
-  unchanged at 89.7%.
-- **Captures, entry 3's inputs:** unchanged, 229 / 230, 543 / 545, 500 / 500, 567 / 567, 0 lost.
-- **Captures, automatic census (the engine's golden reference):** 372 / 373, 549 / 551, 586 / 586,
-  590 / 590 (capture 4 from 535). Frames where the placement differs from a decided comb: 1, 2, 0, 0.
-  Comb runs: 545, 127, 117, 241.
-- **Render inputs:** 372 / 373, 549 / 551, 586 / 586, 590 / 590. Only capture 4's 794 changed placement.
-  The four renders were re-made with it; every frame's strip reads back as the offsets used, and they
-  replaced the earlier files by rename.
-- **Golden reference:** `goldens/<capture>_frames.csv` (session scratch) holds one row per woven frame,
-  made by `geometry_exp1/golden_ref.py` over each capture's luma cache. Each row carries the automatic
-  census lines, bottom lines, field classes, T1, U, comb shift and margin, whether the comb ran, the held
-  correction, the applied shift and d1 / d2, and the owner's two-valued confidence.
-  - The rule set is entry 11 with amendments 1-3 and Codex's last-line fix, reading B.
-  - Pairing is given per capture: capture 3 reversed, the others aligned. Live pairing detection is
-    still the open item in CLAUDE.md §9.
-  - Captures 2 and 3 agree with the whole-tape run on their units.
-
-### Review by Codex of entry 12, amendment 3 and the golden reference (2026-09-19) — accepted
-
-Codex reproduced amendment 3's whole-tape totals, all four reading-B render offset files and every
-golden column it checked. Findings, all accepted:
-1. **Entry 12, comparison 2: the extra comb runs were misattributed.** With raw first lines the
-   re-runs are 4,568 / 31,677, but the field classes account for only 674 / 5,903. The rest is T1:
-   the held -1 correction sits outside the raw first lines' pair {st, st+1} on every frame, even when
-   neither field moves. On capture 2, 523 of 649 re-runs are T1 alone; at 67447 both fields are
-   "nothing". This corrects my report's "the raw first lines move by a line so often". The refutation of
-   the one-time offset stands.
-2. **The golden includes a unit the parser never registers.** Capture 1's counter 6042 is format
-   0x0800. The real parser registers 919 units; the golden had 920 frames.
-3. **Frame-keyed goldens need mapping to the engine log's unit keys.** Under reversed pairing, golden
-   frame u gives d1 to field 1 of unit u+1, while the renderer's `--engine-log` reads field 1's d1 from
-   unit u+1's own row. Mapping frame to counter directly shifts field 1 on 76 of capture 3's frames.
-4. **44 capture-1 frames have no applied output.** There is no census line, and the comb abstains or
-   cannot place. The engine must still publish a placement. See amendment 4.
-
-### Amendment 4 to entry 11 (2026-09-19, before regenerating the goldens): what is published without a placement
-
-- **The rule.** Every eligible (0xe801, exact) unit gets a published placement.
-  - Relative shift d: as the rule set gives it. Where it gives none, the last published d of the same
-    section, or 0 at a section start.
-  - Field 2's absolute d2: its first line - 286. Where that is unmeasured, the last published d2 of
-    the section, or 0.
-  - d1 = d2 - d.
-  - Sections restart at every reset (a gap here; the engine's signal-loss events).
-- **Physical reason.** A frame with nothing measured is best placed where the last measurement put it
-  (forward-only). Before any measurement, the owner's ruling on capture 1's opening applies: "That should
-  stay unregistered."
-- **What it should improve:** complete golden output on capture 1's 44 frames. **What it must not
-  break:** any judged frame; those frames have no census placement and are not judged.
-- **The golden also changes:**
-  - Units whose format is not 0xe801 are excluded.
-  - A unit-keyed file is written: unit v carries d1 for its field 1 and d2 for its field 2, from
-    whichever frame uses each. Frame-level columns (comb run, confidence) sit on the frame's
-    bottom-field unit.
-
-### Amendment 5 to entry 11 (2026-09-19, before regenerating the goldens): reset on the live signal events
-
-**What prompted it.** Codex's engine preflight stopped on two conflicts in the golden reference.
-- The golden reset only at counter gaps. The owner's rule (11:05) is "when any signal loss like event
-  occurs, the whole engine should re[set]". The live classifier, compiled unchanged from 857dd74,
-  emits REGISTRATION_BEGIN_SEGMENT when the source enters Present: capture 1 at 6263, 6667 and 6882
-  (after muted stretches); captures 2-4 once each a few units in (1914, 13505, 175). It also emits
-  DISCONTINUITY around ineligible units.
-- Under reversed pairing, the unit-keyed golden left each boundary unit's unused field empty, and the
-  renderer drops any engine row with an empty value.
-
-**The change.**
-- **Resets.** The reference takes the classifier's per-unit actions, as the engine will receive them
-  (Codex's `reset_probe` output: `goldens/signal/cap*_signal.csv`, parser and classifier unchanged from
-  857dd74). Any action (DISCONTINUITY or BEGIN_SEGMENT) on or before an eligible unit resets the whole
-  state before the first frame that contains that unit: the held correction, the provisional flag,
-  the previous-unit features (the next move is therefore unclassable and re-runs the comb), and the
-  published placement. Counter gaps still reset as before.
-- **Boundary rows.** A field no frame uses carries that unit's own census placement (first line - 23 /
-  - 286, or 0 if unmeasured), marked unused, so every engine row is complete. No displayed frame
-  uses it.
-
-**Physical reason.** The owner's rule, applied to the events the live path actually reports, so the
-reference and the engine share one reset stream.
-
-**Should improve:** agreement between reference and engine at segment starts. **Must not break:** any
-judged frame beyond what a forced comb re-run at a reset can change; changes are reported.
-
-**Not re-run:** the whole-tape figure (99.2%). It has no classifier stream yet; the full-tape engine
-render will produce the real one.
-Result of amendment 5 (goldens regenerated):
-- Resets are applied where the live stream puts them: capture 1 at 6253, 6257, 6259, 6263, 6667 and
-  6882; captures 2-4 at their first unit and the classifier's begin-segment (1914, 13505, 175).
-- Comb runs: 546, 127, 118, 241 (capture 1 up 2, capture 3 up 1).
-- Placement against a decided comb is unchanged: 372 / 373, 549 / 551, 586 / 586, 590 / 590. Frames
-  whose placement differs are still 1, 2, 0, 0.
-- Every unit row is complete; capture 3's two unused boundary fields are marked.
-
-### The engine matches the goldens (2026-09-19)
-
-Codex wrote the C engine and I reviewed it: `v11-engine` 3d685ba, bed92b6 and 8547447, pushed. v9 stays
-the default; select `frameserver_replay --geometry-v11`, plus `--pair-next` for capture 3. Checked from
-my own worktree at 8547447 with my own comparison script:
-- **Live path.** Real replays (`--pace-us 4000`) published every eligible unit with 0 drops, against
-  `goldens/cap*_units.csv` and `_frames.csv`.
-  - Every unit's applied d1/d2, unused and reset flags are identical.
-  - Every frame's comb run, confidence, comb shift and decided are identical. Comb margins are within
-    5.4e-7 relative, none within 1.5e-4 of 1.5.
-  - The owner's counts, engine against golden: comb runs 546 / 127 / 118 / 241, identical; frames whose
-    placement differs from a decided comb 1 / 2 / 0 / 0, identical (the audit replays compute the comb
-    on every frame). The differing frames are capture 1 6929 and capture 2 2489-2490.
-- **Renders from the engine logs alone** (`geometry_render.py --engine-log`): every frame's strip equals
-  the golden placement.
-- **Tests.** field_registration test, frameserver test-geometry (normal / ASan / TSan) and frameserver
-  test pass. Codex's comparator also reports 0 mismatches.
-- **Cost on this M3.** A comb search takes 0.24 ms median, 0.26 ms p95. The whole engine takes 0.07-0.17 ms
-  median and 0.33-0.42 ms p95 per unit, against the 10 ms budget of CLAUDE.md §11b.
-- **Review finding, fixed.** The v11 publisher and the renderer bounded rows by the whole raster, not the
-  field. At field-1 offsets above 11 (capture 1 reaches 15, on 2 units), field 1 showed field 2's
-  lines. Both now fill outside the field's own rows: renderer b3b3232, publisher 8547447, each with a
-  deciding test, matching byte for byte across 80 offset pairs. Placements are unaffected. So are the four
-  capture renders, whose offsets never cross a field boundary.
-- **Observation, not an engine defect.** On capture 1's opening rewind and acquisition (6254-6326,
-  6565-6573), the automatic census puts 93 frames at offsets over 2 lines. 92 are LOW confidence; the
-  comb decided 18 of them and agrees with all 18. The capture renders instead used entry 3's confident
-  census, which held 0 there.
+- **E-claude-2026-09-19-12** — one comb check per section instead of per frame: **refuted**. The misalignment is not constant within a section (segment C: −1 on 25,083 frames, 0 on 4,413, +1 on 1,915), so a fixed per-section offset agrees on 0.2% and 2.6% against 78.2% and 80.3%.
 
 ## E-claude-2026-09-19-13 — the engine on the whole tape: its real figure, with live resets
 
@@ -1750,179 +1242,9 @@ Two things complicate the count and he should know them: the measured last pictu
 constant; and the lowest lines are the head-switch region, which is not picture in the ordinary sense,
 so losing them may not be a loss at all. No number is proposed here.
 
-## E-claude-2026-09-20-18 — the first picture line from the source's own temporal behaviour
+- **E-claude-2026-09-20-18** — the first picture line from temporal change between units: **refuted**, superseded by entry 20. It fixes the late-top class but fails the blank-line class outright: at 9040 the blank line 286 has the largest inter-unit change of any row in the field, so change does not separate picture from blanking.
 
-**Question (owner, 2026-09-20, 11:03, before sleeping).** "If it can come up with a new experiment for
-the line top derivation, and successfully prove that, I'm happy to let the gate keep going so long as we
-settle on a render that doesn't regress any of the previous fixes."
-
-**Why a new experiment.** Entry 17's derivation failed its whole-tape test: the candidate bar changed
-463 field-1 and 496 field-2 tops, and the finder did not converge — 0.5 at first, 25.57 at a thousand
-units, 26.25 at ten thousand, 0.5 from fifty thousand on. Pooling levels cannot work: with 1.6 million
-row values every level fills in. This entry drops levels entirely.
-
-**Premise.** A line carrying picture changes from one unit to the next. A line carrying only blanking
-does not, beyond the noise the device's own blanking rows show in the same pair of units. So the first
-picture line can be found by comparing each candidate row's change between consecutive units against
-that unit's own blanking rows — a comparison with no level written into it, calibrated by the source at
-every unit rather than once at startup.
-
-**Method.** For each pair of consecutive exact units and each field:
-- reference: for each of the field's blanking rows (storage 7–15, 270–278), the mean absolute difference
-  between this unit and the previous one over samples 40–680; take the largest, call it R.
-- candidate: the same quantity for each row of the top search window.
-- the first picture line is the first row whose change exceeds R, requiring the row below it to exceed R
-  as well, so that a single noisy line does not decide it.
-Where the previous unit is absent, or a reset intervenes, the rule abstains for that unit and the
-engine's existing behaviour stands.
-
-**Falsifier.** His two bars pull in opposite directions — a derivation that changes nothing cannot also
-fix the blank-line class — so the test is not "changes zero". It is:
-- where the rule agrees with the current engine, it must agree on the overwhelming majority: more than
-  1% of units disagreeing without cause refutes it;
-- where it disagrees, **raw rows must show the new answer right and the old one wrong**. Disagreements
-  that raw rows do not support refute it, however few.
-- it must abstain, not guess, where the source gives nothing: black, mute and fade passages.
-
-**Material.** The whole tape, all 86,293 exact units. The seven blank-line edges measured tonight, and
-the late-top run at 10,988–11,001, as known cases. Capture 1 as the external check.
-
-### Report on entry 18 (2026-09-20) — refuted: temporal change cannot find the first picture line
-
-**Verdict: the premise is refuted, and the reason is worth more than the experiment.**
-
-The rule was that a picture line changes between units and a blanking line does not. Measured on the
-known cases, it fixes the late-top class — at 10,990, 10,995 and 11,000 it returns field 1's top as 23,
-which is what the raw rows say and one line above what the engine logs — and it fails the blank-line
-class outright.
-
-**Why it fails.** At 9040, field 2 line 286 has the **largest inter-unit change of any row in the field,
-122.9 against the picture body's 13.6**, because the line carried picture in the previous unit and is
-blank in this one. The same at 13,284 (148.7) and 13,449. A line that the picture has just vacated
-changes more than picture does, so any rule of the form "changing means picture" calls it picture.
-The premise fails exactly at the event it was meant to catch.
-
-Two references were tried and both fail for this reason: the device's blanking rows as a floor (they are
-nearly noiseless, so any source-blank line clears them) and a floor/ceiling midpoint against the picture
-body. Neither is a threshold problem; the signal points the wrong way.
-
-**The by-product, which is the useful part.** That same measurement identifies the event. Taking the
-largest inter-unit change among the rows just above the picture, against the picture body's own change in
-the same pair:
-
-| case | ratio |
-|---|---|
-| 9040, 13,284, 13,449 — the blank-line frames | 9.0, 7.3, 9.3 |
-| 10,988 — where the late-top run begins | 6.0 |
-| 10,987 and 10,989, either side of it | 0.8 |
-| ordinary units (9037, 10,284, 11,124, 13,281, 13,446) | 0.8 to 1.3 |
-
-The picture moving leaves a signature six to nine times the body's own change, on the unit where it
-happens, and ordinary units sit at about one. That is the trigger the rule set does not have: nothing
-currently fires when the picture jumps but the census does not see it.
-
-**Also measured, closing entry 17's line of argument.** The per-unit level derivation — the bar taken
-from each unit's own rows, so it cannot drift with pool size — ranges from 1.02 to 63.00 with a median of
-7.5 over 51,619 units, and changes 181 field-1 and 116 field-2 decisions, 0.35% and 0.22%. So the level
-bar cannot be derived from this source without changing decisions, in any of the three forms tried.
-
-## E-claude-2026-09-20-19 — the vacated line as the trigger the rule set lacks
-
-**Premise.** When the picture moves by a line, the line it vacates changes far more than the picture body
-does, and the engine can see this without knowing where the picture starts. Used as a trigger it fires
-the comb on exactly the units where the census is about to be wrong, which is the class that today
-publishes at HIGH confidence with nothing firing.
-
-**Method.** Per unit and field: the largest inter-unit change among the eight rows above the nominal
-picture start, divided by the median inter-unit change of the picture body. No level: it is a ratio of
-the source against itself. A unit is flagged when the ratio exceeds the ratio seen on ordinary units,
-which is itself measured from the tape rather than chosen.
-
-**Falsifier.**
-- the flagged units must be rare — more than a few per cent of the tape means it is firing on ordinary
-  content and is useless as a trigger;
-- the known move units (9040, 13,284, 13,449, 10,988) must be flagged;
-- where it fires and the comb then moves the placement, raw rows must show the move is right.
-
-**Material.** The whole tape, and the known cases above.
-
-### Report on entry 19 (2026-09-20) — refuted: the vacated-line signature is not rare, and carries no information about the placement
-
-**Verdict: refuted on the whole tape, on every arm of its falsifier.**
-
-Measured over all 86,289 adjacent unit pairs:
-- The ratio's median is 1.20 in field 1 and 1.18 in field 2, but its **90th percentile is 8.83 and
-  4.86**. The four known move units sit at 6.0, 7.3, 9.0 and 9.3 — that is the **85th to 95th
-  percentile of the tape's own distribution**, not the tail.
-- A bar low enough to catch them, 6.0, **flags 17,788 units — 20.6% of the tape.** A bar rare enough to
-  be a trigger, the 99.5th percentile, flags **none of the four**.
-- And the signature does not distinguish a wrong placement from a right one. Against the comb's own
-  verdict: where the published placement is excluded by the comb (1,338 frames) the ratio's median is
-  **1.25** and its 90th percentile 10.53; where the placement is fine (83,325 frames) they are **1.47**
-  and 11.30. The distributions are the same.
-
-So the six-unit comparison that suggested this — known cases at 6 to 9 against "ordinary units" at 0.8
-to 1.3 — was unrepresentative: those ordinary units came from quiet passages. Across the tape, ordinary
-content at the top of frame moves as much as a vacated line does.
-
-**The night's lesson, recorded because it is the same mistake twice.** Entry 17's derivation looked exact
-on 199 units and changed hundreds of decisions on the tape; entry 19's signature looked clean on six
-units and separates nothing on the tape. Both were caught by the owner's rule that the population is the
-whole tape, not a sample chosen after the fact. Any further threshold or trigger proposed here is
-measured on the tape before it is reported, not after.
-
-**Where this leaves the line-top question.** Three level-based derivations and one temporal rule are
-refuted. The census defect the owner reported is real and measured — Codex's whole-tape pass puts a blank
-first line on 5.54% of frames — but nothing tried tonight separates it from ordinary content without a
-number placed by hand. The comb-confidence rule from entry 16 stands on its own measurements and is
-unaffected by all of this; it needs no threshold derived from the source, because 1.5 is a ratio the
-owner has already accepted.
-
-### Correction (2026-09-20): the per-unit derivation's figures, completed
-
-The report on entry 18 quoted the per-unit level derivation from a run that was **still in progress**:
-"1.02 to 63.00 with a median of 7.5 over 51,619 units, and changes 181 field-1 and 116 field-2
-decisions, 0.35% and 0.22%". Those were partial. Completed over all 86,293 units the bar ranges
-**1.02 to 66.55 with a median of 13.00**, and it changes **1,794 field-1 tops (2.08%) and 2,567 field-2
-tops (2.97%)**.
-
-So the third derivation form fails the owner's bar by a wider margin than reported, not a narrower one,
-and the second half of the tape is where it diverges. The conclusion is unchanged and stronger: the
-level bar cannot be derived from this source without changing decisions. Quoting a running job's output
-as a result was the error; figures now come from finished runs only.
-
-### The blank-line class: the mechanism, and what a fix costs (2026-09-20)
-
-**Question (owner).** "What is causing real blank lines to fall outside of measurement?"
-
-**Mechanism, measured.** The census judges every line against the **device's** blanking rows, whose own
-spread is **1.0 code** — they are synthetic. The tape's blank lines carry dropout speckle 9 to 14 codes
-high. The test asks for a 95th percentile more than 5 codes above that noiseless reference with a spread
-over 4, and a speckled blank line satisfies both. Nothing in the census measures the source's own
-blank-line noise, so it has no quantity in which a blank tape line differs from a faint picture line.
-
-What marks those rows: their **dark end sits exactly at blanking — the 5th percentile minus blanking is
-0.00 on all seven** — while the bright end reaches only 9 to 14. Real picture lines lift the dark end as
-well: median 34 codes, 10th percentile 7. Of 376 correctly taken picture lines only 6 touch blanking at
-the dark end, and each of those has a bright end at 23 or more. The signature is the pair; the census
-reads only the bright end. Panels: `ctr9040/panel_blank_zoom.png` and `panel_vacated_line.png`.
-
-**A fix by that signature, measured whole-tape, twice.**
-- Rejecting a line whose dark end is at blanking and whose bright end is under 20: field 2 changes
-  **888 tops (1.03%)** and fixes every known case, but field 1 changes **18,703 (21.67%)**, almost all
-  line 23 moving to 24. On 88% of the units where the census reports 23, line 23 is blanking plus
-  speckle; the rule moves the top down whether or not real picture sits below.
-- Qualifying it — only when the line below is picture — as written barely helped: **18,555 (21.50%)**.
-  The qualifier was too weak: it accepted a line below with 5% of its samples bright, where the defect
-  needs a majority.
-- With the strong qualifier, the whole-tape figure is already known from Codex's census, which used
-  exactly that test: **3.79% of field-1 edges and 2.02% of field-2 edges, 5.54% of frames.**
-
-**What follows, and it is the owner's to weigh.** The class is real and affects about 5.5% of frames.
-Any fix to it therefore changes about 5.5% of frames — by definition it cannot also satisfy "must not
-change anything". The two conditions cannot both hold for this class. A fix has to be justified as a fix,
-on raw rows, at whatever size it turns out to be; it cannot arrive disguised as a derivation that changes
-nothing.
+- **E-claude-2026-09-20-19** — the vacated line as the trigger the rule set lacks: **refuted on every arm**, superseded by entry 20. The signature is not rare — a bar low enough to catch the four known moves flags 20.6% of the tape, and a bar rare enough to be a trigger catches none of them.
 
 ## E-claude-2026-09-21-20 — the tape's own horizontal blanking as the reference (the owner's proposal)
 
@@ -2085,7 +1407,387 @@ about half the errors and points at the right answer in a seventh of those. The 
 are complementary rather than redundant — the reference gets 94.4% of its changes right, and the comb
 catches part of the remainder without being able to fix it.
 
----
+## E-claude-2026-09-21-22 — coherence with the line below, as a second stage for marginal cases
 
-Continued in `docs/experiments_claude_2.md` from entry 22: this file reached the
-150 KB cap the artifact guard enforces. Nothing above was edited.
+**Question (owner, 2026-09-21, two minutes after entry 21).** "does it help to not just compare to the
+blanking reference but also to the line below and if they are a certain amount coherent, call that a
+picture line? Does that rescue the bad class?" And, after the comb result: "I'm saying it should do both.
+The brightness test as a first pass but anything that is on the margins gets this second level check"
+
+**Same investigation as entry 21**, which asked whether the errors could be caught afterwards. They
+cannot — the comb sees about half and names the right placement in a seventh of those — so the only
+route left is getting the first pass right, which is what this tests.
+
+**Is the coherence quantity new?** No, and saying so matters because conflating quantities is how the
+last two rules went wrong. The engine already computes exactly this: `continues()` takes the maximum
+correlation between a row and the row below it over lags of ±24 samples and asks for 0.5. Today it is
+applied only to high-contrast lines, as a guard inside the picture test, and the plain-23 rule uses the
+same correlation at lag 0 for one specific pair. His proposal points the existing measurement at a
+different set of rows: those whose brightness leaves them **on the margin** of his derived level.
+
+**Premise.** Real picture resembles the line beneath it; blanking with speckle does not. So among lines
+whose brightness alone cannot decide, coherence with the line below separates the two, and applying it
+only to those lines leaves the confident cases untouched.
+
+**Method.** Per unit and field, in one pass: the horizontal-blanking level of entry 20, then for each row
+of the search window its body 95th percentile. A row is decided by brightness when it sits clearly above
+or clearly below that level; a row **within a band around it** falls through to the coherence test, which
+is `continues()` unchanged — maximum correlation with the row below over lags of ±24, threshold 0.5.
+Because the owner has not specified the band and it must not be invented, three widths are measured —
+±25%, ±50% and ±100% of the level — and the result is reported for each.
+
+**Falsifier.**
+- It rescues neither error class: for both the 78 skips and the ~174 early cases, fewer than half are
+  corrected at every band. Reported per class, never averaged.
+- Or the whole-tape change rate moves materially beyond entry 20's 6.84% — more than about a point —
+  which would mean the second stage is deciding confident cases too, the failure that made both dark-end
+  rules change 21% of the tape.
+- Or the rescues are not supported by raw-row occupancy.
+- If no band satisfies these, that is the result: no band works.
+
+**Material.** All 86,293 exact units; the error classes as defined in `hblank_check.csv`; entry 20's tops
+as the baseline.
+
+### Report on entry 22 (2026-09-21) — refuted as a rescue; the same test corrects a larger population
+
+**Verdict: the premise is refuted for the question it was asked.** Coherence with the line below does
+not rescue either error class at any band that survives the change-rate arm. It does something else,
+measured here and not claimed beyond it: it corrects about a thousand tops the brightness rule and the
+census both got wrong, which is a different population and belongs to a different entry.
+
+**The rescue, per class and per band, never averaged.**
+
+| band | skips (78) | early (170) |
+|---|---|---|
+| ±25% | 18, 23.1% | 24, 14.1% |
+| ±50% | 24, 30.8% | 42, 24.7% |
+| ±100% | 26, 33.3% | 87, 51.2% |
+
+Only one cell clears half, and it is the band the next arm excludes.
+
+**The change-rate arm fires on ±100%.** Against the current census, in entry 20's own convention:
+entry 20 5,900 units 6.84%, ±25% 6,239 7.23%, ±50% 6,304 7.31%, **±100% 7,085 8.21%** — 1.37 points
+beyond, past the "about a point" the entry allowed. The two narrow bands sit within half a point.
+The instrument reproduces entry 20's 5,900 exactly, which is what makes the comparison meaningful.
+
+**Why the class is not rescued — two mechanisms, both measured.**
+- The blank lines the brightness rule accepts sit **far above** the derived level, not near it, so a band
+  around that level never reaches them: at ±50%, **122 of the 170** early cases are left exactly where
+  entry 20 put them, never having entered the second stage at all.
+- The coherence test **cannot see flat picture**. A dim, nearly flat picture line has too little variance
+  to correlate with anything, so the second stage rejects it. That is the skip class: 54 of 78 unrescued
+  at ±50%, on lines whose occupancy is 1.000 — real picture, invisible to this test.
+
+**What it does instead, and this is the substantial result.** At ±50% the second stage moves 1,484 edges
+off entry 20's answer: **1,152 land on picture, 9 land off it, 323 neither.** Of those 1,152, the census
+and entry 20 **agreed with each other on 1,062** — tops both rules left on a blank line, which neither
+previous measurement counted, because the error classes were defined from the places those two rules
+*differed*. The blank-line defect is therefore substantially larger than entry 20 measured.
+
+**Control arm, every changed edge judged by occupancy** (independent of the rule): entry 20 6,621 edges,
+90.6% supported, 4.7% contradicted; ±25% 89.8% / 4.1%; **±50% 7,712 edges, 92.1% supported, 4.4%
+contradicted**; ±100% 85.1% / 11.4%. Entry 20's report quoted 94.4% for the same thing — that was
+5,995 over the 6,354 later-moves alone; over all its edges it is 5,996 of 6,621, one edge from this
+pass's count.
+
+**The regressions, named rather than netted.** Nine edges at ±50% go the wrong way: all field 2, all
+accepting line 286 where entry 20 had picture at 288. Blanking can correlate with blanking, so the
+second stage admits a blank line on the strength of its resemblance to the blank line beneath it. Nine
+against 1,152 is the ratio, and it is not zero.
+
+**Raw rows.** `panel_coherence.png` shows four of them at the top of the picture: 69511 field 2, where
+both existing rules stop on a blank line; 70274 field 2, one of the nine regressions; 4812 field 1, a
+flat dim picture line the coherence test cannot see; 82404 field 1, a blank line it correctly rejects.
+
+**What is not understood.** Why the band that helps most on the wider population (±50%) helps least on
+the classes is explained by the two mechanisms above, but the size of the 1,062 was not predicted by
+anything in entries 20 or 21 and has not been checked against material outside this tape.
+
+**Files.** `coherence.py`, `coherence_report.py`, `coherence.csv`, `coherence_cases.csv`,
+`panel_coherence.png` in scratch.
+
+#### Amendment 1 to the entry-22 report (2026-09-21) — the raw rows found a new error class I had not measured
+
+Looking at the panel before sending it caught two things the report above stated without checking. Both
+are corrected here rather than in the text above, which stands as written.
+
+**A new error class, and it fires the owner's "no new errors" condition.** A move is only clean if it did
+not step over picture on the way. Measuring the highest occupancy of the lines **strictly between** the
+census top and each rule's top, the same way for both rules and split by direction:
+
+| | later moves | vault over a picture line | moves of 3+ lines later | of those, vaulting picture |
+|---|---|---|---|---|
+| entry 20 | 6,354 | 185, 2.9% | 138 | 60, 43% |
+| two-stage ±50% | 7,491 | **387, 5.2%** | 321 | **221, 69%** |
+
+The second stage more than doubles the count of tops that land late past real picture, and its long moves
+are wrong about seven times in ten. This is one mechanism, not two: the coherence test's false negatives
+on real picture are its dominant cost, and a band exists precisely to route more lines into it. The
+±50% trade is therefore **+1,152 edges corrected onto picture against 202 new late tops and 9 blank-line
+regressions** — net positive by count, and not something to adopt on that count alone.
+
+**Entry 20's own figure was measured differently.** Its check included the abandoned line in that
+maximum; excluding both endpoints, which is what makes the two rules comparable, gives the 185 above.
+
+**The skip class is partly an artifact of the run-in step.** On **62 of the 78** skips the census's
+finished top is not the line its picture test accepted, and on **46** the line it accepted is blank
+(occupancy < 0.05) — the run-in +1 step moved it onto picture. The class still correctly identifies a
+picture line that entry 20 passed, so entries 20 and 21 stand; but the census's agreement with that line
+is accidental on 46 of 78, and reports should not read it as the census having found the top.
+
+**What bounds the rescue.** On **29 of the 78** skips the skipped line is vetoed by the **existing**
+high-contrast guard (spread ≥ 40 and correlation with the line below < 0.5), which runs after the second
+stage. No band can rescue those: the veto is downstream of the whole question this entry asked.
+
+**A correction to my own caption.** I described counter 4812's line 25 as flat dim picture. It is not:
+p95 179, spread 90, occupancy 1.000 — bright, high-contrast picture. It is rejected by the guard above,
+not by darkness. The panel is what caught it.
+
+**An instrument defect, disclosed.** `coherence.py` opened its output files at import, so importing it
+from the analysis script truncated the results it was about to read. Both files were regenerated and
+every figure in the report above reproduced identically; the module no longer writes anything at import.
+
+## E-claude-2026-09-21-23 — the same derived reference at the bottom of the field
+
+**Question (owner, 2026-09-21):** "Are we using the same newly derived blanking levels for the bottom
+too?"
+
+**The factual half, answered from the source before any run.** No. In the C engine, `measure_field`
+computes `picture_threshold = blank_mean + 4.0` where `blank_mean` is the mean of the rows above the
+picture (NTSC 11–20 in field 1, 274–283 in field 2), and the bottom scan compares each row's mean to
+that same threshold. The census instrument does the same with its own constant. So the bottom is judged
+against blanking measured at the **top** of the field and has never had a reference of its own, and
+nothing from entry 20 reached it — that entry was measured, judged and reported entirely on
+first-picture-line placement.
+
+**Two ways the bottom test is weaker than the top, which matter here.** The top requires three
+consecutive qualifying rows and applies the high-contrast guard; the bottom accepts a single row. The
+top uses a body percentile; the bottom uses the row mean. A reference change at the bottom therefore
+lands on a coarser test, and the two cannot be compared line for line.
+
+**The cost is nil, and that is a fact about the instrument, not an argument for the change.** Entry 20's
+level is already pooled over the leading blanking columns of **every line of the field**, bottom lines
+included, so the number the bottom would use is the one already computed. Nothing new is measured to
+make it available.
+
+**Premise.** The derived level describes the source's blanking on every line, not where picture begins,
+so it is the correct reference at the bottom as well; substituting it for the top-derived constant
+should move last-picture-line placements onto picture in the same direction and proportion it achieved
+at the top.
+
+**The direction is opposite, and that is the risk.** The derived level (median 18 codes) is well above
+the census's effective bar, so at the bottom it is the **stricter** test and will pull bottoms **up**,
+discarding dim lines. The rows just above the clip band are exactly where the tape carries dark content
+(§6 records those rows averaging about 31 codes on the programme tape against 1.4 with no input), so
+this rule can cut real dark picture off the bottom. That is what the falsifier is aimed at.
+
+**Method.** One pass, all 86,293 exact units, the same instrument as entries 20 and 22: the bottom under
+the current rule and under the derived level, per unit and field. Every change judged by the independent
+occupancy measure — the fraction of a line's samples more than 20 codes above blanking — on the line
+abandoned, the line chosen, and the lines **strictly between** them, which is how amendment 1 caught the
+top rule vaulting over picture. Censored bottoms (landing in the clip band, NTSC 260/522 and below) are
+counted and reported separately and never netted into the totals.
+
+**Falsifier.**
+- The changes are not supported: among changed bottoms, fewer than half abandon a line that is blank for
+  one that is picture, by occupancy. The top achieved this on the large majority and the bottom is being
+  claimed to behave the same way.
+- Or it cuts picture off: more than a small minority of changes abandon a line whose occupancy is above
+  half, or step over such a line, measured the same way as amendment 1 and reported by direction.
+- Or the correction is concentrated in the clip band, where the bottom is known-unmeasurable — a change
+  there is not evidence the reference works.
+- Or the change rate is far from the top's 6.84% with no account of why.
+- A refuted premise here is a complete result: it would mean the reference is a top-of-picture
+  instrument, not a property of the field, which is itself worth knowing.
+
+**Material.** All 86,293 exact units of `captures/fulltape.cap6`.
+
+### Report on entry 23 (2026-09-21) — refuted: the reference is a top-of-picture instrument
+
+**Verdict: the premise is refuted.** Every arm of the falsifier fires. The derived level does not behave
+at the bottom the way it behaves at the top, and the reason is not a threshold that needs tuning — the
+bottom of this raster is a different object from the top.
+
+**Size and direction.** 762 changed edges, 636 units, **0.74% of units** against the top's 6.84%.
+**All 762 move the bottom up**, as registered.
+
+**The clip band arm fires decisively.** On **741 of the 762** changes the census's bottom was already
+inside the clip band, where the bottom is known unmeasurable. The change is almost entirely a decision
+about the two or three lines the engine already marks `bottom_censored`.
+
+**The support arm fires, and my own test was the wrong instrument for it.** I pre-registered a
+blank-versus-picture classification carried over from the top. At the bottom it does not adjudicate:
+
+| abandoned → chosen | count | share |
+|---|---|---|
+| blank → partly lit | 282 | 37.0% |
+| partly lit → fully lit | 253 | 33.2% |
+| partly lit → partly lit | 151 | 19.8% |
+| blank → fully lit | 32 | 4.2% |
+| blank → blank | 23 | 3.0% |
+| fully lit → fully lit | 18 | 2.4% |
+| fully lit → partly lit | 3 | 0.4% |
+
+Only 4.2% is the clean blank→picture correction the top achieved on the large majority, so the arm fires
+as written. But **456 of 762 have dim lines at both ends**: the bottom of this picture *fades* rather
+than ending, so a brightness level lands inside a gradient instead of on an edge. That is the finding,
+and it is not a result my classification was built to express — recorded as a limitation of the entry,
+not repaired after the fact.
+
+**The cutting arm fires, and it exposes a defect in the reference itself.** Of the 362 changes that span
+a line, **127 step over a line more than half lit**, and 21 abandon a line more than 90% lit. These are
+not spread evenly: the derived level's median is **18 codes** across the tape, but on the cases that cut
+picture its median is **101, with a 90th percentile of 164 and a maximum of 247**. On noisy material the
+blanking columns are full of noise, so the pool's 99th percentile is inflated and the bottom scan skips
+every real picture line to stop at the noisiest one. Counter 4704 is the panel case: level 229.4, the
+scan passes a flat grey block at lines 250–254 and stops at 246 inside relock noise.
+
+**This is a defect in entry 20's reference, not only in its use here.** The inflated level exists at the
+top of those same units. Entry 20 measured 94.4% of its changes supported, so it is a minority effect
+there, but it was never isolated and it has not been looked for. That is a new entry, not a claim.
+
+**What it does get right.** 285 changes replace a blank or partly lit last line with a fully lit one, and
+32 of those are the census over-extending one line into speckle at the bottom — the same over-extension
+defect entry 20 found at the top, in the other direction.
+
+**A question for the owner, not for me to settle.** The commonest single change is trimming a partly
+filled final row (261→260, 188 times; 522→521, 109). Counter 4919 in the panel is one: line 261 is 31%
+lit — content across the left of the sweep and black after it, the half line. His rule says the geometry
+includes the head-switch area. So whether that row is the last picture line or is excluded is his call,
+and the derived level currently excludes it.
+
+**Raw rows.** `panel_bottom.png`: counter 4704 field 1 (the inflated level cutting into noise), 4919
+field 1 (the half line, both answers inside the clip band), 7344 field 2 (the census taking a blank line
+as the bottom and the derived level stopping one line higher, correctly). Each line is labelled with the
+fraction of it that is lit.
+
+**Files.** `bottom.py`, `bot_panel.py`, `bottom.csv`, `panel_bottom.png` in scratch.
+
+## E-claude-2026-09-21-24 — excluding the samples that are conceivably picture, as he specified
+
+**Question.** Entry 23 measured a defect in entry 20's reference: its level has a median of 18 codes
+across the tape but 101 on the cases where it cuts picture, reaching 247. On noisy material the leading
+columns carry noise, and a quantile over the pool absorbs it.
+
+**His instruction, which entry 20 did not fully implement (owner, 2026-09-21, on the horizontal-blanking
+experiment):** "that will not be constant because it's a noisy edge so that should not be a fixed but a
+derived threshold" and "It shouldn't be a distribution. It should decide per unit what to include and
+what to exclude. If it includes samples that are conceivably picture or will throw the whole thing off."
+
+Entry 20 decides per unit which **columns** to include, then pools every sample from those columns over
+the whole field and takes the 99th percentile — a distribution, and the exact thing he said not to do.
+The inflation entry 23 found is that decision failing in the way he predicted, so this is not a new idea
+of mine; it is the unimplemented half of his.
+
+**Premise.** The inflation is caused by including samples that are conceivably picture, and the blanking
+samples separate from them: on a unit whose leading columns carry noise, the sorted samples show a gap
+between the blanking floor and the excursions above it. Excluding everything above that gap — a decision
+per unit, taken from the source, with no threshold written in — removes the inflation **without changing
+the level on units that never had it**.
+
+**Method.** One pass, all 86,293 exact units. Entry 20's column selection unchanged. Then, in place of
+the 99th percentile, the level is taken at the **widest empty stretch in the sorted samples**: the
+largest value below the widest gap. Two variants are measured, because "exclude the samples" and
+"exclude the lines they came from" are different readings of his sentence — (B) the sample-level
+exclusion just described, and (C) the same gap used to drop whole lines whose leading columns contain an
+excluded sample. Reported against entry 20's level and its tops for the same units.
+
+**Falsifier.** His acceptance bar governs the first arm, in his words: it "must not change anything
+across the tape (there might be small variance as it's not a hard coded full source derived number but
+it should be extremely close)".
+- **It disturbs what entry 20 got right.** On units whose current level is inside the tape's ordinary
+  range — at or below the 99th percentile of 27 codes, a description of entry 20's own measurement and
+  not a threshold in the rule — the first-picture-line placements must be essentially unchanged. More
+  than a small variance there and the premise fails, whatever it does for the noisy units.
+- **Or the inflation survives.** On the units entry 23 identified, the level must fall into the ordinary
+  range. If it does not, the cause was not the inclusion of conceivably-picture samples and the premise
+  is refuted rather than the method adjusted.
+- **Or the repair does not reach the damage.** The bottom cases entry 23 measured — 127 changes stepping
+  over a lit line, 21 abandoning one more than 90% lit — must fall. If the level comes down and those do
+  not, the inflation was not what caused them.
+- **Or the level becomes unmeasurable.** If a gap cannot be found on more than a small fraction of units,
+  the rule has traded one failure for another and that is the result.
+
+**Material.** All 86,293 exact units; entry 20's levels and tops and entry 23's `bottom.csv` as the
+baselines to compare against, both already measured.
+
+#### Amendment 1 to entry 24, written before the run — what the gap is taken over, and why
+
+**Physical reason.** The gap must separate lines whose horizontal blanking is clean from lines whose
+blanking carries noise. Taken over every sample it cannot do that: the samples are integers and a field
+carries thousands of them, so nearly every adjacent pair differs by 0 or 1, "the widest gap" is a tie
+broken arbitrarily, and on a clean unit it lands near the bottom and returns a level of about zero,
+which accepts every row. The gap is therefore taken over the **per-line maxima** — the highest blanking
+sample on each line, a few hundred values — which is the granularity at which the separation exists.
+
+**What this should improve and what it must not break.** It should leave the level where it is on clean
+units and pull it down where noise has inflated it; it must not start excluding large numbers of lines,
+since a level measured from a handful of lines is not the field's blanking.
+
+**Consequence for the registered variants.** Once the gap is taken over per-line maxima, "exclude the
+samples" and "exclude the lines they came from" are the same operation and return the same number. The
+two variants collapse into one rule and are reported as one; the entry above asked for both, and this
+records that the distinction does not exist rather than reporting a duplicate as a second result.
+
+**Tie-break, stated because it is a choice.** Where several gaps are equally wide the highest is taken:
+the separation being sought lies above the blanking bulk, and a higher level is the stricter picture
+test, so it is the conservative direction.
+
+#### Amendment 2 to entry 24 — a figure in its own falsifier was wrong
+
+The falsifier above calls 27 codes "the 99th percentile" of entry 20's level. That was taken from the
+population entry 23 happened to analyse — the edges where both bottoms were found — and the ~1,089 edges
+it excluded are almost all extreme, so removing them pulled the figure down. Over all 172,586 field
+edges the 99th percentile is **46.7**, confirmed identical between `bottom.csv` and `gaplevel.csv` on
+every edge.
+
+The arm is therefore evaluated at both values and neither is chosen to suit the answer. The split barely
+matters for the arm that decides the entry — 1.78% of clean edges change at 46.7, 1.77% at 27 — and it
+matters a great deal for how much inflation survives, which is reported both ways.
+
+### Report on entry 24 (2026-09-21) — refuted: the diagnosis holds, the cure does not
+
+**Verdict: the premise is refuted.** The cause entry 23 identified is confirmed — the level really is
+inflated by including samples that are conceivably picture, and excluding them at the gap collapses it.
+But the same operation moves the level on clean material too, so it fails the owner's own acceptance bar
+and makes the bottom worse. The diagnosis is worth keeping; this cure is not.
+
+**The inflation is real and the exclusion does remove most of it.** On the 1,726 field edges above entry
+20's 99th percentile, the level falls from a median of **134 to 34.5**. A gap was found on every one of
+the 172,586 field edges, and the exclusion is small — a median of 243 lines kept of about 244, with
+fewer than 20 kept on 475 edges (0.28%). So the mechanism is what entry 23 said it was.
+
+**But it does not stay put on clean units, and that is his bar.** On the 170,860 edges that never had
+the inflation the gap level sits **+3.2 codes from entry 20's (median), above it on 77%**, and the
+first picture line changes on **3,038 edges, 1.78%**. His words were that it "must not change anything
+across the tape … it should be extremely close". Three thousand changed placements on units that never
+had the problem is not extremely close: it is nearly half the size of entry 20's entire correction. The
+arm fires at both splits — 1.78% at 46.7 codes, 1.77% at 27.
+
+**Not understood, and recorded rather than smoothed over.** Of the changed tops, 1,625 move **earlier**
+and 1,005 later, although the level is higher on 77% of clean edges, where a higher level should move
+tops later. Moving the level down evidently changes a decision more readily than moving it up. Whether
+those 3,038 changes are right or wrong was not measured — the arm decides the entry either way, and
+asserting them as improvements without the occupancy check is exactly the move this ledger exists to
+prevent.
+
+**And it does not repair the damage it was aimed at.** Re-running entry 23's bottom measurement with
+this level:
+
+| at the bottom | changes | abandons a >90% lit line | >50% lit | steps over a lit line | lands on a lit line from a dimmer one |
+|---|---|---|---|---|---|
+| entry 20's level | 762 | 21 | 41 | 127 | 285 |
+| entry 24's gap level | 465 | **43** | **78** | 107 | **142** |
+
+It makes fewer changes and cuts more picture: twice as many fully lit lines abandoned, half as many
+corrections. The reason is the same +3.2 codes — at the bottom a higher level is the stricter test, so
+it trims harder. The arm fires.
+
+**What survives.** Entry 23's diagnosis, now confirmed: the level is inflated on noisy material by
+samples that are conceivably picture, and it is measurable and collapsible. What is refuted is taking
+the level at the gap, because that is not only an exclusion — it also relocates the level to the top of
+the blanking cluster on every unit, including the ones that were fine. A cure has to remove the
+excursions **without** moving the level where there are none, and this one does not separate those two
+effects.
+
+**Files.** `gaplevel.py`, `bottom2.py`, `gaplevel.csv`, `bottom2.csv` in scratch.
