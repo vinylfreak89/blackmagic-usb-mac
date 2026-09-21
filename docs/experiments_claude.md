@@ -1838,3 +1838,47 @@ Both errors have the same shape: a figure from a small hand-picked sample stated
 tape. The whole-tape rule exists for this and I did not apply it to my own corrections.
 
 **Files.** `categorize.py`, `profile.py`, `sep.py`, `steps.py` and their CSVs in scratch.
+
+## E-claude-2026-09-21-25 — freezing the geometry through a fade
+
+**Question (owner, 2026-09-21, after the diagnosis):** "on fades you freeze the geometry, you don't
+clear it".
+
+**What the rows show, and it is the whole reason for this entry.** At 48063 field 1 the picture is
+fading. Line 23 is 100% lit through 48059 and 97% at 48062, then 74% at 48063 — it is dimming, not
+vacating. The picture test loses it first, the top reads 24 instead of 23, the engine reads that as the
+picture moving down a line, applies (1,0) and carries it for 126 units to 48188. The picture never moved.
+Clearing and re-deriving would return 24 from the same faded rows, which is why freezing and clearing
+are not the same choice here.
+
+**Premise.** A top that moves while the picture is declining is an artifact of the decline, not a move,
+so holding the pre-decline geometry until the decline ends places the picture correctly.
+
+**Already verified, from measurements in hand, before any engine change.** Over 48063–48188 on the 80
+units where the comb is decided, the published placement agrees with the comb on **0** and the frozen
+pre-fade placement agrees on **80**.
+
+**The trigger, and why it is not the obvious one.** The vacated line still being lit fires at 48063 but
+on **48.1%** of all downward top moves tape-wide — not rare, which is what refuted entry 19, so it is
+rejected here rather than re-tried. The decline itself is selective: a fall in the window's peak
+occupancy over three units selects 0.5–1.6% of downward moves. Its bar is **derived, not written in** —
+the tape's own 0.5th percentile of that quantity is −5.0, and the case at −6 clears it with margin
+rather than sitting on it.
+
+**Falsifier.**
+- The freeze does not reach the defect: fewer than all 80 of the comb-decided units at 48063–48188 come
+  to agree with the comb.
+- Or it changes placements outside declines: any unit whose placement moves where the trigger did not
+  fire is a defect of the change, counted and reported, not netted against the fix.
+- Or it is not selective: the trigger fires on materially more than the ~0.5% of edges the derived bar
+  predicts, or suppresses top moves that the raw rows show were real.
+- Or the whole-tape figures regress — the blank-line top class (1,695) and the census comparison must not
+  move outside the units the trigger touches.
+
+**Not settled by this entry.** The quantile that derives the bar is still a choice, and the live path is
+forward-only: a trigger that fires a unit late cannot un-publish, so the engine must hold from the moment
+it fires and the offline record carries the rest. Both are recorded here rather than hidden in the
+implementation.
+
+**Material.** All 86,293 exact units; `captures/fulltape_render_registration.csv` for the published
+placements and the comb; `profile.csv` for the per-line occupancy behind the diagnosis.
