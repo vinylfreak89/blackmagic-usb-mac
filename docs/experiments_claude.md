@@ -1791,3 +1791,50 @@ excursions **without** moving the level where there are none, and this one does 
 effects.
 
 **Files.** `gaplevel.py`, `bottom2.py`, `gaplevel.csv`, `bottom2.csv` in scratch.
+
+## Correction (2026-09-21) — categorizing entry 20's defects, and two attributions of mine that were wrong
+
+**Asked by the owner:** "can I get some sort of categorization on what entry 20's defects are". Measured
+over all 86,293 units, classifying each rule against the rows rather than against the other rule, because
+every count before this was defined by where the two DIFFER and is blind to both being wrong the same way.
+
+**Entry 20's defects are one quantity failing in two directions, and they are small.**
+- **The level too low — 1,818 field edges, 1.05%.** The line called first picture is under 5% lit. Level
+  median 11 codes on this class against 20 on clean. The census has 7,853 (4.55%), so his reference fixed
+  most of this class; the 1,062 from entry 22 sit inside what remains, and the earlier 78 / 174 / 1,062
+  split was an artifact of differencing two rules.
+- **The level too high — 1,726 field edges** above entry 20's own 99th percentile, median 134 against 18
+  tape-wide. This is entry 23's inflation, and entry 24 confirmed its cause and refuted its cure.
+
+Together about 2% of field edges. Everything else attributed to his reference belongs elsewhere.
+
+**The large class is not his reference, and probably not a defect at all.** 43,977 edges start picture
+below a lit run. 15,417 of those have a caption or data line above the top, not picture. Of the remaining
+28,684, **28,675 are field 1** — 9 in field 2 — and attributing each to a step:
+
+| step that produced it | edges | share |
+|---|---|---|
+| the run-in +1 | 22,112 | 77.1% |
+| the plain-23 rule | 6,318 | 22.0% |
+| both | 220 | 0.8% |
+| the picture test itself | **25** | **0.1%** |
+
+The picture test — the only part entry 20 changed — produces 25 of them. And the run-in detector is not
+marginal where it fires: median 0.934 against a 0.5 bar, 0.059 where it does not fire, with 0.1% of cases
+within 0.05 of the bar. It is identifying lines that carry a 0.5035 MHz run-in, which are data lines, and
+stepping past them is what it is for. Occupancy cannot tell a data line from picture, which is why this
+class looked like a defect; the comb's 83.42% agreement on tops alone is consistent with the placements
+being right, and that reconciles the two instruments rather than leaving them in conflict.
+
+**Two attributions of mine were wrong, both recorded here rather than quietly dropped.**
+- I wrote that the run-in +1 "fires on 0 of 195 units". Over the whole tape it fires on **33,713 units,
+  39.1%**, and it is the dominant producer of the late class. The 195-unit sample did not contain its
+  firing cases, and I generalised from it.
+- I then named the plain-23 correlation term, "0.40–0.48 against its 0.5 bar", as the real cause. On the
+  cases plain-23 actually moves, that correlation has a **median of 0.169** and only **13%** reach 0.40.
+  The range I quoted described a handful of cases I had looked at, not the class.
+
+Both errors have the same shape: a figure from a small hand-picked sample stated as a property of the
+tape. The whole-tape rule exists for this and I did not apply it to my own corrections.
+
+**Files.** `categorize.py`, `profile.py`, `sep.py`, `steps.py` and their CSVs in scratch.
