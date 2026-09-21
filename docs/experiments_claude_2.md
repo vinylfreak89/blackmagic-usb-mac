@@ -205,3 +205,64 @@ counted and reported separately and never netted into the totals.
   instrument, not a property of the field, which is itself worth knowing.
 
 **Material.** All 86,293 exact units of `captures/fulltape.cap6`.
+
+### Report on entry 23 (2026-09-21) — refuted: the reference is a top-of-picture instrument
+
+**Verdict: the premise is refuted.** Every arm of the falsifier fires. The derived level does not behave
+at the bottom the way it behaves at the top, and the reason is not a threshold that needs tuning — the
+bottom of this raster is a different object from the top.
+
+**Size and direction.** 762 changed edges, 636 units, **0.74% of units** against the top's 6.84%.
+**All 762 move the bottom up**, as registered.
+
+**The clip band arm fires decisively.** On **741 of the 762** changes the census's bottom was already
+inside the clip band, where the bottom is known unmeasurable. The change is almost entirely a decision
+about the two or three lines the engine already marks `bottom_censored`.
+
+**The support arm fires, and my own test was the wrong instrument for it.** I pre-registered a
+blank-versus-picture classification carried over from the top. At the bottom it does not adjudicate:
+
+| abandoned → chosen | count | share |
+|---|---|---|
+| blank → partly lit | 282 | 37.0% |
+| partly lit → fully lit | 253 | 33.2% |
+| partly lit → partly lit | 151 | 19.8% |
+| blank → fully lit | 32 | 4.2% |
+| blank → blank | 23 | 3.0% |
+| fully lit → fully lit | 18 | 2.4% |
+| fully lit → partly lit | 3 | 0.4% |
+
+Only 4.2% is the clean blank→picture correction the top achieved on the large majority, so the arm fires
+as written. But **456 of 762 have dim lines at both ends**: the bottom of this picture *fades* rather
+than ending, so a brightness level lands inside a gradient instead of on an edge. That is the finding,
+and it is not a result my classification was built to express — recorded as a limitation of the entry,
+not repaired after the fact.
+
+**The cutting arm fires, and it exposes a defect in the reference itself.** Of the 362 changes that span
+a line, **127 step over a line more than half lit**, and 21 abandon a line more than 90% lit. These are
+not spread evenly: the derived level's median is **18 codes** across the tape, but on the cases that cut
+picture its median is **101, with a 90th percentile of 164 and a maximum of 247**. On noisy material the
+blanking columns are full of noise, so the pool's 99th percentile is inflated and the bottom scan skips
+every real picture line to stop at the noisiest one. Counter 4704 is the panel case: level 229.4, the
+scan passes a flat grey block at lines 250–254 and stops at 246 inside relock noise.
+
+**This is a defect in entry 20's reference, not only in its use here.** The inflated level exists at the
+top of those same units. Entry 20 measured 94.4% of its changes supported, so it is a minority effect
+there, but it was never isolated and it has not been looked for. That is a new entry, not a claim.
+
+**What it does get right.** 285 changes replace a blank or partly lit last line with a fully lit one, and
+32 of those are the census over-extending one line into speckle at the bottom — the same over-extension
+defect entry 20 found at the top, in the other direction.
+
+**A question for the owner, not for me to settle.** The commonest single change is trimming a partly
+filled final row (261→260, 188 times; 522→521, 109). Counter 4919 in the panel is one: line 261 is 31%
+lit — content across the left of the sweep and black after it, the half line. His rule says the geometry
+includes the head-switch area. So whether that row is the last picture line or is excluded is his call,
+and the derived level currently excludes it.
+
+**Raw rows.** `panel_bottom.png`: counter 4704 field 1 (the inflated level cutting into noise), 4919
+field 1 (the half line, both answers inside the clip band), 7344 field 2 (the census taking a blank line
+as the bottom and the derived level stopping one line higher, correctly). Each line is labelled with the
+fraction of it that is lit.
+
+**Files.** `bottom.py`, `bot_panel.py`, `bottom.csv`, `panel_bottom.png` in scratch.
