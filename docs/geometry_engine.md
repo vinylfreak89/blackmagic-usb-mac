@@ -24,6 +24,18 @@ frame. Counter gaps break adjacency. Call `ge_break` on epoch changes, missing
 rasters or transport loss; it completes any pending boundary unit and clears all
 history. Live classifier action dispatch belongs to the frameserver caller.
 
+The entry-27a prototype binds a held correction to the two census tops of the woven frame that
+derived it. If either changes (including becoming unavailable), discard the held
+correction and its provisional confirmation before forming a new placement, and
+request a fresh comb search. An abstention leaves the correction cleared. A
+decided search with known tops records a new basis, including a zero correction.
+This basis is frame-owned under both pairings and is cleared by every existing
+reset. Missing-placement fallback is unchanged. Entry 27b's untriggered comb
+override is **not** implemented: audit still never changes decisions.
+This prototype is not acceptance-approved: its whole-tape comparison fixes the
+worked case but fails the owner's non-degradation gate in the high-margin bands.
+Do not treat recovery of the worked case as approval of the changed trajectory.
+
 Comb arithmetic uses exact integer product accumulation and a float32 mean,
 then double precision for the ratio. NumPy's float32 reduction can round the
 sum differently. Acceptance requires identical shift/decided, relative margin
@@ -53,7 +65,8 @@ Neither captured data nor generated results belong in this directory.
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
 schema 15, including applied offsets, trigger bits (T1=1, unmeasurable=2,
-field-1 change=4, field-2 change=8, confirmation=16), comb evidence and HIGH/LOW.
+field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32),
+comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
 not change decisions. Frame diagnostic columns refer to the bottom-field unit,
 whereas `applied_d1/d2` always refer to the row's own unit. Ineligible observations

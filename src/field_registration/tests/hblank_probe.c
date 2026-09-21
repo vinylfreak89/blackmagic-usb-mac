@@ -17,10 +17,10 @@ static double cpu(void) {
 static void frames(FILE *f,const ge_decision *out,unsigned n) {
     for(unsigned i=0;i<n;i++)if(out[i].has_frame) {
         const ge_decision *d=out+i;
-        fprintf(f,"%llu,%llu,%d,%d,%d,%d,%.17g,%d\n",
+        fprintf(f,"%llu,%llu,%d,%d,%d,%d,%.17g,%d,%u,%d\n",
             (unsigned long long)d->counter,(unsigned long long)d->top_unit,
             d->frame_d1,d->frame_d2,d->comb_ran,d->comb.shift,
-            d->comb.margin,d->comb.decided);
+            d->comb.margin,d->comb.decided,d->triggers,d->held);
     }
 }
 int main(int argc,char **argv) {
@@ -31,7 +31,7 @@ int main(int argc,char **argv) {
     if(argc==2) {
         audit_file=fopen(argv[1],"w");audit=malloc(ge_size());
         if(!audit_file||!audit){perror("audit output/allocation");return 2;}
-        fputs("counter,top_unit,frame_d1,frame_d2,comb_ran,comb_d,comb_margin,comb_decided\n",audit_file);
+        fputs("counter,top_unit,frame_d1,frame_d2,comb_ran,comb_d,comb_margin,comb_decided,triggers,held\n",audit_file);
     }
     int mode=-1;uint64_t counter;uint32_t reset,pair;ge_decision out[2];
     puts("counter,f1_first,f2_first,f1_last,f2_last,bottom_f1,bottom_f2,blank_f1,blank_f2,profile_hash,level_f1,level_f2,cols_f1,cols_f2,measure_ms,engine_ms");

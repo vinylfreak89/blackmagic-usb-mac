@@ -4,6 +4,7 @@
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
+    int basis_valid, basis_first[2]; /* tops of the frame that derived held */
     uint64_t counter;
     ge_features previous, current;
     uint8_t previous_y[GE_PIXELS];
@@ -151,6 +152,7 @@ ge_comb_result ge_comb(const uint8_t *t,const uint8_t *b) {
 }
 static void reset_frame_state(geometry_engine *g) {
     g->held=0;g->provisional=0;g->have_placement=0;g->last_d=g->last_d2=0;
+    g->basis_valid=0;g->basis_first[0]=g->basis_first[1]=0;
 }
 static int rerun(ge_class c) { return c!=GE_NOTHING && c!=GE_VALID_MOVE; }
 static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
@@ -160,8 +162,16 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     o.last[0]=t->last[0];o.last[1]=b->last[1];
     o.bottom[0]=t->bottom[0];o.bottom[1]=b->bottom[1];
     o.motion[0]=t->motion[0];o.motion[1]=b->motion[1];
+    /* A held correction belongs to these two frame tops, not to a transport
+     * unit (the top field can belong to the next unit under reversed pairing).
+     * Loss of a measured top also invalidates that basis. Retry on this frame;
+     * an abstaining comb must not restore the stale correction. */
+    if(g->basis_valid && (t->first[0]!=g->basis_first[0] || b->first[1]!=g->basis_first[1])) {
+        g->held=0;g->provisional=0;g->basis_valid=0;
+        o.triggers|=GE_BASIS_CHANGED;
+    }
     int known=t->first[0] && b->first[1],st=0,d=0,dknown=known;
-    if(!known) o.triggers=GE_UNMEASURABLE;
+    if(!known) o.triggers|=GE_UNMEASURABLE;
     else {
         st=b->first[1]-263-t->first[0];d=st+g->held;
         int lastknown=t->last[0] && b->last[1],sl=b->last[1]-263-t->last[0];
@@ -175,12 +185,13 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     if(o.comb_ran || g->audit)o.comb=ge_comb(ty,by);
     if(o.comb_ran && o.comb.decided) {
         d=o.comb.shift;dknown=1;
-        if(!known){g->held=0;g->provisional=0;}
+        if(!known){g->held=0;g->provisional=0;g->basis_valid=0;}
         else {
             int correction=d-st;
             if(g->provisional)g->provisional=0;
             else if(correction!=g->held)g->provisional=1;
             g->held=correction;
+            g->basis_first[0]=t->first[0];g->basis_first[1]=b->first[1];g->basis_valid=1;
         }
     }
     if(!dknown)d=g->have_placement?g->last_d:0;

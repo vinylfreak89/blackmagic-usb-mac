@@ -10,7 +10,8 @@
 #define GE_PIXELS (525u * 720u)
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
-enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16 };
+enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16,
+       GE_BASIS_CHANGED=32 };
 typedef struct {
     int shift, decided;
     double margin;
