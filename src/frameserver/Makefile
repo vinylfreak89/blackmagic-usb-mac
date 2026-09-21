@@ -12,7 +12,7 @@ FIXTURE_LONG = ../unit_parser/tests/fixture_plain.tpc   # 120 exact units, for t
 $(FIXTURE): ../unit_parser/tests/gen_unit_parser_capture.py
 	python3 $< --output $@
 
-frameserver_replay: $(SRCS) frameserver_replay.c frameserver.h frame_publisher.h ../field_registration/geometry_engine.h ../capture_core/capture_core.h ../tool_deadline.h
+frameserver_replay: $(SRCS) frameserver_replay.c frameserver.h frame_publisher.h ../field_registration/geometry_engine.h ../field_registration/geometry_tool_controls.h ../capture_core/capture_core.h ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o $@ $(LIBS)
 
 tests/audio_publisher_test: audio_publisher.c audio_publisher.h tests/audio_publisher_test.c ../test_supervisor.h
@@ -43,9 +43,13 @@ test-supervisor:
 	python3 ../../scripts/test_supervisor_test.py
 
 .PHONY: test-geometry
-test-geometry: frameserver_replay $(FIXTURE) $(FIXTURE_LONG)
+../field_registration/tests/hblank_probe: ../field_registration/geometry_engine.c ../field_registration/geometry_engine.h ../field_registration/geometry_tool_controls.h ../field_registration/tests/hblank_probe.c
+	$(MAKE) -C ../field_registration tests/hblank_probe
+
+test-geometry: frameserver_replay $(FIXTURE) $(FIXTURE_LONG) ../field_registration/tests/hblank_probe
 	python3 ../../scripts/test_geometry_pipeline.py ./frameserver_replay
 	python3 ../../scripts/test_comb_energies.py ./frameserver_replay
+	python3 ../../scripts/test_geometry_controls.py ./frameserver_replay
 
 .PHONY: test-comb-energies
 test-comb-energies: frameserver_replay
@@ -64,19 +68,21 @@ tests/audio_queue_flags_test: $(SRCS) tests/audio_queue_flags_test.c audio_publi
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/audio_queue_flags_test.c -o $@ $(LIBS)
 
 .PHONY: test-geometry-asan test-geometry-tsan
-test-geometry-asan: $(FIXTURE) $(FIXTURE_LONG)
+test-geometry-asan: $(FIXTURE) $(FIXTURE_LONG) ../field_registration/tests/hblank_probe
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o tests/geometry_replay_asan $(LIBS)
 	python3 ../../scripts/test_geometry_pipeline.py ./tests/geometry_replay_asan
 	python3 ../../scripts/test_comb_energies.py ./tests/geometry_replay_asan
 	python3 ../../scripts/test_pairing_schedule.py ./tests/geometry_replay_asan
 	python3 ../../scripts/test_audio_steps.py ./tests/geometry_replay_asan
+	python3 ../../scripts/test_geometry_controls.py ./tests/geometry_replay_asan
 
-test-geometry-tsan: $(FIXTURE) $(FIXTURE_LONG)
+test-geometry-tsan: $(FIXTURE) $(FIXTURE_LONG) ../field_registration/tests/hblank_probe
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o tests/geometry_replay_tsan $(LIBS)
 	python3 ../../scripts/test_geometry_pipeline.py ./tests/geometry_replay_tsan
 	python3 ../../scripts/test_comb_energies.py ./tests/geometry_replay_tsan
 	python3 ../../scripts/test_pairing_schedule.py ./tests/geometry_replay_tsan
 	python3 ../../scripts/test_audio_steps.py ./tests/geometry_replay_tsan
+	python3 ../../scripts/test_geometry_controls.py ./tests/geometry_replay_tsan
 
 tests/replay_completion_test: $(SRCS) tests/replay_completion_test.c frameserver_replay.c ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_completion_test.c -o $@ $(LIBS)

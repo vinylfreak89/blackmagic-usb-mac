@@ -64,7 +64,7 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 15, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 16, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32),
 comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
@@ -106,13 +106,19 @@ compare published frame shifts with decided comb minima at margins 1.5, 3, 5 and
 A regression in that gate needs owner review; do not alter the specified census
 rule to make the acceptance numbers fit.
 
-The probe alone reads `GE_TOP_MARGIN` (finite number, default 0), `GE_TOP_GUARD`
+The probe and `frameserver_replay` read `GE_TOP_MARGIN` (finite number, default 0), `GE_TOP_GUARD`
 (0..4, default 0), `GE_TOP_PLAIN23` and `GE_TOP_RUNIN` (each 0/1, default 1).
 Both probe CSVs begin with a `# GE_TOP_MARGIN=... GE_TOP_GUARD=...
 GE_TOP_PLAIN23=... GE_TOP_RUNIN=...` provenance line before the CSV header;
 skip this comment when parsing. The unit CSV also includes `rule_first`,
 `auto_first`, `plain23` and `runin` to distinguish raw scan, re-search and final
 placement. Disabling either final-stage switch retains its evidence computation.
+Both tools use the same tool-only `geometry_tool_controls.h` parser and formatter.
+Replay echoes the same arm line on stderr at startup, before opening outputs.
+Schema 16 appends `ge_top_margin`, `ge_top_guard`, `ge_top_plain23` and
+`ge_top_runin` to every v11 decision-log row, including unavailable observations.
+The sidecar still starts with its CSV column header (no comment to skip); the
+probe format is unchanged. Margin uses `%.17g`; the other settings are integers.
 
 The library exposes corresponding process-wide `ge_top_*` variables, not
 environment reads. Set them before measurement/worker startup and never mutate

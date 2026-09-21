@@ -7,41 +7,10 @@
  * No capture paths, outputs or goldens are compiled into the instrument. */
 #define _POSIX_C_SOURCE 200809L
 #include "geometry_engine.h"
+#include "geometry_tool_controls.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <errno.h>
-#include <math.h>
-static int boolean_control(const char *name,int *out) {
-    const char *v=getenv(name);
-    if(!v)return 1;
-    if(v[0] && !v[1] && (v[0]=='0' || v[0]=='1')){*out=v[0]-'0';return 1;}
-    fprintf(stderr,"invalid %s: %s (expected 0 or 1)\n",name,v);return 0;
-}
-static int controls(void) {
-    const char *v=getenv("GE_TOP_MARGIN");char *end;
-    if(v) {
-        errno=0;double n=strtod(v,&end);
-        if(errno || end==v || *end || !isfinite(n)) {
-            fprintf(stderr,"invalid GE_TOP_MARGIN: %s (expected finite number)\n",v);return 0;
-        }
-        ge_top_margin=n;
-    }
-    v=getenv("GE_TOP_GUARD");
-    if(v) {
-        errno=0;long n=strtol(v,&end,10);
-        if(errno || end==v || *end || n<0 || n>4) {
-            fprintf(stderr,"invalid GE_TOP_GUARD: %s (expected integer 0..4)\n",v);return 0;
-        }
-        ge_top_guard=(int)n;
-    }
-    return boolean_control("GE_TOP_PLAIN23",&ge_top_plain23) &&
-           boolean_control("GE_TOP_RUNIN",&ge_top_runin);
-}
-static void provenance(FILE *f) {
-    fprintf(f,"# GE_TOP_MARGIN=%.17g GE_TOP_GUARD=%d GE_TOP_PLAIN23=%d GE_TOP_RUNIN=%d\n",
-        ge_top_margin,ge_top_guard,ge_top_plain23,ge_top_runin);
-}
 static double cpu(void) {
     struct timespec t;
     if(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t))abort();
@@ -58,18 +27,18 @@ static void frames(FILE *f,const ge_decision *out,unsigned n) {
 }
 int main(int argc,char **argv) {
     if(argc>2){fputs("usage: hblank_probe [audit-frames.csv]\n",stderr);return 2;}
-    if(!controls())return 2;
+    if(!ge_tool_controls_from_env())return 2;
     uint8_t *y=malloc(GE_PIXELS);geometry_engine *g=malloc(ge_size());
     if(!y||!g)return 2;
     FILE *audit_file=NULL;geometry_engine *audit=NULL;
     if(argc==2) {
         audit_file=fopen(argv[1],"w");audit=malloc(ge_size());
         if(!audit_file||!audit){perror("audit output/allocation");return 2;}
-        provenance(audit_file);
+        ge_tool_controls_echo(audit_file);
         fputs("counter,top_unit,frame_d1,frame_d2,comb_ran,comb_d,comb_margin,comb_decided,triggers,held\n",audit_file);
     }
     int mode=-1;uint64_t counter;uint32_t reset,pair;ge_decision out[2];
-    provenance(stdout);
+    ge_tool_controls_echo(stdout);
     puts("counter,f1_first,f2_first,f1_last,f2_last,bottom_f1,bottom_f2,blank_f1,blank_f2,profile_hash,level_f1,level_f2,cols_f1,cols_f2,rule_first,auto_first,plain23,runin,measure_ms,engine_ms");
     while(fread(&counter,sizeof counter,1,stdin)==1) {
         if(fread(&reset,sizeof reset,1,stdin)!=1||fread(&pair,sizeof pair,1,stdin)!=1||

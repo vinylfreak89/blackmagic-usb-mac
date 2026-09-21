@@ -14,6 +14,7 @@
 // Blocking startup, stop, file flush/close and final output each have a 60 s watchdog
 // (FS_LIFECYCLE_S overrides for tests). Timeout outputs are incomplete, never a clean result.
 #include "frameserver.h"
+#include "../field_registration/geometry_tool_controls.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,6 +47,8 @@ static void dump_audio(void *c, const ap_block *b){
                        b->n_frames, b->flags, (unsigned long long)b->last_resync_counter_ext, (long long)b->correlation_residual);
 }
 int main(int argc, char **argv){
+    if(!ge_tool_controls_from_env())return 2;
+    ge_tool_controls_echo(stderr);
     tool_deadline_start("frameserver_replay",3);
     double lifecycle_s=tool_seconds(getenv("FS_LIFECYCLE_S"),60);
     tool_guard("open outputs / fs_open / fs_start",lifecycle_s);
