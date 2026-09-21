@@ -336,3 +336,15 @@ records that the distinction does not exist rather than reporting a duplicate as
 **Tie-break, stated because it is a choice.** Where several gaps are equally wide the highest is taken:
 the separation being sought lies above the blanking bulk, and a higher level is the stricter picture
 test, so it is the conservative direction.
+
+#### Amendment 2 to entry 24 — a figure in its own falsifier was wrong
+
+The falsifier above calls 27 codes "the 99th percentile" of entry 20's level. That was taken from the
+population entry 23 happened to analyse — the edges where both bottoms were found — and the ~1,089 edges
+it excluded are almost all extreme, so removing them pulled the figure down. Over all 172,586 field
+edges the 99th percentile is **46.7**, confirmed identical between `bottom.csv` and `gaplevel.csv` on
+every edge.
+
+The arm is therefore evaluated at both values and neither is chosen to suit the answer. The split barely
+matters for the arm that decides the entry — 1.78% of clean edges change at 46.7, 1.77% at 27 — and it
+matters a great deal for how much inflation survives, which is reported both ways.
