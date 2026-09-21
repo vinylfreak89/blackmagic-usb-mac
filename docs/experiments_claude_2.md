@@ -314,3 +314,25 @@ it should be extremely close)".
 
 **Material.** All 86,293 exact units; entry 20's levels and tops and entry 23's `bottom.csv` as the
 baselines to compare against, both already measured.
+
+#### Amendment 1 to entry 24, written before the run — what the gap is taken over, and why
+
+**Physical reason.** The gap must separate lines whose horizontal blanking is clean from lines whose
+blanking carries noise. Taken over every sample it cannot do that: the samples are integers and a field
+carries thousands of them, so nearly every adjacent pair differs by 0 or 1, "the widest gap" is a tie
+broken arbitrarily, and on a clean unit it lands near the bottom and returns a level of about zero,
+which accepts every row. The gap is therefore taken over the **per-line maxima** — the highest blanking
+sample on each line, a few hundred values — which is the granularity at which the separation exists.
+
+**What this should improve and what it must not break.** It should leave the level where it is on clean
+units and pull it down where noise has inflated it; it must not start excluding large numbers of lines,
+since a level measured from a handful of lines is not the field's blanking.
+
+**Consequence for the registered variants.** Once the gap is taken over per-line maxima, "exclude the
+samples" and "exclude the lines they came from" are the same operation and return the same number. The
+two variants collapse into one rule and are reported as one; the entry above asked for both, and this
+records that the distinction does not exist rather than reporting a duplicate as a second result.
+
+**Tie-break, stated because it is a choice.** Where several gaps are equally wide the highest is taken:
+the separation being sought lies above the blanking bulk, and a higher level is the stricter picture
+test, so it is the conservative direction.
