@@ -1919,3 +1919,39 @@ full amplitude but not at reduced amplitude. That distinction is his, is recorde
 by this entry.
 
 **Material.** All 86,293 exact units; the ten cases above as the worked examples.
+
+## E-claude-2026-09-21-27 — the held correction, and letting a confident comb override
+
+**Ruling (owner, 2026-09-21):** "the whole thing should be built on confidence scores. any instrument
+detecting a change should recalculate confidence based on its own previous decisions and only enact that
+change if it is of high enough confidence. thats how you can get the weak 11126 decision overridden at
+11127". Build and test authorised the same day.
+
+**Two changes, both from one worked case.** At 11118–11125 the engine publishes a top of 24 with a held
+correction of +1, and the comb agrees. At 11126 the top corrects to 23 — and it is a correction, the raw
+rows show line 23 at 99–100% lit, p95 181–188, coherence +0.89 to +1.00 with the line below, against line
+22 at 0% lit and p95 2.0. But the held +1 was compensating for a top of 24, and it rides on for six
+units, pushing the published shift to +1 while the comb sits decided at margin 3.71–4.01 saying 0 and is
+never consulted. At 11132 it drops to 0 on its own and agreement returns.
+
+- **Invalidate the held correction when its basis changes.** A correction derived against one top is not
+  evidence about another; when the top moves, it is stale and must be re-derived rather than carried.
+- **Let a decided comb override an untriggered placement.** The comb is computed on every frame under
+  audit; today it is acted on only when a trigger fired. Scope measured: **1,595 frames** tape-wide where
+  the comb is decided, no trigger fired, and the published shift disagrees — including 80 in the fade span
+  and 6 at 11127–11131.
+
+**Premise.** Both defects are one thing: a decision held past the evidence that justified it. Dropping a
+correction when its basis moves, and letting confident contradicting evidence act without waiting for a
+trigger, place the picture correctly where the engine currently does not.
+
+**Falsifier.**
+- The worked case does not come right: 11126–11131 must agree with the comb after the change.
+- Or the owner's gate fails: published shift against the comb, filtered to high confidence — margins 3, 5
+  and 8 must not degrade. The 1.5 band is reported but is not the criterion, being the region where entry
+  21 measured the comb naming the right placement about one time in seven.
+- Or it changes frames outside the measured scope: more than the 1,595 plus the held cases, counted and
+  reported rather than netted.
+- Or raw rows on a sample of the changed frames show the new placement worse.
+
+**Material.** All 86,293 exact units, on top of the entry-20 draft `91a5b64`.
