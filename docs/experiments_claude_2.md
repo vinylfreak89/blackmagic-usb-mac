@@ -109,3 +109,44 @@ anything in entries 20 or 21 and has not been checked against material outside t
 
 **Files.** `coherence.py`, `coherence_report.py`, `coherence.csv`, `coherence_cases.csv`,
 `panel_coherence.png` in scratch.
+
+#### Amendment 1 to the entry-22 report (2026-09-21) — the raw rows found a new error class I had not measured
+
+Looking at the panel before sending it caught two things the report above stated without checking. Both
+are corrected here rather than in the text above, which stands as written.
+
+**A new error class, and it fires the owner's "no new errors" condition.** A move is only clean if it did
+not step over picture on the way. Measuring the highest occupancy of the lines **strictly between** the
+census top and each rule's top, the same way for both rules and split by direction:
+
+| | later moves | vault over a picture line | moves of 3+ lines later | of those, vaulting picture |
+|---|---|---|---|---|
+| entry 20 | 6,354 | 185, 2.9% | 138 | 60, 43% |
+| two-stage ±50% | 7,491 | **387, 5.2%** | 321 | **221, 69%** |
+
+The second stage more than doubles the count of tops that land late past real picture, and its long moves
+are wrong about seven times in ten. This is one mechanism, not two: the coherence test's false negatives
+on real picture are its dominant cost, and a band exists precisely to route more lines into it. The
+±50% trade is therefore **+1,152 edges corrected onto picture against 202 new late tops and 9 blank-line
+regressions** — net positive by count, and not something to adopt on that count alone.
+
+**Entry 20's own figure was measured differently.** Its check included the abandoned line in that
+maximum; excluding both endpoints, which is what makes the two rules comparable, gives the 185 above.
+
+**The skip class is partly an artifact of the run-in step.** On **62 of the 78** skips the census's
+finished top is not the line its picture test accepted, and on **46** the line it accepted is blank
+(occupancy < 0.05) — the run-in +1 step moved it onto picture. The class still correctly identifies a
+picture line that entry 20 passed, so entries 20 and 21 stand; but the census's agreement with that line
+is accidental on 46 of 78, and reports should not read it as the census having found the top.
+
+**What bounds the rescue.** On **29 of the 78** skips the skipped line is vetoed by the **existing**
+high-contrast guard (spread ≥ 40 and correlation with the line below < 0.5), which runs after the second
+stage. No band can rescue those: the veto is downstream of the whole question this entry asked.
+
+**A correction to my own caption.** I described counter 4812's line 25 as flat dim picture. It is not:
+p95 179, spread 90, occupancy 1.000 — bright, high-contrast picture. It is rejected by the guard above,
+not by darkness. The panel is what caught it.
+
+**An instrument defect, disclosed.** `coherence.py` opened its output files at import, so importing it
+from the analysis script truncated the results it was about to read. Both files were regenerated and
+every figure in the report above reproduced identically; the module no longer writes anything at import.
