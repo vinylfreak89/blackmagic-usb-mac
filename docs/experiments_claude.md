@@ -2084,3 +2084,8 @@ should not be read as a fall from it.
 about half the errors and points at the right answer in a seventh of those. The reference and the comb
 are complementary rather than redundant — the reference gets 94.4% of its changes right, and the comb
 catches part of the remainder without being able to fix it.
+
+---
+
+Continued in `docs/experiments_claude_2.md` from entry 22: this file reached the
+150 KB cap the artifact guard enforces. Nothing above was edited.
