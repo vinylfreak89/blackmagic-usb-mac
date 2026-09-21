@@ -19,6 +19,8 @@ typedef struct {
 typedef struct {
     int first[2], last[2], bottom[2], rule_first, auto_first, plain23;
     double blank[2], runin;
+    double hblank_level[2];
+    int hblank_cols[2];
     uint16_t profile[2][12][672]; /* exact eight-sample sums */
     ge_class motion[2];
 } ge_features;
@@ -29,6 +31,8 @@ typedef struct {
     unsigned triggers;
     ge_comb_result comb; /* unknown (NAN margin) unless run or audit requested */
     int first[2], last[2], bottom[2];
+    double hblank_level[2]; /* this unit's own fields, also on unused boundaries */
+    int hblank_cols[2];
     ge_class motion[2];
 } ge_decision;
 typedef struct geometry_engine geometry_engine;

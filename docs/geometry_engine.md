@@ -52,7 +52,7 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 14, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 15, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16), comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
 not change decisions. Frame diagnostic columns refer to the bottom-field unit,
@@ -67,6 +67,25 @@ not an audit-only computation. Existing columns retain their meanings.
 Within the same row, the published relative shift is `frame_d2 - frame_d1`;
 compare it to `comb_d`, with `comb_decided` indicating whether the minimum was
 decisive. This requires no cross-unit join even under reversed pairing.
+
+The top search uses the per-field horizontal-blanking level of experiment 20:
+over storage rows 18..261 (+263 for field 2), keep column 0 and then columns
+1..23 while each median is at most `median(col0) + max(p90(col0)-median(col0),1)`.
+The level is p99 of the pooled kept samples, using the existing interpolated
+quantile. Only the top brightness bar changes to `p95(row) > level`; spread,
+correlation, plain23/run-in logic, device blanking, bottom search and bottom
+profiles retain their existing rules. Noisy leading columns can inflate the
+level; this known limitation is deliberately retained for review, not repaired.
+The required `spread > 4` guard remains: the experiment-20 `hblank.py` omitted
+it in its new-rule branch, so that script's tops are not an exact golden for
+this top-only substitution. Its `.1f` level output also cannot establish
+floating-point-level agreement; acceptance needs unrounded reference levels.
+
+Beside the existing bottom-line coordinates `bl1`/`bl2`, schema 15 adds
+`hblank_level_f1`, `hblank_cols_f1`, `hblank_level_f2`, `hblank_cols_f2`.
+These describe the row's **own unit**, including unused boundary fields; they
+are empty for ineligible observations. Under reversed pairing, the frame's
+field-1 provenance is found on `frame_top_unit`, like its applied placement.
 
 For mixed recordings use `--pairing-schedule FILE` instead of `--pair-next`
 (`fs_config.pairing_schedule` for callers). The CSV header is

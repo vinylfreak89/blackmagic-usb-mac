@@ -264,7 +264,7 @@ static const char *transport_name(unit_transport_state t){
                 case UNIT_TRANSPORT_SHORT: return "Short"; default: return "Unframed"; }
 }
 static int log_header(FILE *L, int geometry){
-    if(geometry)return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies\n")<0?-1:0;
+    if(geometry)return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,hblank_level_f1,hblank_cols_f1,hblank_level_f2,hblank_cols_f2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies\n")<0?-1:0;
     return fprintf(L, "ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,"
                "interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,"
                "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,"
@@ -367,7 +367,15 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
         CELL(28,"%llu",(unsigned long long)it->preceding_ring_drops);CELL(29,"%d",FS_GEOMETRY_LOG_SCHEMA);
 #undef CELL
         int bad=0;
-        for(int i=0;i<30;i++)if(fprintf(f->log,"%s,",cell[i])<0)bad=1;
+        for(int i=0;i<30;i++) {
+            if(fprintf(f->log,"%s,",cell[i])<0)bad=1;
+            if(i==23) {
+                if(d) {
+                    if(fprintf(f->log,"%.12g,%d,%.12g,%d,",d->hblank_level[0],d->hblank_cols[0],
+                               d->hblank_level[1],d->hblank_cols[1])<0)bad=1;
+                } else if(fputs(",,,,",f->log)==EOF)bad=1;
+            }
+        }
         /* Pending reversed rows must retain THEIR note, not the next unit's note.
          * Counterless hole/tail rows use the active setting, not a fictitious 0. */
         const fs_pairing_row *pair=(d || (!it->gap_only && it->obs.format))?

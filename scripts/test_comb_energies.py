@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Schema-14 comb evidence through the real replay, normal or sanitized.
+"""Comb evidence through the real replay, normal or sanitized.
 
 Synthetic nonzero-shift, zero-minimum and all-tie rasters. Verify all eleven
 values independently from the luma, including reversed frame ownership. Audit
@@ -47,6 +47,7 @@ def main():
     y = np.ones((525, 720), dtype=np.uint8)
     y[19:253] = np.array([rng.randrange(40, 180) for _ in range(234*720)], dtype=np.uint8).reshape(234, 720)
     y[20:24] = y[19]  # measurable, row-continuing top for the unchanged census
+    y[:, :24] = 1  # genuine leading blanking, separate from the comb's x>=24 window
     # Shift +2, with positive minimum so finite-margin precision is checked too.
     y[284:518] = ((y[19:253].astype(np.uint16) + y[20:254]) // 2 + 25).astype(np.uint8)
     zero = y.copy()
@@ -74,9 +75,23 @@ def main():
                 p = subprocess.run(cmd,capture_output=True,text=True,timeout=90)
                 assert p.returncode == 0 and 'Sanitizer' not in p.stderr, (p.returncode,p.stdout,p.stderr)
                 rows = list(csv.DictReader(log.open()))
-                assert all(r['schema_version']=='14' for r in rows)
+                assert all(r['schema_version']=='15' for r in rows)
                 units = [r for r in rows if r['counter_extended']]
                 assert len(units)==12 and all(r['published']=='1' for r in units), p.stdout
+                for r in rows:
+                    for field in (1,2):
+                        level_key,cols_key=f'hblank_level_f{field}',f'hblank_cols_f{field}'
+                        if not r['counter_extended']:
+                            assert r[level_key]==r[cols_key]==''
+                            continue
+                        # Provenance is unit-owned even for reversed and unused fields.
+                        c=int(r['counter_extended'])-100;off=263*(field-1)
+                        lead=rasters[c][18+off:262+off,:24]
+                        med,hi=np.quantile(lead[:,0],[.5,.9]);allow=med+max(hi-med,1)
+                        cols=1
+                        while cols<24 and np.median(lead[:,cols])<=allow:cols+=1
+                        assert int(r[cols_key])==cols
+                        assert math.isclose(float(r[level_key]),float(np.quantile(lead[:,:cols],.99)),abs_tol=1e-10)
                 for row in rows:
                     has_frame = row['comb_ran'] != ''
                     computed = has_frame and (audit or row['comb_ran']=='1')

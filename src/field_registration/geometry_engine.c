@@ -34,11 +34,26 @@ static double correlation(const uint8_t *a,const uint8_t *b,unsigned n) {
     double va=aa-sa*sa/n,vb=bb-sb*sb/n;
     return va>0 && vb>0 ? (ab-sa*sb/n)/sqrt(va*vb) : -1;
 }
-static int picture(const uint8_t *y,int row,double blank,int top) {
+static double horizontal_level(const uint8_t *y,int off,int *columns) {
+    unsigned h[256]={0},pool[256];
+    for(int r=18+off;r<=261+off;r++)h[y[r*720]]++;
+    double med=quantile(h,244,.5),hi=quantile(h,244,.9);
+    double allow=med+fmax(hi-med,1.0);
+    memcpy(pool,h,sizeof pool); *columns=1;
+    for(int x=1;x<24;x++) {
+        memset(h,0,sizeof h);
+        for(int r=18+off;r<=261+off;r++)h[y[r*720+x]]++;
+        if(quantile(h,244,.5)>allow)break;
+        for(int v=0;v<256;v++)pool[v]+=h[v];
+        ++*columns;
+    }
+    return quantile(pool,244*(unsigned)*columns,.99);
+}
+static int picture(const uint8_t *y,int row,double reference,int top) {
     unsigned h[256]; const uint8_t *p=y+row*720;
     histogram(p+40,640,h);
     double hi=quantile(h,640,.95),spread=hi-quantile(h,640,.05);
-    if(hi-blank<=5 || spread<=4) return 0;
+    if((top ? hi<=reference : hi-reference<=5) || spread<=4) return 0;
     if(top && spread>=40) {
         for(int lag=-24;lag<=24;lag++)
             if(correlation(p+64,p+720+64+lag,592)>=.5) return 1;
@@ -67,7 +82,8 @@ void ge_measure(const uint8_t *y,ge_features *f) {
     for(int k=0;k<2;k++) {
         unsigned h[256]; int off=263*k;
         histogram(y+(7+off)*720,9*720,h); f->blank[k]=quantile(h,9*720,.5);
-        f->first[k]=first(y,18+off,37+off,f->blank[k]);
+        f->hblank_level[k]=horizontal_level(y,off,&f->hblank_cols[k]);
+        f->first[k]=first(y,18+off,37+off,f->hblank_level[k]);
         for(int r=258+off;r>236+off;r--) if(picture(y,r,f->blank[k],0)){f->last[k]=r+4;break;}
         for(int j=0;j<12;j++) {
             const uint8_t *p=y+(247+off+j)*720; unsigned n=0;
@@ -82,7 +98,7 @@ void ge_measure(const uint8_t *y,ge_features *f) {
     f->rule_first=f->first[0];
     unsigned sum=0; for(int x=40;x<680;x++)sum+=y[19*720+x];
     f->plain23=sum/640.0-f->blank[0]>30 && correlation(y+19*720+40,y+20*720+40,640)>=.5;
-    if(f->first[0]==23 && !f->plain23) f->first[0]=first(y,20,37,f->blank[0]);
+    if(f->first[0]==23 && !f->plain23) f->first[0]=first(y,20,37,f->hblank_level[0]);
     f->auto_first=f->first[0];
     if(f->first[0] && f->first[1]) {
         unsigned h[256]; histogram(y+(f->first[1]-5)*720+40,640,h);
@@ -178,6 +194,10 @@ unsigned ge_break(geometry_engine *g,ge_decision out[2]) {
     if(g->valid && g->reverse)out[n++]=g->pending;
     g->valid=0;reset_frame_state(g);return n;
 }
+static void unit_provenance(ge_decision *d,const ge_features *f) {
+    memcpy(d->hblank_level,f->hblank_level,sizeof d->hblank_level);
+    memcpy(d->hblank_cols,f->hblank_cols,sizeof d->hblank_cols);
+}
 unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_decision out[2]) {
     unsigned n=0;int adjacent=g->valid && g->counter!=UINT64_MAX && c==g->counter+1;
     if(g->valid && !adjacent)n=ge_break(g,out);
@@ -185,17 +205,20 @@ unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_dec
     if(adjacent && !reset)for(int k=0;k<2;k++)f->motion[k]=classify(&g->previous,f,k);
     if(reset || !adjacent)reset_frame_state(g);
     if(!g->reverse) {
-        out[n]=frame(g,y,y,f,f,c,c);out[n].reset_before=reset; n++;
+        out[n]=frame(g,y,y,f,f,c,c);out[n].reset_before=reset;
+        unit_provenance(out+n,f); n++;
     } else {
         int current_d1=f->first[0]?f->first[0]-23:0,unused1=1;
         if(adjacent) {
             ge_decision o=frame(g,y,g->previous_y,f,&g->previous,c,g->counter);
             current_d1=o.d1;unused1=0;
             o.d1=g->pending.d1;o.unused1=g->pending.unused1;o.reset_before=g->pending.reset_before;
+            unit_provenance(&o,&g->previous);
             out[n++]=o;
         }
         ge_decision p={0};p.counter=c;p.d1=current_d1;p.d2=f->first[1]?f->first[1]-286:0;
         p.unused1=unused1;p.unused2=1;p.reset_before=reset;p.comb.margin=NAN;
+        unit_provenance(&p,f);
         g->pending=p;memcpy(g->previous_y,y,GE_PIXELS);
     }
     g->previous=*f;g->valid=1;g->counter=c;return n;

@@ -120,3 +120,4 @@ src/frameserver/tests/worker_bench
 /src/frameserver/tests/geometry_replay_tsan
 /src/obs_plugin/tests_audio_timing
 /src/frameserver/tests/audio_queue_flags_test
+/src/field_registration/tests/hblank_probe
