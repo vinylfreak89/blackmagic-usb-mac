@@ -1979,3 +1979,39 @@ validation. The gate and the override cannot both be measured on the same quanti
 changes are in place". So the comb override is withdrawn from this build and the entry is carried by its
 first change alone — invalidating the held correction when the top moves. The override, and the
 circularity above, are open and unresolved rather than refuted.
+
+## E-claude-2026-09-21-28 — letting the plain-23 guard abstain
+
+**Owner's principle, applied to the instrument it was measured on:** "any instrument detecting a change
+should recalculate confidence based on its own previous decisions and only enact that change if it is of
+high enough confidence." The guard currently decides on evidence of any strength.
+
+**What it does today.** When the picture test returns 23, the guard discards that answer and re-searches
+from 24 unless line 23's mean sits 30 codes above blanking AND its correlation with line 24 is at least
+0.5. It fires on **10,262 units, 11.9% of the tape**. Measured today: on **98.5%** of those the rejected
+line carries no CEA-608 run-in at all, so it is not rejecting data lines, which is its stated purpose;
+the brightness half causes only 4.7% of rejections; and a ±24 lag search recovers only 13%, so the lines
+genuinely do not resemble the one below.
+
+**The change.** Where the correlation is marginal — within 0.15 of the 0.5 bar — the guard abstains and
+the picture test's answer stands, rather than being overridden. **1,291 units**, a twentieth of what
+removing the guard outright would touch.
+
+**Premise.** A guard that cannot tell picture from data at the margin should not overrule a measurement
+that can. The cases it decides marginally are ones where line 23 is real picture, so letting the picture
+test stand places them correctly.
+
+**Why these two classes and not a blanket removal.** 8,486 of the rejections sit clearly below the bar at
+under 0.35 correlation, and what those lines are is unresolved — they carry no data signature but do not
+resemble the picture below either. Changing them would be asserting something unmeasured. The margin is
+where the evidence says the guard is guessing.
+
+**Falsifier.**
+- The owner's two outstanding case classes must come right: the thirteen at 10989–11001, where the
+  correlation reads 0.397–0.482 while line 23 sits 150+ codes above blanking, and the fade at 48064–48188,
+  whose 126 units follow from a single marginal call of 0.469 at 48063.
+- Or his gate fails: published shift against the comb at margins 3, 5 and 8 must not degrade.
+- Or it changes more than the 1,291 units measured, counted and reported rather than netted.
+- Or raw rows on a sample show the picture test's answer worse than the guard's.
+
+**Material.** All 86,293 exact units, on top of entry 20 and entry 27a.
