@@ -2,10 +2,10 @@
 #include <math.h>
 #include <string.h>
 
-double ge_top_margin=0.0;
-int ge_top_guard=0;
-int ge_top_plain23=1;
-int ge_top_runin=1;
+double ge_top_margin=5.0;
+int ge_top_guard=3;
+int ge_top_plain23=0;
+int ge_top_runin=0;
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;

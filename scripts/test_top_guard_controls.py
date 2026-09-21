@@ -11,7 +11,8 @@ names = ('GE_TOP_MARGIN', 'GE_TOP_GUARD', 'GE_TOP_PLAIN23', 'GE_TOP_RUNIN')
 for name in names:
     base.pop(name, None)
 
-for arm, expected in [({}, '0 GE_TOP_GUARD=0 GE_TOP_PLAIN23=1 GE_TOP_RUNIN=1'),
+for arm, expected in [({}, '5 GE_TOP_GUARD=3 GE_TOP_PLAIN23=0 GE_TOP_RUNIN=0'),
+                      (dict(zip(names, ('0', '0', '1', '1'))), '0 GE_TOP_GUARD=0 GE_TOP_PLAIN23=1 GE_TOP_RUNIN=1'),
                       (dict(zip(names, ('5', '3', '0', '0'))), '5 GE_TOP_GUARD=3 GE_TOP_PLAIN23=0 GE_TOP_RUNIN=0')]:
     with tempfile.TemporaryDirectory(prefix='top-guard-controls-', dir='/private/tmp') as tmp:
         audit = Path(tmp)/'audit.csv'

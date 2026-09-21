@@ -40,10 +40,11 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
     with capture.open('wb') as f:
         for seq,off in enumerate(range(0,len(stream),15360)):
             f.write(fixture.record(fixture.DATA,fixture.VIDEO,0,seq,0,15360,stream[off:off+15360]))
-    for selected in (False,True):
-        env=base|(dict(zip(names,('5','3','0','0'))) if selected else {})
+    for arm in ('default','old','explicit-new'):
+        values=('0','0','1','1') if arm=='old' else ('5','3','0','0')
+        env=base|(dict(zip(names,values)) if arm!='default' else {})
         for reversed_pair in (False,True):
-            log=tmp/f'{selected}-{reversed_pair}.csv'
+            log=tmp/f'{arm}-{reversed_pair}.csv'
             cmd=[replay,str(capture),str(log),'--geometry-v11','--pool','16']
             if reversed_pair:cmd+=['--pair-next']
             p=subprocess.run(cmd,capture_output=True,text=True,env=env,timeout=90)
@@ -51,7 +52,6 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
             with log.open() as f:rows=list(csv.DictReader(f))
             units={int(r['counter_extended']):r for r in rows if r['counter_extended']}
             assert len(units)==4 and all(r['published']=='1' for r in units.values()),p.stdout
-            values=('5','3','0','0') if selected else ('0','0','1','1')
             for r in rows:
                 assert r['schema_version']=='16' and tuple(r[n.lower()] for n in names)==values,r
             raw=b''.join(struct.pack('=QII',c,int(units[c]['reset_before']),int(reversed_pair))+y for c in units)
@@ -66,5 +66,5 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
                 assert int(r['f1_first'] or 0)==int(measured[top]['f1_first'])
                 assert int(r['f2_first'] or 0)==int(measured[c]['f2_first'])
             if not reversed_pair:answers.append((units[100]['f1_first'],units[100]['f2_first']))
-    assert answers==[('24','286'),('25','287')],answers
+    assert answers==[('25','287'),('24','286'),('25','287')],answers
 print('GEOMETRY-CONTROLS PASS: 18 identical parser refusals; default/selected arms; aligned/reversed census; every-row provenance')

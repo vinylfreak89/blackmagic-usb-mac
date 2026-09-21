@@ -36,7 +36,7 @@ int main(void) {
     for(int x=40;x<680;x++) {
         a[19*720+x]=a[20*720+x]=(x&1)?60:80;
         a[282*720+x]=(x&1)?3:9; // hi == derived level: rejected
-        a[283*720+x]=(x&1)?10:20;
+        a[283*720+x]=a[284*720+x]=(x&1)?10:20;
     }
     for(int x=40;x<240;x++)a[258*720+x]=8; // 31.25% lit, BELOW derived level
     ge_measure(a,&f);

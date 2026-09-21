@@ -85,14 +85,14 @@ The top search uses the per-field horizontal-blanking level of experiment 20:
 over storage rows 18..261 (+263 for field 2), keep column 0 and then columns
 1..23 while each median is at most `median(col0) + max(p90(col0)-median(col0),1)`.
 The level is p99 of the pooled kept samples, using the existing interpolated
-quantile. Only the top brightness bar changes to `p95(row) > level`; spread,
-correlation, plain23/run-in logic, device blanking, bottom search and bottom
-profiles retain their existing rules. Noisy leading columns can inflate the
-level; this known limitation is deliberately retained for review, not repaired.
-The required `spread > 4` guard remains. Acceptance uses the corrected
-`expected_tops.csv`, which retains that guard; the original experiment-20
-`hblank.py` omitted it and rounded levels to one decimal. Compare levels with
-floating-point tolerance, not equality of differently formatted decimal strings.
+quantile. The default top brightness bar is `p95(row) - level > 5`, with
+`spread > 4` still mandatory. Every candidate must also have at least 11 of 16
+body chunks agree with the next row: samples 40..679, 40 samples per chunk,
+`abs(mean(row)-mean(next))/max(abs(mean(next)),1) <= 0.20`.
+The plain23 re-search and run-in increment are off by default, but their evidence
+is still computed. Device blanking, the bottom search (`p95-blank > 5`, without
+coherence), and bottom profiles are unchanged. Noisy leading columns can still
+inflate the level; this change does not cure that limitation.
 
 `tests/hblank_probe` accepts a streaming luma record (uint64 counter, uint32
 reset, uint32 reversed-pairing flag, then 525×720 luma bytes) and reports census
@@ -106,8 +106,12 @@ compare published frame shifts with decided comb minima at margins 1.5, 3, 5 and
 A regression in that gate needs owner review; do not alter the specified census
 rule to make the acceptance numbers fit.
 
-The probe and `frameserver_replay` read `GE_TOP_MARGIN` (finite number, default 0), `GE_TOP_GUARD`
-(0..4, default 0), `GE_TOP_PLAIN23` and `GE_TOP_RUNIN` (each 0/1, default 1).
+The probe and `frameserver_replay` read `GE_TOP_MARGIN` (finite number, default 5), `GE_TOP_GUARD`
+(0..4, default 3), `GE_TOP_PLAIN23` and `GE_TOP_RUNIN` (each 0/1, default 0).
+An unset environment now selects the new rule in the engine itself. The exact
+pre-promotion arm is `GE_TOP_MARGIN=0 GE_TOP_GUARD=0 GE_TOP_PLAIN23=1 GE_TOP_RUNIN=1`;
+set all four explicitly for an old/new comparison. Schema 16's arm columns name
+both behaviours without changing any existing column's meaning.
 Both probe CSVs begin with a `# GE_TOP_MARGIN=... GE_TOP_GUARD=...
 GE_TOP_PLAIN23=... GE_TOP_RUNIN=...` provenance line before the CSV header;
 skip this comment when parsing. The unit CSV also includes `rule_first`,
@@ -128,7 +132,19 @@ next-row mean on high-spread rows; 3 applies that chunk test on every candidate;
 4 requires the row/next-row population-standard-deviation ratio strictly between
 0.5 and 2. Only one row below is read. The margin applies only to top brightness;
 spread >4 remains mandatory. None of these controls changes bottom measurements
-or derived blanking provenance. All-default settings reproduce the prior rule.
+or derived blanking provenance. The old arm reproduces c620966; the new default
+census reproduces the measured `m5_g3_p0_r0.units.csv`, including evidence columns.
+Compare every non-timing column; do not use the old experiment-20 top golden for
+the new default. The original experiment-20 reference omitted the spread guard;
+its corrected golden applies to the explicit old arm only.
+
+Census reproduction is not a pairing or state-history check. The initial ten-arm
+experiment fed aligned units with gap-only resets; whole-tape placement validation
+uses the live reversed/aligned schedule and classifier resets. Report these
+populations separately. Missing-top fallback retains the previous relative shift
+when the comb abstains, but a measured field-2 top can still move both fields via
+absolute placement. This is not a general fade-freeze policy, and this top-rule
+change does not modify that state machine.
 
 Beside the existing bottom-line coordinates `bl1`/`bl2`, schema 15 adds
 `hblank_level_f1`, `hblank_cols_f1`, `hblank_level_f2`, `hblank_cols_f2`.

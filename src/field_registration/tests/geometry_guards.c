@@ -9,7 +9,14 @@ static void body(uint8_t *p,int a,int b) {
 int main(void) {
     uint8_t *y=malloc(GE_PIXELS);assert(y);memset(y,1,GE_PIXELS);
     uint8_t *a=y+19*720,*b=a+720;
-    assert(ge_top_margin==0 && ge_top_guard==0 && ge_top_plain23==1 && ge_top_runin==1);
+    assert(ge_top_margin==5 && ge_top_guard==3 && ge_top_plain23==0 && ge_top_runin==0);
+    // Default must consult coherence even at low spread, not just high contrast.
+    body(a,10,16);body(b,60,80);assert(!picture(y,19,1,1));
+    body(b,10,16);assert(picture(y,19,1,1));
+    assert(!picture(y,19,11,1)); // exactly five above reference is not enough
+    assert(picture(y,19,nextafter(11,-INFINITY),1));
+    // Exercise the retained legacy arm explicitly, never by default assumption.
+    ge_top_margin=0;ge_top_guard=0;ge_top_plain23=1;ge_top_runin=1;
     body(a,100,106);body(b,200,200);
     for(int g=0;g<5;g++){
         ge_top_guard=g;assert(picture(y,19,1,1)==(g<3));

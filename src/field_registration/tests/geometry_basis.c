@@ -56,10 +56,15 @@ int main(void) {
         t.motion[0]=GE_UNKNOWN;
         o=frame(g,top,bottom,&t,&b,106+reverse,106);
         assert(o.comb.decided && g->basis_valid && g->basis_first[1]==287);
+        int previous_d1=o.frame_d1,previous_d2=o.frame_d2;
         b.first[1]=0;
         o=frame(g,flat,flat,&t,&b,107+reverse,107);
         assert((o.triggers&GE_BASIS_CHANGED) && (o.triggers&GE_UNMEASURABLE));
         assert(!g->basis_valid && !g->held);
+        assert(o.frame_d1==previous_d1 && o.frame_d2==previous_d2);
+        t.first[0]=0;
+        o=frame(g,flat,flat,&t,&b,108+reverse,108);
+        assert(!o.comb.decided && o.frame_d1==previous_d1 && o.frame_d2==previous_d2);
         g->basis_valid=1;g->basis_first[0]=24;g->held=1;
         ge_decision out[2];ge_break(g,out);
         assert(!g->basis_valid && !g->held && !g->basis_first[0]);
