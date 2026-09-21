@@ -2015,3 +2015,43 @@ where the evidence says the guard is guessing.
 - Or raw rows on a sample show the picture test's answer worse than the guard's.
 
 **Material.** All 86,293 exact units, on top of entry 20 and entry 27a.
+
+## E-claude-2026-09-21-29 — one measurement, scanned: the settle point as the top
+
+**Owner's correction that produced this (2026-09-21):** "its not do all of the chunks agree when averaged
+together. its... does any chunk disagree", and then, of the ratio exploding above blanking: "isn't an
+extremely high ratio there indicative of low coherence... doesn't that essentially retire the entire
+CEA-608, XDS, etc test by looking specifically for those explosive ratios?"
+
+**The measurement.** For a line and the line beneath it, the per-chunk ratio of their means, 16 chunks.
+Its **median** is the level relationship and the **scatter** is structural agreement. A correlation
+conflates the two, which is why it could not tell the same picture at a lower level from a different line
+at a similar level — the two cases behind every contradiction in entries 22 to 28.
+
+**The rule.** Scan down from the top of the search window and take the first line where the ratio settles:
+scatter below a bar and median near 1. Above the picture the ratio is meaningless and large because the
+denominator is near zero — 35.3 at NTSC 20, 18.1 at 21, 2.2 at 22 on counter 49419 — and it stays
+disturbed across a caption (0.66) and across a dim or structurally wrong line (0.25) before settling at
+scatter under 0.02.
+
+**What it would retire.** The run-in test for top-finding, since a data line simply fails to settle and
+no format needs naming — which answers the owner's objection that a CEA-608 detector cannot see data
+types it was not built for. Also plain-23 and its line-number special case, the derived level of entry 20,
+the amplitude check of entry 26, the structure ratio, and occupancy. The run-in survives only as the
+positional landmark for locating displacement.
+
+**Evidence so far, and its limits.** On the 28 cases the owner labelled by eye it returns his answer on
+**28 of 28**, as a standalone top-finder rather than a check on another rule. But those 28 are all
+caption-adjacent frames from one bucket where the answer is 24 or 25, the bars are fitted to them, and 28
+is 28.
+
+**Falsifier.**
+- The owner's gate: the placement its tops imply, against the comb at margins 3, 5 and 8, must not
+  degrade against entry 20's tops measured the same way.
+- Or the independent gate degrades: confirmed-wrong edges must not exceed entry 20's 5,502.
+- Or it fails the known cases: 9040, 13284 and 13449 must come right; the thirteen at 10989-11001 and the
+  fade at 48064-48188 are where the level and plain-23 both failed and are the real test.
+- Or the bars cannot be derived from the tape's own distributions and remain fitted to 28 cases.
+- Or it finds no settle point on more than a small fraction of units.
+
+**Material.** All 86,293 exact units.
