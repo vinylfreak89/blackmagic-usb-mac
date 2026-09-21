@@ -40,3 +40,10 @@ reset history from captures/fulltape_render_registration.csv. Supplied C arm
 CSVs in scratchpad/ctr9040/arms are comparison evidence, not the oracle for
 live framing/state. Synthetic tests cover default controls and protected paths;
 unit/ASan/TSan checks follow any promoted implementation. Results stay in scratch.
+
+**Pre-run addition (owner criterion 7).** The built default must reproduce every
+non-timing column of ctr9040/arms/m5_g3_p0_r0.units.csv on all 86,293 units,
+including rule_first/auto_first and evidence columns. Per-unit census is
+independent of pairing/reset history. Any difference is reported, not reconciled;
+the first ten differing counters carry both values. This is a separate gate
+from scoring stateful placement with the live pairing/reset stream.
