@@ -84,3 +84,38 @@ Detailed populations, gains/losses, raw-row numbers, instrument errors and all
 outputs are in /private/tmp/top-rule-promotion.28Tfev/REPORT.md and summary.json.
 No push or render. Mutual review remains required before treating this build
 as accepted for publication.
+
+## E-codex-2026-09-22-2 — ignore top-only moves: state-series preflight
+
+**Owner's instruction (relayed, entry 31).** "if the chunk disagreement says
+the line should be shifted, but the bottom did not shift, ignore the override
+from the chunk disagreement. don't hold... ignore. does that rescue our class
+of problems while saving the legitamate fixes."
+
+**Premise.** Replacing only a GE_TOP_ONLY top with its predecessor's interpreted
+top can suppress a spurious run while preserving true tandem/bottom-only moves,
+the specified labelled counters, comb timing and abstentions. Measured features
+must remain independently recoverable. This is not a whole-geometry freeze.
+
+**Method.** Before production changes, use the existing C classify/frame/comb
+code in a scratch instrument. Compare unmodified d5c9f08 with exactly the
+proposed substitution after classification, storing that interpreted top for
+the next comparison. Preserve the triggering class on the current unit, all
+bottom features and reset/pairing behaviour. Test synthetic sequences showing
+a top-only onset followed by a genuine tandem or bottom-only step. If needed,
+stream real units through both states, emitting measured/interpreted tops,
+classes, frame placements, comb evidence and timing. No Python rule mirror.
+
+**Falsifier.** A baseline valid-move or bottom-only class changes, the comb's
+run/decided semantics changes, a named labelled top fails, or agreement drops
+in any required band. These are the entry's constraints, not permissions to
+alter the classifier or add shadow decision state to force their invariance.
+A conflict between interpreted-series feedback and these invariants must be
+reported for an owner decision before production implementation. A measured-
+series alternative is identified separately, not called equivalent run suppression.
+
+**Material.** Synthetic features and rasters passed to the current C engine;
+whole-tape exact units and capture 1 if preflight can proceed without a semantic
+conflict. Use the same live pairing/reset stream as the preceding acceptance.
+The owner will run the independent edge gate; do not substitute comb agreement
+for that gate or call capture 1 fixed. Keep scratch code/results under /private/tmp.
