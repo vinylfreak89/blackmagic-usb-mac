@@ -803,3 +803,16 @@ encoded frame key and both source-unit placements, retain recoverable copies
 of the prior eight review artifacts, then publish with a fresh producer-named
 renders.status. The earlier hold-rule gates no longer block this publication;
 their negative results remain recorded above rather than reverted.
+
+Basin-only publication result: all four encodes completed, with 922/649/648/650
+encoded frames and zero frame-sequence or source-unit placement differences.
+Capture 1 includes three explicit fills; capture 3 has 649 published units but
+648 paired frames, with terminal unit 14149's unused field 2 accounted as a
+tail boundary, not an interior loss. All eight files were closed, validated,
+backed up by hard link, then replaced by same-filesystem rename; final hashes
+and a second strip readback pass agree. geometry_renders/renders.status is
+READY, schema 22, naming engine and renderer 3a87891 with visual acceptance
+pending. The fixed DIFFERS slot and logged ratio/floor/rise overlay tests pass.
+No production code changed during this resumed publication; no hold prototype
+was promoted, no push occurred and no full-tape render was made. Backup and
+publication manifests remain in /private/tmp/comb-basin.KlFmop.

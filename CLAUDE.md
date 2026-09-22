@@ -1688,6 +1688,11 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   The remaining cap1 6667 placement is knowingly unchanged, not fixed by the
   basin rule. Review publication still requires encoded-strip validation and
   a fresh renders.status identifying the actual producing commits.
+  That basin-only review publication completed: all four MP4/sidecar pairs
+  passed full encoded-strip readback and source-unit placement joins, with
+  zero differences. geometry_renders/renders.status is READY with engine and
+  renderer 3a87891; visual acceptance is pending. Prior files are recoverable
+  under /private/tmp/comb-basin.KlFmop/replaced-reviews. No full-tape render.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
