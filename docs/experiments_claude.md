@@ -1843,3 +1843,78 @@ comparative score in entries 30–32 detects **late** tops only — a top placed
 `abstain`, never `wrong` — so every "wrong" count across this work is one-directional and understates.
 
 **Material.** The whole tape for the census; captures 1–4 for the renders the owner validates first.
+
+## E-claude-2026-09-22-34 — a comb that cannot choose can still refuse
+
+**Question (owner, 2026-09-22, verbatim).** "but the actual used comb is trash? from what I can see
+in the render, the red box selected one is much higher than the one noted as the minimum" — then,
+on the proposed guard: "yes thats the change I want".
+
+**Premise, stated apart from the method.** The comb's power to *select* and its power to *reject* are
+different quantities, and the engine only tests the first. `decided = energy[second]/energy[best] >=
+1.5` asks whether the best candidate beats the runner-up. When the two best are adjacent and nearly
+tied it answers no — but that tie says both are good, and says nothing about a third placement far
+away. A comb that cannot choose between +0 and +1 is still perfectly able to say −1 is wrong. The
+engine already computes the whole 11-entry energy array every frame and never compares the shift it
+is about to publish against the best one in it.
+
+**The measurement that found it.** At cap3 counter 13576 the array is
+
+| shift | −5 | −4 | −3 | −2 | −1 | +0 | +1 | +2 | +3 | +4 | +5 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| energy | 711.7 | 628.8 | 531.3 | 423.6 | **282.2** | **4.3** | 4.3 | 284.8 | 425.4 | 529.3 | 619.5 |
+
+The engine published **−1**, at **66× the minimum**, because the margin test saw 4.3 against 4.3,
+returned undecided, and let a held correction speak unchallenged.
+
+**Population, all four captures, published frames where the published shift's own energy is ≥2× the
+best available:**
+
+| | frames | of | comb undecided | comb decided |
+|---|---|---|---|---|
+| cap1 | 15 | 919 | 15 | 0 |
+| cap2 | 5 | 649 | 5 | 0 |
+| cap3 | 2 | 648 | 2 | 0 |
+| cap4 | 4 | 650 | 4 | 0 |
+
+**26 of 26 had `decided = 0`.** Across 2,100 frames where the comb did decide the ratio never
+exceeds **1.9**, and its median over all 2,866 published frames is **1.000** — normally the published
+shift *is* the best. That separation is why the bar is 2.0 and not a guess.
+
+**Two populations, recorded because the remedy differs and a report must not merge them.**
+- **A held correction is the bad shift** — 2 frames (cap3 13576, 13577). Dropping the correction
+  falls back to the measured tops, which are right there.
+- **The measured tops are themselves the bad shift** — 20 frames, mostly cap1's run at 6257–6267,
+  where the waveform accepted f1 28 / f2 289 giving st −2 at energy 130.4 while the comb's minimum is
+  +2 at 10.3. Falling back changes nothing; the comb's best is the only other answer available.
+
+Both were checked against an instrument the engine does not use — mean |line − average of its two
+neighbours| over the woven frame:
+
+| | published | comb's best | |
+|---|---|---|---|
+| cap3 13576 | 10.608 | 5.348 | comb's best |
+| cap1 6257 | 6.330 | 2.795 | comb's best |
+| cap1 6264 | 6.521 | 2.939 | comb's best |
+| cap1 6266 | 6.482 | 2.805 | comb's best |
+| cap1 6267 | 6.481 | 2.872 | comb's best |
+
+**The method.** Whenever the comb has run, compute `reject = energy[published_shift]/energy[best]`.
+If it exceeds a configurable bar (`GE_COMB_REJECT`, default **2.0**) the published shift is refused:
+any held correction is dropped, and the comb's best shift is substituted. The refusal, the ratio, the
+refused shift and the substituted one are all logged — the observation stays immutable and the
+interpretation is visible.
+
+**Falsifier.**
+- Any of the 26 does not change, or changes to something the roughness instrument scores worse.
+- Or any frame outside the 26 changes: 0 of 2,100 comb-decided frames exceed 2.0, so the guard must
+  be inert wherever the comb decided.
+- Or the whole-tape census disagrees on any of the 172,586 field edges — the guard must not touch the
+  top measurement, only what is published from it.
+- Or the owner's labelled counters stop landing.
+
+**What this does not claim.** It does not make the waveform's absolute tops right on cap1's run —
+they were accepted at 28/289 and the frame still weaves four lines away. It fixes what is published,
+not what was measured, and the gap between those two is entry 33's unfinished business.
+
+**Material.** Captures 1–4 for the renders; the whole tape for the census identity.
