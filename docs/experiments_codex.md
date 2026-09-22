@@ -730,3 +730,36 @@ than silently restoring the rejected anchor. Commit/test this scope before
 changing the engine or restarting renders. The first two basin-only encodes
 had finished in scratch when the steer arrived; remaining encode processes
 were stopped and no MP4/sidecar replacements were published.
+
+One-field scope falsifier: the C prototype changes 31 placements, not five:
+cap1 6641..6666 (26), cap2 2338 (1), cap3 13894/13895/13962/13965 (4), cap4
+none. The 26 extras are cap1 6642..6666 and cap3 13895. Five old moving onsets
+are not five changed output frames after a stateful hold. Cap1 6644 has no top
+in either field and inherits the held pair; subsequent one-top frames cannot
+legitimately restore the rejected two-line anchor. The rule performs eight
+direct hold interventions; the remaining 23 changed placements inherit state.
+At cap1 6667 both tops exist (25/291) and the result stays (5,5), relative shift
+zero, unchanged from the basin-only engine. No second anchor rule was added.
+Production-baseline and audit-invariance checks have zero differences; inputs
+and outputs are in /private/tmp/comb-basin.KlFmop/one-field. The one-field rule
+remains a scratch prototype pending resolution of the exactly-five gate.
+Basin implementation 3a87891 is committed, but no new review files are published.
+
+### Replacement owner rule — all four edges and known motion
+
+Owner: "if you can't measure all 4 tops and bottoms, don't shift shit... period".
+This replaces, not extends, the one-field prototype. Retain the previous full
+published pair if either current field lacks a first/last edge or either
+existing frame-owned motion classification is GE_UNKNOWN. Other measured
+classes remain eligible, including top-only, bottom-only and not-in-tandem.
+Do not invent a classifier, substitute history, or change census/comb evidence.
+At a reset/section start the existing unregistered placement is zero.
+
+Test forward from the basin-only engine, recording actual candidate-to-held
+pair interventions and propagated output changes separately. Compare the
+reported 20 moving onsets against the current published baseline as well as
+the basin-only build: adding rejection can change the set before this gate.
+Falsifiers: direct refusals outside the specified 20, a missing specified
+refusal, any change not due to the allowed hold/state propagation, or changed
+census. Stop at a conflicting gate; do not fit the condition to its counter list.
+Renders remain stopped until the replacement rule's acceptance is resolved.
