@@ -178,3 +178,30 @@ old invariance requirements without explicitly resolving that series question.
 Requested direction: may enabled-arm interpreted-history effects be measured
 and reported rather than required to be zero? Disabled-default identity is
 separate and remains required. No production edits made while this is unresolved.
+
+### Amendment — interpreted feedback authorized; disabled confidence instrument
+
+The owner has now authorized interpreted history and explicitly withdrawn the
+class-count/comb-scheduling invariants for enabled arms: those changes must be
+reported, not hidden or forced to zero. The narrowed physical premise is that
+a top-only move barely above horizontal blanking is weak evidence of movement.
+Whether rejecting such moves improves source registration remains unmeasured;
+no nearness threshold has been selected or fitted.
+
+Implement `GE_TOP_NEAR_BLANK`, default -1 (explicitly disabled), with finite
+nonnegative values enabling an inclusive cutoff on measured final-top body p95
+minus that field's derived horizontal level. Only GE_TOP_ONLY can be ignored;
+an unavailable top is never filled. Preserve measured tops and record separate
+interpreted tops, measured distances and ignore flags. Interpreted tops feed
+the next comparison and the existing placement logic. No coherence condition.
+
+Deciding method: synthetic C-engine transitions exercise the conjunction,
+threshold boundary, repeated-run feedback, genuine bottom/tandem moves, no-top
+abstention, reset/gaps and reversed ownership. Whole-tape and capture-1 runs
+compare the disabled default with d5c9f08, including classifications, scheduling,
+placements and all protected measurement columns; measure thread CPU cost.
+Falsifier: any disabled-default difference, protected-feature change, mistaken
+predicate/ownership, or suppression across missing history. Enabled tape-arm
+edge-gate outcomes are deliberately deferred to the requested threshold sweep;
+synthetic thresholds establish mechanism only. Report all default bands and
+class/scheduling deltas, and never call the disabled result an improved edge gate.
