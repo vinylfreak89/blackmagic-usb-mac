@@ -561,3 +561,19 @@ side honestly. Run unit and sanitizer tests. Then generate only captures 1–4
 with their own engine sidecars and engine-derived overlays, validate in scratch
 before publication. The full-tape render awaits owner validation; it is not
 authorized by passing the numeric census gate alone.
+
+Stage-one result (before removal of the old search): 86,293 units, 172,586
+edges, 172,586 exact top/abstention matches, zero disagreements. Selected/max
+steps match the census's four-decimal precision (maximum difference
+0.00005019797050032082). Geometry unit suite and standalone waveform ASan/UBSan
+and TSan pass. Evidence: /private/tmp/waveform-engine.5I96wG/scan_summary.json
+and disagreements.csv (header only).
+
+Population correction, independently recounted from the reference itself:
+1,369 clamp-discard units counts only the 74,202 units with BOTH raw tops.
+Across all 86,293 units, 2,223 have at least one out-of-range edge (2,658 edges).
+The stated 5,654 field-1 tops >=26 counts only units where BOTH tops survive;
+the per-field survivor count is 5,963. Apply the specified clamp independently
+to each field; do not discard the valid partner of an absent/discarded edge.
+Raw placed/abstained counts remain 155,364/17,222. Negative offsets are not
+exercised by this tape (observed raw offsets 0..16 in both fields).

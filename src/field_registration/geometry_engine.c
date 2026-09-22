@@ -40,6 +40,30 @@ static double correlation(const uint8_t *a,const uint8_t *b,unsigned n) {
     double va=aa-sa*sa/n,vb=bb-sb*sb/n;
     return va>0 && vb>0 ? (ab-sa*sb/n)/sqrt(va*vb) : -1;
 }
+static double waveform_correlation(const uint8_t *a,const uint8_t *b) {
+    /* Integer sufficient statistics are exact in double at 640 uint8 samples.
+     * va/vb are n^2 times population variance. No level/coherence proxy. */
+    double sa=0,sb=0,aa=0,bb=0,ab=0;
+    for(int x=0;x<640;x++) {
+        double p=a[x],q=b[x];sa+=p;sb+=q;aa+=p*p;bb+=q*q;ab+=p*q;
+    }
+    double va=640*aa-sa*sa,vb=640*bb-sb*sb;
+    if(va<640.0*640*1e-18 || vb<640.0*640*1e-18)return 0;
+    return (640*ab-sa*sb)/sqrt(va*vb);
+}
+ge_wave_result ge_wave_scan(const uint8_t *y,int field,double bar) {
+    int off=263*field;
+    ge_wave_result out={.max_step=-INFINITY};
+    double previous=waveform_correlation(y+(18+off)*720+40,y+(17+off)*720+40);
+    for(int r=19+off;r<37+off;r++) {
+        double current=waveform_correlation(y+r*720+40,y+(r-1)*720+40);
+        double step=current-previous;
+        if(step>out.max_step)out.max_step=step;
+        if(!out.first && step>bar){out.first=r+3;out.step=step;}
+        previous=current;
+    }
+    return out;
+}
 static double horizontal_level(const uint8_t *y,int off,int *columns) {
     unsigned h[256]={0},pool[256];
     for(int r=18+off;r<=261+off;r++)h[y[r*720]]++;

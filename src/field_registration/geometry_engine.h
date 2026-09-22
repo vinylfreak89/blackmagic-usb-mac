@@ -50,6 +50,11 @@ size_t ge_size(void);
 void ge_init(geometry_engine *, int pair_next, int audit_comb);
 /* All input rows are contiguous 720-byte luma, independent of UYVY decoding. */
 void ge_measure(const uint8_t *, ge_features *);
+/* Entry-33 measurement only, introduced alongside the existing top search.
+ * field is 0/1; no step returns first=0 and step=0. Coordinates are NTSC.
+ * The caller applies placement policy separately from this raw observation. */
+typedef struct { int first; double step, max_step; } ge_wave_result;
+ge_wave_result ge_wave_scan(const uint8_t *, int field, double bar);
 ge_comb_result ge_comb(const uint8_t *top, const uint8_t *bottom);
 /* Returns 0..2 completed unit decisions, in source order. Reset applies before
  * the first frame using this unit, even when that frame belongs to its predecessor.
