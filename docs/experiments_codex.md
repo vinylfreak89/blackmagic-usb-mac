@@ -854,3 +854,14 @@ The initial sandboxed replay failed before reading units with "open failed";
 the elevated local retry completed normally at the required 8000-us pacing.
 Free space after replay is 29.96 GiB. Full statistics, quantile convention,
 event identities and accounting remain in the scratch directory above.
+
+Whole-tape review publication completed from engine/renderer 3a87891. The
+closed encode contains 86,296 frames (86,289 paired plus seven fills), duration
+2879.409867 s. Every encoded counter/placement and both source-unit joins match
+the sidecar; zero sequence or placement differences. The independent audio-clock
+check bounds the offset by 0.001998002 frame, with only the two expected sample
+steps. MP4 and schema-22 sidecar hashes match before and after same-filesystem
+rename into captures/. captures/renders.status is READY, names both producer
+commits and hashes, and leaves owner visual acceptance pending. The previous
+two files are recoverable under /private/tmp/basin-fulltape.f19Ygq/replaced-review.
+No engine rule changed and neither rejected hold prototype was promoted.

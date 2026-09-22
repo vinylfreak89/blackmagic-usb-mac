@@ -1698,6 +1698,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   Its zero-drop paced replay passed (329/86,289 rejections, 14 discards).
   Whole-tape encoding/validation is separate from census identity and from
   owner visual acceptance; evidence is /private/tmp/basin-fulltape.f19Ygq.
+  That full-tape review is now published as captures/fulltape_render.mp4 and
+  its registration sidecar: 86,296 encoded frames, zero strip/source-placement
+  differences, hashes verified across same-filesystem publication. The status
+  in captures/ names engine/renderer 3a87891 and leaves visual acceptance pending.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
