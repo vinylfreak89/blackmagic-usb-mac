@@ -320,3 +320,29 @@ Check the four labelled units and all comb bands including separate gains/losses
 Repeat capture 1. Disabled identity or protected-evidence failures invalidate the
 implementation; label or agreement regressions falsify the source acceptance,
 and are reported without tuning. The independent late-top gate remains external.
+
+### Report — census mechanism implemented; independent edge verdict pending
+
+Disabled identity holds against 9ed3923 on all 86,293 units and 86,289 woven
+frames. Enabled processing preserves every protected measurement and the four
+labelled units, and has no comb-agreement losses in any requested band, with
+or without the counter-90300 cutoff. The independent gate has not yet judged
+these changes: the physical premise of preserving more true picture remains
+**unknown**, not proved by comb agreement.
+
+Interpreted feedback has substantial downstream effects. Whole tape: 30,214
+actual census refusals, 21,231 changed published field placements; capture 1:
+371 refusals, 714 changed published field placements. The direct census ratio
+is 1 in both; published-placement ratios are about 0.703 and 1.925 respectively.
+Thus capture 1 is not a one-for-one downstream change, and is not called fixed.
+Equal-top predicate matches are counted separately. Full before/after class
+transitions, comb scheduling, unchanged observations, costs, band gains/losses
+and changed-unit tables are in /private/tmp/census-overrun.Z7dxX8/.
+The durable numerical report is [census_overrun_acceptance.md](census_overrun_acceptance.md).
+
+The default remains off; no threshold was added. Synthetic tests decide both
+predicate terms, zero-clipped overrun, tandem translation, missing measurements,
+no-op accounting, interpreted history, resets/gaps, both pairings and preserved
+downstream comb authority. Removing either conjunct or restoring measured history
+fails the controls. Unit, ASan/UBSan and TSan checks pass. Capture-1 real replay
+matches the disabled baseline and enabled probe placements. No push or render.

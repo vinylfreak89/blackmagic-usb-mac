@@ -7,6 +7,7 @@ int ge_top_guard=3;
 int ge_top_plain23=0;
 int ge_top_runin=0;
 double ge_top_near_blank=-1.0;
+int ge_top_overrun_veto=0;
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
@@ -177,6 +178,21 @@ static void interpret_top(const ge_features *previous,ge_features *f,int k) {
         f->interpreted_first[k]=previous->interpreted_first[k];
         f->top_ignored[k]=1;
     }
+    /* Census-only policy: each aperture is compared with ITS measured last
+     * line. The comb may subsequently choose a different published start.
+     * No motion class/coherence/brightness threshold is consulted here. */
+    if(ge_top_overrun_veto && previous->interpreted_first[k] && f->first[k] &&
+       previous->last[k] && f->last[k]) {
+        int old=previous->interpreted_first[k]+GE_FIELD_LINES-1-previous->last[k];
+        int now=f->first[k]+GE_FIELD_LINES-1-f->last[k];
+        if(old<0)old=0;
+        if(now<0)now=0;
+        if(f->first[k]>=previous->interpreted_first[k] && now>old) {
+            f->top_overrun_veto[k]=1;
+            f->interpreted_first[k]=previous->interpreted_first[k];
+            f->top_ignored[k]|=f->first[k]!=f->interpreted_first[k];
+        }
+    }
 }
 ge_comb_result ge_comb(const uint8_t *t,const uint8_t *b) {
     double energy[11];int best=0,second=1;
@@ -213,6 +229,7 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     o.interpreted_first[0]=t->interpreted_first[0];o.interpreted_first[1]=b->interpreted_first[1];
     o.top_distance[0]=t->top_distance[0];o.top_distance[1]=b->top_distance[1];
     o.top_ignored[0]=t->top_ignored[0];o.top_ignored[1]=b->top_ignored[1];
+    o.top_overrun_veto[0]=t->top_overrun_veto[0];o.top_overrun_veto[1]=b->top_overrun_veto[1];
     o.last[0]=t->last[0];o.last[1]=b->last[1];
     o.bottom[0]=t->bottom[0];o.bottom[1]=b->bottom[1];
     o.motion[0]=t->motion[0];o.motion[1]=b->motion[1];

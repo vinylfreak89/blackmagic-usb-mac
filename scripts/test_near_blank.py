@@ -12,7 +12,9 @@ root=Path(__file__).resolve().parents[1]
 replay=str(Path(sys.argv[1]).resolve())
 probe=str(root/'src/field_registration/tests/hblank_probe')
 env={k:v for k,v in os.environ.items() if not k.startswith('GE_TOP_')}
-env['GE_TOP_NEAR_BLANK']='12' # synthetic exact distance, not a tape default
+overrun='--overrun' in sys.argv[2:]
+if overrun:env['GE_TOP_OVERRUN_VETO']='1'
+else:env['GE_TOP_NEAR_BLANK']='12' # synthetic exact distance, not a tape default
 spec=importlib.util.spec_from_file_location('fixture',root/'src/unit_parser/tests/gen_unit_parser_capture.py')
 fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture)
 rasters=[];stream=bytearray(b'prefix')
@@ -48,14 +50,15 @@ with tempfile.TemporaryDirectory(prefix='near-blank-',dir='/private/tmp') as tmp
             measured={int(r['counter']):r for r in csv.DictReader(q.stdout.decode().splitlines()[1:])}
             ignored=0;answers.append([])
             for c,r in units.items():
-                assert r['ge_top_near_blank']=='12' and r['schema_version']=='17',r
+                assert r['ge_top_near_blank']==('-1' if overrun else '12') and r['schema_version']=='18',r
+                assert r['ge_top_overrun_veto']==str(int(overrun)),r
                 answers[-1].append(tuple(r[k] for k in ('applied_d1','applied_d2','comb_ran','confidence','triggers')))
                 if not r['frame_top_unit']:
-                    assert all(r[k]=='' for k in ('interpreted_f1_first','interpreted_f2_first','top_distance_f1','top_distance_f2','top_ignored_f1','top_ignored_f2'))
+                    assert all(r[k]=='' for k in ('interpreted_f1_first','interpreted_f2_first','top_distance_f1','top_distance_f2','top_ignored_f1','top_ignored_f2','top_overrun_veto_f1','top_overrun_veto_f2'))
                     continue
                 for k,source in ((1,int(r['frame_top_unit'])),(2,c)):
                     m=measured[source]
-                    for col in (f'f{k}_first',f'interpreted_f{k}_first',f'top_ignored_f{k}'):
+                    for col in (f'f{k}_first',f'interpreted_f{k}_first',f'top_ignored_f{k}',f'top_overrun_veto_f{k}'):
                         assert int(r[col] or 0)==int(m[col]),(c,col,r[col],m[col])
                     col=f'top_distance_f{k}'
                     assert (r[col]=='' and m[col]=='nan') or float(r[col])==float(m[col]),(c,col,r[col],m[col])
@@ -63,4 +66,4 @@ with tempfile.TemporaryDirectory(prefix='near-blank-',dir='/private/tmp') as tmp
                     ignored+=int(r[f'top_ignored_f{k}'])
             assert ignored>=2,(reverse,audit,ignored)
         assert answers[0]==answers[1],(reverse,answers)
-print('NEAR-BLANK-REPLAY PASS: enabled suppression, measured/interpreted/distance/flag provenance, aligned/reversed boundaries, audit invariance')
+print(('OVERRUN' if overrun else 'NEAR-BLANK')+'-REPLAY PASS: enabled suppression, measured/interpreted/distance/flag provenance, aligned/reversed boundaries, audit invariance')

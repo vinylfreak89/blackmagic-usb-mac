@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #define GE_PIXELS (525u * 720u)
+#define GE_FIELD_LINES 240 /* publisher aperture, not the 243-line review crop */
 /* Process-wide experiment controls. Configure once before any measurement or
  * worker starts; never write concurrently with an engine call. Library code
  * does not read the environment. Defaults are margin 5, guard 3, and both
@@ -19,6 +20,7 @@ extern int ge_top_guard; /* default 3; 0: lag correlation, 1: none, 2: high-spre
 extern int ge_top_plain23; /* default 0; 1: apply plain23 re-search; 0: evidence only */
 extern int ge_top_runin; /* default 0; 1: apply run-in step; 0: evidence only */
 extern double ge_top_near_blank; /* -1: disabled; finite >=0: inclusive p95-level cutoff */
+extern int ge_top_overrun_veto; /* default 0; 1: reject non-gaining census moves increasing overrun */
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
 enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16,
@@ -31,6 +33,7 @@ typedef struct {
 typedef struct {
     int first[2], last[2], bottom[2], rule_first, auto_first, plain23;
     int interpreted_first[2], top_ignored[2]; /* first[] remains measured */
+    int top_overrun_veto[2]; /* predicate matched; equal tops can be a no-op */
     double top_distance[2]; /* measured final-top body p95 - hblank_level; NAN if absent */
     double blank[2], runin;
     double hblank_level[2];
@@ -46,6 +49,7 @@ typedef struct {
     ge_comb_result comb; /* unknown (NAN margin) unless run or audit requested */
     int first[2], last[2], bottom[2];
     int interpreted_first[2], top_ignored[2]; /* same FRAME fields as first[] */
+    int top_overrun_veto[2]; /* same FRAME fields */
     double top_distance[2]; /* same FRAME fields; not unit-owned hblank provenance */
     double hblank_level[2]; /* this unit's own fields, also on unused boundaries */
     int hblank_cols[2];

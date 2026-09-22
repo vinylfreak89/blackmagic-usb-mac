@@ -64,7 +64,7 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 17, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 18, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32),
 comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
@@ -113,7 +113,8 @@ pre-promotion arm is `GE_TOP_MARGIN=0 GE_TOP_GUARD=0 GE_TOP_PLAIN23=1 GE_TOP_RUN
 set all four explicitly for an old/new comparison. Schema 16's arm columns name
 both behaviours without changing any existing column's meaning.
 Both probe CSVs begin with a `# GE_TOP_MARGIN=... GE_TOP_GUARD=...
-GE_TOP_PLAIN23=... GE_TOP_RUNIN=... GE_TOP_NEAR_BLANK=...` provenance line before the CSV header;
+GE_TOP_PLAIN23=... GE_TOP_RUNIN=... GE_TOP_NEAR_BLANK=... GE_TOP_OVERRUN_VETO=...`
+provenance line before the CSV header;
 skip this comment when parsing. The unit CSV also includes `rule_first`,
 `auto_first`, `plain23` and `runin` to distinguish raw scan, re-search and final
 placement. Disabling either final-stage switch retains its evidence computation.
@@ -157,8 +158,46 @@ and `class_f2` to its unit CSV (own-unit coordinates, including unused fields;
 0 for a missing top and nan for its distance). Its frame CSV also appends the
 measured/interpreted tops, classes and ignore flags. `ge_current_features()`
 exposes a borrowed read-only view of the latest unit for such instruments.
-The disabled default is the exact d5c9f08 comparison arm. All five controls
+The disabled near-blank default is the exact d5c9f08 comparison arm. All controls
 must be set before workers start; neither library reads the environment.
+
+Entry 32 amendment 1 adds `GE_TOP_OVERRUN_VETO` (`ge_top_overrun_veto` in C),
+strict 0/1, default **0, disabled**. Near-blank suppression stays disabled by
+default and is independent. This threshold-free rule operates at the census,
+before the comb, using H=240 from the publisher's geometry (compile-time checked
+against `FP_FIELD_LINES`). On an adjacent, non-reset unit with both current and
+previous top/last measurements available, compare:
+
+```
+new_top >= previous_interpreted_top
+max(0, new_top + 239 - new_last) >
+    max(0, previous_interpreted_top + 239 - previous_last)
+```
+
+When both hold, keep the previous interpreted top for that field. Every other
+measurement is immutable. There is no motion-class, coherence or brightness
+threshold. Each overrun uses its own unit's last line, so tandem translation
+can preserve overrun. Equal tops may match if the last line moves; such a match
+does not substitute a top. The resulting interpretation feeds the next comparison
+and existing placement logic. Missing measurements, resets and gaps never borrow
+an old top. Comb authority remains unchanged, including after a refusal.
+
+This is deliberately **not** a final-crop guarantee: field 1's published start
+can differ from its interpreted top. The publisher crops 23+d1..262+d1 and
+286+d2..525+d2, 240 lines each. The review render adds three rows above each
+crop, using 243 lines but the same endpoints. The census rule uses the publisher
+geometry, not that extended review crop.
+
+Schema 18 appends `ge_top_overrun_veto` on every row and frame-owned
+`top_overrun_veto_f1`, `top_overrun_veto_f2` predicate flags, empty without a
+frame. The probe appends those flags in both unit- and frame-keyed outputs.
+Existing `top_ignored_f1/f2` mean an actual census substitution by either enabled
+instrument; the new predicate flags can also be 1 for an equal-top no-op.
+Count these separately. With near-blank off, changed census edges per actual
+refusal is a direct-substitution ratio; separately report changed published field
+placements per refusal, since downstream state/comb can amplify or cancel it.
+The default disabled overrun arm reproduces 9ed3923. Source-quality acceptance
+still needs the independent edge gate, not merely comb agreement.
 
 The library exposes corresponding process-wide `ge_top_*` variables, not
 environment reads. Set them before measurement/worker startup and never mutate
