@@ -1739,3 +1739,54 @@ rendered rows at counter 11540.
 **Built into the engine as the default** at `d5c9f08` on `v11-engine`, local, not pushed, carrying this
 regression knowingly and reported to the owner with the render.
 
+## E-claude-2026-09-22-31 — a top that moves without its bottom is not a picture displacement
+
+**Question (owner, 2026-09-22, verbatim).** "if the chunk disagreement says the line should be shifted,
+but the bottom did not shift, ignore the override from the chunk disagreement. don't hold... ignore.
+does that rescue our class of problems while saving the legitamate fixes. it should absolutely fix the
+problems on this capture (cap 1)."
+
+**Premise.** A real picture displacement moves the top and the bottom together — §7's tandem principle,
+the owner's own: extra blank space below for an upward shift, above for a downward shift. A top that
+moves while its bottom stays put is therefore not the picture moving; it is the top measurement
+changing its mind. Where the new coherence rule produces such a move it should be **ignored** — the
+previous top stands — not held, which would freeze the whole geometry.
+
+**Why this and not another threshold.** Five approaches were measured and refuted first: excluding
+boundary-straddling chunks, finer sub-chunking, discarding wholly-disagreeing chunks, a
+contrast-restricted comb override (23 frames, 0.027%) and abstaining on high contrast (33:1 against).
+This is the first with a favourable ratio, and unlike the others it rests on a physical claim about
+the signal rather than on a statistic that separated one population from a differently-defined one.
+
+**Measured before building, so the entry is not written to a known answer.** Classified by the
+engine's own `classify()` over the whole tape: **TOP ONLY is 34.5% of the regression (717 of 2,079
+classifiable) against 6.2% of the fixes (329 of 5,310) and 4.1% of all edges** — a 5.6-fold
+enrichment. Ignoring those moves avoids 717 bad edges and costs 329 good ones, **2.2:1**.
+
+That 717 is a **lower bound**. The regression arrives in 319 runs; only a run's onset is a top-only
+move, and the 61.4% classified `nothing` are units mid-run inheriting a top that is already wrong.
+Suppressing an onset means the run never starts, which a static classification cannot show and only
+the engine can measure.
+
+**The method.** When `f->motion[k]` is `GE_TOP_ONLY` on an adjacent, non-reset unit, the previous
+unit's top stands for that field. The measured value is still logged: observations are immutable and
+interpretations revisable, so the sidecar must show what was measured as well as what was applied.
+Nothing else changes — not the bottom, not the comb, not abstention.
+
+**Falsifier.**
+- The independent gate's late-top count does not fall, or the fixes lost exceed the regression avoided.
+- Or the owner's four labelled units (69566, 69568, 69570, 69573 → f1 26/26/25/26, f2 288) stop landing.
+- Or comb agreement regresses in any confidence band.
+- Or it suppresses real movement: `GE_VALID_MOVE` and `GE_BOTTOM_ONLY` counts change, which they must
+  not, since the rule touches neither.
+
+**What it is already known NOT to fix, recorded so the report cannot claim it.** On capture 1 the rule
+reaches 48 of 806 changed field-edges. Half of that capture's change is the new rule declining to place
+a top at all during a paused passage — the owner: "half of cap 1 is garbage during a pause" — and a
+tandem test says nothing about an abstention, because there is no move to ignore. The owner's
+expectation that this fixes capture 1 is not supported by the static measurement; what it does reach
+there is the relative-alignment change, 89 of ~215 classifiable edges among the 415 frames the comb
+cannot judge.
+
+**Material.** All 86,293 exact units and capture 1. Judged by the independent gate and by the owner's
+labelled units, not by the comb alone, since the comb is blind to the common-mode part of this change.
