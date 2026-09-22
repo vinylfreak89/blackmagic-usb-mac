@@ -14,12 +14,18 @@ struct geometry_engine {
     int basis_valid, basis_first[2]; /* tops of the frame that derived held */
     uint64_t counter;
     ge_features previous, current;
+    ge_features frame_previous, completed;
+    int frame_previous_valid, completed_valid;
+    ge_comb_result previous_comb;
     uint8_t previous_y[GE_PIXELS];
     ge_decision pending;
 };
 size_t ge_size(void) { return sizeof(geometry_engine); }
 const ge_features *ge_current_features(const geometry_engine *g) {
     return g->valid?&g->current:NULL;
+}
+const ge_features *ge_completed_features(const geometry_engine *g) {
+    return g->completed_valid?&g->completed:NULL;
 }
 void ge_init(geometry_engine *g, int reverse, int audit) {
     memset(g,0,sizeof *g); g->reverse=!!reverse; g->audit=!!audit;
@@ -178,16 +184,25 @@ static void interpret_top(const ge_features *previous,ge_features *f,int k) {
         f->interpreted_first[k]=previous->interpreted_first[k];
         f->top_ignored[k]=1;
     }
-    /* Census-only policy: each aperture is compared with ITS measured last
-     * line. The comb may subsequently choose a different published start.
-     * No motion class/coherence/brightness threshold is consulted here. */
-    if(ge_top_overrun_veto && previous->interpreted_first[k] && f->first[k] &&
-       previous->last[k] && f->last[k]) {
+}
+static void gate_top(const ge_features *previous,ge_features *f,int k,int same_comb) {
+    /* The three independent terms qualify the original census geometry, not
+     * the final crop. bottom[] is the measured coordinate; last[] bounds overrun.
+     * No decided/margin requirement: equality includes abstaining comb winners. */
+    if(same_comb)f->overrun_terms[k]|=GE_OV_SAME_COMB;
+    if(previous->interpreted_first[k] && f->first[k] && previous->last[k] &&
+       f->last[k] && previous->bottom[k] && f->bottom[k]) {
+        f->overrun_terms[k]|=GE_OV_HISTORY;
+        if(f->first[k]!=previous->interpreted_first[k])f->overrun_terms[k]|=GE_OV_TOP_MOVED;
+        if(f->bottom[k]==previous->bottom[k])f->overrun_terms[k]|=GE_OV_BOTTOM_STILL;
         int old=previous->interpreted_first[k]+GE_FIELD_LINES-1-previous->last[k];
         int now=f->first[k]+GE_FIELD_LINES-1-f->last[k];
         if(old<0)old=0;
         if(now<0)now=0;
         if(f->first[k]>=previous->interpreted_first[k] && now>old) {
+            f->overrun_terms[k]|=GE_OV_GEOMETRY;
+        }
+        if(f->overrun_terms[k]==GE_OV_ALL) {
             f->top_overrun_veto[k]=1;
             f->interpreted_first[k]=previous->interpreted_first[k];
             f->top_ignored[k]|=f->first[k]!=f->interpreted_first[k];
@@ -220,16 +235,23 @@ ge_comb_result ge_comb(const uint8_t *t,const uint8_t *b) {
 static void reset_frame_state(geometry_engine *g) {
     g->held=0;g->provisional=0;g->have_placement=0;g->last_d=g->last_d2=0;
     g->basis_valid=0;g->basis_first[0]=g->basis_first[1]=0;
+    g->frame_previous_valid=0;
 }
 static int rerun(ge_class c) { return c!=GE_NOTHING && c!=GE_VALID_MOVE; }
-static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
-                         const ge_features *t,const ge_features *b,uint64_t tc,uint64_t bc) {
+static ge_decision frame_evaluated(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
+                         const ge_features *t,const ge_features *b,uint64_t tc,uint64_t bc,
+                         const ge_comb_result *early) {
     ge_decision o={0};o.counter=bc;o.top_unit=tc;o.has_frame=1;o.comb.margin=NAN;
     o.first[0]=t->first[0];o.first[1]=b->first[1];
     o.interpreted_first[0]=t->interpreted_first[0];o.interpreted_first[1]=b->interpreted_first[1];
     o.top_distance[0]=t->top_distance[0];o.top_distance[1]=b->top_distance[1];
     o.top_ignored[0]=t->top_ignored[0];o.top_ignored[1]=b->top_ignored[1];
     o.top_overrun_veto[0]=t->top_overrun_veto[0];o.top_overrun_veto[1]=b->top_overrun_veto[1];
+    o.overrun_terms[0]=t->overrun_terms[0];o.overrun_terms[1]=b->overrun_terms[1];
+    if(early && g->frame_previous_valid) {
+        o.prev_comb_known=1;o.prev_comb_d=g->previous_comb.shift;
+        o.prev_comb_margin=g->previous_comb.margin;
+    }
     o.last[0]=t->last[0];o.last[1]=b->last[1];
     o.bottom[0]=t->bottom[0];o.bottom[1]=b->bottom[1];
     o.motion[0]=t->motion[0];o.motion[1]=b->motion[1];
@@ -254,7 +276,8 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
         if(g->provisional)o.triggers|=GE_CONFIRM;
     }
     o.comb_ran=o.triggers!=0;
-    if(o.comb_ran || g->audit)o.comb=ge_comb(ty,by);
+    if(early)o.comb=*early;
+    else if(o.comb_ran || g->audit)o.comb=ge_comb(ty,by);
     if(o.comb_ran && o.comb.decided) {
         d=o.comb.shift;dknown=1;
         if(!known){g->held=0;g->provisional=0;g->basis_valid=0;}
@@ -272,16 +295,76 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     g->last_d=d;g->last_d2=d2;g->have_placement=1;
     return o;
 }
+static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
+                         const ge_features *t,const ge_features *b,uint64_t tc,uint64_t bc) {
+    return frame_evaluated(g,ty,by,t,b,tc,bc,NULL);
+}
 unsigned ge_break(geometry_engine *g,ge_decision out[2]) {
     unsigned n=0;
-    if(g->valid && g->reverse)out[n++]=g->pending;
+    g->completed_valid=0;
+    if(g->valid && g->reverse) {
+        out[n++]=g->pending;
+        if(ge_top_overrun_veto){g->completed=g->previous;g->completed_valid=1;}
+    }
     g->valid=0;reset_frame_state(g);return n;
 }
 static void unit_provenance(ge_decision *d,const ge_features *f) {
     memcpy(d->hblank_level,f->hblank_level,sizeof d->hblank_level);
     memcpy(d->hblank_cols,f->hblank_cols,sizeof d->hblank_cols);
 }
+/* Copy only the selected field into frame-owned history. Fields in a reversed
+ * frame come from different units, but successive values of EACH field remain
+ * adjacent in source-unit order. No future field is classified or interpreted. */
+static void remember_field(ge_features *dst,const ge_features *src,int k) {
+    dst->first[k]=src->first[k];dst->interpreted_first[k]=src->interpreted_first[k];
+    dst->last[k]=src->last[k];dst->bottom[k]=src->bottom[k];dst->blank[k]=src->blank[k];
+    memcpy(dst->profile[k],src->profile[k],sizeof dst->profile[k]);
+}
+static ge_decision gated_frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
+                              ge_features *t,ge_features *b,uint64_t tc,uint64_t bc) {
+    ge_comb_result early=ge_comb(ty,by);
+    ge_features *fields[2]={t,b};
+    for(int k=0;k<2;k++) {
+        ge_features *f=fields[k];
+        /* Reversed bottom was measured on its arrival, but not interpreted. */
+        f->motion[k]=GE_UNKNOWN;
+        if(g->frame_previous_valid) {
+            f->motion[k]=classify(&g->frame_previous,f,k);
+            interpret_top(&g->frame_previous,f,k);
+            gate_top(&g->frame_previous,f,k,early.shift==g->previous_comb.shift);
+        }
+    }
+    ge_decision o=frame_evaluated(g,ty,by,t,b,tc,bc,&early);
+    for(int k=0;k<2;k++)remember_field(&g->frame_previous,fields[k],k);
+    g->previous_comb=early;g->frame_previous_valid=1;
+    return o;
+}
+static unsigned push_gated(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_decision out[2]) {
+    unsigned n=0;int adjacent=g->valid && g->counter!=UINT64_MAX && c==g->counter+1;
+    g->completed_valid=0;
+    if(g->valid && !adjacent)n=ge_break(g,out);
+    ge_features *f=&g->current;ge_measure(y,f);
+    if(reset || !adjacent)reset_frame_state(g);
+    if(!g->reverse) {
+        out[n]=gated_frame(g,y,y,f,f,c,c);out[n].reset_before=reset;
+        unit_provenance(out+n,f);g->completed=*f;g->completed_valid=1;n++;
+    } else {
+        int current_d1=f->first[0]?f->first[0]-23:0,unused1=1;
+        if(adjacent) {
+            ge_decision o=gated_frame(g,y,g->previous_y,f,&g->previous,c,g->counter);
+            current_d1=o.d1;unused1=0;
+            o.d1=g->pending.d1;o.unused1=g->pending.unused1;o.reset_before=g->pending.reset_before;
+            unit_provenance(&o,&g->previous);out[n++]=o;
+            g->completed=g->previous;g->completed_valid=1;
+        }
+        ge_decision p={0};p.counter=c;p.d1=current_d1;p.d2=f->first[1]?f->first[1]-286:0;
+        p.unused1=unused1;p.unused2=1;p.reset_before=reset;p.comb.margin=NAN;
+        unit_provenance(&p,f);g->pending=p;memcpy(g->previous_y,y,GE_PIXELS);
+    }
+    g->previous=*f;g->valid=1;g->counter=c;return n;
+}
 unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_decision out[2]) {
+    if(ge_top_overrun_veto)return push_gated(g,y,c,reset,out);
     unsigned n=0;int adjacent=g->valid && g->counter!=UINT64_MAX && c==g->counter+1;
     if(g->valid && !adjacent)n=ge_break(g,out);
     ge_features *f=&g->current;ge_measure(y,f);

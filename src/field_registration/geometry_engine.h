@@ -20,7 +20,9 @@ extern int ge_top_guard; /* default 3; 0: lag correlation, 1: none, 2: high-spre
 extern int ge_top_plain23; /* default 0; 1: apply plain23 re-search; 0: evidence only */
 extern int ge_top_runin; /* default 0; 1: apply run-in step; 0: evidence only */
 extern double ge_top_near_blank; /* -1: disabled; finite >=0: inclusive p95-level cutoff */
-extern int ge_top_overrun_veto; /* default 0; 1: reject non-gaining census moves increasing overrun */
+extern int ge_top_overrun_veto; /* default 0; 1: early-comb-gated census overrun veto */
+enum { GE_OV_HISTORY=1, GE_OV_GEOMETRY=2, GE_OV_SAME_COMB=4,
+       GE_OV_TOP_MOVED=8, GE_OV_BOTTOM_STILL=16, GE_OV_ALL=31 };
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
 enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16,
@@ -33,7 +35,8 @@ typedef struct {
 typedef struct {
     int first[2], last[2], bottom[2], rule_first, auto_first, plain23;
     int interpreted_first[2], top_ignored[2]; /* first[] remains measured */
-    int top_overrun_veto[2]; /* predicate matched; equal tops can be a no-op */
+    int top_overrun_veto[2]; /* all five conditions matched; an actual substitution */
+    unsigned overrun_terms[2]; /* independent GE_OV_* evidence, enabled path only */
     double top_distance[2]; /* measured final-top body p95 - hblank_level; NAN if absent */
     double blank[2], runin;
     double hblank_level[2];
@@ -50,6 +53,9 @@ typedef struct {
     int first[2], last[2], bottom[2];
     int interpreted_first[2], top_ignored[2]; /* same FRAME fields as first[] */
     int top_overrun_veto[2]; /* same FRAME fields */
+    unsigned overrun_terms[2];
+    int prev_comb_known, prev_comb_d;
+    double prev_comb_margin;
     double top_distance[2]; /* same FRAME fields; not unit-owned hblank provenance */
     double hblank_level[2]; /* this unit's own fields, also on unused boundaries */
     int hblank_cols[2];
@@ -70,6 +76,10 @@ unsigned ge_push(geometry_engine *, const uint8_t *, uint64_t counter,
 /* Latest pushed unit's own evidence/interpretation, including reversed boundaries.
  * Borrowed read-only view, invalidated by push/break/init. NULL without history. */
 const ge_features *ge_current_features(const geometry_engine *);
+/* Enabled overrun path: complete OWN-unit features for the latest emitted
+ * decision, including deferred field 2 under reversed pairing. NULL if no output.
+ * Current features' field 2 is still provisional until its partner arrives. */
+const ge_features *ge_completed_features(const geometry_engine *);
 /* EOF/broken adjacency completes the unused boundary field using its own census.
  * Clears all history; preserves the two configuration flags. */
 unsigned ge_break(geometry_engine *, ge_decision out[2]);

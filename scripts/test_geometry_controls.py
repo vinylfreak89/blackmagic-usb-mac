@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
             units={int(r['counter_extended']):r for r in rows if r['counter_extended']}
             assert len(units)==4 and all(r['published']=='1' for r in units.values()),p.stdout
             for r in rows:
-                assert r['schema_version']=='18' and tuple(r[n.lower()] for n in names)==values,r
+                assert r['schema_version']=='19' and tuple(r[n.lower()] for n in names)==values,r
             raw=b''.join(struct.pack('=QII',c,int(units[c]['reset_before']),int(reversed_pair))+y for c in units)
             q=subprocess.run([probe],input=raw,capture_output=True,env=env,timeout=30)
             assert q.returncode==0,q.stderr

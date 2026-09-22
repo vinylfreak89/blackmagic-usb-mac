@@ -10,6 +10,9 @@ mutations={
     'omit-overrun':('&& now>old',''),
     'omit-no-gain':('f->first[k]>=previous->interpreted_first[k] && now>old','now>old'),
     'measured-history':('previous->interpreted_first[k]','previous->first[k]'),
+    'ignore-comb':('f->overrun_terms[k]==GE_OV_ALL','(f->overrun_terms[k]|GE_OV_SAME_COMB)==GE_OV_ALL'),
+    'ignore-top-move':('f->overrun_terms[k]==GE_OV_ALL','(f->overrun_terms[k]|GE_OV_TOP_MOVED)==GE_OV_ALL'),
+    'ignore-bottom':('f->overrun_terms[k]==GE_OV_ALL','(f->overrun_terms[k]|GE_OV_BOTTOM_STILL)==GE_OV_ALL'),
 }
 with tempfile.TemporaryDirectory(prefix='overrun-mutations-',dir='/private/tmp') as td:
     td=Path(td);(td/'tests').mkdir()
@@ -22,4 +25,4 @@ with tempfile.TemporaryDirectory(prefix='overrun-mutations-',dir='/private/tmp')
         p=subprocess.run([str(td/'test')],capture_output=True,text=True)
         assert p.returncode!=0 and 'assert' in p.stderr.lower(),(name,p.returncode,p.stdout,p.stderr)
         print(name,'REJECTED',p.returncode,p.stderr.strip())
-print('OVERRUN-MUTATIONS PASS: both conjuncts and interpreted history are required')
+print('OVERRUN-MUTATIONS PASS: geometry, history, and all three new terms are required')

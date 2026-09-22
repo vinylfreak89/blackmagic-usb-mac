@@ -452,3 +452,33 @@ Measure all four captures, labelled units, placement changes, cascade, class and
 scheduling deltas, band gains/losses, and separate enabled/disabled CPU cost.
 Failures are reported without tuning. A lower late-top wrong count cannot prove
 quality because that independent gate abstains on too-early tops. No push/render.
+
+### Report — early-comb-gated census veto
+
+Implementation premise held on the committed population: the disabled engine
+matches 9ed3923, including non-audit scheduling/evidence and placements. Enabled
+frame-owned interpretation preserves raw measurements and audit invariance;
+reversed field 2 waits for its real partner. The one existing early search is
+reused for the final policy, with no duplicate pass or disabled-path search.
+The four labelled units remain unchanged. Synthetic conjunct mutations fail,
+and unit, ASan/UBSan and TSan checks pass. An initial fixture assertion failed
+because its claimed unchanged-comb rasters were not identical inside the search
+aperture; the corrected fixture, not a relaxed production rule, passes.
+
+Source-quality premise remains **unknown**. Aggregate decided-comb agreement
+improves or ties in every requested band, but individual new disagreements
+remain, including at margin >=3. No tuning or confidence threshold was added.
+The restriction removes most old unconditional refusals; the recorded class,
+scheduling and placement changes are consequences, not evidence of quality.
+Equal raster-only winners establish unchanged estimated relative alignment,
+not absolute motion or correct edges. The independent gate has not been
+rescored; its blindness to early tops prevents a lower wrong count from proving
+preserved picture. Raw-row/owner review is still required before acceptance.
+
+The whole tape was streamed through three actual C engines with the existing
+live reset/pair schedule, not re-replayed through the full frameserver. The four
+captures additionally passed enabled and disabled real frameserver replays.
+Detailed populations, abstentions, separate gains/losses, firing identities,
+per-term and descriptive confidence cuts, cost and the verbatim fixture failure
+are in /private/tmp/comb-gated-overrun.6bHuEz/REPORT.md, with scripts and changed
+unit/frame CSVs beside it. Rule remains disabled by default. No push or render.
