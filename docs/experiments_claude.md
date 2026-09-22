@@ -1790,3 +1790,41 @@ cannot judge.
 
 **Material.** All 86,293 exact units and capture 1. Judged by the independent gate and by the owner's
 labelled units, not by the comb alone, since the comb is blind to the common-mode part of this change.
+
+### Amendment 1 to entry 31 (2026-09-22) — the rule narrowed, and a falsifier of mine withdrawn
+
+**Registered before the build proceeds.**
+
+**The rule is narrower than the entry states.** The owner, after seeing the spec: "just having it
+abstain whenever there is high coherence and the top moves only is wrong", and then twice: "it should
+only abstain IF there is high coherence AND the level is near blanking", finally "it needs to be top
+moves, bottom doesn't, level of top is near blanking" — "in other words, a low confidence decision".
+The coherence term is not in the final statement. The conjunction is **top moved, bottom did not, and
+the newly chosen top's level is near blanking**, where nearness is the top line's body 95th percentile
+against the derived horizontal-blanking level the engine already computes. Its physical reason is his:
+that combination is weak evidence, and weak evidence should not be enacted.
+
+**A falsifier of mine is withdrawn because it was unsatisfiable.** The entry required
+`GE_VALID_MOVE` and `GE_BOTTOM_ONLY` counts to be unchanged, "since the rule touches neither". That is
+wrong. The class is computed by comparing a unit's top against the previous unit's, so substituting a
+top necessarily reclassifies the NEXT unit. Codex's preflight produced the counterexample before any
+production code changed: unit 102, measured top/bottom 24/261, `bottom only` becoming `valid move`
+with `comb_ran` 1 → 0. My criterion forbade the mechanism the entry predicts. The class and
+comb-scheduling deltas are still reported in full — they are evidence about what the rule did — but
+they are not a gate.
+
+**Interpreted history is the design, deliberately.** The substituted top feeds the next unit's
+comparison. The owner said "ignore", not "hold", and the entry's predicted effect depends on it: 61.4%
+of the regression classifies as `nothing` because it sits mid-run inheriting an already-wrong top, so
+only onset suppression reaches it. Keeping the measured series would let a rejected top reassert on
+the next unit and recover none of that. The measured tops remain in the log beside the applied ones,
+so the record stays immutable even though the engine's working history is interpreted.
+
+**What this costs the entry's prediction.** The 34.5%-against-6.2% enrichment was measured for the
+top-only condition ALONE. The third condition can only reduce it, so 717 avoided against 329 lost is
+an upper bound on reach, not an expectation. The sweep of the nearness threshold decides the real
+figure, and the threshold is exposed as a control defaulting to a no-op rather than fitted.
+
+**Unchanged falsifiers:** the gate's late-top count, the owner's four labelled units, per-band comb
+agreement with gains and losses reported separately, and the bottom/profile/blanking/level columns at
+0 differing units of 86,293.
