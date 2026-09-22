@@ -2045,3 +2045,47 @@ zero exactly as blanking is, and the first step lands on the card's textured edg
 top of picture. That is a limitation of entry 33's instrument and is not addressed by this entry.
 
 **Material.** Captures 1–4; the whole tape for census identity.
+
+### Amendment to E-claude-2026-09-22-35 (2026-09-22) — the gate was the wrong layer; the defect is in the measurement
+
+**The falsifier fired, on the entry's own terms: "the card still shifts at 6641 or 6667".** Codex built
+the four-edge gate and reported that it delays the shift rather than removing it — counters 6641–6669
+hold (0,0), then **6670 publishes (5,5) with both motion classes `nothing`**. It also changed 56 frames
+against an expected 20 (32 direct holds, 24 propagated). It was not promoted.
+
+**Why it could never have worked, and this supersedes the entry's method.** A motion class describes
+*change between frames*; the anchor is *absolute*. Once the card's top has been measured on two
+consecutive frames, "nothing moved" is true and the anchor still reads +5. **Motion cannot witness a
+position.** The entry's premise — that the four edges are the evidence for a displacement — stands;
+gating on the engine's motion classification was the wrong instrument for it.
+
+**The real cause, measured line by line at counter 6667, field 2** (mean / sd / correlation with the
+line above):
+
+| NTSC | mean | sd | corr | |
+|---|---|---|---|---|
+| 285 | 1.4 | 0.49 | +0.004 | blanking |
+| 286 | 2.0 | 1.15 | −0.032 | blanking |
+| **287** | **19.8** | 2.04 | −0.048 | **picture starts — an 18-code jump** |
+| 288–290 | 20.9–22.2 | ~2.2 | −0.17…+0.11 | dark picture, no correlation |
+| 291 | 25.6 | 2.46 | −0.229 | **the engine's top, four lines late** |
+| 292 | 26.4 | 2.37 | +0.310 | step +0.538 clears the 0.45 bar |
+
+The picture begins at 287. Rows 287–291 are dark and low-contrast, so row-to-row correlation is
+dominated by their own noise and never rises. Field 1 on the same frame is sharp (23: 4.2, 24: 9.6,
+25: 23.5, step +0.833 at 26) and its top of 25 is right. Measured against each field's own blanking the
+card frame sits at about **d1 +2, d2 +1** — a coherent near-common-mode displacement. The published
+(5,5) is entirely field 2's four-line miss.
+
+**A hypothesis of mine, refuted and recorded so it is not re-tested.** I proposed that a flat dark
+region has near-zero variance and is forced to correlation 0 by `waveform.py`'s guard, exactly as
+blanking is. It is not that: those rows measure sd 2.0–2.9, far above the 1e-9 floor. Correlation
+requires *structure*, and dark low-contrast picture has none above its own noise.
+
+**Verdict on the entry: premise held, method refuted.** The four edges are the right evidence; the
+engine's motion classification is not a way to read them, and no publication gate can repair a top that
+was measured four lines late. **This is a defect in entry 33's instrument**, and the two instruments
+look complementary — correlation for structured picture, level for dark picture, which is the amplitude
+test entry 20 was built on. That is a new entry, not an amendment to this one.
+
+**Not fixed in the render the owner will see next**, and he was told so rather than finding out.
