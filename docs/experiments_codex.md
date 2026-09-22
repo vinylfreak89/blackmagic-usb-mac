@@ -290,3 +290,33 @@ a published-crop veto after comb (which changes the specified interaction with
 comb). Detailed probes: /private/tmp/overrun-preflight.Xguwut/check.py and
 row_ruler.c. Whole-tape enabled changes, cascade, bands, cost and independent
 gate remain unmeasured because the requested preflight stop condition fired.
+
+### Amendment — census veto explicitly authorized, without final-crop guarantee
+
+The owner selected the pre-comb census policy after accepting the coordinate
+finding. Use H=240 (publisher geometry), not the renderer's 243. The signal
+premise to test is now narrower: rejecting these census moves may preserve more
+picture without overriding comb. It does not guarantee the final crop.
+
+Implement `GE_TOP_OVERRUN_VETO`, a strict 0/1 tool setting / corresponding C
+global, default 0. Compare this measured top to the previous interpreted top;
+compare `max(0, current_first+239-current_last)` with
+`max(0, previous_interpreted_first+239-previous_last)`. Each overrun uses its
+own unit's measured last line, so a tandem translation need not increase it.
+Both tops and last lines must exist, on adjacent non-reset units. The two
+conditions are nondecreasing top and strictly increased overrun. Substitute
+only the interpreted top; keep all observations and comb authority unchanged.
+Record the veto predicate separately from actual substitutions: equal tops
+can satisfy the predicate when the bottom moves, but substitute nothing.
+Near-blank suppression stays disabled in all source runs.
+
+Deciding tests cover predicate boundaries, tandem movement, missing evidence,
+reset/gaps, interpreted history and downstream comb authority. Stream actual
+9ed3923, disabled and enabled C engines in one whole-tape read with live resets
+and pairing. Report all changed census and published field edges, class and comb
+scheduling deltas, protected measurements and CPU cost. Define both census and
+published-edge cascade ratios per actual substitution; also count no-op matches.
+Check the four labelled units and all comb bands including separate gains/losses.
+Repeat capture 1. Disabled identity or protected-evidence failures invalidate the
+implementation; label or agreement regressions falsify the source acceptance,
+and are reported without tuning. The independent late-top gate remains external.
