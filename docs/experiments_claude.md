@@ -1887,3 +1887,43 @@ shift, which leaves the field relationship unchanged and is invisible to it by c
 **Supersedes in practice, not by refutation:** entry 31's near-blank instrument, which reaches 25 of
 2,089 regression edges (1.2%) at a 12:1 ratio. It is left in the engine disabled at the owner's
 instruction, pending a cleanup pass that removes the pieces not being kept.
+
+### Amendment 1 to entry 32 (2026-09-22) — the figures were measured on the wrong quantity
+
+**Registered before the build proceeds.** Codex's preflight caught it before any engine edit.
+
+**The error.** I computed overrun from the measured first picture line. The publisher's crop does not
+start there: it starts at `23 + d1` (field 1) and `286 + d2` (field 2), and the comb and the hold can
+move `d1`/`d2` after the measurement. Codex's counterexample from a real run: frame 4758, measured top
+28, published crop top 24 — my formula reports 6 lines of overrun where the truth is 2. The correct
+quantities are `max(0, 262 + frame_d1 - f1_last)` and `max(0, 525 + frame_d2 - f2_last)`, with field 1
+joined to its source unit under the frame's pairing, not to the unit that owns the row.
+
+**Re-measured on the published crop.** The separation survives, weaker than stated:
+
+| | discards picture at the top AND increases overrun |
+|---|---|
+| the regression, 2,089 edges | **1,884 — 90.2%** (was claimed 97.2%) |
+| the fixes, 5,326 edges | **128 — 2.4%** (was claimed 1.9%) |
+
+Means: the regression loses 1.96 lines at the crop start and runs 1.96 further into blanking; the
+fixes gain 0.32 and sit 0.32 closer. The entry's claim holds; its numbers were wrong and are replaced
+by these.
+
+**Aperture, now measured rather than assumed.** The publisher is H=240, field 1 `23+d1 .. 262+d1`,
+field 2 `286+d2 .. 525+d2`. The review renderer is H=243, starting three rows higher at `20+d1` and
+`283+d2`; the bottom endpoints agree. The rule uses the publisher's geometry. My "240 lines beginning
+at 23/286" was right for the publisher and wrong about which start the crop uses.
+
+**Policy chosen, with its cost stated.** Codex asked whether to veto census tops before the comb or
+published crop starts after it. **Before**, on three grounds: the owner accepts the trade "at hopefully
+no cost to combing", and a post-comb veto overrides comb-driven placement, which is exactly that cost;
+92.4% of the regression is a common-mode shift the comb is blind to and did not cause, so the move
+originates at the census; and the published crop already equals the measured top on 67,575 of 85,554
+field-1 frames (79.0%), so a census veto reaches most final crops in practice.
+
+**What this policy does NOT do, recorded so no report can claim it:** it does not guarantee the final
+crop. On the 21% where the hold or the comb moves the crop away from the measured top, a vetoed top can
+still be published with an increased overrun. The rule refuses the census move that would discard
+picture; what happens downstream is a separate policy the owner may decide differently once he sees a
+render.
