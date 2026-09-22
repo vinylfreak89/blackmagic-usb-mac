@@ -419,3 +419,36 @@ audit/production equivalence. Ask authorization for that early computation and
 timing change, not for a no-veto placement preview. Equal comb winners measure
 unchanged relative alignment; they do not by themselves establish absolute
 common-mode movement or correct picture edges. Source acceptance remains unknown.
+
+### Amendment — early raster-only comb and frame-owned gating authorized
+
+Build the enabled path only: compute ge_comb once per completed frame before
+census interpretation, independently of audit logging. Retain the old disabled
+path and scheduling exactly. No preview/rewind, no confidence cutoff, no new
+threshold. Equal successive comb winners mean unchanged estimated relative
+alignment, not established absolute common-mode movement.
+
+For each frame field with adjacent non-reset source history, require all of:
+current comb shift equals previous frame's; measured top differs from previous
+interpreted top; measured bottom[k] equals previous bottom[k]; and the existing
+non-gaining/increasing-overrun census predicate using last[k] and H=240. Missing
+top/last/bottom or preceding comb history cannot fire. Frame-owned history uses
+field 1 of c+1 and field 2 of c under reversed pairing; no field-2 decision before
+that partner exists. Reuse early comb evidence for the final decision, without
+changing what comb_ran means (triggered adoption eligibility).
+
+Log the independent term bits and preceding comb evidence, so removals can be
+counted separately and with all other terms retained, on the same interpreted
+trajectory. Also report reach if both successive margins meet 1.5/3/5/8; these
+are descriptive cuts, not additional policies. Compare against b1ce11a's enabled
+outputs, separating overlap from trajectory-created firings.
+
+Before source acceptance, decide synthetic conjunct failures, no-comb-history,
+low-confidence equal winners, reset/gap, reversed pending/boundary ownership,
+and audit invariance. Stream the whole tape once to actual baseline, disabled,
+and enabled C engines. Compare every old unit/frame column, including non-audit
+comb scheduling/evidence, against 9ed3923; protected measurements must not change.
+Measure all four captures, labelled units, placement changes, cascade, class and
+scheduling deltas, band gains/losses, and separate enabled/disabled CPU cost.
+Failures are reported without tuning. A lower late-top wrong count cannot prove
+quality because that independent gate abstains on too-early tops. No push/render.
