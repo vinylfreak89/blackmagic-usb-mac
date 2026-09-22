@@ -1641,6 +1641,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   measured-history state. The near-blank rejection instrument defaults disabled;
   no source-improvement claim follows from its disabled-default identity test.
   See `docs/geometry_engine.md` for measured/frame-owned versus interpreted tops.
+  Aperture arithmetic uses published offsets: 480i starts at 23+d1 / 286+d2
+  for 240 lines; the 486-line review starts three lines earlier with the same
+  endpoints. Measured/interpreted field-1 first is not generally 23+d1 because
+  comb changes d1. Do not call a census-top veto a final-crop guarantee.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

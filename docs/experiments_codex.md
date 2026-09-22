@@ -259,3 +259,34 @@ before implementing a rule based on the stronger physical claim. Do not silently
 move the guard after the comb or redefine previous applied top. If coordinates
 hold, proceed with the specified disabled control and enabled acceptance runs;
 independent edge-gate scoring remains with the other agent.
+
+### Report — stopped at census-versus-published coordinate mismatch
+
+**Verdict: the first-line formula is not generally the published-aperture
+overrun.** The publisher height is indeed 240, starting at NTSC 23+d1 / 286+d2.
+The review renderer is 243 lines per field, starting three lines earlier at
+20+d1 / 283+d2. Both end at 262+d1 / 525+d2. The review-height difference
+therefore does not change the bottom-overrun arithmetic when offsets are used.
+
+The deciding mismatch is the start, not the height. Existing 9ed3923-compatible
+engine output, correctly keyed by frame_top_unit under reversed pairing:
+frame 4758 uses field 1 of unit 4759, measured/interpreted top 28, last 261,
+frame_d1=1, so actual 480i start 24 and end 263. First-based overrun is 6;
+actual overrun is 2. Frame 4757 also publishes start 24: the measured jump
+23 to 28 produces no crop jump. Conversely frames 4747 to 4748 retain measured
+top 23 and last 261, but published start moves 23 to 24 and overrun 1 to 2.
+The literal first-based rule sees no increasing overrun there.
+
+A synthetic row ruler through the actual C publisher and current review
+renderer independently confirms the endpoints. Both checks exit 0 with no
+runtime errors; the geometric identity being tested is false. This does not
+refute usefulness of an interpreted-census guard, but it refutes treating it
+as a guarantee on the final crop. The comb can subsequently move field 1.
+
+No production change, new control, fitted threshold, acceptance sweep, push or
+render. GE_TOP_NEAR_BLANK remains -1 by default. Ask whether the rule is an
+interpreted-census veto before comb (without the final-aperture guarantee), or
+a published-crop veto after comb (which changes the specified interaction with
+comb). Detailed probes: /private/tmp/overrun-preflight.Xguwut/check.py and
+row_ruler.c. Whole-tape enabled changes, cascade, bands, cost and independent
+gate remain unmeasured because the requested preflight stop condition fired.
