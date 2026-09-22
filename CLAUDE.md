@@ -1676,11 +1676,13 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   Evidence: /private/tmp/comb-basin.KlFmop; docs/geometry_engine.md defines the
   log and zero-energy/out-of-range conventions. Renderer approval remains the
   owner's decision after the four numeric-gated review captures.
-  A later one-field-only hold instruction stopped that render run before
-  publication: the C prototype changes 31 frames against an exactly-five gate
-  (26 extra through state/reattempts). It is not promoted. Counter 6667 retains
-  both tops and (5,5). Existing review files remain the preceding validated run;
-  do not restart publication until the one-field scope gate is resolved.
+  Later hold instructions stopped that render run before publication. The
+  superseded one-field prototype changed 31 frames against an exactly-five
+  gate. Its four-edge/known-motion replacement performs 32 direct interventions
+  and changes 56 frames against the reported 20 onsets. It delays cap1's (5,5)
+  placement from 6667 to 6670 (nothing/nothing); it does not eliminate it.
+  Neither prototype is promoted. Existing review files remain the preceding
+  validated run; do not restart publication until the scope gate is resolved.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

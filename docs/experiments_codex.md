@@ -763,3 +763,25 @@ Falsifiers: direct refusals outside the specified 20, a missing specified
 refusal, any change not due to the allowed hold/state propagation, or changed
 census. Stop at a conflicting gate; do not fit the condition to its counter list.
 Renders remain stopped until the replacement rule's acceptance is resolved.
+
+Four-edge replacement result: the C forward prototype performs 32 direct
+candidate-to-held interventions (12/3/12/5), not the reported 20. It changes
+56 frame placements against the basin-only build (36/3/12/5): 32 direct and
+24 inherited changes. Of the listed 20, 18 intervene directly; cap2 2312 is
+already held by the basin discard and 2339 becomes a no-op on the changed
+trajectory. Fourteen other interventions are startup placements, reattempts
+after earlier holds, or the basin rule's newly changed candidates. They are
+not a fitted counter exception. Baseline reproduction and audit invariance
+remain exact. The implemented predicate reads current first/last and the
+existing frame-owned GE_UNKNOWN classes only; other classes are not vetoed.
+
+The predicted persistent freeze does not follow: cap1 6641..6669 stays (0,0),
+including 6667, but 6670 has all four measured edges and nothing/nothing
+classes and publishes (5,5). No authorized term rejects it. At 6878 the return
+is held at (5,5); 6879 returns to (0,0). Thus the instruction delays that shift
+three frames rather than eliminating it. Adding a rule against nothing/nothing
+or changing classification history would be an unauthorized second rule.
+The exactly-20 gate is unresolved; this replacement remains only in scratch
+at /private/tmp/comb-basin.KlFmop/four-edge. Neither superseded hold prototype
+has been promoted. The basin-only commit remains 3a87891. All eight published
+review artifacts still match their previous hashes; no replacement occurred.
