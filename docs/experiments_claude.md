@@ -1970,3 +1970,78 @@ placement or publishes the measured tops — not decided here, and the report mu
 **Forward or not.** Forward: it removes a whole failure mode rather than excusing three cases, it
 adds no number, and the condition is about the energy profile's shape rather than about the frames
 it was found on. It has been checked only on the 26; the whole tape is material it was not built on.
+
+## E-claude-2026-09-22-35 — if you cannot measure all four edges, do not shift
+
+**Question (owner, 2026-09-22, verbatim).** "the card gets shifted up by +2/+2 and then by +5/+5 when
+it appears on the screen. problem starts at 6641 for the first shift, then 6667 for the second… in all
+of those there is no top in at least 1 of the fields. no top in 1 field within a frame should be
+disqualifying to create a shift" — then, when the first form of the rule proved too narrow: "c'mon
+now. if you can't measure all 4 tops and bottoms, don't shift shit... period"
+
+**Premise.** A picture displacement is a statement about where the whole picture sits, and the only
+evidence for it is the four edges — both fields' tops and both fields' bottoms. A frame that cannot
+produce all four has not measured a displacement; it has measured a fragment, and a fragment must not
+move the published crop. This is the owner's tandem principle applied to the *absolute* placement
+rather than to the relative alignment.
+
+**What the engine does instead.** The relative shift is correctly guarded on both tops
+(`known = t->first[0] && b->first[1]`), but the absolute anchor is taken from field 2 alone,
+unconditionally:
+
+```c
+int d2 = b->first[1] ? b->first[1]-286 : (g->have_placement ? g->last_d2 : 0);
+o.frame_d1 = d2 - d;  o.frame_d2 = d2;
+```
+
+Field 1's own top enters only through `st`, and `st` is discarded whenever the comb decides. So one
+field's top can move the entire frame, and at capture 1's boxed card it does — twice.
+
+**Why no existing guard could have caught it, measured.** A common-mode shift moves both fields
+together, leaving the relative alignment unchanged, so every relative instrument is blind to it *by
+construction*. Vertical roughness across (0,0) through (5,5) on the card frames spans 0.061, 0.103 and
+0.148 — nothing is distinguishable from anything. The comb measures relative alignment and cannot
+validate an absolute anchor; there is no second witness for the anchor anywhere in the engine.
+
+**The method, in the engine's own vocabulary.** A published placement may move only when all four
+edges are measured and neither field's motion class is `unknown` — `unknown` being exactly the state
+where an edge was unmeasurable so motion could not be determined. The classification already exists
+(`class_f1`/`class_f2`); the anchor is gated on it. No new classifier.
+
+**Population, all four captures, every frame where the published placement moved:**
+
+| motion class | moves | | motion class | moves |
+|---|---|---|---|---|
+| valid move / nothing | 144 | | unknown / nothing | 8 |
+| nothing / top only | 118 | | nothing / nothing | 8 |
+| top only / nothing | 76 | | nothing / unknown | 7 |
+| not in tandem / nothing | 46 | | **unknown / unknown** | **5** |
+| bottom only / nothing | 10 | | 17 smaller classes | — |
+
+456 moves in total; **20 carry `unknown` in at least one field**, and both of the owner's card shifts
+are among them — 6641 `(0,0)→(2,2)` and 6667 `(2,2)→(5,5)`, each classed `('unknown','unknown')`.
+
+**The first form of the rule, recorded because it was dispatched and was wrong.** "Both tops measured"
+reaches 6641 but not 6667, where all four edges *are* present (f1 25/262, f2 291/525). What is wrong at
+6667 is that the tops moved while the bottoms did not — f1 bottom 262 and f2 bottom 525 hold constant
+across 6663–6673 — which the engine already classes `unknown` because field 2 had no top in the
+preceding frames. The bottoms were necessary; the tops alone could never have caught it.
+
+**Falsifier.**
+- The 20 moves are not refused, or frames outside them change other than by propagation.
+- Or the card still shifts at 6641 or 6667.
+- Or the census disagrees on any of the 172,586 field edges — this gates publication, never measurement.
+- Or a refused move strands the picture: the change is stateful, so refusing 6641 means 6667 is reached
+  from (0,0) and 6878's return to (0,0) becomes a no-op. Direct refusals and propagated changes are
+  reported separately.
+
+**Deliberately excluded, so no report can claim it.** `top only` (194 moves), `bottom only` (19) and
+`not in tandem` (55) are frames where all four edges *were* measured and contradict each other. That is
+entry 31's territory and a far larger behavioural change. It is measured here and left alone.
+
+**What is not understood.** Why the waveform accepts a top at 291 on the card at all. The likely
+mechanism is that a flat dark picture region has near-zero variance, so its correlation is forced to
+zero exactly as blanking is, and the first step lands on the card's textured edge rather than on the
+top of picture. That is a limitation of entry 33's instrument and is not addressed by this entry.
+
+**Material.** Captures 1–4; the whole tape for census identity.
