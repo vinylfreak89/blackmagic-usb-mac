@@ -1661,6 +1661,11 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   write a validated replacement naming the actual engine/renderer producer
   commits. scripts/geometry_review_status.py provides --begin and completion
   checks, including artifact hashes and explicit boundary-unit accounting.
+  Entry-34 rejection preflight stopped before promotion: its C state path changed
+  exactly the requested 26 frames, but independent whole-aperture roughness rose
+  on three. Two remain worse in the interior-only check; the original scorer's
+  aperture is unresolved. See the Codex ledger and /private/tmp/comb-reject.HLom5S.
+  No rejection rule or replacement renders have been promoted from that test.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

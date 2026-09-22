@@ -637,3 +637,27 @@ If gates pass, add separate refusal evidence/provenance, test strict thresholds,
 audit invariance and state reset, measure cost and census identity, fix clipped
 DIFFERS/ratio labels, then stage/validate/publish only captures 1–4 with producer
 status. No full-tape render is authorized.
+
+Entry-34 preflight result: the bounded C prototype changes exactly the 26 target
+frames (15/5/2/4), with no extras, no missed targets, and no changed placements
+among the 2,100 decided-comb frames. Audit and non-audit placements agree.
+There are 23 direct refusals; three other changes propagate through the existing
+placement/correction state. Capture 1 counter 6272 consequently publishes +5,
+not its current minimum +4: the inherited +5 is only 1.049 times that minimum
+and is not itself refused. Do not call all 26 fresh refusals.
+
+The no-worse-roughness gate fails under an independent implementation of the
+stated operator, mean abs(line - average(two vertical neighbours)), on the
+publisher's 720x480 aperture: cap1 6271 rises 2.103753 to 2.460633, cap1 6272
+rises 1.987461 to 2.254934, and cap2 2309 rises 6.296182 to 6.486143.
+Both cap1 failures persist on the interior 210-line-per-field / columns 24:696
+check; cap2 2309 instead improves there, so aperture matters. The original
+entry's precise roughness aperture/code was not supplied and has been requested;
+its five example numbers have not been independently reproduced. These are
+instrument scores, not a verdict on appearance. All target-source cached rasters
+match the original captures byte-for-byte; a separate literal-loop scorer
+reproduces the three full-aperture regressions. Evidence and the complete 26-row
+table: /private/tmp/comb-reject.HLom5S/roughness.csv, verify_raw.out and
+preflight.out. Production engine/renderer changes and new renders are stopped
+at this falsifier. Whole-tape identity, CPU and promotion tests were not run;
+existing engine, sidecars and review renders remain unchanged.
