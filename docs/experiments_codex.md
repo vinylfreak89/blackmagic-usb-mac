@@ -157,3 +157,24 @@ were not run after this preflight falsifier; none are claimed.
 
 Probe and verbatim results: /private/tmp/top-only-preflight.PID5U7/probe.c and
 REPORT.md. Documentation-only preflight, no push or render.
+
+### Authoritative narrowing received after the preflight
+
+The owner replaced the broad rule with GE_TOP_ONLY **and** a newly selected
+top near the derived horizontal-blanking level. A briefly proposed coherence
+condition and its worked example were explicitly withdrawn; neither is part
+of the task. The stated level instrument is body p95 minus the same field's
+derived horizontal level. That is consistent with the existing amplitude test;
+no alternative metric or fitted threshold is proposed. The requested new
+threshold control must default to an explicit disabled state, preserving
+d5c9f08 until a sweep selects an enabled arm.
+
+The synthetic results above concern the original broad-rule preflight, not a
+measured reach or rejection rate for the narrowed rule. No threshold or census
+test for the narrowed predicate has been run. Conditional eligibility reduces
+where a substitution happens; whenever one does happen, feedback can still
+change later classifications and comb triggers. The latest rule retains the
+old invariance requirements without explicitly resolving that series question.
+Requested direction: may enabled-arm interpreted-history effects be measured
+and reported rather than required to be zero? Disabled-default identity is
+separate and remains required. No production edits made while this is unresolved.
