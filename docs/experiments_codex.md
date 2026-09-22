@@ -346,3 +346,34 @@ no-op accounting, interpreted history, resets/gaps, both pairings and preserved
 downstream comb authority. Removing either conjunct or restoring measured history
 fails the controls. Unit, ASan/UBSan and TSan checks pass. Capture-1 real replay
 matches the disabled baseline and enabled probe placements. No push or render.
+
+## E-codex-2026-09-22-4 — applied common-mode precondition: causality preflight
+
+**Owner's instruction (relayed).** "Have codex fix the engine so that it only
+considers moves when there is a common mode shift." The dispatch defines this
+as both frame-applied offsets stepping by the same nonzero amount from the
+previous frame, while retaining a census veto before the comb. It explicitly
+asks for a stop if the applied reading cannot be evaluated there, rather than
+silently substituting measured-top movement.
+
+**Premise to check.** The current applied pair is available, or determined
+without downstream choices, at the existing pre-comb census interpretation.
+That computational premise is separate from the untested physical claim that
+restricting to common-mode proposals preserves more useful picture. A late-top
+gate that abstains on early tops cannot establish the latter claim.
+
+**Method/material.** Inspect b1ce11a's actual C call order, then exercise its
+frame decision with synthetic feature pairs and known-answer synthetic comb
+rasters. Compare the census candidate, comb-resolved candidate, and any
+census-vetoed result from identical entering state. Trace actual reversed
+ge_push calls to establish when each field's frame decision exists. Existing
+whole-tape disabled frame/unit CSVs may supply additional deciding counters;
+they are engine evidence, not raw-row labels. No full-tape reread or source
+quality claim is needed for this preflight.
+
+**Falsifier / stop.** A pre-comb candidate and the actual applied pair differ in
+common-mode status, or a field's decision requires a later unit. Report the
+dependency and ask which candidate is meant before adding a speculative frame
+pass or relocating the veto. Do not silently gate on a measured pair, stale
+previous movement, or a new post-comb veto. Keep all production code and defaults
+unchanged unless this preflight establishes the requested condition directly.
