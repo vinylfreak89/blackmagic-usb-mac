@@ -399,3 +399,23 @@ silently substitute measured tops, previous movement, or a final-crop veto.
 Detailed evidence and probes: /private/tmp/common-mode-preflight.TXzoHq/.
 Ordinary C, ASan/UBSan, TSan and the existing-row cross-check exit 0 without
 runtime errors; the failed premise is a policy-data dependency, not a test crash.
+
+### Superseding instruction — unchanged audit-comb shift, not applied movement
+
+The owner now specifies equal current/previous frame comb_d together with a top
+move and stationary bottom, plus the existing census-overrun predicate. The
+applied-pair condition is withdrawn; no preview-and-rewind implementation is
+authorized. Inspection finds that the current audit result is still computed
+after census interpretation, and only for triggered or audit frames. Therefore
+the dispatch's explicit availability stop condition applies. No new experiment
+or engine change was performed.
+
+This is an ordering issue, not the earlier applied-placement dependency:
+ge_comb reads only rasters and can be computed before census interpretation
+once both frame fields exist. Reversed pairing requires frame-owned timing;
+the current unit's field 2 still awaits the next unit. An enabled rule needs
+every-frame computation independently of the optional audit flag to preserve
+audit/production equivalence. Ask authorization for that early computation and
+timing change, not for a no-veto placement preview. Equal comb winners measure
+unchanged relative alignment; they do not by themselves establish absolute
+common-mode movement or correct picture edges. Source acceptance remains unknown.

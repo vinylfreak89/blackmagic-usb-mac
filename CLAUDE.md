@@ -1652,6 +1652,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   the previous applied pair exists there, but the current one depends on comb/hold.
   A no-veto preview and a final published pair are different policy inputs; do not
   substitute one silently. Reversed pairing also delays each unit's field 2 decision.
+  The later instruction replaces applied movement with unchanged consecutive
+  audit-comb winners. That result is currently computed after census interpretation,
+  but its raster-only search can move earlier without previewing placement state.
+  Enabling such a gate must not make optional audit logging change decisions.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
