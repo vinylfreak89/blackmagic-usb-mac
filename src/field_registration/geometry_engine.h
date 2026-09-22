@@ -8,15 +8,13 @@
 #include <stddef.h>
 #include <stdint.h>
 #define GE_PIXELS (525u * 720u)
-/* Process-wide experiment controls. Configure once before any measurement or
- * worker starts; never write concurrently with an engine call. Library code
- * does not read the environment. Defaults are margin 5, guard 3, and both
- * legacy placement steps off. The old arm is explicitly (0,0,1,1). */
-extern double ge_top_margin; /* 5.0; finite values only */
-extern int ge_top_guard; /* default 3; 0: lag correlation, 1: none, 2: high-spread chunks,
-                         * 3: all-row chunks, 4: all-row structure ratio */
-extern int ge_top_plain23; /* default 0; 1: apply plain23 re-search; 0: evidence only */
-extern int ge_top_runin; /* default 0; 1: apply run-in step; 0: evidence only */
+/* Configure once before workers start. The library never reads the environment. */
+extern double ge_wave_bar; /* default .45; first step strictly greater wins */
+extern int ge_wave_clamp; /* default 5; symmetric displacement from 23 / 286 */
+typedef struct { int first; double step, max_step; } ge_wave_result;
+typedef enum { GE_WAVE_ABSTAIN, GE_WAVE_ACCEPTED, GE_WAVE_DISCARDED } ge_wave_status;
+typedef enum { GE_SOURCE_NONE, GE_SOURCE_CENSUS, GE_SOURCE_HELD, GE_SOURCE_COMB,
+               GE_SOURCE_PREVIOUS, GE_SOURCE_START } ge_source;
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
 enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16,
@@ -27,8 +25,10 @@ typedef struct {
     double energies[11]; /* shift order -5..+5; valid iff margin is not NAN */
 } ge_comb_result;
 typedef struct {
-    int first[2], last[2], bottom[2], rule_first, auto_first, plain23;
-    double blank[2], runin;
+    int first[2], last[2], bottom[2]; /* first is accepted census, zero unavailable */
+    ge_wave_result wave[2]; /* immutable pre-clamp observations */
+    ge_wave_status wave_status[2];
+    double blank[2];
     double hblank_level[2];
     int hblank_cols[2];
     uint16_t profile[2][12][672]; /* exact eight-sample sums */
@@ -43,6 +43,9 @@ typedef struct {
     int first[2], last[2], bottom[2];
     double hblank_level[2]; /* this unit's own fields, also on unused boundaries */
     int hblank_cols[2];
+    ge_wave_result wave[2]; /* this UNIT's raw observations, not frame-owned */
+    ge_wave_status wave_status[2];
+    ge_source relative_source, anchor_source; /* frame-owned publication basis */
     ge_class motion[2];
 } ge_decision;
 typedef struct geometry_engine geometry_engine;
@@ -50,11 +53,12 @@ size_t ge_size(void);
 void ge_init(geometry_engine *, int pair_next, int audit_comb);
 /* All input rows are contiguous 720-byte luma, independent of UYVY decoding. */
 void ge_measure(const uint8_t *, ge_features *);
-/* Entry-33 measurement only, introduced alongside the existing top search.
- * field is 0/1; no step returns first=0 and step=0. Coordinates are NTSC.
- * The caller applies placement policy separately from this raw observation. */
-typedef struct { int first; double step, max_step; } ge_wave_result;
+/* Raw entry-33 observation: no step returns first=0 and step=0. NTSC lines.
+ * ge_measure applies the independent symmetric clamp to each raw observation. */
 ge_wave_result ge_wave_scan(const uint8_t *, int field, double bar);
+int ge_wave_accept(ge_wave_result, int field, int clamp);
+const char *ge_wave_status_name(ge_wave_status);
+const char *ge_source_name(ge_source);
 ge_comb_result ge_comb(const uint8_t *top, const uint8_t *bottom);
 /* Returns 0..2 completed unit decisions, in source order. Reset applies before
  * the first frame using this unit, even when that frame belongs to its predecessor.

@@ -65,9 +65,16 @@ int main(void) {
         t.first[0]=0;
         o=frame(g,flat,flat,&t,&b,108+reverse,108);
         assert(!o.comb.decided && o.frame_d1==previous_d1 && o.frame_d2==previous_d2);
+        assert(o.relative_source==GE_SOURCE_PREVIOUS && o.anchor_source==GE_SOURCE_PREVIOUS);
+        o=frame(g,top,bottom,&t,&b,109+reverse,109);
+        assert(o.comb_ran && o.comb.decided && o.published_d==0);
+        assert(!o.first[0] && !o.first[1]); // comb does not fabricate census evidence
+        assert(o.relative_source==GE_SOURCE_COMB && o.anchor_source==GE_SOURCE_PREVIOUS);
         g->basis_valid=1;g->basis_first[0]=24;g->held=1;
         ge_decision out[2];ge_break(g,out);
         assert(!g->basis_valid && !g->held && !g->basis_first[0]);
+        o=frame(g,flat,flat,&t,&b,110+reverse,110);
+        assert(o.relative_source==GE_SOURCE_START && o.anchor_source==GE_SOURCE_START);
     }
     free(top);free(bottom);free(flat);free(g);
     puts("GEOMETRY-BASIS: top changes, abstention, re-derivation, missing top, reset, audit invariance PASS");

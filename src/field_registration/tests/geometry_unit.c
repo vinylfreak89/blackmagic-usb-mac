@@ -35,7 +35,7 @@ int main(void) {
     }
     for(int x=40;x<680;x++) {
         a[19*720+x]=a[20*720+x]=(x&1)?60:80;
-        a[282*720+x]=(x&1)?3:9; // hi == derived level: rejected
+        a[282*720+x]=(x&1)?3:9; // waveform exists even below derived level
         a[283*720+x]=a[284*720+x]=(x&1)?10:20;
     }
     for(int x=40;x<240;x++)a[258*720+x]=8; // 31.25% lit, BELOW derived level
@@ -43,7 +43,7 @@ int main(void) {
     assert(f.hblank_cols[0]==2 && f.hblank_cols[1]==2);
     assert(f.hblank_level[0]==9 && f.hblank_level[1]==9);
     assert(f.blank[0]==1 && f.blank[1]==1);
-    assert(f.first[0]==23 && f.first[1]==287 && f.last[0]==262);
+    assert(f.first[0]==23 && f.first[1]==286 && f.last[0]==262);
     // Reversed logging carries the source unit's own provenance, not its partner's.
     ge_init(g,1,0);assert(ge_push(g,a,20,1,out)==0);
     memcpy(b,a,GE_PIXELS);

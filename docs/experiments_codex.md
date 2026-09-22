@@ -577,3 +577,18 @@ the per-field survivor count is 5,963. Apply the specified clamp independently
 to each field; do not discard the valid partner of an absent/discarded edge.
 Raw placed/abstained counts remain 155,364/17,222. Negative offsets are not
 exercised by this tape (observed raw offsets 0..16 in both fields).
+
+Promotion result: integrated scan again matches 172,586/172,586 raw edges;
+post-clamp policy differences zero. The four labelled units retain the required
+26/26/25/26 and 288 tops. Old top guards are removed only after the standalone
+gate. Schema 21 carries unit-owned raw top/step/max/status and frame-owned
+accepted census, relative/anchor source and held correction. Defaults are
+GE_WAVE_BAR=.45 and GE_WAVE_CLAMP=5; retired commands are rejected.
+Exact protected-feature comparison against a05ad82 (its geometry C/header are
+identical to the compiled d5c9f08 baseline) found zero bottom-edge, profile,
+device-blanking, bottom-coordinate or horizontal-reference differences across
+86,293 units and captures 1–4 (919/649/649/650). Thread-CPU whole-engine median/
+p95 is 0.309083/0.8916418 ms per unit, production scheduling with the same live
+reset/pairing stream; measurement alone 0.065667/0.159917 ms. Native unit,
+frameserver, ASan/UBSan and TSan checks pass. Numeric success authorizes the
+four review renders, not a full-tape render or an assertion of picture quality.

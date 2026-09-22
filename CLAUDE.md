@@ -1636,8 +1636,15 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   the whole crop makes the applied-decision log disagree with the published pixels.
   Owner-directed cleanup removed the near-blank and overrun vetoes, interpreted
   top substitution and their early-comb path; they are not dormant controls.
-  The d5c9f08 top rule remains, with only its four comparison controls. History
-  retains the discarded experiments; do not infer acceptance from their tests.
+  Entry 33 replaces the d5c9f08 top search with a first single-line Pearson-rise
+  measurement (strict >0.45), followed by an independent symmetric +/-5 discard
+  per field. The C raw scan matched all 172,586 whole-tape edges before removal
+  of the old guards. Controls are GE_WAVE_BAR and GE_WAVE_CLAMP; old GE_TOP_*
+  commands are refused. Schema 21 distinguishes unit-owned raw top/step/status
+  from frame-owned accepted census and publication sources. An absent/discarded
+  top is not a guessed measurement; existing placement fallback is labelled.
+  Bottom edges, profiles and blanking are unchanged on all 86,293 units.
+  History retains discarded experiments; census identity is not render approval.
   Aperture arithmetic uses published offsets: 480i starts at 23+d1 / 286+d2
   for 240 lines; the 486-line review starts three lines earlier with the same
   endpoints. Measured field-1 first is not generally 23+d1 because comb changes

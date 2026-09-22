@@ -2,10 +2,8 @@
 #include <math.h>
 #include <string.h>
 
-double ge_top_margin=5.0;
-int ge_top_guard=3;
-int ge_top_plain23=0;
-int ge_top_runin=0;
+double ge_wave_bar=.45;
+int ge_wave_clamp=5;
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
@@ -34,12 +32,6 @@ static double quantile(const unsigned h[256], unsigned n, double q) {
 static void histogram(const uint8_t *p, unsigned n, unsigned h[256]) {
     memset(h,0,256*sizeof *h); for(unsigned x=0;x<n;x++) h[p[x]]++;
 }
-static double correlation(const uint8_t *a,const uint8_t *b,unsigned n) {
-    double sa=0,sb=0,aa=0,bb=0,ab=0;
-    for(unsigned i=0;i<n;i++){ double x=a[i],y=b[i];sa+=x;sb+=y;aa+=x*x;bb+=y*y;ab+=x*y; }
-    double va=aa-sa*sa/n,vb=bb-sb*sb/n;
-    return va>0 && vb>0 ? (ab-sa*sb/n)/sqrt(va*vb) : -1;
-}
 static double waveform_correlation(const uint8_t *a,const uint8_t *b) {
     /* Integer sufficient statistics are exact in double at 640 uint8 samples.
      * va/vb are n^2 times population variance. No level/coherence proxy. */
@@ -64,6 +56,18 @@ ge_wave_result ge_wave_scan(const uint8_t *y,int field,double bar) {
     }
     return out;
 }
+int ge_wave_accept(ge_wave_result w,int field,int clamp) {
+    int d=w.first-(field?286:23);
+    return w.first && d>=-clamp && d<=clamp;
+}
+const char *ge_wave_status_name(ge_wave_status s) {
+    static const char *const names[]={"ABSTAIN","ACCEPTED","DISCARDED"};
+    return names[s];
+}
+const char *ge_source_name(ge_source s) {
+    static const char *const names[]={"","census","held_correction","comb","previous","section_start"};
+    return names[s];
+}
 static double horizontal_level(const uint8_t *y,int off,int *columns) {
     unsigned h[256]={0},pool[256];
     for(int r=18+off;r<=261+off;r++)h[y[r*720]]++;
@@ -79,56 +83,11 @@ static double horizontal_level(const uint8_t *y,int off,int *columns) {
     }
     return quantile(pool,244*(unsigned)*columns,.99);
 }
-static int chunk_agreement(const uint8_t *a,const uint8_t *b) {
-    unsigned agree=0;
-    for(int i=0;i<16;i++) {
-        unsigned sa=0,sb=0;
-        for(int x=0;x<40;x++){sa+=a[i*40+x];sb+=b[i*40+x];}
-        double ma=sa/40.0,mb=sb/40.0;
-        agree+=fabs(ma-mb)/fmax(fabs(mb),1.0)<=.20;
-    }
-    return agree>=11;
-}
-static double body_sd(const uint8_t *p) {
-    unsigned sum=0,squares=0;
-    for(int x=0;x<640;x++){unsigned v=p[x];sum+=v;squares+=v*v;}
-    double mean=sum/640.0;
-    return sqrt(fmax(squares/640.0-mean*mean,0.0));
-}
-static int picture(const uint8_t *y,int row,double reference,int top) {
+static int bottom_picture(const uint8_t *y,int row,double reference) {
     unsigned h[256]; const uint8_t *p=y+row*720;
     histogram(p+40,640,h);
     double hi=quantile(h,640,.95),spread=hi-quantile(h,640,.05);
-    if((top ? hi-reference<=ge_top_margin : hi-reference<=5) || spread<=4) return 0;
-    if(!top)return 1;
-    if(ge_top_guard==0 && spread>=40) {
-        for(int lag=-24;lag<=24;lag++)
-            if(correlation(p+64,p+720+64+lag,592)>=.5) return 1;
-        return 0;
-    }
-    if(ge_top_guard==3 || (ge_top_guard==2 && spread>=40))
-        return chunk_agreement(p+40,p+720+40);
-    if(ge_top_guard==4) {
-        double s=body_sd(p+40)/fmax(body_sd(p+720+40),1e-6);
-        return s>.5 && s<2.0;
-    }
-    return 1;
-}
-static int first(const uint8_t *y,int a,int b,double blank) {
-    for(int r=a;r<b;r++) if(picture(y,r,blank,1)) return r+4;
-    return 0;
-}
-static double runin(const uint8_t *row) {
-    /* Same authored period and start grid as the reference; no parity decoder. */
-    double cs[188],sn[188],best=0;
-    for(int k=0;k<188;k++){ double w=2*3.14159265358979323846*k/26.81;cs[k]=cos(w);sn[k]=sin(w); }
-    for(int a=10;a<60;a+=4) {
-        double mean=0,re=0,im=0,den=0;
-        for(int k=0;k<188;k++) mean+=row[a+k]; mean/=188;
-        for(int k=0;k<188;k++){double s=row[a+k]-mean;den+=s*s;re+=s*cs[k];im-=s*sn[k];}
-        if(den>=1){double v=(re*re+im*im)/(94*den);if(v>best)best=v;}
-    }
-    return best;
+    return !(hi-reference<=5 || spread<=4);
 }
 void ge_measure(const uint8_t *y,ge_features *f) {
     memset(f,0,sizeof *f);
@@ -136,8 +95,11 @@ void ge_measure(const uint8_t *y,ge_features *f) {
         unsigned h[256]; int off=263*k;
         histogram(y+(7+off)*720,9*720,h); f->blank[k]=quantile(h,9*720,.5);
         f->hblank_level[k]=horizontal_level(y,off,&f->hblank_cols[k]);
-        f->first[k]=first(y,18+off,37+off,f->hblank_level[k]);
-        for(int r=258+off;r>236+off;r--) if(picture(y,r,f->blank[k],0)){f->last[k]=r+4;break;}
+        f->wave[k]=ge_wave_scan(y,k,ge_wave_bar);
+        f->wave_status[k]=!f->wave[k].first?GE_WAVE_ABSTAIN:
+            ge_wave_accept(f->wave[k],k,ge_wave_clamp)?GE_WAVE_ACCEPTED:GE_WAVE_DISCARDED;
+        if(f->wave_status[k]==GE_WAVE_ACCEPTED)f->first[k]=f->wave[k].first;
+        for(int r=258+off;r>236+off;r--) if(bottom_picture(y,r,f->blank[k])){f->last[k]=r+4;break;}
         for(int j=0;j<12;j++) {
             const uint8_t *p=y+(247+off+j)*720; unsigned n=0;
             for(int x=0;x<672;x++) {
@@ -147,16 +109,6 @@ void ge_measure(const uint8_t *y,ge_features *f) {
             }
             if(n>=8)f->bottom[k]=251+off+j;
         }
-    }
-    f->rule_first=f->first[0];
-    unsigned sum=0; for(int x=40;x<680;x++)sum+=y[19*720+x];
-    f->plain23=sum/640.0-f->blank[0]>30 && correlation(y+19*720+40,y+20*720+40,640)>=.5;
-    if(ge_top_plain23 && f->first[0]==23 && !f->plain23) f->first[0]=first(y,20,37,f->hblank_level[0]);
-    f->auto_first=f->first[0];
-    if(f->first[0] && f->first[1]) {
-        unsigned h[256]; histogram(y+(f->first[1]-5)*720+40,640,h);
-        f->runin=runin(y+(f->first[0]-5)*720);
-        if(ge_top_runin && f->runin>=.5 && quantile(h,640,.95)-f->blank[1]>5) f->first[0]++;
     }
 }
 static ge_class classify(const ge_features *a,const ge_features *b,int f) {
@@ -223,6 +175,10 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
         o.triggers|=GE_BASIS_CHANGED;
     }
     int known=t->first[0] && b->first[1],st=0,d=0,dknown=known;
+    o.relative_source=known?(g->held?GE_SOURCE_HELD:GE_SOURCE_CENSUS):
+        (g->have_placement?GE_SOURCE_PREVIOUS:GE_SOURCE_START);
+    o.anchor_source=b->first[1]?GE_SOURCE_CENSUS:
+        (g->have_placement?GE_SOURCE_PREVIOUS:GE_SOURCE_START);
     if(!known) o.triggers|=GE_UNMEASURABLE;
     else {
         st=b->first[1]-263-t->first[0];d=st+g->held;
@@ -236,6 +192,7 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     o.comb_ran=o.triggers!=0;
     if(o.comb_ran || g->audit)o.comb=ge_comb(ty,by);
     if(o.comb_ran && o.comb.decided) {
+        o.relative_source=GE_SOURCE_COMB;
         d=o.comb.shift;dknown=1;
         if(!known){g->held=0;g->provisional=0;g->basis_valid=0;}
         else {
@@ -260,6 +217,8 @@ unsigned ge_break(geometry_engine *g,ge_decision out[2]) {
 static void unit_provenance(ge_decision *d,const ge_features *f) {
     memcpy(d->hblank_level,f->hblank_level,sizeof d->hblank_level);
     memcpy(d->hblank_cols,f->hblank_cols,sizeof d->hblank_cols);
+    memcpy(d->wave,f->wave,sizeof d->wave);
+    memcpy(d->wave_status,f->wave_status,sizeof d->wave_status);
 }
 unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_decision out[2]) {
     unsigned n=0;int adjacent=g->valid && g->counter!=UINT64_MAX && c==g->counter+1;

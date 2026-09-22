@@ -1,9 +1,10 @@
 # v11 geometry engine
 
-`geometry_engine.c` ports the recorded experiment rule set (ledger entries
-2/5/7/10/11, amendments 1–5, reading B). It does not replace v9's API.
-The census thresholds, run-in period, bottom-profile tests, search range and
-1.5 inclusive comb margin are reference parameters, not new fitted thresholds.
+`geometry_engine.c` implements entry 33's waveform top census with the retained
+bottom, pairing and reading-B decision path (entries 2/5/7/10/11 and 27a).
+It does not replace v9's API. The default bar 0.45 was selected from eleven
+hand-checked frames, not derived from a distribution; census reproduction is
+implementation validation, not proof of placement quality.
 
 All decisions use NTSC lines; zero in an internal census means unavailable.
 Applied offsets are always numeric. Unknown placement takes the last published
@@ -64,7 +65,7 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 20, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 21, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32),
 comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
@@ -81,87 +82,81 @@ Within the same row, the published relative shift is `frame_d2 - frame_d1`;
 compare it to `comb_d`, with `comb_decided` indicating whether the minimum was
 decisive. This requires no cross-unit join even under reversed pairing.
 
-Schema 20 removes the near-blank/overrun veto controls and all their measurement,
-interpretation and term columns from schemas 17–19. The mechanisms, substituted
-top history and early-comb path are deleted, not retained behind disabled flags.
-The engine is the d5c9f08 rule with its four original controls; ordinary comb
-scheduling is unchanged. The schema-20 header has exactly these 43 columns
-(same names/order/meaning as schema 16; the version value is now 20):
+Schema 21 replaces the old top-search controls with `ge_wave_bar` and
+`ge_wave_clamp`. The waveform scan was introduced separately in 77a8eaa and
+matched all 172,586 raw tops/abstentions before the old guards were deleted.
+No amplitude, spread, lag correlation, chunk agreement, plain23 re-search or
+run-in increment remains in the TOP path. The BOTTOM path retains exactly its
+old p95-minus-device-blank >5 and spread >4 tests, and its profiles are unchanged.
+
+## Waveform census (entry 33)
+
+For each field, Pearson correlation compares consecutive rows over body samples
+40..679. Search storage rows 18..36, plus 263 for field 2, each against the row
+above. Starting with row 19, the FIRST rise in correlation strictly greater than
+`ge_wave_bar` (default 0.45) selects the preceding row as top. Correlations
+with either population standard deviation below 1e-9 are zero. No smoothing,
+accumulation or largest-step selection. The maximum step is evidence only.
+
+Raw results are immutable. No qualifying step is ABSTAIN. A result more than
+`ge_wave_clamp` (default 5) lines from NTSC23/286 is DISCARDED, independently
+for each field; it is never rounded to the clamp boundary. ACCEPTED raw results
+become the census first lines. Both absent and discarded census trigger the
+existing comb check; a decided comb (margin >=1.5) supplies relative alignment,
+not an absolute top measurement.
+
+Missing-placement policy remains explicit: `relative_source` is census,
+held_correction, comb, previous, or section_start; `anchor_source` is census,
+previous, or section_start. The comb cannot establish an absolute field-2
+anchor if that census is missing. Existing previous-placement/zero fallback is
+marked as such and does not manufacture a first-line observation. This is not
+a general fade-freeze policy.
+
+Schema 21 retains schema 20's first 39 columns, through `comb_energies`, with
+their existing meanings; it removes the four `ge_top_*` arm columns and appends:
 
 ```text
-ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,hblank_level_f1,hblank_cols_f1,hblank_level_f2,hblank_cols_f2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies,ge_top_margin,ge_top_guard,ge_top_plain23,ge_top_runin
+ge_wave_bar,ge_wave_clamp,wave_top_f1,wave_step_f1,wave_max_step_f1,wave_status_f1,wave_top_f2,wave_step_f2,wave_max_step_f2,wave_status_f2,relative_source,anchor_source,held_correction
 ```
 
-The top search uses the per-field horizontal-blanking level of experiment 20:
-over storage rows 18..261 (+263 for field 2), keep column 0 and then columns
-1..23 while each median is at most `median(col0) + max(p90(col0)-median(col0),1)`.
-The level is p99 of the pooled kept samples, using the existing interpolated
-quantile. The default top brightness bar is `p95(row) - level > 5`, with
-`spread > 4` still mandatory. Every candidate must also have at least 11 of 16
-body chunks agree with the next row: samples 40..679, 40 samples per chunk,
-`abs(mean(row)-mean(next))/max(abs(mean(next)),1) <= 0.20`.
-The plain23 re-search and run-in increment are off by default, but their evidence
-is still computed. Device blanking, the bottom search (`p95-blank > 5`, without
-coherence), and bottom profiles are unchanged. Noisy leading columns can still
-inflate the level; this change does not cure that limitation.
+Exactly 52 columns. The eight `wave_*` columns describe the row's OWN unit,
+including unused boundary fields. The raw top is empty with status ABSTAIN,
+selected step 0 and the measured maximum. Discarded raw tops and their selected
+steps remain numeric. Ineligible observations have no waveform evidence.
+Under reversed pairing read field-1 waveform evidence on `frame_top_unit`.
+By contrast, `f1_first/f2_first`, last lines, classes, comb, held correction,
+publication sources and `frame_d1/d2` describe the FRAME whose bottom field is
+this unit. `f*_first` is the accepted census, empty on abstention or discard.
+Numeric published offsets are not a declaration of measured tops.
 
-`tests/hblank_probe` accepts a streaming luma record (uint64 counter, uint32
-reset, uint32 reversed-pairing flag, then 525×720 luma bytes) and reports census
-features and thread-CPU costs. An optional output path enables a separate
-all-frame-audit engine's frame CSV. The measured engine stays non-audit; frame
-agreement uses `frame_d2 - frame_d1`, never the two unit-owned placements.
-Feed old and new builds the same rasters, pairing schedule and live reset flags,
-and verify the old frame output against the published log before comparing rates.
-Exact census agreement does not establish preserved placement quality: separately
-compare published frame shifts with decided comb minima at margins 1.5, 3, 5 and 8.
-A regression in that gate needs owner review; do not alter the specified census
-rule to make the acceptance numbers fit.
+Horizontal-blanking level/column count remain measured and logged, but no longer
+gate the top. `hblank_level_f1/hblank_cols_f1/hblank_level_f2/hblank_cols_f2`
+are unit-owned, including boundaries. Device blanking and bottom profiles remain
+unchanged. `bl1/bl2` are frame-owned bottom coordinates, not blanking levels.
 
-The probe and `frameserver_replay` read `GE_TOP_MARGIN` (finite number, default 5), `GE_TOP_GUARD`
-(0..4, default 3), `GE_TOP_PLAIN23` and `GE_TOP_RUNIN` (each 0/1, default 0).
-An unset environment now selects the new rule in the engine itself. The exact
-pre-promotion arm is `GE_TOP_MARGIN=0 GE_TOP_GUARD=0 GE_TOP_PLAIN23=1 GE_TOP_RUNIN=1`;
-set all four explicitly for an old/new comparison. Schema 16's arm columns name
-both behaviours without changing any existing column's meaning.
-Both probe CSVs begin with a `# GE_TOP_MARGIN=... GE_TOP_GUARD=...
-GE_TOP_PLAIN23=... GE_TOP_RUNIN=...` provenance line before the CSV header;
-skip this comment when parsing. The unit CSV also includes `rule_first`,
-`auto_first`, `plain23` and `runin` to distinguish raw scan, re-search and final
-placement. Disabling either final-stage switch retains its evidence computation.
-Both tools use the same tool-only `geometry_tool_controls.h` parser and formatter.
-Replay echoes the same arm line on stderr at startup, before opening outputs.
-Schema 16 appends `ge_top_margin`, `ge_top_guard`, `ge_top_plain23` and
-`ge_top_runin` to every v11 decision-log row, including unavailable observations.
-The sidecar still starts with its CSV column header (no comment to skip); the
-probe format is unchanged. Margin uses `%.17g`; the other settings are integers.
+Tools alone read `GE_WAVE_BAR` (finite double) and `GE_WAVE_CLAMP`
+(nonnegative int), through the shared `geometry_tool_controls.h` parser.
+The engine exposes the two process-wide variables, configured before worker
+startup; it never reads the environment. Retired `GE_TOP_*` controls are refused
+loudly so an old command cannot silently run a different experiment.
+Replay echoes the settings on stderr and writes them on every sidecar row.
+Both `hblank_probe` CSVs start with a
+`# GE_WAVE_BAR=... GE_WAVE_CLAMP=...` comment before the header.
+Its raw waveform columns include status before policy and its `f*_first`
+columns are accepted after policy. Costs use thread CPU time; the audit engine
+is separate from the timed production engine.
 
-The library exposes corresponding process-wide `ge_top_*` variables, not
-environment reads. Set them before measurement/worker startup and never mutate
-them concurrently. Guard 0 keeps the existing high-spread lag correlation; 1
-disables coherence; 2 requires 11 of 16 chunk means to agree within 20% of the
-next-row mean on high-spread rows; 3 applies that chunk test on every candidate;
-4 requires the row/next-row population-standard-deviation ratio strictly between
-0.5 and 2. Only one row below is read. The margin applies only to top brightness;
-spread >4 remains mandatory. None of these controls changes bottom measurements
-or derived blanking provenance. The old arm reproduces c620966; the new default
-census reproduces the measured `m5_g3_p0_r0.units.csv`, including evidence columns.
-Compare every non-timing column; do not use the old experiment-20 top golden for
-the new default. The original experiment-20 reference omitted the spread guard;
-its corrected golden applies to the explicit old arm only.
+`scripts/check_waveform_census.py reference.csv engine.csv disagreements.csv`
+compares every raw top or abstention, including missing/extra/duplicate keys.
+It does not exclude clamp discards. The tape exercises only raw offsets 0..16;
+the negative half of the symmetric clamp has synthetic coverage only.
 
-Census reproduction is not a pairing or state-history check. The initial ten-arm
-experiment fed aligned units with gap-only resets; whole-tape placement validation
-uses the live reversed/aligned schedule and classifier resets. Report these
-populations separately. Missing-top fallback retains the previous relative shift
-when the comb abstains, but a measured field-2 top can still move both fields via
-absolute placement. This is not a general fade-freeze policy, and this top-rule
-change does not modify that state machine.
-
-Beside the existing bottom-line coordinates `bl1`/`bl2`, schema 15 adds
-`hblank_level_f1`, `hblank_cols_f1`, `hblank_level_f2`, `hblank_cols_f2`.
-These describe the row's **own unit**, including unused boundary fields; they
-are empty for ineligible observations. Under reversed pairing, the frame's
-field-1 provenance is found on `frame_top_unit`, like its applied placement.
+The review renderer imports no census instrument. Its overlays read raw
+waveform/status and accepted frame census from the engine sidecar with the
+ownership above. Missing answers remain missing. It also displays the engine's
+comb energies, selected shift, decision, trigger and publication sources.
+Captures 1–4 are staged outside synced storage and validated before replacing
+the owner's scratch review files; a full-tape render still requires his approval.
 
 For mixed recordings use `--pairing-schedule FILE` instead of `--pair-next`
 (`fs_config.pairing_schedule` for callers). The CSV header is

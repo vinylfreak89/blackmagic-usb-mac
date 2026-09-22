@@ -5,36 +5,35 @@
 #include "geometry_engine.h"
 #include <errno.h>
 #include <math.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
-static int ge_tool_boolean_control(const char *name,int *out) {
-    const char *v=getenv(name);
-    if(!v)return 1;
-    if(v[0] && !v[1] && (v[0]=='0' || v[0]=='1')){*out=v[0]-'0';return 1;}
-    fprintf(stderr,"invalid %s: %s (expected 0 or 1)\n",name,v);return 0;
-}
 static int ge_tool_controls_from_env(void) {
-    const char *v=getenv("GE_TOP_MARGIN");char *end;
+    /* Retired controls must not silently produce a different experiment arm. */
+    const char *old[]={"GE_TOP_MARGIN","GE_TOP_GUARD","GE_TOP_PLAIN23","GE_TOP_RUNIN",
+                       "GE_TOP_NEAR_BLANK","GE_TOP_OVERRUN_VETO"};
+    for(unsigned i=0;i<sizeof old/sizeof *old;i++)if(getenv(old[i])) {
+        fprintf(stderr,"retired control %s: waveform engine uses GE_WAVE_BAR and GE_WAVE_CLAMP\n",old[i]);return 0;
+    }
+    const char *v=getenv("GE_WAVE_BAR");char *end;
     if(v) {
         errno=0;double n=strtod(v,&end);
         if(errno || end==v || *end || !isfinite(n)) {
-            fprintf(stderr,"invalid GE_TOP_MARGIN: %s (expected finite number)\n",v);return 0;
+            fprintf(stderr,"invalid GE_WAVE_BAR: %s (expected finite number)\n",v);return 0;
         }
-        ge_top_margin=n;
+        ge_wave_bar=n;
     }
-    v=getenv("GE_TOP_GUARD");
+    v=getenv("GE_WAVE_CLAMP");
     if(v) {
         errno=0;long n=strtol(v,&end,10);
-        if(errno || end==v || *end || n<0 || n>4) {
-            fprintf(stderr,"invalid GE_TOP_GUARD: %s (expected integer 0..4)\n",v);return 0;
+        if(errno || end==v || *end || n<0 || n>INT_MAX) {
+            fprintf(stderr,"invalid GE_WAVE_CLAMP: %s (expected nonnegative int)\n",v);return 0;
         }
-        ge_top_guard=(int)n;
+        ge_wave_clamp=(int)n;
     }
-    return ge_tool_boolean_control("GE_TOP_PLAIN23",&ge_top_plain23) &&
-           ge_tool_boolean_control("GE_TOP_RUNIN",&ge_top_runin);
+    return 1;
 }
 static void ge_tool_controls_echo(FILE *f) {
-    fprintf(f,"# GE_TOP_MARGIN=%.17g GE_TOP_GUARD=%d GE_TOP_PLAIN23=%d GE_TOP_RUNIN=%d\n",
-        ge_top_margin,ge_top_guard,ge_top_plain23,ge_top_runin);
+    fprintf(f,"# GE_WAVE_BAR=%.17g GE_WAVE_CLAMP=%d\n",ge_wave_bar,ge_wave_clamp);
 }
 #endif

@@ -39,7 +39,7 @@ int main(int argc,char **argv) {
     }
     int mode=-1;uint64_t counter;uint32_t reset,pair;ge_decision out[2];
     ge_tool_controls_echo(stdout);
-    puts("counter,f1_first,f2_first,f1_last,f2_last,bottom_f1,bottom_f2,blank_f1,blank_f2,profile_hash,level_f1,level_f2,cols_f1,cols_f2,rule_first,auto_first,plain23,runin,measure_ms,engine_ms");
+    puts("counter,f1_first,f2_first,f1_last,f2_last,bottom_f1,bottom_f2,blank_f1,blank_f2,profile_hash,level_f1,level_f2,cols_f1,cols_f2,wave_top_f1,wave_step_f1,wave_max_step_f1,wave_status_f1,wave_top_f2,wave_step_f2,wave_max_step_f2,wave_status_f2,measure_ms,engine_ms");
     while(fread(&counter,sizeof counter,1,stdin)==1) {
         if(fread(&reset,sizeof reset,1,stdin)!=1||fread(&pair,sizeof pair,1,stdin)!=1||
            fread(y,1,GE_PIXELS,stdin)!=GE_PIXELS){fputs("short probe record\n",stderr);return 2;}
@@ -61,7 +61,11 @@ int main(int argc,char **argv) {
 #else
         printf(",,,,");
 #endif
-        printf("%d,%d,%d,%.17g,%.9f,%.9f\n",f.rule_first,f.auto_first,f.plain23,f.runin,measure,engine);
+        for(int k=0;k<2;k++) {
+            if(f.wave[k].first)printf("%d",f.wave[k].first);
+            printf(",%.17g,%.17g,%s,",f.wave[k].step,f.wave[k].max_step,ge_wave_status_name(f.wave_status[k]));
+        }
+        printf("%.9f,%.9f\n",measure,engine);
     }
     int bad=ferror(stdin)||ferror(stdout);
     if(audit){if(mode>=0)frames(audit_file,out,ge_break(audit,out));if(fclose(audit_file))bad=1;}
