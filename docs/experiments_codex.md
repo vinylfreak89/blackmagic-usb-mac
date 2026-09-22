@@ -377,3 +377,25 @@ dependency and ask which candidate is meant before adding a speculative frame
 pass or relocating the veto. Do not silently gate on a measured pair, stale
 previous movement, or a new post-comb veto. Keep all production code and defaults
 unchanged unless this preflight establishes the requested condition directly.
+
+### Report — current applied pair is downstream; preview policy needed
+
+**Verdict: the direct-availability premise is refuted.** The previous applied
+pair is available, but the current one is assigned only after frame policy and
+any triggered comb. A deciding actual-C probe starts at (0,0), proposes census
+(1,1), and a decided -1 comb publishes (2,1): only the census proposal is common
+mode. With decided comb 0 the no-veto result is (1,1), but a census refusal makes
+the final result (0,0): proposed and final common-mode predicates differ too.
+Reversed ge_push confirms a unit's field 2 decision awaits the next unit, while
+its field 1 participates in the current completed frame. Existing real engine
+rows also exhibit both directions of measured/applied disagreement.
+
+Production code and defaults remain unchanged; no acceptance sweep, push or
+render. The common-mode restriction's physical premise remains unknown, and the
+late-top gate's early-top abstentions are not evidence of quality. A no-veto
+frame preview followed by census rejection and finalization from original state
+is a possible implementation, but needs an explicit policy decision. Do not
+silently substitute measured tops, previous movement, or a final-crop veto.
+Detailed evidence and probes: /private/tmp/common-mode-preflight.TXzoHq/.
+Ordinary C, ASan/UBSan, TSan and the existing-row cross-check exit 0 without
+runtime errors; the failed premise is a policy-data dependency, not a test crash.

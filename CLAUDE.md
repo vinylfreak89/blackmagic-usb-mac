@@ -1648,6 +1648,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   Entry 32's overrun veto is explicitly pre-comb, disabled by default. Report
   actual substitutions separately from equal-top predicate matches, and census
   changes separately from published-placement changes when stating cascade ratios.
+  A current frame's applied common-mode shift is downstream of that census veto:
+  the previous applied pair exists there, but the current one depends on comb/hold.
+  A no-veto preview and a final published pair are different policy inputs; do not
+  substitute one silently. Reversed pairing also delays each unit's field 2 decision.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
