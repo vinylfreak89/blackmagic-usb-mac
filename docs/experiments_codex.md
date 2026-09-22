@@ -119,3 +119,41 @@ whole-tape exact units and capture 1 if preflight can proceed without a semantic
 conflict. Use the same live pairing/reset stream as the preceding acceptance.
 The owner will run the independent edge gate; do not substitute comb agreement
 for that gate or call capture 1 fixed. Keep scratch code/results under /private/tmp.
+
+### Report — stopped at the series/invariance conflict
+
+**Verdict: the proposed feedback and the stated invariants are incompatible in
+general; usefulness on source material remains unknown.** A deterministic
+three-unit probe calls d5c9f08's actual classify/frame/comb helpers unchanged.
+Measured field-1 (top,bottom) starts (23,260), then (24,260). Both paths classify
+the onset TOP_ONLY; feedback substitutes top 23, retaining all other features.
+Three independently reset continuations at synthetic unit 102 decide the issue:
+
+- (25,261): baseline VALID_MOVE becomes NOT_IN_TANDEM under feedback.
+- (24,261): baseline BOTTOM_ONLY becomes VALID_MOVE; comb_ran changes 1 -> 0.
+- (24,260): baseline NOTHING becomes TOP_ONLY; comb_ran changes 0 -> 1.
+
+The bottom profile has an actual qualifying newly-lit row on the bottom-step
+cases; this does not bypass the classifier's blanking-change check. Flat rasters
+make the comb abstain (margin 1), so none of this is a changed comb estimator or
+an audit-only adoption. Normal, ASan/UBSan and TSan versions all reproduce the
+three named failures with exit 1, no sanitizer warnings. Keeping the measured
+comparison series instead restores top 24 on the very next repeated unit; it
+does not provide the predicted run suppression.
+
+Changing no classifier or trigger code does not guarantee unchanged results:
+the input history is different. Raw and interpreted classes could both be logged,
+but reporting unchanged raw counts would not establish unchanged interpreted
+classes or comb timing. No shadow baseline trigger engine was invented.
+
+Production code, defaults and schema remain at d5c9f08. No new control or sidecar
+columns installed. If feedback is authorized despite these effects, preserve
+measured f1_first/f2_first and add separately named interpreted tops; do not
+overwrite observation columns. Feedback is the natural choice for suppressing
+the full run, but requires relaxing the unchanged-class/comb-timing conditions.
+Owner direction is required before choosing that over measured-series onset-only
+suppression. Whole-tape/capture-1 changes, costs, edge gate and agreement bands
+were not run after this preflight falsifier; none are claimed.
+
+Probe and verbatim results: /private/tmp/top-only-preflight.PID5U7/probe.c and
+REPORT.md. Documentation-only preflight, no push or render.

@@ -1634,6 +1634,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   frameserver selection, unit-keyed decisions and reversed-pair boundary handling.
   Keep a requested crop distinct from unavailable raster rows: silently clamping
   the whole crop makes the applied-decision log disagree with the published pixels.
+  Measured and interpreted top histories are distinct: feeding a substituted top
+  into the next comparison can reclassify later tandem/bottom-only moves and
+  change comb triggers even with unchanged classifier code. See the state-series
+  preflight in `docs/experiments_codex.md` before asserting those counts invariant.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
