@@ -1681,8 +1681,13 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   gate. Its four-edge/known-motion replacement performs 32 direct interventions
   and changes 56 frames against the reported 20 onsets. It delays cap1's (5,5)
   placement from 6667 to 6670 (nothing/nothing); it does not eliminate it.
-  Neither prototype is promoted. Existing review files remain the preceding
-  validated run; do not restart publication until the scope gate is resolved.
+  Neither prototype is promoted. The owner withdrew both hold rules after the
+  four-edge falsifier and authorized basin-only 3a87891 review renders for
+  captures 1–4. Keep the prototypes and findings in scratch/history; do not
+  change the waveform instrument or render the whole tape in this task.
+  The remaining cap1 6667 placement is knowingly unchanged, not fixed by the
+  basin rule. Review publication still requires encoded-strip validation and
+  a fresh renders.status identifying the actual producing commits.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

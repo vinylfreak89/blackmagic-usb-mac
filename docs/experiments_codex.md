@@ -785,3 +785,21 @@ The exactly-20 gate is unresolved; this replacement remains only in scratch
 at /private/tmp/comb-basin.KlFmop/four-edge. Neither superseded hold prototype
 has been promoted. The basin-only commit remains 3a87891. All eight published
 review artifacts still match their previous hashes; no replacement occurred.
+
+### Owner withdrawal of the hold rules — resume basin-only review renders
+
+The owner rejected the four-edge prototype after its scope and persistent-hold
+falsifiers. Keep ffa5cce and both scratch prototypes; neither enters production.
+Motion classification cannot establish an absolute anchor merely because a
+previously measured late top becomes stable. The relayed raw-row explanation
+attributes cap1 6667 to a late waveform transition on low-contrast rows, not
+the zero-variance guard. That instrument change is explicitly out of scope;
+the basin-only placement there remains (5,5).
+
+Authorized work is now the already accepted schema-22 engine and overlay code
+at 3a87891, followed by captures 1–4 only. No new rule, scope exception or
+full-tape render. Rebuild from the accepted real-replay sidecars, verify every
+encoded frame key and both source-unit placements, retain recoverable copies
+of the prior eight review artifacts, then publish with a fresh producer-named
+renders.status. The earlier hold-rule gates no longer block this publication;
+their negative results remain recorded above rather than reverted.
