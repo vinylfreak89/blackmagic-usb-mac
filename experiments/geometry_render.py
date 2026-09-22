@@ -2,7 +2,8 @@
 """The plain capture, woven where the placement puts it: the owner's review copy, stripped to basics.
 
     geometry_render.py <capture.tpc> <out.mp4> [--offsets manual.csv] [--engine-log sidecar.csv]
-                       [--pair-next] [--parity tff|bff] [--pcm capture.pcm] [--deint bwdif] [--crf 14]
+                       [--pair-next] [--parity tff|bff] [--pairing-schedule schedule.csv]
+                       [--pcm capture.pcm] [--deint bwdif] [--crf 14]
 
 Owner, 2026-09-19: "It should take the spirit of the review render but strip it down to its basics ...
 it should read the registration engine, produce the machine strip, strip out all the box census and
@@ -30,6 +31,14 @@ What it draws, and nothing else:
 --pair-next: a reversed-pairing capture weaves field 1 (slot 1) of the NEXT unit over field 2 (slot 2)
 of this unit; the frame is keyed by this unit's counter. Slot 1 stays the spatial top field.
 
+--pairing-schedule: CSV first_counter,pairing,note (pairing aligned or reversed), sorted by first_counter;
+each frame pairs by the row in effect at its unit, as --pair-next does for reversed rows. The deinterlacer
+gets its field order per run of equal pairing (bff reversed, tff aligned) through one ffmpeg graph that
+splits the frames at the run boundaries, and the band shows each frame's pairing and the row's note. At a
+reversed-to-aligned switch the last reversed unit has no partner, as in the engine (which resets there),
+and gets a no-partner fill frame. The schedule is validated as the engine validates it.
+Exclusive with --pair-next and --parity.
+
 Frames are keyed by the unit counter unwrapped in stream order from the capture's first unit (a
 decrease is a new epoch, never a reuse), so a wrapped or restarted counter can never collide. Offsets
 file columns: counter (that unwrapped counter; for a short slice the stored value), d1, d2, f1_first,
@@ -53,7 +62,7 @@ Review fixes 2026-09-19 (Codex, findings 1-6): pair-next engine d1 source unit; 
 in-picture marker; timeline across omitted units; black (neutral-chroma) out-of-raster fill; empty
 engine cells.
 """
-import argparse, atexit, csv, os, subprocess, sys, tempfile
+import argparse, bisect, atexit, csv, math, os, subprocess, sys, tempfile
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -63,6 +72,8 @@ from live_overlay_strip import payload as strip_payload, draw as draw_strip
 UNIT_BYTES, HDR, ROW_BYTES, RASTER_ROWS = 756_048, 48, 1440, 525
 MARK = b"\x00\x00\xff\xff"
 F1_FIRST_LINE, F2_FIRST_LINE, FIELD_ROWS = 20, 283, 243
+FIELD2_FIRST_ROW = 262           # storage row of field 2's first line (NTSC 266); field 1 owns rows 0-261
+AP_DISCONTINUITY_BEFORE, AP_UNANCHORED, AP_DROPPED_BEFORE = 1, 4, 16   # audio block flags (audio_publisher.h)
 KNOWN_FORMATS = (0xE801, 0xE809, 0x0800)
 NO_SOURCE_UNIT = 0xFFFFFFFF      # the strip's counter for a timing slot, which has no source unit
 MAX_FILL_GAP = 120
@@ -91,9 +102,10 @@ def read_offsets(path):
 
 
 def read_engine(path):
-    out = {}
+    """(placements, rows): the applied shift per unit, and the row behind it, so the render can show why."""
+    out, rows = {}, {}
     if not path:
-        return out
+        return out, rows
     empty = 0; seen = set()
     for r in csv.DictReader(open(path)):
         if r.get("counter_extended", "") in ("", None):
@@ -106,17 +118,279 @@ def read_engine(path):
             empty += 1
             continue
         out[k] = (int(float(r["applied_d1"])), int(float(r["applied_d2"])))
+        rows[k] = r
     if empty:
         print(f"engine log: {empty} rows with an empty applied value treated as missing", flush=True)
+    return out, rows
+
+
+TRIGGER_NAMES = ((1, "T1"), (2, "unmeasurable"), (4, "f1 moved"), (8, "f2 moved"),
+                 (16, "confirm"), (32, "basis changed"))
+
+
+def frame_evidence(rows, bottom_unit, top_unit):
+    """Read engine evidence only. Census/decision columns are frame-owned on
+    bottom_unit; waveform observations are UNIT-owned, including boundaries."""
+    frame = rows.get(bottom_unit) or {}
+    edges = [[int(frame[key]) if frame.get(key) not in ("", None) else None
+              for key in (f"f{k}_first", f"f{k}_last")] for k in (1, 2)]
+    waves = []
+    for k, unit in ((1, top_unit), (2, bottom_unit)):
+        row = rows.get(unit) or {}
+        waves.append({key: row.get(f"wave_{key}_f{k}", "")
+                      for key in ("top", "step", "max_step", "status")})
+    return frame, edges, waves
+
+
+def waveform_label(field, wave):
+    def number(key):
+        value = wave.get(key)
+        return f"{float(value):.3f}" if value not in ("", None) else "--"
+    return (f"f{field} {wave.get('status') or '--'} top {wave.get('top') or '--'}"
+            f" step {number('step')} max {number('max_step')}")
+
+
+def trigger_words(v):
+    """The engine's trigger bits as words (GE_T1 .. GE_CONFIRM in geometry_engine.h)."""
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        return "--"
+    if v == 0:
+        return "no trigger"
+    return "+".join(n for b, n in TRIGGER_NAMES if v & b)
+
+
+def comb_energies(row):
+    """The eleven comb energies, shifts -5..+5, or None where the engine did not compute them."""
+    if not row:
+        return None
+    v = (row.get("comb_energies") or "").split()
+    if len(v) != 11:
+        return None
+    try:
+        return [float(x) for x in v]
+    except ValueError:
+        return None
+
+
+def read_audio_steps(path):
+    """Units where the engine log flags an audio step: {counter_extended: lost samples} from the v11 log's
+    audio_step_samples column (the audio publisher's correlation residual stepping, CLAUDE.md §6). Empty
+    when the log has no such column."""
+    out = {}
+    if not path:
+        return out
+    for r in csv.DictReader(open(path)):
+        if r.get("counter_extended", "") in ("", None) or r.get("audio_step_samples", "") in ("", None, "0"):
+            continue
+        out[int(r["counter_extended"])] = int(r["audio_step_samples"])
     return out
 
 
+class _From:
+    """A writer that drops its first `start` samples, or first writes -start silent ones."""
+    def __init__(self, dst, start):
+        self.dst = dst; self.skip = 6 * max(0, start)
+        if start < 0:
+            dst.write(bytes(6 * -start))
+
+    def write(self, b):
+        if self.skip:
+            n = min(self.skip, len(b)); self.skip -= n; b = b[n:]
+        if b:
+            self.dst.write(b)
+
+
+def rebuild_pcm(src, dst, blocks, start=0):
+    """Write the delivered PCM (S24LE stereo, 6 bytes a sample) as place_audio laid it out: each block
+    [(output position, samples, [(offset in block, silent samples)])] at its position, silence where samples
+    were not delivered, and each step's silence immediately before the sample at its offset -- audio time
+    advanced once by samples the device lost (§6), never resampled. Output begins at position `start`
+    (negative: that many silent samples first). Returns (undelivered stretches, their samples, samples
+    inserted inside blocks)."""
+    out = _From(dst, start)
+    pos = 0; gaps = 0; gap_samples = 0; inserted = 0
+    for at_pos, nframes, inner in blocks:
+        if at_pos < pos:
+            sys.exit(f"refusing: audio block at sample {at_pos} overlaps the previous one (ends {pos})")
+        if at_pos > pos:
+            out.write(bytes(6 * (at_pos - pos))); gaps += 1; gap_samples += at_pos - pos
+        data = src.read(6 * nframes)
+        if len(data) != 6 * nframes:
+            sys.exit("refusing: the PCM file is shorter than the dump log's blocks")
+        at = 0
+        for off, n in inner:
+            out.write(data[at:6 * off]); out.write(bytes(6 * n)); inserted += n; at = 6 * off
+        out.write(data[at:]); pos = at_pos + nframes + sum(n for _, n in inner)
+    if src.read(1):
+        sys.exit("refusing: the PCM file is longer than the dump log's blocks")
+    return gaps, gap_samples, inserted
+
+
+def place_audio(ablocks, vpts0, steps):
+    """Where every delivered audio sample plays (CLAUDE.md §6). ablocks: the dump log's A rows in file order,
+    (sample ordinal, pts, samples, flags); vpts0: {unit: audio-clock pts of its resync}; steps: {unit: samples
+    the device lost there}. Returns (a_origin, blocks for rebuild_pcm, {unit: output position of its resync},
+    {unit: silence before its resync}, notes); positions precede any start trim. A unit missing from the two
+    dicts has no determinable audio time (see below) and must not be used as one.
+
+    The frameserver places each audio run on the video timebase at the run's first resync, so an anchored
+    sample's position is its pts on the 48 kHz grid, counted from sample 0 of the first anchored run (a run
+    boundary rounds to the nearest sample). A run is identified by its placement, pts - 5 * ordinal: exactly
+    what its correlation residual is measured against. A step therefore delays the rest of ITS run only, and
+    a fresh anchor places its run by its own pts. A downstream queue drop keeps the placement, so it keeps the
+    run: its gap stays silence.
+
+    A unit's resync inside a delivered block is in that block's run. In a gap left by dropped blocks it is in
+    the run on both sides if they agree; if a new run began inside the gap, which side of the break the resync
+    lies on is not in the log, and the unit's time is determined only if both runs would shift it equally;
+    otherwise it is left out (reported), and a step on such a unit is refused.
+
+    Blocks before their run's first resync (UNANCHORED, ordinal-only pts) are placed back from that resync by
+    ordinal distance, unless a run break lies between. A frameserver with 95c916a marks a downstream drop
+    DROPPED_BEFORE and a run break DISCONTINUITY_BEFORE (both, if a break was in the dropped blocks), which is
+    exact. Before it, a drop was also marked DISCONTINUITY_BEFORE: with the ordinal contiguous (or reset) that
+    flag can only be a run break; with the ordinal jumped it may be a drop, a break, or both, so an unanchored
+    stretch across one is refused rather than guessed. A run that never anchors has no physical time: its
+    first block follows the previous block, the rest keep their ordinal spacing, and they are reported."""
+    notes = []
+    a_origin = next((pts - 5 * o for o, pts, n, fl in ablocks if not fl & AP_UNANCHORED), None)
+    if a_origin is None:
+        if steps:
+            sys.exit("refusing: audio steps, but no anchored audio block in the dump log")
+        if ablocks:
+            notes.append("no anchored audio block: placed by sample ordinal, no audio-clock times")
+        return None, [(o, n, []) for o, pts, n, fl in ablocks], {}, {}, notes
+
+    def pos_of(pts):
+        return (2 * (pts - a_origin) + 5) // 10          # nearest sample, halves up, in exact integers
+
+    spans = sorted((pts, pts + 5 * n, pts - 5 * o) for o, pts, n, fl in ablocks if not fl & AP_UNANCHORED)
+    starts_ = [sp[0] for sp in spans]
+
+    def runs_at(t):
+        """The runs a resync at pts t can belong to: one inside a delivered block, or in a gap whose two sides
+        agree; two across a gap where a run began; None before every anchored block (None in a list: a run
+        with no delivered block after the last one)."""
+        j = bisect.bisect_right(starts_, t) - 1
+        if j < 0:
+            return None
+        s0, e0, r = spans[j]
+        if t < e0:
+            return [r]
+        nxt = spans[j + 1][2] if j + 1 < len(spans) else None
+        return [r] if nxt == r else [r, nxt]
+
+    where = {c: (pos_of(t), runs_at(t)) for c, t in vpts0.items()}
+    ins = {}                                             # run -> [(position, silent samples)]
+    for c, n in sorted(steps.items()):
+        if n <= 0:
+            sys.exit(f"refusing: audio step of {n} samples at unit {c}; only lost samples are advanced")
+        if c not in where or where[c][1] is None:
+            sys.exit(f"refusing: audio step at unit {c} has no audio resync time in the dump log")
+        if len(where[c][1]) != 1:
+            sys.exit(f"refusing: audio step at unit {c}: its resync falls in dropped audio where a new run began, "
+                     "and the dump log cannot say which run it belongs to")
+        k, (r,) = where[c]; ins.setdefault(r, []).append((k, n))
+    cum = {}
+    for r, lst in ins.items():
+        lst.sort(); cs = [0]
+        for k, n in lst:
+            cs.append(cs[-1] + n)
+        cum[r] = ([k for k, n in lst], cs)
+
+    def shift(r, k, inclusive):                          # silence run r carries before (or at) position k
+        if r not in cum:
+            return 0
+        ks, cs = cum[r]
+        return cs[(bisect.bisect_right if inclusive else bisect.bisect_left)(ks, k)]
+
+    resync_out, resync_shift, homeless, unsure = {}, {}, 0, 0
+    for c, (k, rs) in where.items():
+        if rs is None:
+            homeless += 1; continue
+        sh = {shift(r, k, True) for r in rs}           # a run with no delivered block carries no step
+        if len(sh) != 1:
+            unsure += 1; continue
+        resync_shift[c] = sh.pop(); resync_out[c] = k + resync_shift[c]
+    if homeless:
+        notes.append(f"{homeless} units' resync times precede every anchored block; no audio time for them")
+    if unsure:
+        notes.append(f"{unsure} units' resyncs fall in dropped audio where a new run began and the runs would place "
+                     "them differently; no audio time for them (the timeline counts units there)")
+
+    out = [None] * len(ablocks)
+
+    def end(i):
+        return out[i][0] + ablocks[i][2] + sum(n for _, n in out[i][1])
+
+    def boundary(i):                                     # 'break', 'maybe' (drop, break not excluded) or None
+        if i == 0:
+            return "break"
+        o, pts, n, fl = ablocks[i]; po, pp, pn, pfl = ablocks[i - 1]
+        if fl & AP_DROPPED_BEFORE:                       # 95c916a on: drops and breaks are marked apart
+            return "break" if fl & AP_DISCONTINUITY_BEFORE else None
+        if not fl & AP_DISCONTINUITY_BEFORE:
+            return None
+        return "maybe" if o > po + pn else "break"
+
+    def place_anchored(i, p, r):
+        n = ablocks[i][2]
+        inner = [(k - p, m) for k, m in ins.get(r, []) if p <= k < p + n]
+        out[i] = (p + shift(r, p, False), inner)
+
+    never = 0; pending = []; pending_maybe = None
+    for i, (o, pts, n, fl) in enumerate(ablocks):
+        b = boundary(i)
+        if pending and b == "break":                     # the pending run ended without a resync
+            for idx, j in enumerate(pending):
+                if j == 0:
+                    out[j] = (ablocks[0][0], [])
+                elif idx == 0:
+                    out[j] = (end(j - 1), [])
+                else:
+                    pj = pending[idx - 1]
+                    out[j] = (out[pj][0] + ablocks[j][0] - ablocks[pj][0], [])
+            never += len(pending); pending = []; pending_maybe = None
+        elif pending and b == "maybe" and pending_maybe is None:
+            pending_maybe = i
+        if fl & AP_UNANCHORED:
+            pending.append(i); continue
+        r = pts - 5 * o; p = pos_of(pts)
+        if pending:
+            if pending_maybe is not None:
+                sys.exit(f"refusing: unanchored audio blocks from sample ordinal {ablocks[pending[0]][0]} meet a "
+                         f"downstream drop before ordinal {ablocks[pending_maybe][0]}; the dump log cannot say "
+                         "whether an audio run also broke there, so their time is unknown")
+            for j in pending:
+                pj = p - (o - ablocks[j][0])
+                out[j] = (pj + shift(r, pj, False), [])
+            pending = []; pending_maybe = None
+        place_anchored(i, p, r)
+    if pending:
+        for idx, j in enumerate(pending):
+            out[j] = ((ablocks[0][0] if j == 0 else end(j - 1)) if idx == 0 else
+                      out[pending[idx - 1]][0] + ablocks[j][0] - ablocks[pending[idx - 1]][0], [])
+        never += len(pending)
+    if never:
+        notes.append(f"{never} blocks in runs with no resync have no physical time; each run follows the previous block")
+    in_gap = sum(n for r, lst in ins.items() for k, n in lst) - sum(n for o_ in out for _, n in o_[1])
+    if in_gap:
+        notes.append(f"{in_gap} lost samples fall where no block was delivered; they lengthen that silence")
+    return a_origin, [(o_[0], ablocks[i][2], o_[1]) for i, o_ in enumerate(out)], resync_out, resync_shift, notes
+
+
 def weave(f1_raster, f2_raster, d1, d2, fill=0.0):
+    """Each field reads only its own storage rows: field 1 rows 0-261, field 2 rows 262-524 (row 262 is
+    field 2's line 266). A placement that runs a field past its own rows gets fill there, never the other
+    field's lines (at field-1 offsets above 11 the old whole-raster bound read field 2's rows 270+)."""
     out = np.full((FH, f1_raster.shape[1]), fill, np.float32)
-    for f, (src, first, d) in enumerate(((f1_raster, F1_FIRST_LINE, d1), (f2_raster, F2_FIRST_LINE, d2))):
+    for f, (src, first, d, lo, hi) in enumerate(((f1_raster, F1_FIRST_LINE, d1, 0, FIELD2_FIRST_ROW),
+                                                 (f2_raster, F2_FIRST_LINE, d2, FIELD2_FIRST_ROW, RASTER_ROWS))):
         for k in range(FIELD_ROWS):
             row = first + d + k - 4
-            if 0 <= row < RASTER_ROWS:
+            if lo <= row < hi:
                 out[k * 2 + f] = src[row]
     return out
 
@@ -210,20 +484,106 @@ class Framer:
             self._emit(len(self.buf), False)
 
 
+MAX_SCHEDULE_CELL, MAX_SCHEDULE_ROWS, UINT64_MAX = 4096, 65536, (1 << 64) - 1
+
+
+def _schedule_records(data):
+    """The engine's strict CSV record reader (src/frameserver/pairing_schedule.c record()), ported one to
+    one so both loaders accept the same files: three fields a record, "" escapes and embedded newlines only
+    inside quotes, nothing after a closing quote but a delimiter, CR only before LF, no NUL, cells of at
+    most 4096 bytes. Yields lists of three byte strings; raises ValueError on anything else."""
+    i, n = 0, len(data)
+    while True:
+        cells = [bytearray(), bytearray(), bytearray()]; col = 0; quoted = closed = anyc = False
+        while True:
+            if i >= n:
+                if quoted: raise ValueError("unterminated quote")
+                if not anyc: return
+                if col != 2: raise ValueError("record without three fields")
+                yield [bytes(c) for c in cells]; return
+            c = data[i]; i += 1; anyc = True
+            if c == 0: raise ValueError("NUL byte")
+            if quoted:
+                if c == 0x22:
+                    if i < n and data[i] == 0x22: i += 1
+                    else: quoted = False; closed = True; continue
+            else:
+                if c in (0x2C, 0x0A, 0x0D):
+                    if c == 0x2C:
+                        col += 1
+                        if col == 3: raise ValueError("more than three fields")
+                        closed = False; continue
+                    if c == 0x0D:
+                        if i >= n or data[i] != 0x0A: raise ValueError("CR not followed by LF")
+                        i += 1
+                    if col != 2: raise ValueError("record without three fields")
+                    yield [bytes(x) for x in cells]; break
+                if closed: raise ValueError("text after a closing quote")
+                if c == 0x22:
+                    if cells[col]: raise ValueError("quote inside an unquoted field")
+                    quoted = True; continue
+            if len(cells[col]) == MAX_SCHEDULE_CELL: raise ValueError("field exceeds 4096 bytes")
+            cells[col].append(c)
+
+
+def read_schedule(path):
+    """--pairing-schedule rows as [(first_counter, pairing, note)], accepting exactly what the engine's
+    loader accepts: header first_counter,pairing,note; counters unsigned 64-bit decimal digits, strictly
+    increasing, the first at 0 (pairing is always defined); pairing aligned or reversed; at most 65536 rows."""
+    try:
+        recs = list(_schedule_records(open(path, "rb").read()))
+    except (OSError, ValueError) as e:
+        sys.exit(f"refusing: malformed pairing schedule {path} ({e})")
+    if not recs or recs[0] != [b"first_counter", b"pairing", b"note"]:
+        sys.exit("refusing: pairing-schedule header must be first_counter,pairing,note")
+    rows = []
+    for r in recs[1:]:
+        if not r[0] or not all(0x30 <= ch <= 0x39 for ch in r[0]) or int(r[0]) > UINT64_MAX:
+            sys.exit(f"refusing: first_counter must be an unsigned 64-bit decimal, got {r[0]!r}")
+        first = int(r[0])
+        if not rows and first != 0:
+            sys.exit(f"refusing: the first pairing-schedule row must start at counter 0, not {first}")
+        if rows and first <= rows[-1][0]:
+            sys.exit(f"refusing: pairing schedule is not strictly increasing at {first}")
+        if r[1] not in (b"aligned", b"reversed"):
+            sys.exit(f"refusing: pairing-schedule pairing must be aligned or reversed, got {r[1]!r}")
+        if len(rows) == MAX_SCHEDULE_ROWS:
+            sys.exit("refusing: more than 65536 pairing-schedule rows")
+        rows.append((first, r[1].decode(), r[2].decode("utf-8", "replace")))
+    if not rows:
+        sys.exit("refusing: empty pairing schedule")
+    return rows
+
+
+def schedule_at(rows, ext):
+    """The row in effect for unit ext: the last with first_counter <= ext (the first row before any)."""
+    i = bisect.bisect_right([r[0] for r in rows], ext) - 1
+    r = rows[i]                                   # the first row starts at 0, so i >= 0 for every unit
+    return r[1], r[2]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("capture"); ap.add_argument("out")
     ap.add_argument("--offsets", help="manual placement (see module docstring)")
     ap.add_argument("--engine-log", help="the registration engine's decision log (sidecar); applied when present")
     ap.add_argument("--pair-next", action="store_true")
-    ap.add_argument("--parity", default="tff", choices=("tff", "bff"))
+    ap.add_argument("--parity", default=None, choices=("tff", "bff"))
+    ap.add_argument("--pairing-schedule", help="per-counter pairing: CSV first_counter,pairing,note")
     ap.add_argument("--pcm")
     ap.add_argument("--av-log", help="frameserver_replay --dump-log of the same capture: anchors the audio")
     ap.add_argument("--deint", default="bwdif", choices=("bwdif", "yadif_nospatial", "none"))
     ap.add_argument("--crf", default="14")
     ap.add_argument("--font", default="/System/Library/Fonts/Menlo.ttc")
     a = ap.parse_args()
-    offsets, engine = read_offsets(a.offsets), read_engine(a.engine_log)
+    if a.pairing_schedule and (a.pair_next or a.parity):
+        sys.exit("refusing: --pairing-schedule sets pairing and field order per frame; drop --pair-next / --parity")
+    schedule = read_schedule(a.pairing_schedule) if a.pairing_schedule else None
+    if a.parity is None:
+        a.parity = "tff"
+    offsets = read_offsets(a.offsets)
+    engine, erow = read_engine(a.engine_log)
+    audio_steps = read_audio_steps(a.engine_log)
     print(f"offsets for {len(offsets)} units; engine decisions for {len(engine)} units"
           f"{' (no sidecar)' if not a.engine_log else ''}", flush=True)
     font = ImageFont.truetype(a.font, 12); small = ImageFont.truetype(a.font, 11)
@@ -248,22 +608,36 @@ def main():
     frames = []; partnerless = []
     for k, o in enumerate(obs):
         if not o[1]: continue
-        if a.pair_next:
+        if (schedule_at(schedule, o[0])[0] == "reversed") if schedule else a.pair_next:
             nx = obs[k + 1] if k + 1 < len(obs) else None
             if nx is None or not nx[1] or nx[0] != o[0] + 1:
+                partnerless.append(o[0]); continue
+            if schedule and schedule_at(schedule, nx[0])[0] != "reversed":
+                # the engine resets at a pairing change and flushes this unit without a partner; the
+                # frame is not decided there, so it is not woven here either (a no-partner fill)
                 partnerless.append(o[0]); continue
             frames.append((o[0], nx[0], k))
         else:
             frames.append((o[0], None, k))
 
-    # audio-clock times of frames, from the replay's dump log
-    vpts = {}; a_origin = None
+    # audio blocks and audio-clock times of frames, from the replay's dump log
+    vpts = {}; ablocks = []                              # ablocks: (sample ordinal, pts, samples, flags), file order
     if a.av_log:
         for r in csv.reader(open(a.av_log)):
             if not r or r[0] == "kind": continue
             if r[0] == "V" and r[7] == "1": vpts[int(r[1])] = int(r[8])
-            if r[0] == "A" and a_origin is None and not (int(r[5]) & 4):          # first ANCHORED block
-                a_origin = int(r[2]) - int(r[1]) * 5                                # pts of PCM sample 0 (1/240000 s)
+            if r[0] == "A": ablocks.append((int(r[1]), int(r[2]), int(r[4]), int(r[5])))
+    a_origin, pblocks, resync_out, resync_shift, anotes = place_audio(
+        ablocks, vpts, audio_steps if (a.pcm and a.av_log) else {})
+    for note in anotes:
+        print(f"audio: {note}", flush=True)
+    # audio-clock times as the rebuilt PCM will play them: each unit's resync moved by the silence its own
+    # run carries at or before it (with no steps, identical to the dump log's times)
+    for c in list(vpts):
+        if a_origin is not None and c not in resync_shift:
+            del vpts[c]                                  # no determinable audio time: not used as one
+        else:
+            vpts[c] += 5 * resync_shift.get(c, 0)
 
     # timeline: fills between consecutive frames -- from the audio clock where both times are known
     # (8008 ticks per unit), otherwise one per observation between them that is not rendered
@@ -315,60 +689,78 @@ def main():
     print("applied from engine {}, manual {}, none {}".format(*(sum(v[2] == s for v in pl.values())
                                                                for s in ("engine", "manual", "none"))), flush=True)
 
-    # ---- audio anchor: output time of the first frame with a known audio-clock time, against the PCM origin
-    audio_ss = None
+    # ---- audio anchor: the rebuilt PCM starts at output frame 0's audio, to the nearest sample
+    trim = None                           # rebuilt-PCM sample heard at output time 0 (negative: silence first)
     if a.av_log and a.pcm:
         first = next((it[1] for it in items if it[0] == "frame" and it[1] in vpts), None)
-        if a_origin is not None and first is not None:
+        if a_origin is not None and first is not None and first in resync_out:
             k0 = next(k for k, it in enumerate(items) if it[0] == "frame" and it[1] == first)
-            audio_ss = (vpts[first] - a_origin) / 240000.0 - k0 * 1001 / 30000
-            print(f"audio anchor: frame {first} (output index {k0}) at audio +{(vpts[first] - a_origin) / 240000.0:.4f} s "
-                  f"from PCM sample 0; PCM offset {audio_ss:+.4f} s", flush=True)
-    if a.pcm and audio_ss is None:
+            s_first = resync_out[first]                                          # its resync, rebuilt PCM
+            trim = (2 * (5 * s_first - 8008 * k0) + 5) // 10                      # minus k0 frames, nearest sample
+            print(f"audio anchor: frame {first} (output index {k0}) at rebuilt PCM sample {s_first}; output audio "
+                  f"starts at rebuilt sample {trim}; PCM offset {trim / 48000:+.6f} s", flush=True)
+    if a.pcm and trim is None:
         print("audio anchor: NOT established (no --av-log, or no anchored audio block / matched frame)", flush=True)
 
     pcm_path = a.pcm; aligned_tmp = None
     if a.pcm and a.av_log:
         # The dumped PCM is the delivered blocks back to back; a block the frameserver dropped leaves no
-        # bytes. Rebuild it at each block's sample ordinal, silence where samples were not delivered.
-        blocks = [(int(r[1]), int(r[4])) for r in csv.reader(open(a.av_log)) if r and r[0] == "A"]
+        # bytes. Rebuild it with each block at its position, silence where samples were not delivered,
+        # starting at output frame 0's audio.
+        blocks = pblocks
         if not os.path.exists(a.pcm):
             sys.exit(f"refusing: PCM file {a.pcm} does not exist")
         fd, aligned_tmp = tempfile.mkstemp(prefix=os.path.basename(a.out) + ".", suffix=".aligned.pcm",
                                            dir=os.path.dirname(os.path.abspath(a.out)))
         # this run created the file exclusively, so it owns it: removed on every exit path, refusals included
         atexit.register(lambda path=aligned_tmp: os.path.exists(path) and os.remove(path))
-        pos = 0; gaps = 0; gap_samples = 0
         with open(a.pcm, "rb") as src, os.fdopen(fd, "wb") as dst:
-            for ordinal, nframes in blocks:
-                if ordinal < pos:
-                    sys.exit(f"refusing: audio block at sample {ordinal} overlaps the previous one (ends {pos})")
-                if ordinal > pos:
-                    dst.write(bytes(6 * (ordinal - pos))); gaps += 1; gap_samples += ordinal - pos
-                data = src.read(6 * nframes)
-                if len(data) != 6 * nframes:
-                    sys.exit("refusing: the PCM file is shorter than the dump log's blocks")
-                dst.write(data); pos = ordinal + nframes
-            if src.read(1):
-                sys.exit("refusing: the PCM file is longer than the dump log's blocks")
+            gaps, gap_samples, inserted = rebuild_pcm(src, dst, blocks, trim or 0)
         pcm_path = aligned_tmp
-        print(f"audio: {len(blocks)} blocks placed by sample ordinal; {gaps} undelivered stretches "
-              f"({gap_samples} samples) filled with silence", flush=True)
+        print(f"audio: {len(blocks)} blocks placed by audio-clock position; {gaps} undelivered stretches "
+              f"({gap_samples} samples) filled with silence; audio steps {len(audio_steps)}, "
+              f"{inserted} lost samples advanced as silence inside delivered blocks"
+              + "".join(f"; unit {c} +{n}" for c, n in sorted(audio_steps.items())), flush=True)
 
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", "30000/1001", "-i", "-"]
     if a.pcm:
-        if audio_ss is not None and audio_ss > 0:
-            cmd += ["-ss", f"{audio_ss:.6f}"]
+        # the anchor is already in the rebuilt PCM (exact to a sample): no -ss seek, no millisecond adelay
         cmd += ["-f", "s24le", "-ar", "48000", "-ac", "2", "-i", pcm_path]
-        af = "apad" if not (audio_ss is not None and audio_ss < 0) else f"adelay={int(-audio_ss * 1000)}:all=1,apad"
-        cmd += ["-af", af, "-shortest", "-c:a", "aac", "-b:a", "192k"]
-    P = a.parity
-    vf = {"bwdif": f"setfield={P},bwdif=mode=send_frame:parity={P}",
-          "yadif_nospatial": f"setfield={P},yadif=mode=send_frame_nospatial:parity={P}"}.get(a.deint)
-    if vf:
-        cmd += ["-vf", vf]
-    print(f"deinterlacer: {a.deint}{' -> -vf ' + vf if vf else ''}", flush=True)
+        cmd += ["-af", "apad", "-shortest", "-c:a", "aac", "-b:a", "192k"]
+    def deint(P):
+        return {"bwdif": f"setfield={P},bwdif=mode=send_frame:parity={P}",
+                "yadif_nospatial": f"setfield={P},yadif=mode=send_frame_nospatial:parity={P}"}.get(a.deint)
+    if schedule is None:
+        runs = [(0, len(items), a.parity)]
+    else:
+        # field order per output index: a frame's own pairing; a fill frame inherits the previous one's
+        par = []; cur = None
+        for it in items:
+            if it[0] == "frame":
+                cur = "bff" if it[2] is not None else "tff"
+            par.append(cur)
+        first_known = next((p for p in par if p is not None), "tff")
+        par = [p or first_known for p in par]
+        runs = []
+        for i, p in enumerate(par):
+            if runs and runs[-1][2] == p: runs[-1][1] = i + 1
+            else: runs.append([i, i + 1, p])
+        runs = [tuple(r) for r in runs]
+    if deint(runs[0][2]) and len(runs) > 1:
+        # 4:2:2 into the deinterlacer: at 4:2:0 one chroma sample spans two lines of OPPOSITE fields
+        parts = [f"[0:v]format=yuv422p,split={len(runs)}" + "".join(f"[s{k}]" for k in range(len(runs)))]
+        for k, (b0, b1, P) in enumerate(runs):
+            parts.append(f"[s{k}]trim=start_frame={b0}:end_frame={b1},setpts=PTS-STARTPTS,{deint(P)}[v{k}]")
+        parts.append("".join(f"[v{k}]" for k in range(len(runs))) + f"concat=n={len(runs)}:v=1:a=0[vout]")
+        graph = ";".join(parts)
+        cmd += ["-filter_complex", graph, "-map", "[vout]"] + (["-map", "1:a"] if a.pcm else [])
+        print(f"deinterlacer: {a.deint} per pairing run " + ", ".join(f"{b0}-{b1 - 1} {P}" for b0, b1, P in runs), flush=True)
+    else:
+        vf = deint(runs[0][2])
+        if vf:
+            cmd += ["-vf", "format=yuv422p," + vf]        # 4:2:2 into the deinterlacer (see above)
+        print(f"deinterlacer: {a.deint}{' -> -vf ' + vf if vf else ''}", flush=True)
     cmd += ["-c:v", "libx264", "-crf", a.crf, "-preset", "medium", "-pix_fmt", "yuv420p", a.out]
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
@@ -376,11 +768,39 @@ def main():
     STRIP_Y = H - 14; STRIP_LABEL_Y = STRIP_Y - 13; LEGEND_Y = STRIP_LABEL_Y - 14
     gy0, gh = FH + 10, (LEGEND_Y - 3) - (FH + 10)
 
-    def fit(dr, xy, text, fnt, fill):
-        limit = gx0 - 10 - xy[0]
+    def fit(dr, xy, text, fnt, fill, right=None):
+        limit = (right if right is not None else gx0) - 10 - xy[0]
         while text and dr.textlength(text, font=fnt) > limit:
             text = text[:-1]
         dr.text(xy, text, font=fnt, fill=fill)
+
+    CB_X0, CB_W = gx0 - 228, 208
+
+    def comb_bar(dr, energies, published):
+        """The comb's own eleven numbers: one bar per shift -5..+5, log height. The published shift is
+        outlined, the comb's minimum marked, so a placement the comb excludes is visible at a glance."""
+        pass
+        if not energies:
+            dr.text((CB_X0, gy0 + gh // 2 - 6), "no comb energies in this sidecar", font=small, fill=(90, 90, 90))
+            fit(dr, (CB_X0, LEGEND_Y), "comb energy by shift (log)", small, (120, 120, 120))
+            return
+        lo = max(min(energies), 1e-6); hi = max(max(energies), lo * 1.0001)
+        best = min(range(11), key=lambda k: energies[k])
+        w = CB_W / 11.0
+        for k, e in enumerate(energies):
+            frac = math.log(max(e, lo) / lo) / math.log(hi / lo) if hi > lo else 0.0
+            h = max(1, int(frac * (gh - 12)))
+            x0 = CB_X0 + k * w; x1 = x0 + w - 3
+            y1 = gy0 + gh - 10
+            col = (235, 180, 90) if k == best else (110, 110, 110)
+            dr.rectangle([x0, y1 - h, x1, y1], fill=col)
+            if k - 5 == published:
+                dr.rectangle([x0 - 1, gy0, x1 + 1, y1 + 1], outline=(255, 60, 60))
+            if k == best:
+                dr.text((x0, y1 + 1), "^", font=small, fill=(235, 180, 90))
+        fit(dr, (CB_X0, LEGEND_Y), f"comb min {energies[best]:.0f}@d1{-(best - 5):+d}"
+                                   + (f"  box {energies[published + 5]:.0f}" if -5 <= published <= 5 else ""),
+            small, (150, 150, 150))
 
     def graph_and_strip(dr, i, ext, d1, d2):
         dr.rectangle([gx0, gy0, gx0 + gw, gy0 + gh], outline=(60, 60, 60))
@@ -420,8 +840,10 @@ def main():
         dr.rectangle([0, FH, W, H], fill=(8, 8, 8))
         label = ("TIMING SLOT" if why.startswith("timing") else
                  "NO PAIR PARTNER" if why == "no partner" else "ABSENT UNIT")
-        fit(dr, (6, FH + 6), f"ctr {ext if ext is not None else '--':>6}   {label} - fill frame, no placement",
+        fit(dr, (6, FH + 6), f"ctr {ext if ext is not None else '--':>6}   {label} - fill frame, no placement"
+                               + (f"   AUDIO STEP +{audio_steps[ext]} lost samples (device)" if ext in audio_steps else ""),
             font, (230, 230, 230))
+        dr.text((CB_X0, LEGEND_Y), "fill frame: no engine decision", font=small, fill=(90, 90, 90))
         graph_and_strip(dr, i, ext if ext is not None else NO_SOURCE_UNIT, 0, 0)
         enc.stdin.write(img.tobytes()); state["written"] += 1; state["item"] += 1
 
@@ -443,31 +865,72 @@ def main():
         img = Image.new("RGB", (W, H), (12, 12, 12))
         img.paste(Image.fromarray(rgb, "RGB").resize((DW, FH), Image.BILINEAR), (PX, 0))
         dr = ImageDraw.Draw(img)
-        if o is not None:
-            for f, (first, d, col, keys) in enumerate(((F1_FIRST_LINE, d1, RED, ("f1_first", "f1_last")),
-                                                     (F2_FIRST_LINE, d2, BLUE, ("f2_first", "f2_last")))):
-                for key in keys:
-                    line = o[key]
-                    if line is None:
-                        continue
-                    k = line - (first + d)
-                    if 0 <= k < FIELD_ROWS:
-                        fr = k * 2 + f
-                        off = 8 + f * LANE
-                        dr.line([(PX - off - LANE + 2, fr), (PX - off, fr)], fill=col, width=2)
-                        dr.line([(PX + DW + off, fr), (PX + DW + off + LANE - 2, fr)], fill=col, width=2)
+        # Accepted census belongs to this FRAME, even under reversed pairing.
+        # A missing engine answer must not silently borrow a manual measurement.
+        top_unit = nxt if nxt is not None else ext
+        rowB, edges, waves = frame_evidence(erow, ext, top_unit)
+        if not rowB and o:
+            edges = [[o.get(f"f{k}_{key}") for key in ("first", "last")] for k in (1, 2)]
+        for f, (first, d, col) in enumerate(((F1_FIRST_LINE, d1, RED), (F2_FIRST_LINE, d2, BLUE))):
+            for line in edges[f]:
+                if line is None:
+                    continue
+                k = line - (first + d)
+                if 0 <= k < FIELD_ROWS:
+                    fr = k * 2 + f
+                    off = 8 + f * LANE
+                    dr.line([(PX - off - LANE + 2, fr), (PX - off, fr)], fill=col, width=2)
+                    dr.line([(PX + DW + off, fr), (PX + DW + off + LANE - 2, fr)], fill=col, width=2)
+                    dr.text((PX - off - LANE - 26, fr - 6), str(line), font=small, fill=col)
         dr.rectangle([0, FH, W, H], fill=(8, 8, 8))
-        fit(dr, (6, FH + 6), f"ctr {ext:>6}   applied ({d1:+d},{d2:+d}) from {src}", font, (230, 230, 230))
-        fit(dr, (6, FH + 24), f"engine  d1 {eng[0] if eng else '--':>3}  d2 {eng[1] if eng else '--':>3}"
-                               f"{'   (no sidecar)' if not a.engine_log else ''}", small, (150, 150, 150))
-        fit(dr, (6, FH + 40), f"manual  d1 {o['d1'] if o else '--':>3}  d2 {o['d2'] if o else '--':>3}"
-                               f"   {o['note'] if o else ''}", small, (150, 150, 150))
-        for f, (col, keys) in enumerate(((RED, ("f1_first", "f1_last")), (BLUE, ("f2_first", "f2_last")))):
-            v = [o[k] if o and o[k] is not None else "--" for k in keys]
-            fit(dr, (6, FH + 58 + 14 * f), f"f{f+1}  first picture line {v[0]}   last picture line {v[1]}",
-                small, col)
-        fit(dr, (6, FH + 90), "side ticks: first and last picture line (f1 red inner, f2 blue outer)",
-            small, (110, 110, 110))
+        fit(dr, (6, FH + 6), f"ctr {ext:>6}   applied ({d1:+d},{d2:+d}) from {src}"
+                               + (f"   AUDIO STEP +{audio_steps[ext]} lost samples (device)" if ext in audio_steps else ""),
+            font, (230, 230, 230), right=CB_X0)
+        pub = d2 - d1                                     # the published shift, in the comb's own convention
+        st = sl = None
+        if rowB:
+            if rowB.get("f1_first") not in ("", None) and rowB.get("f2_first") not in ("", None):
+                st = (int(rowB["f2_first"]) - 263) - int(rowB["f1_first"])
+            if rowB.get("f1_last") not in ("", None) and rowB.get("f2_last") not in ("", None):
+                sl = (int(rowB["f2_last"]) - 263) - int(rowB["f1_last"])
+        held = int(rowB['held_correction']) if rowB.get('held_correction') not in ('', None) else None
+        def num(v, w=0): return f"{v:{w}}" if v is not None else "--"
+        fit(dr, (6, FH + 24), f"census {top_unit} tops {num(edges[0][0])}/{num(edges[1][0])}"
+                              f" bots {num(edges[0][1])}/{num(edges[1][1])}"
+                              f" st{('%+d' % st) if st is not None else '--'}"
+                              f" sl{('%+d' % sl) if sl is not None else '--'}"
+                              f" pub{pub:+d} held{('%+d' % held) if held is not None else '--'}",
+            small, (170, 170, 170), right=CB_X0)
+        if rowB:
+            ran = rowB.get("comb_ran") == "1"; dec = rowB.get("comb_decided") == "1"
+            cd = rowB.get("comb_d"); mg = rowB.get("comb_margin")
+            mgs = f"{float(mg):.2f}" if mg not in ("", None) else "--"
+            what = (f"comb {'ran' if ran else 'audit'} d1{-int(cd):+d} m{mgs}"
+                    f" {'decided' if dec else 'undecided'}" if cd not in ("", None) else "comb --")
+            differs = cd not in ("", None) and int(cd) != pub
+            fit(dr, (6, FH + 40), f"{rowB.get('confidence','--'):4s} {trigger_words(rowB.get('triggers'))}"
+                                  f" | {what}" + (" DIFFERS" if differs else "")
+                                  + (" RESET" if rowB.get("reset_before") == "1" else ""),
+                small, (235, 180, 90) if (differs or rowB.get("reset_before") == "1") else (170, 170, 170),
+                right=CB_X0)
+        for f, col in enumerate((RED, BLUE)):
+            if waves[f]['status']:
+                label = waveform_label(f+1, waves[f])
+            else:
+                v = [x if x is not None else "--" for x in edges[f]]
+                label = f"f{f+1} engine picture lines first {v[0]} last {v[1]}"
+            fit(dr, (6, FH + 58 + 14 * f), label, small, col, right=CB_X0)
+        provenance = (f"relative: {rowB.get('relative_source') or '--'}; "
+                      f"anchor: {rowB.get('anchor_source') or '--'}")
+        fit(dr, (6, FH + 90), provenance, small, (170, 170, 170), right=CB_X0)
+        if rowB.get('ge_wave_bar'):
+            fit(dr, (6, FH + 120), f"wave bar {float(rowB['ge_wave_bar']):g}; clamp +/-{rowB['ge_wave_clamp']}",
+                small, (150, 150, 150), right=CB_X0)
+        comb_bar(dr, comb_energies(rowB), pub)
+        if schedule is not None:
+            pr, note = schedule_at(schedule, ext)
+            fit(dr, (6, FH + 106), f"pairing {pr}: {note}", small,
+                (230, 170, 60) if note.startswith(("likely", "ambiguous")) else (150, 150, 150), right=CB_X0)
         graph_and_strip(dr, i, ext, d1, d2)
         enc.stdin.write(img.tobytes()); state["written"] += 1; state["item"] += 1
 

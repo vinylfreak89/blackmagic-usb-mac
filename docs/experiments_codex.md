@@ -592,3 +592,16 @@ p95 is 0.309083/0.8916418 ms per unit, production scheduling with the same live
 reset/pairing stream; measurement alone 0.065667/0.159917 ms. Native unit,
 frameserver, ASan/UBSan and TSan checks pass. Numeric success authorizes the
 four review renders, not a full-tape render or an assertion of picture quality.
+
+Review-render integration uses the already reviewed renderer at 948a06e plus
+schema-21 evidence labels. Corrected its reversed-pair census lookup: accepted
+first/last columns are frame-owned on the bottom unit, whereas raw waveform
+columns are unit-owned. It now prints the engine's held correction rather than
+inferring one by subtraction. Missing answers do not borrow manual edges.
+Synthetic ownership/status tests and all retained audio-placement probes pass.
+Real replays have zero drops and zero per-unit raw/accepted census differences;
+MP4 readback matches all 919/649/648/650 frame placements (three extra fill
+slots in capture 1), with zero missing frames or strip differences. The four
+review files and their own sidecars replace only the owner's geometry_renders
+scratch copies after validation; prior copies are recoverable in the run's
+backup directory. Full-tape rendering awaits owner validation.
