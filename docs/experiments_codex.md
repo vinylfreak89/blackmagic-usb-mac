@@ -840,3 +840,17 @@ from the new sidecar, read every encoded placement back against both source-unit
 decisions, and publish closed MP4/CSV plus producer-named hashed status. The
 known cap1 anchor defect is not part of this task. Evidence for this run lives
 in /private/tmp/basin-fulltape.f19Ygq; no new registration rule is authorized.
+
+Scale-gate result: passed on the complete real replay. All 86,293 exact units
+were published with zero pool/ring/surface/audio drops; 86,289 are paired frame
+rows and four are boundary units. Actual rejection events number 329 (0.3813%):
+315 substitute and 14 discard (0.0162%). The no-basin population is 2,457
+(2.8474%), not all of which triggers a rejection. An independent streaming
+recount and energy-ratio reconstruction find zero differences. Both strict
+rate limits hold; this authorizes the whole-tape review encode, not a claim
+of visual quality or a correction to the known absolute-anchor defect.
+
+The initial sandboxed replay failed before reading units with "open failed";
+the elevated local retry completed normally at the required 8000-us pacing.
+Free space after replay is 29.96 GiB. Full statistics, quantile convention,
+event identities and accounting remain in the scratch directory above.

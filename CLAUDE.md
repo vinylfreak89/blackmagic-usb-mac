@@ -1684,7 +1684,7 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   Neither prototype is promoted. The owner withdrew both hold rules after the
   four-edge falsifier and authorized basin-only 3a87891 review renders for
   captures 1–4. Keep the prototypes and findings in scratch/history; do not
-  change the waveform instrument or render the whole tape in this task.
+  change the waveform instrument in that work.
   The remaining cap1 6667 placement is knowingly unchanged, not fixed by the
   basin rule. Review publication still requires encoded-strip validation and
   a fresh renders.status identifying the actual producing commits.
@@ -1692,7 +1692,12 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   passed full encoded-strip readback and source-unit placement joins, with
   zero differences. geometry_renders/renders.status is READY with engine and
   renderer 3a87891; visual acceptance is pending. Prior files are recoverable
-  under /private/tmp/comb-basin.KlFmop/replaced-reviews. No full-tape render.
+  under /private/tmp/comb-basin.KlFmop/replaced-reviews. That run rendered only
+  the four captures. The later whole-tape authorization has its own scale gate:
+  rejection strictly below 5% and discards below 2% of paired frame rows.
+  Its zero-drop paced replay passed (329/86,289 rejections, 14 discards).
+  Whole-tape encoding/validation is separate from census identity and from
+  owner visual acceptance; evidence is /private/tmp/basin-fulltape.f19Ygq.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
