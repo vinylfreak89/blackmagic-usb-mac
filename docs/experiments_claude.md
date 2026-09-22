@@ -1828,3 +1828,62 @@ figure, and the threshold is exposed as a control defaulting to a no-op rather t
 **Unchanged falsifiers:** the gate's late-top count, the owner's four labelled units, per-band comb
 agreement with gains and losses reported separately, and the bottom/profile/blanking/level columns at
 0 differing units of 86,293.
+
+## E-claude-2026-09-22-32 — refuse a move that discards picture and gains only blanking
+
+**Question (owner, 2026-09-22, verbatim).** "What I'm trying to differentiate is if freezing the top
+when there is a common mode shift rescues a class of failures. It might cause more jumps but it
+wouldn't cause picture to be lost... That's a jump that has no tangible benefit, and at the most you
+lose some stabilization at hopefully no cost to combing but also losing no real picture." Then, on the
+geometry: "If the picture shifts up, you lose nothing at the bottom but you do lose picture at the top
+and you create an artificial jump." And the conclusion the entry rests on: "mathematically You can't
+differentiate these classes, so a compromise that retains the most information along with the correct
+picture is the right one."
+
+**Premise.** The two classes cannot be told apart by what the lines look like — six measured attempts
+say so: chunk coherence at any scale, within-line contrast, line-to-line difference, sub-chunk
+structure, near-blankness, and a comb override all failed, most with heavily overlapping populations.
+They can be told apart by **what a move does to the information**. A top that moves later discards real
+picture lines at the top while the fixed-height window runs further past the last picture line and
+fills with blanking. That move cannot be worth taking under any reading, so it can be refused without
+knowing which line is truly picture.
+
+**Why this is not another threshold.** The test is `gain <= 0 AND overrun increases`, where gain is the
+picture lines kept at the top and overrun is how far the window runs past the measured last picture
+line. Both come from `f*_first` and `f*_last`, which the engine already produces. There is no number
+to fit, which is what every previous candidate foundered on.
+
+**Measured before building, on the 7,403 edges the independent gate has already judged:**
+
+| | discards picture at the top AND increases bottom overrun |
+|---|---|
+| the regression (2,089 edges) | **2,031 — 97.2%** |
+| the fixes (5,314 edges) | **101 — 1.9%** |
+
+Means: the regression loses 2.19 picture lines at the top and runs 2.2 lines further into blanking,
+net +4.39 lines of blanking for nothing. The fixes gain 0.99 lines at the top and sit 1.0 line closer
+to the last picture line. 98.1% of fixes move the opposite way to 97.2% of the regression. This is the
+cleanest separation any instrument has produced on this problem, and it is geometric rather than
+statistical.
+
+**What it costs.** Some stabilisation on the 1.9% of legitimate fixes that also increase overrun, and
+more frame-to-frame movement generally, since refusing a move leaves the previous placement standing.
+The owner has accepted that trade explicitly: jumps are acceptable, lost picture is not.
+
+**Falsifier.**
+- The independent gate's late-top count does not fall, or the fixes lost exceed the regression avoided.
+- Or the owner's four labelled units (69566, 69568, 69570, 69573 → f1 26/26/25/26, f2 288) stop landing.
+- Or comb agreement regresses in any confidence band.
+- Or the cascade changes the separation materially: this is a static classification of decisions already
+  made, and with interpreted history both counts can move. The near-blank instrument measured a cascade
+  factor of exactly 1.00, so the expectation is that it does not, and a departure is a real result.
+- Or the window is not `top .. top+239`: the aperture is my assumption, and if the render window differs
+  the overrun arithmetic changes, though not the sign of the effect.
+
+**Material.** All 86,293 exact units and capture 1, judged by the independent gate and the owner's
+labelled units. The comb cannot judge this class at all: 92.4% of the regression is a common-mode
+shift, which leaves the field relationship unchanged and is invisible to it by construction.
+
+**Supersedes in practice, not by refutation:** entry 31's near-blank instrument, which reaches 25 of
+2,089 regression edges (1.2%) at a 12:1 ratio. It is left in the engine disabled at the owner's
+instruction, pending a cleanup pass that removes the pieces not being kept.
