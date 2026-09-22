@@ -22,7 +22,6 @@ _Static_assert(RING_ITEMS >= 2, "frameserver ring needs one data slot plus one t
 // The publisher and the parser each name the fixed-raster unit size; they must be the same
 // number or fp_publish would over-read into the neighbouring pool slot (silent, intermittent).
 _Static_assert(FP_UNIT_BYTES == UNIT_PARSER_VIDEO_UNIT_BYTES, "publisher/parser unit size mismatch");
-_Static_assert(FP_FIELD_LINES == GE_FIELD_LINES, "publisher/census aperture height mismatch");
 
 typedef enum { FS_DROP_NONE = 0, FS_DROP_POOL_FULL = 1 } fs_drop;
 typedef enum { FS_LIFE_OPEN, FS_LIFE_STARTING, FS_LIFE_RUNNING,
@@ -265,7 +264,7 @@ static const char *transport_name(unit_transport_state t){
                 case UNIT_TRANSPORT_SHORT: return "Short"; default: return "Unframed"; }
 }
 static int log_header(FILE *L, int geometry){
-    if(geometry)return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,hblank_level_f1,hblank_cols_f1,hblank_level_f2,hblank_cols_f2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies,ge_top_margin,ge_top_guard,ge_top_plain23,ge_top_runin,ge_top_near_blank,interpreted_f1_first,interpreted_f2_first,top_distance_f1,top_distance_f2,top_ignored_f1,top_ignored_f2,ge_top_overrun_veto,top_overrun_veto_f1,top_overrun_veto_f2,overrun_terms_f1,overrun_terms_f2,overrun_prev_comb_d,overrun_prev_comb_margin\n")<0?-1:0;
+    if(geometry)return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,hblank_level_f1,hblank_cols_f1,hblank_level_f2,hblank_cols_f2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies,ge_top_margin,ge_top_guard,ge_top_plain23,ge_top_runin\n")<0?-1:0;
     return fprintf(L, "ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,"
                "interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,"
                "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,"
@@ -390,37 +389,7 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
         if(d && d->has_frame && !isnan(d->comb.margin))
             for(int i=0;i<11;i++)
                 if(fprintf(f->log,"%s%.9g",i?" ":"",d->comb.energies[i])<0)bad=1;
-        if(fprintf(f->log,",%.17g,%d,%d,%d,%.17g",ge_top_margin,ge_top_guard,ge_top_plain23,ge_top_runin,ge_top_near_blank)<0)bad=1;
-        /* Frame-owned, just like f1_first/f2_first (not the bottom unit's f1).
-         * Boundary/counterless rows have no frame and leave these cells empty. */
-        for(int k=0;k<2;k++) {
-            if(fputc(',',f->log)==EOF)bad=1;
-            if(d && d->has_frame && d->interpreted_first[k])
-                if(fprintf(f->log,"%d",d->interpreted_first[k])<0)bad=1;
-        }
-        for(int k=0;k<2;k++) {
-            if(fputc(',',f->log)==EOF)bad=1;
-            if(d && d->has_frame && !isnan(d->top_distance[k]))
-                if(fprintf(f->log,"%.17g",d->top_distance[k])<0)bad=1;
-        }
-        for(int k=0;k<2;k++) {
-            if(fputc(',',f->log)==EOF)bad=1;
-            if(d && d->has_frame)if(fprintf(f->log,"%d",d->top_ignored[k])<0)bad=1;
-        }
-        if(fprintf(f->log,",%d",ge_top_overrun_veto)<0)bad=1;
-        for(int k=0;k<2;k++) {
-            if(fputc(',',f->log)==EOF)bad=1;
-            if(d && d->has_frame)if(fprintf(f->log,"%d",d->top_overrun_veto[k])<0)bad=1;
-        }
-        for(int k=0;k<2;k++) {
-            if(fputc(',',f->log)==EOF)bad=1;
-            if(d && d->has_frame)if(fprintf(f->log,"%u",d->overrun_terms[k])<0)bad=1;
-        }
-        if(fputc(',',f->log)==EOF)bad=1;
-        if(d && d->has_frame && d->prev_comb_known)if(fprintf(f->log,"%d",d->prev_comb_d)<0)bad=1;
-        if(fputc(',',f->log)==EOF)bad=1;
-        if(d && d->has_frame && d->prev_comb_known)if(fprintf(f->log,"%.9g",d->prev_comb_margin)<0)bad=1;
-        if(fputc('\n',f->log)==EOF)bad=1;
+        if(fprintf(f->log,",%.17g,%d,%d,%d\n",ge_top_margin,ge_top_guard,ge_top_plain23,ge_top_runin)<0)bad=1;
         if(bad){f->st.log_write_errors++;f->log_file_errors++;}else f->st.log_rows++;
         fs_test_after_log_row(f,f->log);
     }

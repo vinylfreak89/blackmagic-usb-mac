@@ -12,14 +12,13 @@ root=Path(__file__).resolve().parents[1]
 replay=str(Path(sys.argv[1]).resolve())
 probe=str(root/'src/field_registration/tests/hblank_probe')
 base=dict(os.environ)
-names=('GE_TOP_MARGIN','GE_TOP_GUARD','GE_TOP_PLAIN23','GE_TOP_RUNIN','GE_TOP_NEAR_BLANK','GE_TOP_OVERRUN_VETO')
+names=('GE_TOP_MARGIN','GE_TOP_GUARD','GE_TOP_PLAIN23','GE_TOP_RUNIN')
+columns='ordinal epoch observed_counter counter_extended applied_d1 applied_d2 f1_unused f2_unused reset_before comb_ran comb_d comb_margin comb_decided confidence frame_top_unit triggers frame_d1 frame_d2 f1_first f2_first f1_last f2_last bl1 bl2 hblank_level_f1 hblank_cols_f1 hblank_level_f2 hblank_cols_f2 class_f1 class_f2 published drop_reason preceding_ring_drops schema_version pairing pairing_note audio_residual_ticks audio_step_samples comb_energies ge_top_margin ge_top_guard ge_top_plain23 ge_top_runin'.split()
 for n in names:base.pop(n,None)
 for name,values in {'GE_TOP_MARGIN':('nan','inf','1e999','','5junk'),
                     'GE_TOP_GUARD':('-1','5','1.5','','2junk'),
                     'GE_TOP_PLAIN23':('2','-1','','yes'),
-                    'GE_TOP_RUNIN':('2','-1','','yes'),
-                    'GE_TOP_NEAR_BLANK':('nan','inf','1e999','','5junk','-2','-0.1'),
-                    'GE_TOP_OVERRUN_VETO':('2','-1','','yes')}.items():
+                    'GE_TOP_RUNIN':('2','-1','','yes')}.items():
     for value in values:
         env=base|{name:value}
         a=subprocess.run([probe],input=b'',capture_output=True,env=env,timeout=30)
@@ -43,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
         for seq,off in enumerate(range(0,len(stream),15360)):
             f.write(fixture.record(fixture.DATA,fixture.VIDEO,0,seq,0,15360,stream[off:off+15360]))
     for arm in ('default','old','explicit-new'):
-        values=('0','0','1','1','-1','0') if arm=='old' else ('5','3','0','0','-1','0')
+        values=('0','0','1','1') if arm=='old' else ('5','3','0','0')
         env=base|(dict(zip(names,values)) if arm!='default' else {})
         for reversed_pair in (False,True):
             log=tmp/f'{arm}-{reversed_pair}.csv'
@@ -51,11 +50,15 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
             if reversed_pair:cmd+=['--pair-next']
             p=subprocess.run(cmd,capture_output=True,text=True,env=env,timeout=90)
             assert p.returncode==0 and 'Sanitizer' not in p.stderr,(p.returncode,p.stdout,p.stderr)
-            with log.open() as f:rows=list(csv.DictReader(f))
+            with log.open() as f:
+                reader=csv.DictReader(f)
+                assert reader.fieldnames==columns,reader.fieldnames
+                rows=list(reader)
+            assert all(None not in r and None not in r.values() for r in rows),rows
             units={int(r['counter_extended']):r for r in rows if r['counter_extended']}
             assert len(units)==4 and all(r['published']=='1' for r in units.values()),p.stdout
             for r in rows:
-                assert r['schema_version']=='19' and tuple(r[n.lower()] for n in names)==values,r
+                assert r['schema_version']=='20' and tuple(r[n.lower()] for n in names)==values,r
             raw=b''.join(struct.pack('=QII',c,int(units[c]['reset_before']),int(reversed_pair))+y for c in units)
             q=subprocess.run([probe],input=raw,capture_output=True,env=env,timeout=30)
             assert q.returncode==0,q.stderr
@@ -67,9 +70,6 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
                 top=int(r['frame_top_unit'])
                 assert int(r['f1_first'] or 0)==int(measured[top]['f1_first'])
                 assert int(r['f2_first'] or 0)==int(measured[c]['f2_first'])
-                assert int(r['interpreted_f1_first'] or 0)==int(measured[top]['interpreted_f1_first'])
-                assert int(r['interpreted_f2_first'] or 0)==int(measured[c]['interpreted_f2_first'])
-                assert r['top_ignored_f1']==r['top_ignored_f2']=='0'
             if not reversed_pair:answers.append((units[100]['f1_first'],units[100]['f2_first']))
     assert answers==[('25','287'),('24','286'),('25','287')],answers
-print('GEOMETRY-CONTROLS PASS: 29 identical parser refusals; default/selected arms; aligned/reversed census; every-row provenance')
+print('GEOMETRY-CONTROLS PASS: 18 identical parser refusals; default/selected arms; aligned/reversed census; every-row provenance')

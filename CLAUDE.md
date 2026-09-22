@@ -1634,31 +1634,17 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   frameserver selection, unit-keyed decisions and reversed-pair boundary handling.
   Keep a requested crop distinct from unavailable raster rows: silently clamping
   the whole crop makes the applied-decision log disagree with the published pixels.
-  Measured and interpreted top histories are distinct: feeding a substituted top
-  into the next comparison can reclassify later tandem/bottom-only moves and
-  change comb triggers even with unchanged classifier code. Entry 31 amendment 1
-  permits those enabled-arm effects: report them, do not hide them behind a shadow
-  measured-history state. The near-blank rejection instrument defaults disabled;
-  no source-improvement claim follows from its disabled-default identity test.
-  See `docs/geometry_engine.md` for measured/frame-owned versus interpreted tops.
+  Owner-directed cleanup removed the near-blank and overrun vetoes, interpreted
+  top substitution and their early-comb path; they are not dormant controls.
+  The d5c9f08 top rule remains, with only its four comparison controls. History
+  retains the discarded experiments; do not infer acceptance from their tests.
   Aperture arithmetic uses published offsets: 480i starts at 23+d1 / 286+d2
   for 240 lines; the 486-line review starts three lines earlier with the same
-  endpoints. Measured/interpreted field-1 first is not generally 23+d1 because
-  comb changes d1. Do not call a census-top veto a final-crop guarantee.
-  Entry 32's overrun veto is explicitly pre-comb, disabled by default. Report
-  actual substitutions separately from equal-top predicate matches, and census
-  changes separately from published-placement changes when stating cascade ratios.
-  A current frame's applied common-mode shift is downstream of that census veto:
-  the previous applied pair exists there, but the current one depends on comb/hold.
-  A no-veto preview and a final published pair are different policy inputs; do not
-  substitute one silently. Reversed pairing also delays each unit's field 2 decision.
-  The later instruction replaces applied movement with unchanged consecutive
-  audit-comb winners, a moved top and stationary measured bottom. The enabled
-  path computes the raster-only search once before frame-owned census gating,
-  reusing it for the decision without placement preview. Disabled scheduling is
-  untouched. Equal winners are estimated relative alignment, not proof of absolute
-  common-mode motion. A late-top gate that abstains on early tops cannot validate
-  the quality of a rule biased earlier. Optional audit logging never changes decisions.
+  endpoints. Measured field-1 first is not generally 23+d1 because comb changes
+  d1. A census restriction is not a final-crop guarantee. Equal comb winners
+  estimate relative alignment, not absolute common-mode motion. A late-top gate
+  that abstains on early tops cannot validate an earlier-biased rule's quality.
+  Optional audit logging never changes decisions or triggered-comb scheduling.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

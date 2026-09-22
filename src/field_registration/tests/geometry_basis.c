@@ -12,13 +12,6 @@ static ge_features features(int top) {
     f.motion[0]=f.motion[1]=GE_NOTHING;
     return f;
 }
-/* This test supplies census features directly, without top interpretation. */
-static ge_decision measured_frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
-                                 ge_features *t,ge_features *b,uint64_t tc,uint64_t bc) {
-    memcpy(t->interpreted_first,t->first,sizeof t->first);
-    memcpy(b->interpreted_first,b->first,sizeof b->first);
-    return frame(g,ty,by,t,b,tc,bc);
-}
 int main(void) {
     uint8_t *top=malloc(GE_PIXELS),*bottom=calloc(GE_PIXELS,1),*flat=calloc(GE_PIXELS,1);
     geometry_engine *g=malloc(ge_size());assert(top&&bottom&&flat&&g);
@@ -31,46 +24,46 @@ int main(void) {
         ge_init(g,reverse,audit);
         ge_features t=features(24),b=features(24);
         t.motion[0]=GE_UNKNOWN; // initial measurement derives +1 against st=-1
-        ge_decision o=measured_frame(g,top,bottom,&t,&b,100+reverse,100);
+        ge_decision o=frame(g,top,bottom,&t,&b,100+reverse,100);
         assert(o.held==1 && o.published_d==0 && g->basis_valid);
         t.motion[0]=GE_NOTHING;
-        o=measured_frame(g,top,bottom,&t,&b,101+reverse,101); // confirmation
+        o=frame(g,top,bottom,&t,&b,101+reverse,101); // confirmation
         assert(o.held==1 && !g->provisional);
-        o=measured_frame(g,top,bottom,&t,&b,102+reverse,102);
+        o=frame(g,top,bottom,&t,&b,102+reverse,102);
         assert(!o.comb_ran && o.published_d==0 && o.held==1);
         // Top moves even though both motion classes say valid move. A tied
         // comb cannot restore +1; the new census st=0 is published instead.
         t.first[0]=23;t.motion[0]=b.motion[1]=GE_VALID_MOVE;
-        o=measured_frame(g,flat,flat,&t,&b,103+reverse,103);
+        o=frame(g,flat,flat,&t,&b,103+reverse,103);
         assert((o.triggers&GE_BASIS_CHANGED) && o.comb_ran && !o.comb.decided);
         assert(o.held==0 && o.published_d==0 && !g->provisional && !g->basis_valid);
-        o=measured_frame(g,top,bottom,&t,&b,104+reverse,104);
+        o=frame(g,top,bottom,&t,&b,104+reverse,104);
         assert(!o.comb_ran && o.published_d==0); // no audit-only adoption
         // A bottom-field top change invalidates independently, including when
         // both tops translate together and their difference is unchanged.
         g->held=1;g->provisional=1;g->basis_valid=1;
         g->basis_first[0]=23;g->basis_first[1]=286;
         t.first[0]=24;b.first[1]=287;
-        o=measured_frame(g,flat,flat,&t,&b,105+reverse,105);
+        o=frame(g,flat,flat,&t,&b,105+reverse,105);
         assert((o.triggers&GE_BASIS_CHANGED) && !o.held && !g->provisional);
         g->held=1;g->basis_valid=1;
         g->basis_first[0]=24;g->basis_first[1]=287;b.first[1]=288;
-        o=measured_frame(g,flat,flat,&t,&b,105+reverse,105);
+        o=frame(g,flat,flat,&t,&b,105+reverse,105);
         assert((o.triggers&GE_BASIS_CHANGED) && !o.held && o.published_d==1);
         b.first[1]=287;
         // Decided re-derivation records the new basis. Losing a measured top
         // clears it, while existing missing-placement fallback is preserved.
         t.motion[0]=GE_UNKNOWN;
-        o=measured_frame(g,top,bottom,&t,&b,106+reverse,106);
+        o=frame(g,top,bottom,&t,&b,106+reverse,106);
         assert(o.comb.decided && g->basis_valid && g->basis_first[1]==287);
         int previous_d1=o.frame_d1,previous_d2=o.frame_d2;
         b.first[1]=0;
-        o=measured_frame(g,flat,flat,&t,&b,107+reverse,107);
+        o=frame(g,flat,flat,&t,&b,107+reverse,107);
         assert((o.triggers&GE_BASIS_CHANGED) && (o.triggers&GE_UNMEASURABLE));
         assert(!g->basis_valid && !g->held);
         assert(o.frame_d1==previous_d1 && o.frame_d2==previous_d2);
         t.first[0]=0;
-        o=measured_frame(g,flat,flat,&t,&b,108+reverse,108);
+        o=frame(g,flat,flat,&t,&b,108+reverse,108);
         assert(!o.comb.decided && o.frame_d1==previous_d1 && o.frame_d2==previous_d2);
         g->basis_valid=1;g->basis_first[0]=24;g->held=1;
         ge_decision out[2];ge_break(g,out);

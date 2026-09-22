@@ -505,3 +505,17 @@ any differing retained value on any eligible unit/frame, or a removed policy
 still reachable. Run unit, ASan/UBSan and TSan checks; report errors verbatim.
 Material: all 86,293 exact whole-tape units and all eligible units of captures
 1–4, including reversed pairing in capture 3. Results remain in scratch.
+
+### Report — veto deletion
+
+Identity premise **held** on the complete committed population: all retained
+measurements and production/audit decisions match d5c9f08 at defaults and
+c620966 under the explicit old arm. Exact profile bytes and all comb energy/
+margin bits were checked, not merely rounded CSV values. The removed policies
+are absent from engine code, tool parsing, sidecar schema and active tests;
+their history is recoverable from prior commits. No replacement is introduced.
+The schema advances to 20 while returning to the retained schema-16 columns.
+This is identity evidence only, not a new claim about picture quality.
+Unit, ASan/UBSan and TSan checks pass. Full counts, methodology, CPU costs and
+test logs are in
+/private/tmp/remove-veto.LwcnlH/REPORT.md. No push or render.

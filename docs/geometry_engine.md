@@ -64,13 +64,11 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 19, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 20, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32),
 comb evidence and HIGH/LOW.
-With the overrun gate disabled, untriggered comb evidence is empty unless
-`--audit-comb` is set; that switch does not change decisions. The enabled overrun
-gate computes one early raster-only search on every completed frame, independently
-of audit, and reuses it for the decision. Frame diagnostic columns refer to the bottom-field unit,
+Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
+not change decisions. Frame diagnostic columns refer to the bottom-field unit,
 whereas `applied_d1/d2` always refer to the row's own unit. Ineligible observations
 have empty placement keys, with their original counter in `observed_counter`.
 `comb_energies` appends eleven space-separated values in shift order -5..+5,
@@ -82,6 +80,17 @@ not an audit-only computation. Existing columns retain their meanings.
 Within the same row, the published relative shift is `frame_d2 - frame_d1`;
 compare it to `comb_d`, with `comb_decided` indicating whether the minimum was
 decisive. This requires no cross-unit join even under reversed pairing.
+
+Schema 20 removes the near-blank/overrun veto controls and all their measurement,
+interpretation and term columns from schemas 17–19. The mechanisms, substituted
+top history and early-comb path are deleted, not retained behind disabled flags.
+The engine is the d5c9f08 rule with its four original controls; ordinary comb
+scheduling is unchanged. The schema-20 header has exactly these 43 columns
+(same names/order/meaning as schema 16; the version value is now 20):
+
+```text
+ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,hblank_level_f1,hblank_cols_f1,hblank_level_f2,hblank_cols_f2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies,ge_top_margin,ge_top_guard,ge_top_plain23,ge_top_runin
+```
 
 The top search uses the per-field horizontal-blanking level of experiment 20:
 over storage rows 18..261 (+263 for field 2), keep column 0 and then columns
@@ -115,8 +124,7 @@ pre-promotion arm is `GE_TOP_MARGIN=0 GE_TOP_GUARD=0 GE_TOP_PLAIN23=1 GE_TOP_RUN
 set all four explicitly for an old/new comparison. Schema 16's arm columns name
 both behaviours without changing any existing column's meaning.
 Both probe CSVs begin with a `# GE_TOP_MARGIN=... GE_TOP_GUARD=...
-GE_TOP_PLAIN23=... GE_TOP_RUNIN=... GE_TOP_NEAR_BLANK=... GE_TOP_OVERRUN_VETO=...`
-provenance line before the CSV header;
+GE_TOP_PLAIN23=... GE_TOP_RUNIN=...` provenance line before the CSV header;
 skip this comment when parsing. The unit CSV also includes `rule_first`,
 `auto_first`, `plain23` and `runin` to distinguish raw scan, re-search and final
 placement. Disabling either final-stage switch retains its evidence computation.
@@ -124,116 +132,8 @@ Both tools use the same tool-only `geometry_tool_controls.h` parser and formatte
 Replay echoes the same arm line on stderr at startup, before opening outputs.
 Schema 16 appends `ge_top_margin`, `ge_top_guard`, `ge_top_plain23` and
 `ge_top_runin` to every v11 decision-log row, including unavailable observations.
-The sidecar still starts with its CSV column header (no comment to skip).
-Margin uses `%.17g`; the other original settings remain integers.
-
-Entry 31 amendment 1 adds `GE_TOP_NEAR_BLANK` (`ge_top_near_blank` in C),
-default **-1, disabled**. A finite nonnegative value enables an inclusive
-cutoff on the newly measured final top's body p95 minus its field's horizontal
-blanking level. No tape threshold is selected. A negative distance is also weak
-evidence under an enabled cutoff (possible with alternative search arms);
-the disabled sentinel never suppresses it. Other negative settings are refused.
-Only an adjacent, non-reset `GE_TOP_ONLY` proposal meeting that cutoff is
-ignored. Its predecessor's interpreted top stands, while measured `first[]`,
-bottoms, profiles and all other evidence remain unchanged. No coherence test
-is added. Missing tops stay missing. The current motion class records the
-proposal BEFORE rejection, against interpreted history; interpreted tops then
-feed placement and the next comparison. Thus later classes, held-correction
-bases and comb scheduling can change. The comb algorithm and audit semantics
-do not change. A suppression does not freeze the whole geometry or prevent a
-triggered decided comb from choosing a relative shift.
-
-Schema 17 appends `ge_top_near_blank`, `interpreted_f1_first`,
-`interpreted_f2_first`, `top_distance_f1`, `top_distance_f2`,
-`top_ignored_f1`, `top_ignored_f2`. The setting appears on every row.
-The other six are FRAME-owned, exactly like existing measured `f1_first` /
-`f2_first`: field 1 belongs to `frame_top_unit`, field 2 to `counter_extended`.
-Under reversed pairing do not subtract this row's unit-owned hblank field-1
-level from that frame's field-1 measurement. Distances use `%.17g` and are empty
-when the measured top is missing. Interpreted tops are empty when unavailable;
-ignore flags are 0/1. All six cells are empty on rows without a woven frame.
-These tops are census interpretations, NOT final comb-adjusted placements;
-the final frame still uses `frame_d1/d2`.
-
-The probe appends the same six evidence/interpretation columns plus `class_f1`
-and `class_f2` to its unit CSV (own-unit coordinates, including unused fields;
-0 for a missing top and nan for its distance). Its frame CSV also appends the
-measured/interpreted tops, classes and ignore flags. `ge_current_features()`
-exposes a borrowed read-only view of the latest unit for such instruments.
-The disabled near-blank default is the exact d5c9f08 comparison arm. All controls
-must be set before workers start; neither library reads the environment.
-
-Entry 32 adds `GE_TOP_OVERRUN_VETO` (`ge_top_overrun_veto` in C),
-strict 0/1, default **0, disabled**. Near-blank suppression stays disabled by
-default and is independent. The latest owner instruction restricts the original
-geometry predicate to equal successive comb winners, a moved top, and a stationary
-bottom. This threshold-free rule operates at the census before the comb DECISION,
-using H=240 from the publisher's geometry (checked against `FP_FIELD_LINES`). On
-adjacent, non-reset source fields with top/last/bottom measurements available:
-
-```
-new_top >= previous_interpreted_top
-max(0, new_top + 239 - new_last) >
-    max(0, previous_interpreted_top + 239 - previous_last)
-current_frame_comb_d == previous_frame_comb_d
-new_top != previous_interpreted_top
-new_bottom == previous_bottom
-```
-
-When all hold, keep the previous interpreted top for that field. Every other
-measurement is immutable. There is no motion-class, coherence or brightness
-threshold. Each overrun uses its own unit's last line, so tandem translation
-can preserve overrun. `bottom` is the measured `bottom[k]` coordinate; `last[k]`
-is the separate last-line measurement used by overrun. Equal tops cannot veto.
-No confidence cutoff is added: equal abstaining winners qualify. This measures
-unchanged ESTIMATED relative alignment, not proof of absolute common-mode motion.
-The resulting interpretation feeds the next comparison and existing placement
-logic. Missing measurements, resets and gaps never borrow an old top or comb.
-Comb authority remains unchanged, including after a refusal.
-
-Only the enabled path uses frame-owned interpretation. With reversed pairing,
-field 1 of c+1 and field 2 of c are interpreted when frame c is complete, using
-the previous source unit for each respective field. Field 2 is never gated on
-an unavailable future frame. `ge_current_features()` therefore has a provisional
-field 2 on this path; `ge_completed_features()` exposes the completed own-unit
-features for the emitted decision. The probe defers its unit row accordingly,
-including unused boundary fields at EOF/break. No additional frame buffering or
-placement preview/rewind is used. Bounded field history is part of engine state.
-
-The comb reads fixed raw rows, never census or placements: computing it earlier
-cannot change its result for the same two rasters. Its value is reused, not
-searched twice. `comb_ran` continues to mean triggers permit adoption, NOT that
-an early/audit search occurred. The disabled path retains its original optional
-audit/trigger schedule and never consults this gate.
-
-This is deliberately **not** a final-crop guarantee: field 1's published start
-can differ from its interpreted top. The publisher crops 23+d1..262+d1 and
-286+d2..525+d2, 240 lines each. The review render adds three rows above each
-crop, using 243 lines but the same endpoints. The census rule uses the publisher
-geometry, not that extended review crop.
-
-Schema 18 added `ge_top_overrun_veto` on every row and frame-owned
-`top_overrun_veto_f1`, `top_overrun_veto_f2` predicate flags, empty without a
-frame. The probe appends those flags in both unit- and frame-keyed outputs.
-Existing `top_ignored_f1/f2` mean an actual census substitution by either enabled
-instrument. With schema 19's narrowed predicate, an overrun flag always denotes
-a substitution (schema 18 could flag equal-top no-ops).
-Schema 19 appends frame-owned `overrun_terms_f1/f2` masks: 1=valid history,
-2=old geometric predicate, 4=equal comb winners, 8=top moved, 16=bottom unchanged.
-All five bits (31) are required. Zero indicates no qualifying evidence; fields
-are empty without a frame. `overrun_prev_comb_d` / `overrun_prev_comb_margin`
-are empty without enabled previous-frame history. The probe appends the masks
-to unit and frame CSVs and previous-comb evidence to its frame CSV. The optional
-second positional argument names an exact, hex-float non-audit decision trace,
-written outside the timed region. These columns support independent term-removal and confidence
-cuts without reimplementing the engine's policy.
-With near-blank off, changed census edges per actual
-refusal is a direct-substitution ratio; separately report changed published field
-placements per refusal, since downstream state/comb can amplify or cancel it.
-The default disabled overrun arm reproduces 9ed3923. Source-quality acceptance
-needs raw-row/owner review: the independent late-top gate abstains on early tops,
-so it structurally favors this earlier-biased rule. Its lower wrong count and
-comb agreement do not establish preserved picture.
+The sidecar still starts with its CSV column header (no comment to skip); the
+probe format is unchanged. Margin uses `%.17g`; the other settings are integers.
 
 The library exposes corresponding process-wide `ge_top_*` variables, not
 environment reads. Set them before measurement/worker startup and never mutate

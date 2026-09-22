@@ -30,20 +30,11 @@ static int ge_tool_controls_from_env(void) {
         }
         ge_top_guard=(int)n;
     }
-    v=getenv("GE_TOP_NEAR_BLANK");
-    if(v) {
-        errno=0;double n=strtod(v,&end);
-        if(errno || end==v || *end || !isfinite(n) || (n<0 && n!=-1)) {
-            fprintf(stderr,"invalid GE_TOP_NEAR_BLANK: %s (expected -1 or finite nonnegative number)\n",v);return 0;
-        }
-        ge_top_near_blank=n;
-    }
     return ge_tool_boolean_control("GE_TOP_PLAIN23",&ge_top_plain23) &&
-           ge_tool_boolean_control("GE_TOP_RUNIN",&ge_top_runin) &&
-           ge_tool_boolean_control("GE_TOP_OVERRUN_VETO",&ge_top_overrun_veto);
+           ge_tool_boolean_control("GE_TOP_RUNIN",&ge_top_runin);
 }
 static void ge_tool_controls_echo(FILE *f) {
-    fprintf(f,"# GE_TOP_MARGIN=%.17g GE_TOP_GUARD=%d GE_TOP_PLAIN23=%d GE_TOP_RUNIN=%d GE_TOP_NEAR_BLANK=%.17g GE_TOP_OVERRUN_VETO=%d\n",
-        ge_top_margin,ge_top_guard,ge_top_plain23,ge_top_runin,ge_top_near_blank,ge_top_overrun_veto);
+    fprintf(f,"# GE_TOP_MARGIN=%.17g GE_TOP_GUARD=%d GE_TOP_PLAIN23=%d GE_TOP_RUNIN=%d\n",
+        ge_top_margin,ge_top_guard,ge_top_plain23,ge_top_runin);
 }
 #endif
