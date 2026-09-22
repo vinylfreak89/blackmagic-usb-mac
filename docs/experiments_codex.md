@@ -715,3 +715,18 @@ The mutation that ignores basin support fails the discard-state assertion.
 Schema 22 appends rejection provenance; no selection threshold, census, search
 schedule or audit-adoption change. Evidence: /private/tmp/comb-basin.KlFmop.
 This gate authorizes only the four review renders, not full-tape publication.
+
+### Additional owner rule — one accepted field top cannot move the pair
+
+Owner: "no top in 1 field within a frame should be disqualifying to create a
+shift". When exactly one frame-owned accepted top exists, retain both offsets
+from the previous published frame (or section-start zero). Do not alter either
+measurement, comb evidence/scheduling or the both-top case at cap1 6667.
+This is additional to the basin amendment. Test with the actual C forward
+state: holding 6641 can also change later fallback placements, so the requested
+exactly-five changed-frame gate is not established by five moving onsets.
+Report any propagation separately and stop on an extra changed frame rather
+than silently restoring the rejected anchor. Commit/test this scope before
+changing the engine or restarting renders. The first two basin-only encodes
+had finished in scratch when the steer arrived; remaining encode processes
+were stopped and no MP4/sidecar replacements were published.
