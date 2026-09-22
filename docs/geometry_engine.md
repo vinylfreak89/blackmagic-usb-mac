@@ -64,7 +64,7 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 16, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 17, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32),
 comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
@@ -113,7 +113,7 @@ pre-promotion arm is `GE_TOP_MARGIN=0 GE_TOP_GUARD=0 GE_TOP_PLAIN23=1 GE_TOP_RUN
 set all four explicitly for an old/new comparison. Schema 16's arm columns name
 both behaviours without changing any existing column's meaning.
 Both probe CSVs begin with a `# GE_TOP_MARGIN=... GE_TOP_GUARD=...
-GE_TOP_PLAIN23=... GE_TOP_RUNIN=...` provenance line before the CSV header;
+GE_TOP_PLAIN23=... GE_TOP_RUNIN=... GE_TOP_NEAR_BLANK=...` provenance line before the CSV header;
 skip this comment when parsing. The unit CSV also includes `rule_first`,
 `auto_first`, `plain23` and `runin` to distinguish raw scan, re-search and final
 placement. Disabling either final-stage switch retains its evidence computation.
@@ -121,8 +121,44 @@ Both tools use the same tool-only `geometry_tool_controls.h` parser and formatte
 Replay echoes the same arm line on stderr at startup, before opening outputs.
 Schema 16 appends `ge_top_margin`, `ge_top_guard`, `ge_top_plain23` and
 `ge_top_runin` to every v11 decision-log row, including unavailable observations.
-The sidecar still starts with its CSV column header (no comment to skip); the
-probe format is unchanged. Margin uses `%.17g`; the other settings are integers.
+The sidecar still starts with its CSV column header (no comment to skip).
+Margin uses `%.17g`; the other original settings remain integers.
+
+Entry 31 amendment 1 adds `GE_TOP_NEAR_BLANK` (`ge_top_near_blank` in C),
+default **-1, disabled**. A finite nonnegative value enables an inclusive
+cutoff on the newly measured final top's body p95 minus its field's horizontal
+blanking level. No tape threshold is selected. A negative distance is also weak
+evidence under an enabled cutoff (possible with alternative search arms);
+the disabled sentinel never suppresses it. Other negative settings are refused.
+Only an adjacent, non-reset `GE_TOP_ONLY` proposal meeting that cutoff is
+ignored. Its predecessor's interpreted top stands, while measured `first[]`,
+bottoms, profiles and all other evidence remain unchanged. No coherence test
+is added. Missing tops stay missing. The current motion class records the
+proposal BEFORE rejection, against interpreted history; interpreted tops then
+feed placement and the next comparison. Thus later classes, held-correction
+bases and comb scheduling can change. The comb algorithm and audit semantics
+do not change. A suppression does not freeze the whole geometry or prevent a
+triggered decided comb from choosing a relative shift.
+
+Schema 17 appends `ge_top_near_blank`, `interpreted_f1_first`,
+`interpreted_f2_first`, `top_distance_f1`, `top_distance_f2`,
+`top_ignored_f1`, `top_ignored_f2`. The setting appears on every row.
+The other six are FRAME-owned, exactly like existing measured `f1_first` /
+`f2_first`: field 1 belongs to `frame_top_unit`, field 2 to `counter_extended`.
+Under reversed pairing do not subtract this row's unit-owned hblank field-1
+level from that frame's field-1 measurement. Distances use `%.17g` and are empty
+when the measured top is missing. Interpreted tops are empty when unavailable;
+ignore flags are 0/1. All six cells are empty on rows without a woven frame.
+These tops are census interpretations, NOT final comb-adjusted placements;
+the final frame still uses `frame_d1/d2`.
+
+The probe appends the same six evidence/interpretation columns plus `class_f1`
+and `class_f2` to its unit CSV (own-unit coordinates, including unused fields;
+0 for a missing top and nan for its distance). Its frame CSV also appends the
+measured/interpreted tops, classes and ignore flags. `ge_current_features()`
+exposes a borrowed read-only view of the latest unit for such instruments.
+The disabled default is the exact d5c9f08 comparison arm. All five controls
+must be set before workers start; neither library reads the environment.
 
 The library exposes corresponding process-wide `ge_top_*` variables, not
 environment reads. Set them before measurement/worker startup and never mutate

@@ -19,10 +19,12 @@ static double cpu(void) {
 static void frames(FILE *f,const ge_decision *out,unsigned n) {
     for(unsigned i=0;i<n;i++)if(out[i].has_frame) {
         const ge_decision *d=out+i;
-        fprintf(f,"%llu,%llu,%d,%d,%d,%d,%.17g,%d,%u,%d\n",
+        fprintf(f,"%llu,%llu,%d,%d,%d,%d,%.17g,%d,%u,%d,%d,%d,%d,%d,%s,%s,%d,%d\n",
             (unsigned long long)d->counter,(unsigned long long)d->top_unit,
             d->frame_d1,d->frame_d2,d->comb_ran,d->comb.shift,
-            d->comb.margin,d->comb.decided,d->triggers,d->held);
+            d->comb.margin,d->comb.decided,d->triggers,d->held,
+            d->first[0],d->first[1],d->interpreted_first[0],d->interpreted_first[1],
+            ge_class_name(d->motion[0]),ge_class_name(d->motion[1]),d->top_ignored[0],d->top_ignored[1]);
     }
 }
 int main(int argc,char **argv) {
@@ -35,11 +37,11 @@ int main(int argc,char **argv) {
         audit_file=fopen(argv[1],"w");audit=malloc(ge_size());
         if(!audit_file||!audit){perror("audit output/allocation");return 2;}
         ge_tool_controls_echo(audit_file);
-        fputs("counter,top_unit,frame_d1,frame_d2,comb_ran,comb_d,comb_margin,comb_decided,triggers,held\n",audit_file);
+        fputs("counter,top_unit,frame_d1,frame_d2,comb_ran,comb_d,comb_margin,comb_decided,triggers,held,f1_first,f2_first,interpreted_f1_first,interpreted_f2_first,class_f1,class_f2,top_ignored_f1,top_ignored_f2\n",audit_file);
     }
     int mode=-1;uint64_t counter;uint32_t reset,pair;ge_decision out[2];
     ge_tool_controls_echo(stdout);
-    puts("counter,f1_first,f2_first,f1_last,f2_last,bottom_f1,bottom_f2,blank_f1,blank_f2,profile_hash,level_f1,level_f2,cols_f1,cols_f2,rule_first,auto_first,plain23,runin,measure_ms,engine_ms");
+    puts("counter,f1_first,f2_first,f1_last,f2_last,bottom_f1,bottom_f2,blank_f1,blank_f2,profile_hash,level_f1,level_f2,cols_f1,cols_f2,rule_first,auto_first,plain23,runin,measure_ms,engine_ms,interpreted_f1_first,interpreted_f2_first,top_distance_f1,top_distance_f2,top_ignored_f1,top_ignored_f2,class_f1,class_f2");
     while(fread(&counter,sizeof counter,1,stdin)==1) {
         if(fread(&reset,sizeof reset,1,stdin)!=1||fread(&pair,sizeof pair,1,stdin)!=1||
            fread(y,1,GE_PIXELS,stdin)!=GE_PIXELS){fputs("short probe record\n",stderr);return 2;}
@@ -61,7 +63,11 @@ int main(int argc,char **argv) {
 #else
         printf(",,,,");
 #endif
-        printf("%d,%d,%d,%.17g,%.9f,%.9f\n",f.rule_first,f.auto_first,f.plain23,f.runin,measure,engine);
+        const ge_features *current=ge_current_features(g);
+        printf("%d,%d,%d,%.17g,%.9f,%.9f,%d,%d,%.17g,%.17g,%d,%d,%s,%s\n",
+            f.rule_first,f.auto_first,f.plain23,f.runin,measure,engine,
+            current->interpreted_first[0],current->interpreted_first[1],f.top_distance[0],f.top_distance[1],
+            current->top_ignored[0],current->top_ignored[1],ge_class_name(current->motion[0]),ge_class_name(current->motion[1]));
     }
     int bad=ferror(stdin)||ferror(stdout);
     if(audit){if(mode>=0)frames(audit_file,out,ge_break(audit,out));if(fclose(audit_file))bad=1;}

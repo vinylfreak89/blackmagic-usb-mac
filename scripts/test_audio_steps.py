@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix='audio-steps-', dir='/private/tmp') as d
         units = {int(r['counter_extended']): r for r in rows if r['counter_extended']}
         assert set(units) == set(range(len(sizes))), (units.keys(), p.stdout)
         for c, row in units.items():
-            assert row['schema_version'] == '16'
+            assert row['schema_version'] =='17'
             if c in missing:
                 assert row['audio_residual_ticks'] == row['audio_step_samples'] == '', row
             else:

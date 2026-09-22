@@ -205,3 +205,30 @@ predicate/ownership, or suppression across missing history. Enabled tape-arm
 edge-gate outcomes are deliberately deferred to the requested threshold sweep;
 synthetic thresholds establish mechanism only. Report all default bands and
 class/scheduling deltas, and never call the disabled result an improved edge gate.
+
+### Report — disabled instrument implemented; source-quality premise still unknown
+
+The mechanism and disabled-default compatibility hold. A single whole-tape read
+fed the actual d5c9f08 and new C engines the same units, live resets and pairing
+schedule. Every existing non-timing census column and class matches on all
+86,293 units; every existing frame column matches on 86,289 woven frames.
+Protected bottom/profile/blanking/level/column measurements are unchanged.
+All four labelled counters retain their measured and interpreted tops. Capture 1
+also has no changed census or placements; its real replay matches every existing
+sidecar cell except schema version. This is not a claim that capture 1 is fixed.
+
+The default cutoff remains -1; no enabled tape threshold was selected. Therefore
+default class counts, comb scheduling and all agreement bands have zero changes,
+and no independent edge-gate improvement is claimed. Full counts, abstentions,
+bands and timing live in /private/tmp/near-blank-engine.El72pK/. Measured thread
+CPU remains below the engine budget. The owner's physical premise is **unknown**
+pending his threshold sweep and independent late-top gate, not held by identity.
+
+Enabled synthetic tests establish an inclusive p95-level cutoff, immutable
+measurements, repeated-run suppression, bright/missing-top handling, resets,
+gaps and both pairings; enabled real-replay fixtures verify frame-owned provenance
+and unchanged audit semantics. The formerly forbidden unit-102 bottom-only to
+valid-move transition (comb 1 to 0) is now a passing mechanism control. Mutations
+removing nearness, restoring measured history or overwriting observations each
+fail the deciding assertions. Unit and sanitizer results are recorded in scratch.
+No shadow classifier, coherence condition, comb override, push or render added.

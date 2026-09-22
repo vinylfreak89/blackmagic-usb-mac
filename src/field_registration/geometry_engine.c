@@ -6,6 +6,7 @@ double ge_top_margin=5.0;
 int ge_top_guard=3;
 int ge_top_plain23=0;
 int ge_top_runin=0;
+double ge_top_near_blank=-1.0;
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
@@ -16,6 +17,9 @@ struct geometry_engine {
     ge_decision pending;
 };
 size_t ge_size(void) { return sizeof(geometry_engine); }
+const ge_features *ge_current_features(const geometry_engine *g) {
+    return g->valid?&g->current:NULL;
+}
 void ge_init(geometry_engine *g, int reverse, int audit) {
     memset(g,0,sizeof *g); g->reverse=!!reverse; g->audit=!!audit;
 }
@@ -134,16 +138,24 @@ void ge_measure(const uint8_t *y,ge_features *f) {
         f->runin=runin(y+(f->first[0]-5)*720);
         if(ge_top_runin && f->runin>=.5 && quantile(h,640,.95)-f->blank[1]>5) f->first[0]++;
     }
+    for(int k=0;k<2;k++) {
+        f->interpreted_first[k]=f->first[k];
+        f->top_distance[k]=NAN;
+        if(f->first[k]) {
+            unsigned h[256];histogram(y+(f->first[k]-4)*720+40,640,h);
+            f->top_distance[k]=quantile(h,640,.95)-f->hblank_level[k];
+        }
+    }
 }
 static ge_class classify(const ge_features *a,const ge_features *b,int f) {
-    if(!a->first[f]||!b->first[f]||!a->last[f]||!b->last[f]||!a->bottom[f]||!b->bottom[f])return GE_UNKNOWN;
+    if(!a->interpreted_first[f]||!b->first[f]||!a->last[f]||!b->last[f]||!a->bottom[f]||!b->bottom[f])return GE_UNKNOWN;
     unsigned gb[12]={0},gp[12]={0};
     for(int j=0;j<12;j++)for(int x=0;x<672;x++) {
         int p=a->profile[f][j][x],q=b->profile[f][j][x];
         int ab=p<=8*(a->blank[f]+12),bb=q<=8*(b->blank[f]+12);
         gb[j]+=!ab && bb && p-q>160;gp[j]+=ab && !bb && q-p>160;
     }
-    int dt=b->first[f]-a->first[f],db=b->bottom[f]-a->bottom[f];
+    int dt=b->first[f]-a->interpreted_first[f],db=b->bottom[f]-a->bottom[f];
     int i=a->bottom[f]-(251+263*f),j=b->bottom[f]-(251+263*f);unsigned n=0;
     if(db<0){for(int k=j+1;k<=i;k++)n+=gb[k];if(n<8)db=0;}
     if(db>0){for(int k=i+1;k<=j;k++)n+=gp[k];if(n<8)db=0;}
@@ -154,6 +166,17 @@ static ge_class classify(const ge_features *a,const ge_features *b,int f) {
     if(dt==0)return GE_BOTTOM_ONLY;
     if(db==0 && !partial)return GE_TOP_ONLY;
     return GE_NOT_IN_TANDEM;
+}
+static void interpret_top(const ge_features *previous,ge_features *f,int k) {
+    /* Class describes the proposal against interpreted history, before rejection.
+     * Only this top is discarded: all other measurements and decisions proceed.
+     * -1 disables independently of the other top-search controls. */
+    if(ge_top_near_blank>=0 && f->motion[k]==GE_TOP_ONLY &&
+       f->first[k] && previous->interpreted_first[k] &&
+       f->top_distance[k]<=ge_top_near_blank) {
+        f->interpreted_first[k]=previous->interpreted_first[k];
+        f->top_ignored[k]=1;
+    }
 }
 ge_comb_result ge_comb(const uint8_t *t,const uint8_t *b) {
     double energy[11];int best=0,second=1;
@@ -187,21 +210,25 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
                          const ge_features *t,const ge_features *b,uint64_t tc,uint64_t bc) {
     ge_decision o={0};o.counter=bc;o.top_unit=tc;o.has_frame=1;o.comb.margin=NAN;
     o.first[0]=t->first[0];o.first[1]=b->first[1];
+    o.interpreted_first[0]=t->interpreted_first[0];o.interpreted_first[1]=b->interpreted_first[1];
+    o.top_distance[0]=t->top_distance[0];o.top_distance[1]=b->top_distance[1];
+    o.top_ignored[0]=t->top_ignored[0];o.top_ignored[1]=b->top_ignored[1];
     o.last[0]=t->last[0];o.last[1]=b->last[1];
     o.bottom[0]=t->bottom[0];o.bottom[1]=b->bottom[1];
     o.motion[0]=t->motion[0];o.motion[1]=b->motion[1];
-    /* A held correction belongs to these two frame tops, not to a transport
+    /* A held correction belongs to these two interpreted frame tops, not to a transport
      * unit (the top field can belong to the next unit under reversed pairing).
      * Loss of a measured top also invalidates that basis. Retry on this frame;
      * an abstaining comb must not restore the stale correction. */
-    if(g->basis_valid && (t->first[0]!=g->basis_first[0] || b->first[1]!=g->basis_first[1])) {
+    int tfirst=t->interpreted_first[0],bfirst=b->interpreted_first[1];
+    if(g->basis_valid && (tfirst!=g->basis_first[0] || bfirst!=g->basis_first[1])) {
         g->held=0;g->provisional=0;g->basis_valid=0;
         o.triggers|=GE_BASIS_CHANGED;
     }
-    int known=t->first[0] && b->first[1],st=0,d=0,dknown=known;
+    int known=tfirst && bfirst,st=0,d=0,dknown=known;
     if(!known) o.triggers|=GE_UNMEASURABLE;
     else {
-        st=b->first[1]-263-t->first[0];d=st+g->held;
+        st=bfirst-263-tfirst;d=st+g->held;
         int lastknown=t->last[0] && b->last[1],sl=b->last[1]-263-t->last[0];
         if((d!=st && d!=st+1) || (lastknown && d!=sl && d!=sl+1))o.triggers|=GE_T1;
         if(!lastknown||!t->bottom[0]||!b->bottom[1])o.triggers|=GE_UNMEASURABLE;
@@ -219,11 +246,11 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
             if(g->provisional)g->provisional=0;
             else if(correction!=g->held)g->provisional=1;
             g->held=correction;
-            g->basis_first[0]=t->first[0];g->basis_first[1]=b->first[1];g->basis_valid=1;
+            g->basis_first[0]=tfirst;g->basis_first[1]=bfirst;g->basis_valid=1;
         }
     }
     if(!dknown)d=g->have_placement?g->last_d:0;
-    int d2=b->first[1]?b->first[1]-286:(g->have_placement?g->last_d2:0);
+    int d2=bfirst?bfirst-286:(g->have_placement?g->last_d2:0);
     o.frame_d1=o.d1=d2-d;o.frame_d2=o.d2=d2;o.published_d=d;o.held=g->held;
     g->last_d=d;g->last_d2=d2;g->have_placement=1;
     return o;
@@ -241,13 +268,16 @@ unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_dec
     unsigned n=0;int adjacent=g->valid && g->counter!=UINT64_MAX && c==g->counter+1;
     if(g->valid && !adjacent)n=ge_break(g,out);
     ge_features *f=&g->current;ge_measure(y,f);
-    if(adjacent && !reset)for(int k=0;k<2;k++)f->motion[k]=classify(&g->previous,f,k);
+    if(adjacent && !reset)for(int k=0;k<2;k++) {
+        f->motion[k]=classify(&g->previous,f,k);
+        interpret_top(&g->previous,f,k);
+    }
     if(reset || !adjacent)reset_frame_state(g);
     if(!g->reverse) {
         out[n]=frame(g,y,y,f,f,c,c);out[n].reset_before=reset;
         unit_provenance(out+n,f); n++;
     } else {
-        int current_d1=f->first[0]?f->first[0]-23:0,unused1=1;
+        int current_d1=f->interpreted_first[0]?f->interpreted_first[0]-23:0,unused1=1;
         if(adjacent) {
             ge_decision o=frame(g,y,g->previous_y,f,&g->previous,c,g->counter);
             current_d1=o.d1;unused1=0;
@@ -255,7 +285,7 @@ unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_dec
             unit_provenance(&o,&g->previous);
             out[n++]=o;
         }
-        ge_decision p={0};p.counter=c;p.d1=current_d1;p.d2=f->first[1]?f->first[1]-286:0;
+        ge_decision p={0};p.counter=c;p.d1=current_d1;p.d2=f->interpreted_first[1]?f->interpreted_first[1]-286:0;
         p.unused1=unused1;p.unused2=1;p.reset_before=reset;p.comb.margin=NAN;
         unit_provenance(&p,f);
         g->pending=p;memcpy(g->previous_y,y,GE_PIXELS);

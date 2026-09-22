@@ -1636,8 +1636,11 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   the whole crop makes the applied-decision log disagree with the published pixels.
   Measured and interpreted top histories are distinct: feeding a substituted top
   into the next comparison can reclassify later tandem/bottom-only moves and
-  change comb triggers even with unchanged classifier code. See the state-series
-  preflight in `docs/experiments_codex.md` before asserting those counts invariant.
+  change comb triggers even with unchanged classifier code. Entry 31 amendment 1
+  permits those enabled-arm effects: report them, do not hide them behind a shadow
+  measured-history state. The near-blank rejection instrument defaults disabled;
+  no source-improvement claim follows from its disabled-default identity test.
+  See `docs/geometry_engine.md` for measured/frame-owned versus interpreted tops.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

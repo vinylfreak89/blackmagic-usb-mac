@@ -11,12 +11,14 @@
 /* Process-wide experiment controls. Configure once before any measurement or
  * worker starts; never write concurrently with an engine call. Library code
  * does not read the environment. Defaults are margin 5, guard 3, and both
- * legacy placement steps off. The old arm is explicitly (0,0,1,1). */
+ * legacy placement steps off. Near-blank suppression defaults disabled. The
+ * old search arm is explicitly (0,0,1,1), with suppression still disabled. */
 extern double ge_top_margin; /* 5.0; finite values only */
 extern int ge_top_guard; /* default 3; 0: lag correlation, 1: none, 2: high-spread chunks,
                          * 3: all-row chunks, 4: all-row structure ratio */
 extern int ge_top_plain23; /* default 0; 1: apply plain23 re-search; 0: evidence only */
 extern int ge_top_runin; /* default 0; 1: apply run-in step; 0: evidence only */
+extern double ge_top_near_blank; /* -1: disabled; finite >=0: inclusive p95-level cutoff */
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
 enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16,
@@ -28,6 +30,8 @@ typedef struct {
 } ge_comb_result;
 typedef struct {
     int first[2], last[2], bottom[2], rule_first, auto_first, plain23;
+    int interpreted_first[2], top_ignored[2]; /* first[] remains measured */
+    double top_distance[2]; /* measured final-top body p95 - hblank_level; NAN if absent */
     double blank[2], runin;
     double hblank_level[2];
     int hblank_cols[2];
@@ -41,6 +45,8 @@ typedef struct {
     unsigned triggers;
     ge_comb_result comb; /* unknown (NAN margin) unless run or audit requested */
     int first[2], last[2], bottom[2];
+    int interpreted_first[2], top_ignored[2]; /* same FRAME fields as first[] */
+    double top_distance[2]; /* same FRAME fields; not unit-owned hblank provenance */
     double hblank_level[2]; /* this unit's own fields, also on unused boundaries */
     int hblank_cols[2];
     ge_class motion[2];
@@ -57,6 +63,9 @@ ge_comb_result ge_comb(const uint8_t *top, const uint8_t *bottom);
  */
 unsigned ge_push(geometry_engine *, const uint8_t *, uint64_t counter,
                  int reset, ge_decision out[2]);
+/* Latest pushed unit's own evidence/interpretation, including reversed boundaries.
+ * Borrowed read-only view, invalidated by push/break/init. NULL without history. */
+const ge_features *ge_current_features(const geometry_engine *);
 /* EOF/broken adjacency completes the unused boundary field using its own census.
  * Clears all history; preserves the two configuration flags. */
 unsigned ge_break(geometry_engine *, ge_decision out[2]);
