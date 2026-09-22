@@ -816,3 +816,27 @@ pending. The fixed DIFFERS slot and logged ratio/floor/rise overlay tests pass.
 No production code changed during this resumed publication; no hold prototype
 was promoted, no push occurred and no full-tape render was made. Backup and
 publication manifests remain in /private/tmp/comb-basin.KlFmop.
+
+### Entry 34 whole-tape scale gate before review encoding
+
+Owner authorization relayed with watchdog provenance (line 77096, UUID
+d97db69d-1fb8-40f4-a065-d758fff7a3aa, 2026-09-22T11:58:14Z): finish the four
+review renders and, if time allows, the full tape. The four are complete.
+The four-capture rejection/basin validation does not establish whole-tape
+publication behavior; prior whole-tape census identity measures a different
+property. Run the unchanged 3a87891 engine with the existing pairing schedule,
+audit evidence and 8000-us replay pacing, keeping all growing files in scratch.
+
+Precommitted scale falsifier: render only if actual comb_rejected frame rows
+are strictly below 5% of published paired frames and actual geometry discards
+are strictly below 2%. Count direct events separately from state propagation;
+report substituted/discarded counts, rejected-ratio median/p90/p99/max, and
+the no-basin fraction across all frame rows. Verify complete replay accounting,
+not only exit status. If either bound fails, report and render nothing. Do not
+tune the engine or use the rejected four-edge prototype to pass this gate.
+
+If passed, require adequate free space and same-filesystem publication, render
+from the new sidecar, read every encoded placement back against both source-unit
+decisions, and publish closed MP4/CSV plus producer-named hashed status. The
+known cap1 anchor defect is not part of this task. Evidence for this run lives
+in /private/tmp/basin-fulltape.f19Ygq; no new registration rule is authorized.
