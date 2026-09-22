@@ -1419,86 +1419,9 @@ between today and the candidate.
 
 ## E-claude-2026-09-21-24 — excluding the samples that are conceivably picture, as he specified — **diagnosis confirmed, cure REFUTED.** The derived level really does inflate on noisy material (median 134 codes on the affected edges against 18 tape-wide, maximum 247); collapsing the selection further does not cure it without changing edges outside the class, which was his acceptance bar. Shipped knowingly in entry 20. Compacted 2026-09-21.
 
-## E-claude-2026-09-21-25 — freezing the geometry through a fade
+## E-claude-2026-09-21-25 — freezing the geometry through a fade — **superseded.** The freeze was measured and did not reach the defect: fewer than all 80 comb-decided units at 48063-48188 come from the held correction. Entry 33's frame-level confidence covers the same ground from the signal rather than from a fade label. Compacted 2026-09-22.
 
-**Question (owner, 2026-09-21, after the diagnosis):** "on fades you freeze the geometry, you don't
-clear it".
-
-**What the rows show, and it is the whole reason for this entry.** At 48063 field 1 the picture is
-fading. Line 23 is 100% lit through 48059 and 97% at 48062, then 74% at 48063 — it is dimming, not
-vacating. The picture test loses it first, the top reads 24 instead of 23, the engine reads that as the
-picture moving down a line, applies (1,0) and carries it for 126 units to 48188. The picture never moved.
-Clearing and re-deriving would return 24 from the same faded rows, which is why freezing and clearing
-are not the same choice here.
-
-**Premise.** A top that moves while the picture is declining is an artifact of the decline, not a move,
-so holding the pre-decline geometry until the decline ends places the picture correctly.
-
-**Already verified, from measurements in hand, before any engine change.** Over 48063–48188 on the 80
-units where the comb is decided, the published placement agrees with the comb on **0** and the frozen
-pre-fade placement agrees on **80**.
-
-**The trigger, and why it is not the obvious one.** The vacated line still being lit fires at 48063 but
-on **48.1%** of all downward top moves tape-wide — not rare, which is what refuted entry 19, so it is
-rejected here rather than re-tried. The decline itself is selective: a fall in the window's peak
-occupancy over three units selects 0.5–1.6% of downward moves. Its bar is **derived, not written in** —
-the tape's own 0.5th percentile of that quantity is −5.0, and the case at −6 clears it with margin
-rather than sitting on it.
-
-**Falsifier.**
-- The freeze does not reach the defect: fewer than all 80 of the comb-decided units at 48063–48188 come
-  to agree with the comb.
-- Or it changes placements outside declines: any unit whose placement moves where the trigger did not
-  fire is a defect of the change, counted and reported, not netted against the fix.
-- Or it is not selective: the trigger fires on materially more than the ~0.5% of edges the derived bar
-  predicts, or suppresses top moves that the raw rows show were real.
-- Or the whole-tape figures regress — the blank-line top class (1,695) and the census comparison must not
-  move outside the units the trigger touches.
-
-**Not settled by this entry.** The quantile that derives the bar is still a choice, and the live path is
-forward-only: a trigger that fires a unit late cannot un-publish, so the engine must hold from the moment
-it fires and the offline record carries the rest. Both are recorded here rather than hidden in the
-implementation.
-
-**Material.** All 86,293 exact units; `captures/fulltape_render_registration.csv` for the published
-placements and the comb; `profile.csv` for the per-line occupancy behind the diagnosis.
-
-## E-claude-2026-09-21-26 — the amplitude check on the line above the top
-
-**Ruling (owner, 2026-09-21):** "since correct placement lands that line at 22 which by the standard as
-the blanked line, it should not be included. so I guess we need that additional check in the engine. if
-the first picture line is displaced below 22, is it correlated at the same amplitude as the line below.
-if not, throw it out and it shouldn't be in a final 480p render"
-
-**What the rows showed, on ten cases he asked to see.** Where the tape's caption sits at raster 23 (the
-picture displaced +2, device insert at 21, raster 22 empty at 0% lit and p95 2.0 on all ten), the line at
-raster 24 — the tape's own line 22 — is lit and tracks the line below it at **0.90 to 0.99**, with a
-run-in of 0.03–0.22, so it is not a data line. But its level is a systematic **69–86% of the line below**,
-while genuine adjacent picture lines sit at about 1.0. It carries the picture's content at reduced
-amplitude, which is what the standard's blanked line looks like when the deck does not fully suppress it.
-
-**Premise.** A line that correlates with the picture below but at materially reduced amplitude is the
-blanked line, not the first picture line. Correlation alone cannot tell them apart, because the content
-is the same; the amplitude is what separates them.
-
-**Method.** Whole tape. For every candidate line above the engine's top, the 8-chunk profile correlation
-with the line below and the ratio of their 95th percentiles. Genuine adjacent picture lines supply the
-control distribution — deep inside the picture that ratio should sit at about 1.0, and the separation
-between it and the 0.69–0.86 band is what the rule depends on.
-
-**Falsifier.**
-- The two do not separate: the amplitude ratio of known-bleed lines overlaps materially with that of
-  adjacent picture lines, so no bar excludes one without cutting the other.
-- Or it changes placements outside the class it is aimed at, counted and reported rather than netted.
-- Or it excludes lines the raw rows show to be real picture.
-- Or the owner's own gate fails: comb agreement, filtered to high confidence, does not hold or improve.
-
-**Not settled here.** His bottom ruling — "31 % lit row absolutely counts as last picture line" — pulls
-the other way for a partially present line, and the two rules meet if a line can be partly present at
-full amplitude but not at reduced amplitude. That distinction is his, is recorded, and is not resolved
-by this entry.
-
-**Material.** All 86,293 exact units; the ten cases above as the worked examples.
+## E-claude-2026-09-21-26 — the amplitude check on the line above the top — **not needed as a rule.** Measured; the case it was aimed at is covered by the top search itself. Compacted 2026-09-22.
 
 ## E-claude-2026-09-21-27 — the held correction, and letting a confident comb override
 
@@ -1560,81 +1483,9 @@ changes are in place". So the comb override is withdrawn from this build and the
 first change alone — invalidating the held correction when the top moves. The override, and the
 circularity above, are open and unresolved rather than refuted.
 
-## E-claude-2026-09-21-28 — letting the plain-23 guard abstain
+## E-claude-2026-09-21-28 — letting the plain-23 guard abstain — **moot.** plain-23 is removed from the engine entirely as of d5c9f08; there is no guard left to abstain. Compacted 2026-09-22.
 
-**Owner's principle, applied to the instrument it was measured on:** "any instrument detecting a change
-should recalculate confidence based on its own previous decisions and only enact that change if it is of
-high enough confidence." The guard currently decides on evidence of any strength.
-
-**What it does today.** When the picture test returns 23, the guard discards that answer and re-searches
-from 24 unless line 23's mean sits 30 codes above blanking AND its correlation with line 24 is at least
-0.5. It fires on **10,262 units, 11.9% of the tape**. Measured today: on **98.5%** of those the rejected
-line carries no CEA-608 run-in at all, so it is not rejecting data lines, which is its stated purpose;
-the brightness half causes only 4.7% of rejections; and a ±24 lag search recovers only 13%, so the lines
-genuinely do not resemble the one below.
-
-**The change.** Where the correlation is marginal — within 0.15 of the 0.5 bar — the guard abstains and
-the picture test's answer stands, rather than being overridden. **1,291 units**, a twentieth of what
-removing the guard outright would touch.
-
-**Premise.** A guard that cannot tell picture from data at the margin should not overrule a measurement
-that can. The cases it decides marginally are ones where line 23 is real picture, so letting the picture
-test stand places them correctly.
-
-**Why these two classes and not a blanket removal.** 8,486 of the rejections sit clearly below the bar at
-under 0.35 correlation, and what those lines are is unresolved — they carry no data signature but do not
-resemble the picture below either. Changing them would be asserting something unmeasured. The margin is
-where the evidence says the guard is guessing.
-
-**Falsifier.**
-- The owner's two outstanding case classes must come right: the thirteen at 10989–11001, where the
-  correlation reads 0.397–0.482 while line 23 sits 150+ codes above blanking, and the fade at 48064–48188,
-  whose 126 units follow from a single marginal call of 0.469 at 48063.
-- Or his gate fails: published shift against the comb at margins 3, 5 and 8 must not degrade.
-- Or it changes more than the 1,291 units measured, counted and reported rather than netted.
-- Or raw rows on a sample show the picture test's answer worse than the guard's.
-
-**Material.** All 86,293 exact units, on top of entry 20 and entry 27a.
-
-## E-claude-2026-09-21-29 — one measurement, scanned: the settle point as the top
-
-**Owner's correction that produced this (2026-09-21):** "its not do all of the chunks agree when averaged
-together. its... does any chunk disagree", and then, of the ratio exploding above blanking: "isn't an
-extremely high ratio there indicative of low coherence... doesn't that essentially retire the entire
-CEA-608, XDS, etc test by looking specifically for those explosive ratios?"
-
-**The measurement.** For a line and the line beneath it, the per-chunk ratio of their means, 16 chunks.
-Its **median** is the level relationship and the **scatter** is structural agreement. A correlation
-conflates the two, which is why it could not tell the same picture at a lower level from a different line
-at a similar level — the two cases behind every contradiction in entries 22 to 28.
-
-**The rule.** Scan down from the top of the search window and take the first line where the ratio settles:
-scatter below a bar and median near 1. Above the picture the ratio is meaningless and large because the
-denominator is near zero — 35.3 at NTSC 20, 18.1 at 21, 2.2 at 22 on counter 49419 — and it stays
-disturbed across a caption (0.66) and across a dim or structurally wrong line (0.25) before settling at
-scatter under 0.02.
-
-**What it would retire.** The run-in test for top-finding, since a data line simply fails to settle and
-no format needs naming — which answers the owner's objection that a CEA-608 detector cannot see data
-types it was not built for. Also plain-23 and its line-number special case, the derived level of entry 20,
-the amplitude check of entry 26, the structure ratio, and occupancy. The run-in survives only as the
-positional landmark for locating displacement.
-
-**Evidence so far, and its limits.** On the 28 cases the owner labelled by eye it returns his answer on
-**28 of 28**, as a standalone top-finder rather than a check on another rule. But those 28 are all
-caption-adjacent frames from one bucket where the answer is 24 or 25, the bars are fitted to them, and 28
-is 28.
-
-**Falsifier.**
-- The owner's gate: the placement its tops imply, against the comb at margins 3, 5 and 8, must not
-  degrade against entry 20's tops measured the same way.
-- Or the independent gate degrades: confirmed-wrong edges must not exceed entry 20's 5,502.
-- Or it fails the known cases: 9040, 13284 and 13449 must come right; the thirteen at 10989-11001 and the
-  fade at 48064-48188 are where the level and plain-23 both failed and are the real test.
-- Or the bars cannot be derived from the tape's own distributions and remain fitted to 28 cases.
-- Or it finds no settle point on more than a small fraction of units.
-
-**Material.** All 86,293 exact units.
+## E-claude-2026-09-21-29 — one measurement, scanned: the settle point as the top — **refuted.** The whole-tape census failed the 69566-69576 span, placing field 2 two lines from the owner's reading. Compacted 2026-09-22.
 
 ## E-claude-2026-09-21-30 — one line below, per chunk: does any chunk disagree?
 
@@ -1927,3 +1778,68 @@ crop. On the 21% where the hold or the comb moves the crop away from the measure
 still be published with an increased overrun. The rule refuses the census move that would discard
 picture; what happens downstream is a separate policy the owner may decide differently once he sees a
 render.
+
+## E-claude-2026-09-22-33 — the first line that looks like the line above it
+
+**Question (owner, 2026-09-22, verbatim).** "here's my conceptual understanding. a line will have
+nearly identical luma to the line above and below it in the normal case, true?" … "the whole thing we
+are trying to detect is when blanking or data suddenly goes to picture. and we need something that can
+detect that in a real time setting so it can't be too mathematically complex" … "I think this is the
+engine we want codex to build."
+
+**Premise, stated apart from the method.** Two picture lines carry nearly the same waveform; blanking,
+a caption and a data line do not resemble the picture line beneath them. So the top of picture is
+visible as a **step in the line-to-line waveform correlation**, and it is a single-line event. The
+first line whose waveform correlates with the line above it is one *below* the first picture line.
+Everything the current engine's top search does — a level test, its guards, the chunk rule — is an
+attempt to recognise this same transition through a proxy.
+
+**Why instantaneous, and why this kills the previous version.** Any statistic that spans lines — a
+largest-rise over a window, a smoothed baseline, a rate of change measured against an accumulated
+reference — lets a scene feature deeper in the picture out-score the real transition, because the
+transition is one line wide and a scene edge can be larger. The owner named this before it was
+measured: "you aren't looking for the largest rate of change. you are looking for a rate of change
+that increases from a baseline… it should be an instantaneous rate of change. anything that smooths is
+going to introduce the problem." The largest-rise version placed tops 10 and 20 lines into the picture;
+the first-step version does not. Chunking was only ever a cheap way to measure the same object — "okay
+but chunking is just a proxy" — and is dropped.
+
+**The method.** Per field, walk down from the top of the search window. For each line, correlate its
+luma against the line above it over the delivered body (samples 40–680), raw — no chunking, no
+smoothing, no baseline window. The first line whose correlation **rises by ≥0.45 across a single
+line** marks the transition; the top is that line minus one. Three rules around it:
+
+1. **Abstain.** No single-line step clears the bar anywhere in the window → that field edge produces no
+   answer. The abstention is the confidence statement; it is not a fallback to a guess.
+2. **One clamp, default ±5, configurable, applied identically to both edges** (field 1 against 23,
+   field 2 against 286) — the same range `ge_comb` itself searches. Outside it the placement is
+   **discarded**, not clamped and published. The owner: "discard it. it doesn't [a]ct as a decision."
+3. **A confident comb may override**, where the tops abstained or were discarded.
+
+**Measured before building.** Whole tape, 86,293 units, bar 0.45:
+
+| | |
+|---|---|
+| firm hand-checked labels | 11/11 |
+| edges placed | 155,364 (90.0%) |
+| edges abstained | 17,222 (10.0%) |
+| units with both edges placed | 74,202 (86.0%) |
+| discarded by the ±5 clamp | 1,369 units (1.6% of the tape) |
+| field-1 tops ≥26 surviving the clamp | 5,654, against ~15,600 on both current engines |
+| field-1 tops ≥30 surviving the clamp | **0** |
+
+**Falsifier.**
+- The C engine does not reproduce the Python census unit-for-unit — same top or same abstain on each
+  of the 172,586 field edges. A disagreement indicts the build, and if the build is right it indicts
+  the premise; either way it is reported, never absorbed.
+- Or the owner's labelled units stop landing (69566, 69568, 69570, 69573 → f1 26/26/25/26, f2 288).
+- Or field-1 tops at 30 and beyond come back, which is the defect this is aimed at.
+- Or it costs more real placements than it saves bad ones on the render.
+
+**Two things this rests on that are weaker than the table looks, recorded so no report can hide them.**
+The bar 0.45 is not derived from a distribution: it is the value that separated **eleven** hand-checked
+frames, and it may want to move once the renders are seen. And the independent gate that produced every
+comparative score in entries 30–32 detects **late** tops only — a top placed too early scores
+`abstain`, never `wrong` — so every "wrong" count across this work is one-directional and understates.
+
+**Material.** The whole tape for the census; captures 1–4 for the renders the owner validates first.
