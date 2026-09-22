@@ -11,12 +11,13 @@ import tempfile
 root=Path(__file__).resolve().parents[1]
 replay=str(Path(sys.argv[1]).resolve())
 probe=str(root/'src/field_registration/tests/hblank_probe')
-base={k:v for k,v in os.environ.items() if not k.startswith(('GE_TOP_','GE_WAVE_'))}
-names=('GE_WAVE_BAR','GE_WAVE_CLAMP')
-columns='ordinal epoch observed_counter counter_extended applied_d1 applied_d2 f1_unused f2_unused reset_before comb_ran comb_d comb_margin comb_decided confidence frame_top_unit triggers frame_d1 frame_d2 f1_first f2_first f1_last f2_last bl1 bl2 hblank_level_f1 hblank_cols_f1 hblank_level_f2 hblank_cols_f2 class_f1 class_f2 published drop_reason preceding_ring_drops schema_version pairing pairing_note audio_residual_ticks audio_step_samples comb_energies ge_wave_bar ge_wave_clamp wave_top_f1 wave_step_f1 wave_max_step_f1 wave_status_f1 wave_top_f2 wave_step_f2 wave_max_step_f2 wave_status_f2 relative_source anchor_source held_correction'.split()
+base={k:v for k,v in os.environ.items() if not k.startswith(('GE_TOP_','GE_WAVE_','GE_COMB_'))}
+names=('GE_WAVE_BAR','GE_WAVE_CLAMP','GE_COMB_REJECT')
+columns='ordinal epoch observed_counter counter_extended applied_d1 applied_d2 f1_unused f2_unused reset_before comb_ran comb_d comb_margin comb_decided confidence frame_top_unit triggers frame_d1 frame_d2 f1_first f2_first f1_last f2_last bl1 bl2 hblank_level_f1 hblank_cols_f1 hblank_level_f2 hblank_cols_f2 class_f1 class_f2 published drop_reason preceding_ring_drops schema_version pairing pairing_note audio_residual_ticks audio_step_samples comb_energies ge_wave_bar ge_wave_clamp wave_top_f1 wave_step_f1 wave_max_step_f1 wave_status_f1 wave_top_f2 wave_step_f2 wave_max_step_f2 wave_status_f2 relative_source anchor_source held_correction ge_comb_reject comb_reject_ratio comb_rejected comb_refused_d comb_substituted_d comb_discarded comb_floor_lo comb_floor_hi comb_rise_left comb_rise_right comb_basin'.split()
 for n in names:base.pop(n,None)
 for name,values in {'GE_WAVE_BAR':('nan','inf','1e999','','5junk'),
-                    'GE_WAVE_CLAMP':('-1','1.5','','2junk','2147483648')}.items():
+                    'GE_WAVE_CLAMP':('-1','1.5','','2junk','2147483648'),
+     'GE_COMB_REJECT':('0','-1','nan','inf','1e999','','2junk')}.items():
     for value in values:
         env=base|{name:value}
         a=subprocess.run([probe],input=b'',capture_output=True,env=env,timeout=30)
@@ -40,7 +41,7 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
         for seq,off in enumerate(range(0,len(stream),15360)):
             f.write(fixture.record(fixture.DATA,fixture.VIDEO,0,seq,0,15360,stream[off:off+15360]))
     for arm in ('default','discard','abstain'):
-        values={'default':('0.45000000000000001','5'),'discard':('0.45000000000000001','0'),'abstain':('2','5')}[arm]
+        values={'default':('0.45000000000000001','5','2'),'discard':('0.45000000000000001','0','2'),'abstain':('2','5','3')}[arm]
         env=base|(dict(zip(names,values)) if arm!='default' else {})
         for reversed_pair in (False,True):
             log=tmp/f'{arm}-{reversed_pair}.csv'
@@ -56,7 +57,7 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
             units={int(r['counter_extended']):r for r in rows if r['counter_extended']}
             assert len(units)==4 and all(r['published']=='1' for r in units.values()),p.stdout
             for r in rows:
-                assert r['schema_version']=='21' and tuple(r[n.lower()] for n in names)==values,r
+                assert r['schema_version']=='22' and tuple(r[n.lower()] for n in names)==values,r
             raw=b''.join(struct.pack('=QII',c,int(units[c]['reset_before']),int(reversed_pair))+y for c in units)
             q=subprocess.run([probe],input=raw,capture_output=True,env=env,timeout=30)
             assert q.returncode==0,q.stderr

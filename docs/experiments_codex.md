@@ -689,3 +689,29 @@ comb shift; census or label differences. Distinguish direct substitutions from
 propagated placements. If passed, preserve the four-capture/render gates from
 the parent entry, record floor/rises and refusal disposition, cost the built
 engine, and render only those captures. A new failure is reported, not tuned.
+
+Amendment result: held on the specified material. Both discard policies were
+run forward; they differ only at cap2 2312. Chosen policy holds the prior full
+published pair, clears correction state and labels geometry discarded (image
+data is still published). The five discards are cap1 6271/6272 and cap2
+2309/2311/2312. Exactly the 21 supported target placements improve the 720x480
+full-width neighbour-residual mean; zero worsen. Nineteen are direct
+substitutions and two (6254/13577) propagate from previous events. Two discards
+also change placement by holding the new prior pair: 23 placement changes
+total, zero outside the 26 targets, zero among 2,100 decided-comb frames.
+No claim is made that all 21 improvement rows contain a fresh refusal event.
+
+The production C engine through real four-capture replays matches the scratch
+state prototype exactly, with zero drops. Raw/accepted census, bottoms and
+blanking/reference evidence are unchanged on all four captures. Whole-tape
+comparison against 47423f3 finds all 86,293 complete ge_features structures
+byte-identical, hence 172,586/172,586 raw top/abstention matches; the four labelled
+counters still match. Production-scheduled whole-engine thread-CPU median/p95:
+0.307667/0.333541 ms per unit; measurement alone 0.0635/0.079875.
+Native, ASan/UBSan and TSan checks pass. The initial audit test failed because
+its evidence exclusion lacked the new audit-only floor/ratio columns; only
+those measured columns were excluded, with all actions/state still exact.
+The mutation that ignores basin support fails the discard-state assertion.
+Schema 22 appends rejection provenance; no selection threshold, census, search
+schedule or audit-adoption change. Evidence: /private/tmp/comb-basin.KlFmop.
+This gate authorizes only the four review renders, not full-tape publication.

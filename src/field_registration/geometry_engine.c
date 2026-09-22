@@ -4,6 +4,7 @@
 
 double ge_wave_bar=.45;
 int ge_wave_clamp=5;
+double ge_comb_reject=2;
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
@@ -65,7 +66,8 @@ const char *ge_wave_status_name(ge_wave_status s) {
     return names[s];
 }
 const char *ge_source_name(ge_source s) {
-    static const char *const names[]={"","census","held_correction","comb","previous","section_start"};
+    static const char *const names[]={"","census","held_correction","comb","previous","section_start",
+        "comb_rejection","discard_previous","discard_section_start"};
     return names[s];
 }
 static double horizontal_level(const uint8_t *y,int off,int *columns) {
@@ -150,9 +152,48 @@ ge_comb_result ge_comb(const uint8_t *t,const uint8_t *b) {
         else if(energy[i]<energy[second])second=i;
     }
     double margin=energy[best]>0?energy[second]/energy[best]:(energy[second]>0?INFINITY:1);
-    ge_comb_result result={.shift=best-5,.decided=margin>=1.5,.margin=margin};
+    ge_comb_result result={.shift=best-5,.decided=margin>=GE_COMB_SELECTION_MARGIN,.margin=margin};
     memcpy(result.energies,energy,sizeof energy);
     return result;
+}
+static double energy_ratio(double energy,double minimum) {
+    return minimum>0?energy/minimum:(energy>0?INFINITY:1);
+}
+ge_comb_evidence ge_comb_examine(const ge_comb_result *c,int proposed) {
+    ge_comb_evidence o={.ratio=NAN,.rise_left=NAN,.rise_right=NAN};
+    if(isnan(c->margin))return o;
+    int best=c->shift+5,lo=best,hi=best;
+    const double *e=c->energies;
+    double minimum=e[best],ceiling=GE_COMB_SELECTION_MARGIN*minimum;
+    while(lo>0 && e[lo-1]<=ceiling)lo--;
+    while(hi<10 && e[hi+1]<=ceiling)hi++;
+    o.floor_lo=lo-5;o.floor_hi=hi-5;
+    if(lo>0)o.rise_left=energy_ratio(e[lo-1],minimum);
+    if(hi<10)o.rise_right=energy_ratio(e[hi+1],minimum);
+    o.basin=lo>0 && hi<10 && o.rise_left>=GE_COMB_SELECTION_MARGIN &&
+        o.rise_right>=GE_COMB_SELECTION_MARGIN;
+    if(proposed>=-5 && proposed<=5)o.ratio=energy_ratio(e[proposed+5],minimum);
+    return o;
+}
+static void reject_placement(geometry_engine *g,ge_decision *o,int *d,int *d2) {
+    o->rejection=ge_comb_examine(&o->comb,*d);
+    /* Audit-only evidence cannot change placement or state. No extra search. */
+    if(!o->comb_ran || !(o->rejection.ratio>ge_comb_reject))return;
+    o->rejected=1;o->refused_d=*d;
+    g->held=0;g->provisional=0;g->basis_valid=0;
+    g->basis_first[0]=g->basis_first[1]=0;
+    if(o->rejection.basin) {
+        *d=o->comb.shift;o->substituted_d=*d;o->relative_source=GE_SOURCE_REJECT;
+    } else {
+        /* Discard the proposed GEOMETRY, never the frame's image data. Holding
+         * the complete published pair does not enact another unsupported top.
+         * At a section start, use the existing unregistered zero placement. */
+        o->discarded=1;
+        *d=g->have_placement?g->last_d:0;
+        *d2=g->have_placement?g->last_d2:0;
+        o->relative_source=o->anchor_source=g->have_placement?
+            GE_SOURCE_DISCARD_PREVIOUS:GE_SOURCE_DISCARD_START;
+    }
 }
 static void reset_frame_state(geometry_engine *g) {
     g->held=0;g->provisional=0;g->have_placement=0;g->last_d=g->last_d2=0;
@@ -205,6 +246,7 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     }
     if(!dknown)d=g->have_placement?g->last_d:0;
     int d2=b->first[1]?b->first[1]-286:(g->have_placement?g->last_d2:0);
+    reject_placement(g,&o,&d,&d2);
     o.frame_d1=o.d1=d2-d;o.frame_d2=o.d2=d2;o.published_d=d;o.held=g->held;
     g->last_d=d;g->last_d2=d2;g->have_placement=1;
     return o;

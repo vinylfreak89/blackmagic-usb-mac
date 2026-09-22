@@ -395,6 +395,50 @@ def weave(f1_raster, f2_raster, d1, d2, fill=0.0):
     return out
 
 
+def fitted_text(dr, xy, text, font, color, right):
+    """Clip optional prose only. Decision flags are drawn separately."""
+    while text and dr.textlength(text, font=font) > right - xy[0]:
+        text = text[:-1]
+    dr.text(xy, text, font=font, fill=color)
+
+
+def draw_comb_status(dr, row, published, font, x, y, right):
+    cd, mg = row.get('comb_d'), row.get('comb_margin')
+    known = cd not in ('', None)
+    differs = known and int(cd) != published
+    # Fixed leading slot: a long trigger list can never clip this flag.
+    flags = ('DIFFERS' if differs else 'MATCH' if known else 'NO COMB')
+    if row.get('reset_before') == '1': flags += ' RESET'
+    color = (235, 180, 90) if differs or row.get('reset_before') == '1' else (170, 170, 170)
+    dr.text((x, y), flags, font=font, fill=color)
+    after = x + max(100, dr.textlength(flags, font=font) + 10)
+    margin = f'{float(mg):.2f}' if mg not in ('', None) else '--'
+    what = (f"comb {'ran' if row.get('comb_ran') == '1' else 'audit'} d{int(cd):+d} m{margin} "
+            f"{'decided' if row.get('comb_decided') == '1' else 'undecided'}" if known else 'comb --')
+    fitted_text(dr, (after, y), f"{what} | {row.get('confidence', '--')} "
+                + trigger_words(row.get('triggers')), font, color, right)
+
+
+def comb_panel_lines(row, energies, published):
+    """Presentation of logged engine evidence, not a second basin classifier."""
+    if not energies: return ['no comb energies', '', '', '', '']
+    best = min(range(11), key=lambda k: energies[k]); minimum = energies[best]
+    box = energies[published+5] if -5 <= published <= 5 else None
+    ratio = None if box is None else box/minimum if minimum > 0 else math.inf if box > 0 else 1.
+    fmt = lambda n: '--' if n is None or n == '' else f'{float(n):.3g}'
+    lines = [f'min {fmt(minimum)} d{best-5:+d} box {fmt(box)}', f'box/min {fmt(ratio)}x']
+    candidate = fmt(row.get('comb_reject_ratio'))
+    if row.get('comb_discarded') == '1': lines.append(f'DISCARD {candidate}x; HOLD')
+    elif row.get('comb_rejected') == '1': lines.append(f"REJECT {candidate}x -> d{int(row['comb_substituted_d']):+d}")
+    else: lines.append(f'candidate/min {candidate}x')
+    if row.get('comb_floor_lo') not in ('', None):
+        lines.append(f"floor {int(row['comb_floor_lo']):+d}..{int(row['comb_floor_hi']):+d} "
+                     + ('BASIN' if row.get('comb_basin') == '1' else 'OPEN'))
+        lines.append(f"rise L{fmt(row.get('comb_rise_left'))}x R{fmt(row.get('comb_rise_right'))}x")
+    else: lines.extend(['floor --', 'rise L-- R--'])
+    return lines
+
+
 def plausible_format(fmt):
     """unit_parser.c plausible_video_format."""
     return fmt == 0x0800 or (fmt & 0xFF00) in (0xE800, 0xE100)
@@ -776,10 +820,9 @@ def main():
 
     CB_X0, CB_W = gx0 - 228, 208
 
-    def comb_bar(dr, energies, published):
+    def comb_bar(dr, energies, published, row):
         """The comb's own eleven numbers: one bar per shift -5..+5, log height. The published shift is
         outlined, the comb's minimum marked, so a placement the comb excludes is visible at a glance."""
-        pass
         if not energies:
             dr.text((CB_X0, gy0 + gh // 2 - 6), "no comb energies in this sidecar", font=small, fill=(90, 90, 90))
             fit(dr, (CB_X0, LEGEND_Y), "comb energy by shift (log)", small, (120, 120, 120))
@@ -789,18 +832,20 @@ def main():
         w = CB_W / 11.0
         for k, e in enumerate(energies):
             frac = math.log(max(e, lo) / lo) / math.log(hi / lo) if hi > lo else 0.0
-            h = max(1, int(frac * (gh - 12)))
+            h = max(1, int(frac * 40))
             x0 = CB_X0 + k * w; x1 = x0 + w - 3
-            y1 = gy0 + gh - 10
+            y1 = gy0 + 41
             col = (235, 180, 90) if k == best else (110, 110, 110)
             dr.rectangle([x0, y1 - h, x1, y1], fill=col)
             if k - 5 == published:
-                dr.rectangle([x0 - 1, gy0, x1 + 1, y1 + 1], outline=(255, 60, 60))
+                marked = row.get('comb_rejected') == '1'
+                dr.rectangle([x0 - 1, gy0, x1 + 1, y1 + 1],
+                             outline=(255, 210, 60) if marked else (255, 60, 60), width=2 if marked else 1)
             if k == best:
                 dr.text((x0, y1 + 1), "^", font=small, fill=(235, 180, 90))
-        fit(dr, (CB_X0, LEGEND_Y), f"comb min {energies[best]:.0f}@d1{-(best - 5):+d}"
-                                   + (f"  box {energies[published + 5]:.0f}" if -5 <= published <= 5 else ""),
-            small, (150, 150, 150))
+        for j, line in enumerate(comb_panel_lines(row, energies, published)):
+            fit(dr, (CB_X0, FH + 65 + 13*j), line, small,
+                (255, 210, 60) if j == 2 and row.get('comb_rejected') == '1' else (170, 170, 170))
 
     def graph_and_strip(dr, i, ext, d1, d2):
         dr.rectangle([gx0, gy0, gx0 + gw, gy0 + gh], outline=(60, 60, 60))
@@ -902,17 +947,7 @@ def main():
                               f" pub{pub:+d} held{('%+d' % held) if held is not None else '--'}",
             small, (170, 170, 170), right=CB_X0)
         if rowB:
-            ran = rowB.get("comb_ran") == "1"; dec = rowB.get("comb_decided") == "1"
-            cd = rowB.get("comb_d"); mg = rowB.get("comb_margin")
-            mgs = f"{float(mg):.2f}" if mg not in ("", None) else "--"
-            what = (f"comb {'ran' if ran else 'audit'} d1{-int(cd):+d} m{mgs}"
-                    f" {'decided' if dec else 'undecided'}" if cd not in ("", None) else "comb --")
-            differs = cd not in ("", None) and int(cd) != pub
-            fit(dr, (6, FH + 40), f"{rowB.get('confidence','--'):4s} {trigger_words(rowB.get('triggers'))}"
-                                  f" | {what}" + (" DIFFERS" if differs else "")
-                                  + (" RESET" if rowB.get("reset_before") == "1" else ""),
-                small, (235, 180, 90) if (differs or rowB.get("reset_before") == "1") else (170, 170, 170),
-                right=CB_X0)
+            draw_comb_status(dr, rowB, pub, small, 6, FH + 40, CB_X0 - 10)
         for f, col in enumerate((RED, BLUE)):
             if waves[f]['status']:
                 label = waveform_label(f+1, waves[f])
@@ -926,7 +961,7 @@ def main():
         if rowB.get('ge_wave_bar'):
             fit(dr, (6, FH + 120), f"wave bar {float(rowB['ge_wave_bar']):g}; clamp +/-{rowB['ge_wave_clamp']}",
                 small, (150, 150, 150), right=CB_X0)
-        comb_bar(dr, comb_energies(rowB), pub)
+        comb_bar(dr, comb_energies(rowB), pub, rowB)
         if schedule is not None:
             pr, note = schedule_at(schedule, ext)
             fit(dr, (6, FH + 106), f"pairing {pr}: {note}", small,

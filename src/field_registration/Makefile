@@ -23,10 +23,14 @@ tests/geometry_basis: geometry_engine.c geometry_engine.h tests/geometry_basis.c
 tests/geometry_waveform: geometry_engine.c geometry_engine.h tests/geometry_waveform.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) geometry_engine.c tests/geometry_waveform.c -o $@ $(LDLIBS)
 
-geometry-test: tests/geometry_unit tests/geometry_probe tests/geometry_basis tests/geometry_waveform tests/hblank_probe
+tests/geometry_rejection: geometry_engine.c geometry_engine.h tests/geometry_rejection.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/geometry_rejection.c -o $@ $(LDLIBS)
+
+geometry-test: tests/geometry_unit tests/geometry_probe tests/geometry_basis tests/geometry_waveform tests/geometry_rejection tests/hblank_probe
 	./tests/geometry_unit
 	./tests/geometry_basis
 	./tests/geometry_waveform
+	./tests/geometry_rejection
 	python3 ../../scripts/test_waveform_controls.py ./tests/hblank_probe
 
 libfieldreg.dylib: field_registration.c field_registration.h cea608.c cea608.h
@@ -62,5 +66,6 @@ tests/registration_v9.raw tests/registration_v9.csv: v9-fixture
 
 clean:
 	rm -f tests/hblank_probe tests/geometry_basis tests/geometry_guards tests/geometry_waveform
+	rm -f tests/geometry_rejection
 	rm -f libfieldreg.dylib libcea608.dylib tests/field_registration_unit tests/cea608_unit tests/field_registration_v9 \
 		tests/registration_v9.raw tests/registration_v9.csv tests/.registration_v9.complete

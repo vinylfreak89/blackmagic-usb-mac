@@ -1665,7 +1665,17 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   exactly the requested 26 frames, but independent whole-aperture roughness rose
   on three. Two remain worse in the interior-only check; the original scorer's
   aperture is unresolved. See the Codex ledger and /private/tmp/comb-reject.HLom5S.
-  No rejection rule or replacement renders have been promoted from that test.
+  The owner's two-sided-floor amendment then passed: 21 supported target
+  placements improve full-aperture roughness, five unsupported proposals hold
+  the previous published pair, and no extra/decided-frame placement changes.
+  Entry-34 rejection is separate from selection: default GE_COMB_REJECT=2,
+  an enclosed contiguous <=1.5*minimum floor, both outside rises >=1.5.
+  Schema 22 records proposal ratio, refusal/discard, floor and rises without
+  changing census or audit-only decisions. Discard means geometry only, not
+  image loss/repetition. Some improvements propagate without a fresh refusal.
+  Evidence: /private/tmp/comb-basin.KlFmop; docs/geometry_engine.md defines the
+  log and zero-energy/out-of-range conventions. Renderer approval remains the
+  owner's decision after the four numeric-gated review captures.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

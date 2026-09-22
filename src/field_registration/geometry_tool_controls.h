@@ -31,9 +31,17 @@ static int ge_tool_controls_from_env(void) {
         }
         ge_wave_clamp=(int)n;
     }
+    v=getenv("GE_COMB_REJECT");
+    if(v) {
+        errno=0;double n=strtod(v,&end);
+        if(errno || end==v || *end || !isfinite(n) || n<=0) {
+            fprintf(stderr,"invalid GE_COMB_REJECT: %s (expected positive finite number)\n",v);return 0;
+        }
+        ge_comb_reject=n;
+    }
     return 1;
 }
 static void ge_tool_controls_echo(FILE *f) {
-    fprintf(f,"# GE_WAVE_BAR=%.17g GE_WAVE_CLAMP=%d\n",ge_wave_bar,ge_wave_clamp);
+    fprintf(f,"# GE_WAVE_BAR=%.17g GE_WAVE_CLAMP=%d GE_COMB_REJECT=%.17g\n",ge_wave_bar,ge_wave_clamp,ge_comb_reject);
 }
 #endif

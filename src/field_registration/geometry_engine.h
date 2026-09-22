@@ -11,10 +11,13 @@
 /* Configure once before workers start. The library never reads the environment. */
 extern double ge_wave_bar; /* default .45; first step strictly greater wins */
 extern int ge_wave_clamp; /* default 5; symmetric displacement from 23 / 286 */
+extern double ge_comb_reject; /* default 2; strict proposed-energy / minimum bar */
+#define GE_COMB_SELECTION_MARGIN 1.5
 typedef struct { int first; double step, max_step; } ge_wave_result;
 typedef enum { GE_WAVE_ABSTAIN, GE_WAVE_ACCEPTED, GE_WAVE_DISCARDED } ge_wave_status;
 typedef enum { GE_SOURCE_NONE, GE_SOURCE_CENSUS, GE_SOURCE_HELD, GE_SOURCE_COMB,
-               GE_SOURCE_PREVIOUS, GE_SOURCE_START } ge_source;
+               GE_SOURCE_PREVIOUS, GE_SOURCE_START, GE_SOURCE_REJECT,
+               GE_SOURCE_DISCARD_PREVIOUS, GE_SOURCE_DISCARD_START } ge_source;
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
 enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16,
@@ -24,6 +27,11 @@ typedef struct {
     double margin;
     double energies[11]; /* shift order -5..+5; valid iff margin is not NAN */
 } ge_comb_result;
+typedef struct {
+    double ratio, rise_left, rise_right; /* NAN when not measured / no side */
+    int floor_lo, floor_hi; /* shifts, inclusive contiguous <=1.5*minimum */
+    int basin; /* interior floor with both rises >= selection margin */
+} ge_comb_evidence;
 typedef struct {
     int first[2], last[2], bottom[2]; /* first is accepted census, zero unavailable */
     ge_wave_result wave[2]; /* immutable pre-clamp observations */
@@ -40,6 +48,8 @@ typedef struct {
     int frame_d1, frame_d2, published_d, held, comb_ran;
     unsigned triggers;
     ge_comb_result comb; /* unknown (NAN margin) unless run or audit requested */
+    ge_comb_evidence rejection; /* frame-owned; ratio is BEFORE rejection */
+    int rejected, discarded, refused_d, substituted_d;
     int first[2], last[2], bottom[2];
     double hblank_level[2]; /* this unit's own fields, also on unused boundaries */
     int hblank_cols[2];
@@ -60,6 +70,9 @@ int ge_wave_accept(ge_wave_result, int field, int clamp);
 const char *ge_wave_status_name(ge_wave_status);
 const char *ge_source_name(ge_source);
 ge_comb_result ge_comb(const uint8_t *top, const uint8_t *bottom);
+/* Pure evidence; does not adopt, alter decided, or run another search.
+ * A proposed shift outside -5..5 has no measured energy: ratio is NAN. */
+ge_comb_evidence ge_comb_examine(const ge_comb_result *, int proposed);
 /* Returns 0..2 completed unit decisions, in source order. Reset applies before
  * the first frame using this unit, even when that frame belongs to its predecessor.
  * Counter gaps implicitly break the pair and reset. Do not cross epochs: call break.

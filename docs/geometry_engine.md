@@ -65,7 +65,7 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 21, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 22, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32),
 comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
@@ -81,6 +81,49 @@ not an audit-only computation. Existing columns retain their meanings.
 Within the same row, the published relative shift is `frame_d2 - frame_d1`;
 compare it to `comb_d`, with `comb_decided` indicating whether the minimum was
 decisive. This requires no cross-unit join even under reversed pairing.
+
+## Comb rejection (entry 34, two-sided-floor amendment)
+
+Selection is unchanged: the second/best energy ratio must reach 1.5. A separate
+strict proposed/best ratio > `GE_COMB_REJECT` (default 2) refuses the proposed
+placement on a triggered comb search. Extend the best's floor contiguously
+through energies <=1.5 times its minimum. Substitute the best only if that floor
+is interior and its two outside neighbours are each >=1.5 times the minimum.
+The constant is shared with selection; this is not a second fitted shape bar.
+A tied best pair can be an enclosed basin. Touching a search wall establishes
+insufficient support, not proof that true alignment lies outside the search.
+
+A refusal clears held correction, provisional confirmation and its census
+basis. An unsupported floor discards the proposed geometry and publishes the
+previous full pair (both offsets); at a section start it publishes (0,0).
+It never drops/repeats the image or changes a measured top. Census fallback was
+rejected because it would enact another unsupported placement from the frame
+whose proposal was just discarded. The policy is explicit in both source
+columns: `discard_previous` / `discard_section_start`; a supported substitution
+has relative source `comb_rejection`. Existing future fallback can propagate a
+substitution without a new rejection event; those rows must not be relabelled
+as fresh refusals. The normal selection path may still choose a boundary best;
+the basin test narrows rejection substitution only, not `comb_decided`.
+
+Schema 22 preserves every schema-21 column and appends:
+`ge_comb_reject`, `comb_reject_ratio`, `comb_rejected`, `comb_refused_d`,
+`comb_substituted_d`, `comb_discarded`, `comb_floor_lo`, `comb_floor_hi`,
+`comb_rise_left`, `comb_rise_right`, `comb_basin`.
+The ratio concerns the proposal BEFORE rejection; the published pair is still
+`frame_d1/frame_d2`. Refused/substituted cells exist only for actual events, and
+substituted is empty on a discard. Floor endpoints are shifts, not array indices;
+each rise is measured against the minimum, with a missing outside neighbour
+logged empty. Floor/rise/ratio evidence can be logged under audit, but audit
+alone never acts on it. Unknown search means empty evidence, never guessed zeros.
+A proposed shift outside -5..5 has no measured energy and is not rejected by
+this instrument (empty ratio). With zero minimum, 0/0 is 1 and positive/0 is
+infinity, matching the existing comb ratio convention.
+
+The replay/probe startup parser accepts a positive finite `GE_COMB_REJECT` and
+echoes it; the library still never reads the environment. No new search, raster
+copy, allocation or trigger is introduced. The review panel distinguishes the
+current box/min ratio from the rejected proposal's ratio, and displays the
+engine's logged floor and rises. DIFFERS occupies a fixed leading text slot.
 
 Schema 21 replaces the old top-search controls with `ge_wave_bar` and
 `ge_wave_clamp`. The waveform scan was introduced separately in 77a8eaa and
