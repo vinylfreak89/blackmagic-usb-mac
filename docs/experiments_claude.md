@@ -1918,3 +1918,55 @@ they were accepted at 28/289 and the frame still weaves four lines away. It fixe
 not what was measured, and the gap between those two is entry 33's unfinished business.
 
 **Material.** Captures 1–4 for the renders; the whole tape for the census identity.
+
+### Amendment to E-claude-2026-09-22-34 (2026-09-22) — a minimum is a minimum only if it rises on both sides
+
+**The falsifier fired.** Codex built the guard, changed exactly the 26 frames and nothing else, then
+stopped: three of them — cap1 6271, 6272 and cap2 2309 — score *worse* on the independent roughness
+instrument. It left the engine, sidecars and renders unchanged and reported the failure rather than
+narrowing the rule on its own. `FRAMES_CHANGED=26 EXTRA_CHANGED=0 DECIDED_FRAMES_CHANGED=0`.
+
+**The physical reason, the owner's, verbatim.** "isn't the best shift supposed to be a minimum on
+both sides? otherwise it shouldn't have any confidence. thats what a real comb does."
+
+The three failures share one shape: the energy runs **monotone into the wall of the ±5 search range**.
+
+```
+6271     14.3  13.8  13.1  12.6  11.9  11.3   6.5  6.0  5.3  4.6 [4.4]   strictly decreasing to +5
+6272     11.2  10.4   9.3   8.6   7.9   6.9   5.9  5.1  4.4 [4.2] 4.7    decreasing to +4
+2309    954.1 843.6 734.3 624.7 507.4 391.4 292.2 198.7 103.6 [46.0] 61.6 decreasing to +4
+```
+
+Such a comb has not located an alignment; it is reporting that the alignment lies outside its range.
+Reading the edge value as a minimum reads the end of a slope as a basin. Two more in the set, 2311
+and 2312, are the same shape (monotone to −5) and were scored too generously as successes: they
+improved only 9.37→8.02 and 10.10→9.23, terrible to slightly-less-terrible.
+
+**The amendment, and it introduces no new constant.** Take the **floor** — the minimum plus any
+adjacent shift within the engine's existing 1.5 factor, i.e. the shifts the engine already considers
+indistinguishable from it. Substitute the comb's best only when the floor lies wholly inside the
+search range *and* the energy rises by that same 1.5 on both sides of it. Otherwise the published
+shift is still refused, but nothing is substituted: the frame is **discarded**, per the owner's
+standing ruling that an unsupported placement "doesn't act as a decision".
+
+**A rejected first attempt, recorded because it was nearly shipped.** An earlier form required the
+minimum to rise against its immediate neighbours. That rejects 13576 — the flagship case — because
+its two best shifts are *tied* at 4.3, so each reads as a flat neighbour of the other. Treating the
+tie as the floor, 13576 rises 66.1× on the left and 66.7× on the right: the sharpest basin in the
+set. A separate attempt used `|best shift| <= 3`, which separates the same 26 but is a bar read off
+the failures it explains; the owner's two-sided condition supersedes it and is preferred because it
+is a statement about the signal, not about the outcome.
+
+**Separation, all 26, zero disagreements:** every frame the roughness instrument scored worse falls
+out as *no minimum found*; every frame it scored better is a basin with both arms present. Floors:
+13576 at +0..+1 (66×), 6257–6267 at +2..+3 (~5×), cap4's four at +0..+1 (1.5–2.7×); against
+6271/6272 at +1..+5, 2309 at +4..+5, 2311/2312 at −5..−4, all touching the wall.
+
+**What this must not break.** The 21 substitutions stand and must still score better on roughness;
+the five discards must publish no substituted shift; nothing outside the 26 may change; the 172,586
+census edges stay identical. **What is still open:** whether a discarded frame holds the previous
+placement or publishes the measured tops — not decided here, and the report must say which it did.
+
+**Forward or not.** Forward: it removes a whole failure mode rather than excusing three cases, it
+adds no number, and the condition is about the energy profile's shape rather than about the frames
+it was found on. It has been checked only on the 26; the whole tape is material it was not built on.
