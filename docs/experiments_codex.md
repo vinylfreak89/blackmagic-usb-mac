@@ -661,3 +661,31 @@ table: /private/tmp/comb-reject.HLom5S/roughness.csv, verify_raw.out and
 preflight.out. Production engine/renderer changes and new renders are stopped
 at this falsifier. Whole-tape identity, CPU and promotion tests were not run;
 existing engine, sidecars and review renders remain unchanged.
+
+### Entry 34 amendment — require an enclosed indistinguishable floor
+
+Owner: "isn't the best shift supposed to be a minimum on both sides? otherwise
+it shouldn't have any confidence. thats what a real comb does." The committed
+Claude amendment at 784d6f2 narrows rejection substitution to an interior floor:
+extend contiguously from the best through energies within 1.5 times the minimum,
+and require an outward rise of at least the same existing 1.5 factor on both
+sides. A floor reaching a search endpoint is unsupported. This is evidence of
+a bounded basin, not proof that the true alignment is outside the search range.
+No new confidence threshold and no changes to census or selection margin.
+
+Before promotion, run both authorized discard interpretations through the C
+state path, not a static table. Prefer holding the last published pair: discarding
+a candidate should not adopt a different unsupported candidate from the same
+frame. This holds placement, not pixels, and must be labelled as a geometry
+discard; at a section start the existing zero placement is the only fallback.
+Clearing held correction/provisional/basis remains mandatory on rejection.
+Compare the alternate census fallback to expose any policy-dependent propagation.
+Do not add an audit-dependent decision path or a new comb search.
+
+Falsifiers: any extra changed frame or decided-frame placement; any of the 21
+supported target placements scoring worse on the independently specified full
+720x480 roughness; any of the five unsupported targets gaining a substituted
+comb shift; census or label differences. Distinguish direct substitutions from
+propagated placements. If passed, preserve the four-capture/render gates from
+the parent entry, record floor/rises and refusal disposition, cost the built
+engine, and render only those captures. A new failure is reported, not tuned.
