@@ -519,3 +519,45 @@ This is identity evidence only, not a new claim about picture quality.
 Unit, ASan/UBSan and TSan checks pass. Full counts, methodology, CPU costs and
 test logs are in
 /private/tmp/remove-veto.LwcnlH/REPORT.md. No push or render.
+
+## E-codex-2026-09-22 — waveform top search, entry 33 build
+
+Owner: "I think this is the engine we want codex to build. and see it against a
+real render. cap 1-4 first, then once I validate those, the full tape."
+This implements E-claude-2026-09-22-33, not a new signal hypothesis: the first
+single-line rise in adjacent-row waveform correlation identifies the top line.
+The physical premise remains subject to raw-row/render judgement; eleven labels
+do not establish a distribution-derived bar or general accuracy.
+
+Stage one introduces a C scan alongside the unchanged old search. Pearson uses
+body samples 40..679, each row against its predecessor, storage rows 18..36 plus
+263 per field. First consecutive-correlation difference strictly greater than
+the bar (default 0.45) chooses the preceding line. Zero-variance correlations
+are zero. The dispatch and authoritative step_tape.py scan() use strict >,
+which takes precedence over the ledger's >= wording. No smoothing, chunking,
+largest-step selection, level or spread gate participates in this scan.
+
+Compare every raw top/abstention against /private/tmp/wave-engine/step_tape.csv
+on all 86,293 exact whole-tape units; report every counter/field disagreement.
+Also compare recorded selected/max steps at their supplied precision, without
+using rounded steps to decide a top. Synthetic tests distinguish first from
+largest, strict comparison, constant rows and both field coordinates.
+Falsifier: any unexplained census disagreement. No removal or render before the
+measurement gate passes. Read scan(), not waveform.py's superseded first_top().
+
+Only after that gate, remove the obsolete top guards and promote the C scan.
+Expose the step bar and symmetric nominal-line clamp (default 5) as tool startup
+controls. Preserve raw results separately from accepted census edges: no step
+means abstain; out-of-range means discard, never clamp-to-boundary. Missing
+census evidence continues to request the existing decided-comb check (>=1.5).
+Relative comb evidence cannot supply an absolute field-2 anchor: any existing
+section-start/previous-placement fallback must be explicitly identified in the
+sidecar, not relabelled as a measured top. No new comb/adoption rule is proposed.
+
+Recheck the integrated census and exact bottom edges, bottom coordinates,
+profiles and device blanking against a05ad82, and cost CPU median/p95 under
+§11b. Confirm the four labelled units and report the clamp's unexercised negative
+side honestly. Run unit and sanitizer tests. Then generate only captures 1–4
+with their own engine sidecars and engine-derived overlays, validate in scratch
+before publication. The full-tape render awaits owner validation; it is not
+authorized by passing the numeric census gate alone.
