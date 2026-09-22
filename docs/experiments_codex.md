@@ -613,3 +613,27 @@ readback found zero missing interior frames, sequence errors or source-placement
 differences; no re-encode or sidecar edit is needed. The prior report should
 have stated this denominator distinction. Added producer-named, hash-backed
 renders.status validation so stale status cannot stand for the replacement run.
+
+## E-codex-2026-09-22 — entry 34 rejection-power implementation gate
+
+Owner-authorized premise (E-claude-2026-09-22-34): a near-tied best and runner-up
+can still exclude a much higher-energy proposed placement. Test the proposed
+shift's energy against the minimum, separately from the existing >=1.5 selection
+margin. Strict ratio >GE_COMB_REJECT (default 2) substitutes the best and clears
+held correction, provisional confirmation and correction basis. Do not change
+the census, comb energies, or decided definition. No new comb scheduling:
+comb_ran denotes a triggered search; audit alone remains observational. All 26
+reported candidates are triggered searches, as independently recounted.
+
+Before publication/render, run the actual C state path against the same rasters,
+pairing and live reset stream. The static 26-row count does not establish that
+later placements are invariant after dropping state and publishing a new shift.
+Falsifiers: any extra/missing changed frame, worse independently measured woven
+roughness on a target, census differences or label failure. Preserve and report
+a failed gate rather than tune around it. Explicitly settle zero-energy ratios
+and proposed shifts outside the eleven measured candidates; do not index outside
+the array or silently claim an energy the comb never measured.
+If gates pass, add separate refusal evidence/provenance, test strict thresholds,
+audit invariance and state reset, measure cost and census identity, fix clipped
+DIFFERS/ratio labels, then stage/validate/publish only captures 1–4 with producer
+status. No full-tape render is authorized.
