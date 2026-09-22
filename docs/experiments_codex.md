@@ -232,3 +232,30 @@ valid-move transition (comb 1 to 0) is now a passing mechanism control. Mutation
 removing nearness, restoring measured history or overwriting observations each
 fail the deciding assertions. Unit and sanitizer results are recorded in scratch.
 No shadow classifier, coherence condition, comb override, push or render added.
+
+## E-codex-2026-09-22-3 — aperture-overrun refusal: coordinate preflight
+
+**Owner's question (entry 32, relayed).** "If the picture shifts up, you lose
+nothing at the bottom but you do lose picture at the top and you create an
+artificial jump." Refuse a top move gaining no picture and increasing bottom
+overrun; verify the aperture assumption before building, without a fitted number.
+
+**Premise to check first.** The proposed `max(0, first + H - 1 - last)`
+describes the actual crop overrun. This requires both the correct height and the
+correct start coordinate: measured first, interpreted first and comb-adjusted
+published start need not be interchangeable. Near-blank suppression stays off.
+
+**Method/material.** Inspect the current C publisher and review renderer, and
+cross-check complete engine rows already obtained from the 9ed3923-compatible
+whole-tape run. Use frame_d1/d2 and the proper frame-top unit under reversed
+pairing. Exercise the actual C publisher on a synthetic row ruler at an observed
+placement, verifying first/last sampled rows without programme content. The
+renderer adds three lines above the 480i crop, so compare its endpoint too.
+
+**Falsifier.** A reported first-line-based overrun differs from the actual
+published aperture for a deciding frame, or replacing an interpreted top does
+not ensure the stated crop action. If found, report the coordinate mismatch
+before implementing a rule based on the stronger physical claim. Do not silently
+move the guard after the comb or redefine previous applied top. If coordinates
+hold, proceed with the specified disabled control and enabled acceptance runs;
+independent edge-gate scoring remains with the other agent.
