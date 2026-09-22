@@ -1652,6 +1652,15 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   estimate relative alignment, not absolute common-mode motion. A late-top gate
   that abstains on early tops cannot validate an earlier-biased rule's quality.
   Optional audit logging never changes decisions or triggered-comb scheduling.
+  Report published-unit counts separately from woven-frame counts. Reversed
+  pairing flushes its final unit with f2_unused=1 and no frame_top_unit; its
+  field 1 already belongs to the preceding frame. A missing boundary frame key
+  is not an interior frame loss. Validate frame sequence and both source-unit
+  placements by encoded-strip readback, not by equating MP4 frames to units.
+  Review runs must retire the previous renders.status before publication and
+  write a validated replacement naming the actual engine/renderer producer
+  commits. scripts/geometry_review_status.py provides --begin and completion
+  checks, including artifact hashes and explicit boundary-unit accounting.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

@@ -158,6 +158,23 @@ comb energies, selected shift, decision, trigger and publication sources.
 Captures 1–4 are staged outside synced storage and validated before replacing
 the owner's scratch review files; a full-tape render still requires his approval.
 
+Review publication must also name its producer revisions. Before starting a run,
+use `scripts/geometry_review_status.py DIRECTORY --engine-commit ENGINE_SHA
+--renderer-commit RENDERER_SHA --begin`. After publishing all four MP4/sidecar
+pairs, run the same command without `--begin`. It atomically writes
+`renders.status`: IN_PROGRESS/VALIDATING is not a claim about the old files;
+READY records decoded frame counts, boundary units, placement checks, settings
+and hashes. A failed check leaves FAILED, not the previous run's READY status.
+The supplied revisions identify the builds actually used, not the checker HEAD.
+READY does not mean the owner has visually accepted the renders.
+
+Published units and paired frames have different denominators. In capture 3,
+649 units (13501..14149) yield 648 reversed-pair frames (13501..14148).
+Unit 14149's field 1 appears in frame 14148; its field 2 has no next-unit partner
+and is logged f2_unused=1, with no frame_top_unit. The renderer omits that tail
+frame key, not an interior frame. Do not edit the unit sidecar to force equal
+counts, and do not describe all 649 units as complete woven frames.
+
 For mixed recordings use `--pairing-schedule FILE` instead of `--pair-next`
 (`fs_config.pairing_schedule` for callers). The CSV header is
 `first_counter,pairing,note`; pairing is `aligned` or `reversed`. Counters are

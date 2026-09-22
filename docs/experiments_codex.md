@@ -605,3 +605,11 @@ slots in capture 1), with zero missing frames or strip differences. The four
 review files and their own sidecars replace only the owner's geometry_renders
 scratch copies after validation; prior copies are recoverable in the run's
 backup directory. Full-tape rendering awaits owner validation.
+
+Count reconciliation: capture 3's 649 published units include tail boundary
+14149 (f2_unused=1, no frame_top_unit). Encoded frames are exactly 13501..14148,
+648 consecutive frame keys, and the last uses field 1 of 14149. Fresh strip
+readback found zero missing interior frames, sequence errors or source-placement
+differences; no re-encode or sidecar edit is needed. The prior report should
+have stated this denominator distinction. Added producer-named, hash-backed
+renders.status validation so stale status cannot stand for the replacement run.
