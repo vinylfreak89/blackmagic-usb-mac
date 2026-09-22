@@ -482,3 +482,26 @@ Detailed populations, abstentions, separate gains/losses, firing identities,
 per-term and descriptive confidence cuts, cost and the verbatim fixture failure
 are in /private/tmp/comb-gated-overrun.6bHuEz/REPORT.md, with scripts and changed
 unit/frame CSVs beside it. Rule remains disabled by default. No push or render.
+
+## E-codex-2026-09-22 — delete superseded veto instruments
+
+Owner: "scrap whatever veto work is going on because its not right... actually
+delete it out of the engine". Remove both near-blank and overrun substitution,
+their controls, early comb path, interpreted history and schema columns. Keep
+the d5c9f08 top rule and its four comparison controls. No replacement policy.
+
+Premise: removing default-disabled instruments changes no retained measurement,
+placement or comb scheduling/evidence. This is a code-identity claim, not a new
+claim about source geometry. Delete rather than retain dormant implementations;
+use a new schema version to identify the smaller sidecar explicitly.
+
+Deciding method: stream the whole tape and all four captures into actual C
+engines built from pristine d5c9f08/c620966 and the new source. Compare all
+retained measurements and audit/production decisions, including exact comb
+energies and margins, triggers and source-owned offsets. Compare new defaults
+with d5c9f08 and the retained (0,0,1,1) arm with c620966. Reuse the recorded live
+reset/pair schedule and separately check frameserver integration. Falsifier:
+any differing retained value on any eligible unit/frame, or a removed policy
+still reachable. Run unit, ASan/UBSan and TSan checks; report errors verbatim.
+Material: all 86,293 exact whole-tape units and all eligible units of captures
+1–4, including reversed pairing in capture 3. Results remain in scratch.
