@@ -5,6 +5,7 @@
 double ge_wave_bar=.45;
 int ge_wave_clamp=5;
 double ge_comb_reject=2;
+int ge_anchor_vote=0,ge_level_fill=0,ge_level_flat=0;
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
@@ -13,6 +14,7 @@ struct geometry_engine {
     ge_features previous, current;
     uint8_t previous_y[GE_PIXELS];
     ge_decision pending;
+    int vote_values[GE_VOTE_WINDOW], vote_count, vote_anchor;
 };
 size_t ge_size(void) { return sizeof(geometry_engine); }
 void ge_init(geometry_engine *g, int reverse, int audit) {
@@ -61,13 +63,31 @@ int ge_wave_accept(ge_wave_result w,int field,int clamp) {
     int d=w.first-(field?286:23);
     return w.first && d>=-clamp && d<=clamp;
 }
+ge_level_result ge_level_scan(const uint8_t *y,int field,int clamp,int flat) {
+    ge_level_result o={.measured=1};unsigned h[256]={0};int off=263*field;
+    for(int r=7+off;r<=15+off;r++)for(int x=40;x<680;x++)h[y[r*720+x]]++;
+    o.reference=quantile(h,9*640,.5);
+    for(int r=18+off;r<=36+off;r++) {
+        const uint8_t *p=y+r*720+40;unsigned sum=0,squares=0;
+        for(int x=0;x<640;x++){sum+=p[x];squares+=(unsigned)p[x]*p[x];}
+        double mean=sum/640.0;
+        if(!(mean>o.reference+10))continue;
+        o.first=r+4;o.mean=mean;
+        o.sd=sqrt((640.0*squares-(double)sum*sum)/(640.0*640));
+        o.corr_below=waveform_correlation(p,p+720);
+        o.accepted=ge_wave_accept((ge_wave_result){.first=o.first},field,clamp) &&
+            (o.corr_below>.30 || (flat && o.sd<10));
+        break; /* first level crossing, not first candidate to pass all gates */
+    }
+    return o;
+}
 const char *ge_wave_status_name(ge_wave_status s) {
     static const char *const names[]={"ABSTAIN","ACCEPTED","DISCARDED"};
     return names[s];
 }
 const char *ge_source_name(ge_source s) {
     static const char *const names[]={"","census","held_correction","comb","previous","section_start",
-        "comb_rejection","discard_previous","discard_section_start"};
+        "comb_rejection","discard_previous","discard_section_start","anchor_vote"};
     return names[s];
 }
 static double horizontal_level(const uint8_t *y,int off,int *columns) {
@@ -101,6 +121,8 @@ void ge_measure(const uint8_t *y,ge_features *f) {
         f->wave_status[k]=!f->wave[k].first?GE_WAVE_ABSTAIN:
             ge_wave_accept(f->wave[k],k,ge_wave_clamp)?GE_WAVE_ACCEPTED:GE_WAVE_DISCARDED;
         if(f->wave_status[k]==GE_WAVE_ACCEPTED)f->first[k]=f->wave[k].first;
+        if(ge_anchor_vote && ge_level_fill && f->wave_status[k]==GE_WAVE_ABSTAIN)
+            f->level[k]=ge_level_scan(y,k,ge_wave_clamp,ge_level_flat);
         for(int r=258+off;r>236+off;r--) if(bottom_picture(y,r,f->blank[k])){f->last[k]=r+4;break;}
         for(int j=0;j<12;j++) {
             const uint8_t *p=y+(247+off+j)*720; unsigned n=0;
@@ -198,6 +220,45 @@ static void reject_placement(geometry_engine *g,ge_decision *o,int *d,int *d2) {
 static void reset_frame_state(geometry_engine *g) {
     g->held=0;g->provisional=0;g->have_placement=0;g->last_d=g->last_d2=0;
     g->basis_valid=0;g->basis_first[0]=g->basis_first[1]=0;
+    g->vote_count=0;g->vote_anchor=0;
+}
+static void vote_anchor(geometry_engine *g,ge_decision *o,
+                        const ge_features *t,const ge_features *b) {
+    o->vote_engine_anchor=o->frame_d2;
+    o->vote_anchor=o->frame_d2;
+    if(!ge_anchor_vote)return;
+    o->level[0]=t->level[0];o->level[1]=b->level[1];
+    for(int k=0;k<2;k++) {
+        const ge_features *f=k?b:t;
+        o->vote_top[k]=f->first[k];
+        if(ge_level_fill && !f->first[k] && f->wave_status[k]==GE_WAVE_ABSTAIN && f->level[k].accepted)
+            o->vote_top[k]=f->level[k].first;
+    }
+    int st=o->vote_top[1]-263-o->vote_top[0];
+    o->vote_confident=o->vote_top[0] && o->vote_top[1] && o->rejection.basin &&
+        st>=o->rejection.floor_lo && st<=o->rejection.floor_hi;
+    if(o->vote_confident) {
+        if(g->vote_count==GE_VOTE_WINDOW) {
+            memmove(g->vote_values,g->vote_values+1,(GE_VOTE_WINDOW-1)*sizeof(int));
+            g->vote_count--;
+        }
+        g->vote_values[g->vote_count++]=o->vote_top[1]-286;
+    }
+    if(g->vote_count) {
+        int best=0,first=0,current=0,recent=0;
+        for(int i=0;i<g->vote_count;i++) {
+            int n=0;
+            for(int j=0;j<g->vote_count;j++)n+=g->vote_values[i]==g->vote_values[j];
+            if(n>best){best=n;first=g->vote_values[i];}
+            if(g->vote_values[i]==g->vote_anchor)current=n;
+            if(i==g->vote_count-1)recent=n;
+        }
+        if(current!=best)g->vote_anchor=recent==best?g->vote_values[g->vote_count-1]:first;
+        o->vote_winner_count=best;o->anchor_source=GE_SOURCE_VOTE;
+    } else g->vote_anchor=o->vote_engine_anchor;
+    o->vote_count=g->vote_count;o->vote_anchor=g->vote_anchor;
+    o->frame_d2=o->d2=g->vote_anchor;
+    o->frame_d1=o->d1=g->vote_anchor-o->published_d;
 }
 static int rerun(ge_class c) { return c!=GE_NOTHING && c!=GE_VALID_MOVE; }
 static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
@@ -231,7 +292,7 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
         if(g->provisional)o.triggers|=GE_CONFIRM;
     }
     o.comb_ran=o.triggers!=0;
-    if(o.comb_ran || g->audit)o.comb=ge_comb(ty,by);
+    if(o.comb_ran || g->audit || ge_anchor_vote)o.comb=ge_comb(ty,by);
     if(o.comb_ran && o.comb.decided) {
         o.relative_source=GE_SOURCE_COMB;
         d=o.comb.shift;dknown=1;
@@ -249,6 +310,9 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     reject_placement(g,&o,&d,&d2);
     o.frame_d1=o.d1=d2-d;o.frame_d2=o.d2=d2;o.published_d=d;o.held=g->held;
     g->last_d=d;g->last_d2=d2;g->have_placement=1;
+    /* Keep the original engine state untouched: later missing-top and basin
+     * fallbacks must see the tag's anchor, not an earlier voted placement. */
+    vote_anchor(g,&o,t,b);
     return o;
 }
 unsigned ge_break(geometry_engine *g,ge_decision out[2]) {

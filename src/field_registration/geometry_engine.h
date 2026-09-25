@@ -12,12 +12,20 @@
 extern double ge_wave_bar; /* default .45; first step strictly greater wins */
 extern int ge_wave_clamp; /* default 5; symmetric displacement from 23 / 286 */
 extern double ge_comb_reject; /* default 2; strict proposed-energy / minimum bar */
+extern int ge_anchor_vote; /* default 0; last 30 confident frame anchors */
+extern int ge_level_fill; /* default 0; ABSTAIN-only vote input, never census */
+extern int ge_level_flat; /* default 0; also accept level candidates with sd<10 */
+#define GE_VOTE_WINDOW 30
 #define GE_COMB_SELECTION_MARGIN 1.5
 typedef struct { int first; double step, max_step; } ge_wave_result;
 typedef enum { GE_WAVE_ABSTAIN, GE_WAVE_ACCEPTED, GE_WAVE_DISCARDED } ge_wave_status;
 typedef enum { GE_SOURCE_NONE, GE_SOURCE_CENSUS, GE_SOURCE_HELD, GE_SOURCE_COMB,
                GE_SOURCE_PREVIOUS, GE_SOURCE_START, GE_SOURCE_REJECT,
-               GE_SOURCE_DISCARD_PREVIOUS, GE_SOURCE_DISCARD_START } ge_source;
+               GE_SOURCE_DISCARD_PREVIOUS, GE_SOURCE_DISCARD_START, GE_SOURCE_VOTE } ge_source;
+typedef struct {
+    int first, accepted, measured; /* raw candidate plus clamp/continuation verdict */
+    double reference, mean, sd, corr_below;
+} ge_level_result;
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
 enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16,
@@ -41,13 +49,14 @@ typedef struct {
     int hblank_cols[2];
     uint16_t profile[2][12][672]; /* exact eight-sample sums */
     ge_class motion[2];
+    ge_level_result level[2]; /* supplemental evidence, never used by classify */
 } ge_features;
 typedef struct {
     uint64_t counter, top_unit;
     int d1, d2, unused1, unused2, reset_before, has_frame;
     int frame_d1, frame_d2, published_d, held, comb_ran;
     unsigned triggers;
-    ge_comb_result comb; /* unknown (NAN margin) unless run or audit requested */
+    ge_comb_result comb; /* NAN margin unless triggered, audited, or vote enabled */
     ge_comb_evidence rejection; /* frame-owned; ratio is BEFORE rejection */
     int rejected, discarded, refused_d, substituted_d;
     int first[2], last[2], bottom[2];
@@ -57,6 +66,9 @@ typedef struct {
     ge_wave_status wave_status[2];
     ge_source relative_source, anchor_source; /* frame-owned publication basis */
     ge_class motion[2];
+    int vote_confident, vote_anchor, vote_engine_anchor, vote_count, vote_winner_count;
+    int vote_top[2]; /* frame-owned waveform or accepted fill, not census */
+    ge_level_result level[2]; /* frame-owned, measured only on ABSTAIN fields */
 } ge_decision;
 typedef struct geometry_engine geometry_engine;
 size_t ge_size(void);
@@ -67,6 +79,7 @@ void ge_measure(const uint8_t *, ge_features *);
  * ge_measure applies the independent symmetric clamp to each raw observation. */
 ge_wave_result ge_wave_scan(const uint8_t *, int field, double bar);
 int ge_wave_accept(ge_wave_result, int field, int clamp);
+ge_level_result ge_level_scan(const uint8_t *, int field, int clamp, int flat);
 const char *ge_wave_status_name(ge_wave_status);
 const char *ge_source_name(ge_source);
 ge_comb_result ge_comb(const uint8_t *top, const uint8_t *bottom);

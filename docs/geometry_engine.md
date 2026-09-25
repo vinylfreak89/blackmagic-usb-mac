@@ -65,10 +65,10 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 22, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 23, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32),
 comb evidence and HIGH/LOW.
-Untriggered comb evidence is empty unless `--audit-comb` is set; that switch does
+Untriggered comb evidence is empty unless `--audit-comb` or the anchor vote is enabled; audit does
 not change decisions. Frame diagnostic columns refer to the bottom-field unit,
 whereas `applied_d1/d2` always refer to the row's own unit. Ineligible observations
 have empty placement keys, with their original counter in `observed_counter`.
@@ -81,6 +81,56 @@ not an audit-only computation. Existing columns retain their meanings.
 Within the same row, the published relative shift is `frame_d2 - frame_d1`;
 compare it to `comb_d`, with `comb_decided` indicating whether the minimum was
 decisive. This requires no cross-unit join even under reversed pairing.
+
+## Optional anchor vote (entry 36)
+
+Three startup controls default to zero: `GE_ANCHOR_VOTE`, `GE_LEVEL_FILL`,
+`GE_LEVEL_FLAT`. Replay and the probe share the strict 0/1 parser; the library
+never reads the environment. Fill and flat have no effect with vote off; flat
+has no effect with fill off. The existing waveform and comb controls are unchanged.
+
+Vote-enabled frames compute comb evidence even without a trigger. `comb_ran`
+continues to mean a triggered decision, and neither comb selection nor rejection
+acts on an otherwise untriggered search. A frame votes only if both candidate
+tops exist and their relative shift lies inside an enclosed comb floor. Its
+field-2 offset enters the last-30-confident-frame window. The modal value wins;
+ties retain the current anchor, then prefer the newest tied value, then the
+first tied value in chronological window order. Non-confident frames add no vote.
+All engine resets, gaps, breaks and pairing reinitializations empty this window.
+An empty window uses the unchanged engine's final anchor, including its existing
+basin-discard fallback. No placement is silently carried across a reset.
+
+Level fills apply to raw waveform ABSTAIN only, never DISCARDED. The reference
+is the median of blank rows 7..15 (+263 in field 2), body columns 40..679.
+The first row in 18..36 (+263) whose body mean is strictly above reference+10
+is the sole candidate. It must satisfy the existing symmetric `GE_WAVE_CLAMP`
+and correlate with the next row above 0.30; optional flat acceptance also permits
+population sd below 10. Statistics are unrounded at the thresholds. The Pearson
+zero-variance guard is the waveform's existing 1e-9 standard-deviation floor.
+Fill candidates belong to the actual source fields under reversed pairing.
+
+Fills never replace the census or enter relative-shift triggers/corrections.
+The engine first advances its unchanged, unvoted relative/anchor state, then
+publishes `(vote_anchor - d, vote_anchor)`. Keeping the baseline fallback state
+separate prevents a voted anchor from feeding later baseline decisions. The
+relative shift is therefore unchanged, including on missing-evidence/discard
+frames. This is an absolute-anchor vote, not a new relative registration rule.
+
+Schema 23 preserves existing columns and adds three configuration columns
+`ge_anchor_vote`, `ge_level_fill`, `ge_level_flat`; frame-owned `vote_confident`,
+`vote_anchor`, `vote_engine_anchor`, `vote_count`, `vote_winner_count`,
+`vote_top_f1`, `vote_top_f2`; and, per field, `level_top_fN`, `level_ref_fN`,
+`level_mean_fN`, `level_sd_fN`, `level_corr_fN`, `level_accepted_fN`. Level columns
+are empty when not measured. All frame-owned additions are empty on boundary
+or unpublished rows without a frame. Existing `f1_first/f2_first` stay immutable.
+`anchor_source=anchor_vote` identifies a nonempty vote window; the original
+engine's final anchor remains explicit in `vote_engine_anchor`.
+
+`geometry_vote` checks threshold boundaries, clamp, first-candidate semantics,
+tie handling, window eviction, resets and field ownership. `test_anchor_vote.py`
+checks the enabled live paths under both pairings, including audit invariance,
+relative-shift identity and inert subordinate controls. Acceptance results and
+remaining falsifiers belong in the experiment ledger, not in this API contract.
 
 ## Comb rejection (entry 34, two-sided-floor amendment)
 
