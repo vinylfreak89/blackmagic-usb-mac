@@ -1016,3 +1016,30 @@ rename into captures/. captures/renders.status is READY, names both producer
 commits and hashes, and leaves owner visual acceptance pending. The previous
 two files are recoverable under /private/tmp/basin-fulltape.f19Ygq/replaced-review.
 No engine rule changed and neither rejected hold prototype was promoted.
+
+## E-codex-2026-09-25-36 — validate the vote's reference before promotion
+
+Owner's gates, relayed in entry 36: "First, the comb agreement should IMPROVE
+with the geometry agreement. Secondly, I expect less excursions on both the
+[top] and bottom and less common mode jumps." The proposed method is a causal
+30-confident-frame anchor vote with optional, vote-only level fills; it must
+not change the baseline relative decision or waveform census.
+
+Premise to test before implementing: the supplied frame reference expresses
+those rules using the correct source field, accepted-versus-abstained status
+and reset policy. Independently reconstruct its inputs from the approved tag's
+sidecar and the unit-keyed level census. Check reversed-pair source ownership,
+discarded waveform results, threshold serialization and section boundaries.
+Then, if the definitions agree, port the bounded vote and level measurement to
+C, verify all-off identity and the three reference variants, and measure the
+owner's gates and CPU cost before any review encoding. Preserve the relative
+engine path and keep additional measurements out of its triggers and census.
+
+Falsifier: any reference column depends on a different field's samples or an
+unstated policy, any all-off/census/relative invariant differs, or a required
+reference variant disagrees. Report deciding counters rather than tuning the
+engine to a faulty join. An unresolved interpretation is returned for review;
+the specified s1/s12c render stop conditions still apply. Material: the tagged
+whole-tape sidecar, reference_anchor.csv and its two level censuses, with raw
+source rows used to adjudicate discrepancies; captures 1–4 only after gates.
+Scratch evidence: /private/tmp/vote-entry36.aBbP7d. No whole-tape encode.
