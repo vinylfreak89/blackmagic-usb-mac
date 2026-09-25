@@ -1106,3 +1106,22 @@ stage-1/reference or named-case failure stops rendering; a fill-only reference
 failure permits the specified s1 fallback. Measure CPU, run unit/sanitizer checks,
 then validate every encoded placement before publishing captures 1–4. No whole
 tape encode. Detailed evidence: /private/tmp/vote-hold.zlY5U0.
+
+Amendment-3 verdict: the empty-window premise holds on the specified gates.
+All three anchor sequences match reference 3 exactly; the only confidence
+differences are its two acknowledged rounded cells. Tag identity, census and
+relative invariants pass. Capture 1 holds (0,0) on all 238 specified frames;
+the other named intervals match the corrected reference, including +2 at 48352
+and +0 at 81508. The requested s12c reduces common-mode moves/excursions to
+29/6 with no one-frame jumps; its geometry-agreement measure is 54.3059%.
+These operational gates do not establish independent absolute-picture truth.
+
+Normal, ASan and TSan tests pass, including empty holds through both live
+pairing-switch directions and matching streaming-probe behavior. Captures 1–4
+were rendered from engine e08b19c and renderer a76eef5, s12c, and published only
+after every encoded placement and source-unit join passed. Their frame counts
+are 922/649/648/650 with zero differences; capture 3's unit 14149 is the unused
+tail boundary, not a lost frame. Status is READY with configuration, producer
+commits and hashes; owner visual acceptance remains pending. Previous review
+files are recoverable in the run's replaced-reviews directory. No whole-tape
+encode was made and the three controls remain off by default.
