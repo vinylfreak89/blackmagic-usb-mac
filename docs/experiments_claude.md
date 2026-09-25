@@ -1923,3 +1923,48 @@ exactly to stage 1's. **What it costs:** gate 1 rises 3.3 points instead of 7.1,
 flip is back to about 2 s. **What must not break:** gate 2 identical to stage 1; gate 1 still above the
 tag. **Open:** a flat branch restricted to *dark* lines needs the learned black level of stage 3 and is
 not built now.
+
+### Amendment 2 to E-claude-2026-09-25-36 (2026-09-25) — Codex's pre-implementation review: my reference was wrong in two places
+
+**Codex stopped before writing engine code** and found three problems in the reference. Two are mine.
+
+1. **A join error in my reference (mine).** Under reversed pairing a frame takes field 1 from
+   `frame_top_unit`; my reference looked up field 1's waveform status and level candidate by the row's
+   own counter. 43,671 of the tape's 86,293 frames are reversed. Codex's deciding case, from raw rows:
+   frame 4761 uses field 1 from unit 4762 (correlation 0.134), where my reference used 4761's (0.434)
+   and marked it confident.
+2. **My reference filled DISCARDED waveform tops as well as ABSTAIN (mine).** The specification said
+   abstain only. **Decision: abstain only.** A discarded top is a transition the waveform found outside
+   the clamp, and the owner ruled such a placement "doesn't act as a decision"; a second instrument does
+   not get to overrule that. **Added, which Codex did not flag: level fills obey the same ±5 clamp** —
+   "it should be one number (the +/- 5) exposed by configuration and it should clamp all instruments the
+   same way". My reference never clamped them.
+3. **Vote persistence across reset boundaries — a design question I had not answered.** **Decision:
+   clear the window at every engine reset and return to cold start.** §8 property 5: state does not
+   cross an epoch; the held correction is already cleared there. Checked independently: clearing changes
+   exactly **228** stage-1 anchors, Codex's count. At 48240, the recording boundary, clearing publishes
+   +2 — the second recording's program geometry — where carrying the window over publishes the first
+   recording's +0.
+
+**Re-measured with all four corrections (`reference_anchor2.csv`):**
+
+| | gate 1 | common-mode | excursions | 1-frame | mute diffs | 42650–43500 | 81490 flip |
+|---|---|---|---|---|---|---|---|
+| tag | 51.2% | 1,312 | 1,136 | 339 | — | 211/851 | — |
+| s1 | 51.2% | 33 | 11 | 1 | 0 | 851/851 | 15 frames |
+| s12 | 57.1% | 33 | 8 | 0 | 244 | 851/851 | 15 frames |
+| **s12c (render)** | **54.3%** | **31** | **9** | 1 | **0** | **851/851** | 15 frames |
+
+**What the reset clearing did.** The engine already declares resets at the real boundaries — 81505 is
+the commercial, 48189–48244 the recording boundary, 53410/53678 the 27:18 stop, 68613/69517 and
+83330/84339/85268 the edges of breaks. Clearing there lets the vote re-anchor at once: the commercial
+flip falls from 63 frames to 15. **The cost is four excursions** (48240, 48244, 48245, 81534), every one
+in the cold-start stretch just after a reset, where the empty window lets the engine's own jitter
+through; they last 1–57 frames. The other seven excursions predate the change.
+
+**With the join corrected, stage 2 no longer adds wrong votes:** s12c now beats s1 on common-mode
+(31 vs 33) and excursions (9 vs 11). The earlier finding that the fill raised excursions was partly my
+join bug.
+
+**Open, and not addressed here:** a cold start that doesn't expose the engine's jitter while the window
+refills.
