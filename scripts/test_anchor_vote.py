@@ -1,5 +1,5 @@
 """Live vote path: all-off identity, audit invariance, common-mode-only output and fills."""
-import csv,importlib.util,os,random,subprocess,sys,tempfile
+import csv,importlib.util,os,random,struct,subprocess,sys,tempfile
 from pathlib import Path
 import numpy as np
 ROOT=Path(__file__).resolve().parents[1]
@@ -86,4 +86,16 @@ with tempfile.TemporaryDirectory(prefix='anchor-vote-',dir='/private/tmp') as tm
         assert following
         for r in following:
             assert (r['vote_anchor'],r['vote_engine_anchor'],r['vote_count'],r['vote_confident'])==('2','0','0','0'),r
+        # The streaming probe must treat the same switch as an in-session reset,
+        # not a new session. Its frame CSV format remains unchanged.
+        raw=b''.join(struct.pack('=QII',100+i,int(i in (0,8)),int((before if i<8 else after)=='reversed'))+v.tobytes()
+                     for i,v in enumerate([later]*8+[np.ones_like(y)]*8))
+        probe_frames=tmp/f'{before}.probe.csv'
+        q=subprocess.run([str(ROOT/'src/field_registration/tests/hblank_probe'),str(probe_frames)],input=raw,
+                         env=env|{'GE_ANCHOR_VOTE':'1'},capture_output=True,timeout=90)
+        assert q.returncode==0,q.stderr
+        with probe_frames.open() as f:
+            next(f);probe_rows={r['counter']:r for r in csv.DictReader(f)}
+        for r in frames:
+            assert probe_rows[r['counter_extended']]['frame_d2']==r['frame_d2'],r
         print('ANCHOR-VOTE PASS: empty-window hold across',before,'->',after)

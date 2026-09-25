@@ -48,8 +48,11 @@ int main(int argc,char **argv) {
         const unsigned char *p=(const unsigned char *)f.profile;
         for(size_t i=0;i<sizeof f.profile;i++){hash^=p[i];hash*=1099511628211ull;}
         if((int)pair!=mode){
-            if(mode>=0){ge_break(g,out);if(audit)frames(audit_file,out,ge_break(audit,out));}
-            ge_init(g,pair,0);if(audit)ge_init(audit,pair,1);mode=pair;
+            if(mode>=0){
+                ge_break(g,out);ge_set_pairing(g,pair);
+                if(audit){frames(audit_file,out,ge_break(audit,out));ge_set_pairing(audit,pair);}
+            } else {ge_init(g,pair,0);if(audit)ge_init(audit,pair,1);}
+            mode=pair;
         }
         t=cpu();ge_push(g,y,counter,reset,out);double engine=(cpu()-t)*1000;
         if(audit)frames(audit_file,out,ge_push(audit,y,counter,reset,out));
