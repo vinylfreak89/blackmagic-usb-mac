@@ -1487,297 +1487,11 @@ circularity above, are open and unresolved rather than refuted.
 
 ## E-claude-2026-09-21-29 — one measurement, scanned: the settle point as the top — **refuted.** The whole-tape census failed the 69566-69576 span, placing field 2 two lines from the owner's reading. Compacted 2026-09-22.
 
-## E-claude-2026-09-21-30 — one line below, per chunk: does any chunk disagree?
+## E-claude-2026-09-21-30 — one line below, per chunk: does any chunk disagree? — **refuted, then superseded.** The per-chunk coherence rule took late tops from 5,498 to 2,261 but replaced the error set rather than reducing it: 5,326 fixed, 2,089 newly wrong, in 319 runs (the largest 11537–11798). Promoted at d5c9f08; replaced as the top search by entry 33's waveform step at 47423f3. Compacted 2026-09-25; full text at 257c9fe.
 
-**Question (owner, 2026-09-21).** "I think the instrument for coherence is wrong. its not do all of the
-chunks agree when averaged together. its... does any chunk disagree". On symmetry: "it can be brighter.
-thats too overfit. the whole point is does it disagree. no chunk may be substantially brighter OR darker
-than its corresponding shunk". On how many lines to read: "read one line. as I asked. 5 lines is exactly
-the kind of thing that fucks up an instrument that has moving picture. one line should always be near
-coherent on real picture". And on the structure ratio: "why drop the structure ratio? it didn't measure
-the right thing so make it measure the right thing".
+## E-claude-2026-09-22-31 — a top that moves without its bottom is not a picture displacement — **withdrawn; its veto was deleted from the engine at a05ad82** when the owner scrapped the veto work. Durable lessons: a falsifier requiring the GE_VALID_MOVE / GE_BOTTOM_ONLY counts to stay unchanged was unsatisfiable, since substituting a top reclassifies the next unit; and the owner narrowed the rule to top moved, bottom did not, new top near blanking. The tandem principle returns in entry 35. Compacted 2026-09-25; full text at 257c9fe.
 
-**Premise.** Real picture resembles the line immediately below it *at every horizontal position*, not
-only in its line average. A caption, a data line or blanking does not: it disagrees with the line below
-somewhere along the sweep, whatever its average. One line below is the whole instrument — averaging
-several brings moving picture into a test about the current line.
-
-**Why a second instrument at all, given amendment 1 to entry 20.** They reject different things and
-neither is sufficient. Amplitude rejects blanking and dim pedestal rows, which is 82% of the blank-top
-class. Captions and data lines are *bright*, clear any amplitude bar comfortably, and are the remaining
-312. This is the owner's own division: "you are trying to run one instrument when you need multiple".
-
-**Method — two forms of the same one-line idea, measured against each other.**
-- **Per-chunk agreement.** Split the line and the line below into 16 chunks of equal width, take each
-  chunk's mean, and count the chunks agreeing within a relative tolerance. A line is picture only if at
-  least 11 of 16 agree. Symmetric by construction: the test is on |a-b|, so brighter and darker fail alike.
-- **The repaired structure ratio**, `std(line) / std(the next line)`, read over one line rather than the
-  median of five it previously used. Scale-free, so it measures structure rather than level: a caption
-  over blanking explodes, blanking over picture collapses, picture over picture sits near one.
-
-**What each is expected to do, stated before the run.** On four hand-checked units (69566, 69568, 69570,
-69573) the separation is clean and identical for both: caption 1-4 of 16 chunks agreeing and a ratio of
-20-24; blanking 0 of 16 and a ratio of 0.01-0.08; the first picture line 11 of 16 and a ratio of
-1.44-1.54; deep picture 16 of 16 and a ratio near one. Four units is not a result, and both forms tie
-there, which is precisely why the whole tape has to separate them.
-
-**Falsifier.**
-- Neither form improves comb self-consistency at high comb confidence over amplitude alone, in which
-  case the second instrument is not earning its place.
-- Or either form rejects real picture: its top lands later than the amplitude-only top on frames whose
-  amplitude-only top is already correct by the independent gate.
-- Or the two forms disagree with each other on a large population without the raw rows supporting one of
-  them, which would mean neither is measuring what the entry claims.
-- Or the 11-of-16 threshold and the ratio band cannot be justified from the tape's own distributions and
-  remain fitted to the four units.
-
-**Material.** All 86,293 exact units, scored jointly with amendment 1 in `scratchpad/ctr9040/combcensus.py`.
-The four units above are the build material and are therefore not the judge.
-
-### Report on entry 30 (2026-09-22) — refuted for a characterized class, held elsewhere
-
-**Verdict: the premise is refuted, and the class where it fails is identified.**
-
-The premise was the owner's: real picture resembles the line immediately below it *at every horizontal
-position*, so "one line should always be near coherent on real picture". The falsifier registered was
-"either form rejects real picture: its top lands later than the amplitude-only top on frames whose
-amplitude-only top is already correct by the independent gate". **It fired.**
-
-**What the data did.** Judged by the independent gate over 172,586 field edges per arm, the per-chunk
-rule with plain-23 and run-in removed takes late tops from **5,498 to 2,261**. But the error set is
-**replaced, not reduced**: 5,326 fixed, **2,089 newly wrong**, 172 wrong in both. The new failures fall
-in 319 runs, the largest being 11537–11798, 484 edges.
-
-**Why it fails there, from the raw rows and confirmed by render.** At counter 11540 field 1 the picture
-begins at line 24 — visible, and today's engine gets it right. The new rule takes 29. Lines 24–28 clear
-amplitude comfortably and fail on chunk count, and they fail honestly: their chunk means span 2.4 to
-182.4 across the width, and the maximum absolute difference to the line below reaches **170 codes**. The
-material is a bright curved edge against black, so the boundary moves further than one 40-sample chunk
-per line. Real picture genuinely disagrees with the line below. The premise is false on steep
-high-contrast boundaries.
-
-The gate disagrees with the instrument for a reason that is not a contradiction: it correlates chunk
-means, which is scale- and offset-invariant, so a boundary that merely shifts horizontally still
-correlates at 0.996. Both instruments are right by their own definitions.
-
-**The two forms did not tie, and the structure ratio lost.** By comb it looked best at margin ≥1.5
-(99.177%) and worst at ≥8 (98.655% against the per-chunk rule's 99.978%), moving 39,412 field-1
-placements. The gate then showed why: 312 "wrong" but **62,598 abstentions**, 36% of its tops landing
-where the gate cannot judge either way against ~9% for every other arm. A rule whose placements are
-mostly unjudgeable is not conservative.
-
-**What the entry did establish, and it is not nothing.** Removing plain-23 and run-in is required for
-the per-chunk test to help at all, and those two guards are independently and **exactly additively**
-harmful: of 5,760 late tops they cause together, plain-23 accounts for 3,474 and run-in for 2,286
-(3,474 + 2,286 = 5,760 exactly). Their combined effect on field 1 is a **+1 on 15,621 of 15,743 moved
-units** — plain-23's re-search window begins at line 24 and structurally cannot return 23, and run-in is
-literally `first[0]++`. On the fade at 48055–48195 comb agreement at confidence goes from 6 of 86 to
-86 of 86, because the misregistration is never introduced rather than corrected.
-
-**What is not understood.** The remaining 318 new runs are not characterized; only 11537–11798 was
-rendered. Whether the amplitude margin contributes to these failures is unknown, because the chunk rule
-at margin 0 was never measured (see amendment 1's report).
-
-**A premise that would survive this counterexample**, for a future entry rather than a patch here: a
-chunk straddling a blanking-to-bright boundary is a *detected edge*, not a disagreement, and should be
-excluded from the count rather than failing it. That is a different claim about the signal and needs its
-own entry, falsifier and material.
-
-**Material.** All 86,293 exact units, twelve whole-tape arms. The four build units (69566, 69568, 69570,
-69573) were not the judge. Raw rows: `scratchpad/ctr9040/arms/*.units.csv`, `gate_arms.csv`, and the
-rendered rows at counter 11540.
-
-**Built into the engine as the default** at `d5c9f08` on `v11-engine`, local, not pushed, carrying this
-regression knowingly and reported to the owner with the render.
-
-## E-claude-2026-09-22-31 — a top that moves without its bottom is not a picture displacement
-
-**Question (owner, 2026-09-22, verbatim).** "if the chunk disagreement says the line should be shifted,
-but the bottom did not shift, ignore the override from the chunk disagreement. don't hold... ignore.
-does that rescue our class of problems while saving the legitamate fixes. it should absolutely fix the
-problems on this capture (cap 1)."
-
-**Premise.** A real picture displacement moves the top and the bottom together — §7's tandem principle,
-the owner's own: extra blank space below for an upward shift, above for a downward shift. A top that
-moves while its bottom stays put is therefore not the picture moving; it is the top measurement
-changing its mind. Where the new coherence rule produces such a move it should be **ignored** — the
-previous top stands — not held, which would freeze the whole geometry.
-
-**Why this and not another threshold.** Five approaches were measured and refuted first: excluding
-boundary-straddling chunks, finer sub-chunking, discarding wholly-disagreeing chunks, a
-contrast-restricted comb override (23 frames, 0.027%) and abstaining on high contrast (33:1 against).
-This is the first with a favourable ratio, and unlike the others it rests on a physical claim about
-the signal rather than on a statistic that separated one population from a differently-defined one.
-
-**Measured before building, so the entry is not written to a known answer.** Classified by the
-engine's own `classify()` over the whole tape: **TOP ONLY is 34.5% of the regression (717 of 2,079
-classifiable) against 6.2% of the fixes (329 of 5,310) and 4.1% of all edges** — a 5.6-fold
-enrichment. Ignoring those moves avoids 717 bad edges and costs 329 good ones, **2.2:1**.
-
-That 717 is a **lower bound**. The regression arrives in 319 runs; only a run's onset is a top-only
-move, and the 61.4% classified `nothing` are units mid-run inheriting a top that is already wrong.
-Suppressing an onset means the run never starts, which a static classification cannot show and only
-the engine can measure.
-
-**The method.** When `f->motion[k]` is `GE_TOP_ONLY` on an adjacent, non-reset unit, the previous
-unit's top stands for that field. The measured value is still logged: observations are immutable and
-interpretations revisable, so the sidecar must show what was measured as well as what was applied.
-Nothing else changes — not the bottom, not the comb, not abstention.
-
-**Falsifier.**
-- The independent gate's late-top count does not fall, or the fixes lost exceed the regression avoided.
-- Or the owner's four labelled units (69566, 69568, 69570, 69573 → f1 26/26/25/26, f2 288) stop landing.
-- Or comb agreement regresses in any confidence band.
-- Or it suppresses real movement: `GE_VALID_MOVE` and `GE_BOTTOM_ONLY` counts change, which they must
-  not, since the rule touches neither.
-
-**What it is already known NOT to fix, recorded so the report cannot claim it.** On capture 1 the rule
-reaches 48 of 806 changed field-edges. Half of that capture's change is the new rule declining to place
-a top at all during a paused passage — the owner: "half of cap 1 is garbage during a pause" — and a
-tandem test says nothing about an abstention, because there is no move to ignore. The owner's
-expectation that this fixes capture 1 is not supported by the static measurement; what it does reach
-there is the relative-alignment change, 89 of ~215 classifiable edges among the 415 frames the comb
-cannot judge.
-
-**Material.** All 86,293 exact units and capture 1. Judged by the independent gate and by the owner's
-labelled units, not by the comb alone, since the comb is blind to the common-mode part of this change.
-
-### Amendment 1 to entry 31 (2026-09-22) — the rule narrowed, and a falsifier of mine withdrawn
-
-**Registered before the build proceeds.**
-
-**The rule is narrower than the entry states.** The owner, after seeing the spec: "just having it
-abstain whenever there is high coherence and the top moves only is wrong", and then twice: "it should
-only abstain IF there is high coherence AND the level is near blanking", finally "it needs to be top
-moves, bottom doesn't, level of top is near blanking" — "in other words, a low confidence decision".
-The coherence term is not in the final statement. The conjunction is **top moved, bottom did not, and
-the newly chosen top's level is near blanking**, where nearness is the top line's body 95th percentile
-against the derived horizontal-blanking level the engine already computes. Its physical reason is his:
-that combination is weak evidence, and weak evidence should not be enacted.
-
-**A falsifier of mine is withdrawn because it was unsatisfiable.** The entry required
-`GE_VALID_MOVE` and `GE_BOTTOM_ONLY` counts to be unchanged, "since the rule touches neither". That is
-wrong. The class is computed by comparing a unit's top against the previous unit's, so substituting a
-top necessarily reclassifies the NEXT unit. Codex's preflight produced the counterexample before any
-production code changed: unit 102, measured top/bottom 24/261, `bottom only` becoming `valid move`
-with `comb_ran` 1 → 0. My criterion forbade the mechanism the entry predicts. The class and
-comb-scheduling deltas are still reported in full — they are evidence about what the rule did — but
-they are not a gate.
-
-**Interpreted history is the design, deliberately.** The substituted top feeds the next unit's
-comparison. The owner said "ignore", not "hold", and the entry's predicted effect depends on it: 61.4%
-of the regression classifies as `nothing` because it sits mid-run inheriting an already-wrong top, so
-only onset suppression reaches it. Keeping the measured series would let a rejected top reassert on
-the next unit and recover none of that. The measured tops remain in the log beside the applied ones,
-so the record stays immutable even though the engine's working history is interpreted.
-
-**What this costs the entry's prediction.** The 34.5%-against-6.2% enrichment was measured for the
-top-only condition ALONE. The third condition can only reduce it, so 717 avoided against 329 lost is
-an upper bound on reach, not an expectation. The sweep of the nearness threshold decides the real
-figure, and the threshold is exposed as a control defaulting to a no-op rather than fitted.
-
-**Unchanged falsifiers:** the gate's late-top count, the owner's four labelled units, per-band comb
-agreement with gains and losses reported separately, and the bottom/profile/blanking/level columns at
-0 differing units of 86,293.
-
-## E-claude-2026-09-22-32 — refuse a move that discards picture and gains only blanking
-
-**Question (owner, 2026-09-22, verbatim).** "What I'm trying to differentiate is if freezing the top
-when there is a common mode shift rescues a class of failures. It might cause more jumps but it
-wouldn't cause picture to be lost... That's a jump that has no tangible benefit, and at the most you
-lose some stabilization at hopefully no cost to combing but also losing no real picture." Then, on the
-geometry: "If the picture shifts up, you lose nothing at the bottom but you do lose picture at the top
-and you create an artificial jump." And the conclusion the entry rests on: "mathematically You can't
-differentiate these classes, so a compromise that retains the most information along with the correct
-picture is the right one."
-
-**Premise.** The two classes cannot be told apart by what the lines look like — six measured attempts
-say so: chunk coherence at any scale, within-line contrast, line-to-line difference, sub-chunk
-structure, near-blankness, and a comb override all failed, most with heavily overlapping populations.
-They can be told apart by **what a move does to the information**. A top that moves later discards real
-picture lines at the top while the fixed-height window runs further past the last picture line and
-fills with blanking. That move cannot be worth taking under any reading, so it can be refused without
-knowing which line is truly picture.
-
-**Why this is not another threshold.** The test is `gain <= 0 AND overrun increases`, where gain is the
-picture lines kept at the top and overrun is how far the window runs past the measured last picture
-line. Both come from `f*_first` and `f*_last`, which the engine already produces. There is no number
-to fit, which is what every previous candidate foundered on.
-
-**Measured before building, on the 7,403 edges the independent gate has already judged:**
-
-| | discards picture at the top AND increases bottom overrun |
-|---|---|
-| the regression (2,089 edges) | **2,031 — 97.2%** |
-| the fixes (5,314 edges) | **101 — 1.9%** |
-
-Means: the regression loses 2.19 picture lines at the top and runs 2.2 lines further into blanking,
-net +4.39 lines of blanking for nothing. The fixes gain 0.99 lines at the top and sit 1.0 line closer
-to the last picture line. 98.1% of fixes move the opposite way to 97.2% of the regression. This is the
-cleanest separation any instrument has produced on this problem, and it is geometric rather than
-statistical.
-
-**What it costs.** Some stabilisation on the 1.9% of legitimate fixes that also increase overrun, and
-more frame-to-frame movement generally, since refusing a move leaves the previous placement standing.
-The owner has accepted that trade explicitly: jumps are acceptable, lost picture is not.
-
-**Falsifier.**
-- The independent gate's late-top count does not fall, or the fixes lost exceed the regression avoided.
-- Or the owner's four labelled units (69566, 69568, 69570, 69573 → f1 26/26/25/26, f2 288) stop landing.
-- Or comb agreement regresses in any confidence band.
-- Or the cascade changes the separation materially: this is a static classification of decisions already
-  made, and with interpreted history both counts can move. The near-blank instrument measured a cascade
-  factor of exactly 1.00, so the expectation is that it does not, and a departure is a real result.
-- Or the window is not `top .. top+239`: the aperture is my assumption, and if the render window differs
-  the overrun arithmetic changes, though not the sign of the effect.
-
-**Material.** All 86,293 exact units and capture 1, judged by the independent gate and the owner's
-labelled units. The comb cannot judge this class at all: 92.4% of the regression is a common-mode
-shift, which leaves the field relationship unchanged and is invisible to it by construction.
-
-**Supersedes in practice, not by refutation:** entry 31's near-blank instrument, which reaches 25 of
-2,089 regression edges (1.2%) at a 12:1 ratio. It is left in the engine disabled at the owner's
-instruction, pending a cleanup pass that removes the pieces not being kept.
-
-### Amendment 1 to entry 32 (2026-09-22) — the figures were measured on the wrong quantity
-
-**Registered before the build proceeds.** Codex's preflight caught it before any engine edit.
-
-**The error.** I computed overrun from the measured first picture line. The publisher's crop does not
-start there: it starts at `23 + d1` (field 1) and `286 + d2` (field 2), and the comb and the hold can
-move `d1`/`d2` after the measurement. Codex's counterexample from a real run: frame 4758, measured top
-28, published crop top 24 — my formula reports 6 lines of overrun where the truth is 2. The correct
-quantities are `max(0, 262 + frame_d1 - f1_last)` and `max(0, 525 + frame_d2 - f2_last)`, with field 1
-joined to its source unit under the frame's pairing, not to the unit that owns the row.
-
-**Re-measured on the published crop.** The separation survives, weaker than stated:
-
-| | discards picture at the top AND increases overrun |
-|---|---|
-| the regression, 2,089 edges | **1,884 — 90.2%** (was claimed 97.2%) |
-| the fixes, 5,326 edges | **128 — 2.4%** (was claimed 1.9%) |
-
-Means: the regression loses 1.96 lines at the crop start and runs 1.96 further into blanking; the
-fixes gain 0.32 and sit 0.32 closer. The entry's claim holds; its numbers were wrong and are replaced
-by these.
-
-**Aperture, now measured rather than assumed.** The publisher is H=240, field 1 `23+d1 .. 262+d1`,
-field 2 `286+d2 .. 525+d2`. The review renderer is H=243, starting three rows higher at `20+d1` and
-`283+d2`; the bottom endpoints agree. The rule uses the publisher's geometry. My "240 lines beginning
-at 23/286" was right for the publisher and wrong about which start the crop uses.
-
-**Policy chosen, with its cost stated.** Codex asked whether to veto census tops before the comb or
-published crop starts after it. **Before**, on three grounds: the owner accepts the trade "at hopefully
-no cost to combing", and a post-comb veto overrides comb-driven placement, which is exactly that cost;
-92.4% of the regression is a common-mode shift the comb is blind to and did not cause, so the move
-originates at the census; and the published crop already equals the measured top on 67,575 of 85,554
-field-1 frames (79.0%), so a census veto reaches most final crops in practice.
-
-**What this policy does NOT do, recorded so no report can claim it:** it does not guarantee the final
-crop. On the 21% where the hold or the comb moves the crop away from the measured top, a vetoed top can
-still be published with an increased overrun. The rule refuses the census move that would discard
-picture; what happens downstream is a separate policy the owner may decide differently once he sees a
-render.
+## E-claude-2026-09-22-32 — refuse a move that discards picture and gains only blanking — **withdrawn; its veto was deleted from the engine at a05ad82.** Durable lesson: overrun has to be measured on the published crop start (23+d1, 286+d2), not the measured top — frame 4758 measured 28 but published 24, an overrun of 2 not 6; re-measured, the regression separation fell from 97.2% to 90.2%. Compacted 2026-09-25; full text at 257c9fe.
 
 ## E-claude-2026-09-22-33 — the first line that looks like the line above it
 
@@ -2089,3 +1803,94 @@ look complementary — correlation for structured picture, level for dark pictur
 test entry 20 was built on. That is a new entry, not an amendment to this one.
 
 **Not fixed in the render the owner will see next**, and he was told so rather than finding out.
+
+## E-claude-2026-09-25-36 — a correction has to earn its confidence: the sliding-window vote
+
+**Question (owner, 2026-09-25, verbatim).** "source stability is like a sliding window. Shifts off the
+baseline are going to be unusual, especially when its a common mode shift that should be highly
+suspect… what IS the baseline… after a certain level of agreement between the geometry and the comb
+detection, the average of THOSE values is what should help differentiate blanking/data/picture lines."
+Then: "you store the last N average values, apply the correction against all of them and the most often
+candidate becomes the correction." And: "this is something that needs to be done as part of the engine
+running in real time. thats why its autoregressive over a sliding window."
+
+**The gates, his words, as delivered:** "First, the comb agreement should IMPROVE with the geometry
+agreement. Secondly, I expect less excursions on both the [top] and bottom and less common mode jumps."
+Dispatch approved: "3. yes" (via the watchdog, 2026-09-25T13:52:54Z), after the branches were
+consolidated onto `v11`.
+
+**Premise.** The source's geometry is stable almost all of the time; the engine's common-mode jumps are
+mostly its own measurement jittering, not the tape moving. So the published absolute placement should be
+the most frequent placement among recent frames where the geometry and the comb agree, and a departure
+is adopted only once it has become that — it has to earn its confidence.
+
+**Measured before building, all on the tagged baseline's full-tape sidecar (`v11-approved-2026-09-25`):**
+- Every one of the engine's 1,312 common-mode moves has field 2's top changing; the absolute anchor is
+  `d2 = f2_first − 286`, field 2 alone. 86.6% of them are excursions that return within 10 s; 75% return
+  within 1 s; 339 return on the very next frame.
+- At 42650–43500 — the owner's "common mode shifts that aren't real… introduced by the correction" —
+  82% of the off-baseline frames have **no top in either field**: the engine carried an excursion
+  forward through an unmeasured stretch on `last_d2`.
+
+**The method, causal and forward-only.**
+- *Stage 1, the vote.* A frame is **confident** when both tops are accepted, the comb has an enclosed
+  basin, and the tops' implied relative shift `st = f2_first − 263 − f1_first` lies inside the comb's
+  floor. The field-2 offset of each confident frame enters a window of the last **N = 30** confident
+  frames; the published anchor is the window's most frequent value, a tie keeping the current anchor.
+  Non-confident frames do not vote. Only the absolute anchor changes: the published relative shift `d`
+  stays exactly as the engine computes it, so every frame moves in common mode or not at all.
+- *Stage 2, level fills behind a three-way gate.* Where the waveform abstains on a field, the first line
+  more than 10 codes above that field's own blanking rows becomes a candidate top. It is kept if the line
+  **continues into the line below** (correlation > 0.30: structured picture) or is **flat** (sd < 10:
+  dark picture). A line that is high-variance and does not continue is a data line and is rejected.
+  **Filled tops are inputs to the vote only** — they must not enter `st`, the held correction, the comb's
+  triggers or the published relative shift.
+
+**Why stage 2 is in this build — a widening of what was approved, stated rather than done quietly.**
+The vote changes only the published absolute placement. The first gate is computed from the measured
+tops and the comb, which the vote touches neither of, so stage 1 alone leaves it unchanged by
+construction. Stage 2 is what moves it. The two are separate switches and are reported separately.
+
+**Simulated on the full tape (N = 30), against the engine today:**
+
+| | engine today | stage 1 | stages 1 + 2 |
+|---|---|---|---|
+| geometry agrees with the comb (my reading of gate 1) | 51.1% | 51.1% | **58.3%** |
+| common-mode moves | 1,312 | **30** | **34** |
+| excursions (back within 10 s) | 1,136 | **6** | **7** |
+| one-frame jumps | 339 | 0 | 0 |
+| 42650–43500 at +0 | 211 / 851 | **851 / 851** | **851 / 851** |
+| cap 1 card, 6641–6878 | (2,2) then (5,5) | holds (0,0) | holds (0,0) |
+| flip after the 81490 program/commercial boundary | — | 63 frames | **37 frames** |
+
+**Gate 1 is my operationalisation, not the owner's words:** the share of published frames on which the
+geometry agrees with the comb. Among frames that have both tops the rate also rises slightly (60.6% →
+62.1%), so the added tops do not dilute it.
+
+**Invariants.** The published relative shift is identical to the tag on every frame. The waveform census
+is identical to the tag on all 172,586 field edges. The owner's labelled counters (69566, 69568, 69570,
+69573) still land.
+
+**Falsifier.** Either gate fails against the tag on the whole tape; or the published relative shift
+differs from the tag on any frame; or the census moves; or cap 1's card shifts; or 42650–43500 leaves
++0; or stage 2 raises common-mode moves or excursions above stage 1's by more than the simulated
+4 and 1.
+
+**What this is not, recorded so no report can claim it.**
+- **Fixture A only.** Everything above was measured on fixture A. Cap 1 is a different, more stable tape
+  and this build is its first test.
+- **"Flat means dark picture" holds only because the level threshold sits 10 codes above blanking.** The
+  empty data lines of the caption-less commercial (82421–83342) are flat too, at 5–8 codes, and that margin
+  is what excludes them. A floating level (stage 3) must learn black as well as blanking before it can
+  lower that threshold.
+- **The vote cannot see a misread that is the same in both fields.** Relative agreement never adjudicates
+  absolute position; if both fields read a data line as picture together, those frames count as confident
+  and vote.
+- **Attribution is not addressed.** A relative correction still lands on field 1 by default; the
+  per-field vote with a dynamic anchor is stage 4.
+- The 4 extra common-mode moves stage 2 adds over stage 1 have not been inspected.
+- A program/commercial boundary still lags about 1.2 s with stage 2 and 2.1 s without, while the window
+  fills.
+
+**Material.** Captures 1–4 rendered for the owner's review; the whole tape replayed for the gates, not
+encoded.
