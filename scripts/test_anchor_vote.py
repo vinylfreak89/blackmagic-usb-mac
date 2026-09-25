@@ -60,3 +60,30 @@ with tempfile.TemporaryDirectory(prefix='anchor-vote-',dir='/private/tmp') as tm
         assert any(r['level_accepted_f1']=='1' for r in runs['s12',False].values())
         assert any(r['vote_anchor']!=r['vote_engine_anchor'] for r in runs['s1',False].values() if r['frame_top_unit'])
         print('ANCHOR-VOTE PASS:', 'reversed' if reverse else 'aligned', '50 units; controls inert, fill, vote, relative and audit invariance')
+
+    # A pairing change into unmeasurable rasters clears the window but must not
+    # reset the published anchor. This fails if the worker calls ge_init here.
+    stream=bytearray(b'prefix')
+    for i,v in enumerate([later]*8+[np.ones_like(y)]*8):
+        u=bytearray(fixture.unit(100+i));u[49::2]=v.tobytes();stream.extend(u)
+    stream.extend(fixture.unit(116)[:100])
+    switch_capture=tmp/'switch.tpc'
+    with switch_capture.open('wb') as f:
+        for seq,off in enumerate(range(0,len(stream),15360)):
+            f.write(fixture.record(fixture.DATA,fixture.VIDEO,0,seq,0,15360,stream[off:off+15360]))
+    for before,after in [('aligned','reversed'),('reversed','aligned')]:
+        schedule=tmp/'switch.csv'
+        schedule.write_text(f'first_counter,pairing,note\n0,{before},before\n108,{after},after\n')
+        log=tmp/f'{before}.switch.log.csv'
+        p=subprocess.run([binary,str(switch_capture),str(log),'--geometry-v11','--pool','64',
+                          '--pairing-schedule',str(schedule)],env=env|{'GE_ANCHOR_VOTE':'1'},
+                         capture_output=True,text=True,timeout=90)
+        assert p.returncode==0 and 'Sanitizer' not in p.stderr,(p.returncode,p.stdout,p.stderr)
+        with log.open() as f:frames=[r for r in csv.DictReader(f) if r['frame_top_unit']]
+        prior=[r for r in frames if int(r['counter_extended'])<108][-1]
+        assert prior['vote_anchor']=='2' and int(prior['vote_count'])>0,prior
+        following=[r for r in frames if int(r['counter_extended'])>=108]
+        assert following
+        for r in following:
+            assert (r['vote_anchor'],r['vote_engine_anchor'],r['vote_count'],r['vote_confident'])==('2','0','0','0'),r
+        print('ANCHOR-VOTE PASS: empty-window hold across',before,'->',after)

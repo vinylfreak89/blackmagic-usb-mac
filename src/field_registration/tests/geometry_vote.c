@@ -12,6 +12,7 @@ static ge_decision input(geometry_engine *g,int top,int confident,int engine) {
 static void votes(void) {
     geometry_engine g;ge_init(&g,0,0);ge_anchor_vote=1;
     ge_decision o=input(&g,2,0,4);assert(o.vote_anchor==4 && !o.vote_count);
+    o=input(&g,2,0,5);assert(o.vote_anchor==4 && !o.vote_count); /* empty holds */
     o=input(&g,2,1,4);assert(o.vote_anchor==2 && o.vote_winner_count==1);
     o=input(&g,3,1,4);assert(o.vote_anchor==2 && o.vote_count==2); /* current tie */
     o=input(&g,3,1,4);assert(o.vote_anchor==3 && o.vote_winner_count==2);
@@ -24,9 +25,12 @@ static void votes(void) {
     o=input(&g,0,0,0);assert(o.vote_anchor==3);
     int b[]={2,2,3,3,4};g.vote_count=5;memcpy(g.vote_values,b,sizeof b);g.vote_anchor=9;
     o=input(&g,0,0,0);assert(o.vote_anchor==2);
-    reset_frame_state(&g);o=input(&g,0,0,4);assert(!o.vote_count && o.vote_anchor==4);
-    input(&g,2,1,4);ge_decision out[2];ge_break(&g,out);assert(!g.vote_count);
-    ge_init(&g,1,0);assert(!g.vote_count);
+    reset_frame_state(&g);o=input(&g,0,0,4);assert(!o.vote_count && o.vote_anchor==2);
+    ge_decision out[2];ge_break(&g,out);o=input(&g,0,0,5);
+    assert(!g.vote_count && o.vote_anchor==2 && o.anchor_source==GE_SOURCE_VOTE);
+    ge_break(&g,out);ge_set_pairing(&g,1);o=input(&g,0,0,5);
+    assert(!g.vote_count && o.vote_anchor==2 && g.reverse);
+    ge_init(&g,1,0);o=input(&g,0,0,5);assert(!g.vote_count && o.vote_anchor==5);
     ge_anchor_vote=0;o=input(&g,2,1,4);assert(o.frame_d2==4 && o.frame_d1==3 && !g.vote_count);
 }
 static void fills(void) {

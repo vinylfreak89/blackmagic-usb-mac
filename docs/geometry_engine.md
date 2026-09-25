@@ -97,8 +97,12 @@ field-2 offset enters the last-30-confident-frame window. The modal value wins;
 ties retain the current anchor, then prefer the newest tied value, then the
 first tied value in chronological window order. Non-confident frames add no vote.
 All engine resets, gaps, breaks and pairing reinitializations empty this window.
-An empty window uses the unchanged engine's final anchor, including its existing
-basin-discard fallback. No placement is silently carried across a reset.
+An empty window holds the last published vote anchor, including across resets
+and pairing changes. Only before the first frame of a new session does it use
+the unchanged engine's final anchor (including its basin-discard fallback).
+This display-anchor hold does not retain old votes or relative-decision state.
+Use `ge_init` for a new session; after flushing the old pairing with `ge_break`,
+use `ge_set_pairing` for a pairing change within the session.
 
 Level fills apply to raw waveform ABSTAIN only, never DISCARDED. The reference
 is the median of blank rows 7..15 (+263 in field 2), body columns 40..679.
@@ -123,7 +127,7 @@ Schema 23 preserves existing columns and adds three configuration columns
 `level_mean_fN`, `level_sd_fN`, `level_corr_fN`, `level_accepted_fN`. Level columns
 are empty when not measured. All frame-owned additions are empty on boundary
 or unpublished rows without a frame. Existing `f1_first/f2_first` stay immutable.
-`anchor_source=anchor_vote` identifies a nonempty vote window; the original
+`anchor_source=anchor_vote` identifies a voted or empty-window held anchor; the original
 engine's final anchor remains explicit in `vote_engine_anchor`.
 
 `geometry_vote` checks threshold boundaries, clamp, first-candidate semantics,
@@ -278,8 +282,9 @@ The file is validated and copied at `fs_open`; later file edits cannot affect a
 running session. Malformed CSV, duplicate/unsorted counters, unknown pairings,
 more than 65,536 rows or fields longer than 4,096 bytes are errors, not truncation.
 
-A pairing change completes any old reversed boundary unit, then clears the
-whole geometry state before the switch unit. A note-only change does not reset.
+A pairing change completes any old reversed boundary unit, then clears decision
+and vote evidence before the switch unit. With voting enabled, only its last
+published anchor survives for the empty-window hold. A note-only change does not reset.
 Every v11 log row includes `pairing` and an always-quoted `pairing_note` (CSV
 escaping preserves commas, quotes and newlines). Delayed rows use their own
 unit's note; counterless hole/tail rows use the active setting. Without a schedule

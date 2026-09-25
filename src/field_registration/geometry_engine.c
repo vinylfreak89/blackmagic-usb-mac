@@ -14,11 +14,18 @@ struct geometry_engine {
     ge_features previous, current;
     uint8_t previous_y[GE_PIXELS];
     ge_decision pending;
-    int vote_values[GE_VOTE_WINDOW], vote_count, vote_anchor;
+    int vote_values[GE_VOTE_WINDOW], vote_count, vote_anchor, vote_published;
 };
 size_t ge_size(void) { return sizeof(geometry_engine); }
 void ge_init(geometry_engine *g, int reverse, int audit) {
     memset(g,0,sizeof *g); g->reverse=!!reverse; g->audit=!!audit;
+}
+void ge_set_pairing(geometry_engine *g,int reverse) {
+    /* Caller has flushed pending fields. A pairing reset clears evidence,
+     * not the last published vote anchor; only ge_init starts a new session. */
+    int anchor=g->vote_anchor,published=g->vote_published;
+    ge_init(g,reverse,g->audit);
+    g->vote_anchor=anchor;g->vote_published=published;
 }
 const char *ge_class_name(ge_class c) {
     static const char *const names[]={"unknown","nothing","valid move","bottom only","top only","not in tandem"};
@@ -220,7 +227,7 @@ static void reject_placement(geometry_engine *g,ge_decision *o,int *d,int *d2) {
 static void reset_frame_state(geometry_engine *g) {
     g->held=0;g->provisional=0;g->have_placement=0;g->last_d=g->last_d2=0;
     g->basis_valid=0;g->basis_first[0]=g->basis_first[1]=0;
-    g->vote_count=0;g->vote_anchor=0;
+    g->vote_count=0;
 }
 static void vote_anchor(geometry_engine *g,ge_decision *o,
                         const ge_features *t,const ge_features *b) {
@@ -255,7 +262,9 @@ static void vote_anchor(geometry_engine *g,ge_decision *o,
         }
         if(current!=best)g->vote_anchor=recent==best?g->vote_values[g->vote_count-1]:first;
         o->vote_winner_count=best;o->anchor_source=GE_SOURCE_VOTE;
-    } else g->vote_anchor=o->vote_engine_anchor;
+    } else if(!g->vote_published)g->vote_anchor=o->vote_engine_anchor;
+    else o->anchor_source=GE_SOURCE_VOTE;
+    g->vote_published=1;
     o->vote_count=g->vote_count;o->vote_anchor=g->vote_anchor;
     o->frame_d2=o->d2=g->vote_anchor;
     o->frame_d1=o->d1=g->vote_anchor-o->published_d;

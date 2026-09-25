@@ -73,6 +73,9 @@ typedef struct {
 typedef struct geometry_engine geometry_engine;
 size_t ge_size(void);
 void ge_init(geometry_engine *, int pair_next, int audit_comb);
+/* After ge_break flushes the old pairing, reset for a new pairing within the
+ * same session. Retains only the published vote anchor, never prior votes. */
+void ge_set_pairing(geometry_engine *, int pair_next);
 /* All input rows are contiguous 720-byte luma, independent of UYVY decoding. */
 void ge_measure(const uint8_t *, ge_features *);
 /* Raw entry-33 observation: no step returns first=0 and step=0. NTSC lines.
@@ -93,7 +96,7 @@ ge_comb_evidence ge_comb_examine(const ge_comb_result *, int proposed);
 unsigned ge_push(geometry_engine *, const uint8_t *, uint64_t counter,
                  int reset, ge_decision out[2]);
 /* EOF/broken adjacency completes the unused boundary field using its own census.
- * Clears all history; preserves the two configuration flags. */
+ * Clears decision/vote evidence; retains the published vote anchor and config. */
 unsigned ge_break(geometry_engine *, ge_decision out[2]);
 const char *ge_class_name(ge_class);
 #endif

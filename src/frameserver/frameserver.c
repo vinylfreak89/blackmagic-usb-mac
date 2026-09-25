@@ -455,7 +455,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
         if(pair && pair->reversed!=f->geometry_reversed) {
             geometry_flush(f); /* complete the old pairing's unused boundary first */
             f->geometry_reversed=pair->reversed;
-            ge_init(f->geometry,f->geometry_reversed,f->cfg.geometry_audit_comb);
+            ge_set_pairing(f->geometry,f->geometry_reversed);
             f->st.discontinuity_calls++;
         }
         if(pair)f->pairing_active=pair; /* note-only changes never reset */
