@@ -1043,3 +1043,17 @@ the specified s1/s12c render stop conditions still apply. Material: the tagged
 whole-tape sidecar, reference_anchor.csv and its two level censuses, with raw
 source rows used to adjudicate discrepancies; captures 1–4 only after gates.
 Scratch evidence: /private/tmp/vote-entry36.aBbP7d. No whole-tape encode.
+
+Preflight verdict: the reference-input premise is refuted; no engine or renderer
+change was made. Reconstructing its literal policies matches all seven columns
+on all paired frames, but its stage-2 field-1 fill uses the bottom unit instead
+of frame_top_unit under reversed pairing. Raw C checks confirm the first
+contradiction at frame 4761 (source 4762). It also fills DISCARDED waveform
+results although the dispatch says ABSTAIN only (first counter 4766). The
+reference carries the vote through resets and the pairing-switch ge_init;
+retaining the existing clear-history contract instead changes stage-1 anchors,
+first at 48240. That reset policy needs an explicit ruling, so the stage-1-only
+render fallback is not yet validated. No quality gate or CPU result is claimed.
+Detailed counts, all differences and raw numeric checks are in the scratch
+REPORT.md above. No review artifacts were altered; return these definitions
+for review rather than tuning the engine to the inconsistent reference.
