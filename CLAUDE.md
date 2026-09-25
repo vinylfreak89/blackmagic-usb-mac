@@ -1702,11 +1702,6 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   its registration sidecar: 86,296 encoded frames, zero strip/source-placement
   differences, hashes verified across same-filesystem publication. The status
   in captures/ names engine/renderer 3a87891 and leaves visual acceptance pending.
-  Entry-36 preflight has not promoted the vote: its reference joins reversed
-  field-1 level fills to the wrong unit and treats DISCARDED as ABSTAIN. Its
-  persistent vote window also needs reconciliation with the engine's reset
-  contract. See the Codex ledger and /private/tmp/vote-entry36.aBbP7d/REPORT.md;
-  engine, renderer and review artifacts remain unchanged pending that review.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
