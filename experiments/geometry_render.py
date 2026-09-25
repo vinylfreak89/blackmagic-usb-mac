@@ -79,7 +79,7 @@ NO_SOURCE_UNIT = 0xFFFFFFFF      # the strip's counter for a timing slot, which 
 MAX_FILL_GAP = 120
 FW, FH = 720, FIELD_ROWS * 2
 DW = 640                                  # 720 samples displayed at 8:9
-W, BAND = 1000, 170
+W, BAND = 1000, 184                         # dedicated vote line above the identity strip
 H = FH + BAND
 PX = (W - DW) // 2
 LANE = 22
@@ -417,6 +417,18 @@ def draw_comb_status(dr, row, published, font, x, y, right):
             f"{'decided' if row.get('comb_decided') == '1' else 'undecided'}" if known else 'comb --')
     fitted_text(dr, (after, y), f"{what} | {row.get('confidence', '--')} "
                 + trigger_words(row.get('triggers')), font, color, right)
+
+
+def vote_label(row):
+    """Frame-owned engine evidence only; never reconstruct a vote in Python."""
+    if row.get('ge_anchor_vote') != '1':
+        return 'anchor vote off' if row.get('ge_anchor_vote') == '0' else ''
+    needed=('vote_anchor','vote_engine_anchor','vote_confident','vote_count','vote_winner_count')
+    if any(row.get(k) in ('',None) for k in needed):
+        return 'anchor vote: missing engine evidence'
+    anchor,engine,conf,count,winner=(int(row[k]) for k in needed)
+    return (f'anchor {anchor:+d}; engine {engine:+d}; confident {conf}; '
+            f'win {winner}/30 used {count}')
 
 
 def comb_panel_lines(row, energies, published):
@@ -961,6 +973,8 @@ def main():
         if rowB.get('ge_wave_bar'):
             fit(dr, (6, FH + 120), f"wave bar {float(rowB['ge_wave_bar']):g}; clamp +/-{rowB['ge_wave_clamp']}",
                 small, (150, 150, 150), right=CB_X0)
+        if vote_label(rowB):
+            fit(dr, (6, FH + 134), vote_label(rowB), small, (230, 210, 130), right=CB_X0)
         comb_bar(dr, comb_energies(rowB), pub, rowB)
         if schedule is not None:
             pr, note = schedule_at(schedule, ext)

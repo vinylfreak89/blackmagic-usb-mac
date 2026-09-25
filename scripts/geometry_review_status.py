@@ -143,6 +143,8 @@ def main():
             result['schema_versions'] = sorted({r['schema_version'] for r in rows})
             result['wave_settings'] = sorted({(r.get('ge_wave_bar'), r.get('ge_wave_clamp')) for r in rows})
             result['comb_reject_settings'] = sorted({r.get('ge_comb_reject', '') for r in rows})
+            result['vote_settings'] = sorted({(r.get('ge_anchor_vote', ''), r.get('ge_level_fill', ''),
+                                              r.get('ge_level_flat', '')) for r in rows})
             captures[name] = result
         status.update(state='READY', captures=captures)
     except Exception as e:
