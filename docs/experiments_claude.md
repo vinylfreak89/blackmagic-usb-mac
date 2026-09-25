@@ -1894,3 +1894,32 @@ differs from the tag on any frame; or the census moves; or cap 1's card shifts; 
 
 **Material.** Captures 1–4 rendered for the owner's review; the whole tape replayed for the gates, not
 encoded.
+
+### Amendment to E-claude-2026-09-25-36 (2026-09-25) — the flat branch accepts the deck's grey mute; it is switched off for the review render
+
+**Found while building the frame-by-frame reference, before any engine code.** Stage 2 publishes a
+different anchor from stage 1 on 596 frames, and **382 of them (64%) sit at the tape's three
+non-programme events** (§6): the tape start (229), the recording boundary (60) and 27:18 (93). Five of
+stage 2's thirteen extra anchor changes are there too. It is the deck's grey mute passing the **flat**
+test.
+
+**Physical reason.** "Flat" was meant to mean *dark picture* — the cap 1 card, the fade at a
+commercial's head. It tests flatness, not darkness, and a grey mute is flat and bright (~120 codes).
+Harmless in the picture, since a mute has nothing to register, but it is the wrong class of line
+entering the vote, and it fills the window with votes that must be outvoted when the programme returns.
+
+**The amendment.** The flat branch becomes its own switch, **off** for the review render. The render
+configuration is stage 1 plus stage 2 with **continues-downward only**. The reference now carries all
+three variants.
+
+| | gate 1 | common-mode | excursions | diffs at mute events | 81490 flip |
+|---|---|---|---|---|---|
+| stage 1 | 51.2% | 30 | 6 | 0 | 63 frames |
+| stages 1+2, continues or flat | 58.3% | 34 | 7 | 382 | 37 frames |
+| **stages 1+2, continues only** | **54.5%** | **30** | **6** | **0** | 60 frames |
+
+**What it improves:** it removes the wrong-class votes and returns common-mode moves and excursions
+exactly to stage 1's. **What it costs:** gate 1 rises 3.3 points instead of 7.1, and the commercial
+flip is back to about 2 s. **What must not break:** gate 2 identical to stage 1; gate 1 still above the
+tag. **Open:** a flat branch restricted to *dark* lines needs the learned black level of stage 3 and is
+not built now.
