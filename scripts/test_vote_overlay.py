@@ -10,6 +10,9 @@ row=dict(ge_anchor_vote='1',vote_anchor='0',vote_engine_anchor='5',vote_confiden
          vote_count='30',vote_winner_count='27',frame_d2='0',f2_first='291')
 assert g.vote_label(row)=='anchor +0; engine +5; confident 0; win 27/30 used 30'
 assert dr.textlength(g.vote_label(row),font=font)<452
+row.update(vote_count='0',vote_winner_count='0')
+assert g.vote_label(row)=='anchor +0; engine +5; confident 0; win 0/30; empty'
+assert dr.textlength(g.vote_label(row),font=font)<452
 assert g.FH+134+14 < g.H-14-13
 assert g.vote_label({})==''
 assert g.vote_label({'ge_anchor_vote':'0'})=='anchor vote off'

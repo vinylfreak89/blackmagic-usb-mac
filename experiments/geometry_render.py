@@ -427,8 +427,9 @@ def vote_label(row):
     if any(row.get(k) in ('',None) for k in needed):
         return 'anchor vote: missing engine evidence'
     anchor,engine,conf,count,winner=(int(row[k]) for k in needed)
+    slots=f'win {winner}/30 used {count}' if count else 'win 0/30; empty'
     return (f'anchor {anchor:+d}; engine {engine:+d}; confident {conf}; '
-            f'win {winner}/30 used {count}')
+            f'{slots}')
 
 
 def comb_panel_lines(row, energies, published):
