@@ -1057,3 +1057,17 @@ render fallback is not yet validated. No quality gate or CPU result is claimed.
 Detailed counts, all differences and raw numeric checks are in the scratch
 REPORT.md above. No review artifacts were altered; return these definitions
 for review rather than tuning the engine to the inconsistent reference.
+
+### Resume under entry 36 amendment 2
+
+The corrected reference resolves ownership, permits ABSTAIN fills only, applies
+the shared waveform clamp to level candidates, and explicitly clears the vote
+on engine resets. Build those rules with three off-by-default controls and an
+independent bounded anchor window. Preserve the original relative decision and
+its fallback state; vote-only measurements must never feed that path. Additional
+comb evidence is enabled only for the vote and must not adopt untriggered comb
+decisions. Test all three variants against reference_anchor2.csv, all-off against
+the approved tag, and census/relative invariants before rendering. Unrounded
+body statistics use the specified strict thresholds, not the reference CSV's
+serialization precision; any discrepancy is reported, not fitted away. The
+previous render stop conditions remain. Evidence: /private/tmp/vote-build.zxHiET.
