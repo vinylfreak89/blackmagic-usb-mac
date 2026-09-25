@@ -1090,3 +1090,19 @@ Controls remain off by default. Unit, ASan and TSan checks pass; complete
 counts, timings, discrepancy lists and probes are in the scratch report above.
 Existing review artifacts remain untouched. No reset policy or threshold was
 tuned to convert these findings into a passing render.
+
+### Amendment 3 — empty-window hold
+
+Owner's premise: "the most often candidate becomes the correction"; no new
+candidate does not license the original engine's uncorroborated anchor. Preserve
+the last published vote anchor through an empty window, including resets and
+pairing changes; only session initialization has no previous publication and
+uses the original engine anchor. Reset still removes all old votes. Nothing
+changes in the relative engine, census, fill measurements or strict thresholds.
+Test against reference_anchor3, allowing only the two documented confidence
+serialization discrepancies; require all-off tag identity and relative/census
+identity, the named counter intervals and complete capture-1 hold. A remaining
+stage-1/reference or named-case failure stops rendering; a fill-only reference
+failure permits the specified s1 fallback. Measure CPU, run unit/sanitizer checks,
+then validate every encoded placement before publishing captures 1–4. No whole
+tape encode. Detailed evidence: /private/tmp/vote-hold.zlY5U0.
