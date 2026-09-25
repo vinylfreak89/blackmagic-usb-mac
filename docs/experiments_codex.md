@@ -1071,3 +1071,22 @@ the approved tag, and census/relative invariants before rendering. Unrounded
 body statistics use the specified strict thresholds, not the reference CSV's
 serialization precision; any discrepancy is reported, not fitted away. The
 previous render stop conditions remain. Evidence: /private/tmp/vote-build.zxHiET.
+
+Build verdict: the bounded C vote reproduces every stage-1 reference column;
+all-off tag identity, waveform census and relative-shift invariants pass. Each
+fill variant has one confidence discrepancy from rounded reference statistics:
+32714 has sd 9.997575878 (serialized 10.00); frame 29281's field-1 source 29282
+has correlation .300012175 (serialized .3000). Raw checks confirm both. Every
+variant's anchor sequence matches; the strict thresholds were not altered.
+
+The named-case falsifier nevertheless fires in capture 1 under both s1 and
+s12c: reset 6667 clears the window and the specified cold start republishes
+anchor +5 through 6877. Only 27 of the requested 238 frames remain at (0,0).
+Real live replays confirm the result; neither the requested render nor its s1
+fallback is produced. The 82421..83342 prose claim also overstates the corrected
+reference: reset 83330 leaves 13 frames at anchor 0, not +2. The aggregate
+movement gates match the reference; they do not erase either named failure.
+Controls remain off by default. Unit, ASan and TSan checks pass; complete
+counts, timings, discrepancy lists and probes are in the scratch report above.
+Existing review artifacts remain untouched. No reset policy or threshold was
+tuned to convert these findings into a passing render.
