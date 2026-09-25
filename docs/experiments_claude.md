@@ -1968,3 +1968,41 @@ join bug.
 
 **Open, and not addressed here:** a cold start that doesn't expose the engine's jitter while the window
 refills.
+
+### Amendment 3 to E-claude-2026-09-25-36 (2026-09-26) — an empty window holds; it does not publish the engine's anchor
+
+**The falsifier fired, on the entry's own named case, and the cause is my amendment-2 decision.**
+Codex built all three variants and they reproduce the reference anchor for anchor on the whole tape
+(engine `703c77b`, renderer `bc81ca7`, ledger `c7e2f60`/`d84f1e4`); all-off matches the tag on 86,293 units
+and on captures 1–4; relative shift and census identical everywhere; 0.316 / 0.340 ms per unit. But on
+**cap 1's card, 211 of 238 frames publish (5,5)**. The engine resets at 6667, when the card appears;
+amendment 2 cleared the window there and published the engine's own anchor while it was empty; and the
+card never produces a confident frame, so the window stayed empty for the whole card. Codex withheld the
+render and the s1 fallback, correctly.
+
+**Physical reason, the owner's words:** "the most often candidate becomes the correction." With no
+candidate there is no correction, and the placement holds. The engine's own anchor is the uncorroborated
+value the vote exists to withhold; publishing it because the window happens to be empty defeats the vote.
+
+**The rule.** At every engine reset the window is still cleared — the old epoch's votes never count
+toward the new baseline (§8 property 5 stands) — but the **published anchor holds** until a confident
+vote arrives. The engine's anchor is used only when nothing has ever been published (session start).
+
+**Measured, verified against the built engine first** (the amendment-2 policy reproduced
+`reference_anchor2.csv` with zero differences and the engine's 27/238 on the card):
+
+| | common-mode | excursions | one-frame | 42650–43500 | 81490 flip | **cap 1 card** |
+|---|---|---|---|---|---|---|
+| s12c, amendment 2 | 31 | 9 | 1 | 851/851 | 15 frames | 27/238 |
+| **s12c, hold** | **29** | **6** | **0** | 851/851 | 18 frames | **238/238** |
+| s1, hold | 31 | 8 | 0 | 851/851 | 18 frames | 238/238 |
+
+**What it improves:** the card holds (0,0) throughout, and the cold-start excursions are gone because the
+anchor no longer follows the engine's jitter through an empty window. **What it costs:** the commercial
+flip after 81490 takes 18 frames instead of 15. **The one real boundary where holding could lag, checked:**
+at the recording boundary both policies settle on the second recording's +2 at the same frame, 48352.
+**What must not break:** gate 1 unchanged (54.3% for s12c); every other named case.
+
+**Two reference cells are known wrong and the engine is right there.** `class_tape*.csv` rounded its
+statistics, and two sit on strict thresholds: counter 32714 (s12, sd 9.997575878 written 10.00) and 29281
+(s12c, correlation 0.300012175 written 0.3000). Codex confirmed both from raw rows. Anchors are unaffected.
