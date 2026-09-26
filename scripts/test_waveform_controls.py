@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 binary=str(Path(sys.argv[1]).resolve())
-base={k:v for k,v in os.environ.items() if not k.startswith('GE_')}
+base={k:v for k,v in os.environ.items() if not k.startswith(('GE_TOP_','GE_WAVE_','GE_COMB_','GE_ANCHOR_','GE_LEVEL_','GE_VOTE_','GE_BOTTOM_'))}
 for arm,expected in [({},'# GE_WAVE_BAR=0.45000000000000001 GE_WAVE_CLAMP=5 GE_COMB_REJECT=2'),
                      ({'GE_WAVE_BAR':'0.5','GE_WAVE_CLAMP':'0','GE_COMB_REJECT':'3'},'# GE_WAVE_BAR=0.5 GE_WAVE_CLAMP=0 GE_COMB_REJECT=3')]:
     with tempfile.TemporaryDirectory(prefix='wave-controls-',dir='/private/tmp') as tmp:
@@ -24,7 +24,6 @@ bad['GE_COMB_BASIN_FACTOR']=('nan','inf','.99','1.5junk')
 bad['GE_VOTE_WINDOW']=('0','-1','1.5','257','30junk')
 bad['GE_VOTE_BLANKSPOT_TOLERANCE']=('nan','inf','-1','2junk')
 bad['GE_COMB_RIGID_MIN']=('0','-1','1.5','2147483648','2junk')
-bad['GE_FIELD2_JITTER']=('2','-1','1.5','','1junk')
 for name,values in bad.items():
     for value in values:
         p=subprocess.run([binary],input='',text=True,capture_output=True,env=base|{name:value},timeout=30)

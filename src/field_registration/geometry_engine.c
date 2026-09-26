@@ -6,7 +6,7 @@
 static const ge_config defaults = {
     .wave_bar=.45, .wave_clamp=5, .comb_reject=2, .comb_basin_factor=1.5,
     .vote_window=30, .vote_pair_min=.6, .bottom_flat_margin=3,
-    .blankspot_tolerance=2, .rigid_min=2, .rigid_clarity=1.3, .field2_jitter=0
+    .blankspot_tolerance=2, .rigid_min=2, .rigid_clarity=1.3
 };
 ge_config ge_default_config(void) { return defaults; }
 int ge_config_valid(const ge_config *c) {
@@ -17,8 +17,7 @@ int ge_config_valid(const ge_config *c) {
         isfinite(c->vote_pair_min) && c->vote_pair_min>=-1 && c->vote_pair_min<=1 &&
         isfinite(c->bottom_flat_margin) && c->bottom_flat_margin>0 &&
         isfinite(c->blankspot_tolerance) && c->blankspot_tolerance>=0 &&
-        c->rigid_min>=1 && isfinite(c->rigid_clarity) && c->rigid_clarity>=1 &&
-        (c->field2_jitter==0 || c->field2_jitter==1);
+        c->rigid_min>=1 && isfinite(c->rigid_clarity) && c->rigid_clarity>=1;
 }
 
 struct geometry_engine {
@@ -30,8 +29,6 @@ struct geometry_engine {
     uint8_t previous_y[GE_PIXELS];
     ge_decision pending;
     int vote_values[GE_VOTE_CAPACITY], vote_count, vote_anchor, vote_published;
-    /* Publication-only state; never fed into relative policy or the vote. */
-    int jitter_known, jitter_normal_d1, jitter_normal_d2, jitter_compensation;
 };
 size_t ge_size(void) { return sizeof(geometry_engine); }
 const ge_config *ge_get_config(const geometry_engine *g) { return &g->config; }
@@ -157,7 +154,7 @@ const char *ge_wave_status_name(ge_wave_status s) {
 }
 const char *ge_source_name(ge_source s) {
     static const char *const names[]={"","census","held_correction","comb","previous","section_start",
-        "comb_rejection","discard_previous","discard_section_start","anchor_vote","field2_jitter"};
+        "comb_rejection","discard_previous","discard_section_start","anchor_vote"};
     return names[s];
 }
 static double horizontal_level(const uint8_t *y,int off,int *columns) {
@@ -323,7 +320,6 @@ static void reset_frame_state(geometry_engine *g) {
     g->held=0;g->provisional=0;g->have_placement=0;g->last_d=g->last_d2=0;
     g->basis_valid=0;g->basis_first[0]=g->basis_first[1]=0;
     g->vote_count=0;
-    g->jitter_known=0;g->jitter_compensation=0;
 }
 static void vote_anchor(geometry_engine *g,ge_decision *o,
                         const ge_features *t,const ge_features *b,
@@ -381,28 +377,6 @@ static void vote_anchor(geometry_engine *g,ge_decision *o,
     o->vote_count=g->vote_count;o->vote_anchor=g->vote_anchor;
     o->frame_d2=o->d2=g->vote_anchor;
     o->frame_d1=o->d1=g->vote_anchor-o->published_d;
-}
-/* Compare the unmodified post-vote trajectory, not our compensated output.
- * This leaves all future comb/held/vote decisions exactly on the normal path.
- * Both offsets receive the same term: the relative shift cannot change. */
-static void field2_jitter(geometry_engine *g,ge_decision *o) {
-    if(!g->config.field2_jitter)return;
-    int d1=o->frame_d1,d2=o->frame_d2;
-    if(g->jitter_known) {
-        int changed=d1!=g->jitter_normal_d1 || d2!=g->jitter_normal_d2;
-        int m2=o->vertical[1].shift;
-        int follows=changed && d2==g->jitter_normal_d2 &&
-            o->vertical[0].known && o->vertical[1].known &&
-            o->vertical[0].shift==0 && m2!=0 &&
-            d1-g->jitter_normal_d1==-m2;
-        if(follows)g->jitter_compensation+=m2;
-        else if(changed || (o->vertical[1].known && m2!=0 &&
-                            m2==-g->jitter_compensation))g->jitter_compensation=0;
-    }
-    g->jitter_known=1;g->jitter_normal_d1=d1;g->jitter_normal_d2=d2;
-    o->frame_d1=o->d1=d1+g->jitter_compensation;
-    o->frame_d2=o->d2=d2+g->jitter_compensation;
-    if(g->jitter_compensation)o->anchor_source=GE_SOURCE_FIELD2_JITTER;
 }
 static int rerun(ge_class c) { return c!=GE_NOTHING && c!=GE_VALID_MOVE; }
 static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
@@ -471,7 +445,6 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     /* Relative-policy state retains its own absolute anchor: missing-top and
      * basin fallbacks must not feed an earlier voted placement back into it. */
     vote_anchor(g,&o,t,b,ty,by);
-    field2_jitter(g,&o);
     return o;
 }
 unsigned ge_break(geometry_engine *g,ge_decision out[2]) {

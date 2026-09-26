@@ -25,7 +25,6 @@ typedef struct {
     double blankspot_tolerance;   /* 2, above field-2 VI median */
     int rigid_min;                /* 2, minimum absolute vertical shift */
     double rigid_clarity;         /* 1.3, inclusive far / best SAD */
-    int field2_jitter;            /* 0; experimental publication-only compensation */
 } ge_config;
 ge_config ge_default_config(void);
 int ge_config_valid(const ge_config *);
@@ -33,8 +32,7 @@ typedef struct { int first; double step, max_step; } ge_wave_result;
 typedef enum { GE_WAVE_ABSTAIN, GE_WAVE_ACCEPTED, GE_WAVE_DISCARDED } ge_wave_status;
 typedef enum { GE_SOURCE_NONE, GE_SOURCE_CENSUS, GE_SOURCE_HELD, GE_SOURCE_COMB,
                GE_SOURCE_PREVIOUS, GE_SOURCE_START, GE_SOURCE_REJECT,
-               GE_SOURCE_DISCARD_PREVIOUS, GE_SOURCE_DISCARD_START, GE_SOURCE_VOTE,
-               GE_SOURCE_FIELD2_JITTER } ge_source;
+               GE_SOURCE_DISCARD_PREVIOUS, GE_SOURCE_DISCARD_START, GE_SOURCE_VOTE } ge_source;
 typedef struct {
     int first, accepted, measured; /* raw candidate plus clamp/continuation verdict */
     double reference, mean, sd, corr_below;
