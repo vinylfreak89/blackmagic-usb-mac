@@ -79,7 +79,7 @@ NO_SOURCE_UNIT = 0xFFFFFFFF      # the strip's counter for a timing slot, which 
 MAX_FILL_GAP = 120
 FW, FH = 720, FIELD_ROWS * 2
 DW = 640                                  # 720 samples displayed at 8:9
-W, BAND = 1000, 184                         # dedicated vote line above the identity strip
+W, BAND = 1000, 198                         # dedicated vote and bottom-evidence lines above the strip
 H = FH + BAND
 PX = (W - DW) // 2
 LANE = 22
@@ -439,6 +439,21 @@ def placement_source(row, source):
     if source == 'engine' and row.get('anchor_source') == 'anchor_vote':
         return 'vote anchor'
     return source
+
+
+def bottom_label(row):
+    """Frame-owned F quantiles and rule from the sidecar, never recomputed."""
+    if row.get('ge_bottom_flat') != '1':
+        return 'bottom flat off' if row.get('ge_bottom_flat') == '0' else ''
+    names={'flat_reference':'flat','fallback':'fall','unknown':'--'}
+    parts=[]
+    for field in (1,2):
+        rule=names.get(row.get(f'bottom_rule_f{field}'),'--')
+        values=[row.get(f'bottom_F_{p}_f{field}') for p in ('p5','p50','p95')]
+        values='/'.join('--' if v in ('',None) else f'{float(v):.2f}'.rstrip('0').rstrip('.') for v in values)
+        parts.append(f'b{field} {rule} F{values}')
+    margin=row.get('ge_bottom_flat_margin')
+    return '; '.join(parts)+(' M'+f'{float(margin):g}' if margin not in ('',None) else '')
 
 
 def comb_panel_lines(row, energies, published):
@@ -985,6 +1000,8 @@ def main():
                 small, (150, 150, 150), right=CB_X0)
         if vote_label(rowB):
             fit(dr, (6, FH + 134), vote_label(rowB), small, (230, 210, 130), right=CB_X0)
+        if bottom_label(rowB):
+            fit(dr, (6, FH + 148), bottom_label(rowB), small, (170, 210, 170), right=CB_X0)
         comb_bar(dr, comb_energies(rowB), pub, rowB)
         if schedule is not None:
             pr, note = schedule_at(schedule, ext)
