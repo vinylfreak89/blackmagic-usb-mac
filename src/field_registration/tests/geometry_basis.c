@@ -20,8 +20,8 @@ int main(void) {
     for(int r=30;r<=240;r++)for(int x=24;x<696;x++)
         bottom[(r+259)*720+x]=(top[(r-4)*720+x]+top[(r-3)*720+x])/2;
     assert(ge_comb(top,bottom,NULL).shift==0 && ge_comb(top,bottom,NULL).decided);
-    for(int audit=0;audit<2;audit++)for(int reverse=0;reverse<2;reverse++) {
-        ge_init(g,reverse,audit,NULL);
+    for(int reverse=0;reverse<2;reverse++) {
+        ge_init(g,reverse,NULL);
         ge_features t=features(24),b=features(24);
         t.motion[0]=GE_UNKNOWN; // initial measurement derives +1 against st=-1
         ge_decision o=frame(g,top,bottom,&t,&b,100+reverse,100);
@@ -38,7 +38,7 @@ int main(void) {
         assert((o.triggers&GE_BASIS_CHANGED) && o.comb_ran && !o.comb.decided);
         assert(o.held==0 && o.published_d==0 && !g->provisional && !g->basis_valid);
         o=frame(g,top,bottom,&t,&b,104+reverse,104);
-        assert(!o.comb_ran && o.published_d==0); // no audit-only adoption
+        assert(!o.comb_ran && o.published_d==0); // no untriggered adoption
         // A bottom-field top change invalidates independently, including when
         // both tops translate together and their difference is unchanged.
         g->held=1;g->provisional=1;g->basis_valid=1;
@@ -77,6 +77,6 @@ int main(void) {
         assert(o.relative_source==GE_SOURCE_START && o.anchor_source==GE_SOURCE_VOTE);
     }
     free(top);free(bottom);free(flat);free(g);
-    puts("GEOMETRY-BASIS: top changes, abstention, re-derivation, missing top, reset, audit invariance PASS");
+    puts("GEOMETRY-BASIS: top changes, abstention, re-derivation, missing top, reset PASS");
     return 0;
 }

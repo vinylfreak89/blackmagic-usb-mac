@@ -41,7 +41,7 @@ static void check_field(int k) {
 }
 int main(void){
     check_field(0);check_field(1);
-    geometry_engine g;ge_init(&g,1,1,NULL);ge_decision out[2];
+    geometry_engine g;ge_init(&g,1,NULL);ge_decision out[2];
     assert(!ge_push(&g,y,100,0,out));
     body(258,20);body(257,23);body(521,30);body(520,33);
     assert(ge_push(&g,y,101,0,out)==1);

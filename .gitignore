@@ -115,15 +115,14 @@ src/capture_core/test_shim
 src/frameserver/tests/replay_completion_test
 src/frameserver/tests/worker_bench
 /src/frameserver/tests/geometry_worker_bench
-/src/field_registration/tests/geometry_probe
 /src/field_registration/tests/geometry_unit
 /src/field_registration/tests/geometry_basis
-/src/field_registration/tests/geometry_guards
 /src/field_registration/tests/geometry_waveform
 /src/field_registration/tests/geometry_rejection
 /src/field_registration/tests/geometry_vote
 /src/field_registration/tests/geometry_bottom
 /src/field_registration/tests/geometry_still
+/src/field_registration/tests/geometry_config
 /src/frameserver/tests/geometry_replay_asan
 /src/frameserver/tests/geometry_replay_tsan
 /src/obs_plugin/tests_audio_timing

@@ -259,6 +259,7 @@ static void shuttle_stop(shuttle_src *s){
 
 static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     fs_config cfg; memset(&cfg, 0, sizeof cfg);
+    /* NULL geometry_config selects the approved per-engine defaults, with no environment reads. */
     const char *input = obs_data_get_string(settings, S_INPUT);
     cfg.capture.input = !strcmp(input, "composite") ? CC_INPUT_COMPOSITE : !strcmp(input, "component") ? CC_INPUT_COMPONENT : CC_INPUT_SVIDEO;
     if (obs_data_get_bool(settings, S_USE_REPLAY)){

@@ -13,7 +13,7 @@ static ge_decision input(geometry_engine *g,int top,int confident,int engine) {
     vote_anchor(g,&o,&t,&b,y,y);return o;
 }
 static void votes(void) {
-    geometry_engine g;ge_init(&g,0,0,NULL);paired_raster();
+    geometry_engine g;ge_init(&g,0,NULL);paired_raster();
     ge_decision o=input(&g,2,0,4);assert(o.vote_anchor==4 && !o.vote_count);
     o=input(&g,2,0,5);assert(o.vote_anchor==4 && !o.vote_count); /* empty holds */
     o=input(&g,2,1,4);assert(o.vote_anchor==2 && o.vote_winner_count==1);
@@ -33,7 +33,7 @@ static void votes(void) {
     assert(!g.vote_count && o.vote_anchor==2 && o.anchor_source==GE_SOURCE_VOTE);
     ge_break(&g,out);ge_set_pairing(&g,1);o=input(&g,0,0,5);
     assert(!g.vote_count && o.vote_anchor==2 && g.reverse);
-    ge_init(&g,1,0,NULL);o=input(&g,0,0,5);assert(!g.vote_count && o.vote_anchor==5);
+    ge_init(&g,1,NULL);o=input(&g,0,0,5);assert(!g.vote_count && o.vote_anchor==5);
 }
 static void fills(void) {
     memset(y,1,sizeof y);
@@ -56,7 +56,7 @@ static void fills(void) {
     memset(y+18*720+40,12,640);v=ge_level_scan(y,0,5);assert(v.first==22 && !v.accepted);
 }
 static void ownership(void) {
-    geometry_engine g;ge_init(&g,1,0,NULL);paired_raster();
+    geometry_engine g;ge_init(&g,1,NULL);paired_raster();
     ge_features top={0},bottom={0};bottom.first[1]=286;
     top.wave_status[0]=GE_WAVE_ABSTAIN;top.level[0]=(ge_level_result){.first=23,.accepted=1};
     bottom.level[0]=(ge_level_result){.first=28,.accepted=1};
@@ -77,7 +77,7 @@ static void paired_tops(void) {
         y[19*720+40+x]=100+10*a;
         by[283*720+40+x]=100+3*a+4*c;
     }
-    geometry_engine g;ge_init(&g,1,0,NULL);
+    geometry_engine g;ge_init(&g,1,NULL);
     ge_features t={0},b={0};t.first[0]=23;b.first[1]=287; /* st=+1 */
     ge_decision o={.rejection={.basin=1,.floor_lo=0,.floor_hi=0}};
     vote_anchor(&g,&o,&t,&b,y,by);

@@ -19,9 +19,9 @@ int main(void) {
     memset(a,1,GE_PIXELS);ge_features f;ge_measure(a,&f,NULL);
     assert(!f.first[0]&&!f.first[1]&&!f.last[0]&&!f.last[1]&&!f.bottom[0]&&!f.bottom[1]);
     ge_comb_result c=ge_comb(a,a,NULL);assert(!c.decided && c.margin==1);
-    ge_decision out[2];ge_init(g,0,0,NULL);
+    ge_decision out[2];ge_init(g,0,NULL);
     assert(ge_push(g,a,10,1,out)==1 && out[0].d1==0 && out[0].d2==0 && out[0].comb_ran);
-    ge_init(g,1,0,NULL);
+    ge_init(g,1,NULL);
     assert(ge_push(g,a,10,1,out)==0);
     assert(ge_push(g,a,11,0,out)==1 && out[0].counter==10 && out[0].top_unit==11 && out[0].unused1 && !out[0].unused2);
     assert(ge_push(g,a,13,0,out)==1 && out[0].counter==11 && !out[0].has_frame && out[0].unused2);
@@ -45,7 +45,7 @@ int main(void) {
     assert(f.blank[0]==1 && f.blank[1]==1);
     assert(f.first[0]==23 && f.first[1]==286 && f.last[0]==262);
     // Reversed logging carries the source unit's own provenance, not its partner's.
-    ge_init(g,1,0,NULL);assert(ge_push(g,a,20,1,out)==0);
+    ge_init(g,1,NULL);assert(ge_push(g,a,20,1,out)==0);
     memcpy(b,a,GE_PIXELS);
     for(int r=18;r<=261;r++){b[r*720]=18;b[r*720+1]=19;b[r*720+2]=20;}
     assert(ge_push(g,b,21,0,out)==1);

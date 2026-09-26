@@ -20,8 +20,8 @@ int main(void) {
     assert(c.vote_window==30 && c.vote_pair_min==.6 && c.bottom_flat_margin==3);
     assert(c.blankspot_tolerance==2 && c.rigid_min==2 && c.rigid_clarity==1.3);
     geometry_engine *a=malloc(ge_size()),*b=malloc(ge_size());assert(a && b);
-    assert(!ge_init(a,0,0,NULL));c.wave_bar=2;
-    assert(!ge_init(b,0,0,&c));c.wave_bar=-2;
+    assert(!ge_init(a,0,NULL));c.wave_bar=2;
+    assert(!ge_init(b,0,&c));c.wave_bar=-2;
     assert(ge_get_config(a)->wave_bar==.45 && ge_get_config(b)->wave_bar==2);
     memset(y,1,sizeof y);
     for(int k=0;k<2;k++)for(int r=19;r<=20;r++)for(int x=40;x<680;x++)
@@ -32,7 +32,7 @@ int main(void) {
     ge_decision out[2];ge_break(b,out);ge_set_pairing(b,1);
     assert(ge_get_config(b)->wave_bar==2 && b->reverse && !b->vote_count);
     ge_config saved=*ge_get_config(a),bad=saved;bad.vote_window=0;
-    assert(ge_init(a,0,0,&bad)==-1 && !memcmp(ge_get_config(a),&saved,sizeof saved));
+    assert(ge_init(a,0,&bad)==-1 && !memcmp(ge_get_config(a),&saved,sizeof saved));
     bad=saved;bad.vote_window=GE_VOTE_CAPACITY+1;assert(!ge_config_valid(&bad));
     bad=saved;bad.wave_bar=NAN;assert(!ge_config_valid(&bad));
     bad=saved;bad.comb_basin_factor=.9;assert(!ge_config_valid(&bad));
@@ -48,7 +48,7 @@ int main(void) {
     ge_rigid_motion motion={.known=1,.dy=2,.clarity=1.3};
     assert(rigid_vertical(&motion,&saved));c.rigid_min=3;
     assert(!rigid_vertical(&motion,&c));
-    c=saved;c.vote_window=2;assert(!ge_init(a,0,0,&c));
+    c=saved;c.vote_window=2;assert(!ge_init(a,0,&c));
     ge_features top={0},bottom={0};top.first[0]=23;bottom.first[1]=286;
     for(int i=0;i<4;i++) {
         ge_decision d={.rejection={.basin=1,.floor_lo=0,.floor_hi=0}};

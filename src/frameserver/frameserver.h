@@ -1,11 +1,11 @@
 // frameserver — P3 assembly (design doc §8, §11 P3, field_registration/TRAJECTORY.md).
 //
 //   capture_core (device or replay) --on_packet--> unit_parser --on_video--> [pool slot + SPSC ring]
-//     --> processing worker: signal_state_classify -> registration actions -> fieldreg_process
-//         -> signal_state_note_registration -> frame_publisher -> decision-log row
+//     --> processing worker: signal_state_classify -> geometry_engine
+//         -> frame_publisher -> decision-log row
 //
-// v9 publishes immediately. The explicit v11 path also publishes immediately for
-// aligned fields; reversed pairing delays one unit to finish its own-field offsets.
+// Approved v11 is the default for tools and OBS. Aligned fields publish immediately;
+// reversed pairing delays one unit to finish its own-field offsets. v9 remains compiled.
 // This is a transport-unit publisher, not a temporal field re-pairer. Consumers of
 // reversed-pair material must pair next-unit field 1 over current-unit field 2,
 // as geometry_render.py --pair-next does. Decision rows remain unit-keyed.
@@ -39,9 +39,8 @@ typedef struct {
     cc_config capture;          // device input or replay_path
     unsigned pool_units;        // unit slots between delivery thread and worker (0 => 16)
     unsigned surface_pool;      // IOSurface pool for the publisher (0 => 6)
-    const char *decision_log;   // schema FS_DECISION_LOG_SCHEMA CSV, or NULL; opened exclusively (must not exist). The current P3
-                                // schema records decisions/baselines and loss; full raw evidence
-                                // vectors remain an explicit later-P3 extension.
+    const char *decision_log;   // schema FS_GEOMETRY_LOG_SCHEMA CSV, or NULL;
+                                // opened exclusively (must not exist).
     fp_sink sink;               // consumer of published frames (may be {NULL,NULL} => count only)
     ap_sink audio_sink;         // consumer of PCM blocks on the device timebase ({NULL,NULL} => count only)
     unsigned audio_block_frames; // audio publisher block buffer (0 => 4096 stereo frames, > 2 units)
@@ -49,13 +48,11 @@ typedef struct {
     void (*on_end)(void *ctx, enum cc_end reason);   // optional; fires once BOTH the video and audio workers have drained
                                                      // (no media callback of either kind follows it); never call fs_stop/fs_close from any callback
     void *end_ctx;
-    /* Explicit v11 selection; zero preserves the v9 path/schema. Reversed pairing
-     * buffers one source unit, not an unbounded lookahead. Published units retain
+    /* Reversed pairing buffers one source unit, not an unbounded lookahead. Published units retain
      * their own fields; downstream weaving must use the same pairing parameter. */
     const ge_config *geometry_config; /* NULL: approved defaults; copied by fs_open */
     int geometry_pair_next;
-    int geometry_audit_comb;    // acceptance only: compute even untriggered combs
-    const char *pairing_schedule; // CSV snapshot loaded by fs_open; requires v11,
+    const char *pairing_schedule; // CSV snapshot loaded by fs_open;
                                  // excludes geometry_pair_next. First row starts at 0.
 } fs_config;
 

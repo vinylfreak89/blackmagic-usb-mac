@@ -746,7 +746,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
         f->geometry=malloc(ge_size());f->geometry_y=malloc(GE_PIXELS);
         f->geometry_unit=malloc(FP_UNIT_BYTES);
         if(!f->geometry||!f->geometry_y||!f->geometry_unit){fs_close(f);return -1;}
-        ge_init(f->geometry,f->geometry_reversed,cfg->geometry_audit_comb,cfg->geometry_config);
+        ge_init(f->geometry,f->geometry_reversed,cfg->geometry_config);
         f->cfg.geometry_config=ge_get_config(f->geometry);
     }
     fp_sink sink = cfg->sink.on_frame ? cfg->sink : (fp_sink){ count_sink, NULL };

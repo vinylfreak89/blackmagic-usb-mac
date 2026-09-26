@@ -8,7 +8,7 @@ LDLIBS ?= -lm
 all: libfieldreg.dylib tests/field_registration_unit tests/cea608_unit tests/field_registration_v9
 
 tests/hblank_probe: geometry_engine.c geometry_engine.h geometry_tool_controls.h tests/hblank_probe.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -I. -DGE_HBLANK geometry_engine.c tests/hblank_probe.c -o $@ $(LDLIBS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I. geometry_engine.c tests/hblank_probe.c -o $@ $(LDLIBS)
 
 tests/geometry_unit: geometry_engine.c geometry_engine.h tests/geometry_unit.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) geometry_engine.c tests/geometry_unit.c -o $@ $(LDLIBS)
@@ -78,7 +78,7 @@ tests/registration_v9.raw tests/registration_v9.csv: v9-fixture
 	@test -f $@
 
 clean:
-	rm -f tests/hblank_probe tests/geometry_basis tests/geometry_guards tests/geometry_waveform
+	rm -f tests/hblank_probe tests/geometry_unit tests/geometry_basis tests/geometry_waveform tests/geometry_config
 	rm -f tests/geometry_rejection tests/geometry_vote
 	rm -f tests/geometry_bottom
 	rm -f tests/geometry_still

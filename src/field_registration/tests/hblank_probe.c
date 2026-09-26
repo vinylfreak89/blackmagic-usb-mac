@@ -1,9 +1,7 @@
 /* Streaming acceptance/cost instrument. stdin records: native uint64 counter,
  * uint32 reset, uint32 pair_next, followed by GE_PIXELS bytes of luma.
- * Preserve the matching probe/engine sources when building a baseline: older
- * engines do not necessarily expose the current experiment-control variables.
- * Optional argv[1]: frame CSV from a separate, all-frame-audit engine. The
- * measured engine remains non-audit, so its cost retains production semantics.
+ * Optional argv[1]: frame CSV from the same measured engine, which always
+ * measures the comb. Timing includes conditional 2-D search and excludes CSV I/O.
  * No capture paths, outputs or goldens are compiled into the instrument. */
 #define _POSIX_C_SOURCE 200809L
 #include "geometry_engine.h"
@@ -31,10 +29,10 @@ int main(int argc,char **argv) {
     if(!ge_tool_controls_from_env(&config))return 2;
     uint8_t *y=malloc(GE_PIXELS);geometry_engine *g=malloc(ge_size());
     if(!y||!g)return 2;
-    FILE *audit_file=NULL;geometry_engine *audit=NULL;
+    FILE *audit_file=NULL;
     if(argc==2) {
-        audit_file=fopen(argv[1],"w");audit=malloc(ge_size());
-        if(!audit_file||!audit){perror("audit output/allocation");return 2;}
+        audit_file=fopen(argv[1],"w");
+        if(!audit_file){perror("audit output");return 2;}
         ge_tool_controls_echo(audit_file,&config);
         fputs("counter,top_unit,frame_d1,frame_d2,comb_ran,comb_d,comb_margin,comb_decided,triggers,held\n",audit_file);
     }
@@ -50,21 +48,18 @@ int main(int argc,char **argv) {
         for(size_t i=0;i<sizeof f.profile;i++){hash^=p[i];hash*=1099511628211ull;}
         if((int)pair!=mode){
             if(mode>=0){
-                ge_break(g,out);ge_set_pairing(g,pair);
-                if(audit){frames(audit_file,out,ge_break(audit,out));ge_set_pairing(audit,pair);}
-            } else {ge_init(g,pair,0,&config);if(audit)ge_init(audit,pair,1,&config);}
+                unsigned n=ge_break(g,out);
+                if(audit_file)frames(audit_file,out,n);
+                ge_set_pairing(g,pair);
+            } else ge_init(g,pair,&config);
             mode=pair;
         }
-        t=cpu();ge_push(g,y,counter,reset,out);double engine=(cpu()-t)*1000;
-        if(audit)frames(audit_file,out,ge_push(audit,y,counter,reset,out));
+        t=cpu();unsigned n=ge_push(g,y,counter,reset,out);double engine=(cpu()-t)*1000;
+        if(audit_file)frames(audit_file,out,n);
         printf("%llu,%d,%d,%d,%d,%d,%d,%.17g,%.17g,%llu,",
             (unsigned long long)counter,f.first[0],f.first[1],f.last[0],f.last[1],
             f.bottom[0],f.bottom[1],f.blank[0],f.blank[1],(unsigned long long)hash);
-#ifdef GE_HBLANK
         printf("%.17g,%.17g,%d,%d,",f.hblank_level[0],f.hblank_level[1],f.hblank_cols[0],f.hblank_cols[1]);
-#else
-        printf(",,,,");
-#endif
         for(int k=0;k<2;k++) {
             if(f.wave[k].first)printf("%d",f.wave[k].first);
             printf(",%.17g,%.17g,%s,",f.wave[k].step,f.wave[k].max_step,ge_wave_status_name(f.wave_status[k]));
@@ -72,6 +67,6 @@ int main(int argc,char **argv) {
         printf("%.9f,%.9f\n",measure,engine);
     }
     int bad=ferror(stdin)||ferror(stdout);
-    if(audit){if(mode>=0)frames(audit_file,out,ge_break(audit,out));if(fclose(audit_file))bad=1;}
-    free(audit);free(y);free(g);return bad?2:0;
+    if(audit_file){if(mode>=0)frames(audit_file,out,ge_break(g,out));if(fclose(audit_file))bad=1;}
+    free(y);free(g);return bad?2:0;
 }

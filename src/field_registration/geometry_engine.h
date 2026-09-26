@@ -1,4 +1,4 @@
-/* v11: forward-only implementation of experiment entry 11, amendments 1–5.
+/* Approved v11 geometry: waveform census, relative comb and absolute-anchor vote.
  * Coordinates in decisions are NTSC lines; zero means an unavailable census.
  * Storage is caller-owned, initialized once, and bounded. No hot-path allocation.
  * Reversed pairing delays one unit; outputs still describe each unit's OWN fields.
@@ -7,6 +7,9 @@
 #define GEOMETRY_ENGINE_H
 #include <stddef.h>
 #include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 #define GE_PIXELS (525u * 720u)
 /* Per-instance, copied at initialization; NULL selects these approved defaults.
  * No library environment reads or mutable process-wide configuration. */
@@ -37,7 +40,7 @@ typedef struct {
 typedef enum { GE_BOTTOM_UNKNOWN, GE_BOTTOM_FLAT_REFERENCE, GE_BOTTOM_FALLBACK } ge_bottom_rule;
 typedef struct {
     double p5,p50,p95; /* F: body of storage row 258 / 521 */
-    int measured; /* reference is measured only with the control enabled */
+    int measured; /* reference exists for an eligible measured raster */
     ge_bottom_rule rule; /* UNKNOWN if no row supplies an answer */
 } ge_bottom_evidence;
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
@@ -60,7 +63,7 @@ typedef struct {
 } ge_comb_result;
 typedef struct {
     double ratio, rise_left, rise_right; /* NAN when not measured / no side */
-    int floor_lo, floor_hi; /* shifts, inclusive contiguous <=1.5*minimum */
+    int floor_lo, floor_hi; /* contiguous shifts within comb_basin_factor*minimum */
     int basin; /* interior floor with both rises >= selection margin */
 } ge_comb_evidence;
 typedef struct {
@@ -82,7 +85,7 @@ typedef struct {
     int d1, d2, unused1, unused2, reset_before, has_frame;
     int frame_d1, frame_d2, published_d, held, comb_ran;
     unsigned triggers;
-    ge_comb_result comb; /* NAN margin unless triggered, audited, or vote enabled */
+    ge_comb_result comb; /* every complete frame; NAN on an unused boundary */
     ge_comb_evidence rejection; /* frame-owned; ratio is BEFORE rejection */
     int rejected, discarded, refused_d, substituted_d;
     int first[2], last[2], bottom[2];
@@ -95,7 +98,7 @@ typedef struct {
     int vote_confident, vote_anchor, vote_engine_anchor, vote_count, vote_winner_count;
     int vote_top[2]; /* frame-owned waveform or accepted fill, not census */
     ge_level_result level[2]; /* frame-owned, measured only on ABSTAIN fields */
-    double vote_rB; /* NAN unless pairing is enabled and both vote tops exist */
+    double vote_rB; /* NAN unless both frame-owned vote tops exist */
     int vote_pair_pass; /* correlation test only, not the complete confidence */
     ge_bottom_evidence bottom_evidence[2]; /* frame-owned, like last[] */
     ge_vertical_motion vertical[2]; /* frame-owned, field 1 from top_unit */
@@ -107,12 +110,13 @@ typedef struct {
 typedef struct geometry_engine geometry_engine;
 size_t ge_size(void);
 /* Returns -1 for invalid config without changing storage; otherwise 0. */
-int ge_init(geometry_engine *, int pair_next, int audit_comb, const ge_config *);
+int ge_init(geometry_engine *, int pair_next, const ge_config *);
 const ge_config *ge_get_config(const geometry_engine *);
 /* After ge_break flushes the old pairing, reset for a new pairing within the
  * same session. Retains only the published vote anchor, never prior votes. */
 void ge_set_pairing(geometry_engine *, int pair_next);
-/* All input rows are contiguous 720-byte luma, independent of UYVY decoding. */
+/* All input rows are contiguous 720-byte luma, independent of UYVY decoding.
+ * Standalone measurements take a valid config (ge_config_valid), or NULL defaults. */
 void ge_measure(const uint8_t *, ge_features *, const ge_config *);
 /* Raw entry-33 observation: no step returns first=0 and step=0. NTSC lines.
  * ge_measure applies the independent symmetric clamp to each raw observation. */
@@ -139,4 +143,7 @@ unsigned ge_push(geometry_engine *, const uint8_t *, uint64_t counter,
  * Clears decision/vote evidence; retains the published vote anchor and config. */
 unsigned ge_break(geometry_engine *, ge_decision out[2]);
 const char *ge_class_name(ge_class);
+#ifdef __cplusplus
+}
+#endif
 #endif

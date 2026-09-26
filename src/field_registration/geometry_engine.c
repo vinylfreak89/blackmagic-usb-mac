@@ -22,7 +22,7 @@ int ge_config_valid(const ge_config *c) {
 
 struct geometry_engine {
     ge_config config;
-    int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
+    int reverse, valid, held, provisional, have_placement, last_d, last_d2;
     int basis_valid, basis_first[2]; /* tops of the frame that derived held */
     uint64_t counter;
     ge_features previous, current;
@@ -32,17 +32,17 @@ struct geometry_engine {
 };
 size_t ge_size(void) { return sizeof(geometry_engine); }
 const ge_config *ge_get_config(const geometry_engine *g) { return &g->config; }
-int ge_init(geometry_engine *g, int reverse, int audit, const ge_config *config) {
+int ge_init(geometry_engine *g, int reverse, const ge_config *config) {
     ge_config c=config?*config:defaults; /* copy before clearing, even if aliased */
     if(!g || !ge_config_valid(&c))return -1;
-    memset(g,0,sizeof *g); g->reverse=!!reverse; g->audit=!!audit;g->config=c;
+    memset(g,0,sizeof *g); g->reverse=!!reverse;g->config=c;
     return 0;
 }
 void ge_set_pairing(geometry_engine *g,int reverse) {
     /* Caller has flushed pending fields. A pairing reset clears evidence,
      * not the last published vote anchor; only ge_init starts a new session. */
     int anchor=g->vote_anchor,published=g->vote_published;
-    ge_init(g,reverse,g->audit,&g->config);
+    ge_init(g,reverse,&g->config);
     g->vote_anchor=anchor;g->vote_published=published;
 }
 const char *ge_class_name(ge_class c) {
@@ -200,7 +200,7 @@ static int bottom_scan(const uint8_t *y,int field,double blank,ge_bottom_evidenc
             }
             return 0; /* qualified reference but no picture: explicitly unknown */
         }
-        if(!field)start++; /* enabled fallback alone reaches NTSC half-line 263 */
+        if(!field)start++; /* fallback alone reaches NTSC half-line 263 */
     }
     for(int r=start;r>236+off;r--)if(bottom_picture(y,r,blank)) {
         e->rule=GE_BOTTOM_FALLBACK;return r+4;
@@ -298,7 +298,7 @@ ge_comb_evidence ge_comb_examine(const ge_comb_result *c,int proposed,const ge_c
 }
 static void reject_placement(geometry_engine *g,ge_decision *o,int *d,int *d2) {
     o->rejection=ge_comb_examine(&o->comb,*d,&g->config);
-    /* Audit-only evidence cannot change placement or state. No extra search. */
+    /* Untriggered evidence cannot change relative placement or state. */
     if(!o->comb_ran || o->comb_suppressed || !(o->rejection.ratio>g->config.comb_reject))return;
     o->rejected=1;o->refused_d=*d;
     g->held=0;g->provisional=0;g->basis_valid=0;
@@ -442,8 +442,8 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     reject_placement(g,&o,&d,&d2);
     o.frame_d1=o.d1=d2-d;o.frame_d2=o.d2=d2;o.published_d=d;o.held=g->held;
     g->last_d=d;g->last_d2=d2;g->have_placement=1;
-    /* Keep the original engine state untouched: later missing-top and basin
-     * fallbacks must see the tag's anchor, not an earlier voted placement. */
+    /* Relative-policy state retains its own absolute anchor: missing-top and
+     * basin fallbacks must not feed an earlier voted placement back into it. */
     vote_anchor(g,&o,t,b,ty,by);
     return o;
 }

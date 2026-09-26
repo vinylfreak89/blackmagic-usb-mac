@@ -130,7 +130,7 @@ tests/geometry_worker_bench: $(SRCS) frameserver_replay.c tests/geometry_worker_
 .PHONY: bench-geometry
 bench-geometry: tests/geometry_worker_bench
 	@test -n "$(CAPTURE)" -a -n "$(TIMINGS)" -a -n "$(SIDECAR)"
-	GE_ANCHOR_VOTE=1 GE_LEVEL_FILL=1 GE_LEVEL_FLAT=0 GE_VOTE_PAIR=1 GE_VOTE_PAIR_MIN=.6 GE_BOTTOM_FLAT=1 GE_BOTTOM_FLAT_MARGIN=3 GE_VOTE_BLANKSPOT=1 GE_COMB_STILL=1 GE_COMB_RIGID=1 GE_COMB_RIGID_CLARITY=1.3 GE_BENCH_TIMINGS="$(TIMINGS)" ./tests/geometry_worker_bench "$(CAPTURE)" "$(SIDECAR)" --geometry-v11 --audit-comb --pool 32 --pace-us 4000 $(BENCH_ARGS)
+	GE_BENCH_TIMINGS="$(TIMINGS)" ./tests/geometry_worker_bench "$(CAPTURE)" "$(SIDECAR)" --pool 32 --pace-us 4000 $(BENCH_ARGS)
 
 $(FIXTURE_LONG): ../unit_parser/tests/gen_unit_parser_capture.py
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc

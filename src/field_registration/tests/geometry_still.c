@@ -18,7 +18,7 @@ static void motion(void) {
     memset(z,7,sizeof z);ge_vertical_motion v=ge_motion_measure(z,z,0);
     assert(v.shift==0 && v.error==0 && v.second_error==0); /* exact eleven-way tie */
     for(int reverse=0;reverse<2;reverse++) {
-        geometry_engine g;ge_decision o[2];ge_init(&g,reverse,0,NULL);
+        geometry_engine g;ge_decision o[2];ge_init(&g,reverse,NULL);
         ge_push(&g,y,100,0,o);assert(!g.previous.vertical[0].known);
         unsigned n=ge_push(&g,y,101,0,o);assert(n==1);
         assert(o[0].vertical[0].known && o[0].vertical[1].known==!reverse);
@@ -51,7 +51,7 @@ static void rigid_motion(void) {
     for(int k=0;k<2;k++)for(int r=40;r<220;r++)
         memcpy(z+(19+263*k+r+(k?-3:2))*720+40,y+(19+263*k+r)*720+40,640);
     for(int reverse=0;reverse<2;reverse++) {
-        geometry_engine g;ge_decision o[2];ge_init(&g,reverse,0,NULL);
+        geometry_engine g;ge_decision o[2];ge_init(&g,reverse,NULL);
         ge_push(&g,y,100,0,o);assert(!g.previous.rigid[0].known);
         ge_push(&g,z,101,0,o);
         assert(o[0].rigid[0].known && o[0].rigid[0].dy==2);
@@ -67,14 +67,14 @@ static void blankspots(void) {
     ge_features t={0},f={0};t.first[0]=25;f.first[1]=288;f.blank[1]=1;
     for(int x=40;x<680;x++)y[21*720+x]=b[284*720+x]=20+(x%2)*60;
     {
-        geometry_engine g;ge_init(&g,0,1,NULL);
+        geometry_engine g;ge_init(&g,0,NULL);
         ge_decision o={.rejection={.basin=1,.floor_lo=0,.floor_hi=0}};
         vote_anchor(&g,&o,&t,&f,y,b);
         assert(!o.vote_confident);
         assert(!o.vote_blankspot_pass && o.vote_blankspot_line==286);
     }
     b[282*720+40]=3;b[283*720+679]=3; /* inclusive, first/last body samples */
-    geometry_engine g;ge_init(&g,1,1,NULL);
+    geometry_engine g;ge_init(&g,1,NULL);
     ge_decision o={.rejection={.basin=1,.floor_lo=0,.floor_hi=0}};
     vote_anchor(&g,&o,&t,&f,y,b);assert(o.vote_blankspot_pass && o.vote_confident);
     b[283*720+679]=4;b[283*720+680]=1; /* outside body cannot rescue */
@@ -93,13 +93,13 @@ static void authority(void) {
     t.last[0]=260;f.last[1]=522;t.bottom[0]=260;f.bottom[1]=522;
     t.motion[0]=f.motion[1]=GE_NOTHING; /* census agrees at both edges, no trigger */
     t.vertical[0].known=f.vertical[1].known=1;
-    for(int audit=0;audit<2;audit++)for(int state=0;state<3;state++) {
-        geometry_engine g;ge_init(&g,0,audit,NULL);
+    for(int state=0;state<3;state++) {
+        geometry_engine g;ge_init(&g,0,NULL);
         t.vertical[0].known=state!=0;t.vertical[0].shift=state==2?1:0;
         ge_decision o=frame(&g,y,b,&t,&f,100,100);
         if(state==1)assert(o.still_trigger && (o.triggers&GE_STILL) && o.published_d==0 && o.held==1);
         else assert(!o.still_trigger && o.published_d==-1 && !o.held);
-        t.motion[0]=GE_UNKNOWN;ge_init(&g,0,audit,NULL);o=frame(&g,y,b,&t,&f,100,100);
+        t.motion[0]=GE_UNKNOWN;ge_init(&g,0,NULL);o=frame(&g,y,b,&t,&f,100,100);
         assert(o.comb_ran && !o.comb_suppressed && o.published_d==0 && o.held==1);
         t.motion[0]=GE_NOTHING;
     }
@@ -121,7 +121,7 @@ static void authority(void) {
         if(state==4)f.rigid[1].dy=1;
         if(state==5)f.rigid[1].clarity=nextafter(1.3,0);
         if(state==6)t.vertical[0].known=0;
-        ge_init(&g,0,1,NULL);ge_decision d=frame(&g,y,b,&t,&f,101,100);
+        ge_init(&g,0,NULL);ge_decision d=frame(&g,y,b,&t,&f,101,100);
         assert(d.comb_suppressed==(state==0));
         if(!state)assert(d.published_d==-1 && !d.held && !d.rejected);
         else assert(d.published_d==0 && d.held==1);

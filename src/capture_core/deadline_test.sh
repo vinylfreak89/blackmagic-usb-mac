@@ -7,7 +7,6 @@ tmp=$(mktemp -d) || exit 1
 trap 'rm -rf "$tmp"' EXIT
 cap() { python3 ../../scripts/run_deadline.py "$@"; }
 check() { if [ "$1" -eq 0 ]; then echo "  PASS  $2"; else echo "  FAIL  $2"; fails=$((fails + 1)); fi; }
-ARGS="fixture.tpc $(cat fixture.expect) fixture_meta.tpc fixture_meta_exhaust.tpc $(cat fixture_meta_exhaust.expect)"
 
 # 1. A per-wait deadline names the wait.
 cap 5 ./capture_core_test --deadline-probe wait >/dev/null 2>"$tmp/e1"; rc=$?
