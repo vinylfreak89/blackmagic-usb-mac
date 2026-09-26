@@ -692,6 +692,8 @@ def main():
     if a.pairing_schedule and (a.pair_next or a.parity):
         sys.exit("refusing: --pairing-schedule sets pairing and field order per frame; drop --pair-next / --parity")
     schedule = read_schedule(a.pairing_schedule) if a.pairing_schedule else None
+    if a.pair_next and a.parity is None:
+        sys.exit("refusing: --pair-next needs an explicit --parity (a reversed-pairing capture is usually bff)")
     if a.parity is None:
         a.parity = "tff"
     offsets = read_offsets(a.offsets)
