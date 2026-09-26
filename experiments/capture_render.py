@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import bisect
-import ctypes
 import csv
 import mmap
 import os
@@ -19,7 +18,7 @@ import subprocess
 import struct
 import sys
 import tempfile
-from collections import Counter, deque
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -1224,275 +1223,6 @@ class RegistrationEstimator:
         }
 
 
-class _CFieldRegistrationConfig(ctypes.Structure):
-    _fields_ = (("reserved", ctypes.c_uint32),)
-
-
-class _CFieldDecision(ctypes.Structure):
-    _fields_ = (
-        ("measured_d", ctypes.c_int8), ("applied_d", ctypes.c_int8),
-        ("geometry_d", ctypes.c_int8),
-        ("reason", ctypes.c_int), ("gauge", ctypes.c_int),
-        ("insert_present", ctypes.c_bool),
-        ("insert_byte1", ctypes.c_uint8), ("insert_byte2", ctypes.c_uint8),
-        ("insert_relation", ctypes.c_int),
-        ("parity_candidate_count", ctypes.c_uint16),
-        ("fallback_candidate_count", ctypes.c_uint16),
-        ("gauge_row", ctypes.c_int16),
-        ("gauge_byte1", ctypes.c_uint8), ("gauge_byte2", ctypes.c_uint8),
-        ("gauge_amplitude", ctypes.c_double), ("blank_mean", ctypes.c_double),
-        ("body_mad", ctypes.c_double),
-        ("raw_top", ctypes.c_int16), ("raw_bottom", ctypes.c_int16),
-        ("raw_height", ctypes.c_int16), ("geometry_measurable", ctypes.c_bool),
-        ("bottom_censored", ctypes.c_bool),
-        ("body_witness_valid", ctypes.c_bool), ("body_shift", ctypes.c_int8),
-        ("body_geometry_agrees", ctypes.c_bool),
-        ("body_reference_top", ctypes.c_int16),
-        ("body_implied_top", ctypes.c_int16),
-        ("body_differential", ctypes.c_bool),
-        ("body_common_mode", ctypes.c_bool),
-        ("picture_position_valid", ctypes.c_bool),
-        ("measured_picture_top", ctypes.c_int16),
-        ("picture_from_body", ctypes.c_bool),
-        ("lock_state", ctypes.c_int),
-        ("zero_source", ctypes.c_int),
-        ("lock_id", ctypes.c_uint32), ("lock_top", ctypes.c_int16),
-        ("lock_height", ctypes.c_int16), ("lock_height_known", ctypes.c_bool),
-        ("clip_state", ctypes.c_int), ("clip_ceiling", ctypes.c_int16),
-        ("expected_bottom", ctypes.c_int16), ("lines_lost", ctypes.c_int16),
-        ("invariant_residual", ctypes.c_int16),
-    )
-
-
-class _CFieldRegistrationDecision(ctypes.Structure):
-    _fields_ = (
-        ("decision_d1", ctypes.c_int8), ("decision_d2", ctypes.c_int8),
-        ("applied_d1", ctypes.c_int8), ("applied_d2", ctypes.c_int8),
-        ("baseline_d1", ctypes.c_int8), ("baseline_d2", ctypes.c_int8),
-        ("frame_observation_d1", ctypes.c_int8),
-        ("frame_observation_d2", ctypes.c_int8),
-        ("frame_observation_support", ctypes.c_uint8),
-        ("mode", ctypes.c_int), ("confidence", ctypes.c_double),
-        ("transport_ok", ctypes.c_bool), ("comb_safe", ctypes.c_bool),
-        ("parity_state", ctypes.c_int), ("comb_check", ctypes.c_int),
-        ("comb_best_shift", ctypes.c_int8), ("parity_bias", ctypes.c_int8),
-        ("comb_correction", ctypes.c_int8),
-        ("comb_correction_field", ctypes.c_int8),
-        ("comb_best_energy", ctypes.c_double),
-        ("comb_second_energy", ctypes.c_double),
-        ("comb_static_fraction", ctypes.c_double),
-        ("segment_id", ctypes.c_uint32), ("field", _CFieldDecision * 2),
-    )
-
-
-class CRegistrationEstimator:
-    """Thin ctypes adapter for the allocation-free production C engine."""
-
-    UNKNOWN = -128
-    TOP_ONLY = 0
-    DUAL_EDGE = 1
-    MOTION_PHASE = 2
-
-    def __init__(
-        self,
-        library_path: str | Path,
-        switch_margin: float,
-        evidence_model: str,
-        confirmation_units: int = 30,
-        minimum_support_units: int | None = None,
-        maximum_buffered_units: int | None = None,
-    ):
-        self.library_path = Path(library_path)
-        self.library = ctypes.CDLL(str(self.library_path))
-        self.library.fieldreg_state_size.restype = ctypes.c_size_t
-        self.library.fieldreg_config_size.restype = ctypes.c_size_t
-        self.library.fieldreg_decision_size.restype = ctypes.c_size_t
-        self.library.fieldreg_algorithm_version.restype = ctypes.c_uint32
-        self.library.fieldreg_confirmation_units.argtypes = (ctypes.c_void_p,)
-        self.library.fieldreg_confirmation_units.restype = ctypes.c_uint32
-        self.library.fieldreg_buffer_units.argtypes = (ctypes.c_void_p,)
-        self.library.fieldreg_buffer_units.restype = ctypes.c_uint32
-        if self.library.fieldreg_config_size() != ctypes.sizeof(_CFieldRegistrationConfig):
-            raise RuntimeError("field_registration config ABI size mismatch")
-        if self.library.fieldreg_decision_size() != ctypes.sizeof(_CFieldRegistrationDecision):
-            raise RuntimeError("field_registration decision ABI size mismatch")
-
-        self.state = ctypes.create_string_buffer(self.library.fieldreg_state_size())
-        self.evidence_model = evidence_model
-        self.algorithm_version = self.library.fieldreg_algorithm_version()
-        self.config = _CFieldRegistrationConfig(0)
-        self.library.fieldreg_init.argtypes = (
-            ctypes.c_void_p,
-            ctypes.POINTER(_CFieldRegistrationConfig),
-        )
-        self.library.fieldreg_begin_segment.argtypes = (ctypes.c_void_p,)
-        self.library.fieldreg_discontinuity.argtypes = (ctypes.c_void_p,)
-        self.library.fieldreg_process.argtypes = (
-            ctypes.c_void_p,
-            ctypes.c_void_p,
-            ctypes.POINTER(_CFieldRegistrationDecision),
-        )
-        self.library.fieldreg_process.restype = ctypes.c_bool
-        self.library.fieldreg_mode_name.argtypes = (ctypes.c_int,)
-        self.library.fieldreg_mode_name.restype = ctypes.c_char_p
-        self.library.fieldreg_gauge_name.argtypes = (ctypes.c_int,)
-        self.library.fieldreg_gauge_name.restype = ctypes.c_char_p
-        self.library.fieldreg_lock_state_name.argtypes = (ctypes.c_int,)
-        self.library.fieldreg_lock_state_name.restype = ctypes.c_char_p
-        self.library.fieldreg_clip_state_name.argtypes = (ctypes.c_int,)
-        self.library.fieldreg_clip_state_name.restype = ctypes.c_char_p
-        self.library.fieldreg_zero_source_name.argtypes = (ctypes.c_int,)
-        self.library.fieldreg_zero_source_name.restype = ctypes.c_char_p
-        self.library.fieldreg_insert_relation_name.argtypes = (ctypes.c_int,)
-        self.library.fieldreg_insert_relation_name.restype = ctypes.c_char_p
-        self.library.fieldreg_parity_state_name.argtypes = (ctypes.c_int,)
-        self.library.fieldreg_parity_state_name.restype = ctypes.c_char_p
-        self.library.fieldreg_comb_check_name.argtypes = (ctypes.c_int,)
-        self.library.fieldreg_comb_check_name.restype = ctypes.c_char_p
-        self.library.fieldreg_init(self.state, ctypes.byref(self.config))
-        self.confirmation_units = self.library.fieldreg_confirmation_units(
-            self.state
-        )
-        self.buffer_units = self.library.fieldreg_buffer_units(self.state)
-        self.selected = (0, 0)
-
-    def begin_segment(self) -> None:
-        self.library.fieldreg_begin_segment(self.state)
-        self.selected = (0, 0)
-
-    def discontinuity(self) -> None:
-        self.library.fieldreg_discontinuity(self.state)
-
-    @staticmethod
-    def _pair(first: int, second: int):
-        return None if first == CRegistrationEstimator.UNKNOWN else (first, second)
-
-    def decide(self, unit: bytes) -> dict[str, object]:
-        if len(unit) != VIDEO_UNIT_BYTES:
-            raise ValueError(f"expected {VIDEO_UNIT_BYTES} bytes, got {len(unit)}")
-        result = _CFieldRegistrationDecision()
-        unit_pointer = ctypes.c_char_p(unit)
-        if not self.library.fieldreg_process(
-            self.state, unit_pointer, ctypes.byref(result)
-        ):
-            raise RuntimeError("production field_registration rejected an exact e801 unit")
-        mode = self.library.fieldreg_mode_name(result.mode).decode("ascii")
-        decision = self._pair(result.decision_d1, result.decision_d2)
-        applied = (result.applied_d1, result.applied_d2)
-        self.selected = (result.baseline_d1, result.baseline_d2)
-        fields = []
-        for item in result.field:
-            fields.append({
-                "measured_d": item.measured_d,
-                "applied_d": item.applied_d,
-                "reason": self.library.fieldreg_mode_name(item.reason).decode("ascii"),
-                "gauge": self.library.fieldreg_gauge_name(item.gauge).decode("ascii"),
-                "insert_present": bool(item.insert_present),
-                "insert_bytes": (
-                    f"{item.insert_byte1:02x}{item.insert_byte2:02x}"
-                    if item.insert_present else ""
-                ),
-                "insert_relation": self.library.fieldreg_insert_relation_name(
-                    item.insert_relation).decode("ascii"),
-                "parity_candidates": item.parity_candidate_count,
-                "fallback_candidates": item.fallback_candidate_count,
-                "gauge_line": item.gauge_row + 4 if item.gauge_row >= 0 else -1,
-                "gauge_bytes": (
-                    f"{item.gauge_byte1:02x}{item.gauge_byte2:02x}"
-                    if item.gauge_row >= 0 and item.gauge == 1 else ""
-                ),
-                "gauge_amplitude": item.gauge_amplitude,
-                "geometry_d": item.geometry_d,
-                "blank_mean": item.blank_mean,
-                "body_witness_valid": bool(item.body_witness_valid),
-                "body_shift": item.body_shift,
-                "body_mad": item.body_mad,
-                "body_geometry_agrees": bool(item.body_geometry_agrees),
-                "body_reference_top": (
-                    item.body_reference_top + 4
-                    if item.body_reference_top >= 0 else -1
-                ),
-                "body_implied_top": (
-                    item.body_implied_top + 4
-                    if item.body_implied_top >= 0 else -1
-                ),
-                "body_differential": bool(item.body_differential),
-                "body_common_mode": bool(item.body_common_mode),
-                "picture_position_valid": bool(item.picture_position_valid),
-                "measured_picture_top": (
-                    item.measured_picture_top + 4
-                    if item.measured_picture_top >= 0 else -1
-                ),
-                "picture_from_body": bool(item.picture_from_body),
-                "raw_top": item.raw_top + 4 if item.raw_top >= 0 else -1,
-                "raw_bottom": item.raw_bottom + 4 if item.raw_bottom >= 0 else -1,
-                "raw_height": item.raw_height,
-                "geometry_measurable": bool(item.geometry_measurable),
-                "bottom_censored": bool(item.bottom_censored),
-                "lock_state": self.library.fieldreg_lock_state_name(item.lock_state).decode("ascii"),
-                "zero_source": self.library.fieldreg_zero_source_name(item.zero_source).decode("ascii"),
-                "lock_id": item.lock_id,
-                "lock_top": item.lock_top + 4 if item.lock_top >= 0 else -1,
-                "lock_height": item.lock_height,
-                "lock_height_known": bool(item.lock_height_known),
-                "clip_state": self.library.fieldreg_clip_state_name(item.clip_state).decode("ascii"),
-                "clip_ceiling": item.clip_ceiling + 4 if item.clip_ceiling >= 0 else -1,
-                "expected_bottom": item.expected_bottom + 4 if item.expected_bottom >= 0 else -1,
-                "lines_lost": item.lines_lost,
-                "invariant_residual": item.invariant_residual,
-            })
-        return {
-            "decision": decision,
-            "applied": applied,
-            "baseline": (result.baseline_d1, result.baseline_d2),
-            "frame_observation": self._pair(
-                result.frame_observation_d1, result.frame_observation_d2
-            ),
-            "frame_observation_support": result.frame_observation_support,
-            "mode": mode,
-            "confidence": result.confidence,
-            "best_pair": applied,
-            "pending_pair": applied,
-            "pending_count": 0,
-            "pending_span": 0,
-            "decision_backdate": 0,
-            "trajectory_reset": False,
-            "trajectory_locked": result.comb_safe,
-            "confirmation_units": self.confirmation_units,
-            "maximum_buffered_units": self.buffer_units,
-            "transport_ok": result.transport_ok,
-            "comb_safe": bool(result.comb_safe),
-            "parity_state": self.library.fieldreg_parity_state_name(
-                result.parity_state).decode("ascii"),
-            "comb_check": self.library.fieldreg_comb_check_name(
-                result.comb_check).decode("ascii"),
-            "comb_best_shift": result.comb_best_shift,
-            "parity_bias": result.parity_bias,
-            "comb_correction": result.comb_correction,
-            "comb_correction_field": result.comb_correction_field,
-            "comb_best_energy": result.comb_best_energy,
-            "comb_second_energy": result.comb_second_energy,
-            "comb_static_fraction": result.comb_static_fraction,
-            "segment_id": result.segment_id,
-            "fields": fields,
-            # Compatibility values for the untagged damage-review path. They
-            # are not emitted by the schema-7 tagged sidecar.
-            "best_relative": applied[1] - applied[0],
-            "selected_relative": applied[1] - applied[0],
-            "independent_evidence": 0.0,
-            "weave_margin": 0.0,
-            "temporal_margin1": 0.0,
-            "temporal_margin2": 0.0,
-            "observed_f1": fields[0]["gauge_line"],
-            "observed_f2": fields[1]["gauge_line"],
-            "top1": fields[0]["raw_top"],
-            "top2": fields[1]["raw_top"],
-            "band_mode1": fields[0]["lock_top"],
-            "band_mode2": fields[1]["lock_top"],
-            "band_stability1": 1.0 if fields[0]["lock_state"] == "Locked" else 0.0,
-            "band_stability2": 1.0 if fields[1]["lock_state"] == "Locked" else 0.0,
-            "engine": f"field_registration-c-v{self.algorithm_version}",
-        }
 
 
 def _valid_e801_header(data: bytes | bytearray, offset: int = 0) -> bool:
@@ -1891,55 +1621,6 @@ TPC_DECISION_COLUMNS = (
     "registration_engine",
 )
 
-# Schema 8 retains the transport/presentation columns consumed by the renderer
-# and replaces every v7 evidence column with the v9 per-field provenance.
-V9_FIELD_COLUMNS = (
-    "reason", "gauge", "insert_present", "insert_bytes", "insert_relation",
-    "parity_candidates", "fallback_candidates", "gauge_line", "gauge_bytes",
-    "gauge_amplitude", "geometry_d", "blank_mean", "body_witness_valid",
-    "body_shift", "body_mad", "body_geometry_agrees", "body_reference_top",
-    "body_implied_top", "body_differential", "body_common_mode",
-    "picture_position_valid", "measured_picture_top", "picture_from_body",
-    "raw_top", "raw_bottom", "raw_height",
-    "geometry_measurable", "bottom_censored", "lock_state", "zero_source", "lock_id",
-    "lock_top", "lock_height", "lock_height_known", "clip_state",
-    "clip_ceiling", "expected_bottom",
-    "lines_lost", "invariant_residual",
-)
-TPC_DECISION_COLUMNS = (
-    "timeline_frame", "counter", "extended_counter", "unit_state",
-    "captured_video_bytes", "undefined_video_bytes", "decision_d1",
-    "decision_d2", "applied_d1", "applied_d2", "baseline_d1", "baseline_d2",
-    "mode", "confidence", "transport_ok", "comb_safe", "parity_state",
-    "comb_check", "comb_best_shift", "parity_bias", "comb_best_energy",
-    "comb_second_energy", "comb_static_fraction", "segment_id",
-    "presentation_policy",
-    *(f"f1_{name}" for name in V9_FIELD_COLUMNS),
-    *(f"f2_{name}" for name in V9_FIELD_COLUMNS),
-    "registration_engine", "schema_version",
-)
-
-
-def _v9_field_row(field):
-    return (
-        field["reason"], field["gauge"], int(field["insert_present"]),
-        field["insert_bytes"], field["insert_relation"], field["parity_candidates"],
-        field["fallback_candidates"], field["gauge_line"], field["gauge_bytes"],
-        f"{field['gauge_amplitude']:.3f}", field["geometry_d"],
-        f"{field['blank_mean']:.3f}",
-        int(field["body_witness_valid"]), field["body_shift"],
-        f"{field['body_mad']:.3f}", int(field["body_geometry_agrees"]),
-        field["body_reference_top"], field["body_implied_top"],
-        int(field["body_differential"]), int(field["body_common_mode"]),
-        int(field["picture_position_valid"]), field["measured_picture_top"],
-        int(field["picture_from_body"]),
-        field["raw_top"], field["raw_bottom"], field["raw_height"],
-        int(field["geometry_measurable"]), int(field["bottom_censored"]),
-        field["lock_state"], field["zero_source"], field["lock_id"], field["lock_top"],
-        field["lock_height"], int(field["lock_height_known"]),
-        field["clip_state"], field["clip_ceiling"], field["expected_bottom"],
-        field["lines_lost"], field["invariant_residual"],
-    )
 
 
 def tagged_decision_row(
@@ -1972,32 +1653,10 @@ def tagged_decision_row(
             presentation_policy
         )
         return tuple(row)
-    if "fields" in registration:
-        fields = registration["fields"]
-        measured = tuple(
-            "" if field["measured_d"] == CRegistrationEstimator.UNKNOWN
-            else field["measured_d"] for field in fields
-        )
-        return (
-            index, counter, extended_counter, unit_state, captured_bytes,
-            VIDEO_UNIT_BYTES - captured_bytes, *measured, *applied,
-            *registration["baseline"], registration["mode"],
-            f"{registration['confidence']:.9f}", int(registration["transport_ok"]),
-            int(registration["comb_safe"]),
-            registration["parity_state"], registration["comb_check"],
-            registration["comb_best_shift"], registration["parity_bias"],
-            f"{registration['comb_best_energy']:.3f}",
-            f"{registration['comb_second_energy']:.3f}",
-            f"{registration['comb_static_fraction']:.6f}",
-            registration["segment_id"], presentation_policy,
-            *_v9_field_row(fields[0]),
-            *_v9_field_row(fields[1]), registration["engine"], 8,
-        )
     decision = registration["decision"]
     best_d1, best_d2 = registration["best_pair"]
     pending_d1, pending_d2 = registration["pending_pair"]
-    # A later buffered decision may have finalized this earlier unit with a
-    # backdated mapping. Preserve the caller's finalized pair in the sidecar.
+    # Preserve the placement actually used by the presentation caller.
     applied_d1, applied_d2 = applied
     row = (
         index,
@@ -2927,12 +2586,6 @@ def render_tagged(
     nnedi_weights,
     adaptive_registration,
     registration_switch_margin,
-    registration_confirm_units,
-    registration_min_support_units,
-    registration_max_buffered_units,
-    registration_forward_only,
-    fieldreg_library,
-    fieldreg_evidence,
     start_unit,
     limit_units,
     scratch_dir,
@@ -3096,18 +2749,7 @@ def render_tagged(
         command.extend(("-f", "mp4", str(output_temp)))
         print("starting streaming tpc render: " + " ".join(command))
 
-        estimator = (
-            CRegistrationEstimator(
-                fieldreg_library,
-                registration_switch_margin,
-                fieldreg_evidence,
-                registration_confirm_units,
-                registration_min_support_units,
-                registration_max_buffered_units,
-            )
-            if fieldreg_library
-            else RegistrationEstimator(registration_switch_margin)
-        )
+        estimator = RegistrationEstimator(registration_switch_margin)
         offset_counts = Counter()
         decision_counts = Counter()
         decision_output = (
@@ -3120,15 +2762,6 @@ def render_tagged(
         if process.stdin is None:
             raise RuntimeError("ffmpeg raw-video stdin was not created")
 
-        delayed_units = deque()
-        decision_buffer_units = (
-            estimator.buffer_units
-            if adaptive_registration
-            and isinstance(estimator, CRegistrationEstimator)
-            and fieldreg_evidence == "phase"
-            and not registration_forward_only
-            else 0
-        )
 
         def present_entry(entry):
             output_index = entry["output_index"]
@@ -3165,10 +2798,6 @@ def render_tagged(
                     flush=True,
                 )
 
-        def flush_delayed_units(all_units=False):
-            retain = 0 if all_units else decision_buffer_units
-            while len(delayed_units) > retain:
-                present_entry(delayed_units.popleft())
 
         class RenderLimitReached(Exception):
             pass
@@ -3229,7 +2858,7 @@ def render_tagged(
             else:
                 applied_d1 = applied_d2 = 0
                 presentation_policy = "RawRegistrationDisabled"
-            delayed_units.append(
+            present_entry(
                 {
                     "output_index": output_index,
                     "counter": counter,
@@ -3241,66 +2870,6 @@ def render_tagged(
                     "presentation_policy": presentation_policy,
                 }
             )
-            if registration is not None:
-                backdate = registration.get("decision_backdate", 0)
-                if backdate and not registration_forward_only:
-                    if backdate > len(delayed_units):
-                        raise RuntimeError(
-                            f"registration backdate {backdate} exceeds buffered "
-                            f"units {len(delayed_units)}"
-                        )
-                    finalized = registration.get(
-                        "baseline", registration["applied"]
-                    )
-                    for buffered in list(delayed_units)[-backdate:]:
-                        buffered_registration = buffered.get("registration")
-                        if (
-                            buffered_registration is not None
-                            and buffered_registration.get("frame_observation")
-                            is None
-                        ):
-                            buffered["applied"] = finalized
-                            buffered["presentation_policy"] = (
-                                "CorrectedBackdated"
-                            )
-                if (registration.get("trajectory_reset", False) and
-                        not registration_forward_only):
-                    # The hard horizon means the trajectory could not be
-                    # finalized, not that every abstaining unit suddenly had
-                    # zero displacement. Preserve the phase each buffered unit
-                    # was already holding; rewriting abstentions to (0,0)
-                    # interleaves raw/corrected crops and manufactures jitter.
-                    # If the reset-triggering unit also abstained, keep it on
-                    # the preceding held phase. A genuine per-unit observation
-                    # remains authoritative even when it lands at the horizon.
-                    # Then flush and reacquire from fresh C state.
-                    preceding_applied = (
-                        delayed_units[-2]["applied"]
-                        if len(delayed_units) >= 2
-                        else delayed_units[-1]["applied"]
-                    )
-                    for buffered in delayed_units:
-                        buffered_registration = buffered.get("registration")
-                        if (
-                            buffered_registration is None
-                            or buffered_registration.get("frame_observation")
-                            is None
-                        ):
-                            buffered["presentation_policy"] = (
-                                "HeldUnresolvedHorizon"
-                            )
-                    latest_registration = delayed_units[-1].get("registration")
-                    if (
-                        latest_registration is None
-                        or latest_registration.get("frame_observation") is None
-                    ):
-                        delayed_units[-1]["applied"] = preceding_applied
-                        delayed_units[-1]["presentation_policy"] = (
-                            "HeldUnresolvedHorizon"
-                        )
-                    flush_delayed_units(all_units=True)
-                    return
-            flush_delayed_units()
 
         render_units = TaggedVideoUnits(on_unit=emit_unit, copy_units=True)
         try:
@@ -3312,7 +2881,6 @@ def render_tagged(
                 render_units.finish()
             except RenderLimitReached:
                 second_stats = None
-            flush_delayed_units(all_units=True)
             process.stdin.close()
             return_code = process.wait()
         finally:
@@ -3593,62 +3161,6 @@ def main():
         ),
     )
     parser.add_argument(
-        "--registration-library",
-        metavar="DYLIB",
-        help=(
-            "use the production C registration engine from DYLIB "
-            "instead of the Python compatibility estimator"
-        ),
-    )
-    parser.add_argument(
-        "--registration-evidence",
-        choices=("top", "dual", "phase"),
-        default="phase",
-        help=(
-            "C registration evidence model (default: phase, using spatially "
-            "banded motion-compensated inter-field phase); dual/top are "
-            "retained for diagnostics"
-        ),
-    )
-    parser.add_argument(
-        "--registration-confirm-units",
-        type=int,
-        default=30,
-        metavar="N",
-        help=(
-            "support trajectory for N 29.97-Hz units before applying a "
-            "backdated phase change (default: 30, about one second)"
-        ),
-    )
-    parser.add_argument(
-        "--registration-min-support-units",
-        type=int,
-        default=30,
-        metavar="N",
-        help=(
-            "minimum non-abstaining observations inside the confirmation "
-            "window (default: 30; cut/fade abstentions do not count)"
-        ),
-    )
-    parser.add_argument(
-        "--registration-max-buffered-units",
-        type=int,
-        default=36,
-        metavar="N",
-        help=(
-            "hard delayed-unit bound including cut/fade abstentions; an "
-            "unresolved path flushes honestly at this limit (default: 36)"
-        ),
-    )
-    parser.add_argument(
-        "--registration-forward-only",
-        action="store_true",
-        help=(
-            "present the production engine's current-unit decision immediately; "
-            "disable caller FIFO/backdating (the zero-latency live policy)"
-        ),
-    )
-    parser.add_argument(
         "--tagged-start-unit",
         type=parse_tagged_start_unit,
         default=None,
@@ -3674,16 +3186,6 @@ def main():
 
     if args.registration_switch_margin < 0:
         parser.error("--registration-switch-margin must be non-negative")
-    if not (
-        1 <= args.registration_min_support_units
-        <= args.registration_confirm_units
-        <= args.registration_max_buffered_units
-        <= 120
-    ):
-        parser.error(
-            "registration units must satisfy 1 <= min-support <= confirm "
-            "<= max-buffered <= 120"
-        )
     if args.render_bufsize and not args.render_maxrate:
         parser.error("--render-bufsize requires --render-maxrate")
     if args.deinterlacer == "nnedi":
@@ -3695,8 +3197,6 @@ def main():
         parser.error("--nnedi-weights requires --deinterlacer nnedi")
     if args.decision_log and not args.render:
         parser.error("--decision-log requires --render")
-    if input_format != "tagged" and args.registration_library:
-        parser.error("--registration-library is only supported for tpc input")
     if input_format != "tagged" and args.tagged_start_unit is not None:
         parser.error("--tagged-start-unit is only supported for tpc input")
     if args.tagged_limit_units is not None and args.tagged_limit_units <= 0:
@@ -3726,10 +3226,6 @@ def main():
             )
         if args.decision_log and not args.adaptive_registration:
             parser.error("tpc --decision-log requires --adaptive-registration")
-        if args.registration_library and not args.adaptive_registration:
-            parser.error("--registration-library requires --adaptive-registration")
-        if args.registration_library and not Path(args.registration_library).is_file():
-            parser.error(f"field_registration library not found: {args.registration_library}")
         render_tagged(
             args.input,
             args.render,
@@ -3746,12 +3242,6 @@ def main():
             args.nnedi_weights,
             args.adaptive_registration,
             args.registration_switch_margin,
-            args.registration_confirm_units,
-            args.registration_min_support_units,
-            args.registration_max_buffered_units,
-            args.registration_forward_only,
-            args.registration_library,
-            args.registration_evidence,
             args.tagged_start_unit,
             args.tagged_limit_units,
             args.scratch_dir,

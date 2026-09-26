@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Whole-tape line-21 truth set for the v9 acceptance test: per unit, which NTSC lines in each field decode as CEA-608
+# Independent line-21 census: per unit, which NTSC lines in each field decode as CEA-608.
 # with valid parity (cc608_decode), with their bytes. Scans the FULL fields (lines 12-266 and 272-528, unit rows r =
 # line-4) with a vectorised run-in amplitude gate so only plausible lines reach the bit decoder. Output CSV: unit,counter,f1_lines,f1_bytes,f2_lines,f2_bytes,insert21,insert284
 import sys, csv, numpy as np
