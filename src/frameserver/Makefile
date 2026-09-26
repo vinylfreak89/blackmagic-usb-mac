@@ -124,7 +124,7 @@ tests/geometry_worker_bench: $(SRCS) frameserver_replay.c tests/geometry_worker_
 .PHONY: bench-geometry
 bench-geometry: tests/geometry_worker_bench
 	@test -n "$(CAPTURE)" -a -n "$(TIMINGS)" -a -n "$(SIDECAR)"
-	./tests/geometry_worker_bench "$(TIMINGS)" "$(CAPTURE)" "$(SIDECAR)" --pool 32 --pace-us 4000 $(BENCH_ARGS)
+	./tests/geometry_worker_bench $(if $(CLASSIFIER_TRACE),--classifier-trace "$(CLASSIFIER_TRACE)") "$(TIMINGS)" "$(CAPTURE)" "$(SIDECAR)" --pool 32 --pace-us 4000 $(BENCH_ARGS)
 
 $(FIXTURE_LONG): ../unit_parser/tests/gen_unit_parser_capture.py
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
