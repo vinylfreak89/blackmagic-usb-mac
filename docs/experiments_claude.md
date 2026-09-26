@@ -1984,3 +1984,33 @@ uniform picture recovered to 522, specked flat rows rejected. Every named case i
 
 **What it must not break.** The entry's falsifier, unchanged. Genuine unknowns are expected: 15
 field-frames where picture sits at the band's own level (71352–71356, 72256–72260).
+
+### Amendment 2 to E-claude-2026-09-26-38 (2026-09-26) — the scan reaches the last line that carries input
+
+**Question (owner, verbatim).** "Did it fix the fact that picture only extends to 262 and can't extend
+below?" — "Are we sure it's the shuttles own fill and not the decks? I'd like to capture as much
+picture as possible and anything below is blanking… for example on cap 4, what is the last picture
+line" — "Yes let's get that into the same build".
+
+**Measured.** The scan starts at line 262 / 525. Below that the raster carries three kinds of line:
+- **Field 1 line 263** is NTSC's half line and carries the deck's input. Under the deck's full-field
+  grey mute it is partly filled with grey on all 239 units: p95 120–124, median at blanking. On every
+  other unit of the tape and of capture 4 it reads blanking (p95 ≤ 2).
+- **Field 1 line 264 and field 2 line 526** are Shuttle-written. They carry the same dithered constant
+  as its vertical-interval lines (mean 1.38 against 1.3754, lag-1 r −0.31 / −0.29 against −0.333;
+  picture reads +0.98). No input reaches them, even under full-field grey.
+- **Lines 265+ / 527+** are hard padding: exactly 16, zero variance.
+
+**Capture 4's last picture lines.** Field 1 ends at 262, and line 263 carries the deck's blanking
+on all 650 units. So 262 is a measured bottom there, not a scan limit. Field 2 ends at 525, the
+field's last line: nothing after it carries input, so its bottom cannot be bounded in the raster.
+
+**Amended rule.** Field 1's scan starts at line 263 (row 259). The flat reference F stays line 262
+/ 525. When F qualifies, the scan starts above it, as before: nothing below the flat band is picture,
+and 263's blanking must not be judged against the band. When F does not qualify, today's test
+decides from line 263, which calls blanking non-picture and a filled half line picture. Field 2's
+window is unchanged: 526 is Shuttle-written. On the whole tape, line 263 passes today's test on 241
+units; 240 of them take the flat rule, so one unit's fallback bottom changes to 263.
+
+**Must not break.** Everything in the entry's falsifier. Capture 4 must read field 1 262 and
+field 2 525 on every unit.
