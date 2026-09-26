@@ -41,6 +41,16 @@ def main() -> None:
     ap.add_argument("--start-bytes", type=int, required=True, help="approximate byte offset to start at (aligned forward to a record)")
     ap.add_argument("--video-bytes", type=int, required=True, help="stop after at least this many video (0x83) payload bytes")
     a = ap.parse_args()
+    import os
+    if os.path.exists(a.dst) and os.path.samefile(a.src, a.dst):
+        raise SystemExit(f"refusing: destination {a.dst} is the source file")
+    try:
+        slice_to(a)
+    except BaseException:
+        if os.path.exists(a.dst): os.remove(a.dst)   # never leave a partial slice that looks complete
+        raise
+
+def slice_to(a) -> None:
     with open(a.src, "rb") as f, open(a.dst, "wb") as o:
         start = find_boundary(f, a.start_bytes)
         note = f"tpc_slice of {a.src} from byte {start}".encode()
@@ -51,6 +61,7 @@ def main() -> None:
             if len(h) < HDR.size: break
             if not valid_header(h): raise SystemExit(f"record chain broke at byte {end}")
             alen = HDR.unpack(h)[7]; payload = f.read(alen)
+            if len(payload) != alen: raise SystemExit(f"truncated payload at byte {end}: {len(payload)} of {alen} bytes")
             o.write(h + payload); records += 1; end += HDR.size + alen
             if HDR.unpack(h)[1] == 0 and HDR.unpack(h)[2] == 0x83: video += alen
     print(f"wrote {a.dst}: bytes {start}..{end} of {a.src}, {records} records, {video} video payload bytes")
