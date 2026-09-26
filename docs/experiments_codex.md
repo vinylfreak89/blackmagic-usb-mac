@@ -1588,3 +1588,18 @@ retry: worker median/p95 4.263/5.212 ms. The initial sandbox attempt failed
 verbatim `BENCH: fp_open failed` / `make: *** [bench] Error 2`; it did not
 reach the publisher loop. This legacy benchmark is not the new engine's CPU
 measurement above.
+
+Entry-39 amendment-2 gate-B acceptance: the reviewer accepts zero shift
+differences on 11,152 fields and all SAD values inside the reference's .3f
+rounding intervals. The 1e-6 clarity mismatch was a reference-precision
+defect, not an implementation disagreement. The three rounding-sensitive
+fields are reported with exact engine arithmetic; 33107 field 2 is not
+searched on the production path (vertical shift zero), so its requested
+clarity is a separate diagnostic measurement, not logged production evidence.
+
+Authorized publication: engine a7a4316, s12c, pairing .6, flat-bottom margin
+3, A1, still trigger and rigid withholding at clarity 1.3. Update overlays
+from logged motion only. Require clean isolated paced replays, complete
+harness identity and encoded-strip readback before replacing any artifacts;
+capture placements must remain identical to the published A1 run. Record the
+idle-worker benchmark separately from the legacy benchmark's stage timings.
