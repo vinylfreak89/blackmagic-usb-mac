@@ -1655,8 +1655,11 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   separately bounds total runtime. Release admission gates after the last required boundary.
   Asserted CPU-cost gates use the measured thread's CPU time, not wall time;
   host scheduling delays belong to liveness measurements, not CPU-cost regressions.
-- **v11 engine integration:** `docs/geometry_engine.md` describes the explicit
-  frameserver selection, unit-keyed decisions and reversed-pair boundary handling.
+- **v11 engine integration:** the approved geometry policy is the default for
+  frameserver and OBS opens; v9 remains compiled but unselected until its separate
+  post-merge removal. Each engine owns a copied numeric configuration; the library
+  reads no environment. `docs/geometry_engine.md` defines its defaults, schema-28
+  compatibility, unit-keyed decisions and reversed-pair boundary handling.
   Keep a requested crop distinct from unavailable raster rows: silently clamping
   the whole crop makes the applied-decision log disagree with the published pixels.
   Owner-directed cleanup removed the near-blank and overrun vetoes, interpreted
@@ -1664,8 +1667,8 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   Entry 33 replaces the d5c9f08 top search with a first single-line Pearson-rise
   measurement (strict >0.45), followed by an independent symmetric +/-5 discard
   per field. The C raw scan matched all 172,586 whole-tape edges before removal
-  of the old guards. Controls are GE_WAVE_BAR and GE_WAVE_CLAMP; old GE_TOP_*
-  commands are refused. Schema 21 distinguishes unit-owned raw top/step/status
+  of the old guards. Numeric controls are GE_WAVE_BAR and GE_WAVE_CLAMP;
+  old GE_TOP_* refusal stubs are removed. Schema 21 introduced unit-owned raw top/step/status
   from frame-owned accepted census and publication sources. An absent/discarded
   top is not a guessed measurement; existing placement fallback is labelled.
   Bottom edges, profiles and blanking are unchanged on all 86,293 units.
