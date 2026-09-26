@@ -1125,3 +1125,23 @@ tail boundary, not a lost frame. Status is READY with configuration, producer
 commits and hashes; owner visual acceptance remains pending. Previous review
 files are recoverable in the run's replaced-reviews directory. No whole-tape
 encode was made and the three controls remain off by default.
+
+## E-codex-2026-09-26-37 — paired vote tops
+
+Owner's question: improve comb/geometry agreement while reducing excursions
+and common-mode jumps. Entry 37's revised premise is that a field-1 extra top
+line can legitimately put the top-implied shift one above the comb floor, but
+the two chosen top rows must themselves correlate. Add an off-by-default
+vote-only pairing control: extend only the floor's high end by one and require
+raw body Pearson rB >= a configurable .6. The threshold is fitted evidence,
+not a general signal law. Do not change census, level fills, relative decisions,
+window history, resets or empty holds. Keep exact unrounded measurements.
+
+Test whole-tape frame ownership, correlation, confidence and anchor against
+reference 4; report the six named rounding cases and any other discrepancy.
+Require control-off identity with e08b19c, invariant relative shifts/census,
+named intervals, and zero-loss real replay at the requested 16x pace. Report
+movement gates as operational measures, not absolute-picture ground truth.
+A discrepancy outside the allowed reference rounding stops renders. Otherwise
+render only captures 1–4 with s12c plus pairing, from engine-owned overlays,
+and validate every encoded placement before replacing their review files.
