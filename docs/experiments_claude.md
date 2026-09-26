@@ -2006,3 +2006,52 @@ at the recording boundary both policies settle on the second recording's +2 at t
 **Two reference cells are known wrong and the engine is right there.** `class_tape*.csv` rounded its
 statistics, and two sit on strict thresholds: counter 32714 (s12, sd 9.997575878 written 10.00) and 29281
 (s12c, correlation 0.300012175 written 0.3000). Codex confirmed both from raw rows. Anchors are unaffected.
+
+### Amendment 4 to E-claude-2026-09-25-36 (2026-09-26) — PROPOSED, pending the owner: the vote may only move to a reading that also leads the raw readings
+
+**The owner's review, verbatim:** "I reviewed all caps and 1,3,4 look good but 2 still has a common mode
+shift that doesn't look right, especially since the overall measured top/bottom don't change. I'd like
+that investigated before producing the full tape version."
+
+**What he saw.** Cap 2 publishes exactly two common-mode moves: (2,2) → (1,1) at 2155 and back at 2328.
+For 173 frames the whole picture sits one line high.
+
+**Cause, from the raw rows (counters 2000, 2100, 2154, 2155, 2196, 2400).** Field 2's first picture line
+is **288 on every frame**. Lines 286 and 287 are data (sd 36–58, uncorrelated), sitting directly on the
+picture with no blank line between. On some frames the first picture line happens to correlate
+**+0.27 to +0.47** with the data line above it (2154: 287 at −0.15, then 288 at +0.47, a step of +0.62),
+which clears the 0.45 bar one line early, so the waveform reads 287. On frame 2000 it doesn't (288 at
+−0.065), and the top is correctly 288. Field 2's bottom is 522 on every one of the 649 frames: the picture
+never moved.
+
+**Why the vote adopted a reading that is wrong 97% of the time — a selection bias in "confident".**
+Through 1910–2327 field 1's top reads 24/25 while the comb places it at 26. So a *correct* field-2
+reading (288) gives a relative shift of 0 or +1, outside the comb's floor (−1 or 0): **382 of 390 correct
+readings fail the confidence test.** A field-2 *misread* at 287 cancels field 1's error and lands inside
+the floor: **all 8 misreads pass.** Before the shift only 6 of 195 frames are confident, and 5 of them are
+287s. The vote learns only from confident frames, so a reading on 2.6% of frames wins the window. This is
+entry 36's recorded blind spot, relative agreement cannot see a consistent absolute error, made worse by
+selection: when one field's top is persistently off, the only frames the confidence test admits are those
+where the other field is off by the same amount.
+
+**Proposed rule: raw support.** The confident vote proposes; the anchor may move to the proposed value
+only if that value also leads among **all** recent field-2 top readings (the last 30 frames with a
+measured top, confident or not; cleared at resets like the vote window). A reading on 3% of frames cannot
+become the anchor, while a real transition, which changes nearly every reading after it, can. It reads the
+owner's words directly: the *overall* measured top doesn't change.
+
+**Measured before building:**
+
+| | cap 2 shift | cap 1 card | full-tape common-mode | excursions | 67518–70517 | 82421–83330 | 81490 | rec. boundary |
+|---|---|---|---|---|---|---|---|---|
+| as rendered (amendment 3) | 173/173 | 238/238 | 29 | 6 | {+2:1744,+0:904,+1:352} | +2 | 18 fr | 48352 |
+| tandem: the bottom must move with the top | gone | 238/238 | 6 | 0 | **changed** | **+0 — wrong** | 18 fr | 48338 |
+| **raw support** | **gone** | **238/238** | **24** | **4** | **unchanged** | **+2, unchanged** | 18 fr | 48352 |
+
+**Tandem was tried and rejected.** It fixes cap 2, but in the second recording a program/commercial
+transition *is* a top-only change — the data lines come and go while the picture and its bottom stay put
+— so tandem refuses real transitions. At 82421–83330 it holds +0, where the raw rows show the picture
+begins at 288 behind two empty data lines.
+
+**Not understood yet:** why field 1's top reads 24/25 through 1910–2327 when the comb places it at 26, and
+what the remaining 24 full-tape common-mode moves are.
