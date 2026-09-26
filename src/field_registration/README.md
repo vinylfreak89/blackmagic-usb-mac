@@ -45,23 +45,22 @@ a historical switch column is not evidence that its removed branch still exists.
 
 ## Validation
 
-From this directory, `make geometry-test` runs synthetic waveform, quantile,
+From this directory, `make test` runs synthetic waveform, quantile,
 comb/basin, vote, pairing/reset, motion and per-instance configuration tests.
 The default-policy regression gate is byte identity with the five registered
 approved sidecars, not a comparison to retired experiment arms.
 
 From `src/frameserver`, run `make test test-geometry test-pairing` and the
-ASan/UBSan and TSan targets. `bench-geometry` measures the real default worker
+ASan/UBSan and TSan targets. `bench` (also named `bench-geometry`) measures the real default worker
 with conditional 2-D motion searches, reports whole-worker thread CPU and
 separates zero/one/two-search populations. It requires fresh scratch output
 paths; no captures, reference sidecars or results belong in this source tree.
 
-## Retained legacy code
+## Independent caption instrument
 
-`field_registration.c/.h` and `cea608.c/.h` retain the v9 implementation and
-API. They remain compiled but are not selected by a frameserver or OBS open.
-Their deletion is a separate post-merge task. `make test`, `make v9-test`
-and the synthetic v9 fixture/decoder tests continue to cover that code.
-The legacy frameserver `bench` target measures v9, not the approved engine.
-Policy history and superseded experiments remain in git; captions are not
-inputs to the current geometry engine.
+`cea608.c/.h`, `libcea608.dylib`, `tests/cea608_unit.c` and
+`tests/compare_cea608.py` remain a standalone C/Python decoder cross-check.
+They are not linked into the frameserver or OBS and do not supply placement.
+`make test` includes the decoder's synthetic unit tests; `make geometry-test`
+runs just the geometry tests. The v9 engine, its ABI, fixtures and targets
+have been removed. Policy history remains in git and `TRAJECTORY.md`.

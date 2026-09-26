@@ -1,5 +1,10 @@
 # Registration v9 — clean-sheet plan (agreed 2026-09-04, no code written yet)
 
+Historical plan and results for the retired v9 engine. References to "live",
+"current" and build targets below describe that revision; the implementation
+and its targets have since been removed. The current contract is
+[geometry_engine.md](geometry_engine.md).
+
 Agreed between the owner, Codex and Claude after the v8 review. This replaces the live path of
 `field_registration` entirely; nothing of v6/v7/v8's evidence graph survives in the live engine.
 Measured facts behind every rule are in CLAUDE.md §6/§7 and `docs/registration_vsync_research.md`.

@@ -156,10 +156,8 @@ python3 experiments/capture_render.py capture.bin \
   --decision-log corrected-registration.csv
 ```
 
-This remains a proof renderer, not the final live estimator. A production
-frameserver should retain the same transport/VBI, same-parity temporal,
-motion-masked weave, and hysteresis evidence and publish every selected offset
-and confidence. Missing/short units break estimator continuity; the review
+This remains a historical Python proof renderer, not the approved live estimator.
+Use the geometry frameserver sidecar for current registration review. Missing/short units break estimator continuity; the review
 holds the last applied crop while rendering their surviving bytes and fill.
 
 The renderer keeps the source at 720x480 by default and signals NTSC 4:3 with
@@ -194,8 +192,6 @@ python3 experiments/capture_render.py capture.tpc \
   --scratch-dir <same-filesystem-tmp> \
   --render-crf 12 --render-preset veryfast \
   --adaptive-registration \
-  --registration-library src/field_registration/libfieldreg.dylib \
-  --registration-evidence dual \
   --deinterlacer none \
   --tagged-start-unit auto \
   --decision-log review_registration.csv
@@ -206,15 +202,10 @@ roots and moved into place only after close and validation. `--scratch-dir`
 must be on the same filesystem as the destination; cross-device copy fallback
 is deliberately refused. The default is a non-synced system temporary folder.
 
-`--registration-library` selects the allocation-free production C estimator while
-preserving the same decision-log contract. Production `dual` decisions require
-coherent top and bottom geometry; scene cuts hold state without training the
-landmark model, and a stale nonzero correction is released only after two
-independent nominal-geometry/temporal votes. `top` remains a diagnostic port of
-the original Python estimator. Picture-edge landmarks are decision evidence,
-not crop coordinates: the renderer preserves VBI rows 17–18/280–281 and remaps
-only the fixed 19–256/282–518 source envelope. It never shifts the complete
-240-line crop. `--deinterlacer none` emits interlaced TFF video and leaves
+The retired v9 C-library selector and its delayed-presentation path are removed.
+`--adaptive-registration` here is the independent Python prototype only, not
+an implementation or comparison arm of the approved engine.
+`--deinterlacer none` emits interlaced TFF video and leaves
 deinterlacing downstream. For a 59.94p review copy, `--deinterlacer nnedi`
 performs intra-field interpolation and therefore cannot blend across a scene
 cut or across chronological fields. FFmpeg requires the external
@@ -244,37 +235,25 @@ position, and receives diagnostic bars only for the undefined suffix; a
 missing counter period is named `AbsentDeviceUnit`. Those states break
 registration-estimator temporal continuity and remain explicit in the CSV.
 
-## Live frameserver review render
+## Current geometry review render
 
-Review copies used to judge the production registration path must come from
-the frameserver itself, not from `capture_render.py`: the signal classifier's
-segment/discontinuity actions are part of the live engine history. The live
-recipe streams both raw outputs through FIFOs into separate bounded video and
-audio encodes, then stream-copies them together; it never materializes the
-roughly 65 GB UYVY endpoint:
+Approved registration review uses the C frameserver's schema-28 sidecar, not
+a Python recomputation. Replay into a fresh non-synced scratch CSV with
+`src/frameserver/frameserver_replay INPUT SIDECAR --pool 32 --pace-us 4000`,
+adding the input's `--pair-next` or `--pairing-schedule FILE` when needed.
+Reject a run with any holes or drops.
 
-```sh
-experiments/render_live.sh capture.tpc /non-synced/review-output
-```
+Pass that sidecar to `experiments/geometry_render.py --engine-log SIDECAR`;
+consult `--help` for the input/output arguments and matching parity/pairing.
+Use `scripts/check_geometry_render.py` to read back every encoded placement.
+The shared `live_overlay_strip.py` remains the checksum-protected machine
+strip implementation used by both renderer and validator.
 
-The default 50 ms replay cadence is intentionally slower than hardware: NNEDI
-is not a realtime sink on the validation host, and allowing its FIFO to
-backpressure the synchronous replay callback would create honest HostLoss.
-This changes wall-clock rate only; the frameserver receives the same ordered
-observations and runs the same classifier, lifecycle actions, registration,
-publisher, and sidecar path. An optional third argument overrides the pace,
-but the gate rejects every run with an unpublished exact unit.
+Growing media and sidecars belong in non-synced scratch. Publish only after
+readback, replacing the old files outright; do not retain replaced renders,
+sidecars or status files. Status must name engine and renderer commits,
+configuration, frame accounting and hashes.
 
-The result is a 720x480, SAR 8:9, 60000/1001 NNEDI bob with AAC, its schema-7
-frameserver sidecar, and a 720x580 overlay copy whose extra band leaves the
-picture unobscured. `render_live_gate.py` requires every exact unit to have
-been published, exactly two encoded frames per exact unit, and decodes a
-checksum-protected machine strip at ten deterministic random units to compare
-the burned ordinal, extended counter, and applied pair with the sidecar.
-
-`render_stability_audit.py` audits the bobbed picture for VBI-like lines at its
-top/bottom boundaries and estimates same-field vertical motion between units.
-`audit_vs_sidecar.py` joins that CSV to the live schema-7 sidecar in emitted-unit
-order. It distinguishes a crop change on an unchanged raw top (`ENGINE_CAUSED`)
-from content/metric motion with a stationary crop, and exits nonzero if either
-an output-boundary VBI signature or a non-reset engine-caused jump is present.
+`render_stability_audit.py` remains an independent presentation diagnostic;
+its measurements do not choose registration. The retired schema-7/9 renderer,
+overlay and audit wrappers have been removed.

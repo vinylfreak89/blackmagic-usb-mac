@@ -1,20 +1,19 @@
-# Frameserver sidecar
+# Frameserver and decision sidecar
 
-The frameserver publishes corrected interlaced UYVY units immediately and writes an optional CSV
-decision sidecar. Schema `9` keeps the transport, signal-state, applied-pair,
-publication, and loss-accounting columns from schema 3. Between them it replaces
-the retired v7 evidence graph with two identical per-field groups:
+The default frameserver and OBS registration path is the approved geometry
+engine. The v9 engine and its schema-9 writer have been removed. See
+[geometry_engine.md](../../docs/geometry_engine.md) for the measurement,
+publication, parameter and schema-28 contract.
 
-```text
-fN_reason,fN_gauge,fN_insert_present,fN_insert_bytes,fN_insert_relation,fN_parity_candidates,fN_fallback_candidates,fN_gauge_line,fN_gauge_bytes,fN_gauge_amplitude,fN_geometry_d,fN_blank_mean,fN_body_witness_valid,fN_body_shift,fN_body_mad,fN_body_geometry_agrees,fN_body_reference_top,fN_body_implied_top,fN_body_differential,fN_body_common_mode,fN_picture_position_valid,fN_measured_picture_top,fN_picture_from_body,fN_raw_top,fN_raw_bottom,fN_raw_height,fN_geometry_measurable,fN_bottom_censored,fN_lock_state,fN_zero_source,fN_lock_id,fN_lock_top,fN_lock_height,fN_lock_height_known,fN_clip_state,fN_clip_ceiling,fN_expected_bottom,fN_lines_lost,fN_invariant_residual
-```
+Decision rows are transport-unit keyed, with an independent published-frame
+pair in `frame_d1/frame_d2`. Under reversed pairing, `frame_top_unit` names
+the next unit supplying field 1; `applied_d1/applied_d2` describe the fields
+owned by the row's own unit. Reversed pairing delays unit completion by one
+unit; consumers pair fields according to the logged ownership. Measurements
+and explicit unavailable values are retained separately from placement.
+`log_header` in frameserver.c defines the complete, unchanged CSV column set.
 
-`drop_reason` is `None`, `PoolFull`, `PublisherFull`, or `RingFullTail`.
-`fN_*_line`, top, bottom, lock-top, clip, and expected-bottom values use NTSC
-line numbers. The schema also records `comb_correction` and the ordinal where
-the current nonzero correction was installed; `-1` means none. `comb_safe`
-requires valid locks, calibrated parity, and an honored correction. Exact
-semantics are in `../field_registration/README.md`.
+## Loss accounting
 
 - A pool-full observation retains its own ordinary row, is unpublished, and says `PoolFull`.
 - Ring-full observations cannot reach the worker individually. Their count is attached to the
@@ -24,8 +23,24 @@ semantics are in `../field_registration/README.md`.
   the first omitted ordinal and `preceding_ring_drops` is the number of omitted observations.
   It is a range marker, not a captured video unit.
 - `PublisherFull` means analysis completed but no output surface was available.
+- Short, unframed and other ineligible observations keep their provenance and
+  explicit drop reason; they do not receive fabricated raster measurements.
 
-These rules preserve the conservation relation between ingress observations, sidecar rows/ranges,
-and published or explicitly dropped units. Registration has no live trajectory or FIFO in v9;
-the per-field lock and hold semantics are defined in
-[`../field_registration/README.md`](../field_registration/README.md).
+These rules preserve the conservation relation between ingress observations,
+sidecar rows/ranges, and published or explicitly dropped units.
+
+## Checks and worker budget
+
+`make test test-geometry test-pairing` exercises transport, publication,
+configuration, measurement and pairing. ASan/UBSan and TSan variants are
+`test-asan test-geometry-asan` and `test-tsan test-geometry-tsan`.
+
+`make bench CAPTURE=/path/input.tpc SIDECAR=/non-synced/new.csv
+TIMINGS=/non-synced/new.timings.csv` runs the real geometry worker at 4x.
+Use `BENCH_ARGS="--pair-next"` or `--pairing-schedule FILE` for the input's
+field ownership. No engine environment settings are required. `bench-geometry`
+is an alias. Timing begins at classifier entry and ends at item completion,
+including geometry's conditional 2-D search, assembly/publication and sidecar
+formatting, excluding queue waits and input I/O. The report separates units
+with zero, one and two 2-D searches. Run isolated; count holes and drops and
+compare every sidecar byte with the registered reference.

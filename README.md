@@ -42,7 +42,7 @@ Requirements: Apple clang, `libusb` 1.0 (Homebrew), Python 3, `ffmpeg` for rende
 make -C src/capture_core test          # generates a synthetic .tpc fixture, runs the suite
 make -C src/capture_core test-tsan     # same under ThreadSanitizer
 make -C src/capture_core test-asan     # same under ASan + UBSan
-make -C src/field_registration test    # unit tests + the synthetic-truth golden (tests/TRUTH.md)
+make -C src/field_registration test    # geometry engine and independent caption decoder unit tests
 ```
 
 `make -C src/capture_core check CAPTURE=<file.tpc>` replays a real capture through the library and

@@ -3,8 +3,7 @@
 The frameserver and OBS use the geometry engine by default. Its policy is the
 engine approved as `v11-approved-2026-09-26` (`a7a4316`), with waveform tops,
 same-frame bottom references, a paired-top anchor vote, and still/rigid-motion
-comb authority. Legacy v9 code remains compiled but unselected pending its
-separate post-merge removal. Captions are not a placement source.
+comb authority. The v9 engine has been removed. Captions are not a placement source.
 
 ## Configuration and ownership
 
@@ -184,9 +183,10 @@ Run make geometry-test in src/field_registration and test, test-geometry,
 test-pairing and sanitizer targets in src/frameserver. Synthetic tests cover
 instance isolation, configuration copying/validation, numerical boundaries,
 motion authority, source ownership, holds, reset/EOF handling and transport
-accounting. Retained v9 tests cover the still-compiled legacy implementation.
+accounting. The standalone caption decoder has independent tests and is not
+linked into the current registration path.
 
-For CPU use frameserver's bench-geometry with CAPTURE, fresh scratch SIDECAR
+For CPU use frameserver's bench (bench-geometry is an alias) with CAPTURE, fresh scratch SIDECAR
 and TIMINGS paths, and optional BENCH_ARGS for input pairing. It executes the
 actual default worker, including conditional 2-D searches, with production
 compiler flags. Thread CPU covers classification through item completion,

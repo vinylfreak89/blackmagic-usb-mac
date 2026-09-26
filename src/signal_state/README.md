@@ -12,11 +12,11 @@ appearance plus an explicitly uncertain inference.
 
 The hot path is allocation-free and retains only subsampled luma history and a
 small state machine. `signal_state_classify()` runs before registration.
-`signal_state_note_registration()` then feeds the same unit's phase observation
-back into the trajectory gate, allowing positive-but-provisional chatter to
-open an `unsettled` interval. The caller, not this library, invokes
-`fieldreg_begin_segment()` or `fieldreg_discontinuity()` according to the
-returned action bits.
+The optional `signal_state_note_registration()` API can feed the same unit's
+phase observation back into the trajectory gate, allowing positive-but-provisional
+chatter to open an `unsettled` interval. The geometry frameserver does not use
+that feedback API. It maps the returned registration action bits to geometry
+resets; the classifier does not call an engine directly.
 
 `SIGNAL_ACTION_REGISTRATION_DISCONTINUITY` is transport truth. Acquisition and
 relock transitions produce `SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT`; ordinary

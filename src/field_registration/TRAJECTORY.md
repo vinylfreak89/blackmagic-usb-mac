@@ -1,10 +1,11 @@
 # Historical registration trajectory contract
 
 This is a retired design, not the live engine contract or a current test gate.
-Its harnesses and generators remain in git at `f504c16`; see `tests/TRUTH.md`
-for the current test entry points.
+Its harnesses and generators remain in git at `f504c16`. All uses of "live"
+or "current" below refer to that historical design, not today's engine.
+See `README.md` and `../../docs/geometry_engine.md` for current entry points.
 
-The live contract is implemented by the allocation-free C estimator: coherent
+The then-live contract was implemented by the allocation-free C estimator: coherent
 physical evidence is followed forward at unit rate with no presentation FIFO.
 The optional retroactive layer described below is recording-side only and
 remains gated until a real tape proves that a positive, coherent provisional
