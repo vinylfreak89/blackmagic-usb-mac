@@ -1820,3 +1820,31 @@ step. Only |v| ≥ 2 moves its minimum by a full line. The credits scroll at ≥
 withheld only when either field's |shift| ≥ 2. Both must hold the caption score at ≥ 93.94%. (b) should remove
 the credits' comb adoption. Reported against the entry's falsifier; the protected 60843 span is judged on raw
 motion there (shifts of 1–3 per frame), not assumed unchanged.
+
+### Amendment 2 to E-claude-2026-09-26-39 (2026-09-26) — withhold the comb only on a rigid vertical translation
+
+**Result of amendment 1 (edb551c).** Neither variant passed the caption gate. (a), the still trigger alone,
+scored 93.915%; (b), which also withheld at |motion| ≥ 2, scored 92.61%. **The caption is not a valid truth in
+every commercial.** At 82101 the owner found −1 uncombed, the comb's answer, where the field-1 caption implies −3.
+So (a)'s marks in 82073–82159 were against a caption placed off-picture, and the still trigger stands on his
+eye. His other readings: in the credits (89520) the picture uncombs at −1 and the scrolling text at −3.
+Field order is top-field-first there: the text rises 0 → −2.5 → −4.0 → −6.25 field lines through f1, f2,
+f1′, f2′. (b)'s 1,140 losses were ordinary action with |v| ≥ 2. The owner: "there is intentional motion
+blur there".
+
+**Physical reason (owner's proposal).** "only withold comb if there is high vettical motion but horizontal
+motion is stable … clear rigid transition which is probably some type of overlay". An overlay or scroll moves as
+one rigid vertical block; a pan or blur moves sideways and matches no single shift well.
+
+**Measured (2-D search dx −8..8, dy −5..5 on all 6,697 units with |v| ≥ 2).** Credits frames: dx = 0 in both
+fields on 98–99.5%, clarity (best SAD among shifts ≥ 2 away / best SAD) median 1.45–1.59. (b)'s programme
+losses: dx = 0 in both fields on 12.5%, clarity median 1.04. On (b)'s per-frame outcomes (a proxy), withholding
+only when |dy| ≥ 2, dx = 0 in both fields and clarity ≥ 1.3 keeps 146 caption gains (145 of them credits)
+for 5 losses; at 1.2, 173 gains for 21 losses. **The 1.3 is read off this tape.** Captures 1–4 are the
+held-out check.
+
+**Amended rule.** Motion is still the vertical search on every frame. Frames with |dy| ≥ 2 in either field
+also get the 2-D search. Comb verdicts are withheld only when both fields show dx = 0 and |dy| ≥ 2 with
+clarity ≥ 1.3. The still trigger is as in amendment 1. **Must not break:** the caption score outside
+81508–82402 (where the caption is shown invalid); the owner's spans; the 60843 bounce (it moves sideways, so
+it is not withheld); captures 1–4; §11b.
