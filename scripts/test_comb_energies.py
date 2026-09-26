@@ -75,7 +75,7 @@ def main():
                 p = subprocess.run(cmd,capture_output=True,text=True,timeout=90)
                 assert p.returncode == 0 and 'Sanitizer' not in p.stderr, (p.returncode,p.stdout,p.stderr)
                 rows = list(csv.DictReader(log.open()))
-                assert all(r['schema_version']=='26' for r in rows)
+                assert all(r['schema_version']=='27' for r in rows)
                 units = [r for r in rows if r['counter_extended']]
                 assert len(units)==12 and all(r['published']=='1' for r in units), p.stdout
                 for r in rows:

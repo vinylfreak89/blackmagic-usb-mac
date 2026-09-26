@@ -65,7 +65,7 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 26, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 27, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32,
 still-picture rejection=64),
 comb evidence and HIGH/LOW.
@@ -118,8 +118,12 @@ selects a vertical shift -5..5 against the previous adjacent non-reset unit.
 Exact ties prefer the smallest absolute shift, then the negative shift.
 Frame evidence joins field 1 from frame_top_unit and field 2 from its own unit.
 Either unknown makes the frame unknown; otherwise any nonzero shift means
-moving. Moving frames retain the ordinary triggers and raw comb measurements
-but cannot adopt, reject, substitute or update held evidence from that comb.
+moving. `GE_COMB_MOTION_MIN` is a positive integer, default 1. Moving frames
+whose largest absolute field shift is at least this value retain the ordinary
+triggers and raw comb measurements but cannot adopt, reject, substitute or
+update held evidence from that comb. Smaller nonzero shifts keep the existing
+comb authority and do not gain a still trigger. The default reproduces entry
+39's original moving-frame rule; 99 withholds nothing in the -5..5 search.
 Other basis invalidation and top/fallback decisions remain active. A still
 frame adds trigger bit 64 when the proposed relative shift's energy ratio is
 at least GE_COMB_REJECT and the floor is enclosed. It then uses the unchanged
@@ -134,8 +138,9 @@ Schema 26 appends `ge_vote_blankspot`, `ge_comb_still`, `vote_blankspot_pass`,
 `vote_blankspot_line` (first failed line, zero when none), `motion_shift_f1`,
 `motion_error_f1`, `motion_error2_f1`, the corresponding f2 columns,
 `picture_motion` (unknown/still/moving), `still_trigger`, and `comb_suppressed`.
-Suppression counts moving frames with an existing comb trigger, including an
-undecided comb. Motion errors are best and runner-up mean absolute differences.
+Suppression counts threshold-qualified moving frames with an existing comb
+trigger, including an undecided comb. Schema 27 appends `ge_comb_motion_min`
+on every row. Motion errors are best and runner-up mean absolute differences.
 Unknown/disabled shifts and errors are empty; all frame evidence is empty on
 non-frame rows. These controls are experiments, not enabled production defaults.
 

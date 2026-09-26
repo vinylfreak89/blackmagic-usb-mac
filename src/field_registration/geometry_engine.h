@@ -21,6 +21,7 @@ extern int ge_bottom_flat; /* default 0; same-unit flat-band bottom reference */
 extern double ge_bottom_flat_margin; /* default 3; inclusive, tolerance 1e-9 */
 extern int ge_vote_blankspot; /* default 0; skipped field-2 rows need VI blanking */
 extern int ge_comb_still; /* default 0; same-field motion gates comb authority */
+extern int ge_comb_motion_min; /* default 1; positive whole lines; 99 withholds none */
 #define GE_VOTE_WINDOW 30
 #define GE_COMB_SELECTION_MARGIN 1.5
 typedef struct { int first; double step, max_step; } ge_wave_result;

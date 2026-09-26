@@ -31,6 +31,14 @@ static int ge_tool_controls_from_env(void) {
         }
         ge_wave_clamp=(int)n;
     }
+    v=getenv("GE_COMB_MOTION_MIN");
+    if(v) {
+        errno=0;long n=strtol(v,&end,10);
+        if(errno || end==v || *end || n<1 || n>INT_MAX) {
+            fprintf(stderr,"invalid GE_COMB_MOTION_MIN: %s (expected positive int)\n",v);return 0;
+        }
+        ge_comb_motion_min=(int)n;
+    }
     v=getenv("GE_COMB_REJECT");
     if(v) {
         errno=0;double n=strtod(v,&end);
@@ -66,7 +74,7 @@ static int ge_tool_controls_from_env(void) {
     return 1;
 }
 static void ge_tool_controls_echo(FILE *f) {
-    fprintf(f,"# GE_WAVE_BAR=%.17g GE_WAVE_CLAMP=%d GE_COMB_REJECT=%.17g GE_ANCHOR_VOTE=%d GE_LEVEL_FILL=%d GE_LEVEL_FLAT=%d GE_VOTE_PAIR=%d GE_VOTE_PAIR_MIN=%.17g GE_BOTTOM_FLAT=%d GE_BOTTOM_FLAT_MARGIN=%.17g GE_VOTE_BLANKSPOT=%d GE_COMB_STILL=%d\n",
-        ge_wave_bar,ge_wave_clamp,ge_comb_reject,ge_anchor_vote,ge_level_fill,ge_level_flat,ge_vote_pair,ge_vote_pair_min,ge_bottom_flat,ge_bottom_flat_margin,ge_vote_blankspot,ge_comb_still);
+    fprintf(f,"# GE_WAVE_BAR=%.17g GE_WAVE_CLAMP=%d GE_COMB_REJECT=%.17g GE_ANCHOR_VOTE=%d GE_LEVEL_FILL=%d GE_LEVEL_FLAT=%d GE_VOTE_PAIR=%d GE_VOTE_PAIR_MIN=%.17g GE_BOTTOM_FLAT=%d GE_BOTTOM_FLAT_MARGIN=%.17g GE_VOTE_BLANKSPOT=%d GE_COMB_STILL=%d GE_COMB_MOTION_MIN=%d\n",
+        ge_wave_bar,ge_wave_clamp,ge_comb_reject,ge_anchor_vote,ge_level_fill,ge_level_flat,ge_vote_pair,ge_vote_pair_min,ge_bottom_flat,ge_bottom_flat_margin,ge_vote_blankspot,ge_comb_still,ge_comb_motion_min);
 }
 #endif

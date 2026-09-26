@@ -1,5 +1,5 @@
 """Entry-39 worker integration: independent motion and blank spots, both pairings."""
-import csv,importlib.util,os,subprocess,sys,tempfile
+import csv,importlib.util,itertools,os,subprocess,sys,tempfile
 from pathlib import Path
 import numpy as np
 ROOT=Path(__file__).resolve().parents[1]
@@ -19,8 +19,9 @@ with tempfile.TemporaryDirectory(prefix='still-comb-',dir='/private/tmp') as tmp
     with capture.open('wb') as f:
         for seq,off in enumerate(range(0,len(stream),15360)):
             f.write(fixture.record(fixture.DATA,fixture.VIDEO,0,seq,0,15360,stream[off:off+15360]))
-    for reverse in (False,True):
-        log=tmp/f'{reverse}.csv'
+    for reverse,threshold in itertools.product((False,True),(1,2,99)):
+        env['GE_COMB_MOTION_MIN']=str(threshold)
+        log=tmp/f'{reverse}.{threshold}.csv'
         cmd=[str(Path(sys.argv[1]).resolve()),str(capture),str(log),'--geometry-v11','--pool','64']
         if reverse:cmd+=['--pair-next']
         p=subprocess.run(cmd,env=env,capture_output=True,text=True,timeout=90)
@@ -30,7 +31,8 @@ with tempfile.TemporaryDirectory(prefix='still-comb-',dir='/private/tmp') as tmp
         units={int(r['counter_extended']):r for r in rows if r['counter_extended']}
         assert len(units)==8 and all(r['published']=='1' for r in units.values()),p.stdout
         for c,r in units.items():
-            assert r['schema_version']=='26' and r['ge_vote_blankspot']==r['ge_comb_still']=='1'
+            assert r['schema_version']=='27' and r['ge_vote_blankspot']==r['ge_comb_still']=='1'
+            assert int(r['ge_comb_motion_min'])==threshold
             if not r['frame_top_unit']:
                 assert r['picture_motion']==r['motion_shift_f1']==r['motion_shift_f2']==''
                 continue
@@ -51,13 +53,14 @@ with tempfile.TemporaryDirectory(prefix='still-comb-',dir='/private/tmp') as tmp
                     assert abs(float(r[f'{col}_f{k+1}'])-errors[idx][0]/115200)<1e-12
             state='unknown' if None in expected else 'moving' if any(expected) else 'still'
             assert r['picture_motion']==state,(c,r,expected)
-            if state=='moving':
+            if state=='moving' and max(map(abs,expected))>=threshold:
                 assert r['still_trigger']==r['comb_rejected']=='0'
                 assert r['relative_source'] not in ('comb','comb_rejection')
+            else:assert r['comb_suppressed']=='0'
             top=int(r['vote_top_f2'])
             if top:
                 y=rasters[c-100];blank=float(np.median(y[270:279]))
                 passed=all(np.any(y[line-4,40:680]<=blank+2) for line in range(286,top))
                 assert int(r['vote_blankspot_pass'])==passed
                 if not passed:assert r['vote_confident']=='0'
-        print('STILL-COMB PIPELINE PASS:', 'reversed' if reverse else 'aligned', '8 units')
+        print('STILL-COMB PIPELINE PASS:', 'reversed' if reverse else 'aligned', threshold, '8 units')

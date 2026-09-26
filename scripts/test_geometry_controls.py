@@ -19,7 +19,9 @@ columns+='ge_anchor_vote ge_level_fill ge_level_flat vote_confident vote_anchor 
 columns+='ge_vote_pair ge_vote_pair_min vote_rB vote_pair_pass'.split()
 columns+='ge_bottom_flat ge_bottom_flat_margin bottom_rule_f1 bottom_F_p5_f1 bottom_F_p50_f1 bottom_F_p95_f1 bottom_rule_f2 bottom_F_p5_f2 bottom_F_p50_f2 bottom_F_p95_f2'.split()
 columns+='ge_vote_blankspot ge_comb_still vote_blankspot_pass vote_blankspot_line motion_shift_f1 motion_error_f1 motion_error2_f1 motion_shift_f2 motion_error_f2 motion_error2_f2 picture_motion still_trigger comb_suppressed'.split()
-for name,values in {'GE_BOTTOM_FLAT':('','2','01'),
+columns.append('ge_comb_motion_min')
+for name,values in {'GE_COMB_MOTION_MIN':('','0','-1','1.5','2junk','2147483648'),
+                    'GE_BOTTOM_FLAT':('','2','01'),
                     'GE_VOTE_BLANKSPOT':('','2','01'),
                     'GE_COMB_STILL':('','2','01'),
                     'GE_BOTTOM_FLAT_MARGIN':('nan','inf','0','-1','3junk'),
@@ -67,7 +69,7 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
             units={int(r['counter_extended']):r for r in rows if r['counter_extended']}
             assert len(units)==4 and all(r['published']=='1' for r in units.values()),p.stdout
             for r in rows:
-                assert r['schema_version']=='26' and tuple(r[n.lower()] for n in names)==values,r
+                assert r['schema_version']=='27' and tuple(r[n.lower()] for n in names)==values,r
                 assert (r['ge_anchor_vote'],r['ge_level_fill'],r['ge_level_flat'])==('0','0','0'),r
             raw=b''.join(struct.pack('=QII',c,int(units[c]['reset_before']),int(reversed_pair))+y for c in units)
             q=subprocess.run([probe],input=raw,capture_output=True,env=env,timeout=30)

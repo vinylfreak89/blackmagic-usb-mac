@@ -12,6 +12,7 @@ double ge_vote_pair_min=.6;
 int ge_bottom_flat=0;
 double ge_bottom_flat_margin=3;
 int ge_vote_blankspot=0,ge_comb_still=0;
+int ge_comb_motion_min=1;
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
@@ -388,7 +389,8 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
             o.still_trigger=1;o.triggers|=GE_STILL;o.comb_ran=1;
         }
     }
-    o.comb_suppressed=ge_comb_still && o.picture_motion==GE_PICTURE_MOVING && o.comb_ran;
+    o.comb_suppressed=ge_comb_still && o.picture_motion==GE_PICTURE_MOVING && o.comb_ran &&
+        (abs(o.vertical[0].shift)>=ge_comb_motion_min || abs(o.vertical[1].shift)>=ge_comb_motion_min);
     if(o.comb_ran && !o.comb_suppressed && o.comb.decided) {
         o.relative_source=GE_SOURCE_COMB;
         d=o.comb.shift;dknown=1;

@@ -63,16 +63,22 @@ static void authority(void) {
     t.last[0]=260;f.last[1]=522;t.bottom[0]=260;f.bottom[1]=522;
     t.motion[0]=f.motion[1]=GE_NOTHING; /* census agrees at both edges, no trigger */
     t.vertical[0].known=f.vertical[1].known=1;
-    for(int audit=0;audit<2;audit++)for(int state=0;state<3;state++)for(int enabled=0;enabled<2;enabled++) {
+    const int thresholds[]={1,2,99};
+    for(unsigned q=0;q<sizeof thresholds/sizeof *thresholds;q++)
+    for(int audit=0;audit<2;audit++)for(int state=0;state<8;state++)for(int enabled=0;enabled<2;enabled++) {
+        ge_comb_motion_min=thresholds[q];
         geometry_engine g;ge_init(&g,0,audit);ge_comb_still=enabled;
-        t.vertical[0].known=state!=0;t.vertical[0].shift=state==2;
+        t.vertical[0].known=state!=0;t.vertical[0].shift=state<2 || state>=5?0:state==2?1:state==3?2:-2;
+        f.vertical[1].shift=state<5?0:state==5?2:state==6?-2:1;
         ge_decision o=frame(&g,y,b,&t,&f,100,100);
         if(state==1 && enabled)assert(o.still_trigger && (o.triggers&GE_STILL) && o.published_d==0 && o.held==1);
         else assert(!o.still_trigger && o.published_d==-1 && !o.held);
-        /* Force today's trigger: moving blocks both decided adoption and rejection. */
+        /* Force today's trigger: qualifying motion blocks adoption and rejection. */
         t.motion[0]=GE_UNKNOWN;ge_init(&g,0,audit);o=frame(&g,y,b,&t,&f,100,100);
         assert(o.comb_ran && o.comb.decided);
-        if(state==2 && enabled)assert(o.comb_suppressed && o.published_d==-1 && !o.held && !o.rejected);
+        if(state>=2 && enabled && (abs(t.vertical[0].shift)>=ge_comb_motion_min ||
+                                  abs(f.vertical[1].shift)>=ge_comb_motion_min))
+            assert(o.comb_suppressed && o.published_d==-1 && !o.held && !o.rejected);
         else assert(!o.comb_suppressed && o.published_d==0 && o.held==1);
         t.motion[0]=GE_NOTHING;
     }
@@ -83,6 +89,6 @@ static void authority(void) {
     o.comb.energies[5]=o.comb.energies[6]=1;
     int d=-1,d2=2;reject_placement(&g,&o,&d,&d2);
     assert(!o.rejected && o.rejection.basin && o.rejection.ratio==10 && g.held==1 && g.basis_valid);
-    ge_comb_still=0;
+    ge_comb_still=0;ge_comb_motion_min=1;
 }
 int main(void){motion();blankspots();authority();puts("GEOMETRY-STILL PASS");}
