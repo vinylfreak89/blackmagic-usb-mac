@@ -1197,3 +1197,66 @@ slowing only if an idle run loses data and retaining every failure. Render
 captures 1–4 after validation, then full tape only if their placements are
 identical to the existing reviews. Encoded-strip validation and explicit
 producer/configuration/hash status precede atomic publication.
+
+Entry-38 deciding result: the amended C bottom scan matches every available
+reference answer, including the inclusive-margin ties. The reference's old
+bottom column matches the compiled 299e878 baseline everywhere. Missing census
+rows remain separately reported, not counted as matches. The disabled build
+is byte-identical to 299e878 for measurements and decisions on the whole tape
+and all four captures. Enabled tops, profiles, blanking and level evidence
+are unchanged, and the named bottom cases pass.
+
+The dispatch's relative-shift invariant does not hold: corrected bottoms
+remove T1 triggers and hence some previously adopted comb results. At 60843,
+tops remain 25/288 (st=0), field-1 bottom remains 260, and field-2 bottom goes
+521 to 522. The bottom shift therefore goes -2 to -1; incoming d=0 now fits
+the bottom's {-1,0} range, so T1 clears. The same raw comb still measures +1,
+margin 1.586329837037961, but the unchanged policy does not adopt an untriggered
+audit result. The published relative shift changes +1 to 0. Sixteen frames
+change relative placement, through this trigger/held-state mechanism; no
+confidence or anchor changes. All four captures retain their placements.
+This cannot be reconciled by altering the bottom measurements or silently
+changing the comb's authority. Renders are withheld pending the owner's
+disposition of that invariant, despite the bottom-reference gate passing.
+
+Normal unit/worker, ASan/UBSan and TSan checks pass, including enabled-rule
+provenance under reversed pairing. The overlay reads the logged frame-owned
+F quantiles and deciding rule; it performs no bottom measurement. A worst-case
+text-width check initially failed (`assert dr.textlength(g.bottom_label(row),font=font)<452`,
+`AssertionError`); compact separators retain two-decimal quantiles and the
+rerun passes. Schema 25 records the new evidence; the control remains off by default.
+
+Whole-tape pacing failures are retained: at 16x, zero holes and five pool
+drops; at 8x, zero holes and one pool drop. Both had zero ring, surface and
+audio drops. Neither run overlapped project tests, sanitizers or renders,
+but unrelated desktop applications were consuming CPU, so these are not
+proof of failure on a fully idle machine. The 4x retry published all 86,293
+units with zero holes and zero pool/ring/surface/audio drops; it matches the
+deterministic C decisions exactly. All four capture replays are also clean.
+Detailed counts and every changed frame/edge are recorded under
+/private/tmp/bottom-flat.bsfr5V.
+
+Counts: control-off differences 0/86,293 whole-tape units and 0/919, 0/649,
+0/649, 0/650 capture units. Old reference bottoms 172,586/172,586 exact;
+new reference answers 171,998/171,998 exact, 588 unavailable-reference rows,
+and all 9,473 exact-margin rows matched. The unavailable rows yield 531
+unknowns and 57 measured bottoms, each listed separately. Tops match on all
+172,586 edges; bottom profiles, device blanking, hblank and level evidence
+match on all 86,293 units. New bottoms differ on 32 field-1 and 892 field-2
+edges. Frame-owned sidecar rule/F provenance matches all 172,578 frame edges.
+The only non-metadata sidecar columns changing are logged in full: bottom
+edges, motion classes, triggers/comb_ran/confidence, relative source,
+held correction, reject ratio and 16 field-1 placements. All raw comb
+energies, winners, margins and decided flags remain identical.
+
+Whole-tape gates before/after: confident 58,940/86,289 (68.3053%), common-mode
+moves 16, excursions 6, one-frame 0, all unchanged. Bottom-only comb runs /
+decided / changed-relative fall from 582/203/144 to 531/155/136. Capture
+placements differ on 0/919, 0/649, 0/648, 0/650 frames; every capture still
+has zero common-mode moves. The card holds 238/238 with unchanged bottoms;
+cap 2 has zero anchor-one frames in the 173-frame interval. Named bottoms
+all pass, including cap 4's 262/525 on every unit. Enabled CPU median/p95 is
+0.317916/0.340167 ms per unit; disabled is 0.318750/0.336208 (thread CPU,
+O3 engine, s12c with pairing and all-frame comb). No media or review status
+was replaced. Engine 6778e76 and renderer 5045652 are committed for review;
+render authorization remains blocked by the relative-shift invariant.
