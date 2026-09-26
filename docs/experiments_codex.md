@@ -1490,3 +1490,42 @@ Compare each fresh replay to the exact A1 harness decisions, require clean
 same-filesystem publication. Captures must retain their prior placements.
 Record the A1/control settings in status and show its logged blank-spot result
 in the review overlay. No new engine policy or measurement is authorized.
+
+Entry-39 A1-only publication result: engine edb551c, renderer e5e6a90,
+schema 27. The logged A1 pass/failure now precedes the wave settings in the
+overlay; status records (blankspot, still, motion_min) = (1,0,1). No engine
+source changed. Waveform, vote, bottom-overlay and status tests pass.
+
+All five completed replays used pace_us=4000 (4x), pool 32 and audit comb,
+with zero holes, pool/ring/surface drops and audio-sink drops. The first cap1
+launch in the sandbox failed before input with exactly `open failed`; its
+log is retained, and the authorized local shared-memory retry was clean.
+Capture harness decision differences: 0/919, 0/649, 0/649, 0/650 units.
+Whole-tape differences: 0/86,293 units and 0/86,289 frame decisions. Comparisons
+cover placements, triggers, comb decision/margin, held correction, census,
+classes, vote state and A1 evidence, accounting for the log's numeric format.
+
+Capture 1–4 prior-placement differences are 0/0/0/0; encoded frames are
+922/649/648/650, with complete strip sequence/placement differences 0/0/0/0.
+Capture 1 includes three visible fill slots. Capture 3's counter 14149 is
+the explicitly unpaired tail, not a missing interior frame. All four MP4s
+and sidecars were replaced only after validation and have fresh READY status.
+
+The isolated full replay took 721.652 seconds and delivered 138,217,498 PCM
+samples without sink loss. The full encode contains 86,296 frames (86,289
+paired frames plus seven visible fills), duration 2879.409867 seconds.
+Every encoded strip matches both its frame placement and its source-unit
+placements; sequence/placement differences are zero. Audio-clock readback
+on 86,292 units has maximum error 0.001998002 frame, retaining the two logged
+sample steps. MP4 and sidecar were published by same-filesystem rename to
+captures/fulltape_render.mp4 and captures/fulltape_render_registration.csv;
+post-publication hash differences are zero, and renders.status is READY.
+
+Full-tape SHA-256: MP4
+`baf3090cc14be390c54159c9f937ed0f74bbcbbea7ce8a47412b4cd9edbf1f3e`;
+sidecar `f2ac7c06addcdeaef539462cc7fc8c84e98f783ef3cc66df903afc9a38f28393`.
+Scratch verification, scripts and recoverable hard-linked prior artifacts:
+/private/tmp/a1-review.76PJkK (capture validation/publication JSON) and its
+full-4000 directory (whole-tape identity, statistics, strips, validation and
+publication JSON). The two failed comb variants remain off; publication is
+not owner visual acceptance.
