@@ -1558,132 +1558,7 @@ comparative score in entries 30–32 detects **late** tops only — a top placed
 
 **Material.** The whole tape for the census; captures 1–4 for the renders the owner validates first.
 
-## E-claude-2026-09-22-34 — a comb that cannot choose can still refuse
-
-**Question (owner, 2026-09-22, verbatim).** "but the actual used comb is trash? from what I can see
-in the render, the red box selected one is much higher than the one noted as the minimum" — then,
-on the proposed guard: "yes thats the change I want".
-
-**Premise, stated apart from the method.** The comb's power to *select* and its power to *reject* are
-different quantities, and the engine only tests the first. `decided = energy[second]/energy[best] >=
-1.5` asks whether the best candidate beats the runner-up. When the two best are adjacent and nearly
-tied it answers no — but that tie says both are good, and says nothing about a third placement far
-away. A comb that cannot choose between +0 and +1 is still perfectly able to say −1 is wrong. The
-engine already computes the whole 11-entry energy array every frame and never compares the shift it
-is about to publish against the best one in it.
-
-**The measurement that found it.** At cap3 counter 13576 the array is
-
-| shift | −5 | −4 | −3 | −2 | −1 | +0 | +1 | +2 | +3 | +4 | +5 |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| energy | 711.7 | 628.8 | 531.3 | 423.6 | **282.2** | **4.3** | 4.3 | 284.8 | 425.4 | 529.3 | 619.5 |
-
-The engine published **−1**, at **66× the minimum**, because the margin test saw 4.3 against 4.3,
-returned undecided, and let a held correction speak unchallenged.
-
-**Population, all four captures, published frames where the published shift's own energy is ≥2× the
-best available:**
-
-| | frames | of | comb undecided | comb decided |
-|---|---|---|---|---|
-| cap1 | 15 | 919 | 15 | 0 |
-| cap2 | 5 | 649 | 5 | 0 |
-| cap3 | 2 | 648 | 2 | 0 |
-| cap4 | 4 | 650 | 4 | 0 |
-
-**26 of 26 had `decided = 0`.** Across 2,100 frames where the comb did decide the ratio never
-exceeds **1.9**, and its median over all 2,866 published frames is **1.000** — normally the published
-shift *is* the best. That separation is why the bar is 2.0 and not a guess.
-
-**Two populations, recorded because the remedy differs and a report must not merge them.**
-- **A held correction is the bad shift** — 2 frames (cap3 13576, 13577). Dropping the correction
-  falls back to the measured tops, which are right there.
-- **The measured tops are themselves the bad shift** — 20 frames, mostly cap1's run at 6257–6267,
-  where the waveform accepted f1 28 / f2 289 giving st −2 at energy 130.4 while the comb's minimum is
-  +2 at 10.3. Falling back changes nothing; the comb's best is the only other answer available.
-
-Both were checked against an instrument the engine does not use — mean |line − average of its two
-neighbours| over the woven frame:
-
-| | published | comb's best | |
-|---|---|---|---|
-| cap3 13576 | 10.608 | 5.348 | comb's best |
-| cap1 6257 | 6.330 | 2.795 | comb's best |
-| cap1 6264 | 6.521 | 2.939 | comb's best |
-| cap1 6266 | 6.482 | 2.805 | comb's best |
-| cap1 6267 | 6.481 | 2.872 | comb's best |
-
-**The method.** Whenever the comb has run, compute `reject = energy[published_shift]/energy[best]`.
-If it exceeds a configurable bar (`GE_COMB_REJECT`, default **2.0**) the published shift is refused:
-any held correction is dropped, and the comb's best shift is substituted. The refusal, the ratio, the
-refused shift and the substituted one are all logged — the observation stays immutable and the
-interpretation is visible.
-
-**Falsifier.**
-- Any of the 26 does not change, or changes to something the roughness instrument scores worse.
-- Or any frame outside the 26 changes: 0 of 2,100 comb-decided frames exceed 2.0, so the guard must
-  be inert wherever the comb decided.
-- Or the whole-tape census disagrees on any of the 172,586 field edges — the guard must not touch the
-  top measurement, only what is published from it.
-- Or the owner's labelled counters stop landing.
-
-**What this does not claim.** It does not make the waveform's absolute tops right on cap1's run —
-they were accepted at 28/289 and the frame still weaves four lines away. It fixes what is published,
-not what was measured, and the gap between those two is entry 33's unfinished business.
-
-**Material.** Captures 1–4 for the renders; the whole tape for the census identity.
-
-### Amendment to E-claude-2026-09-22-34 (2026-09-22) — a minimum is a minimum only if it rises on both sides
-
-**The falsifier fired.** Codex built the guard, changed exactly the 26 frames and nothing else, then
-stopped: three of them — cap1 6271, 6272 and cap2 2309 — score *worse* on the independent roughness
-instrument. It left the engine, sidecars and renders unchanged and reported the failure rather than
-narrowing the rule on its own. `FRAMES_CHANGED=26 EXTRA_CHANGED=0 DECIDED_FRAMES_CHANGED=0`.
-
-**The physical reason, the owner's, verbatim.** "isn't the best shift supposed to be a minimum on
-both sides? otherwise it shouldn't have any confidence. thats what a real comb does."
-
-The three failures share one shape: the energy runs **monotone into the wall of the ±5 search range**.
-
-```
-6271     14.3  13.8  13.1  12.6  11.9  11.3   6.5  6.0  5.3  4.6 [4.4]   strictly decreasing to +5
-6272     11.2  10.4   9.3   8.6   7.9   6.9   5.9  5.1  4.4 [4.2] 4.7    decreasing to +4
-2309    954.1 843.6 734.3 624.7 507.4 391.4 292.2 198.7 103.6 [46.0] 61.6 decreasing to +4
-```
-
-Such a comb has not located an alignment; it is reporting that the alignment lies outside its range.
-Reading the edge value as a minimum reads the end of a slope as a basin. Two more in the set, 2311
-and 2312, are the same shape (monotone to −5) and were scored too generously as successes: they
-improved only 9.37→8.02 and 10.10→9.23, terrible to slightly-less-terrible.
-
-**The amendment, and it introduces no new constant.** Take the **floor** — the minimum plus any
-adjacent shift within the engine's existing 1.5 factor, i.e. the shifts the engine already considers
-indistinguishable from it. Substitute the comb's best only when the floor lies wholly inside the
-search range *and* the energy rises by that same 1.5 on both sides of it. Otherwise the published
-shift is still refused, but nothing is substituted: the frame is **discarded**, per the owner's
-standing ruling that an unsupported placement "doesn't act as a decision".
-
-**A rejected first attempt, recorded because it was nearly shipped.** An earlier form required the
-minimum to rise against its immediate neighbours. That rejects 13576 — the flagship case — because
-its two best shifts are *tied* at 4.3, so each reads as a flat neighbour of the other. Treating the
-tie as the floor, 13576 rises 66.1× on the left and 66.7× on the right: the sharpest basin in the
-set. A separate attempt used `|best shift| <= 3`, which separates the same 26 but is a bar read off
-the failures it explains; the owner's two-sided condition supersedes it and is preferred because it
-is a statement about the signal, not about the outcome.
-
-**Separation, all 26, zero disagreements:** every frame the roughness instrument scored worse falls
-out as *no minimum found*; every frame it scored better is a basin with both arms present. Floors:
-13576 at +0..+1 (66×), 6257–6267 at +2..+3 (~5×), cap4's four at +0..+1 (1.5–2.7×); against
-6271/6272 at +1..+5, 2309 at +4..+5, 2311/2312 at −5..−4, all touching the wall.
-
-**What this must not break.** The 21 substitutions stand and must still score better on roughness;
-the five discards must publish no substituted shift; nothing outside the 26 may change; the 172,586
-census edges stay identical. **What is still open:** whether a discarded frame holds the previous
-placement or publishes the measured tops — not decided here, and the report must say which it did.
-
-**Forward or not.** Forward: it removes a whole failure mode rather than excusing three cases, it
-adds no number, and the condition is about the energy profile's shape rather than about the frames
-it was found on. It has been checked only on the 26; the whole tape is material it was not built on.
+## E-claude-2026-09-22-34 — a comb that cannot choose can still refuse — **premise held; promoted with the owner's basin amendment at 3a87891.** The comb's power to select (best vs runner-up, 1.5) differs from its power to reject: cap3 13576 published −1 at 66× the minimum because a tied +0/+1 read as undecided. Rule: refuse the published shift when energy[published]/energy[best] ≥ `GE_COMB_REJECT` (2.0; 0 of 2,100 decided frames exceeded 1.9). The first form changed exactly the 26 target frames but three scored worse on independent roughness — all monotone into the ±5 wall. Owner: "isn't the best shift supposed to be a minimum on both sides?" Amendment: substitute the comb's best only when the floor (minimum plus adjacent shifts within 1.5×) is enclosed and rises ≥1.5 on both sides; otherwise discard. Result: 21 substitutions improve roughness, five discards hold the previous pair, nothing else changed; whole tape 329/86,289 rejections, 14 discards. Durable lesson: an immediate-neighbour rise test rejects a tied basin; treat the tie as the floor. Compacted 2026-09-26; full text at 1e060f2.
 
 ## E-claude-2026-09-22-35 — if you cannot measure all four edges, do not shift — **premise held, method refuted; superseded by entry 36.** Gating the anchor on the engine's motion classes delayed cap 1's card shift instead of removing it — 6670 published (5,5) with both classes `nothing` — because motion describes change between frames and the anchor is absolute. The card's cause was field 2's top read four lines late on dark low-contrast picture (287 is picture, read 291). Entry 36's vote fixes the card. Compacted 2026-09-26; full text at c87fa03.
 
@@ -2017,3 +1892,65 @@ span exactly the 904 frames between resets 68613 and 69517.
 level; the captures do not constrain it. 0.7 was first proposed and withdrawn after measuring that it slows the
 commercial flip from 18 to 51 frames. Cap 1's gate 1 stays at 31% — its long pause — under every variant.
 Reference: `reference_anchor4.csv` (τ 0.6); rB rounded to 4 dp, six frames within 1e-4 of the threshold.
+
+## E-claude-2026-09-26-38 — the bottom is where the picture stops differing from the flat below it
+
+**Question (owner, 2026-09-26, verbatim).** "can we add the replacement of that 4 unit constant into
+the queue item for the hard-coded threshold audit?" — then: "lets queue this after we figure out the
+common mode shift issue then but before we produce the full tape. obviously we will need to rethink
+this based on the current state of the engine and probably best to go with some type of automated
+regression as we've been considering for the whole project since last night." I read "automated
+regression" as autoregression — his earlier "it should be tuned by autoregression". That reading is
+mine.
+
+**What the constant does today (299e878).** `bottom_picture()` scans lines 262→241 / 525→504 and calls
+a row picture iff p95 − VI blanking > 5 **and** p95 − p5 > 4 (columns 40–679). The bottom feeds only
+the GE_T1 bottom term, GE_UNMEASURABLE and the motion-class presence gate — not the vote or the anchor.
+
+**Measured (Python replica of the scan, identical to the sidecars on all four captures once field 1 is
+joined on `frame_top_unit`; whole tape, 86,293 units).**
+- Below the picture the deck emits a flat region with spread 1–4 codes on 388,400 of 388,408 rows and
+  a level 8–12 above VI blanking (p1–p99). Lines 263/264 and 526 are device fill at blanking level 1 on
+  every unit, so the flat region is only visible inside the scan window.
+- Evenly dark picture has the same texture (spread 2–6) but sits 17–34 codes above blanking. The
+  spread test cuts it: 742 field-2 and 13 field-1 frames where the row under the engine's bottom sits
+  ≥6 above the flat beneath it. Raw rows: at 81197–81199 field 2 the picture is uniform at ~32
+  through line 522 and flat at 12–13 from 523, but the engine reads 519/517/518; cap2 1915 field 2 reads
+  521 for 522.
+- The flips that are real: cap2 2012–2014 field 1 read 261/260/261, and the last line is the
+  head-switch partial line (picture to sample ~300, flat after) moving with the whole field; the top
+  (25/24/25) and the comb (−1/0/−1) agree. Whole-tape 84289 field 1 line 261 is the same partial line
+  on dark picture. Any threshold from 5 to ~15 gives the same answers on these.
+- Effect on output: the bottom alone raised GE_T1 on 3,254 frames, ran the comb on 582, and changed
+  the relative shift on 144 (`full.isolated16`, pairing on).
+- Picture reaching line 262 (field 1: 2,202; field 2: 26) leaves no flat in the raster. Not addressed.
+
+**Premise, apart from the method.** The deck's flat region below the picture holds a stable level
+over time. A row is picture when its level departs from that region; texture does not separate a
+uniform dark picture row from the flat. The region's level can be learned from the source itself.
+
+**Method, simplest form.** Per field, a causal window of the last N = 30 references (the vote's N).
+A reference is the lowest scanned line's p5/p95 on a frame whose bottom lies above that line and whose
+line is flat-textured (p95 − p5 ≤ 4). Texture qualifies a reference but never judges a picture row.
+R5/R95 are the window medians, and margin m is the window median of the references' own p95 − p5. A row
+is picture iff p95 > R95 + m or p5 < R5 − m. The lower side keeps the dark card, whose picture sits
+below the flat. An empty window seeds from the current frame's qualified line. With none, today's test decides,
+so a raster that never shows the flat (capture 4) behaves exactly as now. The sidecar logs which
+rule decided each bottom. The window clears where the vote's clears. A partly lit last line stays
+picture ("31 % lit row absolutely counts as last picture line"; entry 23 refuted a stricter bottom
+rule for losing exactly that).
+
+**Falsifier.**
+- 81197–81199 field 2 and cap2 1915 field 2 do not read 522.
+- cap2 2012–2014 field 1 (261/260/261), whole-tape 84289 field 1 (261) or the cap1 card's bottoms
+  change.
+- A raw sample of the frames whose bottom changes shows a flat row called picture.
+- The lifted-edge count (755) does not fall to near zero outside the three non-programme events.
+- The bottom-only comb runs (582) do not fall.
+- Any vote gate regresses: 68.3 % confident, 16 common-mode moves, 6 excursions, 0 one-frame jumps;
+  caps 1–4 zero common-mode moves, cap1 238/238, cap2 0/173.
+- Any of the 86,293 top edges changes, or CPU leaves the §11b budget.
+
+**Material.** The whole tape and captures 1–4. Built on capture 2 and the whole tape; captures 1, 3
+and 4 were not used to build it. Capture 4's picture reaches line 262 throughout, so no reference ever
+qualifies there; it must come out identical.
