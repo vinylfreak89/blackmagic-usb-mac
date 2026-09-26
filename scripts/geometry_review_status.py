@@ -101,6 +101,10 @@ def blankspot_still_settings(rows):
                     r.get('ge_comb_motion_min', '')) for r in rows})
 
 
+def rigid_settings(rows):
+    return sorted({(r.get('ge_comb_rigid', ''), r.get('ge_comb_rigid_clarity', '')) for r in rows})
+
+
 def write_status(directory, status):
     status = dict(status, updated_utc=datetime.now(timezone.utc).isoformat())
     temporary = None
@@ -153,6 +157,7 @@ def main():
             result['vote_pair_settings'] = sorted({(r.get('ge_vote_pair', ''), r.get('ge_vote_pair_min', '')) for r in rows})
             result['bottom_flat_settings'] = sorted({(r.get('ge_bottom_flat', ''), r.get('ge_bottom_flat_margin', '')) for r in rows})
             result['blankspot_still_settings'] = blankspot_still_settings(rows)
+            result['rigid_settings'] = rigid_settings(rows)
             captures[name] = result
         status.update(state='READY', captures=captures)
     except Exception as e:

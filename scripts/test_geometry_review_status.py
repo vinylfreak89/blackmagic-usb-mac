@@ -3,7 +3,7 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import tempfile
-from geometry_review_status import audit_rows, write_status, blankspot_still_settings
+from geometry_review_status import audit_rows, write_status, blankspot_still_settings, rigid_settings
 
 def row(c, top='', unused='0'):
     return dict(counter_extended=str(c), published='1', frame_top_unit=str(top),
@@ -16,6 +16,8 @@ r=audit_rows(rows,strips)
 assert blankspot_still_settings(rows)==[('','','')]
 settings=[dict(ge_vote_blankspot='1',ge_comb_still='0',ge_comb_motion_min='1')]*2
 assert blankspot_still_settings(settings)==[('1','0','1')]
+assert rigid_settings(rows)==[('','')]
+assert rigid_settings([dict(ge_comb_rigid='1',ge_comb_rigid_clarity='1.3')])==[('1','1.3')]
 assert r['published_units']==3 and r['paired_frames']==r['encoded_frames']==2
 assert r['boundary_units']==[dict(counter=12,location='tail',reason='no next-unit pair partner',encoded_as_fill=False)]
 for bad in ([strips[1]], [(0,11,1,0)], [strips[0],strips[0]], [(0,10,2,0),strips[1]]):

@@ -79,7 +79,7 @@ NO_SOURCE_UNIT = 0xFFFFFFFF      # the strip's counter for a timing slot, which 
 MAX_FILL_GAP = 120
 FW, FH = 720, FIELD_ROWS * 2
 DW = 640                                  # 720 samples displayed at 8:9
-W, BAND = 1000, 198                         # dedicated vote and bottom-evidence lines above the strip
+W, BAND = 1000, 226                         # vote, bottom and motion evidence above the strip
 H = FH + BAND
 PX = (W - DW) // 2
 LANE = 22
@@ -451,6 +451,26 @@ def placement_source(row, source):
     if source == 'engine' and row.get('anchor_source') == 'anchor_vote':
         return 'vote anchor'
     return source
+
+
+def motion_labels(row):
+    """Frame-owned motion and withholding evidence, entirely from the sidecar."""
+    if row.get('ge_comb_still') != '1':
+        return ('motion control off', '') if row.get('ge_comb_still') == '0' else ('', '')
+    shifts = [row.get(f'motion_shift_f{k}') or '--' for k in (1, 2)]
+    state = row.get('picture_motion') or 'unknown'
+    trigger = row.get('still_trigger') or '--'
+    withheld = row.get('comb_suppressed') or '--'
+    status = f'motion {state} v({shifts[0]},{shifts[1]}) trigger {trigger} WITHHELD {withheld}'
+    parts = []
+    for k in (1, 2):
+        dx, dy, clarity = (row.get(f'rigid_{name}_f{k}') for name in ('dx', 'dy', 'clarity'))
+        if any(v in ('', None) for v in (dx, dy, clarity)):
+            parts.append(f'f{k} --')
+        else:
+            parts.append(f'f{k}({int(dx):+d},{int(dy):+d}) c{float(clarity):.3g}')
+    rigid = '2D ' + ' '.join(parts) if row.get('ge_comb_rigid') == '1' else '2D off'
+    return status, rigid
 
 
 def bottom_label(row):
@@ -1016,6 +1036,9 @@ def main():
             fit(dr, (6, FH + 134), vote_label(rowB), small, (230, 210, 130), right=CB_X0)
         if bottom_label(rowB):
             fit(dr, (6, FH + 148), bottom_label(rowB), small, (170, 210, 170), right=CB_X0)
+        for j, label in enumerate(motion_labels(rowB)):
+            fit(dr, (6, FH + 162 + 14*j), label, small,
+                (255, 210, 60) if rowB.get('comb_suppressed') == '1' else (170, 210, 210), right=CB_X0)
         comb_bar(dr, comb_energies(rowB), pub, rowB)
         if schedule is not None:
             pr, note = schedule_at(schedule, ext)
