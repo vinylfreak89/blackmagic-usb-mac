@@ -160,6 +160,12 @@ switch is consulted to produce those values. Newly exposed numeric parameters
 without schema-28 columns are echoed to stderr when overridden; retain that
 startup output with non-default experiments.
 
+Audio-evidence cells use a correlation snapshot taken at the parser's video-unit
+callback on the sole delivery/writer thread. Later/missing resyncs remain empty
+by this deterministic input-order cutoff, independent of worker scheduling or
+subsequent table eviction. Live publication-time audio timestamp availability
+is unchanged and separate. See the frameserver README for the policy and tests.
+
 comb_ran means triggered, not merely measured or adopted. confidence HIGH/LOW
 reflects that trigger state, not probability and not vote_confident. Compare
 frame_d2-frame_d1 against comb_d; never substitute applied_d2-applied_d1 on

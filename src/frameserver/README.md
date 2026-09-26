@@ -13,6 +13,38 @@ unit; consumers pair fields according to the logged ownership. Measurements
 and explicit unavailable values are retained separately from placement.
 `log_header` in frameserver.c defines the complete, unchanged CSV column set.
 
+## Deterministic audio evidence
+
+The parser/delivery thread writes audio correlations and snapshots the matching
+correlation when it emits a video-unit observation. That input-order boundary,
+not the video worker's scheduling, is the decision log's evidence cutoff.
+`audio_residual_ticks` and `audio_step_samples` use that immutable snapshot,
+which travels with the unit through its existing bounded queue and reversed
+pairing. No extra queue, per-unit allocation, wait or video buffering is added.
+
+If the resync is absent at this cutoff, or has already left the 256-entry
+correlation history, both cells stay empty. A later resync cannot retroactively
+fill them. This is a deterministic placeholder rule for the same ordered input,
+not a zero residual or evidence that audio itself is absent. Ineligible transport
+and dropped-pool observations retain their existing empty-cell policy. Residual steps
+still compare published units within one epoch and audio anchor generation;
+missing evidence does not invent a step or a new anchor.
+
+Live `fp_frame.audio_pts_known/audio_pts_num` are separate: they retain the
+publication-time best-effort lookup, so available later evidence may timestamp
+the frame even when its log cells are empty. That bounded seqlock lookup may
+also abstain during concurrent writes. The OBS timestamp policy, PCM, media
+publication order and registration decisions are unchanged.
+
+`make tests/audio_lookup_probe` builds a diagnostic replay which timestamps
+failed lookups and compares ingress with publication evidence.
+`tests/audio_lookup_stress` additionally yields the writer inside its update;
+report those scheduler-perturbed counts separately from natural replay rates.
+Neither probe nor scheduler hook is enabled in production. `audio_evidence_test`
+uses a condition-handshaked writer overlap and covers eviction, late/missing
+audio, epochs and pending-item ownership; it is included in native and sanitizer
+targets.
+
 ## Loss accounting
 
 - A pool-full observation retains its own ordinary row, is unpublished, and says `PoolFull`.

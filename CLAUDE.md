@@ -1680,9 +1680,11 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   - Decoded tape captions (CEA-608) are an instrument for scoring placement, never a placement
     source (owner, 2026-09-26). They are not valid truth in every commercial: one places its
     caption off-picture.
-  - The replay decision log's audio-evidence columns can come back empty under contention
-    (observed at cap-1 counter 6253 and whole-tape counter 12204). This is open and
-    outside geometry placement decisions, but can fail a complete sidecar byte-identity gate.
+  - Decision-log audio evidence is an immutable snapshot at the parser's video-unit callback,
+    on the same delivery thread that writes correlations. Later/missing resyncs stay empty
+    deterministically; no video waits. Publication-time audio_pts_known retains its separate
+    best-effort semantics. The former global seqlock lookup could exhaust eight retries even
+    with the target entry already present, making log cells depend on unrelated writer timing.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
