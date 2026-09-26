@@ -122,12 +122,23 @@ tests/worker_bench: tests/worker_bench.c frame_publisher.c frame_publisher.h ../
 bench: tests/worker_bench ../field_registration/tests/registration_v9.raw
 	./tests/worker_bench ../field_registration/tests/registration_v9.raw
 
+# Current v11 worker with conditional 2-D motion enabled. Same flags as replay.
+# Supply a real capture and fresh scratch output paths; never run alongside an encode.
+tests/geometry_worker_bench: $(SRCS) frameserver_replay.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c ../field_registration/geometry_tool_controls.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c ../field_registration/geometry_engine.c,$(SRCS)) tests/geometry_worker_bench.c tests/geometry_bench_engine.c -o $@ $(LIBS)
+
+.PHONY: bench-geometry
+bench-geometry: tests/geometry_worker_bench
+	@test -n "$(CAPTURE)" -a -n "$(TIMINGS)" -a -n "$(SIDECAR)"
+	GE_ANCHOR_VOTE=1 GE_LEVEL_FILL=1 GE_LEVEL_FLAT=0 GE_VOTE_PAIR=1 GE_VOTE_PAIR_MIN=.6 GE_BOTTOM_FLAT=1 GE_BOTTOM_FLAT_MARGIN=3 GE_VOTE_BLANKSPOT=1 GE_COMB_STILL=1 GE_COMB_RIGID=1 GE_COMB_RIGID_CLARITY=1.3 GE_BENCH_TIMINGS="$(TIMINGS)" ./tests/geometry_worker_bench "$(CAPTURE)" "$(SIDECAR)" --geometry-v11 --audit-comb --pool 32 --pace-us 4000 $(BENCH_ARGS)
+
 $(FIXTURE_LONG): ../unit_parser/tests/gen_unit_parser_capture.py
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
 
 clean:
 	rm -f tests/audio_queue_flags_test
 	rm -f tests/audio_publisher_asan tests/audio_publisher_tsan
+	rm -f tests/geometry_worker_bench
 	rm -f frameserver_replay tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring tests/worker_bench
 
 frameserver_replay tests/frameserver_test tests/replay_completion_test: pairing_schedule.h

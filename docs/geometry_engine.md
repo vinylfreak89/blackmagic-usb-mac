@@ -163,6 +163,17 @@ withheld verdict; `comb_ran` still means an existing trigger, not adoption.
 
 ## Optional anchor vote (entry 36)
 
+For current-worker CPU, use `make -C src/frameserver bench-geometry` with
+`CAPTURE`, fresh scratch `SIDECAR` and `TIMINGS` paths, and optional replay
+`BENCH_ARGS` (including a pairing schedule). It enables s12c, pairing .6,
+flat-bottom, A1, still triggering and rigid withholding at 1.3. Unlike the
+legacy v9 `bench` target, it runs the actual configured v11 replay worker,
+including conditional 2-D searches. Thread-CPU samples cover classification
+through item completion (including logged-row formatting, excluding queue
+waits/input I/O). Reports split units by zero, one or two 2-D searches and
+time classifier, engine and publisher separately. Timing output is buffered
+until the worker joins; source measurements and publication are unchanged.
+
 Three startup controls default to zero: `GE_ANCHOR_VOTE`, `GE_LEVEL_FILL`,
 `GE_LEVEL_FLAT`. Replay and the probe share the strict 0/1 parser; the library
 never reads the environment. Fill and flat have no effect with vote off; flat

@@ -114,6 +114,7 @@ src/capture_core/fixture_meta_exhaust.expect
 src/capture_core/test_shim
 src/frameserver/tests/replay_completion_test
 src/frameserver/tests/worker_bench
+/src/frameserver/tests/geometry_worker_bench
 /src/field_registration/tests/geometry_probe
 /src/field_registration/tests/geometry_unit
 /src/field_registration/tests/geometry_basis
