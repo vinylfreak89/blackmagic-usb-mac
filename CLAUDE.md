@@ -1530,6 +1530,10 @@ CPU minimum rather than assuming M-class silicon. Rules:
 - **Enforcement.** Every engine or classifier change reports ms/unit (median, p95) from the golden
   runs in its commit; a `bench` target over a fixed 10,000-unit fixture is the regression gate.
   Allocation-free and SIMD-friendly code (NEON now, SSE/AVX2 when ported) is the norm on this path.
+  The existing `frameserver bench` target measures legacy v9, not v11. For the
+  geometry path use `bench-geometry` with the actual controls enabled, including
+  conditional 2-D searches; report whole-worker CPU and zero/one/two-search
+  populations separately. Standalone engine timings are not whole-worker timings.
 - **Published minimum (provisional, from measurement + a 3× scalar-throughput margin):** any Apple
   M-series; on x86, a 2017-or-later quad-core with AVX2 at ≥ 3 GHz for the full pipeline at 480i.
   A 2015-class dual-core i3 is explicitly NOT supported. Revised when an Intel build exists and is
