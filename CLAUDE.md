@@ -1669,6 +1669,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   - Aperture arithmetic uses published offsets: 480i starts at 23+d1 / 286+d2 for 240 lines.
     Measured field-1 first is not generally 23+d1, because the comb changes d1.
   - Equal comb winners estimate relative alignment, not absolute common-mode motion.
+  - Experimental field-2 compensation (`GE_FIELD2_JITTER`, default off) is a separate
+    post-vote publication term. It never feeds the vote or relative-policy history;
+    the published relative shift stays unchanged. Same-field motion can describe
+    content motion, so it is not proof of registration jitter.
   - Reversed pairing flushes its final unit with f2_unused=1 and no frame_top_unit. A missing
     boundary frame key is not an interior frame loss.
   - Validate a render by encoded-strip readback of frame sequence and both source-unit

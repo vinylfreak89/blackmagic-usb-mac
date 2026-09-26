@@ -26,13 +26,15 @@ The library never reads the environment. No hot-path allocation is needed.
 | blankspot_tolerance | 2 | GE_VOTE_BLANKSPOT_TOLERANCE |
 | rigid_min | 2 | GE_COMB_RIGID_MIN |
 | rigid_clarity | 1.3 | GE_COMB_RIGID_CLARITY |
+| field2_jitter | 0 (off) | GE_FIELD2_JITTER |
 
 Tools use one shared startup parser, not a library-global setting. Floating
 values must be finite. Clamp is a nonnegative int; rigid minimum a positive
 int; vote window is 1..256 (a fixed storage bound, not an evidence threshold).
 Refusal and bottom margins are positive, basin factor and rigid clarity at
 least 1, blank-spot tolerance nonnegative, pairing correlation in [-1,1].
-Wave bar may be any finite value. Invalid configuration is rejected before
+Wave bar may be any finite value; field2_jitter must be 0 or 1.
+Invalid configuration is rejected before
 worker startup. Raster dimensions, search extents and sample coordinates
 remain compile-time constants.
 
@@ -177,6 +179,26 @@ The legacy --geometry-v11 and --audit-comb tool arguments are compatibility
 no-ops. Default fs_open and OBS use this policy without them or any engine
 environment variables. Pair-next and pairing schedules still describe input
 field ownership, not selection of a different engine.
+
+## Experimental field-2 compensation (off by default)
+
+`ge_config.field2_jitter` / tool `GE_FIELD2_JITTER=1` enables a publication-only
+term; zero retains the approved output exactly. When the normal post-vote pair
+would move field 1 alone by `-m2`, and frame-owned same-field motion is known as
+`m1=0, m2!=0`, add `m2` to both published offsets instead. The prior compensated
+field-1 position then stands, and the relative shift is unchanged. Further
+matching transitions update the term. Hold it while the normal pair is steady;
+an exact inverse field-2 motion cancels it. Any other normal placement change or
+reset clears it. Partial inverse motion without a normal placement change is
+not an additional placement instrument.
+
+Comparison history is the normal post-vote pair, not the compensated output.
+Neither the relative-policy state nor the vote receives this term. Motion may
+describe content movement rather than registration, so this is an experiment,
+not an approved default. The existing schema-28 `anchor_source` says
+`field2_jitter` while the term is nonzero; `frame_d2 - vote_anchor` gives its
+value. Tools echo the enabled control to stderr. Retain that startup provenance
+with experiments; the default schema, columns and output remain unchanged.
 
 ## Validation and CPU
 
