@@ -1685,124 +1685,7 @@ placement or publishes the measured tops — not decided here, and the report mu
 adds no number, and the condition is about the energy profile's shape rather than about the frames
 it was found on. It has been checked only on the 26; the whole tape is material it was not built on.
 
-## E-claude-2026-09-22-35 — if you cannot measure all four edges, do not shift
-
-**Question (owner, 2026-09-22, verbatim).** "the card gets shifted up by +2/+2 and then by +5/+5 when
-it appears on the screen. problem starts at 6641 for the first shift, then 6667 for the second… in all
-of those there is no top in at least 1 of the fields. no top in 1 field within a frame should be
-disqualifying to create a shift" — then, when the first form of the rule proved too narrow: "c'mon
-now. if you can't measure all 4 tops and bottoms, don't shift shit... period"
-
-**Premise.** A picture displacement is a statement about where the whole picture sits, and the only
-evidence for it is the four edges — both fields' tops and both fields' bottoms. A frame that cannot
-produce all four has not measured a displacement; it has measured a fragment, and a fragment must not
-move the published crop. This is the owner's tandem principle applied to the *absolute* placement
-rather than to the relative alignment.
-
-**What the engine does instead.** The relative shift is correctly guarded on both tops
-(`known = t->first[0] && b->first[1]`), but the absolute anchor is taken from field 2 alone,
-unconditionally:
-
-```c
-int d2 = b->first[1] ? b->first[1]-286 : (g->have_placement ? g->last_d2 : 0);
-o.frame_d1 = d2 - d;  o.frame_d2 = d2;
-```
-
-Field 1's own top enters only through `st`, and `st` is discarded whenever the comb decides. So one
-field's top can move the entire frame, and at capture 1's boxed card it does — twice.
-
-**Why no existing guard could have caught it, measured.** A common-mode shift moves both fields
-together, leaving the relative alignment unchanged, so every relative instrument is blind to it *by
-construction*. Vertical roughness across (0,0) through (5,5) on the card frames spans 0.061, 0.103 and
-0.148 — nothing is distinguishable from anything. The comb measures relative alignment and cannot
-validate an absolute anchor; there is no second witness for the anchor anywhere in the engine.
-
-**The method, in the engine's own vocabulary.** A published placement may move only when all four
-edges are measured and neither field's motion class is `unknown` — `unknown` being exactly the state
-where an edge was unmeasurable so motion could not be determined. The classification already exists
-(`class_f1`/`class_f2`); the anchor is gated on it. No new classifier.
-
-**Population, all four captures, every frame where the published placement moved:**
-
-| motion class | moves | | motion class | moves |
-|---|---|---|---|---|
-| valid move / nothing | 144 | | unknown / nothing | 8 |
-| nothing / top only | 118 | | nothing / nothing | 8 |
-| top only / nothing | 76 | | nothing / unknown | 7 |
-| not in tandem / nothing | 46 | | **unknown / unknown** | **5** |
-| bottom only / nothing | 10 | | 17 smaller classes | — |
-
-456 moves in total; **20 carry `unknown` in at least one field**, and both of the owner's card shifts
-are among them — 6641 `(0,0)→(2,2)` and 6667 `(2,2)→(5,5)`, each classed `('unknown','unknown')`.
-
-**The first form of the rule, recorded because it was dispatched and was wrong.** "Both tops measured"
-reaches 6641 but not 6667, where all four edges *are* present (f1 25/262, f2 291/525). What is wrong at
-6667 is that the tops moved while the bottoms did not — f1 bottom 262 and f2 bottom 525 hold constant
-across 6663–6673 — which the engine already classes `unknown` because field 2 had no top in the
-preceding frames. The bottoms were necessary; the tops alone could never have caught it.
-
-**Falsifier.**
-- The 20 moves are not refused, or frames outside them change other than by propagation.
-- Or the card still shifts at 6641 or 6667.
-- Or the census disagrees on any of the 172,586 field edges — this gates publication, never measurement.
-- Or a refused move strands the picture: the change is stateful, so refusing 6641 means 6667 is reached
-  from (0,0) and 6878's return to (0,0) becomes a no-op. Direct refusals and propagated changes are
-  reported separately.
-
-**Deliberately excluded, so no report can claim it.** `top only` (194 moves), `bottom only` (19) and
-`not in tandem` (55) are frames where all four edges *were* measured and contradict each other. That is
-entry 31's territory and a far larger behavioural change. It is measured here and left alone.
-
-**What is not understood.** Why the waveform accepts a top at 291 on the card at all. The likely
-mechanism is that a flat dark picture region has near-zero variance, so its correlation is forced to
-zero exactly as blanking is, and the first step lands on the card's textured edge rather than on the
-top of picture. That is a limitation of entry 33's instrument and is not addressed by this entry.
-
-**Material.** Captures 1–4; the whole tape for census identity.
-
-### Amendment to E-claude-2026-09-22-35 (2026-09-22) — the gate was the wrong layer; the defect is in the measurement
-
-**The falsifier fired, on the entry's own terms: "the card still shifts at 6641 or 6667".** Codex built
-the four-edge gate and reported that it delays the shift rather than removing it — counters 6641–6669
-hold (0,0), then **6670 publishes (5,5) with both motion classes `nothing`**. It also changed 56 frames
-against an expected 20 (32 direct holds, 24 propagated). It was not promoted.
-
-**Why it could never have worked, and this supersedes the entry's method.** A motion class describes
-*change between frames*; the anchor is *absolute*. Once the card's top has been measured on two
-consecutive frames, "nothing moved" is true and the anchor still reads +5. **Motion cannot witness a
-position.** The entry's premise — that the four edges are the evidence for a displacement — stands;
-gating on the engine's motion classification was the wrong instrument for it.
-
-**The real cause, measured line by line at counter 6667, field 2** (mean / sd / correlation with the
-line above):
-
-| NTSC | mean | sd | corr | |
-|---|---|---|---|---|
-| 285 | 1.4 | 0.49 | +0.004 | blanking |
-| 286 | 2.0 | 1.15 | −0.032 | blanking |
-| **287** | **19.8** | 2.04 | −0.048 | **picture starts — an 18-code jump** |
-| 288–290 | 20.9–22.2 | ~2.2 | −0.17…+0.11 | dark picture, no correlation |
-| 291 | 25.6 | 2.46 | −0.229 | **the engine's top, four lines late** |
-| 292 | 26.4 | 2.37 | +0.310 | step +0.538 clears the 0.45 bar |
-
-The picture begins at 287. Rows 287–291 are dark and low-contrast, so row-to-row correlation is
-dominated by their own noise and never rises. Field 1 on the same frame is sharp (23: 4.2, 24: 9.6,
-25: 23.5, step +0.833 at 26) and its top of 25 is right. Measured against each field's own blanking the
-card frame sits at about **d1 +2, d2 +1** — a coherent near-common-mode displacement. The published
-(5,5) is entirely field 2's four-line miss.
-
-**A hypothesis of mine, refuted and recorded so it is not re-tested.** I proposed that a flat dark
-region has near-zero variance and is forced to correlation 0 by `waveform.py`'s guard, exactly as
-blanking is. It is not that: those rows measure sd 2.0–2.9, far above the 1e-9 floor. Correlation
-requires *structure*, and dark low-contrast picture has none above its own noise.
-
-**Verdict on the entry: premise held, method refuted.** The four edges are the right evidence; the
-engine's motion classification is not a way to read them, and no publication gate can repair a top that
-was measured four lines late. **This is a defect in entry 33's instrument**, and the two instruments
-look complementary — correlation for structured picture, level for dark picture, which is the amplitude
-test entry 20 was built on. That is a new entry, not an amendment to this one.
-
-**Not fixed in the render the owner will see next**, and he was told so rather than finding out.
+## E-claude-2026-09-22-35 — if you cannot measure all four edges, do not shift — **premise held, method refuted; superseded by entry 36.** Gating the anchor on the engine's motion classes delayed cap 1's card shift instead of removing it — 6670 published (5,5) with both classes `nothing` — because motion describes change between frames and the anchor is absolute. The card's cause was field 2's top read four lines late on dark low-contrast picture (287 is picture, read 291). Entry 36's vote fixes the card. Compacted 2026-09-26; full text at c87fa03.
 
 ## E-claude-2026-09-25-36 — a correction has to earn its confidence: the sliding-window vote
 
@@ -2077,3 +1960,28 @@ excursions 6 → 37 and common-mode 29 → 55.** "+1" is ambiguous: field 1's ex
 winning the window (50370/50390, 51187/51224). **Not built.** Candidate discriminator, unmeasured: whether field
 2's line just above its measured top pairs with field 1's top line (then it is picture and field 2 was late) or
 does not (a data line, so field 1 carries the extra line).
+
+## E-claude-2026-09-26-37 — telling field 1's extra top line from field 2 read late
+
+**Question.** Entry 36 amendment 5 found the tops' implied shift exceeds the comb's alignment by exactly one
+on 33.4% of the tape, and that allowing +1 in the confidence test fixes cap 2 and lifts gate 1 to 80% but
+raises excursions from 6 to 37, because "+1" has two causes. The owner, on running the proposed measurement:
+"when it proposes simple experiments like that there is no harm on letting it execute those experiments."
+
+**Premise.** When the tops exceed the comb by one, field 1's top line pairs, under the comb's alignment,
+with field 2's line just above its measured top. If field 1 carries an extra picture line, that field-2 line
+is data or blank and the two do not correlate — field 2's top is right. If field 2 was read one line late,
+that field-2 line is picture, it correlates with field 1's top line, and field 2's true top is one higher.
+One cross-field correlation separates them, the same waveform correlation the owner designed, applied
+across the fields.
+
+**Method.** Whole tape, every frame with both tops as the vote uses them (the waveform's, or an accepted
+level fill), field 1 from `frame_top_unit`: rA = corr(field 1's top line, field 2's line above its top); rB =
+corr(field 1's top line, field 2's top line); plus that field-2 line's own sd and its correlation with the
+line below it. Then re-run the vote with +1 admitted only where rA is low.
+
+**Falsifier.** rA does not split the +1 frames into two populations; or the two camps that alternated in
+48k–51k are not separated by it; or admitting +1 on low rA does not bring excursions back to entry 36's
+level while keeping cap 2's shift gone, the card at 238/238 and every named case.
+
+**Material.** `fulltape.cap6` with the tagged baseline's sidecar; cap 2's rows as the known case.
