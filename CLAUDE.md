@@ -1521,11 +1521,18 @@ CPU minimum rather than assuming M-class silicon. Rules:
   reference M3 P-core, single-threaded** — ~30% of the period — so a core three times slower still
   keeps up. Anything beyond that needs a measured justification and a design that sheds work
   before it sheds frames (§8 property 7).
-- **Measured today (M3, 2026-09-27, approved v11 engine, v9 removed):** whole worker 1.40–1.75 ms
-  median / 2.5–2.8 ms p95 per unit, maximum 7.7–8.5 ms, none over 10 ms. Units that run the 2-D motion search
-  in both fields (~5%) take ~3 ms median. The engine alone is 0.91 ms median / 2.27 ms p95 (post-cleanup engine benchmark, motion work included). The earlier 4.26 ms
-  figure was the retired v9 benchmark, not a v11 baseline. Any new evidence path (e.g.
-  a static-region comb search) is costed against this table before it lands.
+- **Measured (M3, 2026-09-27, exact NEON rigid-SAD optimisation):** whole worker at 4× replay
+  **1.761 / 2.135 / 4.050 ms** median / p95 / maximum; at 2× **2.996 / 4.485 / 6.866 ms**.
+  Neither run exceeded 10 ms over 86,293 units. The 4,457 two-search units take
+  2.098 / 2.517 ms median / p95 at 4×, 3.820 / 5.051 ms at 2×. Before optimisation,
+  42 units at 2× exceeded 10 ms (maximum 11.837); rigid search consumed 80.8% of their
+  geometry CPU. Their mean worker cost fell 10.558 → 4.534 ms. The overall 2× median
+  rose 2.718 → 2.996 ms; this is a tail improvement, not an across-the-board speedup.
+  Thread CPU includes conditional motion work. No scheduling/QoS change, core pinning or
+  residency/frequency telemetry; unrelated applications were active, so these are not
+  verified P-core or idle-machine timings. No simultaneous project tests/renders/replays.
+  The earlier 4.26 ms figure was the retired v9 benchmark, not a v11 baseline. Any new
+  evidence path is costed against these measurements before it lands.
 - **Enforcement.** Every engine or classifier change reports whole-worker ms/unit (median, p95,
   maximum) from `make -C src/frameserver bench` (alias of `bench-geometry`: classifier, geometry
   including conditional 2-D searches, assembly/publication and log formatting, over the whole

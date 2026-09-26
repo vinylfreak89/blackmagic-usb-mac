@@ -55,6 +55,11 @@ ASan/UBSan and TSan targets. `bench` (also named `bench-geometry`) measures the 
 with conditional 2-D motion searches, reports whole-worker thread CPU and
 separates zero/one/two-search populations. It requires fresh scratch output
 paths; no captures, reference sidecars or results belong in this source tree.
+The worker benchmark reports rigid-search CPU separately from the rest of
+geometry. Those timers exist only in the benchmark build; production has no
+timing hooks. `tests/geometry_worker_verify` takes the same arguments and
+checks each captured rigid result against the scalar unit-test oracle. Its
+timings include reference work and must not be used as performance results.
 
 ## Independent caption instrument
 

@@ -111,6 +111,16 @@ frame-owned fields have dx=0, absolute dy at least rigid_min, and sufficient
 clarity. Do not adopt, reject, substitute or update held correction from a
 withheld comb. Other top-basis invalidation remains active.
 
+The rigid search retains exact integer SADs on every architecture. AArch64 NEON
+reuses the previous vector and the current row's even/odd streams across all
+17 horizontal candidates. Widening accumulation bounds each row lane at
+10,200, each row sum at 81,600 and each candidate at 14,688,000. All 187
+candidates are completed, preserving the far candidate needed by clarity;
+no approximate search or early exit is used. Candidate selection and the final double
+divisions are unchanged. Other architectures retain the scalar calculation.
+`tests/geometry_rigid.c` compares every candidate sum and each returned double's
+bits against the pre-optimisation scalar oracle, including ties and zero SAD.
+
 Provenance: rejection/basin work passed the four-capture 21-substitution /
 5-discard gate. Still/rigid motion was then checked against the whole-tape
 vertical and 2-D censuses; 11,152 2-D fields had identical best shifts.
