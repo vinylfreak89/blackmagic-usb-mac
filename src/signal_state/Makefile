@@ -16,8 +16,12 @@ signal_state.o: signal_state.c signal_state.h ../unit_parser/unit_parser.h
 tests/signal_state_test: signal_state.c signal_state.h tests/signal_state_test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) signal_state.c tests/signal_state_test.c -o $@ $(LDLIBS)
 
-test: tests/signal_state_test
+tests/signal_config_test: signal_state.c signal_state.h tests/signal_config_test.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/signal_config_test.c -o $@ $(LDLIBS) -lpthread
+
+test: tests/signal_state_test tests/signal_config_test
 	./tests/signal_state_test
+	./tests/signal_config_test
 
 test-cost:
 	python3 ../../scripts/test_signal_cost.py
@@ -27,13 +31,20 @@ test-asan:
 		-DSIGNAL_STATE_SANITIZED -fsanitize=address,undefined signal_state.c tests/signal_state_test.c \
 		-o tests/signal_state_asan $(LDLIBS)
 	./tests/signal_state_asan
+	$(CC) $(CPPFLAGS) -O1 -g -std=c11 -Wall -Wextra -Werror \
+		-fsanitize=address,undefined tests/signal_config_test.c -o tests/signal_config_asan $(LDLIBS) -lpthread
+	./tests/signal_config_asan
 
 test-tsan:
 	$(CC) $(CPPFLAGS) -O1 -g -std=c11 -Wall -Wextra -Werror \
 		-DSIGNAL_STATE_SANITIZED -fsanitize=thread signal_state.c tests/signal_state_test.c \
 		-o tests/signal_state_tsan $(LDLIBS)
 	./tests/signal_state_tsan
+	$(CC) $(CPPFLAGS) -O1 -g -std=c11 -Wall -Wextra -Werror \
+		-fsanitize=thread tests/signal_config_test.c -o tests/signal_config_tsan $(LDLIBS) -lpthread
+	./tests/signal_config_tsan
 
 clean:
 	rm -f signal_state.o libsignalstate.a tests/signal_state_test \
-		tests/signal_state_asan tests/signal_state_tsan
+		tests/signal_state_asan tests/signal_state_tsan \
+		tests/signal_config_test tests/signal_config_asan tests/signal_config_tsan

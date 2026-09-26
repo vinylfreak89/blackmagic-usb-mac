@@ -56,6 +56,9 @@ src/unit_parser/tests/unit_parser_tsan
 src/signal_state/tests/signal_state_test
 src/signal_state/tests/signal_state_asan
 src/signal_state/tests/signal_state_tsan
+src/signal_state/tests/signal_config_test
+src/signal_state/tests/signal_config_asan
+src/signal_state/tests/signal_config_tsan
 
 # Experiment results, reports and media stay out of the repository (owner, 2026-09-16).
 # scripts/git-hooks/artifact_guard.py refuses them at commit and push time. An owner-approved

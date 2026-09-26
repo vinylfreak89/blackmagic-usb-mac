@@ -25,6 +25,7 @@
 #include "frame_publisher.h"
 #include "audio_publisher.h"
 #include "../field_registration/geometry_engine.h"
+#include "../signal_state/signal_state.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,6 +51,7 @@ typedef struct {
     /* Reversed pairing buffers one source unit, not an unbounded lookahead. Published units retain
      * their own fields; downstream weaving must use the same pairing parameter. */
     const ge_config *geometry_config; /* NULL: approved defaults; copied by fs_open */
+    const signal_state_config *signal_config; /* NULL: classifier defaults; copied by fs_open */
     int geometry_pair_next;
     const char *pairing_schedule; // CSV snapshot loaded by fs_open;
                                  // excludes geometry_pair_next. First row starts at 0.

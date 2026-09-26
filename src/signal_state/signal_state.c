@@ -7,6 +7,20 @@
 
 enum {
     RASTER_LINES = 525,
+    RASTER_WIDTH = 720,
+    UYVY_PIXEL_BYTES = 2,
+    CHROMA_CENTER = 128,
+    HARD_PADDING_Y = 16,
+    LUMA_MAX = 255,
+    PICTURE_F1_FIRST = 20, PICTURE_F1_LAST = 256,
+    PICTURE_F2_FIRST = 282, PICTURE_F2_LAST = 518,
+    PICTURE_FIELD_LINES = PICTURE_F1_LAST - PICTURE_F1_FIRST + 1,
+    PADDING_HEAD_LAST = 6, PADDING_MIDDLE_FIRST = 261,
+    PADDING_MIDDLE_LAST = 269, PADDING_TAIL_FIRST = 523,
+    VBI_F1_FIRST = 16, VBI_F1_LAST = 17,
+    VBI_F2_FIRST = 279, VBI_F2_LAST = 280,
+    TILE_COLUMNS = 15, TILE_ROWS_PER_FIELD = 15,
+    TILE_COUNT = 2 * TILE_COLUMNS * TILE_ROWS_PER_FIELD,
     BYTES_PER_LINE = 1440,
     HEADER_BYTES = 48,
     X_SAMPLES = 180,
@@ -54,12 +68,49 @@ size_t signal_state_alignment(void)
 signal_state_config signal_state_default_config(void)
 {
     signal_state_config config = {
-        .appearance_confirm_units = 2,
-        .acquisition_confirm_units = 5,
-        .mute_confirm_units = 3,
-        .phase_chatter_window_units = 30,
-        .phase_chatter_threshold = 4,
-        .settle_confirm_units = 30,
+        .appearance_confirm_units = 2, /* 4fc8e9e: initial appearance confirmation. */
+        .acquisition_confirm_units = 5, /* edcabf0: robust source acquisition confirmation. */
+        .mute_confirm_units = 3, /* 4fc8e9e: initial mute confirmation. */
+        .phase_chatter_window_units = 30, /* 4fc8e9e: initial optional phase window. */
+        .phase_chatter_threshold = 4, /* 4fc8e9e: initial optional phase chatter count. */
+        .settle_confirm_units = 30, /* 4fc8e9e: initial applied-phase settling window. */
+        .tile_activity_min = 12, /* edcabf0: Tile luma range >= value counts as active. */
+        .flat_luma_distance_max = 2.0, /* 4fc8e9e: Sample |Y - mean| <= value counts as flat. */
+        .neutral_chroma_distance_max = 4, /* edcabf0: Sample |C - 128| <= value counts as neutral. */
+        .subblack_luma_cutoff = 16, /* edcabf0: Sample Y < value counts as sub-black (not the padding code). */
+        .overlay_static_mad_max = 3.0, /* edcabf0: Static score clamp((value - temporal MAD) / value). */
+        .overlay_extent_rise = 0.02, /* edcabf0: Rising extent-score denominator. */
+        .overlay_extent_fall_start = 0.35, /* edcabf0: Falling extent-score zero crossing. */
+        .overlay_extent_fall_width = 0.25, /* edcabf0: Falling extent-score denominator. */
+        .padding_fraction_min = 0.98, /* 4fc8e9e: Padding fraction below value makes appearance unknown. */
+        .padding_confidence_gain = 10.0, /* 4fc8e9e: Unknown confidence multiplier for padding deficit. */
+        .neutral_chroma_median_max = 4.0, /* edcabf0: Median chroma distance <= value permits neutral rules. */
+        .neutral_chroma_fraction_min = 0.75, /* edcabf0: Neutral sample fraction >= value permits neutral rules. */
+        .subblack_median_max = 12.0, /* edcabf0: Neutral luma median <= value selects sub-black. */
+        .subblack_confidence_luma_reference = 16.0, /* edcabf0: Sub-black confidence luma zero reference. */
+        .subblack_confidence_luma_span = 8.0, /* edcabf0: Sub-black confidence luma denominator. */
+        .subblack_confidence_fraction_offset = 0.70, /* edcabf0: Sub-black confidence fraction subtrahend. */
+        .snow_sigma_min = 35.0, /* edcabf0: Sigma > value required for snow. */
+        .snow_gradient_min = 30.0, /* edcabf0: Gradient > value required for snow. */
+        .snow_extent_min = 0.50, /* edcabf0: Active extent > value required for snow. */
+        .snow_confidence_sigma_offset = 30.0, /* edcabf0: Snow confidence sigma subtrahend. */
+        .snow_confidence_sigma_span = 25.0, /* edcabf0: Snow confidence sigma denominator. */
+        .snow_confidence_gradient_offset = 25.0, /* edcabf0: Snow confidence gradient subtrahend. */
+        .snow_confidence_gradient_span = 30.0, /* edcabf0: Snow confidence gradient denominator. */
+        .gray_sigma_max = 3.0, /* 7928b67: Uniform sigma < value; also uniform confidence denominator. */
+        .gray_gradient_max = 2.0, /* 7928b67: Uniform gradient < value. */
+        .gray_flat_fraction_min = 0.55, /* 7928b67: Overlay branch requires flat fraction > value. */
+        .gray_extent_max = 0.30, /* edcabf0: Overlay branch requires extent < value. */
+        .gray_temporal_mad_max = 3.0, /* edcabf0: Overlay branch permits zero MAD or MAD < value. */
+        .gray_mean_min = 8.0, /* 4fc8e9e: Neutral-gray rule requires mean >= value. */
+        .gray_mean_max = 240.0, /* 4fc8e9e: Neutral-gray rule requires mean <= value. */
+        .gray_confidence_flat_offset = 0.50, /* edcabf0: Overlay confidence flat-fraction subtrahend. */
+        .gray_confidence_flat_gain = 2.0, /* edcabf0: Overlay confidence flat-fraction multiplier. */
+        .ambiguous_extent_max = 0.12, /* edcabf0: Extent < value selects flat ambiguity; also confidence denominator. */
+        .program_confidence_sigma_span = 24.0, /* 4fc8e9e: Program confidence sigma denominator. */
+        .program_confidence_gradient_span = 18.0, /* 4fc8e9e: Program confidence gradient denominator. */
+        .held_source_confidence = 0.5, /* edcabf0: Confidence when retaining source across contrary or absent evidence. */
+        .phase_change_confidence_min = 0.25, /* edcabf0: Optional phase feedback accepts confidence >= value. */
     };
     return config;
 }
@@ -71,23 +122,29 @@ static uint32_t clamp_nonzero(uint32_t value, uint32_t fallback)
 
 void signal_state_init(signal_state *state, const signal_state_config *config)
 {
-    signal_state_config chosen = config ? *config : signal_state_default_config();
+    const signal_state_config defaults = signal_state_default_config();
+    signal_state_config chosen = config ? *config : defaults;
     chosen.appearance_confirm_units = clamp_nonzero(
-        chosen.appearance_confirm_units, 2);
+        chosen.appearance_confirm_units, defaults.appearance_confirm_units);
     chosen.acquisition_confirm_units = clamp_nonzero(
-        chosen.acquisition_confirm_units, 5);
-    chosen.mute_confirm_units = clamp_nonzero(chosen.mute_confirm_units, 3);
+        chosen.acquisition_confirm_units, defaults.acquisition_confirm_units);
+    chosen.mute_confirm_units = clamp_nonzero(chosen.mute_confirm_units, defaults.mute_confirm_units);
     chosen.phase_chatter_window_units = clamp_nonzero(
-        chosen.phase_chatter_window_units, 30);
+        chosen.phase_chatter_window_units, defaults.phase_chatter_window_units);
     if (chosen.phase_chatter_window_units > MAX_PHASE_WINDOW)
         chosen.phase_chatter_window_units = MAX_PHASE_WINDOW;
     chosen.phase_chatter_threshold = clamp_nonzero(
-        chosen.phase_chatter_threshold, 4);
+        chosen.phase_chatter_threshold, defaults.phase_chatter_threshold);
     if (chosen.phase_chatter_threshold > chosen.phase_chatter_window_units)
         chosen.phase_chatter_threshold = chosen.phase_chatter_window_units;
-    chosen.settle_confirm_units = clamp_nonzero(chosen.settle_confirm_units, 30);
+    chosen.settle_confirm_units = clamp_nonzero(chosen.settle_confirm_units, defaults.settle_confirm_units);
     memset(state, 0, sizeof(*state));
     state->config = chosen;
+}
+
+const signal_state_config *signal_state_get_config(const signal_state *state)
+{
+    return &state->config;
 }
 
 void signal_state_begin_epoch(signal_state *state, uint64_t epoch)
@@ -99,12 +156,15 @@ void signal_state_begin_epoch(signal_state *state, uint64_t epoch)
 
 static bool hard_line_expected(int line)
 {
-    return line <= 6 || (line >= 261 && line <= 269) || line >= 523;
+    return line <= PADDING_HEAD_LAST ||
+           (line >= PADDING_MIDDLE_FIRST && line <= PADDING_MIDDLE_LAST) ||
+           line >= PADDING_TAIL_FIRST;
 }
 
 static bool sampled_picture_line(int line)
 {
-    return (line >= 20 && line <= 256) || (line >= 282 && line <= 518);
+    return (line >= PICTURE_F1_FIRST && line <= PICTURE_F1_LAST) ||
+           (line >= PICTURE_F2_FIRST && line <= PICTURE_F2_LAST);
 }
 
 static double clamp01(double value)
@@ -119,19 +179,19 @@ static double clamp01(double value)
 static void measure_raster(signal_state *state, const uint8_t *unit,
                            signal_measurements *out)
 {
+    const signal_state_config *c = &state->config;
     const uint8_t *raster = unit + HEADER_BYTES;
     double sum_y = 0.0, sum_y2 = 0.0, chroma = 0.0;
     double gradient = 0.0, temporal = 0.0;
     uint64_t samples = 0, gradients = 0, temporal_samples = 0;
     uint64_t flat = 0, hard = 0, hard_total = 0, neutral_chroma = 0;
     uint64_t subblack = 0;
-    uint32_t luma_histogram[256] = {0};
-    uint32_t chroma_distance_histogram[129] = {0};
-    enum { TILE_COLUMNS = 15, TILE_ROWS_PER_FIELD = 15, TILE_COUNT = 450 };
+    uint32_t luma_histogram[LUMA_MAX + 1] = {0};
+    uint32_t chroma_distance_histogram[CHROMA_CENTER + 1] = {0};
     uint8_t tile_min[TILE_COUNT], tile_max[TILE_COUNT];
     uint8_t previous_line[X_SAMPLES];
     bool previous_line_valid = false;
-    memset(tile_min, 255, sizeof tile_min);
+    memset(tile_min, LUMA_MAX, sizeof tile_min);
     memset(tile_max, 0, sizeof tile_max);
     double vbi_sum = 0.0, vbi_sum2 = 0.0;
     uint64_t vbi_samples = 0;
@@ -140,19 +200,21 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
     for (int line = 0; line < RASTER_LINES; ++line) {
         const uint8_t *row = raster + (size_t)line * BYTES_PER_LINE;
         if (hard_line_expected(line)) {
-            for (int x = 0; x < 720; ++x) {
+            for (int x = 0; x < RASTER_WIDTH; ++x) {
                 ++hard_total;
-                hard += row[x * 2] == 128 && row[x * 2 + 1] == 16;
+                hard += row[x * UYVY_PIXEL_BYTES] == CHROMA_CENTER &&
+                        row[x * UYVY_PIXEL_BYTES + 1] == HARD_PADDING_Y;
             }
         }
-        bool vbi = line == 16 || line == 17 || line == 279 || line == 280;
-        if (line == 20 || line == 282)
+        bool vbi = line == VBI_F1_FIRST || line == VBI_F1_LAST ||
+                   line == VBI_F2_FIRST || line == VBI_F2_LAST;
+        if (line == PICTURE_F1_FIRST || line == PICTURE_F2_FIRST)
             previous_line_valid = false;
         uint8_t prior = 0;
         for (int sx = 0; sx < X_SAMPLES; ++sx) {
             int x = sx * SAMPLE_STEP_PIXELS;
-            uint8_t c = row[x * 2];
-            uint8_t y = row[x * 2 + 1];
+            uint8_t chroma_sample = row[x * UYVY_PIXEL_BYTES];
+            uint8_t y = row[x * UYVY_PIXEL_BYTES + 1];
             if (vbi) {
                 vbi_sum += y;
                 vbi_sum2 += (double)y * y;
@@ -162,11 +224,11 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
                 continue;
             sum_y += y;
             sum_y2 += (double)y * y;
-            int chroma_delta = abs((int)c - 128);
+            int chroma_delta = abs((int)chroma_sample - CHROMA_CENTER);
             chroma += chroma_delta;
-            neutral_chroma += chroma_delta <= 4;
+            neutral_chroma += chroma_delta <= c->neutral_chroma_distance_max;
             ++chroma_distance_histogram[chroma_delta];
-            subblack += y < 16;
+            subblack += y < c->subblack_luma_cutoff;
             ++luma_histogram[y];
             if (sx) {
                 gradient += abs((int)y - (int)prior);
@@ -178,9 +240,9 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
             }
             prior = y;
             previous_line[sx] = y;
-            int field = line >= 282;
-            int relative_line = line - (field ? 282 : 20);
-            int tile_y = relative_line * TILE_ROWS_PER_FIELD / 237;
+            int field = line >= PICTURE_F2_FIRST;
+            int relative_line = line - (field ? PICTURE_F2_FIRST : PICTURE_F1_FIRST);
+            int tile_y = relative_line * TILE_ROWS_PER_FIELD / PICTURE_FIELD_LINES;
             int tile_x = sx * TILE_COLUMNS / X_SAMPLES;
             int tile = field * TILE_COLUMNS * TILE_ROWS_PER_FIELD +
                        tile_y * TILE_COLUMNS + tile_x;
@@ -200,14 +262,14 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
     double variance = samples ? sum_y2 / samples - mean * mean : 0.0;
     if (variance < 0.0)
         variance = 0.0;
-    /* Second pass for the fraction within two code values of the mean. */
+    /* Second pass for the configured flat-pixel distance from the mean. */
     for (int line = 0; line < RASTER_LINES; ++line) {
         if (!sampled_picture_line(line))
             continue;
         const uint8_t *row = raster + (size_t)line * BYTES_PER_LINE;
         for (int sx = 0; sx < X_SAMPLES; ++sx) {
-            uint8_t y = row[sx * SAMPLE_STEP_PIXELS * 2 + 1];
-            flat += fabs((double)y - mean) <= 2.0;
+            uint8_t y = row[sx * SAMPLE_STEP_PIXELS * UYVY_PIXEL_BYTES + 1];
+            flat += fabs((double)y - mean) <= c->flat_luma_distance_max;
         }
     }
     double vbi_mean = vbi_samples ? vbi_sum / vbi_samples : 0.0;
@@ -219,26 +281,27 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
     uint64_t midpoint = samples / 2;
     uint64_t cumulative = 0;
     unsigned median = 0;
-    for (; median < 255; ++median) {
+    for (; median < LUMA_MAX; ++median) {
         cumulative += luma_histogram[median];
         if (cumulative > midpoint)
             break;
     }
     cumulative = 0;
     unsigned chroma_median = 0;
-    for (; chroma_median < 128; ++chroma_median) {
+    for (; chroma_median < CHROMA_CENTER; ++chroma_median) {
         cumulative += chroma_distance_histogram[chroma_median];
         if (cumulative > midpoint)
             break;
     }
     unsigned active_tiles = 0;
     for (int tile = 0; tile < TILE_COUNT; ++tile)
-        active_tiles += (unsigned)(tile_max[tile] - tile_min[tile] >= 12);
+        active_tiles += (unsigned)(tile_max[tile] - tile_min[tile] >= c->tile_activity_min);
     double extent = (double)active_tiles / TILE_COUNT;
     double static_score = had_temporal_reference
-                              ? clamp01((3.0 - (temporal_samples ? temporal / temporal_samples : 0.0)) / 3.0)
+                              ? clamp01((c->overlay_static_mad_max - (temporal_samples ? temporal / temporal_samples : 0.0)) / c->overlay_static_mad_max)
                               : 0.0;
-    double localized = clamp01(extent / 0.02) * clamp01((0.35 - extent) / 0.25);
+    double localized = clamp01(extent / c->overlay_extent_rise) *
+                       clamp01((c->overlay_extent_fall_start - extent) / c->overlay_extent_fall_width);
     out->luma_mean = mean;
     out->luma_median = median;
     out->luma_sigma = sqrt(variance);
@@ -258,48 +321,49 @@ static void measure_raster(signal_state *state, const uint8_t *unit,
     state->previous_valid = true;
 }
 
-static signal_appearance classify_appearance(const signal_measurements *m,
+static signal_appearance classify_appearance(const signal_state_config *c,
+                                             const signal_measurements *m,
                                              double *confidence)
 {
-    if (m->hard_padding_fraction < 0.98) {
-        *confidence = clamp01((0.98 - m->hard_padding_fraction) * 10.0);
+    if (m->hard_padding_fraction < c->padding_fraction_min) {
+        *confidence = clamp01((c->padding_fraction_min - m->hard_padding_fraction) * c->padding_confidence_gain);
         return SIGNAL_APPEARANCE_UNKNOWN;
     }
-    bool neutral = m->chroma_distance_median <= 4.0 &&
-                   m->neutral_chroma_fraction >= 0.75;
+    bool neutral = m->chroma_distance_median <= c->neutral_chroma_median_max &&
+                   m->neutral_chroma_fraction >= c->neutral_chroma_fraction_min;
     /* A robustly sub-blanking neutral background is not program, even when
      * sparse white streaks or an OSD contribute arbitrarily sharp edges. */
-    if (neutral && m->luma_median <= 12.0) {
-        *confidence = clamp01((16.0 - m->luma_median) / 8.0 +
-                              (m->subblack_pixel_fraction - 0.70));
+    if (neutral && m->luma_median <= c->subblack_median_max) {
+        *confidence = clamp01((c->subblack_confidence_luma_reference - m->luma_median) / c->subblack_confidence_luma_span +
+                              (m->subblack_pixel_fraction - c->subblack_confidence_fraction_offset));
         return SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE;
     }
-    if (m->luma_sigma > 35.0 && m->spatial_gradient_energy > 30.0 &&
-        m->program_extent_fraction > 0.50) {
-        *confidence = clamp01(fmin((m->luma_sigma - 30.0) / 25.0,
-                                  (m->spatial_gradient_energy - 25.0) / 30.0));
+    if (m->luma_sigma > c->snow_sigma_min && m->spatial_gradient_energy > c->snow_gradient_min &&
+        m->program_extent_fraction > c->snow_extent_min) {
+        *confidence = clamp01(fmin((m->luma_sigma - c->snow_confidence_sigma_offset) / c->snow_confidence_sigma_span,
+                                  (m->spatial_gradient_energy - c->snow_confidence_gradient_offset) / c->snow_confidence_gradient_span));
         return SIGNAL_APPEARANCE_SNOW_LIKE;
     }
-    bool uniform_neutral = m->luma_sigma < 3.0 &&
-                           m->spatial_gradient_energy < 2.0;
+    bool uniform_neutral = m->luma_sigma < c->gray_sigma_max &&
+                           m->spatial_gradient_energy < c->gray_gradient_max;
     bool neutral_with_small_overlay =
-        m->flat_pixel_fraction > 0.55 &&
-        m->program_extent_fraction < 0.30 &&
-        (!m->temporal_mad || m->temporal_mad < 3.0);
-    if (neutral && m->luma_mean >= 8.0 && m->luma_mean <= 240.0 &&
+        m->flat_pixel_fraction > c->gray_flat_fraction_min &&
+        m->program_extent_fraction < c->gray_extent_max &&
+        (!m->temporal_mad || m->temporal_mad < c->gray_temporal_mad_max);
+    if (neutral && m->luma_mean >= c->gray_mean_min && m->luma_mean <= c->gray_mean_max &&
         (uniform_neutral || neutral_with_small_overlay)) {
         *confidence = uniform_neutral
-                          ? clamp01(1.0 - m->luma_sigma / 3.0)
-                          : clamp01(fmax((m->flat_pixel_fraction - 0.50) * 2.0,
+                          ? clamp01(1.0 - m->luma_sigma / c->gray_sigma_max)
+                          : clamp01(fmax((m->flat_pixel_fraction - c->gray_confidence_flat_offset) * c->gray_confidence_flat_gain,
                                         m->localized_overlay_score));
         return SIGNAL_APPEARANCE_NEUTRAL_GRAY_MUTE_LIKE;
     }
-    if (m->program_extent_fraction < 0.12) {
-        *confidence = clamp01(1.0 - m->program_extent_fraction / 0.12);
+    if (m->program_extent_fraction < c->ambiguous_extent_max) {
+        *confidence = clamp01(1.0 - m->program_extent_fraction / c->ambiguous_extent_max);
         return SIGNAL_APPEARANCE_FLAT_AMBIGUOUS;
     }
-    *confidence = clamp01(fmax(m->luma_sigma / 24.0,
-                              m->spatial_gradient_energy / 18.0));
+    *confidence = clamp01(fmax(m->luma_sigma / c->program_confidence_sigma_span,
+                              m->spatial_gradient_energy / c->program_confidence_gradient_span));
     return SIGNAL_APPEARANCE_PROGRAM_LIKE;
 }
 
@@ -398,7 +462,7 @@ bool signal_state_classify(signal_state *state,
         out->source = state->stable_source;
         out->source_confidence = state->stable_source == SIGNAL_SOURCE_UNKNOWN
                                      ? 0.0
-                                     : 0.5;
+                                     : state->config.held_source_confidence;
         out->unsettled = state->unsettled;
         out->unsettled_interval_id = state->active_interval;
         out->settled_phase_known = state->phase_valid && !state->unsettled;
@@ -430,7 +494,7 @@ bool signal_state_classify(signal_state *state,
         state->previous_valid = false;
     } else {
         measure_raster(state, unit->bytes, &out->measurements);
-        out->appearance = classify_appearance(&out->measurements,
+        out->appearance = classify_appearance(&state->config, &out->measurements,
                                               &out->appearance_confidence);
     }
 
@@ -514,7 +578,7 @@ bool signal_state_classify(signal_state *state,
                                  ? 0.0
                                  : target == state->stable_source
                                        ? clamp01((double)state->source_candidate_count / needed)
-                                       : 0.5;
+                                       : state->config.held_source_confidence;
 
     if (state->interval_serial == 0 && out->source == SIGNAL_SOURCE_UNKNOWN)
         open_interval(state);
@@ -552,10 +616,10 @@ void signal_state_note_registration(signal_state *state, signal_result *result,
         return;
     }
 
-    bool changed = observation_known && confidence >= 0.25 && state->phase_valid &&
+    bool changed = observation_known && confidence >= state->config.phase_change_confidence_min && state->phase_valid &&
                    (d1 != state->phase_d1 || d2 != state->phase_d2);
     uint32_t window = state->config.phase_chatter_window_units;
-    uint64_t mask = window == 64 ? UINT64_MAX : ((UINT64_C(1) << window) - 1);
+    uint64_t mask = window == MAX_PHASE_WINDOW ? UINT64_MAX : ((UINT64_C(1) << window) - 1);
     state->phase_change_bits = ((state->phase_change_bits << 1) |
                                 (changed ? 1u : 0u)) & mask;
     if (state->phase_window_count < window)

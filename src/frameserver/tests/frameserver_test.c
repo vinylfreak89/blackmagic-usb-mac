@@ -17,6 +17,7 @@
 #include "../../test_liveness.h"
 static int fails = 0;
 extern void fs_test_reuse_worker_ids(frameserver *f);
+extern const signal_state_config *fs_test_signal_config(const frameserver *f);
 static _Atomic int destroyed;
 void fs_test_destroyed(void){ atomic_fetch_add(&destroyed,1); }
 #define CHECK(c, ...) do { if (!(c)) { fails++; fprintf(stderr, "FAIL: " __VA_ARGS__); fprintf(stderr, "\n"); } } while (0)
@@ -195,7 +196,13 @@ int main(int argc, char **argv){
     geometry.vote_window=0;cfg.geometry_config=&geometry;
     CHECK(fs_open(&f,&cfg)!=0 && !f,"invalid geometry config unexpectedly opened");
     geometry=ge_default_config();
+    signal_state_config classifier=signal_state_default_config();
+    classifier.phase_change_confidence_min=.75;cfg.signal_config=&classifier;
     CHECK(fs_open(&f, &cfg) == 0, "open");
+    classifier.phase_change_confidence_min=.1;
+    CHECK(fs_test_signal_config(f)->phase_change_confidence_min==.75,
+          "fs_open did not copy classifier configuration");
+    cfg.signal_config=NULL;
     geometry.wave_bar=2; /* fs_open must own the copy, not retain this pointer. */
     cfg.geometry_config=NULL;
     atomic_store(&hook_arm,!ring_may_drop); atomic_store(&hook_empty,0); atomic_store(&hook_release,0);

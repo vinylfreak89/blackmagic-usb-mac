@@ -219,14 +219,15 @@ int main(void)
     assert(!result.unsettled);
 
     /* Sparse high-energy dropout streaks can never turn a robustly sub-black,
-     * neutral raster into ProgramLike. Appearance commits after 3 units and
-     * never flaps thereafter. */
+     * neutral raster into ProgramLike. Preserve the existing immediate
+     * sub-black latch here; parameterization does not repair its asymmetry. */
     signal_state_begin_epoch(state, 2);
     unsigned appearance_changes = 0;
     signal_appearance prior_appearance = SIGNAL_APPEARANCE_UNKNOWN;
     for (unsigned i = 0; i < 12; ++i) {
         pattern p = (i & 1) ? PATTERN_SUBBLACK_STREAK : PATTERN_SUBBLACK;
         result = classify(state, unit, p, 400 + i, 0);
+        assert(result.appearance == SIGNAL_APPEARANCE_SUBBLACK_MUTE_LIKE);
         assert(result.appearance != SIGNAL_APPEARANCE_PROGRAM_LIKE);
         if (result.appearance != prior_appearance) {
             ++appearance_changes;

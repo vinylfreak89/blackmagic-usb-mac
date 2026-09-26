@@ -84,6 +84,9 @@ struct frameserver {
 
 static _Thread_local frameserver *callback_session;
 #ifdef FRAMESERVER_TEST_HOOKS
+const signal_state_config *fs_test_signal_config(const frameserver *f){
+    return signal_state_get_config(f->sig);
+}
 void fs_test_reuse_worker_ids(frameserver *f){
     /* Caller owns an open (log checks) or stopped (lifecycle checks) session. */
     f->worker=f->audio_worker=pthread_self();
@@ -571,7 +574,8 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if (!f->pool || !f->slot_used || !f->parser || !f->sig){ fs_close(f); return -1; }
     unit_parser_callbacks pcb = { on_video, on_audio, f };
     unit_parser_init(f->parser, NULL, &pcb);
-    signal_state_config sc = signal_state_default_config(); signal_state_init(f->sig, &sc);
+    signal_state_init(f->sig, cfg->signal_config);
+    f->cfg.signal_config = signal_state_get_config(f->sig);
     {
         f->geometry=malloc(ge_size());f->geometry_y=malloc(GE_PIXELS);
         f->geometry_unit=malloc(FP_UNIT_BYTES);
