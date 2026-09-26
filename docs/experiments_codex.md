@@ -1546,3 +1546,45 @@ held-out capture failures, or the real-time CPU budget. Measure whole tape
 and captures 1–4 before any rendering. motion2d.csv rounds SAD to .3f;
 report clarity discrepancies and precision limits rather than tuning or
 silently changing the reference. Captions remain scoring evidence only.
+
+Entry-39 amendment-2 verdict: implementation a7a4316, schema 28, remains
+off by default (GE_COMB_RIGID=0; clarity 1.3). The premise is not refuted by
+the measured outcomes, but acceptance is unresolved: reference B lacks the
+precision needed by its own clarity gate. No render or publication follows.
+
+Direct compiled-baseline comparisons reproduce edb551c with the new modifier
+off, and 6778e76 with entry-39 controls off: zero decision/measurement
+differences over 86,293 tape units and 919/649/649/650 capture units. All
+tested configurations preserve the 172,586 tape census edges. Unit, worker
+integration, ASan/UBSan and TSan pass.
+
+All 11,152 searched fields match reference dx/dy. However, 10,816 clarity
+ratios exceed the requested 1e-6 relative tolerance: motion2d.csv writes
+the two SAD means to .3f. Every C SAD and far SAD is within that rounding
+interval (zero outside). Counter 4683 field 1 is decisive: exact means
+0.4639756944444444 and 0.46427083333333335 yield 1.0006361085126285;
+the printed .464/.464 yields 1. No reference or tolerance was changed.
+Full-precision reference values are needed to clear B.
+
+Compared with A1, the rigid arm changes 1,187 relative shifts and zero
+anchors. Caption score excluding 81508–82402 is 96.422734% against A1's
+95.697640%; overall 94.651416% against 93.939643%. These are instrument
+scores, not visual truth. Withheld: 668 frames, eight outside the credits,
+zero in 60843–60931. The existing still-trigger span results are retained.
+Capture placement differences are zero; all four have zero common-mode
+moves, the card holds 238/238, and cap 2 has zero +1 anchors on 173 frames.
+Long change runs and their policy traces are listed in the scratch report;
+the 1.3 cutoff remains tape-fitted and has not been visually accepted.
+
+M3 engine CPU: rigid median/p95 0.404041/1.597516 ms/unit; disabled base
+0.320875/0.418225. The 2-D search ran on 6,695/86,293 units (7.758451%).
+No full media replay was launched; holes/drops and encoded readback are
+unmeasured this turn, not zero. Published A1 files/status remain untouched.
+Full results, run lists, every changed placement, exact clarity mismatches,
+test output and reproducible harnesses: /private/tmp/entry39-rigid.R1ZMaT.
+
+The existing 10,000-unit v9 worker benchmark passes on a local shared-memory
+retry: worker median/p95 4.263/5.212 ms. The initial sandbox attempt failed
+verbatim `BENCH: fp_open failed` / `make: *** [bench] Error 2`; it did not
+reach the publisher loop. This legacy benchmark is not the new engine's CPU
+measurement above.
