@@ -518,12 +518,17 @@ was labelled snow. The other observed errors were:
 - **The appearance latch is asymmetric.** The logged appearance is `stable_appearance`; `SubBlackMuteLike` (like `DeviceNoSignal0800`) installs with NO confirmation while leaving it needs three consecutive identical observations. At 49,126–49,136 it therefore persisted 11 units (0.37 s) onto a raster measuring mean 117–118 — the deck grey mute — with confidence 1.00 and nothing in the raster changing at the switch. This is the "sub-black label on grey" the owner saw.
 - **`NeutralGrayMuteLike`'s rule tests uniformity, not greyness**, so 253 units of near-black programme (mean 15–38, against the deck's actual grey mute at 117) carry a label and a `Muted` source that assert a deck mute. 122 false positives in all, none of them snow.
 
-**Replay caveat found by the same audit:** unpaced replay overflowed its ring without a failing exit code. On
-`fulltape.cap6` it produced 20,933 holes and only 991 exact units, then **exited 0**: the 256 MB capture ring
-overflows against a reader going at ~1 GB/s, its HostLoss becomes parser holes, and the tool prints no
-capture-level loss counter. Re-run at `--pace-us 8000` (2× realtime) it is 86,293 exact, 0 holes, 0 drops, ring
-high-water 0. Use `--pace-us 8000` for a whole-tape replay, or a ring larger than the file for a slice; never
-trust an unpaced whole-tape run's exit code.
+**Replay pacing (owner decision, 2026-09-26).** Unpaced replay overflows and loses units: on `fulltape.cap6`,
+20,933 holes and only 991 exact units. It is not only ring capacity — on the 524 MB capture-2 slice, a
+`--ring-mb 1024` run still lost 29 units, so a ring larger than the file does not make a slice safe. Paced
+replay is lossless well past realtime: capture 2 published 649/649 with 0 holes at every pace from 1× to 16×,
+and a 32× request self-limited at 20.9× without loss. The engine's decisions do not depend on pace (1× and 16×
+decision logs identical, 651 rows). **Replay at 16×, `--pace-us 1000`.** Owner: "speeding it up to 16x is
+perfectly fine for me and a good test if we end up anywhere over budget. lets not worry about backpressure right
+now." One paced replay serves both jobs — a production run, and a check that the pipeline is keeping up — so
+**any hole or drop at 16× means the pipeline is over budget**. **The exit code stays 0 on drops, by design:**
+"real time drops shouldn't crash a program". Loss is read from the printed hole and drop counters, never the
+exit code. 16× is measured on capture 2 only (22 s of tape); the whole tape has not yet run at 16×.
 
 **Commercial-capture opening** (owner, September 9): the examined source begins with near-blank
 output and sparse white specks before picture arrives, consistent with the deck playing tape
@@ -588,9 +593,8 @@ HostLoss 0, errors 0).** The Shuttle with nothing on its input does NOT sit in o
   unit (other-format units kept out, `DeviceNoSignal0800` appearance, `NoInput` source).
 - ⚠️ Lesson: an **unpaced `frameserver_replay` overflowed the 256 MB capture ring** on this file
   (byte-at-a-time parser slower than disk) and the resulting holes were *replay* host loss, not
-  capture loss — visible only via the verifier, because `frameserver_replay` did not print
-  capture-level HostLoss. Replay with `--ring-mb` ≥ file size or `--pace-us 16000`; the tool must
-  surface capture-core loss (fix queued).
+  capture loss. Replay paced, per the replay-pacing decision above; the hole and drop counters
+  show the loss, and the exit code stays 0 by owner decision (2026-09-26).
 
 **Classifier v0 on the virgin-tape capture — three real-data defects, FIXED (main `f2f445e`, mutual
 review, two rounds): robust luma/chroma medians and a 15×15-tile program-extent measure; a
