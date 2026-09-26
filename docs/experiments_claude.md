@@ -1801,3 +1801,22 @@ here and there to move across the tape … but it shouldn't result in any massiv
 - CPU leaves the §11b budget.
 
 **Material.** The whole tape; captures 1–4 were not used to build it.
+
+### Amendment to E-claude-2026-09-26-39 (2026-09-26) — only motion the comb cannot resolve withholds it
+
+**The falsifier fired on premise 2** (Codex, engine 3413040, both controls off by default). Withholding every
+comb verdict on any moving frame suppressed 12,615 frames and changed 7,030 relative shifts. The caption score
+fell from 93.94% (A1 alone) to 84.96%, and the 60843 span changed on 16 frames. The comb is right on most
+moving frames, so "the comb measures registration only while still" is refuted as stated. A1 held: common-mode
+moves 16 → 6, excursions 6 → 0, caption 93.94%, relative shifts untouched, all five false moves gone, the six +2
+starts on time. The still trigger held on the combed spans (73/75 and 71/71 still frames publish the comb's
+minimum; the two exceptions have no enclosed basin).
+
+**Physical reason for the amendment.** The comb resolves whole lines. Vertical motion of v lines per frame puts
+the two fields' content about v/2 lines apart, so motion of 0–1 line per frame biases the comb by less than one
+step. Only |v| ≥ 2 moves its minimum by a full line. The credits scroll at ≥ 3 lines per frame.
+
+**Amended rule, measured before any render.** (a) A1 plus the still trigger alone. (b) The same, plus the comb
+withheld only when either field's |shift| ≥ 2. Both must hold the caption score at ≥ 93.94%. (b) should remove
+the credits' comb adoption. Reported against the entry's falsifier; the protected 60843 span is judged on raw
+motion there (shifts of 1–3 per frame), not assumed unchanged.
