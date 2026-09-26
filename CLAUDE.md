@@ -980,7 +980,7 @@ them from dark picture; the owner accepted them going undetected on September 11
 | Buffered trajectory / lookback | Explored how to bridge missing evidence and isolate publication. | Caller state and backdating created or extended plateaus. Forward-only live output and offline repair were different requirements. |
 | Authority-first and relative-only variants | Separated observed positions from held output and relative evidence. | Field assignment and absolute placement still needed evidence; correcting weave alone could move the wrong field. |
 | Bottom-edge model | Used a physically motivated lower landmark. | Some versions improved relative comb scores while losing caption agreement; bottom visibility and clipping mattered. |
-| v9 captions + geometry + body/comb | Main contains these paths; captions supplied useful absolute gauges and comb helped relative alignment. | A caption may be absent or not CEA-608; line-22 data and dark top rows caused ambiguity. Integrating content motion drifted in one experiment; that is not a theorem against temporal evidence. |
+| v9 captions + geometry + body/comb | Captions supplied useful absolute gauges and comb helped relative alignment (retired from main 2026-09-27; code in git history). | A caption may be absent or not CEA-608; line-22 data and dark top rows caused ambiguity. Integrating content motion drifted in one experiment; that is not a theorem against temporal evidence. |
 | Geometry-first / v10 rewrite | Made line accounts, partial rows, source references and censoring explicit. | Engine, reference and contract sometimes described different quantities. Much effort went into reconciling them; the branch's existence is not evidence of a validated replacement. |
 | Plain versus masked comb | Compared a simpler energy with a motion-qualified measurement. | A coherent-pan synthetic could give a confident wrong result; masks also removed usable evidence. Capture behavior and constructed counterexamples answer different questions. |
 | Peak / blank-run / extent references | Made actual horizontal transitions and run positions inspectable. | Padding was once used as the blanking level; total duration missed translations; fixed windows preselected locations; absence of a hit was confused with no event. These findings concern those implementations. |
@@ -1000,9 +1000,10 @@ symmetry, thresholds or another entire family of methods.
 ### Where to find the experiments
 
 These are navigation pointers, not required dependencies of a replacement.
-Main includes `experiments/capture_render.py`, `cc608_decode.py`, the unit
-reader/verifier, and the v9 registration tests. Its archaeology records the
-early origin, trajectory and body/comb work.
+Main includes `experiments/capture_render.py`, `cc608_decode.py` and the unit
+reader/verifier; the v9 engine, its tests and v9-only audit tools were removed on
+2026-09-27 and remain in git history. The archaeology records the early origin,
+trajectory and body/comb work.
 
 On the v10 branch, the relevant experiments include
 `box_census.py` / `box_vs_switch.py` (box versus content bounds),
@@ -1056,8 +1057,8 @@ When a test or reference changes, rerun the affected comparison rather than
 carrying forward its old count.
 
 Detailed older steps are already in `docs/registration_archaeology.md`,
-`docs/registration_v9_plan.md`, `LEARNINGS.md` and the main registration
-README/tests. Later v10 reports and `docs/geometry_first_engine.md` preserve
+`docs/registration_v9_plan.md` and `LEARNINGS.md`; the v9 registration README
+and tests are in git history before 2026-09-27. Later v10 reports and `docs/geometry_first_engine.md` preserve
 that experiment's definitions and disputes; consult them for a specific
 question, not as an automatic list of instructions for a new attempt.
 The branch and report pointers here preserve provenance, not a commitment
@@ -1293,15 +1294,12 @@ delivery edge; wrong one at acquisition.
   backends, tagged sink, and adversarial/sanitizer tests. The early integration
   found a ring-publication race and unreported termination loss, with deciding
   tests. Transport details and later fixes remain in §6 and the component docs.
-- **P2 registration — implemented baseline, research still open.**
-  Remote `main` was verified at
-  `b15b459596e0ea20c15d042835116e2b111587ea` for this rewrite.
-  It contains the v9-family allocation-free C engine, CEA-608 decoder, geometric
-  envelope/lock, bounded previous-unit body witness and relative comb correction.
-  `src/field_registration/README.md`, headers and tests describe that revision;
-  their cutoffs and precedence are implementation choices, not new requirements.
-  `src/frameserver/` already contains assembly, PCM publication and logging;
-  `src/obs_plugin/` already contains a working replay-capable adapter.
+- **P2 registration — approved first pass (2026-09-26).** `main` runs the v11 geometry
+  engine (`src/field_registration/geometry_engine.{c,h}`, described in
+  `docs/geometry_engine.md` and the field_registration README). The v9 engine was the
+  baseline until 2026-09-27; it is removed from main, and the notes below are its history.
+  `src/frameserver/` contains assembly, PCM publication and logging; `src/obs_plugin/`
+  contains a working replay-capable adapter.
 - **What main improved, and what its results mean.** The early C port reproduced
   the offline model on the 86,293 exact whole-tape units. Later versions recovered
   caption-anchored positions and reduced the then-defined relative comb errors.
@@ -1328,15 +1326,12 @@ delivery edge; wrong one at acquisition.
   `signal_state` and `frameserver`: registration feedback could affect the
   source-layer settlement claim, a gate/fixture combination could skip engine
   work in a worker benchmark, and queue/output-isolation repairs were pursued.
-  Main's worker benchmark calls registration; the later skip finding is not
-  automatically a main defect. Likewise, main still has its own registration
-  feedback path. Check each change against its revision before carrying it
-  forward or discarding it with the engine experiment.
+  Those are v10-era findings; check any carried-forward change against its revision.
 - **Current status (2026-09-26).** The owner approved the v11 geometry engine as the
   first-pass registration engine (tag `v11-approved-2026-09-26`): "all problems are fixed … I
   approve this version of the engine", with 30–40 visibly miscombed frames left on the whole
-  tape, mostly for later stabilization work. It replaces v9 as the frameserver/OBS default; the
-  v9 code is removed after the merge. **Bound for every later engine change (owner):** "less
+  tape, mostly for later stabilization work. It replaced v9 as the frameserver/OBS
+  engine, and v9 was removed from main on 2026-09-27. **Bound for every later engine change (owner):** "less
   than 100 comb decisions across the tape and probably less than 500 placement decisions",
   measured against the approved whole-tape decision log. Keep the four captures and whole tape
   in §7 and the reproducible regression cases. `docs/geometry_engine.md` describes the engine.
@@ -1526,18 +1521,17 @@ CPU minimum rather than assuming M-class silicon. Rules:
   reference M3 P-core, single-threaded** — ~30% of the period — so a core three times slower still
   keeps up. Anything beyond that needs a measured justification and a design that sheds work
   before it sheds frames (§8 property 7).
-- **Measured today (M3, 2026-09-26, approved v11 engine):** whole worker 1.40–1.75 ms median /
-  2.5–2.7 ms p95 per unit, maximum 8.5 ms, none over 10 ms. Units that run the 2-D motion search
+- **Measured today (M3, 2026-09-27, approved v11 engine, v9 removed):** whole worker 1.40–1.75 ms
+  median / 2.5–2.8 ms p95 per unit, maximum 7.7–8.5 ms, none over 10 ms. Units that run the 2-D motion search
   in both fields (~5%) take ~3 ms median. The engine alone is 0.91 ms median / 2.27 ms p95 (post-cleanup engine benchmark, motion work included). The earlier 4.26 ms
   figure was the retired v9 benchmark, not a v11 baseline. Any new evidence path (e.g.
   a static-region comb search) is costed against this table before it lands.
-- **Enforcement.** Every engine or classifier change reports ms/unit (median, p95) from the golden
-  runs in its commit; a `bench` target over a fixed 10,000-unit fixture is the regression gate.
-  Allocation-free and SIMD-friendly code (NEON now, SSE/AVX2 when ported) is the norm on this path.
-  The existing `frameserver bench` target measures legacy v9, not v11. For the
-  geometry path use `bench-geometry` with the actual controls enabled, including
-  conditional 2-D searches; report whole-worker CPU and zero/one/two-search
-  populations separately. Standalone engine timings are not whole-worker timings.
+- **Enforcement.** Every engine or classifier change reports whole-worker ms/unit (median, p95,
+  maximum) from `make -C src/frameserver bench` (alias of `bench-geometry`: classifier, geometry
+  including conditional 2-D searches, assembly/publication and log formatting, over the whole
+  tape at 4×), with zero/one/two-search populations reported separately, in its commit.
+  Standalone engine timings are not whole-worker timings. Allocation-free and SIMD-friendly
+  code (NEON now, SSE/AVX2 when ported) is the norm on this path.
 - **Published minimum (provisional, from measurement + a 3× scalar-throughput margin):** any Apple
   M-series; on x86, a 2017-or-later quad-core with AVX2 at ≥ 3 GHz for the full pipeline at 480i.
   A 2015-class dual-core i3 is explicitly NOT supported. Revised when an Intel build exists and is
