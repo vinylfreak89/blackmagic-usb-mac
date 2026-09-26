@@ -1529,3 +1529,20 @@ Scratch verification, scripts and recoverable hard-linked prior artifacts:
 full-4000 directory (whole-tape identity, statistics, strips, validation and
 publication JSON). The two failed comb variants remain off; publication is
 not owner visual acceptance.
+
+Entry-39 amendment-2 commitment: test the owner's "only withold comb if
+there is high vettical motion but horizontal motion is stable" premise.
+Add an off-by-default rigid-translation modifier to the existing still-comb
+control, retaining exact old behavior when the modifier is off. On adjacent
+field units with measured vertical |shift| >= 2, measure unsmoothed 2-D SAD
+over the specified 180 x 320 body samples, dy -5..5, dx -8..8. Withhold only
+when both frame-owned fields have dx=0, |dy|>=2 and far/best >=1.3. Preserve
+the still trigger and the field-ownership join. The 1.3 threshold is fitted
+on this tape, not a derived universal confidence boundary.
+
+Falsifiers: off-path identity, 2-D reference mismatch, caption regression
+against A1 outside 81508–82402, unsupported long change runs, named-span or
+held-out capture failures, or the real-time CPU budget. Measure whole tape
+and captures 1–4 before any rendering. motion2d.csv rounds SAD to .3f;
+report clarity discrepancies and precision limits rather than tuning or
+silently changing the reference. Captions remain scoring evidence only.
