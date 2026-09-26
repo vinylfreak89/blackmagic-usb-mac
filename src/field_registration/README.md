@@ -23,12 +23,8 @@ comb withholding. Numeric defaults:
 - Flat-bottom margin 3; blank-spot tolerance +2.
 - Rigid-motion minimum 2 lines; clarity 1.3.
 
-The approved defaults are unchanged. The separate publication-only experiment
-`field2_jitter` defaults to 0; tools enable it with `GE_FIELD2_JITTER=1`.
-It never supplies vote inputs or changes the relative-shift policy. See the
-geometry contract for its hold/reset rules and sidecar interpretation.
-Replay/probe tools share the `GE_*` parser in `geometry_tool_controls.h`;
-the library reads no environment.
+There are no alternate-policy switches. Replay/probe tools share the numeric
+`GE_*` parser in `geometry_tool_controls.h`; the library reads no environment.
 The fixed vote storage capacity is 256, with a configurable window 1..256.
 All streaming state is bounded; measurement and publication do not allocate.
 
