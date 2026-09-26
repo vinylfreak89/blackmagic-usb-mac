@@ -1335,3 +1335,92 @@ CPU and loss accounting. A reference mismatch beyond accounted ties/reset
 availability, a named-case falsifier, a caption regression below A1, an
 unexplained long placement run, or excess CPU stops publication. Preserve
 the current renders until these gates and complete encoded readbacks pass.
+
+Entry-39 result: the combined policy is refuted by its precommitted gates.
+Do not render it or tune around the counterexamples. The independently built
+A1 instrument reproduces all five reference columns on 86,289 frames, with
+zero differences; the full-width VI medians match on 172,586 field observations.
+Same-field motion matches all 172,546 observable reference rows, including
+best/runner-up errors within the reference's three-decimal formatting. There
+are no shift or tie disagreements. Thirty-two additional reference rows
+(both fields on sixteen units) cross engine resets and correctly have unknown
+motion; the reference generator did not filter those resets. Counters:
+4707, 4735, 48189, 48204, 48244, 53410, 53678, 68613, 69517, 70451, 71361,
+72291, 81505, 83330, 84339, 85268.
+
+Control-off identity against compiled 6778e76: zero differing decisions or
+measurements on 86,293 whole-tape units and 919/649/649/650 capture units.
+The census is identical in every arm: 172,586/172,586 field edges, including
+the four labelled units. The final real capture-worker replays also match
+the deterministic harness; every old sidecar cell in the off arm is identical
+except the schema number and new appended evidence columns.
+
+On 86,289 paired frames, baseline / A1 / both give confident counts
+58,940 / 57,681 / 57,681 (68.3053% / 66.8463% / 66.8463%). Common-mode
+moves / excursions / one-frame jumps are 16/6/0, 6/0/0, 6/0/0. The caption
+score on 48,611 frame-owned field-1 labels is:
+
+| Arm | Correct | Off by 1 | Off by 2+ | Correct % |
+|---|---:|---:|---:|---:|
+| Baseline | 45,441 | 1,371 | 1,799 | 93.4788 |
+| A1 | 45,665 | 1,179 | 1,767 | 93.9396 |
+| Both | 41,301 | 5,765 | 1,545 | 84.9623 |
+
+A1 changes 575 anchors and zero relative shifts. Both changes 575 anchors,
+7,030 relative shifts, and 7,570 placement pairs. There are 4,210 still
+triggers and 12,615 moving frames with existing comb triggers suppressed;
+motion states are 67,313 still, 18,954 moving, 22 unknown. The largest failure
+population is moving-frame suppression publishing census-relative placement:
+4,281 newly incorrect caption scores against the baseline. Motion reproduction
+therefore does not validate the proposed blanket withdrawal of comb authority.
+
+All five named false anchor changes disappear, and all six required +2 starts
+occur on their original counters (zero delay). The protected 60843–60931 span
+nevertheless changes on sixteen frames: 60850–60851, 60854–60858, 60883,
+60892–60894, 60897–60899, 60924–60925. At 60850, measured tops 24/288 and
+bottoms 260/522 imply relative +1, while same-field shifts are -1/-2. The
+baseline's triggered decided comb -1 (margin 1.91257) publishes (3,2);
+the new policy suppresses that verdict and publishes census (1,2). This is
+the requested policy, not a changed measurement, and falsifies the invariant.
+
+Of the still frames in 82073–82159, 73/75 publish the comb minimum. The two
+exceptions, 82119 and 82154, have no enclosed basin (floor -5..+5), so the
+specified still trigger cannot act. In 84496–84570, 71/71 still frames publish
+the minimum. No moving frame in 89492–90721 applies a comb verdict. Captures
+1–4 change 1/919, 232/649, 10/648, 29/650 placement pairs, respectively,
+while retaining zero common-mode moves, the card's 238/238 (0,0) hold, and
+cap 2's zero anchor-one frames out of 173. This is not placement identity.
+
+Engine CPU median/p95, thread CPU with the O3 whole-tape harness, ms/unit:
+baseline .319834/.346583; A1 .320208/.348458; both .401333/.440750. Unit,
+worker integration, ASan/UBSan and TSan suites pass, including reversed
+field ownership, reset/adjacency, exact motion ties, inclusive blank spots,
+still triggering, moving suppression, and audit invariance with vote off.
+Initial integration failures were stale schema-25 expectations and an editing
+indentation error in a test; their original logs remain in scratch alongside
+the corrected passing runs. No engine measurement was adjusted to match a
+reference. The two controls remain off by default; schema 26 appends their
+configuration, blank-spot evidence, frame-owned motion/errors and authority
+flags. Engine implementation: 3413040. No renderer change is authorized by
+these failed gates, and the existing published media and status are untouched.
+
+Detailed evidence: /private/tmp/entry39.5N6B32. comparison.json contains the
+complete metrics and named checks; changed_placements.csv lists every changed
+pair in the tape and captures; runs_over30.csv lists every long change run;
+motion_reference_unknown.csv identifies every reset-unavailable reference row.
+No corpus-dependent caption label enters the engine.
+
+Final pipeline accounting: each of the eight 4x capture replays (off and both
+on captures 1–4) reports zero holes and zero video pool/ring/surface or audio
+drops, with zero harness differences. The isolated 4x whole-tape both-on
+replay (`--pace-us 4000`, pool 32) also completes on its first attempt:
+86,305 observations, 86,293 exact/published units, 86,289 paired frames,
+seven device-short units, zero holes, and all video/audio drop counters zero.
+Every compared decision agrees with the harness. No concurrent project test,
+sanitizer, replay or encode ran alongside it. No render was started. The stop
+file reports, verbatim:
+
+```
+caption below A1
+60843 bounce changed
+```

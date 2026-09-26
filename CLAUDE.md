@@ -1598,6 +1598,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   applies to positive results: state the measured population, not “solved.”
   Record what changed and its remaining uncertainty; avoid carrying a withdrawn
   interpretation forward inside a confident summary.
+  Entry 39 distinguishes same-field motion measurement from comb authority:
+  exact motion-census reproduction did not validate blanket suppression of
+  cross-field comb verdicts on moving frames. That policy reduced fixture A's
+  caption agreement from 93.94% (A1 alone) to 84.96%, with unchanged top census.
 - **Experiment commitments (owner, 2026-09-19).** Before a test meant to decide
   something, the agent appends an entry to its own ledger (`docs/experiments_claude.md`,
   `docs/experiments_codex.md`) and commits it: the question in the owner's words; the
