@@ -10,7 +10,7 @@ records validates; the slice is prefixed with a SESSION note naming its origin.
     tpc_slice.py whole.cap6 out.tpc --start-bytes 14800000000 --video-bytes 2300000000
 """
 from __future__ import annotations
-import argparse, struct, sys
+import argparse, os, struct, sys
 MAGIC = 0x31504143
 HDR = struct.Struct("<IBBHIIII")           # magic, kind, endpoint, pkt_index, seq, status, req, actual
 KINDS = {0: "DATA", 1: "HOSTLOSS", 2: "XFERERR", 3: "SESSION", 4: "TICK"}
@@ -41,29 +41,29 @@ def main() -> None:
     ap.add_argument("--start-bytes", type=int, required=True, help="approximate byte offset to start at (aligned forward to a record)")
     ap.add_argument("--video-bytes", type=int, required=True, help="stop after at least this many video (0x83) payload bytes")
     a = ap.parse_args()
-    import os
     if os.path.exists(a.dst) and os.path.samefile(a.src, a.dst):
         raise SystemExit(f"refusing: destination {a.dst} is the source file")
-    try:
-        slice_to(a)
-    except BaseException:
-        if os.path.exists(a.dst): os.remove(a.dst)   # never leave a partial slice that looks complete
-        raise
+    with open(a.src, "rb") as f:            # a source that can't be read fails here, before dst is touched
+        o = open(a.dst, "wb")
+        try:
+            with o: slice_to(a, f, o)
+        except BaseException:
+            os.remove(a.dst)                  # only the file this run opened: never leave a partial slice
+            raise
 
-def slice_to(a) -> None:
-    with open(a.src, "rb") as f, open(a.dst, "wb") as o:
-        start = find_boundary(f, a.start_bytes)
-        note = f"tpc_slice of {a.src} from byte {start}".encode()
-        o.write(HDR.pack(MAGIC, 3, 0, 0, 0, 0, len(note), len(note)) + note)
-        f.seek(start); video = records = 0; end = start
-        while video < a.video_bytes:
-            h = f.read(HDR.size)
-            if len(h) < HDR.size: break
-            if not valid_header(h): raise SystemExit(f"record chain broke at byte {end}")
-            alen = HDR.unpack(h)[7]; payload = f.read(alen)
-            if len(payload) != alen: raise SystemExit(f"truncated payload at byte {end}: {len(payload)} of {alen} bytes")
-            o.write(h + payload); records += 1; end += HDR.size + alen
-            if HDR.unpack(h)[1] == 0 and HDR.unpack(h)[2] == 0x83: video += alen
+def slice_to(a, f, o) -> None:
+    start = find_boundary(f, a.start_bytes)
+    note = f"tpc_slice of {a.src} from byte {start}".encode()
+    o.write(HDR.pack(MAGIC, 3, 0, 0, 0, 0, len(note), len(note)) + note)
+    f.seek(start); video = records = 0; end = start
+    while video < a.video_bytes:
+        h = f.read(HDR.size)
+        if len(h) < HDR.size: break
+        if not valid_header(h): raise SystemExit(f"record chain broke at byte {end}")
+        alen = HDR.unpack(h)[7]; payload = f.read(alen)
+        if len(payload) != alen: raise SystemExit(f"truncated payload at byte {end}: {len(payload)} of {alen} bytes")
+        o.write(h + payload); records += 1; end += HDR.size + alen
+        if HDR.unpack(h)[1] == 0 and HDR.unpack(h)[2] == 0x83: video += alen
     print(f"wrote {a.dst}: bytes {start}..{end} of {a.src}, {records} records, {video} video payload bytes")
 
 if __name__ == "__main__":
