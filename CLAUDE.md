@@ -528,7 +528,11 @@ perfectly fine for me and a good test if we end up anywhere over budget. lets no
 now." One paced replay serves both jobs — a production run, and a check that the pipeline is keeping up — so
 **any hole or drop at 16× means the pipeline is over budget**. **The exit code stays 0 on drops, by design:**
 "real time drops shouldn't crash a program". Loss is read from the printed hole and drop counters, never the
-exit code. 16× is measured on capture 2 only (22 s of tape); the whole tape has not yet run at 16×.
+exit code. **First whole-tape runs at 16× (2026-09-26): with the machine otherwise idle, 86,293/86,293
+published, 0 holes, 0 drops, decisions identical to the validated engine; with sanitizer and validation jobs
+running at the same time, 3,164 holes, then 896 holes and 3 pool drops.** 16× has little headroom on this M3:
+run it with the machine otherwise idle, and treat a drop during concurrent load as competing load until an
+idle rerun reproduces it.
 
 **Commercial-capture opening** (owner, September 9): the examined source begins with near-blank
 output and sparse white specks before picture arrives, consistent with the deck playing tape
