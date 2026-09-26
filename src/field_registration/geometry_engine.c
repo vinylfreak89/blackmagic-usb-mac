@@ -1,5 +1,6 @@
 #include "geometry_engine.h"
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 double ge_wave_bar=.45;
@@ -10,6 +11,7 @@ int ge_vote_pair=0;
 double ge_vote_pair_min=.6;
 int ge_bottom_flat=0;
 double ge_bottom_flat_margin=3;
+int ge_vote_blankspot=0,ge_comb_still=0;
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
@@ -56,6 +58,27 @@ static double waveform_correlation(const uint8_t *a,const uint8_t *b) {
     double va=640*aa-sa*sa,vb=640*bb-sb*sb;
     if(va<640.0*640*1e-18 || vb<640.0*640*1e-18)return 0;
     return (640*ab-sa*sb)/sqrt(va*vb);
+}
+ge_vertical_motion ge_motion_measure(const uint8_t *current,const uint8_t *previous,int field) {
+    unsigned sums[11];int best=0,second=-1,off=19+263*field;
+    for(int s=-5;s<=5;s++) {
+        unsigned sum=0;
+        for(int r=40;r<220;r++) {
+            const uint8_t *a=current+(off+r+s)*720+40,*b=previous+(off+r)*720+40;
+            for(int x=0;x<640;x++){int d=(int)a[x]-b[x];sum+=(unsigned)(d<0?-d:d);}
+        }
+        sums[s+5]=sum;
+    }
+    /* Exact ties prefer the smallest absolute shift; equal magnitudes retain
+     * the first (negative) shift. No rounded-error comparison. */
+    for(int i=1;i<11;i++)if(sums[i]<sums[best] ||
+        (sums[i]==sums[best] && abs(i-5)<abs(best-5)))best=i;
+    for(int i=0;i<11;i++)if(i!=best && (second<0 || sums[i]<sums[second]))second=i;
+    return (ge_vertical_motion){.known=1,.shift=best-5,
+        .error=sums[best]/(180.0*640),.second_error=sums[second]/(180.0*640)};
+}
+const char *ge_picture_motion_name(ge_picture_motion s) {
+    static const char *const names[]={"unknown","still","moving"};return names[s];
 }
 ge_wave_result ge_wave_scan(const uint8_t *y,int field,double bar) {
     int off=263*field;
@@ -240,7 +263,7 @@ ge_comb_evidence ge_comb_examine(const ge_comb_result *c,int proposed) {
 static void reject_placement(geometry_engine *g,ge_decision *o,int *d,int *d2) {
     o->rejection=ge_comb_examine(&o->comb,*d);
     /* Audit-only evidence cannot change placement or state. No extra search. */
-    if(!o->comb_ran || !(o->rejection.ratio>ge_comb_reject))return;
+    if(!o->comb_ran || o->comb_suppressed || !(o->rejection.ratio>ge_comb_reject))return;
     o->rejected=1;o->refused_d=*d;
     g->held=0;g->provisional=0;g->basis_valid=0;
     g->basis_first[0]=g->basis_first[1]=0;
@@ -287,6 +310,15 @@ static void vote_anchor(geometry_engine *g,ge_decision *o,
     o->vote_confident=o->vote_top[0] && o->vote_top[1] && o->rejection.basin &&
         st>=o->rejection.floor_lo && st<=o->rejection.floor_hi+(ge_vote_pair!=0) &&
         (!ge_vote_pair || o->vote_pair_pass);
+    if(ge_vote_blankspot && o->vote_top[1]) {
+        o->vote_blankspot_measured=1;o->vote_blankspot_pass=1;
+        for(int line=286;line<o->vote_top[1];line++) {
+            unsigned count=0;const uint8_t *p=by+(line-4)*720+40;
+            for(int x=0;x<640;x++)count+=p[x]<=b->blank[1]+2;
+            if(!count){o->vote_blankspot_pass=0;o->vote_blankspot_line=line;break;}
+        }
+        o->vote_confident=o->vote_confident && o->vote_blankspot_pass;
+    }
     if(o->vote_confident) {
         if(g->vote_count==GE_VOTE_WINDOW) {
             memmove(g->vote_values,g->vote_values+1,(GE_VOTE_WINDOW-1)*sizeof(int));
@@ -321,6 +353,9 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     o.bottom_evidence[0]=t->bottom_evidence[0];o.bottom_evidence[1]=b->bottom_evidence[1];
     o.bottom[0]=t->bottom[0];o.bottom[1]=b->bottom[1];
     o.motion[0]=t->motion[0];o.motion[1]=b->motion[1];
+    o.vertical[0]=t->vertical[0];o.vertical[1]=b->vertical[1];
+    if(o.vertical[0].known && o.vertical[1].known)
+        o.picture_motion=o.vertical[0].shift || o.vertical[1].shift?GE_PICTURE_MOVING:GE_PICTURE_STILL;
     /* A held correction belongs to these two frame tops, not to a transport
      * unit (the top field can belong to the next unit under reversed pairing).
      * Loss of a measured top also invalidates that basis. Retry on this frame;
@@ -345,8 +380,16 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
         if(g->provisional)o.triggers|=GE_CONFIRM;
     }
     o.comb_ran=o.triggers!=0;
-    if(o.comb_ran || g->audit || ge_anchor_vote)o.comb=ge_comb(ty,by);
-    if(o.comb_ran && o.comb.decided) {
+    if(o.comb_ran || g->audit || ge_anchor_vote || ge_comb_still)o.comb=ge_comb(ty,by);
+    if(ge_comb_still && o.picture_motion==GE_PICTURE_STILL) {
+        int proposed=dknown?d:(g->have_placement?g->last_d:0);
+        ge_comb_evidence e=ge_comb_examine(&o.comb,proposed);
+        if(e.basin && e.ratio>=ge_comb_reject) {
+            o.still_trigger=1;o.triggers|=GE_STILL;o.comb_ran=1;
+        }
+    }
+    o.comb_suppressed=ge_comb_still && o.picture_motion==GE_PICTURE_MOVING && o.comb_ran;
+    if(o.comb_ran && !o.comb_suppressed && o.comb.decided) {
         o.relative_source=GE_SOURCE_COMB;
         d=o.comb.shift;dknown=1;
         if(!known){g->held=0;g->provisional=0;g->basis_valid=0;}
@@ -384,6 +427,8 @@ unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_dec
     if(g->valid && !adjacent)n=ge_break(g,out);
     ge_features *f=&g->current;ge_measure(y,f);
     if(adjacent && !reset)for(int k=0;k<2;k++)f->motion[k]=classify(&g->previous,f,k);
+    if(ge_comb_still && adjacent && !reset)
+        for(int k=0;k<2;k++)f->vertical[k]=ge_motion_measure(y,g->previous_y,k);
     if(reset || !adjacent)reset_frame_state(g);
     if(!g->reverse) {
         out[n]=frame(g,y,y,f,f,c,c);out[n].reset_before=reset;
@@ -400,7 +445,8 @@ unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_dec
         ge_decision p={0};p.counter=c;p.d1=current_d1;p.d2=f->first[1]?f->first[1]-286:0;
         p.unused1=unused1;p.unused2=1;p.reset_before=reset;p.comb.margin=NAN;
         unit_provenance(&p,f);
-        g->pending=p;memcpy(g->previous_y,y,GE_PIXELS);
+        g->pending=p;
     }
+    if(g->reverse || ge_comb_still)memcpy(g->previous_y,y,GE_PIXELS);
     g->previous=*f;g->valid=1;g->counter=c;return n;
 }

@@ -122,6 +122,7 @@ src/frameserver/tests/worker_bench
 /src/field_registration/tests/geometry_rejection
 /src/field_registration/tests/geometry_vote
 /src/field_registration/tests/geometry_bottom
+/src/field_registration/tests/geometry_still
 /src/frameserver/tests/geometry_replay_asan
 /src/frameserver/tests/geometry_replay_tsan
 /src/obs_plugin/tests_audio_timing

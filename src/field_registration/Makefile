@@ -32,13 +32,17 @@ tests/geometry_vote: geometry_engine.c geometry_engine.h tests/geometry_vote.c
 tests/geometry_bottom: geometry_engine.c geometry_engine.h tests/geometry_bottom.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/geometry_bottom.c -o $@ $(LDLIBS)
 
-geometry-test: tests/geometry_unit tests/geometry_probe tests/geometry_basis tests/geometry_waveform tests/geometry_rejection tests/geometry_vote tests/geometry_bottom tests/hblank_probe
+tests/geometry_still: geometry_engine.c geometry_engine.h tests/geometry_still.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/geometry_still.c -o $@ $(LDLIBS)
+
+geometry-test: tests/geometry_unit tests/geometry_probe tests/geometry_basis tests/geometry_waveform tests/geometry_rejection tests/geometry_vote tests/geometry_bottom tests/geometry_still tests/hblank_probe
 	./tests/geometry_unit
 	./tests/geometry_basis
 	./tests/geometry_waveform
 	./tests/geometry_rejection
 	./tests/geometry_vote
 	./tests/geometry_bottom
+	./tests/geometry_still
 	python3 ../../scripts/test_waveform_controls.py ./tests/hblank_probe
 
 libfieldreg.dylib: field_registration.c field_registration.h cea608.c cea608.h
@@ -76,5 +80,6 @@ clean:
 	rm -f tests/hblank_probe tests/geometry_basis tests/geometry_guards tests/geometry_waveform
 	rm -f tests/geometry_rejection tests/geometry_vote
 	rm -f tests/geometry_bottom
+	rm -f tests/geometry_still
 	rm -f libfieldreg.dylib libcea608.dylib tests/field_registration_unit tests/cea608_unit tests/field_registration_v9 \
 		tests/registration_v9.raw tests/registration_v9.csv tests/.registration_v9.complete

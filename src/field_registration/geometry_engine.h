@@ -19,6 +19,8 @@ extern int ge_vote_pair; /* default 0; floor high end +1 AND paired top rows */
 extern double ge_vote_pair_min; /* default .6; inclusive Pearson threshold */
 extern int ge_bottom_flat; /* default 0; same-unit flat-band bottom reference */
 extern double ge_bottom_flat_margin; /* default 3; inclusive, tolerance 1e-9 */
+extern int ge_vote_blankspot; /* default 0; skipped field-2 rows need VI blanking */
+extern int ge_comb_still; /* default 0; same-field motion gates comb authority */
 #define GE_VOTE_WINDOW 30
 #define GE_COMB_SELECTION_MARGIN 1.5
 typedef struct { int first; double step, max_step; } ge_wave_result;
@@ -39,7 +41,12 @@ typedef struct {
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
 enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16,
-       GE_BASIS_CHANGED=32 };
+       GE_BASIS_CHANGED=32, GE_STILL=64 };
+typedef struct {
+    double error, second_error; /* exact integer SAD / (180*640) */
+    int known, shift;
+} ge_vertical_motion;
+typedef enum { GE_PICTURE_UNKNOWN, GE_PICTURE_STILL, GE_PICTURE_MOVING } ge_picture_motion;
 typedef struct {
     int shift, decided;
     double margin;
@@ -61,6 +68,7 @@ typedef struct {
     ge_class motion[2];
     ge_level_result level[2]; /* supplemental evidence, never used by classify */
     ge_bottom_evidence bottom_evidence[2];
+    ge_vertical_motion vertical[2]; /* this unit against its adjacent predecessor */
 } ge_features;
 typedef struct {
     uint64_t counter, top_unit;
@@ -83,6 +91,10 @@ typedef struct {
     double vote_rB; /* NAN unless pairing is enabled and both vote tops exist */
     int vote_pair_pass; /* correlation test only, not the complete confidence */
     ge_bottom_evidence bottom_evidence[2]; /* frame-owned, like last[] */
+    ge_vertical_motion vertical[2]; /* frame-owned, field 1 from top_unit */
+    ge_picture_motion picture_motion;
+    int still_trigger, comb_suppressed;
+    int vote_blankspot_measured, vote_blankspot_pass, vote_blankspot_line;
 } ge_decision;
 typedef struct geometry_engine geometry_engine;
 size_t ge_size(void);
@@ -104,6 +116,8 @@ ge_comb_result ge_comb(const uint8_t *top, const uint8_t *bottom);
 /* Pure evidence; does not adopt, alter decided, or run another search.
  * A proposed shift outside -5..5 has no measured energy: ratio is NAN. */
 ge_comb_evidence ge_comb_examine(const ge_comb_result *, int proposed);
+ge_vertical_motion ge_motion_measure(const uint8_t *current,const uint8_t *previous,int field);
+const char *ge_picture_motion_name(ge_picture_motion);
 /* Returns 0..2 completed unit decisions, in source order. Reset applies before
  * the first frame using this unit, even when that frame belongs to its predecessor.
  * Counter gaps implicitly break the pair and reset. Do not cross epochs: call break.

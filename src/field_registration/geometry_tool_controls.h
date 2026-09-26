@@ -55,8 +55,8 @@ static int ge_tool_controls_from_env(void) {
         }
         ge_bottom_flat_margin=n;
     }
-    const char *names[]={"GE_ANCHOR_VOTE","GE_LEVEL_FILL","GE_LEVEL_FLAT","GE_VOTE_PAIR","GE_BOTTOM_FLAT"};
-    int *values[]={&ge_anchor_vote,&ge_level_fill,&ge_level_flat,&ge_vote_pair,&ge_bottom_flat};
+    const char *names[]={"GE_ANCHOR_VOTE","GE_LEVEL_FILL","GE_LEVEL_FLAT","GE_VOTE_PAIR","GE_BOTTOM_FLAT","GE_VOTE_BLANKSPOT","GE_COMB_STILL"};
+    int *values[]={&ge_anchor_vote,&ge_level_fill,&ge_level_flat,&ge_vote_pair,&ge_bottom_flat,&ge_vote_blankspot,&ge_comb_still};
     for(unsigned i=0;i<sizeof values/sizeof *values;i++)if((v=getenv(names[i]))) {
         if((v[0]!='0' && v[0]!='1') || v[1]) {
             fprintf(stderr,"invalid %s: %s (expected 0 or 1)\n",names[i],v);return 0;
@@ -66,7 +66,7 @@ static int ge_tool_controls_from_env(void) {
     return 1;
 }
 static void ge_tool_controls_echo(FILE *f) {
-    fprintf(f,"# GE_WAVE_BAR=%.17g GE_WAVE_CLAMP=%d GE_COMB_REJECT=%.17g GE_ANCHOR_VOTE=%d GE_LEVEL_FILL=%d GE_LEVEL_FLAT=%d GE_VOTE_PAIR=%d GE_VOTE_PAIR_MIN=%.17g GE_BOTTOM_FLAT=%d GE_BOTTOM_FLAT_MARGIN=%.17g\n",
-        ge_wave_bar,ge_wave_clamp,ge_comb_reject,ge_anchor_vote,ge_level_fill,ge_level_flat,ge_vote_pair,ge_vote_pair_min,ge_bottom_flat,ge_bottom_flat_margin);
+    fprintf(f,"# GE_WAVE_BAR=%.17g GE_WAVE_CLAMP=%d GE_COMB_REJECT=%.17g GE_ANCHOR_VOTE=%d GE_LEVEL_FILL=%d GE_LEVEL_FLAT=%d GE_VOTE_PAIR=%d GE_VOTE_PAIR_MIN=%.17g GE_BOTTOM_FLAT=%d GE_BOTTOM_FLAT_MARGIN=%.17g GE_VOTE_BLANKSPOT=%d GE_COMB_STILL=%d\n",
+        ge_wave_bar,ge_wave_clamp,ge_comb_reject,ge_anchor_vote,ge_level_fill,ge_level_flat,ge_vote_pair,ge_vote_pair_min,ge_bottom_flat,ge_bottom_flat_margin,ge_vote_blankspot,ge_comb_still);
 }
 #endif

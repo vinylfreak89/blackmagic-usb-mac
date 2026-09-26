@@ -65,11 +65,13 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 25, including applied offsets, trigger bits (T1=1, unmeasurable=2,
-field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32),
+schema 26, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32,
+still-picture rejection=64),
 comb evidence and HIGH/LOW.
-Untriggered comb evidence is empty unless `--audit-comb` or the anchor vote is enabled; audit does
-not change decisions. Frame diagnostic columns refer to the bottom-field unit,
+Untriggered comb evidence is empty unless `--audit-comb`, the anchor vote, or
+the still-picture comb control is enabled; audit does not change decisions.
+Frame diagnostic columns refer to the bottom-field unit,
 whereas `applied_d1/d2` always refer to the row's own unit. Ineligible observations
 have empty placement keys, with their original counter in `observed_counter`.
 `comb_energies` appends eleven space-separated values in shift order -5..+5,
@@ -102,6 +104,40 @@ Rules are `flat_reference`, `fallback`, or `unknown`. Like `fN_last`, these
 are frame-owned: field 1 comes from `frame_top_unit`, field 2 from this row's
 unit. Non-frame rows leave all evidence empty; with the control off, F is
 unmeasured and its quantiles are empty. A found old-rule bottom is `fallback`.
+
+## Experimental blank spots and still-picture comb (entry 39)
+
+`GE_VOTE_BLANKSPOT` and `GE_COMB_STILL` are independent strict 0/1 startup
+controls, both off by default. Blank spots can only remove vote confidence:
+every skipped field-2 line 286..vote_top_f2-1 must contain a body sample at
+or below that unit's full-width VI median plus 2. The empty range passes.
+No caption information is read by the engine.
+
+With the motion control enabled, same-field integer SAD over 180x640 samples
+selects a vertical shift -5..5 against the previous adjacent non-reset unit.
+Exact ties prefer the smallest absolute shift, then the negative shift.
+Frame evidence joins field 1 from frame_top_unit and field 2 from its own unit.
+Either unknown makes the frame unknown; otherwise any nonzero shift means
+moving. Moving frames retain the ordinary triggers and raw comb measurements
+but cannot adopt, reject, substitute or update held evidence from that comb.
+Other basis invalidation and top/fallback decisions remain active. A still
+frame adds trigger bit 64 when the proposed relative shift's energy ratio is
+at least GE_COMB_REJECT and the floor is enclosed. It then uses the unchanged
+adoption/rejection path (the latter's own threshold remains strict). The
+enabled control guarantees all-frame comb evidence even if the anchor vote
+is off, so toggling audit cannot change its decisions. It reuses the one
+existing search, never performs a second pass, and leaves disabled scheduling
+unchanged. The requested base configuration already has all-frame evidence
+through the anchor vote.
+
+Schema 26 appends `ge_vote_blankspot`, `ge_comb_still`, `vote_blankspot_pass`,
+`vote_blankspot_line` (first failed line, zero when none), `motion_shift_f1`,
+`motion_error_f1`, `motion_error2_f1`, the corresponding f2 columns,
+`picture_motion` (unknown/still/moving), `still_trigger`, and `comb_suppressed`.
+Suppression counts moving frames with an existing comb trigger, including an
+undecided comb. Motion errors are best and runner-up mean absolute differences.
+Unknown/disabled shifts and errors are empty; all frame evidence is empty on
+non-frame rows. These controls are experiments, not enabled production defaults.
 
 ## Optional anchor vote (entry 36)
 

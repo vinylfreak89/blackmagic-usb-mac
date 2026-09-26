@@ -18,7 +18,10 @@ for n in names:base.pop(n,None)
 columns+='ge_anchor_vote ge_level_fill ge_level_flat vote_confident vote_anchor vote_engine_anchor vote_count vote_winner_count vote_top_f1 vote_top_f2 level_top_f1 level_ref_f1 level_mean_f1 level_sd_f1 level_corr_f1 level_accepted_f1 level_top_f2 level_ref_f2 level_mean_f2 level_sd_f2 level_corr_f2 level_accepted_f2'.split()
 columns+='ge_vote_pair ge_vote_pair_min vote_rB vote_pair_pass'.split()
 columns+='ge_bottom_flat ge_bottom_flat_margin bottom_rule_f1 bottom_F_p5_f1 bottom_F_p50_f1 bottom_F_p95_f1 bottom_rule_f2 bottom_F_p5_f2 bottom_F_p50_f2 bottom_F_p95_f2'.split()
+columns+='ge_vote_blankspot ge_comb_still vote_blankspot_pass vote_blankspot_line motion_shift_f1 motion_error_f1 motion_error2_f1 motion_shift_f2 motion_error_f2 motion_error2_f2 picture_motion still_trigger comb_suppressed'.split()
 for name,values in {'GE_BOTTOM_FLAT':('','2','01'),
+                    'GE_VOTE_BLANKSPOT':('','2','01'),
+                    'GE_COMB_STILL':('','2','01'),
                     'GE_BOTTOM_FLAT_MARGIN':('nan','inf','0','-1','3junk'),
                     'GE_VOTE_PAIR':('','2','01'),
                     'GE_VOTE_PAIR_MIN':('nan','inf','-1.01','1.01','.6junk'),
@@ -64,7 +67,7 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
             units={int(r['counter_extended']):r for r in rows if r['counter_extended']}
             assert len(units)==4 and all(r['published']=='1' for r in units.values()),p.stdout
             for r in rows:
-                assert r['schema_version']=='25' and tuple(r[n.lower()] for n in names)==values,r
+                assert r['schema_version']=='26' and tuple(r[n.lower()] for n in names)==values,r
                 assert (r['ge_anchor_vote'],r['ge_level_fill'],r['ge_level_flat'])==('0','0','0'),r
             raw=b''.join(struct.pack('=QII',c,int(units[c]['reset_before']),int(reversed_pair))+y for c in units)
             q=subprocess.run([probe],input=raw,capture_output=True,env=env,timeout=30)

@@ -52,6 +52,7 @@ test-geometry: frameserver_replay $(FIXTURE) $(FIXTURE_LONG) ../field_registrati
 	python3 ../../scripts/test_geometry_controls.py ./frameserver_replay
 	python3 ../../scripts/test_anchor_vote.py ./frameserver_replay
 	python3 ../../scripts/test_bottom_flat.py ./frameserver_replay
+	python3 ../../scripts/test_still_comb.py ./frameserver_replay
 
 .PHONY: test-comb-energies
 test-comb-energies: frameserver_replay
@@ -79,6 +80,7 @@ test-geometry-asan: $(FIXTURE) $(FIXTURE_LONG) ../field_registration/tests/hblan
 	python3 ../../scripts/test_geometry_controls.py ./tests/geometry_replay_asan
 	python3 ../../scripts/test_anchor_vote.py ./tests/geometry_replay_asan
 	python3 ../../scripts/test_bottom_flat.py ./tests/geometry_replay_asan
+	python3 ../../scripts/test_still_comb.py ./tests/geometry_replay_asan
 
 test-geometry-tsan: $(FIXTURE) $(FIXTURE_LONG) ../field_registration/tests/hblank_probe
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o tests/geometry_replay_tsan $(LIBS)
@@ -89,6 +91,7 @@ test-geometry-tsan: $(FIXTURE) $(FIXTURE_LONG) ../field_registration/tests/hblan
 	python3 ../../scripts/test_geometry_controls.py ./tests/geometry_replay_tsan
 	python3 ../../scripts/test_anchor_vote.py ./tests/geometry_replay_tsan
 	python3 ../../scripts/test_bottom_flat.py ./tests/geometry_replay_tsan
+	python3 ../../scripts/test_still_comb.py ./tests/geometry_replay_tsan
 
 tests/replay_completion_test: $(SRCS) tests/replay_completion_test.c frameserver_replay.c ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_completion_test.c -o $@ $(LIBS)

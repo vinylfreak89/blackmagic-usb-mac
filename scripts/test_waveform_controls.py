@@ -13,13 +13,14 @@ for arm,expected in [({},'# GE_WAVE_BAR=0.45000000000000001 GE_WAVE_CLAMP=5 GE_C
         audit=Path(tmp)/'audit.csv'
         p=subprocess.run([binary,str(audit)],input='',text=True,capture_output=True,env=base|arm,timeout=30)
         assert p.returncode==0,(p.returncode,p.stderr)
-        assert p.stdout.splitlines()[0]==audit.read_text().splitlines()[0]==expected+' GE_ANCHOR_VOTE=0 GE_LEVEL_FILL=0 GE_LEVEL_FLAT=0 GE_VOTE_PAIR=0 GE_VOTE_PAIR_MIN=0.59999999999999998 GE_BOTTOM_FLAT=0 GE_BOTTOM_FLAT_MARGIN=3'
+        assert p.stdout.splitlines()[0]==audit.read_text().splitlines()[0]==expected+' GE_ANCHOR_VOTE=0 GE_LEVEL_FILL=0 GE_LEVEL_FLAT=0 GE_VOTE_PAIR=0 GE_VOTE_PAIR_MIN=0.59999999999999998 GE_BOTTOM_FLAT=0 GE_BOTTOM_FLAT_MARGIN=3 GE_VOTE_BLANKSPOT=0 GE_COMB_STILL=0'
 bad={'GE_WAVE_BAR':('nan','inf','1e999','','.5junk'),
      'GE_WAVE_CLAMP':('-1','1.5','','2junk','2147483648'),
      'GE_COMB_REJECT':('0','-1','nan','inf','1e999','','2junk')}
 bad.update({k:('-1','2','','true','01','1junk') for k in ('GE_ANCHOR_VOTE','GE_LEVEL_FILL','GE_LEVEL_FLAT','GE_VOTE_PAIR')})
 bad['GE_VOTE_PAIR_MIN']=('nan','inf','1e999','','.6junk','-1.01','1.01')
 bad['GE_BOTTOM_FLAT']=('-1','2','','true','01','1junk')
+bad['GE_VOTE_BLANKSPOT']=bad['GE_COMB_STILL']=bad['GE_BOTTOM_FLAT']
 bad['GE_BOTTOM_FLAT_MARGIN']=('0','-1','nan','inf','1e999','','3junk')
 for name,values in bad.items():
     for value in values:
