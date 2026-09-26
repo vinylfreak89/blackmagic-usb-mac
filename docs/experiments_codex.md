@@ -1308,3 +1308,30 @@ SHA-256 hashes; publication readback hashes match. Replaced full-tape and
 capture artifacts are recoverable by hard links under
 /private/tmp/bottom-review.FXkjDh. The owner's visual acceptance is pending.
 No additional engine or renderer change was needed for this authorization.
+
+## E-codex-2026-09-26-39 — blank spots and same-field motion
+
+Owner's question: combine A1 and the vertical comb rule without other
+regressions or a massive shift. The two premises are separate: skipped
+field-2 lines must contain blanking, and same-field vertical motion makes
+the cross-field comb an unreliable registration witness. Caption decoding
+is an independent score only, never an input to placement.
+
+Implement two off-by-default controls. A1 removes existing vote confidence
+using the field-2 unit's own full-width VI median and body samples. Motion
+compares adjacent, non-reset units over the specified aperture, with the
+entry's smallest-absolute-shift tie rule. Join field motion to its frame
+under reversed pairing. Still-frame energy rejection adds a trigger to the
+existing comb path; moving frames cannot apply comb verdicts. Do not change
+the census, voting policy, bottom detector, or default path.
+
+Before rendering, require control-off identity against 6778e76 and exact A1
+and motion reference comparisons; identify exact ties and reference rows
+whose previous unit crosses an engine reset. The supplied motion generator
+sorts equal errors by signed shift rather than absolute shift and does not
+filter resets; neither difference authorizes changing the engine definition.
+Measure every placement run and named case, caption scores, capture gates,
+CPU and loss accounting. A reference mismatch beyond accounted ties/reset
+availability, a named-case falsifier, a caption regression below A1, an
+unexplained long placement run, or excess CPU stops publication. Preserve
+the current renders until these gates and complete encoded readbacks pass.
