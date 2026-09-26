@@ -1985,3 +1985,35 @@ line below it. Then re-run the vote with +1 admitted only where rA is low.
 level while keeping cap 2's shift gone, the card at 238/238 and every named case.
 
 **Material.** `fulltape.cap6` with the tagged baseline's sidecar; cap 2's rows as the known case.
+
+### Report on E-claude-2026-09-26-37 — premise refuted; the tops must pair
+
+**Verdict: the premise is refuted, and the data points somewhere better.** The +1 frames do not split.
+**96.5%** (21,642 of 22,430) have low rA, with the field-2 line above their top looking like data (sd ≈ 42,
+not continuing downward): field 1 carries the extra line and **field 2 is right**. The excursions that
+allowing +1 caused came from the **exact** camp. Field 1's extra line (+1) plus field 2 read one line early
+(−1) comes out as an exact match, which is cap 2's mechanism; allowing +1 let the correct votes in to fight
+those misreads. On a real exact match field 1's top and field 2's top are both picture and pair (rB median
++0.90); 1,518 exact frames have rB below 0.4 — one of their "tops" is not picture.
+
+**The rule.** Confident = comb basin, **st within [floor_lo, floor_hi + 1]**, and **rB = corr(field 1's top
+line, field 2's top line) ≥ 0.6** — the two tops must actually pair.
+
+| rB ≥ | gate 1 | common-mode | excursions | 81490 flip |
+|---|---|---|---|---|
+| today (exact match) | 54.3% | 29 | 6 | 18 fr |
+| **0.6** | **68.3%** | **16** | **6** | **18 fr** |
+| 0.7 | 63.8% | 17 | 5 | 51 fr |
+| 0.8 | 54.9% | 13 | 2 | — |
+
+At 0.6 every named case holds: 42650–43500 851/851; the recording boundary reaches +2 at 48249 (was 48352);
+82421–83330 at +2; the 67518 break is clean, {+2:2096, +0:904}, with its 352 stray +1 frames gone and the +0
+span exactly the 904 frames between resets 68613 and 69517.
+
+**Checked on captures 1–4, including cap 1, a different tape:** zero common-mode moves at every threshold from
+0.5 to 0.7; cap 2's shift gone (0/173); the card 238/238; cap 4's one remaining common-mode move removed.
+
+**Stated, not hidden:** 0.6 is read off the full-tape curve, at the point where excursions return to today's
+level; the captures do not constrain it. 0.7 was first proposed and withdrawn after measuring that it slows the
+commercial flip from 18 to 51 frames. Cap 1's gate 1 stays at 31% — its long pause — under every variant.
+Reference: `reference_anchor4.csv` (τ 0.6); rB rounded to 4 dp, six frames within 1e-4 of the threshold.
