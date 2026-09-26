@@ -1145,3 +1145,30 @@ movement gates as operational measures, not absolute-picture ground truth.
 A discrepancy outside the allowed reference rounding stops renders. Otherwise
 render only captures 1–4 with s12c plus pairing, from engine-owned overlays,
 and validate every encoded placement before replacing their review files.
+
+Entry-37 verdict: the specified paired-top confidence and anchor sequences
+match reference 4 on every whole-tape frame. Every supplied reference rB also
+matches at its stated precision, including all six near-threshold cases. The
+previously recorded fill-rounding case at 29281 supplies additional C evidence
+but stays non-confident. Additional correlations on ineligible frames are
+observations, not extra votes. The prose interval 82421..83330 includes two
+anchor-zero endpoints in the reference itself; the build reproduces them.
+The operational movement gates and all four capture cases pass; these fitted
+gates do not establish independent absolute-picture truth. Control-off,
+census, relative-shift and comb-decision identity hold. Normal, ASan/UBSan and
+TSan checks pass. Detailed counts and probes: /private/tmp/vote-pair.FuKNZz.
+
+The first two 16x whole-tape live runs overlapped sanitizer validation and
+failed transport completeness (3,164 holes; then 896 holes and three pool
+drops). They remain findings, not successful runs. After confirming every
+other validation worker had exited, the identical isolated run published all
+86,293 units with zero holes/drops and matched the deterministic engine on
+every decision. This does not establish no-loss 16x operation under competing
+load; replay exit status alone would have concealed both failures.
+
+Captures 1–4 were then rendered from engine 299e878 and renderer de3b92b with
+s12c plus pairing at .6. Their complete encoded-placement readbacks pass;
+922/649/648/650 frames are published with matching sidecars and fresh READY
+status/configuration/hashes. The previous review files remain recoverable in
+the run's replaced-reviews directory. No full-tape encode; owner visual
+acceptance remains pending. The pairing control remains off by default.
