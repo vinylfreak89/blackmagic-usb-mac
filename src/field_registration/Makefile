@@ -35,7 +35,10 @@ tests/geometry_still: geometry_engine.c geometry_engine.h tests/geometry_still.c
 tests/geometry_config: geometry_engine.c geometry_engine.h tests/geometry_config.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/geometry_config.c -o $@ $(LDLIBS) -lpthread
 
-geometry-test: tests/geometry_unit tests/geometry_basis tests/geometry_waveform tests/geometry_rejection tests/geometry_vote tests/geometry_bottom tests/geometry_still tests/geometry_config tests/hblank_probe
+tests/geometry_jitter: geometry_engine.c geometry_engine.h tests/geometry_jitter.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/geometry_jitter.c -o $@ $(LDLIBS)
+
+geometry-test: tests/geometry_unit tests/geometry_basis tests/geometry_waveform tests/geometry_rejection tests/geometry_vote tests/geometry_bottom tests/geometry_still tests/geometry_config tests/geometry_jitter tests/hblank_probe
 	./tests/geometry_unit
 	./tests/geometry_basis
 	./tests/geometry_waveform
@@ -44,6 +47,7 @@ geometry-test: tests/geometry_unit tests/geometry_basis tests/geometry_waveform 
 	./tests/geometry_bottom
 	./tests/geometry_still
 	./tests/geometry_config
+	./tests/geometry_jitter
 	python3 ../../scripts/test_waveform_controls.py ./tests/hblank_probe
 
 libcea608.dylib: cea608.c cea608.h
@@ -56,6 +60,7 @@ test: geometry-test tests/cea608_unit
 	./tests/cea608_unit
 
 clean:
+	rm -f tests/geometry_jitter
 	rm -f tests/hblank_probe tests/geometry_unit tests/geometry_basis tests/geometry_waveform tests/geometry_config
 	rm -f tests/geometry_rejection tests/geometry_vote
 	rm -f tests/geometry_bottom

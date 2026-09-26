@@ -19,6 +19,7 @@ int main(void) {
     assert(c.wave_bar==.45 && c.wave_clamp==5 && c.comb_reject==2 && c.comb_basin_factor==1.5);
     assert(c.vote_window==30 && c.vote_pair_min==.6 && c.bottom_flat_margin==3);
     assert(c.blankspot_tolerance==2 && c.rigid_min==2 && c.rigid_clarity==1.3);
+    assert(c.field2_jitter==0);
     geometry_engine *a=malloc(ge_size()),*b=malloc(ge_size());assert(a && b);
     assert(!ge_init(a,0,NULL));c.wave_bar=2;
     assert(!ge_init(b,0,&c));c.wave_bar=-2;
@@ -38,6 +39,7 @@ int main(void) {
     bad=saved;bad.comb_basin_factor=.9;assert(!ge_config_valid(&bad));
     bad=saved;bad.blankspot_tolerance=-1;assert(!ge_config_valid(&bad));
     bad=saved;bad.rigid_min=0;assert(!ge_config_valid(&bad));
+    bad=saved;bad.field2_jitter=2;assert(!ge_config_valid(&bad));
     /* New numeric controls affect their instrument, not another instance. */
     ge_comb_result comb={.shift=0,.margin=1};
     for(int i=0;i<11;i++)comb.energies[i]=10;
