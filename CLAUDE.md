@@ -374,6 +374,13 @@ recording may live on a cloud volume such as a LucidLink filespace). Filesystem 
 before work begins and selects the path. An unfinished capture remains in scratch for diagnosis/recovery.
 The destination above describes final publication only, not the writer's working directory.
 
+**Review replacement retention (owner, 2026-09-26):** replace superseded renders,
+registration sidecars and render status files outright. Do not retain backup
+links/copies, `replaced-review(s)` directories or `previous.*` files; these
+derived artifacts can be re-rendered. After successful readback and publication,
+remove derived working/staging media. This does not authorize deleting original
+captures or another agent's in-progress files.
+
 **Archival re-registration does NOT require a full-raster master (owner decision, 2026-09-03).**
 The normal recorder records the corrected 480i as an ordinary downstream consumer; a 525-line
 FFV1 master in the service was proposed and rejected as an extreme-edge-case tax. A whole-line

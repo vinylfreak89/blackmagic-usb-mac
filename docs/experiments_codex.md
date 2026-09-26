@@ -1603,3 +1603,7 @@ from logged motion only. Require clean isolated paced replays, complete
 harness identity and encoded-strip readback before replacing any artifacts;
 capture placements must remain identical to the published A1 run. Record the
 idle-worker benchmark separately from the legacy benchmark's stage timings.
+
+Owner publication-retention amendment: no backups of replaced media, sidecars
+or status, and no retained derived staging media after validated publication.
+Existing backup cleanup belongs to Claude; this turn must not touch it.
