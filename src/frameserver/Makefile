@@ -133,8 +133,12 @@ bench: bench-geometry
 
 # Current v11 worker with conditional 2-D motion enabled. Same flags as replay.
 # Supply a real capture and fresh scratch output paths; never run alongside an encode.
-tests/geometry_worker_bench: $(SRCS) frameserver_replay.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c ../field_registration/geometry_tool_controls.h
+tests/geometry_worker_bench: $(SRCS) frameserver_replay.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c ../field_registration/geometry_tool_controls.h ../field_registration/tests/geometry_rigid_reference.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c ../field_registration/geometry_engine.c,$(SRCS)) tests/geometry_worker_bench.c tests/geometry_bench_engine.c -o $@ $(LIBS)
+
+# Captured-raster scalar-oracle check. Timings include the oracle: not a bench.
+tests/geometry_worker_verify: $(SRCS) frameserver_replay.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c ../field_registration/geometry_tool_controls.h ../field_registration/tests/geometry_rigid_reference.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DGE_RIGID_VERIFY $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c ../field_registration/geometry_engine.c,$(SRCS)) tests/geometry_worker_bench.c tests/geometry_bench_engine.c -o $@ $(LIBS)
 
 .PHONY: bench-geometry
 bench-geometry: tests/geometry_worker_bench
@@ -149,6 +153,7 @@ clean:
 	rm -f tests/audio_queue_flags_test
 	rm -f tests/audio_publisher_asan tests/audio_publisher_tsan
 	rm -f tests/geometry_worker_bench
+	rm -f tests/geometry_worker_verify
 	rm -f frameserver_replay tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test tests/test_asan tests/test_tsan tests/test_smallring
 
 frameserver_replay tests/frameserver_test tests/replay_completion_test: pairing_schedule.h

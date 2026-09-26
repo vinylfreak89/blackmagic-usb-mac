@@ -13,7 +13,7 @@
 
 enum { BENCH_CAPACITY=100000 };
 typedef struct {
-    uint64_t counter,total,classifier,engine,publisher;
+    uint64_t counter,total,classifier,engine,publisher,rigid;
     unsigned searches;
 } geometry_sample;
 static geometry_sample samples[BENCH_CAPACITY],current;
@@ -32,6 +32,11 @@ static size_t classifier_count;
 static FILE *classifier_trace;
 static int suppress_begin_segment;
 extern unsigned geometry_bench_searches(const geometry_engine *);
+extern uint64_t geometry_bench_rigid_take(void);
+#ifdef GE_RIGID_VERIFY
+extern void geometry_bench_rigid_unit(uint64_t);
+extern uint64_t geometry_bench_rigid_verified(void);
+#endif
 static uint64_t cpu_ns(void) {
     struct timespec t;assert(!clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t));
     return (uint64_t)t.tv_sec*1000000000u+(uint64_t)t.tv_nsec;
@@ -55,8 +60,12 @@ static bool timed_classify(signal_state *s,const unit_video_observation *o,
 }
 static unsigned timed_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_decision out[2]) {
     if(classifier_trace && classifier_count)classifier_samples[classifier_count-1].reset=reset;
+#ifdef GE_RIGID_VERIFY
+    geometry_bench_rigid_unit(c);
+#endif
     uint64_t begin=cpu_ns();unsigned n=ge_push(g,y,c,reset,out);
     current.engine+=cpu_ns()-begin;current.counter=c;
+    current.rigid=geometry_bench_rigid_take();
     current.searches=geometry_bench_searches(g);sample_active=1;return n;
 }
 static int timed_publish(fp_publisher *p,const uint8_t *u,size_t n,uint64_t c,
@@ -97,15 +106,16 @@ static int ns_compare(const void *a,const void *b) {
 }
 static void report_group(int searches) {
     uint64_t *v=malloc(sample_count*sizeof *v);assert(v);
-    const char *names[]={"worker","classifier","engine","publisher","other"};
-    for(unsigned stage=0;stage<5;stage++) {
+    const char *names[]={"worker","classifier","engine","publisher","other","rigid","engine_other"};
+    for(unsigned stage=0;stage<7;stage++) {
         size_t n=0;
         for(size_t i=0;i<sample_count;i++) {
             geometry_sample *s=samples+i;
             if(searches>=0 && s->searches!=(unsigned)searches)continue;
             uint64_t times[]={s->total,s->classifier,s->engine,s->publisher,
-                s->total-s->classifier-s->engine-s->publisher};
+                s->total-s->classifier-s->engine-s->publisher,s->rigid,s->engine-s->rigid};
             assert(s->total>=s->classifier+s->engine+s->publisher);
+            assert(s->engine>=s->rigid);
             v[n++]=times[stage];
         }
         if(!n)continue;
@@ -126,6 +136,9 @@ int main(int argc,char **argv) {
         } else {fputs("unknown benchmark option\n",stderr);return 2;}
     }
     if(argc<3){fputs("usage: geometry_worker_bench [--classifier-trace CSV] [--suppress-begin-segment] TIMINGS CAPTURE [replay arguments]\n",stderr);return 2;}
+#ifdef GE_RIGID_VERIFY
+    fputs("DIAGNOSTIC ONLY: timings include scalar rigid oracle; not a performance run\n",stderr);
+#endif
     if(suppress_begin_segment)fputs("DIAGNOSTIC ONLY: masking classifier BEGIN_SEGMENT after tracing; do not publish this sidecar\n",stderr);
     FILE *f=fopen(argv[1],"wx");if(!f){perror("benchmark timings");return 2;}
     /* Output location is not engine configuration; no environment is needed. */
@@ -152,16 +165,21 @@ int main(int argc,char **argv) {
         }
         int failed=ferror(classifier_trace);if(fclose(classifier_trace)||failed)return 2;
     }
-    fprintf(f,"counter,worker_ms,classifier_ms,engine_ms,publisher_ms,other_ms,rigid_fields\n");
+    fprintf(f,"counter,worker_ms,classifier_ms,engine_ms,publisher_ms,other_ms,rigid_fields,rigid_ms,engine_other_ms\n");
     size_t searched=0;
     for(size_t i=0;i<sample_count;i++) {
         geometry_sample *s=samples+i;searched+=s->searches!=0;
-        fprintf(f,"%llu,%.6f,%.6f,%.6f,%.6f,%.6f,%u\n",(unsigned long long)s->counter,
+        fprintf(f,"%llu,%.6f,%.6f,%.6f,%.6f,%.6f,%u,%.6f,%.6f\n",(unsigned long long)s->counter,
             s->total/1e6,s->classifier/1e6,s->engine/1e6,s->publisher/1e6,
-            (s->total-s->classifier-s->engine-s->publisher)/1e6,s->searches);
+            (s->total-s->classifier-s->engine-s->publisher)/1e6,s->searches,
+            s->rigid/1e6,(s->engine-s->rigid)/1e6);
     }
     int failed=ferror(f);if(fclose(f) || failed)return 2;
     printf("GE-WORKER-BENCH units=%zu rigid_units=%zu rigid_pct=%.6f\n",sample_count,searched,100.0*searched/sample_count);
     for(int n=-1;n<=2;n++)report_group(n);
+#ifdef GE_RIGID_VERIFY
+    printf("GE-WORKER-VERIFY rigid_fields=%llu differences=0\n",
+        (unsigned long long)geometry_bench_rigid_verified());
+#endif
     return 0;
 }

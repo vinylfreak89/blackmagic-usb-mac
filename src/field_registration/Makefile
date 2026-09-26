@@ -32,10 +32,16 @@ tests/geometry_bottom: geometry_engine.c geometry_engine.h tests/geometry_bottom
 tests/geometry_still: geometry_engine.c geometry_engine.h tests/geometry_still.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/geometry_still.c -o $@ $(LDLIBS)
 
+tests/geometry_rigid: geometry_engine.c geometry_engine.h tests/geometry_rigid.c tests/geometry_rigid_reference.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/geometry_rigid.c -o $@ $(LDLIBS)
+
+tests/geometry_rigid_scalar: geometry_engine.c geometry_engine.h tests/geometry_rigid.c tests/geometry_rigid_reference.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -U__ARM_NEON tests/geometry_rigid.c -o $@ $(LDLIBS)
+
 tests/geometry_config: geometry_engine.c geometry_engine.h tests/geometry_config.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/geometry_config.c -o $@ $(LDLIBS) -lpthread
 
-geometry-test: tests/geometry_unit tests/geometry_basis tests/geometry_waveform tests/geometry_rejection tests/geometry_vote tests/geometry_bottom tests/geometry_still tests/geometry_config tests/hblank_probe
+geometry-test: tests/geometry_unit tests/geometry_basis tests/geometry_waveform tests/geometry_rejection tests/geometry_vote tests/geometry_bottom tests/geometry_still tests/geometry_rigid tests/geometry_rigid_scalar tests/geometry_config tests/hblank_probe
 	./tests/geometry_unit
 	./tests/geometry_basis
 	./tests/geometry_waveform
@@ -43,6 +49,8 @@ geometry-test: tests/geometry_unit tests/geometry_basis tests/geometry_waveform 
 	./tests/geometry_vote
 	./tests/geometry_bottom
 	./tests/geometry_still
+	./tests/geometry_rigid
+	./tests/geometry_rigid_scalar
 	./tests/geometry_config
 	python3 ../../scripts/test_waveform_controls.py ./tests/hblank_probe
 
@@ -60,4 +68,5 @@ clean:
 	rm -f tests/geometry_rejection tests/geometry_vote
 	rm -f tests/geometry_bottom
 	rm -f tests/geometry_still
+	rm -f tests/geometry_rigid tests/geometry_rigid_scalar
 	rm -f libcea608.dylib tests/cea608_unit

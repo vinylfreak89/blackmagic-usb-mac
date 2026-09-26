@@ -2,6 +2,9 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(__aarch64__) && defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
 
 static const ge_config defaults = {
     .wave_bar=.45, .wave_clamp=5, .comb_reject=2, .comb_basin_factor=1.5,
@@ -89,9 +92,39 @@ ge_vertical_motion ge_motion_measure(const uint8_t *current,const uint8_t *previ
     return (ge_vertical_motion){.known=1,.shift=best-5,
         .error=sums[best]/(180.0*640),.second_error=sums[second]/(180.0*640)};
 }
-ge_rigid_motion ge_rigid_measure(const uint8_t *current,const uint8_t *previous,int field) {
-    unsigned sums[11][17],best=UINT32_MAX,far=UINT32_MAX;
-    int bx=0,by=0,off=19+263*field;
+static void rigid_sums(const uint8_t *current,const uint8_t *previous,int field,
+                       unsigned sums[11][17]) {
+    int off=19+263*field;
+#if defined(__aarch64__) && defined(__ARM_NEON)
+    /* Reuse each previous vector and the current row's even/odd streams for
+     * all 17 dx candidates. Each vector still represents exactly 16 of the
+     * original stride-2 samples. No candidate pruning: clarity needs far SADs.
+     *
+     * Per row, each u16 lane sums 20 * 2 * 255 <= 10200. Widen the horizontal
+     * reduction (a row can reach 81600); the complete u32 SAD <= 14688000.
+     * Loads reach at most column 703, within the 720-byte row; only the
+     * selected columns 40+dx,42+dx,...,678+dx contribute. */
+    memset(sums,0,11*17*sizeof sums[0][0]);
+    for(int dy=-5;dy<=5;dy++)for(int r=40;r<220;r++) {
+        uint16x8_t row[17]={0};
+        const uint8_t *a=current+(off+r+dy)*720+32,*b=previous+(off+r)*720+40;
+        for(int x=0;x<640;x+=32) {
+            uint8x16x2_t lo=vld2q_u8(a+x),hi=vld2q_u8(a+x+32);
+            uint8x16_t target=vld2q_u8(b+x).val[0];
+            /* vext offsets must be immediate constants. Index 2*n is dx
+             * -8+2*n; index 2*n+1 is dx -7+2*n. */
+#define RIGID_PAIR(n) \
+            row[2*(n)]=vpadalq_u8(row[2*(n)],vabdq_u8(vextq_u8(lo.val[0],hi.val[0],n),target)); \
+            row[2*(n)+1]=vpadalq_u8(row[2*(n)+1],vabdq_u8(vextq_u8(lo.val[1],hi.val[1],n),target))
+            RIGID_PAIR(0);RIGID_PAIR(1);RIGID_PAIR(2);RIGID_PAIR(3);
+            RIGID_PAIR(4);RIGID_PAIR(5);RIGID_PAIR(6);RIGID_PAIR(7);
+#undef RIGID_PAIR
+            row[16]=vpadalq_u8(row[16],vabdq_u8(vextq_u8(lo.val[0],hi.val[0],8),target));
+        }
+        for(int i=0;i<17;i++)sums[dy+5][i]+=vaddlvq_u16(row[i]);
+    }
+#else
+    /* Portable scalar path: identical candidate sums and bounds. */
     for(int dy=-5;dy<=5;dy++)for(int dx=-8;dx<=8;dx++) {
         unsigned sum=0;
         for(int r=40;r<220;r++) {
@@ -99,13 +132,32 @@ ge_rigid_motion ge_rigid_measure(const uint8_t *current,const uint8_t *previous,
             for(int x=0;x<640;x+=2){int d=(int)a[x]-b[x];sum+=(unsigned)(d<0?-d:d);}
         }
         sums[dy+5][dx+8]=sum;
+    }
+#endif
+}
+ge_rigid_motion ge_rigid_measure(const uint8_t *current,const uint8_t *previous,int field) {
+#ifdef GE_RIGID_PROFILE
+    uint64_t profile_start=geometry_bench_rigid_begin();
+#endif
+    unsigned sums[11][17],best=UINT32_MAX,far=UINT32_MAX;
+    int bx=0,by=0;
+    rigid_sums(current,previous,field,sums);
+    for(int dy=-5;dy<=5;dy++)for(int dx=-8;dx<=8;dx++) {
+        unsigned sum=sums[dy+5][dx+8];
         /* Reference order: dy first, dx second; an exact tie keeps the first. */
         if(sum<best){best=sum;bx=dx;by=dy;}
     }
     for(int dy=-5;dy<=5;dy++)for(int dx=-8;dx<=8;dx++)
         if((abs(dx-bx)>=2 || abs(dy-by)>=2) && sums[dy+5][dx+8]<far)far=sums[dy+5][dx+8];
-    return (ge_rigid_motion){.known=1,.dx=bx,.dy=by,.error=best/(180.0*320),
+    ge_rigid_motion result={.known=1,.dx=bx,.dy=by,.error=best/(180.0*320),
         .far_error=far/(180.0*320),.clarity=best?(double)far/best:far?INFINITY:1};
+#ifdef GE_RIGID_PROFILE
+    geometry_bench_rigid_end(profile_start);
+#endif
+#ifdef GE_RIGID_VERIFY
+    geometry_bench_rigid_check(current,previous,field,&result);
+#endif
+    return result;
 }
 static int rigid_vertical(const ge_rigid_motion *r,const ge_config *c) {
     return r->known && r->dx==0 && abs(r->dy)>=c->rigid_min && r->clarity>=c->rigid_clarity;
