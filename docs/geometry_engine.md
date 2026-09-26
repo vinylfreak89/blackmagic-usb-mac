@@ -65,7 +65,7 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 27, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 28, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32,
 still-picture rejection=64),
 comb evidence and HIGH/LOW.
@@ -143,6 +143,23 @@ trigger, including an undecided comb. Schema 27 appends `ge_comb_motion_min`
 on every row. Motion errors are best and runner-up mean absolute differences.
 Unknown/disabled shifts and errors are empty; all frame evidence is empty on
 non-frame rows. These controls are experiments, not enabled production defaults.
+
+`GE_COMB_RIGID` (default 0) replaces the motion-minimum suppression predicate
+when `GE_COMB_STILL` is enabled. A field whose vertical |shift| is at least
+2 also gets a 2-D SAD search (dy -5..5, dx -8..8), aperture rows 40..219,
+body columns 40..678 at step 2. Exact ties take the first dy/dx in scan order.
+Clarity is the minimum SAD at least two away in either axis divided by the
+best SAD; a zero best with positive far SAD is infinite, two zero SADs give
+1 (no distinction). Both frame-owned fields must have dx=0, |dy|>=2 and
+clarity >= `GE_COMB_RIGID_CLARITY` (default 1.3, configurable finite >=1).
+Still triggering and every other moving frame's comb authority are unchanged.
+The rigid control is inert with STILL off; its disabled path adds no search.
+
+Schema 28 appends `ge_comb_rigid`, `ge_comb_rigid_clarity` and each field's
+`rigid_dx_f1`, `rigid_dy_f1`, `rigid_sad_f1`, `rigid_sad_far_f1`,
+`rigid_clarity_f1` (and f2 equivalents). Measurements are frame-owned, empty
+when not run, full-precision doubles. `comb_suppressed` remains the per-frame
+withheld verdict; `comb_ran` still means an existing trigger, not adoption.
 
 ## Optional anchor vote (entry 36)
 

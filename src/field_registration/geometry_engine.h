@@ -22,6 +22,8 @@ extern double ge_bottom_flat_margin; /* default 3; inclusive, tolerance 1e-9 */
 extern int ge_vote_blankspot; /* default 0; skipped field-2 rows need VI blanking */
 extern int ge_comb_still; /* default 0; same-field motion gates comb authority */
 extern int ge_comb_motion_min; /* default 1; positive whole lines; 99 withholds none */
+extern int ge_comb_rigid; /* default 0; replaces motion_min when comb_still is on */
+extern double ge_comb_rigid_clarity; /* default 1.3; inclusive far/best SAD ratio */
 #define GE_VOTE_WINDOW 30
 #define GE_COMB_SELECTION_MARGIN 1.5
 typedef struct { int first; double step, max_step; } ge_wave_result;
@@ -47,6 +49,10 @@ typedef struct {
     double error, second_error; /* exact integer SAD / (180*640) */
     int known, shift;
 } ge_vertical_motion;
+typedef struct {
+    int known, dx, dy;
+    double error, far_error, clarity; /* integer SAD / (180*320); far is >=2 in either axis */
+} ge_rigid_motion;
 typedef enum { GE_PICTURE_UNKNOWN, GE_PICTURE_STILL, GE_PICTURE_MOVING } ge_picture_motion;
 typedef struct {
     int shift, decided;
@@ -70,6 +76,7 @@ typedef struct {
     ge_level_result level[2]; /* supplemental evidence, never used by classify */
     ge_bottom_evidence bottom_evidence[2];
     ge_vertical_motion vertical[2]; /* this unit against its adjacent predecessor */
+    ge_rigid_motion rigid[2]; /* conditional 2-D measurement on the same unit pair */
 } ge_features;
 typedef struct {
     uint64_t counter, top_unit;
@@ -96,6 +103,7 @@ typedef struct {
     ge_picture_motion picture_motion;
     int still_trigger, comb_suppressed;
     int vote_blankspot_measured, vote_blankspot_pass, vote_blankspot_line;
+    ge_rigid_motion rigid[2]; /* frame-owned, field 1 from top_unit */
 } ge_decision;
 typedef struct geometry_engine geometry_engine;
 size_t ge_size(void);
@@ -118,6 +126,7 @@ ge_comb_result ge_comb(const uint8_t *top, const uint8_t *bottom);
  * A proposed shift outside -5..5 has no measured energy: ratio is NAN. */
 ge_comb_evidence ge_comb_examine(const ge_comb_result *, int proposed);
 ge_vertical_motion ge_motion_measure(const uint8_t *current,const uint8_t *previous,int field);
+ge_rigid_motion ge_rigid_measure(const uint8_t *current,const uint8_t *previous,int field);
 const char *ge_picture_motion_name(ge_picture_motion);
 /* Returns 0..2 completed unit decisions, in source order. Reset applies before
  * the first frame using this unit, even when that frame belongs to its predecessor.

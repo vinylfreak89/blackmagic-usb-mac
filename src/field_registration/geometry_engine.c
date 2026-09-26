@@ -13,6 +13,8 @@ int ge_bottom_flat=0;
 double ge_bottom_flat_margin=3;
 int ge_vote_blankspot=0,ge_comb_still=0;
 int ge_comb_motion_min=1;
+int ge_comb_rigid=0;
+double ge_comb_rigid_clarity=1.3;
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
@@ -77,6 +79,27 @@ ge_vertical_motion ge_motion_measure(const uint8_t *current,const uint8_t *previ
     for(int i=0;i<11;i++)if(i!=best && (second<0 || sums[i]<sums[second]))second=i;
     return (ge_vertical_motion){.known=1,.shift=best-5,
         .error=sums[best]/(180.0*640),.second_error=sums[second]/(180.0*640)};
+}
+ge_rigid_motion ge_rigid_measure(const uint8_t *current,const uint8_t *previous,int field) {
+    unsigned sums[11][17],best=UINT32_MAX,far=UINT32_MAX;
+    int bx=0,by=0,off=19+263*field;
+    for(int dy=-5;dy<=5;dy++)for(int dx=-8;dx<=8;dx++) {
+        unsigned sum=0;
+        for(int r=40;r<220;r++) {
+            const uint8_t *a=current+(off+r+dy)*720+40+dx,*b=previous+(off+r)*720+40;
+            for(int x=0;x<640;x+=2){int d=(int)a[x]-b[x];sum+=(unsigned)(d<0?-d:d);}
+        }
+        sums[dy+5][dx+8]=sum;
+        /* Reference order: dy first, dx second; an exact tie keeps the first. */
+        if(sum<best){best=sum;bx=dx;by=dy;}
+    }
+    for(int dy=-5;dy<=5;dy++)for(int dx=-8;dx<=8;dx++)
+        if((abs(dx-bx)>=2 || abs(dy-by)>=2) && sums[dy+5][dx+8]<far)far=sums[dy+5][dx+8];
+    return (ge_rigid_motion){.known=1,.dx=bx,.dy=by,.error=best/(180.0*320),
+        .far_error=far/(180.0*320),.clarity=best?(double)far/best:far?INFINITY:1};
+}
+static int rigid_vertical(const ge_rigid_motion *r) {
+    return r->known && r->dx==0 && abs(r->dy)>=2 && r->clarity>=ge_comb_rigid_clarity;
 }
 const char *ge_picture_motion_name(ge_picture_motion s) {
     static const char *const names[]={"unknown","still","moving"};return names[s];
@@ -355,6 +378,7 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     o.bottom[0]=t->bottom[0];o.bottom[1]=b->bottom[1];
     o.motion[0]=t->motion[0];o.motion[1]=b->motion[1];
     o.vertical[0]=t->vertical[0];o.vertical[1]=b->vertical[1];
+    o.rigid[0]=t->rigid[0];o.rigid[1]=b->rigid[1];
     if(o.vertical[0].known && o.vertical[1].known)
         o.picture_motion=o.vertical[0].shift || o.vertical[1].shift?GE_PICTURE_MOVING:GE_PICTURE_STILL;
     /* A held correction belongs to these two frame tops, not to a transport
@@ -390,7 +414,8 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
         }
     }
     o.comb_suppressed=ge_comb_still && o.picture_motion==GE_PICTURE_MOVING && o.comb_ran &&
-        (abs(o.vertical[0].shift)>=ge_comb_motion_min || abs(o.vertical[1].shift)>=ge_comb_motion_min);
+        (ge_comb_rigid?(rigid_vertical(o.rigid) && rigid_vertical(o.rigid+1)):
+         (abs(o.vertical[0].shift)>=ge_comb_motion_min || abs(o.vertical[1].shift)>=ge_comb_motion_min));
     if(o.comb_ran && !o.comb_suppressed && o.comb.decided) {
         o.relative_source=GE_SOURCE_COMB;
         d=o.comb.shift;dknown=1;
@@ -430,7 +455,11 @@ unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_dec
     ge_features *f=&g->current;ge_measure(y,f);
     if(adjacent && !reset)for(int k=0;k<2;k++)f->motion[k]=classify(&g->previous,f,k);
     if(ge_comb_still && adjacent && !reset)
-        for(int k=0;k<2;k++)f->vertical[k]=ge_motion_measure(y,g->previous_y,k);
+        for(int k=0;k<2;k++) {
+            f->vertical[k]=ge_motion_measure(y,g->previous_y,k);
+            if(ge_comb_rigid && abs(f->vertical[k].shift)>=2)
+                f->rigid[k]=ge_rigid_measure(y,g->previous_y,k);
+        }
     if(reset || !adjacent)reset_frame_state(g);
     if(!g->reverse) {
         out[n]=frame(g,y,y,f,f,c,c);out[n].reset_before=reset;

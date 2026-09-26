@@ -31,6 +31,41 @@ static void motion(void) {
     }
     ge_comb_still=0;
 }
+static void rigid_motion(void) {
+    randomize();
+    const int shifts[][2]={{0,2},{0,-3},{-8,-5},{8,5},{3,2}};
+    for(int k=0;k<2;k++)for(unsigned i=0;i<sizeof shifts/sizeof *shifts;i++) {
+        int dx=shifts[i][0],dy=shifts[i][1],off=19+263*k;
+        memset(z,0,sizeof z); /* no second zero-SAD unshifted copy on even columns */
+        for(int r=40;r<220;r++)for(int x=40;x<680;x+=2)
+            z[(off+r+dy)*720+x+dx]=y[(off+r)*720+x];
+        ge_rigid_motion q=ge_rigid_measure(z,y,k);
+        assert(q.known && q.dx==dx && q.dy==dy && q.error==0 && q.far_error>0 && isinf(q.clarity));
+        assert(rigid_vertical(&q)==(dx==0));
+    }
+    memset(z,7,sizeof z);ge_rigid_motion q=ge_rigid_measure(z,z,0);
+    assert(q.dx==-8 && q.dy==-5 && q.error==0 && q.far_error==0 && q.clarity==1);
+    q=(ge_rigid_motion){.known=1,.dy=2,.clarity=1.3};assert(rigid_vertical(&q));
+    q.clarity=nextafter(1.3,0);assert(!rigid_vertical(&q));
+    q.clarity=2;q.dy=1;assert(!rigid_vertical(&q));
+    q.dy=-2;q.known=0;assert(!rigid_vertical(&q));
+    ge_comb_still=ge_comb_rigid=1;
+    memcpy(z,y,sizeof z);
+    for(int k=0;k<2;k++)for(int r=40;r<220;r++)
+        memcpy(z+(19+263*k+r+(k?-3:2))*720+40,y+(19+263*k+r)*720+40,640);
+    for(int reverse=0;reverse<2;reverse++) {
+        geometry_engine g;ge_decision o[2];ge_init(&g,reverse,0);
+        ge_push(&g,y,100,0,o);assert(!g.previous.rigid[0].known);
+        ge_push(&g,z,101,0,o);
+        assert(o[0].rigid[0].known && o[0].rigid[0].dy==2);
+        assert(o[0].rigid[1].known==!reverse);
+        ge_push(&g,y,102,0,o);
+        assert(o[0].rigid[0].dy==-2 && o[0].rigid[1].dy==(reverse?-3:3));
+        ge_push(&g,z,103,1,o);assert(!o[0].rigid[0].known);
+        ge_push(&g,y,105,0,o);assert(!g.previous.rigid[0].known);
+    }
+    ge_comb_still=ge_comb_rigid=0;
+}
 static void blankspots(void) {
     memset(y,200,sizeof y);memset(b,200,sizeof b);
     ge_features t={0},f={0};t.first[0]=25;f.first[1]=288;f.blank[1]=1;
@@ -90,5 +125,23 @@ static void authority(void) {
     int d=-1,d2=2;reject_placement(&g,&o,&d,&d2);
     assert(!o.rejected && o.rejection.basin && o.rejection.ratio==10 && g.held==1 && g.basis_valid);
     ge_comb_still=0;ge_comb_motion_min=1;
+    /* Both frame-owned 2-D results must pass; vertical-only magnitude cannot rescue. */
+    ge_comb_still=ge_comb_rigid=1;
+    t.motion[0]=GE_UNKNOWN;t.vertical[0].known=f.vertical[1].known=1;
+    t.vertical[0].shift=f.vertical[1].shift=2;
+    for(int state=0;state<7;state++) {
+        t.rigid[0]=f.rigid[1]=(ge_rigid_motion){.known=1,.dy=2,.clarity=1.3};
+        if(state==1)t.rigid[0].known=0;
+        if(state==2)f.rigid[1].known=0;
+        if(state==3)t.rigid[0].dx=1;
+        if(state==4)f.rigid[1].dy=1;
+        if(state==5)f.rigid[1].clarity=nextafter(1.3,0);
+        if(state==6)t.vertical[0].known=0;
+        ge_init(&g,0,1);ge_decision d=frame(&g,y,b,&t,&f,101,100);
+        assert(d.comb_suppressed==(state==0));
+        if(!state)assert(d.published_d==-1 && !d.held && !d.rejected);
+        else assert(d.published_d==0 && d.held==1);
+    }
+    ge_comb_still=ge_comb_rigid=0;
 }
-int main(void){motion();blankspots();authority();puts("GEOMETRY-STILL PASS");}
+int main(void){motion();rigid_motion();blankspots();authority();puts("GEOMETRY-STILL PASS");}
