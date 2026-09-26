@@ -1436,3 +1436,48 @@ withdrawn. Require overall score at least 93.94%, named anchor/still results,
 explained long change runs and the capture gates before any encode. Prefer
 threshold 2 only if it passes and scores no worse than 99. No threshold tuning
 or further exception is authorized; if neither passes, preserve all media.
+
+Entry-39 amendment verdict: neither variant meets the caption gate; render
+nothing. Default threshold 1 reproduces compiled 3413040 byte-for-byte on
+86,293 whole-tape decisions and 919/649/649/650 capture units. Measurement
+differences are zero in all arms. Published-baseline, A1 and prior-min1 CSV
+comparisons also have zero differing rows. Schema 27 adds ge_comb_motion_min;
+the two experimental enabling controls remain off. Implementation edb551c.
+
+On the same 48,611 caption-scored frames, baseline / A1 / min99 / min2 give
+45,441 / 45,665 / 45,653 / 45,018 correct (93.478842% / 93.939643% /
+93.914958% / 92.608669%). The no-suppression arm gains one and loses thirteen
+against A1: gain 49290; losses 89476–89486 and 89490–89491, immediately before
+the specified credits interval. Min2 gains 493 and loses 1,140. In 60843–60931
+it improves 73/89 to 82/89; in 89492–90721 it improves 148/1,227 to 570/1,227.
+Those local gains do not rescue its overall falsifier. In 82073–82159 the
+correct count stays zero while 85 labels move from off-one to off-two-plus;
+84496–84570 has no caption labels and is explicitly unscored. Caption scoring
+remains an independent instrument, not an engine input or visual truth.
+
+Both arms retain all five false-move removals, zero delay on the six +2 starts,
+73/75 and 71/71 still-frame minimum placements, 6/0/0 common-mode/excursion/
+one-frame counts, 66.8463% confidence, and every capture gate. Min99 changes
+334 relative shifts and min2 changes 2,718; each changes the same 575 A1
+anchors. Capture placement differences are 0/0/0/0 for min99 and 0/58/3/2
+for min2. The still-trigger/withheld counts are 2,745/0 and 2,834/4,298.
+Whole-tape engine thread-CPU median/p95 ms are .390250/.430042 and
+.389958/.429333. Neither threshold nor any other policy was fitted further.
+
+All four configurations' six requested measures, per-span caption categories,
+per-capture CPU and every long change run with its state-path attribution are
+in /private/tmp/entry39-motion.4OnXJz/REPORT.md and comparison.json. Per-frame
+changes and caption gains/losses are preserved there as CSV/JSON. Long-run
+attribution describes the policy path, not independent evidence of quality.
+No media replay/encode, publication or status replacement was started after
+the failed gate; the current approved renders remain intact. The stop output:
+
+```
+VARIANT_A CAPTION_GATE_FAILED: 93.914957520% < 93.940000000%
+VARIANT_B CAPTION_GATE_FAILED: 92.608668820% < 93.940000000%
+```
+
+Unit, worker integration, ASan/UBSan and TSan checks pass, including each
+field independently crossing the inclusive threshold and all three settings
+under aligned/reversed pairing. The default identity, not a retuned reference,
+establishes that the threshold control did not change the previous arm.

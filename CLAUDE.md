@@ -1602,6 +1602,8 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   exact motion-census reproduction did not validate blanket suppression of
   cross-field comb verdicts on moving frames. That policy reduced fixture A's
   caption agreement from 93.94% (A1 alone) to 84.96%, with unchanged top census.
+  Restricting suppression to shifts of at least two lines improved that score
+  to 92.61%, but still failed A1's gate; the still-trigger-only arm scored 93.915%.
 - **Experiment commitments (owner, 2026-09-19).** Before a test meant to decide
   something, the agent appends an entry to its own ledger (`docs/experiments_claude.md`,
   `docs/experiments_codex.md`) and commits it: the question in the owner's words; the
