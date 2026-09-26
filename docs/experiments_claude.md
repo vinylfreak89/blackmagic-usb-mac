@@ -1954,3 +1954,33 @@ rule for losing exactly that).
 **Material.** The whole tape and captures 1–4. Built on capture 2 and the whole tape; captures 1, 3
 and 4 were not used to build it. Capture 4's picture reaches line 262 throughout, so no reference ever
 qualifies there; it must come out identical.
+
+### Amendment to E-claude-2026-09-26-38 (2026-09-26) — the flat reference comes from the same frame
+
+**The method failed in simulation, before anything was built.** Run over the whole-tape rows, the
+30-frame window changed 2,547 bottoms, many of them flat lines called picture (66106–66206,
+48253–48440, 53728). The flat band's level wanders: its 30-frame range is ≤2 codes in 93% of
+windows but reaches 10, and a window median lags it. A first run also locked up: it admitted a
+reference only when its own bottom lay above the reference line, so a tape-start grey-mute seed
+could never be replaced. The premise's comparison held; learning the level over time did not.
+
+**Physical reason for the amendment.** The band is visible in the frame being judged, and within a
+frame its rows differ from its lowest line by at most 2 codes on 99.99% of 170,148 comparisons.
+That comes from whole-code quantization and a steady ~1-code vertical gradient.
+
+**Amended rule.** F is this field's lowest scanned line (262 / 525), qualified when p95 − p5 ≤ 4.
+If F qualifies, scan upward from the line above it; a row is picture iff p50 − F50 ≥ 3,
+p95 − F95 ≥ 3 or p5 − F5 ≤ −3. No such row means the bottom is unknown (0). If F does not qualify,
+today's test decides. The margin is fixed at 3, the measured ceiling plus one. The owner chose that
+("Fixed 3, recorded") after six learned margins were simulated. The band's own spread over 30 frames
+learned 2 and called the band picture. Gap-in-histogram learners reached 3 on up to 94% of frames,
+but learned 2 while filling and rose to 8 where dark picture sat 4 codes above the band for hundreds
+of frames (84262–84288). A persistent small difference cannot be told from noise without a prior.
+Measured on fixture A through this deck; recheck the ceiling on other material. Learning stays open
+as a separate entry.
+
+**What it should improve.** The simulation changes 23 field-1 and ~836 field-2 bottoms. Samples:
+uniform picture recovered to 522, specked flat rows rejected. Every named case in the entry lands.
+
+**What it must not break.** The entry's falsifier, unchanged. Genuine unknowns are expected: 15
+field-frames where picture sits at the band's own level (71352–71356, 72256–72260).
