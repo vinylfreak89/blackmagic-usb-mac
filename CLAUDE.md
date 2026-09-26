@@ -1212,6 +1212,11 @@ substantial measured real-time headroom after registration works. This remains
 a separate presentation feature, not evidence of source geometry and not an
 instruction to build it during the present reset. Recheck cost and the intended
 output before implementing; the previous timing figures were specific runs.
+Detector coverage caution: capture 1 counter 7100, field 2 NTSC line 525,
+has VI median 1 and 130 samples within +/-3 in columns 8..199, but its longest
+consecutive run in columns 8..715 is only 97 (8..104; column 105 is code 5).
+Thus a >=100-consecutive-sample rule misses this observed displaced row despite
+its sustained picture run. A blank-sample count is not a contiguous-run length.
 
 ## 10. Delivery: OBS virtual camera
 
