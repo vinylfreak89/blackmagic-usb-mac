@@ -389,7 +389,7 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
         if(d && d->has_frame && !isnan(d->comb.margin))
             for(int i=0;i<11;i++)
                 if(fprintf(f->log,"%s%.9g",i?" ":"",d->comb.energies[i])<0)bad=1;
-        if(fprintf(f->log,",%.17g,%d",ge_wave_bar,ge_wave_clamp)<0)bad=1;
+        if(fprintf(f->log,",%.17g,%d",f->cfg.geometry_config->wave_bar,f->cfg.geometry_config->wave_clamp)<0)bad=1;
         for(int k=0;k<2;k++) {
             if(fputc(',',f->log)==EOF)bad=1;
             if(d) {
@@ -402,7 +402,7 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
             if(fprintf(f->log,",%s,%s,%d",ge_source_name(d->relative_source),
                        ge_source_name(d->anchor_source),d->held)<0)bad=1;
         } else if(fputs(",,,",f->log)==EOF)bad=1;
-        if(fprintf(f->log,",%.17g,",ge_comb_reject)<0)bad=1;
+        if(fprintf(f->log,",%.17g,",f->cfg.geometry_config->comb_reject)<0)bad=1;
         if(d && d->has_frame) {
             if(!isnan(d->rejection.ratio) && fprintf(f->log,"%.12g",d->rejection.ratio)<0)bad=1;
             if(fprintf(f->log,",%d,",d->rejected)<0)bad=1;
@@ -431,11 +431,11 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
                 } else if(fputs(",,,,,,",f->log)==EOF)bad=1;
             }
         } else for(int k=0;k<19;k++)if(fputc(',',f->log)==EOF)bad=1;
-        if(fprintf(f->log,",1,%.17g,",ge_vote_pair_min)<0)bad=1;
+        if(fprintf(f->log,",1,%.17g,",f->cfg.geometry_config->vote_pair_min)<0)bad=1;
         if(d && d->has_frame && !isnan(d->vote_rB)) {
             if(fprintf(f->log,"%.17g,%d",d->vote_rB,d->vote_pair_pass)<0)bad=1;
         } else if(fputc(',',f->log)==EOF)bad=1;
-        if(fprintf(f->log,",1,%.17g",ge_bottom_flat_margin)<0)bad=1;
+        if(fprintf(f->log,",1,%.17g",f->cfg.geometry_config->bottom_flat_margin)<0)bad=1;
         for(int k=0;k<2;k++) {
             if(d && d->has_frame) {
                 const ge_bottom_evidence *e=d->bottom_evidence+k;
@@ -458,7 +458,7 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
             }
             if(fprintf(f->log,",%s,%d,%d",ge_picture_motion_name(d->picture_motion),d->still_trigger,d->comb_suppressed)<0)bad=1;
         } else for(int k=0;k<11;k++)if(fputc(',',f->log)==EOF)bad=1;
-        if(fprintf(f->log,",1,1,%.17g",ge_comb_rigid_clarity)<0)bad=1;
+        if(fprintf(f->log,",1,1,%.17g",f->cfg.geometry_config->rigid_clarity)<0)bad=1;
         for(int k=0;k<2;k++) {
             if(d && d->has_frame && d->rigid[k].known) {
                 const ge_rigid_motion *r=d->rigid+k;
@@ -709,7 +709,7 @@ static void *worker_main(void *arg){
 // ------------------------------------------------------------ lifecycle
 static void count_sink(void *ctx, const fp_frame *fr){ (void)ctx; (void)fr; }
 int fs_open(frameserver **out, const fs_config *cfg){
-    if (!out || !cfg) return -1;
+    if (!out || !cfg || (cfg->geometry_config && !ge_config_valid(cfg->geometry_config))) return -1;
     if(cfg->pairing_schedule && cfg->geometry_pair_next) {
         fprintf(stderr,"pairing schedule: excludes --pair-next\n");return -1;
     }
@@ -746,7 +746,8 @@ int fs_open(frameserver **out, const fs_config *cfg){
         f->geometry=malloc(ge_size());f->geometry_y=malloc(GE_PIXELS);
         f->geometry_unit=malloc(FP_UNIT_BYTES);
         if(!f->geometry||!f->geometry_y||!f->geometry_unit){fs_close(f);return -1;}
-        ge_init(f->geometry,f->geometry_reversed,cfg->geometry_audit_comb);
+        ge_init(f->geometry,f->geometry_reversed,cfg->geometry_audit_comb,cfg->geometry_config);
+        f->cfg.geometry_config=ge_get_config(f->geometry);
     }
     fp_sink sink = cfg->sink.on_frame ? cfg->sink : (fp_sink){ count_sink, NULL };
     if (fp_open(&f->pub, cfg->surface_pool ? cfg->surface_pool : 6, &sink) != 0){ fs_close(f); return -1; }

@@ -8,15 +8,23 @@
 #include <stddef.h>
 #include <stdint.h>
 #define GE_PIXELS (525u * 720u)
-/* Configure once before workers start. The library never reads the environment. */
-extern double ge_wave_bar; /* default .45; first step strictly greater wins */
-extern int ge_wave_clamp; /* default 5; symmetric displacement from 23 / 286 */
-extern double ge_comb_reject; /* default 2; strict proposed-energy / minimum bar */
-extern double ge_vote_pair_min; /* default .6; inclusive Pearson threshold */
-extern double ge_bottom_flat_margin; /* default 3; inclusive, tolerance 1e-9 */
-extern double ge_comb_rigid_clarity; /* default 1.3; inclusive far/best SAD ratio */
-#define GE_VOTE_WINDOW 30
-#define GE_COMB_SELECTION_MARGIN 1.5
+/* Per-instance, copied at initialization; NULL selects these approved defaults.
+ * No library environment reads or mutable process-wide configuration. */
+#define GE_VOTE_CAPACITY 256 /* storage bound, not an evidence threshold */
+typedef struct {
+    double wave_bar;             /* .45, strict first correlation step */
+    int wave_clamp;               /* 5, symmetric around NTSC 23 / 286 */
+    double comb_reject;           /* 2, proposed energy / best */
+    double comb_basin_factor;     /* 1.5, selection and enclosed-floor factor */
+    int vote_window;              /* 30; 1..GE_VOTE_CAPACITY confident frames */
+    double vote_pair_min;         /* .6, inclusive cross-field Pearson */
+    double bottom_flat_margin;    /* 3, inclusive with 1e-9 tolerance */
+    double blankspot_tolerance;   /* 2, above field-2 VI median */
+    int rigid_min;                /* 2, minimum absolute vertical shift */
+    double rigid_clarity;         /* 1.3, inclusive far / best SAD */
+} ge_config;
+ge_config ge_default_config(void);
+int ge_config_valid(const ge_config *);
 typedef struct { int first; double step, max_step; } ge_wave_result;
 typedef enum { GE_WAVE_ABSTAIN, GE_WAVE_ACCEPTED, GE_WAVE_DISCARDED } ge_wave_status;
 typedef enum { GE_SOURCE_NONE, GE_SOURCE_CENSUS, GE_SOURCE_HELD, GE_SOURCE_COMB,
@@ -98,12 +106,14 @@ typedef struct {
 } ge_decision;
 typedef struct geometry_engine geometry_engine;
 size_t ge_size(void);
-void ge_init(geometry_engine *, int pair_next, int audit_comb);
+/* Returns -1 for invalid config without changing storage; otherwise 0. */
+int ge_init(geometry_engine *, int pair_next, int audit_comb, const ge_config *);
+const ge_config *ge_get_config(const geometry_engine *);
 /* After ge_break flushes the old pairing, reset for a new pairing within the
  * same session. Retains only the published vote anchor, never prior votes. */
 void ge_set_pairing(geometry_engine *, int pair_next);
 /* All input rows are contiguous 720-byte luma, independent of UYVY decoding. */
-void ge_measure(const uint8_t *, ge_features *);
+void ge_measure(const uint8_t *, ge_features *, const ge_config *);
 /* Raw entry-33 observation: no step returns first=0 and step=0. NTSC lines.
  * ge_measure applies the independent symmetric clamp to each raw observation. */
 ge_wave_result ge_wave_scan(const uint8_t *, int field, double bar);
@@ -112,10 +122,10 @@ ge_level_result ge_level_scan(const uint8_t *, int field, int clamp);
 const char *ge_wave_status_name(ge_wave_status);
 const char *ge_source_name(ge_source);
 const char *ge_bottom_rule_name(ge_bottom_rule);
-ge_comb_result ge_comb(const uint8_t *top, const uint8_t *bottom);
+ge_comb_result ge_comb(const uint8_t *top, const uint8_t *bottom, const ge_config *);
 /* Pure evidence; does not adopt, alter decided, or run another search.
  * A proposed shift outside -5..5 has no measured energy: ratio is NAN. */
-ge_comb_evidence ge_comb_examine(const ge_comb_result *, int proposed);
+ge_comb_evidence ge_comb_examine(const ge_comb_result *, int proposed, const ge_config *);
 ge_vertical_motion ge_motion_measure(const uint8_t *current,const uint8_t *previous,int field);
 ge_rigid_motion ge_rigid_measure(const uint8_t *current,const uint8_t *previous,int field);
 const char *ge_picture_motion_name(ge_picture_motion);

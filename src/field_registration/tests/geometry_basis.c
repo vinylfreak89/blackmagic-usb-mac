@@ -19,9 +19,9 @@ int main(void) {
     for(unsigned i=0;i<GE_PIXELS;i++){rng=rng*1664525u+1013904223u;top[i]=(uint8_t)(rng>>24);}
     for(int r=30;r<=240;r++)for(int x=24;x<696;x++)
         bottom[(r+259)*720+x]=(top[(r-4)*720+x]+top[(r-3)*720+x])/2;
-    assert(ge_comb(top,bottom).shift==0 && ge_comb(top,bottom).decided);
+    assert(ge_comb(top,bottom,NULL).shift==0 && ge_comb(top,bottom,NULL).decided);
     for(int audit=0;audit<2;audit++)for(int reverse=0;reverse<2;reverse++) {
-        ge_init(g,reverse,audit);
+        ge_init(g,reverse,audit,NULL);
         ge_features t=features(24),b=features(24);
         t.motion[0]=GE_UNKNOWN; // initial measurement derives +1 against st=-1
         ge_decision o=frame(g,top,bottom,&t,&b,100+reverse,100);

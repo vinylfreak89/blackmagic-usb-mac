@@ -18,7 +18,7 @@ static void motion(void) {
     memset(z,7,sizeof z);ge_vertical_motion v=ge_motion_measure(z,z,0);
     assert(v.shift==0 && v.error==0 && v.second_error==0); /* exact eleven-way tie */
     for(int reverse=0;reverse<2;reverse++) {
-        geometry_engine g;ge_decision o[2];ge_init(&g,reverse,0);
+        geometry_engine g;ge_decision o[2];ge_init(&g,reverse,0,NULL);
         ge_push(&g,y,100,0,o);assert(!g.previous.vertical[0].known);
         unsigned n=ge_push(&g,y,101,0,o);assert(n==1);
         assert(o[0].vertical[0].known && o[0].vertical[1].known==!reverse);
@@ -39,19 +39,19 @@ static void rigid_motion(void) {
             z[(off+r+dy)*720+x+dx]=y[(off+r)*720+x];
         ge_rigid_motion q=ge_rigid_measure(z,y,k);
         assert(q.known && q.dx==dx && q.dy==dy && q.error==0 && q.far_error>0 && isinf(q.clarity));
-        assert(rigid_vertical(&q)==(dx==0));
+        assert(rigid_vertical(&q,&defaults)==(dx==0));
     }
     memset(z,7,sizeof z);ge_rigid_motion q=ge_rigid_measure(z,z,0);
     assert(q.dx==-8 && q.dy==-5 && q.error==0 && q.far_error==0 && q.clarity==1);
-    q=(ge_rigid_motion){.known=1,.dy=2,.clarity=1.3};assert(rigid_vertical(&q));
-    q.clarity=nextafter(1.3,0);assert(!rigid_vertical(&q));
-    q.clarity=2;q.dy=1;assert(!rigid_vertical(&q));
-    q.dy=-2;q.known=0;assert(!rigid_vertical(&q));
+    q=(ge_rigid_motion){.known=1,.dy=2,.clarity=1.3};assert(rigid_vertical(&q,&defaults));
+    q.clarity=nextafter(1.3,0);assert(!rigid_vertical(&q,&defaults));
+    q.clarity=2;q.dy=1;assert(!rigid_vertical(&q,&defaults));
+    q.dy=-2;q.known=0;assert(!rigid_vertical(&q,&defaults));
     memcpy(z,y,sizeof z);
     for(int k=0;k<2;k++)for(int r=40;r<220;r++)
         memcpy(z+(19+263*k+r+(k?-3:2))*720+40,y+(19+263*k+r)*720+40,640);
     for(int reverse=0;reverse<2;reverse++) {
-        geometry_engine g;ge_decision o[2];ge_init(&g,reverse,0);
+        geometry_engine g;ge_decision o[2];ge_init(&g,reverse,0,NULL);
         ge_push(&g,y,100,0,o);assert(!g.previous.rigid[0].known);
         ge_push(&g,z,101,0,o);
         assert(o[0].rigid[0].known && o[0].rigid[0].dy==2);
@@ -67,14 +67,14 @@ static void blankspots(void) {
     ge_features t={0},f={0};t.first[0]=25;f.first[1]=288;f.blank[1]=1;
     for(int x=40;x<680;x++)y[21*720+x]=b[284*720+x]=20+(x%2)*60;
     {
-        geometry_engine g;ge_init(&g,0,1);
+        geometry_engine g;ge_init(&g,0,1,NULL);
         ge_decision o={.rejection={.basin=1,.floor_lo=0,.floor_hi=0}};
         vote_anchor(&g,&o,&t,&f,y,b);
         assert(!o.vote_confident);
         assert(!o.vote_blankspot_pass && o.vote_blankspot_line==286);
     }
     b[282*720+40]=3;b[283*720+679]=3; /* inclusive, first/last body samples */
-    geometry_engine g;ge_init(&g,1,1);
+    geometry_engine g;ge_init(&g,1,1,NULL);
     ge_decision o={.rejection={.basin=1,.floor_lo=0,.floor_hi=0}};
     vote_anchor(&g,&o,&t,&f,y,b);assert(o.vote_blankspot_pass && o.vote_confident);
     b[283*720+679]=4;b[283*720+680]=1; /* outside body cannot rescue */
@@ -88,23 +88,23 @@ static void authority(void) {
     randomize();memset(b,0,sizeof b);
     for(int r=30;r<=240;r++)for(int x=24;x<696;x++)
         b[(r+259)*720+x]=(y[(r-4)*720+x]+y[(r-3)*720+x])/2;
-    ge_comb_result c=ge_comb(y,b);assert(c.shift==0 && c.decided);
+    ge_comb_result c=ge_comb(y,b,NULL);assert(c.shift==0 && c.decided);
     ge_features t={0},f={0};t.first[0]=24;f.first[1]=286; /* census -1 */
     t.last[0]=260;f.last[1]=522;t.bottom[0]=260;f.bottom[1]=522;
     t.motion[0]=f.motion[1]=GE_NOTHING; /* census agrees at both edges, no trigger */
     t.vertical[0].known=f.vertical[1].known=1;
     for(int audit=0;audit<2;audit++)for(int state=0;state<3;state++) {
-        geometry_engine g;ge_init(&g,0,audit);
+        geometry_engine g;ge_init(&g,0,audit,NULL);
         t.vertical[0].known=state!=0;t.vertical[0].shift=state==2?1:0;
         ge_decision o=frame(&g,y,b,&t,&f,100,100);
         if(state==1)assert(o.still_trigger && (o.triggers&GE_STILL) && o.published_d==0 && o.held==1);
         else assert(!o.still_trigger && o.published_d==-1 && !o.held);
-        t.motion[0]=GE_UNKNOWN;ge_init(&g,0,audit);o=frame(&g,y,b,&t,&f,100,100);
+        t.motion[0]=GE_UNKNOWN;ge_init(&g,0,audit,NULL);o=frame(&g,y,b,&t,&f,100,100);
         assert(o.comb_ran && !o.comb_suppressed && o.published_d==0 && o.held==1);
         t.motion[0]=GE_NOTHING;
     }
     /* Even an undecided, otherwise-refusing verdict is blocked on motion. */
-    geometry_engine g={.held=1,.basis_valid=1};
+    geometry_engine g={.held=1,.basis_valid=1,.config=defaults};
     ge_decision o={.comb_ran=1,.comb_suppressed=1,.comb={.shift=0,.margin=1}};
     for(int i=0;i<11;i++)o.comb.energies[i]=10;
     o.comb.energies[5]=o.comb.energies[6]=1;
@@ -121,7 +121,7 @@ static void authority(void) {
         if(state==4)f.rigid[1].dy=1;
         if(state==5)f.rigid[1].clarity=nextafter(1.3,0);
         if(state==6)t.vertical[0].known=0;
-        ge_init(&g,0,1);ge_decision d=frame(&g,y,b,&t,&f,101,100);
+        ge_init(&g,0,1,NULL);ge_decision d=frame(&g,y,b,&t,&f,101,100);
         assert(d.comb_suppressed==(state==0));
         if(!state)assert(d.published_d==-1 && !d.held && !d.rejected);
         else assert(d.published_d==0 && d.held==1);

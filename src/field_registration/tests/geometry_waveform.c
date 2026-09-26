@@ -9,7 +9,8 @@ static void line(uint8_t *y,int r,int invert) {
 }
 int main(void) {
     uint8_t *y=malloc(GE_PIXELS);assert(y);
-    assert(ge_wave_bar==.45 && ge_wave_clamp==5);
+    ge_config config=ge_default_config();
+    assert(config.wave_bar==.45 && config.wave_clamp==5);
     for(int k=0;k<2;k++) {
         memset(y,7,GE_PIXELS);int off=263*k;
         ge_wave_result w=ge_wave_scan(y,k,.45);
@@ -34,11 +35,11 @@ int main(void) {
          * census slot is unavailable, never rounded to the clamp boundary. */
         memset(y,7,GE_PIXELS);
         for(int r=25+off;r<37+off;r++)line(y,r,0);
-        ge_features f;ge_measure(y,&f);
+        ge_features f;ge_measure(y,&f,&config);
         assert(f.wave[k].first==29+off && !f.first[k]);
         assert(f.wave_status[k]==GE_WAVE_DISCARDED);
         assert(f.wave_status[1-k]==GE_WAVE_ABSTAIN);
-        ge_wave_clamp=6;ge_measure(y,&f);ge_wave_clamp=5;
+        config.wave_clamp=6;ge_measure(y,&f,&config);config.wave_clamp=5;
         assert(f.first[k]==29+off && f.wave_status[k]==GE_WAVE_ACCEPTED);
     }
     free(y);puts("WAVEFORM PASS: first not largest, strict bar, zero variance, both fields, symmetric clamp, explicit discard/abstain");

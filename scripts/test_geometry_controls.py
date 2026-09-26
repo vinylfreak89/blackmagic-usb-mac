@@ -21,7 +21,11 @@ columns+='ge_bottom_flat ge_bottom_flat_margin bottom_rule_f1 bottom_F_p5_f1 bot
 columns+='ge_vote_blankspot ge_comb_still vote_blankspot_pass vote_blankspot_line motion_shift_f1 motion_error_f1 motion_error2_f1 motion_shift_f2 motion_error_f2 motion_error2_f2 picture_motion still_trigger comb_suppressed'.split()
 columns.append('ge_comb_motion_min')
 columns+='ge_comb_rigid ge_comb_rigid_clarity rigid_dx_f1 rigid_dy_f1 rigid_sad_f1 rigid_sad_far_f1 rigid_clarity_f1 rigid_dx_f2 rigid_dy_f2 rigid_sad_f2 rigid_sad_far_f2 rigid_clarity_f2'.split()
-for name,values in {'GE_COMB_RIGID_CLARITY':('nan','inf','0','.99','1.3junk'),
+for name,values in {'GE_COMB_BASIN_FACTOR':('nan','inf','.99','1.5junk'),
+                    'GE_VOTE_WINDOW':('0','-1','1.5','257','30junk'),
+                    'GE_VOTE_BLANKSPOT_TOLERANCE':('nan','inf','-1','2junk'),
+                    'GE_COMB_RIGID_MIN':('0','-1','1.5','2147483648','2junk'),
+                    'GE_COMB_RIGID_CLARITY':('nan','inf','0','.99','1.3junk'),
                     'GE_BOTTOM_FLAT_MARGIN':('nan','inf','0','-1','3junk'),
                     'GE_VOTE_PAIR_MIN':('nan','inf','-1.01','1.01','.6junk'),
                     'GE_WAVE_BAR':('nan','inf','1e999','','5junk'),

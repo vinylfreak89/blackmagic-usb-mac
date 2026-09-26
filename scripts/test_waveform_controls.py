@@ -20,6 +20,10 @@ bad={'GE_WAVE_BAR':('nan','inf','1e999','','.5junk'),
 bad['GE_VOTE_PAIR_MIN']=('nan','inf','1e999','','.6junk','-1.01','1.01')
 bad['GE_BOTTOM_FLAT_MARGIN']=('0','-1','nan','inf','1e999','','3junk')
 bad['GE_COMB_RIGID_CLARITY']=('0','-1','nan','inf','1e999','','1.3junk','.99')
+bad['GE_COMB_BASIN_FACTOR']=('nan','inf','.99','1.5junk')
+bad['GE_VOTE_WINDOW']=('0','-1','1.5','257','30junk')
+bad['GE_VOTE_BLANKSPOT_TOLERANCE']=('nan','inf','-1','2junk')
+bad['GE_COMB_RIGID_MIN']=('0','-1','1.5','2147483648','2junk')
 for name,values in bad.items():
     for value in values:
         p=subprocess.run([binary],input='',text=True,capture_output=True,env=base|{name:value},timeout=30)

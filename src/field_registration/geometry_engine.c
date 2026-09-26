@@ -3,31 +3,46 @@
 #include <stdlib.h>
 #include <string.h>
 
-double ge_wave_bar=.45;
-int ge_wave_clamp=5;
-double ge_comb_reject=2;
-double ge_vote_pair_min=.6;
-double ge_bottom_flat_margin=3;
-double ge_comb_rigid_clarity=1.3;
+static const ge_config defaults = {
+    .wave_bar=.45, .wave_clamp=5, .comb_reject=2, .comb_basin_factor=1.5,
+    .vote_window=30, .vote_pair_min=.6, .bottom_flat_margin=3,
+    .blankspot_tolerance=2, .rigid_min=2, .rigid_clarity=1.3
+};
+ge_config ge_default_config(void) { return defaults; }
+int ge_config_valid(const ge_config *c) {
+    return c && isfinite(c->wave_bar) && c->wave_clamp>=0 &&
+        isfinite(c->comb_reject) && c->comb_reject>0 &&
+        isfinite(c->comb_basin_factor) && c->comb_basin_factor>=1 &&
+        c->vote_window>=1 && c->vote_window<=GE_VOTE_CAPACITY &&
+        isfinite(c->vote_pair_min) && c->vote_pair_min>=-1 && c->vote_pair_min<=1 &&
+        isfinite(c->bottom_flat_margin) && c->bottom_flat_margin>0 &&
+        isfinite(c->blankspot_tolerance) && c->blankspot_tolerance>=0 &&
+        c->rigid_min>=1 && isfinite(c->rigid_clarity) && c->rigid_clarity>=1;
+}
 
 struct geometry_engine {
+    ge_config config;
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
     int basis_valid, basis_first[2]; /* tops of the frame that derived held */
     uint64_t counter;
     ge_features previous, current;
     uint8_t previous_y[GE_PIXELS];
     ge_decision pending;
-    int vote_values[GE_VOTE_WINDOW], vote_count, vote_anchor, vote_published;
+    int vote_values[GE_VOTE_CAPACITY], vote_count, vote_anchor, vote_published;
 };
 size_t ge_size(void) { return sizeof(geometry_engine); }
-void ge_init(geometry_engine *g, int reverse, int audit) {
-    memset(g,0,sizeof *g); g->reverse=!!reverse; g->audit=!!audit;
+const ge_config *ge_get_config(const geometry_engine *g) { return &g->config; }
+int ge_init(geometry_engine *g, int reverse, int audit, const ge_config *config) {
+    ge_config c=config?*config:defaults; /* copy before clearing, even if aliased */
+    if(!g || !ge_config_valid(&c))return -1;
+    memset(g,0,sizeof *g); g->reverse=!!reverse; g->audit=!!audit;g->config=c;
+    return 0;
 }
 void ge_set_pairing(geometry_engine *g,int reverse) {
     /* Caller has flushed pending fields. A pairing reset clears evidence,
      * not the last published vote anchor; only ge_init starts a new session. */
     int anchor=g->vote_anchor,published=g->vote_published;
-    ge_init(g,reverse,g->audit);
+    ge_init(g,reverse,g->audit,&g->config);
     g->vote_anchor=anchor;g->vote_published=published;
 }
 const char *ge_class_name(ge_class c) {
@@ -92,8 +107,8 @@ ge_rigid_motion ge_rigid_measure(const uint8_t *current,const uint8_t *previous,
     return (ge_rigid_motion){.known=1,.dx=bx,.dy=by,.error=best/(180.0*320),
         .far_error=far/(180.0*320),.clarity=best?(double)far/best:far?INFINITY:1};
 }
-static int rigid_vertical(const ge_rigid_motion *r) {
-    return r->known && r->dx==0 && abs(r->dy)>=2 && r->clarity>=ge_comb_rigid_clarity;
+static int rigid_vertical(const ge_rigid_motion *r,const ge_config *c) {
+    return r->known && r->dx==0 && abs(r->dy)>=c->rigid_min && r->clarity>=c->rigid_clarity;
 }
 const char *ge_picture_motion_name(ge_picture_motion s) {
     static const char *const names[]={"unknown","still","moving"};return names[s];
@@ -167,7 +182,7 @@ const char *ge_bottom_rule_name(ge_bottom_rule rule) {
     static const char *const names[]={"unknown","flat_reference","fallback"};
     return names[rule];
 }
-static int bottom_scan(const uint8_t *y,int field,double blank,ge_bottom_evidence *e) {
+static int bottom_scan(const uint8_t *y,int field,double blank,ge_bottom_evidence *e,double threshold) {
     int off=263*field,start=258+off;
     *e=(ge_bottom_evidence){0};
     {
@@ -175,7 +190,7 @@ static int bottom_scan(const uint8_t *y,int field,double blank,ge_bottom_evidenc
         e->measured=1;e->p5=quantile(h,640,.05);
         e->p50=quantile(h,640,.5);e->p95=quantile(h,640,.95);
         if(e->p95-e->p5<=4) {
-            const double margin=ge_bottom_flat_margin-1e-9;
+            const double margin=threshold-1e-9;
             for(int r=start-1;r>236+off;r--) {
                 histogram(y+r*720+40,640,h);
                 double p5=quantile(h,640,.05),p50=quantile(h,640,.5),p95=quantile(h,640,.95);
@@ -192,19 +207,20 @@ static int bottom_scan(const uint8_t *y,int field,double blank,ge_bottom_evidenc
     }
     return 0;
 }
-void ge_measure(const uint8_t *y,ge_features *f) {
+void ge_measure(const uint8_t *y,ge_features *f,const ge_config *config) {
+    const ge_config *c=config?config:&defaults;
     memset(f,0,sizeof *f);
     for(int k=0;k<2;k++) {
         unsigned h[256]; int off=263*k;
         histogram(y+(7+off)*720,9*720,h); f->blank[k]=quantile(h,9*720,.5);
         f->hblank_level[k]=horizontal_level(y,off,&f->hblank_cols[k]);
-        f->wave[k]=ge_wave_scan(y,k,ge_wave_bar);
+        f->wave[k]=ge_wave_scan(y,k,c->wave_bar);
         f->wave_status[k]=!f->wave[k].first?GE_WAVE_ABSTAIN:
-            ge_wave_accept(f->wave[k],k,ge_wave_clamp)?GE_WAVE_ACCEPTED:GE_WAVE_DISCARDED;
+            ge_wave_accept(f->wave[k],k,c->wave_clamp)?GE_WAVE_ACCEPTED:GE_WAVE_DISCARDED;
         if(f->wave_status[k]==GE_WAVE_ACCEPTED)f->first[k]=f->wave[k].first;
         if(f->wave_status[k]==GE_WAVE_ABSTAIN)
-            f->level[k]=ge_level_scan(y,k,ge_wave_clamp);
-        f->last[k]=bottom_scan(y,k,f->blank[k],&f->bottom_evidence[k]);
+            f->level[k]=ge_level_scan(y,k,c->wave_clamp);
+        f->last[k]=bottom_scan(y,k,f->blank[k],&f->bottom_evidence[k],c->bottom_flat_margin);
         for(int j=0;j<12;j++) {
             const uint8_t *p=y+(247+off+j)*720; unsigned n=0;
             for(int x=0;x<672;x++) {
@@ -236,7 +252,8 @@ static ge_class classify(const ge_features *a,const ge_features *b,int f) {
     if(db==0 && !partial)return GE_TOP_ONLY;
     return GE_NOT_IN_TANDEM;
 }
-ge_comb_result ge_comb(const uint8_t *t,const uint8_t *b) {
+ge_comb_result ge_comb(const uint8_t *t,const uint8_t *b,const ge_config *config) {
+    const ge_config *cfg=config?config:&defaults;
     double energy[11];int best=0,second=1;
     for(int d=-5;d<=5;d++) {
         uint64_t sum=0;
@@ -255,33 +272,34 @@ ge_comb_result ge_comb(const uint8_t *t,const uint8_t *b) {
         else if(energy[i]<energy[second])second=i;
     }
     double margin=energy[best]>0?energy[second]/energy[best]:(energy[second]>0?INFINITY:1);
-    ge_comb_result result={.shift=best-5,.decided=margin>=GE_COMB_SELECTION_MARGIN,.margin=margin};
+    ge_comb_result result={.shift=best-5,.decided=margin>=cfg->comb_basin_factor,.margin=margin};
     memcpy(result.energies,energy,sizeof energy);
     return result;
 }
 static double energy_ratio(double energy,double minimum) {
     return minimum>0?energy/minimum:(energy>0?INFINITY:1);
 }
-ge_comb_evidence ge_comb_examine(const ge_comb_result *c,int proposed) {
+ge_comb_evidence ge_comb_examine(const ge_comb_result *c,int proposed,const ge_config *config) {
+    const ge_config *cfg=config?config:&defaults;
     ge_comb_evidence o={.ratio=NAN,.rise_left=NAN,.rise_right=NAN};
     if(isnan(c->margin))return o;
     int best=c->shift+5,lo=best,hi=best;
     const double *e=c->energies;
-    double minimum=e[best],ceiling=GE_COMB_SELECTION_MARGIN*minimum;
+    double minimum=e[best],ceiling=cfg->comb_basin_factor*minimum;
     while(lo>0 && e[lo-1]<=ceiling)lo--;
     while(hi<10 && e[hi+1]<=ceiling)hi++;
     o.floor_lo=lo-5;o.floor_hi=hi-5;
     if(lo>0)o.rise_left=energy_ratio(e[lo-1],minimum);
     if(hi<10)o.rise_right=energy_ratio(e[hi+1],minimum);
-    o.basin=lo>0 && hi<10 && o.rise_left>=GE_COMB_SELECTION_MARGIN &&
-        o.rise_right>=GE_COMB_SELECTION_MARGIN;
+    o.basin=lo>0 && hi<10 && o.rise_left>=cfg->comb_basin_factor &&
+        o.rise_right>=cfg->comb_basin_factor;
     if(proposed>=-5 && proposed<=5)o.ratio=energy_ratio(e[proposed+5],minimum);
     return o;
 }
 static void reject_placement(geometry_engine *g,ge_decision *o,int *d,int *d2) {
-    o->rejection=ge_comb_examine(&o->comb,*d);
+    o->rejection=ge_comb_examine(&o->comb,*d,&g->config);
     /* Audit-only evidence cannot change placement or state. No extra search. */
-    if(!o->comb_ran || o->comb_suppressed || !(o->rejection.ratio>ge_comb_reject))return;
+    if(!o->comb_ran || o->comb_suppressed || !(o->rejection.ratio>g->config.comb_reject))return;
     o->rejected=1;o->refused_d=*d;
     g->held=0;g->provisional=0;g->basis_valid=0;
     g->basis_first[0]=g->basis_first[1]=0;
@@ -322,7 +340,7 @@ static void vote_anchor(geometry_engine *g,ge_decision *o,
          * next unit, not from the unit owning field 2 and this decision row. */
         o->vote_rB=waveform_correlation(ty+(o->vote_top[0]-4)*720+40,
                                       by+(o->vote_top[1]-4)*720+40);
-        o->vote_pair_pass=o->vote_rB>=ge_vote_pair_min;
+        o->vote_pair_pass=o->vote_rB>=g->config.vote_pair_min;
     }
     o->vote_confident=o->vote_top[0] && o->vote_top[1] && o->rejection.basin &&
         st>=o->rejection.floor_lo && st<=o->rejection.floor_hi+1 && o->vote_pair_pass;
@@ -330,14 +348,14 @@ static void vote_anchor(geometry_engine *g,ge_decision *o,
         o->vote_blankspot_measured=1;o->vote_blankspot_pass=1;
         for(int line=286;line<o->vote_top[1];line++) {
             unsigned count=0;const uint8_t *p=by+(line-4)*720+40;
-            for(int x=0;x<640;x++)count+=p[x]<=b->blank[1]+2;
+            for(int x=0;x<640;x++)count+=p[x]<=b->blank[1]+g->config.blankspot_tolerance;
             if(!count){o->vote_blankspot_pass=0;o->vote_blankspot_line=line;break;}
         }
         o->vote_confident=o->vote_confident && o->vote_blankspot_pass;
     }
     if(o->vote_confident) {
-        if(g->vote_count==GE_VOTE_WINDOW) {
-            memmove(g->vote_values,g->vote_values+1,(GE_VOTE_WINDOW-1)*sizeof(int));
+        if(g->vote_count==g->config.vote_window) {
+            memmove(g->vote_values,g->vote_values+1,(g->config.vote_window-1)*sizeof(int));
             g->vote_count--;
         }
         g->vote_values[g->vote_count++]=o->vote_top[1]-286;
@@ -397,16 +415,16 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
         if(g->provisional)o.triggers|=GE_CONFIRM;
     }
     o.comb_ran=o.triggers!=0;
-    o.comb=ge_comb(ty,by);
+    o.comb=ge_comb(ty,by,&g->config);
     if(o.picture_motion==GE_PICTURE_STILL) {
         int proposed=dknown?d:(g->have_placement?g->last_d:0);
-        ge_comb_evidence e=ge_comb_examine(&o.comb,proposed);
-        if(e.basin && e.ratio>=ge_comb_reject) {
+        ge_comb_evidence e=ge_comb_examine(&o.comb,proposed,&g->config);
+        if(e.basin && e.ratio>=g->config.comb_reject) {
             o.still_trigger=1;o.triggers|=GE_STILL;o.comb_ran=1;
         }
     }
     o.comb_suppressed=o.picture_motion==GE_PICTURE_MOVING && o.comb_ran &&
-        rigid_vertical(o.rigid) && rigid_vertical(o.rigid+1);
+        rigid_vertical(o.rigid,&g->config) && rigid_vertical(o.rigid+1,&g->config);
     if(o.comb_ran && !o.comb_suppressed && o.comb.decided) {
         o.relative_source=GE_SOURCE_COMB;
         d=o.comb.shift;dknown=1;
@@ -443,12 +461,12 @@ static void unit_provenance(ge_decision *d,const ge_features *f) {
 unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_decision out[2]) {
     unsigned n=0;int adjacent=g->valid && g->counter!=UINT64_MAX && c==g->counter+1;
     if(g->valid && !adjacent)n=ge_break(g,out);
-    ge_features *f=&g->current;ge_measure(y,f);
+    ge_features *f=&g->current;ge_measure(y,f,&g->config);
     if(adjacent && !reset)for(int k=0;k<2;k++)f->motion[k]=classify(&g->previous,f,k);
     if(adjacent && !reset)
         for(int k=0;k<2;k++) {
             f->vertical[k]=ge_motion_measure(y,g->previous_y,k);
-            if(abs(f->vertical[k].shift)>=2)
+            if(abs(f->vertical[k].shift)>=g->config.rigid_min)
                 f->rigid[k]=ge_rigid_measure(y,g->previous_y,k);
         }
     if(reset || !adjacent)reset_frame_state(g);

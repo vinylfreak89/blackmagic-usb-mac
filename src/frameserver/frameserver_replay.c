@@ -47,13 +47,14 @@ static void dump_audio(void *c, const ap_block *b){
                        b->n_frames, b->flags, (unsigned long long)b->last_resync_counter_ext, (long long)b->correlation_residual);
 }
 int main(int argc, char **argv){
-    if(!ge_tool_controls_from_env())return 2;
-    ge_tool_controls_echo(stderr);
+    ge_config geometry=ge_default_config();
+    if(!ge_tool_controls_from_env(&geometry))return 2;
+    ge_tool_controls_echo(stderr,&geometry);
     tool_deadline_start("frameserver_replay",3);
     double lifecycle_s=tool_seconds(getenv("FS_LIFECYCLE_S"),60);
     tool_guard("open outputs / fs_open / fs_start",lifecycle_s);
     if (argc < 2){ fprintf(stderr, "usage: %s <capture.tpc> [decision_log.csv] [--pace-us N] [--ring-mb N] [--pool N]\n", argv[0]); return 9; }
-    fs_config cfg = {0}; cfg.capture.replay_path = argv[1]; cfg.on_end = on_end;
+    fs_config cfg = {0}; cfg.geometry_config=&geometry; cfg.capture.replay_path = argv[1]; cfg.on_end = on_end;
     for (int i = 2; i < argc; i++){
         if (!strcmp(argv[i], "--pace-us") && i + 1 < argc) cfg.capture.replay_pace_us = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--ring-mb") && i + 1 < argc) cfg.capture.ring_mb = atoi(argv[++i]);

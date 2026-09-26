@@ -12,27 +12,27 @@ static ge_comb_result comb(void) {
 static geometry_engine seeded(void) {
     geometry_engine g={.held=2,.provisional=1,.basis_valid=1,
         .have_placement=1,.last_d=-1,.last_d2=3,.basis_first={24,286}};
-    return g;
+    g.config=ge_default_config();return g;
 }
 int main(void) {
     ge_comb_result c=comb(),saved=c;
-    ge_comb_evidence e=ge_comb_examine(&c,-1);
+    ge_comb_evidence e=ge_comb_examine(&c,-1,NULL);
     assert(e.ratio==10 && e.floor_lo==0 && e.floor_hi==1 && e.basin);
     assert(e.rise_left==10 && e.rise_right==10 && !memcmp(&c,&saved,sizeof c));
-    c.energies[7]=1.5;e=ge_comb_examine(&c,8);
+    c.energies[7]=1.5;e=ge_comb_examine(&c,8,NULL);
     assert(e.floor_hi==2 && e.basin && isnan(e.ratio)); // inclusive floor; no fabricated energy
     c.energies[8]=1.6;c.energies[9]=1; // disconnected low point is NOT part of the floor
-    e=ge_comb_examine(&c,0);assert(e.floor_hi==2 && e.basin && e.rise_right==1.6);
+    e=ge_comb_examine(&c,0,NULL);assert(e.floor_hi==2 && e.basin && e.rise_right==1.6);
     c=comb();for(int i=7;i<11;i++)c.energies[i]=1.1;
-    e=ge_comb_examine(&c,-1);assert(!e.basin && e.floor_hi==5 && isnan(e.rise_right));
+    e=ge_comb_examine(&c,-1,NULL);assert(!e.basin && e.floor_hi==5 && isnan(e.rise_right));
     c=comb();c.shift=-5;c.energies[0]=.9;
-    e=ge_comb_examine(&c,0);assert(!e.basin && e.floor_lo==-5 && isnan(e.rise_left));
+    e=ge_comb_examine(&c,0,NULL);assert(!e.basin && e.floor_lo==-5 && isnan(e.rise_left));
     c=comb();c.energies[5]=c.energies[6]=0;
-    e=ge_comb_examine(&c,0);assert(e.ratio==1 && e.basin && isinf(e.rise_left));
-    e=ge_comb_examine(&c,-1);assert(isinf(e.ratio));
-    memset(c.energies,0,sizeof c.energies);e=ge_comb_examine(&c,-1);
+    e=ge_comb_examine(&c,0,NULL);assert(e.ratio==1 && e.basin && isinf(e.rise_left));
+    e=ge_comb_examine(&c,-1,NULL);assert(isinf(e.ratio));
+    memset(c.energies,0,sizeof c.energies);e=ge_comb_examine(&c,-1,NULL);
     assert(e.ratio==1 && !e.basin && e.floor_lo==-5 && e.floor_hi==5);
-    c.margin=NAN;e=ge_comb_examine(&c,0);assert(isnan(e.ratio) && !e.basin);
+    c.margin=NAN;e=ge_comb_examine(&c,0,NULL);assert(isnan(e.ratio) && !e.basin);
 
     for(int audit_only=0;audit_only<2;audit_only++) {
         geometry_engine g=seeded(),before=g;

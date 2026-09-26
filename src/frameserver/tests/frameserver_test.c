@@ -191,7 +191,13 @@ int main(int argc, char **argv){
     fs_config cfg = {0}; cfg.capture.replay_path = argv[1]; cfg.decision_log = logp; cfg.on_end = on_end;
     cfg.sink.on_frame = sink; cfg.pool_units = 4; cfg.surface_pool = 3; cfg.audio_sink.on_block = audio_sink;
     frameserver *f = NULL;
+    ge_config geometry=ge_default_config();
+    geometry.vote_window=0;cfg.geometry_config=&geometry;
+    CHECK(fs_open(&f,&cfg)!=0 && !f,"invalid geometry config unexpectedly opened");
+    geometry=ge_default_config();
     CHECK(fs_open(&f, &cfg) == 0, "open");
+    geometry.wave_bar=2; /* fs_open must own the copy, not retain this pointer. */
+    cfg.geometry_config=NULL;
     atomic_store(&hook_arm,!ring_may_drop); atomic_store(&hook_empty,0); atomic_store(&hook_release,0);
     CHECK(fs_start(f) == 0, "start");
     wait_for_end("main fixture run");
@@ -250,9 +256,19 @@ int main(int argc, char **argv){
     if(!ring_may_drop) CHECK(s.short_units + s.holes + s.unframed + s.exact_units + s.other_format + s.no_signal_0800 >= s.video_observations, "every observation classified by transport/kind");
     // log integrity: header + rows, columns as the contract names them
     FILE *L = fopen(logp, "r"); char line[16384]; unsigned rows = 0; int hdr_ok = 0, row_shape_ok = 1; unsigned header_fields = 0;
+    unsigned wave_column=0;
     while (fgets(line, sizeof line, L)){
         if (rows == 0){ hdr_ok = strstr(line, "frame_d1,frame_d2,f1_first,f2_first") != NULL && strstr(line, "vote_confident,vote_anchor,vote_engine_anchor") != NULL && strstr(line, "rigid_dx_f1,rigid_dy_f1") != NULL; header_fields=csv_fields(line); }
         else if(csv_fields(line)!=header_fields) row_shape_ok=0;
+        if(!rows) {
+            const char *wave=strstr(line,",ge_wave_bar,");
+            CHECK(wave!=NULL,"geometry configuration column missing");
+            if(wave)for(const char *p=line;p<=wave;p++)if(*p==',')wave_column++;
+        } else if(wave_column) {
+            const char *p=line;
+            for(unsigned col=0;col<wave_column && p;col++){p=strchr(p,',');if(p)p++;}
+            CHECK(p && strtod(p,NULL)==.45,"frameserver did not retain its own geometry configuration");
+        }
         rows++;
     }
     fclose(L); unlink(logp);

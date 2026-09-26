@@ -24,6 +24,7 @@
 #include "../capture_core/capture_core.h"
 #include "frame_publisher.h"
 #include "audio_publisher.h"
+#include "../field_registration/geometry_engine.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,6 +52,7 @@ typedef struct {
     /* Explicit v11 selection; zero preserves the v9 path/schema. Reversed pairing
      * buffers one source unit, not an unbounded lookahead. Published units retain
      * their own fields; downstream weaving must use the same pairing parameter. */
+    const ge_config *geometry_config; /* NULL: approved defaults; copied by fs_open */
     int geometry_pair_next;
     int geometry_audit_comb;    // acceptance only: compute even untriggered combs
     const char *pairing_schedule; // CSV snapshot loaded by fs_open; requires v11,

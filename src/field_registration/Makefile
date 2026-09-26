@@ -32,7 +32,10 @@ tests/geometry_bottom: geometry_engine.c geometry_engine.h tests/geometry_bottom
 tests/geometry_still: geometry_engine.c geometry_engine.h tests/geometry_still.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/geometry_still.c -o $@ $(LDLIBS)
 
-geometry-test: tests/geometry_unit tests/geometry_basis tests/geometry_waveform tests/geometry_rejection tests/geometry_vote tests/geometry_bottom tests/geometry_still tests/hblank_probe
+tests/geometry_config: geometry_engine.c geometry_engine.h tests/geometry_config.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/geometry_config.c -o $@ $(LDLIBS) -lpthread
+
+geometry-test: tests/geometry_unit tests/geometry_basis tests/geometry_waveform tests/geometry_rejection tests/geometry_vote tests/geometry_bottom tests/geometry_still tests/geometry_config tests/hblank_probe
 	./tests/geometry_unit
 	./tests/geometry_basis
 	./tests/geometry_waveform
@@ -40,6 +43,7 @@ geometry-test: tests/geometry_unit tests/geometry_basis tests/geometry_waveform 
 	./tests/geometry_vote
 	./tests/geometry_bottom
 	./tests/geometry_still
+	./tests/geometry_config
 	python3 ../../scripts/test_waveform_controls.py ./tests/hblank_probe
 
 libfieldreg.dylib: field_registration.c field_registration.h cea608.c cea608.h

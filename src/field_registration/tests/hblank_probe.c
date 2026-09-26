@@ -27,23 +27,24 @@ static void frames(FILE *f,const ge_decision *out,unsigned n) {
 }
 int main(int argc,char **argv) {
     if(argc>2){fputs("usage: hblank_probe [audit-frames.csv]\n",stderr);return 2;}
-    if(!ge_tool_controls_from_env())return 2;
+    ge_config config=ge_default_config();
+    if(!ge_tool_controls_from_env(&config))return 2;
     uint8_t *y=malloc(GE_PIXELS);geometry_engine *g=malloc(ge_size());
     if(!y||!g)return 2;
     FILE *audit_file=NULL;geometry_engine *audit=NULL;
     if(argc==2) {
         audit_file=fopen(argv[1],"w");audit=malloc(ge_size());
         if(!audit_file||!audit){perror("audit output/allocation");return 2;}
-        ge_tool_controls_echo(audit_file);
+        ge_tool_controls_echo(audit_file,&config);
         fputs("counter,top_unit,frame_d1,frame_d2,comb_ran,comb_d,comb_margin,comb_decided,triggers,held\n",audit_file);
     }
     int mode=-1;uint64_t counter;uint32_t reset,pair;ge_decision out[2];
-    ge_tool_controls_echo(stdout);
+    ge_tool_controls_echo(stdout,&config);
     puts("counter,f1_first,f2_first,f1_last,f2_last,bottom_f1,bottom_f2,blank_f1,blank_f2,profile_hash,level_f1,level_f2,cols_f1,cols_f2,wave_top_f1,wave_step_f1,wave_max_step_f1,wave_status_f1,wave_top_f2,wave_step_f2,wave_max_step_f2,wave_status_f2,measure_ms,engine_ms");
     while(fread(&counter,sizeof counter,1,stdin)==1) {
         if(fread(&reset,sizeof reset,1,stdin)!=1||fread(&pair,sizeof pair,1,stdin)!=1||
            fread(y,1,GE_PIXELS,stdin)!=GE_PIXELS){fputs("short probe record\n",stderr);return 2;}
-        ge_features f;double t=cpu();ge_measure(y,&f);double measure=(cpu()-t)*1000;
+        ge_features f;double t=cpu();ge_measure(y,&f,&config);double measure=(cpu()-t)*1000;
         uint64_t hash=14695981039346656037ull;
         const unsigned char *p=(const unsigned char *)f.profile;
         for(size_t i=0;i<sizeof f.profile;i++){hash^=p[i];hash*=1099511628211ull;}
@@ -51,7 +52,7 @@ int main(int argc,char **argv) {
             if(mode>=0){
                 ge_break(g,out);ge_set_pairing(g,pair);
                 if(audit){frames(audit_file,out,ge_break(audit,out));ge_set_pairing(audit,pair);}
-            } else {ge_init(g,pair,0);if(audit)ge_init(audit,pair,1);}
+            } else {ge_init(g,pair,0,&config);if(audit)ge_init(audit,pair,1,&config);}
             mode=pair;
         }
         t=cpu();ge_push(g,y,counter,reset,out);double engine=(cpu()-t)*1000;
