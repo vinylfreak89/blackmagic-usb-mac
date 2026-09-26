@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix='pairing-schedule-') as directory:
         assert p.returncode == 0, (p.returncode, p.stdout, p.stderr)
         assert re.search(r'dropped\(pool\) 0 dropped\(ring\) 0 dropped\(surfaces\) 0', p.stdout), p.stdout
         rows = list(csv.DictReader(log.open()))
-        assert all(r['schema_version'] =='24' and r['pairing'] in ('aligned', 'reversed') for r in rows)
+        assert all(r['schema_version'] =='25' and r['pairing'] in ('aligned', 'reversed') for r in rows)
         return rows
 
     def units(rows):

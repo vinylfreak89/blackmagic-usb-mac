@@ -11,13 +11,16 @@ import tempfile
 root=Path(__file__).resolve().parents[1]
 replay=str(Path(sys.argv[1]).resolve())
 probe=str(root/'src/field_registration/tests/hblank_probe')
-base={k:v for k,v in os.environ.items() if not k.startswith(('GE_TOP_','GE_WAVE_','GE_COMB_','GE_ANCHOR_','GE_LEVEL_','GE_VOTE_'))}
+base={k:v for k,v in os.environ.items() if not k.startswith(('GE_TOP_','GE_WAVE_','GE_COMB_','GE_ANCHOR_','GE_LEVEL_','GE_VOTE_','GE_BOTTOM_'))}
 names=('GE_WAVE_BAR','GE_WAVE_CLAMP','GE_COMB_REJECT')
 columns='ordinal epoch observed_counter counter_extended applied_d1 applied_d2 f1_unused f2_unused reset_before comb_ran comb_d comb_margin comb_decided confidence frame_top_unit triggers frame_d1 frame_d2 f1_first f2_first f1_last f2_last bl1 bl2 hblank_level_f1 hblank_cols_f1 hblank_level_f2 hblank_cols_f2 class_f1 class_f2 published drop_reason preceding_ring_drops schema_version pairing pairing_note audio_residual_ticks audio_step_samples comb_energies ge_wave_bar ge_wave_clamp wave_top_f1 wave_step_f1 wave_max_step_f1 wave_status_f1 wave_top_f2 wave_step_f2 wave_max_step_f2 wave_status_f2 relative_source anchor_source held_correction ge_comb_reject comb_reject_ratio comb_rejected comb_refused_d comb_substituted_d comb_discarded comb_floor_lo comb_floor_hi comb_rise_left comb_rise_right comb_basin'.split()
 for n in names:base.pop(n,None)
 columns+='ge_anchor_vote ge_level_fill ge_level_flat vote_confident vote_anchor vote_engine_anchor vote_count vote_winner_count vote_top_f1 vote_top_f2 level_top_f1 level_ref_f1 level_mean_f1 level_sd_f1 level_corr_f1 level_accepted_f1 level_top_f2 level_ref_f2 level_mean_f2 level_sd_f2 level_corr_f2 level_accepted_f2'.split()
 columns+='ge_vote_pair ge_vote_pair_min vote_rB vote_pair_pass'.split()
-for name,values in {'GE_VOTE_PAIR':('','2','01'),
+columns+='ge_bottom_flat ge_bottom_flat_margin bottom_rule_f1 bottom_F_p5_f1 bottom_F_p50_f1 bottom_F_p95_f1 bottom_rule_f2 bottom_F_p5_f2 bottom_F_p50_f2 bottom_F_p95_f2'.split()
+for name,values in {'GE_BOTTOM_FLAT':('','2','01'),
+                    'GE_BOTTOM_FLAT_MARGIN':('nan','inf','0','-1','3junk'),
+                    'GE_VOTE_PAIR':('','2','01'),
                     'GE_VOTE_PAIR_MIN':('nan','inf','-1.01','1.01','.6junk'),
                     'GE_WAVE_BAR':('nan','inf','1e999','','5junk'),
                     'GE_WAVE_CLAMP':('-1','1.5','','2junk','2147483648'),
@@ -61,7 +64,7 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
             units={int(r['counter_extended']):r for r in rows if r['counter_extended']}
             assert len(units)==4 and all(r['published']=='1' for r in units.values()),p.stdout
             for r in rows:
-                assert r['schema_version']=='24' and tuple(r[n.lower()] for n in names)==values,r
+                assert r['schema_version']=='25' and tuple(r[n.lower()] for n in names)==values,r
                 assert (r['ge_anchor_vote'],r['ge_level_fill'],r['ge_level_flat'])==('0','0','0'),r
             raw=b''.join(struct.pack('=QII',c,int(units[c]['reset_before']),int(reversed_pair))+y for c in units)
             q=subprocess.run([probe],input=raw,capture_output=True,env=env,timeout=30)

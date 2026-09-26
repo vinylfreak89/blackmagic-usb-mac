@@ -17,6 +17,8 @@ extern int ge_level_fill; /* default 0; ABSTAIN-only vote input, never census */
 extern int ge_level_flat; /* default 0; also accept level candidates with sd<10 */
 extern int ge_vote_pair; /* default 0; floor high end +1 AND paired top rows */
 extern double ge_vote_pair_min; /* default .6; inclusive Pearson threshold */
+extern int ge_bottom_flat; /* default 0; same-unit flat-band bottom reference */
+extern double ge_bottom_flat_margin; /* default 3; inclusive, tolerance 1e-9 */
 #define GE_VOTE_WINDOW 30
 #define GE_COMB_SELECTION_MARGIN 1.5
 typedef struct { int first; double step, max_step; } ge_wave_result;
@@ -28,6 +30,12 @@ typedef struct {
     int first, accepted, measured; /* raw candidate plus clamp/continuation verdict */
     double reference, mean, sd, corr_below;
 } ge_level_result;
+typedef enum { GE_BOTTOM_UNKNOWN, GE_BOTTOM_FLAT_REFERENCE, GE_BOTTOM_FALLBACK } ge_bottom_rule;
+typedef struct {
+    double p5,p50,p95; /* F: body of storage row 258 / 521 */
+    int measured; /* reference is measured only with the control enabled */
+    ge_bottom_rule rule; /* UNKNOWN if no row supplies an answer */
+} ge_bottom_evidence;
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
 enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16,
@@ -52,6 +60,7 @@ typedef struct {
     uint16_t profile[2][12][672]; /* exact eight-sample sums */
     ge_class motion[2];
     ge_level_result level[2]; /* supplemental evidence, never used by classify */
+    ge_bottom_evidence bottom_evidence[2];
 } ge_features;
 typedef struct {
     uint64_t counter, top_unit;
@@ -73,6 +82,7 @@ typedef struct {
     ge_level_result level[2]; /* frame-owned, measured only on ABSTAIN fields */
     double vote_rB; /* NAN unless pairing is enabled and both vote tops exist */
     int vote_pair_pass; /* correlation test only, not the complete confidence */
+    ge_bottom_evidence bottom_evidence[2]; /* frame-owned, like last[] */
 } ge_decision;
 typedef struct geometry_engine geometry_engine;
 size_t ge_size(void);
@@ -89,6 +99,7 @@ int ge_wave_accept(ge_wave_result, int field, int clamp);
 ge_level_result ge_level_scan(const uint8_t *, int field, int clamp, int flat);
 const char *ge_wave_status_name(ge_wave_status);
 const char *ge_source_name(ge_source);
+const char *ge_bottom_rule_name(ge_bottom_rule);
 ge_comb_result ge_comb(const uint8_t *top, const uint8_t *bottom);
 /* Pure evidence; does not adopt, alter decided, or run another search.
  * A proposed shift outside -5..5 has no measured energy: ratio is NAN. */

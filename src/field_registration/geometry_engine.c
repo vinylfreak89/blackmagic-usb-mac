@@ -8,6 +8,8 @@ double ge_comb_reject=2;
 int ge_anchor_vote=0,ge_level_fill=0,ge_level_flat=0;
 int ge_vote_pair=0;
 double ge_vote_pair_min=.6;
+int ge_bottom_flat=0;
+double ge_bottom_flat_margin=3;
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
@@ -120,6 +122,35 @@ static int bottom_picture(const uint8_t *y,int row,double reference) {
     double hi=quantile(h,640,.95),spread=hi-quantile(h,640,.05);
     return !(hi-reference<=5 || spread<=4);
 }
+const char *ge_bottom_rule_name(ge_bottom_rule rule) {
+    static const char *const names[]={"unknown","flat_reference","fallback"};
+    return names[rule];
+}
+static int bottom_scan(const uint8_t *y,int field,double blank,ge_bottom_evidence *e) {
+    int off=263*field,start=258+off;
+    *e=(ge_bottom_evidence){0};
+    if(ge_bottom_flat) {
+        unsigned h[256];histogram(y+start*720+40,640,h);
+        e->measured=1;e->p5=quantile(h,640,.05);
+        e->p50=quantile(h,640,.5);e->p95=quantile(h,640,.95);
+        if(e->p95-e->p5<=4) {
+            const double margin=ge_bottom_flat_margin-1e-9;
+            for(int r=start-1;r>236+off;r--) {
+                histogram(y+r*720+40,640,h);
+                double p5=quantile(h,640,.05),p50=quantile(h,640,.5),p95=quantile(h,640,.95);
+                if(p50-e->p50>=margin || p95-e->p95>=margin || e->p5-p5>=margin) {
+                    e->rule=GE_BOTTOM_FLAT_REFERENCE;return r+4;
+                }
+            }
+            return 0; /* qualified reference but no picture: explicitly unknown */
+        }
+        if(!field)start++; /* enabled fallback alone reaches NTSC half-line 263 */
+    }
+    for(int r=start;r>236+off;r--)if(bottom_picture(y,r,blank)) {
+        e->rule=GE_BOTTOM_FALLBACK;return r+4;
+    }
+    return 0;
+}
 void ge_measure(const uint8_t *y,ge_features *f) {
     memset(f,0,sizeof *f);
     for(int k=0;k<2;k++) {
@@ -132,7 +163,7 @@ void ge_measure(const uint8_t *y,ge_features *f) {
         if(f->wave_status[k]==GE_WAVE_ACCEPTED)f->first[k]=f->wave[k].first;
         if(ge_anchor_vote && ge_level_fill && f->wave_status[k]==GE_WAVE_ABSTAIN)
             f->level[k]=ge_level_scan(y,k,ge_wave_clamp,ge_level_flat);
-        for(int r=258+off;r>236+off;r--) if(bottom_picture(y,r,f->blank[k])){f->last[k]=r+4;break;}
+        f->last[k]=bottom_scan(y,k,f->blank[k],&f->bottom_evidence[k]);
         for(int j=0;j<12;j++) {
             const uint8_t *p=y+(247+off+j)*720; unsigned n=0;
             for(int x=0;x<672;x++) {
@@ -287,6 +318,7 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     ge_decision o={0};o.counter=bc;o.top_unit=tc;o.has_frame=1;o.comb.margin=NAN;
     o.first[0]=t->first[0];o.first[1]=b->first[1];
     o.last[0]=t->last[0];o.last[1]=b->last[1];
+    o.bottom_evidence[0]=t->bottom_evidence[0];o.bottom_evidence[1]=b->bottom_evidence[1];
     o.bottom[0]=t->bottom[0];o.bottom[1]=b->bottom[1];
     o.motion[0]=t->motion[0];o.motion[1]=b->motion[1];
     /* A held correction belongs to these two frame tops, not to a transport

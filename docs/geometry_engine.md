@@ -65,7 +65,7 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 24, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 25, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32),
 comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` or the anchor vote is enabled; audit does
@@ -81,6 +81,27 @@ not an audit-only computation. Existing columns retain their meanings.
 Within the same row, the published relative shift is `frame_d2 - frame_d1`;
 compare it to `comb_d`, with `comb_decided` indicating whether the minimum was
 decisive. This requires no cross-unit join even under reversed pairing.
+
+## Optional same-unit bottom reference (entry 38)
+
+`GE_BOTTOM_FLAT=1` enables the bottom detector; default is off.
+`GE_BOTTOM_FLAT_MARGIN` is finite and positive, default 3. The library reads no
+environment variables. F is the body (columns 40..679) of storage row 258/521.
+Its p5/p50/p95 use the engine's interpolated histogram quantile. If F's spread
+is at most 4, scan upward from 257/520 through 237/500: a row qualifies when
+its median or p95 exceeds F's corresponding value by at least M, or its p5
+falls below F's p5 by at least M. Comparisons use M minus 1e-9 for inclusive
+ties. No qualifying row means unknown, without fallback. A non-flat F uses
+the original amplitude/spread test, starting at 259 for field 1 (the input
+half-line) and 521 for field 2. Disabled scans retain the original 258/521
+start. The 12-row bottom profile and every top measurement are unchanged.
+
+Schema 25 appends `ge_bottom_flat`, `ge_bottom_flat_margin` and, for each N=1,2,
+`bottom_rule_fN`, `bottom_F_p5_fN`, `bottom_F_p50_fN`, `bottom_F_p95_fN`.
+Rules are `flat_reference`, `fallback`, or `unknown`. Like `fN_last`, these
+are frame-owned: field 1 comes from `frame_top_unit`, field 2 from this row's
+unit. Non-frame rows leave all evidence empty; with the control off, F is
+unmeasured and its quantiles are empty. A found old-rule bottom is `fallback`.
 
 ## Optional anchor vote (entry 36)
 
