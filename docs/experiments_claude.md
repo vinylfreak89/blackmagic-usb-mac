@@ -2055,3 +2055,25 @@ begins at 288 behind two empty data lines.
 
 **Not understood yet:** why field 1's top reads 24/25 through 1910–2327 when the comb places it at 26, and
 what the remaining 24 full-tape common-mode moves are.
+
+### Amendment 5 to E-claude-2026-09-25-36 (2026-09-26) — field 1 is not misread; the confidence test's definition is wrong
+
+**Owner:** "can we try to dig into the issue with why the field 1 reads 24/25 when the comb puts it at 26.
+that is probably better than over including things that aren't considered confident." Amendment 4's
+raw-support rule is not chosen.
+
+**Verdict.** Field 1's picture genuinely starts at 25 (or 24). Matching each field-1 top line to field 2
+(cap 2, frames 2000/2100/2154/2196/2400): field 1's line 25 is picture (it matches field 2's 288 at
++0.79/+0.93), but under the comb's alignment its field-2 partner is 287, a data line. **Field 1 carries one
+extra picture line with no field-2 counterpart** — the picture's top edge landing between the fields. The
+waveform (first picture line of each field) and the comb (content alignment) are both right and differ by
+exactly one. Tape-wide, over 65,782 frames with both tops and a decided comb: tops = comb on 60.0%,
+**tops = comb + 1 on 33.4%**, +2/+3 (real misreads) on 3.6%. Requiring an exact match has discarded a third
+of the tape; in cap 2 only field 2's 287 misreads, which cancel the +1, were admitted.
+
+**Allowing +1, simulated:** cap 2's shift gone with no raw support; gate 1 54.3% → 80.3%; card 238/238. **But
+excursions 6 → 37 and common-mode 29 → 55.** "+1" is ambiguous: field 1's extra line (field 2 right) and field
+2 read one line late (field 2 wrong) both produce it, and in the second recording the two camps alternate
+winning the window (50370/50390, 51187/51224). **Not built.** Candidate discriminator, unmeasured: whether field
+2's line just above its measured top pairs with field 1's top line (then it is picture and field 2 was late) or
+does not (a data line, so field 1 carries the extra line).
