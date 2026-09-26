@@ -1260,3 +1260,26 @@ all pass, including cap 4's 262/525 on every unit. Enabled CPU median/p95 is
 O3 engine, s12c with pairing and all-frame comb). No media or review status
 was replaced. Engine 6778e76 and renderer 5045652 are committed for review;
 render authorization remains blocked by the relative-shift invariant.
+
+Entry-38 authorization amendment (2026-09-26): the owner accepts all sixteen
+relative-shift changes and withdraws the dispatch's over-specified invariant.
+The reviewer's independent same-field vertical-motion probe supports this:
+minimum mean absolute difference at offsets -3..+3 follows the comb winner's
+sign on fifteen of the sixteen changed frames; 60848's winner is zero. With
+steady measured tops and corrected bottoms, this supports content motion
+across the field interval, rather than registration, as the old T1-driven
+comb correction's cause. Evidence supplied by the reviewer is
+/private/tmp/wave-engine/vote/vmotion.py and vm.txt; this attribution is their
+measurement, not a new independent replay by this agent. The evidence log
+also ends with `edge tpc provenance validation failed: 0x83 packet-index errors=3`;
+that diagnostic is retained, not represented as clean transport validation.
+
+Proceed with the already-tested engine 6778e76 and renderer 5045652, s12c plus
+pairing .6 and flat-bottom margin 3. Rebuild the four reviews, require zero
+placement changes against their existing sidecars and read back every encoded
+placement. Then replay the whole tape at 4x with PCM, with no concurrent
+project workload; require zero holes and every video/audio drop counter zero,
+retrying slower if needed. Full encoded-strip and audio-clock checks, closed
+file hashes, explicit producer/configuration status and same-filesystem
+publication precede replacement. Previous published files remain recoverable
+by hard links. No measurement or publication policy is changed in this step.
