@@ -1172,3 +1172,28 @@ s12c plus pairing at .6. Their complete encoded-placement readbacks pass;
 status/configuration/hashes. The previous review files remain recoverable in
 the run's replaced-reviews directory. No full-tape encode; owner visual
 acceptance remains pending. The pairing control remains off by default.
+
+## E-codex-2026-09-26-38 — same-unit flat-band bottom
+
+Owner's question: replace the bottom detector's fixed spread test; margin
+choice is explicitly "Fixed 3, recorded". The amended premise is local, not
+temporal: the qualified lowest scanned line measures this field's current
+flat band, and picture differs from that band in level, even when uniform.
+Use p5/p50/p95 over the existing body, a qualified spread <=4, and the three
+specified inclusive margin comparisons with 1e-9 tolerance. If the reference
+does not qualify, retain the old test, starting field 1's enabled fallback at
+line 263; keep the disabled scan exact. No new learner, top/vote/comb policy,
+or bottom-profile changes. Expose the requested off-by-default controls and
+record which bottom rule supplied each frame-owned census edge and its F.
+
+Before renders, compare every old bottom with 299e878 and every available
+reference_bottom answer by source unit; retain exact quantiles for mismatches
+and report missing-reference rows rather than inventing their answer. Require
+unchanged tops/profiles/blanking and labelled cases. Measure downstream
+relative/placement/trigger effects instead of assuming a changed census is
+inert; report bottom-only comb decisions and all changed frames. A reference
+mismatch stops rendering. Run the 16x live replay with no competing jobs,
+slowing only if an idle run loses data and retaining every failure. Render
+captures 1–4 after validation, then full tape only if their placements are
+identical to the existing reviews. Encoded-strip validation and explicit
+producer/configuration/hash status precede atomic publication.
