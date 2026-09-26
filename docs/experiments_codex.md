@@ -1607,3 +1607,82 @@ idle-worker benchmark separately from the legacy benchmark's stage timings.
 Owner publication-retention amendment: no backups of replaced media, sidecars
 or status, and no retained derived staging media after validated publication.
 Existing backup cleanup belongs to Claude; this turn must not touch it.
+
+Entry-39 amendment-2 publication result: engine a7a4316 is unchanged;
+renderer c533392 adds logged still/withheld and per-field 2-D evidence.
+Schema 28; s12c, pairing .6, bottom-flat margin 3, A1, still and rigid
+withholding at clarity 1.3. Gate B is accepted for the reference-precision
+reason recorded above, not by adjusting the engine or its threshold.
+
+Exact requested clarities and frame withholding:
+
+| Unit / field | Clarity | Production 2-D search | Withheld |
+|---|---:|---|---|
+| 33107 / 2 | 1.3001202681622788 | no; separate C diagnostic, dx=0/dy=0 | no |
+| 79624 / 2 | 1.2998686706551874 | yes; dx=-1/dy=-3 | no |
+| 82197 / 1 | 1.3001577662116106 | yes; dx=-1/dy=-2 | no |
+
+The 33107 diagnostic initially failed on the unframed leading fragment:
+`TypeError: '>=' not supported between instances of 'NoneType' and 'int'`.
+The scratch reader was corrected to skip absent counters and the diagnostic
+rerun. It uses the compiled engine's measurement, not a Python reimplementation;
+it does not insert a search into production evidence.
+
+Captures 1–4 and the whole tape all passed their first 4x replay
+(pace_us=4000), with zero holes, pool/ring/surface/audio drops, and zero
+harness-versus-replay decision or logged motion-evidence differences.
+
+| Input | Exact units | Paired frames | Encoded frames | Placement differences vs A1 | Encoded readback differences |
+|---|---:|---:|---:|---:|---:|
+| capture 1 | 919 | 919 | 922 | 0 | 0 |
+| capture 2 | 649 | 649 | 649 | 0 | 0 |
+| capture 3 | 649 | 648 | 648 | 0 | 0 |
+| capture 4 | 650 | 650 | 650 | 0 | 0 |
+| whole tape | 86,293 | 86,289 | 86,296 | 1,187 relative shifts; 0 anchors | 0 |
+
+Capture 1 has three fill frames; capture 3 retains its explicit unpaired
+tail at 14149, not an interior drop. The whole-tape replay took 722.894428 s;
+the encode has seven fill frames and duration 2879.409867 s. Audio-clock
+readback over 86,292 units has maximum error 0.001998002 frame, preserving
+the two logged source sample steps. The full sidecar's 318 rejections are
+304 substitutions and 14 discards; all decisions match the accepted harness.
+
+The owner required the worker benchmark to include the expensive 2-D search.
+Commit 621d8e4 adds bench-geometry: it times the actual configured v11
+frameserver processing path using thread CPU time, including classification,
+geometry (with both motion searches), assembly and publication. It excludes
+input I/O and queue waits; sidecar-formatting CPU is included. Its replay
+decisions are identical to the accepted harness; sample/search-count
+differences are zero on all 86,293 units.
+
+| 2-D searches in unit | Units | Worker median ms | Worker p95 ms | Worker maximum ms |
+|---|---:|---:|---:|---:|
+| all | 86,293 | 1.404041 | 2.531042 | 8.229542 |
+| zero | 79,598 | 1.365958 | 1.924917 | 3.995667 |
+| one | 2,238 | 2.421375 | 3.448542 | 5.162542 |
+| two | 4,457 | 2.929667 | 4.309583 | 8.229542 |
+
+The 2-D search ran on 6,695 units (7.758451%), covering 11,152 fields;
+zero worker samples exceeded the 10 ms CPU budget. For two-search units,
+geometry is the dominant cost: median/p95 2.474083/3.560417 ms. All-unit
+geometry is .701416/2.055583, classifier .397750/.551667, publication
+.039125/.090500. Stage medians are not additive.
+
+The previous 4.263/5.212 ms whole-worker figure measured legacy v9, not
+this configured v11 path: this is a scope correction, not a like-for-like
+speedup claim. A diagnostic repeat of the legacy benchmark spent about
+4.047/4.863 ms in registration. No competing project jobs ran alongside
+the full replay or encode, but unrelated desktop/system CPU activity was
+present and recorded. These are thread-CPU measurements under that load,
+not a claim of the requested fully idle host.
+
+All five MP4s and their sidecars were validated and published, with fresh
+READY status naming engine, renderer and configuration. Full-tape hashes:
+MP4 `71bd8b51215586f16a3856f704d5dadeaf676144eadd124c04635e7107587ec1`;
+sidecar `82609a5956963d91d65b978de685826518302c5db3d53a18aef944f489f2509b`.
+Post-rename hash differences: zero. Same-filesystem replacement, no backups;
+derived staging MP4/sidecar/PCM/AV files and the redundant benchmark sidecar
+were removed. No existing replaced-review folder was touched. Verification
+records, timings, scripts and logs remain in /private/tmp/rigid-review.YcoRt6;
+the published status files carry the durable artifact hashes. Publication
+is not owner visual acceptance.
