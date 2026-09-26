@@ -21,14 +21,8 @@ columns+='ge_bottom_flat ge_bottom_flat_margin bottom_rule_f1 bottom_F_p5_f1 bot
 columns+='ge_vote_blankspot ge_comb_still vote_blankspot_pass vote_blankspot_line motion_shift_f1 motion_error_f1 motion_error2_f1 motion_shift_f2 motion_error_f2 motion_error2_f2 picture_motion still_trigger comb_suppressed'.split()
 columns.append('ge_comb_motion_min')
 columns+='ge_comb_rigid ge_comb_rigid_clarity rigid_dx_f1 rigid_dy_f1 rigid_sad_f1 rigid_sad_far_f1 rigid_clarity_f1 rigid_dx_f2 rigid_dy_f2 rigid_sad_f2 rigid_sad_far_f2 rigid_clarity_f2'.split()
-for name,values in {'GE_COMB_MOTION_MIN':('','0','-1','1.5','2junk','2147483648'),
-                    'GE_BOTTOM_FLAT':('','2','01'),
-                    'GE_VOTE_BLANKSPOT':('','2','01'),
-                    'GE_COMB_STILL':('','2','01'),
-                    'GE_COMB_RIGID':('','2','01'),
-                    'GE_COMB_RIGID_CLARITY':('nan','inf','0','.99','1.3junk'),
+for name,values in {'GE_COMB_RIGID_CLARITY':('nan','inf','0','.99','1.3junk'),
                     'GE_BOTTOM_FLAT_MARGIN':('nan','inf','0','-1','3junk'),
-                    'GE_VOTE_PAIR':('','2','01'),
                     'GE_VOTE_PAIR_MIN':('nan','inf','-1.01','1.01','.6junk'),
                     'GE_WAVE_BAR':('nan','inf','1e999','','5junk'),
                     'GE_WAVE_CLAMP':('-1','1.5','','2junk','2147483648'),
@@ -73,7 +67,7 @@ with tempfile.TemporaryDirectory(prefix='geometry-controls-',dir='/private/tmp')
             assert len(units)==4 and all(r['published']=='1' for r in units.values()),p.stdout
             for r in rows:
                 assert r['schema_version']=='28' and tuple(r[n.lower()] for n in names)==values,r
-                assert (r['ge_anchor_vote'],r['ge_level_fill'],r['ge_level_flat'])==('0','0','0'),r
+                assert (r['ge_anchor_vote'],r['ge_level_fill'],r['ge_level_flat'])==('1','1','0'),r
             raw=b''.join(struct.pack('=QII',c,int(units[c]['reset_before']),int(reversed_pair))+y for c in units)
             q=subprocess.run([probe],input=raw,capture_output=True,env=env,timeout=30)
             assert q.returncode==0,q.stderr

@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix='bottom-flat-test-',dir='/private/tmp') 
         log=tmp/f'{reverse}.csv'
         cmd=[str(Path(sys.argv[1]).resolve()),str(capture),str(log),'--geometry-v11','--pool','64']
         if reverse:cmd+=['--pair-next']
-        p=subprocess.run(cmd,env=env|{'GE_BOTTOM_FLAT':'1'},capture_output=True,text=True,timeout=90)
+        p=subprocess.run(cmd,env=env,capture_output=True,text=True,timeout=90)
         assert p.returncode==0 and 'Sanitizer' not in p.stderr,(p.returncode,p.stdout,p.stderr)
         with log.open() as f:rows=list(csv.DictReader(f))
         assert all(None not in r and None not in r.values() for r in rows)

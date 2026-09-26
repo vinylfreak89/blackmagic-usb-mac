@@ -418,7 +418,7 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
                 if(fprintf(f->log,",%d",d->rejection.basin)<0)bad=1;
             } else if(fputs(",,,,",f->log)==EOF)bad=1;
         } else if(fputs(",,,,,,,,,",f->log)==EOF)bad=1;
-        if(fprintf(f->log,",%d,%d,%d",ge_anchor_vote,ge_level_fill,ge_level_flat)<0)bad=1;
+        if(fprintf(f->log,",1,1,0")<0)bad=1; /* frozen schema-28 configuration */
         if(d && d->has_frame) {
             if(fprintf(f->log,",%d,%d,%d,%d,%d,%d,%d",d->vote_confident,d->vote_anchor,
                        d->vote_engine_anchor,d->vote_count,d->vote_winner_count,
@@ -431,11 +431,11 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
                 } else if(fputs(",,,,,,",f->log)==EOF)bad=1;
             }
         } else for(int k=0;k<19;k++)if(fputc(',',f->log)==EOF)bad=1;
-        if(fprintf(f->log,",%d,%.17g,",ge_vote_pair,ge_vote_pair_min)<0)bad=1;
+        if(fprintf(f->log,",1,%.17g,",ge_vote_pair_min)<0)bad=1;
         if(d && d->has_frame && !isnan(d->vote_rB)) {
             if(fprintf(f->log,"%.17g,%d",d->vote_rB,d->vote_pair_pass)<0)bad=1;
         } else if(fputc(',',f->log)==EOF)bad=1;
-        if(fprintf(f->log,",%d,%.17g",ge_bottom_flat,ge_bottom_flat_margin)<0)bad=1;
+        if(fprintf(f->log,",1,%.17g",ge_bottom_flat_margin)<0)bad=1;
         for(int k=0;k<2;k++) {
             if(d && d->has_frame) {
                 const ge_bottom_evidence *e=d->bottom_evidence+k;
@@ -445,7 +445,7 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
                 } else if(fputs(",,,",f->log)==EOF)bad=1;
             } else if(fputs(",,,,",f->log)==EOF)bad=1;
         }
-        if(fprintf(f->log,",%d,%d",ge_vote_blankspot,ge_comb_still)<0)bad=1;
+        if(fprintf(f->log,",1,1")<0)bad=1;
         if(d && d->has_frame) {
             if(d->vote_blankspot_measured) {
                 if(fprintf(f->log,",%d,%d",d->vote_blankspot_pass,d->vote_blankspot_line)<0)bad=1;
@@ -458,7 +458,7 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
             }
             if(fprintf(f->log,",%s,%d,%d",ge_picture_motion_name(d->picture_motion),d->still_trigger,d->comb_suppressed)<0)bad=1;
         } else for(int k=0;k<11;k++)if(fputc(',',f->log)==EOF)bad=1;
-        if(fprintf(f->log,",%d,%d,%.17g",ge_comb_motion_min,ge_comb_rigid,ge_comb_rigid_clarity)<0)bad=1;
+        if(fprintf(f->log,",1,1,%.17g",ge_comb_rigid_clarity)<0)bad=1;
         for(int k=0;k<2;k++) {
             if(d && d->has_frame && d->rigid[k].known) {
                 const ge_rigid_motion *r=d->rigid+k;
@@ -710,8 +710,8 @@ static void *worker_main(void *arg){
 static void count_sink(void *ctx, const fp_frame *fr){ (void)ctx; (void)fr; }
 int fs_open(frameserver **out, const fs_config *cfg){
     if (!out || !cfg) return -1;
-    if(cfg->pairing_schedule && (!cfg->geometry_v11 || cfg->geometry_pair_next)) {
-        fprintf(stderr,"pairing schedule: requires v11 and excludes --pair-next\n");return -1;
+    if(cfg->pairing_schedule && cfg->geometry_pair_next) {
+        fprintf(stderr,"pairing schedule: excludes --pair-next\n");return -1;
     }
     frameserver *f = calloc(1, sizeof *f); if (!f) return -1;
     f->comb_correction_install_ordinal = UINT64_MAX;
@@ -742,7 +742,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
     unit_parser_init(f->parser, NULL, &pcb);
     signal_state_config sc = signal_state_default_config(); signal_state_init(f->sig, &sc);
     fieldreg_config ec = fieldreg_default_config(); fieldreg_init(f->eng, &ec);
-    if(cfg->geometry_v11) {
+    {
         f->geometry=malloc(ge_size());f->geometry_y=malloc(GE_PIXELS);
         f->geometry_unit=malloc(FP_UNIT_BYTES);
         if(!f->geometry||!f->geometry_y||!f->geometry_unit){fs_close(f);return -1;}
@@ -761,7 +761,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
     ap_sink asink = { aq_enqueue, f };
     if (ap_open(&f->aud, f->aq_cap_frames, &asink) != 0){ fs_close(f); return -1; }
     if (pthread_mutex_init(&f->log_m, NULL)){ fs_close(f); return -1; } f->log_m_init = 1;
-    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "wx"); if (!f->log || log_header(f->log,cfg->geometry_v11) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
+    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "wx"); if (!f->log || log_header(f->log,1) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
     cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, NULL, cc_on_end, f };
     if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
@@ -837,7 +837,7 @@ int fs_log_start(frameserver *f, const char *path){
     if(attached) return -1;                            // one log at a time; the caller ends the previous one
     FILE *L = fopen(path, "wx");                       // never truncate an existing file: a sidecar is evidence
     if(!L) return -1;
-    if(log_header(L,f->cfg.geometry_v11) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
+    if(log_header(L,1) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
     // Lifecycle check and install happen under life_m so fs_stop (which moves life to STOPPING
     // under the same lock before joining the workers) cannot slip between them.
     pthread_mutex_lock(&f->life_m);

@@ -1,4 +1,4 @@
-"""Shared tool startup parser; arm provenance and rejected retired controls."""
+"""Shared tool startup parser; numeric controls and approved defaults."""
 import os
 from pathlib import Path
 import subprocess
@@ -13,23 +13,15 @@ for arm,expected in [({},'# GE_WAVE_BAR=0.45000000000000001 GE_WAVE_CLAMP=5 GE_C
         audit=Path(tmp)/'audit.csv'
         p=subprocess.run([binary,str(audit)],input='',text=True,capture_output=True,env=base|arm,timeout=30)
         assert p.returncode==0,(p.returncode,p.stderr)
-        assert p.stdout.splitlines()[0]==audit.read_text().splitlines()[0]==expected+' GE_ANCHOR_VOTE=0 GE_LEVEL_FILL=0 GE_LEVEL_FLAT=0 GE_VOTE_PAIR=0 GE_VOTE_PAIR_MIN=0.59999999999999998 GE_BOTTOM_FLAT=0 GE_BOTTOM_FLAT_MARGIN=3 GE_VOTE_BLANKSPOT=0 GE_COMB_STILL=0 GE_COMB_MOTION_MIN=1 GE_COMB_RIGID=0 GE_COMB_RIGID_CLARITY=1.3'
+        assert p.stdout.splitlines()[0]==audit.read_text().splitlines()[0]==expected+' GE_ANCHOR_VOTE=1 GE_LEVEL_FILL=1 GE_LEVEL_FLAT=0 GE_VOTE_PAIR=1 GE_VOTE_PAIR_MIN=0.59999999999999998 GE_BOTTOM_FLAT=1 GE_BOTTOM_FLAT_MARGIN=3 GE_VOTE_BLANKSPOT=1 GE_COMB_STILL=1 GE_COMB_MOTION_MIN=1 GE_COMB_RIGID=1 GE_COMB_RIGID_CLARITY=1.3'
 bad={'GE_WAVE_BAR':('nan','inf','1e999','','.5junk'),
      'GE_WAVE_CLAMP':('-1','1.5','','2junk','2147483648'),
      'GE_COMB_REJECT':('0','-1','nan','inf','1e999','','2junk')}
-bad.update({k:('-1','2','','true','01','1junk') for k in ('GE_ANCHOR_VOTE','GE_LEVEL_FILL','GE_LEVEL_FLAT','GE_VOTE_PAIR')})
 bad['GE_VOTE_PAIR_MIN']=('nan','inf','1e999','','.6junk','-1.01','1.01')
-bad['GE_BOTTOM_FLAT']=('-1','2','','true','01','1junk')
-bad['GE_VOTE_BLANKSPOT']=bad['GE_COMB_STILL']=bad['GE_BOTTOM_FLAT']
 bad['GE_BOTTOM_FLAT_MARGIN']=('0','-1','nan','inf','1e999','','3junk')
-bad['GE_COMB_MOTION_MIN']=('0','-1','1.5','nan','inf','1e999','','2junk','2147483648')
-bad['GE_COMB_RIGID']=bad['GE_COMB_STILL']
 bad['GE_COMB_RIGID_CLARITY']=('0','-1','nan','inf','1e999','','1.3junk','.99')
 for name,values in bad.items():
     for value in values:
         p=subprocess.run([binary],input='',text=True,capture_output=True,env=base|{name:value},timeout=30)
         assert p.returncode==2 and f'invalid {name}:' in p.stderr and not p.stdout,(name,value,p)
-for name in ('GE_TOP_MARGIN','GE_TOP_GUARD','GE_TOP_PLAIN23','GE_TOP_RUNIN','GE_TOP_NEAR_BLANK','GE_TOP_OVERRUN_VETO'):
-    p=subprocess.run([binary],input='',text=True,capture_output=True,env=base|{name:'0'},timeout=30)
-    assert p.returncode==2 and f'retired control {name}:' in p.stderr and not p.stdout
-print(f'WAVEFORM-CONTROLS PASS: defaults, explicit arm, {sum(map(len,bad.values()))} malformed values, 6 retired controls')
+print(f'WAVEFORM-CONTROLS PASS: defaults, explicit arm, {sum(map(len,bad.values()))} malformed values')

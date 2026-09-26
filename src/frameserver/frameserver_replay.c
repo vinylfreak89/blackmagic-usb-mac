@@ -58,7 +58,7 @@ int main(int argc, char **argv){
         if (!strcmp(argv[i], "--pace-us") && i + 1 < argc) cfg.capture.replay_pace_us = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--ring-mb") && i + 1 < argc) cfg.capture.ring_mb = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--pool") && i + 1 < argc) cfg.pool_units = (unsigned)atoi(argv[++i]);
-        else if (!strcmp(argv[i], "--geometry-v11")) cfg.geometry_v11=1;
+        else if (!strcmp(argv[i], "--geometry-v11")) {} /* compatibility; now the default */
         else if (!strcmp(argv[i], "--pair-next")) cfg.geometry_pair_next=1;
         else if (!strcmp(argv[i], "--pairing-schedule")) {
             if(i+1==argc || argv[i+1][0]=='-' || cfg.pairing_schedule){fprintf(stderr,"--pairing-schedule requires one FILE\n");return 9;}
@@ -73,7 +73,6 @@ int main(int argc, char **argv){
         else if (!strcmp(argv[i], "--stall-s") && i + 1 < argc) stall_s = tool_seconds(argv[++i],120);
         else if (argv[i][0] != '-') cfg.decision_log = argv[i];
     }
-    if((cfg.geometry_pair_next || cfg.geometry_audit_comb || cfg.pairing_schedule) && !cfg.geometry_v11){fprintf(stderr,"--pair-next/--audit-comb/--pairing-schedule require --geometry-v11\n");return 9;}
     if(cfg.pairing_schedule && cfg.geometry_pair_next){fprintf(stderr,"--pairing-schedule and --pair-next are mutually exclusive\n");return 9;}
     if (g_vdump || g_log || g_limit) cfg.sink.on_frame = dump_frame;
     if (g_adump || g_log) cfg.audio_sink.on_block = dump_audio;

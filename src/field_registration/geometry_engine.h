@@ -12,17 +12,8 @@
 extern double ge_wave_bar; /* default .45; first step strictly greater wins */
 extern int ge_wave_clamp; /* default 5; symmetric displacement from 23 / 286 */
 extern double ge_comb_reject; /* default 2; strict proposed-energy / minimum bar */
-extern int ge_anchor_vote; /* default 0; last 30 confident frame anchors */
-extern int ge_level_fill; /* default 0; ABSTAIN-only vote input, never census */
-extern int ge_level_flat; /* default 0; also accept level candidates with sd<10 */
-extern int ge_vote_pair; /* default 0; floor high end +1 AND paired top rows */
 extern double ge_vote_pair_min; /* default .6; inclusive Pearson threshold */
-extern int ge_bottom_flat; /* default 0; same-unit flat-band bottom reference */
 extern double ge_bottom_flat_margin; /* default 3; inclusive, tolerance 1e-9 */
-extern int ge_vote_blankspot; /* default 0; skipped field-2 rows need VI blanking */
-extern int ge_comb_still; /* default 0; same-field motion gates comb authority */
-extern int ge_comb_motion_min; /* default 1; positive whole lines; 99 withholds none */
-extern int ge_comb_rigid; /* default 0; replaces motion_min when comb_still is on */
 extern double ge_comb_rigid_clarity; /* default 1.3; inclusive far/best SAD ratio */
 #define GE_VOTE_WINDOW 30
 #define GE_COMB_SELECTION_MARGIN 1.5
@@ -117,7 +108,7 @@ void ge_measure(const uint8_t *, ge_features *);
  * ge_measure applies the independent symmetric clamp to each raw observation. */
 ge_wave_result ge_wave_scan(const uint8_t *, int field, double bar);
 int ge_wave_accept(ge_wave_result, int field, int clamp);
-ge_level_result ge_level_scan(const uint8_t *, int field, int clamp, int flat);
+ge_level_result ge_level_scan(const uint8_t *, int field, int clamp);
 const char *ge_wave_status_name(ge_wave_status);
 const char *ge_source_name(ge_source);
 const char *ge_bottom_rule_name(ge_bottom_rule);

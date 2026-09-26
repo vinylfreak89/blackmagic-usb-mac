@@ -249,9 +249,9 @@ int main(int argc, char **argv){
           "eligible ingress conservation failed");
     if(!ring_may_drop) CHECK(s.short_units + s.holes + s.unframed + s.exact_units + s.other_format + s.no_signal_0800 >= s.video_observations, "every observation classified by transport/kind");
     // log integrity: header + rows, columns as the contract names them
-    FILE *L = fopen(logp, "r"); char line[2048]; unsigned rows = 0; int hdr_ok = 0, row_shape_ok = 1; unsigned header_fields = 0;
+    FILE *L = fopen(logp, "r"); char line[16384]; unsigned rows = 0; int hdr_ok = 0, row_shape_ok = 1; unsigned header_fields = 0;
     while (fgets(line, sizeof line, L)){
-        if (rows == 0){ hdr_ok = strstr(line, "interval_id,unsettled,provisional_d1") != NULL && strstr(line, "f1_insert_bytes,f1_insert_relation,f1_parity_candidates") != NULL && strstr(line, "f1_gauge_amplitude,f1_geometry_d,f1_blank_mean") != NULL && strstr(line, "f2_lock_state,f2_zero_source,f2_lock_id") != NULL && strstr(line, "f2_lock_top,f2_lock_height,f2_lock_height_known,f2_clip_state,f2_clip_ceiling") != NULL; header_fields=csv_fields(line); }
+        if (rows == 0){ hdr_ok = strstr(line, "frame_d1,frame_d2,f1_first,f2_first") != NULL && strstr(line, "vote_confident,vote_anchor,vote_engine_anchor") != NULL && strstr(line, "rigid_dx_f1,rigid_dy_f1") != NULL; header_fields=csv_fields(line); }
         else if(csv_fields(line)!=header_fields) row_shape_ok=0;
         rows++;
     }

@@ -94,19 +94,15 @@ def main():
                         assert math.isclose(float(r[level_key]),float(np.quantile(lead[:,:cols],.99)),abs_tol=1e-10)
                 for row in rows:
                     has_frame = row['comb_ran'] != ''
-                    computed = has_frame and (audit or row['comb_ran']=='1')
+                    computed = has_frame
                     assert bool(row['comb_energies']) == computed, row
                     if computed:
                         c = int(row['counter_extended'])-100
                         check(row,energies(rasters[c+int(reverse)],rasters[c]))
                 runs.append(rows)
-            # Every non-evidence field stays byte-for-byte equal under audit.
-            evidence = {'comb_d','comb_margin','comb_decided','comb_energies',
-                        'comb_reject_ratio','comb_floor_lo','comb_floor_hi',
-                        'comb_rise_left','comb_rise_right','comb_basin'}
-            assert [{k:v for k,v in r.items() if k not in evidence} for r in runs[0]] == [
-                    {k:v for k,v in r.items() if k not in evidence} for r in runs[1]]
-            assert any(r['comb_ran']=='0' and not r['comb_energies'] for r in runs[0]), 'fixture must exercise uncomputed evidence'
+            # The approved engine measures every frame; audit is a compatibility no-op.
+            assert runs[0] == runs[1]
+            assert any(r['comb_ran']=='0' and r['comb_energies'] for r in runs[0]), 'fixture must exercise measured but untriggered evidence'
             print('COMB-ENERGIES PASS:', 'reversed' if reverse else 'aligned', '12 units, all shifts, margins, empty cells, audit invariance')
 
 

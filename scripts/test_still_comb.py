@@ -6,7 +6,6 @@ ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('fixture',ROOT/'src/unit_parser/tests/gen_unit_parser_capture.py')
 fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture)
 env={k:v for k,v in os.environ.items() if not k.startswith('GE_')}
-env.update(GE_ANCHOR_VOTE='1',GE_LEVEL_FILL='1',GE_VOTE_PAIR='1',GE_BOTTOM_FLAT='1',GE_VOTE_BLANKSPOT='1',GE_COMB_STILL='1')
 rng=np.random.default_rng(739)
 base=rng.integers(20,180,(525,720),dtype=np.uint8)
 base[:19]=1;base[259:282]=1;base[522:]=1
@@ -19,9 +18,8 @@ with tempfile.TemporaryDirectory(prefix='still-comb-',dir='/private/tmp') as tmp
     with capture.open('wb') as f:
         for seq,off in enumerate(range(0,len(stream),15360)):
             f.write(fixture.record(fixture.DATA,fixture.VIDEO,0,seq,0,15360,stream[off:off+15360]))
-    for reverse,threshold,rigid in itertools.product((False,True),(1,2,99),(0,1)):
-        env['GE_COMB_MOTION_MIN']=str(threshold)
-        env['GE_COMB_RIGID']=str(rigid)
+    for reverse in (False,True):
+        threshold,rigid=1,1
         log=tmp/f'{reverse}.{threshold}.{rigid}.csv'
         cmd=[str(Path(sys.argv[1]).resolve()),str(capture),str(log),'--geometry-v11','--pool','64']
         if reverse:cmd+=['--pair-next']

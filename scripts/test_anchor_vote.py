@@ -1,4 +1,4 @@
-"""Live vote path: all-off identity, audit invariance, common-mode-only output and fills."""
+"""Approved vote path: audit invariance, paired confidence and empty-window holds."""
 import csv,importlib.util,os,random,struct,subprocess,sys,tempfile
 from pathlib import Path
 import numpy as np
@@ -27,54 +27,39 @@ with tempfile.TemporaryDirectory(prefix='anchor-vote-',dir='/private/tmp') as tm
             f.write(fixture.record(fixture.DATA,fixture.VIDEO,0,seq,0,15360,stream[off:off+15360]))
     for reverse in (False,True):
         runs={}
-        arms={'off':(0,0,0),'inert':(0,1,1),'s1':(1,0,0),'s12':(1,1,1),'s12c':(1,1,0),'paired':(1,1,0)}
-        for arm,values in arms.items():
-            for audit in (False,True):
-                log=tmp/f'{reverse}.{arm}.{audit}.csv'
-                cmd=[binary,str(capture),str(log),'--geometry-v11','--pool','64']
-                if reverse:cmd+=['--pair-next']
-                if audit:cmd+=['--audit-comb']
-                settings=dict(zip(('GE_ANCHOR_VOTE','GE_LEVEL_FILL','GE_LEVEL_FLAT'),map(str,values)))
-                settings['GE_VOTE_PAIR']=str(int(arm in ('paired','inert')))
-                p=subprocess.run(cmd,capture_output=True,text=True,env=env|settings,timeout=90)
-                assert p.returncode==0 and 'Sanitizer' not in p.stderr,(p.returncode,p.stdout,p.stderr)
-                with log.open() as f:rows=list(csv.DictReader(f))
-                assert all(None not in r and None not in r.values() for r in rows)
-                units={r['counter_extended']:r for r in rows if r['counter_extended']}
-                assert len(units)==50 and all(r['published']=='1' for r in units.values()),p.stdout
-                runs[arm,audit]=units
-                if values[0]:
-                    assert all(r['comb_energies'] for r in units.values() if r['frame_top_unit'])
-                    assert any(int(r['vote_count'] or 0)>1 for r in units.values())
-                    for c,r in units.items():
-                        b=runs['off',audit][c]
-                        if not r['frame_top_unit']:continue
-                        assert int(r['frame_d2'])-int(r['frame_d1'])==int(b['frame_d2'])-int(b['frame_d1'])
-                        assert r['vote_engine_anchor']==b['frame_d2']
-                        for col in ('triggers','comb_ran','f1_first','f2_first','f1_last','f2_last'):
-                            assert r[col]==b[col],(arm,c,col,r[col],b[col])
-                        if arm=='paired' and int(r['vote_top_f1']) and int(r['vote_top_f2']):
-                            top=rasters[int(r['frame_top_unit'])-100]
-                            bottom=rasters[int(c)-100]
-                            a=top[int(r['vote_top_f1'])-4,40:680].astype(float)
-                            b=bottom[int(r['vote_top_f2'])-4,40:680].astype(float)
-                            rb=0. if min(a.std(),b.std())<1e-9 else float(np.corrcoef(a,b)[0,1])
-                            assert abs(float(r['vote_rB'])-rb)<1e-12,(c,rb,r['vote_rB'])
-                            passed=rb>=.6
-                            assert int(r['vote_pair_pass'])==passed
-                            st=int(r['vote_top_f2'])-263-int(r['vote_top_f1'])
-                            confident=passed and r['comb_basin']=='1' and int(r['comb_floor_lo'])<=st<=int(r['comb_floor_hi'])+1
-                            assert int(r['vote_confident'])==confident
-                        else:
-                            assert r['vote_rB']==r['vote_pair_pass']==''
-                if arm=='inert':
-                    ignored={'ge_level_fill','ge_level_flat','ge_vote_pair'}
-                    assert [{k:v for k,v in r.items() if k not in ignored} for r in units.values()]==[
-                        {k:v for k,v in r.items() if k not in ignored} for r in runs['off',audit].values()]
-            if values[0]:assert runs[arm,False]==runs[arm,True],(reverse,arm,'audit changed vote')
-        assert any(r['level_accepted_f1']=='1' for r in runs['s12',False].values())
-        assert any(r['vote_anchor']!=r['vote_engine_anchor'] for r in runs['s1',False].values() if r['frame_top_unit'])
-        print('ANCHOR-VOTE PASS:', 'reversed' if reverse else 'aligned', '50 units; controls inert, fill, vote, relative and audit invariance')
+        for audit in (False,True):
+            log=tmp/f'{reverse}.{audit}.csv'
+            cmd=[binary,str(capture),str(log),'--pool','64']
+            if reverse:cmd+=['--pair-next']
+            if audit:cmd+=['--audit-comb']
+            p=subprocess.run(cmd,capture_output=True,text=True,env=env,timeout=90)
+            assert p.returncode==0 and 'Sanitizer' not in p.stderr,(p.returncode,p.stdout,p.stderr)
+            with log.open() as f:rows=list(csv.DictReader(f))
+            assert all(None not in r and None not in r.values() for r in rows)
+            units={r['counter_extended']:r for r in rows if r['counter_extended']}
+            assert len(units)==50 and all(r['published']=='1' for r in units.values()),p.stdout
+            runs[audit]=units
+            assert all(r['comb_energies'] for r in units.values() if r['frame_top_unit'])
+            assert any(int(r['vote_count'] or 0)>1 for r in units.values())
+            for c,r in units.items():
+                if not r['frame_top_unit']:continue
+                if int(r['vote_top_f1']) and int(r['vote_top_f2']):
+                    top=rasters[int(r['frame_top_unit'])-100]
+                    bottom=rasters[int(c)-100]
+                    a=top[int(r['vote_top_f1'])-4,40:680].astype(float)
+                    b=bottom[int(r['vote_top_f2'])-4,40:680].astype(float)
+                    rb=0. if min(a.std(),b.std())<1e-9 else float(np.corrcoef(a,b)[0,1])
+                    assert abs(float(r['vote_rB'])-rb)<1e-12,(c,rb,r['vote_rB'])
+                    passed=rb>=.6
+                    assert int(r['vote_pair_pass'])==passed
+                    st=int(r['vote_top_f2'])-263-int(r['vote_top_f1'])
+                    confident=passed and r['comb_basin']=='1' and int(r['comb_floor_lo'])<=st<=int(r['comb_floor_hi'])+1 and r['vote_blankspot_pass']=='1'
+                    assert int(r['vote_confident'])==confident
+                else:
+                    assert r['vote_rB']==r['vote_pair_pass']==''
+        assert runs[False]==runs[True],(reverse,'audit changed decisions')
+        assert any(r['vote_anchor']!=r['vote_engine_anchor'] for r in runs[False].values() if r['frame_top_unit'])
+        print('ANCHOR-VOTE PASS:', 'reversed' if reverse else 'aligned', '50 units; paired confidence, vote and audit invariance')
 
     # A pairing change into unmeasurable rasters clears the window but must not
     # reset the published anchor. This fails if the worker calls ge_init here.
@@ -91,7 +76,7 @@ with tempfile.TemporaryDirectory(prefix='anchor-vote-',dir='/private/tmp') as tm
         schedule.write_text(f'first_counter,pairing,note\n0,{before},before\n108,{after},after\n')
         log=tmp/f'{before}.switch.log.csv'
         p=subprocess.run([binary,str(switch_capture),str(log),'--geometry-v11','--pool','64',
-                          '--pairing-schedule',str(schedule)],env=env|{'GE_ANCHOR_VOTE':'1'},
+                          '--pairing-schedule',str(schedule)],env=env,
                          capture_output=True,text=True,timeout=90)
         assert p.returncode==0 and 'Sanitizer' not in p.stderr,(p.returncode,p.stdout,p.stderr)
         with log.open() as f:frames=[r for r in csv.DictReader(f) if r['frame_top_unit']]
@@ -107,7 +92,7 @@ with tempfile.TemporaryDirectory(prefix='anchor-vote-',dir='/private/tmp') as tm
                      for i,v in enumerate([later]*8+[np.ones_like(y)]*8))
         probe_frames=tmp/f'{before}.probe.csv'
         q=subprocess.run([str(ROOT/'src/field_registration/tests/hblank_probe'),str(probe_frames)],input=raw,
-                         env=env|{'GE_ANCHOR_VOTE':'1'},capture_output=True,timeout=90)
+                         env=env,capture_output=True,timeout=90)
         assert q.returncode==0,q.stderr
         with probe_frames.open() as f:
             next(f);probe_rows={r['counter']:r for r in csv.DictReader(f)}

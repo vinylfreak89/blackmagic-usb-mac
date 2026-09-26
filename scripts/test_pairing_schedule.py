@@ -102,15 +102,19 @@ with tempfile.TemporaryDirectory(prefix='pairing-schedule-') as directory:
         fresh = units(run(restart, ['--pair-next'] if after == 'reversed' else []))
         assert set(mixed) == set(range(100, 124)) and set(fresh) == set(range(112, 124))
         assert any(int(r['applied_d1']) != 0 or int(r['applied_d2']) != 0 for c,r in mixed.items() if c < 112), 'fixture did not establish a nonzero placement'
-        # Transport ordinal/epoch differ; all geometry decisions and intermediates
-        # must match a session started at the switch, including boundary flags.
-        columns = ['applied_d1','applied_d2','f1_unused','f2_unused','reset_before',
+        # Relative evidence resets as in a fresh session; the approved vote
+        # intentionally retains its published anchor across a pairing change.
+        columns = ['f1_unused','f2_unused','reset_before',
                    'comb_ran','comb_d','comb_margin','comb_decided','confidence','frame_top_unit',
-                   'triggers','frame_d1','frame_d2','f1_first','f2_first','f1_last','f2_last',
-                   'bl1','bl2','class_f1','class_f2','pairing']
+                   'triggers','f1_first','f2_first','f1_last','f2_last',
+                   'bl1','bl2','class_f1','class_f2','pairing','vote_count','vote_engine_anchor']
+        held_anchor = [r['vote_anchor'] for c,r in mixed.items() if c<112 and r['frame_top_unit']][-1]
         for c, r in fresh.items():
             for key in columns:
                 assert mixed[c][key] == r[key], (before, after, c, key, mixed[c][key], r[key])
+            if r['frame_top_unit']:
+                assert int(mixed[c]['frame_d2'])-int(mixed[c]['frame_d1']) == int(r['frame_d2'])-int(r['frame_d1'])
+                assert mixed[c]['vote_count']=='0' and mixed[c]['vote_anchor']==held_anchor
         assert mixed[111]['pairing_note'] == 'before' and mixed[112]['pairing_note'] == 'after'
         if before == 'reversed':
             assert mixed[111]['f2_unused'] == '1' and mixed[111]['comb_ran'] == '', 'old boundary not flushed'

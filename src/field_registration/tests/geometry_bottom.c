@@ -6,7 +6,7 @@ static uint8_t y[GE_PIXELS];
 static void body(int row,int value){memset(y+row*720+40,value,640);}
 static void check_field(int k) {
     int off=263*k;ge_bottom_evidence e;
-    memset(y,10,sizeof y);ge_bottom_flat=1;ge_bottom_flat_margin=3;
+    memset(y,10,sizeof y);ge_bottom_flat_margin=3;
     assert(bottom_scan(y,k,1,&e)==0 && e.rule==GE_BOTTOM_UNKNOWN);
     assert(e.measured && e.p5==10 && e.p50==10 && e.p95==10);
     body(257+off,13); /* uniform picture: median difference exactly 3 */
@@ -31,9 +31,7 @@ static void check_field(int k) {
     for(int x=0;x<640;x++)y[(258+off)*720+40+x]=10+(x%2)*10;
     body(259+off,10);memset(y+(259+off)*720+40,30,200);
     assert(bottom_scan(y,k,1,&e)==(k?525:263) && e.rule==GE_BOTTOM_FALLBACK);
-    ge_bottom_flat=0;
-    assert(bottom_scan(y,k,1,&e)==262+off && !e.measured && e.rule==GE_BOTTOM_FALLBACK);
-    ge_bottom_flat=1;body(258+off,10);body(257+off,13);
+    body(258+off,10);body(257+off,13);
     assert(bottom_scan(y,k,1,&e)==261+off); /* qualified F never judges row below it */
     memset(y,10,sizeof y);body(257+off,20);
     memset(y+(258+off)*720+40,14,64);
@@ -43,10 +41,6 @@ static void check_field(int k) {
 }
 int main(void){
     check_field(0);check_field(1);
-    ge_bottom_flat=0;ge_features old,new;ge_measure(y,&old);
-    ge_bottom_flat=1;ge_measure(y,&new);
-    memcpy(new.last,old.last,sizeof old.last);
-    assert(!memcmp(&old,&new,offsetof(ge_features,bottom_evidence)));
     geometry_engine g;ge_init(&g,1,1);ge_decision out[2];
     assert(!ge_push(&g,y,100,0,out));
     body(258,20);body(257,23);body(521,30);body(520,33);
