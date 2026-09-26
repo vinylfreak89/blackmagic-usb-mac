@@ -427,9 +427,18 @@ def vote_label(row):
     if any(row.get(k) in ('',None) for k in needed):
         return 'anchor vote: missing engine evidence'
     anchor,engine,conf,count,winner=(int(row[k]) for k in needed)
-    slots=f'win {winner}/30 used {count}' if count else 'win 0/30; empty'
-    return (f'anchor {anchor:+d}; engine {engine:+d}; confident {conf}; '
-            f'{slots}')
+    slots=f'win {winner}/30' if count else 'win 0/30 empty'
+    rb=row.get('vote_rB');passed=row.get('vote_pair_pass')
+    pairing=(f"rB {float(rb):.3f} pair {passed}" if rb not in ('',None)
+             else 'rB -- pair --' if row.get('ge_vote_pair')=='1' else 'pair off')
+    return f'anchor {anchor:+d} eng {engine:+d} conf {conf} {slots} {pairing}'
+
+
+def placement_source(row, source):
+    """The vote owns only the absolute anchor; the engine still owns d2-d1."""
+    if source == 'engine' and row.get('anchor_source') == 'anchor_vote':
+        return 'vote anchor'
+    return source
 
 
 def comb_panel_lines(row, energies, published):
@@ -941,7 +950,7 @@ def main():
                     dr.line([(PX + DW + off, fr), (PX + DW + off + LANE - 2, fr)], fill=col, width=2)
                     dr.text((PX - off - LANE - 26, fr - 6), str(line), font=small, fill=col)
         dr.rectangle([0, FH, W, H], fill=(8, 8, 8))
-        fit(dr, (6, FH + 6), f"ctr {ext:>6}   applied ({d1:+d},{d2:+d}) from {src}"
+        fit(dr, (6, FH + 6), f"ctr {ext:>6}   applied ({d1:+d},{d2:+d}) from {placement_source(rowB, src)}"
                                + (f"   AUDIO STEP +{audio_steps[ext]} lost samples (device)" if ext in audio_steps else ""),
             font, (230, 230, 230), right=CB_X0)
         pub = d2 - d1                                     # the published shift, in the comb's own convention

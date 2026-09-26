@@ -145,6 +145,7 @@ def main():
             result['comb_reject_settings'] = sorted({r.get('ge_comb_reject', '') for r in rows})
             result['vote_settings'] = sorted({(r.get('ge_anchor_vote', ''), r.get('ge_level_fill', ''),
                                               r.get('ge_level_flat', '')) for r in rows})
+            result['vote_pair_settings'] = sorted({(r.get('ge_vote_pair', ''), r.get('ge_vote_pair_min', '')) for r in rows})
             captures[name] = result
         status.update(state='READY', captures=captures)
     except Exception as e:
