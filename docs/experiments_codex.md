@@ -1283,3 +1283,28 @@ retrying slower if needed. Full encoded-strip and audio-clock checks, closed
 file hashes, explicit producer/configuration status and same-filesystem
 publication precede replacement. Previous published files remain recoverable
 by hard links. No measurement or publication policy is changed in this step.
+
+Entry-38 publication verdict: captures 1–4 have zero placement differences
+against the prior reviews, and their complete encoded-strip readbacks pass
+on 922/649/648/650 frames. Capture 3's 649th published unit remains the known
+unpaired tail, not an interior omission. All four fresh 4x replays have zero
+holes and video/audio drops. Their schema-25 sidecars and updated bottom
+overlays are published with READY status naming engine 6778e76, renderer
+5045652, s12c, pairing .6, and flat-bottom margin 3.
+
+The fresh full-tape replay also succeeds at 4x on its first attempt: 86,293
+published units, zero holes, zero pool/ring/surface/audio drops, and no
+sidecar-cell differences against the accepted clean entry-38 replay. No
+concurrent project test, replay or encode ran alongside either full-tape
+phase. The encode contains 86,289 paired frames plus seven fills, 86,296
+frames total, duration 2879.409867 seconds. Full-strip readback finds zero
+sequence/placement differences. Audio-clock offsets are below .002 frame
+throughout (maximum .001998001998); the two logged audio steps are applied.
+
+Closed, validated MP4 and sidecar were published by same-filesystem renames
+to captures/fulltape_render.mp4 and fulltape_render_registration.csv. Fresh
+READY status records producer revisions, configuration, accounting and
+SHA-256 hashes; publication readback hashes match. Replaced full-tape and
+capture artifacts are recoverable by hard links under
+/private/tmp/bottom-review.FXkjDh. The owner's visual acceptance is pending.
+No additional engine or renderer change was needed for this authorization.
