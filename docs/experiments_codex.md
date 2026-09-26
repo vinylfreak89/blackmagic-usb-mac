@@ -1686,3 +1686,15 @@ were removed. No existing replaced-review folder was touched. Verification
 records, timings, scripts and logs remain in /private/tmp/rigid-review.YcoRt6;
 the published status files carry the durable artifact hashes. Publication
 is not owner visual acceptance.
+
+Phase-A cleanup commitment: freeze the owner's approved a7a4316 behavior,
+then replace mutable process-wide settings with per-instance configuration.
+No signal or publication policy changes. The registered schema-28 sidecars
+are the acceptance reference, byte for byte, including configuration echoes.
+Check all five captures after each code-changing stage and with the final
+isolated 4x replay; report any differing rows rather than normalizing them.
+Retain v9 and explicit v11 selection. Review Claude-trailered code changes
+against the whole system; substantive findings are reported, not fixed here.
+Keep no media backups and perform no scratch sweep. CPU includes conditional
+2-D search; unit and sanitizer gates remain required. Mutual review is pending
+until Claude reviews the completed cleanup diff.
