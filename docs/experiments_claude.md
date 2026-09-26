@@ -1848,3 +1848,25 @@ also get the 2-D search. Comb verdicts are withheld only when both fields show d
 clarity ≥ 1.3. The still trigger is as in amendment 1. **Must not break:** the caption score outside
 81508–82402 (where the caption is shown invalid); the owner's spans; the 60843 bounce (it moves sideways, so
 it is not withheld); captures 1–4; §11b.
+
+### Report on E-claude-2026-09-26-39 — premise 1 held; premise 2 held in its amended form; the engine is approved
+
+**Verdict.** Premise 1 (A1, skipped field-2 lines show blanking) held. Premise 2 was refuted as first stated:
+withholding the comb on any motion scored 84.96%. It held in amendment 2's form, withholding only on a rigid
+vertical translation (dx = 0 in both fields, |dy| ≥ 2, clarity ≥ 1.3), with the still trigger.
+**Result, engine a7a4316, renderer c533392:**
+- caption score excluding the off-picture commercial 95.23% (6778e76) → 96.42%;
+- common-mode moves 16 → 6, excursions 6 → 0;
+- credits off by 2+ 1051 → 214; 8 withheld frames outside the credits, 0 in the bounce;
+- captures 1–4 placement-identical;
+- worker 1.404/2.531 ms, max 8.23 ms.
+
+Gate B failed on my reference's three-decimal rounding, not on the engine: shifts matched on 11,152/11,152 fields,
+and the 3 fields near 1.3 were settled by exact values.
+**Owner, 2026-09-26, verbatim:** "all problems are fixed. I counted like maybe 30-40 wrongly combed frames in the
+entire tape … I approve this version of the engine. also we can drop the non-compliant signal detector because
+this version fixed the problems there … credits are mostly correct but not perfect and the only thing that will
+probably fix that is stabilization fixes … any further changes from here should change less than 100 comb
+decisions across the tape and probably less than 500 placement decisions as well."
+Approved baseline: tag `v11-approved-2026-09-26`. Next, in his order: cleanup and merge prep, then horizontal tearing
+on main, then the hard-coded classifier fixes.
