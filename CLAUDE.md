@@ -1528,7 +1528,7 @@ CPU minimum rather than assuming M-class silicon. Rules:
   before it sheds frames (§8 property 7).
 - **Measured today (M3, 2026-09-26, approved v11 engine):** whole worker 1.40–1.75 ms median /
   2.5–2.7 ms p95 per unit, maximum 8.5 ms, none over 10 ms. Units that run the 2-D motion search
-  in both fields (~5%) take ~3 ms median. The engine alone is ~0.3–0.4 ms. The earlier 4.26 ms
+  in both fields (~5%) take ~3 ms median. The engine alone is 0.91 ms median / 2.27 ms p95 (post-cleanup engine benchmark, motion work included). The earlier 4.26 ms
   figure was the retired v9 benchmark, not a v11 baseline. Any new evidence path (e.g.
   a static-region comb search) is costed against this table before it lands.
 - **Enforcement.** Every engine or classifier change reports ms/unit (median, p95) from the golden
