@@ -1481,3 +1481,12 @@ Unit, worker integration, ASan/UBSan and TSan checks pass, including each
 field independently crossing the inclusive threshold and all three settings
 under aligned/reversed pairing. The default identity, not a retuned reference,
 establishes that the threshold control did not change the previous arm.
+
+Entry-39 A1-only publication authorization: render the already-validated A1
+arm with engine edb551c, s12c, pairing .6, flat-bottom margin 3 and
+GE_VOTE_BLANKSPOT=1; GE_COMB_STILL remains 0. The comb-variant failures stand.
+Compare each fresh replay to the exact A1 harness decisions, require clean
+4x-or-slower replay accounting, and validate every encoded placement before
+same-filesystem publication. Captures must retain their prior placements.
+Record the A1/control settings in status and show its logged blank-spot result
+in the review overlay. No new engine policy or measurement is authorized.
