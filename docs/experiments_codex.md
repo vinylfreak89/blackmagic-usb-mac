@@ -1698,3 +1698,37 @@ against the whole system; substantive findings are reported, not fixed here.
 Keep no media backups and perform no scratch sweep. CPU includes conditional
 2-D search; unit and sanitizer gates remain required. Mutual review is pending
 until Claude reviews the completed cleanup diff.
+
+Owner scope amendment: default frameserver and OBS opens now select the approved
+v11 engine, without an environment switch. Keep v9 compiled but unselected;
+its deletion is deferred until after the full-history merge. The byte-identity
+gate is unchanged and now also exercises default selection.
+
+Phase-A verdict: the approved default freeze (957425a), per-instance numeric
+configuration (2fc87b0), and mechanical cleanup (195b611) each reproduce all five
+registered schema-28 sidecars byte for byte: zero differing rows across
+86,305 / 930 / 651 / 651 / 652 rows. Final isolated 4x replay has zero holes
+and drops. No reference normalization, schema consolidation, classifier change,
+new rule, render, backup or v9 deletion. Default OBS builds against the same
+engine; unit, ASan/UBSan and TSan checks pass. Documentation is e454098.
+
+The full worker, including 11,152 conditional 2-D field searches on 6,695 of
+86,293 units, measures 1.748500/2.736334 ms median/p95, maximum 8.533708;
+zero samples exceed 10 ms. The previous approved record is 1.404041/2.531042.
+The unchanged classifier also costs more in this run; this is not an isolated
+causal performance comparison. Search-population differences are zero.
+
+One earlier instrumented cap-1 run differed at 6253 only: audio_residual_ticks
+11763 and audio_step_samples 0 were empty. Ordinary rerun and both later stages
+match. This intermittent audio-evidence result remains unexplained and unfixed;
+it was neither filtered nor treated as an engine-placement difference.
+
+Counterpart review: 14 surviving net-changed code files have non-merge Claude
+trailers; three more touched legacy tools are unchanged from main. Reported,
+not fixed: tpc_slice source-alias truncation and unchecked short payloads
+(both reproduced on synthetic input), and the renderer's pair-next/TFF-default
+CLI hazard (approved cap 3 explicitly used BFF). Also noted the existing OBS
+Makefile install/uninstall removal-path mismatch; no installation was performed.
+Detailed inventory, per-stage hashes, timing populations and verbatim diagnostics
+are in /private/tmp/cleanup-phase-a.hkGJkE/REPORT.md. Claude's review of this diff
+and convergence are pending; this verdict does not authorize merging.
