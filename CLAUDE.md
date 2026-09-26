@@ -1332,12 +1332,14 @@ delivery edge; wrong one at acquisition.
   automatically a main defect. Likewise, main still has its own registration
   feedback path. Check each change against its revision before carrying it
   forward or discarding it with the engine experiment.
-- **Current status.** The owner expects much of v10 may go away; no retirement
-  or replacement algorithm is decided by this document. Main is the comparison
-  baseline, not an oracle. Keep the four captures and whole tape in §7, the
-  implementation-independent observations and reproducible regression cases.
-  Short accounts of approaches and limitations are in §7; round-by-round
-  patches, score tables and historical policy are in the archaeology and tests.
+- **Current status (2026-09-26).** The owner approved the v11 geometry engine as the
+  first-pass registration engine (tag `v11-approved-2026-09-26`): "all problems are fixed … I
+  approve this version of the engine", with 30–40 visibly miscombed frames left on the whole
+  tape, mostly for later stabilization work. It replaces v9 as the frameserver/OBS default; the
+  v9 code is removed after the merge. **Bound for every later engine change (owner):** "less
+  than 100 comb decisions across the tape and probably less than 500 placement decisions",
+  measured against the approved whole-tape decision log. Keep the four captures and whole tape
+  in §7 and the reproducible regression cases. `docs/geometry_engine.md` describes the engine.
 - **Useful existing checks (not run for this rewrite):**
   `make -C src/field_registration test`,
   `make -C src/frameserver test`, and
@@ -1524,8 +1526,10 @@ CPU minimum rather than assuming M-class silicon. Rules:
   reference M3 P-core, single-threaded** — ~30% of the period — so a core three times slower still
   keeps up. Anything beyond that needs a measured justification and a design that sheds work
   before it sheds frames (§8 property 7).
-- **Measured today (M3):** registration 1.47 ms median / 1.57 ms p95 per unit; classifier
-  ~0.65 ms; publish/copy well under 1 ms; whole worker ≈ 2.5 ms/unit. Any new evidence path (e.g.
+- **Measured today (M3, 2026-09-26, approved v11 engine):** whole worker 1.40–1.75 ms median /
+  2.5–2.7 ms p95 per unit, maximum 8.5 ms, none over 10 ms. Units that run the 2-D motion search
+  in both fields (~5%) take ~3 ms median. The engine alone is ~0.3–0.4 ms. The earlier 4.26 ms
+  figure was the retired v9 benchmark, not a v11 baseline. Any new evidence path (e.g.
   a static-region comb search) is costed against this table before it lands.
 - **Enforcement.** Every engine or classifier change reports ms/unit (median, p95) from the golden
   runs in its commit; a `bench` target over a fixed 10,000-unit fixture is the regression gate.
@@ -1616,8 +1620,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   Restricting suppression to shifts of at least two lines improved that score
   to 92.61%, but still failed A1's gate; the still-trigger-only arm scored 93.915%.
 - **Experiment commitments (owner, 2026-09-19).** Before a test meant to decide
-  something, the agent appends an entry to its own ledger (`docs/experiments_claude.md`,
-  `docs/experiments_codex.md`) and commits it: the question in the owner's words; the
+  something, the agent appends an entry to its own ledger, a working file never committed
+  (owner, 2026-09-26: "that is meant to be a working item"; the v11 ledgers remain in git
+  history). Claude's is `~/blackmagic-ledgers/claude.md`. Codex's is `.ledger/codex.md` inside
+  its own worktree (git-ignored), because its sandbox writes only there: the question in the owner's words; the
   premise, the claim about the signal that must be true, stated apart from the method;
   the simplest method; the falsifier; the material it is judged on. Amendments are
   appended, never edited in, and state before they are built their physical reason,
@@ -1633,7 +1639,7 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   on material not used to build it where such material exists. The other agent reviews
   reports against entries; the owner is queried on a stalled or regressing amendment or
   an unresolved disagreement. The ledger holds commitments and verdicts only; results
-  stay in scratch. It moves out of the repo in one commit if the owner prefers.
+  stay in scratch.
 - **Search the owner's words before escalating** (standing instruction,
   2026-09-11). A question goes to the owner when those words do not answer it,
   or the agents cannot converge on their application. Relayed quotations and
@@ -1655,81 +1661,30 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   separately bounds total runtime. Release admission gates after the last required boundary.
   Asserted CPU-cost gates use the measured thread's CPU time, not wall time;
   host scheduling delays belong to liveness measurements, not CPU-cost regressions.
-- **v11 engine integration:** the approved geometry policy is the default for
-  frameserver and OBS opens; v9 remains compiled but unselected until its separate
-  post-merge removal. Each engine owns a copied numeric configuration; the library
-  reads no environment. `docs/geometry_engine.md` defines its defaults, schema-28
-  compatibility, unit-keyed decisions and reversed-pair boundary handling.
-  Keep a requested crop distinct from unavailable raster rows: silently clamping
-  the whole crop makes the applied-decision log disagree with the published pixels.
-  Owner-directed cleanup removed the near-blank and overrun vetoes, interpreted
-  top substitution and their early-comb path; they are not dormant controls.
-  Entry 33 replaces the d5c9f08 top search with a first single-line Pearson-rise
-  measurement (strict >0.45), followed by an independent symmetric +/-5 discard
-  per field. The C raw scan matched all 172,586 whole-tape edges before removal
-  of the old guards. Numeric controls are GE_WAVE_BAR and GE_WAVE_CLAMP;
-  old GE_TOP_* refusal stubs are removed. Schema 21 introduced unit-owned raw top/step/status
-  from frame-owned accepted census and publication sources. An absent/discarded
-  top is not a guessed measurement; existing placement fallback is labelled.
-  Bottom edges, profiles and blanking are unchanged on all 86,293 units.
-  History retains discarded experiments; census identity is not render approval.
-  Aperture arithmetic uses published offsets: 480i starts at 23+d1 / 286+d2
-  for 240 lines; the 486-line review starts three lines earlier with the same
-  endpoints. Measured field-1 first is not generally 23+d1 because comb changes
-  d1. A census restriction is not a final-crop guarantee. Equal comb winners
-  estimate relative alignment, not absolute common-mode motion. A late-top gate
-  that abstains on early tops cannot validate an earlier-biased rule's quality.
-  Optional audit logging never changes decisions or triggered-comb scheduling.
-  Report published-unit counts separately from woven-frame counts. Reversed
-  pairing flushes its final unit with f2_unused=1 and no frame_top_unit; its
-  field 1 already belongs to the preceding frame. A missing boundary frame key
-  is not an interior frame loss. Validate frame sequence and both source-unit
-  placements by encoded-strip readback, not by equating MP4 frames to units.
-  Review runs must retire the previous renders.status before publication and
-  write a validated replacement naming the actual engine/renderer producer
-  commits. scripts/geometry_review_status.py provides --begin and completion
-  checks, including artifact hashes and explicit boundary-unit accounting.
-  Entry-34 rejection preflight stopped before promotion: its C state path changed
-  exactly the requested 26 frames, but independent whole-aperture roughness rose
-  on three. Two remain worse in the interior-only check; the original scorer's
-  aperture is unresolved. See the Codex ledger and /private/tmp/comb-reject.HLom5S.
-  The owner's two-sided-floor amendment then passed: 21 supported target
-  placements improve full-aperture roughness, five unsupported proposals hold
-  the previous published pair, and no extra/decided-frame placement changes.
-  Entry-34 rejection is separate from selection: default GE_COMB_REJECT=2,
-  an enclosed contiguous <=1.5*minimum floor, both outside rises >=1.5.
-  Schema 22 records proposal ratio, refusal/discard, floor and rises without
-  changing census or audit-only decisions. Discard means geometry only, not
-  image loss/repetition. Some improvements propagate without a fresh refusal.
-  Evidence: /private/tmp/comb-basin.KlFmop; docs/geometry_engine.md defines the
-  log and zero-energy/out-of-range conventions. Renderer approval remains the
-  owner's decision after the four numeric-gated review captures.
-  Later hold instructions stopped that render run before publication. The
-  superseded one-field prototype changed 31 frames against an exactly-five
-  gate. Its four-edge/known-motion replacement performs 32 direct interventions
-  and changes 56 frames against the reported 20 onsets. It delays cap1's (5,5)
-  placement from 6667 to 6670 (nothing/nothing); it does not eliminate it.
-  Neither prototype is promoted. The owner withdrew both hold rules after the
-  four-edge falsifier and authorized basin-only 3a87891 review renders for
-  captures 1–4. Keep the prototypes and findings in scratch/history; do not
-  change the waveform instrument in that work.
-  The remaining cap1 6667 placement is knowingly unchanged, not fixed by the
-  basin rule. Review publication still requires encoded-strip validation and
-  a fresh renders.status identifying the actual producing commits.
-  That basin-only review publication completed: all four MP4/sidecar pairs
-  passed full encoded-strip readback and source-unit placement joins, with
-  zero differences. geometry_renders/renders.status is READY with engine and
-  renderer 3a87891; visual acceptance is pending. Prior files are recoverable
-  under /private/tmp/comb-basin.KlFmop/replaced-reviews. That run rendered only
-  the four captures. The later whole-tape authorization has its own scale gate:
-  rejection strictly below 5% and discards below 2% of paired frame rows.
-  Its zero-drop paced replay passed (329/86,289 rejections, 14 discards).
-  Whole-tape encoding/validation is separate from census identity and from
-  owner visual acceptance; evidence is /private/tmp/basin-fulltape.f19Ygq.
-  That full-tape review is now published as captures/fulltape_render.mp4 and
-  its registration sidecar: 86,296 encoded frames, zero strip/source-placement
-  differences, hashes verified across same-filesystem publication. The status
-  in captures/ names engine/renderer 3a87891 and leaves visual acceptance pending.
+- **v11 engine integration:** the approved geometry policy is the default for frameserver
+  and OBS opens. Each engine owns a copied numeric configuration (`ge_config`); the library
+  reads no environment, and tools map their `GE_*` variables into it. `docs/geometry_engine.md`
+  defines the defaults and their provenance, the schema-28 decision log, unit-keyed decisions
+  and reversed-pair boundary handling. Durable rules from the v11 work:
+  - Keep a requested crop distinct from unavailable raster rows. Silently clamping the crop
+    makes the decision log disagree with the published pixels.
+  - Aperture arithmetic uses published offsets: 480i starts at 23+d1 / 286+d2 for 240 lines.
+    Measured field-1 first is not generally 23+d1, because the comb changes d1.
+  - Equal comb winners estimate relative alignment, not absolute common-mode motion.
+  - Reversed pairing flushes its final unit with f2_unused=1 and no frame_top_unit. A missing
+    boundary frame key is not an interior frame loss.
+  - Validate a render by encoded-strip readback of frame sequence and both source-unit
+    placements, never by equating MP4 frames to units. Publication writes a fresh
+    renders.status naming the producing engine/renderer commits
+    (`scripts/geometry_review_status.py`), replaces old files outright, and keeps no backups
+    (owner, 2026-09-26: "anything can be re-rendered").
+  - Report published-unit counts separately from woven-frame counts.
+  - Decoded tape captions (CEA-608) are an instrument for scoring placement, never a placement
+    source (owner, 2026-09-26). They are not valid truth in every commercial: one places its
+    caption off-picture.
+  - The replay decision log's audio-evidence columns can come back empty under contention
+    (one intermittent case at cap-1 counter 6253). This is open, and outside registration
+    decisions.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
