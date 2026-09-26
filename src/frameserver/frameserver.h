@@ -1,11 +1,11 @@
-// frameserver — P3 assembly (design doc §8, §11 P3, field_registration/TRAJECTORY.md).
+// frameserver — assembly (design doc §8, §11 P3, docs/geometry_engine.md).
 //
 //   capture_core (device or replay) --on_packet--> unit_parser --on_video--> [pool slot + SPSC ring]
 //     --> processing worker: signal_state_classify -> geometry_engine
 //         -> frame_publisher -> decision-log row
 //
 // Approved v11 is the default for tools and OBS. Aligned fields publish immediately;
-// reversed pairing delays one unit to finish its own-field offsets. v9 remains compiled.
+// reversed pairing delays one unit to finish its own-field offsets.
 // This is a transport-unit publisher, not a temporal field re-pairer. Consumers of
 // reversed-pair material must pair next-unit field 1 over current-unit field 2,
 // as geometry_render.py --pair-next does. Decision rows remain unit-keyed.
@@ -32,7 +32,6 @@ extern "C" {
 
 typedef struct frameserver frameserver;
 
-#define FS_DECISION_LOG_SCHEMA 9
 #define FS_GEOMETRY_LOG_SCHEMA 28
 
 typedef struct {

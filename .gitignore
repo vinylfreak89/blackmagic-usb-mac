@@ -28,7 +28,6 @@ __pycache__/
 *.uyvy
 *.tpc
 captures/
-src/field_registration/tests/field_registration_unit
 src/capture_core/shuttle-capture
 src/capture_core/capture_core_test
 src/capture_core/test_tsan
@@ -47,17 +46,10 @@ src/frameserver/tests/test_tsan
 src/frameserver/tests/test_smallring
 
 # field_registration test outputs
-src/field_registration/libfieldreg.dylib
 src/obs_plugin/tests_publish_copy
 src/obs_plugin/tests_publish_queue
 src/obs_plugin/tests_publish_queue_tsan
 src/field_registration/tests/cea608_unit
-src/field_registration/tests/field_registration_v9
-src/field_registration/tests/registration_v9.csv
-src/field_registration/tests/registration_v9.raw
-src/field_registration/tests/.registration_v9.complete
-src/field_registration/tests/.registration_v9.lock
-src/field_registration/tests/.registration-v9-*/
 src/unit_parser/tests/unit_parser_test
 src/unit_parser/tests/unit_parser_asan
 src/unit_parser/tests/unit_parser_tsan
@@ -113,7 +105,6 @@ src/capture_core/fixture_meta.expect
 src/capture_core/fixture_meta_exhaust.expect
 src/capture_core/test_shim
 src/frameserver/tests/replay_completion_test
-src/frameserver/tests/worker_bench
 /src/frameserver/tests/geometry_worker_bench
 /src/field_registration/tests/geometry_unit
 /src/field_registration/tests/geometry_basis

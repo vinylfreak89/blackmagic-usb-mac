@@ -33,9 +33,9 @@ typedef enum signal_source_state {
 
 enum signal_action {
     SIGNAL_ACTION_NONE = 0,
-    /* Call fieldreg_discontinuity(): byte placement/temporal evidence broke. */
+    /* Reset registration continuity: byte placement/temporal evidence broke. */
     SIGNAL_ACTION_REGISTRATION_DISCONTINUITY = 1u << 0,
-    /* Call fieldreg_begin_segment(): a new acquisition/relock epoch began. */
+    /* Begin a registration segment: a new acquisition/relock epoch began. */
     SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT = 1u << 1,
 };
 
@@ -110,7 +110,8 @@ bool signal_state_classify(signal_state *state,
                            signal_result *out);
 
 /*
- * Second stage, called after field_registration examines the same unit.
+ * Optional feedback stage after registration examines the same unit.
+ * The geometry frameserver does not currently call this API.
  * A positive per-unit observation can open an interval.  `applied_*` is the
  * phase actually presented by the zero-latency forward engine; a stable
  * applied phase is what can settle that live interval when absolute evidence

@@ -1,7 +1,6 @@
 #include "frameserver.h"
 #include "../unit_parser/unit_parser.h"
 #include "../signal_state/signal_state.h"
-#include "../field_registration/field_registration.h"
 #include "../field_registration/geometry_engine.h"
 #include "pairing_schedule.h"
 #include <math.h>
@@ -40,7 +39,6 @@ struct frameserver {
     cc_session *cap;
     unit_parser *parser;
     signal_state *sig;
-    field_registration *eng;
     geometry_engine *geometry;
     uint8_t *geometry_y, *geometry_unit;
     fs_item geometry_item;
@@ -82,8 +80,6 @@ struct frameserver {
     _Atomic uint64_t eligible_ingress;     // fixed-raster-eligible observations seen at ingress (denominator)
     uint64_t ring_drops_pending;           // producer-owned: attached only to a later item
     uint64_t ring_drop_first_ordinal;
-    int8_t last_comb_correction;
-    uint64_t comb_correction_install_ordinal;
 };
 
 static _Thread_local frameserver *callback_session;
@@ -263,64 +259,8 @@ static const char *transport_name(unit_transport_state t){
     switch (t){ case UNIT_TRANSPORT_COMPLETE: return "Complete"; case UNIT_TRANSPORT_HOLE: return "Hole";
                 case UNIT_TRANSPORT_SHORT: return "Short"; default: return "Unframed"; }
 }
-static int log_header(FILE *L, int geometry){
-    if(geometry)return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,hblank_level_f1,hblank_cols_f1,hblank_level_f2,hblank_cols_f2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies,ge_wave_bar,ge_wave_clamp,wave_top_f1,wave_step_f1,wave_max_step_f1,wave_status_f1,wave_top_f2,wave_step_f2,wave_max_step_f2,wave_status_f2,relative_source,anchor_source,held_correction,ge_comb_reject,comb_reject_ratio,comb_rejected,comb_refused_d,comb_substituted_d,comb_discarded,comb_floor_lo,comb_floor_hi,comb_rise_left,comb_rise_right,comb_basin,ge_anchor_vote,ge_level_fill,ge_level_flat,vote_confident,vote_anchor,vote_engine_anchor,vote_count,vote_winner_count,vote_top_f1,vote_top_f2,level_top_f1,level_ref_f1,level_mean_f1,level_sd_f1,level_corr_f1,level_accepted_f1,level_top_f2,level_ref_f2,level_mean_f2,level_sd_f2,level_corr_f2,level_accepted_f2,ge_vote_pair,ge_vote_pair_min,vote_rB,vote_pair_pass,ge_bottom_flat,ge_bottom_flat_margin,bottom_rule_f1,bottom_F_p5_f1,bottom_F_p50_f1,bottom_F_p95_f1,bottom_rule_f2,bottom_F_p5_f2,bottom_F_p50_f2,bottom_F_p95_f2,ge_vote_blankspot,ge_comb_still,vote_blankspot_pass,vote_blankspot_line,motion_shift_f1,motion_error_f1,motion_error2_f1,motion_shift_f2,motion_error_f2,motion_error2_f2,picture_motion,still_trigger,comb_suppressed,ge_comb_motion_min,ge_comb_rigid,ge_comb_rigid_clarity,rigid_dx_f1,rigid_dy_f1,rigid_sad_f1,rigid_sad_far_f1,rigid_clarity_f1,rigid_dx_f2,rigid_dy_f2,rigid_sad_f2,rigid_sad_far_f2,rigid_clarity_f2\n")<0?-1:0;
-    return fprintf(L, "ordinal,counter_extended,transport,kind,appearance,appearance_confidence,source,source_confidence,"
-               "interval_id,unsettled,provisional_d1,provisional_d2,applied_d1,applied_d2,baseline_d1,baseline_d2,"
-               "settled_known,settled_d1,settled_d2,resolution,evidence_mode,confidence,"
-               "f1_reason,f1_gauge,f1_insert_present,f1_insert_bytes,f1_insert_relation,f1_parity_candidates,f1_fallback_candidates,f1_gauge_line,f1_gauge_bytes,f1_gauge_amplitude,f1_geometry_d,f1_blank_mean,f1_body_witness_valid,f1_body_shift,f1_body_mad,f1_body_geometry_agrees,f1_body_reference_top,f1_body_implied_top,f1_body_differential,f1_body_common_mode,f1_picture_position_valid,f1_measured_picture_top,f1_picture_from_body,f1_raw_top,f1_raw_bottom,f1_raw_height,f1_geometry_measurable,f1_bottom_censored,f1_lock_state,f1_zero_source,f1_lock_id,f1_lock_top,f1_lock_height,f1_lock_height_known,f1_clip_state,f1_clip_ceiling,f1_expected_bottom,f1_lines_lost,f1_invariant_residual,"
-               "f2_reason,f2_gauge,f2_insert_present,f2_insert_bytes,f2_insert_relation,f2_parity_candidates,f2_fallback_candidates,f2_gauge_line,f2_gauge_bytes,f2_gauge_amplitude,f2_geometry_d,f2_blank_mean,f2_body_witness_valid,f2_body_shift,f2_body_mad,f2_body_geometry_agrees,f2_body_reference_top,f2_body_implied_top,f2_body_differential,f2_body_common_mode,f2_picture_position_valid,f2_measured_picture_top,f2_picture_from_body,f2_raw_top,f2_raw_bottom,f2_raw_height,f2_geometry_measurable,f2_bottom_censored,f2_lock_state,f2_zero_source,f2_lock_id,f2_lock_top,f2_lock_height,f2_lock_height_known,f2_clip_state,f2_clip_ceiling,f2_expected_bottom,f2_lines_lost,f2_invariant_residual,"
-               "parity_state,comb_check,comb_best_shift,parity_bias,comb_best_energy,comb_second_energy,comb_static_fraction,comb_correction,comb_correction_install_ordinal,comb_safe,published,drop_reason,schema_version,preceding_ring_drops\n") < 0 ? -1 : 0;
-}
-
-static int log_field(FILE *L, const fieldreg_field_decision *d)
-{
-    const char *reason = d ? fieldreg_mode_name(d->reason) : "None";
-    const char *gauge = d ? fieldreg_gauge_name(d->gauge) : "None";
-    const char *insert_relation = d ? fieldreg_insert_relation_name(d->insert_relation) : "None";
-    const char *lock = d ? fieldreg_lock_state_name(d->lock_state) : "Unlocked";
-    const char *zero = d ? fieldreg_zero_source_name(d->zero_source) : "None";
-    const char *clip = d ? fieldreg_clip_state_name(d->clip_state) : "ClipUnknown";
-    char insert_bytes[5] = "", gauge_bytes[5] = "";
-    if (d && d->insert_present)
-        snprintf(insert_bytes, sizeof insert_bytes, "%02x%02x", d->insert_byte1, d->insert_byte2);
-    if (d && d->gauge_row >= 0 &&
-        (d->gauge == FIELDREG_GAUGE_CEA608_PARITY ||
-         d->gauge == FIELDREG_GAUGE_LINE22_DATA))
-        snprintf(gauge_bytes, sizeof gauge_bytes, "%02x%02x", d->gauge_byte1, d->gauge_byte2);
-    return fprintf(L,
-                   ",%s,%s,%d,%s,%s,%u,%u,%d,%s,%.3f,%d,%.3f"
-                   ",%d,%d,%.3f"
-                   ",%d,%d,%d,%d,%d,%d,%d,%d"
-                   ",%d,%d,%d,%d,%d"
-                   ",%s,%s,%u,%d,%d,%d,%s,%d,%d,%d,%d",
-                   reason, gauge, d && d->insert_present, insert_bytes, insert_relation,
-                   d ? d->parity_candidate_count : 0,
-                   d ? d->fallback_candidate_count : 0,
-                   d && d->gauge_row >= 0 ? d->gauge_row + 4 : -1, gauge_bytes,
-                   d ? d->gauge_amplitude : 0.0,
-                   d ? d->geometry_d : FIELDREG_UNKNOWN,
-                   d ? d->blank_mean : 0.0,
-                   d && d->body_witness_valid,
-                   d && d->body_witness_valid ? d->body_shift : FIELDREG_UNKNOWN,
-                   d ? d->body_mad : 0.0,
-                   d && d->body_geometry_agrees,
-                   d && d->body_reference_top >= 0 ? d->body_reference_top + 4 : -1,
-                   d && d->body_implied_top >= 0 ? d->body_implied_top + 4 : -1,
-                   d && d->body_differential,
-                   d && d->body_common_mode,
-                   d && d->picture_position_valid,
-                   d && d->measured_picture_top >= 0 ? d->measured_picture_top + 4 : -1,
-                   d && d->picture_from_body,
-                   d && d->raw_top >= 0 ? d->raw_top + 4 : -1,
-                   d && d->raw_bottom >= 0 ? d->raw_bottom + 4 : -1,
-                   d ? d->raw_height : -1, d && d->geometry_measurable,
-                   d && d->bottom_censored, lock, zero, d ? d->lock_id : 0,
-                   d && d->lock_top >= 0 ? d->lock_top + 4 : -1,
-                   d ? d->lock_height : -1, d && d->lock_height_known, clip,
-                   d && d->clip_ceiling >= 0 ? d->clip_ceiling + 4 : -1,
-                   d && d->expected_bottom >= 0 ? d->expected_bottom + 4 : -1,
-                   d ? d->lines_lost : 0, d ? d->invariant_residual : 0);
+static int log_header(FILE *L){
+    return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,hblank_level_f1,hblank_cols_f1,hblank_level_f2,hblank_cols_f2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies,ge_wave_bar,ge_wave_clamp,wave_top_f1,wave_step_f1,wave_max_step_f1,wave_status_f1,wave_top_f2,wave_step_f2,wave_max_step_f2,wave_status_f2,relative_source,anchor_source,held_correction,ge_comb_reject,comb_reject_ratio,comb_rejected,comb_refused_d,comb_substituted_d,comb_discarded,comb_floor_lo,comb_floor_hi,comb_rise_left,comb_rise_right,comb_basin,ge_anchor_vote,ge_level_fill,ge_level_flat,vote_confident,vote_anchor,vote_engine_anchor,vote_count,vote_winner_count,vote_top_f1,vote_top_f2,level_top_f1,level_ref_f1,level_mean_f1,level_sd_f1,level_corr_f1,level_accepted_f1,level_top_f2,level_ref_f2,level_mean_f2,level_sd_f2,level_corr_f2,level_accepted_f2,ge_vote_pair,ge_vote_pair_min,vote_rB,vote_pair_pass,ge_bottom_flat,ge_bottom_flat_margin,bottom_rule_f1,bottom_F_p5_f1,bottom_F_p50_f1,bottom_F_p95_f1,bottom_rule_f2,bottom_F_p5_f2,bottom_F_p50_f2,bottom_F_p95_f2,ge_vote_blankspot,ge_comb_still,vote_blankspot_pass,vote_blankspot_line,motion_shift_f1,motion_error_f1,motion_error2_f1,motion_shift_f2,motion_error_f2,motion_error2_f2,picture_motion,still_trigger,comb_suppressed,ge_comb_motion_min,ge_comb_rigid,ge_comb_rigid_clarity,rigid_dx_f1,rigid_dy_f1,rigid_sad_f1,rigid_sad_far_f1,rigid_clarity_f1,rigid_dx_f2,rigid_dy_f2,rigid_sad_f2,rigid_sad_far_f2,rigid_clarity_f2\n")<0?-1:0;
 }
 /* v11 rows are unit-keyed. Frame diagnostics belong to that unit's bottom field;
  * frame_d1 therefore need not equal applied_d1 when pairing is reversed. Ineligible
@@ -533,30 +473,8 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
 }
 static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
-        if(f->geometry){
-            geometry_flush(f);f->st.discontinuity_calls++;f->st.ring_drops_logged+=it->preceding_ring_drops;f->st.ring_gap_rows++;
-            geometry_log(f,it,NULL,0,"RingFullTail",NULL);return;
-        }
-        fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++;
-        f->st.ring_drops_logged+=it->preceding_ring_drops; f->st.ring_gap_rows++;
-        pthread_mutex_lock(&f->log_m);
-        if(f->log){
-            int wr = fprintf(f->log,"%llu,0,Hole,-1,Unclassified,0.000,Unknown,0.000,0,0,,,,0,0,0,0,0,Immediate,None,0.000",
-                             (unsigned long long)it->obs.ordinal);
-            if (wr >= 0) wr = log_field(f->log, NULL);
-            if (wr >= 0) wr = log_field(f->log, NULL);
-            if (wr >= 0) wr = fprintf(f->log, ",Uncalibrated,n.a.,-128,0,0.000,0.000,0.000,%d,%lld,0,0,RingFullTail,%u,%llu\n",
-                                      f->last_comb_correction,
-                                      f->comb_correction_install_ordinal == UINT64_MAX ?
-                                      -1LL : (long long)f->comb_correction_install_ordinal,
-                                      FS_DECISION_LOG_SCHEMA,
-                                      (unsigned long long)it->preceding_ring_drops);
-            if(wr < 0){ f->st.log_write_errors++; f->log_file_errors++; }
-            else f->st.log_rows++;
-            fs_test_after_log_row(f, f->log);
-        }
-        pthread_mutex_unlock(&f->log_m);
-        return;
+        geometry_flush(f);f->st.discontinuity_calls++;f->st.ring_drops_logged+=it->preceding_ring_drops;f->st.ring_gap_rows++;
+        geometry_log(f,it,NULL,0,"RingFullTail",NULL);return;
     }
     unit_video_observation obs = it->obs;
     const uint8_t *unit = NULL;
@@ -576,92 +494,7 @@ static void process_item(frameserver *f, const fs_item *it){
     // obs.bytes/payload are NULL for units without a pool slot (ineligible, or PoolFull); the
     // classifier's contract is metadata-only for those (signal_state.c: !fixed_raster_eligible || !bytes).
     bool classified = signal_state_classify(f->sig, &obs, &signal_ctx, &sr);
-    if(f->geometry){process_geometry(f,it,unit,&sr,classified);return;}
-    fieldreg_decision d; memset(&d, 0, sizeof d); bool have_d = false; int published = 0;
-    // Ring-full drops since the previous processed item: folded into this row (locatable in time)
-    // and a byte discontinuity for the engine's temporal state.
-    if (rd){ f->st.ring_drops_logged += rd; fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++; }
-    // Registration actions are dispatched for EVERY classified observation, not only those with
-    // bytes: holes, short and unframed units carry the discontinuity the engine must see before
-    // the next exact unit, and they never have a retained raster.
-    if (classified){
-        if (sr.actions & SIGNAL_ACTION_REGISTRATION_BEGIN_SEGMENT){
-            fieldreg_begin_segment(f->eng); f->st.begin_segment_calls++;
-            f->last_comb_correction = 0;
-            f->comb_correction_install_ordinal = UINT64_MAX;
-        }
-        else if (sr.actions & SIGNAL_ACTION_REGISTRATION_DISCONTINUITY){ fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++; }
-    }
-    if (it->drop == FS_DROP_POOL_FULL){
-        // eligible, bytes shed here: still an exact unit for accounting, and a byte discontinuity
-        // for the engine's temporal state (the classifier only knows "no bytes", not why)
-        atomic_fetch_add(&f->dropped_pool_full,1);
-        f->st.exact_units++; fieldreg_discontinuity(f->eng); f->st.discontinuity_calls++;
-    }
-    if (unit){
-        f->st.exact_units++;
-        have_d = fieldreg_process(f->eng, unit, &d);
-        if (have_d && d.comb_correction != f->last_comb_correction) {
-            f->last_comb_correction = d.comb_correction;
-            f->comb_correction_install_ordinal = d.comb_correction == 0 ?
-                                                  UINT64_MAX : obs.ordinal;
-        }
-        if (have_d && classified)
-            /* signal_state's observation API accepts a complete (d1,d2), not
-             * a field-validity mask. Partial v9 support remains real and is
-             * fully reflected by applied_known below; passing it as an
-             * observation would fabricate FIELDREG_UNKNOWN for one field and
-             * count that sentinel as phase chatter. */
-            signal_state_note_registration(f->sig, &sr, d.frame_observation_support == 2,
-                                           d.frame_observation_d1, d.frame_observation_d2,
-                                           d.confidence, true,
-                                           d.applied_d1, d.applied_d2);
-        if (classified && sr.unsettled) f->st.unsettled_units++;
-        uint64_t apts = 0; int aknown = ap_lookup(f->aud, obs.epoch, obs.counter_extended, &apts, NULL);   // audio-clock time of this unit
-        if (aknown) atomic_fetch_add(&f->audio_master_frames, 1);
-        int rc = fp_publish(f->pub, unit, FP_UNIT_BYTES, obs.counter_extended,
-                            have_d ? d.applied_d1 : 0, have_d ? d.applied_d2 : 0,
-                            obs.transport == UNIT_TRANSPORT_COMPLETE ? FP_TRANSPORT_COMPLETE : FP_TRANSPORT_SHORT,
-                            aknown, apts);
-        if (rc == 0){ f->st.published++; published = 1; } else if (rc == 1) f->st.publisher_dropped++;
-        // The publisher copied the bytes: free the slot before the (slow) log write so slot
-        // occupancy is the analysis time, not analysis + I/O.
-        atomic_store(&f->slot_used[it->slot], 0);
-    }
-    // The attach/detach lock is held only for this one buffered fprintf; the control thread's
-    // fopen/fclose happen outside it (fs_log_start/fs_log_stop), so the worker never waits on I/O it did not issue.
-    pthread_mutex_lock(&f->log_m);
-    if (f->log){
-        int wr = fprintf(f->log, "%llu,%llu,%s,%d,%s,%.3f,%s,%.3f,%llu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s,%s,%.3f",
-            (unsigned long long)obs.ordinal, (unsigned long long)obs.counter_extended, transport_name(obs.transport), (int)obs.kind,
-            classified ? signal_appearance_name(sr.appearance) : "Unclassified", classified ? sr.appearance_confidence : 0.0,
-            classified ? signal_source_state_name(sr.source) : "Unknown", classified ? sr.source_confidence : 0.0,
-            (unsigned long long)(classified ? sr.unsettled_interval_id : 0), classified && sr.unsettled,
-            have_d ? d.frame_observation_d1 : 0, have_d ? d.frame_observation_d2 : 0,
-            have_d ? d.applied_d1 : 0, have_d ? d.applied_d2 : 0,
-            have_d ? d.baseline_d1 : 0, have_d ? d.baseline_d2 : 0,
-            classified && sr.settled_phase_known, classified ? sr.settled_d1 : 0, classified ? sr.settled_d2 : 0,
-            "Immediate", have_d ? fieldreg_mode_name(d.mode) : "None", have_d ? d.confidence : 0.0);
-        if (wr >= 0) wr = log_field(f->log, have_d ? &d.field[0] : NULL);
-        if (wr >= 0) wr = log_field(f->log, have_d ? &d.field[1] : NULL);
-        if (wr >= 0) wr = fprintf(f->log, ",%s,%s,%d,%d,%.3f,%.3f,%.6f,%d,%lld,%d,%d,%s,%u,%llu\n",
-            have_d ? fieldreg_parity_state_name(d.parity_state) : "Uncalibrated",
-            have_d ? fieldreg_comb_check_name(d.comb_check) : "n.a.",
-            have_d ? d.comb_best_shift : FIELDREG_UNKNOWN,
-            have_d ? d.parity_bias : 0,
-            have_d ? d.comb_best_energy : 0.0,
-            have_d ? d.comb_second_energy : 0.0,
-            have_d ? d.comb_static_fraction : 0.0,
-            have_d ? d.comb_correction : f->last_comb_correction,
-            f->comb_correction_install_ordinal == UINT64_MAX ?
-            -1LL : (long long)f->comb_correction_install_ordinal,
-            have_d && d.comb_safe, published,
-            it->drop == FS_DROP_POOL_FULL ? "PoolFull" : (!published && unit ? "PublisherFull" : "None"),
-            FS_DECISION_LOG_SCHEMA, (unsigned long long)rd);
-        if (wr < 0){ f->st.log_write_errors++; f->log_file_errors++; } else f->st.log_rows++;   // a failed row is never counted as written
-        fs_test_after_log_row(f, f->log);
-    }
-    pthread_mutex_unlock(&f->log_m);
+    process_geometry(f,it,unit,&sr,classified);
 }
 static void *worker_main(void *arg){
     frameserver *f = arg;
@@ -714,7 +547,6 @@ int fs_open(frameserver **out, const fs_config *cfg){
         fprintf(stderr,"pairing schedule: excludes --pair-next\n");return -1;
     }
     frameserver *f = calloc(1, sizeof *f); if (!f) return -1;
-    f->comb_correction_install_ordinal = UINT64_MAX;
     f->cfg = *cfg;
     if(pthread_mutex_init(&f->m,NULL)) goto sync_fail;
     f->m_init=1;
@@ -736,12 +568,10 @@ int fs_open(frameserver **out, const fs_config *cfg){
     f->slot_used = calloc(f->n_slots, sizeof(_Atomic int));
     f->parser = aligned_alloc(unit_parser_alignment(), unit_parser_size());
     f->sig = aligned_alloc(signal_state_alignment(), signal_state_size());
-    f->eng = aligned_alloc(64, ((fieldreg_state_size() + 63) / 64) * 64);
-    if (!f->pool || !f->slot_used || !f->parser || !f->sig || !f->eng){ fs_close(f); return -1; }
+    if (!f->pool || !f->slot_used || !f->parser || !f->sig){ fs_close(f); return -1; }
     unit_parser_callbacks pcb = { on_video, on_audio, f };
     unit_parser_init(f->parser, NULL, &pcb);
     signal_state_config sc = signal_state_default_config(); signal_state_init(f->sig, &sc);
-    fieldreg_config ec = fieldreg_default_config(); fieldreg_init(f->eng, &ec);
     {
         f->geometry=malloc(ge_size());f->geometry_y=malloc(GE_PIXELS);
         f->geometry_unit=malloc(FP_UNIT_BYTES);
@@ -762,7 +592,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
     ap_sink asink = { aq_enqueue, f };
     if (ap_open(&f->aud, f->aq_cap_frames, &asink) != 0){ fs_close(f); return -1; }
     if (pthread_mutex_init(&f->log_m, NULL)){ fs_close(f); return -1; } f->log_m_init = 1;
-    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "wx"); if (!f->log || log_header(f->log,1) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
+    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "wx"); if (!f->log || log_header(f->log) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
     cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, NULL, cc_on_end, f };
     if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
@@ -838,7 +668,7 @@ int fs_log_start(frameserver *f, const char *path){
     if(attached) return -1;                            // one log at a time; the caller ends the previous one
     FILE *L = fopen(path, "wx");                       // never truncate an existing file: a sidecar is evidence
     if(!L) return -1;
-    if(log_header(L,1) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
+    if(log_header(L) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
     // Lifecycle check and install happen under life_m so fs_stop (which moves life to STOPPING
     // under the same lock before joining the workers) cannot slip between them.
     pthread_mutex_lock(&f->life_m);
@@ -898,5 +728,5 @@ void fs_close(frameserver *f){
     fs_test_destroyed();
     free(f->geometry);free(f->geometry_y);free(f->geometry_unit);
     fs_pairing_free(&f->pairing);
-    free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f->eng); free(f);
+    free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f);
 }

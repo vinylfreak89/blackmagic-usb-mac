@@ -93,10 +93,11 @@ static void report_group(int searches) {
     free(v);
 }
 int main(int argc,char **argv) {
-    const char *path=getenv("GE_BENCH_TIMINGS");
-    if(!path){fputs("GE_BENCH_TIMINGS is required\n",stderr);return 2;}
-    FILE *f=fopen(path,"wx");if(!f){perror("GE_BENCH_TIMINGS");return 2;}
-    int rc=geometry_replay_main(argc,argv);
+    if(argc<3){fputs("usage: geometry_worker_bench TIMINGS CAPTURE [replay arguments]\n",stderr);return 2;}
+    FILE *f=fopen(argv[1],"wx");if(!f){perror("benchmark timings");return 2;}
+    /* Output location is not engine configuration; no environment is needed. */
+    argv[1]=argv[0];
+    int rc=geometry_replay_main(argc-1,argv+1);
     if(rc || overflow || !sample_count){fclose(f);return rc?rc:2;}
     fprintf(f,"counter,worker_ms,classifier_ms,engine_ms,publisher_ms,other_ms,rigid_fields\n");
     size_t searched=0;

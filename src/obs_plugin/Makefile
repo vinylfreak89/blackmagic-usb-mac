@@ -21,7 +21,7 @@ BUNDLE = $(BUILD_DIR)/$(PLUGIN).plugin
 INSTALL_DIR = $(HOME)/Library/Application Support/obs-studio/plugins
 
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c \
-       ../field_registration/field_registration.c ../field_registration/cea608.c ../field_registration/geometry_engine.c ../frameserver/frame_publisher.c \
+       ../field_registration/geometry_engine.c ../frameserver/frame_publisher.c \
        ../frameserver/audio_publisher.c ../frameserver/frameserver.c ../frameserver/pairing_schedule.c
 CPPFLAGS = -I. -I"$(OBS_HEADERS)" -I"$(OBS_HEADERS)/../frontend" -I"$(SIMDE_DIR)" -I.. -I../capture_core -I../frameserver $(shell pkg-config --cflags libusb-1.0)
 CFLAGS ?= -O2 -std=c11 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden
