@@ -96,6 +96,11 @@ def digest(path):
     return h.hexdigest()
 
 
+def blankspot_still_settings(rows):
+    return sorted({(r.get('ge_vote_blankspot', ''), r.get('ge_comb_still', ''),
+                    r.get('ge_comb_motion_min', '')) for r in rows})
+
+
 def write_status(directory, status):
     status = dict(status, updated_utc=datetime.now(timezone.utc).isoformat())
     temporary = None
@@ -147,6 +152,7 @@ def main():
                                               r.get('ge_level_flat', '')) for r in rows})
             result['vote_pair_settings'] = sorted({(r.get('ge_vote_pair', ''), r.get('ge_vote_pair_min', '')) for r in rows})
             result['bottom_flat_settings'] = sorted({(r.get('ge_bottom_flat', ''), r.get('ge_bottom_flat_margin', '')) for r in rows})
+            result['blankspot_still_settings'] = blankspot_still_settings(rows)
             captures[name] = result
         status.update(state='READY', captures=captures)
     except Exception as e:

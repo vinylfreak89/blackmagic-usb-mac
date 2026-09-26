@@ -27,4 +27,13 @@ assert g.placement_source({'anchor_source':'census'},'engine')=='engine'
 assert g.placement_source({'anchor_source':'anchor_vote'},'manual')=='manual'
 header=f"ctr {999999:>6}   applied ({-10:+d},{5:+d}) from {g.placement_source({'anchor_source':'anchor_vote'},'engine')}"
 assert dr.textlength(header,font=ImageFont.truetype('/System/Library/Fonts/Menlo.ttc',12))<456
+assert g.blankspot_label({}) == ''
+assert g.blankspot_label({'ge_vote_blankspot':'0'}) == 'A1 off'
+assert g.blankspot_label({'ge_vote_blankspot':'1'}) == 'A1 --'
+assert g.blankspot_label({'ge_vote_blankspot':'1','vote_blankspot_pass':'1'}) == 'A1 pass'
+failed=dict(ge_vote_blankspot='1',vote_blankspot_pass='0',vote_blankspot_line='291',f2_first='286')
+assert g.blankspot_label(failed) == 'A1 FAIL @291'
+label=g.blankspot_label(failed)+' | wave bar 0.45; clamp +/-5'
+assert dr.textlength(label,font=font)<452
+assert g.FH+120+13 < g.FH+134
 print('VOTE-OVERLAY PASS: frame-owned logged evidence, intact text, separate strip area')

@@ -434,6 +434,18 @@ def vote_label(row):
     return f'anchor {anchor:+d} eng {engine:+d} conf {conf} {slots} {pairing}'
 
 
+def blankspot_label(row):
+    """A1's logged field-2 test; no renderer-side measurement or inference."""
+    if row.get('ge_vote_blankspot') != '1':
+        return 'A1 off' if row.get('ge_vote_blankspot') == '0' else ''
+    passed = row.get('vote_blankspot_pass')
+    if passed in ('', None):
+        return 'A1 --'
+    if passed == '1':
+        return 'A1 pass'
+    return f"A1 FAIL @{row.get('vote_blankspot_line') or '--'}"
+
+
 def placement_source(row, source):
     """The vote owns only the absolute anchor; the engine still owns d2-d1."""
     if source == 'engine' and row.get('anchor_source') == 'anchor_vote':
@@ -996,7 +1008,9 @@ def main():
                       f"anchor: {rowB.get('anchor_source') or '--'}")
         fit(dr, (6, FH + 90), provenance, small, (170, 170, 170), right=CB_X0)
         if rowB.get('ge_wave_bar'):
-            fit(dr, (6, FH + 120), f"wave bar {float(rowB['ge_wave_bar']):g}; clamp +/-{rowB['ge_wave_clamp']}",
+            a1 = blankspot_label(rowB)
+            fit(dr, (6, FH + 120), (a1 + ' | ' if a1 else '') +
+                f"wave bar {float(rowB['ge_wave_bar']):g}; clamp +/-{rowB['ge_wave_clamp']}",
                 small, (150, 150, 150), right=CB_X0)
         if vote_label(rowB):
             fit(dr, (6, FH + 134), vote_label(rowB), small, (230, 210, 130), right=CB_X0)
