@@ -65,7 +65,7 @@ Neither captured data nor generated results belong in this directory.
 
 Select `frameserver_replay --geometry-v11`; add `--pair-next` for reversed pairing.
 Without this selection the existing v9 path and schema are unchanged. v11 writes
-schema 23, including applied offsets, trigger bits (T1=1, unmeasurable=2,
+schema 24, including applied offsets, trigger bits (T1=1, unmeasurable=2,
 field-1 change=4, field-2 change=8, confirmation=16, correction-basis change=32),
 comb evidence and HIGH/LOW.
 Untriggered comb evidence is empty unless `--audit-comb` or the anchor vote is enabled; audit does
@@ -129,6 +129,19 @@ are empty when not measured. All frame-owned additions are empty on boundary
 or unpublished rows without a frame. Existing `f1_first/f2_first` stay immutable.
 `anchor_source=anchor_vote` identifies a voted or empty-window held anchor; the original
 engine's final anchor remains explicit in `vote_engine_anchor`.
+
+Entry 37 adds `GE_VOTE_PAIR` (default 0) and `GE_VOTE_PAIR_MIN` (default .6,
+finite [-1,1]). With vote and pairing enabled, confidence instead permits
+the inclusive floor range `[lo, hi+1]` and also requires rB >= the threshold.
+rB is Pearson over body samples 40..679 of the two vote-top rows, each from
+its frame-owned source raster. Either population sd below 1e-9 gives zero.
+No other vote, fill, census or relative-decision rule changes. Pairing has no
+effect with vote off; disabling pairing retains the entry-36 confidence test.
+Schema 24 appends `ge_vote_pair`, `ge_vote_pair_min`, `vote_rB`,
+`vote_pair_pass`. The latter is only the correlation verdict, not full frame
+confidence. Both evidence cells are empty without an enabled two-top
+measurement; the configuration appears on every row. rB is logged unrounded
+to 17 significant digits; comparisons never use display-rounded numbers.
 
 `geometry_vote` checks threshold boundaries, clamp, first-candidate semantics,
 tie handling, window eviction, resets and field ownership. `test_anchor_vote.py`

@@ -15,6 +15,8 @@ extern double ge_comb_reject; /* default 2; strict proposed-energy / minimum bar
 extern int ge_anchor_vote; /* default 0; last 30 confident frame anchors */
 extern int ge_level_fill; /* default 0; ABSTAIN-only vote input, never census */
 extern int ge_level_flat; /* default 0; also accept level candidates with sd<10 */
+extern int ge_vote_pair; /* default 0; floor high end +1 AND paired top rows */
+extern double ge_vote_pair_min; /* default .6; inclusive Pearson threshold */
 #define GE_VOTE_WINDOW 30
 #define GE_COMB_SELECTION_MARGIN 1.5
 typedef struct { int first; double step, max_step; } ge_wave_result;
@@ -69,6 +71,8 @@ typedef struct {
     int vote_confident, vote_anchor, vote_engine_anchor, vote_count, vote_winner_count;
     int vote_top[2]; /* frame-owned waveform or accepted fill, not census */
     ge_level_result level[2]; /* frame-owned, measured only on ABSTAIN fields */
+    double vote_rB; /* NAN unless pairing is enabled and both vote tops exist */
+    int vote_pair_pass; /* correlation test only, not the complete confidence */
 } ge_decision;
 typedef struct geometry_engine geometry_engine;
 size_t ge_size(void);

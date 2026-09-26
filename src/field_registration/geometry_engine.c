@@ -6,6 +6,8 @@ double ge_wave_bar=.45;
 int ge_wave_clamp=5;
 double ge_comb_reject=2;
 int ge_anchor_vote=0,ge_level_fill=0,ge_level_flat=0;
+int ge_vote_pair=0;
+double ge_vote_pair_min=.6;
 
 struct geometry_engine {
     int reverse, audit, valid, held, provisional, have_placement, last_d, last_d2;
@@ -230,9 +232,11 @@ static void reset_frame_state(geometry_engine *g) {
     g->vote_count=0;
 }
 static void vote_anchor(geometry_engine *g,ge_decision *o,
-                        const ge_features *t,const ge_features *b) {
+                        const ge_features *t,const ge_features *b,
+                        const uint8_t *ty,const uint8_t *by) {
     o->vote_engine_anchor=o->frame_d2;
     o->vote_anchor=o->frame_d2;
+    o->vote_rB=NAN;o->vote_pair_pass=0;
     if(!ge_anchor_vote)return;
     o->level[0]=t->level[0];o->level[1]=b->level[1];
     for(int k=0;k<2;k++) {
@@ -242,8 +246,16 @@ static void vote_anchor(geometry_engine *g,ge_decision *o,
             o->vote_top[k]=f->level[k].first;
     }
     int st=o->vote_top[1]-263-o->vote_top[0];
+    if(ge_vote_pair && o->vote_top[0] && o->vote_top[1]) {
+        /* Frame ownership matters: reversed pairing reads field 1 from the
+         * next unit, not from the unit owning field 2 and this decision row. */
+        o->vote_rB=waveform_correlation(ty+(o->vote_top[0]-4)*720+40,
+                                      by+(o->vote_top[1]-4)*720+40);
+        o->vote_pair_pass=o->vote_rB>=ge_vote_pair_min;
+    }
     o->vote_confident=o->vote_top[0] && o->vote_top[1] && o->rejection.basin &&
-        st>=o->rejection.floor_lo && st<=o->rejection.floor_hi;
+        st>=o->rejection.floor_lo && st<=o->rejection.floor_hi+(ge_vote_pair!=0) &&
+        (!ge_vote_pair || o->vote_pair_pass);
     if(o->vote_confident) {
         if(g->vote_count==GE_VOTE_WINDOW) {
             memmove(g->vote_values,g->vote_values+1,(GE_VOTE_WINDOW-1)*sizeof(int));
@@ -321,7 +333,7 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     g->last_d=d;g->last_d2=d2;g->have_placement=1;
     /* Keep the original engine state untouched: later missing-top and basin
      * fallbacks must see the tag's anchor, not an earlier voted placement. */
-    vote_anchor(g,&o,t,b);
+    vote_anchor(g,&o,t,b,ty,by);
     return o;
 }
 unsigned ge_break(geometry_engine *g,ge_decision out[2]) {

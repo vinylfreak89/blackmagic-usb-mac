@@ -7,7 +7,7 @@ static ge_decision input(geometry_engine *g,int top,int confident,int engine) {
     ge_features t={0},b={0};t.first[0]=23+top;b.first[1]=286+top;
     ge_decision o={.frame_d2=engine,.frame_d1=engine-1,.published_d=1};
     o.rejection=(ge_comb_evidence){.basin=confident,.floor_lo=0,.floor_hi=1};
-    vote_anchor(g,&o,&t,&b);return o;
+    vote_anchor(g,&o,&t,&b,y,y);return o;
 }
 static void votes(void) {
     geometry_engine g;ge_init(&g,0,0);ge_anchor_vote=1;
@@ -59,10 +59,40 @@ static void ownership(void) {
     top.wave_status[0]=GE_WAVE_ABSTAIN;top.level[0]=(ge_level_result){.first=23,.accepted=1};
     bottom.level[0]=(ge_level_result){.first=28,.accepted=1};
     ge_decision o={.rejection={.basin=1,.floor_lo=0,.floor_hi=0}};
-    vote_anchor(&g,&o,&top,&bottom);assert(o.vote_confident && o.vote_top[0]==23);
+    vote_anchor(&g,&o,&top,&bottom,y,y);assert(o.vote_confident && o.vote_top[0]==23);
     top.wave_status[0]=GE_WAVE_DISCARDED;
-    vote_anchor(&g,&o,&top,&bottom);assert(!o.vote_confident && !o.vote_top[0]);
+    vote_anchor(&g,&o,&top,&bottom,y,y);assert(!o.vote_confident && !o.vote_top[0]);
     top.wave_status[0]=GE_WAVE_ABSTAIN;ge_level_fill=0;
-    vote_anchor(&g,&o,&top,&bottom);assert(!o.vote_confident);
+    vote_anchor(&g,&o,&top,&bottom,y,y);assert(!o.vote_confident);
 }
-int main(void) {votes();fills();ownership();puts("GEOMETRY-VOTE PASS");return 0;}
+static void paired_tops(void) {
+    static uint8_t by[GE_PIXELS];
+    memset(y,1,sizeof y);memset(by,1,sizeof by);
+    /* Orthogonal +/-1 patterns: B=3*A+4*C has Pearson exactly 3/5.
+     * Other unit's field 1 and neighboring rows remain flat decoys. */
+    for(int x=0;x<640;x++) {
+        int a=x%2?1:-1,c=x%4<2?1:-1;
+        y[19*720+40+x]=100+10*a;
+        by[283*720+40+x]=100+3*a+4*c;
+    }
+    geometry_engine g;ge_init(&g,1,0);ge_anchor_vote=1;ge_vote_pair=1;
+    ge_features t={0},b={0};t.first[0]=23;b.first[1]=287; /* st=+1 */
+    ge_decision o={.rejection={.basin=1,.floor_lo=0,.floor_hi=0}};
+    vote_anchor(&g,&o,&t,&b,y,by);
+    assert(o.vote_rB==.6 && o.vote_pair_pass && o.vote_confident && o.vote_anchor==1);
+    ge_vote_pair_min=nextafter(.6,1);
+    vote_anchor(&g,&o,&t,&b,y,by);assert(!o.vote_pair_pass && !o.vote_confident);
+    ge_vote_pair_min=.6;o.rejection.floor_lo=2;o.rejection.floor_hi=2;
+    vote_anchor(&g,&o,&t,&b,y,by);assert(o.vote_pair_pass && !o.vote_confident); /* no low widening */
+    o.rejection.floor_lo=-1;o.rejection.floor_hi=-1;
+    vote_anchor(&g,&o,&t,&b,y,by);assert(!o.vote_confident); /* high +2 rejected */
+    o.rejection.floor_lo=0;o.rejection.floor_hi=0;
+    vote_anchor(&g,&o,&t,&b,by,by);assert(o.vote_rB==0 && !o.vote_confident); /* wrong source */
+    vote_anchor(&g,&o,&t,&b,y,y);assert(o.vote_rB==0 && !o.vote_confident);
+    ge_vote_pair=0;vote_anchor(&g,&o,&t,&b,NULL,NULL);
+    assert(isnan(o.vote_rB) && !o.vote_confident); /* exact old floor, no reads */
+    ge_vote_pair=1;ge_anchor_vote=0;
+    vote_anchor(&g,&o,&t,&b,NULL,NULL);assert(isnan(o.vote_rB));
+    ge_vote_pair=0;
+}
+int main(void) {votes();fills();ownership();paired_tops();puts("GEOMETRY-VOTE PASS");return 0;}

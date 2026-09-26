@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix='anchor-vote-',dir='/private/tmp') as tm
             f.write(fixture.record(fixture.DATA,fixture.VIDEO,0,seq,0,15360,stream[off:off+15360]))
     for reverse in (False,True):
         runs={}
-        arms={'off':(0,0,0),'inert':(0,1,1),'s1':(1,0,0),'s12':(1,1,1),'s12c':(1,1,0)}
+        arms={'off':(0,0,0),'inert':(0,1,1),'s1':(1,0,0),'s12':(1,1,1),'s12c':(1,1,0),'paired':(1,1,0)}
         for arm,values in arms.items():
             for audit in (False,True):
                 log=tmp/f'{reverse}.{arm}.{audit}.csv'
@@ -35,6 +35,7 @@ with tempfile.TemporaryDirectory(prefix='anchor-vote-',dir='/private/tmp') as tm
                 if reverse:cmd+=['--pair-next']
                 if audit:cmd+=['--audit-comb']
                 settings=dict(zip(('GE_ANCHOR_VOTE','GE_LEVEL_FILL','GE_LEVEL_FLAT'),map(str,values)))
+                settings['GE_VOTE_PAIR']=str(int(arm in ('paired','inert')))
                 p=subprocess.run(cmd,capture_output=True,text=True,env=env|settings,timeout=90)
                 assert p.returncode==0 and 'Sanitizer' not in p.stderr,(p.returncode,p.stdout,p.stderr)
                 with log.open() as f:rows=list(csv.DictReader(f))
@@ -52,8 +53,22 @@ with tempfile.TemporaryDirectory(prefix='anchor-vote-',dir='/private/tmp') as tm
                         assert r['vote_engine_anchor']==b['frame_d2']
                         for col in ('triggers','comb_ran','f1_first','f2_first','f1_last','f2_last'):
                             assert r[col]==b[col],(arm,c,col,r[col],b[col])
+                        if arm=='paired' and int(r['vote_top_f1']) and int(r['vote_top_f2']):
+                            top=rasters[int(r['frame_top_unit'])-100]
+                            bottom=rasters[int(c)-100]
+                            a=top[int(r['vote_top_f1'])-4,40:680].astype(float)
+                            b=bottom[int(r['vote_top_f2'])-4,40:680].astype(float)
+                            rb=0. if min(a.std(),b.std())<1e-9 else float(np.corrcoef(a,b)[0,1])
+                            assert abs(float(r['vote_rB'])-rb)<1e-12,(c,rb,r['vote_rB'])
+                            passed=rb>=.6
+                            assert int(r['vote_pair_pass'])==passed
+                            st=int(r['vote_top_f2'])-263-int(r['vote_top_f1'])
+                            confident=passed and r['comb_basin']=='1' and int(r['comb_floor_lo'])<=st<=int(r['comb_floor_hi'])+1
+                            assert int(r['vote_confident'])==confident
+                        else:
+                            assert r['vote_rB']==r['vote_pair_pass']==''
                 if arm=='inert':
-                    ignored={'ge_level_fill','ge_level_flat'}
+                    ignored={'ge_level_fill','ge_level_flat','ge_vote_pair'}
                     assert [{k:v for k,v in r.items() if k not in ignored} for r in units.values()]==[
                         {k:v for k,v in r.items() if k not in ignored} for r in runs['off',audit].values()]
             if values[0]:assert runs[arm,False]==runs[arm,True],(reverse,arm,'audit changed vote')
