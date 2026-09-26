@@ -1424,3 +1424,15 @@ file reports, verbatim:
 caption below A1
 60843 bounce changed
 ```
+
+Entry-39 amendment commitment: test the narrower claim that only motion of
+at least two whole lines per unit invalidates the comb's relative placement.
+Add GE_COMB_MOTION_MIN, positive integer, default 1 to reproduce 3413040.
+With A1 fixed on, compare still-trigger-only (99) and suppression at 2 against
+the published 6778e76 configuration and A1 alone. The still predicate and
+all measurements stay unchanged. Caption scoring, including each named span,
+is independent evidence only; the former unchanged-bounce requirement is
+withdrawn. Require overall score at least 93.94%, named anchor/still results,
+explained long change runs and the capture gates before any encode. Prefer
+threshold 2 only if it passes and scores no worse than 99. No threshold tuning
+or further exception is authorized; if neither passes, preserve all media.
