@@ -32,6 +32,12 @@ typedef struct {
     int eligible, gap_only;
     uint64_t preceding_ring_drops;
     unit_video_observation obs;            // metadata copy; bytes/payload re-pointed to the slot
+    /* Decision-log evidence has an input-order cutoff: the parser's video-unit
+     * callback. Its single delivery thread also owns correlation writes, so
+     * this immutable snapshot cannot lose a retry race or expire in the queue.
+     * Genuinely later/missing resyncs stay unknown in this unit's log. */
+    int audio_evidence_known;
+    ap_correlation audio_evidence;
 } fs_item;
 
 struct frameserver {
@@ -163,6 +169,8 @@ static void on_video(void *ctx, const unit_video_observation *u){
     fs_test_before_video(f);
     atomic_fetch_add(&f->video_obs, 1);
     fs_item it; memset(&it,0,sizeof it); it.slot = -1; it.drop = FS_DROP_NONE; it.obs = *u; it.obs.bytes = NULL; it.obs.payload = NULL;
+    if(u->fixed_raster_eligible)
+        it.audio_evidence_known=ap_lookup_correlation(f->aud,u->epoch,u->counter_extended,&it.audio_evidence);
     if (u->fixed_raster_eligible && u->byte_count == UNIT_PARSER_VIDEO_UNIT_BYTES){
         it.eligible=1;
         atomic_fetch_add(&f->eligible_ingress, 1);
@@ -416,10 +424,17 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
 }
 static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *unit,const ge_decision *d) {
     ap_correlation audio={0};int known=ap_lookup_correlation(f->aud,it->obs.epoch,d->counter,&audio);
+#ifdef AP_LOOKUP_DIAGNOSTICS
+    if(known!=it->audio_evidence_known || (known && memcmp(&audio,&it->audio_evidence,sizeof audio)))
+        fprintf(stderr,"AUDIO-INGRESS-DIFF counter=%llu ingress_known=%d publication_known=%d ingress_residual=%lld publication_residual=%lld\n",
+            (unsigned long long)d->counter,it->audio_evidence_known,known,
+            (long long)it->audio_evidence.residual_ticks,(long long)audio.residual_ticks);
+#endif
     if(known)atomic_fetch_add(&f->audio_master_frames,1);
     int rc=fp_publish_placed(f->pub,unit,FP_UNIT_BYTES,d->counter,d->d1,d->d2,FP_TRANSPORT_COMPLETE,known,audio.pts_num);
     if(rc==0)f->st.published++;else f->st.publisher_dropped++;
-    geometry_log(f,it,d,rc==0,rc==0?"None":"PublisherFull",known?&audio:NULL);
+    geometry_log(f,it,d,rc==0,rc==0?"None":"PublisherFull",
+                 it->audio_evidence_known?&it->audio_evidence:NULL);
 }
 static void geometry_flush(frameserver *f) {
     ge_decision out[2];unsigned n=ge_break(f->geometry,out);

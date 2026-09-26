@@ -15,6 +15,16 @@ $(FIXTURE): ../unit_parser/tests/gen_unit_parser_capture.py
 frameserver_replay: $(SRCS) frameserver_replay.c frameserver.h frame_publisher.h ../field_registration/geometry_engine.h ../field_registration/geometry_tool_controls.h ../capture_core/capture_core.h ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o $@ $(LIBS)
 
+# Diagnostic-only: timestamp failed correlation lookups without replacing them.
+tests/audio_lookup_probe: $(SRCS) frameserver_replay.c frameserver.h audio_publisher.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DAP_LOOKUP_DIAGNOSTICS $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o $@ $(LIBS)
+
+tests/audio_lookup_stress: $(SRCS) frameserver_replay.c tests/audio_lookup_schedule.c frameserver.h audio_publisher.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DAP_LOOKUP_DIAGNOSTICS -DAP_CORRELATION_TEST_HOOKS $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/audio_lookup_schedule.c frameserver_replay.c -o $@ $(LIBS)
+
+tests/audio_evidence_test: $(SRCS) tests/audio_evidence_test.c frameserver.h audio_publisher.h ../test_condition.h ../test_supervisor.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DAP_CORRELATION_TEST_HOOKS $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/audio_evidence_test.c -o $@ $(LIBS)
+
 tests/audio_publisher_test: audio_publisher.c audio_publisher.h tests/audio_publisher_test.c ../test_supervisor.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) audio_publisher.c tests/audio_publisher_test.c -o $@
 
@@ -24,7 +34,8 @@ tests/frame_publisher_test: frame_publisher.c frame_publisher.h tests/frame_publ
 tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h ../test_supervisor.h ../test_condition.h ../test_liveness.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TESTFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o $@ $(LIBS)
 
-test: tests/audio_queue_flags_test tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
+test: tests/audio_evidence_test tests/audio_queue_flags_test tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
+	./tests/audio_evidence_test
 	./tests/audio_queue_flags_test
 	./tests/audio_publisher_test
 	./tests/frame_publisher_test
@@ -102,12 +113,16 @@ test-smallring: $(FIXTURE) $(FIXTURE_LONG)
 	FS_TEST_EXPECT_RING_DROPS=1 ./tests/test_smallring $(FIXTURE) $(FIXTURE_LONG)
 
 test-asan: $(FIXTURE) $(FIXTURE_LONG)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra -DAP_CORRELATION_TEST_HOOKS $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/audio_evidence_test.c -o tests/audio_evidence_asan $(LIBS)
+	./tests/audio_evidence_asan
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra audio_publisher.c tests/audio_publisher_test.c -o tests/audio_publisher_asan
 	./tests/audio_publisher_asan
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined $(TESTFLAGS) -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_asan $(LIBS)
 	./tests/test_asan $(FIXTURE) $(FIXTURE_LONG)
 
 test-tsan: $(FIXTURE) $(FIXTURE_LONG)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra -DAP_CORRELATION_TEST_HOOKS $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/audio_evidence_test.c -o tests/audio_evidence_tsan $(LIBS)
+	./tests/audio_evidence_tsan
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra audio_publisher.c tests/audio_publisher_test.c -o tests/audio_publisher_tsan
 	./tests/audio_publisher_tsan
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread $(TESTFLAGS) -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o tests/test_tsan $(LIBS)
@@ -130,6 +145,7 @@ $(FIXTURE_LONG): ../unit_parser/tests/gen_unit_parser_capture.py
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
 
 clean:
+	rm -f tests/audio_lookup_probe tests/audio_lookup_stress tests/audio_evidence_test tests/audio_evidence_asan tests/audio_evidence_tsan
 	rm -f tests/audio_queue_flags_test
 	rm -f tests/audio_publisher_asan tests/audio_publisher_tsan
 	rm -f tests/geometry_worker_bench

@@ -10,7 +10,8 @@
 // reversed-pair material must pair next-unit field 1 over current-unit field 2,
 // as geometry_render.py --pair-next does. Decision rows remain unit-keyed.
 //
-// Threading: the parser runs on capture_core's delivery thread and only copies an eligible unit
+// Threading: the parser runs on capture_core's delivery thread, snapshots bounded audio
+// correlation evidence for the log, and copies an eligible unit
 // into a free pool slot and pushes an item onto the SPSC ring; if no slot is free the unit is
 // DROPPED and counted — never blocked (§8 property 7) — but its observation still reaches the
 // worker and the sidecar (drop_reason=PoolFull), so a later re-render sees a marked hole, never an
@@ -66,6 +67,13 @@ typedef struct {
 // never upstream HostLoss (§8 properties 7 and 10). Video frames carry the audio-clock time of
 // their unit (fp_frame.audio_pts_*) when the unit's resync has been seen, for audio-as-master
 // consumers.
+// Decision-log audio evidence has a deterministic input-order cutoff: the parser's
+// video-unit callback. The same delivery thread owns audio correlation writes;
+// the snapshot travels with the unit through the bounded queue/reversed pairing.
+// A resync not yet observed at that cutoff (or outside the correlation history)
+// produces empty audio-evidence cells, even if it arrives before publication.
+// No video is deferred and no thread waits for audio. Live audio_pts_known/num
+// retain their separate, publication-time best-effort lookup semantics.
 
 typedef struct {
     uint64_t video_observations, exact_units, short_units, holes, unframed, other_format, no_signal_0800;

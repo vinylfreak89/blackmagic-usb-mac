@@ -1,6 +1,18 @@
 #include "audio_publisher.h"
 #include <stdlib.h>
 #include <string.h>
+#ifdef AP_LOOKUP_DIAGNOSTICS
+#include <stdio.h>
+#include <pthread.h>
+#include <time.h>
+static uint64_t ap_probe_ns(void){
+    struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t);
+    return (uint64_t)t.tv_sec*1000000000u+(uint64_t)t.tv_nsec;
+}
+static uint64_t ap_probe_thread(void){
+    uint64_t t=0; pthread_threadid_np(NULL,&t); return t;
+}
+#endif
 
 // Entries are read from other threads under a seqlock; the fields themselves are atomics
 // (relaxed) so a concurrent read is never a C11 data race, only a possibly torn snapshot
@@ -9,6 +21,9 @@ typedef struct {
     _Atomic uint64_t epoch, counter, ordinal, pts, run;
     _Atomic int64_t residual;
     _Atomic int anchored;
+#ifdef AP_LOOKUP_DIAGNOSTICS
+    _Atomic uint64_t written_ns, writer_thread;
+#endif
 } ap_corr;
 
 struct audio_publisher {
@@ -67,9 +82,16 @@ static void discontinuity_(audio_publisher *p){
 
 static void corr_record_(audio_publisher *p, uint64_t counter, uint64_t ordinal, uint64_t pts, int anchored){
     uint32_t i = p->corr_next++ % AP_LOOKUP_ENTRIES;
+#ifdef AP_LOOKUP_DIAGNOSTICS
+    uint64_t stamp=ap_probe_ns(), thread=ap_probe_thread();
+#endif
     // odd = writing. acq_rel: no entry mutation below may become visible before the odd value
     // (a reader that sees an even value with torn entries would accept them).
     atomic_fetch_add_explicit(&p->corr_seq, 1, memory_order_acq_rel);
+#ifdef AP_CORRELATION_TEST_HOOKS
+    extern void ap_test_correlation_writing(audio_publisher *,uint64_t);
+    ap_test_correlation_writing(p,counter);
+#endif
     atomic_store_explicit(&p->corr[i].epoch, p->epoch, memory_order_relaxed);
     atomic_store_explicit(&p->corr[i].counter, counter, memory_order_relaxed);
     atomic_store_explicit(&p->corr[i].ordinal, ordinal, memory_order_relaxed);
@@ -77,14 +99,43 @@ static void corr_record_(audio_publisher *p, uint64_t counter, uint64_t ordinal,
     atomic_store_explicit(&p->corr[i].run, p->run, memory_order_relaxed);
     atomic_store_explicit(&p->corr[i].residual, p->last_residual, memory_order_relaxed);
     atomic_store_explicit(&p->corr[i].anchored, anchored, memory_order_relaxed);
+#ifdef AP_LOOKUP_DIAGNOSTICS
+    atomic_store_explicit(&p->corr[i].written_ns,stamp,memory_order_relaxed);
+    atomic_store_explicit(&p->corr[i].writer_thread,thread,memory_order_relaxed);
+#endif
     atomic_fetch_add_explicit(&p->corr_seq, 1, memory_order_release);   // even: stable
 }
 
+#ifdef AP_LOOKUP_DIAGNOSTICS
+/* Observe a failure after the original lookup has made its decision. No retry
+ * supplies a replacement result; production builds contain none of this probe. */
+static void ap_probe_miss(const audio_publisher *p,uint64_t epoch,uint64_t counter,
+                          uint64_t start,unsigned odd,unsigned torn,const char *reason){
+    uint64_t stamp=0,writer=0; unsigned found=0;
+    for(unsigned i=0;i<AP_LOOKUP_ENTRIES;i++)
+        if(atomic_load(&p->corr[i].epoch)==epoch && atomic_load(&p->corr[i].counter)==counter && atomic_load(&p->corr[i].anchored)){
+            found=1;stamp=atomic_load(&p->corr[i].written_ns);writer=atomic_load(&p->corr[i].writer_thread);break;
+        }
+    fprintf(stderr,"AUDIO-LOOKUP-MISS epoch=%llu counter=%llu reason=%s odd=%u torn=%u query_ns=%llu report_ns=%llu entry_present=%u entry_write_ns=%llu writer_thread=%llu reader_thread=%llu seq=%u\n",
+        (unsigned long long)epoch,(unsigned long long)counter,reason,odd,torn,
+        (unsigned long long)start,(unsigned long long)ap_probe_ns(),found,
+        (unsigned long long)stamp,(unsigned long long)writer,(unsigned long long)ap_probe_thread(),atomic_load(&p->corr_seq));
+}
+#endif
+
 int ap_lookup_correlation(const audio_publisher *p, uint64_t epoch, uint64_t counter_ext, ap_correlation *out){
     if (!p) return 0;
+#ifdef AP_LOOKUP_DIAGNOSTICS
+    uint64_t start=ap_probe_ns(); unsigned odd=0,torn=0;
+#define AP_MISS(reason) ap_probe_miss(p,epoch,counter_ext,start,odd,torn,reason)
+#define AP_COUNT(n) (n++)
+#else
+#define AP_MISS(reason) ((void)0)
+#define AP_COUNT(n) ((void)0)
+#endif
     for (int attempt = 0; attempt < 8; attempt++){
         uint32_t s0 = atomic_load_explicit(&p->corr_seq, memory_order_acquire);
-        if (s0 & 1u) continue;
+        if (s0 & 1u){ AP_COUNT(odd); continue; }
         ap_correlation hit = {0}; int found = 0;
         for (unsigned i = 0; i < AP_LOOKUP_ENTRIES; i++)
             if (atomic_load_explicit(&p->corr[i].counter, memory_order_relaxed) == counter_ext &&
@@ -98,11 +149,14 @@ int ap_lookup_correlation(const audio_publisher *p, uint64_t epoch, uint64_t cou
             }
         atomic_thread_fence(memory_order_acquire);
         uint32_t s1 = atomic_load_explicit(&p->corr_seq, memory_order_relaxed);
-        if (s0 != s1) continue;                            // torn: retry
-        if (!found) return 0;
+        if (s0 != s1){ AP_COUNT(torn); continue; }          // torn: retry
+        if (!found){ AP_MISS("not_found"); return 0; }
         if (out) *out = hit;
         return 1;
     }
+    AP_MISS("retry_exhausted");
+#undef AP_MISS
+#undef AP_COUNT
     return 0;
 }
 

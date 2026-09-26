@@ -99,7 +99,10 @@ void ap_close(audio_publisher *p);
 // Audio-clock time of video unit `counter_ext`: the audio pts (ticks) at that unit's resync
 // record, and the frame ordinal there. Any thread. Returns 1 if that counter's resync has been
 // seen in that parser epoch (within the last AP_LOOKUP_ENTRIES resyncs) and the run was
-// anchored, else 0. A terminal audio-queue drop (blocks dropped with no later block to flag) is
+// anchored and a stable snapshot is obtained within the bounded retries, else 0.
+// Concurrent writes can exhaust those retries even for an already-seen counter;
+// a caller on the sole delivery/writer thread cannot contend with itself.
+// A terminal audio-queue drop (blocks dropped with no later block to flag) is
 // reported only through after-stop stats (audio_dropped_*), not through an event.
 int  ap_lookup(const audio_publisher *p, uint64_t epoch, uint64_t counter_ext, uint64_t *pts_num, uint64_t *ordinal);
 
