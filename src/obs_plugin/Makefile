@@ -55,12 +55,12 @@ test-audio:
 
 install: $(BUNDLE)
 	mkdir -p "$(INSTALL_DIR)"
-	rm -rf "$(INSTALL_DIR)/$(BUNDLE)"
+	rm -rf "$(INSTALL_DIR)/$(PLUGIN).plugin"
 	cp -R $(BUNDLE) "$(INSTALL_DIR)/"; xattr -cr "$(INSTALL_DIR)/$(PLUGIN).plugin"; codesign --verify --deep "$(INSTALL_DIR)/$(PLUGIN).plugin" && echo "installed signature verifies"
 	@echo "installed to $(INSTALL_DIR)/$(PLUGIN).plugin -- restart OBS"
 
 uninstall:
-	rm -rf "$(INSTALL_DIR)/$(BUNDLE)"
+	rm -rf "$(INSTALL_DIR)/$(PLUGIN).plugin"
 
 clean:
 	rm -rf $(BUNDLE) tests_publish_copy tests_publish_queue tests_publish_queue_tsan tests_audio_timing $(PLUGIN).plugin
