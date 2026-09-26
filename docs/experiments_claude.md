@@ -1562,279 +1562,7 @@ comparative score in entries 30–32 detects **late** tops only — a top placed
 
 ## E-claude-2026-09-22-35 — if you cannot measure all four edges, do not shift — **premise held, method refuted; superseded by entry 36.** Gating the anchor on the engine's motion classes delayed cap 1's card shift instead of removing it — 6670 published (5,5) with both classes `nothing` — because motion describes change between frames and the anchor is absolute. The card's cause was field 2's top read four lines late on dark low-contrast picture (287 is picture, read 291). Entry 36's vote fixes the card. Compacted 2026-09-26; full text at c87fa03.
 
-## E-claude-2026-09-25-36 — a correction has to earn its confidence: the sliding-window vote
-
-**Question (owner, 2026-09-25, verbatim).** "source stability is like a sliding window. Shifts off the
-baseline are going to be unusual, especially when its a common mode shift that should be highly
-suspect… what IS the baseline… after a certain level of agreement between the geometry and the comb
-detection, the average of THOSE values is what should help differentiate blanking/data/picture lines."
-Then: "you store the last N average values, apply the correction against all of them and the most often
-candidate becomes the correction." And: "this is something that needs to be done as part of the engine
-running in real time. thats why its autoregressive over a sliding window."
-
-**The gates, his words, as delivered:** "First, the comb agreement should IMPROVE with the geometry
-agreement. Secondly, I expect less excursions on both the [top] and bottom and less common mode jumps."
-Dispatch approved: "3. yes" (via the watchdog, 2026-09-25T13:52:54Z), after the branches were
-consolidated onto `v11`.
-
-**Premise.** The source's geometry is stable almost all of the time; the engine's common-mode jumps are
-mostly its own measurement jittering, not the tape moving. So the published absolute placement should be
-the most frequent placement among recent frames where the geometry and the comb agree, and a departure
-is adopted only once it has become that — it has to earn its confidence.
-
-**Measured before building, all on the tagged baseline's full-tape sidecar (`v11-approved-2026-09-25`):**
-- Every one of the engine's 1,312 common-mode moves has field 2's top changing; the absolute anchor is
-  `d2 = f2_first − 286`, field 2 alone. 86.6% of them are excursions that return within 10 s; 75% return
-  within 1 s; 339 return on the very next frame.
-- At 42650–43500 — the owner's "common mode shifts that aren't real… introduced by the correction" —
-  82% of the off-baseline frames have **no top in either field**: the engine carried an excursion
-  forward through an unmeasured stretch on `last_d2`.
-
-**The method, causal and forward-only.**
-- *Stage 1, the vote.* A frame is **confident** when both tops are accepted, the comb has an enclosed
-  basin, and the tops' implied relative shift `st = f2_first − 263 − f1_first` lies inside the comb's
-  floor. The field-2 offset of each confident frame enters a window of the last **N = 30** confident
-  frames; the published anchor is the window's most frequent value, a tie keeping the current anchor.
-  Non-confident frames do not vote. Only the absolute anchor changes: the published relative shift `d`
-  stays exactly as the engine computes it, so every frame moves in common mode or not at all.
-- *Stage 2, level fills behind a three-way gate.* Where the waveform abstains on a field, the first line
-  more than 10 codes above that field's own blanking rows becomes a candidate top. It is kept if the line
-  **continues into the line below** (correlation > 0.30: structured picture) or is **flat** (sd < 10:
-  dark picture). A line that is high-variance and does not continue is a data line and is rejected.
-  **Filled tops are inputs to the vote only** — they must not enter `st`, the held correction, the comb's
-  triggers or the published relative shift.
-
-**Why stage 2 is in this build — a widening of what was approved, stated rather than done quietly.**
-The vote changes only the published absolute placement. The first gate is computed from the measured
-tops and the comb, which the vote touches neither of, so stage 1 alone leaves it unchanged by
-construction. Stage 2 is what moves it. The two are separate switches and are reported separately.
-
-**Simulated on the full tape (N = 30), against the engine today:**
-
-| | engine today | stage 1 | stages 1 + 2 |
-|---|---|---|---|
-| geometry agrees with the comb (my reading of gate 1) | 51.1% | 51.1% | **58.3%** |
-| common-mode moves | 1,312 | **30** | **34** |
-| excursions (back within 10 s) | 1,136 | **6** | **7** |
-| one-frame jumps | 339 | 0 | 0 |
-| 42650–43500 at +0 | 211 / 851 | **851 / 851** | **851 / 851** |
-| cap 1 card, 6641–6878 | (2,2) then (5,5) | holds (0,0) | holds (0,0) |
-| flip after the 81490 program/commercial boundary | — | 63 frames | **37 frames** |
-
-**Gate 1 is my operationalisation, not the owner's words:** the share of published frames on which the
-geometry agrees with the comb. Among frames that have both tops the rate also rises slightly (60.6% →
-62.1%), so the added tops do not dilute it.
-
-**Invariants.** The published relative shift is identical to the tag on every frame. The waveform census
-is identical to the tag on all 172,586 field edges. The owner's labelled counters (69566, 69568, 69570,
-69573) still land.
-
-**Falsifier.** Either gate fails against the tag on the whole tape; or the published relative shift
-differs from the tag on any frame; or the census moves; or cap 1's card shifts; or 42650–43500 leaves
-+0; or stage 2 raises common-mode moves or excursions above stage 1's by more than the simulated
-4 and 1.
-
-**What this is not, recorded so no report can claim it.**
-- **Fixture A only.** Everything above was measured on fixture A. Cap 1 is a different, more stable tape
-  and this build is its first test.
-- **"Flat means dark picture" holds only because the level threshold sits 10 codes above blanking.** The
-  empty data lines of the caption-less commercial (82421–83342) are flat too, at 5–8 codes, and that margin
-  is what excludes them. A floating level (stage 3) must learn black as well as blanking before it can
-  lower that threshold.
-- **The vote cannot see a misread that is the same in both fields.** Relative agreement never adjudicates
-  absolute position; if both fields read a data line as picture together, those frames count as confident
-  and vote.
-- **Attribution is not addressed.** A relative correction still lands on field 1 by default; the
-  per-field vote with a dynamic anchor is stage 4.
-- The 4 extra common-mode moves stage 2 adds over stage 1 have not been inspected.
-- A program/commercial boundary still lags about 1.2 s with stage 2 and 2.1 s without, while the window
-  fills.
-
-**Material.** Captures 1–4 rendered for the owner's review; the whole tape replayed for the gates, not
-encoded.
-
-### Amendment to E-claude-2026-09-25-36 (2026-09-25) — the flat branch accepts the deck's grey mute; it is switched off for the review render
-
-**Found while building the frame-by-frame reference, before any engine code.** Stage 2 publishes a
-different anchor from stage 1 on 596 frames, and **382 of them (64%) sit at the tape's three
-non-programme events** (§6): the tape start (229), the recording boundary (60) and 27:18 (93). Five of
-stage 2's thirteen extra anchor changes are there too. It is the deck's grey mute passing the **flat**
-test.
-
-**Physical reason.** "Flat" was meant to mean *dark picture* — the cap 1 card, the fade at a
-commercial's head. It tests flatness, not darkness, and a grey mute is flat and bright (~120 codes).
-Harmless in the picture, since a mute has nothing to register, but it is the wrong class of line
-entering the vote, and it fills the window with votes that must be outvoted when the programme returns.
-
-**The amendment.** The flat branch becomes its own switch, **off** for the review render. The render
-configuration is stage 1 plus stage 2 with **continues-downward only**. The reference now carries all
-three variants.
-
-| | gate 1 | common-mode | excursions | diffs at mute events | 81490 flip |
-|---|---|---|---|---|---|
-| stage 1 | 51.2% | 30 | 6 | 0 | 63 frames |
-| stages 1+2, continues or flat | 58.3% | 34 | 7 | 382 | 37 frames |
-| **stages 1+2, continues only** | **54.5%** | **30** | **6** | **0** | 60 frames |
-
-**What it improves:** it removes the wrong-class votes and returns common-mode moves and excursions
-exactly to stage 1's. **What it costs:** gate 1 rises 3.3 points instead of 7.1, and the commercial
-flip is back to about 2 s. **What must not break:** gate 2 identical to stage 1; gate 1 still above the
-tag. **Open:** a flat branch restricted to *dark* lines needs the learned black level of stage 3 and is
-not built now.
-
-### Amendment 2 to E-claude-2026-09-25-36 (2026-09-25) — Codex's pre-implementation review: my reference was wrong in two places
-
-**Codex stopped before writing engine code** and found three problems in the reference. Two are mine.
-
-1. **A join error in my reference (mine).** Under reversed pairing a frame takes field 1 from
-   `frame_top_unit`; my reference looked up field 1's waveform status and level candidate by the row's
-   own counter. 43,671 of the tape's 86,293 frames are reversed. Codex's deciding case, from raw rows:
-   frame 4761 uses field 1 from unit 4762 (correlation 0.134), where my reference used 4761's (0.434)
-   and marked it confident.
-2. **My reference filled DISCARDED waveform tops as well as ABSTAIN (mine).** The specification said
-   abstain only. **Decision: abstain only.** A discarded top is a transition the waveform found outside
-   the clamp, and the owner ruled such a placement "doesn't act as a decision"; a second instrument does
-   not get to overrule that. **Added, which Codex did not flag: level fills obey the same ±5 clamp** —
-   "it should be one number (the +/- 5) exposed by configuration and it should clamp all instruments the
-   same way". My reference never clamped them.
-3. **Vote persistence across reset boundaries — a design question I had not answered.** **Decision:
-   clear the window at every engine reset and return to cold start.** §8 property 5: state does not
-   cross an epoch; the held correction is already cleared there. Checked independently: clearing changes
-   exactly **228** stage-1 anchors, Codex's count. At 48240, the recording boundary, clearing publishes
-   +2 — the second recording's program geometry — where carrying the window over publishes the first
-   recording's +0.
-
-**Re-measured with all four corrections (`reference_anchor2.csv`):**
-
-| | gate 1 | common-mode | excursions | 1-frame | mute diffs | 42650–43500 | 81490 flip |
-|---|---|---|---|---|---|---|---|
-| tag | 51.2% | 1,312 | 1,136 | 339 | — | 211/851 | — |
-| s1 | 51.2% | 33 | 11 | 1 | 0 | 851/851 | 15 frames |
-| s12 | 57.1% | 33 | 8 | 0 | 244 | 851/851 | 15 frames |
-| **s12c (render)** | **54.3%** | **31** | **9** | 1 | **0** | **851/851** | 15 frames |
-
-**What the reset clearing did.** The engine already declares resets at the real boundaries — 81505 is
-the commercial, 48189–48244 the recording boundary, 53410/53678 the 27:18 stop, 68613/69517 and
-83330/84339/85268 the edges of breaks. Clearing there lets the vote re-anchor at once: the commercial
-flip falls from 63 frames to 15. **The cost is four excursions** (48240, 48244, 48245, 81534), every one
-in the cold-start stretch just after a reset, where the empty window lets the engine's own jitter
-through; they last 1–57 frames. The other seven excursions predate the change.
-
-**With the join corrected, stage 2 no longer adds wrong votes:** s12c now beats s1 on common-mode
-(31 vs 33) and excursions (9 vs 11). The earlier finding that the fill raised excursions was partly my
-join bug.
-
-**Open, and not addressed here:** a cold start that doesn't expose the engine's jitter while the window
-refills.
-
-### Amendment 3 to E-claude-2026-09-25-36 (2026-09-26) — an empty window holds; it does not publish the engine's anchor
-
-**The falsifier fired, on the entry's own named case, and the cause is my amendment-2 decision.**
-Codex built all three variants and they reproduce the reference anchor for anchor on the whole tape
-(engine `703c77b`, renderer `bc81ca7`, ledger `c7e2f60`/`d84f1e4`); all-off matches the tag on 86,293 units
-and on captures 1–4; relative shift and census identical everywhere; 0.316 / 0.340 ms per unit. But on
-**cap 1's card, 211 of 238 frames publish (5,5)**. The engine resets at 6667, when the card appears;
-amendment 2 cleared the window there and published the engine's own anchor while it was empty; and the
-card never produces a confident frame, so the window stayed empty for the whole card. Codex withheld the
-render and the s1 fallback, correctly.
-
-**Physical reason, the owner's words:** "the most often candidate becomes the correction." With no
-candidate there is no correction, and the placement holds. The engine's own anchor is the uncorroborated
-value the vote exists to withhold; publishing it because the window happens to be empty defeats the vote.
-
-**The rule.** At every engine reset the window is still cleared — the old epoch's votes never count
-toward the new baseline (§8 property 5 stands) — but the **published anchor holds** until a confident
-vote arrives. The engine's anchor is used only when nothing has ever been published (session start).
-
-**Measured, verified against the built engine first** (the amendment-2 policy reproduced
-`reference_anchor2.csv` with zero differences and the engine's 27/238 on the card):
-
-| | common-mode | excursions | one-frame | 42650–43500 | 81490 flip | **cap 1 card** |
-|---|---|---|---|---|---|---|
-| s12c, amendment 2 | 31 | 9 | 1 | 851/851 | 15 frames | 27/238 |
-| **s12c, hold** | **29** | **6** | **0** | 851/851 | 18 frames | **238/238** |
-| s1, hold | 31 | 8 | 0 | 851/851 | 18 frames | 238/238 |
-
-**What it improves:** the card holds (0,0) throughout, and the cold-start excursions are gone because the
-anchor no longer follows the engine's jitter through an empty window. **What it costs:** the commercial
-flip after 81490 takes 18 frames instead of 15. **The one real boundary where holding could lag, checked:**
-at the recording boundary both policies settle on the second recording's +2 at the same frame, 48352.
-**What must not break:** gate 1 unchanged (54.3% for s12c); every other named case.
-
-**Two reference cells are known wrong and the engine is right there.** `class_tape*.csv` rounded its
-statistics, and two sit on strict thresholds: counter 32714 (s12, sd 9.997575878 written 10.00) and 29281
-(s12c, correlation 0.300012175 written 0.3000). Codex confirmed both from raw rows. Anchors are unaffected.
-
-### Amendment 4 to E-claude-2026-09-25-36 (2026-09-26) — PROPOSED, pending the owner: the vote may only move to a reading that also leads the raw readings
-
-**The owner's review, verbatim:** "I reviewed all caps and 1,3,4 look good but 2 still has a common mode
-shift that doesn't look right, especially since the overall measured top/bottom don't change. I'd like
-that investigated before producing the full tape version."
-
-**What he saw.** Cap 2 publishes exactly two common-mode moves: (2,2) → (1,1) at 2155 and back at 2328.
-For 173 frames the whole picture sits one line high.
-
-**Cause, from the raw rows (counters 2000, 2100, 2154, 2155, 2196, 2400).** Field 2's first picture line
-is **288 on every frame**. Lines 286 and 287 are data (sd 36–58, uncorrelated), sitting directly on the
-picture with no blank line between. On some frames the first picture line happens to correlate
-**+0.27 to +0.47** with the data line above it (2154: 287 at −0.15, then 288 at +0.47, a step of +0.62),
-which clears the 0.45 bar one line early, so the waveform reads 287. On frame 2000 it doesn't (288 at
-−0.065), and the top is correctly 288. Field 2's bottom is 522 on every one of the 649 frames: the picture
-never moved.
-
-**Why the vote adopted a reading that is wrong 97% of the time — a selection bias in "confident".**
-Through 1910–2327 field 1's top reads 24/25 while the comb places it at 26. So a *correct* field-2
-reading (288) gives a relative shift of 0 or +1, outside the comb's floor (−1 or 0): **382 of 390 correct
-readings fail the confidence test.** A field-2 *misread* at 287 cancels field 1's error and lands inside
-the floor: **all 8 misreads pass.** Before the shift only 6 of 195 frames are confident, and 5 of them are
-287s. The vote learns only from confident frames, so a reading on 2.6% of frames wins the window. This is
-entry 36's recorded blind spot, relative agreement cannot see a consistent absolute error, made worse by
-selection: when one field's top is persistently off, the only frames the confidence test admits are those
-where the other field is off by the same amount.
-
-**Proposed rule: raw support.** The confident vote proposes; the anchor may move to the proposed value
-only if that value also leads among **all** recent field-2 top readings (the last 30 frames with a
-measured top, confident or not; cleared at resets like the vote window). A reading on 3% of frames cannot
-become the anchor, while a real transition, which changes nearly every reading after it, can. It reads the
-owner's words directly: the *overall* measured top doesn't change.
-
-**Measured before building:**
-
-| | cap 2 shift | cap 1 card | full-tape common-mode | excursions | 67518–70517 | 82421–83330 | 81490 | rec. boundary |
-|---|---|---|---|---|---|---|---|---|
-| as rendered (amendment 3) | 173/173 | 238/238 | 29 | 6 | {+2:1744,+0:904,+1:352} | +2 | 18 fr | 48352 |
-| tandem: the bottom must move with the top | gone | 238/238 | 6 | 0 | **changed** | **+0 — wrong** | 18 fr | 48338 |
-| **raw support** | **gone** | **238/238** | **24** | **4** | **unchanged** | **+2, unchanged** | 18 fr | 48352 |
-
-**Tandem was tried and rejected.** It fixes cap 2, but in the second recording a program/commercial
-transition *is* a top-only change — the data lines come and go while the picture and its bottom stay put
-— so tandem refuses real transitions. At 82421–83330 it holds +0, where the raw rows show the picture
-begins at 288 behind two empty data lines.
-
-**Not understood yet:** why field 1's top reads 24/25 through 1910–2327 when the comb places it at 26, and
-what the remaining 24 full-tape common-mode moves are.
-
-### Amendment 5 to E-claude-2026-09-25-36 (2026-09-26) — field 1 is not misread; the confidence test's definition is wrong
-
-**Owner:** "can we try to dig into the issue with why the field 1 reads 24/25 when the comb puts it at 26.
-that is probably better than over including things that aren't considered confident." Amendment 4's
-raw-support rule is not chosen.
-
-**Verdict.** Field 1's picture genuinely starts at 25 (or 24). Matching each field-1 top line to field 2
-(cap 2, frames 2000/2100/2154/2196/2400): field 1's line 25 is picture (it matches field 2's 288 at
-+0.79/+0.93), but under the comb's alignment its field-2 partner is 287, a data line. **Field 1 carries one
-extra picture line with no field-2 counterpart** — the picture's top edge landing between the fields. The
-waveform (first picture line of each field) and the comb (content alignment) are both right and differ by
-exactly one. Tape-wide, over 65,782 frames with both tops and a decided comb: tops = comb on 60.0%,
-**tops = comb + 1 on 33.4%**, +2/+3 (real misreads) on 3.6%. Requiring an exact match has discarded a third
-of the tape; in cap 2 only field 2's 287 misreads, which cancel the +1, were admitted.
-
-**Allowing +1, simulated:** cap 2's shift gone with no raw support; gate 1 54.3% → 80.3%; card 238/238. **But
-excursions 6 → 37 and common-mode 29 → 55.** "+1" is ambiguous: field 1's extra line (field 2 right) and field
-2 read one line late (field 2 wrong) both produce it, and in the second recording the two camps alternate
-winning the window (50370/50390, 51187/51224). **Not built.** Candidate discriminator, unmeasured: whether field
-2's line just above its measured top pairs with field 1's top line (then it is picture and field 2 was late) or
-does not (a data line, so field 1 carries the extra line).
+## E-claude-2026-09-25-36 — a correction has to earn its confidence: the sliding-window vote — **premise held; built at 703c77b, confidence redefined by entry 37.** Owner: "you store the last N average values, apply the correction against all of them and the most often candidate becomes the correction", in real time. The engine's 1,312 common-mode moves all came from field 2's top alone (86.6% excursions). Method: a frame is confident when both tops are accepted, the comb has an enclosed basin and the tops' implied shift lies in its floor; the published anchor is the mode of the last 30 confident field-2 offsets, a tie keeping the current anchor; the relative shift is untouched. Level fills only where the waveform abstains, flat branch off (amendment 1: it accepted the deck's grey mute). Amendment 2: my reference joined field 1 on the row counter, not `frame_top_unit`, and filled discarded tops. Amendment 3: an empty window holds rather than cold-starting (the cold start broke the card, 211/238). Amendment 4 (raw support) was superseded; amendment 5 found field 1 legitimately carries one extra top line, which became entry 37. Result with entry 37: card 238/238, whole tape 68.3% confident, 16 common-mode moves, 6 excursions. Compacted 2026-09-26; full text at 8a05e0f.
 
 ## E-claude-2026-09-26-37 — telling field 1's extra top line from field 2 read late
 
@@ -2014,3 +1742,62 @@ units; 240 of them take the flat rule, so one unit's fallback bottom changes to 
 
 **Must not break.** Everything in the entry's falsifier. Capture 4 must read field 1 262 and
 field 2 525 on every unit.
+
+## E-claude-2026-09-26-39 — skipped top lines must show blanking; the comb speaks only on a still picture
+
+**Question (owner, 2026-09-26, verbatim).** After reviewing the full-tape render: "the common mode shift from
+38379-38442 isn't real … same with the common mode shift at 38631 … 75618-75680 and 75724-75796 … 82071-82161
+is improperly combed … a few spots incorrectly combed at 84335-84570 … the combing problems in the credits".
+Then: "no I do not want to use captions as a placement. but yes, lets try to fix the rest using the
+combination of A1 and the vertical comb rule without introducing other regressions. i do expect a few frames
+here and there to move across the tape … but it shouldn't result in any massive shift".
+
+**Two premises, stated apart from the methods.**
+1. *Top (A1).* A line the top detector skips between the nominal field-2 top (286) and its measured top is
+   data or blanking only if some of it sits at blanking; picture — bright, white or dark — never does.
+   The owner's "blanked spots": a data line "is going to wildly drop during the blanked spots".
+2. *Comb.* The comb measures registration only while the picture is vertically still; on vertical motion
+   (a bounce, scrolling credits) its minimum follows the motion across the field interval.
+
+**Measured before building (whole tape, engine 6778e76).**
+- The false common-mode moves share one mechanism. Both measured tops jump while the bottoms stay put, and
+  the pairing test still passes, so the vote adopts the jump. At 38364 the skipped lines are bright picture
+  with a dark stripe that breaks the correlation step (raw rows); at 75598/75708 they are white bars.
+- Among skipped field-2 lines, the fraction of samples within 2 codes of VI blanking has median 6–7% on caption
+  lines and exactly 0 on the bright and white picture. The bottoms cannot referee: genuine +2 keeps field 2's
+  bottom at 522 (the deck's switch band).
+- Truth for scoring: the tape's decoded CEA-608 caption (run-in plus parity) measures field 1's absolute
+  displacement on 48,611 frames. It confirms +2 on 96–100% of the +2 segments and shows 74535/75619/75724
+  (+3) and 38379/38631 false. A caption scores field 1's final placement, so it mixes anchor and relative
+  errors. It is an instrument only — never a placement source (owner).
+- Vote replay (reproduces the engine's anchor on 86,289/86,289 frames): A1 scores 93.94% against 93.48%
+  today (+224 frames). A stricter blank-or-data rule scored 90.38% and is not built. Its apparent fix at
+  82422 was scored against an eye label; there are no captions there.
+- Comb: at 82073–82138 the picture is still (same-field shift 0) on 57 of 66 frames, and the comb disagrees
+  with the published shift on 56. In the credits the picture moves on 1,185 of 1,230 frames; the adopted
+  −3 follows the scroll, and the caption agrees with −1. At the 60843 bounce the comb's sign followed the
+  motion on 15 of 16 frames.
+
+**Methods, behind controls, off by default.**
+- *A1.* A frame is vote-confident only if every field-2 line from 286 to `vote_top_f2 − 1` contains at
+  least one sample (columns 40..679) at or below the field's VI blanking reference + 2.
+- *Motion.* Per unit and field: the best same-field vertical shift s ∈ −5..+5 against the previous adjacent
+  unit, by mean |difference| over aperture rows 40..219, columns 40..679. A tie takes the smallest |s|.
+  The frame is *still* when both fields' shifts are 0, and *moving* when either is non-zero. With no
+  adjacent previous unit the motion is unknown and both rules are inactive.
+- *Still.* When the comb's refusal test fires (published energy ≥ 2× minimum, enclosed basin), the frame is
+  treated as triggered, so the existing comb path adopts or refuses as it does today.
+- *Moving.* Comb verdicts (adoption, refusal, substitution) are not applied; placement follows the tops, the
+  held correction or the previous placement, as when the comb abstains.
+
+**Falsifier.**
+- The caption score of field-1 placement falls below today's 93.48%, or below A1 alone (93.94%).
+- A caption-confirmed anchor segment (48249, 53678, 69517, 74566, 75797, 85273 at +2) starts more than
+  30 frames later than today.
+- The false moves at 38379, 38631, 74535, 75619 or 75724 survive.
+- Any run of changed placements longer than 30 frames lies outside a named span and has no explanation.
+- The 60843 bounce changes.
+- Captures 1–4 gain a common-mode move, the card loses 238/238, or cap 2 loses 0/173.
+- CPU leaves the §11b budget.
+
+**Material.** The whole tape; captures 1–4 were not used to build it.
