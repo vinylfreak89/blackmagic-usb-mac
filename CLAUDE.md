@@ -1659,7 +1659,11 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   and OBS opens. Each engine owns a copied numeric configuration (`ge_config`); the library
   reads no environment, and tools map their `GE_*` variables into it. `docs/geometry_engine.md`
   defines the defaults and their provenance, the schema-28 decision log, unit-keyed decisions
-  and reversed-pair boundary handling. Durable rules from the v11 work:
+  and reversed-pair boundary handling. The classifier likewise owns a copied
+  `signal_state_config` (`fs_config.signal_config`, NULL selects defaults);
+  `src/signal_state/README.md` documents its inherited thresholds and confidence ramps.
+  Classifier action bits can reset geometry and clear vote history; its labels and
+  confidence values do not directly supply vote inputs. Durable rules from the v11 work:
   - Keep a requested crop distinct from unavailable raster rows. Silently clamping the crop
     makes the decision log disagree with the published pixels.
   - Aperture arithmetic uses published offsets: 480i starts at 23+d1 / 286+d2 for 240 lines.
@@ -1677,8 +1681,8 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
     source (owner, 2026-09-26). They are not valid truth in every commercial: one places its
     caption off-picture.
   - The replay decision log's audio-evidence columns can come back empty under contention
-    (one intermittent case at cap-1 counter 6253). This is open, and outside registration
-    decisions.
+    (observed at cap-1 counter 6253 and whole-tape counter 12204). This is open and
+    outside geometry placement decisions, but can fail a complete sidecar byte-identity gate.
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required
