@@ -151,6 +151,9 @@ tests/hretime_diagnosis: $(SRCS) frameserver_replay.c tests/geometry_worker_benc
 tests/waveform_boundary_observer: $(SRCS) frameserver_replay.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c tests/waveform_boundary_observer.c tests/waveform_boundary.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c hretime.c ../field_registration/geometry_engine.c,$(SRCS)) tests/waveform_boundary_observer.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c -o $@ $(LIBS)
 
+tests/hretime_repair_probe: $(SRCS) frameserver_replay.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c tests/hretime_repair_probe.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c hretime.c ../field_registration/geometry_engine.c,$(SRCS)) tests/hretime_repair_probe.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c -o $@ $(LIBS)
+
 # Captured-raster scalar-oracle check. Timings include the oracle: not a bench.
 tests/geometry_worker_verify: $(SRCS) frameserver_replay.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c ../field_registration/geometry_tool_controls.h ../field_registration/tests/geometry_rigid_reference.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -DGE_RIGID_VERIFY $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c ../field_registration/geometry_engine.c,$(SRCS)) tests/geometry_worker_bench.c tests/geometry_bench_engine.c -o $@ $(LIBS)
@@ -167,6 +170,7 @@ clean:
 	rm -f tests/hretime_test tests/hretime_asan tests/hretime_tsan
 	rm -f tests/hretime_diagnosis
 	rm -f tests/waveform_boundary_observer
+	rm -f tests/hretime_repair_probe
 	rm -f tests/audio_lookup_probe tests/audio_lookup_stress tests/audio_evidence_test tests/audio_evidence_asan tests/audio_evidence_tsan
 	rm -f tests/audio_queue_flags_test
 	rm -f tests/audio_publisher_asan tests/audio_publisher_tsan

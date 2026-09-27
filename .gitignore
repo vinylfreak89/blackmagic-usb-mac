@@ -50,6 +50,7 @@ src/frameserver/tests/hretime_asan
 src/frameserver/tests/hretime_tsan
 src/frameserver/tests/hretime_diagnosis
 src/frameserver/tests/waveform_boundary_observer
+src/frameserver/tests/hretime_repair_probe
 
 # field_registration test outputs
 src/obs_plugin/tests_publish_copy

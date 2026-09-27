@@ -125,6 +125,14 @@ merely label hits. The real-worker repair probe reports every line's boundaries,
 expected width, precision and action, and buffers selected actual output
 rasters until worker join. No new shedding policy or budget guarantee is claimed.
 
+`make tests/hretime_repair_probe` builds that diagnostic worker. Its CLI matches
+`geometry_worker_bench`; set `HRT_REPAIR_PREFIX` to a new scratch prefix and
+`HRT_REPAIR_CAPTURE` to a capture label. With `FS_HRETIME=1` it emits every
+aperture row's action/shift, half-height edges, expected width, precision and
+flag/spill evidence after join. It also records actual before/after field1
+unit pixels for label `tape1`, counters494/848. This bounded tool aborts above
+1,024 woven frames; it is not a whole-tape logger and is not linked into OBS.
+
 ## Deterministic audio evidence
 
 The parser/delivery thread writes audio correlations and snapshots the matching
