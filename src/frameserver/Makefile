@@ -5,7 +5,7 @@ TESTFLAGS = -DFRAMESERVER_TEST_HOOKS
 CPPFLAGS ?= -I. -I../capture_core -I../unit_parser -I../signal_state -I../field_registration
 LIBS = $(shell pkg-config --libs libusb-1.0) -lpthread -lm -framework IOSurface -framework CoreFoundation
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/geometry_engine.c
-SRCS = frame_publisher.c audio_publisher.c frameserver.c pairing_schedule.c hretime.c $(CORE)
+SRCS = frame_publisher.c audio_publisher.c frameserver.c pairing_schedule.c field_order.c hretime.c $(CORE)
 FIXTURE = ../unit_parser/tests/fixture.tpc
 FIXTURE_LONG = ../unit_parser/tests/fixture_plain.tpc   # 120 exact units, for the runtime-log window test
 
@@ -34,7 +34,8 @@ tests/frame_publisher_test: frame_publisher.c frame_publisher.h tests/frame_publ
 tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h ../test_supervisor.h ../test_condition.h ../test_liveness.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TESTFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o $@ $(LIBS)
 
-test: tests/hretime_test tests/audio_evidence_test tests/audio_queue_flags_test tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
+test: tests/field_order_test tests/hretime_test tests/audio_evidence_test tests/audio_queue_flags_test tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
+	./tests/field_order_test
 	./tests/hretime_test
 	./tests/audio_evidence_test
 	./tests/audio_queue_flags_test
@@ -75,6 +76,11 @@ test-comb-energies: frameserver_replay
 test-pairing: frameserver_replay
 	python3 ../../scripts/test_pairing_schedule.py ./frameserver_replay
 
+.PHONY: test-field-order
+test-field-order: tests/field_order_test frameserver_replay
+	./tests/field_order_test
+	python3 ../../scripts/test_field_order.py ./frameserver_replay
+
 .PHONY: test-audio-steps
 test-audio-steps: frameserver_replay tests/audio_queue_flags_test
 	./tests/audio_queue_flags_test
@@ -95,6 +101,7 @@ test-geometry-asan: $(FIXTURE) $(FIXTURE_LONG) ../field_registration/tests/hblan
 	python3 ../../scripts/test_bottom_flat.py ./tests/geometry_replay_asan
 	python3 ../../scripts/test_still_comb.py ./tests/geometry_replay_asan
 	python3 ../../scripts/test_hretime.py ./tests/geometry_replay_asan
+	python3 ../../scripts/test_field_order.py ./tests/geometry_replay_asan
 
 test-geometry-tsan: $(FIXTURE) $(FIXTURE_LONG) ../field_registration/tests/hblank_probe
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra $(shell pkg-config --cflags libusb-1.0) $(SRCS) frameserver_replay.c -o tests/geometry_replay_tsan $(LIBS)
@@ -107,6 +114,7 @@ test-geometry-tsan: $(FIXTURE) $(FIXTURE_LONG) ../field_registration/tests/hblan
 	python3 ../../scripts/test_bottom_flat.py ./tests/geometry_replay_tsan
 	python3 ../../scripts/test_still_comb.py ./tests/geometry_replay_tsan
 	python3 ../../scripts/test_hretime.py ./tests/geometry_replay_tsan
+	python3 ../../scripts/test_field_order.py ./tests/geometry_replay_tsan
 
 tests/replay_completion_test: $(SRCS) tests/replay_completion_test.c frameserver_replay.c ../tool_deadline.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_completion_test.c -o $@ $(LIBS)
@@ -117,6 +125,8 @@ test-smallring: $(FIXTURE) $(FIXTURE_LONG)
 	FS_TEST_EXPECT_RING_DROPS=1 ./tests/test_smallring $(FIXTURE) $(FIXTURE_LONG)
 
 test-asan: $(FIXTURE) $(FIXTURE_LONG)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra field_order.c tests/field_order_test.c -o tests/field_order_asan
+	./tests/field_order_asan
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra tests/hretime_test.c -o tests/hretime_asan
 	./tests/hretime_asan
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra -DAP_CORRELATION_TEST_HOOKS $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/audio_evidence_test.c -o tests/audio_evidence_asan $(LIBS)
@@ -127,6 +137,8 @@ test-asan: $(FIXTURE) $(FIXTURE_LONG)
 	./tests/test_asan $(FIXTURE) $(FIXTURE_LONG)
 
 test-tsan: $(FIXTURE) $(FIXTURE_LONG)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra field_order.c tests/field_order_test.c -o tests/field_order_tsan
+	./tests/field_order_tsan
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra tests/hretime_test.c -o tests/hretime_tsan
 	./tests/hretime_tsan
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra -DAP_CORRELATION_TEST_HOOKS $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c,$(SRCS)) tests/audio_evidence_test.c -o tests/audio_evidence_tsan $(LIBS)
@@ -157,6 +169,7 @@ $(FIXTURE_LONG): ../unit_parser/tests/gen_unit_parser_capture.py
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
 
 clean:
+	rm -f tests/field_order_test tests/field_order_asan tests/field_order_tsan
 	rm -f tests/hretime_test tests/hretime_asan tests/hretime_tsan
 	rm -f tests/audio_lookup_probe tests/audio_lookup_stress tests/audio_evidence_test tests/audio_evidence_asan tests/audio_evidence_tsan
 	rm -f tests/audio_queue_flags_test
@@ -173,3 +186,8 @@ frameserver_replay tests/geometry_worker_bench tests/geometry_worker_verify test
 
 tests/hretime_test: tests/hretime_test.c hretime.c hretime.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/hretime_test.c -o $@
+
+tests/field_order_test: tests/field_order_test.c field_order.c field_order.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) field_order.c tests/field_order_test.c -o $@ -lm
+
+frameserver_replay tests/geometry_worker_bench tests/geometry_worker_verify tests/frameserver_test tests/audio_evidence_test tests/audio_queue_flags_test tests/replay_completion_test: field_order.h

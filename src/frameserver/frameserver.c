@@ -4,6 +4,7 @@
 #include "../field_registration/geometry_engine.h"
 #include "pairing_schedule.h"
 #include "hretime.h"
+#include "field_order.h"
 #include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -39,6 +40,8 @@ typedef struct {
      * Genuinely later/missing resyncs stay unknown in this unit's log. */
     int audio_evidence_known;
     ap_correlation audio_evidence;
+    fo_evidence field_order;
+    int auto_pairing, auto_changed; /* worker snapshot, travels with pending unit */
 } fs_item;
 
 struct frameserver {
@@ -58,6 +61,7 @@ struct frameserver {
     fs_pairing_schedule pairing;
     const fs_pairing_row *pairing_active;
     int geometry_reversed;
+    fo_detector *field_order;
     fp_publisher *pub;
     audio_publisher *aud;
     // Video-worker owned, independent of geometry resets and sidecar attachment.
@@ -274,13 +278,14 @@ static const char *transport_name(unit_transport_state t){
     switch (t){ case UNIT_TRANSPORT_COMPLETE: return "Complete"; case UNIT_TRANSPORT_HOLE: return "Hole";
                 case UNIT_TRANSPORT_SHORT: return "Short"; default: return "Unframed"; }
 }
-static int log_header(FILE *L,int retime){
+static int log_header(FILE *L,int retime,int order){
     if(fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,hblank_level_f1,hblank_cols_f1,hblank_level_f2,hblank_cols_f2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies,ge_wave_bar,ge_wave_clamp,wave_top_f1,wave_step_f1,wave_max_step_f1,wave_status_f1,wave_top_f2,wave_step_f2,wave_max_step_f2,wave_status_f2,relative_source,anchor_source,held_correction,ge_comb_reject,comb_reject_ratio,comb_rejected,comb_refused_d,comb_substituted_d,comb_discarded,comb_floor_lo,comb_floor_hi,comb_rise_left,comb_rise_right,comb_basin,ge_anchor_vote,ge_level_fill,ge_level_flat,vote_confident,vote_anchor,vote_engine_anchor,vote_count,vote_winner_count,vote_top_f1,vote_top_f2,level_top_f1,level_ref_f1,level_mean_f1,level_sd_f1,level_corr_f1,level_accepted_f1,level_top_f2,level_ref_f2,level_mean_f2,level_sd_f2,level_corr_f2,level_accepted_f2,ge_vote_pair,ge_vote_pair_min,vote_rB,vote_pair_pass,ge_bottom_flat,ge_bottom_flat_margin,bottom_rule_f1,bottom_F_p5_f1,bottom_F_p50_f1,bottom_F_p95_f1,bottom_rule_f2,bottom_F_p5_f2,bottom_F_p50_f2,bottom_F_p95_f2,ge_vote_blankspot,ge_comb_still,vote_blankspot_pass,vote_blankspot_line,motion_shift_f1,motion_error_f1,motion_error2_f1,motion_shift_f2,motion_error_f2,motion_error2_f2,picture_motion,still_trigger,comb_suppressed,ge_comb_motion_min,ge_comb_rigid,ge_comb_rigid_clarity,rigid_dx_f1,rigid_dy_f1,rigid_sad_f1,rigid_sad_far_f1,rigid_clarity_f1,rigid_dx_f2,rigid_dy_f2,rigid_sad_f2,rigid_sad_far_f2,rigid_clarity_f2")<0)return -1;
     if(retime) {
         if(fputs(",fs_hretime",L)==EOF)return -1;
         for(int k=1;k<=2;k++)
             if(fprintf(L,",hretime_bands_f%d,hretime_retimed_f%d,hretime_interpolated_f%d,hretime_unavailable_f%d,hretime_first_f%d,hretime_last_f%d,hretime_lines_f%d",k,k,k,k,k,k,k)<0)return -1;
     }
+    if(order && fputs(",field_order_change_f1,field_order_change_f2,field_order_threshold_f1,field_order_threshold_f2,field_order_spikes,field_order_cut_first,field_order_event,field_order_votes,field_order_confirmed,field_order_discontinuity",L)==EOF)return -1;
     return fputc('\n',L)==EOF?-1:0;
 }
 /* v11 rows are unit-keyed. Frame diagnostics belong to that unit's bottom field;
@@ -325,7 +330,8 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
             }
         }
         CELL(26,"%d",published);CELL(27,"%s",drop);
-        CELL(28,"%llu",(unsigned long long)it->preceding_ring_drops);CELL(29,"%d",f->cfg.hretime?FS_HRETIME_LOG_SCHEMA:FS_GEOMETRY_LOG_SCHEMA);
+        CELL(28,"%llu",(unsigned long long)it->preceding_ring_drops);
+        CELL(29,"%d",f->cfg.field_order_detect?(f->cfg.hretime?FS_FIELD_ORDER_HRETIME_LOG_SCHEMA:FS_FIELD_ORDER_LOG_SCHEMA):(f->cfg.hretime?FS_HRETIME_LOG_SCHEMA:FS_GEOMETRY_LOG_SCHEMA));
 #undef CELL
         int bad=0;
         for(int i=0;i<30;i++) {
@@ -341,8 +347,10 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
          * Counterless hole/tail rows use the active setting, not a fictitious 0. */
         const fs_pairing_row *pair=(d || (!it->gap_only && it->obs.format))?
             fs_pairing_find(&f->pairing,d?d->counter:it->obs.counter_extended):f->pairing_active;
-        if(fprintf(f->log,"%s,",(pair?pair->reversed:f->geometry_reversed)?"reversed":"aligned")<0)bad=1;
-        if(fs_pairing_write_note(f->log,pair?pair->note:"")<0)bad=1;
+        int reversed=f->cfg.field_order_detect?it->auto_pairing:(pair?pair->reversed:f->geometry_reversed);
+        const char *event=it->auto_changed?(reversed?"FieldOrderCutReversed":"FieldOrderCutAligned"):"";
+        if(fprintf(f->log,"%s,",reversed?"reversed":"aligned")<0)bad=1;
+        if(fs_pairing_write_note(f->log,f->cfg.field_order_detect?event:(pair?pair->note:""))<0)bad=1;
         if(audio) {
             if(fprintf(f->log,",%lld,%lld",(long long)audio->residual_ticks,(long long)step)<0)bad=1;
         } else if(fputs(",,",f->log)==EOF)bad=1;
@@ -441,6 +449,18 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
                 } else if(fputs(",,,,,,,",f->log)==EOF)bad=1;
             }
         }
+        if(f->cfg.field_order_detect) {
+            const fo_evidence *e=&it->field_order;
+            if(e->measured) {if(fprintf(f->log,",%.17g,%.17g",e->change[0],e->change[1])<0)bad=1;}
+            else if(fputs(",,",f->log)==EOF)bad=1;
+            if(e->ready) {if(fprintf(f->log,",%.17g,%.17g,%u",e->threshold[0],e->threshold[1],e->spikes)<0)bad=1;}
+            else if(fputs(",,,",f->log)==EOF)bad=1;
+            if(e->event) {
+                const char *kind=e->event==1?"aligned":e->event==2?"reversed":"ambiguous";
+                if(fprintf(f->log,",%llu,%s,%u,%d",(unsigned long long)e->cut_first,kind,e->votes,e->confirmed)<0)bad=1;
+            } else if(fputs(",,,,",f->log)==EOF)bad=1;
+            if(fprintf(f->log,",%s",event)<0)bad=1;
+        }
         if(fputc('\n',f->log)==EOF)bad=1;
         if(bad){f->st.log_write_errors++;f->log_file_errors++;}else f->st.log_rows++;
         fs_test_after_log_row(f,f->log);
@@ -467,6 +487,11 @@ static void geometry_flush(frameserver *f) {
     f->geometry_pending=0;f->geometry_reset=1;
 }
 static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *unit,const signal_result *sr,int classified) {
+    fs_item observed;
+    if(f->field_order) {
+        observed=*it;observed.auto_pairing=f->geometry_reversed;it=&observed;
+        if(!unit)fo_reset(f->field_order);
+    }
     if(it->obs.format) {
         const fs_pairing_row *pair=fs_pairing_find(&f->pairing,it->obs.counter_extended);
         if(pair && pair->reversed!=f->geometry_reversed) {
@@ -500,6 +525,18 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     if(classified && sr->unsettled)f->st.unsettled_units++;
     const uint8_t *p=unit+48;
     for(unsigned i=0;i<GE_PIXELS;i++)f->geometry_y[i]=p[2*i+1];
+    if(f->field_order) {
+        observed.field_order=fo_observe(f->field_order,f->geometry_y,it->obs.counter_extended,it->obs.epoch,
+            it->preceding_ring_drops || (it->obs.transport_flags&UNIT_FLAG_COUNTER_DISCONTINUITY));
+        const fo_evidence *e=&observed.field_order;
+        int reversed=e->event==2;
+        if(e->confirmed && reversed!=f->geometry_reversed) {
+            geometry_flush(f); /* old pending item keeps its old pairing/evidence */
+            f->geometry_reversed=reversed;ge_set_pairing(f->geometry,reversed);
+            f->st.discontinuity_calls++;observed.auto_changed=1;
+        }
+        observed.auto_pairing=f->geometry_reversed;
+    }
     ge_decision out[2];unsigned n=ge_push(f->geometry,f->geometry_y,it->obs.counter_extended,f->geometry_reset,out);
     f->geometry_reset=0;
     if(f->cfg.hretime)memcpy(f->retime_unit,unit,FP_UNIT_BYTES);
@@ -538,6 +575,8 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
 }
 static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
+        fs_item gap=*it;gap.auto_pairing=f->geometry_reversed;it=&gap;
+        if(f->field_order)fo_reset(f->field_order);
         geometry_flush(f);f->st.discontinuity_calls++;f->st.ring_drops_logged+=it->preceding_ring_drops;f->st.ring_gap_rows++;
         geometry_log(f,it,NULL,0,"RingFullTail",NULL,NULL);return;
     }
@@ -608,11 +647,15 @@ static void *worker_main(void *arg){
 static void count_sink(void *ctx, const fp_frame *fr){ (void)ctx; (void)fr; }
 int fs_open(frameserver **out, const fs_config *cfg){
     if (!out || !cfg || (cfg->geometry_config && !ge_config_valid(cfg->geometry_config))) return -1;
-    if(cfg->pairing_schedule && cfg->geometry_pair_next) {
-        fprintf(stderr,"pairing schedule: excludes --pair-next\n");return -1;
+    if(cfg->pairing_schedule && (cfg->geometry_pair_next || cfg->field_order_detect)) {
+        fprintf(stderr,"pairing schedule: excludes --pair-next and field_order_detect\n");return -1;
     }
     frameserver *f = calloc(1, sizeof *f); if (!f) return -1;
     f->cfg = *cfg;
+    if(cfg->field_order_detect) {
+        f->field_order=calloc(1,sizeof *f->field_order);
+        if(!f->field_order){free(f);return -1;}
+    }
     if(pthread_mutex_init(&f->m,NULL)) goto sync_fail;
     f->m_init=1;
     if(pthread_cond_init(&f->c,NULL)) goto sync_fail;
@@ -663,7 +706,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
     ap_sink asink = { aq_enqueue, f };
     if (ap_open(&f->aud, f->aq_cap_frames, &asink) != 0){ fs_close(f); return -1; }
     if (pthread_mutex_init(&f->log_m, NULL)){ fs_close(f); return -1; } f->log_m_init = 1;
-    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "wx"); if (!f->log || log_header(f->log,cfg->hretime) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
+    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "wx"); if (!f->log || log_header(f->log,cfg->hretime,cfg->field_order_detect) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
     cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, NULL, cc_on_end, f };
     if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
@@ -672,7 +715,7 @@ sync_fail:
     if(f->life_m_init) pthread_mutex_destroy(&f->life_m);
     if(f->c_init) pthread_cond_destroy(&f->c);
     if(f->m_init) pthread_mutex_destroy(&f->m);
-    free(f); return -1;
+    free(f->field_order);free(f); return -1;
 }
 int fs_start(frameserver *f){
     if(!f) return -1;
@@ -739,7 +782,7 @@ int fs_log_start(frameserver *f, const char *path){
     if(attached) return -1;                            // one log at a time; the caller ends the previous one
     FILE *L = fopen(path, "wx");                       // never truncate an existing file: a sidecar is evidence
     if(!L) return -1;
-    if(log_header(L,f->cfg.hretime) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
+    if(log_header(L,f->cfg.hretime,f->cfg.field_order_detect) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
     // Lifecycle check and install happen under life_m so fs_stop (which moves life to STOPPING
     // under the same lock before joining the workers) cannot slip between them.
     pthread_mutex_lock(&f->life_m);
@@ -797,7 +840,7 @@ void fs_close(frameserver *f){
     if(f->life_c_init) pthread_cond_destroy(&f->life_c);
     if(f->life_m_init) pthread_mutex_destroy(&f->life_m);
     fs_test_destroyed();
-    free(f->geometry);free(f->geometry_y);free(f->geometry_unit);
+    free(f->geometry);free(f->geometry_y);free(f->geometry_unit);free(f->field_order);
     free(f->retime_unit);free(f->retime_previous);free(f->retime_work);
     fs_pairing_free(&f->pairing);
     free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f);

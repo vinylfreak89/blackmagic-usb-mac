@@ -1153,7 +1153,15 @@ proposal, not an established requirement for the current problem.
 detection engine for field parity since our tests at the moment says it can't be guaranteed to be
 either TFF or BFF". What the tests show so far: fixture A measured TFF against the usual NTSC
 expectation (§6), and captures 3 and 4 (two passes of the same tape) pair their fields one field apart
-(§7, measured). No method has been chosen yet.
+(§7, measured). The independent `field-order-flag` branch experiments with
+default-OFF `fs_config.field_order_detect`: two consistent scene-cut episodes
+can change transport pairing through the existing geometry reset path. This
+is not spatial-parity detection or a header/status flag, and cannot determine
+play-start pairing before cuts. See `src/frameserver/README.md` for the causal
+rule and limitations; H-retiming code is unchanged.
+The cut-pairing experiment correctly distinguishes captures 3/4 but does not
+reproduce the approved whole-tape pairing schedule exactly; do not promote it
+to an automatic default on the strength of the short-capture result.
 
 The early header census found 6,160 complete headers identical apart from their
 16-bit counter. This did not provide a per-field order/lock flag, but it also

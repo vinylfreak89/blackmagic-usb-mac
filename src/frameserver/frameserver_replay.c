@@ -61,6 +61,11 @@ int main(int argc, char **argv){
         fputs("FS_HRETIME must be 0 or 1\n",stderr);return 2;
     }
     cfg.hretime=retime && !strcmp(retime,"1");
+    const char *order=getenv("FS_FIELD_ORDER_DETECT");
+    if(order && strcmp(order,"0") && strcmp(order,"1")) {
+        fputs("FS_FIELD_ORDER_DETECT must be 0 or 1\n",stderr);return 2;
+    }
+    cfg.field_order_detect=order && !strcmp(order,"1");
     for (int i = 2; i < argc; i++){
         if (!strcmp(argv[i], "--pace-us") && i + 1 < argc) cfg.capture.replay_pace_us = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--ring-mb") && i + 1 < argc) cfg.capture.ring_mb = atoi(argv[++i]);

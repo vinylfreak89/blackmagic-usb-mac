@@ -13,6 +13,77 @@ unit; consumers pair fields according to the logged ownership. Measurements
 and explicit unavailable values are retained separately from placement.
 `log_header` in frameserver.c defines the complete CSV column set.
 
+## Optional scene-cut pairing detection
+
+`fs_config.field_order_detect` is zero by default. The replay tool maps
+`FS_FIELD_ORDER_DETECT=0|1`; the library never reads the environment. OBS exposes
+the English checkbox **Detect field pairing from scene cuts (experimental)**,
+also off by default. It changes transport pairing, not spatial parity or the
+OBS TFF/deinterlacer setting. It is independent of horizontal retiming.
+It selects the geometry engine's pairing interpretation through the existing
+`pair_next` path; publication retains the existing unit-owned field contract
+described above, rather than rewriting capture slots or deinterlacing pixels.
+
+The observer measures raw storage luma rows 20..79 and 283..342, all 720 samples,
+against the same slot in the previous adjacent complete unit. This top-picture
+strip is the cut-measurement region, not a shifted or repaired aperture. The
+rolling baseline is the preceding 30 mean absolute differences per slot; eight
+differences are required before detection. A spike must strictly exceed
+`max(8, 3*median, median + 6*1.4826*MAD)`. The one-second history and robust
+six-sigma/threefold separation distinguish abrupt changes from ordinary noise
+and motion; the eight-code floor is half the measured black/blank separation
+in CLAUDE.md §6. These are experimental fixed policy values, not label-tuned
+thresholds or proof that a spike is an edit.
+
+An isolated both-slot spike followed by a quiet unit votes aligned. Slot 2
+spiking, then slot 1 on the next unit, then quiet votes reversed. Every other
+spike episode is ambiguous. Two successive matching unambiguous episodes are
+needed to confirm pairing; an ambiguous episode clears that streak. Between
+cuts the last pairing is held, not re-estimated. The quiet closing unit adds
+one unit of **decision** delay, not video buffering. Cold start uses
+`geometry_pair_next` (normally aligned); it cannot repair earlier output or
+establish the pairing at play start before sufficient cuts. An explicit
+`pairing_schedule` and automatic detection are mutually exclusive.
+
+On a change, the worker finishes the old pending boundary with `ge_break`,
+then calls `ge_set_pairing` and starts the new pairing with a geometry reset.
+`pairing_note` and `field_order_discontinuity` name `FieldOrderCutAligned` or
+`FieldOrderCutReversed` on that unit. The existing `pairing` column always
+describes the applied setting, including orphaned/late pending units. Event
+evidence travels with the unit, not mutable next-unit state. Counter gaps,
+counter aliases, epoch changes, incomplete units and host loss reset the
+observer and consistency; the applied pairing is held until reconfirmed.
+Classifier appearance changes do not erase cut evidence. No source pixel,
+H-retiming detector or capture timestamp is changed by this observer.
+
+When enabled the log is schema 36, or 37 when H-retiming is also enabled.
+It appends `field_order_change_f1/f2`, `field_order_threshold_f1/f2`,
+`field_order_spikes` (bit 0 slot 1, bit 1 slot 2), `field_order_cut_first`
+(first spike's extended counter), `field_order_event` (aligned/reversed/ambiguous),
+`field_order_votes` (0..2), `field_order_confirmed`, and
+`field_order_discontinuity`. Empty cells mean no corresponding measurement or
+event, not zero evidence. OFF preserves schemas 28/30 and their bytes.
+
+The small per-unit change sentinel runs whenever enabled, but pairing verdicts
+are event-driven only. The ~87 KB reference/history is allocated at open and
+owned by the video worker: no per-unit allocation, cross-thread wait, optical
+flow or extra retained full raster. Repeated source edits on alternating
+field phases, telecine, flashes, motion, fades and sparse/no cuts remain
+limitations; two matching cuts cannot distinguish source editing cadence
+from a hardware-induced pairing offset. Do not treat this as a header/status
+flag or universal automatic field-order detection.
+
+Validation found the expected reversed verdict on capture 3 and aligned on
+capture 4, but **not exact agreement with the approved whole-tape pairing
+history**: the two-cut rule sometimes switches within a registered constant
+interval and necessarily reacts late at startup/boundaries. It also abstains
+on a weaker listed cut. The option remains an OFF-by-default experiment,
+not a replacement for that reviewed schedule or approval for automatic use.
+
+`make test-field-order` checks synthetic cuts through the actual worker against
+explicit pairing schedules, including both switch directions and pending-unit
+boundary cells. The pure observer is also in unit and sanitizer suites.
+
 ## Optional horizontal retiming
 
 `fs_config.hretime` defaults to zero. Tools accept `FS_HRETIME=0|1`; the library

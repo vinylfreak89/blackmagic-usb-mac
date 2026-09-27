@@ -59,6 +59,7 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #define S_REPLAY      "replay_path"
 #define S_USE_REPLAY  "use_replay"
 #define S_SIDECAR     "sidecar_with_recording"
+#define S_FIELD_ORDER "field_order_detect"
 
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
 #include "audio_timing.h"
@@ -259,6 +260,7 @@ static void shuttle_stop(shuttle_src *s){
 
 static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     fs_config cfg; memset(&cfg, 0, sizeof cfg);
+    cfg.field_order_detect=obs_data_get_bool(settings,S_FIELD_ORDER);
     /* NULL geometry_config selects the approved per-engine defaults, with no environment reads. */
     const char *input = obs_data_get_string(settings, S_INPUT);
     cfg.capture.input = !strcmp(input, "composite") ? CC_INPUT_COMPOSITE : !strcmp(input, "component") ? CC_INPUT_COMPONENT : CC_INPUT_SVIDEO;
@@ -341,6 +343,7 @@ static void shuttle_defaults(obs_data_t *settings){
     obs_data_set_default_bool(settings, S_USE_REPLAY, false);
     obs_data_set_default_string(settings, S_REPLAY, "");
     obs_data_set_default_bool(settings, S_SIDECAR, true);
+    obs_data_set_default_bool(settings, S_FIELD_ORDER, false);
 }
 
 static obs_properties_t *shuttle_properties(void *data){
@@ -353,6 +356,7 @@ static obs_properties_t *shuttle_properties(void *data){
     obs_properties_add_bool(p, S_USE_REPLAY, "Replay a tagged capture (.tpc) instead of the device");
     obs_properties_add_path(p, S_REPLAY, "Tagged capture file", OBS_PATH_FILE, "Tagged capture (*.tpc *.cap6)", NULL);
     obs_properties_add_bool(p, S_SIDECAR, "Write the registration sidecar (<recording>.registration.csv) with each OBS recording");
+    obs_properties_add_bool(p, S_FIELD_ORDER, "Detect field pairing from scene cuts (experimental)");
     return p;
 }
 

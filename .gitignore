@@ -131,6 +131,9 @@ src/frameserver/tests/replay_completion_test
 
 # working experiment ledgers (owner, 2026-09-26: never committed)
 .ledger/
+src/frameserver/tests/field_order_test
+src/frameserver/tests/field_order_asan
+src/frameserver/tests/field_order_tsan
 src/frameserver/tests/audio_lookup_probe
 src/frameserver/tests/audio_lookup_stress
 src/frameserver/tests/audio_evidence_test
