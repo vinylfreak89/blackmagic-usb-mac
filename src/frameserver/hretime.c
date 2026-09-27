@@ -11,8 +11,9 @@
 /* E-62: all thresholds registered before label replay; no worker allocation. */
 enum { ROW_BYTES=1440, HEADER=48, BODY_LO=60, BODY_HI=660,
        WIDTH_BODY_LO=40, WIDTH_BODY_HI=220, WIN=120, NW=6, SEARCH=64,
-       MIN_SHIFT=4, PROFILE_TOL=2, BASIN_RADIUS=2, MIN_WINDOWS=4,
+       MIN_SHIFT=4, BASIN_RADIUS=2,
        UNKNOWN_OFFSET=32767 };
+typedef struct { double edge[2],error[2];int spill; } repair_boundary;
 struct hrt_workspace {
     uint8_t y[HRT_ROWS][HRT_WIDTH], previous[2][525][HRT_WIDTH];
     uint8_t valid[2][525], available[2][525];
@@ -22,6 +23,8 @@ struct hrt_workspace {
     uint8_t flagged[HRT_ROWS], seed[HRT_ROWS], moved[HRT_ROWS];
     int edge[HRT_ROWS][2];
     uint8_t interior[HRT_ROWS];
+    repair_boundary repair[HRT_ROWS];
+    double expected[HRT_ROWS][2],width_precision[HRT_ROWS];
 };
 size_t hrt_size(void) { return sizeof(hrt_workspace); }
 void hrt_reset(hrt_workspace *w) { w->have=0;memset(w->valid,0,sizeof w->valid); }
@@ -85,14 +88,6 @@ static int aligned_offset(const uint8_t *a,const uint8_t *b,int lo,int reflo) {
 }
 static int window_offset(const uint8_t *a,const uint8_t *b,int lo) {
     return aligned_offset(a,b,lo,lo);
-}
-static int rigid_offset(const int *v,int *middle) {
-    int n=0,sum=0;
-    for(int z=0;z<NW;z++)if(v[z]!=UNKNOWN_OFFSET){n++;sum+=v[z];}
-    if(n<MIN_WINDOWS)return 0;
-    *middle=(int)lround((double)sum/n);
-    for(int z=0;z<NW;z++)if(v[z]!=UNKNOWN_OFFSET && abs(v[z]-*middle)>PROFILE_TOL)return 0;
-    return 1;
 }
 static double hist_quantile(const unsigned h[256],unsigned n,double q) {
     double at=(n-1)*q;unsigned lo=(unsigned)at,hi=(unsigned)ceil(at),count=0;
@@ -185,11 +180,82 @@ static unsigned edge_movement(hrt_workspace *w,const hrt_result *o,int j) {
     if(r>=0 && dr > fmax(3,o->edge_spread[k][1]))moved|=HRT_RIGHT_LATER;
     return moved;
 }
-static int certified_edges(const hrt_result *o,int k,int left,int right,int s) {
-    /* A clipped coordinate is not a measured picture edge. */
-    return left>0 && right<718 && o->edge_median[k][0]>0 && o->edge_median[k][1]<718 &&
-           fabs(left-s-o->edge_median[k][0])<=o->edge_spread[k][0] &&
-           fabs(right-s-o->edge_median[k][1])<=o->edge_spread[k][1];
+/* Repair precision is independent of detection's window qualification.
+ * Local picture supports follow the reviewed half_left/half_right instrument.
+ * Missing width is explicit; it does not invent a coordinate at the window. */
+static double repair_noise(const uint8_t *unit,int k,double blank) {
+    unsigned h[511]={0};int start=k?270:7;
+    for(int r=start;r<start+9;r++)for(int x=0;x<720;x++)
+        h[(int)fabs(2*unit[HEADER+r*ROW_BYTES+2*x+1]-2*blank)]++;
+    unsigned sum=0;int lo=-1,hi=0;
+    for(int i=0;i<511;i++) {
+        sum+=h[i];if(lo<0 && sum>(9*720-1)/2)lo=i;
+        if(sum>9*720/2){hi=i;break;}
+    }
+    return fmax(1/sqrt(12.0),1.4826*(lo+hi)/4.0);
+}
+static repair_boundary repair_measure(const uint8_t *y,double vi,double noise) {
+    repair_boundary b={{NAN,NAN},{NAN,NAN},0};
+    double v[10];for(int x=0;x<10;x++)v[x]=y[26+x];
+    double picture[2]={quantile(v,10,.5),0};
+    for(int x=696;x<706;x++)if(y[x]>picture[1])picture[1]=y[x];
+    for(int side=0;side<2;side++) {
+        double blank=vi,sigma=noise;
+        for(int pass=0;pass<2;pass++) {
+            b.edge[side]=b.error[side]=NAN;
+            if(picture[side]-blank<=5*sigma)break;
+            double half=(picture[side]+blank)/2;
+            int spill=1;for(int t=0;t<4;t++)if(y[side?719-t:t]<half)spill=0;
+            if(spill){b.spill|=1<<side;break;}
+            double pos=NAN,slope=0;
+            for(int t=0;t<147;t++) {
+                int x=side?719-t:t;
+                double a=y[x],p=y[x+(side?-1:1)];
+                if(a<half && p>=half) {
+                    slope=p-a;double fraction=(half-a)/slope;
+                    pos=side?x-fraction:x+fraction;break;
+                }
+            }
+            b.edge[side]=pos;
+            b.error[side]=isfinite(pos)?fmax(1,sigma/slope):NAN;
+            if(pass || !isfinite(pos) || (side?pos>715:pos<4))break;
+            double outside[4];for(int t=0;t<4;t++)outside[t]=y[side?719-t:t];
+            double level=quantile(outside,4,.5);
+            for(int t=0;t<4;t++)outside[t]=fabs(outside[t]-level);
+            double sn=fmax(noise,1.4826*quantile(outside,4,.5));
+            if(fabs(level-vi)>5*hypot(noise,sn))break;
+            blank=level;sigma=sn;
+        }
+    }
+    return b;
+}
+static int repair_reference_ok(hrt_workspace *w,int j,int d1,int d2) {
+    return j>=0 && j<HRT_ROWS && w->row[j] && !w->flagged[j] && !w->moved[j] &&
+        !excluded(j,d1,d2) && !w->repair[j].spill &&
+        isfinite(w->repair[j].edge[0]) && isfinite(w->repair[j].edge[1]);
+}
+static int repair_choice(hrt_workspace *w,int j,int d1,int d2,int *shift) {
+    repair_boundary *b=w->repair+j;
+    if(b->spill || !isfinite(b->edge[0]) || !isfinite(b->edge[1]))return 0;
+    int a=j-2,z=j+2;
+    while(a>=0 && !repair_reference_ok(w,a,d1,d2))a-=2;
+    while(z<HRT_ROWS && !repair_reference_ok(w,z,d1,d2))z+=2;
+    if(a<0 && z>=HRT_ROWS) {
+        a=repair_reference_ok(w,j-1,d1,d2)?j-1:-1;
+        z=repair_reference_ok(w,j+1,d1,d2)?j+1:HRT_ROWS;
+    }
+    if(a<0 && z>=HRT_ROWS)return 0;
+    if(a<0)a=z;if(z>=HRT_ROWS)z=a;
+    double weight=a==z?0:(double)(j-a)/(z-a),precision=0;
+    for(int s=0;s<2;s++) {
+        w->expected[j][s]=(1-weight)*w->repair[a].edge[s]+weight*w->repair[z].edge[s];
+        precision+=b->error[s]+(1-weight)*w->repair[a].error[s]+weight*w->repair[z].error[s];
+    }
+    w->width_precision[j]=precision;
+    double width=b->edge[1]-b->edge[0],expected=w->expected[j][1]-w->expected[j][0];
+    if(fabs(width-expected)>precision)return 0;
+    *shift=(int)lround(((b->edge[0]-w->expected[j][0])+(b->edge[1]-w->expected[j][1]))/2);
+    return 1;
 }
 static uint8_t average(int a,int b) { return (uint8_t)((a+b+1)/2); }
 /* Chroma at an even luma-pair origin; odd source phase is halfway between
@@ -225,13 +291,14 @@ static int interpolate(hrt_workspace *w,int j,uint8_t *out) {
     }
     return 1;
 }
-/* out already contains opposite-field interpolation. Only replace samples
- * whose shifted source exists; all vacated luma/chroma stay interpolated. */
+/* Retime is independent of interpolation donors. Vacated columns extend the
+ * source edge; a few lost samples do not turn width-normal timing into I. */
 static void retime(const uint8_t *in,uint8_t *out,int s) {
     for(int x=0;x<HRT_WIDTH;x++) {
         int sx=x+s;
-        if(sx>=0 && sx<HRT_WIDTH)out[2*x+1]=in[2*sx+1];
-        if(!(x&1) && sx>=0 && sx+1<HRT_WIDTH)
+        int lx=sx<0?0:sx>=HRT_WIDTH?HRT_WIDTH-1:sx;
+        out[2*x+1]=in[2*lx+1];
+        if(!(x&1))
             for(int v=0;v<2;v++)out[2*x+2*v]=(uint8_t)chroma(in,sx,v);
     }
 }
@@ -305,19 +372,23 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         o->field[k].bands++;i++;
     }
     HRT_DIAG_PHASE(5);
+    double noise[2]={repair_noise(f1,0,o->blank[0]),repair_noise(f2,1,o->blank[1])};
+    for(int j=0;j<HRT_ROWS;j++) {
+        w->repair[j]=repair_measure(w->y[j],o->blank[j&1],noise[j&1]);
+        w->expected[j][0]=w->expected[j][1]=w->width_precision[j]=NAN;
+    }
     for(int j=0;j<HRT_ROWS;j++)if(w->flagged[j]) {
         int k=j&1,r=first_row(k,offsets[k])+j/2,line=r+4;
         uint8_t *out=dst[k]+HEADER+r*ROW_BYTES;
         o->edge_moved[j]=(uint8_t)edge_movement(w,o,j);
-        int s=0,keep=rigid_offset(o->offset[1][j],&s);
-        for(int e=0;e<2;e++)keep&=o->edge_offset[1][j][e]!=UNKNOWN_OFFSET &&
-            abs(o->edge_offset[1][j][e]-s)<=PROFILE_TOL;
-        int l=0,right=0;
-        keep=keep && timing_edges(w->y[j],o->blank[k],&l,&right) && certified_edges(o,k,l,right,s);
+        int s=0,keep=repair_choice(w,j,d1,d2,&s);
         o->shift[j]=keep?s:0;
-        if(!interpolate(w,j,out)){o->action[j]=HRT_UNAVAILABLE;o->field[k].unavailable++;continue;}
+        if(keep && !s)continue; /* reference policy below records unchanged content */
         if(keep){retime(w->row[j],out,s);o->action[j]=HRT_RETIME;o->field[k].retimed++;}
-        else {o->action[j]=HRT_INTERPOLATE;o->field[k].interpolated++;}
+        else {
+            if(!interpolate(w,j,out)){o->action[j]=HRT_UNAVAILABLE;o->field[k].unavailable++;continue;}
+            o->action[j]=HRT_INTERPOLATE;o->field[k].interpolated++;
+        }
         if(!o->field[k].first)o->field[k].first=line;
         o->field[k].last=line;
     }

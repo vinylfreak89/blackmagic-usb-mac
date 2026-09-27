@@ -39,11 +39,6 @@ static void oracle(void) {
     assert(window_offset(a,b,240)==0);
     for(int x=0;x<720;x++)a[x]=x>=12?b[x-12]:2;
     assert(window_offset(a,b,240)==12);
-    int v[6]={12,12,12,12,UNKNOWN_OFFSET,UNKNOWN_OFFSET},m=0;
-    assert(rigid_offset(v,&m) && m==12);
-    v[3]=40;assert(!rigid_offset(v,&m));
-    int stretch[6]={-10,-6,-2,2,6,10};
-    assert(!rigid_offset(stretch,&m));
     /* A periodic wall cannot supply even a known-zero offset. */
     for(int x=0;x<720;x++)a[x]=b[x]=(uint8_t)((x%16)*14);
     assert(window_offset(a,b,240)==UNKNOWN_OFFSET);
@@ -82,8 +77,23 @@ int main(void) {
     uint8_t a[1440],b[1440];for(int x=0;x<360;x++){a[4*x]=x%256;a[4*x+2]=255-x%256;a[4*x+1]=a[4*x+3]=100;}
     memset(b,77,sizeof b);retime(a,b,1);
     assert(b[40]==average(a[40],a[44]) && b[42]==average(a[42],a[46]));
-    assert(b[1439]==77 && b[1436]==77 && b[1438]==77);
+    assert(b[1439]==a[1439] && b[1436]==a[1436] && b[1438]==a[1438]);
+    /* Width-only choice: no detection-window or opposite-donor requirement. */
+    fixture();run(1);memset(work.flagged,0,sizeof work.flagged);
+    for(int j=0;j<480;j++) {
+        work.repair[j]=(repair_boundary){{10,710},{1,1},0};work.moved[j]=0;
+    }
+    int s=99;work.flagged[40]=1;work.flagged[39]=work.flagged[41]=1;
+    work.repair[40]=(repair_boundary){{11,711},{1,1},0};
+    assert(!donor(&work,39) && !donor(&work,41));
+    assert(repair_choice(&work,40,0,0,&s) && s==1);
+    work.repair[40]=(repair_boundary){{10,710},{1,1},0};
+    assert(repair_choice(&work,40,0,0,&s) && s==0);
+    work.repair[40]=(repair_boundary){{20,710},{1,1},0};
+    assert(!repair_choice(&work,40,0,0,&s));
+    work.repair[40]=(repair_boundary){{NAN,710},{NAN,1},1};
+    assert(!repair_choice(&work,40,0,0,&s));
     fixture();hrt_apply(&work,unit,other,-30,30,out1,out2,&result);
-    puts("HRETIME E62 PASS: exact SAD, uniqueness/periodic ambiguity, edge windows, stretch, sustained/recovery, isolated invalidation, gaps/epochs, field2 ownership, shared motion, switch, flat, chroma and crop bounds");
+    puts("HRETIME PASS: E62 detection, width-only repair, zero/no-donor, stretch/spill, temporal recovery, chroma and crop bounds");
     return 0;
 }

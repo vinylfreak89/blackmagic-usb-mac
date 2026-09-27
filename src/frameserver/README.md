@@ -66,16 +66,35 @@ stationary boundary is not bypassed using interior motion. Two adjacent
 same-field candidates establish a band; single lines are deliberately forgone.
 Field-1 lines >=255 and field-2 lines >=518 remain excluded.
 
-Retiming requires at least four qualified counterpart interior offsets, every
-qualified offset within two samples of their mean, both dynamic counterpart
-edge offsets agreeing within two samples, and both uncensored edges returning
-to their normal positions within their respective spreads. Otherwise repair interpolates the full
-line. Immutable opposite-field neighbours supply ELA donors (directions
+Repair choice is separate from those detection filters. The width experiment
+uses half-height edges (left local level: median samples26..35; right: maximum
+696..705), with a147-sample crossing search from either border. These short
+supports come from the independent waveform review; a large bend can put them
+outside picture and make the width unknown. Own four-sample exterior plateaus
+supply blanking only when they are outside the crossing and agree with VI
+within five combined noise sigmas; otherwise the field's VI reference is used.
+Noise is1.4826*MAD with quantisation floor1/sqrt(12); contrast must exceed five
+blank-noise sigmas. Four outer samples at picture half-height mean spill.
+
+Expected edges come from the nearest unflagged, unmoved, measurable same-field
+rows (distance-weighted above/below, one-sided if necessary); opposite-field
+adjacent rows are a fallback only when neither same-field reference exists.
+Width tolerance sums all four boundary error bounds: each is at least one
+sample, or blank noise divided by crossing slope if greater. This allows
+sample-phase/analogue rounding without treating fractional crossings as exact.
+Width within that precision retimes by the rounded mean left/right displacement.
+No window-count, uniqueness, gain-over-zero or field-median certificate gates
+retiming. Rounded zero leaves pixels alone and records C, never R. Unknown
+width, spill or discontinuous width selects whole-line interpolation.
+
+Immutable opposite-field neighbours supply interpolation donors (directions
 0,+/-1,+/-2,+/-3, three-luma-sample stencil, vertical wins ties). One trustworthy
 donor duplicates; none leaves the row unchanged as unavailable. Both accepted
-repair masks and recognised displaced boundaries exclude donors. Vacated
-retime samples also come from donors, never blank fill. Odd shifts resample
-U and V independently at half phase.
+repair masks and recognised displaced boundaries exclude donors. Retime needs
+no donor; vacated samples extend its own source edge. Odd shifts resample U
+and V independently at half phase. The repair experiment does not make a
+missed detection into a repaired line. Changed output pixels also change
+subsequent repaired-reference evidence, despite unchanged detection equations.
 
 All buffers are allocated at open. Previous repaired luma is keyed by field
 source counter, epoch and storage row, not a changing output crop. Nonadjacency,
@@ -99,14 +118,12 @@ dynamic edge windows. Counts and offset lists are frame-owned: field 1
 belongs to `frame_top_unit`; field 2 to the row counter. No-frame rows have
 empty repair cells. On-mode schema changes do not affect off-mode byte identity.
 
-The E-62 numeric prototype **fails acceptance**. On resident captures it repairs
-zero tape-2 pan lines and touches all 34 clear tape-1 labels, but only partially
-recovers the specified bent bands. Capture 4 counter 232 still misses required
-field-2 lines and repairs field-1 lines 226/227. A labelled-unit hit is not a
-full-band pass. Default off and no promotion. At 4x, measured whole-worker
-median/p95 ranges were 5.76–6.17 / 6.10–6.56 ms; two tape-1 units exceeded the
-10 ms budget (maximum 12.98 ms). No new shedding policy is claimed; this
-experimental path is not certified to the real-time budget.
+This remains an experiment, default off. E-62 detection has known incomplete
+bands; changing repair choice does not establish detection completeness.
+Acceptance must score R versus I, zero-shift no-ops and output pixels, not
+merely label hits. The real-worker repair probe reports every line's boundaries,
+expected width, precision and action, and buffers selected actual output
+rasters until worker join. No new shedding policy or budget guarantee is claimed.
 
 ## Deterministic audio evidence
 
