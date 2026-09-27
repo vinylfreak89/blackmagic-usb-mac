@@ -73,6 +73,22 @@ normal median edges' respective p90 spreads. Censored line or median edges
 existing shift-induced picture-loss allowance remains an additional check,
 not a replacement for measuring both edges.
 
+Before either available repair is applied, entry58's neighbour confirmation
+checks that line against the immutable woven rows immediately above and below,
+using each row's own field VI median. **Only for this confirmation**, the body
+median must be strictly above VI blank +20; otherwise the midpoint edge is
+treated as noise-dominated and unavailable. This reuses the flagging work's
+picture-level definition, not a replacement threshold for the edge/width
+references or retime certification. Censored coordinates still witness
+continuity here. On either side, the line must differ by strictly more than
+its field's existing p90 edge spread from every measurable neighbour. One
+measurable neighbour decides alone; none provides no evidence. Otherwise the
+candidate is left untouched as content/agree. Detection, ownership, frozen
+references and the original flagged donor mask do not change: a withheld
+candidate never becomes a new donor. Original unavailable repairs stay
+unavailable. This intentionally misses some small displacements inside the
+frame's edge spread; no special-case recovery is applied.
+
 An admissible line is shifted by the detected amount. Vacated luma and chroma
 retain opposite-field interpolation, never blanking fill. Odd shifts interpolate
 chroma at half phase, rather than corrupting UYVY phase or rounding the luma
@@ -88,14 +104,18 @@ repairs current-unit f1 with pending-unit f2; repaired f1 is retained until its
 own transport unit publishes. No additional lookahead or frame allocation is
 introduced. Orphan boundaries have no fictitious repair partner.
 
-On uses schema 31 (29 belonged to the reverted head-switch experiment, 30 to
-the earlier H-retiming search). Only
+On uses schema 32 (31 added symmetric edge evidence; 29 belonged to the reverted
+head-switch experiment, 30 to the earlier H-retiming search). Only
 `schema_version` changes among old cells. New columns are `fs_hretime` and,
 for each `f1`/`f2`, `hretime_bands_*`, `hretime_retimed_*`,
 `hretime_interpolated_*`, `hretime_unavailable_*`, `hretime_first_*`,
-`hretime_last_*`, `hretime_lines_*`, followed by `hretime_edges_f1/f2`.
+`hretime_last_*`, `hretime_lines_*`, followed by `hretime_edges_f1/f2` and
+`hretime_content_f1/f2`.
 Line lists contain space-separated
-`NTSC:R`, `NTSC:I` or `NTSC:U` tokens. First/last cover actual repairs only;
+`NTSC:R`, `NTSC:I`, `NTSC:U` or `NTSC:C` tokens. C means an available candidate
+withheld by neighbour confirmation (agreement or insufficient edge evidence),
+not a repaired row. Band counts still describe detection, not confirmed repairs.
+First/last cover actual R/I repairs only;
 zero means none. Empty cells mean no complete frame to assess. These are
 frame-owned observations: f1 belongs to `frame_top_unit`, f2 to the row's own
 counter. A publisher failure remains unpublished even if repair was computed.
@@ -112,7 +132,7 @@ Tests compare the new search to an exhaustive scalar oracle, including ties,
 range endpoints and captured row triples. Synthetic tests also cover width
 change, edge certification, interpolated vacated samples, band extension/merging,
 switch-only seeds, censoring, symmetric edge directions/strict spread/ties/missing
-support,
+support, confirmation-only eligibility/strict comparisons/one-neighbour cases,
 mirrored field ownership, blank input, UYVY phase and actual
 reversed-pair publication. Wider searches also admit more unlabelled bands;
 passing named labels is not a quality guarantee for those repairs.
