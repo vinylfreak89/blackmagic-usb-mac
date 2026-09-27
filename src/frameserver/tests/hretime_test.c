@@ -1,4 +1,4 @@
-/* E-61: waveform oracle, causal references, ownership and immutable donors. */
+/* E-62: unique waveform evidence, causal references and immutable donors. */
 #include "../hretime.c"
 #include <assert.h>
 #include <stdio.h>
@@ -39,29 +39,39 @@ static void oracle(void) {
     assert(window_offset(a,b,240)==0);
     for(int x=0;x<720;x++)a[x]=x>=12?b[x-12]:2;
     assert(window_offset(a,b,240)==12);
-    int v[6]={4,6,8,10,12,14},m=0;assert(profile(v,&m) && m==9);
-    v[3]=40;assert(!profile(v,&m));
+    int v[6]={12,12,12,12,UNKNOWN_OFFSET,UNKNOWN_OFFSET},m=0;
+    assert(rigid_offset(v,&m) && m==12);
+    v[3]=40;assert(!rigid_offset(v,&m));
     int stretch[6]={-10,-6,-2,2,6,10};
-    assert(profile(stretch,&m) && m==0 && displaced_profile(stretch));
+    assert(!rigid_offset(stretch,&m));
+    /* A periodic wall cannot supply even a known-zero offset. */
+    for(int x=0;x<720;x++)a[x]=b[x]=(uint8_t)((x%16)*14);
+    assert(window_offset(a,b,240)==UNKNOWN_OFFSET);
+    for(int x=0;x<720;x++)b[x]=x>=10 && x<710?40+random_byte()%180:2;
+    for(int x=0;x<720;x++)a[x]=x>=23?b[x-23]:2;
+    assert(edge_window_offset(a,b,33,10,0)==23);
+    assert(edge_window_offset(a,b,0,10,0)==UNKNOWN_OFFSET);
 }
 int main(void) {
     oracle();fixture();run(1);assert(result.band_count==0);
     for(int i=20;i<23;i++)displace(unit,0,i,6);
-    run(2);assert(result.field[0].interpolated==3 && !result.field[1].interpolated);
+    run(2);assert(result.field[0].retimed==3 && !result.field[1].retimed);
     for(int i=20;i<23;i++) {
-        assert(result.action[2*i]==HRT_INTERPOLATE);
+        assert(result.action[2*i]==HRT_RETIME);
         assert(!memcmp(out1+48+(19+i)*1440,other+48+(282+i)*1440,1440));
     }
     /* A sustained bend is compared against repaired, not yesterday's bent row. */
-    run(3);assert(result.field[0].interpolated==3);
+    run(3);assert(result.field[0].retimed==3);
     memcpy(unit,other,sizeof unit);run(4);assert(result.band_count==0);
     /* A recognised isolated miss must not poison the next temporal reference. */
-    displace(unit,0,20,6);run(5);assert(result.field[0].interpolated==0);
+    displace(unit,0,20,6);run(5);assert(!result.field[0].interpolated && !result.field[0].retimed);
     assert(!work.valid[0][39]);
     hrt_begin(&work,7,7,1,0);assert(!work.available[0][40]);
     hrt_begin(&work,6,6,2,0);assert(!work.available[0][40]);
     hrt_reset(&work);assert(!work.have);
     fixture();run(1);for(int i=0;i<6;i++)displace(other,1,i,-9);
+    run(2);assert(result.field[1].retimed==6 && !result.field[0].retimed);
+    fixture();run(1);for(int i=0;i<6;i++)displace(other,1,i,-12);
     run(2);assert(result.field[1].interpolated==6 && !result.field[0].interpolated);
     fixture();run(1);for(int i=20;i<23;i++){displace(unit,0,i,6);displace(other,1,i,6);}
     run(2);assert(!result.band_count); /* shared displacement */
@@ -74,6 +84,6 @@ int main(void) {
     assert(b[40]==average(a[40],a[44]) && b[42]==average(a[42],a[46]));
     assert(b[1439]==77 && b[1436]==77 && b[1438]==77);
     fixture();hrt_apply(&work,unit,other,-30,30,out1,out2,&result);
-    puts("HRETIME E61 PASS: exact SAD, windows/stretch, sustained/recovery, isolated miss invalidation, gaps/epochs, field2 ownership, shared motion, switch, flat, chroma and crop bounds");
+    puts("HRETIME E62 PASS: exact SAD, uniqueness/periodic ambiguity, edge windows, stretch, sustained/recovery, isolated invalidation, gaps/epochs, field2 ownership, shared motion, switch, flat, chroma and crop bounds");
     return 0;
 }

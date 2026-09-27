@@ -5,10 +5,10 @@
 #if defined(__aarch64__) && !defined(HRT_SCALAR)
 #include <arm_neon.h>
 #endif
-/* E-61: all thresholds registered before label replay; no worker allocation. */
+/* E-62: all thresholds registered before label replay; no worker allocation. */
 enum { ROW_BYTES=1440, HEADER=48, BODY_LO=60, BODY_HI=660,
        WIDTH_BODY_LO=40, WIDTH_BODY_HI=220, WIN=120, NW=6, SEARCH=64,
-       MIN_SHIFT=4, PROFILE_TOL=2, VERTICAL_TOL=8, MIN_WINDOWS=4,
+       MIN_SHIFT=4, PROFILE_TOL=2, BASIN_RADIUS=2, MIN_WINDOWS=4,
        UNKNOWN_OFFSET=32767 };
 struct hrt_workspace {
     uint8_t y[HRT_ROWS][HRT_WIDTH], previous[2][525][HRT_WIDTH];
@@ -17,7 +17,8 @@ struct hrt_workspace {
     int have, context;
     const uint8_t *row[HRT_ROWS];
     uint8_t flagged[HRT_ROWS], seed[HRT_ROWS], moved[HRT_ROWS];
-    int profile[2][HRT_ROWS], coherent[2][HRT_ROWS], quiet[HRT_ROWS];
+    int edge[HRT_ROWS][2];
+    uint8_t interior[HRT_ROWS];
 };
 size_t hrt_size(void) { return sizeof(hrt_workspace); }
 void hrt_reset(hrt_workspace *w) { w->have=0;memset(w->valid,0,sizeof w->valid); }
@@ -56,40 +57,39 @@ static double correlation(const uint8_t *a,const uint8_t *b) {
     aa-=sa*sa/WIN;bb-=sb*sb/WIN;
     return aa>0 && bb>0?(ab-sa*sb/WIN)/sqrt(aa*bb):0;
 }
-static int window_offset(const uint8_t *a,const uint8_t *b,int lo) {
+/* Different origins are allowed for boundary-centred windows. Every candidate
+ * compares exactly WIN samples, without padding or overlap normalisation. */
+static int aligned_offset(const uint8_t *a,const uint8_t *b,int lo,int reflo) {
     if(variance(a+lo)<16)return UNKNOWN_OFFSET;
-    unsigned zero=window_sad(a+lo,b+lo),best=zero;int shift=0;
+    unsigned costs[2*SEARCH+1];
+    for(int i=0;i<2*SEARCH+1;i++)costs[i]=UINT32_MAX;
+    unsigned zero=window_sad(a+lo,b+lo),best=window_sad(a+lo,b+reflo);int shift=0;
+    costs[SEARCH]=best;
     for(int n=1;n<=SEARCH;n++)for(int sign=-1;sign<=1;sign+=2) {
         int s=n*sign;
-        if(lo+s<0 || lo+s+WIN>HRT_WIDTH)continue;
-        unsigned e=window_sad(a+lo,b+lo+s);
+        if(reflo+s<0 || reflo+s+WIN>HRT_WIDTH)continue;
+        unsigned e=window_sad(a+lo,b+reflo+s);costs[s+SEARCH]=e;
         if(e<best){best=e;shift=s;}
     }
-    if(variance(b+lo+shift)<16 || correlation(a+lo,b+lo+shift)<0.8 ||
-       (shift && !(best<0.8*zero)))return UNKNOWN_OFFSET;
-    return -shift;
+    unsigned far=UINT32_MAX;
+    for(int s=-SEARCH;s<=SEARCH;s++)if(abs(s-shift)>BASIN_RADIUS && costs[s+SEARCH]<far)
+        far=costs[s+SEARCH];
+    int offset=lo-reflo-shift;
+    if(abs(shift)==SEARCH || far==UINT32_MAX || far==0 || far<1.5*best ||
+       variance(b+reflo+shift)<16 || correlation(a+lo,b+reflo+shift)<0.8 ||
+       (offset && !(best<0.8*zero)))return UNKNOWN_OFFSET;
+    return offset;
 }
-static int profile(const int *v,int *middle) {
-    double sx=0,sy=0,sxx=0,sxy=0;int n=0;
-    for(int i=0;i<NW;i++)if(v[i]!=UNKNOWN_OFFSET){sx+=i;sy+=v[i];sxx+=i*i;sxy+=i*v[i];n++;}
+static int window_offset(const uint8_t *a,const uint8_t *b,int lo) {
+    return aligned_offset(a,b,lo,lo);
+}
+static int rigid_offset(const int *v,int *middle) {
+    int n=0,sum=0;
+    for(int z=0;z<NW;z++)if(v[z]!=UNKNOWN_OFFSET){n++;sum+=v[z];}
     if(n<MIN_WINDOWS)return 0;
-    double slope=(n*sxy-sx*sy)/(n*sxx-sx*sx),intercept=(sy-slope*sx)/n;
-    for(int i=0;i<NW;i++)if(v[i]!=UNKNOWN_OFFSET && fabs(v[i]-intercept-slope*i)>PROFILE_TOL)return 0;
-    *middle=(int)lround(intercept+slope*2.5);return 1;
-}
-static int close_profiles(const int *a,const int *b) {
-    int n=0;
-    for(int i=0;i<NW;i++)if(a[i]!=UNKNOWN_OFFSET && b[i]!=UNKNOWN_OFFSET) {
-        if(abs(a[i]-b[i])>VERTICAL_TOL)return 0;
-        n++;
-    }
-    return n>=MIN_WINDOWS;
-}
-/* Stretch may cross zero at the centre. A zero midpoint is not a stationary
- * profile when its measured ends move; use the registered per-window minimum. */
-static int displaced_profile(const int *v) {
-    for(int z=0;z<NW;z++)if(v[z]!=UNKNOWN_OFFSET && abs(v[z])>=MIN_SHIFT)return 1;
-    return 0;
+    *middle=(int)lround((double)sum/n);
+    for(int z=0;z<NW;z++)if(v[z]!=UNKNOWN_OFFSET && abs(v[z]-*middle)>PROFILE_TOL)return 0;
+    return 1;
 }
 static double hist_quantile(const unsigned h[256],unsigned n,double q) {
     double at=(n-1)*q;unsigned lo=(unsigned)at,hi=(unsigned)ceil(at),count=0;
@@ -128,6 +128,19 @@ static int timing_edges(const uint8_t *y,double blank,int *left,int *right) {
         if(side)*right=edge;else *left=edge;
     }
     return *left>=0 || *right>=0;
+}
+static int measured_edge(int edge,int side) {
+    return side ? edge>=0 && edge<718 : edge>0;
+}
+static int edge_window_offset(const uint8_t *a,const uint8_t *b,int ea,int eb,int side) {
+    if(!measured_edge(ea,side) || !measured_edge(eb,side))return UNKNOWN_OFFSET;
+    int outside=side?719-ea:ea,other=side?719-eb:eb;
+    if(outside>other)outside=other;
+    if(outside>WIN/2)outside=WIN/2;
+    int before=side?WIN-1-outside:outside;
+    int lo=ea-before,reflo=eb-before;
+    if(lo<0 || reflo<0 || lo+WIN>720 || reflo+WIN>720)return UNKNOWN_OFFSET;
+    return aligned_offset(a,b,lo,reflo);
 }
 static int compare_double(const void *a,const void *b) {
     double x=*(const double*)a,y=*(const double*)b;return (x>y)-(x<y);
@@ -222,8 +235,7 @@ static void retime(const uint8_t *in,uint8_t *out,int s) {
 void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
                int d1,int d2,uint8_t *out1,uint8_t *out2,hrt_result *o) {
     memset(o,0,sizeof *o);memset(w->flagged,0,sizeof w->flagged);
-    memset(w->seed,0,sizeof w->seed);memset(w->coherent,0,sizeof w->coherent);
-    memset(w->profile,0,sizeof w->profile);
+    memset(w->seed,0,sizeof w->seed);memset(w->interior,0,sizeof w->interior);
     if(!w->context)memset(w->available,0,sizeof w->available);
     const uint8_t *src[2]={f1,f2};uint8_t *dst[2]={out1,out2};int offsets[2]={d1,d2};
     for(int j=0;j<HRT_ROWS;j++) {
@@ -231,49 +243,51 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         w->row[j]=valid_row(k,r)?src[k]+HEADER+r*ROW_BYTES:NULL;
         for(int x=0;x<HRT_WIDTH;x++)w->y[j][x]=w->row[j]?w->row[j][2*x+1]:16;
         for(int a=0;a<2;a++)for(int z=0;z<NW;z++)o->offset[a][j][z]=UNKNOWN_OFFSET;
+        for(int a=0;a<2;a++)for(int e=0;e<2;e++)o->edge_offset[a][j][e]=UNKNOWN_OFFSET;
     }
     o->measured=1;
     for(int k=0;k<2;k++)o->blank[k]=blank_level(src[k],k);
     edge_reference(w,o,-1,d1,d2);
+    for(int j=0;j<HRT_ROWS;j++)timing_edges(w->y[j],o->blank[j&1],w->edge[j],w->edge[j]+1);
     for(int j=0;j<HRT_ROWS;j++) {
-        w->moved[j]=(edge_movement(w,o,j)&15)!=0;w->quiet[j]=0;
+        w->moved[j]=(edge_movement(w,o,j)&15)!=0;
         if(!w->row[j] || excluded(j,d1,d2))continue;
         int k=j&1,r=first_row(k,offsets[k])+j/2,other=j^1;
         for(int z=0;z<NW;z++) {
             if(w->available[k][r])o->offset[0][j][z]=window_offset(w->y[j],w->previous[k][r],z*WIN);
             if(w->row[other])o->offset[1][j][z]=window_offset(w->y[j],w->y[other],z*WIN);
         }
-        for(int a=0;a<2;a++)w->coherent[a][j]=profile(o->offset[a][j],&w->profile[a][j]);
-        int known=0,small=0;
-        for(int z=0;z<NW;z++)if(o->offset[0][j][z]!=UNKNOWN_OFFSET) {
-            known++;small+=abs(o->offset[0][j][z])<MIN_SHIFT;
+        int previous_edge[2]={-1,-1};
+        if(w->available[k][r])timing_edges(w->previous[k][r],o->blank[k],previous_edge,previous_edge+1);
+        for(int e=0;e<2;e++) {
+            if(w->available[k][r])o->edge_offset[0][j][e]=edge_window_offset(w->y[j],w->previous[k][r],w->edge[j][e],previous_edge[e],e);
+            if(w->row[other])o->edge_offset[1][j][e]=edge_window_offset(w->y[j],w->y[other],w->edge[j][e],w->edge[other][e],e);
         }
-        w->quiet[j]=known>=MIN_WINDOWS && known==small;
     }
     for(int j=0;j<HRT_ROWS;j++) {
-        if(!w->row[j] || excluded(j,d1,d2) || !w->moved[j] || w->moved[j^1])continue;
-        int temporal=w->coherent[0][j] && displaced_profile(o->offset[0][j]);
-        int cross=w->coherent[1][j] && displaced_profile(o->offset[1][j]);
-        int other_moving=w->coherent[0][j^1] && displaced_profile(o->offset[0][j^1]);
-        if((cross && !other_moving) || (temporal && w->quiet[j^1]))w->seed[j]=1;
+        if(!w->row[j] || !w->row[j^1] || excluded(j,d1,d2))continue;
+        int k=j&1,other=j^1;
+        unsigned own_move=edge_movement(w,o,j),peer_move=edge_movement(w,o,other);
+        for(int e=0;e<2;e++) {
+            unsigned mask=e?12:3;
+            int t=o->edge_offset[0][j][e],p=o->edge_offset[0][other][e];
+            int stationary=w->edge[other][e]>=0 && isfinite(o->edge_median[!k][e]) && !(peer_move&mask);
+            int temporal=t!=UNKNOWN_OFFSET && abs(t)>=MIN_SHIFT && p!=UNKNOWN_OFFSET && abs(p)<MIN_SHIFT;
+            if(!(peer_move&mask) && (temporal || ((own_move&mask) && stationary)))w->seed[j]=1;
+        }
+        int witnesses=0,shared=0;
+        for(int z=0;z<NW;z++) {
+            int t=o->offset[0][j][z],p=o->offset[0][other][z];
+            if(t==UNKNOWN_OFFSET || p==UNKNOWN_OFFSET || abs(t)<MIN_SHIFT)continue;
+            if(abs(p)<MIN_SHIFT)witnesses++;else shared++;
+        }
+        w->interior[j]=w->edge[j][0]<0 && w->edge[j][1]<0 && witnesses>=2 && !shared;
+        if(w->seed[j])w->moved[j]=1;
     }
     for(int j=0;j<HRT_ROWS;j++)if(w->seed[j]) {
-        for(int n=j-2;n<=j+2;n+=4)if(n>=0 && n<HRT_ROWS && w->seed[n]) {
-            int a=w->coherent[1][j] && w->coherent[1][n]?1:0;
-            if(close_profiles(o->offset[a][j],o->offset[a][n]))w->flagged[j]=w->flagged[n]=1;
+        for(int n=j-2;n<=j+2;n+=4)if(n>=0 && n<HRT_ROWS && (w->seed[n] || w->interior[n])) {
+            w->flagged[j]=w->flagged[n]=1;
         }
-    }
-    /* A supported band may include a scrambled adjacent line, but only while
-     * its own boundary stays displaced and the counterpart does not. */
-    for(int pass=0;pass<HRT_FIELD_ROWS;pass++) {
-        int changed=0;
-        for(int j=0;j<HRT_ROWS;j++)if(!w->flagged[j] && w->row[j] && w->moved[j] &&
-                !w->moved[j^1] && !excluded(j,d1,d2) &&
-                ((j>=2 && w->flagged[j-2]) || (j+2<HRT_ROWS && w->flagged[j+2]))) {
-            if(w->coherent[0][j^1] && displaced_profile(o->offset[0][j^1]))continue;
-            w->flagged[j]=1;changed=1;
-        }
-        if(!changed)break;
     }
     for(int k=0;k<2;k++)for(int i=0;i<HRT_FIELD_ROWS;) {
         int j=2*i+k;if(!w->flagged[j]){i++;continue;}
@@ -286,9 +300,9 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         int k=j&1,r=first_row(k,offsets[k])+j/2,line=r+4;
         uint8_t *out=dst[k]+HEADER+r*ROW_BYTES;
         o->edge_moved[j]=(uint8_t)edge_movement(w,o,j);
-        int s=w->profile[1][j],keep=w->coherent[1][j];
-        for(int z=0;z<NW;z++)keep&=o->offset[1][j][z]!=UNKNOWN_OFFSET &&
-            abs(o->offset[1][j][z]-s)<=PROFILE_TOL;
+        int s=0,keep=rigid_offset(o->offset[1][j],&s);
+        for(int e=0;e<2;e++)keep&=o->edge_offset[1][j][e]!=UNKNOWN_OFFSET &&
+            abs(o->edge_offset[1][j][e]-s)<=PROFILE_TOL;
         int l=0,right=0;
         keep=keep && timing_edges(w->y[j],o->blank[k],&l,&right) && certified_edges(o,k,l,right,s);
         o->shift[j]=keep?s:0;
@@ -304,7 +318,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
     for(int j=0;j<HRT_ROWS;j++)if(w->row[j] && !excluded(j,d1,d2)) {
         int k=j&1,r=first_row(k,offsets[k])+j/2;
         int repaired=o->action[j]==HRT_RETIME || o->action[j]==HRT_INTERPOLATE;
-        if(!repaired && w->moved[j]) {
+        if(!repaired && (w->moved[j] || w->flagged[j])) {
             if(!o->action[j]){o->action[j]=HRT_CONTENT;o->field[k].content++;}
             o->edge_moved[j]=(uint8_t)edge_movement(w,o,j);continue;
         }

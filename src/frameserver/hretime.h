@@ -26,6 +26,7 @@ typedef struct {
     uint8_t action[HRT_ROWS]; /* actual woven row: 2*i=f1, 2*i+1=f2 */
     int shift[HRT_ROWS];
     int offset[2][HRT_ROWS][6]; /* previous repaired / counterpart; 32767 unknown */
+    int edge_offset[2][HRT_ROWS][2]; /* dynamic left/right windows, same ordering */
     double blank[2], width[2], tolerance[2];
     double edge_median[2][2], edge_spread[2][2]; /* field, left/right */
     uint8_t edge_moved[HRT_ROWS]; /* directions, '=' if known but within spread */

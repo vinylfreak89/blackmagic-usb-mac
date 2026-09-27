@@ -282,6 +282,7 @@ static int log_header(FILE *L,int retime){
             if(fprintf(L,",hretime_bands_f%d,hretime_retimed_f%d,hretime_interpolated_f%d,hretime_unavailable_f%d,hretime_first_f%d,hretime_last_f%d,hretime_lines_f%d",k,k,k,k,k,k,k)<0)return -1;
         if(fputs(",hretime_edges_f1,hretime_edges_f2,hretime_content_f1,hretime_content_f2",L)==EOF)return -1;
         if(fputs(",hretime_offsets_f1,hretime_offsets_f2",L)==EOF)return -1;
+        if(fputs(",hretime_edge_offsets_f1,hretime_edge_offsets_f2",L)==EOF)return -1;
     }
     return fputc('\n',L)==EOF?-1:0;
 }
@@ -467,6 +468,19 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
                     for(int a=0;a<2;a++)for(int z=0;z<6;z++) {
                         if(a || z)if(fputc(z?'|':'/',f->log)==EOF)bad=1;
                         int v=repair->offset[a][j][z];
+                        if(v==32767){if(fputc('?',f->log)==EOF)bad=1;}
+                        else if(fprintf(f->log,"%d",v)<0)bad=1;
+                    }
+                }
+            }
+            for(int k=0;k<2;k++) {
+                if(fputc(',',f->log)==EOF)bad=1;
+                if(repair)for(int j=k;j<HRT_ROWS;j+=2) {
+                    int line=(k?286+d->frame_d2:23+d->frame_d1)+j/2;
+                    if(fprintf(f->log,"%s%d:",j==k?"":" ",line)<0)bad=1;
+                    for(int a=0;a<2;a++)for(int e=0;e<2;e++) {
+                        if(a || e)if(fputc(e?'|':'/',f->log)==EOF)bad=1;
+                        int v=repair->edge_offset[a][j][e];
                         if(v==32767){if(fputc('?',f->log)==EOF)bad=1;}
                         else if(fprintf(f->log,"%d",v)<0)bad=1;
                     }

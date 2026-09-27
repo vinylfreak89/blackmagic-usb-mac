@@ -59,7 +59,7 @@ with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
         off, on = results
         assert len(off[0]) == len(on[0])
         for a,b in zip(off[0], on[0]):
-            assert a['schema_version'] == '28' and b['schema_version'] == '33'
+            assert a['schema_version'] == '28' and b['schema_version'] == '34'
             assert all(a[k] == b[k] for k in a if k != 'schema_version'), (a,b)
             for field in (1,2):
                 lines=[x.split(':')[0] for x in b[f'hretime_lines_f{field}'].split()]
