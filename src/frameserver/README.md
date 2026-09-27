@@ -27,6 +27,12 @@ to either woven neighbour is compared with those neighbours' mutual unshifted
 correlation. At the first/last row the two available same-field neighbours
 supply the mutual reference. Undefined Pearson provides no waveform evidence.
 
+Only picture-carrying rows are eligible: at least one luma sample must exceed
+that field's VI blank by the existing five-noise-sigma contrast margin.
+Device inserts NTSC20/21 and283/284 are always excluded. A blank row is not
+garbage edge blanking. Line22/285 is tested, not categorically excluded, since
+its deck-generated content varies. Ineligible rows cannot enter a bridged band
+or supply learned clean-edge statistics/expected-width references.
 The shape test measures task42 half-height edges. Missing edges or picture
 spilling to the border always detect and request I.
 Otherwise BOTH a departure outside normal edge variation AND the learned
@@ -36,8 +42,9 @@ A side does not supply displacement evidence when every available opposite-field
 woven neighbour shows the same dark/flat content in the displaced interval.
 That interval contains integer samples between the measured and normal crossing.
 Dark means mean at/below the neighbour's local step midpoint; flat means standard
-deviation within five VI-noise sigmas. Mean absolute waveform difference must
-also fit five combined VI-noise sigmas. This reuses the locator's noise allowance;
+deviation within five VI-noise sigmas. There is no requirement that neighbouring
+levels agree with this line: field-to-field content motion must not defeat
+the dark/flat explanation. This reuses the locator's noise allowance;
 it is not a guarantee of distinguishing dark content from blanking. With no
 available neighbour, no content explanation is established. Correlation alone
 never detects. Interior

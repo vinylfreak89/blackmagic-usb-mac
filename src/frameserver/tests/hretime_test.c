@@ -1,4 +1,4 @@
-/* Task45: neighbour content, one-sided bends, and interior black. */
+/* Task46: neighbour content without an agreement gate; picture-only repair. */
 #include "../hretime.c"
 #include <assert.h>
 #include <stdio.h>
@@ -58,7 +58,10 @@ int main(void) {
     run(8);hrt_begin(&work,9,9,2,0);assert(!work.history_count[0]);
     hrt_reset(&work);assert(!work.have);
     fixture();run(1);for(int i=0;i<6;i++)displace(other,1,i,-9);
-    run(2);assert(result.field[1].retimed==6 && !result.field[0].retimed);
+    /* Under the requested dark/flat-only veto, the straight peer's blank
+     * border is flat too: outward shifts without spill are suppressed. This
+     * documents a limitation, not a correctness claim for the detector. */
+    run(2);assert(!result.field[1].retimed && !result.field[1].interpolated && !result.field[0].retimed);
     fixture();run(1);for(int i=0;i<6;i++)displace(other,1,i,-12);
     run(2);assert(result.field[1].interpolated==6 && !result.field[1].unavailable);
     assert(!result.field[0].retimed && !result.field[0].interpolated);
@@ -71,7 +74,7 @@ int main(void) {
     run(2);assert((result.reason[40]&HRT_INTERIOR_BLANK) &&
                   result.action[40]==HRT_NONE); /* border blanking is intact */
     fixture();for(int r=0;r<525;r++)for(int x=0;x<720;x++)unit[48+r*1440+2*x+1]=2;
-    memcpy(other,unit,sizeof unit);run(1);assert(result.field[0].interpolated && result.field[1].interpolated);
+    memcpy(other,unit,sizeof unit);run(1);assert(!result.band_count);
     uint8_t a[1440],b[1440];for(int x=0;x<360;x++){a[4*x]=x%256;a[4*x+2]=255-x%256;a[4*x+1]=a[4*x+3]=100;}
     memset(b,77,sizeof b);retime(a,b,1);
     assert(b[40]==average(a[40],a[44]) && b[42]==average(a[42],a[46]));
@@ -126,7 +129,16 @@ int main(void) {
     }
     assert(edge_content(&work,&result,noise,40,1));
     for(int x=707;x<=715;x++)work.y[39][x]=work.y[41][x]=100;
+    assert(edge_content(&work,&result,noise,40,1)); /* flat, unlike this row */
+    for(int x=707;x<=715;x++)work.y[39][x]=work.y[41][x]=(x&1)?100:200;
     assert(!edge_content(&work,&result,noise,40,1));
+    uint8_t flat[720];memset(flat,2,sizeof flat);
+    assert(!carries_picture(flat,22,0,2,1));
+    flat[100]=7;assert(!carries_picture(flat,22,0,2,1));
+    flat[100]=8;assert(carries_picture(flat,22,0,2,1));
+    assert(!carries_picture(flat,20,0,2,1) && !carries_picture(flat,21,0,2,1));
+    assert(!carries_picture(flat,283,1,2,1) && !carries_picture(flat,284,1,2,1));
+    assert(carries_picture(flat,285,1,2,1));
     puts("HRETIME PASS: Pearson oracle, learned history, singleton, shape, width, spill, donors, zero crossing, chroma, crop bounds");
     return 0;
 }

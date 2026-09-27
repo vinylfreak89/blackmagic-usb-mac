@@ -8,7 +8,8 @@
 #if defined(__aarch64__) && !defined(HRT_SCALAR)
 #include <arm_neon.h>
 #endif
-/* Task45: either edge may bend; shared dark/flat content is not timing. */
+/* Task46: shared dark/flat content needs no same-level agreement; blank rows
+ * and device inserts cannot become timing repairs. */
 enum { ROW_BYTES=1440, HEADER=48, WIDTH_BODY_LO=40, WIDTH_BODY_HI=220,
        HISTORY=30, SMALL_SHIFT=2 };
 typedef struct { double edge[2],error[2];int spill; } repair_boundary;
@@ -22,7 +23,7 @@ struct hrt_workspace {
     uint64_t counter[2],epoch;
     int have,context;
     const uint8_t *row[HRT_ROWS];
-    uint8_t flagged[HRT_ROWS],moved[HRT_ROWS];
+    uint8_t flagged[HRT_ROWS],moved[HRT_ROWS],picture[HRT_ROWS];
     repair_boundary repair[HRT_ROWS];
     double expected[HRT_ROWS][2],width_precision[HRT_ROWS];
     normal_summary history[2][HISTORY];
@@ -43,6 +44,12 @@ static int first_row(int k,int d) { return (k?282:19)+d; }
 static int valid_row(int k,int r) { return k ? r>=262 && r<525 : r>=0 && r<262; }
 static int line_number(int j,int d1,int d2) { return first_row(j&1,(j&1)?d2:d1)+j/2+4; }
 static int excluded(int j,int d1,int d2) { return line_number(j,d1,d2)>=((j&1)?518:255); }
+static int carries_picture(const uint8_t *y,int line,int field,double blank,double noise) {
+    int insert=field?283:20;
+    if(line==insert || line==insert+1)return 0;
+    for(int x=0;x<HRT_WIDTH;x++)if(y[x]>blank+5*noise)return 1;
+    return 0;
+}
 static double hist_quantile(const unsigned h[256],unsigned n,double q) {
     double at=(n-1)*q;unsigned lo=(unsigned)at,hi=(unsigned)ceil(at),count=0;
     int a=-1,b=-1;
@@ -116,7 +123,7 @@ static repair_boundary repair_measure(const uint8_t *y,double vi,double noise) {
     return b;
 }
 static int repair_reference_ok(hrt_workspace *w,int j,int d1,int d2) {
-    return j>=0 && j<HRT_ROWS && w->row[j] && !w->flagged[j] && !w->moved[j] &&
+    return j>=0 && j<HRT_ROWS && w->row[j] && w->picture[j] && !w->flagged[j] && !w->moved[j] &&
         !excluded(j,d1,d2) && !w->repair[j].spill &&
         isfinite(w->repair[j].edge[0]) && isfinite(w->repair[j].edge[1]);
 }
@@ -219,7 +226,7 @@ static int summary(hrt_workspace *w,hrt_result *o,int k,int clean,normal_summary
     double values[3][HRT_FIELD_ROWS];int n=0;
     for(int i=WIDTH_BODY_LO;i<WIDTH_BODY_HI;i++) {
         int j=2*i+k;repair_boundary *b=w->repair+j;
-        if(!w->row[j] || (clean && w->flagged[j]) || b->spill ||
+        if(!w->row[j] || !w->picture[j] || (clean && w->flagged[j]) || b->spill ||
            !isfinite(b->edge[0]) || !isfinite(b->edge[1]) ||
            !isfinite(o->deficit[j]))continue;
         values[0][n]=o->deficit[j];values[1][n]=b->edge[0];values[2][n]=b->edge[1];n++;
@@ -287,7 +294,7 @@ static int edge_content(hrt_workspace *w,const hrt_result *o,const double noise[
     int seen=0;
     for(int n=j-1;n<=j+1;n+=2) {
         if(n<0 || n>=HRT_ROWS || !w->row[n])continue;
-        seen=1;double sum=0,sq=0,diff=0,picture=0;
+        seen=1;double sum=0,sq=0,picture=0;
         if(side) {
             for(int x=696;x<706;x++)picture=fmax(picture,w->y[n][x]);
         } else {
@@ -296,14 +303,13 @@ static int edge_content(hrt_workspace *w,const hrt_result *o,const double noise[
         }
         for(int x=lo;x<=hi;x++) {
             double v=w->y[n][x];sum+=v;sq+=v*v;
-            diff+=abs((int)w->y[j][x]-w->y[n][x]);
         }
         double count=hi-lo+1,mean=sum/count;
         double sd=sqrt(fmax(0,sq/count-mean*mean));
         int nk=n&1;
         int dark=mean<=(picture+o->blank[nk])/2;
         int flat=sd<=5*noise[nk];
-        if((!dark && !flat) || diff/count>5*hypot(noise[k],noise[nk]))return 0;
+        if(!dark && !flat)return 0;
     }
     return seen;
 }
@@ -322,7 +328,7 @@ static void bridge(hrt_workspace *w,hrt_result *o,int d1,int d2) {
                     double v=displacement(w,o,p);
                     double expect=a+(b-a)*(p-last)/(j-last);
                     double uncertainty=fmax(1,(w->repair[p].error[0]+w->repair[p].error[1])/2);
-                    good=w->row[p] && !excluded(p,d1,d2) && isfinite(v) &&
+                    good=w->row[p] && w->picture[p] && !excluded(p,d1,d2) && isfinite(v) &&
                          isfinite(uncertainty) && fabs(v-expect)<=uncertainty;
                 }
                 if(good)for(int p=last+2;p<j;p+=2){w->flagged[p]=1;o->reason[p]|=HRT_ZERO_CROSSING;}
@@ -347,7 +353,10 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
     HRT_DIAG_PHASE(1);
     for(int k=0;k<2;k++)o->blank[k]=blank_level(src[k],k);
     double noise[2]={repair_noise(f1,0,o->blank[0]),repair_noise(f2,1,o->blank[1])};
-    for(int j=0;j<HRT_ROWS;j++)w->repair[j]=repair_measure(w->y[j],o->blank[j&1],noise[j&1]);
+    for(int j=0;j<HRT_ROWS;j++) {
+        w->repair[j]=repair_measure(w->y[j],o->blank[j&1],noise[j&1]);
+        w->picture[j]=carries_picture(w->y[j],line_number(j,d1,d2),j&1,o->blank[j&1],noise[j&1]);
+    }
     HRT_DIAG_PHASE(2);
     for(int j=0;j<HRT_ROWS;j++) {
         int a=j?j-1:1,b=j<479?j+1:478;
@@ -362,7 +371,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
     for(int k=0;k<2;k++)normal(w,o,k);
     HRT_DIAG_PHASE(3);
     for(int j=0;j<HRT_ROWS;j++) {
-        if(!w->row[j] || excluded(j,d1,d2))continue;
+        if(!w->row[j] || !w->picture[j] || excluded(j,d1,d2))continue;
         int k=j&1;repair_boundary *b=w->repair+j;
         if(isfinite(o->deficit[j]) && isfinite(o->correlation_limit[k]) &&
            o->deficit[j]>o->correlation_limit[k]+1e-12)o->reason[j]|=HRT_CORRELATION;
