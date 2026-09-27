@@ -13,7 +13,7 @@ unit; consumers pair fields according to the logged ownership. Measurements
 and explicit unavailable values are retained separately from placement.
 `log_header` in frameserver.c defines the complete CSV column set.
 
-## Optional horizontal retiming (E-61 experiment)
+## Optional horizontal retiming (E-62 experiment)
 
 `fs_config.hretime` defaults to zero; OBS's existing setting is unchanged.
 Tools map `FS_HRETIME`; the library reads no environment. Off retains schema
@@ -32,27 +32,44 @@ line moved right; correction reads source[x+displacement].
 
 Both compared windows must have population SD >=4. Nonzero evidence requires
 SAD <0.8 of its zero-offset value; the best match also needs Pearson >=0.8.
-These are explicit experimental qualifications, not universal VHS constants.
-At least four qualified windows must fit a linear offset profile within two
-samples. At least one qualified displacement must reach four samples; a stretch
-can cross zero at the centre and still move its ends. Two adjacent
-same-field seed lines must agree within eight samples at their jointly measured
-windows. Shared coherent temporal motion does not establish ownership.
+The winning offset's basin is +/-2 samples. The best alternative outside it
+must have SAD >=1.5 times the winner (and positive SAD for an exact winner).
+A local search-wall winner is unknown. Periodic equal minima, including zero,
+are unknown. These are registered experimental qualifications, not universal
+VHS constants. In particular the fixed basin can reject genuinely displaced
+low-texture windows whose minima are broad; unknown never means stationary.
+No linearity or all-window coherence test gates damage detection.
 
 Boundary evidence is independent: a sustained four-sample run above VI+8,
 a 40-sample inside median above VI+20, and an exterior median within three
 codes of that field's VI blank. A window-censored edge supplies an inequality,
 never retime certification. Each side has its own median/p90-deviation reference
 from field rows 40..219. A departure must exceed both three samples and the
-measured spread. Missing edges remain unknown. Current counterpart evidence can
-seed repair after a missing temporal reference; temporal evidence alone needs
-a quiet counterpart. An established band extends through adjacent displaced
-boundaries, but not stable boundaries or counterpart displacement.
+measured spread. Missing edges remain unknown.
+
+Dynamic 120-sample edge windows compare the current and reference boundaries,
+with up to 60 samples outside and the rest inside. The common available outer
+extent shortens the outside portion near the capture window; it does not
+shorten the window or invent padding. Origins differ by the measured boundary
+displacement, then a +/-64 local search refines it. Logged offsets include the
+origin difference. Censored coordinates cannot supply these waveform matches.
+Both temporal and counterpart edge-window offsets are recorded.
+
+A side seeds ownership if its temporal edge offset moves >=4 samples while
+the counterpart's own temporal edge offset is known <4, or its edge departs
+from its body's reference while the counterpart has a known normal edge on
+that side. Counterpart displacement on that side vetoes ownership. A line
+with neither identifiable edge needs two unambiguous moving interior windows
+with stationary corresponding temporal windows in the other field, no jointly
+moving window, and direct adjacency to an edge-supported candidate. A known
+stationary boundary is not bypassed using interior motion. Two adjacent
+same-field candidates establish a band; single lines are deliberately forgone.
 Field-1 lines >=255 and field-2 lines >=518 remain excluded.
 
-Retiming conservatively requires all six qualified offsets to agree with one
-offset within two samples and both uncensored edges to return to their normal
-edges within their respective spreads. Otherwise repair interpolates the full
+Retiming requires at least four qualified counterpart interior offsets, every
+qualified offset within two samples of their mean, both dynamic counterpart
+edge offsets agreeing within two samples, and both uncensored edges returning
+to their normal positions within their respective spreads. Otherwise repair interpolates the full
 line. Immutable opposite-field neighbours supply ELA donors (directions
 0,+/-1,+/-2,+/-3, three-luma-sample stencil, vertical wins ties). One trustworthy
 donor duplicates; none leaves the row unchanged as unavailable. Both accepted
@@ -69,16 +86,27 @@ boundary/counterpart evidence is the recovery path. No added lookahead.
 Reversed pairing uses current-unit f1 and pending-unit f2 without modifying
 the geometry engine's retained raw raster.
 
-On uses schema 33. Existing decision cells retain their meaning; only
+On uses schema 34. Existing decision cells retain their meaning; only
 `schema_version` changes among schema-28 cells. Repair counts, first/last NTSC
 lines and per-line `R/I/U/C` tokens remain. C now means a recognised displaced
 boundary without an accepted repair, not established content or harmlessness.
 Added `hretime_offsets_f1/f2` record every aperture line as
 `NTSC:t0|t1|t2|t3|t4|t5/x0|x1|x2|x3|x4|x5`: temporal and counterpart offsets.
 `?` means no qualified comparison (flat, failed alignment, missing reference
-or excluded row), not zero. Counts and offset lists are frame-owned: field 1
+or excluded row, ambiguous basin or search-wall result), not zero.
+`hretime_edge_offsets_f1/f2` use `NTSC:tLeft|tRight/xLeft|xRight` for the
+dynamic edge windows. Counts and offset lists are frame-owned: field 1
 belongs to `frame_top_unit`; field 2 to the row counter. No-frame rows have
 empty repair cells. On-mode schema changes do not affect off-mode byte identity.
+
+The E-62 numeric prototype **fails acceptance**. On resident captures it repairs
+zero tape-2 pan lines and touches all 34 clear tape-1 labels, but only partially
+recovers the specified bent bands. Capture 4 counter 232 still misses required
+field-2 lines and repairs field-1 lines 226/227. A labelled-unit hit is not a
+full-band pass. Default off and no promotion. At 4x, measured whole-worker
+median/p95 ranges were 5.76–6.17 / 6.10–6.56 ms; two tape-1 units exceeded the
+10 ms budget (maximum 12.98 ms). No new shedding policy is claimed; this
+experimental path is not certified to the real-time budget.
 
 ## Deterministic audio evidence
 
