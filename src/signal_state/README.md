@@ -118,6 +118,18 @@ The September 9 audit in CLAUDE.md §6 names three unresolved limitations:
   near-black units are an audit result, not a fresh score; falsely inferring
   mute can produce a new segment when source inference returns to Present.
 
+The September 27 reset diagnostic masked only `BEGIN_SEGMENT`, leaving classifier
+results and structural resets unchanged. Removing 15 whole-tape resets changed
+214 anchors at seven real transitions (53507, 53678, 68613, 69517, 81508, 83330,
+85273), delaying the new placement by 12–88 frames; published relative shifts
+were unchanged. The caption at 69517 independently supports the production +2
+from the fade onward. Captures 1–4 had zero placement changes. Review concluded
+that this was not evidence of a registration regression: reset-on-resumption
+helped follow real material changes. The three classifier limitations remain
+unfixed, not disproven. The eleven stale sub-black labels at 53637–53647 emitted
+no reset; a synthetic sub-black pulse can nevertheless generate a reset on
+resumption. Appearance errors and registration effects must be measured separately.
+
 The worker benchmark's optional `CLASSIFIER_TRACE=/scratch/new.csv` buffers
 all per-unit results (hexadecimal doubles), action bits and geometry reset
 inputs until join. Its test-only `--suppress-begin-segment` option masks that

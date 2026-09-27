@@ -257,3 +257,28 @@ configuration, frame accounting and hashes.
 `render_stability_audit.py` remains an independent presentation diagnostic;
 its measurements do not choose registration. The retired schema-7/9 renderer,
 overlay and audit wrappers have been removed.
+
+### Lessons from experimental repair renders
+
+These concern the later `hretime-experiments` renderer, not a promotion of its
+repair policy to main. Review repaired **actual worker pixels**, using the
+actual paired fields; a Python recreation or a matching sidecar alone cannot
+validate them. Count published units, paired frames and explicit fills separately.
+
+Deinterlacing annotation margins erased, moved or recoloured sparse one-row
+repair ticks. Preserve those lanes after picture deinterlacing and audit both
+encoded lanes on every frame against sidecar R/I locations and types, including
+expected absences. Lossy ringing on an absent row need not equal the exact
+background shade; it must still decode as absent. Check missing, extra and
+wrong-type ticks with synthetic tests in both parities.
+
+Do not round reference statistics to obtain policy agreement: E-59's four-decimal
+CSV created 29 decision flips (28 false recovery ties, one false baseline tie).
+Native and independent NumPy double arithmetic agreed within 1e-12. Report such
+reference-precision defects separately from implementation mismatches.
+
+A clean no-dump worker replay does not establish lossless pixel-spool throughput.
+FFV1 actual-output spooling needed slower pacing than the benchmark in measured
+runs. Reject loss-affected attempts and retain their accounting, not backup media.
+After a complete source walk, encoding and strip/tick readback can use the local
+lossless spool and finished sidecar without reopening a dataless source capture.

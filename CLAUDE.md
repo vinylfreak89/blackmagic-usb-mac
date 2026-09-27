@@ -1179,6 +1179,12 @@ lag 48189–48637; captures 1–4 14/14; those values were chosen on the whole t
 close spikes (flashes, fast motion, film-originated inserts): wrong in 70691–71458 and 81592–82117. The branch `field-order-flag`
 (default OFF) implements the weaker two-agreeing-cuts rule. The comb separates pairing only on progressive-origin material
 (EP median −0.99), not on 3:2 cel animation (SP median +0.005).
+That branch's measured two-cut implementation (`f4fb88d`) confirmed capture 3 reversed at
+13630 and capture 4 aligned at 301, but missed the weak 14085/14086 cut. On the whole tape it
+made 20 pairing changes and disagreed with the approved schedule on 2,856 of 86,293 exact
+units in 14 runs. Its exact-history gate failed. A causal cut observer also cannot recover
+play-start pairing before confirming cuts arrive; this is transport pairing evidence,
+not a hardware parity flag or a change to spatial TFF/BFF metadata.
 
 The early header census found 6,160 complete headers identical apart from their
 16-bit counter. This did not provide a per-field order/lock flag, but it also
@@ -1273,9 +1279,21 @@ predates them.
   band extent is learned from the tape ("sliding scale"). A mid-frame disturbance is its own band.
 - Given up: "the little one-line shifts" and flat/dark cases. Per tape, behind the flag; "perfectly stable tapes, there is no need
   to re-time".
-Measured pitfalls: a threshold edge locator slides with picture brightness; the half-height crossing of the blanking step
-does not. The right blanking at the capture edge is only ~1–3 samples on some tapes, so its exterior plateau must be learned per
-tape, not assumed to be 4 samples. A per-line limit at the tape's p99 edge spread flags ~1% of normal lines by construction.
+Measured pitfalls: a threshold edge locator slides with picture brightness. A local half-height crossing can resolve small
+mistimings, but is not content-proof: the standalone step observer selected a precursor at tape1 848 f1 line 129 and internal
+content at pan 3264 f1 lines 197/198. The right blanking at the capture edge is only ~1–3 samples on some tapes; treating a
+four-sample roll-off as a blank plateau inflates noise and falsely reports spill. Learn exterior support per tape. A per-line
+limit at the tape's p99 edge spread flags ~1% of normal lines by construction.
+Further limits established in the experiments:
+- Whole-line or central-window agreement misses edge-local bends and stretch; a symmetric stretch can have zero mean shift.
+  Temporal differences identify a change, not which of two units is bent, and can miss sustained bends. Repaired-reference
+  feedback can change later detections even when detection equations are unchanged; unknown damage can enter that reference.
+- A band-internal width reference can cancel the bend being repaired. Even an undetected row outside the band may still be bent.
+  Gap filling cannot recover rows above the first or below the last detection. Clean-only history can retain stale edges at cuts.
+- Different candidate supports confound a shift score: overlap-normalised wide searches may favour fewer, easier samples.
+  Reference agreement, a hit somewhere in a labelled unit, and improved neighbour MAD each fall short of full-band/pixel validation.
+- Source-field labels join through `frame_top_unit` under reversed pairing, not the log row's counter: source 14045 f1 is
+  frame 14044. That small missed bend was accepted; counting frame 14045 instead credits source 14046 incorrectly.
 
 ## 10. Delivery: OBS virtual camera
 
@@ -1595,6 +1613,10 @@ CPU minimum rather than assuming M-class silicon. Rules:
   Thread CPU includes conditional motion work. No scheduling/QoS change, core pinning or
   residency/frequency telemetry; unrelated applications were active, so these are not
   verified P-core or idle-machine timings. No simultaneous project tests/renders/replays.
+  Saved 4× pool drops occurred outside the slow two-search population; dropped units had no
+  worker timing sample, and clean replays measured them without 2-D work. Thread CPU cannot
+  diagnose queue exhaustion or wall-time stalls. USER_INITIATED QoS is not P-core pinning;
+  live 1× core placement remains unmeasured.
   The earlier 4.26 ms figure was the retired v9 benchmark, not a v11 baseline. Any new
   evidence path is costed against these measurements before it lands.
 - **Enforcement.** Every engine or classifier change reports whole-worker ms/unit (median, p95,
