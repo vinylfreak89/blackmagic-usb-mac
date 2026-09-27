@@ -1201,17 +1201,18 @@ never silently blank/dup/drop/resample/force-CFR.
 audio as continuity master; **bob at field rate (59.94p/50p)**; conceal only in the live
 derivative; shed the live consumer before it threatens acquisition.
 
-**Backlog: optional horizontal-damage concealment (owner, 2026-09-09).**
+**Optional horizontal-damage concealment (owner, 2026-09-09).**
 The owner proposed borrowing a damaged row from the other field, with
-intra-field interpolation when the result combs. The proposed option belongs
-in the frameserver before weaving; repaired rows are marked, all consumers
-receive the selected output, and unchanged transport is retained only when
-debug TPC capture is enabled. Whole-field comb was accepted as a conservative
-substitute for a per-row test in that discussion. The prerequisite was
-substantial measured real-time headroom after registration works. This remains
-a separate presentation feature, not evidence of source geometry and not an
-instruction to build it during the present reset. Recheck cost and the intended
-output before implementing; the previous timing figures were specific runs.
+intra-field interpolation when the result combs. `fs_config.tear_repair` is an
+off-by-default frameserver option; tools map `FS_TEAR_REPAIR`. It acts only after
+placement, using the actual woven partners, and never feeds registration.
+The terminal picture-run/leading-blank detector and local comb policy are
+documented in `src/frameserver/README.md`. Dark pillars can satisfy the same
+detector: it is concealment, not proof of timing damage. No classifier gate is
+applied. Off retains schema 28; on uses schema 29 to mark flagged/repaired rows,
+X/W treatment and NTSC extents. Unchanged transport is retained only when debug
+TPC capture is enabled. A renderer reading raw captures and placement logs must
+also apply the repair to reproduce frameserver output pixels.
 Detector coverage caution: capture 1 counter 7100, field 2 NTSC line 525,
 has VI median 1 and 130 samples within +/-3 in columns 8..199, but its longest
 consecutive run in columns 8..715 is only 97 (8..104; column 105 is code 5).

@@ -11,7 +11,59 @@ the next unit supplying field 1; `applied_d1/applied_d2` describe the fields
 owned by the row's own unit. Reversed pairing delays unit completion by one
 unit; consumers pair fields according to the logged ownership. Measurements
 and explicit unavailable values are retained separately from placement.
-`log_header` in frameserver.c defines the complete, unchanged CSV column set.
+`log_header` in frameserver.c defines the CSV column set (schema 28 by default).
+
+## Optional horizontal-timing repair
+
+`fs_config.tear_repair` defaults to **0**. The replay tool maps
+`FS_TEAR_REPAIR=0|1` to it; the library reads no environment. OBS's default open
+leaves it off. This is downstream concealment, not a registration instrument:
+the raw raster, classifier, geometry observations, placements and archival input
+are unchanged. No MP4 or default promotion is implied by enabling this option.
+
+Per published 240-row field aperture, the detector uses the full-width median
+of nine VI rows (storage 7..15 / 270..278). A picture-carrying row contains eight
+consecutive luma samples strictly above blank+20 in columns 8..715. Starting at
+the last such row, it flags the contiguous backwards run of picture rows having
+at least 60 samples within blank +/-3 in columns 8..199. Trailing blanking is
+untouched; a field with no picture row abstains. These are entry 46's measured
+detector constants, not general guarantees: dark pillars at blank level can
+also satisfy the rule. Classifier ProgramLike gating is **not** applied.
+
+Replacement sources are unflagged picture-carrying rows of the actual woven
+pair. X averages the adjacent other-field rows (or uses the sole available
+one). W interpolates the nearest own-field rows by vertical distance, or
+duplicates the sole available side. No available source leaves the row
+unchanged. All UYVY components use nearest-integer weighted averages; replacement
+pixels are never used as sources for another replacement.
+
+X requires local comb agreement: at most twelve row intervals above the run,
+columns 40..679, using the engine's `max((a-b)*(c-b),0)` arithmetic at offsets
+-5..+5. Only intervals clean and available at **all eleven** offsets contribute.
+The nominal energy must be at most twice the minimum; this reuses the approved
+comb's refusal factor 2. No clean support means W. This is an estimate of local
+field agreement, not proof that replacement pixels reconstruct the original.
+
+Reversed pairing uses next-unit field 1 and current-unit field 2. Repaired field
+1 is cached for its own unit's subsequent publication; registration retained
+the untouched luma first. No additional unit of lookahead is introduced. Unpaired
+boundary fields are not repaired from a fictitious partner.
+
+Off emits schema **28**, unchanged. On emits schema **29**, preserving existing
+decision cells except `schema_version`, then adding `fs_tear_repair` and, for
+each suffix `_f1` / `_f2`: `tear_flagged`, `tear_repaired`, `tear_fill` (X),
+`tear_interpolate` (W), `tear_first_flagged`, `tear_last_flagged`, `tear_first`
+and `tear_last`. Extents are NTSC lines, zero when none. Empty cells indicate no
+complete woven frame. Like `frame_d1/frame_d2`, repair evidence is frame-owned:
+field 1 belongs to `frame_top_unit`, not necessarily this row's transport unit.
+`published=0` still means nothing reached the consumer. Counts describe the
+attempted frame repair, not permission to treat a dropped frame as published.
+
+This option transforms the frameserver's output pixels. A separate renderer
+reading the original capture and only its placement log does not automatically
+reproduce those pixels; it must also apply the repair or consume the repaired
+frameserver output. The option's synthetic pipeline test checks emitted UYVY,
+including reversed ownership, rather than relying only on log counts.
 
 ## Deterministic audio evidence
 
