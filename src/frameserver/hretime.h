@@ -7,9 +7,13 @@
 #include <stdint.h>
 enum { HRT_WIDTH=720, HRT_ROWS=480, HRT_FIELD_ROWS=240, HRT_MAX_BANDS=480 };
 enum hrt_action { HRT_NONE, HRT_RETIME, HRT_INTERPOLATE, HRT_UNAVAILABLE };
+/* Coordinate directions: '-' earlier, '+' later; symmetric about normal. */
+enum hrt_edge { HRT_LEFT_EARLIER=1, HRT_LEFT_LATER=2,
+                HRT_RIGHT_EARLIER=4, HRT_RIGHT_LATER=8, HRT_EDGES_KNOWN=16 };
 typedef struct {
     int field, first, last; /* field 1/2, NTSC, before switch-row exclusion */
     float breaks[2];
+    int top_fallback, displaced[2];
 } hrt_band;
 typedef struct {
     int bands, retimed, interpolated, unavailable, first, last;
@@ -21,6 +25,8 @@ typedef struct {
     uint8_t action[HRT_ROWS]; /* actual woven row: 2*i=f1, 2*i+1=f2 */
     int shift[HRT_ROWS];
     double blank[2], width[2], tolerance[2];
+    double edge_median[2][2], edge_spread[2][2]; /* field, left/right */
+    uint8_t edge_moved[HRT_ROWS]; /* directions, '=' if known but within spread */
 } hrt_result;
 typedef struct hrt_workspace hrt_workspace;
 size_t hrt_size(void);

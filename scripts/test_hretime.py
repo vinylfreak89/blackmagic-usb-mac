@@ -58,8 +58,12 @@ with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
         off, on = results
         assert len(off[0]) == len(on[0])
         for a,b in zip(off[0], on[0]):
-            assert a['schema_version'] == '28' and b['schema_version'] == '30'
+            assert a['schema_version'] == '28' and b['schema_version'] == '31'
             assert all(a[k] == b[k] for k in a if k != 'schema_version'), (a,b)
+            for field in (1,2):
+                lines=[x.split(':')[0] for x in b[f'hretime_lines_f{field}'].split()]
+                edges=[x.split(':')[0] for x in b[f'hretime_edges_f{field}'].split()]
+                assert lines==edges, (lines,edges)
         published = [r for r in on[0] if r['published'] == '1']
         assert len(published) == 4 and len(on[1]) == 4*480*1440
         for i,r in enumerate(published):
