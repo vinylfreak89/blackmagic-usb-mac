@@ -13,160 +13,72 @@ unit; consumers pair fields according to the logged ownership. Measurements
 and explicit unavailable values are retained separately from placement.
 `log_header` in frameserver.c defines the complete CSV column set.
 
-## Optional horizontal retiming
+## Optional horizontal retiming (E-61 experiment)
 
-`fs_config.hretime` defaults to zero. Tools accept `FS_HRETIME=0|1`; the library
-does not read the environment. Off retains schema 28 and performs no repair
-analysis. This is a per-tape presentation option, not a new registration input.
-Raw capture, classifier, geometry, offsets, vote and comb decisions are unchanged.
+`fs_config.hretime` defaults to zero; OBS's existing setting is unchanged.
+Tools map `FS_HRETIME`; the library reads no environment. Off retains schema
+28 and performs no repair analysis. This experimental presentation path is
+not an approved replacement for registration or a default-on repair policy.
+Transport, classifier, geometry, vote and comb see only immutable source pixels.
 
-The detector runs on the actual published 720x480 pair. Each luma row is compared
-with its woven neighbours' mean at every integer shift -147..147. The bound is
-the owner-specified NTSC horizontal blanking interval (10.9 us at 13.5 MHz).
-Every candidate uses the **same** reference samples [147,573), 426 samples;
-shifted reads remain within [0,720). No candidate gets a shorter/easier support.
-This is an estimate within the search range, not proof that larger damage is
-absent or recoverable. The edge/width/loss tests below decide whether to shift.
-An exact integral-sum lower bound prunes impossible winners; every survivor gets
-a full-resolution SAD using prepared doubled luma and fused NEON accumulation.
-Comparisons use exact integer SAD sums, and ties choose the
-lowest shift even though near-zero candidates are visited first. There is no
-decimated finalist heuristic. A nonzero winner with SAD ratio <0.8 marks a discontinuity.
-The ratio retains the reference's 1e-6 denominator floor at zero SAD; ties in
-owner strength abstain, including uniformly blank frames.
-Contiguous discontinuities form a band; the strongest qualifying same-field
-boundary break assigns its owner. Equal qualifying strengths abstain.
+The detector uses the actual published field pair and placements. Six
+120-sample luma windows cover each row. Each window searches full valid
+reference windows at integer offsets within +/-64, independently against the
+previous repaired same-field row and the current counterpart field row.
+Detection never averages the two fields. SAD is exact integer arithmetic with
+a NEON implementation; equal minima prefer zero, then smaller absolute offset,
+then negative reference shift. Positive logged displacement means the current
+line moved right; correction reads source[x+displacement].
 
-If neither field passes a boundary test, a band touching either field's first
-published row (woven start 0 or 1) can use the owner's symmetric edge test.
-Each field's unflagged body rows 40..219 supply median left/right midpoint edges
-and separate p90 absolute edge deviations. Boundary-owned flags are resolved
-first; the unresolved top band is also excluded from its own reference. Missing
-edge support abstains. Censored observed coordinates participate in this edge
-test, unlike the uncensored widths required for retiming. A band line counts
-once when either edge moves in **either direction** beyond its own spread.
-The field with more displaced lines owns the band; equal counts abstain.
-No minimum spread or single-line-band filter is added. This fallback never
-overrides a qualifying boundary owner or equal qualifying boundary strengths.
-The ratio/band rules are entry 57; fixed support and symmetric top ownership
-are the owner's task31 amendment, not newly fitted detection thresholds.
-Each field-1 line >=255 and field-2 line >=518 is excluded from repair, including
-the end of a band crossing the cutoff. Detected damage there is not a donor.
+Both compared windows must have population SD >=4. Nonzero evidence requires
+SAD <0.8 of its zero-offset value; the best match also needs Pearson >=0.8.
+These are explicit experimental qualifications, not universal VHS constants.
+At least four qualified windows must fit a linear offset profile within two
+samples. At least one qualified displacement must reach four samples; a stretch
+can cross zero at the centre and still move its ends. Two adjacent
+same-field seed lines must agree within eight samples at their jointly measured
+windows. Shared coherent temporal motion does not establish ownership.
 
-An owned picture band grows upward/downward through adjacent same-field rows
-whose edges pass that same symmetric displacement test, even if their shift
-ratio does not pass 0.8. Growth stops at the first non-displaced or unmeasurable
-row, aperture boundary or switch cutoff. The edge reference is frozen before
-growth; it is not refitted repeatedly. Switch-only seeds cannot grow into the
-picture. Overlapping grown intervals of the same field merge. A shared donor
-that becomes flagged is unavailable, never used to repair another line.
+Boundary evidence is independent: a sustained four-sample run above VI+8,
+a 40-sample inside median above VI+20, and an exterior median within three
+codes of that field's VI blank. A window-censored edge supplies an inequality,
+never retime certification. Each side has its own median/p90-deviation reference
+from field rows 40..219. A departure must exceed both three samples and the
+measured spread. Missing edges remain unknown. Current counterpart evidence can
+seed repair after a missing temporal reference; temporal evidence alone needs
+a quiet counterpart. An established band extends through adjacent displaced
+boundaries, but not stable boundaries or counterpart displacement.
+Field-1 lines >=255 and field-2 lines >=518 remain excluded.
 
-For a flagged line, picture edges cross the midpoint between its VI median
-(full-width storage rows 7..15 or 270..278) and its own [60,660) median.
-Unflagged, uncensored own-field aperture rows 40..219 provide median width and
-the 90th percentile absolute width deviation. Missing picture or usable width
-support means interpolation, not a guessed shift. Width is right minus left;
-no extra amplitude bar or minimum tolerance is imposed. A retime also needs
-both measured edges, shifted back by the detected amount, to lie within their
-normal median edges' respective p90 spreads. Censored line or median edges
-(0 or >=718) cannot certify a retime: unknown width means interpolation. The
-existing shift-induced picture-loss allowance remains an additional check,
-not a replacement for measuring both edges.
+Retiming conservatively requires all six qualified offsets to agree with one
+offset within two samples and both uncensored edges to return to their normal
+edges within their respective spreads. Otherwise repair interpolates the full
+line. Immutable opposite-field neighbours supply ELA donors (directions
+0,+/-1,+/-2,+/-3, three-luma-sample stencil, vertical wins ties). One trustworthy
+donor duplicates; none leaves the row unchanged as unavailable. Both accepted
+repair masks and recognised displaced boundaries exclude donors. Vacated
+retime samples also come from donors, never blank fill. Odd shifts resample
+U and V independently at half phase.
 
-Before either available repair is applied, neighbour/shape confirmation
-checks that line against the immutable woven rows immediately above and below,
-using each row's own field VI median. **Only for this confirmation**, the body
-median must be strictly above VI blank +20; otherwise the midpoint edge is
-treated as noise-dominated and unavailable. This reuses the flagging work's
-picture-level definition, not a replacement threshold for the edge/width
-references or retime certification. Left edges at 0 and right edges >=718 are
-unmeasurable, independently for each side of the candidate and its neighbours.
-On either side, the line must be beyond every measurable neighbour in the SAME
-direction, by strictly more than its field's existing p90 edge spread. A line
-between its neighbours is not an excursion. One measurable neighbour decides
-alone; none provides no evidence.
+All buffers are allocated at open. Previous repaired luma is keyed by field
+source counter, epoch and storage row, not a changing output crop. Nonadjacency,
+resets and pairing changes invalidate it. Recognised displaced rows that were
+not repaired are not retained as clean references. This cannot guarantee that
+an entirely unrecognised defect never enters history; independent current
+boundary/counterpart evidence is the recovery path. No added lookahead.
+Reversed pairing uses current-unit f1 and pending-unit f2 without modifying
+the geometry engine's retained raw raster.
 
-Ordered shape must also confirm the displacement: double-precision Pearson
-correlation over [147,573) must be lower than the neighbours' mutual correlation
-before shifting, and at least as high after the detected shift (bounded +/-147).
-The reference is the mean of the two raw woven neighbours. At row 0 it is row 1,
-with mutual correlation of rows 1/3; at row 479 it is row 478, with rows 478/476.
-Zero variance gives correlation zero. No added correlation threshold is used.
-If either the edge excursion or ordered-shape comparisons fail, the
-candidate is left untouched as content/agree. Detection, ownership, frozen
-references and the original flagged donor mask do not change: a withheld
-candidate never becomes a new donor. Original unavailable repairs stay
-unavailable. This intentionally misses some small displacements inside the
-frame's edge spread; no special-case recovery is applied.
-
-An admissible line is shifted by the detected amount. Vacated luma and chroma
-retain opposite-field interpolation, never blanking fill. Odd shifts interpolate
-chroma at half phase, rather than corrupting UYVY phase or rounding the luma
-shift. Otherwise the whole line uses a small ELA interpolator, averaging
-opposite-field neighbours along the best of seven directions (0, +/-1, +/-2, +/-3), comparing
-three luma samples and preferring vertical on ties. This bounded local stencil
-is not NNEDI3 and makes no claim to recover missing detail. One available donor
-is duplicated; no unflagged donor leaves the line unchanged and explicitly
-unavailable. All donors are immutable raw rows, never earlier repairs.
-
-The workspace and two unit copies are allocated at open. Reversed pairing
-repairs current-unit f1 with pending-unit f2; repaired f1 is retained until its
-own transport unit publishes. No additional lookahead or frame allocation is
-introduced. Orphan boundaries have no fictitious repair partner.
-
-On uses schema 32 (31 added symmetric edge evidence; 29 belonged to the reverted
-head-switch experiment, 30 to the earlier H-retiming search). Only
-`schema_version` changes among old cells. New columns are `fs_hretime` and,
-for each `f1`/`f2`, `hretime_bands_*`, `hretime_retimed_*`,
-`hretime_interpolated_*`, `hretime_unavailable_*`, `hretime_first_*`,
-`hretime_last_*`, `hretime_lines_*`, followed by `hretime_edges_f1/f2` and
-`hretime_content_f1/f2`.
-Line lists contain space-separated
-`NTSC:R`, `NTSC:I`, `NTSC:U` or `NTSC:C` tokens. C means an available candidate
-withheld by neighbour/shape confirmation (agreement or insufficient evidence),
-not a repaired row. Band counts still describe detection, not confirmed repairs.
-First/last cover actual R/I repairs only;
-zero means none. Empty cells mean no complete frame to assess. These are
-frame-owned observations: f1 belongs to `frame_top_unit`, f2 to the row's own
-counter. A publisher failure remains unpublished even if repair was computed.
-Edge lists have one token for each action, `NTSC:directions`: `L-`/`L+` and
-`R-`/`R+` mean an earlier/later left or right edge beyond that edge's own spread.
-Both sides may be present, e.g. `291:L-R-`; `=` means within spread and `?`
-means edges/reference unavailable. Thus inward and outward bends remain
-separately auditable. These columns are absent with the option off.
-
-The old narrow-search reference's displayed coordinates already include +4
-(NTSC), and its printed list shows only the first three bands per field. Its
-bands are a comparison baseline, not a reference for the fixed-support search.
-Tests compare the new search to an exhaustive scalar oracle, including ties,
-range endpoints and captured row triples. Synthetic tests also cover width
-change, edge certification, interpolated vacated samples, band extension/merging,
-switch-only seeds, censoring, symmetric edge directions/strict spread/ties/missing
-support, confirmation-only eligibility/strict comparisons/one-neighbour cases,
-mirrored field ownership, blank input, UYVY phase and actual
-reversed-pair publication. Wider searches also admit more unlabelled bands;
-passing named labels is not a quality guarantee for those repairs.
-
-Measured limits remain. Fixed support and symmetric top ownership restored
-cap4 232's f2 lines 291..294 after the overlap-search ownership failure. Task32
-edge growth repairs cap4 204's f2 line 288 by interpolation without changing its
-shift ratio 0.837803 or the 0.8 cutoff. Edge certification changes cap1 6805's f1
-line 228 from retiming to interpolation: full-row neighbour MAD 6.910->2.908.
-Labels remain 26/26 on cap3 and 42/42 on the corrected cap4 set; the two named
-known-clean mirrors remain unflagged. Neither label hits nor more repairs
-establish that every repaired row is damaged.
-
-Across captures 1..4, strict worse-MAD rows decrease from 213 in task31 to 49,
-all retimes; no interpolated row worsens against the same raw-neighbour mean.
-This instrument is not a visual quality verdict. Growing both fields' repair
-masks also leaves 83 flagged rows without a clean donor; they remain unchanged
-and are explicitly unavailable. Cap1 programme bands are 448 single-line and 115
-multi-line (task31: 498/76); multi-line flags increased. Whole-tape bands expand
-from 10,879 in the +/-24 build to 78,496, with 17,712 unavailable rows. These
-unreviewed flags are not all established damage. No single-line filter,
-MAD gate, default change or promotion is implied. Owner/counterpart panel review
-remains necessary. Detailed experiment row lists stay in the ignored working
-ledger and scratch, not the committed source tree.
+On uses schema 33. Existing decision cells retain their meaning; only
+`schema_version` changes among schema-28 cells. Repair counts, first/last NTSC
+lines and per-line `R/I/U/C` tokens remain. C now means a recognised displaced
+boundary without an accepted repair, not established content or harmlessness.
+Added `hretime_offsets_f1/f2` record every aperture line as
+`NTSC:t0|t1|t2|t3|t4|t5/x0|x1|x2|x3|x4|x5`: temporal and counterpart offsets.
+`?` means no qualified comparison (flat, failed alignment, missing reference
+or excluded row), not zero. Counts and offset lists are frame-owned: field 1
+belongs to `frame_top_unit`; field 2 to the row counter. No-frame rows have
+empty repair cells. On-mode schema changes do not affect off-mode byte identity.
 
 ## Deterministic audio evidence
 
