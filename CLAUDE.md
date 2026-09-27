@@ -1212,11 +1212,21 @@ substantial measured real-time headroom after registration works. This remains
 a separate presentation feature, not evidence of source geometry and not an
 instruction to build it during the present reset. Recheck cost and the intended
 output before implementing; the previous timing figures were specific runs.
-Detector coverage caution: capture 1 counter 7100, field 2 NTSC line 525,
-has VI median 1 and 130 samples within +/-3 in columns 8..199, but its longest
-consecutive run in columns 8..715 is only 97 (8..104; column 105 is code 5).
-Thus a >=100-consecutive-sample rule misses this observed displaced row despite
-its sustained picture run. A blank-sample count is not a contiguous-run length.
+**Head-switch repair was built and reverted (2026-09-27).** A repair aimed at the
+head-switch displacement (343b78b, 6c64add) was reverted by the owner: "you guys
+improperly focussed on the head switch". The flagging he means is to be defined from
+examples he picks in raw per-field renders of captures 3 and 4. Findings kept for the
+reassessment:
+- At the switch, BOTH fields are displaced from the same weave height. On capture 1
+  (6800/6955/6961/7100), field 2 523–525 and field 1 261–262 start picture at samples
+  142–215, while field 1 258–260 and field 2 521–522 start by sample 25. Cross-field
+  fill has no clean source there.
+- A displaced switch line need not start its picture late. Capture 4's lines 261/262
+  carry pre-switch picture from sample 0 to ~65, then ~120 blank samples.
+- Blank-level extent alone confuses displacement with black content: text drop-shadows
+  and dark pillars at blanking level qualify.
+- A ≥100-consecutive-sample run misses capture 1 7100 line 525 (97 samples; one code-5
+  sample breaks it).
 
 ## 10. Delivery: OBS virtual camera
 
