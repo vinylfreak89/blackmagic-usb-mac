@@ -39,7 +39,7 @@ typedef struct frameserver frameserver;
 
 typedef struct {
     cc_config capture;          // device input or replay_path
-    unsigned pool_units;        // unit slots between delivery thread and worker (0 => 16)
+    unsigned pool_units;        // unit slots between delivery thread and worker (0 => as many as the capture ring holds: 355 at 256 MB)
     unsigned surface_pool;      // IOSurface pool for the publisher (0 => 6)
     const char *decision_log;   // schema 28 CSV (34 with hretime), or NULL;
                                 // opened exclusively (must not exist).
@@ -102,6 +102,7 @@ typedef struct {
     uint64_t log_close_errors;        // fclose failures at detach/stop: the tail of that file may be missing
     uint64_t log_last_file_errors;    // write+close errors of the most recently CLOSED log file (fs_log_stop or fs_stop): 0 => that file is complete
     unsigned pool_high_water;
+    unsigned pool_units;        // slots actually allocated (after defaulting)
 } fs_stats;
 
 int  fs_open (frameserver **out, const fs_config *cfg);

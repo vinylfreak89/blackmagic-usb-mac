@@ -553,7 +553,7 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
     if(pthread_cond_init(&s->life_c,NULL)) goto sync_fail;
     s->life_c_init=1;
     s->life=CC_LIFE_OPEN;
-    s->ring_sz=(size_t)(cfg->ring_mb>0?cfg->ring_mb:256)<<20;
+    s->ring_sz=(size_t)(cfg->ring_mb>0?cfg->ring_mb:CC_DEFAULT_RING_MB)<<20;
     s->ring=malloc(s->ring_sz);
     if(!s->ring) goto nomem;
     atomic_store(&s->end_reason,CC_END_STOPPED);

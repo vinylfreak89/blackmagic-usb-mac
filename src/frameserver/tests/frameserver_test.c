@@ -5,6 +5,7 @@
 //   Then with a one-slot pool: rows are never lost to pool exhaustion (PoolFull rows), stop is
 //   idempotent, and close-after-start is safe.
 #include "../frameserver.h"
+#include "../../unit_parser/unit_parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -283,6 +284,25 @@ int main(int argc, char **argv){
     CHECK(row_shape_ok, "every decision-log row has the schema's %u columns", header_fields);
     CHECK(rows == s.log_rows + 1, "log rows on disk match (%u vs %llu)", rows, (unsigned long long)s.log_rows + 1);
     fs_close(f);
+
+    // Default pool follows the capture ring: as many unit slots as the ring holds bytes (owner, 2026-09-27:
+    // "just match the two pools"). Checked for the default ring and a non-default one.
+    {
+        fs_config d = cfg; d.pool_units = 0; d.decision_log = NULL; frameserver *dp = NULL; fs_stats ds;
+        CHECK(fs_open(&dp, &d) == 0, "open (default pool)"); fs_get_stats(dp, &ds);
+        CHECK(ds.pool_units == (unsigned)(((size_t)(d.capture.ring_mb > 0 ? d.capture.ring_mb : CC_DEFAULT_RING_MB) << 20) / UNIT_PARSER_VIDEO_UNIT_BYTES),
+              "default pool must hold as many units as the ring holds bytes (%u)", ds.pool_units);
+        if (!(d.capture.ring_mb > 0)) CHECK(ds.pool_units == 355, "256 MB ring -> 355 units, got %u", ds.pool_units);
+        fs_close(dp);
+        d.capture.ring_mb = 8; dp = NULL;
+        CHECK(fs_open(&dp, &d) == 0, "open (default pool, 8 MB ring)"); fs_get_stats(dp, &ds);
+        CHECK(ds.pool_units == 11, "8 MB ring -> 11 units, got %u", ds.pool_units);
+        fs_close(dp);
+        d.pool_units = 4; dp = NULL;
+        CHECK(fs_open(&dp, &d) == 0, "open (explicit pool)"); fs_get_stats(dp, &ds);
+        CHECK(ds.pool_units == 4, "an explicit pool size is kept, got %u", ds.pool_units);
+        fs_close(dp);
+    }
 
     // F4/F5: with a ONE-slot pool the delivery thread must shed bytes, but every observation
     // still gets a sidecar row, and shed units are marked PoolFull rather than silently absent.

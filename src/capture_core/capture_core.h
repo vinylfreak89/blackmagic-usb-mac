@@ -30,6 +30,7 @@ enum cc_err    { CC_OK = 0, CC_ERR_ARGS = -1, CC_ERR_NODEVICE = -2, CC_ERR_USB =
 enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
                      CC_ERROR_CONTROL_LOSS = 2 };
 
+#define CC_DEFAULT_RING_MB 256  /* delivery ring when ring_mb is 0; the frameserver sizes its unit pool from it */
 #define CC_EP_VIDEO 0x83
 #define CC_EP_AUDIO 0x84
 
@@ -69,7 +70,7 @@ typedef struct {
 
 typedef struct {
     enum cc_input input;        // device backend: which analog input
-    int ring_mb;                // delivery ring, 0 => 256
+    int ring_mb;                // delivery ring, 0 => CC_DEFAULT_RING_MB
     const char *replay_path;    // non-NULL => replay backend reading this .tpc
     int replay_pace_us;         // replay: usleep per transfer (0 = as fast as possible;
                                 // 16000 ~= the device's real video cadence)

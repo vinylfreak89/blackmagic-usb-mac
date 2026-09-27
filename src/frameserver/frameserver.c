@@ -677,7 +677,18 @@ int fs_open(frameserver **out, const fs_config *cfg){
         f->pairing_active=fs_pairing_find(&f->pairing,0);
         f->geometry_reversed=f->pairing_active->reversed;
     }
-    f->n_slots = cfg->pool_units ? cfg->pool_units : 16;   // default kept at 16 (~0.5 s): whole-tape high-water was 2; change only on a measured stall (F5 stress matrix)
+    // Default: as many unit slots as the capture ring holds bytes, so a slow video worker can fall
+    // behind for as long as acquisition itself can buffer (~11.8 s at the 256 MB default) before
+    // units are shed. Measured stall that motivated it: a live OBS capture on 2026-09-27 lost 64
+    // units (2.1 s) when the worker stalled past the old 64-slot pool while the ring stayed nearly
+    // empty. The delivery thread drains the ring immediately (it also carries audio), so the pool,
+    // not the ring, is the buffer a worker stall consumes; a zero-copy single buffer is the follow-up.
+    if (cfg->pool_units) f->n_slots = cfg->pool_units;
+    else {
+        size_t ring = (size_t)(cfg->capture.ring_mb > 0 ? cfg->capture.ring_mb : CC_DEFAULT_RING_MB) << 20;
+        f->n_slots = (unsigned)(ring / UNIT_PARSER_VIDEO_UNIT_BYTES);
+        if (!f->n_slots) f->n_slots = 1;
+    }
     f->pool = malloc((size_t)f->n_slots * UNIT_PARSER_VIDEO_UNIT_BYTES);
     f->slot_used = calloc(f->n_slots, sizeof(_Atomic int));
     f->parser = aligned_alloc(unit_parser_alignment(), unit_parser_size());
@@ -820,7 +831,7 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->audio_blocks_delivered = f->aq_delivered_blocks; o->audio_frames_delivered = f->aq_delivered_frames;
     o->audio_dropped_blocks = atomic_load(&f->aq_dropped_blocks); o->audio_dropped_frames = atomic_load(&f->aq_dropped_frames);
     o->audio_master_frames = atomic_load(&f->audio_master_frames);
-    o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw);
+    o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;
     o->eligible_observations = atomic_load(&f->eligible_ingress);
     o->holes = atomic_load(&f->holes); o->unframed = atomic_load(&f->unframed); o->short_units = atomic_load(&f->shorts);
     o->other_format = atomic_load(&f->other_fmt); o->no_signal_0800 = atomic_load(&f->ns0800);

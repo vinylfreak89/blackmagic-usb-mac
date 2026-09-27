@@ -269,7 +269,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
         cfg.capture.replay_path = rp; cfg.capture.replay_pace_us = 16000;    /* device cadence */
     }
     cfg.hretime = obs_data_get_bool(settings, S_HRETIME) ? 1 : 0;   /* per-tape choice; off leaves output unchanged */
-    cfg.pool_units = 64; cfg.surface_pool = 6;
+    cfg.pool_units = 0; cfg.surface_pool = 6;   /* pool sized from the capture ring (frameserver default) */
     cfg.sink.on_frame = on_frame; cfg.sink.ctx = s;
     cfg.audio_sink.on_block = on_audio; cfg.audio_sink.ctx = s;
     cfg.audio_block_frames = s->abuf_frames;
