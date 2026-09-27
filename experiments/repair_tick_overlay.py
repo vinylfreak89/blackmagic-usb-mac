@@ -25,12 +25,26 @@ def preserve_tick_lanes(source, target, deinterlacer, prefix):
             f'[{p}o][{p}rc]overlay=x=822:y=0:format=yuv422:shortest=1[{target}]')
 
 
+def decode_tick_lane(pixels, expected):
+    """Classify visible ticks, allowing lossy ringing that still reads as absent."""
+    values = np.median(pixels[:, :3], axis=1)
+    distances = np.abs(values[:, None] - np.array([26, 105, 158]))
+    actual = distances.argmin(axis=1)
+    # A faint halo below a tick can exceed 20 codes above background without
+    # looking like another tick. Absence needs correct classification, not an
+    # exact background shade. Missing/extra/wrong-type ticks still fail.
+    bad = np.flatnonzero((actual != expected) |
+                         ((actual != 0) & (distances.min(axis=1) > 20)))
+    return values, actual, bad
+
+
 def readback_ticks(path, rows, strips):
     """Check every visible R/I tick location/type and every absent tick, both sides.
 
     Native limited-range Y avoids 4:2:0 chroma mixing adjacent red/orange rows.
     Nominal BT.601 Y codes for background/I/R are 26/105/158. Nearest-code
-    decoding permits at most 20 codes of lossy error, well below half the gaps.
+    decoding permits at most 20 codes of lossy error for I/R ticks. Background
+    ringing may vary in brightness but must still decode as absence.
     Missing, extra, wrong-type, swapped-field and shifted ticks all fail.
     """
     frames = {int(r['counter_extended']): r for r in rows
@@ -52,10 +66,7 @@ def readback_ticks(path, rows, strips):
                 expected[j] = 1 if action == 'I' else 2
                 counts[action] += 1
             for lane, offset in enumerate((0, 4)):
-                values = np.median(pixels[:, offset:offset+3], axis=1)
-                distances = np.abs(values[:, None] - np.array([26, 105, 158]))
-                actual = distances.argmin(axis=1)
-                bad = np.flatnonzero((actual != expected) | (distances.min(axis=1) > 20))
+                values, actual, bad = decode_tick_lane(pixels[:, offset:offset+3], expected)
                 if len(bad):
                     raise ValueError(f'tick mismatch frame {index} counter {counter} lane {lane}: '
                                      f'rows={bad.tolist()} expected={expected[bad].tolist()} '

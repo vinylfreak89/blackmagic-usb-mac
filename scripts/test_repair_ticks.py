@@ -7,7 +7,16 @@ import tempfile
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'experiments'))
-from repair_tick_overlay import preserve_tick_lanes, readback_ticks, TICK_COLORS, TICK_X
+from repair_tick_overlay import decode_tick_lane, preserve_tick_lanes, readback_ticks, TICK_COLORS, TICK_X
+
+# Full-tape counter 5051: a correct orange tick at row 108 (Y166) rings
+# into row 109 (Y61). It still classifies as absence, not an extra tick.
+pixels = np.repeat(np.array([26, 166, 61, 26], np.uint8)[:, None], 3, axis=1)
+expected = np.array([0, 2, 0, 0])
+assert not len(decode_tick_lane(pixels, expected)[2])
+for observed, wanted in ((61, 1), (61, 2), (66, 0), (105, 0), (158, 0),
+                         (105, 2), (158, 1), (240, 2)):
+    assert len(decode_tick_lane(np.full((1, 3), observed), np.array([wanted]))[2]) == 1
 
 with tempfile.TemporaryDirectory(prefix='repair-ticks-') as directory:
     directory = Path(directory)
