@@ -4,6 +4,7 @@
     geometry_render.py <capture.tpc> <out.mp4> [--offsets manual.csv] [--engine-log sidecar.csv]
                        [--pair-next] [--parity tff|bff] [--pairing-schedule schedule.csv]
                        [--pcm capture.pcm] [--deint bwdif] [--crf 14]
+                       [--published-uyvy frameserver.uyvy.zst]
 
 Owner, 2026-09-19: "It should take the spirit of the review render but strip it down to its basics ...
 it should read the registration engine, produce the machine strip, strip out all the box census and
@@ -27,6 +28,16 @@ What it draws, and nothing else:
   first in time, bff when a reversed-pairing capture is woven with --pair-next.
 * Audio from --pcm (S24LE stereo 48 kHz, `frameserver_replay --dump-pcm` on the same capture), padded
   so the picture is never cut to the audio's length.
+
+--published-uyvy reads the ACTUAL frameserver output pixels (raw or lossless zstd),
+in that replay's published-unit order from --engine-log. It uses the native 720x480
+aperture, not the legacy 486-line raw-raster review crop. Reversed frames weave
+the already-published fields from their actual source units. No repair or placement
+is recomputed in Python. R/I repair ticks come from the same frame-owned sidecar:
+orange re-timed, red interpolated; content/agree and unavailable rows have no ticks.
+An H-retiming sidecar without these actual output pixels is refused. Decode must
+account for every published unit, including unpaired boundaries, and reports a
+SHA256 of the entire decoded dump before publication validation.
 
 --pair-next: a reversed-pairing capture weaves field 1 (slot 1) of the NEXT unit over field 2 (slot 2)
 of this unit; the frame is keyed by this unit's counter. Slot 1 stays the spatial top field.
@@ -62,12 +73,13 @@ Review fixes 2026-09-19 (Codex, findings 1-6): pair-next engine d1 source unit; 
 in-picture marker; timeline across omitted units; black (neutral-chroma) out-of-raster fill; empty
 engine cells.
 """
-import argparse, bisect, atexit, csv, math, os, subprocess, sys, tempfile
+import argparse, bisect, atexit, csv, json, math, os, subprocess, sys, tempfile
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from packet_capture_reader import walk_tagged
 from live_overlay_strip import payload as strip_payload, draw as draw_strip
+from published_pixels import PublishedPixels, repair_ticks
 
 UNIT_BYTES, HDR, ROW_BYTES, RASTER_ROWS = 756_048, 48, 1440, 525
 MARK = b"\x00\x00\xff\xff"
@@ -676,10 +688,12 @@ def schedule_at(rows, ext):
 
 
 def main():
+    global F1_FIRST_LINE, F2_FIRST_LINE, FIELD_ROWS, FH, H
     ap = argparse.ArgumentParser()
     ap.add_argument("capture"); ap.add_argument("out")
     ap.add_argument("--offsets", help="manual placement (see module docstring)")
     ap.add_argument("--engine-log", help="the registration engine's decision log (sidecar); applied when present")
+    ap.add_argument("--published-uyvy", help="actual frameserver 720x480 dump (raw or .zst); requires --engine-log; draws repair ticks")
     ap.add_argument("--pair-next", action="store_true")
     ap.add_argument("--parity", default=None, choices=("tff", "bff"))
     ap.add_argument("--pairing-schedule", help="per-counter pairing: CSV first_counter,pairing,note")
@@ -698,6 +712,18 @@ def main():
         a.parity = "tff"
     offsets = read_offsets(a.offsets)
     engine, erow = read_engine(a.engine_log)
+    published = None
+    if a.published_uyvy:
+        if not a.engine_log:
+            sys.exit('refusing: --published-uyvy requires --engine-log')
+        # The live publisher owns 240 rows per field, not the legacy review
+        # crop's extra three raw lines. Never pretend those were published.
+        F1_FIRST_LINE, F2_FIRST_LINE, FIELD_ROWS = 23, 286, 240
+        FH, H = 480, 480+BAND
+        published = PublishedPixels(a.published_uyvy, erow.values())
+        atexit.register(published.close)
+    elif any(r.get('fs_hretime') == '1' for r in erow.values()):
+        sys.exit('refusing: H-retiming sidecar requires actual --published-uyvy pixels')
     audio_steps = read_audio_steps(a.engine_log)
     print(f"offsets for {len(offsets)} units; engine decisions for {len(engine)} units"
           f"{' (no sidecar)' if not a.engine_log else ''}", flush=True)
@@ -968,11 +994,15 @@ def main():
     def render(u1, u2, ext, nxt):
         i = state["item"]
         d1, d2, src, o, eng = pl[ext]
-        R2 = np.frombuffer(u2, np.uint8)[HDR:].reshape(RASTER_ROWS, ROW_BYTES)
-        R1 = np.frombuffer(u1, np.uint8)[HDR:].reshape(RASTER_ROWS, ROW_BYTES)
-        Y = weave(R1[:, 1::2].astype(np.float32), R2[:, 1::2].astype(np.float32), d1, d2, 16.0)
-        U = weave(R1[:, 0::4].astype(np.float32), R2[:, 0::4].astype(np.float32), d1, d2, 128.0)
-        V = weave(R1[:, 2::4].astype(np.float32), R2[:, 2::4].astype(np.float32), d1, d2, 128.0)
+        if published:
+            pixels = published.frame(nxt if nxt is not None else ext, ext)
+            Y, U, V = (pixels[:, sl].astype(np.float32) for sl in (slice(1,None,2),slice(0,None,4),slice(2,None,4)))
+        else:
+            R2 = np.frombuffer(u2, np.uint8)[HDR:].reshape(RASTER_ROWS, ROW_BYTES)
+            R1 = np.frombuffer(u1, np.uint8)[HDR:].reshape(RASTER_ROWS, ROW_BYTES)
+            Y = weave(R1[:, 1::2].astype(np.float32), R2[:, 1::2].astype(np.float32), d1, d2, 16.0)
+            U = weave(R1[:, 0::4].astype(np.float32), R2[:, 0::4].astype(np.float32), d1, d2, 128.0)
+            V = weave(R1[:, 2::4].astype(np.float32), R2[:, 2::4].astype(np.float32), d1, d2, 128.0)
         yy = (Y - 16.0) / 219.0
         cb = (np.repeat(U, 2, axis=1)[:, :FW] - 128.0) / 224.0
         cr = (np.repeat(V, 2, axis=1)[:, :FW] - 128.0) / 224.0
@@ -985,6 +1015,12 @@ def main():
         # A missing engine answer must not silently borrow a manual measurement.
         top_unit = nxt if nxt is not None else ext
         rowB, edges, waves = frame_evidence(erow, ext, top_unit)
+        if published and rowB.get('fs_hretime') == '1':
+            for j, action in repair_ticks(rowB):
+                color = (255,40,40) if action == 'I' else (255,165,0)
+                for x in (PX-7, PX+DW+3):
+                    dr.line([(x,j),(x+4,j)], fill=color, width=1)
+            dr.text((4,4), 'repair I red / R orange', font=small, fill=(170,170,170))
         if not rowB and o:
             edges = [[o.get(f"f{k}_{key}") for key in ("first", "last")] for k in (1, 2)]
         for f, (first, d, col) in enumerate(((F1_FIRST_LINE, d1, RED), (F2_FIRST_LINE, d2, BLUE))):
@@ -1070,7 +1106,17 @@ def main():
         if ext in want or (ext - 1) in want:
             held[ext] = o["bytes"]
         emit_ready()
-    walk(second)
+    if published:
+        for kind, ext, nxt in items:
+            if kind == 'fill':
+                state['fill_why'] = nxt; write_fill(ext)
+            else:
+                render(None,None,ext,nxt)
+            if state['written']%1000 == 0:
+                print(f"rendered {state['written']}/{len(items)}",flush=True)
+        print('PUBLISHED_PIXELS '+json.dumps(published.finish(),sort_keys=True),flush=True)
+    else:
+        walk(second)
     enc.stdin.close(); rc = enc.wait()
     if aligned_tmp and os.path.exists(aligned_tmp):
         os.remove(aligned_tmp)
