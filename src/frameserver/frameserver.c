@@ -3,6 +3,7 @@
 #include "../signal_state/signal_state.h"
 #include "../field_registration/geometry_engine.h"
 #include "pairing_schedule.h"
+#include "hretime.h"
 #include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -47,6 +48,9 @@ struct frameserver {
     signal_state *sig;
     geometry_engine *geometry;
     uint8_t *geometry_y, *geometry_unit;
+    uint8_t *retime_unit, *retime_previous; /* repaired copies, never geometry inputs */
+    hrt_workspace *retime_work;
+    hrt_result retime_result;
     fs_item geometry_item;
     int geometry_pending, geometry_reset;
     uint64_t geometry_epoch;
@@ -270,13 +274,19 @@ static const char *transport_name(unit_transport_state t){
     switch (t){ case UNIT_TRANSPORT_COMPLETE: return "Complete"; case UNIT_TRANSPORT_HOLE: return "Hole";
                 case UNIT_TRANSPORT_SHORT: return "Short"; default: return "Unframed"; }
 }
-static int log_header(FILE *L){
-    return fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,hblank_level_f1,hblank_cols_f1,hblank_level_f2,hblank_cols_f2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies,ge_wave_bar,ge_wave_clamp,wave_top_f1,wave_step_f1,wave_max_step_f1,wave_status_f1,wave_top_f2,wave_step_f2,wave_max_step_f2,wave_status_f2,relative_source,anchor_source,held_correction,ge_comb_reject,comb_reject_ratio,comb_rejected,comb_refused_d,comb_substituted_d,comb_discarded,comb_floor_lo,comb_floor_hi,comb_rise_left,comb_rise_right,comb_basin,ge_anchor_vote,ge_level_fill,ge_level_flat,vote_confident,vote_anchor,vote_engine_anchor,vote_count,vote_winner_count,vote_top_f1,vote_top_f2,level_top_f1,level_ref_f1,level_mean_f1,level_sd_f1,level_corr_f1,level_accepted_f1,level_top_f2,level_ref_f2,level_mean_f2,level_sd_f2,level_corr_f2,level_accepted_f2,ge_vote_pair,ge_vote_pair_min,vote_rB,vote_pair_pass,ge_bottom_flat,ge_bottom_flat_margin,bottom_rule_f1,bottom_F_p5_f1,bottom_F_p50_f1,bottom_F_p95_f1,bottom_rule_f2,bottom_F_p5_f2,bottom_F_p50_f2,bottom_F_p95_f2,ge_vote_blankspot,ge_comb_still,vote_blankspot_pass,vote_blankspot_line,motion_shift_f1,motion_error_f1,motion_error2_f1,motion_shift_f2,motion_error_f2,motion_error2_f2,picture_motion,still_trigger,comb_suppressed,ge_comb_motion_min,ge_comb_rigid,ge_comb_rigid_clarity,rigid_dx_f1,rigid_dy_f1,rigid_sad_f1,rigid_sad_far_f1,rigid_clarity_f1,rigid_dx_f2,rigid_dy_f2,rigid_sad_f2,rigid_sad_far_f2,rigid_clarity_f2\n")<0?-1:0;
+static int log_header(FILE *L,int retime){
+    if(fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,hblank_level_f1,hblank_cols_f1,hblank_level_f2,hblank_cols_f2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies,ge_wave_bar,ge_wave_clamp,wave_top_f1,wave_step_f1,wave_max_step_f1,wave_status_f1,wave_top_f2,wave_step_f2,wave_max_step_f2,wave_status_f2,relative_source,anchor_source,held_correction,ge_comb_reject,comb_reject_ratio,comb_rejected,comb_refused_d,comb_substituted_d,comb_discarded,comb_floor_lo,comb_floor_hi,comb_rise_left,comb_rise_right,comb_basin,ge_anchor_vote,ge_level_fill,ge_level_flat,vote_confident,vote_anchor,vote_engine_anchor,vote_count,vote_winner_count,vote_top_f1,vote_top_f2,level_top_f1,level_ref_f1,level_mean_f1,level_sd_f1,level_corr_f1,level_accepted_f1,level_top_f2,level_ref_f2,level_mean_f2,level_sd_f2,level_corr_f2,level_accepted_f2,ge_vote_pair,ge_vote_pair_min,vote_rB,vote_pair_pass,ge_bottom_flat,ge_bottom_flat_margin,bottom_rule_f1,bottom_F_p5_f1,bottom_F_p50_f1,bottom_F_p95_f1,bottom_rule_f2,bottom_F_p5_f2,bottom_F_p50_f2,bottom_F_p95_f2,ge_vote_blankspot,ge_comb_still,vote_blankspot_pass,vote_blankspot_line,motion_shift_f1,motion_error_f1,motion_error2_f1,motion_shift_f2,motion_error_f2,motion_error2_f2,picture_motion,still_trigger,comb_suppressed,ge_comb_motion_min,ge_comb_rigid,ge_comb_rigid_clarity,rigid_dx_f1,rigid_dy_f1,rigid_sad_f1,rigid_sad_far_f1,rigid_clarity_f1,rigid_dx_f2,rigid_dy_f2,rigid_sad_f2,rigid_sad_far_f2,rigid_clarity_f2")<0)return -1;
+    if(retime) {
+        if(fputs(",fs_hretime",L)==EOF)return -1;
+        for(int k=1;k<=2;k++)
+            if(fprintf(L,",hretime_bands_f%d,hretime_retimed_f%d,hretime_interpolated_f%d,hretime_unavailable_f%d,hretime_first_f%d,hretime_last_f%d,hretime_lines_f%d",k,k,k,k,k,k,k)<0)return -1;
+    }
+    return fputc('\n',L)==EOF?-1:0;
 }
 /* v11 rows are unit-keyed. Frame diagnostics belong to that unit's bottom field;
  * frame_d1 therefore need not equal applied_d1 when pairing is reversed. Ineligible
  * observations keep provenance but have no placement/key for the renderer. */
-static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,int published,const char *drop,const ap_correlation *audio) {
+static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,int published,const char *drop,const ap_correlation *audio,const hrt_result *repair) {
     int64_t step=0;
     if(audio) {
         if(f->audio_residual_known && f->audio_residual_epoch==it->obs.epoch && f->audio_residual_run==audio->run) {
@@ -315,7 +325,7 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
             }
         }
         CELL(26,"%d",published);CELL(27,"%s",drop);
-        CELL(28,"%llu",(unsigned long long)it->preceding_ring_drops);CELL(29,"%d",FS_GEOMETRY_LOG_SCHEMA);
+        CELL(28,"%llu",(unsigned long long)it->preceding_ring_drops);CELL(29,"%d",f->cfg.hretime?FS_HRETIME_LOG_SCHEMA:FS_GEOMETRY_LOG_SCHEMA);
 #undef CELL
         int bad=0;
         for(int i=0;i<30;i++) {
@@ -416,13 +426,28 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
                 if(fprintf(f->log,",%d,%d,%.17g,%.17g,%.17g",r->dx,r->dy,r->error,r->far_error,r->clarity)<0)bad=1;
             } else if(fputs(",,,,,",f->log)==EOF)bad=1;
         }
+        if(f->cfg.hretime) {
+            if(fputs(",1",f->log)==EOF)bad=1;
+            for(int k=0;k<2;k++) {
+                if(repair) {
+                    const hrt_field_result *r=repair->field+k;
+                    if(fprintf(f->log,",%d,%d,%d,%d,%d,%d,",r->bands,r->retimed,r->interpolated,r->unavailable,r->first,r->last)<0)bad=1;
+                    int sep=0;
+                    for(int j=k;j<HRT_ROWS;j+=2)if(repair->action[j]) {
+                        int line=(k?286+d->frame_d2:23+d->frame_d1)+j/2;
+                        if(fprintf(f->log,"%s%d:%c",sep?" ":"",line,repair->action[j]==HRT_RETIME?'R':repair->action[j]==HRT_INTERPOLATE?'I':'U')<0)bad=1;
+                        sep=1;
+                    }
+                } else if(fputs(",,,,,,,",f->log)==EOF)bad=1;
+            }
+        }
         if(fputc('\n',f->log)==EOF)bad=1;
         if(bad){f->st.log_write_errors++;f->log_file_errors++;}else f->st.log_rows++;
         fs_test_after_log_row(f,f->log);
     }
     pthread_mutex_unlock(&f->log_m);
 }
-static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *unit,const ge_decision *d) {
+static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *unit,const ge_decision *d,const hrt_result *repair) {
     ap_correlation audio={0};int known=ap_lookup_correlation(f->aud,it->obs.epoch,d->counter,&audio);
 #ifdef AP_LOOKUP_DIAGNOSTICS
     if(known!=it->audio_evidence_known || (known && memcmp(&audio,&it->audio_evidence,sizeof audio)))
@@ -434,11 +459,11 @@ static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *uni
     int rc=fp_publish_placed(f->pub,unit,FP_UNIT_BYTES,d->counter,d->d1,d->d2,FP_TRANSPORT_COMPLETE,known,audio.pts_num);
     if(rc==0)f->st.published++;else f->st.publisher_dropped++;
     geometry_log(f,it,d,rc==0,rc==0?"None":"PublisherFull",
-                 it->audio_evidence_known?&it->audio_evidence:NULL);
+                 it->audio_evidence_known?&it->audio_evidence:NULL,repair);
 }
 static void geometry_flush(frameserver *f) {
     ge_decision out[2];unsigned n=ge_break(f->geometry,out);
-    if(n && f->geometry_pending)geometry_publish(f,&f->geometry_item,f->geometry_unit,out);
+    if(n && f->geometry_pending)geometry_publish(f,&f->geometry_item,f->geometry_unit,out,NULL);
     f->geometry_pending=0;f->geometry_reset=1;
 }
 static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *unit,const signal_result *sr,int classified) {
@@ -468,7 +493,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     if(!unit) {
         geometry_flush(f);
         if(it->drop==FS_DROP_POOL_FULL){atomic_fetch_add(&f->dropped_pool_full,1);f->st.exact_units++;f->st.discontinuity_calls++;}
-        geometry_log(f,it,NULL,0,it->drop==FS_DROP_POOL_FULL?"PoolFull":transport_name(it->obs.transport),NULL);
+        geometry_log(f,it,NULL,0,it->drop==FS_DROP_POOL_FULL?"PoolFull":transport_name(it->obs.transport),NULL,NULL);
         return;
     }
     f->st.exact_units++;
@@ -477,14 +502,36 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     for(unsigned i=0;i<GE_PIXELS;i++)f->geometry_y[i]=p[2*i+1];
     ge_decision out[2];unsigned n=ge_push(f->geometry,f->geometry_y,it->obs.counter_extended,f->geometry_reset,out);
     f->geometry_reset=0;
+    if(f->cfg.hretime)memcpy(f->retime_unit,unit,FP_UNIT_BYTES);
     if(f->geometry_reversed) {
         /* Outputs precede replacement of the single pending raster. ge_push flushes
          * a broken counter adjacency, and never attaches the new field to it. */
-        for(unsigned i=0;i<n;i++)geometry_publish(f,&f->geometry_item,f->geometry_unit,out+i);
-        memcpy(f->geometry_unit,unit,FP_UNIT_BYTES);f->geometry_item=*it;
+        for(unsigned i=0;i<n;i++) {
+            const uint8_t *published=f->geometry_unit;
+            hrt_result *repair=NULL;
+            if(f->cfg.hretime && out[i].has_frame) {
+                memcpy(f->retime_previous,f->geometry_unit,FP_UNIT_BYTES);
+                repair=&f->retime_result;
+                hrt_apply(f->retime_work,unit,f->geometry_unit,out[i].frame_d1,out[i].frame_d2,
+                          f->retime_unit,f->retime_previous,repair);
+                published=f->retime_previous;
+            }
+            geometry_publish(f,&f->geometry_item,published,out+i,repair);
+        }
+        /* Current f1 belongs to the completed frame; pending f2 is still raw.
+         * Geometry already retained the untouched current raster in ge_push. */
+        memcpy(f->geometry_unit,f->cfg.hretime?f->retime_unit:unit,FP_UNIT_BYTES);f->geometry_item=*it;
         f->geometry_pending=1;f->geometry_epoch=it->obs.epoch;
     } else {
-        for(unsigned i=0;i<n;i++)geometry_publish(f,it,unit,out+i);
+        for(unsigned i=0;i<n;i++) {
+            hrt_result *repair=NULL;
+            if(f->cfg.hretime && out[i].has_frame) {
+                repair=&f->retime_result;
+                hrt_apply(f->retime_work,unit,unit,out[i].frame_d1,out[i].frame_d2,
+                          f->retime_unit,f->retime_unit,repair);
+            }
+            geometry_publish(f,it,f->cfg.hretime?f->retime_unit:unit,out+i,repair);
+        }
         f->geometry_epoch=it->obs.epoch;
     }
     atomic_store(&f->slot_used[it->slot],0);
@@ -492,7 +539,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
 static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
         geometry_flush(f);f->st.discontinuity_calls++;f->st.ring_drops_logged+=it->preceding_ring_drops;f->st.ring_gap_rows++;
-        geometry_log(f,it,NULL,0,"RingFullTail",NULL);return;
+        geometry_log(f,it,NULL,0,"RingFullTail",NULL,NULL);return;
     }
     unit_video_observation obs = it->obs;
     const uint8_t *unit = NULL;
@@ -594,6 +641,11 @@ int fs_open(frameserver **out, const fs_config *cfg){
     {
         f->geometry=malloc(ge_size());f->geometry_y=malloc(GE_PIXELS);
         f->geometry_unit=malloc(FP_UNIT_BYTES);
+        if(cfg->hretime) {
+            f->retime_unit=malloc(FP_UNIT_BYTES);f->retime_previous=malloc(FP_UNIT_BYTES);
+            f->retime_work=malloc(hrt_size());
+            if(!f->retime_unit || !f->retime_previous || !f->retime_work){fs_close(f);return -1;}
+        }
         if(!f->geometry||!f->geometry_y||!f->geometry_unit){fs_close(f);return -1;}
         ge_init(f->geometry,f->geometry_reversed,cfg->geometry_config);
         f->cfg.geometry_config=ge_get_config(f->geometry);
@@ -611,7 +663,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
     ap_sink asink = { aq_enqueue, f };
     if (ap_open(&f->aud, f->aq_cap_frames, &asink) != 0){ fs_close(f); return -1; }
     if (pthread_mutex_init(&f->log_m, NULL)){ fs_close(f); return -1; } f->log_m_init = 1;
-    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "wx"); if (!f->log || log_header(f->log) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
+    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "wx"); if (!f->log || log_header(f->log,cfg->hretime) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
     cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, NULL, cc_on_end, f };
     if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
@@ -687,7 +739,7 @@ int fs_log_start(frameserver *f, const char *path){
     if(attached) return -1;                            // one log at a time; the caller ends the previous one
     FILE *L = fopen(path, "wx");                       // never truncate an existing file: a sidecar is evidence
     if(!L) return -1;
-    if(log_header(L) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
+    if(log_header(L,f->cfg.hretime) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
     // Lifecycle check and install happen under life_m so fs_stop (which moves life to STOPPING
     // under the same lock before joining the workers) cannot slip between them.
     pthread_mutex_lock(&f->life_m);
@@ -746,6 +798,7 @@ void fs_close(frameserver *f){
     if(f->life_m_init) pthread_mutex_destroy(&f->life_m);
     fs_test_destroyed();
     free(f->geometry);free(f->geometry_y);free(f->geometry_unit);
+    free(f->retime_unit);free(f->retime_previous);free(f->retime_work);
     fs_pairing_free(&f->pairing);
     free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f);
 }

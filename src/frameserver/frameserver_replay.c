@@ -56,6 +56,11 @@ int main(int argc, char **argv){
     tool_guard("open outputs / fs_open / fs_start",lifecycle_s);
     if (argc < 2){ fprintf(stderr, "usage: %s <capture.tpc> [decision_log.csv] [--pace-us N] [--ring-mb N] [--pool N]\n", argv[0]); return 9; }
     fs_config cfg = {0}; cfg.geometry_config=&geometry; cfg.capture.replay_path = argv[1]; cfg.on_end = on_end;
+    const char *retime=getenv("FS_HRETIME");
+    if(retime && strcmp(retime,"0") && strcmp(retime,"1")) {
+        fputs("FS_HRETIME must be 0 or 1\n",stderr);return 2;
+    }
+    cfg.hretime=retime && !strcmp(retime,"1");
     for (int i = 2; i < argc; i++){
         if (!strcmp(argv[i], "--pace-us") && i + 1 < argc) cfg.capture.replay_pace_us = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--ring-mb") && i + 1 < argc) cfg.capture.ring_mb = atoi(argv[++i]);
