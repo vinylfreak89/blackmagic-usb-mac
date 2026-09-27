@@ -1239,6 +1239,8 @@ Unrepaired recognised displacement invalidates that row as a temporal witness.
 Current cross-field and boundary evidence stays independent of that history.
 Blank-level outer samples do not alone prove that a body-relative edge departure
 is timing damage; a labelled-unit hit does not establish recovery of its full band.
+A window containing a blanking boundary is not a pure boundary measurement:
+moving picture inside it can win the alignment while the boundary stays still.
 Retiming requires measured-edge certification; otherwise use trustworthy
 opposite-field donors, including for vacated samples. Field-1 lines >=255 and
 field-2 lines >=518 remain excluded. Off retains schema 28. Review

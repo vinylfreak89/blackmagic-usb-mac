@@ -2,6 +2,9 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef HRT_DIAG_PHASE
+#define HRT_DIAG_PHASE(n) ((void)0)
+#endif
 #if defined(__aarch64__) && !defined(HRT_SCALAR)
 #include <arm_neon.h>
 #endif
@@ -234,6 +237,7 @@ static void retime(const uint8_t *in,uint8_t *out,int s) {
 }
 void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
                int d1,int d2,uint8_t *out1,uint8_t *out2,hrt_result *o) {
+    HRT_DIAG_PHASE(0);
     memset(o,0,sizeof *o);memset(w->flagged,0,sizeof w->flagged);
     memset(w->seed,0,sizeof w->seed);memset(w->interior,0,sizeof w->interior);
     if(!w->context)memset(w->available,0,sizeof w->available);
@@ -246,9 +250,12 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         for(int a=0;a<2;a++)for(int e=0;e<2;e++)o->edge_offset[a][j][e]=UNKNOWN_OFFSET;
     }
     o->measured=1;
+    HRT_DIAG_PHASE(1);
     for(int k=0;k<2;k++)o->blank[k]=blank_level(src[k],k);
+    HRT_DIAG_PHASE(2);
     edge_reference(w,o,-1,d1,d2);
     for(int j=0;j<HRT_ROWS;j++)timing_edges(w->y[j],o->blank[j&1],w->edge[j],w->edge[j]+1);
+    HRT_DIAG_PHASE(3);
     for(int j=0;j<HRT_ROWS;j++) {
         w->moved[j]=(edge_movement(w,o,j)&15)!=0;
         if(!w->row[j] || excluded(j,d1,d2))continue;
@@ -264,6 +271,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
             if(w->row[other])o->edge_offset[1][j][e]=edge_window_offset(w->y[j],w->y[other],w->edge[j][e],w->edge[other][e],e);
         }
     }
+    HRT_DIAG_PHASE(4);
     for(int j=0;j<HRT_ROWS;j++) {
         if(!w->row[j] || !w->row[j^1] || excluded(j,d1,d2))continue;
         int k=j&1,other=j^1;
@@ -296,6 +304,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         *b=(hrt_band){.field=k+1,.first=line_number(2*first+k,d1,d2),.last=line_number(2*i+k,d1,d2)};
         o->field[k].bands++;i++;
     }
+    HRT_DIAG_PHASE(5);
     for(int j=0;j<HRT_ROWS;j++)if(w->flagged[j]) {
         int k=j&1,r=first_row(k,offsets[k])+j/2,line=r+4;
         uint8_t *out=dst[k]+HEADER+r*ROW_BYTES;
@@ -314,6 +323,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
     }
     /* Cache actual repaired luma at the source storage coordinates. Recognised
      * unrepaired displacement is never promoted to a clean temporal witness. */
+    HRT_DIAG_PHASE(6);
     memset(w->valid,0,sizeof w->valid);
     for(int j=0;j<HRT_ROWS;j++)if(w->row[j] && !excluded(j,d1,d2)) {
         int k=j&1,r=first_row(k,offsets[k])+j/2;
@@ -327,4 +337,5 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         w->valid[k][r]=1;
     }
     w->have=1;w->context=0;
+    HRT_DIAG_PHASE(7);
 }
