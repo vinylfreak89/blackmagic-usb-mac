@@ -8,7 +8,7 @@
 #if defined(__aarch64__) && !defined(HRT_SCALAR)
 #include <arm_neon.h>
 #endif
-/* Task47: exterior support comes from the tape, not a four-sample plateau. */
+/* Tape-learned exterior support and directly observed band extent. */
 enum { ROW_BYTES=1440, HEADER=48, WIDTH_BODY_LO=40, WIDTH_BODY_HI=220,
        HISTORY=30, SMALL_SHIFT=2 };
 typedef struct { double edge[2],error[2];int spill; } repair_boundary;
@@ -318,25 +318,29 @@ static int edge_content(hrt_workspace *w,const hrt_result *o,const double noise[
     }
     return seen;
 }
-static double displacement(hrt_workspace *w,hrt_result *o,int j) {
-    return ((w->repair[j].edge[0]-o->edge_median[j&1][0])+
-            (w->repair[j].edge[1]-o->edge_median[j&1][1]))/2;
+static void band_history(hrt_workspace *w,hrt_result *o) {
+    /* Freeze the past upper-typical extent before admitting this frame.
+     * Train only on direct runs: inferred gaps must not grow the limit. */
+    if(w->length_count) {
+        double v[HISTORY];for(int n=0;n<w->length_count;n++)v[n]=w->lengths[n];
+        o->typical_band_length=quantile(v,w->length_count,.9);
+    }
+    for(int k=0;k<2;k++)for(int i=0;i<HRT_FIELD_ROWS;i++)if(w->flagged[2*i+k]) {
+        int first=i;while(i+1<HRT_FIELD_ROWS && w->flagged[2*(i+1)+k])i++;
+        w->lengths[w->length_next++]=i-first+1;w->length_next%=HISTORY;
+        if(w->length_count<HISTORY)w->length_count++;
+    }
 }
 static void bridge(hrt_workspace *w,hrt_result *o,int d1,int d2) {
     for(int k=0;k<2;k++) {
         int last=-1;
         for(int j=k;j<HRT_ROWS;j+=2)if(w->flagged[j]) {
             if(last>=0 && j>last+2) {
-                double a=displacement(w,o,last),b=displacement(w,o,j);
-                int good=isfinite(a)&&isfinite(b)&&a*b<0;
+                int good=(j-last)/2+1<=o->typical_band_length;
                 for(int p=last+2;p<j && good;p+=2) {
-                    double v=displacement(w,o,p);
-                    double expect=a+(b-a)*(p-last)/(j-last);
-                    double uncertainty=fmax(1,(w->repair[p].error[0]+w->repair[p].error[1])/2);
-                    good=w->row[p] && w->picture[p] && !excluded(p,d1,d2) && isfinite(v) &&
-                         isfinite(uncertainty) && fabs(v-expect)<=uncertainty;
+                    good=w->row[p] && w->picture[p] && !excluded(p,d1,d2);
                 }
-                if(good)for(int p=last+2;p<j;p+=2){w->flagged[p]=1;o->reason[p]|=HRT_ZERO_CROSSING;}
+                if(good)for(int p=last+2;p<j;p+=2){w->flagged[p]=1;o->reason[p]|=HRT_BAND_FILL;}
             }
             last=j;
         }
@@ -405,20 +409,15 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
             ((o->reason[j]&(HRT_CORRELATION|HRT_BLANKING_SIZE))==
              (HRT_CORRELATION|HRT_BLANKING_SIZE));
     }
+    band_history(w,o);
     bridge(w,o,d1,d2);
     HRT_DIAG_PHASE(4);
-    if(w->length_count) {
-        double v[HISTORY];for(int n=0;n<w->length_count;n++)v[n]=w->lengths[n];
-        o->typical_band_length=quantile(v,w->length_count,.5);
-    }
     for(int k=0;k<2;k++)for(int i=0;i<HRT_FIELD_ROWS;) {
         int j=2*i+k;if(!w->flagged[j]){i++;continue;}
         int first=i;while(i+1<HRT_FIELD_ROWS && w->flagged[2*(i+1)+k])i++;
         hrt_band *b=&o->band[o->band_count++];
         *b=(hrt_band){.field=k+1,.first=line_number(2*first+k,d1,d2),.last=line_number(2*i+k,d1,d2)};
         o->field[k].bands++;
-        w->lengths[w->length_next++]=i-first+1;w->length_next%=HISTORY;
-        if(w->length_count<HISTORY)w->length_count++;
         i++;
     }
     HRT_DIAG_PHASE(5);

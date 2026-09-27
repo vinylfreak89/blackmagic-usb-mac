@@ -65,12 +65,17 @@ instead of extrapolating a Gaussian from MAD. Resets, epoch changes and counter 
 A broadly damaged initial body can contaminate bootstrap; no label-specific
 fallback or concealed clean-reference assumption repairs that limitation.
 
-Bands are contiguous own-field flags, including singletons. An intervening gap
-joins only when finite endpoint displacements have opposite signs and every
-gap row fits the linear zero-crossing profile within its own crossing error.
-There is no fixed gap-length constant, nor extrapolation beyond either bound.
-The last30 band lengths supply a logged median as supporting evidence, not a
-third detector. Switch rows f1>=255/f2>=518 remain excluded.
+Bands are contiguous own-field flags, including singletons. Between successive
+direct detections, every eligible picture row joins when their inclusive
+own-field span fits the past90th-percentile directly detected run length.
+The existing30-run tape-level ring supplies this upper-typical extent, shared
+across fields. Only pre-fill runs train it, and the current frame cannot change
+its own allowance. Cold start/reset has no history: no gap filling yet.
+Missing/non-picture rows and excluded switch rows are barriers. Edge sign,
+profile and measurability do not gate filling; the existing width rule decides
+each joined row's action. There is no extrapolation beyond either bound.
+Nearby detections can chain into a longer band; every final band is logged.
+Switch rows f1>=255/f2>=518 remain excluded.
 
 Repair uses the existing half-height instrument: left local picture median
 26..35, right maximum696..705, crossing search147 samples from either border.
@@ -109,9 +114,10 @@ tokens, counts and edge directions remain. Old window-offset columns are
 replaced by hretime_evidence_f1/f2: NTSC:reason/rLine/rNeighbours/shift.
 Reason bits are observations, not necessarily detections:1 correlation,
 2 missing/spill,4 blanking size not explained by neighbouring content,
-8 interior blank,16 zero-crossing gap. A row is
+8 interior blank,16 learned-band fill. A row is
 detected for2/16 or the conjunction1+4. hretime_normal_f1/f2 carry deficit limit, left/right
-normal and their allowances; hretime_typical_band is the past length median.
+normal and their allowances; hretime_typical_band is the past direct-run P90
+actually used for filling (zero at cold start).
 Field1 belongs to frame_top_unit, field2 to the row counter.
 
 `make tests/hretime_repair_probe` builds a diagnostic real worker with the

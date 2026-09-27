@@ -1,4 +1,4 @@
-/* Task47: learned exterior support, narrow blanking and analog rolloffs. */
+/* Learned exterior support, band extent and unchanged width repair. */
 #include "../hretime.c"
 #include <assert.h>
 #include <stdio.h>
@@ -100,18 +100,27 @@ int main(void) {
     work.repair[40]=(repair_boundary){{NAN,710},{NAN,1},1};
     assert(!repair_choice(&work,40,0,0,&s));
     fixture();hrt_apply(&work,unit,other,-30,30,out1,out2,&result);
-    /* Linear zero crossing bridges; a flat intervening plateau does not. */
+    /* Cold start leaves gaps alone; only directly observed runs train P90. */
     fixture();run(1);memset(work.flagged,0,sizeof work.flagged);
-    for(int j=0;j<480;j++)work.repair[j]=(repair_boundary){{10,710},{1,1},0};
-    result.edge_median[0][0]=10;result.edge_median[0][1]=710;
     work.flagged[40]=work.flagged[48]=1;
-    for(int j=40;j<=48;j+=2) {
-        double d=-4+(j-40);work.repair[j].edge[0]+=d;work.repair[j].edge[1]+=d;
-    }
+    band_history(&work,&result);assert(result.typical_band_length==0);
+    bridge(&work,&result,0,0);assert(!work.flagged[42] && work.length_count==2);
+    work.lengths[0]=4;work.lengths[1]=6; /* P90=5.8, inclusive seed span5 */
+    band_history(&work,&result);assert(fabs(result.typical_band_length-5.8)<1e-12);
+    /* Even unmeasurable edges and a flat displacement plateau fill. */
+    work.repair[42]=(repair_boundary){{NAN,NAN},{NAN,NAN},0};
     bridge(&work,&result,0,0);assert(work.flagged[42] && work.flagged[44] && work.flagged[46]);
-    memset(work.flagged,0,sizeof work.flagged);work.flagged[40]=work.flagged[48]=1;
-    work.repair[42].edge[0]=10;work.repair[42].edge[1]=710;
+    assert(result.reason[42]&HRT_BAND_FILL);
+    assert(!work.flagged[38] && !work.flagged[50] && work.length_count==4);
+    assert(work.lengths[2]==1 && work.lengths[3]==1); /* not inferred length5 */
+    /* An inclusive span beyond the learned limit starts a separate band. */
+    memset(work.flagged,0,sizeof work.flagged);work.flagged[40]=work.flagged[50]=1;
     bridge(&work,&result,0,0);assert(!work.flagged[42]);
+    /* Non-picture rows are barriers, not permission to repair device inserts. */
+    memset(work.flagged,0,sizeof work.flagged);work.flagged[40]=work.flagged[48]=1;
+    work.picture[44]=0;
+    bridge(&work,&result,0,0);assert(!work.flagged[42]);
+    hrt_reset(&work);assert(!work.length_count && !work.length_next);
     /* Real pooled percentile, not a MAD multiplier or one-sample floor. */
     memset(&work,0,sizeof work);work.history_count[0]=1;
     normal_summary *h=&work.history[0][0];h->count=100;
@@ -157,6 +166,6 @@ int main(void) {
     result.edge_spread[0][0]=result.edge_spread[0][1]=1;
     unsigned moved=edge_movement(&work,&result,40);
     assert((moved&HRT_LEFT_LATER) && !(moved&(HRT_RIGHT_EARLIER|HRT_RIGHT_LATER)));
-    puts("HRETIME PASS: Pearson oracle, learned history, singleton, shape, width, spill, donors, zero crossing, chroma, crop bounds");
+    puts("HRETIME PASS: Pearson oracle, learned history, singleton, shape, width, spill, donors, learned band fill, chroma, crop bounds");
     return 0;
 }
