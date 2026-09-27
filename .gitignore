@@ -133,6 +133,3 @@ src/frameserver/tests/audio_lookup_stress
 src/frameserver/tests/audio_evidence_test
 src/frameserver/tests/audio_evidence_asan
 src/frameserver/tests/audio_evidence_tsan
-/src/frameserver/tests/tear_repair_test
-/src/frameserver/tests/tear_repair_asan
-/src/frameserver/tests/tear_repair_tsan

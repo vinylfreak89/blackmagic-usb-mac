@@ -81,7 +81,7 @@ int main(int argc,char **argv){
     block_counter=12;pthread_t thread;assert(!pthread_create(&thread,NULL,writer,f->aud));wait_writer();
     /* Counter 11 is already complete. An unrelated counter 12 write holds the
      * global sequence odd. Video must publish without waiting on that writer. */
-    geometry_publish(f,&it,f->pool,&d,NULL);
+    geometry_publish(f,&it,f->pool,&d);
     assert(callback_count==1 && !callback_known && !callback_pts);
     unblock_writer();assert(!pthread_join(thread,NULL));
     check_audio_cells(f->log,"3","0");
@@ -89,17 +89,17 @@ int main(int argc,char **argv){
     /* History eviction after ingress cannot retroactively erase log evidence. */
     block_counter=UINT64_MAX;
     for(uint64_t c=13;c<13+AP_LOOKUP_ENTRIES;c++)resync(f->aud,c,c*1601);
-    fresh_log(f);geometry_publish(f,&it,f->pool,&d,NULL);
+    fresh_log(f);geometry_publish(f,&it,f->pool,&d);
     assert(callback_count==2 && !callback_known);
     check_audio_cells(f->log,"3","0");
 
     /* Future audio remains a deterministic empty log cell, even if available
      * at live publication. An absent cell is not invented zero residual. */
     it=capture_video(f,unit,1,700);d.counter=700;
-    fresh_log(f);geometry_publish(f,&it,f->pool,&d,NULL);
+    fresh_log(f);geometry_publish(f,&it,f->pool,&d);
     assert(!callback_known);check_audio_cells(f->log,"","");
     resync(f->aud,700,700*1601);
-    fresh_log(f);geometry_publish(f,&it,f->pool,&d,NULL);
+    fresh_log(f);geometry_publish(f,&it,f->pool,&d);
     assert(callback_known);check_audio_cells(f->log,"","");
 
     /* Epoch ownership and a fresh run seed the residual instead of comparing
@@ -107,11 +107,11 @@ int main(int argc,char **argv){
     unit_audio_observation a={.kind=UNIT_AUDIO_RESYNC,.epoch=2,.counter_extended=11,.sample_ordinal=9999};
     ap_on_audio(f->aud,&a);
     it=capture_video(f,unit,1,11);d.counter=11;
-    fresh_log(f);geometry_publish(f,&it,f->pool,&d,NULL);
+    fresh_log(f);geometry_publish(f,&it,f->pool,&d);
     assert(!callback_known);check_audio_cells(f->log,"","");
     it=capture_video(f,unit,2,11);f->geometry_item=it;
     (void)capture_video(f,unit,2,12); // does not replace the pending item's evidence
-    fresh_log(f);geometry_publish(f,&f->geometry_item,f->pool,&d,NULL);
+    fresh_log(f);geometry_publish(f,&f->geometry_item,f->pool,&d);
     assert(callback_known);check_audio_cells(f->log,"0","0");
     fclose(f->log);fp_close(f->pub);ap_close(f->aud);
     pthread_mutex_destroy(&f->log_m);pthread_cond_destroy(&f->c);pthread_mutex_destroy(&f->m);
