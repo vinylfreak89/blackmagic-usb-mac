@@ -131,21 +131,27 @@ static int repair_reference_ok(hrt_workspace *w,int j,int d1,int d2) {
         !excluded(j,d1,d2) && !w->repair[j].spill &&
         isfinite(w->repair[j].edge[0]) && isfinite(w->repair[j].edge[1]);
 }
-static int repair_choice(hrt_workspace *w,int j,int d1,int d2,int *shift) {
+static int repair_choice(hrt_workspace *w,const hrt_result *o,int j,int d1,int d2,int *shift) {
     repair_boundary *b=w->repair+j;
     if(b->spill || !isfinite(b->edge[0]) || !isfinite(b->edge[1]))return 0;
-    int a=j-2,z=j+2;
+    /* Reference the whole band's exterior, including zero-action gap rows.
+     * Opposite-field edges are not this field's width/timing reference. */
+    int first=j,last=j;
+    while(first>=2 && w->flagged[first-2])first-=2;
+    while(last+2<HRT_ROWS && w->flagged[last+2])last+=2;
+    int a=first-2,z=last+2;
     while(a>=0 && !repair_reference_ok(w,a,d1,d2))a-=2;
     while(z<HRT_ROWS && !repair_reference_ok(w,z,d1,d2))z+=2;
     if(a<0 && z>=HRT_ROWS) {
-        a=repair_reference_ok(w,j-1,d1,d2)?j-1:-1;
-        z=repair_reference_ok(w,j+1,d1,d2)?j+1:HRT_ROWS;
-    }
-    if(a<0 && z>=HRT_ROWS)return 0;
-    if(a<0)a=z;if(z>=HRT_ROWS)z=a;
-    double weight=a==z?0:(double)(j-a)/(z-a);
-    for(int s=0;s<2;s++) {
-        w->expected[j][s]=(1-weight)*w->repair[a].edge[s]+weight*w->repair[z].edge[s];
+        for(int s=0;s<2;s++) {
+            if(!isfinite(o->edge_median[j&1][s]))return 0;
+            w->expected[j][s]=o->edge_median[j&1][s];
+        }
+    } else {
+        if(a<0)a=z;if(z>=HRT_ROWS)z=a;
+        double weight=a==z?0:(double)(j-a)/(z-a);
+        for(int s=0;s<2;s++)
+            w->expected[j][s]=(1-weight)*w->repair[a].edge[s]+weight*w->repair[z].edge[s];
     }
     double allowance=fmax(w->expected[j][0],719-w->expected[j][1]);
     w->width_precision[j]=allowance;
@@ -426,7 +432,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         uint8_t *out=dst[k]+HEADER+r*ROW_BYTES;
         /* Interior black alone is not timing damage. Only garbage border
          * blanking forces interpolation independently of the width rule. */
-        int s=0,keep=repair_choice(w,j,d1,d2,&s);
+        int s=0,keep=repair_choice(w,o,j,d1,d2,&s);
         if(o->reason[j]&HRT_MISSING_EDGE)keep=0;
         o->shift[j]=keep?s:0;
         if(keep && !s){o->action[j]=HRT_CONTENT;o->field[k].content++;continue;}

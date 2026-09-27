@@ -88,17 +88,29 @@ int main(void) {
     work.repair[40]=(repair_boundary){{11,711},{1,1},0};
     assert(!donor(&work,39) && !donor(&work,41));
     assert(interpolate(&work,40,out1)); /* outward search reaches rows37/43 */
-    assert(repair_choice(&work,40,0,0,&s) && s==0); /* within measured error */
+    assert(repair_choice(&work,&result,40,0,0,&s) && s==0); /* within measured error */
     work.repair[40]=(repair_boundary){{13,713},{1,1},0};
-    assert(repair_choice(&work,40,0,0,&s) && s==3);
+    assert(repair_choice(&work,&result,40,0,0,&s) && s==3);
     work.repair[40]=(repair_boundary){{13,713},{2,4},0};
-    assert(repair_choice(&work,40,0,0,&s) && s==0); /* mean error bound3 */
+    assert(repair_choice(&work,&result,40,0,0,&s) && s==0); /* mean error bound3 */
     work.repair[40]=(repair_boundary){{10,710},{1,1},0};
-    assert(repair_choice(&work,40,0,0,&s) && s==0);
+    assert(repair_choice(&work,&result,40,0,0,&s) && s==0);
     work.repair[40]=(repair_boundary){{30,710},{1,1},0};
-    assert(!repair_choice(&work,40,0,0,&s));
+    assert(!repair_choice(&work,&result,40,0,0,&s));
     work.repair[40]=(repair_boundary){{NAN,710},{NAN,1},1};
-    assert(!repair_choice(&work,40,0,0,&s));
+    assert(!repair_choice(&work,&result,40,0,0,&s));
+    /* Filled but zero-action rows are inside the same repair band. */
+    work.repair[40]=(repair_boundary){{13,713},{1,1},0};
+    work.flagged[38]=work.flagged[42]=1;
+    work.repair[38]=work.repair[42]=work.repair[40];
+    assert(repair_choice(&work,&result,40,0,0,&s) && s==3);
+    assert(work.expected[40][0]==10 && work.expected[40][1]==710);
+    /* No undetected own-field reference: learned own-field normal, not peer. */
+    for(int j=0;j<480;j+=2)work.flagged[j]=1;
+    result.edge_median[0][0]=10;result.edge_median[0][1]=710;
+    assert(repair_choice(&work,&result,40,0,0,&s) && s==3);
+    result.edge_median[0][0]=NAN;
+    assert(!repair_choice(&work,&result,40,0,0,&s));
     fixture();hrt_apply(&work,unit,other,-30,30,out1,out2,&result);
     /* Cold start leaves gaps alone; only directly observed runs train P90. */
     fixture();run(1);memset(work.flagged,0,sizeof work.flagged);

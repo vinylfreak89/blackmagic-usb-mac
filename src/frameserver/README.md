@@ -93,8 +93,14 @@ establish blanking presence/spill, but not independently resolve displacement.
 Finite narrow-side crossings remain usable for the width rule. Unknown width
 still selects I, not R, when another measurement detects the line.
 
-Expected width is interpolated between nearest undisturbed measurable
-same-field rows, else adjacent opposite-field rows. Both width error and mean
+Expected width is interpolated between nearest undetected measurable
+same-field rows outside the entire final band (including its zero-action
+rows). Search starts above its first row and below its last, never inside it.
+One available side supplies both endpoints; with neither, use the learned
+same-field normal edges, not the opposite field. If no finite normal exists,
+width remains unavailable and the existing interpolation fallback applies.
+Undetected bent rows outside a band's extent can still contaminate a reference;
+being outside the band does not itself prove clean timing. Both width error and mean
 edge displacement may be as large as the larger expected exterior blanking
 width. Within that allowance, round displacement to an integer and retime.
 An integer shift within the mean of the two crossing uncertainties
