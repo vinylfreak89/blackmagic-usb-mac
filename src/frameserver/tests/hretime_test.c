@@ -28,18 +28,40 @@ static void run(void) {
     memcpy(out1,unit,sizeof unit);memcpy(out2,other,sizeof other);
     hrt_apply(&work,unit,other,0,0,out1,out2,&result);
 }
+static void check_search(const uint8_t *a,const uint8_t *b,const uint8_t *c) {
+    uint32_t ap[721],bp[721],cp[721];
+    uint16_t doubled[720],ref[720];
+    for(int x=0;x<720;x++){doubled[x]=2*a[x];ref[x]=b[x]+c[x];}
+    prefix(a,ap);prefix(b,bp);prefix(c,cp);
+    unsigned best=~0u,best_n=1,zero=0;int expected=0;
+    for(int s=-SEARCH;s<=SEARCH;s++) {
+        unsigned sum=0;
+        for(int x=BODY_LO+(s<0?-s:0);x<BODY_HI-(s>0?s:0);x++)sum+=(unsigned)abs(2*(int)a[x+s]-b[x]-c[x]);
+        assert(sum==prepared_sad(doubled,ref,s));
+        assert(lower_bound(ap,bp,cp,s,BODY_SIZE)<=sum);
+        unsigned n=BODY_SIZE-abs(s);
+        if(best==~0u || (uint64_t)sum*best_n<(uint64_t)best*n){best=sum;best_n=n;expected=s;}
+        if(!s)zero=sum;
+    }
+    int shift=0;float ratio=search(a,b,c,ap,bp,cp,&shift);
+    float expected_ratio=((float)best/(2*best_n))/fmaxf((float)zero/(2*BODY_SIZE),1e-6f);
+    assert(shift==expected && ratio==expected_ratio);
+}
 static void oracle(void) {
     uint8_t a[720],b[720],c[720];
     for(int trial=0;trial<50;trial++) {
         for(int x=0;x<720;x++){a[x]=random_byte();b[x]=random_byte();c[x]=random_byte();}
-        for(int s=-24;s<=24;s++) {
-            unsigned sum=0;
-            for(int x=60;x<660;x++)sum+=(unsigned)abs(2*(int)a[x+s]-b[x]-c[x]);
-            assert(sum==sad2(a,b,c,s));
-        }
+        if(trial==0)memset(a,2,sizeof a),memset(b,2,sizeof b),memset(c,2,sizeof c);
+        check_search(a,b,c);
     }
 }
-int main(void) {
+int main(int argc,char **argv) {
+    if(argc==2) {
+        FILE *f=fopen(argv[1],"rb");assert(f);uint8_t rows[3][720];unsigned n=0;size_t got;
+        while((got=fread(rows,1,sizeof rows,f))){assert(got==sizeof rows);check_search(rows[0],rows[1],rows[2]);n++;}
+        assert(!ferror(f));fclose(f);printf("HRETIME captured scalar oracle: %u triples PASS\n",n);return 0;
+    }
+    assert(argc==1);
     oracle();
     fixture();displace(unit,0,20,6,0);run();
     assert(result.field[0].retimed==1 && result.field[1].retimed==0);
@@ -51,6 +73,12 @@ int main(void) {
     fixture();displace(unit,0,20,-16,0);run();
     assert(result.action[40]==HRT_INTERPOLATE); /* censored width: not silently shifted */
     fixture();displace(unit,0,20,18,0);run();assert(result.action[40]==HRT_INTERPOLATE);
+    for(int s=-SEARCH;s<=SEARCH;s+=SEARCH)if(s) {
+        fixture();displace(unit,0,20,s,0);run();
+        assert(result.shift[40]==s && result.action[40]==HRT_INTERPOLATE);
+    }
+    fixture();displace(unit,0,20,-80,0);run();
+    assert(result.shift[40]==-80 && result.action[40]==HRT_INTERPOLATE);
     fixture();for(int i=0;i<6;i++)displace(other,1,i,-7,0);run();
     assert(result.field[0].bands==0 && result.field[1].bands==1);
     assert(result.field[1].retimed==6); /* mirrored f1 discontinuity has no self break */

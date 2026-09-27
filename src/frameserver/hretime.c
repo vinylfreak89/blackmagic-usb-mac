@@ -6,10 +6,12 @@
 #include <arm_neon.h>
 #endif
 
-enum { ROW_BYTES=1440, HEADER=48, SEARCH=24, BODY_LO=60, BODY_HI=660,
+enum { ROW_BYTES=1440, HEADER=48, BODY_LO=60, BODY_HI=660,
+       BODY_SIZE=BODY_HI-BODY_LO, SEARCH=BODY_SIZE/2,
        WIDTH_BODY_LO=40, WIDTH_BODY_HI=220 };
 struct hrt_workspace {
     uint8_t y[HRT_ROWS][HRT_WIDTH];
+    uint32_t prefix[HRT_ROWS][HRT_WIDTH+1];
     const uint8_t *row[HRT_ROWS];
     uint8_t flagged[HRT_ROWS], disc[HRT_ROWS];
     float ratio[HRT_ROWS];
@@ -23,36 +25,67 @@ static int line_number(int j,int d1,int d2) {
 static int excluded(int j,int d1,int d2) {
     return line_number(j,d1,d2)>=((j&1)?518:255);
 }
-/* Twice the SAD against the exact half-integer neighbour mean. Every sum is
- * exact (<306001); preserve NumPy float32 mean/division and first-min tie order. */
-static unsigned sad2(const uint8_t *a,const uint8_t *b,const uint8_t *c,int s) {
-    unsigned sum=0;int x=BODY_LO;
+static void prefix(const uint8_t *y,uint32_t *p) {
+    p[0]=0;for(int x=0;x<HRT_WIDTH;x++)p[x+1]=p[x]+y[x];
+}
+/* Exact normalized comparisons; products <=306000*600 fit uint32_t. Visit
+ * near zero first for a useful incumbent, but ties still choose lowest shift. */
+static int cannot_improve(unsigned sum,unsigned n,unsigned best,unsigned best_n,int s,int best_s) {
+    unsigned lhs=sum*best_n,rhs=best*n;
+    return lhs>rhs || (lhs==rhs && s>=best_s);
+}
+/* Prepared doubled luma and neighbour sum permit fused 16-bit absolute-
+ * difference accumulation. Even 600*510/8 fits each lane without overflow.
+ * Independent accumulators avoid a single long dependency chain. */
+static unsigned prepared_sad(const uint16_t *a,const uint16_t *ref,int s) {
+    unsigned sum=0;int x=BODY_LO+(s<0?-s:0),end=BODY_HI-(s>0?s:0);
 #if defined(__aarch64__) && !defined(HRT_SCALAR)
-    uint32x4_t acc=vdupq_n_u32(0);
-    for(;x+16<=BODY_HI;x+=16) {
-        uint8x16_t av=vld1q_u8(a+x+s),bv=vld1q_u8(b+x),cv=vld1q_u8(c+x);
-        uint16x8_t al=vshlq_n_u16(vmovl_u8(vget_low_u8(av)),1);
-        uint16x8_t ah=vshlq_n_u16(vmovl_u8(vget_high_u8(av)),1);
-        acc=vpadalq_u16(acc,vabdq_u16(al,vaddl_u8(vget_low_u8(bv),vget_low_u8(cv))));
-        acc=vpadalq_u16(acc,vabdq_u16(ah,vaddl_u8(vget_high_u8(bv),vget_high_u8(cv))));
+    uint16x8_t v0=vdupq_n_u16(0),v1=v0,v2=v0,v3=v0;
+    for(;x+32<=end;x+=32) {
+        v0=vabaq_u16(v0,vld1q_u16(a+x+s),vld1q_u16(ref+x));
+        v1=vabaq_u16(v1,vld1q_u16(a+x+s+8),vld1q_u16(ref+x+8));
+        v2=vabaq_u16(v2,vld1q_u16(a+x+s+16),vld1q_u16(ref+x+16));
+        v3=vabaq_u16(v3,vld1q_u16(a+x+s+24),vld1q_u16(ref+x+24));
     }
-    sum=vaddvq_u32(acc);
+    for(;x+8<=end;x+=8)v0=vabaq_u16(v0,vld1q_u16(a+x+s),vld1q_u16(ref+x));
+    sum=vaddlvq_u16(vaddq_u16(vaddq_u16(v0,v1),vaddq_u16(v2,v3)));
 #endif
-    for(;x<BODY_HI;x++)sum+=(unsigned)abs(2*(int)a[x+s]-b[x]-c[x]);
+    for(;x<end;x++)sum+=(unsigned)abs((int)a[x+s]-ref[x]);
     return sum;
 }
-static float search(const uint8_t *a,const uint8_t *b,const uint8_t *c,int *shift) {
-    unsigned best=~0u,zero=0;
-    for(int s=-SEARCH;s<=SEARCH;s++) {
-        unsigned e=sad2(a,b,c,s);
-        if(s==0)zero=e;
-        if(e<best){best=e;*shift=s;}
+/* Triangle inequality: sum |2a-b-c| >= |sum(2a-b-c)| on the common overlap.
+ * Every survivor is evaluated at full resolution, no heuristic finalist set.
+ * Fine scalar block bounds cost more than SIMD SAD on flat/noisy material. */
+static unsigned lower_bound(const uint32_t *a,const uint32_t *b,const uint32_t *c,
+                            int s,int block) {
+    unsigned sum=0;int end=BODY_HI-(s>0?s:0);
+    for(int x=BODY_LO+(s<0?-s:0);x<end;x+=block) {
+        int n=end-x<block?end-x:block;
+        int av=2*(int)(a[x+s+n]-a[x+s]);
+        int ref=(int)(b[x+n]-b[x]+c[x+n]-c[x]);
+        sum+=(unsigned)abs(av-ref);
     }
-    float e=(float)best/1200.0f,z=(float)zero/1200.0f;
+    return sum;
+}
+static float search(const uint8_t *a,const uint8_t *b,const uint8_t *c,
+                    const uint32_t *ap,const uint32_t *bp,const uint32_t *cp,int *shift) {
+    uint16_t doubled[HRT_WIDTH],ref[HRT_WIDTH];
+    for(int x=BODY_LO;x<BODY_HI;x++){doubled[x]=2*a[x];ref[x]=b[x]+c[x];}
+    unsigned zero=prepared_sad(doubled,ref,0),best=zero,best_n=BODY_SIZE;*shift=0;
+    for(int distance=1;distance<=SEARCH;distance++)for(int sign=-1;sign<=1;sign+=2) {
+        int s=sign*distance;unsigned n=BODY_SIZE-distance;
+        if(cannot_improve(lower_bound(ap,bp,cp,s,BODY_SIZE),n,best,best_n,s,*shift))continue;
+        unsigned e=prepared_sad(doubled,ref,s);
+        if(!cannot_improve(e,n,best,best_n,s,*shift)){best=e;best_n=n;*shift=s;}
+    }
+    float e=(float)best/(2*best_n),z=(float)zero/(2*BODY_SIZE);
     return e/fmaxf(z,1e-6f);
 }
+static float row_search(hrt_workspace *w,int a,int b,int c,int *shift) {
+    return search(w->y[a],w->y[b],w->y[c],w->prefix[a],w->prefix[b],w->prefix[c],shift);
+}
 static float boundary(hrt_workspace *w,int a,int b) {
-    int s=0;float q=search(w->y[a],w->y[b],w->y[b],&s);
+    int s=0;float q=row_search(w,a,b,b,&s);
     return s && q<0.8f ? q : 1.0f;
 }
 static double hist_quantile(const unsigned h[256],unsigned n,double q) {
@@ -136,10 +169,11 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         int k=j&1,r=first_row(k,offsets[k])+j/2;
         w->row[j]=valid_row(k,r)?src[k]+HEADER+r*ROW_BYTES:NULL;
         for(int x=0;x<HRT_WIDTH;x++)w->y[j][x]=w->row[j]?w->row[j][2*x+1]:16;
+        prefix(w->y[j],w->prefix[j]);
     }
     o->measured=1;
     for(int j=0;j<HRT_ROWS;j++) {
-        w->ratio[j]=search(w->y[j],w->y[j?j-1:1],w->y[j+1<HRT_ROWS?j+1:j-1],o->shift+j);
+        w->ratio[j]=row_search(w,j,j?j-1:1,j+1<HRT_ROWS?j+1:j-1,o->shift+j);
         w->disc[j]=o->shift[j]!=0 && w->ratio[j]<0.8f;
     }
     for(int j=0;j<HRT_ROWS;) {
