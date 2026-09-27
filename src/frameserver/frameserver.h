@@ -35,12 +35,13 @@ extern "C" {
 typedef struct frameserver frameserver;
 
 #define FS_GEOMETRY_LOG_SCHEMA 28
+#define FS_TEAR_LOG_SCHEMA 29
 
 typedef struct {
     cc_config capture;          // device input or replay_path
     unsigned pool_units;        // unit slots between delivery thread and worker (0 => 16)
     unsigned surface_pool;      // IOSurface pool for the publisher (0 => 6)
-    const char *decision_log;   // schema FS_GEOMETRY_LOG_SCHEMA CSV, or NULL;
+    const char *decision_log;   // schema 28 CSV (29 with tear_repair), or NULL;
                                 // opened exclusively (must not exist).
     fp_sink sink;               // consumer of published frames (may be {NULL,NULL} => count only)
     ap_sink audio_sink;         // consumer of PCM blocks on the device timebase ({NULL,NULL} => count only)
@@ -56,6 +57,7 @@ typedef struct {
     int geometry_pair_next;
     const char *pairing_schedule; // CSV snapshot loaded by fs_open;
                                  // excludes geometry_pair_next. First row starts at 0.
+    int tear_repair;              // default 0; downstream row substitution only; schema 29 when on
 } fs_config;
 
 // Audio: every PCM record the parser emits is published through audio_publisher as bounded
