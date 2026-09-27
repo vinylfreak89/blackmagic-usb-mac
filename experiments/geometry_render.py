@@ -29,7 +29,8 @@ What it draws, and nothing else:
 * Audio from --pcm (S24LE stereo 48 kHz, `frameserver_replay --dump-pcm` on the same capture), padded
   so the picture is never cut to the audio's length.
 
---published-uyvy reads the ACTUAL frameserver output pixels (raw or lossless zstd),
+--published-uyvy reads the ACTUAL frameserver output pixels (raw, lossless FFV1
+Matroska or zstd),
 in that replay's published-unit order from --engine-log. It uses the native 720x480
 aperture, not the legacy 486-line raw-raster review crop. Reversed frames weave
 the already-published fields from their actual source units. No repair or placement
@@ -693,7 +694,7 @@ def main():
     ap.add_argument("capture"); ap.add_argument("out")
     ap.add_argument("--offsets", help="manual placement (see module docstring)")
     ap.add_argument("--engine-log", help="the registration engine's decision log (sidecar); applied when present")
-    ap.add_argument("--published-uyvy", help="actual frameserver 720x480 dump (raw or .zst); requires --engine-log; draws repair ticks")
+    ap.add_argument("--published-uyvy", help="actual frameserver 720x480 dump (raw, FFV1 .mkv or .zst); requires --engine-log; draws repair ticks")
     ap.add_argument("--pair-next", action="store_true")
     ap.add_argument("--parity", default=None, choices=("tff", "bff"))
     ap.add_argument("--pairing-schedule", help="per-counter pairing: CSV first_counter,pairing,note")

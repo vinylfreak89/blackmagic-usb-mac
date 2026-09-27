@@ -18,7 +18,10 @@ with tempfile.TemporaryDirectory(prefix='published-pixels-') as directory:
     rows = [dict(counter_extended=str(c),published='1') for c in range(10,14)]
     compressed = p.with_suffix('.zst')
     subprocess.run(['zstd','-q','-1',str(p),'-o',str(compressed)],check=True)
-    for path in (p,compressed):
+    ffv1 = p.with_suffix('.mkv')
+    subprocess.run(['ffmpeg','-v','error','-f','rawvideo','-pix_fmt','uyvy422',
+        '-s','720x480','-i',str(p),'-c:v','ffv1','-level','3','-pix_fmt','yuv422p',str(ffv1)],check=True)
+    for path in (p,compressed,ffv1):
         reader = PublishedPixels(path,rows)
         try:
             a = reader.frame(11,10)
@@ -49,4 +52,4 @@ for key,value in [('hretime_lines_f1','24:I 24:I'),('hretime_lines_f2','285:I'),
     try: repair_ticks(dict(row,**{key:value}))
     except ValueError: pass
     else: raise AssertionError((key,value))
-print('PUBLISHED-PIXELS PASS: raw/zstd exact bytes, paired ownership, bounded cache, boundaries, ticks')
+print('PUBLISHED-PIXELS PASS: raw/zstd/FFV1 exact bytes, paired ownership, bounded cache, boundaries, ticks')

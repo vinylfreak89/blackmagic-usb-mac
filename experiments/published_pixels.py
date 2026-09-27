@@ -1,12 +1,13 @@
 """Read frameserver_replay's actual 720x480 UYVY output, in sidecar unit order.
 
-The dump is optionally zstd-compressed during replay (requires the zstd CLI).
-This is a lossless spool,
+The dump is optionally lossless FFV1/Matroska or zstd-compressed during replay
+(requires ffmpeg/ffprobe or the zstd CLI). This is a lossless spool,
 not another registration or repair implementation. Only two transport units are
 cached: reversed pairing takes f1 of the next unit and f2 of the current unit.
 """
 from collections import OrderedDict
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 
@@ -25,6 +26,17 @@ class PublishedPixels:
         self.process = None
         if Path(path).suffix == '.zst':
             self.process = subprocess.Popen(['zstd', '-q', '-d', '-c', str(path)], stdout=subprocess.PIPE)
+            self.stream = self.process.stdout
+        elif Path(path).suffix == '.mkv':
+            meta = json.loads(subprocess.check_output(['ffprobe','-v','error',
+                '-show_entries','stream=codec_type,codec_name,width,height,pix_fmt',
+                '-of','json',str(path)]))['streams']
+            if (len(meta) != 1 or meta[0].get('codec_name') != 'ffv1' or
+                    meta[0].get('width') != 720 or meta[0].get('height') != 480 or
+                    meta[0].get('pix_fmt') != 'yuv422p'):
+                raise ValueError('published Matroska spool must be lossless 720x480 yuv422p FFV1')
+            self.process = subprocess.Popen(['ffmpeg','-v','error','-i',str(path),
+                '-f','rawvideo','-pix_fmt','uyvy422','pipe:1'],stdout=subprocess.PIPE)
             self.stream = self.process.stdout
         else:
             self.stream = open(path, 'rb')
