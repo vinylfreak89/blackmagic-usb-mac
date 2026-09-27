@@ -36,6 +36,8 @@ aperture, not the legacy 486-line raw-raster review crop. Reversed frames weave
 the already-published fields from their actual source units. No repair or placement
 is recomputed in Python. R/I repair ticks come from the same frame-owned sidecar:
 orange re-timed, red interpolated; content/agree and unavailable rows have no ticks.
+Their margin lanes bypass deinterlacing: single-row metadata must not be discarded
+as a field. The encoded tick audit checks both lanes against every sidecar frame.
 An H-retiming sidecar without these actual output pixels is refused. Decode must
 account for every published unit, including unpaired boundaries, and reports a
 SHA256 of the entire decoded dump before publication validation.
@@ -81,6 +83,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from packet_capture_reader import walk_tagged
 from live_overlay_strip import payload as strip_payload, draw as draw_strip
 from published_pixels import PublishedPixels, repair_ticks
+from repair_tick_overlay import preserve_tick_lanes, TICK_X, TICK_COLORS
 
 UNIT_BYTES, HDR, ROW_BYTES, RASTER_ROWS = 756_048, 48, 1440, 525
 MARK = b"\x00\x00\xff\xff"
@@ -893,14 +896,22 @@ def main():
         # 4:2:2 into the deinterlacer: at 4:2:0 one chroma sample spans two lines of OPPOSITE fields
         parts = [f"[0:v]format=yuv422p,split={len(runs)}" + "".join(f"[s{k}]" for k in range(len(runs)))]
         for k, (b0, b1, P) in enumerate(runs):
-            parts.append(f"[s{k}]trim=start_frame={b0}:end_frame={b1},setpts=PTS-STARTPTS,{deint(P)}[v{k}]")
+            trimmed = f"[s{k}]trim=start_frame={b0}:end_frame={b1},setpts=PTS-STARTPTS"
+            if published:
+                parts.append(trimmed + f"[t{k}]")
+                parts.append(preserve_tick_lanes(f't{k}', f'v{k}', deint(P), f'p{k}'))
+            else:
+                parts.append(trimmed + f",{deint(P)}[v{k}]")
         parts.append("".join(f"[v{k}]" for k in range(len(runs))) + f"concat=n={len(runs)}:v=1:a=0[vout]")
         graph = ";".join(parts)
         cmd += ["-filter_complex", graph, "-map", "[vout]"] + (["-map", "1:a"] if a.pcm else [])
         print(f"deinterlacer: {a.deint} per pairing run " + ", ".join(f"{b0}-{b1 - 1} {P}" for b0, b1, P in runs), flush=True)
     else:
         vf = deint(runs[0][2])
-        if vf:
+        if vf and published:
+            graph = '[0:v]format=yuv422p[t];' + preserve_tick_lanes('t', 'vout', vf, 'p')
+            cmd += ['-filter_complex', graph, '-map', '[vout]'] + (['-map', '1:a'] if a.pcm else [])
+        elif vf:
             cmd += ["-vf", "format=yuv422p," + vf]        # 4:2:2 into the deinterlacer (see above)
         print(f"deinterlacer: {a.deint}{' -> -vf ' + vf if vf else ''}", flush=True)
     cmd += ["-c:v", "libx264", "-crf", a.crf, "-preset", "medium", "-pix_fmt", "yuv420p", a.out]
@@ -1018,9 +1029,8 @@ def main():
         rowB, edges, waves = frame_evidence(erow, ext, top_unit)
         if published and rowB.get('fs_hretime') == '1':
             for j, action in repair_ticks(rowB):
-                color = (255,40,40) if action == 'I' else (255,165,0)
-                for x in (PX-7, PX+DW+3):
-                    dr.line([(x,j),(x+4,j)], fill=color, width=1)
+                for x in TICK_X:
+                    dr.line([(x,j),(x+4,j)], fill=TICK_COLORS[action], width=1)
             dr.text((4,4), 'repair I red / R orange', font=small, fill=(170,170,170))
         if not rowB and o:
             edges = [[o.get(f"f{k}_{key}") for key in ("first", "last")] for k in (1, 2)]

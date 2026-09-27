@@ -20,6 +20,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'experiments'))
 from live_overlay_strip import decode_gray, STRIP_X, STRIP_WIDTH, STRIP_HEIGHT
+from repair_tick_overlay import readback_ticks
 
 
 def audit_rows(rows, strips):
@@ -145,7 +146,10 @@ def main():
             before = {p.name: digest(p) for p in (video, log)}
             with log.open() as f:
                 rows = list(csv.DictReader(f))
-            result = audit_rows(rows, read_strips(video))
+            strips = read_strips(video)
+            result = audit_rows(rows, strips)
+            if any(r.get('fs_hretime') == '1' for r in rows):
+                result['repair_ticks'] = readback_ticks(video, rows, strips)
             if before != {p.name: digest(p) for p in (video, log)}:
                 raise ValueError(f'files changed during validation: {name}')
             result['sha256'] = before
