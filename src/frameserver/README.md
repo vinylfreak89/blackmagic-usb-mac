@@ -73,16 +73,26 @@ normal median edges' respective p90 spreads. Censored line or median edges
 existing shift-induced picture-loss allowance remains an additional check,
 not a replacement for measuring both edges.
 
-Before either available repair is applied, entry58's neighbour confirmation
+Before either available repair is applied, neighbour/shape confirmation
 checks that line against the immutable woven rows immediately above and below,
 using each row's own field VI median. **Only for this confirmation**, the body
 median must be strictly above VI blank +20; otherwise the midpoint edge is
 treated as noise-dominated and unavailable. This reuses the flagging work's
 picture-level definition, not a replacement threshold for the edge/width
-references or retime certification. Censored coordinates still witness
-continuity here. On either side, the line must differ by strictly more than
-its field's existing p90 edge spread from every measurable neighbour. One
-measurable neighbour decides alone; none provides no evidence. Otherwise the
+references or retime certification. Left edges at 0 and right edges >=718 are
+unmeasurable, independently for each side of the candidate and its neighbours.
+On either side, the line must be beyond every measurable neighbour in the SAME
+direction, by strictly more than its field's existing p90 edge spread. A line
+between its neighbours is not an excursion. One measurable neighbour decides
+alone; none provides no evidence.
+
+Ordered shape must also confirm the displacement: double-precision Pearson
+correlation over [147,573) must be lower than the neighbours' mutual correlation
+before shifting, and at least as high after the detected shift (bounded +/-147).
+The reference is the mean of the two raw woven neighbours. At row 0 it is row 1,
+with mutual correlation of rows 1/3; at row 479 it is row 478, with rows 478/476.
+Zero variance gives correlation zero. No added correlation threshold is used.
+If either the edge excursion or ordered-shape comparisons fail, the
 candidate is left untouched as content/agree. Detection, ownership, frozen
 references and the original flagged donor mask do not change: a withheld
 candidate never becomes a new donor. Original unavailable repairs stay
@@ -113,7 +123,7 @@ for each `f1`/`f2`, `hretime_bands_*`, `hretime_retimed_*`,
 `hretime_content_f1/f2`.
 Line lists contain space-separated
 `NTSC:R`, `NTSC:I`, `NTSC:U` or `NTSC:C` tokens. C means an available candidate
-withheld by neighbour confirmation (agreement or insufficient edge evidence),
+withheld by neighbour/shape confirmation (agreement or insufficient evidence),
 not a repaired row. Band counts still describe detection, not confirmed repairs.
 First/last cover actual R/I repairs only;
 zero means none. Empty cells mean no complete frame to assess. These are

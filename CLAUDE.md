@@ -1231,9 +1231,11 @@ reassessment:
 **Optional H-retiming:** `fs_config.hretime` is per-tape, default off. It uses the
 published offsets and actual frame pair; it never feeds registration. The search
 uses the physical horizontal-blanking bound +/-147 and identical [147,573)
-support for every shift. A repair requires an edge discontinuity against all
-measurable woven neighbours. Only this confirmation requires picture median
-strictly above VI blank +20; censored coordinates remain observations there.
+support for every shift. A repair requires a same-direction edge excursion
+beyond all measurable woven neighbours; censored edges give no evidence.
+Only this confirmation requires picture median strictly above VI blank +20.
+Ordered-shape correlation must be worse than the neighbours' mutual correlation
+before shifting and at least as good after shifting, on that identical support.
 Retiming requires edge and width certification; otherwise the whole line is
 interpolated from unflagged other-field donors. Vacated samples also use those
 donors. Field-1 lines >=255 and field-2 lines >=518 remain excluded. Off retains
@@ -1241,6 +1243,9 @@ schema 28; on uses schema 32, including per-line content/agree abstentions.
 See `src/frameserver/README.md` for ownership, tolerances and donor rules. Review
 renders of repaired frames consume the live publisher's native 720x480 output,
 not a Python reconstruction of repairs.
+Repair ticks are progressive annotations: preserve their margin lanes after
+deinterlacing and validate their encoded locations/types against every sidecar
+frame, separately from placement-strip readback.
 
 ## 10. Delivery: OBS virtual camera
 
