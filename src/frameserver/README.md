@@ -26,7 +26,7 @@ the owner-specified NTSC horizontal blanking interval (10.9 us at 13.5 MHz).
 Every candidate uses the **same** reference samples [147,573), 426 samples;
 shifted reads remain within [0,720). No candidate gets a shorter/easier support.
 This is an estimate within the search range, not proof that larger damage is
-absent or recoverable. The width/loss test below still decides whether to shift.
+absent or recoverable. The edge/width/loss tests below decide whether to shift.
 An exact integral-sum lower bound prunes impossible winners; every survivor gets
 a full-resolution SAD using prepared doubled luma and fused NEON accumulation.
 Comparisons use exact integer SAD sums, and ties choose the
@@ -53,20 +53,31 @@ are the owner's task31 amendment, not newly fitted detection thresholds.
 Each field-1 line >=255 and field-2 line >=518 is excluded from repair, including
 the end of a band crossing the cutoff. Detected damage there is not a donor.
 
+An owned picture band grows upward/downward through adjacent same-field rows
+whose edges pass that same symmetric displacement test, even if their shift
+ratio does not pass 0.8. Growth stops at the first non-displaced or unmeasurable
+row, aperture boundary or switch cutoff. The edge reference is frozen before
+growth; it is not refitted repeatedly. Switch-only seeds cannot grow into the
+picture. Overlapping grown intervals of the same field merge. A shared donor
+that becomes flagged is unavailable, never used to repair another line.
+
 For a flagged line, picture edges cross the midpoint between its VI median
 (full-width storage rows 7..15 or 270..278) and its own [60,660) median.
 Unflagged, uncensored own-field aperture rows 40..219 provide median width and
 the 90th percentile absolute width deviation. Missing picture or usable width
 support means interpolation, not a guessed shift. Width is right minus left;
-no extra amplitude bar or minimum tolerance is imposed. Shift-induced picture
-loss must fit that tolerance; censored edges (0 or >=718) additionally count
-inferred missing width against the same allowance.
+no extra amplitude bar or minimum tolerance is imposed. A retime also needs
+both measured edges, shifted back by the detected amount, to lie within their
+normal median edges' respective p90 spreads. Censored line or median edges
+(0 or >=718) cannot certify a retime: unknown width means interpolation. The
+existing shift-induced picture-loss allowance remains an additional check,
+not a replacement for measuring both edges.
 
-An admissible line is shifted by the detected amount. Vacated luma uses its
-blank-side median (VI median if none is visible), chroma neutral 128. Odd shifts
-interpolate chroma at half phase, rather than corrupting UYVY phase or rounding
-the luma shift. Otherwise a small ELA interpolator averages opposite-field
-neighbours along the best of seven directions (0, +/-1, +/-2, +/-3), comparing
+An admissible line is shifted by the detected amount. Vacated luma and chroma
+retain opposite-field interpolation, never blanking fill. Odd shifts interpolate
+chroma at half phase, rather than corrupting UYVY phase or rounding the luma
+shift. Otherwise the whole line uses a small ELA interpolator, averaging
+opposite-field neighbours along the best of seven directions (0, +/-1, +/-2, +/-3), comparing
 three luma samples and preferring vertical on ties. This bounded local stencil
 is not NNEDI3 and makes no claim to recover missing detail. One available donor
 is duplicated; no unflagged donor leaves the line unchanged and explicitly
@@ -99,23 +110,33 @@ The old narrow-search reference's displayed coordinates already include +4
 bands are a comparison baseline, not a reference for the fixed-support search.
 Tests compare the new search to an exhaustive scalar oracle, including ties,
 range endpoints and captured row triples. Synthetic tests also cover width
-change, censoring, symmetric edge directions/strict spread/ties/missing support,
+change, edge certification, interpolated vacated samples, band extension/merging,
+switch-only seeds, censoring, symmetric edge directions/strict spread/ties/missing
+support,
 mirrored field ownership, blank input, UYVY phase and actual
 reversed-pair publication. Wider searches also admit more unlabelled bands;
 passing named labels is not a quality guarantee for those repairs.
 
-Measured limits remain. The earlier overlap-normalized +/-300 search lost cap4
-232's f2 lines291..294 when a merged top band had neither outside boundary;
-fixed support restores these repairs. However, cap4 204's f2 line288 now has
-best ratio0.837803 and is not detected, where the +/-300 build repaired it.
-Cap1's known-clean two-line band6902/f1/24..25 also remains flagged. Fixed support
-removes the named false flag7158/f2/487; the reduced bound alone removes6667/f1/227.
-These are row-specific results:7158 still repairs f2 bands488..489 and503..517,
-and6667 still repairs f1 single lines25 and228. Neither frame is cleared of flags.
-Neither label hits nor the larger repair count establishes that every repaired
-row is damaged. The option stays off; no change to the ratio or an extra filter
-is justified by these counterexamples. The whole-tape enabled validation is
-withheld at the row-loss falsifier pending owner/counterpart review.
+Measured limits remain. Fixed support and symmetric top ownership restored
+cap4 232's f2 lines 291..294 after the overlap-search ownership failure. Task32
+edge growth repairs cap4 204's f2 line 288 by interpolation without changing its
+shift ratio 0.837803 or the 0.8 cutoff. Edge certification changes cap1 6805's f1
+line 228 from retiming to interpolation: full-row neighbour MAD 6.910->2.908.
+Labels remain 26/26 on cap3 and 42/42 on the corrected cap4 set; the two named
+known-clean mirrors remain unflagged. Neither label hits nor more repairs
+establish that every repaired row is damaged.
+
+Across captures 1..4, strict worse-MAD rows decrease from 213 in task31 to 49,
+all retimes; no interpolated row worsens against the same raw-neighbour mean.
+This instrument is not a visual quality verdict. Growing both fields' repair
+masks also leaves 83 flagged rows without a clean donor; they remain unchanged
+and are explicitly unavailable. Cap1 programme bands are 448 single-line and 115
+multi-line (task31: 498/76); multi-line flags increased. Whole-tape bands expand
+from 10,879 in the +/-24 build to 78,496, with 17,712 unavailable rows. These
+unreviewed flags are not all established damage. No single-line filter,
+MAD gate, default change or promotion is implied. Owner/counterpart panel review
+remains necessary. Detailed experiment row lists stay in the ignored working
+ledger and scratch, not the committed source tree.
 
 ## Deterministic audio evidence
 
