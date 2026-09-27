@@ -75,6 +75,46 @@ static void edge_ownership(void) {
     /* An unresolved top band cannot supply its own normal reference. */
     edge_reference(&work,&result,479,0,0);assert(isnan(result.edge_median[0][0]));
 }
+static void edge_certification(void) {
+    fixture();run();
+    result.edge_median[0][0]=10;result.edge_median[0][1]=710;
+    result.edge_spread[0][0]=result.edge_spread[0][1]=0;
+    assert(certified_edges(&result,0,16,716,6));
+    assert(!certified_edges(&result,0,10,710,6)); /* same width is not shift evidence */
+    assert(!certified_edges(&result,0,0,710,-10));
+    assert(!certified_edges(&result,0,10,718,8));
+    result.edge_spread[0][0]=result.edge_spread[0][1]=2;
+    assert(certified_edges(&result,0,18,714,6)); /* inclusive own noise allowance */
+    assert(!certified_edges(&result,0,19,714,6));
+    /* Shifted interior with unchanged blanking edges must interpolate. */
+    fixture();displace(unit,0,20,6,0);
+    uint8_t *row=unit+48+39*1440;
+    for(int x=0;x<720;x++)if(x<10 || x>710)row[2*x+1]=2;
+    for(int x=10;x<16;x++)row[2*x+1]=100;
+    run();assert(result.shift[40]==6 && result.action[40]==HRT_INTERPOLATE);
+    /* Retiming vacated samples must come from donors, not blanking. */
+    fixture();displace(unit,0,20,6,0);
+    for(int r=301;r<=302;r++)for(int x=714;x<720;x++)other[48+r*1440+2*x+1]=220;
+    run();assert(result.action[40]==HRT_RETIME);
+    for(int x=714;x<720;x++)assert(out1[48+39*1440+2*x+1]==220);
+}
+static void band_growth(void) {
+    fixture();displace(unit,0,20,6,0);
+    /* Edges move without any pure shift in the comparison body. */
+    for(int x=10;x<40;x++)unit[48+40*1440+2*x+1]=2;
+    run();assert(result.action[40]==HRT_RETIME && result.action[42]==HRT_INTERPOLATE);
+    assert(result.shift[42]==0 && result.action[44]==HRT_NONE);
+    assert(result.field[0].bands==1 && result.band[0].first==43 && result.band[0].last==44);
+    /* Two seeds grow into the same displaced gap, counted and repaired once. */
+    fixture();displace(unit,0,20,6,0);displace(unit,0,22,6,0);
+    for(int x=10;x<40;x++)unit[48+40*1440+2*x+1]=2;
+    run();assert(result.field[0].bands==1 && result.field[0].retimed==2 && result.field[0].interpolated==1);
+    assert(result.band[0].first==43 && result.band[0].last==45);
+    /* A switch-only seed cannot grow upward into picture. */
+    fixture();displace(unit,0,232,6,0);
+    for(int x=10;x<40;x++)unit[48+250*1440+2*x+1]=2;
+    run();assert(result.action[462]==HRT_NONE && result.action[464]==HRT_NONE);
+}
 int main(int argc,char **argv) {
     if(argc==2) {
         FILE *f=fopen(argv[1],"rb");assert(f);uint8_t rows[3][720];unsigned n=0;size_t got;
@@ -84,6 +124,8 @@ int main(int argc,char **argv) {
     assert(argc==1);
     oracle();
     edge_ownership();
+    edge_certification();
+    band_growth();
     fixture();displace(unit,0,20,6,0);run();
     assert(result.field[0].retimed==1 && result.field[1].retimed==0);
     assert(result.action[40]==HRT_RETIME && result.shift[40]==6);
@@ -109,10 +151,12 @@ int main(int argc,char **argv) {
     memcpy(other,unit,sizeof unit);run();assert(result.band_count==0);
     /* Odd luma shifts preserve phase; U and V interpolate independently. */
     uint8_t a[1440],b[1440];for(int x=0;x<360;x++){a[4*x]=x%256;a[4*x+2]=255-x%256;a[4*x+1]=a[4*x+3]=100;}
-    retime(a,b,1,10,710,2);assert(b[40]==average(a[40],a[44]) && b[42]==average(a[42],a[46]));
+    memset(b,77,sizeof b);retime(a,b,1);
+    assert(b[40]==average(a[40],a[44]) && b[42]==average(a[42],a[46]));
+    assert(b[1439]==77 && b[1436]==77 && b[1438]==77); /* missing luma/chroma preserve donor fill */
     /* Invalid publisher rows use neutral padding, never cross field storage. */
     fixture();memcpy(out1,unit,sizeof unit);memcpy(out2,other,sizeof other);
     hrt_apply(&work,unit,other,-30,30,out1,out2,&result);
-    puts("HRETIME PASS: scalar/SIMD, shift, compressed width, censored edges, symmetric top ownership/ties/unknown, switch exclusion, no picture, chroma, crop bounds");
+    puts("HRETIME PASS: scalar/SIMD, edge-certified shift, donor fill, growth/merge/stop, symmetric ownership, switch exclusion, no picture, chroma, crop bounds");
     return 0;
 }

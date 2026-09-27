@@ -163,6 +163,55 @@ static int flag_band(hrt_workspace *w,int start,int end,int k,int d1,int d2) {
     }
     return included;
 }
+static int compare_band(const void *a,const void *b) {
+    const hrt_band *x=a,*y=b;
+    if(x->field!=y->field)return x->field-y->field;
+    return x->first-y->first;
+}
+/* Frozen frame reference: growing one interval cannot alter another's edge
+ * evidence. Only existing picture bands seed growth; switch-only damage does
+ * not reach upward into the repair aperture. Overlapping intervals coalesce. */
+static void extend_bands(hrt_workspace *w,hrt_result *o,int d1,int d2) {
+    for(int n=0;n<o->band_count;n++) {
+        hrt_band *b=o->band+n;int k=b->field-1,origin=k?286+d2:23+d1;
+        if(b->first>=(k?518:255))continue;
+        int first=2*(b->first-origin)+k,last=2*(b->last-origin)+k;
+        for(int j=first-2;j>=0;j-=2) {
+            if(!w->row[j] || excluded(j,d1,d2) || !(edge_movement(w,o,j)&15))break;
+            w->flagged[j]=1;first=j;
+        }
+        for(int j=last+2;j<HRT_ROWS;j+=2) {
+            if(!w->row[j] || excluded(j,d1,d2) || !(edge_movement(w,o,j)&15))break;
+            w->flagged[j]=1;last=j;
+        }
+        b->first=line_number(first,d1,d2);b->last=line_number(last,d1,d2);
+    }
+    qsort(o->band,(size_t)o->band_count,sizeof *o->band,compare_band);
+    int count=0;
+    for(int n=0;n<o->band_count;n++) {
+        hrt_band b=o->band[n];
+        if(count && o->band[count-1].field==b.field && b.first<=o->band[count-1].last) {
+            hrt_band *prev=o->band+count-1;
+            if(b.last>prev->last)prev->last=b.last;
+            prev->top_fallback|=b.top_fallback;
+            for(int k=0;k<2;k++) {
+                prev->breaks[k]=fminf(prev->breaks[k],b.breaks[k]);
+                prev->displaced[k]+=b.displaced[k]; /* seed evidence, before growth */
+            }
+        } else o->band[count++]=b;
+    }
+    o->band_count=count;o->field[0].bands=o->field[1].bands=0;
+    for(int n=0;n<count;n++) {
+        hrt_band *b=o->band+n;int k=b->field-1,origin=k?286+d2:23+d1;
+        o->field[k].bands+=flag_band(w,2*(b->first-origin)+k,2*(b->last-origin)+k,k,d1,d2);
+    }
+}
+static int certified_edges(const hrt_result *o,int k,int left,int right,int s) {
+    /* A clipped coordinate is not a measured picture edge. */
+    return left>0 && right<718 && o->edge_median[k][0]>0 && o->edge_median[k][1]<718 &&
+           fabs(left-s-o->edge_median[k][0])<=o->edge_spread[k][0] &&
+           fabs(right-s-o->edge_median[k][1])<=o->edge_spread[k][1];
+}
 static uint8_t average(int a,int b) { return (uint8_t)((a+b+1)/2); }
 /* Chroma at an even luma-pair origin; odd source phase is halfway between
  * neighbours. Edge extension is confined to chroma resampling. */
@@ -195,13 +244,14 @@ static int interpolate(hrt_workspace *w,int j,uint8_t *out) {
     }
     return 1;
 }
-static void retime(const uint8_t *in,uint8_t *out,int s,int l,int r,double blank) {
-    unsigned h[256]={0},n=0;
-    for(int x=0;x<HRT_WIDTH;x++)if(x<l || x>r){h[in[2*x+1]]++;n++;}
-    int y=(int)floor((n?hist_quantile(h,n,0.5):blank)+0.5);
+/* out already contains opposite-field interpolation. Only replace samples
+ * whose shifted source exists; all vacated luma/chroma stay interpolated. */
+static void retime(const uint8_t *in,uint8_t *out,int s) {
     for(int x=0;x<HRT_WIDTH;x++) {
-        int sx=x+s;out[2*x+1]=sx>=0 && sx<HRT_WIDTH?in[2*sx+1]:(uint8_t)y;
-        if(!(x&1))for(int v=0;v<2;v++)out[2*x+2*v]=sx>=0 && sx+1<HRT_WIDTH?(uint8_t)chroma(in,sx,v):128;
+        int sx=x+s;
+        if(sx>=0 && sx<HRT_WIDTH)out[2*x+1]=in[2*sx+1];
+        if(!(x&1) && sx>=0 && sx+1<HRT_WIDTH)
+            for(int v=0;v<2;v++)out[2*x+2*v]=(uint8_t)chroma(in,sx,v);
     }
 }
 void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
@@ -255,6 +305,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         memcpy(b->breaks,bands[n].breaks,sizeof b->breaks);
         o->field[k].bands+=flag_band(w,start,end,k,d1,d2);
     }
+    extend_bands(w,o,d1,d2);
     for(int k=0;k<2;k++) {
         double widths[HRT_FIELD_ROWS];int n=0;
         for(int i=WIDTH_BODY_LO;i<WIDTH_BODY_HI;i++) {
@@ -274,16 +325,16 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         int k=j&1,l=0,r=0,s=o->shift[j],line=line_number(j,d1,d2);
         int row=first_row(k,offsets[k])+j/2;
         uint8_t *out=dst[k]+HEADER+row*ROW_BYTES;
-        int keep=edges(w->y[j],o->blank[k],&l,&r) && isfinite(o->width[k]) &&
+        int keep=edges(w->y[j],o->blank[k],&l,&r) && certified_edges(o,k,l,r,s) && isfinite(o->width[k]) &&
             fabs((r-l)-o->width[k])<=o->tolerance[k];
         if(keep) {
             int lost=(s>l?s-l:0)+(r-s>719?r-s-719:0);
             double unseen=(l==0 || r>=718)?fmax(0,o->width[k]-(r-l)):0;
             keep=unseen+lost<=o->tolerance[k];
         }
-        if(keep) {retime(w->row[j],out,s,l,r,o->blank[k]);o->action[j]=HRT_RETIME;o->field[k].retimed++;}
-        else if(interpolate(w,j,out)){o->action[j]=HRT_INTERPOLATE;o->field[k].interpolated++;}
-        else {o->action[j]=HRT_UNAVAILABLE;o->field[k].unavailable++;continue;}
+        if(!interpolate(w,j,out)){o->action[j]=HRT_UNAVAILABLE;o->field[k].unavailable++;continue;}
+        if(keep) {retime(w->row[j],out,s);o->action[j]=HRT_RETIME;o->field[k].retimed++;}
+        else {o->action[j]=HRT_INTERPOLATE;o->field[k].interpolated++;}
         if(!o->field[k].first)o->field[k].first=line;
         o->field[k].last=line;
     }
