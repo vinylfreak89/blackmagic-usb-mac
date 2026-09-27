@@ -26,7 +26,7 @@ Shuttle analog in → Mac.** (S-Video is the default tap; component is an early 
 - **OBS virtual camera** is the delivery end-state.
 - **Validation fixture A** (the test tape behind every measurement in this doc): consumer T-120
   VHS carrying two off-air recordings made ~1998 on two unknown consumer VCRs, remainder virgin.
-  Segment 1: SP, weak indoor-antenna source, recording-time horizontal flagging, field-1
+  Segment 1: SP, weak indoor-antenna source, horizontal flagging made in playback (below), field-1
   registration plateaus on playback. Segment 2: EP, rooftop-antenna source, clean H-timing,
   pause-edit discontinuities (program missing at recording time). Both segments: audio on the
   linear track only. Chosen because a pipeline that survives it survives ordinary tapes.
@@ -868,6 +868,16 @@ interpretation. This is useful evidence about layers on those events, not a
 permanent instruction to hold field 2 fixed or to rule out pairing errors on
 other captures.
 
+**Flagging is made in playback, on a weak recorded sync (measured 2026-09-28).** Captures 3 (V-stabilize on) and 4 (off),
+aligned by scene cuts to the same tape fields (cap4 (c,f1) = cap3 (c+13328,f2); cap4 (c,f2) = cap3 (c+13329,f1)): top-of-field
+bend size correlates only r=0.15 between the passes; bends >=15 samples 117 vs 194, only 41 on the same tape field (e.g. cap4 232
+f2 bent, cap3 13561 f1 straight). Offsetting by one tape field matches worse (r 0.27–0.29) than the same field (0.48), so it is not
+a correction applied to the wrong field. The deck's line TBC (V-stabilize) removes most of it but not all. A first-generation 1986
+EP camcorder tape (clean camera sync) shows none with it off, so tapes differ by their recorded sync, not the deck. Per-field noise
+is equal within ~1% on every tape measured, so there is no weak head. Flat-area luma noise sits at the deck/Shuttle chain floor
+(~0.64 codes, measured on the deck's grey mute), so SNR measured this way describes the deck's output (its noise reduction), not the
+tape. Record the V-stabilize setting with every capture: `captures/tape1_flagging_30s.tpc` was OFF.
+
 **Deck setting.** The later A/B identified `Vスタビライズ` as the relevant line-TBC
 switch on this deck. The old recommendation “TBC on, V-stabilize off” treated
 them as independent controls and should not guide a new session. Record the
@@ -1149,11 +1159,26 @@ placement, temporal order and transport pairing distinct. Earlier versions of
 this section proposed HMM/Viterbi order inference; that was an experimental
 proposal, not an established requirement for the current problem.
 
+**Stabilization (held by the owner, 2026-09-27) — measured so far.** Keeping d1 and moving d2 when "field 2 moved alone"
+(GE_FIELD2_JITTER, adc6d46, off) undid correct corrections: caption-correct field-1 placement on the 738 changed frames fell from
+93.8% to 5.6%. Of 469 visible field-1 jumps from a correct placement, 367 are the engine moving d1 while field 1's caption stayed.
+Raw SAD checks found neither field moved in most of them (a spurious relative change, not field-2 motion). A candidate live separator
+is the engine-logged motion_shift_f1/f2 at the onset (genuine: m1 == Δd1 in 82%; spurious: 2%). It is not built.
+
 **TODO — live field-parity detection (owner, 2026-09-16):** "we need to figure out some live
 detection engine for field parity since our tests at the moment says it can't be guaranteed to be
 either TFF or BFF". What the tests show so far: fixture A measured TFF against the usual NTSC
 expectation (§6), and captures 3 and 4 (two passes of the same tape) pair their fields one field apart
 (§7, measured). No method has been chosen yet.
+Owner (2026-09-27): expose it behind a config flag, default OFF ("it -shouldn't- be necessary in most if not all cases"), and
+prefer a source clue at cuts over an always-on detector. Measured evidence: a hard cut is one source instant, so a cut whose new
+scene reaches slot 2 one unit before slot 1 marks an offset pairing (cap3: 13548/9, 13628/9, 13669/70, 13797/8, 14022/3, 14085/6;
+cap4 same-unit: 220, 300, 341, 469, 694). On the whole tape, counting only cuts isolated by more than 6 units, with a causal 5-of-7
+vote, gave 98.35% of frames right (pairing changes at 5490 reversed and 48638 aligned; all errors at start-up 4511–5489 and boundary
+lag 48189–48637; captures 1–4 14/14; those values were chosen on the whole tape). Deciding on 2–3 agreeing cuts fails in bursts of
+close spikes (flashes, fast motion, film-originated inserts): wrong in 70691–71458 and 81592–82117. The branch `field-order-flag`
+(default OFF) implements the weaker two-agreeing-cuts rule. The comb separates pairing only on progressive-origin material
+(EP median −0.99), not on 3:2 cel animation (SP median +0.005).
 
 The early header census found 6,160 complete headers identical apart from their
 16-bit counter. This did not provide a per-field order/lock flag, but it also
@@ -1234,6 +1259,23 @@ interpolates from the other field; it never feeds registration. Field-1 lines >=
 and field-2 lines >=518 remain excluded. Off retains schema 28; on uses schema 30
 with frame-owned per-line repair marks. See `src/frameserver/README.md` for the
 detector, measured width tolerance, interpolation and reversed-pair ownership.
+The owner's rules for H-retiming (2026-09-27/28), which later work on branch `hretime-experiments` implements. Main's detector
+predates them.
+- Retime is the default: "if the number of picture samples stays correct ... just correct the timing"; interpolate only when the
+  width is discontinuous, the width edge is unknown or garbage, or "the picture spills fully to the edge (there is no blanking)".
+  Missing blanking is garbage, never "unknown, no action". "if you lose a few samples on either the left or the right ... thats also
+  fine"; "if it falls within the blanking width it should just get retimed".
+- Detect by tracing the waveform, not averages: the line against its other-field neighbour, and "two edges of standard size
+  blanking". "any uniform horizontal or vertical movement, especially if blanking stays stable should not result in a correction";
+  "If it's dark or flat picture, the surrounding lines should be dark or flat at the same horizontal area" (the content test).
+  Flagging can be one-sided and lines stretch ("not even a uniform shift").
+- Bands: "So long as the top and bottom properly get detected, everything in between can be either retimed or interpolated"; the
+  band extent is learned from the tape ("sliding scale"). A mid-frame disturbance is its own band.
+- Given up: "the little one-line shifts" and flat/dark cases. Per tape, behind the flag; "perfectly stable tapes, there is no need
+  to re-time".
+Measured pitfalls: a threshold edge locator slides with picture brightness; the half-height crossing of the blanking step
+does not. The right blanking at the capture edge is only ~1–3 samples on some tapes, so its exterior plateau must be learned per
+tape, not assumed to be 4 samples. A per-line limit at the tape's p99 edge spread flags ~1% of normal lines by construction.
 
 ## 10. Delivery: OBS virtual camera
 
@@ -1642,27 +1684,11 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   caption agreement from 93.94% (A1 alone) to 84.96%, with unchanged top census.
   Restricting suppression to shifts of at least two lines improved that score
   to 92.61%, but still failed A1's gate; the still-trigger-only arm scored 93.915%.
-- **Experiment commitments (owner, 2026-09-19).** Before a test meant to decide
-  something, the agent appends an entry to its own ledger, a working file never committed
-  (owner, 2026-09-26: "that is meant to be a working item"; the v11 ledgers remain in git
-  history). Claude's is `~/blackmagic-ledgers/claude.md`. Codex's is `.ledger/codex.md` inside
-  its own worktree (git-ignored), because its sandbox writes only there: the question in the owner's words; the
-  premise, the claim about the signal that must be true, stated apart from the method;
-  the simplest method; the falsifier; the material it is judged on. Amendments are
-  appended, never edited in, and state before they are built their physical reason,
-  what they should improve and what they must not break. "Multiple amendments are
-  allowed but amendments should create progress in a forward direction. If adding new
-  parts is not pushing closer to the solution, or if amendments introduce regressions,
-  that's when I should be stopped and queried." A falsifier appearing is the result:
-  report the premise refuted; a different premise is a new entry. Every report answers
-  its entry: verdict on the premise (held / refuted / unknown), what the data did, the
-  population with abstentions, each amendment and whether it moved forward, what is not
-  understood, the raw rows it rests on. Raw-row labels are preferred; another
-  instrument's output is named and never treated as truth. A positive claim is checked
-  on material not used to build it where such material exists. The other agent reviews
-  reports against entries; the owner is queried on a stalled or regressing amendment or
-  an unresolved disagreement. The ledger holds commitments and verdicts only; results
-  stay in scratch.
+- **Experiment ledgers retired (owner, 2026-09-27).** "we are past the phase where the limit makes sense ... I wanted them wiped
+  with any relevant information thats not captured elsewhere preserved" ("the limit" = "the experimenter ledger discipline"). The
+  ledgers were wiped on 2026-09-28 after their durable findings moved into this file. Still in force: state what a test should show
+  before running it, look at raw rows before claiming, and stop and ask the owner when changes stop moving forward. The approved-engine
+  bound (§11) is separate and stays.
 - **Search the owner's words before escalating** (standing instruction,
   2026-09-11). A question goes to the owner when those words do not answer it,
   or the agents cannot converge on their application. Relayed quotations and
