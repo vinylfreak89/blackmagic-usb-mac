@@ -73,6 +73,11 @@ field ownership, blank input, UYVY phase and actual reversed-pair publication.
 
 ## Deterministic audio evidence
 
+The former video-worker lookup could exhaust all eight seqlock retries during
+an unrelated correlation write even when its target entry already existed.
+A condition-handshaked overlap reproduced the empty log cells; this was not
+necessarily audio arriving late. The regression test preserves that distinction.
+
 The parser/delivery thread writes audio correlations and snapshots the matching
 correlation when it emits a video-unit observation. That input-order boundary,
 not the video worker's scheduling, is the decision log's evidence cutoff.

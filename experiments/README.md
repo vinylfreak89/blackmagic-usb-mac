@@ -63,27 +63,12 @@ their internal boundary is unknowable and unnecessary for endpoint recovery.
 
 ### `untagged_capture` transport caveat and capture_untagged_ring scheduling change
 
-The recovered video remains intact through most of the run, then loses complete
-24,576-byte payload quanta after counter 25026. Every deficit from there to the
-last marker is divisible by 24,576. That is capture_untagged_ring's normal eight-iso-packet
-video-transfer payload, not a 1,440-byte raster-line or 756,048-byte frame
-quantum. Ring overflow was zero and video completion inversions were zero.
-
-Static analysis found that the old `V_NPK=8`, `XFERS=6` arrangement queued only
-about 6 ms of video time on Darwin. The libusb Darwin backend schedules iso
-requests at explicit future USB frame numbers; once resubmission falls behind
-the queued horizon, it resumes at the current frame plus a safety offset. No
-request exists for the intervening time, so neither transfer status nor packet
-status can report that hole. The old probe also silently skipped completed
-zero-length packets.
-
-capture_untagged_ring now queues 128 packets per transfer and eight video transfers, compacts
-each transfer with one ring operation, and prints complete packet-length
-histograms including zero lengths. This is an evidence-gathering fix, not yet a
-hardware-verified archival container: the flat file still cannot describe the
-location of a failed or unscheduled iso interval. Production capture must tag
-endpoint, submission sequence, scheduled packet slot, status, requested/actual
-length, host time, and payload.
+Recovery is not completeness: this capture lost transfer-sized payload quanta
+despite zero ring overflow and completion inversions. CLAUDE.md §6 records the
+24,576-byte loss census, expired Darwin scheduling horizon, and the probe's
+128-packet/eight-transfer correction. The untagged file still cannot locate
+missing slots; use the [tagged capture core](../src/capture_core/README.md) for
+new acquisition. The extractor preserves the evidence that actually survives.
 
 Example archival extraction:
 

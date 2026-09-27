@@ -525,6 +525,11 @@ was labelled snow. The other observed errors were:
 - **The appearance latch is asymmetric.** The logged appearance is `stable_appearance`; `SubBlackMuteLike` (like `DeviceNoSignal0800`) installs with NO confirmation while leaving it needs three consecutive identical observations. At 49,126–49,136 it therefore persisted 11 units (0.37 s) onto a raster measuring mean 117–118 — the deck grey mute — with confidence 1.00 and nothing in the raster changing at the switch. This is the "sub-black label on grey" the owner saw.
 - **`NeutralGrayMuteLike`'s rule tests uniformity, not greyness**, so 253 units of near-black programme (mean 15–38, against the deck's actual grey mute at 117) carry a label and a `Muted` source that assert a deck mute. 122 false positives in all, none of them snow.
 
+These limitations remain unchanged. The later
+[reset diagnostic](src/signal_state/README.md#registration-connection-and-known-limitations)
+found delayed real anchor transitions when classifier resets were masked, not a
+registration regression warranting a classifier fix.
+
 **Replay pacing (owner decision, 2026-09-26).** Unpaced replay overflows and loses units: on `fulltape.cap6`,
 20,933 holes and only 991 exact units. It is not only ring capacity — on the 524 MB capture-2 slice, a
 `--ring-mb 1024` run still lost 29 units, so a ring larger than the file does not make a slice safe. Paced
@@ -718,8 +723,8 @@ stated reason ("the magic occurs inside UYVY content") was wrong for this materi
 
 This section keeps the useful evidence and the short history, not a prescribed
 replacement algorithm. Measurements below belong to the named material and
-instrument; they are not rules for every tape. Main's implemented behavior and
-the later v10 experiments are distinguished in §11.
+instrument; they are not rules for every tape. The approved engine and historical
+v10 experiments are distinguished in §11.
 
 ### The question we are trying to answer
 
@@ -729,7 +734,7 @@ being pursued because it may supply a stable top-of-picture landmark. Automatic
 measurement matters; asking a person for each crop or shift leaves that question
 unanswered.
 
-The current top pattern being investigated is line 21's caption in both fields,
+The September 14 top pattern was line 21's caption in both fields,
 then line 22's caption/waveform/blanking, then picture. At the bottom, the owner
 is looking for a fully blanked line bounding the picture, with the head-switch
 region included in the geometry. These name signal objects, not a fixed set of
@@ -738,12 +743,12 @@ storage rows to inspect.
 The physical idea is that a reliable top and bottom gauge should move together
 when picture position changes: extra blank space below for an upward shift,
 above for a downward shift. An isolated content-edge change is not the same
-observation. This is the owner's current line of investigation, not evidence
+observation. This was the owner's line of investigation at that reset, not evidence
 that the existing gauges already implement it correctly. Field order and
 relative alignment also need to be established to produce a coherent weave.
 
-The September 14 pause is for understanding the accumulation of complexity.
-This rewrite does not authorize another detector or select a new model.
+The September 14 pause preceded the approved engine; this history is not a
+current instruction to stop implementation or select a replacement model.
 
 ### Coordinates and layers
 
@@ -777,7 +782,8 @@ constrained an earlier synthetic example; they do not locate an actual switch.
 the delivered window starts (122 samples / 9.037 µs). The relocated-blanking
 probe also found no recoverable burst, while recovering injected controls.
 That is the measured limit of this raster/probe, not a result about raw RF.
-See `experiments/burst_probe.py` and `experiments/switch_cohort/BURST_RESULT.md`.
+See `v10-harness:experiments/burst_probe.py` and
+`v10-harness:experiments/switch_cohort/BURST_RESULT.md` (historical branch paths).
 
 Keep source picture, deck output/OSD, device inserts and hard padding separate.
 Hard padding is a transport ruler, not the source's black or blanking reference.
@@ -801,8 +807,8 @@ file is a separate, longer input, not a fifth independent source.
 
 The aligned scratch slices were re-cut on September 9 after the slicer was
 found to align to CAP1 records but not complete transfers. Their previous
-provenance failures were slicing artifacts. `experiments/tpc_slice.py` on the
-v10 branch records that repair. Preserve input hashes, cut lengths and transfer
+provenance failures were slicing artifacts. `experiments/tpc_slice.py` records
+that repair. Preserve input hashes, cut lengths and transfer
 alignment when reproducing a selection; the starts above are navigation aids,
 not complete manifests. These paths were inventoried, not re-opened for this
 rewrite. Scratch may disappear. Captures 2 and 3 can be re-cut from the whole tape; capture 4 cannot,
@@ -895,9 +901,7 @@ of 1,076, and horizontal sample displacement is not vertical registration
 what happened to the same instant in both passes. Detailed measurements and
 instrument names remain in the September 9 notes and v10 reports.
 
-**Black and blanking.** The measured levels in §6 are retained. In particular,
-95 units of a commercial full-frame black card gave picture mean **17.699**
-against those lines' own blanking mean **1.459** (difference about 16.2 codes).
+**Black and blanking.** Use the source-level measurements in §6, not hard padding.
 Other selected dark/band runs approached blanking; that does not establish
 source-wide clipping of black picture. The earlier “same dither” claim was not
 established by equal means and standard deviations. Later texture comparisons
@@ -1052,13 +1056,13 @@ field inversions on fixture A. Yadif is the intended end presentation, with
 absolute placement. Keep raw fields/row traces available; NNEDI3 also
 interpolates, and neither renderer is registration ground truth.
 
-**Review-render producer:** amend `experiments/review_render.py` on
-v10-harness rather than rebuilding it (owner, September 11). It draws the
-720×486 colour output with metrics below, translucent field-coloured box/bar
-overlays (purple on overlap), and box/head-switch ticks in the margins.
-The inspected producer draws one output panel; it does not currently add a
-side-by-side 525-line raster. Its overlays and decision log are instrument
-outputs, not independent evidence that registration worked.
+**Review-render producer:** the September 11 owner instruction was to amend
+`v10-harness:experiments/review_render.py`, not rebuild it. That historical
+producer draws one 720×486 colour panel, metrics below, translucent
+field-coloured box/bar overlays (purple on overlap), and box/head-switch margin
+ticks, not a side-by-side 525-line raster. Current entry points and publication
+checks are in [experiments/README.md](experiments/README.md#current-geometry-review-render).
+Overlays and sidecars remain instruments, not independent registration truth.
 
 References and synthetic fixtures are instruments too. Their labels, calibration
 selection, endpoint availability and scoring rules need checking. A conditional
@@ -1068,7 +1072,7 @@ carrying forward its old count.
 
 Detailed older steps are already in `docs/registration_archaeology.md`,
 `docs/registration_v9_plan.md` and `LEARNINGS.md`; the v9 registration README
-and tests are in git history before 2026-09-27. Later v10 reports and `docs/geometry_first_engine.md` preserve
+and tests are in git history before 2026-09-27. Later v10 reports and `v10-engine:docs/geometry_first_engine.md` preserve
 that experiment's definitions and disputes; consult them for a specific
 question, not as an automatic list of instructions for a new attempt.
 The branch and report pointers here preserve provenance, not a commitment
@@ -1167,9 +1171,8 @@ is the engine-logged motion_shift_f1/f2 at the onset (genuine: m1 == Δd1 in 82%
 
 **TODO — live field-parity detection (owner, 2026-09-16):** "we need to figure out some live
 detection engine for field parity since our tests at the moment says it can't be guaranteed to be
-either TFF or BFF". What the tests show so far: fixture A measured TFF against the usual NTSC
-expectation (§6), and captures 3 and 4 (two passes of the same tape) pair their fields one field apart
-(§7, measured). No method has been chosen yet.
+either TFF or BFF". Fixture A measured TFF (§6), while captures 3 and 4 pair fields one field
+apart (§7). The later experimental cut detector addresses pairing, not spatial parity.
 Owner (2026-09-27): expose it behind a config flag, default OFF ("it -shouldn't- be necessary in most if not all cases"), and
 prefer a source clue at cuts over an always-on detector. Measured evidence: a hard cut is one source instant, so a cut whose new
 scene reaches slot 2 one unit before slot 1 marks an offset pairing (cap3: 13548/9, 13628/9, 13669/70, 13797/8, 14022/3, 14085/6;
@@ -1226,23 +1229,20 @@ never silently blank/dup/drop/resample/force-CFR.
   safely → flag the span in a sidecar and keep a **transient raw safety net** (≥ flagged spans) to
   re-resolve and patch the master without re-running tape; delete after QC.
 - **Bandwidth is a non-issue at SD:** lossless 4:2:2 ≈ 11–30 MB/s, real-time on an M3-class CPU
-  (no GPU needed). Note: base M3 parts lack the ProRes hardware engine, and
-  VideoToolbox can't do lossless YUV anyway — hardware offload is only relevant to *lossy*
-  H.264/HEVC access copies, not the master. **Live policy:** bounded jitter buffer; valid
+  (no GPU needed). The earlier claim that base M3 lacks hardware ProRes was refuted by the
+  local VideoToolbox test in `src/obs_plugin/PLUGIN_SPIKE.md` §7 (30 s encoded in 0.98 s wall,
+  4.4 s CPU, field order preserved). Hardware ProRes is not a lossless-YUV mode.
+  **Live policy:** bounded jitter buffer; valid
 audio as continuity master; **bob at field rate (59.94p/50p)**; conceal only in the live
 derivative; shed the live consumer before it threatens acquisition.
 
-**Backlog: optional horizontal-damage concealment (owner, 2026-09-09).**
-The owner proposed borrowing a damaged row from the other field, with
-intra-field interpolation when the result combs. The proposed option belongs
-in the frameserver before weaving; repaired rows are marked, all consumers
-receive the selected output, and unchanged transport is retained only when
-debug TPC capture is enabled. Whole-field comb was accepted as a conservative
-substitute for a per-row test in that discussion. The prerequisite was
-substantial measured real-time headroom after registration works. This remains
-a separate presentation feature, not evidence of source geometry and not an
-instruction to build it during the present reset. Recheck cost and the intended
-output before implementing; the previous timing figures were specific runs.
+**Horizontal concealment's original scope (owner, 2026-09-09):** borrow damaged
+rows from the other field, using intra-field interpolation if they comb;
+whole-field comb was accepted as a conservative substitute for a per-row test.
+The selected frameserver output marks repairs for every consumer; unchanged
+transport persists only in explicit debug TPC mode. This presentation-only
+feature requires measured post-registration headroom, never geometry feedback.
+The later target and owner rules follow.
 **Head-switch repair was built and reverted (2026-09-27).** A repair aimed at the
 head-switch displacement (343b78b, 6c64add) was reverted by the owner: "you guys
 improperly focussed on the head switch". The horizontal-timing detector instead follows
@@ -1256,8 +1256,8 @@ reassessment:
   carry pre-switch picture from sample 0 to ~65, then ~120 blank samples.
 - Blank-level extent alone confuses displacement with black content: text drop-shadows
   and dark pillars at blanking level qualify.
-- A ≥100-consecutive-sample run misses capture 1 7100 line 525 (97 samples; one code-5
-  sample breaks it).
+- A ≥100-consecutive-sample run misses capture 1 7100 line 525 (97 samples; two code-5
+  samples break it).
 
 **Optional H-retiming:** `fs_config.hretime` is per-tape, default off. It uses the
 published offsets and actual frame pair, then shifts width-consistent lines or
@@ -1359,7 +1359,9 @@ delivery edge; wrong one at acquisition.
 
 1. ✅ **DONE** — **Native probe** (direct-attached, 8-bit S-video, mode `0x3F000000`):
    open/claim/alt-reset/mode/latch/stream. Real NTSC 480i captured and visually confirmed;
-   sustained 5-min capture with 0 loss (§6). **Existential go/no-go: PASSED.**
+   sustained capture established feasibility. The early five-minute run later proved
+   lossy; byte-complete tagged acquisition is established separately in §6.
+   **Existential go/no-go: PASSED.**
 2. **A/B field fixture**: source with a marker on field 1 vs field 2 + synced audio click, with
    hard signal cuts — pins slot order, spatial-parity mapping, boundary/trailer semantics, V↔A
    counter relationship, loss/relock behavior. Do this *before* torture-tape inference.
@@ -1439,12 +1441,9 @@ delivery edge; wrong one at acquisition.
   Earlier lookback experiments and the forward-only/live distinction are
   summarized in §7; `TRAJECTORY.md` retains the historical optional offline
   design. They are not a request to add a FIFO to the current live path.
-- **P3 frameserver (original plan)** — unit parser + signal-state classifier v0 (three-layer model, §6) +
-  registration engine → interlaced UYVY IOSurface publisher + decision log + standard-media
-  recorder skeleton; TPC/raw packet persistence is an explicit debug option only. **No
-  deinterlacer in C or on the real-time device path**; ffmpeg/OBS/post owns that presentation
-  decision.
-  Both components test via replay.
+- **P3 boundary:** no deinterlacer in C or on the real-time device path;
+  ffmpeg/OBS/post owns presentation. A standard-media recorder is another consumer (§9),
+  and TPC persistence remains explicit debug-only (§8).
 - ✅ **P3 audio path landed (main `da39beb`, four mutual review rounds).** `src/frameserver/
   audio_publisher.{h,c}`: every PCM record the parser emits reaches a media sink as bounded blocks
   cut at each `DeckLinkAudioResyncT` record. **Audio is the master clock:** a contiguous run is
@@ -1552,9 +1551,8 @@ delivery edge; wrong one at acquisition.
 - **Next hardware session — owed experiments (all ≤30 s tagged captures via `shuttle-capture`,
   no long plays; poll status register `214/16` at 1 Hz throughout each):**
   1. ~~**True no-signal path**~~ — **DONE 2026-09-03** (two captures, see the no-input paragraph in
-     §6): deck absent/off and deck output dropped by its HDMI mode both yield `0x0800`. Expect the never-observed `0x0800` format code and whatever pseudo-frames /
-     cadence the device emits (bmusb: green, ~30.13 Hz) — the only device state no capture has
-     ever triggered, and the one that cannot be synthesized because its content is unknown.
+     §6): deck absent/off and deck output dropped by its HDMI mode both yield `0x0800`.
+     Its measured raster supersedes the early expectation of green ~30.13 Hz pseudo-frames.
   2. ~~**Unlocked input** via the deck's tuner on a dead channel~~ — **DONE 2026-09-03, negative
      result (`captures/deck_ext_input_nosource_30s.tpc`):** with the deck on an unconnected
      external input and then on a dead tuner channel, its output is **locked `0xe801` sub-blanking
@@ -1580,12 +1578,9 @@ delivery edge; wrong one at acquisition.
      session is not required just because an old plan offered one.
   No over-the-air analog exists in Japan since 2011/2012 (cable digi-ana ended 2015), and dead-air
   tapes through this deck yield TBC-locked snow identical to the relock windows already captured.
-- Throughout: **all testing via deterministic replay** (whole_tape.tpc + untagged_capture + libusb_replay_shim +
-  census ground truths); hardware only for final validation passes.
-   **Steps 5–6 are built by replaying a captured file through a virtual device — no deck, no tape,
-   no live signal** (see §6). Only steps 1–4 need the hardware; everything downstream is
-   deterministic replay, so the archival writer and the CMIO/OBS path can be developed and
-   regression-tested against recorded damage (program cut, deck-blank/relock, short units) at will.
+- Develop and regression-test downstream stages by deterministic replay (§6), including
+  recorded cuts, deck mute/relock and short units. Hardware is needed for acquisition and
+  the named outstanding hardware validations, not routine pipeline development.
 
 **Analog input choice:** default **S-Video** (VHS/S-VHS is natively Y/C → most direct, least
 transformed tap). **A/B vs component** early: component moves chroma demodulation off the
@@ -1708,7 +1703,7 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   to 92.61%, but still failed A1's gate; the still-trigger-only arm scored 93.915%.
 - **Experiment ledgers retired (owner, 2026-09-27).** "we are past the phase where the limit makes sense ... I wanted them wiped
   with any relevant information thats not captured elsewhere preserved" ("the limit" = "the experimenter ledger discipline"). The
-  ledgers were wiped on 2026-09-28 after their durable findings moved into this file. Still in force: state what a test should show
+  ledgers were wiped on 2026-09-28 after their durable findings moved into this file and the component documentation. Still in force: state what a test should show
   before running it, look at raw rows before claiming, and stop and ask the owner when changes stop moving forward. The approved-engine
   bound (§11) is separate and stays.
 - **Search the owner's words before escalating** (standing instruction,
@@ -1732,15 +1727,10 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   separately bounds total runtime. Release admission gates after the last required boundary.
   Asserted CPU-cost gates use the measured thread's CPU time, not wall time;
   host scheduling delays belong to liveness measurements, not CPU-cost regressions.
-- **v11 engine integration:** the approved geometry policy is the default for frameserver
-  and OBS opens. Each engine owns a copied numeric configuration (`ge_config`); the library
-  reads no environment, and tools map their `GE_*` variables into it. `docs/geometry_engine.md`
-  defines the defaults and their provenance, the schema-28 decision log, unit-keyed decisions
-  and reversed-pair boundary handling. The classifier likewise owns a copied
-  `signal_state_config` (`fs_config.signal_config`, NULL selects defaults);
-  `src/signal_state/README.md` documents its inherited thresholds and confidence ramps.
-  Classifier action bits can reset geometry and clear vote history; its labels and
-  confidence values do not directly supply vote inputs. Durable rules from the v11 work:
+- **Integration references:** [geometry policy/configuration](docs/geometry_engine.md),
+  [classifier parameters and reset coupling](src/signal_state/README.md), and
+  [frameserver logging/publication](src/frameserver/README.md) own their contracts.
+  Durable cross-component rules:
   - Keep a requested crop distinct from unavailable raster rows. Silently clamping the crop
     makes the decision log disagree with the published pixels.
   - Aperture arithmetic uses published offsets: 480i starts at 23+d1 / 286+d2 for 240 lines.
@@ -1757,11 +1747,8 @@ M3 can't load BMD's x64 **kernel** driver → this generally needs **real x86 Wi
   - Decoded tape captions (CEA-608) are an instrument for scoring placement, never a placement
     source (owner, 2026-09-26). They are not valid truth in every commercial: one places its
     caption off-picture.
-  - Decision-log audio evidence is an immutable snapshot at the parser's video-unit callback,
-    on the same delivery thread that writes correlations. Later/missing resyncs stay empty
-    deterministically; no video waits. Publication-time audio_pts_known retains its separate
-    best-effort semantics. The former global seqlock lookup could exhaust eight retries even
-    with the target entry already present, making log cells depend on unrelated writer timing.
+  - Deterministic log evidence and best-effort live audio timestamps are different contracts;
+    see [audio evidence](src/frameserver/README.md#deterministic-audio-evidence).
 - `AGENTS.md` is a symlink to `CLAUDE.md`; edit `CLAUDE.md` only.
   Follow the active turn's shared-checkout/lock instructions, preserve others'
   edits and stage explicit owned paths. Commit owned work with the required

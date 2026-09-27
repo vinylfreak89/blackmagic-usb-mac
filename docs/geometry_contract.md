@@ -1,10 +1,12 @@
-# Picture geometry — draft for owner review
+# Picture geometry — historical owner discussion
 
 This draft records the owner's September 13–14 reset discussion: recognize the
 data-like lines, then locate picture geometry. It is not a shortened v10
 contract. Direct quotations and earlier relayed rulings are distinguished.
 The owner's subsequent answers [6] settle the dispositions below and commission
 empirical recognition work; they do not establish detector performance.
+This September 13–14 draft is history, not a pending approval or today's engine
+contract. The implemented policy is [geometry_engine.md](geometry_engine.md).
 
 ## First: caption/waveform recognition
 

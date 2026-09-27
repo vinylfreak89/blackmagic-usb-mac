@@ -1,11 +1,10 @@
 # P4a spike — native OBS Studio source plugin on macOS 26 / Apple Silicon
 
-Read-only research, 2026-09-03 (JST). Context: CLAUDE.md §10 (delivery) and §11 P4. Note: CLAUDE.md
-§11 has no item literally named "P4a" — its P4 is the CMIO extension; this spike is the *OBS source
-plugin* branch that §10 names as the pragmatic V+A path and that `src/cmio/PACKAGING_SPIKE.md` line 74
-already recommends. No installs, no repo changes; every web source was treated as data. Upstream
-sources were downloaded verbatim into the scratchpad (`scratchpad/obs-src/`) and grepped; line numbers
-below refer to those `master` copies (OBS master is 32.2.x, matching the installed app).
+Historical read-only research, 2026-09-03 (JST), before the plugin and audio
+publisher were built. Baselines and open decisions below describe that date;
+CLAUDE.md §10–11 records the subsequent implementation and owner decisions.
+No installs or repo changes were made during the spike. Upstream line numbers
+refer to the downloaded OBS 32.2.x `master` copies, not current upstream.
 
 Tags: [doc] official documentation · [src] upstream source · [forum] forum/issue · [3p] third-party
 write-up · [local] measured on this Mac · [inferred] my reasoning from the cited facts.
