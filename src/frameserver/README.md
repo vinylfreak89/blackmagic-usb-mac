@@ -128,7 +128,10 @@ Field1 belongs to frame_top_unit, field2 to the row counter.
 
 `make tests/hretime_repair_probe` builds a diagnostic real worker with the
 geometry_worker_bench CLI. HRT_REPAIR_PREFIX and HRT_REPAIR_CAPTURE select
-exclusive scratch outputs. It buffers per-line reasons, widths, correlations,
+exclusive scratch outputs. HRT_REPAIR_EXTRA accepts up to two comma-separated
+source-counter:field pairs for additional actual source/output pixel dumps;
+this observer-only selector does not change repair or registration decisions.
+It buffers per-line reasons, widths, correlations,
 bands and selected actual source/output pixels until worker join. Capacity is
 1024 woven frames; not a full-tape logger. No path allocation or lookahead is
 added. This remains a falsifiable experiment, not a validated/default repair.

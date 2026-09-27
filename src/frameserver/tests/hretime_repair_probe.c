@@ -14,6 +14,7 @@ typedef struct {
 } repair_trace;
 static repair_trace trace[PROBE_UNITS*480];static size_t count;
 static const char *prefix,*capture;
+static uint64_t extra_counter[2];static int extra_field[2],extra_count;
 enum { PICTURES=40 };
 static uint8_t before[PICTURES][UNIT_BYTES],after[PICTURES][UNIT_BYTES];
 static uint64_t saved_counter[PICTURES];static int saved_field[PICTURES],saved_count;
@@ -24,6 +25,11 @@ static int wanted(uint64_t c) {
            (!strcmp(capture,"cap3") && (c==13547 || c==14058 || c==13723)) ||
            (!strcmp(capture,"pan") && (c==3211 || c==3214 || c==3264)) ||
            (!strcmp(capture,"cap2") && c==1972);
+}
+static int wanted_field(uint64_t c,int field) {
+    if(wanted(c))return 1;
+    for(int i=0;i<extra_count;i++)if(extra_counter[i]==c && extra_field[i]==field)return 1;
+    return 0;
 }
 static FILE *output(const char *suffix) {
     char path[4096];assert(snprintf(path,sizeof path,"%s%s",prefix,suffix)<(int)sizeof path);
@@ -50,6 +56,16 @@ static void dump(void) {
 __attribute__((constructor)) static void init(void) {
     prefix=getenv("HRT_REPAIR_PREFIX");capture=getenv("HRT_REPAIR_CAPTURE");
     if(!prefix || !capture){fputs("HRT_REPAIR_PREFIX and HRT_REPAIR_CAPTURE required\n",stderr);abort();}
+    const char *p=getenv("HRT_REPAIR_EXTRA");
+    while(p && *p) {
+        unsigned long long c;int field,n=0;
+        if(extra_count==2 || sscanf(p,"%llu:%d%n",&c,&field,&n)!=2 ||
+           (field!=1 && field!=2) || (p[n] && p[n]!=',')) {
+            fputs("HRT_REPAIR_EXTRA: expected up to two counter:field pairs\n",stderr);abort();
+        }
+        extra_counter[extra_count]=c;extra_field[extra_count++]=field;
+        p+=n;if(*p==',')p++;
+    }
     assert(!atexit(dump));
 }
 void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
@@ -66,7 +82,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
             {o->edge_spread[j&1][0],o->edge_spread[j&1][1]},{b->error[0],b->error[1]},
             {w->exterior[j&1][0],w->exterior[j&1][1]}};
     }
-    for(int k=0;k<2;k++)if(wanted(w->counter[k])) {
+    for(int k=0;k<2;k++)if(wanted_field(w->counter[k],k+1)) {
         assert(saved_count<PICTURES);int i=saved_count++;
         saved_counter[i]=w->counter[k];saved_field[i]=k+1;
         memcpy(before[i],k?f2:f1,UNIT_BYTES);memcpy(after[i],k?out2:out1,UNIT_BYTES);
