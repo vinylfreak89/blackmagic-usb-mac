@@ -117,7 +117,13 @@ static void neighbour_confirmation(void) {
     edge_row(40,14,714,23);assert(neighbour_discontinuity(&work,&result,40));
     result.blank[1]=90;assert(!neighbour_discontinuity(&work,&result,40)); /* neighbour's own blank */
     result.blank[1]=2;edge_row(40,0,719,100);
-    assert(neighbour_discontinuity(&work,&result,40)); /* censored observations retained */
+    assert(!neighbour_discontinuity(&work,&result,40)); /* censored own coordinates */
+    edge_row(40,14,714,100);edge_row(39,10,710,100);edge_row(41,18,718,100);
+    assert(neighbour_discontinuity(&work,&result,40)); /* right: sole uncensored neighbour */
+    edge_row(41,18,717,100);
+    assert(!neighbour_discontinuity(&work,&result,40)); /* smooth slope, not an excursion */
+    edge_row(39,0,719,100);edge_row(41,0,718,100);
+    assert(!neighbour_discontinuity(&work,&result,40)); /* no measured neighbours */
     edge_row(0,14,714,100);edge_row(1,10,710,100);
     assert(neighbour_discontinuity(&work,&result,0)); /* sole lower neighbour */
     work.row[1]=NULL;assert(!neighbour_discontinuity(&work,&result,0));
@@ -131,18 +137,41 @@ static void band_growth(void) {
     fixture();displace(unit,0,20,6,0);
     /* Edges move without any pure shift in the comparison body. */
     for(int x=10;x<40;x++)unit[48+40*1440+2*x+1]=2;
-    run();assert(result.action[40]==HRT_RETIME && result.action[42]==HRT_INTERPOLATE);
+    run();assert(result.action[40]==HRT_RETIME && result.action[42]==HRT_CONTENT);
     assert(result.shift[42]==0 && result.action[44]==HRT_NONE);
     assert(result.field[0].bands==1 && result.band[0].first==43 && result.band[0].last==44);
     /* Two seeds grow into the same displaced gap, counted and repaired once. */
     fixture();displace(unit,0,20,6,0);displace(unit,0,22,6,0);
     for(int x=10;x<40;x++)unit[48+40*1440+2*x+1]=2;
-    run();assert(result.field[0].bands==1 && result.field[0].retimed==2 && result.field[0].interpolated==1);
+    run();assert(result.field[0].bands==1 && result.field[0].retimed==2 && result.field[0].content==1);
     assert(result.band[0].first==43 && result.band[0].last==45);
     /* A switch-only seed cannot grow upward into picture. */
     fixture();displace(unit,0,232,6,0);
     for(int x=10;x<40;x++)unit[48+250*1440+2*x+1]=2;
     run();assert(result.action[462]==HRT_NONE && result.action[464]==HRT_NONE);
+}
+static void shape_confirmation(void) {
+    fixture();displace(unit,0,20,6,0);run();
+    assert(ordered_shape(&work,40,6));
+    assert(!ordered_shape(&work,40,0)); /* no ordered improvement */
+    memcpy(work.y[40],work.y[39],720);
+    assert(!ordered_shape(&work,40,6)); /* identical shape is not an excursion */
+    memset(work.y[40],100,720);
+    assert(!ordered_shape(&work,40,6)); /* no shape */
+    memset(work.y[39],100,720);memset(work.y[41],100,720);
+    assert(shape_correlation(work.y[40],work.y[39],work.y[41],0)==0);
+    assert(!ordered_shape(&work,40,6));
+    for(int j=0;j<480;j+=479) {
+        fixture();displace(j?other:unit,j?1:0,j?239:0,6,0);run();
+        /* Boundary reference is the neighbouring field's next same-field row. */
+        assert(ordered_shape(&work,j,6));
+        int farther=j?476:3;
+        work.row[farther]=NULL;assert(!ordered_shape(&work,j,6));
+    }
+    fixture();run();
+    /* Full physical bound is safe, even when a caller supplies a wider shift. */
+    assert(ordered_shape(&work,40,148)==ordered_shape(&work,40,147));
+    assert(ordered_shape(&work,40,-148)==ordered_shape(&work,40,-147));
 }
 int main(int argc,char **argv) {
     if(argc==2) {
@@ -155,6 +184,7 @@ int main(int argc,char **argv) {
     edge_ownership();
     edge_certification();
     neighbour_confirmation();
+    shape_confirmation();
     band_growth();
     fixture();displace(unit,0,20,6,0);run();
     assert(result.field[0].retimed==1 && result.field[1].retimed==0);
@@ -187,6 +217,6 @@ int main(int argc,char **argv) {
     /* Invalid publisher rows use neutral padding, never cross field storage. */
     fixture();memcpy(out1,unit,sizeof unit);memcpy(out2,other,sizeof other);
     hrt_apply(&work,unit,other,-30,30,out1,out2,&result);
-    puts("HRETIME PASS: scalar/SIMD, neighbour confirmation, edge-certified shift, donor fill, growth/merge/stop, symmetric ownership, switch exclusion, no picture, chroma, crop bounds");
+    puts("HRETIME PASS: scalar/SIMD, measurable edge excursions, ordered shape/boundaries, edge-certified shift, donor fill, growth/merge/stop, symmetric ownership, switch exclusion, no picture, chroma, crop bounds");
     return 0;
 }

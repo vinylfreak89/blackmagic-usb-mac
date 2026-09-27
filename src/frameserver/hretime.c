@@ -112,22 +112,51 @@ static int edges_above(const uint8_t *y,double blank,double minimum,int *left,in
 static int edges(const uint8_t *y,double blank,int *left,int *right) {
     return edges_above(y,blank,0,left,right);
 }
-/* Confirmation only: each raw row uses its own field's VI blank. A censored
- * coordinate still witnesses neighbour continuity, but cannot certify retiming.
- * All measurable neighbours must disagree on one side; none is no evidence. */
+/* Confirmation only: an excursion is beyond all measurable neighbours in the
+ * SAME direction. Between-neighbour slopes and capture-window edges do not
+ * establish a timing displacement. Eligibility uses each row's own VI blank. */
 static int neighbour_discontinuity(hrt_workspace *w,const hrt_result *o,int j) {
-    int own[2],k=j&1,seen[2]={0,0},different[2]={1,1};
+    int own[2],k=j&1,seen[2]={0,0},earlier[2]={1,1},later[2]={1,1};
     if(!w->row[j] || !edges_above(w->y[j],o->blank[k],CONFIRM_PICTURE_MARGIN,own,own+1))return 0;
     for(int n=j-1;n<=j+1;n+=2) {
         int adjacent[2];
         if(n<0 || n>=HRT_ROWS || !w->row[n] ||
            !edges_above(w->y[n],o->blank[n&1],CONFIRM_PICTURE_MARGIN,adjacent,adjacent+1))continue;
         for(int e=0;e<2;e++) {
+            if(e==0 ? own[e]==0 || adjacent[e]==0 : own[e]>=718 || adjacent[e]>=718)continue;
             seen[e]=1;
-            different[e]&=abs(own[e]-adjacent[e])>o->edge_spread[k][e];
+            double delta=own[e]-adjacent[e],spread=o->edge_spread[k][e];
+            earlier[e]&=delta < -spread;
+            later[e]&=delta > spread;
         }
     }
-    return (seen[0] && different[0]) || (seen[1] && different[1]);
+    return (seen[0] && (earlier[0] || later[0])) || (seen[1] && (earlier[1] || later[1]));
+}
+/* Double, centred Pearson on identical support. b/c form the raw neighbour
+ * average; passing the same row twice gives an ordinary two-row correlation.
+ * A flat signal has no ordered shape and contributes zero correlation. */
+static double shape_correlation(const uint8_t *a,const uint8_t *b,const uint8_t *c,int s) {
+    double ma=0,mb=0;
+    for(int x=SCORE_LO;x<SCORE_HI;x++){ma+=a[x+s];mb+=0.5*(b[x]+c[x]);}
+    ma/=SCORE_SIZE;mb/=SCORE_SIZE;
+    double aa=0,bb=0,ab=0;
+    for(int x=SCORE_LO;x<SCORE_HI;x++) {
+        double u=a[x+s]-ma,v=0.5*(b[x]+c[x])-mb;
+        aa+=u*u;bb+=v*v;ab+=u*v;
+    }
+    return aa>0 && bb>0 ? ab/sqrt(aa*bb) : 0;
+}
+static int ordered_shape(hrt_workspace *w,int j,int shift) {
+    int a=j?j-1:1,b=j<HRT_ROWS-1?j+1:HRT_ROWS-2;
+    int nn_a=a,nn_b=b;
+    if(j==0)nn_b=3;
+    if(j==HRT_ROWS-1)nn_b=HRT_ROWS-4;
+    if(!w->row[j] || !w->row[a] || !w->row[b] || !w->row[nn_b])return 0;
+    int s=shift < -SEARCH ? -SEARCH : shift > SEARCH ? SEARCH : shift;
+    double r0=shape_correlation(w->y[j],w->y[a],w->y[b],0);
+    double rs=shape_correlation(w->y[j],w->y[a],w->y[b],s);
+    double rnn=shape_correlation(w->y[nn_a],w->y[nn_b],w->y[nn_b],0);
+    return r0<rnn && rs>=rnn;
 }
 static int compare_double(const void *a,const void *b) {
     double x=*(const double*)a,y=*(const double*)b;return (x>y)-(x<y);
@@ -351,7 +380,9 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         /* Preserve the original unavailable population and donor mask. Content
          * candidates are untouched, not promoted to witnesses for another repair. */
         if(!donor(w,j-1) && !donor(w,j+1)){o->action[j]=HRT_UNAVAILABLE;o->field[k].unavailable++;continue;}
-        if(!neighbour_discontinuity(w,o,j)){o->action[j]=HRT_CONTENT;o->field[k].content++;continue;}
+        if(!neighbour_discontinuity(w,o,j) || !ordered_shape(w,j,s)) {
+            o->action[j]=HRT_CONTENT;o->field[k].content++;continue;
+        }
         int keep=edges(w->y[j],o->blank[k],&l,&r) && certified_edges(o,k,l,r,s) && isfinite(o->width[k]) &&
             fabs((r-l)-o->width[k])<=o->tolerance[k];
         if(keep) {
