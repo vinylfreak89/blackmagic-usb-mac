@@ -56,6 +56,7 @@ OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 
 #define S_INPUT       "input"
+#define S_HRETIME     "hretime"
 #define S_REPLAY      "replay_path"
 #define S_USE_REPLAY  "use_replay"
 #define S_SIDECAR     "sidecar_with_recording"
@@ -267,6 +268,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
         if (!rp || !*rp){ blog(LOG_WARNING, "[shuttle-source] replay selected but no file given"); return -1; }
         cfg.capture.replay_path = rp; cfg.capture.replay_pace_us = 16000;    /* device cadence */
     }
+    cfg.hretime = obs_data_get_bool(settings, S_HRETIME) ? 1 : 0;   /* per-tape choice; off leaves output unchanged */
     cfg.pool_units = 64; cfg.surface_pool = 6;
     cfg.sink.on_frame = on_frame; cfg.sink.ctx = s;
     cfg.audio_sink.on_block = on_audio; cfg.audio_sink.ctx = s;
@@ -276,7 +278,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     atomic_store(&s->frames_out, 0); atomic_store(&s->audio_frames_out, 0); atomic_store(&s->audio_steps, 0);   /* per-session accounting */
     if (fs_open(&s->fs, &cfg) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL; return -1; }
     if (fs_start(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver start failed"); fs_close(s->fs); s->fs = NULL; return -1; }
-    blog(LOG_INFO, "[shuttle-source] started (%s)", cfg.capture.replay_path ? "replay" : "device");
+    blog(LOG_INFO, "[shuttle-source] started (%s), H-retiming %s", cfg.capture.replay_path ? "replay" : "device", cfg.hretime ? "ON" : "off");
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
     if (s->sidecar_enabled && obs_frontend_recording_active() && s->sidecar_base) sidecar_attach(s);   /* restarted mid-recording: continue as the next part */
     return 0;
@@ -341,6 +343,7 @@ static void shuttle_defaults(obs_data_t *settings){
     obs_data_set_default_bool(settings, S_USE_REPLAY, false);
     obs_data_set_default_string(settings, S_REPLAY, "");
     obs_data_set_default_bool(settings, S_SIDECAR, true);
+    obs_data_set_default_bool(settings, S_HRETIME, false);
 }
 
 static obs_properties_t *shuttle_properties(void *data){
@@ -350,6 +353,7 @@ static obs_properties_t *shuttle_properties(void *data){
     obs_property_list_add_string(in, "S-Video", "svideo");
     obs_property_list_add_string(in, "Composite", "composite");
     obs_property_list_add_string(in, "Component", "component");
+    obs_properties_add_bool(p, S_HRETIME, "H-retiming: repair horizontally mistimed lines (per tape; leave off for stable tapes)");
     obs_properties_add_bool(p, S_USE_REPLAY, "Replay a tagged capture (.tpc) instead of the device");
     obs_properties_add_path(p, S_REPLAY, "Tagged capture file", OBS_PATH_FILE, "Tagged capture (*.tpc *.cap6)", NULL);
     obs_properties_add_bool(p, S_SIDECAR, "Write the registration sidecar (<recording>.registration.csv) with each OBS recording");
