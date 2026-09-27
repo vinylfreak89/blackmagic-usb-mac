@@ -1,4 +1,4 @@
-/* Task46: neighbour content without an agreement gate; picture-only repair. */
+/* Task47: learned exterior support, narrow blanking and analog rolloffs. */
 #include "../hretime.c"
 #include <assert.h>
 #include <stdio.h>
@@ -139,6 +139,24 @@ int main(void) {
     assert(!carries_picture(flat,20,0,2,1) && !carries_picture(flat,21,0,2,1));
     assert(!carries_picture(flat,283,1,2,1) && !carries_picture(flat,284,1,2,1));
     assert(carries_picture(flat,285,1,2,1));
+    /* A captured-style soft rolloff still has a measured crossing with only
+     * one true exterior sample; the ramp must not become plateau noise. */
+    memset(flat,213,sizeof flat);for(int x=0;x<10;x++)flat[x]=1;
+    const uint8_t tail[]={205,207,202,174,139,105,83,55,30,1};
+    memcpy(flat+710,tail,sizeof tail);int support[2]={9,1};
+    repair_boundary rb=repair_measure(flat,1,1/sqrt(12.0),support);
+    assert(!rb.spill && fabs(rb.edge[1]-714.9411764705883)<1e-10);
+    support[1]=4;rb=repair_measure(flat,1,1/sqrt(12.0),support);
+    assert(!rb.spill && fabs(rb.edge[1]-714.9411764705883)<1e-10);
+    flat[719]=213;support[1]=1;rb=repair_measure(flat,1,1/sqrt(12.0),support);
+    assert(rb.spill==2);
+    support[1]=0;rb=repair_measure(flat,1,1/sqrt(12.0),support);assert(!rb.spill);
+    fixture();run(1);work.exterior[0][0]=9;work.exterior[0][1]=1;
+    work.repair[40]=(repair_boundary){{20,710},{1,1},0};
+    result.edge_median[0][0]=10;result.edge_median[0][1]=718;
+    result.edge_spread[0][0]=result.edge_spread[0][1]=1;
+    unsigned moved=edge_movement(&work,&result,40);
+    assert((moved&HRT_LEFT_LATER) && !(moved&(HRT_RIGHT_EARLIER|HRT_RIGHT_LATER)));
     puts("HRETIME PASS: Pearson oracle, learned history, singleton, shape, width, spill, donors, zero crossing, chroma, crop bounds");
     return 0;
 }

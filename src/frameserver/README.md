@@ -33,8 +33,9 @@ Device inserts NTSC20/21 and283/284 are always excluded. A blank row is not
 garbage edge blanking. Line22/285 is tested, not categorically excluded, since
 its deck-generated content varies. Ineligible rows cannot enter a bridged band
 or supply learned clean-edge statistics/expected-width references.
-The shape test measures task42 half-height edges. Missing edges or picture
-spilling to the border always detect and request I.
+The shape test measures half-height edges. Picture occupying the learned
+exterior blanking span detects spill and requests I. A failed crossing alone
+is unknown measurement, not proof that blanking is missing.
 Otherwise BOTH a departure outside normal edge variation AND the learned
 correlation deficit are required. Either side may depart independently:
 stretch/compression need not move both edges or move them equally.
@@ -73,10 +74,19 @@ third detector. Switch rows f1>=255/f2>=518 remain excluded.
 
 Repair uses the existing half-height instrument: left local picture median
 26..35, right maximum696..705, crossing search147 samples from either border.
-Contrast exceeds five noise sigmas; own outer four-sample plateaus are used
-when consistent with VI. Otherwise VI supplies blanking. Noise is1.4826*MAD
-with quantisation floor1/sqrt(12). Four outer samples above half-height mean
-spill. These supports can miss a real boundary; unknown width selects I, not R.
+Contrast exceeds five noise sigmas. Exterior support is floor(left normal)
+or floor(719-right normal), clipped0..147, from the same clean-edge history.
+Cold start first measures with VI alone to bootstrap the existing body normal.
+Only contiguous outer samples within five VI-noise sigmas, up to that learned
+support, supply the local plateau median/MAD. A rolloff outside this envelope
+cannot inflate plateau noise. With none, retain VI. Noise is1.4826*MAD with
+quantisation floor1/sqrt(12). All samples of a nonempty learned exterior span
+above half-height establish spill; zero support supplies no such witness.
+A side supplies displacement evidence only when its exterior sample count
+exceeds its crossing uncertainty max(1,sigma/slope). One exterior sample can
+establish blanking presence/spill, but not independently resolve displacement.
+Finite narrow-side crossings remain usable for the width rule. Unknown width
+still selects I, not R, when another measurement detects the line.
 
 Expected width is interpolated between nearest undisturbed measurable
 same-field rows, else adjacent opposite-field rows. Both width error and mean

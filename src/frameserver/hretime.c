@@ -8,8 +8,7 @@
 #if defined(__aarch64__) && !defined(HRT_SCALAR)
 #include <arm_neon.h>
 #endif
-/* Task46: shared dark/flat content needs no same-level agreement; blank rows
- * and device inserts cannot become timing repairs. */
+/* Task47: exterior support comes from the tape, not a four-sample plateau. */
 enum { ROW_BYTES=1440, HEADER=48, WIDTH_BODY_LO=40, WIDTH_BODY_HI=220,
        HISTORY=30, SMALL_SHIFT=2 };
 typedef struct { double edge[2],error[2];int spill; } repair_boundary;
@@ -24,6 +23,7 @@ struct hrt_workspace {
     int have,context;
     const uint8_t *row[HRT_ROWS];
     uint8_t flagged[HRT_ROWS],moved[HRT_ROWS],picture[HRT_ROWS];
+    int exterior[2][2];
     repair_boundary repair[HRT_ROWS];
     double expected[HRT_ROWS][2],width_precision[HRT_ROWS];
     normal_summary history[2][HISTORY];
@@ -87,19 +87,30 @@ static double repair_noise(const uint8_t *unit,int k,double blank) {
     }
     return fmax(1/sqrt(12.0),1.4826*(lo+hi)/4.0);
 }
-static repair_boundary repair_measure(const uint8_t *y,double vi,double noise) {
+static repair_boundary repair_measure(const uint8_t *y,double vi,double noise,const int *exterior) {
     repair_boundary b={{NAN,NAN},{NAN,NAN},0};
     double v[10];for(int x=0;x<10;x++)v[x]=y[26+x];
     double picture[2]={quantile(v,10,.5),0};
     for(int x=696;x<706;x++)if(y[x]>picture[1])picture[1]=y[x];
     for(int side=0;side<2;side++) {
         double blank=vi,sigma=noise;
-        for(int pass=0;pass<2;pass++) {
-            b.edge[side]=b.error[side]=NAN;
-            if(picture[side]-blank<=5*sigma)break;
+        int support=exterior?exterior[side]:0;
+        double outside[147];int count=0;
+        for(int t=0;t<support;t++) {
+            double value=y[side?719-t:t];
+            if(fabs(value-vi)>5*noise)break;
+            outside[count++]=value;
+        }
+        if(count) {
+            blank=quantile(outside,count,.5);
+            for(int t=0;t<count;t++)outside[t]=fabs(outside[t]-blank);
+            sigma=fmax(noise,1.4826*quantile(outside,count,.5));
+        }
+        {
+            if(picture[side]-blank<=5*sigma)continue;
             double half=(picture[side]+blank)/2;
-            int spill=1;for(int t=0;t<4;t++)if(y[side?719-t:t]<half)spill=0;
-            if(spill){b.spill|=1<<side;break;}
+            int spill=support>0;for(int t=0;t<support;t++)if(y[side?719-t:t]<half)spill=0;
+            if(spill){b.spill|=1<<side;continue;}
             double pos=NAN,slope=0;
             for(int t=0;t<147;t++) {
                 int x=side?719-t:t;
@@ -111,13 +122,6 @@ static repair_boundary repair_measure(const uint8_t *y,double vi,double noise) {
             }
             b.edge[side]=pos;
             b.error[side]=isfinite(pos)?fmax(1,sigma/slope):NAN;
-            if(pass || !isfinite(pos) || (side?pos>715:pos<4))break;
-            double outside[4];for(int t=0;t<4;t++)outside[t]=y[side?719-t:t];
-            double level=quantile(outside,4,.5);
-            for(int t=0;t<4;t++)outside[t]=fabs(outside[t]-level);
-            double sn=fmax(noise,1.4826*quantile(outside,4,.5));
-            if(fabs(level-vi)>5*hypot(noise,sn))break;
-            blank=level;sigma=sn;
         }
     }
     return b;
@@ -274,7 +278,8 @@ static void normal(hrt_workspace *w,hrt_result *o,int k) {
 }
 static unsigned edge_movement(hrt_workspace *w,const hrt_result *o,int j) {
     unsigned bits=0;int k=j&1;
-    for(int e=0;e<2;e++)if(isfinite(w->repair[j].edge[e]) && isfinite(o->edge_median[k][e])) {
+    for(int e=0;e<2;e++)if(isfinite(w->repair[j].edge[e]) && isfinite(o->edge_median[k][e]) &&
+                          w->exterior[k][e]>w->repair[j].error[e]) {
         bits|=HRT_EDGES_KNOWN;
         double delta=w->repair[j].edge[e]-o->edge_median[k][e];
         if(delta < -o->edge_spread[k][e])bits|=1u<<(2*e);
@@ -354,7 +359,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
     for(int k=0;k<2;k++)o->blank[k]=blank_level(src[k],k);
     double noise[2]={repair_noise(f1,0,o->blank[0]),repair_noise(f2,1,o->blank[1])};
     for(int j=0;j<HRT_ROWS;j++) {
-        w->repair[j]=repair_measure(w->y[j],o->blank[j&1],noise[j&1]);
+        w->repair[j]=repair_measure(w->y[j],o->blank[j&1],noise[j&1],NULL);
         w->picture[j]=carries_picture(w->y[j],line_number(j,d1,d2),j&1,o->blank[j&1],noise[j&1]);
     }
     HRT_DIAG_PHASE(2);
@@ -369,13 +374,19 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         o->deficit[j]=o->r_neighbours[j]-o->r_line[j];
     }
     for(int k=0;k<2;k++)normal(w,o,k);
+    for(int k=0;k<2;k++)for(int side=0;side<2;side++) {
+        double span=side?719-o->edge_median[k][side]:o->edge_median[k][side];
+        w->exterior[k][side]=isfinite(span)?(int)fmax(0,fmin(147,floor(span))):0;
+    }
+    for(int j=0;j<HRT_ROWS;j++)
+        w->repair[j]=repair_measure(w->y[j],o->blank[j&1],noise[j&1],w->exterior[j&1]);
     HRT_DIAG_PHASE(3);
     for(int j=0;j<HRT_ROWS;j++) {
         if(!w->row[j] || !w->picture[j] || excluded(j,d1,d2))continue;
         int k=j&1;repair_boundary *b=w->repair+j;
         if(isfinite(o->deficit[j]) && isfinite(o->correlation_limit[k]) &&
            o->deficit[j]>o->correlation_limit[k]+1e-12)o->reason[j]|=HRT_CORRELATION;
-        if(b->spill || !isfinite(b->edge[0]) || !isfinite(b->edge[1]))o->reason[j]|=HRT_MISSING_EDGE;
+        if(b->spill)o->reason[j]|=HRT_MISSING_EDGE;
         o->edge_moved[j]=(uint8_t)edge_movement(w,o,j);
         for(int side=0;side<2;side++)
             if((o->edge_moved[j]&(3u<<(2*side))) && !edge_content(w,o,noise,j,side))
