@@ -21,13 +21,21 @@ analysis. This is a per-tape presentation option, not a new registration input.
 Raw capture, classifier, geometry, offsets, vote and comb decisions are unchanged.
 
 The detector runs on the actual published 720x480 pair. Each luma row is compared
-with its woven neighbours' mean over columns [60,660), searching shifts -24..24
-(first minimum wins). A nonzero winner with SAD ratio <0.8 marks a discontinuity.
+with its woven neighbours' mean over the common overlap of their [60,660) bodies.
+At least half that 600-sample body must remain: this derives a search of every
+integer shift -300..300, rather than a fixed displacement allowance. Both reads
+stay inside the body, and each SAD is normalized by its own overlap length.
+An exact integral-sum lower bound prunes impossible winners; every survivor gets
+a full-resolution SAD using prepared doubled luma and fused NEON accumulation.
+Normalized comparisons use exact integer cross-products, and ties choose the
+lowest shift even though near-zero candidates are visited first. There is no
+decimated finalist heuristic. A nonzero winner with SAD ratio <0.8 marks a discontinuity.
 The ratio retains the reference's 1e-6 denominator floor at zero SAD; ties in
 owner strength abstain, including uniformly blank frames.
 Contiguous discontinuities form a band; the strongest qualifying same-field
 boundary break assigns its owner. Equal strength or no qualifying break abstains.
-These are the owner-reviewed entry-57 detector settings, not width tolerances.
+The ratio/ownership rules are the owner-reviewed entry-57 settings; the overlap
+search replaces task29's too-narrow +/-24 bound. These are not width tolerances.
 Each field-1 line >=255 and field-2 line >=518 is excluded from repair, including
 the end of a band crossing the cutoff. Detected damage there is not a donor.
 
@@ -65,11 +73,23 @@ zero means none. Empty cells mean no complete frame to assess. These are
 frame-owned observations: f1 belongs to `frame_top_unit`, f2 to the row's own
 counter. A publisher failure remains unpublished even if repair was computed.
 
-The reference script's displayed coordinates already include +4 (NTSC), and
-its printed list shows only the first three bands per field. Detection is
-checked against its complete list; switch-crossing repair truncation is
-reported separately. Synthetic tests cover width change, censoring, mirrored
-field ownership, blank input, UYVY phase and actual reversed-pair publication.
+The old narrow-search reference's displayed coordinates already include +4
+(NTSC), and its printed list shows only the first three bands per field. Its
+bands are a comparison baseline, not a reference for the new overlap search.
+Tests compare the new search to an exhaustive scalar oracle, including ties,
+range endpoints and captured row triples. Synthetic tests also cover width
+change, censoring, mirrored field ownership, blank input, UYVY phase and actual
+reversed-pair publication. Wider searches also admit more unlabelled bands;
+passing named labels is not a quality guarantee for those repairs.
+
+Boundary-only ownership has a measured limit: if widening merges a band up to
+the aperture's first row, its upper outside boundary disappears. When neither
+lower same-field boundary passes, the whole band abstains despite breaks inside
+it. Capture 4 counter 232 demonstrates this: the wide band spans woven rows 0..17,
+lower boundary ratios are 0.9470/0.9143, and formerly repaired f2 lines 291..294
+are no longer owned. An any-band-per-counter label hit does not detect this
+regression because a separate lower band still repairs. Widening the search
+alone has therefore not validated the complete repair policy.
 
 ## Deterministic audio evidence
 

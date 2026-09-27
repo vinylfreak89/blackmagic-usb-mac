@@ -1234,6 +1234,8 @@ interpolates from the other field; it never feeds registration. Field-1 lines >=
 and field-2 lines >=518 remain excluded. Off retains schema 28; on uses schema 30
 with frame-owned per-line repair marks. See `src/frameserver/README.md` for the
 detector, measured width tolerance, interpolation and reversed-pair ownership.
+The horizontal search retains at least half of the [60,660) body in both lines,
+deriving +/-300 with overlap-normalized SAD instead of the retired +/-24 limit.
 
 ## 10. Delivery: OBS virtual camera
 
