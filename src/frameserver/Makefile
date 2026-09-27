@@ -144,10 +144,7 @@ bench: bench-geometry
 tests/geometry_worker_bench: $(SRCS) frameserver_replay.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c ../field_registration/geometry_tool_controls.h ../field_registration/tests/geometry_rigid_reference.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c ../field_registration/geometry_engine.c,$(SRCS)) tests/geometry_worker_bench.c tests/geometry_bench_engine.c -o $@ $(LIBS)
 
-# Instrument-only E-62 branch/phase observer. Never linked into replay or OBS.
-tests/hretime_diagnosis: $(SRCS) frameserver_replay.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c tests/hretime_diagnosis.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c hretime.c ../field_registration/geometry_engine.c,$(SRCS)) tests/hretime_diagnosis.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c -o $@ $(LIBS)
-
+# Standalone waveform observer. Never linked into replay or OBS.
 tests/waveform_boundary_observer: $(SRCS) frameserver_replay.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c tests/waveform_boundary_observer.c tests/waveform_boundary.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(filter-out frameserver.c hretime.c ../field_registration/geometry_engine.c,$(SRCS)) tests/waveform_boundary_observer.c tests/geometry_worker_bench.c tests/geometry_bench_engine.c -o $@ $(LIBS)
 
@@ -168,7 +165,6 @@ $(FIXTURE_LONG): ../unit_parser/tests/gen_unit_parser_capture.py
 
 clean:
 	rm -f tests/hretime_test tests/hretime_asan tests/hretime_tsan
-	rm -f tests/hretime_diagnosis
 	rm -f tests/waveform_boundary_observer
 	rm -f tests/hretime_repair_probe
 	rm -f tests/audio_lookup_probe tests/audio_lookup_stress tests/audio_evidence_test tests/audio_evidence_asan tests/audio_evidence_tsan
@@ -182,7 +178,7 @@ frameserver_replay tests/frameserver_test tests/replay_completion_test: pairing_
 frameserver_replay tests/frameserver_test tests/replay_completion_test: audio_publisher.h
 
 # Header dependencies for the optional post-placement repair module.
-frameserver_replay tests/geometry_worker_bench tests/geometry_worker_verify tests/hretime_diagnosis tests/frameserver_test tests/audio_evidence_test tests/audio_queue_flags_test: hretime.h
+frameserver_replay tests/geometry_worker_bench tests/geometry_worker_verify tests/frameserver_test tests/audio_evidence_test tests/audio_queue_flags_test: hretime.h
 
 tests/hretime_test: tests/hretime_test.c hretime.c hretime.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/hretime_test.c -o $@

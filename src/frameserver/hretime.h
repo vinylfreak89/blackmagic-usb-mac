@@ -1,13 +1,15 @@
 /* Optional post-registration horizontal timing repair. Sources are immutable
  * full 48+525*1440-byte units; f1/f2 may belong to different transport units.
  * Destinations are caller-owned copies. Geometry is untouched; this workspace
- * alone owns the causal previous-repaired-field history. */
+ * alone owns the causal clean-line summary history. */
 #ifndef FS_HRETIME_H
 #define FS_HRETIME_H
 #include <stddef.h>
 #include <stdint.h>
 enum { HRT_WIDTH=720, HRT_ROWS=480, HRT_FIELD_ROWS=240, HRT_MAX_BANDS=480 };
 enum hrt_action { HRT_NONE, HRT_RETIME, HRT_INTERPOLATE, HRT_UNAVAILABLE, HRT_CONTENT };
+enum hrt_reason { HRT_CORRELATION=1, HRT_MISSING_EDGE=2, HRT_BLANKING_SIZE=4,
+                  HRT_INTERIOR_BLANK=8, HRT_ZERO_CROSSING=16 };
 /* Coordinate directions: '-' earlier, '+' later; symmetric about normal. */
 enum hrt_edge { HRT_LEFT_EARLIER=1, HRT_LEFT_LATER=2,
                 HRT_RIGHT_EARLIER=4, HRT_RIGHT_LATER=8, HRT_EDGES_KNOWN=16 };
@@ -25,8 +27,9 @@ typedef struct {
     hrt_field_result field[2];
     uint8_t action[HRT_ROWS]; /* actual woven row: 2*i=f1, 2*i+1=f2 */
     int shift[HRT_ROWS];
-    int offset[2][HRT_ROWS][6]; /* previous repaired / counterpart; 32767 unknown */
-    int edge_offset[2][HRT_ROWS][2]; /* dynamic left/right windows, same ordering */
+    uint8_t reason[HRT_ROWS];
+    double r_line[HRT_ROWS],r_neighbours[HRT_ROWS],deficit[HRT_ROWS];
+    double correlation_limit[2],typical_band_length;
     double blank[2], width[2], tolerance[2];
     double edge_median[2][2], edge_spread[2][2]; /* field, left/right */
     uint8_t edge_moved[HRT_ROWS]; /* directions, '=' if known but within spread */

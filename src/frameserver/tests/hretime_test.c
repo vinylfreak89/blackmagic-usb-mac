@@ -1,4 +1,4 @@
-/* E-62: unique waveform evidence, causal references and immutable donors. */
+/* Task43: learned two-test detector, width repair and immutable donors. */
 #include "../hretime.c"
 #include <assert.h>
 #include <stdio.h>
@@ -29,23 +29,17 @@ static void oracle(void) {
     uint8_t a[720],b[720];
     for(int trial=0;trial<30;trial++) {
         for(int x=0;x<720;x++){a[x]=random_byte();b[x]=random_byte();}
-        for(int lo=0;lo<720;lo+=120)for(int s=-64;s<=64;s++)if(lo+s>=0 && lo+s+120<=720) {
-            unsigned expected=0;for(int x=0;x<120;x++)expected+=abs((int)a[lo+x]-b[lo+x+s]);
-            assert(window_sad(a+lo,b+lo+s)==expected);
+        for(int shift=-2;shift<=2;shift++) {
+            double sa=0,sb=0,aa=0,bb=0,ab=0;
+            for(int x=0;x<720;x++) {
+                int p=x+shift;if(p<0)p=0;if(p>719)p=719;
+                double u=a[p],v=b[x];sa+=u;sb+=v;aa+=u*u;bb+=v*v;ab+=u*v;
+            }
+            double expected=(ab-sa*sb/720)/sqrt((aa-sa*sa/720)*(bb-sb*sb/720));
+            assert(line_correlation(a,b,shift)==expected);
         }
     }
-    memset(a,2,sizeof a);memset(b,2,sizeof b);assert(window_offset(a,b,0)==UNKNOWN_OFFSET);
-    for(int x=0;x<720;x++)a[x]=b[x]=random_byte();
-    assert(window_offset(a,b,240)==0);
-    for(int x=0;x<720;x++)a[x]=x>=12?b[x-12]:2;
-    assert(window_offset(a,b,240)==12);
-    /* A periodic wall cannot supply even a known-zero offset. */
-    for(int x=0;x<720;x++)a[x]=b[x]=(uint8_t)((x%16)*14);
-    assert(window_offset(a,b,240)==UNKNOWN_OFFSET);
-    for(int x=0;x<720;x++)b[x]=x>=10 && x<710?40+random_byte()%180:2;
-    for(int x=0;x<720;x++)a[x]=x>=23?b[x-23]:2;
-    assert(edge_window_offset(a,b,33,10,0)==23);
-    assert(edge_window_offset(a,b,0,10,0)==UNKNOWN_OFFSET);
+    memset(a,2,sizeof a);assert(isnan(line_correlation(a,a,0)));
 }
 int main(void) {
     oracle();fixture();run(1);assert(result.band_count==0);
@@ -58,22 +52,27 @@ int main(void) {
     /* A sustained bend is compared against repaired, not yesterday's bent row. */
     run(3);assert(result.field[0].retimed==3);
     memcpy(unit,other,sizeof unit);run(4);assert(result.band_count==0);
-    /* A recognised isolated miss must not poison the next temporal reference. */
-    displace(unit,0,20,6);run(5);assert(!result.field[0].interpolated && !result.field[0].retimed);
-    assert(!work.valid[0][39]);
-    hrt_begin(&work,7,7,1,0);assert(!work.available[0][40]);
-    hrt_begin(&work,6,6,2,0);assert(!work.available[0][40]);
+    displace(unit,0,20,6);run(5);assert(result.field[0].retimed==1);
+    assert(work.history_count[0]>0);
+    hrt_begin(&work,7,7,1,0);assert(!work.history_count[0]);
+    run(8);hrt_begin(&work,9,9,2,0);assert(!work.history_count[0]);
     hrt_reset(&work);assert(!work.have);
     fixture();run(1);for(int i=0;i<6;i++)displace(other,1,i,-9);
     run(2);assert(result.field[1].retimed==6 && !result.field[0].retimed);
     fixture();run(1);for(int i=0;i<6;i++)displace(other,1,i,-12);
-    run(2);assert(result.field[1].interpolated==6 && !result.field[0].interpolated);
+    run(2);assert(result.field[1].interpolated+result.field[1].unavailable==6);
+    /* Correlation-only symmetry can flag the straight mirror as well. That is
+     * a policy limitation, not permission to interpolate from a flagged donor. */
     fixture();run(1);for(int i=20;i<23;i++){displace(unit,0,i,6);displace(other,1,i,6);}
-    run(2);assert(!result.band_count); /* shared displacement */
+    run(2);assert(result.field[0].retimed==3 && result.field[1].retimed==3); /* shape independently flags both */
     fixture();run(1);for(int i=232;i<238;i++)displace(unit,0,i,6);
     run(2);assert(!result.band_count); /* switch */
+    fixture();run(1);
+    for(int x=300;x<331;x++)unit[48+(19+20)*1440+2*x+1]=2;
+    run(2);assert((result.reason[40]&HRT_INTERIOR_BLANK) &&
+                  result.action[40]==HRT_INTERPOLATE); /* border width is normal */
     fixture();for(int r=0;r<525;r++)for(int x=0;x<720;x++)unit[48+r*1440+2*x+1]=2;
-    memcpy(other,unit,sizeof unit);run(1);assert(!result.band_count);
+    memcpy(other,unit,sizeof unit);run(1);assert(result.field[0].unavailable && result.field[1].unavailable);
     uint8_t a[1440],b[1440];for(int x=0;x<360;x++){a[4*x]=x%256;a[4*x+2]=255-x%256;a[4*x+1]=a[4*x+3]=100;}
     memset(b,77,sizeof b);retime(a,b,1);
     assert(b[40]==average(a[40],a[44]) && b[42]==average(a[42],a[46]));
@@ -89,11 +88,23 @@ int main(void) {
     assert(repair_choice(&work,40,0,0,&s) && s==1);
     work.repair[40]=(repair_boundary){{10,710},{1,1},0};
     assert(repair_choice(&work,40,0,0,&s) && s==0);
-    work.repair[40]=(repair_boundary){{20,710},{1,1},0};
+    work.repair[40]=(repair_boundary){{30,710},{1,1},0};
     assert(!repair_choice(&work,40,0,0,&s));
     work.repair[40]=(repair_boundary){{NAN,710},{NAN,1},1};
     assert(!repair_choice(&work,40,0,0,&s));
     fixture();hrt_apply(&work,unit,other,-30,30,out1,out2,&result);
-    puts("HRETIME PASS: E62 detection, width-only repair, zero/no-donor, stretch/spill, temporal recovery, chroma and crop bounds");
+    /* Linear zero crossing bridges; a flat intervening plateau does not. */
+    fixture();run(1);memset(work.flagged,0,sizeof work.flagged);
+    for(int j=0;j<480;j++)work.repair[j]=(repair_boundary){{10,710},{1,1},0};
+    result.edge_median[0][0]=10;result.edge_median[0][1]=710;
+    work.flagged[40]=work.flagged[48]=1;
+    for(int j=40;j<=48;j+=2) {
+        double d=-4+(j-40);work.repair[j].edge[0]+=d;work.repair[j].edge[1]+=d;
+    }
+    bridge(&work,&result,0,0);assert(work.flagged[42] && work.flagged[44] && work.flagged[46]);
+    memset(work.flagged,0,sizeof work.flagged);work.flagged[40]=work.flagged[48]=1;
+    work.repair[42].edge[0]=10;work.repair[42].edge[1]=710;
+    bridge(&work,&result,0,0);assert(!work.flagged[42]);
+    puts("HRETIME PASS: Pearson oracle, learned history, singleton, shape, width, spill, donors, zero crossing, chroma, crop bounds");
     return 0;
 }

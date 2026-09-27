@@ -35,13 +35,13 @@ extern "C" {
 typedef struct frameserver frameserver;
 
 #define FS_GEOMETRY_LOG_SCHEMA 28
-#define FS_HRETIME_LOG_SCHEMA 34
+#define FS_HRETIME_LOG_SCHEMA 35
 
 typedef struct {
     cc_config capture;          // device input or replay_path
     unsigned pool_units;        // unit slots between delivery thread and worker (0 => as many as the capture ring holds: 355 at 256 MB)
     unsigned surface_pool;      // IOSurface pool for the publisher (0 => 6)
-    const char *decision_log;   // schema 28 CSV (34 with hretime), or NULL;
+    const char *decision_log;   // schema 28 CSV (35 with hretime), or NULL;
                                 // opened exclusively (must not exist).
     fp_sink sink;               // consumer of published frames (may be {NULL,NULL} => count only)
     ap_sink audio_sink;         // consumer of PCM blocks on the device timebase ({NULL,NULL} => count only)

@@ -13,125 +13,74 @@ unit; consumers pair fields according to the logged ownership. Measurements
 and explicit unavailable values are retained separately from placement.
 `log_header` in frameserver.c defines the complete CSV column set.
 
-## Optional horizontal retiming (E-62 experiment)
+## Optional horizontal retiming (two-test experiment)
 
-`fs_config.hretime` defaults to zero; OBS's existing setting is unchanged.
-Tools map `FS_HRETIME`; the library reads no environment. Off retains schema
-28 and performs no repair analysis. This experimental presentation path is
-not an approved replacement for registration or a default-on repair policy.
-Transport, classifier, geometry, vote and comb see only immutable source pixels.
+`fs_config.hretime` remains OFF by default; tools map `FS_HRETIME`.
+OBS's existing setting is unchanged. OFF retains schema28 and does no repair
+analysis. Actual woven source ownership and published placements are used;
+nothing feeds geometry, classifier, comb or vote.
 
-The detector uses the actual published field pair and placements. Six
-120-sample luma windows cover each row. Each window searches full valid
-reference windows at integer offsets within +/-64, independently against the
-previous repaired same-field row and the current counterpart field row.
-Detection never averages the two fields. SAD is exact integer arithmetic with
-a NEON implementation; equal minima prefer zero, then smaller absolute offset,
-then negative reference shift. Positive logged displacement means the current
-line moved right; correction reads source[x+displacement].
+This replaces E62 windows, uniqueness, temporal alignment and seed branches.
+Full ordered 720-sample luma Pearson is maximised over shifts -2..2 (one chroma
+period), with endpoint extension and identical support. A line's better match
+to either woven neighbour is compared with those neighbours' mutual unshifted
+correlation. At the first/last row the two available same-field neighbours
+supply the mutual reference. Undefined Pearson provides no waveform evidence.
 
-Both compared windows must have population SD >=4. Nonzero evidence requires
-SAD <0.8 of its zero-offset value; the best match also needs Pearson >=0.8.
-The winning offset's basin is +/-2 samples. The best alternative outside it
-must have SAD >=1.5 times the winner (and positive SAD for an exact winner).
-A local search-wall winner is unknown. Periodic equal minima, including zero,
-are unknown. These are registered experimental qualifications, not universal
-VHS constants. In particular the fixed basin can reject genuinely displaced
-low-texture windows whose minima are broad; unknown never means stationary.
-No linearity or all-window coherence test gates damage detection.
+The second, independent test measures task42 half-height edges. Missing edges
+or picture spilling to the border flag, as do edges outside the learned normal
+range and interior blanking runs. The latter use five VI-noise sigmas and a
+minimum length equal to the larger learned exterior blanking width. This is
+not a guarantee that legitimate dark content is distinguishable from blanking.
 
-Boundary evidence is independent: a sustained four-sample run above VI+8,
-a 40-sample inside median above VI+20, and an exterior median within three
-codes of that field's VI blank. A window-censored edge supplies an inequality,
-never retime certification. Each side has its own median/p90-deviation reference
-from field rows 40..219. A departure must exceed both three samples and the
-measured spread. Missing edges remain unknown.
+Each field retains30 clean-frame summaries (roughly one NTSC second). Body
+rows40..219 supply medians and1.4826*MAD. Cold start uses current body rows with
+finite edges/correlations; subsequent updates admit only rows passing both
+tests. Correlation deficit limit is median plus five robust sigmas. Edge
+allowances use five times the greater within-frame/across-frame robust sigma,
+at least one sample. Resets, epoch changes and counter gaps clear history.
+A broadly damaged initial body can contaminate bootstrap; no label-specific
+fallback or concealed clean-reference assumption repairs that limitation.
 
-Dynamic 120-sample edge windows compare the current and reference boundaries,
-with up to 60 samples outside and the rest inside. The common available outer
-extent shortens the outside portion near the capture window; it does not
-shorten the window or invent padding. Origins differ by the measured boundary
-displacement, then a +/-64 local search refines it. Logged offsets include the
-origin difference. Censored coordinates cannot supply these waveform matches.
-Both temporal and counterpart edge-window offsets are recorded.
+Bands are contiguous own-field flags, including singletons. An intervening gap
+joins only when finite endpoint displacements have opposite signs and every
+gap row fits the linear zero-crossing profile within its own crossing error.
+There is no fixed gap-length constant, nor extrapolation beyond either bound.
+The last30 band lengths supply a logged median as supporting evidence, not a
+third detector. Switch rows f1>=255/f2>=518 remain excluded.
 
-A side seeds ownership if its temporal edge offset moves >=4 samples while
-the counterpart's own temporal edge offset is known <4, or its edge departs
-from its body's reference while the counterpart has a known normal edge on
-that side. Counterpart displacement on that side vetoes ownership. A line
-with neither identifiable edge needs two unambiguous moving interior windows
-with stationary corresponding temporal windows in the other field, no jointly
-moving window, and direct adjacency to an edge-supported candidate. A known
-stationary boundary is not bypassed using interior motion. Two adjacent
-same-field candidates establish a band; single lines are deliberately forgone.
-Field-1 lines >=255 and field-2 lines >=518 remain excluded.
+Repair uses the existing half-height instrument: left local picture median
+26..35, right maximum696..705, crossing search147 samples from either border.
+Contrast exceeds five noise sigmas; own outer four-sample plateaus are used
+when consistent with VI. Otherwise VI supplies blanking. Noise is1.4826*MAD
+with quantisation floor1/sqrt(12). Four outer samples above half-height mean
+spill. These supports can miss a real boundary; unknown width selects I, not R.
 
-Repair choice is separate from those detection filters. The width experiment
-uses half-height edges (left local level: median samples26..35; right: maximum
-696..705), with a147-sample crossing search from either border. These short
-supports come from the independent waveform review; a large bend can put them
-outside picture and make the width unknown. Own four-sample exterior plateaus
-supply blanking only when they are outside the crossing and agree with VI
-within five combined noise sigmas; otherwise the field's VI reference is used.
-Noise is1.4826*MAD with quantisation floor1/sqrt(12); contrast must exceed five
-blank-noise sigmas. Four outer samples at picture half-height mean spill.
+Expected width is interpolated between nearest undisturbed measurable
+same-field rows, else adjacent opposite-field rows. Both width error and mean
+edge displacement may be as large as the larger expected exterior blanking
+width. Within that allowance, round displacement to an integer and retime.
+Zero leaves pixels unchanged (C). Spill, missing width, interior blanking
+(the shape test's scrambled-line observation), or larger error uses
+whole-line ELA. R needs no donor; it extends its own vacated source samples and
+resamples U/V independently for odd shifts. I uses immutable unflagged woven
+neighbours, directions0,+/-1..3 and a three-sample stencil; one donor copies,
+none records U. No repaired-raster temporal detector remains.
 
-Expected edges come from the nearest unflagged, unmoved, measurable same-field
-rows (distance-weighted above/below, one-sided if necessary); opposite-field
-adjacent rows are a fallback only when neither same-field reference exists.
-Width tolerance sums all four boundary error bounds: each is at least one
-sample, or blank noise divided by crossing slope if greater. This allows
-sample-phase/analogue rounding without treating fractional crossings as exact.
-Width within that precision retimes by the rounded mean left/right displacement.
-No window-count, uniqueness, gain-over-zero or field-median certificate gates
-retiming. Rounded zero leaves pixels alone and records C, never R. Unknown
-width, spill or discontinuous width selects whole-line interpolation.
+ON schema35 keeps geometry cells unchanged except schema_version. R/I/U/C
+tokens, counts and edge directions remain. Old window-offset columns are
+replaced by hretime_evidence_f1/f2: NTSC:reason/rLine/rNeighbours/shift.
+Reason bits:1 correlation,2 missing/spill,4 blanking size,8 interior blank,
+16 zero-crossing gap. hretime_normal_f1/f2 carry deficit limit, left/right
+normal and their allowances; hretime_typical_band is the past length median.
+Field1 belongs to frame_top_unit, field2 to the row counter.
 
-Immutable opposite-field neighbours supply interpolation donors (directions
-0,+/-1,+/-2,+/-3, three-luma-sample stencil, vertical wins ties). One trustworthy
-donor duplicates; none leaves the row unchanged as unavailable. Both accepted
-repair masks and recognised displaced boundaries exclude donors. Retime needs
-no donor; vacated samples extend its own source edge. Odd shifts resample U
-and V independently at half phase. The repair experiment does not make a
-missed detection into a repaired line. Changed output pixels also change
-subsequent repaired-reference evidence, despite unchanged detection equations.
-
-All buffers are allocated at open. Previous repaired luma is keyed by field
-source counter, epoch and storage row, not a changing output crop. Nonadjacency,
-resets and pairing changes invalidate it. Recognised displaced rows that were
-not repaired are not retained as clean references. This cannot guarantee that
-an entirely unrecognised defect never enters history; independent current
-boundary/counterpart evidence is the recovery path. No added lookahead.
-Reversed pairing uses current-unit f1 and pending-unit f2 without modifying
-the geometry engine's retained raw raster.
-
-On uses schema 34. Existing decision cells retain their meaning; only
-`schema_version` changes among schema-28 cells. Repair counts, first/last NTSC
-lines and per-line `R/I/U/C` tokens remain. C now means a recognised displaced
-boundary without an accepted repair, not established content or harmlessness.
-Added `hretime_offsets_f1/f2` record every aperture line as
-`NTSC:t0|t1|t2|t3|t4|t5/x0|x1|x2|x3|x4|x5`: temporal and counterpart offsets.
-`?` means no qualified comparison (flat, failed alignment, missing reference
-or excluded row, ambiguous basin or search-wall result), not zero.
-`hretime_edge_offsets_f1/f2` use `NTSC:tLeft|tRight/xLeft|xRight` for the
-dynamic edge windows. Counts and offset lists are frame-owned: field 1
-belongs to `frame_top_unit`; field 2 to the row counter. No-frame rows have
-empty repair cells. On-mode schema changes do not affect off-mode byte identity.
-
-This remains an experiment, default off. E-62 detection has known incomplete
-bands; changing repair choice does not establish detection completeness.
-Acceptance must score R versus I, zero-shift no-ops and output pixels, not
-merely label hits. The real-worker repair probe reports every line's boundaries,
-expected width, precision and action, and buffers selected actual output
-rasters until worker join. No new shedding policy or budget guarantee is claimed.
-
-`make tests/hretime_repair_probe` builds that diagnostic worker. Its CLI matches
-`geometry_worker_bench`; set `HRT_REPAIR_PREFIX` to a new scratch prefix and
-`HRT_REPAIR_CAPTURE` to a capture label. With `FS_HRETIME=1` it emits every
-aperture row's action/shift, half-height edges, expected width, precision and
-flag/spill evidence after join. It also records actual before/after field1
-unit pixels for label `tape1`, counters494/848. This bounded tool aborts above
-1,024 woven frames; it is not a whole-tape logger and is not linked into OBS.
+`make tests/hretime_repair_probe` builds a diagnostic real worker with the
+geometry_worker_bench CLI. HRT_REPAIR_PREFIX and HRT_REPAIR_CAPTURE select
+exclusive scratch outputs. It buffers per-line reasons, widths, correlations,
+bands and selected actual source/output pixels until worker join. Capacity is
+1024 woven frames; not a full-tape logger. No path allocation or lookahead is
+added. This remains a falsifiable experiment, not a validated/default repair.
 
 ## Deterministic audio evidence
 
