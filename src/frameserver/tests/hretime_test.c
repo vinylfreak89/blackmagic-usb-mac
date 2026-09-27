@@ -86,17 +86,46 @@ static void edge_certification(void) {
     result.edge_spread[0][0]=result.edge_spread[0][1]=2;
     assert(certified_edges(&result,0,18,714,6)); /* inclusive own noise allowance */
     assert(!certified_edges(&result,0,19,714,6));
-    /* Shifted interior with unchanged blanking edges must interpolate. */
+    /* Shifted interior with unchanged blanking edges is now content/agree. */
     fixture();displace(unit,0,20,6,0);
     uint8_t *row=unit+48+39*1440;
     for(int x=0;x<720;x++)if(x<10 || x>710)row[2*x+1]=2;
     for(int x=10;x<16;x++)row[2*x+1]=100;
-    run();assert(result.shift[40]==6 && result.action[40]==HRT_INTERPOLATE);
+    run();assert(result.shift[40]==6 && result.action[40]==HRT_CONTENT);
+    assert(result.field[0].content==1 && !memcmp(out1,unit,sizeof unit));
     /* Retiming vacated samples must come from donors, not blanking. */
     fixture();displace(unit,0,20,6,0);
     for(int r=301;r<=302;r++)for(int x=714;x<720;x++)other[48+r*1440+2*x+1]=220;
     run();assert(result.action[40]==HRT_RETIME);
     for(int x=714;x<720;x++)assert(out1[48+39*1440+2*x+1]==220);
+}
+static void edge_row(int j,int left,int right,int level) {
+    for(int x=0;x<HRT_WIDTH;x++)work.y[j][x]=x>=left && x<=right?level:2;
+}
+static void neighbour_confirmation(void) {
+    fixture();run();
+    result.edge_spread[0][0]=result.edge_spread[0][1]=2;
+    edge_row(39,10,710,100);edge_row(40,14,714,100);edge_row(41,10,710,100);
+    assert(neighbour_discontinuity(&work,&result,40));
+    edge_row(41,14,714,100);assert(!neighbour_discontinuity(&work,&result,40)); /* every neighbour */
+    edge_row(41,14,714,22);assert(neighbour_discontinuity(&work,&result,40)); /* strict blank+20 */
+    edge_row(39,10,710,22);assert(!neighbour_discontinuity(&work,&result,40)); /* no evidence */
+    edge_row(39,10,710,100);edge_row(41,10,710,100);edge_row(40,12,712,100);
+    assert(!neighbour_discontinuity(&work,&result,40)); /* strict > spread */
+    edge_row(40,14,714,22);assert(!neighbour_discontinuity(&work,&result,40));
+    int l,r;assert(edges(work.y[40],2,&l,&r) && l==14 && r==714); /* old semantics elsewhere */
+    edge_row(40,14,714,23);assert(neighbour_discontinuity(&work,&result,40));
+    result.blank[1]=90;assert(!neighbour_discontinuity(&work,&result,40)); /* neighbour's own blank */
+    result.blank[1]=2;edge_row(40,0,719,100);
+    assert(neighbour_discontinuity(&work,&result,40)); /* censored observations retained */
+    edge_row(0,14,714,100);edge_row(1,10,710,100);
+    assert(neighbour_discontinuity(&work,&result,0)); /* sole lower neighbour */
+    work.row[1]=NULL;assert(!neighbour_discontinuity(&work,&result,0));
+    fixture();run();edge_row(0,9,713,142);edge_row(1,11,715,140);
+    result.edge_spread[0][0]=12.4;result.edge_spread[0][1]=7.1;
+    assert(!neighbour_discontinuity(&work,&result,0)); /* accepted miss: source14045 f1/24 */
+    result.edge_spread[0][0]=result.edge_spread[0][1]=NAN;
+    assert(!neighbour_discontinuity(&work,&result,40));
 }
 static void band_growth(void) {
     fixture();displace(unit,0,20,6,0);
@@ -125,6 +154,7 @@ int main(int argc,char **argv) {
     oracle();
     edge_ownership();
     edge_certification();
+    neighbour_confirmation();
     band_growth();
     fixture();displace(unit,0,20,6,0);run();
     assert(result.field[0].retimed==1 && result.field[1].retimed==0);
@@ -157,6 +187,6 @@ int main(int argc,char **argv) {
     /* Invalid publisher rows use neutral padding, never cross field storage. */
     fixture();memcpy(out1,unit,sizeof unit);memcpy(out2,other,sizeof other);
     hrt_apply(&work,unit,other,-30,30,out1,out2,&result);
-    puts("HRETIME PASS: scalar/SIMD, edge-certified shift, donor fill, growth/merge/stop, symmetric ownership, switch exclusion, no picture, chroma, crop bounds");
+    puts("HRETIME PASS: scalar/SIMD, neighbour confirmation, edge-certified shift, donor fill, growth/merge/stop, symmetric ownership, switch exclusion, no picture, chroma, crop bounds");
     return 0;
 }

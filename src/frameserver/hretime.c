@@ -11,7 +11,8 @@
 enum { ROW_BYTES=1440, HEADER=48, BODY_LO=60, BODY_HI=660,
        SEARCH=147, SCORE_LO=SEARCH, SCORE_HI=HRT_WIDTH-SEARCH,
        SCORE_SIZE=SCORE_HI-SCORE_LO,
-       WIDTH_BODY_LO=40, WIDTH_BODY_HI=220 };
+       WIDTH_BODY_LO=40, WIDTH_BODY_HI=220,
+       CONFIRM_PICTURE_MARGIN=20 }; /* entry58: noise-dominated midpoint edges abstain */
 struct hrt_workspace {
     uint8_t y[HRT_ROWS][HRT_WIDTH];
     uint32_t prefix[HRT_ROWS][HRT_WIDTH+1];
@@ -99,14 +100,34 @@ static double blank_level(const uint8_t *u,int k) {
     for(int r=start;r<start+9;r++)for(int x=0;x<HRT_WIDTH;x++)h[u[HEADER+r*ROW_BYTES+2*x+1]]++;
     return hist_quantile(h,9*HRT_WIDTH,0.5);
 }
-static int edges(const uint8_t *y,double blank,int *left,int *right) {
+static int edges_above(const uint8_t *y,double blank,double minimum,int *left,int *right) {
     unsigned h[256]={0};for(int x=BODY_LO;x<BODY_HI;x++)h[y[x]]++;
     double level=hist_quantile(h,BODY_HI-BODY_LO,0.5);
-    if(level<=blank)return 0;
+    if(level<=blank+minimum)return 0;
     double mid=(blank+level)*0.5;
     *left=0;while(*left<HRT_WIDTH && y[*left]<=mid)(*left)++;
     *right=HRT_WIDTH-1;while(*right>=0 && y[*right]<=mid)(*right)--;
     return *left<=*right;
+}
+static int edges(const uint8_t *y,double blank,int *left,int *right) {
+    return edges_above(y,blank,0,left,right);
+}
+/* Confirmation only: each raw row uses its own field's VI blank. A censored
+ * coordinate still witnesses neighbour continuity, but cannot certify retiming.
+ * All measurable neighbours must disagree on one side; none is no evidence. */
+static int neighbour_discontinuity(hrt_workspace *w,const hrt_result *o,int j) {
+    int own[2],k=j&1,seen[2]={0,0},different[2]={1,1};
+    if(!w->row[j] || !edges_above(w->y[j],o->blank[k],CONFIRM_PICTURE_MARGIN,own,own+1))return 0;
+    for(int n=j-1;n<=j+1;n+=2) {
+        int adjacent[2];
+        if(n<0 || n>=HRT_ROWS || !w->row[n] ||
+           !edges_above(w->y[n],o->blank[n&1],CONFIRM_PICTURE_MARGIN,adjacent,adjacent+1))continue;
+        for(int e=0;e<2;e++) {
+            seen[e]=1;
+            different[e]&=abs(own[e]-adjacent[e])>o->edge_spread[k][e];
+        }
+    }
+    return (seen[0] && different[0]) || (seen[1] && different[1]);
 }
 static int compare_double(const void *a,const void *b) {
     double x=*(const double*)a,y=*(const double*)b;return (x>y)-(x<y);
@@ -232,9 +253,11 @@ static int direction(const uint8_t *a,const uint8_t *b,int x) {
     }
     return best;
 }
+static const uint8_t *donor(hrt_workspace *w,int j) {
+    return j>=0 && j<HRT_ROWS && !w->flagged[j]?w->row[j]:NULL;
+}
 static int interpolate(hrt_workspace *w,int j,uint8_t *out) {
-    const uint8_t *a=j>0 && !w->flagged[j-1]?w->row[j-1]:NULL;
-    const uint8_t *b=j+1<HRT_ROWS && !w->flagged[j+1]?w->row[j+1]:NULL;
+    const uint8_t *a=donor(w,j-1),*b=donor(w,j+1);
     if(!a && !b)return 0;
     if(!a || !b){memcpy(out,a?a:b,ROW_BYTES);return 1;}
     for(int x=0;x<HRT_WIDTH;x++) {
@@ -325,6 +348,10 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         int k=j&1,l=0,r=0,s=o->shift[j],line=line_number(j,d1,d2);
         int row=first_row(k,offsets[k])+j/2;
         uint8_t *out=dst[k]+HEADER+row*ROW_BYTES;
+        /* Preserve the original unavailable population and donor mask. Content
+         * candidates are untouched, not promoted to witnesses for another repair. */
+        if(!donor(w,j-1) && !donor(w,j+1)){o->action[j]=HRT_UNAVAILABLE;o->field[k].unavailable++;continue;}
+        if(!neighbour_discontinuity(w,o,j)){o->action[j]=HRT_CONTENT;o->field[k].content++;continue;}
         int keep=edges(w->y[j],o->blank[k],&l,&r) && certified_edges(o,k,l,r,s) && isfinite(o->width[k]) &&
             fabs((r-l)-o->width[k])<=o->tolerance[k];
         if(keep) {
