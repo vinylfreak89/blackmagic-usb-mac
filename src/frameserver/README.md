@@ -27,18 +27,22 @@ to either woven neighbour is compared with those neighbours' mutual unshifted
 correlation. At the first/last row the two available same-field neighbours
 supply the mutual reference. Undefined Pearson provides no waveform evidence.
 
-The second, independent test measures task42 half-height edges. Missing edges
-or picture spilling to the border flag, as do edges outside the learned normal
-range and interior blanking runs. The latter use five VI-noise sigmas and a
+The shape test measures task42 half-height edges. Missing edges, picture
+spilling to the border or interior blanking always detect and request I.
+Otherwise BOTH a departure outside normal edge variation AND the learned
+correlation deficit are required. Correlation alone never detects. Interior
+blanking uses five VI-noise sigmas and a
 minimum length equal to the larger learned exterior blanking width. This is
 not a guarantee that legitimate dark content is distinguishable from blanking.
 
-Each field retains30 clean-frame summaries (roughly one NTSC second). Body
-rows40..219 supply medians and1.4826*MAD. Cold start uses current body rows with
+Each field retains30 clean-frame summaries (roughly one NTSC second), including
+actual edge samples. Body rows40..219 supply these. Cold start uses current body rows with
 finite edges/correlations; subsequent updates admit only rows passing both
-tests. Correlation deficit limit is median plus five robust sigmas. Edge
-allowances use five times the greater within-frame/across-frame robust sigma,
-at least one sample. Resets, epoch changes and counter gaps clear history.
+tests. Correlation deficit limit is unchanged: median plus five robust sigmas.
+Normal edges are pooled clean-edge medians; each side's allowance is the99th
+percentile absolute departure from that median, with no multiplier or sample
+floor. This gives up small departures in the real content-dependent tail,
+instead of extrapolating a Gaussian from MAD. Resets, epoch changes and counter gaps clear history.
 A broadly damaged initial body can contaminate bootstrap; no label-specific
 fallback or concealed clean-reference assumption repairs that limitation.
 
@@ -64,14 +68,19 @@ Zero leaves pixels unchanged (C). Spill, missing width, interior blanking
 (the shape test's scrambled-line observation), or larger error uses
 whole-line ELA. R needs no donor; it extends its own vacated source samples and
 resamples U/V independently for odd shifts. I uses immutable unflagged woven
-neighbours, directions0,+/-1..3 and a three-sample stencil; one donor copies,
-none records U. No repaired-raster temporal detector remains.
+neighbours, directions0,+/-1..3 and a three-sample stencil; one donor copies.
+If both adjacent rows are detected/unavailable, search outward for the nearest
+unflagged opposite-field row; equidistant donors may use the same ELA. The
+published aperture, not a fixed distance, bounds that search. If none exists,
+preserve pixels and report U (no usable opposite-field row), never silently
+substitute a flagged donor. No repaired-raster temporal detector remains.
 
 ON schema35 keeps geometry cells unchanged except schema_version. R/I/U/C
 tokens, counts and edge directions remain. Old window-offset columns are
 replaced by hretime_evidence_f1/f2: NTSC:reason/rLine/rNeighbours/shift.
-Reason bits:1 correlation,2 missing/spill,4 blanking size,8 interior blank,
-16 zero-crossing gap. hretime_normal_f1/f2 carry deficit limit, left/right
+Reason bits are observations, not necessarily detections:1 correlation,
+2 missing/spill,4 blanking size,8 interior blank,16 zero-crossing gap. A row is
+detected for2/8/16 or the conjunction1+4. hretime_normal_f1/f2 carry deficit limit, left/right
 normal and their allowances; hretime_typical_band is the past length median.
 Field1 belongs to frame_top_unit, field2 to the row counter.
 

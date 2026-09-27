@@ -8,11 +8,15 @@
 #if defined(__aarch64__) && !defined(HRT_SCALAR)
 #include <arm_neon.h>
 #endif
-/* Task43: two independent observations, with bounded clean-line history. */
+/* Task44: stable blanking vetoes correlation-only corrections. */
 enum { ROW_BYTES=1440, HEADER=48, WIDTH_BODY_LO=40, WIDTH_BODY_HI=220,
        HISTORY=30, SMALL_SHIFT=2 };
 typedef struct { double edge[2],error[2];int spill; } repair_boundary;
-typedef struct { double median[3],sigma[3]; } normal_summary;
+typedef struct {
+    double median[3],sigma[3];
+    double edges[2][WIDTH_BODY_HI-WIDTH_BODY_LO];
+    int count;
+} normal_summary;
 struct hrt_workspace {
     uint8_t y[HRT_ROWS][HRT_WIDTH];
     uint64_t counter[2],epoch;
@@ -165,6 +169,11 @@ static const uint8_t *donor(hrt_workspace *w,int j) {
 }
 static int interpolate(hrt_workspace *w,int j,uint8_t *out) {
     const uint8_t *a=donor(w,j-1),*b=donor(w,j+1);
+    /* If neither adjacent row is usable, take the nearest immutable row in
+     * the opposite field. Equidistant usable rows retain the existing ELA. */
+    for(int distance=3;!a && !b && distance<HRT_ROWS;distance+=2) {
+        a=donor(w,j-distance);b=donor(w,j+distance);
+    }
     if(!a && !b)return 0;
     if(!a || !b){memcpy(out,a?a:b,ROW_BYTES);return 1;}
     for(int x=0;x<HRT_WIDTH;x++) {
@@ -215,7 +224,9 @@ static int summary(hrt_workspace *w,hrt_result *o,int k,int clean,normal_summary
         values[0][n]=o->deficit[j];values[1][n]=b->edge[0];values[2][n]=b->edge[1];n++;
     }
     if(!n)return 0;
-    for(int e=0;e<3;e++) {
+    s->count=n;
+    for(int e=0;e<2;e++)memcpy(s->edges[e],values[e+1],(size_t)n*sizeof(double));
+    for(int e=0;e<1;e++) {
         s->median[e]=quantile(values[e],n,.5);
         for(int i=0;i<n;i++)values[e][i]=fabs(values[e][i]-s->median[e]);
         s->sigma[e]=1.4826*quantile(values[e],n,.5);
@@ -229,7 +240,7 @@ static void normal(hrt_workspace *w,hrt_result *o,int k) {
         for(int e=0;e<2;e++)o->edge_median[k][e]=o->edge_spread[k][e]=NAN;
         return;
     }
-    for(int e=0;e<3;e++) {
+    for(int e=0;e<1;e++) {
         double v[HISTORY],d[HISTORY];int count=n?n:1;
         for(int i=0;i<count;i++) {
             normal_summary *s=n?&w->history[k][i]:&cold;
@@ -238,8 +249,17 @@ static void normal(hrt_workspace *w,hrt_result *o,int k) {
         double med=quantile(v,count,.5),within=quantile(d,count,.5);
         for(int i=0;i<count;i++)v[i]=fabs(v[i]-med);
         double spread=5*fmax(within,1.4826*quantile(v,count,.5));
-        if(e==0)o->correlation_limit[k]=med+spread;
-        else {o->edge_median[k][e-1]=med;o->edge_spread[k][e-1]=fmax(1,spread);}
+        o->correlation_limit[k]=med+spread;
+    }
+    for(int e=0;e<2;e++) {
+        double v[HISTORY*(WIDTH_BODY_HI-WIDTH_BODY_LO)];int count=0;
+        for(int i=0;i<(n?n:1);i++) {
+            const normal_summary *s=n?&w->history[k][i]:&cold;
+            memcpy(v+count,s->edges[e],(size_t)s->count*sizeof(double));count+=s->count;
+        }
+        double median=quantile(v,count,.5);
+        for(int i=0;i<count;i++)v[i]=fabs(v[i]-median);
+        o->edge_median[k][e]=median;o->edge_spread[k][e]=quantile(v,count,.99);
     }
     o->width[k]=o->edge_median[k][1]-o->edge_median[k][0];
     o->tolerance[k]=fmax(o->edge_median[k][0],719-o->edge_median[k][1]);
@@ -326,7 +346,9 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
                 if(run>=need){o->reason[j]|=HRT_INTERIOR_BLANK;break;}
             }
         }
-        w->flagged[j]=o->reason[j]!=0;
+        w->flagged[j]=(o->reason[j]&(HRT_MISSING_EDGE|HRT_INTERIOR_BLANK)) ||
+            ((o->reason[j]&(HRT_CORRELATION|HRT_BLANKING_SIZE))==
+             (HRT_CORRELATION|HRT_BLANKING_SIZE));
     }
     bridge(w,o,d1,d2);
     HRT_DIAG_PHASE(4);
@@ -351,7 +373,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         /* Interior blanking is the shape test's scrambled-line observation;
          * matching border width cannot certify a translation of that line. */
         int s=0,keep=repair_choice(w,j,d1,d2,&s);
-        if(o->reason[j]&HRT_INTERIOR_BLANK)keep=0;
+        if(o->reason[j]&(HRT_MISSING_EDGE|HRT_INTERIOR_BLANK))keep=0;
         o->shift[j]=keep?s:0;
         if(keep && !s){o->action[j]=HRT_CONTENT;o->field[k].content++;continue;}
         if(keep){retime(w->row[j],out,s);o->action[j]=HRT_RETIME;o->field[k].retimed++;}

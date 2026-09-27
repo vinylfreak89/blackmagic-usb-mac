@@ -86,7 +86,8 @@ with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
                     line,action=token.split(':');actions[2*(int(line)-first)+k]=action
                 for token in r[f'hretime_evidence_f{k+1}'].split():
                     line,evidence=token.split(':');bits,_,_,shift=evidence.split('/')
-                    j=2*(int(line)-first)+k;reasons[j]=int(bits);shifts[j]=int(shift)
+                    j=2*(int(line)-first)+k;bits=int(bits)
+                    reasons[j]=bool(bits&26 or (bits&5)==5);shifts[j]=int(shift)
             def raw(j):
                 if not 0<=j<480:return None
                 k=j%2;rr=(19 if k==0 else 282)+placement[k]+j//2
@@ -103,6 +104,10 @@ with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
                 else:
                     a=raw(j-1) if not reasons.get(j-1,0) else None
                     b=raw(j+1) if not reasons.get(j+1,0) else None
+                    for distance in range(3,480,2):
+                        if a is not None or b is not None:break
+                        a=raw(j-distance) if not reasons.get(j-distance,0) else None
+                        b=raw(j+distance) if not reasons.get(j+distance,0) else None
                     assert a is not None or b is not None
                     if a is None or b is None:fixed[:]=a if a is not None else b
                     else:

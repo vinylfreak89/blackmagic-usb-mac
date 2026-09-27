@@ -1,4 +1,4 @@
-/* Task43: learned two-test detector, width repair and immutable donors. */
+/* Task44: stable edges veto correlation-only repair; donors search outward. */
 #include "../hretime.c"
 #include <assert.h>
 #include <stdio.h>
@@ -60,11 +60,10 @@ int main(void) {
     fixture();run(1);for(int i=0;i<6;i++)displace(other,1,i,-9);
     run(2);assert(result.field[1].retimed==6 && !result.field[0].retimed);
     fixture();run(1);for(int i=0;i<6;i++)displace(other,1,i,-12);
-    run(2);assert(result.field[1].interpolated+result.field[1].unavailable==6);
-    /* Correlation-only symmetry can flag the straight mirror as well. That is
-     * a policy limitation, not permission to interpolate from a flagged donor. */
+    run(2);assert(result.field[1].interpolated==6 && !result.field[1].unavailable);
+    assert(!result.field[0].retimed && !result.field[0].interpolated);
     fixture();run(1);for(int i=20;i<23;i++){displace(unit,0,i,6);displace(other,1,i,6);}
-    run(2);assert(result.field[0].retimed==3 && result.field[1].retimed==3); /* shape independently flags both */
+    run(2);assert(!result.field[0].retimed && !result.field[1].retimed); /* shared movement correlates */
     fixture();run(1);for(int i=232;i<238;i++)displace(unit,0,i,6);
     run(2);assert(!result.band_count); /* switch */
     fixture();run(1);
@@ -72,7 +71,7 @@ int main(void) {
     run(2);assert((result.reason[40]&HRT_INTERIOR_BLANK) &&
                   result.action[40]==HRT_INTERPOLATE); /* border width is normal */
     fixture();for(int r=0;r<525;r++)for(int x=0;x<720;x++)unit[48+r*1440+2*x+1]=2;
-    memcpy(other,unit,sizeof unit);run(1);assert(result.field[0].unavailable && result.field[1].unavailable);
+    memcpy(other,unit,sizeof unit);run(1);assert(result.field[0].interpolated && result.field[1].interpolated);
     uint8_t a[1440],b[1440];for(int x=0;x<360;x++){a[4*x]=x%256;a[4*x+2]=255-x%256;a[4*x+1]=a[4*x+3]=100;}
     memset(b,77,sizeof b);retime(a,b,1);
     assert(b[40]==average(a[40],a[44]) && b[42]==average(a[42],a[46]));
@@ -85,6 +84,7 @@ int main(void) {
     int s=99;work.flagged[40]=1;work.flagged[39]=work.flagged[41]=1;
     work.repair[40]=(repair_boundary){{11,711},{1,1},0};
     assert(!donor(&work,39) && !donor(&work,41));
+    assert(interpolate(&work,40,out1)); /* outward search reaches rows37/43 */
     assert(repair_choice(&work,40,0,0,&s) && s==1);
     work.repair[40]=(repair_boundary){{10,710},{1,1},0};
     assert(repair_choice(&work,40,0,0,&s) && s==0);
@@ -105,6 +105,13 @@ int main(void) {
     memset(work.flagged,0,sizeof work.flagged);work.flagged[40]=work.flagged[48]=1;
     work.repair[42].edge[0]=10;work.repair[42].edge[1]=710;
     bridge(&work,&result,0,0);assert(!work.flagged[42]);
+    /* Real pooled percentile, not a MAD multiplier or one-sample floor. */
+    memset(&work,0,sizeof work);work.history_count[0]=1;
+    normal_summary *h=&work.history[0][0];h->count=100;
+    for(int i=0;i<100;i++){h->edges[0][i]=10+.01*i;h->edges[1][i]=710+.01*i;}
+    normal(&work,&result,0);
+    assert(fabs(result.edge_median[0][0]-10.495)<1e-12);
+    assert(fabs(result.edge_spread[0][0]-.495)<1e-12);
     puts("HRETIME PASS: Pearson oracle, learned history, singleton, shape, width, spill, donors, zero crossing, chroma, crop bounds");
     return 0;
 }
