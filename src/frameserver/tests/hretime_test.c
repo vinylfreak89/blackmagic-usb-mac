@@ -1,4 +1,4 @@
-/* Task44: stable edges veto correlation-only repair; donors search outward. */
+/* Task45: neighbour content, one-sided bends, and interior black. */
 #include "../hretime.c"
 #include <assert.h>
 #include <stdio.h>
@@ -69,7 +69,7 @@ int main(void) {
     fixture();run(1);
     for(int x=300;x<331;x++)unit[48+(19+20)*1440+2*x+1]=2;
     run(2);assert((result.reason[40]&HRT_INTERIOR_BLANK) &&
-                  result.action[40]==HRT_INTERPOLATE); /* border width is normal */
+                  result.action[40]==HRT_NONE); /* border blanking is intact */
     fixture();for(int r=0;r<525;r++)for(int x=0;x<720;x++)unit[48+r*1440+2*x+1]=2;
     memcpy(other,unit,sizeof unit);run(1);assert(result.field[0].interpolated && result.field[1].interpolated);
     uint8_t a[1440],b[1440];for(int x=0;x<360;x++){a[4*x]=x%256;a[4*x+2]=255-x%256;a[4*x+1]=a[4*x+3]=100;}
@@ -85,7 +85,11 @@ int main(void) {
     work.repair[40]=(repair_boundary){{11,711},{1,1},0};
     assert(!donor(&work,39) && !donor(&work,41));
     assert(interpolate(&work,40,out1)); /* outward search reaches rows37/43 */
-    assert(repair_choice(&work,40,0,0,&s) && s==1);
+    assert(repair_choice(&work,40,0,0,&s) && s==0); /* within measured error */
+    work.repair[40]=(repair_boundary){{13,713},{1,1},0};
+    assert(repair_choice(&work,40,0,0,&s) && s==3);
+    work.repair[40]=(repair_boundary){{13,713},{2,4},0};
+    assert(repair_choice(&work,40,0,0,&s) && s==0); /* mean error bound3 */
     work.repair[40]=(repair_boundary){{10,710},{1,1},0};
     assert(repair_choice(&work,40,0,0,&s) && s==0);
     work.repair[40]=(repair_boundary){{30,710},{1,1},0};
@@ -112,6 +116,17 @@ int main(void) {
     normal(&work,&result,0);
     assert(fabs(result.edge_median[0][0]-10.495)<1e-12);
     assert(fabs(result.edge_spread[0][0]-.495)<1e-12);
+    /* A one-sided departure survives if the peer has picture there. The same
+     * dark/flat interval in both peers vetoes it, without requiring two edges. */
+    fixture();run(1);
+    work.repair[40].edge[1]=715;result.edge_median[0][1]=707;
+    double noise[2]={1,1};
+    for(int x=708;x<=715;x++) {
+        work.y[40][x]=16;work.y[39][x]=work.y[41][x]=16;
+    }
+    assert(edge_content(&work,&result,noise,40,1));
+    for(int x=707;x<=715;x++)work.y[39][x]=work.y[41][x]=100;
+    assert(!edge_content(&work,&result,noise,40,1));
     puts("HRETIME PASS: Pearson oracle, learned history, singleton, shape, width, spill, donors, zero crossing, chroma, crop bounds");
     return 0;
 }

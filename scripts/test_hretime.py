@@ -87,7 +87,7 @@ with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
                 for token in r[f'hretime_evidence_f{k+1}'].split():
                     line,evidence=token.split(':');bits,_,_,shift=evidence.split('/')
                     j=2*(int(line)-first)+k;bits=int(bits)
-                    reasons[j]=bool(bits&26 or (bits&5)==5);shifts[j]=int(shift)
+                    reasons[j]=bool(bits&18 or (bits&5)==5);shifts[j]=int(shift)
             def raw(j):
                 if not 0<=j<480:return None
                 k=j%2;rr=(19 if k==0 else 282)+placement[k]+j//2

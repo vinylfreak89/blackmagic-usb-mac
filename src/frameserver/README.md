@@ -27,13 +27,24 @@ to either woven neighbour is compared with those neighbours' mutual unshifted
 correlation. At the first/last row the two available same-field neighbours
 supply the mutual reference. Undefined Pearson provides no waveform evidence.
 
-The shape test measures task42 half-height edges. Missing edges, picture
-spilling to the border or interior blanking always detect and request I.
+The shape test measures task42 half-height edges. Missing edges or picture
+spilling to the border always detect and request I.
 Otherwise BOTH a departure outside normal edge variation AND the learned
-correlation deficit are required. Correlation alone never detects. Interior
+correlation deficit are required. Either side may depart independently:
+stretch/compression need not move both edges or move them equally.
+A side does not supply displacement evidence when every available opposite-field
+woven neighbour shows the same dark/flat content in the displaced interval.
+That interval contains integer samples between the measured and normal crossing.
+Dark means mean at/below the neighbour's local step midpoint; flat means standard
+deviation within five VI-noise sigmas. Mean absolute waveform difference must
+also fit five combined VI-noise sigmas. This reuses the locator's noise allowance;
+it is not a guarantee of distinguishing dark content from blanking. With no
+available neighbour, no content explanation is established. Correlation alone
+never detects. Interior
 blanking uses five VI-noise sigmas and a
-minimum length equal to the larger learned exterior blanking width. This is
-not a guarantee that legitimate dark content is distinguishable from blanking.
+minimum length equal to the larger learned exterior blanking width. It remains
+an observation only unless edge blanking is missing/garbage: floor-crushed black
+inside an otherwise ordinary picture must not trigger repair by itself.
 
 Each field retains30 clean-frame summaries (roughly one NTSC second), including
 actual edge samples. Body rows40..219 supply these. Cold start uses current body rows with
@@ -64,8 +75,9 @@ Expected width is interpolated between nearest undisturbed measurable
 same-field rows, else adjacent opposite-field rows. Both width error and mean
 edge displacement may be as large as the larger expected exterior blanking
 width. Within that allowance, round displacement to an integer and retime.
-Zero leaves pixels unchanged (C). Spill, missing width, interior blanking
-(the shape test's scrambled-line observation), or larger error uses
+An integer shift within the mean of the two crossing uncertainties
+(`max(1,sigma/slope)` per edge) is suppressed as measurement noise.
+Zero leaves pixels unchanged (C). Spill, missing width, or larger error uses
 whole-line ELA. R needs no donor; it extends its own vacated source samples and
 resamples U/V independently for odd shifts. I uses immutable unflagged woven
 neighbours, directions0,+/-1..3 and a three-sample stencil; one donor copies.
@@ -79,8 +91,9 @@ ON schema35 keeps geometry cells unchanged except schema_version. R/I/U/C
 tokens, counts and edge directions remain. Old window-offset columns are
 replaced by hretime_evidence_f1/f2: NTSC:reason/rLine/rNeighbours/shift.
 Reason bits are observations, not necessarily detections:1 correlation,
-2 missing/spill,4 blanking size,8 interior blank,16 zero-crossing gap. A row is
-detected for2/8/16 or the conjunction1+4. hretime_normal_f1/f2 carry deficit limit, left/right
+2 missing/spill,4 blanking size not explained by neighbouring content,
+8 interior blank,16 zero-crossing gap. A row is
+detected for2/16 or the conjunction1+4. hretime_normal_f1/f2 carry deficit limit, left/right
 normal and their allowances; hretime_typical_band is the past length median.
 Field1 belongs to frame_top_unit, field2 to the row counter.
 

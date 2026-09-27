@@ -8,7 +8,7 @@
 #if defined(__aarch64__) && !defined(HRT_SCALAR)
 #include <arm_neon.h>
 #endif
-/* Task44: stable blanking vetoes correlation-only corrections. */
+/* Task45: either edge may bend; shared dark/flat content is not timing. */
 enum { ROW_BYTES=1440, HEADER=48, WIDTH_BODY_LO=40, WIDTH_BODY_HI=220,
        HISTORY=30, SMALL_SHIFT=2 };
 typedef struct { double edge[2],error[2];int spill; } repair_boundary;
@@ -142,6 +142,7 @@ static int repair_choice(hrt_workspace *w,int j,int d1,int d2,int *shift) {
     double delta=((b->edge[0]-w->expected[j][0])+(b->edge[1]-w->expected[j][1]))/2;
     if(fabs(width-expected)>allowance || fabs(delta)>allowance)return 0;
     *shift=(int)lround(delta);
+    if(abs(*shift)<=(b->error[0]+b->error[1])/2)*shift=0;
     return 1;
 }
 static uint8_t average(int a,int b) { return (uint8_t)((a+b+1)/2); }
@@ -274,6 +275,38 @@ static unsigned edge_movement(hrt_workspace *w,const hrt_result *o,int j) {
     }
     return bits;
 }
+/* Inspect the actual displaced interval, not a fixed edge window. Content
+ * must be present in every available opposite-field neighbour at those same
+ * columns. Reuse the locator's noise significance, not a new luma threshold. */
+static int edge_content(hrt_workspace *w,const hrt_result *o,const double noise[2],int j,int side) {
+    int k=j&1;double edge=w->repair[j].edge[side],normal=o->edge_median[k][side];
+    if(!isfinite(edge) || !isfinite(normal))return 0;
+    int lo=(int)ceil(fmin(edge,normal)),hi=(int)floor(fmax(edge,normal));
+    if(lo<0)lo=0;if(hi>719)hi=719;
+    if(lo>hi)return 0;
+    int seen=0;
+    for(int n=j-1;n<=j+1;n+=2) {
+        if(n<0 || n>=HRT_ROWS || !w->row[n])continue;
+        seen=1;double sum=0,sq=0,diff=0,picture=0;
+        if(side) {
+            for(int x=696;x<706;x++)picture=fmax(picture,w->y[n][x]);
+        } else {
+            double v[10];for(int x=0;x<10;x++)v[x]=w->y[n][26+x];
+            picture=quantile(v,10,.5);
+        }
+        for(int x=lo;x<=hi;x++) {
+            double v=w->y[n][x];sum+=v;sq+=v*v;
+            diff+=abs((int)w->y[j][x]-w->y[n][x]);
+        }
+        double count=hi-lo+1,mean=sum/count;
+        double sd=sqrt(fmax(0,sq/count-mean*mean));
+        int nk=n&1;
+        int dark=mean<=(picture+o->blank[nk])/2;
+        int flat=sd<=5*noise[nk];
+        if((!dark && !flat) || diff/count>5*hypot(noise[k],noise[nk]))return 0;
+    }
+    return seen;
+}
 static double displacement(hrt_workspace *w,hrt_result *o,int j) {
     return ((w->repair[j].edge[0]-o->edge_median[j&1][0])+
             (w->repair[j].edge[1]-o->edge_median[j&1][1]))/2;
@@ -335,7 +368,9 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
            o->deficit[j]>o->correlation_limit[k]+1e-12)o->reason[j]|=HRT_CORRELATION;
         if(b->spill || !isfinite(b->edge[0]) || !isfinite(b->edge[1]))o->reason[j]|=HRT_MISSING_EDGE;
         o->edge_moved[j]=(uint8_t)edge_movement(w,o,j);
-        if(o->edge_moved[j]&15)o->reason[j]|=HRT_BLANKING_SIZE;
+        for(int side=0;side<2;side++)
+            if((o->edge_moved[j]&(3u<<(2*side))) && !edge_content(w,o,noise,j,side))
+                o->reason[j]|=HRT_BLANKING_SIZE;
         if(isfinite(o->tolerance[k]) && o->tolerance[k]>0) {
             int lo=(int)ceil(o->edge_median[k][0]+o->edge_spread[k][0]);
             int hi=(int)floor(o->edge_median[k][1]-o->edge_spread[k][1]);
@@ -346,7 +381,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
                 if(run>=need){o->reason[j]|=HRT_INTERIOR_BLANK;break;}
             }
         }
-        w->flagged[j]=(o->reason[j]&(HRT_MISSING_EDGE|HRT_INTERIOR_BLANK)) ||
+        w->flagged[j]=(o->reason[j]&HRT_MISSING_EDGE) ||
             ((o->reason[j]&(HRT_CORRELATION|HRT_BLANKING_SIZE))==
              (HRT_CORRELATION|HRT_BLANKING_SIZE));
     }
@@ -370,10 +405,10 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
     for(int j=0;j<HRT_ROWS;j++)if(w->flagged[j]) {
         int k=j&1,r=first_row(k,offsets[k])+j/2,line=r+4;
         uint8_t *out=dst[k]+HEADER+r*ROW_BYTES;
-        /* Interior blanking is the shape test's scrambled-line observation;
-         * matching border width cannot certify a translation of that line. */
+        /* Interior black alone is not timing damage. Only garbage border
+         * blanking forces interpolation independently of the width rule. */
         int s=0,keep=repair_choice(w,j,d1,d2,&s);
-        if(o->reason[j]&(HRT_MISSING_EDGE|HRT_INTERIOR_BLANK))keep=0;
+        if(o->reason[j]&HRT_MISSING_EDGE)keep=0;
         o->shift[j]=keep?s:0;
         if(keep && !s){o->action[j]=HRT_CONTENT;o->field[k].content++;continue;}
         if(keep){retime(w->row[j],out,s);o->action[j]=HRT_RETIME;o->field[k].retimed++;}
