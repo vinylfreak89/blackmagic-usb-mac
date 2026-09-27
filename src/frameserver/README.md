@@ -11,7 +11,65 @@ the next unit supplying field 1; `applied_d1/applied_d2` describe the fields
 owned by the row's own unit. Reversed pairing delays unit completion by one
 unit; consumers pair fields according to the logged ownership. Measurements
 and explicit unavailable values are retained separately from placement.
-`log_header` in frameserver.c defines the complete, unchanged CSV column set.
+`log_header` in frameserver.c defines the complete CSV column set.
+
+## Optional horizontal retiming
+
+`fs_config.hretime` defaults to zero. Tools accept `FS_HRETIME=0|1`; the library
+does not read the environment. Off retains schema 28 and performs no repair
+analysis. This is a per-tape presentation option, not a new registration input.
+Raw capture, classifier, geometry, offsets, vote and comb decisions are unchanged.
+
+The detector runs on the actual published 720x480 pair. Each luma row is compared
+with its woven neighbours' mean over columns [60,660), searching shifts -24..24
+(first minimum wins). A nonzero winner with SAD ratio <0.8 marks a discontinuity.
+The ratio retains the reference's 1e-6 denominator floor at zero SAD; ties in
+owner strength abstain, including uniformly blank frames.
+Contiguous discontinuities form a band; the strongest qualifying same-field
+boundary break assigns its owner. Equal strength or no qualifying break abstains.
+These are the owner-reviewed entry-57 detector settings, not width tolerances.
+Each field-1 line >=255 and field-2 line >=518 is excluded from repair, including
+the end of a band crossing the cutoff. Detected damage there is not a donor.
+
+For a flagged line, picture edges cross the midpoint between its VI median
+(full-width storage rows 7..15 or 270..278) and its own [60,660) median.
+Unflagged, uncensored own-field aperture rows 40..219 provide median width and
+the 90th percentile absolute width deviation. Missing picture or usable width
+support means interpolation, not a guessed shift. Width is right minus left;
+no extra amplitude bar or minimum tolerance is imposed. Shift-induced picture
+loss must fit that tolerance; censored edges (0 or >=718) additionally count
+inferred missing width against the same allowance.
+
+An admissible line is shifted by the detected amount. Vacated luma uses its
+blank-side median (VI median if none is visible), chroma neutral 128. Odd shifts
+interpolate chroma at half phase, rather than corrupting UYVY phase or rounding
+the luma shift. Otherwise a small ELA interpolator averages opposite-field
+neighbours along the best of seven directions (0, +/-1, +/-2, +/-3), comparing
+three luma samples and preferring vertical on ties. This bounded local stencil
+is not NNEDI3 and makes no claim to recover missing detail. One available donor
+is duplicated; no unflagged donor leaves the line unchanged and explicitly
+unavailable. All donors are immutable raw rows, never earlier repairs.
+
+The workspace and two unit copies are allocated at open. Reversed pairing
+repairs current-unit f1 with pending-unit f2; repaired f1 is retained until its
+own transport unit publishes. No additional lookahead or frame allocation is
+introduced. Orphan boundaries have no fictitious repair partner.
+
+On uses schema 30 (29 belonged to the reverted head-switch experiment). Only
+`schema_version` changes among old cells. New columns are `fs_hretime` and,
+for each `f1`/`f2`, `hretime_bands_*`, `hretime_retimed_*`,
+`hretime_interpolated_*`, `hretime_unavailable_*`, `hretime_first_*`,
+`hretime_last_*`, `hretime_lines_*`. Line lists contain space-separated
+`NTSC:R`, `NTSC:I` or `NTSC:U` tokens. First/last cover actual repairs only;
+zero means none. Empty cells mean no complete frame to assess. These are
+frame-owned observations: f1 belongs to `frame_top_unit`, f2 to the row's own
+counter. A publisher failure remains unpublished even if repair was computed.
+
+The reference script's displayed coordinates already include +4 (NTSC), and
+its printed list shows only the first three bands per field. Detection is
+checked against its complete list; switch-crossing repair truncation is
+reported separately. Synthetic tests cover width change, censoring, mirrored
+field ownership, blank input, UYVY phase and actual reversed-pair publication.
 
 ## Deterministic audio evidence
 

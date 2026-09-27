@@ -1214,8 +1214,8 @@ instruction to build it during the present reset. Recheck cost and the intended
 output before implementing; the previous timing figures were specific runs.
 **Head-switch repair was built and reverted (2026-09-27).** A repair aimed at the
 head-switch displacement (343b78b, 6c64add) was reverted by the owner: "you guys
-improperly focussed on the head switch". The flagging he means is to be defined from
-examples he picks in raw per-field renders of captures 3 and 4. Findings kept for the
+improperly focussed on the head switch". The horizontal-timing detector instead follows
+owner-picked examples in raw per-field renders of captures 3 and 4. Findings kept for the
 reassessment:
 - At the switch, BOTH fields are displaced from the same weave height. On capture 1
   (6800/6955/6961/7100), field 2 523–525 and field 1 261–262 start picture at samples
@@ -1227,6 +1227,13 @@ reassessment:
   and dark pillars at blanking level qualify.
 - A ≥100-consecutive-sample run misses capture 1 7100 line 525 (97 samples; one code-5
   sample breaks it).
+
+**Optional H-retiming:** `fs_config.hretime` is per-tape, default off. It uses the
+published offsets and actual frame pair, then shifts width-consistent lines or
+interpolates from the other field; it never feeds registration. Field-1 lines >=255
+and field-2 lines >=518 remain excluded. Off retains schema 28; on uses schema 30
+with frame-owned per-line repair marks. See `src/frameserver/README.md` for the
+detector, measured width tolerance, interpolation and reversed-pair ownership.
 
 ## 10. Delivery: OBS virtual camera
 
