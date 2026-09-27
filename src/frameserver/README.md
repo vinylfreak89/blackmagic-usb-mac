@@ -21,21 +21,35 @@ analysis. This is a per-tape presentation option, not a new registration input.
 Raw capture, classifier, geometry, offsets, vote and comb decisions are unchanged.
 
 The detector runs on the actual published 720x480 pair. Each luma row is compared
-with its woven neighbours' mean over the common overlap of their [60,660) bodies.
-At least half that 600-sample body must remain: this derives a search of every
-integer shift -300..300, rather than a fixed displacement allowance. Both reads
-stay inside the body, and each SAD is normalized by its own overlap length.
+with its woven neighbours' mean at every integer shift -147..147. The bound is
+the owner-specified NTSC horizontal blanking interval (10.9 us at 13.5 MHz).
+Every candidate uses the **same** reference samples [147,573), 426 samples;
+shifted reads remain within [0,720). No candidate gets a shorter/easier support.
+This is an estimate within the search range, not proof that larger damage is
+absent or recoverable. The width/loss test below still decides whether to shift.
 An exact integral-sum lower bound prunes impossible winners; every survivor gets
 a full-resolution SAD using prepared doubled luma and fused NEON accumulation.
-Normalized comparisons use exact integer cross-products, and ties choose the
+Comparisons use exact integer SAD sums, and ties choose the
 lowest shift even though near-zero candidates are visited first. There is no
 decimated finalist heuristic. A nonzero winner with SAD ratio <0.8 marks a discontinuity.
 The ratio retains the reference's 1e-6 denominator floor at zero SAD; ties in
 owner strength abstain, including uniformly blank frames.
 Contiguous discontinuities form a band; the strongest qualifying same-field
-boundary break assigns its owner. Equal strength or no qualifying break abstains.
-The ratio/ownership rules are the owner-reviewed entry-57 settings; the overlap
-search replaces task29's too-narrow +/-24 bound. These are not width tolerances.
+boundary break assigns its owner. Equal qualifying strengths abstain.
+
+If neither field passes a boundary test, a band touching either field's first
+published row (woven start 0 or 1) can use the owner's symmetric edge test.
+Each field's unflagged body rows 40..219 supply median left/right midpoint edges
+and separate p90 absolute edge deviations. Boundary-owned flags are resolved
+first; the unresolved top band is also excluded from its own reference. Missing
+edge support abstains. Censored observed coordinates participate in this edge
+test, unlike the uncensored widths required for retiming. A band line counts
+once when either edge moves in **either direction** beyond its own spread.
+The field with more displaced lines owns the band; equal counts abstain.
+No minimum spread or single-line-band filter is added. This fallback never
+overrides a qualifying boundary owner or equal qualifying boundary strengths.
+The ratio/band rules are entry 57; fixed support and symmetric top ownership
+are the owner's task31 amendment, not newly fitted detection thresholds.
 Each field-1 line >=255 and field-2 line >=518 is excluded from repair, including
 the end of a band crossing the cutoff. Detected damage there is not a donor.
 
@@ -63,33 +77,45 @@ repairs current-unit f1 with pending-unit f2; repaired f1 is retained until its
 own transport unit publishes. No additional lookahead or frame allocation is
 introduced. Orphan boundaries have no fictitious repair partner.
 
-On uses schema 30 (29 belonged to the reverted head-switch experiment). Only
+On uses schema 31 (29 belonged to the reverted head-switch experiment, 30 to
+the earlier H-retiming search). Only
 `schema_version` changes among old cells. New columns are `fs_hretime` and,
 for each `f1`/`f2`, `hretime_bands_*`, `hretime_retimed_*`,
 `hretime_interpolated_*`, `hretime_unavailable_*`, `hretime_first_*`,
-`hretime_last_*`, `hretime_lines_*`. Line lists contain space-separated
+`hretime_last_*`, `hretime_lines_*`, followed by `hretime_edges_f1/f2`.
+Line lists contain space-separated
 `NTSC:R`, `NTSC:I` or `NTSC:U` tokens. First/last cover actual repairs only;
 zero means none. Empty cells mean no complete frame to assess. These are
 frame-owned observations: f1 belongs to `frame_top_unit`, f2 to the row's own
 counter. A publisher failure remains unpublished even if repair was computed.
+Edge lists have one token for each action, `NTSC:directions`: `L-`/`L+` and
+`R-`/`R+` mean an earlier/later left or right edge beyond that edge's own spread.
+Both sides may be present, e.g. `291:L-R-`; `=` means within spread and `?`
+means edges/reference unavailable. Thus inward and outward bends remain
+separately auditable. These columns are absent with the option off.
 
 The old narrow-search reference's displayed coordinates already include +4
 (NTSC), and its printed list shows only the first three bands per field. Its
-bands are a comparison baseline, not a reference for the new overlap search.
+bands are a comparison baseline, not a reference for the fixed-support search.
 Tests compare the new search to an exhaustive scalar oracle, including ties,
 range endpoints and captured row triples. Synthetic tests also cover width
-change, censoring, mirrored field ownership, blank input, UYVY phase and actual
+change, censoring, symmetric edge directions/strict spread/ties/missing support,
+mirrored field ownership, blank input, UYVY phase and actual
 reversed-pair publication. Wider searches also admit more unlabelled bands;
 passing named labels is not a quality guarantee for those repairs.
 
-Boundary-only ownership has a measured limit: if widening merges a band up to
-the aperture's first row, its upper outside boundary disappears. When neither
-lower same-field boundary passes, the whole band abstains despite breaks inside
-it. Capture 4 counter 232 demonstrates this: the wide band spans woven rows 0..17,
-lower boundary ratios are 0.9470/0.9143, and formerly repaired f2 lines 291..294
-are no longer owned. An any-band-per-counter label hit does not detect this
-regression because a separate lower band still repairs. Widening the search
-alone has therefore not validated the complete repair policy.
+Measured limits remain. The earlier overlap-normalized +/-300 search lost cap4
+232's f2 lines291..294 when a merged top band had neither outside boundary;
+fixed support restores these repairs. However, cap4 204's f2 line288 now has
+best ratio0.837803 and is not detected, where the +/-300 build repaired it.
+Cap1's known-clean two-line band6902/f1/24..25 also remains flagged. Fixed support
+removes the named false flag7158/f2/487; the reduced bound alone removes6667/f1/227.
+These are row-specific results:7158 still repairs f2 bands488..489 and503..517,
+and6667 still repairs f1 single lines25 and228. Neither frame is cleared of flags.
+Neither label hits nor the larger repair count establishes that every repaired
+row is damaged. The option stays off; no change to the ratio or an extra filter
+is justified by these counterexamples. The whole-tape enabled validation is
+withheld at the row-loss falsifier pending owner/counterpart review.
 
 ## Deterministic audio evidence
 
