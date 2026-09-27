@@ -5,85 +5,91 @@
 #if defined(__aarch64__) && !defined(HRT_SCALAR)
 #include <arm_neon.h>
 #endif
-
-/* Owner-specified NTSC horizontal blanking interval: 10.9 us * 13.5 MHz.
- * The same 426 reference samples are valid for every integer candidate. */
+/* E-61: all thresholds registered before label replay; no worker allocation. */
 enum { ROW_BYTES=1440, HEADER=48, BODY_LO=60, BODY_HI=660,
-       SEARCH=147, SCORE_LO=SEARCH, SCORE_HI=HRT_WIDTH-SEARCH,
-       SCORE_SIZE=SCORE_HI-SCORE_LO,
-       WIDTH_BODY_LO=40, WIDTH_BODY_HI=220,
-       CONFIRM_PICTURE_MARGIN=20 }; /* entry58: noise-dominated midpoint edges abstain */
+       WIDTH_BODY_LO=40, WIDTH_BODY_HI=220, WIN=120, NW=6, SEARCH=64,
+       MIN_SHIFT=4, PROFILE_TOL=2, VERTICAL_TOL=8, MIN_WINDOWS=4,
+       UNKNOWN_OFFSET=32767 };
 struct hrt_workspace {
-    uint8_t y[HRT_ROWS][HRT_WIDTH];
-    uint32_t prefix[HRT_ROWS][HRT_WIDTH+1];
+    uint8_t y[HRT_ROWS][HRT_WIDTH], previous[2][525][HRT_WIDTH];
+    uint8_t valid[2][525], available[2][525];
+    uint64_t counter[2], epoch;
+    int have, context;
     const uint8_t *row[HRT_ROWS];
-    uint8_t flagged[HRT_ROWS], disc[HRT_ROWS];
-    float ratio[HRT_ROWS];
+    uint8_t flagged[HRT_ROWS], seed[HRT_ROWS], moved[HRT_ROWS];
+    int profile[2][HRT_ROWS], coherent[2][HRT_ROWS], quiet[HRT_ROWS];
 };
 size_t hrt_size(void) { return sizeof(hrt_workspace); }
+void hrt_reset(hrt_workspace *w) { w->have=0;memset(w->valid,0,sizeof w->valid); }
+void hrt_begin(hrt_workspace *w,uint64_t c1,uint64_t c2,uint64_t epoch,int reset) {
+    uint64_t c[2]={c1,c2};
+    for(int k=0;k<2;k++)for(int r=0;r<525;r++)
+        w->available[k][r]=!reset && w->have && w->epoch==epoch &&
+            w->counter[k]!=UINT64_MAX && w->counter[k]+1==c[k] && w->valid[k][r];
+    w->counter[0]=c1;w->counter[1]=c2;w->epoch=epoch;w->context=1;
+}
 static int first_row(int k,int d) { return (k?282:19)+d; }
 static int valid_row(int k,int r) { return k ? r>=262 && r<525 : r>=0 && r<262; }
-static int line_number(int j,int d1,int d2) {
-    return first_row(j&1,(j&1)?d2:d1)+j/2+4;
-}
-static int excluded(int j,int d1,int d2) {
-    return line_number(j,d1,d2)>=((j&1)?518:255);
-}
-static void prefix(const uint8_t *y,uint32_t *p) {
-    p[0]=0;for(int x=0;x<HRT_WIDTH;x++)p[x+1]=p[x]+y[x];
-}
-/* Identical support makes integer sums directly comparable. Visit
- * near zero first for a useful incumbent, but ties still choose lowest shift. */
-static int cannot_improve(unsigned sum,unsigned best,int s,int best_s) {
-    return sum>best || (sum==best && s>=best_s);
-}
-/* Prepared doubled luma and neighbour sum permit fused 16-bit absolute-
- * difference accumulation. ceil(426/8)*510 fits each lane without overflow.
- * Independent accumulators avoid a single long dependency chain. */
-static unsigned prepared_sad(const uint16_t *a,const uint16_t *ref,int s) {
-    unsigned sum=0;int x=SCORE_LO,end=SCORE_HI;
+static int line_number(int j,int d1,int d2) { return first_row(j&1,(j&1)?d2:d1)+j/2+4; }
+static int excluded(int j,int d1,int d2) { return line_number(j,d1,d2)>=((j&1)?518:255); }
+static unsigned window_sad(const uint8_t *a,const uint8_t *b) {
+    unsigned sum=0;int x=0;
 #if defined(__aarch64__) && !defined(HRT_SCALAR)
-    uint16x8_t v0=vdupq_n_u16(0),v1=v0,v2=v0,v3=v0;
-    for(;x+32<=end;x+=32) {
-        v0=vabaq_u16(v0,vld1q_u16(a+x+s),vld1q_u16(ref+x));
-        v1=vabaq_u16(v1,vld1q_u16(a+x+s+8),vld1q_u16(ref+x+8));
-        v2=vabaq_u16(v2,vld1q_u16(a+x+s+16),vld1q_u16(ref+x+16));
-        v3=vabaq_u16(v3,vld1q_u16(a+x+s+24),vld1q_u16(ref+x+24));
+    uint16x8_t v=vdupq_n_u16(0);
+    for(;x+16<=WIN;x+=16) {
+        uint8x16_t d=vabdq_u8(vld1q_u8(a+x),vld1q_u8(b+x));
+        v=vaddq_u16(v,vpaddlq_u8(d));
     }
-    for(;x+8<=end;x+=8)v0=vabaq_u16(v0,vld1q_u16(a+x+s),vld1q_u16(ref+x));
-    sum=vaddlvq_u16(vaddq_u16(vaddq_u16(v0,v1),vaddq_u16(v2,v3)));
+    sum=vaddlvq_u16(v);
 #endif
-    for(;x<end;x++)sum+=(unsigned)abs((int)a[x+s]-ref[x]);
+    for(;x<WIN;x++)sum+=(unsigned)abs((int)a[x]-b[x]);
     return sum;
 }
-/* Triangle inequality: sum |2a-b-c| >= |sum(2a-b-c)| on identical support.
- * Every survivor is evaluated at full resolution, no heuristic finalist set.
- * Fine scalar block bounds cost more than SIMD SAD on flat/noisy material. */
-static unsigned lower_bound(const uint32_t *a,const uint32_t *b,const uint32_t *c,int s) {
-    int av=2*(int)(a[SCORE_HI+s]-a[SCORE_LO+s]);
-    int ref=(int)(b[SCORE_HI]-b[SCORE_LO]+c[SCORE_HI]-c[SCORE_LO]);
-    return (unsigned)abs(av-ref);
+static double variance(const uint8_t *a) {
+    double sum=0,sq=0;
+    for(int x=0;x<WIN;x++){sum+=a[x];sq+=(double)a[x]*a[x];}
+    return sq/WIN-(sum/WIN)*(sum/WIN);
 }
-static float search(const uint8_t *a,const uint8_t *b,const uint8_t *c,
-                    const uint32_t *ap,const uint32_t *bp,const uint32_t *cp,int *shift) {
-    uint16_t doubled[HRT_WIDTH],ref[HRT_WIDTH];
-    for(int x=0;x<HRT_WIDTH;x++){doubled[x]=2*a[x];ref[x]=b[x]+c[x];}
-    unsigned zero=prepared_sad(doubled,ref,0),best=zero;*shift=0;
-    for(int distance=1;distance<=SEARCH;distance++)for(int sign=-1;sign<=1;sign+=2) {
-        int s=sign*distance;
-        if(cannot_improve(lower_bound(ap,bp,cp,s),best,s,*shift))continue;
-        unsigned e=prepared_sad(doubled,ref,s);
-        if(!cannot_improve(e,best,s,*shift)){best=e;*shift=s;}
+static double correlation(const uint8_t *a,const uint8_t *b) {
+    double sa=0,sb=0,aa=0,bb=0,ab=0;
+    for(int x=0;x<WIN;x++){double u=a[x],v=b[x];sa+=u;sb+=v;aa+=u*u;bb+=v*v;ab+=u*v;}
+    aa-=sa*sa/WIN;bb-=sb*sb/WIN;
+    return aa>0 && bb>0?(ab-sa*sb/WIN)/sqrt(aa*bb):0;
+}
+static int window_offset(const uint8_t *a,const uint8_t *b,int lo) {
+    if(variance(a+lo)<16)return UNKNOWN_OFFSET;
+    unsigned zero=window_sad(a+lo,b+lo),best=zero;int shift=0;
+    for(int n=1;n<=SEARCH;n++)for(int sign=-1;sign<=1;sign+=2) {
+        int s=n*sign;
+        if(lo+s<0 || lo+s+WIN>HRT_WIDTH)continue;
+        unsigned e=window_sad(a+lo,b+lo+s);
+        if(e<best){best=e;shift=s;}
     }
-    float e=(float)best/(2*SCORE_SIZE),z=(float)zero/(2*SCORE_SIZE);
-    return e/fmaxf(z,1e-6f);
+    if(variance(b+lo+shift)<16 || correlation(a+lo,b+lo+shift)<0.8 ||
+       (shift && !(best<0.8*zero)))return UNKNOWN_OFFSET;
+    return -shift;
 }
-static float row_search(hrt_workspace *w,int a,int b,int c,int *shift) {
-    return search(w->y[a],w->y[b],w->y[c],w->prefix[a],w->prefix[b],w->prefix[c],shift);
+static int profile(const int *v,int *middle) {
+    double sx=0,sy=0,sxx=0,sxy=0;int n=0;
+    for(int i=0;i<NW;i++)if(v[i]!=UNKNOWN_OFFSET){sx+=i;sy+=v[i];sxx+=i*i;sxy+=i*v[i];n++;}
+    if(n<MIN_WINDOWS)return 0;
+    double slope=(n*sxy-sx*sy)/(n*sxx-sx*sx),intercept=(sy-slope*sx)/n;
+    for(int i=0;i<NW;i++)if(v[i]!=UNKNOWN_OFFSET && fabs(v[i]-intercept-slope*i)>PROFILE_TOL)return 0;
+    *middle=(int)lround(intercept+slope*2.5);return 1;
 }
-static float boundary(hrt_workspace *w,int a,int b) {
-    int s=0;float q=row_search(w,a,b,b,&s);
-    return s && q<0.8f ? q : 1.0f;
+static int close_profiles(const int *a,const int *b) {
+    int n=0;
+    for(int i=0;i<NW;i++)if(a[i]!=UNKNOWN_OFFSET && b[i]!=UNKNOWN_OFFSET) {
+        if(abs(a[i]-b[i])>VERTICAL_TOL)return 0;
+        n++;
+    }
+    return n>=MIN_WINDOWS;
+}
+/* Stretch may cross zero at the centre. A zero midpoint is not a stationary
+ * profile when its measured ends move; use the registered per-window minimum. */
+static int displaced_profile(const int *v) {
+    for(int z=0;z<NW;z++)if(v[z]!=UNKNOWN_OFFSET && abs(v[z])>=MIN_SHIFT)return 1;
+    return 0;
 }
 static double hist_quantile(const unsigned h[256],unsigned n,double q) {
     double at=(n-1)*q;unsigned lo=(unsigned)at,hi=(unsigned)ceil(at),count=0;
@@ -100,63 +106,28 @@ static double blank_level(const uint8_t *u,int k) {
     for(int r=start;r<start+9;r++)for(int x=0;x<HRT_WIDTH;x++)h[u[HEADER+r*ROW_BYTES+2*x+1]]++;
     return hist_quantile(h,9*HRT_WIDTH,0.5);
 }
-static int edges_above(const uint8_t *y,double blank,double minimum,int *left,int *right) {
-    unsigned h[256]={0};for(int x=BODY_LO;x<BODY_HI;x++)h[y[x]]++;
-    double level=hist_quantile(h,BODY_HI-BODY_LO,0.5);
-    if(level<=blank+minimum)return 0;
-    double mid=(blank+level)*0.5;
-    *left=0;while(*left<HRT_WIDTH && y[*left]<=mid)(*left)++;
-    *right=HRT_WIDTH-1;while(*right>=0 && y[*right]<=mid)(*right)--;
-    return *left<=*right;
-}
-static int edges(const uint8_t *y,double blank,int *left,int *right) {
-    return edges_above(y,blank,0,left,right);
-}
-/* Confirmation only: an excursion is beyond all measurable neighbours in the
- * SAME direction. Between-neighbour slopes and capture-window edges do not
- * establish a timing displacement. Eligibility uses each row's own VI blank. */
-static int neighbour_discontinuity(hrt_workspace *w,const hrt_result *o,int j) {
-    int own[2],k=j&1,seen[2]={0,0},earlier[2]={1,1},later[2]={1,1};
-    if(!w->row[j] || !edges_above(w->y[j],o->blank[k],CONFIRM_PICTURE_MARGIN,own,own+1))return 0;
-    for(int n=j-1;n<=j+1;n+=2) {
-        int adjacent[2];
-        if(n<0 || n>=HRT_ROWS || !w->row[n] ||
-           !edges_above(w->y[n],o->blank[n&1],CONFIRM_PICTURE_MARGIN,adjacent,adjacent+1))continue;
-        for(int e=0;e<2;e++) {
-            if(e==0 ? own[e]==0 || adjacent[e]==0 : own[e]>=718 || adjacent[e]>=718)continue;
-            seen[e]=1;
-            double delta=own[e]-adjacent[e],spread=o->edge_spread[k][e];
-            earlier[e]&=delta < -spread;
-            later[e]&=delta > spread;
+/* Outer blank plateau and inner picture are separate witnesses.
+ * Censored coordinates can corroborate, but cannot certify retiming. */
+static int timing_edges(const uint8_t *y,double blank,int *left,int *right) {
+    int l=-1,r=-1;*left=*right=-1;
+    for(int x=0;x<=HRT_WIDTH-4;x++) {
+        int good=1;for(int t=0;t<4;t++)good&=y[x+t]>blank+8;
+        if(good){if(l<0)l=x;r=x+3;}
+    }
+    if(l<0)return 0;
+    for(int side=0;side<2;side++) {
+        int edge=side?r:l,inside=side?edge-39:edge;
+        if(inside<0 || inside+40>720)continue;
+        unsigned h[256]={0};for(int x=inside;x<inside+40;x++)h[y[x]]++;
+        if(hist_quantile(h,40,0.5)<=blank+20)continue;
+        int start=side?edge+1:0,end=side?720:edge,n=end-start;
+        if(n) {
+            memset(h,0,sizeof h);for(int x=start;x<end;x++)h[y[x]]++;
+            if(fabs(hist_quantile(h,(unsigned)n,0.5)-blank)>3)continue;
         }
+        if(side)*right=edge;else *left=edge;
     }
-    return (seen[0] && (earlier[0] || later[0])) || (seen[1] && (earlier[1] || later[1]));
-}
-/* Double, centred Pearson on identical support. b/c form the raw neighbour
- * average; passing the same row twice gives an ordinary two-row correlation.
- * A flat signal has no ordered shape and contributes zero correlation. */
-static double shape_correlation(const uint8_t *a,const uint8_t *b,const uint8_t *c,int s) {
-    double ma=0,mb=0;
-    for(int x=SCORE_LO;x<SCORE_HI;x++){ma+=a[x+s];mb+=0.5*(b[x]+c[x]);}
-    ma/=SCORE_SIZE;mb/=SCORE_SIZE;
-    double aa=0,bb=0,ab=0;
-    for(int x=SCORE_LO;x<SCORE_HI;x++) {
-        double u=a[x+s]-ma,v=0.5*(b[x]+c[x])-mb;
-        aa+=u*u;bb+=v*v;ab+=u*v;
-    }
-    return aa>0 && bb>0 ? ab/sqrt(aa*bb) : 0;
-}
-static int ordered_shape(hrt_workspace *w,int j,int shift) {
-    int a=j?j-1:1,b=j<HRT_ROWS-1?j+1:HRT_ROWS-2;
-    int nn_a=a,nn_b=b;
-    if(j==0)nn_b=3;
-    if(j==HRT_ROWS-1)nn_b=HRT_ROWS-4;
-    if(!w->row[j] || !w->row[a] || !w->row[b] || !w->row[nn_b])return 0;
-    int s=shift < -SEARCH ? -SEARCH : shift > SEARCH ? SEARCH : shift;
-    double r0=shape_correlation(w->y[j],w->y[a],w->y[b],0);
-    double rs=shape_correlation(w->y[j],w->y[a],w->y[b],s);
-    double rnn=shape_correlation(w->y[nn_a],w->y[nn_b],w->y[nn_b],0);
-    return r0<rnn && rs>=rnn;
+    return *left>=0 || *right>=0;
 }
 static int compare_double(const void *a,const void *b) {
     double x=*(const double*)a,y=*(const double*)b;return (x>y)-(x<y);
@@ -166,95 +137,37 @@ static double quantile(double *v,int n,double q) {
     double pos=(n-1)*q;int lo=(int)pos,hi=(int)ceil(pos);
     return v[lo]+(pos-lo)*(v[hi]-v[lo]);
 }
-/* Resolve boundary owners first, so the body reference is independent of band
- * traversal order. Exclude the unresolved top band too: it cannot witness its
- * own normal edges. Censored coordinates are observations here, not widths. */
+/* Each side supplies its own reference population; an unknown right edge must
+ * not erase a measurable left boundary (and vice versa). */
 static void edge_reference(hrt_workspace *w,hrt_result *o,int skip_end,int d1,int d2) {
     for(int k=0;k<2;k++) {
-        double v[2][HRT_FIELD_ROWS];int n=0;
+        double v[2][HRT_FIELD_ROWS];int n[2]={0,0};
         for(int i=WIDTH_BODY_LO;i<WIDTH_BODY_HI;i++) {
-            int j=2*i+k,l,r;
+            int j=2*i+k,edge[2];
             if(j<=skip_end || !w->row[j] || w->flagged[j] || excluded(j,d1,d2) ||
-               !edges(w->y[j],o->blank[k],&l,&r))continue;
-            v[0][n]=l;v[1][n++]=r;
+               !timing_edges(w->y[j],o->blank[k],edge,edge+1))continue;
+            for(int e=0;e<2;e++)if(edge[e]>=0)v[e][n[e]++]=edge[e];
         }
         for(int e=0;e<2;e++) {
             o->edge_median[k][e]=o->edge_spread[k][e]=NAN;
-            if(!n)continue;
-            o->edge_median[k][e]=quantile(v[e],n,0.5);
-            for(int i=0;i<n;i++)v[e][i]=fabs(v[e][i]-o->edge_median[k][e]);
-            o->edge_spread[k][e]=quantile(v[e],n,0.9);
+            if(!n[e])continue;
+            o->edge_median[k][e]=quantile(v[e],n[e],0.5);
+            for(int i=0;i<n[e];i++)v[e][i]=fabs(v[e][i]-o->edge_median[k][e]);
+            o->edge_spread[k][e]=quantile(v[e],n[e],0.9);
         }
     }
 }
 static unsigned edge_movement(hrt_workspace *w,const hrt_result *o,int j) {
     int k=j&1,l,r;
-    if(!w->row[j] || !isfinite(o->edge_median[k][0]) ||
-       !edges(w->y[j],o->blank[k],&l,&r))return 0;
+    if(!w->row[j] ||
+       !timing_edges(w->y[j],o->blank[k],&l,&r))return 0;
     double dl=l-o->edge_median[k][0],dr=r-o->edge_median[k][1];
     unsigned moved=HRT_EDGES_KNOWN;
-    if(dl < -o->edge_spread[k][0])moved|=HRT_LEFT_EARLIER;
-    if(dl > o->edge_spread[k][0])moved|=HRT_LEFT_LATER;
-    if(dr < -o->edge_spread[k][1])moved|=HRT_RIGHT_EARLIER;
-    if(dr > o->edge_spread[k][1])moved|=HRT_RIGHT_LATER;
+    if(l>=0 && dl < -fmax(3,o->edge_spread[k][0]))moved|=HRT_LEFT_EARLIER;
+    if(l>=0 && dl > fmax(3,o->edge_spread[k][0]))moved|=HRT_LEFT_LATER;
+    if(r>=0 && dr < -fmax(3,o->edge_spread[k][1]))moved|=HRT_RIGHT_EARLIER;
+    if(r>=0 && dr > fmax(3,o->edge_spread[k][1]))moved|=HRT_RIGHT_LATER;
     return moved;
-}
-static int top_owner(hrt_workspace *w,const hrt_result *o,int start,int end,int displaced[2]) {
-    if(!isfinite(o->edge_median[0][0]) || !isfinite(o->edge_median[1][0]))return -1;
-    for(int j=start;j<=end;j++)if(edge_movement(w,o,j)&15)displaced[j&1]++;
-    return displaced[0]>displaced[1]?0:displaced[1]>displaced[0]?1:-1;
-}
-static int flag_band(hrt_workspace *w,int start,int end,int k,int d1,int d2) {
-    int included=0;
-    for(int j=start+((start&1)!=k);j<=end;j+=2)if(w->row[j]) {
-        /* Excluded switch damage is not repaired and is not a donor. */
-        w->flagged[j]=1;
-        if(!excluded(j,d1,d2))included=1;
-    }
-    return included;
-}
-static int compare_band(const void *a,const void *b) {
-    const hrt_band *x=a,*y=b;
-    if(x->field!=y->field)return x->field-y->field;
-    return x->first-y->first;
-}
-/* Frozen frame reference: growing one interval cannot alter another's edge
- * evidence. Only existing picture bands seed growth; switch-only damage does
- * not reach upward into the repair aperture. Overlapping intervals coalesce. */
-static void extend_bands(hrt_workspace *w,hrt_result *o,int d1,int d2) {
-    for(int n=0;n<o->band_count;n++) {
-        hrt_band *b=o->band+n;int k=b->field-1,origin=k?286+d2:23+d1;
-        if(b->first>=(k?518:255))continue;
-        int first=2*(b->first-origin)+k,last=2*(b->last-origin)+k;
-        for(int j=first-2;j>=0;j-=2) {
-            if(!w->row[j] || excluded(j,d1,d2) || !(edge_movement(w,o,j)&15))break;
-            w->flagged[j]=1;first=j;
-        }
-        for(int j=last+2;j<HRT_ROWS;j+=2) {
-            if(!w->row[j] || excluded(j,d1,d2) || !(edge_movement(w,o,j)&15))break;
-            w->flagged[j]=1;last=j;
-        }
-        b->first=line_number(first,d1,d2);b->last=line_number(last,d1,d2);
-    }
-    qsort(o->band,(size_t)o->band_count,sizeof *o->band,compare_band);
-    int count=0;
-    for(int n=0;n<o->band_count;n++) {
-        hrt_band b=o->band[n];
-        if(count && o->band[count-1].field==b.field && b.first<=o->band[count-1].last) {
-            hrt_band *prev=o->band+count-1;
-            if(b.last>prev->last)prev->last=b.last;
-            prev->top_fallback|=b.top_fallback;
-            for(int k=0;k<2;k++) {
-                prev->breaks[k]=fminf(prev->breaks[k],b.breaks[k]);
-                prev->displaced[k]+=b.displaced[k]; /* seed evidence, before growth */
-            }
-        } else o->band[count++]=b;
-    }
-    o->band_count=count;o->field[0].bands=o->field[1].bands=0;
-    for(int n=0;n<count;n++) {
-        hrt_band *b=o->band+n;int k=b->field-1,origin=k?286+d2:23+d1;
-        o->field[k].bands+=flag_band(w,2*(b->first-origin)+k,2*(b->last-origin)+k,k,d1,d2);
-    }
 }
 static int certified_edges(const hrt_result *o,int k,int left,int right,int s) {
     /* A clipped coordinate is not a measured picture edge. */
@@ -283,7 +196,7 @@ static int direction(const uint8_t *a,const uint8_t *b,int x) {
     return best;
 }
 static const uint8_t *donor(hrt_workspace *w,int j) {
-    return j>=0 && j<HRT_ROWS && !w->flagged[j]?w->row[j]:NULL;
+    return j>=0 && j<HRT_ROWS && !w->flagged[j] && !w->moved[j]?w->row[j]:NULL;
 }
 static int interpolate(hrt_workspace *w,int j,uint8_t *out) {
     const uint8_t *a=donor(w,j-1),*b=donor(w,j+1);
@@ -309,91 +222,95 @@ static void retime(const uint8_t *in,uint8_t *out,int s) {
 void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
                int d1,int d2,uint8_t *out1,uint8_t *out2,hrt_result *o) {
     memset(o,0,sizeof *o);memset(w->flagged,0,sizeof w->flagged);
+    memset(w->seed,0,sizeof w->seed);memset(w->coherent,0,sizeof w->coherent);
+    memset(w->profile,0,sizeof w->profile);
+    if(!w->context)memset(w->available,0,sizeof w->available);
     const uint8_t *src[2]={f1,f2};uint8_t *dst[2]={out1,out2};int offsets[2]={d1,d2};
     for(int j=0;j<HRT_ROWS;j++) {
         int k=j&1,r=first_row(k,offsets[k])+j/2;
         w->row[j]=valid_row(k,r)?src[k]+HEADER+r*ROW_BYTES:NULL;
         for(int x=0;x<HRT_WIDTH;x++)w->y[j][x]=w->row[j]?w->row[j][2*x+1]:16;
-        prefix(w->y[j],w->prefix[j]);
+        for(int a=0;a<2;a++)for(int z=0;z<NW;z++)o->offset[a][j][z]=UNKNOWN_OFFSET;
     }
     o->measured=1;
     for(int k=0;k<2;k++)o->blank[k]=blank_level(src[k],k);
+    edge_reference(w,o,-1,d1,d2);
     for(int j=0;j<HRT_ROWS;j++) {
-        w->ratio[j]=row_search(w,j,j?j-1:1,j+1<HRT_ROWS?j+1:j-1,o->shift+j);
-        w->disc[j]=o->shift[j]!=0 && w->ratio[j]<0.8f;
-    }
-    struct {int start,end,owner;float breaks[2];} bands[HRT_MAX_BANDS];
-    int nb=0,skip_end=-1;
-    for(int j=0;j<HRT_ROWS;) {
-        if(!w->disc[j]){j++;continue;}
-        int end=j;while(end+1<HRT_ROWS && w->disc[end+1])end++;
-        float b[2]={1,1};int first[2],last[2];
-        for(int k=0;k<2;k++) {
-            first[k]=j+((j&1)!=k);last[k]=end-((end&1)!=k);
-            if(first[k]>last[k])continue;
-            if(first[k]>=2)b[k]=boundary(w,first[k],first[k]-2);
-            if(last[k]+2<HRT_ROWS)b[k]=fminf(b[k],boundary(w,last[k],last[k]+2));
+        w->moved[j]=(edge_movement(w,o,j)&15)!=0;w->quiet[j]=0;
+        if(!w->row[j] || excluded(j,d1,d2))continue;
+        int k=j&1,r=first_row(k,offsets[k])+j/2,other=j^1;
+        for(int z=0;z<NW;z++) {
+            if(w->available[k][r])o->offset[0][j][z]=window_offset(w->y[j],w->previous[k][r],z*WIN);
+            if(w->row[other])o->offset[1][j][z]=window_offset(w->y[j],w->y[other],z*WIN);
         }
-        int k=b[0]<b[1]?0:b[1]<b[0]?1:-1;
-        bands[nb].start=j;bands[nb].end=end;bands[nb].owner=k;
-        memcpy(bands[nb++].breaks,b,sizeof b);
-        if(k>=0)flag_band(w,j,end,k,d1,d2);
-        else if(j<=1 && b[0]==1 && b[1]==1)skip_end=end;
-        j=end+1;
-    }
-    edge_reference(w,o,skip_end,d1,d2);
-    for(int n=0;n<nb;n++) {
-        int start=bands[n].start,end=bands[n].end,k=bands[n].owner;
-        int fallback=0,displaced[2]={0,0};
-        if(k<0 && start<=1 && bands[n].breaks[0]==1 && bands[n].breaks[1]==1) {
-            k=top_owner(w,o,start,end,displaced);
-            fallback=k>=0;
+        for(int a=0;a<2;a++)w->coherent[a][j]=profile(o->offset[a][j],&w->profile[a][j]);
+        int known=0,small=0;
+        for(int z=0;z<NW;z++)if(o->offset[0][j][z]!=UNKNOWN_OFFSET) {
+            known++;small+=abs(o->offset[0][j][z])<MIN_SHIFT;
         }
-        if(k<0){o->abstained++;continue;}
-        int first=start+((start&1)!=k),last=end-((end&1)!=k);
-        hrt_band *b=o->band+o->band_count++;
-        *b=(hrt_band){.field=k+1,.first=line_number(first,d1,d2),.last=line_number(last,d1,d2),
-                      .top_fallback=fallback,.displaced={displaced[0],displaced[1]}};
-        memcpy(b->breaks,bands[n].breaks,sizeof b->breaks);
-        o->field[k].bands+=flag_band(w,start,end,k,d1,d2);
+        w->quiet[j]=known>=MIN_WINDOWS && known==small;
     }
-    extend_bands(w,o,d1,d2);
-    for(int k=0;k<2;k++) {
-        double widths[HRT_FIELD_ROWS];int n=0;
-        for(int i=WIDTH_BODY_LO;i<WIDTH_BODY_HI;i++) {
-            int j=2*i+k,l,r;
-            if(w->row[j] && !w->flagged[j] && !excluded(j,d1,d2) && edges(w->y[j],o->blank[k],&l,&r) && l>0 && r<718)
-                widths[n++]=r-l;
-        }
-        o->width[k]=o->tolerance[k]=NAN;
-        if(n) {
-            o->width[k]=quantile(widths,n,0.5);
-            for(int i=0;i<n;i++)widths[i]=fabs(widths[i]-o->width[k]);
-            o->tolerance[k]=quantile(widths,n,0.9);
+    for(int j=0;j<HRT_ROWS;j++) {
+        if(!w->row[j] || excluded(j,d1,d2) || !w->moved[j] || w->moved[j^1])continue;
+        int temporal=w->coherent[0][j] && displaced_profile(o->offset[0][j]);
+        int cross=w->coherent[1][j] && displaced_profile(o->offset[1][j]);
+        int other_moving=w->coherent[0][j^1] && displaced_profile(o->offset[0][j^1]);
+        if((cross && !other_moving) || (temporal && w->quiet[j^1]))w->seed[j]=1;
+    }
+    for(int j=0;j<HRT_ROWS;j++)if(w->seed[j]) {
+        for(int n=j-2;n<=j+2;n+=4)if(n>=0 && n<HRT_ROWS && w->seed[n]) {
+            int a=w->coherent[1][j] && w->coherent[1][n]?1:0;
+            if(close_profiles(o->offset[a][j],o->offset[a][n]))w->flagged[j]=w->flagged[n]=1;
         }
     }
-    for(int j=0;j<HRT_ROWS;j++)if(w->flagged[j] && !excluded(j,d1,d2)) {
+    /* A supported band may include a scrambled adjacent line, but only while
+     * its own boundary stays displaced and the counterpart does not. */
+    for(int pass=0;pass<HRT_FIELD_ROWS;pass++) {
+        int changed=0;
+        for(int j=0;j<HRT_ROWS;j++)if(!w->flagged[j] && w->row[j] && w->moved[j] &&
+                !w->moved[j^1] && !excluded(j,d1,d2) &&
+                ((j>=2 && w->flagged[j-2]) || (j+2<HRT_ROWS && w->flagged[j+2]))) {
+            if(w->coherent[0][j^1] && displaced_profile(o->offset[0][j^1]))continue;
+            w->flagged[j]=1;changed=1;
+        }
+        if(!changed)break;
+    }
+    for(int k=0;k<2;k++)for(int i=0;i<HRT_FIELD_ROWS;) {
+        int j=2*i+k;if(!w->flagged[j]){i++;continue;}
+        int first=i;while(i+1<HRT_FIELD_ROWS && w->flagged[2*(i+1)+k])i++;
+        hrt_band *b=&o->band[o->band_count++];
+        *b=(hrt_band){.field=k+1,.first=line_number(2*first+k,d1,d2),.last=line_number(2*i+k,d1,d2)};
+        o->field[k].bands++;i++;
+    }
+    for(int j=0;j<HRT_ROWS;j++)if(w->flagged[j]) {
+        int k=j&1,r=first_row(k,offsets[k])+j/2,line=r+4;
+        uint8_t *out=dst[k]+HEADER+r*ROW_BYTES;
         o->edge_moved[j]=(uint8_t)edge_movement(w,o,j);
-        int k=j&1,l=0,r=0,s=o->shift[j],line=line_number(j,d1,d2);
-        int row=first_row(k,offsets[k])+j/2;
-        uint8_t *out=dst[k]+HEADER+row*ROW_BYTES;
-        /* Preserve the original unavailable population and donor mask. Content
-         * candidates are untouched, not promoted to witnesses for another repair. */
-        if(!donor(w,j-1) && !donor(w,j+1)){o->action[j]=HRT_UNAVAILABLE;o->field[k].unavailable++;continue;}
-        if(!neighbour_discontinuity(w,o,j) || !ordered_shape(w,j,s)) {
-            o->action[j]=HRT_CONTENT;o->field[k].content++;continue;
-        }
-        int keep=edges(w->y[j],o->blank[k],&l,&r) && certified_edges(o,k,l,r,s) && isfinite(o->width[k]) &&
-            fabs((r-l)-o->width[k])<=o->tolerance[k];
-        if(keep) {
-            int lost=(s>l?s-l:0)+(r-s>719?r-s-719:0);
-            double unseen=(l==0 || r>=718)?fmax(0,o->width[k]-(r-l)):0;
-            keep=unseen+lost<=o->tolerance[k];
-        }
+        int s=w->profile[1][j],keep=w->coherent[1][j];
+        for(int z=0;z<NW;z++)keep&=o->offset[1][j][z]!=UNKNOWN_OFFSET &&
+            abs(o->offset[1][j][z]-s)<=PROFILE_TOL;
+        int l=0,right=0;
+        keep=keep && timing_edges(w->y[j],o->blank[k],&l,&right) && certified_edges(o,k,l,right,s);
+        o->shift[j]=keep?s:0;
         if(!interpolate(w,j,out)){o->action[j]=HRT_UNAVAILABLE;o->field[k].unavailable++;continue;}
-        if(keep) {retime(w->row[j],out,s);o->action[j]=HRT_RETIME;o->field[k].retimed++;}
+        if(keep){retime(w->row[j],out,s);o->action[j]=HRT_RETIME;o->field[k].retimed++;}
         else {o->action[j]=HRT_INTERPOLATE;o->field[k].interpolated++;}
         if(!o->field[k].first)o->field[k].first=line;
         o->field[k].last=line;
     }
+    /* Cache actual repaired luma at the source storage coordinates. Recognised
+     * unrepaired displacement is never promoted to a clean temporal witness. */
+    memset(w->valid,0,sizeof w->valid);
+    for(int j=0;j<HRT_ROWS;j++)if(w->row[j] && !excluded(j,d1,d2)) {
+        int k=j&1,r=first_row(k,offsets[k])+j/2;
+        int repaired=o->action[j]==HRT_RETIME || o->action[j]==HRT_INTERPOLATE;
+        if(!repaired && w->moved[j]) {
+            if(!o->action[j]){o->action[j]=HRT_CONTENT;o->field[k].content++;}
+            o->edge_moved[j]=(uint8_t)edge_movement(w,o,j);continue;
+        }
+        const uint8_t *p=dst[k]+HEADER+r*ROW_BYTES;
+        for(int x=0;x<HRT_WIDTH;x++)w->previous[k][r][x]=p[2*x+1];
+        w->valid[k][r]=1;
+    }
+    w->have=1;w->context=0;
 }

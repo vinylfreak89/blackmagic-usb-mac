@@ -24,10 +24,11 @@ for counter in range(100, 104):
         for x in range(720):
             unit[48+row*1440+2*x] = 128
             unit[48+row*1440+2*x+1] = profile[x]+counter-100 if picture else 2
-    # Shorten the right edge of a translated f1 row: requires opposite-field ELA.
-    for x in range(720):
-        sx = x-6
-        unit[48+39*1440+2*x+1] = profile[sx]+counter-100 if 0 <= sx < 695 else 2
+    # A three-line band, not the deliberately forgone isolated-line population.
+    for row in range(39,42):
+        for x in range(720):
+            sx = x-6
+            unit[48+row*1440+2*x+1] = profile[sx]+counter-100 if 0 <= sx < 695 else 2
     units[counter] = unit
 
 with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
@@ -58,7 +59,7 @@ with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
         off, on = results
         assert len(off[0]) == len(on[0])
         for a,b in zip(off[0], on[0]):
-            assert a['schema_version'] == '28' and b['schema_version'] == '32'
+            assert a['schema_version'] == '28' and b['schema_version'] == '33'
             assert all(a[k] == b[k] for k in a if k != 'schema_version'), (a,b)
             for field in (1,2):
                 lines=[x.split(':')[0] for x in b[f'hretime_lines_f{field}'].split()]
@@ -74,7 +75,9 @@ with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
             expected = bytearray(before)
             if not reverse or c > 100:
                 owner = c-1 if reverse else c
-                expected[40*1440:41*1440] = units[owner][48+302*1440:48+303*1440]
+                for row in range(40,46,2):
+                    r2=282+row//2
+                    expected[row*1440:(row+1)*1440] = units[owner][48+r2*1440:48+(r2+1)*1440]
             assert after == expected, (reverse,c)
         print('HRETIME-PIPELINE PASS:', 'reversed' if reverse else 'aligned',
               '4 units; old cells identical; every published pixel matches')

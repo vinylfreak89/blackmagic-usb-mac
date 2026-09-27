@@ -281,6 +281,7 @@ static int log_header(FILE *L,int retime){
         for(int k=1;k<=2;k++)
             if(fprintf(L,",hretime_bands_f%d,hretime_retimed_f%d,hretime_interpolated_f%d,hretime_unavailable_f%d,hretime_first_f%d,hretime_last_f%d,hretime_lines_f%d",k,k,k,k,k,k,k)<0)return -1;
         if(fputs(",hretime_edges_f1,hretime_edges_f2,hretime_content_f1,hretime_content_f2",L)==EOF)return -1;
+        if(fputs(",hretime_offsets_f1,hretime_offsets_f2",L)==EOF)return -1;
     }
     return fputc('\n',L)==EOF?-1:0;
 }
@@ -458,6 +459,19 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
                 if(fputc(',',f->log)==EOF)bad=1;
                 if(repair && fprintf(f->log,"%d",repair->field[k].content)<0)bad=1;
             }
+            for(int k=0;k<2;k++) {
+                if(fputc(',',f->log)==EOF)bad=1;
+                if(repair)for(int j=k;j<HRT_ROWS;j+=2) {
+                    int line=(k?286+d->frame_d2:23+d->frame_d1)+j/2;
+                    if(fprintf(f->log,"%s%d:",j==k?"":" ",line)<0)bad=1;
+                    for(int a=0;a<2;a++)for(int z=0;z<6;z++) {
+                        if(a || z)if(fputc(z?'|':'/',f->log)==EOF)bad=1;
+                        int v=repair->offset[a][j][z];
+                        if(v==32767){if(fputc('?',f->log)==EOF)bad=1;}
+                        else if(fprintf(f->log,"%d",v)<0)bad=1;
+                    }
+                }
+            }
         }
         if(fputc('\n',f->log)==EOF)bad=1;
         if(bad){f->st.log_write_errors++;f->log_file_errors++;}else f->st.log_rows++;
@@ -480,6 +494,7 @@ static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *uni
                  it->audio_evidence_known?&it->audio_evidence:NULL,repair);
 }
 static void geometry_flush(frameserver *f) {
+    if(f->retime_work)hrt_reset(f->retime_work);
     ge_decision out[2];unsigned n=ge_break(f->geometry,out);
     if(n && f->geometry_pending)geometry_publish(f,&f->geometry_item,f->geometry_unit,out,NULL);
     f->geometry_pending=0;f->geometry_reset=1;
@@ -530,6 +545,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
             if(f->cfg.hretime && out[i].has_frame) {
                 memcpy(f->retime_previous,f->geometry_unit,FP_UNIT_BYTES);
                 repair=&f->retime_result;
+                hrt_begin(f->retime_work,out[i].top_unit,out[i].counter,it->obs.epoch,out[i].reset_before);
                 hrt_apply(f->retime_work,unit,f->geometry_unit,out[i].frame_d1,out[i].frame_d2,
                           f->retime_unit,f->retime_previous,repair);
                 published=f->retime_previous;
@@ -545,6 +561,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
             hrt_result *repair=NULL;
             if(f->cfg.hretime && out[i].has_frame) {
                 repair=&f->retime_result;
+                hrt_begin(f->retime_work,out[i].top_unit,out[i].counter,it->obs.epoch,out[i].reset_before);
                 hrt_apply(f->retime_work,unit,unit,out[i].frame_d1,out[i].frame_d2,
                           f->retime_unit,f->retime_unit,repair);
             }
@@ -661,7 +678,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
         f->geometry_unit=malloc(FP_UNIT_BYTES);
         if(cfg->hretime) {
             f->retime_unit=malloc(FP_UNIT_BYTES);f->retime_previous=malloc(FP_UNIT_BYTES);
-            f->retime_work=malloc(hrt_size());
+            f->retime_work=calloc(1,hrt_size());
             if(!f->retime_unit || !f->retime_previous || !f->retime_work){fs_close(f);return -1;}
         }
         if(!f->geometry||!f->geometry_y||!f->geometry_unit){fs_close(f);return -1;}

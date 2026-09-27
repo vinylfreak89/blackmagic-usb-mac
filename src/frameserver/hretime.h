@@ -1,6 +1,7 @@
 /* Optional post-registration horizontal timing repair. Sources are immutable
  * full 48+525*1440-byte units; f1/f2 may belong to different transport units.
- * Destinations are caller-owned copies. No geometry/temporal state is touched. */
+ * Destinations are caller-owned copies. Geometry is untouched; this workspace
+ * alone owns the causal previous-repaired-field history. */
 #ifndef FS_HRETIME_H
 #define FS_HRETIME_H
 #include <stddef.h>
@@ -24,12 +25,16 @@ typedef struct {
     hrt_field_result field[2];
     uint8_t action[HRT_ROWS]; /* actual woven row: 2*i=f1, 2*i+1=f2 */
     int shift[HRT_ROWS];
+    int offset[2][HRT_ROWS][6]; /* previous repaired / counterpart; 32767 unknown */
     double blank[2], width[2], tolerance[2];
     double edge_median[2][2], edge_spread[2][2]; /* field, left/right */
     uint8_t edge_moved[HRT_ROWS]; /* directions, '=' if known but within spread */
 } hrt_result;
 typedef struct hrt_workspace hrt_workspace;
 size_t hrt_size(void);
+/* Zero-initialise workspace at open; all temporal storage is preallocated. */
+void hrt_reset(hrt_workspace *);
+void hrt_begin(hrt_workspace *,uint64_t f1_counter,uint64_t f2_counter,uint64_t epoch,int reset);
 void hrt_apply(hrt_workspace *, const uint8_t *f1, const uint8_t *f2,
                int d1, int d2, uint8_t *out1, uint8_t *out2, hrt_result *);
 #endif

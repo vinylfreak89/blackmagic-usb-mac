@@ -1,4 +1,4 @@
-/* Synthetic detector/correction contracts, plus exact SIMD SAD oracle. */
+/* E-61: waveform oracle, causal references, ownership and immutable donors. */
 #include "../hretime.c"
 #include <assert.h>
 #include <stdio.h>
@@ -6,217 +6,74 @@ enum { UNIT_BYTES=48+525*1440 };
 static uint8_t unit[UNIT_BYTES],other[UNIT_BYTES],out1[UNIT_BYTES],out2[UNIT_BYTES];
 static hrt_workspace work;
 static hrt_result result;
-static uint32_t rng=19;
-static unsigned random_byte(void) {rng=1664525*rng+1013904223;return rng>>24;}
+static unsigned rng=19;
+static unsigned random_byte(void){rng=1664525*rng+1013904223;return rng>>24;}
 static void fixture(void) {
-    uint8_t row[1440];
-    for(int x=0;x<720;x++) {row[2*x]=128;row[2*x+1]=x>=10 && x<=710 ? 40+random_byte()%180 : 2;}
-    memset(unit,0,sizeof unit);
-    for(int r=0;r<525;r++) {
-        uint8_t *p=unit+48+r*1440;
-        memcpy(p,row,1440);
-        if((r>=7 && r<=15)||(r>=270 && r<=278))for(int x=0;x<720;x++)p[2*x+1]=2;
+    memset(&work,0,sizeof work);
+    uint8_t y[720];for(int x=0;x<720;x++)y[x]=x>=10 && x<=710?40+random_byte()%180:2;
+    for(int r=0;r<525;r++)for(int x=0;x<720;x++) {
+        unit[48+r*1440+2*x]=128;
+        unit[48+r*1440+2*x+1]=(r>=7 && r<=15)||(r>=270 && r<=278)?2:y[x];
     }
     memcpy(other,unit,sizeof unit);
 }
-static void displace(uint8_t *u,int k,int i,int s,int trim) {
-    uint8_t *p=u+48+(first_row(k,0)+i)*1440;
-    uint8_t copy[1440];memcpy(copy,p,sizeof copy);
-    for(int x=0;x<720;x++)p[2*x+1]=x-s>=0 && x-s<720-trim ? copy[2*(x-s)+1] : 2;
+static void displace(uint8_t *u,int k,int i,int s) {
+    uint8_t *p=u+48+(first_row(k,0)+i)*1440,copy[1440];memcpy(copy,p,sizeof copy);
+    for(int x=0;x<720;x++)p[2*x+1]=x-s>=0 && x-s<720?copy[2*(x-s)+1]:2;
 }
-static void run(void) {
+static void run(unsigned c) {
     memcpy(out1,unit,sizeof unit);memcpy(out2,other,sizeof other);
-    hrt_apply(&work,unit,other,0,0,out1,out2,&result);
-}
-static void check_search(const uint8_t *a,const uint8_t *b,const uint8_t *c) {
-    uint32_t ap[721],bp[721],cp[721];
-    uint16_t doubled[720],ref[720];
-    for(int x=0;x<720;x++){doubled[x]=2*a[x];ref[x]=b[x]+c[x];}
-    prefix(a,ap);prefix(b,bp);prefix(c,cp);
-    unsigned best=~0u,zero=0;int expected=0;
-    for(int s=-SEARCH;s<=SEARCH;s++) {
-        unsigned sum=0;
-        for(int x=SCORE_LO;x<SCORE_HI;x++)sum+=(unsigned)abs(2*(int)a[x+s]-b[x]-c[x]);
-        assert(sum==prepared_sad(doubled,ref,s));
-        assert(lower_bound(ap,bp,cp,s)<=sum);
-        if(sum<best){best=sum;expected=s;}
-        if(!s)zero=sum;
-    }
-    int shift=0;float ratio=search(a,b,c,ap,bp,cp,&shift);
-    float expected_ratio=((float)best/(2*SCORE_SIZE))/fmaxf((float)zero/(2*SCORE_SIZE),1e-6f);
-    assert(shift==expected && ratio==expected_ratio);
+    hrt_begin(&work,c,c,1,0);hrt_apply(&work,unit,other,0,0,out1,out2,&result);
 }
 static void oracle(void) {
-    uint8_t a[720],b[720],c[720];
-    for(int trial=0;trial<50;trial++) {
-        for(int x=0;x<720;x++){a[x]=random_byte();b[x]=random_byte();c[x]=random_byte();}
-        if(trial==0)memset(a,2,sizeof a),memset(b,2,sizeof b),memset(c,2,sizeof c);
-        if(trial==1)memset(a,255,sizeof a),memset(b,0,sizeof b),memset(c,0,sizeof c);
-        check_search(a,b,c);
+    uint8_t a[720],b[720];
+    for(int trial=0;trial<30;trial++) {
+        for(int x=0;x<720;x++){a[x]=random_byte();b[x]=random_byte();}
+        for(int lo=0;lo<720;lo+=120)for(int s=-64;s<=64;s++)if(lo+s>=0 && lo+s+120<=720) {
+            unsigned expected=0;for(int x=0;x<120;x++)expected+=abs((int)a[lo+x]-b[lo+x+s]);
+            assert(window_sad(a+lo,b+lo+s)==expected);
+        }
     }
+    memset(a,2,sizeof a);memset(b,2,sizeof b);assert(window_offset(a,b,0)==UNKNOWN_OFFSET);
+    for(int x=0;x<720;x++)a[x]=b[x]=random_byte();
+    assert(window_offset(a,b,240)==0);
+    for(int x=0;x<720;x++)a[x]=x>=12?b[x-12]:2;
+    assert(window_offset(a,b,240)==12);
+    int v[6]={4,6,8,10,12,14},m=0;assert(profile(v,&m) && m==9);
+    v[3]=40;assert(!profile(v,&m));
+    int stretch[6]={-10,-6,-2,2,6,10};
+    assert(profile(stretch,&m) && m==0 && displaced_profile(stretch));
 }
-static void edge_ownership(void) {
-    fixture();run(); /* unflagged body has edges10/710 and zero spread */
-    assert(result.edge_median[0][0]==10 && result.edge_median[1][1]==710);
-    for(int j=0;j<4;j++)for(int x=0;x<720;x++)work.y[j][x]=x>=10 && x<=710?100:2;
-    for(int x=0;x<720;x++)work.y[1][x]=x<=680?100:2;
-    assert(edge_movement(&work,&result,1)==(HRT_EDGES_KNOWN|HRT_LEFT_EARLIER|HRT_RIGHT_EARLIER));
-    for(int x=0;x<720;x++)work.y[3][x]=x>=40?100:2;
-    assert(edge_movement(&work,&result,3)==(HRT_EDGES_KNOWN|HRT_LEFT_LATER|HRT_RIGHT_LATER));
-    int count[2]={0,0};
-    assert(top_owner(&work,&result,0,3,count)==1 && count[0]==0 && count[1]==2);
-    memcpy(work.y[0],work.y[1],720);memcpy(work.y[2],work.y[3],720);
-    count[0]=count[1]=0;assert(top_owner(&work,&result,0,3,count)==-1 && count[0]==2 && count[1]==2);
-    result.edge_median[0][0]=NAN;count[0]=count[1]=0;
-    assert(top_owner(&work,&result,0,3,count)==-1 && count[0]==0 && count[1]==0);
-    result.edge_median[0][0]=10;result.edge_spread[0][0]=10;result.edge_spread[0][1]=30;
-    assert(edge_movement(&work,&result,0)==HRT_EDGES_KNOWN); /* strict >, not >= */
-    memset(work.y[0],2,720);assert(edge_movement(&work,&result,0)==0);
-    /* An unresolved top band cannot supply its own normal reference. */
-    edge_reference(&work,&result,479,0,0);assert(isnan(result.edge_median[0][0]));
-}
-static void edge_certification(void) {
-    fixture();run();
-    result.edge_median[0][0]=10;result.edge_median[0][1]=710;
-    result.edge_spread[0][0]=result.edge_spread[0][1]=0;
-    assert(certified_edges(&result,0,16,716,6));
-    assert(!certified_edges(&result,0,10,710,6)); /* same width is not shift evidence */
-    assert(!certified_edges(&result,0,0,710,-10));
-    assert(!certified_edges(&result,0,10,718,8));
-    result.edge_spread[0][0]=result.edge_spread[0][1]=2;
-    assert(certified_edges(&result,0,18,714,6)); /* inclusive own noise allowance */
-    assert(!certified_edges(&result,0,19,714,6));
-    /* Shifted interior with unchanged blanking edges is now content/agree. */
-    fixture();displace(unit,0,20,6,0);
-    uint8_t *row=unit+48+39*1440;
-    for(int x=0;x<720;x++)if(x<10 || x>710)row[2*x+1]=2;
-    for(int x=10;x<16;x++)row[2*x+1]=100;
-    run();assert(result.shift[40]==6 && result.action[40]==HRT_CONTENT);
-    assert(result.field[0].content==1 && !memcmp(out1,unit,sizeof unit));
-    /* Retiming vacated samples must come from donors, not blanking. */
-    fixture();displace(unit,0,20,6,0);
-    for(int r=301;r<=302;r++)for(int x=714;x<720;x++)other[48+r*1440+2*x+1]=220;
-    run();assert(result.action[40]==HRT_RETIME);
-    for(int x=714;x<720;x++)assert(out1[48+39*1440+2*x+1]==220);
-}
-static void edge_row(int j,int left,int right,int level) {
-    for(int x=0;x<HRT_WIDTH;x++)work.y[j][x]=x>=left && x<=right?level:2;
-}
-static void neighbour_confirmation(void) {
-    fixture();run();
-    result.edge_spread[0][0]=result.edge_spread[0][1]=2;
-    edge_row(39,10,710,100);edge_row(40,14,714,100);edge_row(41,10,710,100);
-    assert(neighbour_discontinuity(&work,&result,40));
-    edge_row(41,14,714,100);assert(!neighbour_discontinuity(&work,&result,40)); /* every neighbour */
-    edge_row(41,14,714,22);assert(neighbour_discontinuity(&work,&result,40)); /* strict blank+20 */
-    edge_row(39,10,710,22);assert(!neighbour_discontinuity(&work,&result,40)); /* no evidence */
-    edge_row(39,10,710,100);edge_row(41,10,710,100);edge_row(40,12,712,100);
-    assert(!neighbour_discontinuity(&work,&result,40)); /* strict > spread */
-    edge_row(40,14,714,22);assert(!neighbour_discontinuity(&work,&result,40));
-    int l,r;assert(edges(work.y[40],2,&l,&r) && l==14 && r==714); /* old semantics elsewhere */
-    edge_row(40,14,714,23);assert(neighbour_discontinuity(&work,&result,40));
-    result.blank[1]=90;assert(!neighbour_discontinuity(&work,&result,40)); /* neighbour's own blank */
-    result.blank[1]=2;edge_row(40,0,719,100);
-    assert(!neighbour_discontinuity(&work,&result,40)); /* censored own coordinates */
-    edge_row(40,14,714,100);edge_row(39,10,710,100);edge_row(41,18,718,100);
-    assert(neighbour_discontinuity(&work,&result,40)); /* right: sole uncensored neighbour */
-    edge_row(41,18,717,100);
-    assert(!neighbour_discontinuity(&work,&result,40)); /* smooth slope, not an excursion */
-    edge_row(39,0,719,100);edge_row(41,0,718,100);
-    assert(!neighbour_discontinuity(&work,&result,40)); /* no measured neighbours */
-    edge_row(0,14,714,100);edge_row(1,10,710,100);
-    assert(neighbour_discontinuity(&work,&result,0)); /* sole lower neighbour */
-    work.row[1]=NULL;assert(!neighbour_discontinuity(&work,&result,0));
-    fixture();run();edge_row(0,9,713,142);edge_row(1,11,715,140);
-    result.edge_spread[0][0]=12.4;result.edge_spread[0][1]=7.1;
-    assert(!neighbour_discontinuity(&work,&result,0)); /* accepted miss: source14045 f1/24 */
-    result.edge_spread[0][0]=result.edge_spread[0][1]=NAN;
-    assert(!neighbour_discontinuity(&work,&result,40));
-}
-static void band_growth(void) {
-    fixture();displace(unit,0,20,6,0);
-    /* Edges move without any pure shift in the comparison body. */
-    for(int x=10;x<40;x++)unit[48+40*1440+2*x+1]=2;
-    run();assert(result.action[40]==HRT_RETIME && result.action[42]==HRT_CONTENT);
-    assert(result.shift[42]==0 && result.action[44]==HRT_NONE);
-    assert(result.field[0].bands==1 && result.band[0].first==43 && result.band[0].last==44);
-    /* Two seeds grow into the same displaced gap, counted and repaired once. */
-    fixture();displace(unit,0,20,6,0);displace(unit,0,22,6,0);
-    for(int x=10;x<40;x++)unit[48+40*1440+2*x+1]=2;
-    run();assert(result.field[0].bands==1 && result.field[0].retimed==2 && result.field[0].content==1);
-    assert(result.band[0].first==43 && result.band[0].last==45);
-    /* A switch-only seed cannot grow upward into picture. */
-    fixture();displace(unit,0,232,6,0);
-    for(int x=10;x<40;x++)unit[48+250*1440+2*x+1]=2;
-    run();assert(result.action[462]==HRT_NONE && result.action[464]==HRT_NONE);
-}
-static void shape_confirmation(void) {
-    fixture();displace(unit,0,20,6,0);run();
-    assert(ordered_shape(&work,40,6));
-    assert(!ordered_shape(&work,40,0)); /* no ordered improvement */
-    memcpy(work.y[40],work.y[39],720);
-    assert(!ordered_shape(&work,40,6)); /* identical shape is not an excursion */
-    memset(work.y[40],100,720);
-    assert(!ordered_shape(&work,40,6)); /* no shape */
-    memset(work.y[39],100,720);memset(work.y[41],100,720);
-    assert(shape_correlation(work.y[40],work.y[39],work.y[41],0)==0);
-    assert(!ordered_shape(&work,40,6));
-    for(int j=0;j<480;j+=479) {
-        fixture();displace(j?other:unit,j?1:0,j?239:0,6,0);run();
-        /* Boundary reference is the neighbouring field's next same-field row. */
-        assert(ordered_shape(&work,j,6));
-        int farther=j?476:3;
-        work.row[farther]=NULL;assert(!ordered_shape(&work,j,6));
+int main(void) {
+    oracle();fixture();run(1);assert(result.band_count==0);
+    for(int i=20;i<23;i++)displace(unit,0,i,6);
+    run(2);assert(result.field[0].interpolated==3 && !result.field[1].interpolated);
+    for(int i=20;i<23;i++) {
+        assert(result.action[2*i]==HRT_INTERPOLATE);
+        assert(!memcmp(out1+48+(19+i)*1440,other+48+(282+i)*1440,1440));
     }
-    fixture();run();
-    /* Full physical bound is safe, even when a caller supplies a wider shift. */
-    assert(ordered_shape(&work,40,148)==ordered_shape(&work,40,147));
-    assert(ordered_shape(&work,40,-148)==ordered_shape(&work,40,-147));
-}
-int main(int argc,char **argv) {
-    if(argc==2) {
-        FILE *f=fopen(argv[1],"rb");assert(f);uint8_t rows[3][720];unsigned n=0;size_t got;
-        while((got=fread(rows,1,sizeof rows,f))){assert(got==sizeof rows);check_search(rows[0],rows[1],rows[2]);n++;}
-        assert(!ferror(f));fclose(f);printf("HRETIME captured scalar oracle: %u triples PASS\n",n);return 0;
-    }
-    assert(argc==1);
-    oracle();
-    edge_ownership();
-    edge_certification();
-    neighbour_confirmation();
-    shape_confirmation();
-    band_growth();
-    fixture();displace(unit,0,20,6,0);run();
-    assert(result.field[0].retimed==1 && result.field[1].retimed==0);
-    assert(result.action[40]==HRT_RETIME && result.shift[40]==6);
-    assert(!memcmp(out1+48+39*1440,other+48+39*1440,1440));
-    fixture();displace(unit,0,20,6,25);run();
-    assert(result.action[40]==HRT_INTERPOLATE);
-    assert(!memcmp(out1+48+39*1440,other+48+39*1440,1440));
-    fixture();displace(unit,0,20,-16,0);run();
-    assert(result.action[40]==HRT_INTERPOLATE); /* censored width: not silently shifted */
-    fixture();displace(unit,0,20,18,0);run();assert(result.action[40]==HRT_INTERPOLATE);
-    for(int s=-SEARCH;s<=SEARCH;s+=SEARCH)if(s) {
-        fixture();displace(unit,0,20,s,0);run();
-        assert(result.shift[40]==s && result.action[40]==HRT_INTERPOLATE);
-    }
-    fixture();displace(unit,0,20,-80,0);run();
-    assert(result.shift[40]==-80 && result.action[40]==HRT_INTERPOLATE);
-    fixture();for(int i=0;i<6;i++)displace(other,1,i,-7,0);run();
-    assert(result.field[0].bands==0 && result.field[1].bands==1);
-    assert(result.field[1].retimed==6); /* mirrored f1 discontinuity has no self break */
-    fixture();displace(unit,0,232,6,0);run();
-    assert(result.field[0].retimed==0 && result.field[0].interpolated==0); /* line255 */
+    /* A sustained bend is compared against repaired, not yesterday's bent row. */
+    run(3);assert(result.field[0].interpolated==3);
+    memcpy(unit,other,sizeof unit);run(4);assert(result.band_count==0);
+    /* A recognised isolated miss must not poison the next temporal reference. */
+    displace(unit,0,20,6);run(5);assert(result.field[0].interpolated==0);
+    assert(!work.valid[0][39]);
+    hrt_begin(&work,7,7,1,0);assert(!work.available[0][40]);
+    hrt_begin(&work,6,6,2,0);assert(!work.available[0][40]);
+    hrt_reset(&work);assert(!work.have);
+    fixture();run(1);for(int i=0;i<6;i++)displace(other,1,i,-9);
+    run(2);assert(result.field[1].interpolated==6 && !result.field[0].interpolated);
+    fixture();run(1);for(int i=20;i<23;i++){displace(unit,0,i,6);displace(other,1,i,6);}
+    run(2);assert(!result.band_count); /* shared displacement */
+    fixture();run(1);for(int i=232;i<238;i++)displace(unit,0,i,6);
+    run(2);assert(!result.band_count); /* switch */
     fixture();for(int r=0;r<525;r++)for(int x=0;x<720;x++)unit[48+r*1440+2*x+1]=2;
-    memcpy(other,unit,sizeof unit);run();assert(result.band_count==0);
-    /* Odd luma shifts preserve phase; U and V interpolate independently. */
+    memcpy(other,unit,sizeof unit);run(1);assert(!result.band_count);
     uint8_t a[1440],b[1440];for(int x=0;x<360;x++){a[4*x]=x%256;a[4*x+2]=255-x%256;a[4*x+1]=a[4*x+3]=100;}
     memset(b,77,sizeof b);retime(a,b,1);
     assert(b[40]==average(a[40],a[44]) && b[42]==average(a[42],a[46]));
-    assert(b[1439]==77 && b[1436]==77 && b[1438]==77); /* missing luma/chroma preserve donor fill */
-    /* Invalid publisher rows use neutral padding, never cross field storage. */
-    fixture();memcpy(out1,unit,sizeof unit);memcpy(out2,other,sizeof other);
-    hrt_apply(&work,unit,other,-30,30,out1,out2,&result);
-    puts("HRETIME PASS: scalar/SIMD, measurable edge excursions, ordered shape/boundaries, edge-certified shift, donor fill, growth/merge/stop, symmetric ownership, switch exclusion, no picture, chroma, crop bounds");
+    assert(b[1439]==77 && b[1436]==77 && b[1438]==77);
+    fixture();hrt_apply(&work,unit,other,-30,30,out1,out2,&result);
+    puts("HRETIME E61 PASS: exact SAD, windows/stretch, sustained/recovery, isolated miss invalidation, gaps/epochs, field2 ownership, shared motion, switch, flat, chroma and crop bounds");
     return 0;
 }
