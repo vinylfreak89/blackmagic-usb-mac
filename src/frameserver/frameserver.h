@@ -129,6 +129,17 @@ int  fs_stop (frameserver *f);            // stops capture, drains the worker, c
 // observed in practice.
 int  fs_log_start(frameserver *f, const char *path);
 int  fs_log_stop (frameserver *f);        // -1 if none attached, the close failed, or any row write failed in this file (it is then incomplete: do not publish it as complete)
+// Runtime raw-transport tee: every packet, loss and error record the capture core delivers is
+// also written to `path` as a .tpc (the shuttle-capture format), through cc_async_sink: the
+// capture delivery thread only copies into a bounded ring (ring_bytes) and a writer thread
+// writes in <=1 MiB pieces, so a stalled destination never blocks acquisition -- it loses tee
+// packets instead, confessed as exact HostLoss records in the file. The file is created
+// exclusively and grows at its final path (owner, 2026-09-28: a LucidLink volume takes growing
+// files). The first records are mid-unit: a tee starts wherever the stream is. One at a time.
+int  fs_tee_start(frameserver *f, const char *path, const char *session_note, size_t ring_bytes);
+// Detach and hand the writer back; the caller closes it (cc_async_sink_close drains and may
+// block). NULL if none. fs_stop closes a still-attached tee itself.
+cc_async_sink *fs_tee_detach(frameserver *f);
 // Authoritative after fs_stop. During streaming worker-owned members are diagnostic only and
 // may be momentarily inconsistent; atomic ingress counters remain individually safe.
 void fs_get_stats(const frameserver *f, fs_stats *out);

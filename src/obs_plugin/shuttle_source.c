@@ -59,6 +59,7 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #define S_INPUT       "input"
 #define S_HRETIME     "hretime"
 #define S_REGISTRATION "registration"
+#define S_TPC         "raw_tpc"
 #define S_REPLAY      "replay_path"
 #define S_USE_REPLAY  "use_replay"
 #define S_SIDECAR     "sidecar_with_recording"
@@ -88,6 +89,11 @@ typedef struct {
      * tick, so a late frame repeats the previous one and a following burst is discarded. The
      * call time is how long obs_source_output_video blocked (OBS's async lock). */
     uint64_t last_handoff_ns, gap_events, max_gap_ns, max_call_ns, slow_calls;
+    /* Raw .tpc beside each recording (owner, 2026-09-28: "let OBS do both"). Written at its final
+     * path on the recording's volume (LucidLink takes growing files); closed off the UI thread by
+     * a detached closer; destroy waits until every closer is done. */
+    int tpc_enabled; unsigned tpc_part; char *tpc_path;
+    _Atomic int tpc_closers; pthread_mutex_t tpc_m; pthread_cond_t tpc_c;
 } shuttle_src;
 #define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; published by rename on the same filesystem, by verified copy otherwise */
 
@@ -237,18 +243,59 @@ static void sidecar_detach(shuttle_src *s){
     if (fs_log_stop(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] sidecar is INCOMPLETE (a row write or the close failed: disk full?); left unpublished at %s", s->sidecar_partial); return; }
     sidecar_publish(s);
 }
+
+#define TPC_RING_BYTES (256u << 20)   /* ~11 s of stream: rides out a stalled network write */
+typedef struct { shuttle_src *s; cc_async_sink *k; char *path; } tpc_close_job;
+static void *tpc_closer(void *arg){
+    tpc_close_job *j = arg; cc_async_sink_stats st;
+    int rc = cc_async_sink_close(j->k, &st);
+    uint64_t lost = st.lost_packets[0] + st.lost_packets[1];
+    blog(rc == CC_OK && !lost ? LOG_INFO : LOG_ERROR,
+         "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B%s%s",
+         rc == CC_OK ? "" : " WITH A WRITE ERROR", j->path, (unsigned long long)st.records, st.bytes_written / 1e6,
+         (unsigned long long)st.lost_packets[0], (unsigned long long)st.lost_bytes[0], (unsigned long long)st.lost_packets[1], (unsigned long long)st.lost_bytes[1],
+         (unsigned long long)st.control_dropped, st.high_water / 1e6, st.max_write, st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");
+    shuttle_src *s = j->s; bfree(j->path); bfree(j);
+    pthread_mutex_lock(&s->tpc_m); atomic_fetch_sub(&s->tpc_closers, 1); pthread_cond_broadcast(&s->tpc_c); pthread_mutex_unlock(&s->tpc_m);
+    return NULL;
+}
+/* Detach now (instant); drain and close on a detached thread so neither OBS's UI nor the capture waits. */
+static void tpc_detach(shuttle_src *s){
+    if (!s->fs || !s->tpc_path) return;
+    cc_async_sink *k = fs_tee_detach(s->fs);
+    char *path = s->tpc_path; s->tpc_path = NULL;
+    if (!k){ bfree(path); return; }
+    tpc_close_job *j = bzalloc(sizeof *j); j->s = s; j->k = k; j->path = path;
+    atomic_fetch_add(&s->tpc_closers, 1);
+    pthread_t t; pthread_attr_t a; pthread_attr_init(&a); pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
+    if (pthread_create(&t, &a, tpc_closer, j) != 0){ blog(LOG_WARNING, "[shuttle-source] raw .tpc: no closer thread; closing inline"); tpc_closer(j); }
+    pthread_attr_destroy(&a);
+}
+static void tpc_attach(shuttle_src *s){
+    if (!s->tpc_enabled || !s->fs || s->tpc_path || !s->sidecar_base) return;
+    struct dstr path = {0};
+    if (++s->tpc_part == 1) dstr_printf(&path, "%s.raw.tpc", s->sidecar_base);
+    else dstr_printf(&path, "%s.raw.part%u.tpc", s->sidecar_base, s->tpc_part);
+    struct dstr note = {0}; char *b = bstrdup(s->sidecar_base); char base[PATH_MAX];
+    dstr_printf(&note, "shuttle-source tee v1 input=svideo recording=%s part=%u", basename_r(b, base) ? base : "?", s->tpc_part); bfree(b);
+    if (fs_tee_start(s->fs, path.array, note.array, TPC_RING_BYTES) == 0){
+        s->tpc_path = bstrdup(path.array);
+        blog(LOG_INFO, "[shuttle-source] raw .tpc started: %s", path.array);
+    } else blog(LOG_ERROR, "[shuttle-source] raw .tpc could not be started (exists? volume writable?): %s", path.array);
+    dstr_free(&path); dstr_free(&note);
+}
 static void frontend_event(enum obs_frontend_event ev, void *data){
     shuttle_src *s = data;
     pthread_mutex_lock(&s->m);
     switch (ev){
     case OBS_FRONTEND_EVENT_RECORDING_STARTED:
         if (recording_path(s) != 0){ blog(LOG_WARNING, "[shuttle-source] recording started but its path is unknown; no sidecar"); break; }
-        s->sidecar_part = 0;
+        s->sidecar_part = 0; s->tpc_part = 0;
         if (!s->fs) blog(LOG_WARNING, "[shuttle-source] recording started while the capture is not running; sidecar starts when it does");
-        sidecar_attach(s);
+        sidecar_attach(s); tpc_attach(s);
         break;
     case OBS_FRONTEND_EVENT_RECORDING_STOPPED:
-        sidecar_detach(s); bfree(s->sidecar_base); s->sidecar_base = NULL;
+        tpc_detach(s); sidecar_detach(s); bfree(s->sidecar_base); s->sidecar_base = NULL;
         break;
     default: break;
     }
@@ -260,6 +307,7 @@ static void shuttle_stop(shuttle_src *s){
     /* Mid-recording restart: do NOT detach the log first — units delivered between a detach and the
      * capture stop would be recorded without sidecar rows. fs_stop closes the attached log after the
      * workers drain (every delivered unit has its row); publish afterwards from the session's stats. */
+    tpc_detach(s);   /* before fs_stop: its drain runs on the closer, not here */
     int publish_after = s->sidecar_attached; s->sidecar_attached = 0;
     fs_stats st; fs_stop(s->fs); fs_get_stats(s->fs, &st);
     if (publish_after){
@@ -301,6 +349,8 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
          cfg.registration_off ? "OFF (nominal placement)" : "on", cfg.hretime ? "ON" : "off");
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
     if (s->sidecar_enabled && obs_frontend_recording_active() && s->sidecar_base) sidecar_attach(s);   /* restarted mid-recording: continue as the next part */
+    s->tpc_enabled = obs_data_get_bool(settings, S_TPC);
+    if (obs_frontend_recording_active() && s->sidecar_base) tpc_attach(s);
     return 0;
 }
 
@@ -327,7 +377,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     obs_source_set_async_decoupled(source, true);
     obs_source_set_deinterlace_field_order(source, OBS_DEINTERLACE_FIELD_ORDER_TOP);   /* measured TFF (CLAUDE.md §6) */
     obs_source_set_deinterlace_mode(source, OBS_DEINTERLACE_MODE_YADIF_2X);          /* default presentation; the user may change it (OBS owns deinterlacing) */
-    pthread_mutex_init(&s->m, NULL);
+    pthread_mutex_init(&s->m, NULL); pthread_mutex_init(&s->tpc_m, NULL); pthread_cond_init(&s->tpc_c, NULL);
     if (pq_open(&s->pq, SIDECAR_QUEUE_CAP, publish_one, s) != 0){ s->pq = NULL; blog(LOG_ERROR, "[shuttle-source] could not start the sidecar publisher (%s): sidecars will stay in scratch (paths are logged), never published inline", strerror(errno)); }
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
     /* Register for recording events BEFORE inspecting recording state, so a recording that starts
@@ -346,9 +396,10 @@ static void shuttle_destroy(void *data){
     shuttle_src *s = data; if (!s) return;
     obs_frontend_remove_event_callback(frontend_event, s);
     pthread_mutex_lock(&s->m); shuttle_stop(s); pthread_mutex_unlock(&s->m);
+    pthread_mutex_lock(&s->tpc_m); while (atomic_load(&s->tpc_closers)) pthread_cond_wait(&s->tpc_c, &s->tpc_m); pthread_mutex_unlock(&s->tpc_m);   /* every raw .tpc drained before the code unloads */
     pq_close(s->pq); pq_destroy(s->pq); s->pq = NULL;   /* drains every queued sidecar before the code unloads; the frontend callback (the only producer) was removed above */
-    pthread_mutex_destroy(&s->m);
-    bfree(s->sidecar_base); bfree(s->sidecar_partial); bfree(s->sidecar_final);
+    pthread_mutex_destroy(&s->m); pthread_mutex_destroy(&s->tpc_m); pthread_cond_destroy(&s->tpc_c);
+    bfree(s->tpc_path); bfree(s->sidecar_base); bfree(s->sidecar_partial); bfree(s->sidecar_final);
     bfree(s->vbuf); bfree(s->abuf); bfree(s);
     atomic_fetch_sub(&g_instances, 1);
 }
@@ -365,6 +416,7 @@ static void shuttle_defaults(obs_data_t *settings){
     obs_data_set_default_bool(settings, S_SIDECAR, true);
     obs_data_set_default_bool(settings, S_HRETIME, false);
     obs_data_set_default_bool(settings, S_REGISTRATION, true);
+    obs_data_set_default_bool(settings, S_TPC, false);
 }
 
 static obs_properties_t *shuttle_properties(void *data){
@@ -376,6 +428,7 @@ static obs_properties_t *shuttle_properties(void *data){
     obs_property_list_add_string(in, "Component", "component");
     obs_properties_add_bool(p, S_REGISTRATION, "Registration: correct vertical field placement (per tape; off publishes both fields at the nominal position)");
     obs_properties_add_bool(p, S_HRETIME, "H-retiming: repair horizontally mistimed lines (per tape; leave off for stable tapes)");
+    obs_properties_add_bool(p, S_TPC, "Raw capture: save a .tpc beside each recording (about 85 GB per hour)");
     obs_properties_add_bool(p, S_USE_REPLAY, "Replay a tagged capture (.tpc) instead of the device");
     obs_properties_add_path(p, S_REPLAY, "Tagged capture file", OBS_PATH_FILE, "Tagged capture (*.tpc *.cap6)", NULL);
     obs_properties_add_bool(p, S_SIDECAR, "Write the registration sidecar (<recording>.registration.csv) with each OBS recording");

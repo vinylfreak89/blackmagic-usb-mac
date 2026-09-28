@@ -375,7 +375,11 @@ try the exclusive rename, copy only on EXDEV (a device-number check once compare
 `dirname()` buffer with itself and never copied). Measured 2026-09-28 on a cloud client's SMB share:
 `renamex_np(RENAME_EXCL)` returns ENOTSUP, so an exclusively created placeholder is renamed over
 instead; and one 443 MB write was acknowledged and fsynced yet read back as zeros past 112 MiB,
-while 1 MiB (and the plugin's 64 KiB) writes verified. Read-back verification is not optional. An unfinished capture remains in scratch for diagnosis/recovery.
+while 1 MiB (and the plugin's 64 KiB) writes verified. Read-back verification is not optional.
+Exception (owner, 2026-09-28): a LucidLink volume takes growing files ("it chunks the
+upload/download"; 25 GB local cache, ~450 Mbit/s upload against ~34 MB/s written with a .tpc).
+The OBS plugin's raw .tpc grows at its final path there, through a buffered writer that never
+blocks acquisition and never issues a write over 1 MiB. An unfinished capture remains in scratch for diagnosis/recovery.
 The destination above describes final publication only, not the writer's working directory.
 
 **Review replacement retention (owner, 2026-09-26):** replace superseded renders,

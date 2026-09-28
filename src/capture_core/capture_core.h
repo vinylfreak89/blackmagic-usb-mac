@@ -13,6 +13,7 @@
 #ifndef CAPTURE_CORE_H
 #define CAPTURE_CORE_H
 #include <stdint.h>
+#include <sys/types.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -120,6 +121,32 @@ typedef struct cc_tagged_sink cc_tagged_sink;
 int  cc_tagged_sink_open (cc_tagged_sink **out, const char *path, const char *session_note);
 void cc_tagged_sink_callbacks(cc_tagged_sink *k, cc_callbacks *out); // fills `out`
 int  cc_tagged_sink_close(cc_tagged_sink *k);   // returns CC_ERR_IO on any failed write
+
+// Buffered sink (tee): the same .tpc records, but the callbacks only copy into a bounded byte
+// ring and a writer thread does the I/O, in writes of at most write_chunk bytes. A stalled or
+// slow destination (a network/cloud volume) never blocks the caller: when the ring cannot take a
+// DATA record the packet is dropped and counted, and one HostLoss record per endpoint (exact
+// packets/bytes, split at 32 bits) is written before that endpoint's next DATA record, so the
+// file says precisely what it lacks. Control records that do not fit are counted. A write
+// failure is sticky: later records are discarded and counted, and close reports CC_ERR_IO.
+// The destination is created exclusively (never replaces a file). Single producer: calls into
+// the callbacks must not race each other (the capture delivery thread is the only producer).
+typedef struct cc_async_sink cc_async_sink;
+typedef struct {
+    uint64_t records, bytes_written;     // records accepted into the ring; bytes the writer wrote
+    uint64_t lost_packets[2], lost_bytes[2];  // [0]=video [1]=audio DATA dropped by this sink
+    uint64_t control_dropped;            // loss/error/tick records that found no room
+    uint64_t discarded_after_error;      // bytes the writer drained without writing after a failure
+    size_t high_water, max_write;        // ring occupancy peak; largest single write issued
+    int io_error;                        // errno of the first failed write/fsync/close, 0 if none
+} cc_async_sink_stats;
+int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *session_note,
+                         size_t ring_bytes, size_t write_chunk);
+void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *out); // packet/loss/error/tick
+// Drains everything accepted, joins the writer, fsyncs and closes; fills *st (may be NULL).
+int  cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st);
+// Test hook: when set, the writer's write() goes through it (stall / short-write / failure).
+extern ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n);
 
 #ifdef __cplusplus
 }

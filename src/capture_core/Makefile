@@ -27,7 +27,11 @@ $(META_FIXTURE): gen_packet_capture.py
 $(META_EXHAUST_FIXTURE): gen_packet_capture.py
 	python3 gen_packet_capture.py --out $(META_EXHAUST_FIXTURE) --expect fixture_meta_exhaust.expect --video-transfers 40 --audio-transfers 60 --xfererr-at 39 --xfererr-burst 3000
 
-test: capture_core_test $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
+async_sink_test: capture_core.c async_sink_test.c capture_core.h
+	$(CC) -O1 -g -fsanitize=address,undefined $(CFLAGS) -o $@ capture_core.c async_sink_test.c $(LIBS)
+
+test: capture_core_test async_sink_test $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
+	./async_sink_test
 	./capture_core_test $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE) $$(cat fixture_meta_exhaust.expect)
 
 test-tsan: capture_core.c capture_core_test.c capture_core.h $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
