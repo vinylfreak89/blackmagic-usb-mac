@@ -463,6 +463,36 @@ int main(int argc, char **argv){
     }
     atomic_store(&rd_mode,RD_PASS);
 
+    // Corrupt stretch: a copy of the fixture with 1 MiB of garbage at 20 MiB. The replay must skip it
+    // (one span, reported), keep delivering what follows, and still end at the real end of the file.
+    {
+        char cpath[]="/tmp/cc_corrupt_XXXXXX"; int cfd=mkstemp(cpath);
+        FILE *in=fopen(slice,"rb"); static uint8_t junk[1<<20]; size_t got; uint64_t total=0;
+        while(cfd>=0 && in && (got=fread(junk,1,sizeof junk,in))>0){ if(write(cfd,junk,got)!=(ssize_t)got) break; total+=got; }
+        if(in) fclose(in);
+        memset(junk,0x5A,sizeof junk);
+        CHECK(cfd>=0 && pwrite(cfd,junk,sizeof junk,20u<<20)==(ssize_t)sizeof junk,"write the corrupt copy");
+        if(cfd>=0) close(cfd);
+        tally ct2; memset(&ct2,0,sizeof ct2); ct2.main_thread=pthread_self(); cb.ctx=&ct2;
+        cc_config kcfg={0}; kcfg.replay_path=cpath; s=NULL;
+        CHECK(cc_open(&s,&kcfg,&cb)==CC_OK,"open (corrupt)");
+        if(s){
+            CHECK(cc_start(s)==CC_OK,"start (corrupt)");
+            wait_ended(&ct2.ended,"corrupt-copy run");
+            CHECK(cc_stop(s)==CC_OK,"stop (corrupt)");
+            cc_stats cs; cc_get_stats(s,&cs);
+            CHECK(cs.replay_corrupt_spans==1,"corrupt spans %ld, expected 1",cs.replay_corrupt_spans);
+            /* a record whose header precedes the garbage is read whole (payloads carry no checksum), so the skip starts at
+             * the first header inside the garbage: up to one record shorter, or longer, than the garbage itself */
+            CHECK(cs.replay_corrupt_bytes>=(1u<<20)-(15360+24) && cs.replay_corrupt_bytes<(1u<<20)+2*(15360+24),"skipped %llu bytes for a 1 MiB corrupt stretch",(unsigned long long)cs.replay_corrupt_bytes);
+            CHECK(ct2.end_reason==CC_END_REPLAY_EOF,"corrupt-copy run ended %d, expected REPLAY_EOF",ct2.end_reason);
+            uint64_t dl=ct2.bytes[0]+ct2.bytes[1];
+            CHECK(dl>(uint64_t)(total-(22u<<20)) && dl<vB+aB,"delivered %llu of %llu bytes: the data after the corrupt stretch must still arrive",(unsigned long long)dl,(unsigned long long)(vB+aB));
+            cc_close(s);
+        }
+        unlink(cpath);
+    }
+
     printf(fails? "FAILURES: %d\n" : "ALL TESTS PASSED\n", fails);
     return fails?1:0;
 }

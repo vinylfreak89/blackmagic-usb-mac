@@ -64,6 +64,7 @@ struct cc_session {
     int sig_m_init, sig_c_init, life_m_init, life_c_init;
     // threads / state machine
     pthread_t backend_t, delivery_t;
+    long corrupt_spans; uint64_t corrupt_bytes;   /* replay backend thread; read after stop */
     _Atomic int stop_req, backend_done, started_successfully;
     _Atomic int end_reason; _Atomic int end_fired;
     _Atomic uint64_t packets_delivered; /* delivery thread, not the libusb callback */
@@ -570,6 +571,15 @@ static void rd_print_(const cc_session *s, const char *what, const rd_list *l){
         n+=snprintf(line+n,sizeof line-(size_t)n,"%s%.1f ms @%.2fs (offset %.2f GB)",k?", ":"; worst ",l->ev[k].us/1000.0,l->ev[k].at_ms/1000.0,l->ev[k].off/1e9);
     rd_emit_(s,line);
 }
+/* A header the capture writer could have produced. A garbage header can carry the magic by chance,
+ * so the fields are checked too before any payload length is trusted. */
+static int rec_plausible_(const rec_hdr *h){
+    if(h->magic!=REC_MAGIC || h->type>REC_TICK) return 0;
+    if(h->type==REC_DATA) return (h->endpoint==CC_EP_VIDEO||h->endpoint==CC_EP_AUDIO) && h->actual_len<=h->req_len && h->req_len<=65536;
+    if(h->type==REC_SESSION) return h->actual_len<=(1u<<20);
+    return 1;
+}
+#define REPLAY_MAX_SKIP ((uint64_t)256<<20)
 static int rr_start_(replay_reader *r, const char *path, size_t cap){
     memset(r,0,sizeof *r);
     r->fd=open(path,O_RDONLY); if(r->fd<0) return CC_ERR_IO;
@@ -611,7 +621,25 @@ static void* replay_main(void *arg){
     atomic_store(&f->t0_us,rd_now_us_());
     while(!atomic_load(&s->stop_req)){
         rec_hdr h;
-        if(rr_read_(f,s,&h,sizeof h)!=(ssize_t)sizeof h || h.magic!=REC_MAGIC) break;
+        if(rr_read_(f,s,&h,sizeof h)!=(ssize_t)sizeof h) break;
+        if(!rec_plausible_(&h)){
+            /* Corrupt stretch: slide byte by byte to the next valid record and say so. This used to end
+             * the replay as a clean end of file (2026-09-29: a render lost its last 2:19 to 6.3 MB of
+             * damage 3.4 GB before the end). Packets lost inside it surface downstream as holes. */
+            uint64_t at=atomic_load(&f->tail)-sizeof h, skipped=0; int found=0;
+            while(skipped<REPLAY_MAX_SKIP && !atomic_load(&s->stop_req)){
+                memmove(&h,(uint8_t*)&h+1,sizeof h-1);
+                if(rr_read_(f,s,(uint8_t*)&h+sizeof h-1,1)!=1) break;
+                skipped++;
+                if(rec_plausible_(&h)){ found=1; break; }
+            }
+            s->corrupt_spans++; s->corrupt_bytes+=skipped;
+            char line[200];
+            snprintf(line,sizeof line,"capture_core replay: skipped %llu unparseable bytes at file offset %llu%s",
+                     (unsigned long long)skipped,(unsigned long long)at,found?"":" (no valid record after it: ending)");
+            rd_emit_(s,line);
+            if(!found) break;
+        }
         size_t plen=(h.type==REC_DATA||h.type==REC_SESSION)?h.actual_len:0;
         if(plen>cap){ uint8_t *np=realloc(pay,plen); if(!np){ atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); break; } pay=np; cap=plen; }
         if(plen && rr_read_(f,s,pay,plen)!=(ssize_t)plen) break;
@@ -821,6 +849,7 @@ void cc_get_stats(const cc_session *s, cc_stats *o){
     o->ring_high_water=s->r_max; o->ring_size=s->ring_sz;
     o->fleet[0]=s->fleet[0]; o->fleet[1]=s->fleet[1]; o->fleet_size=XFERS;
     o->transfers_allocated=s->xfers_alloc; o->transfers_freed=s->xfers_freed;
+    o->replay_corrupt_spans=s->corrupt_spans; o->replay_corrupt_bytes=s->corrupt_bytes;
 }
 uint64_t cc_packets_delivered(const cc_session *s){
     return atomic_load_explicit(&s->packets_delivered,memory_order_relaxed);

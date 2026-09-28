@@ -118,6 +118,8 @@ typedef struct {
     long control_records_dropped;   // HostLoss/TransferError/TICK/SESSION records that found no ring space (reserve exhausted)
     long control_loss_markers;      // terminal 0xFFFE marker emitted (0 or 1 per session)
     int  teardown_incomplete;       // libusb never proved quiescence at stop: cc_close leaks the session deliberately
+    long replay_corrupt_spans;      // replay: unparseable stretches of the file skipped to the next valid record
+    uint64_t replay_corrupt_bytes;  //   (each also reported through diag_log / stderr with its file offset)
 } cc_stats;
 // Snapshot of plain backend-thread counters: authoritative after cc_stop; a live call during
 // streaming is a racy diagnostic read (values may be momentarily inconsistent), never corrupting.
