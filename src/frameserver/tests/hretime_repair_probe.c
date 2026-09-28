@@ -7,10 +7,8 @@
 #undef hrt_apply
 enum { PROBE_UNITS=1024, UNIT_BYTES=48+525*1440 };
 typedef struct {
-    uint64_t counter;int field,line,action,shift,flagged,spill;
-    double left,right,expected[2],precision;
-    int reason;double rline,rnn,limit,normal[2],spread[2],error[2];
-    int exterior[2];
+    uint64_t counter;int field,line,action,shift,flagged,range,reason,moved;
+    double edge[2],level[2],reference[2],standard[2],agree,bar,unshifted;
 } repair_trace;
 static repair_trace trace[PROBE_UNITS*480];static size_t count;
 static const char *prefix,*capture;
@@ -38,14 +36,13 @@ static FILE *output(const char *suffix) {
 static void finish(FILE *f) {int bad=ferror(f);if(fclose(f)||bad)abort();}
 static void dump(void) {
     FILE *f=output(".actions.csv");
-    fputs("capture,counter,field,line,action,shift,left,right,width,expected_width,expected_left,expected_right,width_precision,flagged,spill,reason,rline,rnn,limit,normal_left,normal_right,spread_left,spread_right,left_error,right_error,exterior_left,exterior_right\n",f);
+    fputs("capture,counter,field,line,action,shift,flagged,range,reason,moved,left,right,level_left,level_right,reference_left,reference_right,standard_left,standard_right,agree,bar,unshifted\n",f);
     for(size_t i=0;i<count;i++) {
         repair_trace *r=trace+i;
-        fprintf(f,"%s,%llu,%d,%d,%c,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%d,%d,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%d,%d\n",
+        fprintf(f,"%s,%llu,%d,%d,%c,%d,%d,%d,%d,%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n",
             capture,(unsigned long long)r->counter,r->field,r->line,"NRIUC"[r->action],r->shift,
-            r->left,r->right,r->right-r->left,r->expected[1]-r->expected[0],
-            r->expected[0],r->expected[1],r->precision,r->flagged,r->spill,r->reason,r->rline,r->rnn,r->limit,
-            r->normal[0],r->normal[1],r->spread[0],r->spread[1],r->error[0],r->error[1],r->exterior[0],r->exterior[1]);
+            r->flagged,r->range,r->reason,r->moved,r->edge[0],r->edge[1],r->level[0],r->level[1],
+            r->reference[0],r->reference[1],r->standard[0],r->standard[1],r->agree,r->bar,r->unshifted);
     }
     finish(f);
     for(int i=0;i<saved_count;i++)for(int a=0;a<2;a++) {
@@ -73,14 +70,11 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
     untraced_apply(w,f1,f2,d1,d2,out1,out2,o);
     assert(count+480<=PROBE_UNITS*480);
     for(int j=0;j<480;j++) {
-        repair_boundary *b=w->repair+j;
         trace[count++]=(repair_trace){w->counter[j&1],(j&1)+1,line_number(j,d1,d2),
-            o->action[j],o->shift[j],w->flagged[j],b->spill,b->edge[0],b->edge[1],
-            {w->expected[j][0],w->expected[j][1]},w->width_precision[j],o->reason[j],
-            o->r_line[j],o->r_neighbours[j],o->correlation_limit[j&1],
-            {o->edge_median[j&1][0],o->edge_median[j&1][1]},
-            {o->edge_spread[j&1][0],o->edge_spread[j&1][1]},{b->error[0],b->error[1]},
-            {w->exterior[j&1][0],w->exterior[j&1][1]}};
+            o->action[j],o->shift[j],w->flagged[j],w->range[j],o->reason[j],o->edge_moved[j],
+            {w->edge[j][0],w->edge[j][1]},{w->level[j][0],w->level[j][1]},
+            {w->ref_edge[j][0],w->ref_edge[j][1]},{o->edge_median[0][0],o->edge_median[0][1]},
+            o->r_line[j],o->r_neighbours[j],o->deficit[j]};
     }
     for(int k=0;k<2;k++)if(wanted_field(w->counter[k],k+1)) {
         assert(saved_count<PICTURES);int i=saved_count++;

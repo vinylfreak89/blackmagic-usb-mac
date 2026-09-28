@@ -15,7 +15,7 @@ fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
 binary = Path(sys.argv[1]).resolve()
 rng = random.Random(19)
-profile = [50+rng.randrange(120) if 10 <= x <= 710 else 2 for x in range(720)]
+profile = [(150 if x < 26 or x > 694 else 50+rng.randrange(120)) if 10 <= x <= 710 else 2 for x in range(720)]
 units = {}
 for counter in range(100, 104):
     unit = bytearray(fixture.unit(counter))
@@ -24,11 +24,11 @@ for counter in range(100, 104):
         for x in range(720):
             unit[48+row*1440+2*x] = 128
             unit[48+row*1440+2*x+1] = profile[x]+counter-100 if picture else 2
-    # Compressed three-line band; geometry/pairing remain independent.
+    # Three-line band shifted 6 samples right; geometry/pairing independent.
     for row in range(39,42):
         for x in range(720):
             sx = x-6
-            unit[48+row*1440+2*x+1] = profile[sx]+counter-100 if 0 <= sx < 695 else 2
+            unit[48+row*1440+2*x+1] = profile[sx]+counter-100 if 0 <= sx else 2+counter-100
     units[counter] = unit
 
 with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
@@ -59,7 +59,7 @@ with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
         off, on = results
         assert len(off[0]) == len(on[0])
         for a,b in zip(off[0], on[0]):
-            assert a['schema_version'] == '28' and b['schema_version'] == '35'
+            assert a['schema_version'] == '28' and b['schema_version'] == '36'
             assert all(a[k] == b[k] for k in a if k != 'schema_version'), (a,b)
             for field in (1,2):
                 lines=[x.split(':')[0] for x in b[f'hretime_lines_f{field}'].split()]
@@ -67,9 +67,9 @@ with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
                 assert lines==edges, (lines,edges)
         # Reconstruct substitutions only, not the detector. Frame evidence owns
         # f1 of frame_top_unit, f2 of counter_extended; publication remains unit
-        # keyed. The new symmetric correlation can mark a straight mirror, so
-        # the retired E62 assertion that only the injected field changes is not
-        # a valid pixel oracle. Unknown/unavailable rows MUST remain unchanged.
+        # keyed. Unknown/unavailable rows MUST remain unchanged. Detected rows
+        # (reason bit 4) are never interpolation donors; a retime's vacated
+        # columns and the window's first/last samples come from interpolation.
         modified = {c:bytearray(u) for c,u in units.items()}
         def chroma(row,x,v):
             x=min(718,max(0,x));p=x//2;a=row[4*p+2*v]
@@ -87,41 +87,48 @@ with tempfile.TemporaryDirectory(prefix='hretime-pipeline-') as directory:
                 for token in r[f'hretime_evidence_f{k+1}'].split():
                     line,evidence=token.split(':');bits,_,_,shift=evidence.split('/')
                     j=2*(int(line)-first)+k;bits=int(bits)
-                    reasons[j]=bool(bits&18 or (bits&5)==5);shifts[j]=int(shift)
+                    reasons[j]=bool(bits&4);shifts[j]=int(shift)
             def raw(j):
                 if not 0<=j<480:return None
                 k=j%2;rr=(19 if k==0 else 282)+placement[k]+j//2
                 return units[source[k]][48+rr*1440:48+(rr+1)*1440]
+            retimed=0
             for j,action in actions.items():
                 if action not in ('R','I'):continue
-                k=j%2;row=raw(j);fixed=bytearray(1440)
-                if action=='R':
-                    s=shifts[j];assert s
+                k=j%2;row=raw(j);fixed=bytearray(1440);filled=bytearray(1440)
+                a=raw(j-1) if not reasons.get(j-1,0) else None
+                b=raw(j+1) if not reasons.get(j+1,0) else None
+                for distance in range(3,480,2):
+                    if a is not None or b is not None:break
+                    a=raw(j-distance) if not reasons.get(j-distance,0) else None
+                    b=raw(j+distance) if not reasons.get(j+distance,0) else None
+                assert a is not None or b is not None
+                if a is None or b is None:filled[:]=a if a is not None else b
+                else:
                     for x in range(720):
+                        best,cost=0,10**9
+                        for d in (0,-1,1,-2,2,-3,3):
+                            if x-1-abs(d)<0 or x+1+abs(d)>=720:continue
+                            e=sum(abs(a[2*(x+t+d)+1]-b[2*(x+t-d)+1]) for t in (-1,0,1))
+                            if e<cost:best,cost=d,e
+                        filled[2*x+1]=(a[2*(x+best)+1]+b[2*(x-best)+1]+1)//2
+                        if x%2==0:
+                            for v in (0,1):filled[2*x+2*v]=(chroma(a,x+best,v)+chroma(b,x-best,v)+1)//2
+                if action=='R':
+                    s=shifts[j];assert s;retimed+=1
+                    for x in range(720):
+                        if x+s<1 or x+s>718:
+                            fixed[2*x+1]=filled[2*x+1]
+                            if x%2==0:fixed[2*x]=filled[2*x];fixed[2*x+2]=filled[2*x+2]
+                            continue
                         fixed[2*x+1]=row[2*min(719,max(0,x+s))+1]
                         if x%2==0:
                             for v in (0,1):fixed[2*x+2*v]=chroma(row,x+s,v)
                 else:
-                    a=raw(j-1) if not reasons.get(j-1,0) else None
-                    b=raw(j+1) if not reasons.get(j+1,0) else None
-                    for distance in range(3,480,2):
-                        if a is not None or b is not None:break
-                        a=raw(j-distance) if not reasons.get(j-distance,0) else None
-                        b=raw(j+distance) if not reasons.get(j+distance,0) else None
-                    assert a is not None or b is not None
-                    if a is None or b is None:fixed[:]=a if a is not None else b
-                    else:
-                        for x in range(720):
-                            best,cost=0,10**9
-                            for d in (0,-1,1,-2,2,-3,3):
-                                if x-1-abs(d)<0 or x+1+abs(d)>=720:continue
-                                e=sum(abs(a[2*(x+t+d)+1]-b[2*(x+t-d)+1]) for t in (-1,0,1))
-                                if e<cost:best,cost=d,e
-                            fixed[2*x+1]=(a[2*(x+best)+1]+b[2*(x-best)+1]+1)//2
-                            if x%2==0:
-                                for v in (0,1):fixed[2*x+2*v]=(chroma(a,x+best,v)+chroma(b,x-best,v)+1)//2
+                    fixed[:]=filled
                 rr=(19 if k==0 else 282)+placement[k]+j//2
                 modified[source[k]][48+rr*1440:48+(rr+1)*1440]=fixed
+        assert any(t.endswith(':R') for r in on[0] for k in (1,2) for t in r[f'hretime_lines_f{k}'].split()), 'fixture band was not retimed'
         published = [r for r in on[0] if r['published'] == '1']
         assert len(published) == 4 and len(on[1]) == 4*480*1440
         for i,r in enumerate(published):

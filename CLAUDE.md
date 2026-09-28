@@ -1259,34 +1259,35 @@ reassessment:
 - A ≥100-consecutive-sample run misses capture 1 7100 line 525 (97 samples; two code-5
   samples break it).
 
-**Optional H-retiming:** `fs_config.hretime` is per-tape, default off. It uses the
-published offsets and actual frame pair; it never feeds registration. The search
-is experimental, not a validated timing discriminator. Its current waveform
-windows, qualifications and schema are documented in `src/frameserver/README.md`;
-earlier E-59 confirmation is retained in history, not combined with the new rule.
-Temporal repair history must be keyed by the actual field source counter,
-epoch and storage row; publication alone does not certify a clean reference.
-Unrepaired recognised displacement invalidates that row as a temporal witness.
-Current cross-field and boundary evidence stays independent of that history.
-Blank-level outer samples do not alone prove that a body-relative edge departure
-is timing damage; a labelled-unit hit does not establish recovery of its full band.
-A window containing a blanking boundary is not a pure boundary measurement:
-moving picture inside it can win the alignment while the boundary stays still.
-Retiming requires measured-edge certification; otherwise use trustworthy
-opposite-field donors, including for vacated samples. Field-1 lines >=255 and
-field-2 lines >=518 remain excluded. Off retains schema 28. Review
-renders of repaired frames consume the live publisher's native 720x480 output,
-not a Python reconstruction of repairs.
-Repair ticks are progressive annotations: preserve their margin lanes after
-deinterlacing and validate their encoded locations/types against every sidecar
-frame, separately from placement-strip readback.
-Cross-field blanking disagreement detects a relative mismatch, not its owner:
-in capture 4 counter 232 (aligned, d1=d2=0), straight f1 line 40 has a left
-half-height edge at 9.36, while its woven f2 neighbours 302/303 measure
-28.00/28.16. Both directions fail a small agreement tolerance. Shifting the
-straight row toward the bent peer can also increase waveform correlation;
-repair requires an explicit ownership decision before trusting either donor.
-This raw-row preflight finding did not change the experimental detector.
+**Optional H-retiming:** `fs_config.hretime` is per-tape, default off, never feeds
+registration; design and sidecar in `src/frameserver/README.md`. Since 2026-09-28 it
+compares each line's sharp blanking falloff with the other field's (owner's rules below),
+with no history. Measurements behind its numbers:
+- Both fields of a frame share one blanking position: per-field median edges differ by
+  <=0.3 samples (1st-99th pct) on pan, tape1 and capture 4. One frame standard per side.
+- "A few samples" = 4: the pan's cross-field left-edge disagreement is 3.0 at the 99.9th
+  percentile; the falloff rises 20-80% in 2-5 samples on bent lines, 3-7 on straight pan
+  lines. Dark picture ramping up from blanking took 9-10 (pan 3191) and is not a falloff.
+- A timing error moves both sides. Every pan false positive was a right-only departure
+  (dark picture at the soft right edge) with the left exactly at standard; the EP capture's
+  were right-only with the left dark, and the whole-waveform alignment rejected them.
+  A line with no measurable falloff inside a range is left alone: aligning its waveform to
+  the other field locks onto content motion (pan), not timing.
+- Retime agreement: correct retimes of labelled tape1 bends decorrelate from the other
+  field 1.0-3.2x as much as its own two lines do; a 3-sample misalignment ~15x.
+- Ownership of a cross-field disagreement (cap4 232: straight f1 edge 9.4, bent f2 28) goes
+  to the field departing from the frame standard.
+- The deck's top-of-field flag with V-stabilize off has one stereotyped shape on two
+  different tapes (tape1 494/495/497/500/518 f1, cap4 232 f2): the top lines without
+  blanking (tape1 23-26, cap4 287-288), then shifts of about -138/-97/-64/-39/-21, then
+  +12..+24 over ~10 lines.
+- Window samples 0 and 719 are edge transients (0 overshoots picture running into it,
+  719 is attenuated): a retime takes them, and vacated columns, from the other field.
+Field-1 lines >=255 and field-2 lines >=518 remain excluded. Off retains schema 28.
+Review renders of repaired frames consume the live publisher's native 720x480 output,
+not a Python reconstruction of repairs. Repair ticks are progressive annotations: preserve
+their margin lanes after deinterlacing and validate their encoded locations/types against
+every sidecar frame, separately from placement-strip readback.
 The owner's rules for H-retiming (2026-09-27/28). Main's detector predates them.
 - Retime is the default: "if the number of picture samples stays correct ... just correct the timing"; interpolate only when the
   width is discontinuous, the width edge is unknown or garbage, or "the picture spills fully to the edge (there is no blanking)".
