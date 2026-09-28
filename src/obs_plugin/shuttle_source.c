@@ -63,6 +63,8 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #define S_TPC         "raw_tpc"
 #define S_REPLAY      "replay_path"
 #define S_USE_REPLAY  "use_replay"
+#define S_REPLAY_RESTART "replay_restart_on_record"
+#define S_REPLAY_STOP    "replay_stop_at_end"
 #define S_SIDECAR     "sidecar_with_recording"
 
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
@@ -96,7 +98,18 @@ typedef struct {
      * a detached closer; destroy waits until every closer is done. */
     int tpc_enabled; unsigned tpc_part; char *tpc_path;
     _Atomic int tpc_closers; pthread_mutex_t tpc_m; pthread_cond_t tpc_c;
+    /* Replay aligned to a recording (owner, 2026-09-28: the re-recorded file should match the
+     * original's length without racing the record button). RECORDING_STARTING stops the replay and
+     * blanks the source; RECORDING_STARTED restarts it from the file's first byte, so the recording
+     * holds no frame of the earlier playback. At end of file, the stop is requested only after OBS
+     * has ticked STOP_TICKS frames: OBS stamps the stop when it is requested, and a frame handed
+     * over but not yet rendered would otherwise fall outside the recording. */
+    int replaying;                          /* this session reads a .tpc */
+    int restart_pending;                    /* stopped at RECORDING_STARTING, restart at RECORDING_STARTED */
+    _Atomic int stop_on_eof;                /* this recording ends when the replay does */
+    _Atomic int stop_ticks;                 /* >0: render ticks left before requesting the stop */
 } shuttle_src;
+#define STOP_TICKS 3
 #define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; published by rename on the same filesystem, by verified copy otherwise */
 
 static _Atomic int g_instances;
@@ -181,7 +194,19 @@ static void on_audio(void *ctx, const ap_block *b){
 }
 
 static void on_end(void *ctx, enum cc_end r){ shuttle_src *s = ctx; s->end_reason = r; atomic_store(&s->ended, 1);
+    if (r == CC_END_REPLAY_EOF && atomic_load(&s->stop_on_eof)) atomic_store(&s->stop_ticks, STOP_TICKS);   /* every frame and audio block is already delivered */
     blog(LOG_INFO, "[shuttle-source] capture ended: reason %d", (int)r); }
+/* Graphics thread, once per OBS frame. obs_frontend_recording_stop only queues StopRecording onto the
+ * UI thread (OBSStudioAPI: QMetaObject::invokeMethod), so calling it here is safe. */
+static void shuttle_video_tick(void *data, float seconds){
+    (void)seconds; shuttle_src *s = data;
+    if (atomic_load(&s->stop_ticks) > 0 && atomic_fetch_sub(&s->stop_ticks, 1) == 1 && atomic_exchange(&s->stop_on_eof, 0)){
+        if (obs_frontend_recording_active()){
+            blog(LOG_INFO, "[shuttle-source] replay reached the end of the file: stopping the recording");
+            obs_frontend_recording_stop();
+        }
+    }
+}
 
 /* ---- recording-aligned sidecar (frontend events; every transition runs under s->m) ---- */
 /* The recording FILE. obs_frontend_get_current_record_output_path() is the configured output
@@ -311,21 +336,46 @@ static void tpc_attach(shuttle_src *s){
     } else blog(LOG_ERROR, "[shuttle-source] raw .tpc could not be started (exists? volume writable?): %s", path.array);
     dstr_free(&path); dstr_free(&note);
 }
+static void shuttle_stop(shuttle_src *s);
+static int shuttle_start(shuttle_src *s, obs_data_t *settings);
 static void frontend_event(enum obs_frontend_event ev, void *data){
     shuttle_src *s = data;
     pthread_mutex_lock(&s->m);
+    obs_data_t *settings = obs_source_get_settings(s->source);
     switch (ev){
+    case OBS_FRONTEND_EVENT_RECORDING_STARTING:
+        atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);
+        if (s->replaying && obs_data_get_bool(settings, S_REPLAY_RESTART)){
+            shuttle_stop(s);
+            obs_source_output_video(s->source, NULL);   /* blank until the restart: no earlier frame enters the recording */
+            s->restart_pending = 1;
+            blog(LOG_INFO, "[shuttle-source] recording starting: replay stopped; it restarts from the beginning of the file once the recording has started");
+        }
+        break;
     case OBS_FRONTEND_EVENT_RECORDING_STARTED:
-        if (recording_path(s) != 0){ blog(LOG_WARNING, "[shuttle-source] recording started but its path is unknown; no sidecar"); break; }
-        s->sidecar_part = 0; s->tpc_part = 0;
+        if (recording_path(s) != 0) blog(LOG_WARNING, "[shuttle-source] recording started but its path is unknown; no sidecar");
+        else { s->sidecar_part = 0; s->tpc_part = 0; }
+        if (s->restart_pending){
+            s->restart_pending = 0;
+            atomic_store(&s->stop_on_eof, obs_data_get_bool(settings, S_REPLAY_STOP) ? 1 : 0);   /* armed before the session can end */
+            if (shuttle_start(s, settings) != 0) atomic_store(&s->stop_on_eof, 0);
+            else {   /* shuttle_start attached the sidecar itself: the recording is active */
+                blog(LOG_INFO, "[shuttle-source] replay restarted from the beginning of the file%s", atomic_load(&s->stop_on_eof) ? "; the recording stops when it ends" : "");
+            }
+            break;
+        }
+        if (!s->sidecar_base) break;
         if (!s->fs) blog(LOG_WARNING, "[shuttle-source] recording started while the capture is not running; sidecar starts when it does");
         sidecar_attach(s); tpc_attach(s);
         break;
     case OBS_FRONTEND_EVENT_RECORDING_STOPPED:
+        atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);
         tpc_detach(s); sidecar_detach(s); bfree(s->sidecar_base); s->sidecar_base = NULL;
+        if (s->restart_pending){ s->restart_pending = 0; shuttle_start(s, settings); }   /* the recording never started: resume the replay */
         break;
     default: break;
     }
+    obs_data_release(settings);
     pthread_mutex_unlock(&s->m);
 }
 
@@ -360,6 +410,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
         if (!rp || !*rp){ blog(LOG_WARNING, "[shuttle-source] replay selected but no file given"); return -1; }
         cfg.capture.replay_path = rp; cfg.capture.replay_pace_us = 16000;    /* device cadence */
     }
+    s->replaying = cfg.capture.replay_path != NULL;
     cfg.hretime = obs_data_get_bool(settings, S_HRETIME) ? 1 : 0;   /* per-tape choice; off leaves output unchanged */
     cfg.registration_off = obs_data_get_bool(settings, S_REGISTRATION) ? 0 : 1;   /* per-tape: off publishes the nominal (0,0) placement */
     cfg.pool_units = 0; cfg.surface_pool = 6;   /* pool sized from the capture ring (frameserver default) */
@@ -376,7 +427,9 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
          cfg.registration_off ? "OFF (nominal placement)" : "on", cfg.hretime ? "ON" : "off");
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
     if (s->sidecar_enabled && obs_frontend_recording_active() && s->sidecar_base) sidecar_attach(s);   /* restarted mid-recording: continue as the next part */
-    s->tpc_enabled = obs_data_get_bool(settings, S_TPC);
+    /* A replay IS a raw capture: teeing it would write another copy of the file being read. */
+    s->tpc_enabled = obs_data_get_bool(settings, S_TPC) && !s->replaying;
+    if (obs_data_get_bool(settings, S_TPC) && s->replaying) blog(LOG_INFO, "[shuttle-source] raw .tpc is not written while replaying a .tpc");
     if (obs_frontend_recording_active() && s->sidecar_base) tpc_attach(s);
     return 0;
 }
@@ -447,6 +500,8 @@ static void shuttle_defaults(obs_data_t *settings){
     obs_data_set_default_bool(settings, S_HRETIME, false);
     obs_data_set_default_bool(settings, S_REGISTRATION, true);
     obs_data_set_default_bool(settings, S_TPC, false);
+    obs_data_set_default_bool(settings, S_REPLAY_RESTART, false);
+    obs_data_set_default_bool(settings, S_REPLAY_STOP, false);
 }
 
 static obs_properties_t *shuttle_properties(void *data){
@@ -461,6 +516,8 @@ static obs_properties_t *shuttle_properties(void *data){
     obs_properties_add_bool(p, S_TPC, "Raw capture: save a .tpc beside each recording (about 85 GB per hour)");
     obs_properties_add_bool(p, S_USE_REPLAY, "Replay a tagged capture (.tpc) instead of the device");
     obs_properties_add_path(p, S_REPLAY, "Tagged capture file", OBS_PATH_FILE, "Tagged capture (*.tpc *.cap6)", NULL);
+    obs_properties_add_bool(p, S_REPLAY_RESTART, "Replay: restart the file from the beginning when recording starts");
+    obs_properties_add_bool(p, S_REPLAY_STOP, "Replay: stop the recording when the file ends (with the option above)");
     obs_properties_add_bool(p, S_SIDECAR, "Write the registration sidecar (<recording>.registration.csv) with each OBS recording");
     return p;
 }
@@ -477,6 +534,7 @@ static struct obs_source_info shuttle_info = {
     .destroy = shuttle_destroy,
     .update = shuttle_update,
     .get_defaults = shuttle_defaults,
+    .video_tick = shuttle_video_tick,
     .get_properties = shuttle_properties,
     .get_width = shuttle_width,
     .get_height = shuttle_height,
