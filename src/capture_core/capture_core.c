@@ -113,6 +113,7 @@ extern void cc_test_meta_exhausted(void);
 extern void cc_test_input_done(void);
 extern void cc_test_packet_progress(void);
 extern ssize_t cc_test_replay_read(int fd, void *buf, size_t n);
+extern void cc_test_replay_prefill_wait(void);
 #else
 #define cc_test_destroyed() ((void)0)
 #define cc_test_after_empty_snapshot(s) ((void)(s))
@@ -124,6 +125,7 @@ extern ssize_t cc_test_replay_read(int fd, void *buf, size_t n);
 #define cc_test_input_done() ((void)0)
 #define cc_test_packet_progress() ((void)0)
 #define cc_test_replay_read(fd,buf,n) read((fd),(buf),(n))
+#define cc_test_replay_prefill_wait() ((void)0)
 #endif
 
 static uint64_t monotonic_ms_(void){
@@ -473,7 +475,7 @@ startup_failed:
  * delayed delivery directly (2026-09-28, 10 min off LucidLink: 3 handoff gaps over 83 ms, worst
  * 155.1 ms, all waiting on the file). Single producer (reader), single consumer (pacer). */
 typedef struct {
-    int fd; uint8_t *ring; size_t cap, chunk;
+    int fd; uint8_t *ring; size_t cap, chunk, prefill;
     _Atomic uint64_t head, tail;            /* bytes read / bytes consumed, monotonic */
     _Atomic int eof, err, stop;             /* err: errno of a failed read */
     pthread_mutex_t m; pthread_cond_t cv;   /* sleep/wake only; both directions share it */
@@ -510,6 +512,9 @@ static void *rr_main_(void *arg){
     }
     return NULL;
 }
+static int rr_prefilled_(replay_reader *r){
+    return atomic_load(&r->eof) || atomic_load(&r->err) || atomic_load(&r->head)>=r->prefill;
+}
 static int rr_has_data_(replay_reader *r){
     return atomic_load(&r->eof) || atomic_load(&r->err) || atomic_load(&r->head)!=atomic_load(&r->tail);
 }
@@ -536,6 +541,7 @@ static int rr_start_(replay_reader *r, const char *path, size_t cap){
     memset(r,0,sizeof *r);
     r->fd=open(path,O_RDONLY); if(r->fd<0) return CC_ERR_IO;
     r->cap=cap; r->chunk=cap/4<(4u<<20)?cap/4:(4u<<20);   /* at most 4 MiB per read */
+    r->prefill=cap/2;   /* delivery starts once half the ring is read (or the file ended) */
     r->ring=malloc(cap);
     if(!r->ring){ close(r->fd); return CC_ERR_NOMEM; }
     pthread_mutex_init(&r->m,NULL); pthread_cond_init(&r->cv,NULL);
@@ -559,6 +565,10 @@ static void* replay_main(void *arg){
     if(!pay){ rr_finish_(f); atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,CC_ERR_NOMEM); goto failed_start; }
     startup_report_(s,CC_OK);
     if(!await_start_gate_(s)){ free(pay); rr_finish_(f); goto done; }
+    /* Prefill before pacing: a cold start on a network volume read slower than real time for its first
+     * seconds and the pacer, already running, delivered in bursts (2026-09-29, first read-ahead run:
+     * gaps of 860/684/658/246 ms in the first 5 s, none over 75 ms after). The pace clock starts after. */
+    while(!atomic_load(&s->stop_req) && !rr_prefilled_(f)){ cc_test_replay_prefill_wait(); rr_wait_(f,rr_prefilled_); }
     int fill[2]={0,0};   // packets since last transfer boundary, for pacing
     // Pacing is deadline-based: the n-th video transfer boundary is due at t0 + n*pace. Sleeping a
     // fixed interval per transfer ADDS the parser's own work to each period (measured: a "realtime"

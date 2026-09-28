@@ -89,10 +89,17 @@ void cc_test_packet_progress(void){ test_live_note(&live); }
 /* Replay read injection (reader thread only), once after rd_after bytes: RD_STALL blocks the read
  * until the pacer has delivered 100 more packets, which it can only do from the read-ahead ring;
  * RD_FAIL fails the read with EIO. */
-enum { RD_PASS, RD_STALL, RD_FAIL };
+enum { RD_PASS, RD_STALL, RD_FAIL, RD_PREFILL };
 static _Atomic int rd_mode; static uint64_t rd_after, rd_bytes; static int rd_fired, rd_stalled; static cc_session *rd_session;
+static int prefill_seen; static uint64_t delivered_at_hold=UINT64_MAX;
+void cc_test_replay_prefill_wait(void){ pthread_mutex_lock(&live.mutex); prefill_seen=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex); }
 ssize_t cc_test_replay_read(int fd, void *buf, size_t n){
     int m=atomic_load(&rd_mode);
+    if(m==RD_PREFILL && !rd_fired && rd_bytes>0){   /* hold the second read until the pacer waits for the prefill, or delivers */
+        rd_fired=1; double begun=test_now(); pthread_mutex_lock(&live.mutex);
+        while(!prefill_seen && cc_packets_delivered(rd_session)==0) test_live_wait(&live,begun,"prefill: pacer neither waited nor delivered");
+        delivered_at_hold=cc_packets_delivered(rd_session); pthread_mutex_unlock(&live.mutex);
+    }
     if(m!=RD_PASS && !rd_fired && rd_bytes>=rd_after){
         rd_fired=1;
         if(m==RD_FAIL){ errno=EIO; return -1; }
@@ -435,6 +442,24 @@ int main(int argc, char **argv){
             CHECK(rt.bytes[0]==vB&&rt.bytes[1]==aB,"stalled-read replay delivered %llu/%llu bytes, expected %llu/%llu",(unsigned long long)rt.bytes[0],(unsigned long long)rt.bytes[1],(unsigned long long)vB,(unsigned long long)aB);
         } else CHECK(rt.end_reason==CC_END_INTERNAL_ERROR,"a failed read ended with reason %d, expected INTERNAL_ERROR",rt.end_reason);
         cc_close(s); rd_session=NULL;
+    }
+    // Prefill: with a 16 MiB ring (8 MiB prefill, 4 MiB reads) nothing is delivered after the first read;
+    // the pacer waits until half the ring is read. Without the wait it delivers from the first read.
+    {
+        tally pt; memset(&pt,0,sizeof pt); pt.main_thread=pthread_self(); cb.ctx=&pt;
+        cc_config fcfg={0}; fcfg.replay_path=slice; fcfg.replay_pace_us=2000; fcfg.replay_readahead_mb=16; s=NULL;
+        rd_bytes=0; rd_fired=0; prefill_seen=0; delivered_at_hold=UINT64_MAX; atomic_store(&rd_mode,RD_PREFILL);
+        CHECK(cc_open(&s,&fcfg,&cb)==CC_OK,"open (prefill)");
+        if(s){
+            rd_session=s;
+            CHECK(cc_start(s)==CC_OK,"start (prefill)");
+            wait_ended(&pt.ended,"prefill run");
+            CHECK(cc_stop(s)==CC_OK,"stop (prefill)");
+            CHECK(rd_fired,"the prefill hold never fired");
+            CHECK(prefill_seen&&delivered_at_hold==0,"pacer delivered %llu packets before half the ring was read (prefill wait seen: %d)",(unsigned long long)delivered_at_hold,prefill_seen);
+            CHECK(pt.end_reason==CC_END_REPLAY_EOF&&pt.bytes[0]==vB&&pt.bytes[1]==aB,"prefill run ended %d with %llu/%llu bytes",pt.end_reason,(unsigned long long)pt.bytes[0],(unsigned long long)pt.bytes[1]);
+            cc_close(s); rd_session=NULL;
+        }
     }
     atomic_store(&rd_mode,RD_PASS);
 
