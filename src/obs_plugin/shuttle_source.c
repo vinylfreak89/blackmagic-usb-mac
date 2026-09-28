@@ -129,7 +129,9 @@ typedef struct {
     _Atomic int probe_abort;
     _Atomic int media_state;                      /* enum obs_media_state reported to OBS */
     _Atomic int replay_mode;                      /* the settings select a replay: the controls act; live they only restart/stop */
-    _Atomic int64_t time_ms;                      /* position shown by the controls */
+    _Atomic int64_t time_ms;                      /* position of the last frame played (video worker; set at session start) */
+    _Atomic int64_t seek_shown_ms;                /* a seek chosen while paused, shown instead (-1 none): frames still in the
+                                                     pipeline after a pause must not overwrite it */
     _Atomic uint64_t tl_units, tl_bytes; _Atomic int tl_first16;   /* the replay's timeline; tl_units 0 = not known yet */
     char *tl_path; uint64_t tl_gen, tl_size;      /* under s->m: the file (and its size) the timeline describes; gen bumps when it changes */
     int tl_probing, tl_failed;                    /* under s->m: a probe for tl_gen is queued or running / found no length */
@@ -513,11 +515,11 @@ static void media_apply(shuttle_src *s, int act, int64_t ms){
         if (timeline_get(s, &tl) != 0){ blog(LOG_WARNING, "[shuttle-source] seek refused: the replay's length is not known yet"); break; }
         if (ms < 0) ms = 0;
         if (ms > rt_ms(tl.units)) ms = rt_ms(tl.units);
-        if (s->paused){ s->pending_seek_ms = ms; atomic_store(&s->time_ms, ms); }   /* applied on play: OBS pauses around a drag */
+        if (s->paused){ s->pending_seek_ms = ms; atomic_store(&s->seek_shown_ms, ms); }   /* applied on play: OBS pauses around a drag */
         else replay_start_at(s, settings, ms);
         break; }
     case ACT_RESTART: replay_start_at(s, settings, 0); break;
-    case ACT_STOP: shuttle_stop(s); s->pending_seek_ms = -1; atomic_store(&s->time_ms, 0); break;
+    case ACT_STOP: shuttle_stop(s); s->pending_seek_ms = -1; atomic_store(&s->seek_shown_ms, -1); atomic_store(&s->time_ms, 0); break;
     }
     obs_data_release(settings);
 }
@@ -584,7 +586,11 @@ static int64_t media_get_duration(void *d){
     shuttle_src *s = d; rt_timeline tl;
     return atomic_load(&s->replay_mode) && timeline_get(s, &tl) == 0 ? rt_ms(tl.units) : 0;
 }
-static int64_t media_get_time(void *d){ shuttle_src *s = d; return atomic_load(&s->replay_mode) ? atomic_load(&s->time_ms) : 0; }
+static int64_t media_get_time(void *d){
+    shuttle_src *s = d; if (!atomic_load(&s->replay_mode)) return 0;
+    int64_t seek = atomic_load(&s->seek_shown_ms);
+    return seek >= 0 ? seek : atomic_load(&s->time_ms);
+}
 /* Live reports STOPPED whether or not it captures: OBS then greys the seek bar, shows --:--:--, and its
  * button restarts the session (MediaControls: PLAYING would enable a bar with nothing to seek and a
  * pause that cannot pause; NONE would make the button do nothing). Side effect: the re-grey is a
@@ -697,7 +703,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     s->next_start_unit = s->next_start_offset = 0;   /* every other start begins the file */
     s->pending_seek_ms = -1; s->paused = 0;
     s->session_start_unit = start_unit;   /* before any worker exists: on_frame reads it */
-    atomic_store(&s->time_ms, rt_ms(start_unit));
+    atomic_store(&s->time_ms, rt_ms(start_unit)); atomic_store(&s->seek_shown_ms, -1);
     atomic_store(&s->replay_mode, obs_data_get_bool(settings, S_USE_REPLAY) ? 1 : 0);
     if (obs_data_get_bool(settings, S_USE_REPLAY)){
         const char *rp = obs_data_get_string(settings, S_REPLAY);
@@ -774,7 +780,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     obs_source_set_deinterlace_mode(source, OBS_DEINTERLACE_MODE_YADIF_2X);          /* default presentation; the user may change it (OBS owns deinterlacing) */
     pthread_mutex_init(&s->m, NULL); pthread_mutex_init(&s->close_m, NULL); pthread_cond_init(&s->close_c, NULL);
     pthread_mutex_init(&s->ctl_m, NULL); pthread_cond_init(&s->ctl_c, NULL);
-    s->pending_seek_ms = -1; atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
+    s->pending_seek_ms = -1; atomic_store(&s->seek_shown_ms, -1); atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
     if (pthread_create(&s->ctl_thr, NULL, media_thread, s) == 0) s->ctl_running = 1;
     else blog(LOG_ERROR, "[shuttle-source] could not start the media-control thread (%s): the play/pause, stop and seek controls will do nothing", strerror(errno));
     if (pthread_create(&s->probe_thr, NULL, probe_thread, s) == 0) s->probe_running = 1;
