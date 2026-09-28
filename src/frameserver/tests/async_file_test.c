@@ -35,6 +35,17 @@ static void wait_hung(void){
     while (!hung) if (pthread_cond_timedwait(&cv, &m, &ts)){ fprintf(stderr, "FAIL: writer never reached the disk\n"); _exit(2); }
     pthread_mutex_unlock(&m);
 }
+static int race_armed, race_reached;
+static void race_hook(_Atomic int *stop){
+    pthread_mutex_lock(&m); int armed = race_armed; if (armed){ race_armed = 0; race_reached = 1; pthread_cond_broadcast(&cv); } pthread_mutex_unlock(&m);
+    if (!armed) return;
+    struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
+    while (!atomic_load(stop)){   /* until af_close has asked the writer to finish */
+        struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+        if (t.tv_sec - t0.tv_sec > 60){ fprintf(stderr, "FAIL: close never requested\n"); _exit(2); }
+        usleep(100);
+    }
+}
 static double now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec * 1e-9; }
 static size_t file_size(const char *p){ FILE *f = fopen(p, "rb"); if (!f) return 0; fseek(f, 0, SEEK_END); long n = ftell(f); fclose(f); return (size_t)n; }
 
@@ -45,6 +56,7 @@ int main(void){
     /* 1. Round trip under a hung disk: 4 KiB ring, rows well past its size in total, written while the
      * disk hangs (they must not block), then the disk returns and the file is byte-exact. */
     set_mode(1);
+    struct timespec ts;
     FILE *f = fs_async_fopen_excl(path, 4096, 100);
     CHECK(f != NULL, "open"); if (!f) return 1;
     CHECK(fprintf(f, "row %d %s\n", 0, "first") > 0, "first row");
@@ -97,10 +109,30 @@ int main(void){
     set_mode(2);
     f = fs_async_fopen_excl(path, 4096, 100); CHECK(f != NULL, "open (write error)"); if (!f) return 1;
     fputs("first\n", f);
-    for (int spin = 0; spin < 2000; spin++){ pthread_mutex_lock(&m); int c = calls; pthread_mutex_unlock(&m); if (c) break; usleep(1000); }
-    usleep(20000);   /* the writer records the error right after the failed call */
-    CHECK(fputs("second\n", f) == EOF, "a write after a disk error must fail");
+    /* the writer records the error after its failed call returns: write until the stream refuses
+     * (deadline-bounded), then every later write must keep failing */
+    double t2 = now(); int refused = 0;
+    while (!refused){ if (fputs("next\n", f) == EOF) refused = 1; else if (now() - t2 > 60){ fprintf(stderr, "FAIL: writes never failed after a disk error\n"); _exit(2); } else usleep(1000); }
+    CHECK(fputs("after\n", f) == EOF, "a write after the refusal must fail too");
     CHECK(fclose(f) == EOF, "close after a disk error must report the file incomplete");
+    unlink(path);
+
+    /* 5. Close race (review, 2026-09-28): the writer sees an empty ring, then the last row is written
+     * and the stream closed before it checks for close. The row must still reach the file. The hook
+     * holds the writer at exactly that point until close has been requested. */
+    set_mode(0); race_armed = 1; race_reached = 0;
+    fs_async_file_test_saw_empty = race_hook;
+    f = fs_async_fopen_excl(path, 4096, 100); CHECK(f != NULL, "open (close race)"); if (!f) return 1;
+    pthread_mutex_lock(&m); clock_gettime(CLOCK_REALTIME, &ts); ts.tv_sec += 60;
+    while (!race_reached) if (pthread_cond_timedwait(&cv, &m, &ts)){ fprintf(stderr, "FAIL: writer never idled\n"); _exit(2); }
+    pthread_mutex_unlock(&m);
+    CHECK(fputs("the last row\n", f) != EOF, "last row");
+    CHECK(fclose(f) == 0, "close (race) must succeed");
+    fs_async_file_test_saw_empty = NULL;
+    {
+        FILE *r = fopen(path, "rb"); char got[64] = {0}; size_t gl = r ? fread(got, 1, sizeof got - 1, r) : 0; if (r) fclose(r);
+        CHECK(gl == 13 && !memcmp(got, "the last row\n", 13), "the row written just before close was lost (%zu bytes on disk) while close reported success", gl);
+    }
     unlink(path);
 
     if (fails){ printf("async_file tests: %d FAILURES\n", fails); return 1; }

@@ -124,12 +124,17 @@ int  fs_stop (frameserver *f);            // stops capture, drains the worker, c
 // against each other internally (life_m/log_m), but the sidecar's PATH policy is the caller's —
 // a growing file must not live in a cloud-synced root (CLAUDE.md writer output rule).
 // Rows reach the disk on a writer thread (async_file.h): the video worker only copies a finished
-// row into a 32 MiB ring, so a stalled disk never delays delivery (disk-hang test). Measured before
+// row into a 64 MiB ring, so a stalled disk never delays delivery (disk-hang test). Measured before
 // this, 2026-09-28: row writes of 280-943 ms under fsync'd disk load, each a late frame handoff. A
 // ring overflow or a failed write makes the file incomplete (every later row fails, fs_log_stop
-// returns -1), never silently thinner. fs_log_stop drains the ring and fsyncs, so it can block.
+// returns -1), never silently thinner. log_rows counts rows handed to the stream; whether they all
+// reached the disk is the close's verdict. fs_log_stop drains the ring and fsyncs, so it can block.
 int  fs_log_start(frameserver *f, const char *path);
 int  fs_log_stop (frameserver *f);        // -1 if none attached, the close failed, or any row write failed in this file (it is then incomplete: do not publish it as complete)
+// fs_log_stop without the close: detach the log (no further rows) and hand the stream to the caller,
+// who fcloses it on a thread of its choosing (the close drains and fsyncs, so it can block). The file
+// is complete only if *row_errors is 0 AND fclose returns 0. NULL if none attached or from a worker.
+FILE *fs_log_detach(frameserver *f, uint64_t *row_errors);
 // Runtime raw-transport tee: every packet, loss and error record the capture core delivers is
 // also written to `path` as a .tpc (the shuttle-capture format), through cc_async_sink: the
 // capture delivery thread only copies into a bounded ring (ring_bytes) and a writer thread

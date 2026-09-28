@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 ssize_t (*fs_async_file_test_write)(int fd, const void *buf, size_t n) = NULL;
+void (*fs_async_file_test_saw_empty)(_Atomic int *stop) = NULL;
 
 typedef struct {
     int fd; uint8_t *ring; size_t cap, chunk;
@@ -40,12 +41,19 @@ static int af_write(void *cookie, const char *p, int n){
 
 static void *af_writer(void *arg){
     afile *a = arg;
-    pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0);   /* UTILITY I/O is throttled on a busy disk: exactly when the backlog grows */
     for (;;){
         size_t tail = atomic_load_explicit(&a->tail, memory_order_relaxed);
         size_t avail = atomic_load_explicit(&a->head, memory_order_acquire) - tail;
         if (!avail){
-            if (atomic_load(&a->stop)) break;
+            if (fs_async_file_test_saw_empty) fs_async_file_test_saw_empty(&a->stop);
+            /* stop is set by af_close after the stream's last write: once it is seen, head is final.
+             * Re-read it; the "empty" above may predate that write (review, 2026-09-28: a preempted
+             * writer lost the last row and the close still reported the file complete). */
+            if (atomic_load(&a->stop)){
+                if (atomic_load_explicit(&a->head, memory_order_acquire) != tail) continue;
+                break;
+            }
             pthread_mutex_lock(&a->m);
             if (atomic_load_explicit(&a->head, memory_order_acquire) == tail && !atomic_load(&a->stop)){
                 struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts); ts.tv_nsec += 100000000;

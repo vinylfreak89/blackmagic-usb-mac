@@ -623,6 +623,27 @@ int main(int argc, char **argv){
     } else if(hf) fs_close(hf);
     pthread_mutex_lock(&live.mutex); disk_release=1; pthread_mutex_unlock(&live.mutex); atomic_store(&disk_mode,DISK_OK);
     unlink(lh);
+
+    // fs_log_detach: the stream is handed over (no more rows go to it), a second detach finds nothing,
+    // a new log can be attached while the first is still open, and the caller's close is the verdict.
+    { char la2[]="/tmp/fs_test_logI_XXXXXX"; fd=mkstemp(la2); close(fd); unlink(la2);
+      char lb2[]="/tmp/fs_test_logJ_XXXXXX"; fd=mkstemp(lb2); close(fd); unlink(lb2);
+      fs_config dc=cfg; dc.decision_log=NULL; dc.capture.replay_path=argv[1]; frameserver *df=NULL;
+      CHECK(fs_open(&df,&dc)==0,"open (detach)");
+      if(df){
+          CHECK(fs_log_start(df,la2)==0,"attach (detach)");
+          uint64_t errs=99; FILE *DL=fs_log_detach(df,&errs);
+          CHECK(DL!=NULL&&errs==0,"detach must hand over the attached stream with 0 row errors (%p, %llu)",(void*)DL,(unsigned long long)errs);
+          CHECK(fs_log_detach(df,&errs)==NULL,"a second detach must find nothing");
+          CHECK(fs_log_stop(df)==-1,"fs_log_stop after a detach has nothing to stop");
+          CHECK(fs_log_start(df,lb2)==0,"a new log attaches while the detached one is still open");
+          CHECK(DL&&fclose(DL)==0,"the caller's close of the detached log must succeed");
+          CHECK(fs_log_stop(df)==0,"stop of the second log");
+          char hdr[64]={0}; FILE *R=fopen(la2,"r"); if(R){ if(!fgets(hdr,sizeof hdr,R)) hdr[0]=0; fclose(R); }
+          CHECK(!strncmp(hdr,"ordinal,",8),"the detached log's header reached the disk");
+          fs_close(df);
+      }
+      unlink(la2); unlink(lb2); }
     unlink(cbpath);
     if (fails) printf("FAILURES: %d\n", fails);
     else printf("frameserver tests: PASS (obs %llu, exact %llu, published %llu, short %llu, hole %llu, unframed %llu)\n",

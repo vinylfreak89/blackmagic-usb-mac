@@ -15,10 +15,13 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <sys/types.h>
+#include <stdatomic.h>
 
 /* Create `path` exclusively (O_EXCL: an existing file is never truncated). NULL on failure, errno set. */
 FILE *fs_async_fopen_excl(const char *path, size_t ring_bytes, size_t chunk);
 
 /* Test hook: replaces write(2) in the writer thread when non-NULL (stall and failure injection). */
 extern ssize_t (*fs_async_file_test_write)(int fd, const void *buf, size_t n);
+/* Test hook: the writer found the ring empty and is about to check for close (race injection). */
+extern void (*fs_async_file_test_saw_empty)(_Atomic int *stop);
 #endif

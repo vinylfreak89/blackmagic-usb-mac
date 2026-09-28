@@ -2,8 +2,9 @@
 #include "async_file.h"
 
 /* Sidecar rows go through a writer thread so storage stalls never stall the video worker (async_file.h).
- * 32 MiB is ~20 minutes of rows; an overflow makes the file incomplete, never silently thinner. */
-#define FS_LOG_RING_BYTES (32u<<20)
+ * Rows with H-retiming measured 8.1 KB (948 rows, 7.7 MB), ~243 KB/s: 64 MiB rides out ~4.5 minutes of
+ * stalled disk. An overflow makes the file incomplete, never silently thinner. */
+#define FS_LOG_RING_BYTES (64u<<20)
 #define FS_LOG_WRITE_CHUNK (1u<<20)
 #include "../unit_parser/unit_parser.h"
 #include "../signal_state/signal_state.h"
@@ -846,6 +847,14 @@ int fs_log_stop(frameserver *f){
     if(fclose(L) != 0){ f->st.log_close_errors++; errs++; }   // ... flush and close outside it; a failed close is reported, never hidden
     f->st.log_last_file_errors = errs;
     return errs ? -1 : 0;                              // rows failed inside this file: the caller must not publish it as complete
+}
+FILE *fs_log_detach(frameserver *f, uint64_t *row_errors){
+    if(!f || fs_log_from_worker(f)) return NULL;
+    pthread_mutex_lock(&f->log_m);
+    FILE *L = f->log; f->log = NULL; uint64_t errs = f->log_file_errors;
+    pthread_mutex_unlock(&f->log_m);
+    if(L && row_errors) *row_errors = errs;
+    return L;
 }
 int fs_tee_start(frameserver *f, const char *path, const char *note, size_t ring_bytes){
     if(!f || !path || !*path || fs_log_from_worker(f) || !f->tee_m_init) return -1;
