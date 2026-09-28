@@ -121,7 +121,7 @@ typedef struct {
      * OBS 32.2.2), and a restart or seek stops and reopens the session, which can wait seconds on a
      * network read. So a callback only queues the action; the control thread applies it under s->m.
      * OBS's controls poll state, time and duration from the UI thread: atomics only. */
-    pthread_t ctl_thr; int ctl_running;
+    pthread_t ctl_thr, probe_thr; int ctl_running, probe_running;
     pthread_mutex_t ctl_m; pthread_cond_t ctl_c;   /* guards the queue and the probe request only; never held while taking s->m */
     int ctl_quit;
     struct { int act; int64_t ms; } q[MEDIA_QUEUE]; unsigned q_head, q_n;
@@ -132,11 +132,12 @@ typedef struct {
     _Atomic int64_t time_ms;                      /* position shown by the controls */
     _Atomic uint64_t tl_units, tl_bytes; _Atomic int tl_first16;   /* the replay's timeline; tl_units 0 = not known yet */
     char *tl_path; uint64_t tl_gen, tl_size;      /* under s->m: the file (and its size) the timeline describes; gen bumps when it changes */
-    int tl_probing;                               /* under s->m: a probe for tl_gen is queued or running */
+    int tl_probing, tl_failed;                    /* under s->m: a probe for tl_gen is queued or running / found no length */
     int paused; int64_t pending_seek_ms;          /* under s->m: replay held; a seek chosen while held (-1 none) */
     uint64_t next_start_unit, next_start_offset;  /* under s->m: consumed by the next shuttle_start (0 = the file's start) */
     uint64_t session_start_unit;                  /* the running session's first unit, estimated: on_frame resolves counters from it */
     _Atomic int live_regrey;                      /* live: put OBS's controls back in their greyed restart state on the next tick */
+    _Atomic int handoff_reset;                    /* resumed from a pause: the next frame's gap is the pause, not a stall */
 } shuttle_src;
 #define STOP_TICKS 3
 #define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; published by rename on the same filesystem, by verified copy otherwise */
@@ -195,6 +196,7 @@ static void on_frame(void *ctx, const fp_frame *fr){
     f.full_range = false;
     uint64_t t0 = os_gettime_ns();
     obs_source_output_video(s->source, &f);
+    if (atomic_exchange(&s->handoff_reset, 0)) s->last_handoff_ns = 0;
     uint64_t t1 = os_gettime_ns(), call = t1 - t0, gap = s->last_handoff_ns ? t0 - s->last_handoff_ns : 0;
     s->last_handoff_ns = t0;
     if (gap > s->max_gap_ns) s->max_gap_ns = gap;
@@ -208,7 +210,7 @@ static void on_frame(void *ctx, const fp_frame *fr){
     }
     uint64_t units = atomic_load_explicit(&s->tl_units, memory_order_acquire);
     if (units){   /* the seek bar's time: this frame's own counter, resolved near the session's expected position */
-        rt_timeline tl = { atomic_load(&s->tl_bytes), units, (uint16_t)atomic_load(&s->tl_first16) };
+        rt_timeline tl = { atomic_load(&s->tl_bytes), units, (uint16_t)atomic_load(&s->tl_first16), 0 };
         uint64_t u = rt_resolve(&tl, (uint16_t)fr->counter_ext, (int64_t)(s->session_start_unit + atomic_load(&s->frames_out)));
         atomic_store(&s->time_ms, rt_ms(u));
     }
@@ -254,7 +256,10 @@ static void on_audio(void *ctx, const ap_block *b){
 
 static void on_end(void *ctx, enum cc_end r){ shuttle_src *s = ctx; s->end_reason = r; atomic_store(&s->ended, 1);
     if (r == CC_END_REPLAY_EOF && atomic_load(&s->stop_on_eof)) atomic_store(&s->stop_ticks, STOP_TICKS);   /* every frame and audio block is already delivered */
-    if (r == CC_END_REPLAY_EOF){ atomic_store(&s->media_state, OBS_MEDIA_STATE_ENDED); obs_source_media_ended(s->source); }   /* OBS's controls switch to restart */
+    /* Any end the plugin did not request (end of file, a read error, a lost device) leaves nothing to
+     * pause or seek within: OBS's controls switch to restart. A stop the plugin requested ends with
+     * CC_END_STOPPED and the caller sets the state. */
+    if (r != CC_END_STOPPED){ atomic_store(&s->media_state, OBS_MEDIA_STATE_ENDED); obs_source_media_ended(s->source); }
     blog(LOG_INFO, "[shuttle-source] capture ended: reason %d", (int)r); }
 /* Graphics thread, once per OBS frame. obs_frontend_recording_stop only queues StopRecording onto the
  * UI thread (OBSStudioAPI: QMetaObject::invokeMethod), so calling it here is safe. */
@@ -315,8 +320,11 @@ static void sidecar_attach(shuttle_src *s){
         s->sidecar_attached = 1; s->sidecar_part++;
         bfree(s->sidecar_partial); s->sidecar_partial = bstrdup(part.array);
         bfree(s->sidecar_final); s->sidecar_final = bstrdup(fin.array);
-        blog(LOG_INFO, "[shuttle-source] sidecar attached -> %s (growing as %s); last unit delivered before attach: counter %llu — the recording's first frame is that unit or the next",
-             fin.array, part.array, (unsigned long long)atomic_load(&s->last_counter));
+        uint64_t last = atomic_load(&s->last_counter);
+        if (last) blog(LOG_INFO, "[shuttle-source] sidecar attached -> %s (growing as %s); last unit delivered before attach: counter %llu — the recording's first frame is that unit or the next",
+                       fin.array, part.array, (unsigned long long)last);
+        else blog(LOG_INFO, "[shuttle-source] sidecar attached -> %s (growing as %s) before this session delivered a unit: its first row is the recording's first new frame",
+                  fin.array, part.array);
     } else blog(LOG_ERROR, "[shuttle-source] sidecar could not be opened: %s", part.array);
     dstr_free(&part); dstr_free(&fin);
 }
@@ -431,9 +439,11 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings);
  * refused. The control thread runs the probe; the file is read through the same replay backend. */
 static void timeline_track(shuttle_src *s, const char *path){
     struct stat st; uint64_t size = stat(path, &st) == 0 ? (uint64_t)st.st_size : 0;
-    if (s->tl_path && !strcmp(s->tl_path, path) && size == s->tl_size && (s->tl_probing || atomic_load(&s->tl_units))) return;   /* known, or on its way */
-    atomic_store(&s->tl_units, 0);   /* a failed probe is retried at the next start */
-    bfree(s->tl_path); s->tl_path = bstrdup(path); s->tl_gen++; s->tl_size = size; s->tl_probing = 1;
+    /* Known, on its way, or already failed for this file: a failure (no picture unit near an end) is
+     * a property of the file and is not retried until the path or size changes. */
+    if (s->tl_path && !strcmp(s->tl_path, path) && size == s->tl_size && (s->tl_probing || s->tl_failed || atomic_load(&s->tl_units))) return;
+    atomic_store(&s->tl_units, 0);
+    bfree(s->tl_path); s->tl_path = bstrdup(path); s->tl_gen++; s->tl_size = size; s->tl_probing = 1; s->tl_failed = 0;
     pthread_mutex_lock(&s->ctl_m);
     bfree(s->probe_path); s->probe_path = bstrdup(path); s->probe_gen = s->tl_gen;
     atomic_store(&s->probe_abort, 1);   /* a probe of the previous file stops early */
@@ -475,15 +485,28 @@ static void media_apply(shuttle_src *s, int act, int64_t ms){
         atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
         obs_data_release(settings); return;
     }
+    if (s->restart_pending){   /* a recording is starting: the replay restarts from the file's start when it has */
+        blog(LOG_INFO, "[shuttle-source] media control ignored while the recording starts (it restarts the replay from the beginning)");
+        obs_data_release(settings); return;
+    }
     int running = s->fs && !atomic_load(&s->ended);
     switch (act){
     case ACT_PAUSE:
-        if (running && !s->paused && fs_replay_pause(s->fs, 1) == 0){ s->paused = 1; atomic_store(&s->media_state, OBS_MEDIA_STATE_PAUSED); }
+        if (running && !s->paused && fs_replay_pause(s->fs, 1) == 0){
+            /* only PLAYING becomes PAUSED: an end that landed meanwhile keeps its ENDED */
+            int expect = OBS_MEDIA_STATE_PLAYING;
+            if (atomic_compare_exchange_strong(&s->media_state, &expect, OBS_MEDIA_STATE_PAUSED)) s->paused = 1;
+            else fs_replay_pause(s->fs, 0);
+        }
         break;
     case ACT_PLAY:
         if (!running) replay_start_at(s, settings, s->pending_seek_ms >= 0 ? s->pending_seek_ms : 0);
         else if (s->pending_seek_ms >= 0) replay_start_at(s, settings, s->pending_seek_ms);
-        else if (s->paused && fs_replay_pause(s->fs, 0) == 0){ s->paused = 0; atomic_store(&s->media_state, OBS_MEDIA_STATE_PLAYING); }
+        else if (s->paused && fs_replay_pause(s->fs, 0) == 0){
+            s->paused = 0; atomic_store(&s->handoff_reset, 1);
+            int expect = OBS_MEDIA_STATE_PAUSED;
+            atomic_compare_exchange_strong(&s->media_state, &expect, OBS_MEDIA_STATE_PLAYING);
+        }
         break;
     case ACT_SEEK: {
         rt_timeline tl;
@@ -503,31 +526,48 @@ static void *media_thread(void *arg){
     pthread_setname_np("shuttle-media");
     pthread_mutex_lock(&s->ctl_m);
     for (;;){
-        while (!s->ctl_quit && !s->q_n && !s->probe_path) pthread_cond_wait(&s->ctl_c, &s->ctl_m);
+        while (!s->ctl_quit && !s->q_n) pthread_cond_wait(&s->ctl_c, &s->ctl_m);
         if (s->ctl_quit) break;
-        if (s->q_n){   /* actions first: a probe can take seconds */
-            int act = s->q[s->q_head].act; int64_t ms = s->q[s->q_head].ms;
-            s->q_head = (s->q_head + 1) % MEDIA_QUEUE; s->q_n--;
-            pthread_mutex_unlock(&s->ctl_m);
-            pthread_mutex_lock(&s->m); media_apply(s, act, ms); pthread_mutex_unlock(&s->m);
-            pthread_mutex_lock(&s->ctl_m);
-            continue;
-        }
+        int act = s->q[s->q_head].act; int64_t ms = s->q[s->q_head].ms;
+        s->q_head = (s->q_head + 1) % MEDIA_QUEUE; s->q_n--;
+        pthread_mutex_unlock(&s->ctl_m);
+        pthread_mutex_lock(&s->m); media_apply(s, act, ms); pthread_mutex_unlock(&s->m);
+        pthread_mutex_lock(&s->ctl_m);
+    }
+    pthread_mutex_unlock(&s->ctl_m);
+    return NULL;
+}
+/* The probe has its own thread: it can take seconds (7.7 s for the tape-1 file over LucidLink), and a
+ * pause or stop pressed meanwhile must not wait for it. */
+static void *probe_thread(void *arg){
+    shuttle_src *s = arg;
+    pthread_setname_np("shuttle-probe");
+    pthread_mutex_lock(&s->ctl_m);
+    for (;;){
+        while (!s->ctl_quit && !s->probe_path) pthread_cond_wait(&s->ctl_c, &s->ctl_m);
+        if (s->ctl_quit) break;
         char *path = s->probe_path; uint64_t gen = s->probe_gen; s->probe_path = NULL;
         atomic_store(&s->probe_abort, 0);
         pthread_mutex_unlock(&s->ctl_m);
         fs_replay_span sp; rt_timeline tl;
-        int ok = fs_replay_probe(path, 0, &s->probe_abort, &sp) == 0 && rt_init(&tl, sp.file_bytes, sp.first_counter, sp.last_counter) == 0;
+        int probed = fs_replay_probe(path, 0, &s->probe_abort, &sp) == 0;
+        int ok = probed && rt_init(&tl, sp.file_bytes, sp.first_counter, sp.last_counter) == 0;
+        int aborted = atomic_load(&s->probe_abort);
         pthread_mutex_lock(&s->m);
-        if (gen == s->tl_gen){
+        if (gen == s->tl_gen && !aborted){
             s->tl_probing = 0;
             if (ok){
+                int consistent = rt_consistent(&tl);
                 atomic_store(&s->tl_bytes, tl.file_bytes); atomic_store(&s->tl_first16, tl.first16);
                 atomic_store_explicit(&s->tl_units, tl.units, memory_order_release);
-                blog(LOG_INFO, "[shuttle-source] replay length %.1f s (%llu units, counters %u..%u) — %s", rt_ms(tl.units) / 1000.0,
-                     (unsigned long long)tl.units, sp.first_counter, sp.last_counter, path);
-            } else blog(LOG_WARNING, "[shuttle-source] replay length unknown (no complete unit found near %s%s of %s): the seek bar stays empty",
-                        sp.have_first ? "" : "the start", sp.have_first || sp.have_last ? "" : " or the end", path);
+                blog(consistent ? LOG_INFO : LOG_WARNING, "[shuttle-source] replay length %.1f s (%llu units, counters %u..%u)%s — %s", rt_ms(tl.units) / 1000.0,
+                     (unsigned long long)tl.units, sp.first_counter, sp.last_counter,
+                     consistent ? "" : "; the counters disagree with the file size (a counter restart inside the file?): length taken from the size, times approximate", path);
+            } else {
+                s->tl_failed = 1;
+                blog(LOG_WARNING, "[shuttle-source] replay length unknown: no complete picture unit within 256 MiB of the %s of %s, or it could not be read to its end; no seek bar for this file",
+                     !sp.have_first && !sp.have_last ? "start or end" : !sp.have_first ? "start" : "end", path);
+            }
         }
         pthread_mutex_unlock(&s->m);
         bfree(path);
@@ -547,7 +587,8 @@ static int64_t media_get_duration(void *d){
 static int64_t media_get_time(void *d){ shuttle_src *s = d; return atomic_load(&s->replay_mode) ? atomic_load(&s->time_ms) : 0; }
 /* Live reports STOPPED whether or not it captures: OBS then greys the seek bar, shows --:--:--, and its
  * button restarts the session (MediaControls: PLAYING would enable a bar with nothing to seek and a
- * pause that cannot pause; NONE would make the button do nothing). */
+ * pause that cannot pause; NONE would make the button do nothing). Side effect: the re-grey is a
+ * media_ended signal, so a websocket client or scene-switcher sees "ended" after each live action. */
 static enum obs_media_state media_get_state(void *d){
     shuttle_src *s = d;
     return atomic_load(&s->replay_mode) ? (enum obs_media_state)atomic_load(&s->media_state) : OBS_MEDIA_STATE_STOPPED;
@@ -677,13 +718,23 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     cfg.on_end = on_end; cfg.end_ctx = s;
     atomic_store(&s->ended, 0); s->audio_clock = (shuttle_audio_clock){0}; s->audio_skip_pending = 0;
     atomic_store(&s->frames_out, 0); atomic_store(&s->audio_frames_out, 0); atomic_store(&s->audio_steps, 0);   /* per-session accounting */
+    atomic_store(&s->last_counter, 0); atomic_store(&s->handoff_reset, 0);
     s->last_handoff_ns = s->gap_events = s->max_gap_ns = s->max_call_ns = s->slow_calls = 0;
-    if (fs_open(&s->fs, &cfg) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL; return -1; }
+    if (!s->replaying) atomic_store(&s->live_regrey, 1);   /* live: OBS's controls may still show a replay's bar; grey them on the next tick */
+    if (fs_open(&s->fs, &cfg) != 0){
+        blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL;
+        if (s->replaying) obs_source_media_ended(s->source);   /* nothing plays: OBS's controls show restart */
+        return -1;
+    }
     /* attach before fs_start, so a session started for a recording logs its first unit */
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
     if (s->sidecar_enabled && obs_frontend_recording_active() && s->sidecar_base) sidecar_attach(s);   /* restarted mid-recording: continue as the next part */
+    /* PLAYING before the session runs: an end that arrives at once (a seek to the last units) then
+     * overwrites it with ENDED, never the other way round. */
+    if (s->replaying){ atomic_store(&s->media_state, OBS_MEDIA_STATE_PLAYING); obs_source_media_started(s->source); }
     if (fs_start(s->fs) != 0){
         blog(LOG_ERROR, "[shuttle-source] frameserver start failed");
+        atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED); obs_source_media_ended(s->source);
         if (s->sidecar_attached){ s->sidecar_attached = 0; blog(LOG_ERROR, "[shuttle-source] sidecar of the failed session left unpublished at %s", s->sidecar_partial); }
         fs_close(s->fs); s->fs = NULL; return -1;
     }
@@ -691,7 +742,6 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     blog(LOG_INFO, "[shuttle-source] started (%s%s), registration %s, H-retiming %s", cfg.capture.replay_path ? "replay" : "device",
          start_offset ? ", from a seek" : "", cfg.registration_off ? "OFF (nominal placement)" : "on", cfg.hretime ? "ON" : "off");
     if (start_offset) blog(LOG_INFO, "[shuttle-source] replay starts at byte %llu (unit %llu, %.1f s)", (unsigned long long)start_offset, (unsigned long long)start_unit, rt_ms(start_unit) / 1000.0);
-    if (s->replaying){ atomic_store(&s->media_state, OBS_MEDIA_STATE_PLAYING); obs_source_media_started(s->source); }
     /* A replay IS a raw capture: teeing it would write another copy of the file being read. */
     s->tpc_enabled = obs_data_get_bool(settings, S_TPC) && !s->replaying;
     if (obs_data_get_bool(settings, S_TPC) && s->replaying) blog(LOG_INFO, "[shuttle-source] raw .tpc is not written while replaying a .tpc");
@@ -727,6 +777,8 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     s->pending_seek_ms = -1; atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
     if (pthread_create(&s->ctl_thr, NULL, media_thread, s) == 0) s->ctl_running = 1;
     else blog(LOG_ERROR, "[shuttle-source] could not start the media-control thread (%s): the play/pause, stop and seek controls will do nothing", strerror(errno));
+    if (pthread_create(&s->probe_thr, NULL, probe_thread, s) == 0) s->probe_running = 1;
+    else blog(LOG_ERROR, "[shuttle-source] could not start the replay-length probe thread (%s): no seek bar", strerror(errno));
     if (tr_open(&s->reports, 256, report_late, s) != 0){ s->reports = NULL; blog(LOG_ERROR, "[shuttle-source] could not start the delivery-timing reporter (%s): late handoffs are counted in the stop summary only", strerror(errno)); }
     if (pq_open(&s->pq, SIDECAR_QUEUE_CAP, publish_one, s) != 0){ s->pq = NULL; blog(LOG_ERROR, "[shuttle-source] could not start the sidecar publisher (%s): sidecars will stay in scratch (paths are logged), never published inline", strerror(errno)); }
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
@@ -749,6 +801,7 @@ static void shuttle_destroy(void *data){
         pthread_mutex_lock(&s->ctl_m); s->ctl_quit = 1; atomic_store(&s->probe_abort, 1); pthread_cond_broadcast(&s->ctl_c); pthread_mutex_unlock(&s->ctl_m);
         pthread_join(s->ctl_thr, NULL);
     }
+    if (s->probe_running){ pthread_mutex_lock(&s->ctl_m); s->ctl_quit = 1; atomic_store(&s->probe_abort, 1); pthread_cond_broadcast(&s->ctl_c); pthread_mutex_unlock(&s->ctl_m); pthread_join(s->probe_thr, NULL); }
     pthread_mutex_lock(&s->m); shuttle_stop(s); pthread_mutex_unlock(&s->m);
     pthread_mutex_lock(&s->close_m); while (atomic_load(&s->closers)) pthread_cond_wait(&s->close_c, &s->close_m); pthread_mutex_unlock(&s->close_m);   /* every raw .tpc and sidecar closed before the code unloads */
     pq_close(s->pq); pq_destroy(s->pq); s->pq = NULL;   /* drains every queued sidecar before the code unloads; the frontend callback (the only producer) was removed above */

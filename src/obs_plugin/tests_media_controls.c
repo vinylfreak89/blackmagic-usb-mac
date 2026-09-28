@@ -57,6 +57,19 @@ int main(int argc, char **argv){
           (unsigned long long)held, (unsigned long long)stub_video_frames);
     CHECK(I->media_get_time(d) < 500, "paused at %lld ms, expected near the start", (long long)I->media_get_time(d));
 
+#if !defined(__has_feature) || !__has_feature(thread_sanitizer)
+    /* A pause is not a delivery stall: resuming must not report the held time as a late handoff. Not under
+     * TSan: there the pipeline runs so far behind the pacer that frames are genuinely late, and the file
+     * is read to its end before the second pause could hold it. */
+    int late = stub_late_reports;
+    I->media_play_pause(d, false);
+    WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING && stub_video_frames > held + 5, 10, "resume");
+    usleep(200000);
+    CHECK(stub_late_reports == late, "resuming after a 600 ms pause logged %d late-handoff warnings", stub_late_reports - late);
+    I->media_play_pause(d, true);
+    WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PAUSED, 10, "the second pause");
+#endif
+
     /* 4. seeks while paused only move the target (OBS's drag); play starts there */
     I->media_set_time(d, 2500); I->media_set_time(d, 3000);
     WAIT(I->media_get_time(d) == 3000, 5, "the pending seek to show");

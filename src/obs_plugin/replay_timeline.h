@@ -18,7 +18,17 @@
 typedef struct {
     uint64_t file_bytes, units;   /* units: index of the last complete unit (0 = unknown) */
     uint16_t first16;             /* counter of unit 0 */
+    int approx;                   /* the counter span disagreed with the file size: units from the size */
 } rt_timeline;
+/* A frame's counter further than this from where the frame count puts it is not believed: the device
+ * restarted its counter (a counter epoch, §8 property 5), and the frame count is the better position. */
+#define RT_RESOLVE_SLACK 900      /* units, 30 s */
+/* Counter span vs file size at the nominal rate. The wrap count is chosen from the size, so the span is
+ * always within half a wrap of the size estimate; only a tight tolerance can catch a counter restart.
+ * The NTSC stream rate is set by the device: tape 1's estimate was 2 units off in 162,632 (0.001%). A
+ * capture holding other formats (0xe809 free-run units are smaller) may trip it; its length then comes
+ * from the size, flagged approximate. NTSC only: other modes need their own rate (P6). */
+#define RT_SIZE_TOLERANCE 0.02
 
 static inline int rt_init(rt_timeline *t, uint64_t file_bytes, uint16_t first16, uint16_t last16){
     t->file_bytes = file_bytes; t->first16 = first16; t->units = 0;
@@ -27,22 +37,30 @@ static inline int rt_init(rt_timeline *t, uint64_t file_bytes, uint16_t first16,
     double k = (est - (double)base) / 65536.0;
     uint64_t wraps = k > 0 ? (uint64_t)(k + 0.5) : 0;
     t->units = base + 65536u * wraps;
+    /* A counter restart inside the file makes last-first meaningless; the size then says more. */
+    t->approx = est > 0 && (t->units > est * (1 + RT_SIZE_TOLERANCE) || t->units < est * (1 - RT_SIZE_TOLERANCE));
+    if (t->approx) t->units = (uint64_t)(est + 0.5);
     return t->units ? 0 : -1;
 }
+static inline int rt_consistent(const rt_timeline *t){ return !t->approx; }
 /* NTSC unit period 1001/30000 s: ms = u * 1001 / 30. */
 static inline int64_t rt_ms(uint64_t u){ return (int64_t)(u * 1001u / 30u); }
+/* The first unit shown at or after ms: the inverse of rt_ms, so rt_unit_at_ms(rt_ms(u)) == u. */
 static inline uint64_t rt_unit_at_ms(const rt_timeline *t, int64_t ms){
     if (ms <= 0) return 0;
-    uint64_t u = (uint64_t)ms * 30u / 1001u;
+    uint64_t u = ((uint64_t)ms * 30u + 1000u) / 1001u;
     return u > t->units ? t->units : u;
 }
 static inline uint64_t rt_offset(const rt_timeline *t, uint64_t u){
     return t->units ? (uint64_t)((double)u / (double)t->units * (double)t->file_bytes) : 0;
 }
-/* The unit index of counter c16 observed near unit `expect`: the nearest index with that counter. */
+/* The unit index of counter c16 observed near unit `expect`: the nearest index with that counter,
+ * unless that is more than RT_RESOLVE_SLACK away (then `expect`); always within [0, units]. */
 static inline uint64_t rt_resolve(const rt_timeline *t, uint16_t c16, int64_t expect){
-    uint16_t at = (uint16_t)(t->first16 + (uint64_t)(expect < 0 ? 0 : expect));
-    int64_t u = expect + (int16_t)(uint16_t)(c16 - at);
-    return u < 0 ? 0 : (uint64_t)u;
+    if (expect < 0) expect = 0;
+    int d = (int16_t)(uint16_t)(c16 - (uint16_t)(t->first16 + (uint64_t)expect));
+    int64_t u = d > RT_RESOLVE_SLACK || d < -RT_RESOLVE_SLACK ? expect : expect + d;
+    if (u < 0) u = 0;
+    return (uint64_t)u > t->units ? t->units : (uint64_t)u;
 }
 #endif

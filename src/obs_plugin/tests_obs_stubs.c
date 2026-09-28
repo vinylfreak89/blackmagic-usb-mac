@@ -22,9 +22,11 @@ struct obs_data { _Atomic(const char *) path; _Atomic int use_replay; };   /* OB
 static struct obs_data g_settings;
 obs_data_t *stub_settings(const char *path, int use_replay){ atomic_store(&g_settings.path, path); atomic_store(&g_settings.use_replay, use_replay); return &g_settings; }
 
+_Atomic int stub_late_reports;
 void blog(int level, const char *fmt, ...){
-    if (!stub_verbose && level > LOG_WARNING) return;
-    va_list ap; va_start(ap, fmt); vfprintf(stderr, fmt, ap); va_end(ap); fputc('\n', stderr);
+    char line[2048]; va_list ap; va_start(ap, fmt); vsnprintf(line, sizeof line, fmt, ap); va_end(ap);
+    if (strstr(line, "delivery timing: counter")) atomic_fetch_add(&stub_late_reports, 1);
+    if (stub_verbose || level <= LOG_WARNING) fprintf(stderr, "%s\n", line);
 }
 void *bmalloc(size_t n){ return malloc(n ? n : 1); }
 void bfree(void *p){ free(p); }

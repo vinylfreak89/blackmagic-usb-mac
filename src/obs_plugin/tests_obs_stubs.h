@@ -7,5 +7,6 @@ extern const struct obs_source_info *stub_info;       /* registered by obs_modul
 extern _Atomic int stub_started_signals, stub_ended_signals;
 extern _Atomic uint64_t stub_video_frames;
 extern int stub_verbose;
+extern _Atomic int stub_late_reports;   /* late-handoff WARNINGs the plugin logged */
 obs_data_t *stub_settings(const char *path, int use_replay);
 #endif
