@@ -143,8 +143,10 @@ Append the confident field-2 offset to the last vote_window confident frames.
 The mode wins. Ties retain the current anchor if tied, otherwise the newest
 tied value, otherwise the first tied value in chronological window order.
 Non-confident frames neither vote nor change the anchor. Resets clear votes
-but retain the last published anchor; only session start uses the engine's
-own anchor while the window is empty.
+but retain the last published anchor. At session start, before any confident
+frame, the anchor is 0: no confident frame is no evidence of displacement
+(owner, 2026-09-27; the engine's own unconfident guess once held a dark card at
++5 for 10 s). vote_engine_anchor still logs that guess.
 
 Publish (anchor-d, anchor), preserving the relative path's d. Keep unvoted
 fallback state separate from the vote: a prior voted anchor must not feed

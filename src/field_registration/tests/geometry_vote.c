@@ -14,8 +14,9 @@ static ge_decision input(geometry_engine *g,int top,int confident,int engine) {
 }
 static void votes(void) {
     geometry_engine g;ge_init(&g,0,NULL);paired_raster();
-    ge_decision o=input(&g,2,0,4);assert(o.vote_anchor==4 && !o.vote_count);
-    o=input(&g,2,0,5);assert(o.vote_anchor==4 && !o.vote_count); /* empty holds */
+    /* No confident frame yet: start at 0, not the engine's unconfident guess. */
+    ge_decision o=input(&g,2,0,4);assert(o.vote_anchor==0 && !o.vote_count && o.vote_engine_anchor==4);
+    o=input(&g,2,0,5);assert(o.vote_anchor==0 && !o.vote_count); /* empty holds */
     o=input(&g,2,1,4);assert(o.vote_anchor==2 && o.vote_winner_count==1);
     o=input(&g,3,1,4);assert(o.vote_anchor==2 && o.vote_count==2); /* current tie */
     o=input(&g,3,1,4);assert(o.vote_anchor==3 && o.vote_winner_count==2);
@@ -33,7 +34,7 @@ static void votes(void) {
     assert(!g.vote_count && o.vote_anchor==2 && o.anchor_source==GE_SOURCE_VOTE);
     ge_break(&g,out);ge_set_pairing(&g,1);o=input(&g,0,0,5);
     assert(!g.vote_count && o.vote_anchor==2 && g.reverse);
-    ge_init(&g,1,NULL);o=input(&g,0,0,5);assert(!g.vote_count && o.vote_anchor==5);
+    ge_init(&g,1,NULL);o=input(&g,0,0,5);assert(!g.vote_count && o.vote_anchor==0 && o.vote_engine_anchor==5);
 }
 static void fills(void) {
     memset(y,1,sizeof y);
