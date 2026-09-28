@@ -148,3 +148,6 @@ src/frameserver/tests/audio_evidence_tsan
 src/frameserver/tests/replay_probe_test
 src/obs_plugin/tests_replay_timeline
 src/obs_plugin/tests_replay_timeline.dSYM/
+src/obs_plugin/tests_media_controls
+src/obs_plugin/tests_media_controls_tsan
+src/obs_plugin/tests_media_controls*.dSYM/

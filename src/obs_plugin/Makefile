@@ -43,12 +43,20 @@ $(BUNDLE): shuttle_source.c audio_timing.h replay_timeline.h ../frameserver/repl
 	codesign --force --sign - $(BUNDLE)
 	@echo "built $(BUNDLE)"; otool -L $(BUNDLE)/Contents/MacOS/$(PLUGIN) | grep -E 'libobs|libusb' || true
 
-test: test-audio test-timing-report test-replay-timeline publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
+test: test-audio test-timing-report test-replay-timeline test-media-controls publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_copy.c tests_publish_copy.c -o tests_publish_copy && ./tests_publish_copy
 	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue -lpthread && ./tests_publish_queue
 	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue_tsan -lpthread && ./tests_publish_queue_tsan
 
-.PHONY: test-audio test-replay-timeline
+.PHONY: test-audio test-replay-timeline test-media-controls
+# The plugin's media controls in a test process: libobs replaced by stubs, the real frameserver
+# replaying the plain synthetic fixture. Plain and ThreadSanitizer builds.
+MEDIA_FIXTURE = ../unit_parser/tests/fixture_plain.tpc
+test-media-controls: shuttle_source.c tests_media_controls.c tests_obs_stubs.c tests_obs_stubs.h replay_timeline.h $(CORE) publish_copy.c publish_queue.c timing_report.c
+	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
+	$(CC) $(CPPFLAGS) -O1 -g -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls $(MEDIA_FIXTURE)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls_tsan -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls_tsan $(MEDIA_FIXTURE)
+
 test-replay-timeline: replay_timeline.h tests_replay_timeline.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra tests_replay_timeline.c -o tests_replay_timeline && ./tests_replay_timeline
 
