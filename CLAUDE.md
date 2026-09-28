@@ -1547,8 +1547,11 @@ delivery edge; wrong one at acquisition.
   **Recording-aligned sidecar (2026-09-04):** the frameserver gained runtime decision-log
   attach/detach (`fs_log_start`/`fs_log_stop`: exclusive open, checked writes with
   `log_write_errors`/`log_close_errors`, `fs_log_stop` reports a file with any failed row as
-  incomplete; a stall-hook test proves a hung sidecar write sheds video downstream with exact
-  range accounting, never acquisition). The plugin subscribes to OBS's recording-started/stopped
+  incomplete; a stall-hook test proves a stalled worker sheds video downstream with exact
+  range accounting, never acquisition). **Rows are written by a writer thread since 2026-09-28**
+  (`async_file.c`): under fsync'd disk load the synchronous row write took 280–943 ms on the
+  worker and each one was a late handoff to OBS; a disk that hangs for a whole session now sheds
+  nothing, and overflow or a write error makes the file incomplete, never thinner. The plugin subscribes to OBS's recording-started/stopped
   events and writes `<recording>.registration.csv` per recording: grown in a per-uid 0700 scratch
   directory, published by `renamex_np(RENAME_EXCL)` on the same filesystem or by a staged,
   fsynced, byte-verified copy plus exclusive rename on another (`publish_copy.c`, fault-injected
@@ -1567,9 +1570,7 @@ delivery edge; wrong one at acquisition.
   output to a URL gets none, auto-remux keeps the pre-remux name. The publisher is a bounded,
   tested queue (`publish_queue.{c,h}`) with final-name reservation. Alignment is within
   one unit (the counter of the last frame delivered before the event is logged; exact alignment
-  needs an in-band frame counter). OPEN: a `.tpc` tee from inside the plugin (needs a
-  runtime-attachable tagged sink in the capture core); a log writer thread if storage stalls are
-  ever observed; the plugin's live-device path has never been exercised inside OBS.
+  needs an in-band frame counter).
 - **P4b CMIO extension (Swift)** — after P4a and the Apple team exist: standard device, two
   advertised formats (raw 480i, corrected 480i), sink-stream consumer, custom properties.
   Deinterlacing belongs to OBS/ffmpeg/post.

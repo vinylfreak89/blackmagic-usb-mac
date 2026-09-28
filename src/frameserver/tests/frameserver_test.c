@@ -5,6 +5,8 @@
 //   Then with a one-slot pool: rows are never lost to pool exhaustion (PoolFull rows), stop is
 //   idempotent, and close-after-start is safe.
 #include "../frameserver.h"
+#include "../async_file.h"
+#include <errno.h>
 #include "../../unit_parser/unit_parser.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -127,9 +129,21 @@ void fs_test_before_producer_done(frameserver *f){ (void)f; pthread_mutex_lock(&
     if(atomic_load(&hook_arm)) atomic_store(&hook_release,1);
     producer_finished=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex); }
 static _Atomic int log_stalled;   // storage-stall injection: first row after arming holds the row lock until a drop
-static _Atomic int log_break;   // write-failure injection: swap the stream's fd for a pipe with no reader (EPIPE on every write; SIGPIPE ignored), unbuffered so each row fprintf fails
-void fs_test_after_log_row(frameserver *f, FILE *log){ (void)f; int mask=atomic_exchange(&log_hold_mask,0); if(mask){ atomic_store(&log_stalled,1); hold_until_drop(mask,"sidecar hold"); }
-    if(atomic_exchange(&log_break,0)){ int p[2]; if(pipe(p)!=0) abort(); close(p[0]); fflush(log); if(dup2(p[1],fileno(log))<0) abort(); close(p[1]); setvbuf(log,NULL,_IONBF,0); } }
+void fs_test_after_log_row(frameserver *f, FILE *log){ (void)f; (void)log; int mask=atomic_exchange(&log_hold_mask,0); if(mask){ atomic_store(&log_stalled,1); hold_until_drop(mask,"sidecar hold"); } }
+/* The disk under the sidecar writer thread (async_file.h): pass through, fail every write (EPIPE), or
+ * hang until released. The writer is the only caller, so the injection never touches the video worker. */
+enum { DISK_OK, DISK_FAIL, DISK_HANG };
+static _Atomic int disk_mode; static int disk_failed, disk_hung, disk_release;
+static ssize_t test_disk_write(int fd, const void *b, size_t n){
+    int m=atomic_load(&disk_mode);
+    if(m==DISK_OK) return write(fd,b,n);
+    double begun=test_now(); pthread_mutex_lock(&live.mutex);
+    if(m==DISK_FAIL){ disk_failed=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex); errno=EPIPE; return -1; }
+    disk_hung=1; test_live_note_locked(&live);
+    while(!disk_release) test_live_wait(&live,begun,"sidecar disk hang: never released");
+    pthread_mutex_unlock(&live.mutex);
+    return write(fd,b,n);
+}
 static frameserver *g_cb_target; static _Atomic int cb_try, cb_start_rc, cb_stop_rc;   // callback-refusal probe
 static _Atomic int cb_life_rc, audio_life_try, audio_life_rc, end_life_try, end_life_rc;
 static const char *callback_log;
@@ -186,7 +200,7 @@ int main(int argc, char **argv){
         return 99;
     }
     if (argc < 2){ fprintf(stderr, "usage: %s <fixture.tpc>\n", argv[0]); return 9; }
-    signal(SIGPIPE, SIG_IGN);   /* the write-failure injection writes to a reader-less pipe */
+    fs_async_file_test_write = test_disk_write;
     int ring_may_drop = getenv("FS_TEST_EXPECT_RING_DROPS") != NULL;
     char logp[] = "/tmp/fs_test_log_XXXXXX"; int fd = mkstemp(logp); close(fd); unlink(logp);
     char cbpath[]="/tmp/fs_test_callback_XXXXXX"; fd=mkstemp(cbpath); close(fd); unlink(cbpath); callback_log=cbpath;
@@ -498,8 +512,9 @@ int main(int argc, char **argv){
     }
     unlink(la); unlink(lb);
 
-    // Callback refusal and storage stall: fs_log_start/stop from the video worker return -1 without
-    // deadlock; a row write that stalls (disk hang) stalls the worker and sheds video DOWNSTREAM —
+    // Callback refusal and worker stall: fs_log_start/stop from the video worker return -1 without
+    // deadlock; a worker held inside the row write (the hook holds the row lock; a disk hang no
+    // longer presents this way, see the disk-hang case below) sheds video DOWNSTREAM —
     // PoolFull rows with exact conservation — never acquisition. Rows that failed are never counted.
     done=0; char lc[]="/tmp/fs_test_logC_XXXXXX"; fd=mkstemp(lc); close(fd); unlink(lc);
     // Account from session start, including ring losses before the stall is armed.
@@ -539,7 +554,7 @@ int main(int argc, char **argv){
     }
     unlink(lc);
 
-    // Write-failure injection: after the first row the stream is redirected to /dev/full; every
+    // Write-failure injection: the disk under the sidecar writer fails every write; once it has, every
     // later row fails, is counted in log_write_errors and NOT in log_rows, and fs_log_stop reports
     // the file as incomplete (-1) so a publisher cannot pass it off as complete.
     done=0; char ld[]="/tmp/fs_test_logD_XXXXXX"; fd=mkstemp(ld); close(fd); unlink(ld);
@@ -548,9 +563,12 @@ int main(int argc, char **argv){
     if(bf&&argc>=3){
         window_begin(5);
         CHECK(fs_start(bf)==0,"start (write failure)"); window_wait(5,"rows before the failing attach");
-        atomic_store(&log_break,1); CHECK(fs_log_start(bf,ld)==0,"attach D");
-        window_release(40,1); window_wait(40,"rows while writes fail");
+        atomic_store(&disk_mode,DISK_FAIL); CHECK(fs_log_start(bf,ld)==0,"attach D");
+        window_release(10,1); window_wait(10,"rows before the disk fails");
+        { double begun=test_now(); pthread_mutex_lock(&live.mutex); while(!disk_failed) test_live_wait(&live,begun,"the sidecar writer never reached the failing disk"); pthread_mutex_unlock(&live.mutex); }
+        window_release(45,1); window_wait(45,"rows while writes fail");
         CHECK(fs_log_stop(bf)==-1,"fs_log_stop must report a file with failed rows as incomplete");
+        atomic_store(&disk_mode,DISK_OK);   /* the writer for D is joined: nothing else saw the failing disk */
         fs_stats mid; fs_get_stats(bf,&mid); CHECK(mid.log_last_file_errors>0,"last-file verdict must be nonzero for the broken file");
         /* a second, clean log in the same session, closed by fs_stop: its verdict must be 0 although the session total is not */
         char le[]="/tmp/fs_test_logE_XXXXXX"; fd=mkstemp(le); close(fd); unlink(le);
@@ -571,6 +589,40 @@ int main(int argc, char **argv){
         fs_close(bf);
     }
     unlink(ld);
+
+    // Disk hang: the sidecar's disk hangs from the header on and stays hung for the whole session. The
+    // video worker must not notice: every exact unit is published, nothing is shed. Observations are
+    // admitted one at a time (the log window), so worker CPU speed (a sanitizer build) cannot shed;
+    // a worker blocked on the disk never completes the window and fails by deadline. The log is complete
+    // once the disk returns, with every row counted (measured 2026-09-28 before this: 280-943 ms row
+    // writes under disk load, each a late handoff).
+    done=0; char lh[]="/tmp/fs_test_logH_XXXXXX"; fd=mkstemp(lh); close(fd); unlink(lh);
+    pthread_mutex_lock(&live.mutex); disk_hung=0; disk_release=0; pthread_mutex_unlock(&live.mutex);
+    atomic_store(&disk_mode,DISK_HANG);
+    fs_config hc=cfg; hc.decision_log=lh; hc.capture.replay_path=argc>=3?argv[2]:argv[1]; hc.capture.replay_pace_us=0; frameserver *hf=NULL;
+    CHECK(fs_open(&hf,&hc)==0,"open (disk hang)");
+    if(hf&&argc>=3){
+        window_begin(UINT64_MAX);
+        CHECK(fs_start(hf)==0,"start (disk hang)");
+        wait_for_end("disk-hang run");
+        window_release(0,0);
+        pthread_mutex_lock(&live.mutex); int hung=disk_hung; pthread_mutex_unlock(&live.mutex);
+        CHECK(hung,"the sidecar writer never reached the hung disk");
+        fs_stats hs; fs_get_stats(hf,&hs);
+        CHECK(hs.dropped_pool_full==0&&hs.dropped_ring_full==0&&hs.publisher_dropped==0,"a hung sidecar disk must not shed video (pool %llu ring %llu publisher %llu)",(unsigned long long)hs.dropped_pool_full,(unsigned long long)hs.dropped_ring_full,(unsigned long long)hs.publisher_dropped);
+        CHECK(hs.published==hs.exact_units&&hs.exact_units>0,"published %llu of %llu exact units under a hung sidecar disk",(unsigned long long)hs.published,(unsigned long long)hs.exact_units);
+        pthread_mutex_lock(&live.mutex); disk_release=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
+        CHECK(fs_stop(hf)==0,"stop (disk hang)");
+        atomic_store(&disk_mode,DISK_OK);
+        fs_get_stats(hf,&hs);
+        CHECK(hs.log_last_file_errors==0&&hs.log_write_errors==0,"the log must be complete once the disk returns (%llu file / %llu write errors)",(unsigned long long)hs.log_last_file_errors,(unsigned long long)hs.log_write_errors);
+        unsigned long long hrows=0; L=fopen(lh,"r"); if(L){ while(fgets(line,sizeof line,L)) if(strncmp(line,"ordinal,",8)) hrows++; fclose(L); }
+        CHECK(hrows==hs.log_rows&&hrows>0,"disk-hang log rows %llu != counted %llu",hrows,(unsigned long long)hs.log_rows);
+        printf("  disk hang: %llu of %llu published, %llu shed, %llu rows written after release\n",(unsigned long long)hs.published,(unsigned long long)hs.exact_units,(unsigned long long)(hs.dropped_pool_full+hs.dropped_ring_full+hs.publisher_dropped),hrows);
+        fs_close(hf);
+    } else if(hf) fs_close(hf);
+    pthread_mutex_lock(&live.mutex); disk_release=1; pthread_mutex_unlock(&live.mutex); atomic_store(&disk_mode,DISK_OK);
+    unlink(lh);
     unlink(cbpath);
     if (fails) printf("FAILURES: %d\n", fails);
     else printf("frameserver tests: PASS (obs %llu, exact %llu, published %llu, short %llu, hole %llu, unframed %llu)\n",

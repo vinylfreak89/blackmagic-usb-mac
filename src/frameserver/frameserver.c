@@ -1,4 +1,10 @@
 #include "frameserver.h"
+#include "async_file.h"
+
+/* Sidecar rows go through a writer thread so storage stalls never stall the video worker (async_file.h).
+ * 32 MiB is ~20 minutes of rows; an overflow makes the file incomplete, never silently thinner. */
+#define FS_LOG_RING_BYTES (32u<<20)
+#define FS_LOG_WRITE_CHUNK (1u<<20)
 #include "../unit_parser/unit_parser.h"
 #include "../signal_state/signal_state.h"
 #include "../field_registration/geometry_engine.h"
@@ -742,7 +748,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if (ap_open(&f->aud, f->aq_cap_frames, &asink) != 0){ fs_close(f); return -1; }
     if (pthread_mutex_init(&f->log_m, NULL)){ fs_close(f); return -1; } f->log_m_init = 1;
     if (pthread_mutex_init(&f->tee_m, NULL)){ fs_close(f); return -1; } f->tee_m_init = 1;
-    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "wx"); if (!f->log || log_header(f->log,cfg->hretime) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
+    if (cfg->decision_log){ f->log = fs_async_fopen_excl(cfg->decision_log, FS_LOG_RING_BYTES, FS_LOG_WRITE_CHUNK); if (!f->log || log_header(f->log,cfg->hretime) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
     cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, cc_on_tick, cc_on_end, f };
     if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
@@ -817,7 +823,7 @@ int fs_log_start(frameserver *f, const char *path){
     if(!f || !path || !*path || fs_log_from_worker(f)) return -1;
     pthread_mutex_lock(&f->log_m); int attached = f->log != NULL; pthread_mutex_unlock(&f->log_m);
     if(attached) return -1;                            // one log at a time; the caller ends the previous one
-    FILE *L = fopen(path, "wx");                       // never truncate an existing file: a sidecar is evidence
+    FILE *L = fs_async_fopen_excl(path, FS_LOG_RING_BYTES, FS_LOG_WRITE_CHUNK);   // never truncate an existing file: a sidecar is evidence
     if(!L) return -1;
     if(log_header(L,f->cfg.hretime) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
     // Lifecycle check and install happen under life_m so fs_stop (which moves life to STOPPING

@@ -123,10 +123,11 @@ int  fs_stop (frameserver *f);            // stops capture, drains the worker, c
 // Control-thread ownership: fs_open/start/stop/close and fs_log_start/stop are serialized
 // against each other internally (life_m/log_m), but the sidecar's PATH policy is the caller's —
 // a growing file must not live in a cloud-synced root (CLAUDE.md writer output rule).
-// A synchronous row write runs on the video worker: a stalled disk stalls that worker and sheds
-// video downstream (PoolFull rows, then ring drops), never acquisition — proven by the storage-
-// stall test. A bounded row queue + writer thread is the named follow-up if that shedding is ever
-// observed in practice.
+// Rows reach the disk on a writer thread (async_file.h): the video worker only copies a finished
+// row into a 32 MiB ring, so a stalled disk never delays delivery (disk-hang test). Measured before
+// this, 2026-09-28: row writes of 280-943 ms under fsync'd disk load, each a late frame handoff. A
+// ring overflow or a failed write makes the file incomplete (every later row fails, fs_log_stop
+// returns -1), never silently thinner. fs_log_stop drains the ring and fsyncs, so it can block.
 int  fs_log_start(frameserver *f, const char *path);
 int  fs_log_stop (frameserver *f);        // -1 if none attached, the close failed, or any row write failed in this file (it is then incomplete: do not publish it as complete)
 // Runtime raw-transport tee: every packet, loss and error record the capture core delivers is
