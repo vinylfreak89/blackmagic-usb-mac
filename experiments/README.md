@@ -63,27 +63,12 @@ their internal boundary is unknowable and unnecessary for endpoint recovery.
 
 ### `untagged_capture` transport caveat and capture_untagged_ring scheduling change
 
-The recovered video remains intact through most of the run, then loses complete
-24,576-byte payload quanta after counter 25026. Every deficit from there to the
-last marker is divisible by 24,576. That is capture_untagged_ring's normal eight-iso-packet
-video-transfer payload, not a 1,440-byte raster-line or 756,048-byte frame
-quantum. Ring overflow was zero and video completion inversions were zero.
-
-Static analysis found that the old `V_NPK=8`, `XFERS=6` arrangement queued only
-about 6 ms of video time on Darwin. The libusb Darwin backend schedules iso
-requests at explicit future USB frame numbers; once resubmission falls behind
-the queued horizon, it resumes at the current frame plus a safety offset. No
-request exists for the intervening time, so neither transfer status nor packet
-status can report that hole. The old probe also silently skipped completed
-zero-length packets.
-
-capture_untagged_ring now queues 128 packets per transfer and eight video transfers, compacts
-each transfer with one ring operation, and prints complete packet-length
-histograms including zero lengths. This is an evidence-gathering fix, not yet a
-hardware-verified archival container: the flat file still cannot describe the
-location of a failed or unscheduled iso interval. Production capture must tag
-endpoint, submission sequence, scheduled packet slot, status, requested/actual
-length, host time, and payload.
+Recovery is not completeness: this capture lost transfer-sized payload quanta
+despite zero ring overflow and completion inversions. CLAUDE.md §6 records the
+24,576-byte loss census, expired Darwin scheduling horizon, and the probe's
+128-packet/eight-transfer correction. The untagged file still cannot locate
+missing slots; use the [tagged capture core](../src/capture_core/README.md) for
+new acquisition. The extractor preserves the evidence that actually survives.
 
 Example archival extraction:
 
@@ -257,3 +242,28 @@ configuration, frame accounting and hashes.
 `render_stability_audit.py` remains an independent presentation diagnostic;
 its measurements do not choose registration. The retired schema-7/9 renderer,
 overlay and audit wrappers have been removed.
+
+### Lessons from experimental repair renders
+
+These concern the later `hretime-experiments` renderer, not a promotion of its
+repair policy to main. Review repaired **actual worker pixels**, using the
+actual paired fields; a Python recreation or a matching sidecar alone cannot
+validate them. Count published units, paired frames and explicit fills separately.
+
+Deinterlacing annotation margins erased, moved or recoloured sparse one-row
+repair ticks. Preserve those lanes after picture deinterlacing and audit both
+encoded lanes on every frame against sidecar R/I locations and types, including
+expected absences. Lossy ringing on an absent row need not equal the exact
+background shade; it must still decode as absent. Check missing, extra and
+wrong-type ticks with synthetic tests in both parities.
+
+Do not round reference statistics to obtain policy agreement: E-59's four-decimal
+CSV created 29 decision flips (28 false recovery ties, one false baseline tie).
+Native and independent NumPy double arithmetic agreed within 1e-12. Report such
+reference-precision defects separately from implementation mismatches.
+
+A clean no-dump worker replay does not establish lossless pixel-spool throughput.
+FFV1 actual-output spooling needed slower pacing than the benchmark in measured
+runs. Reject loss-affected attempts and retain their accounting, not backup media.
+After a complete source walk, encoding and strip/tick readback can use the local
+lossless spool and finished sidecar without reopening a dataless source capture.
