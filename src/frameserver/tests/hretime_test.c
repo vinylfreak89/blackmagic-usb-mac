@@ -216,6 +216,13 @@ int main(void) {
     for(int k=0;k<2;k++)for(int i=0;i<240;i++){uint8_t *p=row(k?other:unit,k,i);for(int x=0;x<720;x++)if(x<135 || x>600)p[2*x+1]=2;}
     for(int i=100;i<131;i++){memcpy(row(unit,0,i),row(other,1,i),1440);displace(unit,0,i,7);}
     run(1);assert(!result.band_count && !changed(out1,unit) && !changed(out2,other));
+    /* Review of the reach check: a dark frame whose coarse standard lands on dim left content (12
+     * codes to sample 60, then 25) while the bright minority sets a refined standard near the window
+     * edge. A genuine 6-sample bend on three bright lines is still retimed. */
+    fixture();noisy();
+    for(int k=0;k<2;k++)for(int i=0;i<240;i++)if(i%12<7){uint8_t *p=row(k?other:unit,k,i);for(int x=10;x<720;x++)p[2*x+1]=x<60?12:25;}
+    for(int i=151;i<154;i++){int dim=0;for(int j=151;j<154;j++)dim|=j%12<7;assert(!dim);displace(unit,0,i,6);}
+    run(1);for(int i=151;i<154;i++)assert(result.action[2*i]==HRT_RETIME && result.shift[2*i]==6);
     uint8_t flat[720];memset(flat,2,sizeof flat);
     assert(!carries_picture(flat,22,0,2,1));
     flat[100]=7;assert(!carries_picture(flat,22,0,2,1));
