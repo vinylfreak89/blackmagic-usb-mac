@@ -31,6 +31,7 @@ enum cc_err    { CC_OK = 0, CC_ERR_ARGS = -1, CC_ERR_NODEVICE = -2, CC_ERR_USB =
 enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
                      CC_ERROR_CONTROL_LOSS = 2 };
 
+#define CC_DEFAULT_READAHEAD_MB 256  /* replay read-ahead when replay_readahead_mb is 0: ~11 s of stream */
 #define CC_DEFAULT_RING_MB 256  /* delivery ring when ring_mb is 0; the frameserver sizes its unit pool from it */
 #define CC_EP_VIDEO 0x83
 #define CC_EP_AUDIO 0x84
@@ -79,6 +80,10 @@ typedef struct {
                                 // This is deliberately stricter than host-overflow continuation:
                                 // one parked transfer means future scheduled slots are absent.
     int fail_stop_on_control_loss; // 0: mark not-clean once and continue; nonzero: marker + stop
+    int replay_readahead_mb;    // replay: file read-ahead ring, 0 => CC_DEFAULT_READAHEAD_MB. A reader
+                                // thread fills it ahead of the pacer, so a slow read (a network volume)
+                                // drains the ring instead of delaying delivery. A read error ends the
+                                // session with CC_END_INTERNAL_ERROR, never as a silent end of file.
 } cc_config;
 
 // Lifecycle: open -> start -> (callbacks) -> stop -> close.

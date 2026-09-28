@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
+#include <errno.h>
 #include "../test_supervisor.h"
 #include "../test_liveness.h"
 
@@ -85,6 +86,23 @@ void cc_test_ring_loss(void){ pressure_event(PRESSURE_LOSS); }
 void cc_test_recorded_error(void){ pressure_event(PRESSURE_ERROR); }
 void cc_test_meta_exhausted(void){ pressure_event(PRESSURE_META); }
 void cc_test_packet_progress(void){ test_live_note(&live); }
+/* Replay read injection (reader thread only), once after rd_after bytes: RD_STALL blocks the read
+ * until the pacer has delivered 100 more packets, which it can only do from the read-ahead ring;
+ * RD_FAIL fails the read with EIO. */
+enum { RD_PASS, RD_STALL, RD_FAIL };
+static _Atomic int rd_mode; static uint64_t rd_after, rd_bytes; static int rd_fired, rd_stalled; static cc_session *rd_session;
+ssize_t cc_test_replay_read(int fd, void *buf, size_t n){
+    int m=atomic_load(&rd_mode);
+    if(m!=RD_PASS && !rd_fired && rd_bytes>=rd_after){
+        rd_fired=1;
+        if(m==RD_FAIL){ errno=EIO; return -1; }
+        uint64_t need=cc_packets_delivered(rd_session)+100;
+        double begun=test_now(); pthread_mutex_lock(&live.mutex); rd_stalled=1; test_live_note_locked(&live);
+        while(cc_packets_delivered(rd_session)<need) test_live_wait(&live,begun,"replay read stalled: nothing delivered from the read-ahead");
+        pthread_mutex_unlock(&live.mutex);
+    }
+    ssize_t r=read(fd,buf,n); if(r>0) rd_bytes+=(uint64_t)r; return r;
+}
 void cc_test_input_done(void){
     pthread_mutex_lock(&live.mutex); input_done=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
 }
@@ -396,6 +414,29 @@ int main(int argc, char **argv){
         CHECK(a.rc==CC_OK && b.rc==CC_OK,"concurrent stop results %d/%d",a.rc,b.rc);
         CHECK(ct.end_count==1,"concurrent stop on_end count %d",ct.end_count); cc_close(s);
     }
+
+    // Read-ahead: a stalled file read must not stop delivery while the ring holds data (paced, 4 MiB
+    // ring, stall after 8 MiB). A synchronous read path cannot deliver during the stall and fails by
+    // deadline. Then a read error ends the session as an internal error, not a clean end of file.
+    for(int mode=RD_STALL; mode<=RD_FAIL; mode++){
+        tally rt; memset(&rt,0,sizeof rt); rt.main_thread=pthread_self(); cb.ctx=&rt;
+        cc_config rcfg={0}; rcfg.replay_path=slice; rcfg.replay_pace_us=2000; rcfg.replay_readahead_mb=4; s=NULL;
+        rd_bytes=0; rd_fired=0; rd_stalled=0; rd_after=8u<<20; atomic_store(&rd_mode,mode);
+        CHECK(cc_open(&s,&rcfg,&cb)==CC_OK,"open (read-ahead %d)",mode);
+        if(!s) continue;
+        rd_session=s;
+        CHECK(cc_start(s)==CC_OK,"start (read-ahead %d)",mode);
+        wait_ended(&rt.ended, mode==RD_STALL?"read-ahead stall run":"read-error run");
+        CHECK(cc_stop(s)==CC_OK,"stop (read-ahead %d)",mode);
+        CHECK(rd_fired,"the read injection never fired (mode %d)",mode);
+        if(mode==RD_STALL){
+            CHECK(rd_stalled,"the read never stalled");
+            CHECK(rt.end_reason==CC_END_REPLAY_EOF,"stalled-read replay ended with reason %d, expected REPLAY_EOF",rt.end_reason);
+            CHECK(rt.bytes[0]==vB&&rt.bytes[1]==aB,"stalled-read replay delivered %llu/%llu bytes, expected %llu/%llu",(unsigned long long)rt.bytes[0],(unsigned long long)rt.bytes[1],(unsigned long long)vB,(unsigned long long)aB);
+        } else CHECK(rt.end_reason==CC_END_INTERNAL_ERROR,"a failed read ended with reason %d, expected INTERNAL_ERROR",rt.end_reason);
+        cc_close(s); rd_session=NULL;
+    }
+    atomic_store(&rd_mode,RD_PASS);
 
     printf(fails? "FAILURES: %d\n" : "ALL TESTS PASSED\n", fails);
     return fails?1:0;

@@ -112,6 +112,7 @@ extern void cc_test_recorded_error(void);
 extern void cc_test_meta_exhausted(void);
 extern void cc_test_input_done(void);
 extern void cc_test_packet_progress(void);
+extern ssize_t cc_test_replay_read(int fd, void *buf, size_t n);
 #else
 #define cc_test_destroyed() ((void)0)
 #define cc_test_after_empty_snapshot(s) ((void)(s))
@@ -122,6 +123,7 @@ extern void cc_test_packet_progress(void);
 #define cc_test_meta_exhausted() ((void)0)
 #define cc_test_input_done() ((void)0)
 #define cc_test_packet_progress() ((void)0)
+#define cc_test_replay_read(fd,buf,n) read((fd),(buf),(n))
 #endif
 
 static uint64_t monotonic_ms_(void){
@@ -466,16 +468,97 @@ startup_failed:
 }
 
 // ---------------- replay backend
+/* Read-ahead: a reader thread fills a byte ring from the .tpc; the pacer takes records from it.
+ * Before this the pacer read with fread on its own thread, so every slow read on a network volume
+ * delayed delivery directly (2026-09-28, 10 min off LucidLink: 3 handoff gaps over 83 ms, worst
+ * 155.1 ms, all waiting on the file). Single producer (reader), single consumer (pacer). */
+typedef struct {
+    int fd; uint8_t *ring; size_t cap, chunk;
+    _Atomic uint64_t head, tail;            /* bytes read / bytes consumed, monotonic */
+    _Atomic int eof, err, stop;             /* err: errno of a failed read */
+    pthread_mutex_t m; pthread_cond_t cv;   /* sleep/wake only; both directions share it */
+    pthread_t thr;
+} replay_reader;
+static void rr_wake_(replay_reader *r){ pthread_mutex_lock(&r->m); pthread_cond_broadcast(&r->cv); pthread_mutex_unlock(&r->m); }
+static void rr_wait_(replay_reader *r, int (*ready)(replay_reader *)){
+    pthread_mutex_lock(&r->m);
+    if(!ready(r)){
+        struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_nsec+=100000000;
+        if(ts.tv_nsec>=1000000000){ ts.tv_sec++; ts.tv_nsec-=1000000000; }
+        pthread_cond_timedwait(&r->cv,&r->m,&ts);   /* liveness backstop only; the other side signals */
+    }
+    pthread_mutex_unlock(&r->m);
+}
+static int rr_has_space_(replay_reader *r){
+    return atomic_load(&r->stop) || r->cap-(atomic_load(&r->head)-atomic_load(&r->tail))>=r->chunk;
+}
+static void *rr_main_(void *arg){
+    replay_reader *r=arg;
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
+    while(!atomic_load(&r->stop)){
+        uint64_t head=atomic_load_explicit(&r->head,memory_order_relaxed);
+        size_t space=r->cap-(size_t)(head-atomic_load_explicit(&r->tail,memory_order_acquire));
+        if(space<r->chunk){ rr_wait_(r,rr_has_space_); continue; }
+        size_t o=(size_t)(head%r->cap), n=r->chunk;
+        if(n>r->cap-o) n=r->cap-o;
+        ssize_t got=cc_test_replay_read(r->fd,r->ring+o,n);
+        if(got<0 && errno==EINTR) continue;
+        if(got<0){ atomic_store(&r->err,errno?errno:EIO); rr_wake_(r); break; }
+        if(got==0){ atomic_store(&r->eof,1); rr_wake_(r); break; }
+        atomic_store_explicit(&r->head,head+(uint64_t)got,memory_order_release);
+        rr_wake_(r);
+    }
+    return NULL;
+}
+static int rr_has_data_(replay_reader *r){
+    return atomic_load(&r->eof) || atomic_load(&r->err) || atomic_load(&r->head)!=atomic_load(&r->tail);
+}
+/* fread-like: n bytes, fewer only at end of file or on a read error; -1 when stop is requested. */
+static ssize_t rr_read_(replay_reader *r, cc_session *s, void *dst, size_t n){
+    size_t done=0;
+    while(done<n){
+        uint64_t tail=atomic_load_explicit(&r->tail,memory_order_relaxed);
+        size_t avail=(size_t)(atomic_load_explicit(&r->head,memory_order_acquire)-tail);
+        if(!avail){
+            if(atomic_load(&r->eof)||atomic_load(&r->err)) break;
+            if(atomic_load(&s->stop_req)) return -1;
+            rr_wait_(r,rr_has_data_); continue;
+        }
+        size_t k=n-done<avail?n-done:avail, o=(size_t)(tail%r->cap);
+        if(k>r->cap-o) k=r->cap-o;
+        memcpy((uint8_t*)dst+done,r->ring+o,k); done+=k;
+        atomic_store_explicit(&r->tail,tail+(uint64_t)k,memory_order_release);
+        rr_wake_(r);
+    }
+    return (ssize_t)done;
+}
+static int rr_start_(replay_reader *r, const char *path, size_t cap){
+    memset(r,0,sizeof *r);
+    r->fd=open(path,O_RDONLY); if(r->fd<0) return CC_ERR_IO;
+    r->cap=cap; r->chunk=cap/4<(4u<<20)?cap/4:(4u<<20);   /* at most 4 MiB per read */
+    r->ring=malloc(cap);
+    if(!r->ring){ close(r->fd); return CC_ERR_NOMEM; }
+    pthread_mutex_init(&r->m,NULL); pthread_cond_init(&r->cv,NULL);
+    if(pthread_create(&r->thr,NULL,rr_main_,r)!=0){ pthread_mutex_destroy(&r->m); pthread_cond_destroy(&r->cv); free(r->ring); close(r->fd); return CC_ERR_NOMEM; }
+    return CC_OK;
+}
+static int rr_finish_(replay_reader *r){   /* stops and joins the reader; returns its read errno, 0 if none */
+    atomic_store(&r->stop,1); rr_wake_(r); pthread_join(r->thr,NULL);
+    int e=atomic_load(&r->err);
+    pthread_mutex_destroy(&r->m); pthread_cond_destroy(&r->cv); free(r->ring); close(r->fd);
+    return e;
+}
 static void* replay_main(void *arg){
     cc_session *s=arg;
     internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
-    FILE *f=fopen(s->cfg.replay_path,"rb");
-    if(!f){ atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,CC_ERR_IO); goto failed_start; }
+    replay_reader rd, *f=&rd;
+    int rr=rr_start_(f,s->cfg.replay_path,(size_t)(s->cfg.replay_readahead_mb>0?s->cfg.replay_readahead_mb:CC_DEFAULT_READAHEAD_MB)<<20);
+    if(rr!=CC_OK){ atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,rr); goto failed_start; }
     uint8_t *pay=malloc(1u<<20); size_t cap=1u<<20;
-    if(!pay){ fclose(f); atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,CC_ERR_NOMEM); goto failed_start; }
+    if(!pay){ rr_finish_(f); atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,CC_ERR_NOMEM); goto failed_start; }
     startup_report_(s,CC_OK);
-    if(!await_start_gate_(s)){ free(pay); fclose(f); goto done; }
+    if(!await_start_gate_(s)){ free(pay); rr_finish_(f); goto done; }
     int fill[2]={0,0};   // packets since last transfer boundary, for pacing
     // Pacing is deadline-based: the n-th video transfer boundary is due at t0 + n*pace. Sleeping a
     // fixed interval per transfer ADDS the parser's own work to each period (measured: a "realtime"
@@ -483,10 +566,10 @@ static void* replay_main(void *arg){
     struct timespec pace_t0; clock_gettime(CLOCK_MONOTONIC,&pace_t0); uint64_t paced_transfers=0;
     while(!atomic_load(&s->stop_req)){
         rec_hdr h;
-        if(fread(&h,1,sizeof h,f)!=sizeof h || h.magic!=REC_MAGIC) break;
+        if(rr_read_(f,s,&h,sizeof h)!=(ssize_t)sizeof h || h.magic!=REC_MAGIC) break;
         size_t plen=(h.type==REC_DATA||h.type==REC_SESSION)?h.actual_len:0;
         if(plen>cap){ uint8_t *np=realloc(pay,plen); if(!np){ atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); break; } pay=np; cap=plen; }
-        if(plen && fread(pay,1,plen,f)!=plen) break;
+        if(plen && rr_read_(f,s,pay,plen)!=(ssize_t)plen) break;
         switch(h.type){
         case REC_DATA: {
             int e=ep_i(h.endpoint);
@@ -522,7 +605,12 @@ static void* replay_main(void *arg){
         default: break;
         }
     }
-    free(pay); fclose(f);
+    free(pay);
+    int read_err=rr_finish_(f);
+    if(read_err && !atomic_load(&s->stop_req)){
+        fprintf(stderr,"capture_core: replay read failed: %s\n",strerror(read_err));
+        atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR);   /* named: a failed read is not the end of the file */
+    }
     if(atomic_load(&s->end_reason)==CC_END_STOPPED && !atomic_load(&s->stop_req))
         atomic_store(&s->end_reason,CC_END_REPLAY_EOF);
 done:
