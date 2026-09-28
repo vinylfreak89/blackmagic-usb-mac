@@ -897,6 +897,7 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->other_format = atomic_load(&f->other_fmt); o->no_signal_0800 = atomic_load(&f->ns0800);
 }
 uint64_t fs_packets_delivered(const frameserver *f){ return cc_packets_delivered(f->cap); }
+int fs_replay_pause(frameserver *f, int paused){ return f && f->cap && cc_replay_pause(f->cap, paused) == CC_OK ? 0 : -1; }
 void fs_close(frameserver *f){
     if (!f) return;
     if(callback_session==f){

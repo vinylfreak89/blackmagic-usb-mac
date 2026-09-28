@@ -165,6 +165,8 @@ void fs_get_stats(const frameserver *f, fs_stats *out);
 // The capture core's completed packet deliveries (both endpoints, including empty packets).
 // Race-free while streaming; independent of whether the parser emits an observation.
 uint64_t fs_packets_delivered(const frameserver *f);
+// Replay only: hold (paused != 0) or resume delivery; see cc_replay_pause. -1 for a device session.
+int fs_replay_pause(frameserver *f, int paused);
 void fs_close(frameserver *f);
 
 #ifdef __cplusplus

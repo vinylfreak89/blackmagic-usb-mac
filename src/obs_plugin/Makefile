@@ -22,7 +22,7 @@ INSTALL_DIR = $(HOME)/Library/Application Support/obs-studio/plugins
 
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c \
        ../field_registration/geometry_engine.c ../frameserver/frame_publisher.c \
-       ../frameserver/audio_publisher.c ../frameserver/frameserver.c ../frameserver/async_file.c ../frameserver/pairing_schedule.c ../frameserver/hretime.c
+       ../frameserver/audio_publisher.c ../frameserver/frameserver.c ../frameserver/async_file.c ../frameserver/pairing_schedule.c ../frameserver/hretime.c ../frameserver/replay_probe.c
 CPPFLAGS = -I. -I"$(OBS_HEADERS)" -I"$(OBS_HEADERS)/../frontend" -I"$(SIMDE_DIR)" -I.. -I../capture_core -I../frameserver $(shell pkg-config --cflags libusb-1.0)
 CFLAGS ?= -O2 -std=c11 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden
 # obs-frontend-api.dylib (recording started/stopped events, recording output) is linked by path;

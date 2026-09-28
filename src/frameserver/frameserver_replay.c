@@ -1,5 +1,7 @@
 // frameserver_replay <capture.tpc> [decision_log.csv] [--pace-us N] [--ring-mb N] [--pool N]
 //                    [--dump-uyvy FILE] [--dump-pcm FILE] [--dump-log FILE] [--limit-units N] [--stall-s N]
+//                    [--start-offset BYTES]
+// frameserver_replay --probe <capture.tpc>   print the file's first and last unit counters (replay_probe.h)
 //                    [--pair-next | --pairing-schedule FILE]
 // Approved geometry is the default; --geometry-v11 / --audit-comb are compatibility no-ops.
 // Run the whole P3 pipeline on a recorded capture (no hardware) and print the accounting.
@@ -15,6 +17,7 @@
 // Blocking startup, stop, file flush/close and final output each have a 60 s watchdog
 // (FS_LIFECYCLE_S overrides for tests). Timeout outputs are incomplete, never a clean result.
 #include "frameserver.h"
+#include "replay_probe.h"
 #include "../field_registration/geometry_tool_controls.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,6 +79,12 @@ int main(int argc, char **argv){
     double lifecycle_s=tool_seconds(getenv("FS_LIFECYCLE_S"),60);
     tool_guard("open outputs / fs_open / fs_start",lifecycle_s);
     if (argc < 2){ fprintf(stderr, "usage: %s <capture.tpc> [decision_log.csv] [--pace-us N] [--ring-mb N] [--pool N]\n", argv[0]); return 9; }
+    if (argc == 3 && !strcmp(argv[1], "--probe")){
+        fs_replay_span sp; int rc = fs_replay_probe(argv[2], 0, NULL, &sp);
+        printf("file_bytes %llu first_counter %s%u last_counter %s%u\n", (unsigned long long)sp.file_bytes,
+               sp.have_first ? "" : "(none) ", sp.first_counter, sp.have_last ? "" : "(none) ", sp.last_counter);
+        return rc == 0 ? 0 : 1;
+    }
     fs_config cfg = {0}; cfg.geometry_config=&geometry; cfg.capture.replay_path = argv[1]; cfg.on_end = on_end;
     const char *retime=getenv("FS_HRETIME");
     if(retime && strcmp(retime,"0") && strcmp(retime,"1")) {
@@ -103,6 +112,7 @@ int main(int argc, char **argv){
         else if (!strcmp(argv[i], "--dump-log") && i + 1 < argc){ g_log = fopen(argv[++i], "w"); if (!g_log){ perror("dump-log"); return 1; }
             fprintf(g_log, "kind,counter_or_ordinal,pts_num,pts_den,d1_or_frames,d2_or_flags,transport_or_resync,audio_pts_known_or_residual,audio_pts_num\n"); }
         else if (!strcmp(argv[i], "--limit-units") && i + 1 < argc) g_limit = strtoull(argv[++i], NULL, 10);
+        else if (!strcmp(argv[i], "--start-offset") && i + 1 < argc) cfg.capture.replay_start_offset = strtoull(argv[++i], NULL, 10);
         else if (!strcmp(argv[i], "--stall-s") && i + 1 < argc) stall_s = tool_seconds(argv[++i],120);
         else if (argv[i][0] != '-') cfg.decision_log = argv[i];
     }

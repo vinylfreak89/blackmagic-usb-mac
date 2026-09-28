@@ -5,7 +5,7 @@ TESTFLAGS = -DFRAMESERVER_TEST_HOOKS
 CPPFLAGS ?= -I. -I../capture_core -I../unit_parser -I../signal_state -I../field_registration
 LIBS = $(shell pkg-config --libs libusb-1.0) -lpthread -lm -framework IOSurface -framework CoreFoundation
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/geometry_engine.c
-SRCS = frame_publisher.c audio_publisher.c frameserver.c async_file.c pairing_schedule.c hretime.c $(CORE)
+SRCS = frame_publisher.c audio_publisher.c frameserver.c async_file.c pairing_schedule.c hretime.c replay_probe.c $(CORE)
 FIXTURE = ../unit_parser/tests/fixture.tpc
 FIXTURE_LONG = ../unit_parser/tests/fixture_plain.tpc   # 120 exact units, for the runtime-log window test
 
@@ -37,7 +37,10 @@ tests/frame_publisher_test: frame_publisher.c frame_publisher.h tests/frame_publ
 tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h ../test_supervisor.h ../test_condition.h ../test_liveness.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TESTFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o $@ $(LIBS)
 
-test: tests/async_file_test tests/hretime_test tests/audio_evidence_test tests/audio_queue_flags_test tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
+tests/replay_probe_test: $(SRCS) tests/replay_probe_test.c replay_probe.h frameserver.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_probe_test.c -o $@ $(LIBS)
+
+test: tests/replay_probe_test tests/async_file_test tests/hretime_test tests/audio_evidence_test tests/audio_queue_flags_test tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
 	./tests/async_file_test
 	./tests/hretime_test
 	./tests/audio_evidence_test
@@ -45,6 +48,7 @@ test: tests/async_file_test tests/hretime_test tests/audio_evidence_test tests/a
 	./tests/audio_publisher_test
 	./tests/frame_publisher_test
 	./tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
+	./tests/replay_probe_test $(FIXTURE_LONG)
 
 # Deadline behaviour: slow pacing is not a stall, a blocked sink is, and both test deadlines fail by name.
 test-deadlines: frameserver_replay tests/frameserver_test tests/replay_completion_test $(FIXTURE) $(FIXTURE_LONG)
