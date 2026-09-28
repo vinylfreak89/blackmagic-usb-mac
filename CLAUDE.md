@@ -379,7 +379,10 @@ while 1 MiB (and the plugin's 64 KiB) writes verified. Read-back verification is
 Exception (owner, 2026-09-28): a LucidLink volume takes growing files ("it chunks the
 upload/download"; 25 GB local cache, ~450 Mbit/s upload against ~34 MB/s written with a .tpc).
 The OBS plugin's raw .tpc grows at its final path there, through a buffered writer that never
-blocks acquisition and never issues a write over 1 MiB. An unfinished capture remains in scratch for diagnosis/recovery.
+blocks acquisition and never issues a write over 1 MiB. Renders, including test clips, are written
+directly on that volume as ProRes 422 from the VideoToolbox hardware encoder (owner, 2026-09-28:
+faster, consistent with OBS, disk space no longer a constraint). A view copy for checking a fix is
+patched directly; only the final pass after the fixes goes through OBS as a replay. An unfinished capture remains in scratch for diagnosis/recovery.
 The destination above describes final publication only, not the writer's working directory.
 
 **Review replacement retention (owner, 2026-09-26):** replace superseded renders,
@@ -808,10 +811,10 @@ file is a separate, longer input, not a fifth independent source.
 | Input | Material and reason it matters | Recorded location / provenance |
 |---|---|---|
 | Capture 1 | Commercial tape, composite input, recorded with V-stabilize/line TBC off. Opening rewind/acquisition, a dark boxed card and brighter programme exercise different visibility and level regimes. A comparison source distinct from the two off-air recordings. | `captures/composite_program_30s.tpc`, captured 2026-09-03. |
-| Capture 2 | EP part of fixture A. Different recording conditions, data-like top lines, sometimes no blank row between data and picture; tests whether an SP-derived gauge generalizes. | `/private/tmp/hw-session/w_2100s_aligned.tpc`, sliced from `captures/fulltape.cap6`, byte start `50811787037`. |
+| Capture 2 | EP part of fixture A. Different recording conditions, data-like top lines, sometimes no blank row between data and picture; tests whether an SP-derived gauge generalizes. | `/private/tmp/hw-session/w_2100s_aligned.tpc`, sliced from the whole-tape capture (below), byte start `50811787037`. |
 | Capture 3 | SP part of fixture A, V-stabilize on. Contains the field-position problem, weak recorded timing and the corrected head-switch-region appearance. | `/private/tmp/hw-session/w_300s_aligned.tpc`, sliced from the same whole tape, byte start `7260251349`. |
 | Capture 4 | Another SP pass with V-stabilize off. Exposes stronger horizontal timing disturbance near the switch and a different transport pairing; not a frame-aligned A/B of capture 3. | `captures/sp_vstab_off_aligned.tpc` (SHA-256 `d6fbd509…`), cut at byte `118907896` from `sp_vstab_off_45s.tpc`, captured 2026-09-07. That original no longer exists, so this is the only copy. An older cut, defective and a strict subset of this one, was deleted on 2026-09-16. |
-| Whole tape | Approximately 48 minutes / 69.7 GB, both off-air recordings plus transitions and non-picture intervals. Its wider variation found failures missed by the short selections. | `captures/fulltape.cap6`; older notes/tools also use `whole_tape.tpc`. Verify identity rather than assuming an alias. Historical replay: 86,293 exact units; short/other observations are accounted separately (§6). |
+| Whole tape | Approximately 48 minutes / 69.7 GB, both off-air recordings plus transitions and non-picture intervals. Its wider variation found failures missed by the short selections. | `/Volumes/vinylfreak89/captures/trip_tape.mov.raw.tpc` (LucidLink; formerly `captures/fulltape.cap6`, moved by the owner 2026-09-28 with its `trip_tape.mp4` render and schema-28 `trip_tape.mov.registration.csv`); older notes/tools also use `whole_tape.tpc`. Verify identity rather than assuming an alias. Historical replay: 86,293 exact units; short/other observations are accounted separately (§6). |
 
 The aligned scratch slices were re-cut on September 9 after the slicer was
 found to align to CAP1 records but not complete transfers. Their previous
