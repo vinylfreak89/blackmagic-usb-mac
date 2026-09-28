@@ -525,6 +525,27 @@ int main(int argc, char **argv){
             CHECK(dl>(uint64_t)(total-(22u<<20)) && dl<vB+aB,"delivered %llu of %llu bytes: the data after the corrupt stretch must still arrive",(unsigned long long)dl,(unsigned long long)(vB+aB));
             cc_close(s);
         }
+        // A seek landing just before the damage: the damage is still a reported corrupt span, and only
+        // the bytes up to the first valid record after it count as alignment.
+        {
+            seek_tally st={0}; cc_callbacks scb={0}; scb.on_packet=s_packet; scb.on_end=s_end; scb.ctx=&st;
+            cc_config k2={0}; k2.replay_path=cpath; k2.replay_start_offset=(20u<<20)-100; s=NULL;
+            CHECK(cc_open(&s,&k2,&scb)==CC_OK,"open (seek before damage)");
+            if(s){
+                CHECK(cc_start(s)==CC_OK,"start (seek before damage)");
+                wait_ended(&st.ended,"seek-before-damage run");
+                CHECK(cc_stop(s)==CC_OK,"stop (seek before damage)");
+                cc_stats cs; cc_get_stats(s,&cs);
+                CHECK(cs.replay_corrupt_spans==1 && cs.replay_corrupt_bytes>=(1u<<20) && cs.replay_corrupt_bytes<(1u<<20)+100+2*(15360+24),"a seek next to 1 MiB of damage reported %ld corrupt spans / %llu bytes",cs.replay_corrupt_spans,(unsigned long long)cs.replay_corrupt_bytes);
+                /* every byte from the offset to the first whole video transfer after the damage is either damage or alignment */
+                uint64_t eb2[2], ep2[2], p=expect_from_offset(slice,21u<<20,eb2,ep2), off2=(20u<<20)-100;
+                CHECK(p!=UINT64_MAX && cs.replay_align_bytes+cs.replay_corrupt_bytes==p-off2,"alignment %llu + damage %llu bytes != %llu from the offset to the first transfer after the damage",
+                      (unsigned long long)cs.replay_align_bytes,(unsigned long long)cs.replay_corrupt_bytes,(unsigned long long)(p-off2));
+                CHECK(st.bytes[0]==eb2[0] && st.bytes[1]==eb2[1],"seek-before-damage run delivered %llu/%llu B, file says %llu/%llu",(unsigned long long)st.bytes[0],(unsigned long long)st.bytes[1],(unsigned long long)eb2[0],(unsigned long long)eb2[1]);
+                CHECK(st.end_reason==CC_END_REPLAY_EOF && st.have_first && st.first_ep==CC_EP_VIDEO && st.first_pkt==0,"seek-before-damage run: end %d, first packet 0x%x/%d",st.end_reason,st.first_ep,st.first_pkt);
+                cc_close(s);
+            }
+        }
         unlink(cpath);
     }
 
@@ -593,7 +614,9 @@ int main(int argc, char **argv){
             double begun=test_now(); pthread_mutex_lock(&live.mutex);
             while(!atomic_load(&paused_entries)) test_live_wait(&live,begun,"pacer never held (pause+stop)");
             pthread_mutex_unlock(&live.mutex);
+            double t0=test_now();
             CHECK(cc_stop(s)==CC_OK,"stop while paused");
+            CHECK(test_now()-t0<2.0,"stop while paused took %.2f s: the pacer waited for its 10 s test backstop instead of being woken",test_now()-t0);
             CHECK(st.end_reason==CC_END_STOPPED,"stopped while paused ended %d",st.end_reason);
             cc_close(s);
         }

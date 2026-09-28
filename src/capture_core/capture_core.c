@@ -587,6 +587,15 @@ static int rec_plausible_(const rec_hdr *h){
     return 1;
 }
 #define REPLAY_MAX_SKIP ((uint64_t)256<<20)
+/* Paused pacer's liveness backstop. Test builds wait 10 s, so a stop-while-paused test that returns
+ * promptly proves cc_stop's own wake-up rather than the backstop. */
+#ifdef CAPTURE_CORE_TEST_HOOKS
+#define PAUSE_BACKSTOP_S 10
+#define PAUSE_BACKSTOP_NS 0
+#else
+#define PAUSE_BACKSTOP_S 0
+#define PAUSE_BACKSTOP_NS 100000000
+#endif
 static int rr_start_(replay_reader *r, const char *path, size_t cap, uint64_t offset){
     memset(r,0,sizeof *r);
     r->fd=open(path,O_RDONLY); if(r->fd<0) return CC_ERR_IO;
@@ -631,30 +640,34 @@ static void* replay_main(void *arg){
     /* A start offset lands anywhere, usually inside a payload: slide to a valid record, then pass
      * over records until one begins a whole video transfer. A transfer is a group of consecutive
      * packets written together, so from there on both endpoints begin on whole transfers too. */
-    int aligning=s->cfg.replay_start_offset>0;
+    /* The landing scan is bounded by one largest record (header + 64 KiB payload): a valid record must
+     * begin within it. A longer implausible stretch is damage, and takes the loud corrupt-span path below
+     * like any other, so a seek next to a damaged stretch never hides it as alignment. */
+    int aligning=s->cfg.replay_start_offset>0, landing=aligning;
     while(!atomic_load(&s->stop_req)){
-        rec_hdr h;
+        rec_hdr h; uint64_t carried=0;   /* a failed landing scan's bytes belong to the corrupt span that follows */
         if(rr_read_(f,s,&h,sizeof h)!=(ssize_t)sizeof h) break;
-        if(!rec_plausible_(&h) && aligning){
-            while(!atomic_load(&s->stop_req) && s->align_bytes<REPLAY_MAX_SKIP){
+        if(landing){
+            landing=0; uint64_t n=0;
+            for(; !rec_plausible_(&h) && n<(uint64_t)sizeof h+65536 && !atomic_load(&s->stop_req); n++){
                 memmove(&h,(uint8_t*)&h+1,sizeof h-1);
                 if(rr_read_(f,s,(uint8_t*)&h+sizeof h-1,1)!=1) break;
-                s->align_bytes++;
-                if(rec_plausible_(&h)) break;
             }
-            if(!rec_plausible_(&h)){ rd_emit_(s,"capture_core replay: no valid record after the start offset: ending"); break; }
+            if(atomic_load(&s->stop_req)) break;
+            if(rec_plausible_(&h)) s->align_bytes+=n; else carried=n;
         }
         if(!rec_plausible_(&h)){
             /* Corrupt stretch: slide byte by byte to the next valid record and say so. This used to end
              * the replay as a clean end of file (2026-09-29: a render lost its last 2:19 to 6.3 MB of
              * damage 3.4 GB before the end). Packets lost inside it surface downstream as holes. */
-            uint64_t at=atomic_load(&f->tail)-sizeof h, skipped=0; int found=0;
+            uint64_t at=atomic_load(&f->tail)-sizeof h-carried, skipped=carried; int found=0;
             while(skipped<REPLAY_MAX_SKIP && !atomic_load(&s->stop_req)){
                 memmove(&h,(uint8_t*)&h+1,sizeof h-1);
                 if(rr_read_(f,s,(uint8_t*)&h+sizeof h-1,1)!=1) break;
                 skipped++;
                 if(rec_plausible_(&h)){ found=1; break; }
             }
+            if(!found && atomic_load(&s->stop_req)) break;   /* stopped mid-scan: not an end of data */
             s->corrupt_spans++; s->corrupt_bytes+=skipped;
             char line[200];
             snprintf(line,sizeof line,"capture_core replay: skipped %llu unparseable bytes at file offset %llu%s",
@@ -701,7 +714,7 @@ static void* replay_main(void *arg){
                     cc_test_replay_paused(s->bytes[0]);
                     pthread_mutex_lock(&s->pause_m);
                     while(atomic_load(&s->replay_paused) && !atomic_load(&s->stop_req)){
-                        struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_nsec+=100000000;
+                        struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_sec+=PAUSE_BACKSTOP_S; ts.tv_nsec+=PAUSE_BACKSTOP_NS;
                         if(ts.tv_nsec>=1000000000){ ts.tv_sec++; ts.tv_nsec-=1000000000; }
                         pthread_cond_timedwait(&s->pause_c,&s->pause_m,&ts);   /* liveness backstop: internal stop paths set stop_req without signalling */
                     }
