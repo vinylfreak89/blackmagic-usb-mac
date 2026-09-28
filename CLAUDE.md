@@ -1249,6 +1249,13 @@ not a Python reconstruction of repairs.
 Repair ticks are progressive annotations: preserve their margin lanes after
 deinterlacing and validate their encoded locations/types against every sidecar
 frame, separately from placement-strip readback.
+Cross-field blanking disagreement detects a relative mismatch, not its owner:
+in capture 4 counter 232 (aligned, d1=d2=0), straight f1 line 40 has a left
+half-height edge at 9.36, while its woven f2 neighbours 302/303 measure
+28.00/28.16. Both directions fail a small agreement tolerance. Shifting the
+straight row toward the bent peer can also increase waveform correlation;
+repair requires an explicit ownership decision before trusting either donor.
+This raw-row preflight finding did not change the experimental detector.
 
 ## 10. Delivery: OBS virtual camera
 
