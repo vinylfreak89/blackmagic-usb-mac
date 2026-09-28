@@ -140,6 +140,19 @@ int  fs_tee_start(frameserver *f, const char *path, const char *session_note, si
 // Detach and hand the writer back; the caller closes it (cc_async_sink_close drains and may
 // block). NULL if none. fs_stop closes a still-attached tee itself.
 cc_async_sink *fs_tee_detach(frameserver *f);
+// Video-worker time accounting between consecutive frame handoffs (ns, CLOCK_UPTIME_RAW), to
+// attribute a late handoff: did the unit arrive late (idle), wait behind a busy worker
+// (queue_wait), or did a stage stall? Covers the time since the previous handoff returned, so the
+// previous unit's sidecar row write counts here. Valid only on the worker thread, i.e. called
+// from inside the frame sink; values are the worker's own, never shared.
+typedef struct {
+    uint64_t since_prev_ns;   // since the previous handoff returned
+    uint64_t idle_ns;         // worker waiting on an empty input queue
+    uint64_t queue_wait_ns;   // this unit: parser enqueue -> worker pickup
+    uint64_t classify_ns, geometry_ns, hretime_ns, log_ns, other_ns;
+    uint32_t items;           // input items processed since the previous handoff
+} fs_handoff_timing;
+void fs_handoff_timing_get(const frameserver *f, fs_handoff_timing *out);
 // Authoritative after fs_stop. During streaming worker-owned members are diagnostic only and
 // may be momentarily inconsistent; atomic ingress counters remain individually safe.
 void fs_get_stats(const frameserver *f, fs_stats *out);

@@ -39,6 +39,7 @@ typedef struct {
      * Genuinely later/missing resyncs stay unknown in this unit's log. */
     int audio_evidence_known;
     ap_correlation audio_evidence;
+    uint64_t t_enqueue;                    // parser handoff (CLOCK_UPTIME_RAW ns), for handoff timing
 } fs_item;
 
 struct frameserver {
@@ -52,6 +53,7 @@ struct frameserver {
     hrt_workspace *retime_work;
     hrt_result retime_result;
     fs_item geometry_item;
+    fs_handoff_timing ht; uint64_t ht_since, idle_since;   // worker-only handoff accounting
     int geometry_pending, geometry_reset;
     uint64_t geometry_epoch;
     int geometry_have_epoch;
@@ -190,6 +192,7 @@ static void on_video(void *ctx, const unit_video_observation *u){
             it.slot = s;
         }
     }
+    it.t_enqueue = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     push(f, &it);
 }
 static void on_audio(void *ctx, const unit_audio_observation *a){
@@ -497,8 +500,11 @@ static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *uni
     if(known)atomic_fetch_add(&f->audio_master_frames,1);
     int rc=fp_publish_placed(f->pub,unit,FP_UNIT_BYTES,d->counter,d->d1,d->d2,FP_TRANSPORT_COMPLETE,known,audio.pts_num);
     if(rc==0)f->st.published++;else f->st.publisher_dropped++;
+    if(rc==0){ memset(&f->ht,0,sizeof f->ht); f->ht_since=clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }   /* accounting restarts at each handoff */
+    uint64_t tl=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     geometry_log(f,it,d,rc==0,rc==0?"None":"PublisherFull",
                  it->audio_evidence_known?&it->audio_evidence:NULL,repair);
+    f->ht.log_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-tl;
 }
 /* Registration off: publish the nominal aperture. The engine's own evaluation
  * (comb, votes, census) stays in its decision fields for the sidecar. */
@@ -546,7 +552,9 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     if(classified && sr->unsettled)f->st.unsettled_units++;
     const uint8_t *p=unit+48;
     for(unsigned i=0;i<GE_PIXELS;i++)f->geometry_y[i]=p[2*i+1];
+    uint64_t tg=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     ge_decision out[2];unsigned n=ge_push(f->geometry,f->geometry_y,it->obs.counter_extended,f->geometry_reset,out);
+    f->ht.geometry_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-tg;
     placement_override(f,out,n);
     f->geometry_reset=0;
     if(f->cfg.hretime)memcpy(f->retime_unit,unit,FP_UNIT_BYTES);
@@ -560,8 +568,10 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
                 memcpy(f->retime_previous,f->geometry_unit,FP_UNIT_BYTES);
                 repair=&f->retime_result;
                 hrt_begin(f->retime_work,out[i].top_unit,out[i].counter,it->obs.epoch,out[i].reset_before);
+                uint64_t th=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
                 hrt_apply(f->retime_work,unit,f->geometry_unit,out[i].frame_d1,out[i].frame_d2,
                           f->retime_unit,f->retime_previous,repair);
+                f->ht.hretime_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-th;
                 published=f->retime_previous;
             }
             geometry_publish(f,&f->geometry_item,published,out+i,repair);
@@ -576,8 +586,10 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
             if(f->cfg.hretime && out[i].has_frame) {
                 repair=&f->retime_result;
                 hrt_begin(f->retime_work,out[i].top_unit,out[i].counter,it->obs.epoch,out[i].reset_before);
+                uint64_t th=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
                 hrt_apply(f->retime_work,unit,unit,out[i].frame_d1,out[i].frame_d2,
                           f->retime_unit,f->retime_unit,repair);
+                f->ht.hretime_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-th;
             }
             geometry_publish(f,it,f->cfg.hretime?f->retime_unit:unit,out+i,repair);
         }
@@ -607,7 +619,9 @@ static void process_item(frameserver *f, const fs_item *it){
     signal_result sr; memset(&sr, 0, sizeof sr);
     // obs.bytes/payload are NULL for units without a pool slot (ineligible, or PoolFull); the
     // classifier's contract is metadata-only for those (signal_state.c: !fixed_raster_eligible || !bytes).
+    uint64_t tc=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     bool classified = signal_state_classify(f->sig, &obs, &signal_ctx, &sr);
+    f->ht.classify_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-tc;
     process_geometry(f,it,unit,&sr,classified);
 }
 static void *worker_main(void *arg){
@@ -621,6 +635,7 @@ static void *worker_main(void *arg){
         unsigned t = atomic_load_explicit(&f->r_tail, memory_order_relaxed);
         unsigned h = atomic_load_explicit(&f->r_head, memory_order_acquire);
         if (h == t){
+            if(!f->idle_since) f->idle_since=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
             fs_test_after_empty_snapshot(f);
             if (atomic_load(&f->producer_done)){
                 // producer_done is stored after the producer's last release-store of r_head, so
@@ -642,6 +657,9 @@ static void *worker_main(void *arg){
         }
         fs_item it = f->ring[t % RING_ITEMS];
         atomic_store_explicit(&f->r_tail, t + 1, memory_order_release);
+        { uint64_t now=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+          if(f->idle_since){ f->ht.idle_ns+=now-f->idle_since; f->idle_since=0; }
+          f->ht.queue_wait_ns=it.t_enqueue&&now>it.t_enqueue?now-it.t_enqueue:0; f->ht.items++; }
         process_item(f, &it);
         fs_test_after_item(f);
     }
@@ -840,6 +858,13 @@ cc_async_sink *fs_tee_detach(frameserver *f){
     if(!f || !f->tee_m_init) return NULL;
     pthread_mutex_lock(&f->tee_m); cc_async_sink *k = f->tee; f->tee = NULL; pthread_mutex_unlock(&f->tee_m);
     return k;
+}
+void fs_handoff_timing_get(const frameserver *f, fs_handoff_timing *o){
+    *o=f->ht;
+    uint64_t now=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    o->since_prev_ns=f->ht_since&&now>f->ht_since?now-f->ht_since:0;
+    uint64_t known=o->idle_ns+o->classify_ns+o->geometry_ns+o->hretime_ns+o->log_ns;
+    o->other_ns=o->since_prev_ns>known?o->since_prev_ns-known:0;
 }
 void fs_get_stats(const frameserver *f, fs_stats *o){
     *o = f->st;

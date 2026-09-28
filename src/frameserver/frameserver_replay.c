@@ -29,8 +29,29 @@ static _Atomic int done;
 static double stall_s = 120;
 static void on_end(void *c, enum cc_end r){ (void)c; done = 1 + (int)r; }
 static FILE *g_vdump, *g_adump, *g_log; static _Atomic unsigned long long g_frames; static unsigned long long g_limit;
+static frameserver *g_fs; static uint64_t g_handoff_limit_ns, g_last_handoff, g_late, g_worst;
+#define LATE_MAX 4096
+typedef struct { uint64_t counter, gap; fs_handoff_timing h; } late_event;
+static late_event g_late_ev[LATE_MAX]; static size_t g_late_n;
+static void handoff_check(const fp_frame *fr){
+    if(!g_handoff_limit_ns) return;
+    uint64_t now=clock_gettime_nsec_np(CLOCK_UPTIME_RAW), gap=g_last_handoff?now-g_last_handoff:0;
+    g_last_handoff=now;
+    if(gap>g_worst) g_worst=gap;
+    if(gap<=g_handoff_limit_ns) return;
+    g_late++;
+    /* recorded, printed after the run: a stderr write here is a disk write on the worker, and under
+     * disk load it made the NEXT handoff late (every large gap in the first stress run followed one) */
+    if(g_late_n<LATE_MAX){ late_event *e=&g_late_ev[g_late_n++]; e->counter=fr->counter_ext; e->gap=gap; fs_handoff_timing_get(g_fs,&e->h); }
+}
+static void handoff_report(void){
+    for(size_t i=0;i<g_late_n;i++){ const late_event *e=&g_late_ev[i]; const fs_handoff_timing *h=&e->h;
+        fprintf(stderr,"LATE counter %llu gap %.1f ms | since prev %.1f: idle %.1f classify %.1f registration %.1f h-retiming %.1f sidecar %.1f other %.1f; %u items; queued %.1f\n",
+                (unsigned long long)e->counter,e->gap/1e6,h->since_prev_ns/1e6,h->idle_ns/1e6,h->classify_ns/1e6,h->geometry_ns/1e6,h->hretime_ns/1e6,h->log_ns/1e6,h->other_ns/1e6,h->items,h->queue_wait_ns/1e6); }
+    if(g_late>g_late_n) fprintf(stderr,"LATE: %llu more not recorded (first %d kept)\n",(unsigned long long)(g_late-g_late_n),LATE_MAX);
+}
 static void dump_frame(void *c, const fp_frame *fr){
-    (void)c; if (!fr->surface) return;
+    (void)c; handoff_check(fr); if (!fr->surface) return;
     if (g_vdump){
         IOSurfaceLock(fr->surface, kIOSurfaceLockReadOnly, NULL);
         const uint8_t *base = IOSurfaceGetBaseAddress(fr->surface); size_t bpr = IOSurfaceGetBytesPerRow(fr->surface);
@@ -86,10 +107,12 @@ int main(int argc, char **argv){
         else if (argv[i][0] != '-') cfg.decision_log = argv[i];
     }
     if(cfg.pairing_schedule && cfg.geometry_pair_next){fprintf(stderr,"--pairing-schedule and --pair-next are mutually exclusive\n");return 9;}
-    if (g_vdump || g_log || g_limit) cfg.sink.on_frame = dump_frame;
+    { const char *lim=getenv("FS_HANDOFF_LOG_MS"); if(lim&&*lim) g_handoff_limit_ns=(uint64_t)(atof(lim)*1e6); }
+    if (g_vdump || g_log || g_limit || g_handoff_limit_ns) cfg.sink.on_frame = dump_frame;
     if (g_adump || g_log) cfg.audio_sink.on_block = dump_audio;
     frameserver *f = NULL;
     if (fs_open(&f, &cfg) != 0){ fprintf(stderr, "open failed\n"); return 1; }
+    g_fs = f;
     if (fs_start(f) != 0){ fprintf(stderr, "start failed\n"); return 1; }
     const char *tee_path=getenv("FS_TEE");   /* test/diagnostic: raw .tpc tee of the replayed stream */
     if(tee_path && *tee_path && fs_tee_start(f,tee_path,"frameserver tee v1 input=replay",256u<<20)!=0){ fprintf(stderr,"tee start failed: %s\n",tee_path); return 1; }
@@ -111,6 +134,8 @@ int main(int argc, char **argv){
     }
     tool_guard("fs_stop",lifecycle_s);
     fs_stop(f);
+    if(g_handoff_limit_ns) handoff_report();
+    if(g_handoff_limit_ns) fprintf(stderr,"handoffs: %llu later than %.0f ms, worst gap %.1f ms\n",(unsigned long long)g_late,g_handoff_limit_ns/1e6,g_worst/1e6);
     tool_guard("flush/close dump outputs",lifecycle_s);
     if (g_vdump && fclose(g_vdump)) perror("dump-uyvy close");
     if (g_adump && fclose(g_adump)) perror("dump-pcm close");
