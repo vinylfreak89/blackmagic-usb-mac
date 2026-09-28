@@ -51,6 +51,7 @@
 #include "publish_copy.h"
 #include "publish_queue.h"
 #include "timing_report.h"
+#include <dispatch/dispatch.h>
 #include <stdio.h>      /* renamex_np (macOS 10.12+): RENAME_EXCL makes the publish rename fail instead of replacing a file that appeared meanwhile */
 #include "../frameserver/frameserver.h"
 
@@ -97,7 +98,7 @@ typedef struct {
      * path on the recording's volume (LucidLink takes growing files); closed off the UI thread by
      * a detached closer; destroy waits until every closer is done. */
     int tpc_enabled; unsigned tpc_part; char *tpc_path;
-    _Atomic int tpc_closers; pthread_mutex_t tpc_m; pthread_cond_t tpc_c;
+    _Atomic int closers; pthread_mutex_t close_m; pthread_cond_t close_c;   /* detached closers (raw .tpc, sidecar); destroy waits for 0 */
     /* Replay aligned to a recording (owner, 2026-09-28: the re-recorded file should match the
      * original's length without racing the record button). RECORDING_STARTING stops the replay and
      * blanks the source; RECORDING_STARTED restarts it from the file's first byte, so the recording
@@ -288,12 +289,35 @@ static void sidecar_publish(shuttle_src *s){
     if (pq_enqueue(s->pq, s->sidecar_partial, s->sidecar_final) != 0)
         blog(LOG_ERROR, "[shuttle-source] publisher queue %s: complete sidecar left at %s (wanted %s)", errno == ENOSPC ? "full" : strerror(errno), s->sidecar_partial, s->sidecar_final);
 }
+/* Recording stop runs on OBS's UI thread; closing the sidecar drains its writer ring and fsyncs
+ * (async_file.h), which can block on a busy disk. So the log is detached here (instant: no row after
+ * it) and closed, judged and queued for publication on a detached closer, like the raw .tpc. */
+typedef struct { shuttle_src *s; FILE *log; uint64_t row_errors; char *partial, *final; } sidecar_close_job;
+static void *sidecar_closer(void *arg){
+    sidecar_close_job *j = arg; shuttle_src *s = j->s;
+    int closed = fclose(j->log) == 0; int e = errno;
+    if (!closed || j->row_errors)
+        blog(LOG_ERROR, "[shuttle-source] sidecar is INCOMPLETE (%llu row write errors%s%s); left unpublished at %s",
+             (unsigned long long)j->row_errors, closed ? "" : ", close failed: ", closed ? "" : strerror(e), j->partial);
+    else if (!s->pq) blog(LOG_ERROR, "[shuttle-source] no publisher thread: complete sidecar left at %s (wanted %s)", j->partial, j->final);
+    else if (pq_enqueue(s->pq, j->partial, j->final) != 0)
+        blog(LOG_ERROR, "[shuttle-source] publisher queue %s: complete sidecar left at %s (wanted %s)", errno == ENOSPC ? "full" : strerror(errno), j->partial, j->final);
+    bfree(j->partial); bfree(j->final); bfree(j);
+    pthread_mutex_lock(&s->close_m); atomic_fetch_sub(&s->closers, 1); pthread_cond_broadcast(&s->close_c); pthread_mutex_unlock(&s->close_m);
+    return NULL;
+}
 static void sidecar_detach(shuttle_src *s){
     if (!s->sidecar_attached) return;
     s->sidecar_attached = 0;
     if (!s->fs){ blog(LOG_ERROR, "[shuttle-source] sidecar left unpublished at %s (capture already closed)", s->sidecar_partial); return; }
-    if (fs_log_stop(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] sidecar is INCOMPLETE (a row write or the close failed: disk full?); left unpublished at %s", s->sidecar_partial); return; }
-    sidecar_publish(s);
+    sidecar_close_job *j = bzalloc(sizeof *j); j->s = s;
+    j->log = fs_log_detach(s->fs, &j->row_errors);
+    if (!j->log){ blog(LOG_ERROR, "[shuttle-source] sidecar was not attached at recording stop; left at %s", s->sidecar_partial); bfree(j); return; }
+    j->partial = bstrdup(s->sidecar_partial); j->final = bstrdup(s->sidecar_final);
+    atomic_fetch_add(&s->closers, 1);
+    pthread_t t; pthread_attr_t a; pthread_attr_init(&a); pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
+    if (pthread_create(&t, &a, sidecar_closer, j) != 0){ blog(LOG_WARNING, "[shuttle-source] sidecar: no closer thread; closing inline"); sidecar_closer(j); }
+    pthread_attr_destroy(&a);
 }
 
 #define TPC_RING_BYTES (256u << 20)   /* ~11 s of stream: rides out a stalled network write */
@@ -308,7 +332,7 @@ static void *tpc_closer(void *arg){
          (unsigned long long)st.lost_packets[0], (unsigned long long)st.lost_bytes[0], (unsigned long long)st.lost_packets[1], (unsigned long long)st.lost_bytes[1],
          (unsigned long long)st.control_dropped, st.high_water / 1e6, st.max_write, st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");
     shuttle_src *s = j->s; bfree(j->path); bfree(j);
-    pthread_mutex_lock(&s->tpc_m); atomic_fetch_sub(&s->tpc_closers, 1); pthread_cond_broadcast(&s->tpc_c); pthread_mutex_unlock(&s->tpc_m);
+    pthread_mutex_lock(&s->close_m); atomic_fetch_sub(&s->closers, 1); pthread_cond_broadcast(&s->close_c); pthread_mutex_unlock(&s->close_m);
     return NULL;
 }
 /* Detach now (instant); drain and close on a detached thread so neither OBS's UI nor the capture waits. */
@@ -318,7 +342,7 @@ static void tpc_detach(shuttle_src *s){
     char *path = s->tpc_path; s->tpc_path = NULL;
     if (!k){ bfree(path); return; }
     tpc_close_job *j = bzalloc(sizeof *j); j->s = s; j->k = k; j->path = path;
-    atomic_fetch_add(&s->tpc_closers, 1);
+    atomic_fetch_add(&s->closers, 1);
     pthread_t t; pthread_attr_t a; pthread_attr_init(&a); pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
     if (pthread_create(&t, &a, tpc_closer, j) != 0){ blog(LOG_WARNING, "[shuttle-source] raw .tpc: no closer thread; closing inline"); tpc_closer(j); }
     pthread_attr_destroy(&a);
@@ -338,6 +362,30 @@ static void tpc_attach(shuttle_src *s){
 }
 static void shuttle_stop(shuttle_src *s);
 static int shuttle_start(shuttle_src *s, obs_data_t *settings);
+/* A recording that fails to start synchronously sends no frontend event (OBSBasic::StartRecording
+ * ignores AdvancedOutput::StartRecording's false; OBS 32.0.0), which would leave the replay stopped
+ * and the source blank. This runs from the main dispatch queue, i.e. after the UI thread has
+ * returned from StartRecording (obs_queue_task(OBS_TASK_UI) would run inline there): if the output
+ * is not active by then, the start failed. Resuming keeps restart_pending, so a RECORDING_STARTED
+ * that does arrive still restarts from the beginning of the file. */
+static void restart_check(void *param){
+    obs_weak_source_t *w = param;
+    obs_source_t *src = obs_weak_source_get_source(w); obs_weak_source_release(w);
+    if (!src) return;   /* the source was destroyed meanwhile */
+    shuttle_src *s = obs_obj_get_data(src);
+    obs_output_t *out = obs_frontend_get_recording_output();
+    int active = out && obs_output_active(out); obs_output_release(out);
+    if (s){
+        pthread_mutex_lock(&s->m);
+        if (s->restart_pending && !s->fs && !active){
+            obs_data_t *st = obs_source_get_settings(src);
+            if (shuttle_start(s, st) == 0) blog(LOG_WARNING, "[shuttle-source] the recording output is not active after the record press (start failed?): replay resumed; it restarts from the beginning if the recording does start");
+            obs_data_release(st);
+        }
+        pthread_mutex_unlock(&s->m);
+    }
+    obs_source_release(src);
+}
 static void frontend_event(enum obs_frontend_event ev, void *data){
     shuttle_src *s = data;
     pthread_mutex_lock(&s->m);
@@ -350,6 +398,7 @@ static void frontend_event(enum obs_frontend_event ev, void *data){
             obs_source_output_video(s->source, NULL);   /* blank until the restart: no earlier frame enters the recording */
             s->restart_pending = 1;
             blog(LOG_INFO, "[shuttle-source] recording starting: replay stopped; it restarts from the beginning of the file once the recording has started");
+            dispatch_async_f(dispatch_get_main_queue(), obs_source_get_weak_source(s->source), restart_check);
         }
         break;
     case OBS_FRONTEND_EVENT_RECORDING_STARTED:
@@ -357,6 +406,7 @@ static void frontend_event(enum obs_frontend_event ev, void *data){
         else { s->sidecar_part = 0; s->tpc_part = 0; }
         if (s->restart_pending){
             s->restart_pending = 0;
+            shuttle_stop(s);   /* running if restart_check resumed it or a settings change started it */
             atomic_store(&s->stop_on_eof, obs_data_get_bool(settings, S_REPLAY_STOP) ? 1 : 0);   /* armed before the session can end */
             if (shuttle_start(s, settings) != 0) atomic_store(&s->stop_on_eof, 0);
             else {   /* shuttle_start attached the sidecar itself: the recording is active */
@@ -368,10 +418,13 @@ static void frontend_event(enum obs_frontend_event ev, void *data){
         if (!s->fs) blog(LOG_WARNING, "[shuttle-source] recording started while the capture is not running; sidecar starts when it does");
         sidecar_attach(s); tpc_attach(s);
         break;
+    case OBS_FRONTEND_EVENT_RECORDING_STOPPING:
+        atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);   /* a second stop request would force-stop (StopRecording(recordingStopping)) */
+        break;
     case OBS_FRONTEND_EVENT_RECORDING_STOPPED:
         atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);
         tpc_detach(s); sidecar_detach(s); bfree(s->sidecar_base); s->sidecar_base = NULL;
-        if (s->restart_pending){ s->restart_pending = 0; shuttle_start(s, settings); }   /* the recording never started: resume the replay */
+        if (s->restart_pending){ s->restart_pending = 0; if (!s->fs) shuttle_start(s, settings); }   /* the recording never started: resume the replay */
         break;
     default: break;
     }
@@ -401,6 +454,7 @@ static void shuttle_stop(shuttle_src *s){
 }
 
 static int shuttle_start(shuttle_src *s, obs_data_t *settings){
+    if (s->fs){ blog(LOG_ERROR, "[shuttle-source] start refused: a capture session is already running"); return -1; }   /* one owner of the device, one session */
     fs_config cfg; memset(&cfg, 0, sizeof cfg);
     /* NULL geometry_config selects the approved per-engine defaults, with no environment reads. */
     const char *input = obs_data_get_string(settings, S_INPUT);
@@ -422,11 +476,16 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     atomic_store(&s->frames_out, 0); atomic_store(&s->audio_frames_out, 0); atomic_store(&s->audio_steps, 0);   /* per-session accounting */
     s->last_handoff_ns = s->gap_events = s->max_gap_ns = s->max_call_ns = s->slow_calls = 0;
     if (fs_open(&s->fs, &cfg) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL; return -1; }
-    if (fs_start(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver start failed"); fs_close(s->fs); s->fs = NULL; return -1; }
-    blog(LOG_INFO, "[shuttle-source] started (%s), registration %s, H-retiming %s", cfg.capture.replay_path ? "replay" : "device",
-         cfg.registration_off ? "OFF (nominal placement)" : "on", cfg.hretime ? "ON" : "off");
+    /* attach before fs_start, so a session started for a recording logs its first unit */
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
     if (s->sidecar_enabled && obs_frontend_recording_active() && s->sidecar_base) sidecar_attach(s);   /* restarted mid-recording: continue as the next part */
+    if (fs_start(s->fs) != 0){
+        blog(LOG_ERROR, "[shuttle-source] frameserver start failed");
+        if (s->sidecar_attached){ s->sidecar_attached = 0; blog(LOG_ERROR, "[shuttle-source] sidecar of the failed session left unpublished at %s", s->sidecar_partial); }
+        fs_close(s->fs); s->fs = NULL; return -1;
+    }
+    blog(LOG_INFO, "[shuttle-source] started (%s), registration %s, H-retiming %s", cfg.capture.replay_path ? "replay" : "device",
+         cfg.registration_off ? "OFF (nominal placement)" : "on", cfg.hretime ? "ON" : "off");
     /* A replay IS a raw capture: teeing it would write another copy of the file being read. */
     s->tpc_enabled = obs_data_get_bool(settings, S_TPC) && !s->replaying;
     if (obs_data_get_bool(settings, S_TPC) && s->replaying) blog(LOG_INFO, "[shuttle-source] raw .tpc is not written while replaying a .tpc");
@@ -457,7 +516,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     obs_source_set_async_decoupled(source, true);
     obs_source_set_deinterlace_field_order(source, OBS_DEINTERLACE_FIELD_ORDER_TOP);   /* measured TFF (CLAUDE.md §6) */
     obs_source_set_deinterlace_mode(source, OBS_DEINTERLACE_MODE_YADIF_2X);          /* default presentation; the user may change it (OBS owns deinterlacing) */
-    pthread_mutex_init(&s->m, NULL); pthread_mutex_init(&s->tpc_m, NULL); pthread_cond_init(&s->tpc_c, NULL);
+    pthread_mutex_init(&s->m, NULL); pthread_mutex_init(&s->close_m, NULL); pthread_cond_init(&s->close_c, NULL);
     if (tr_open(&s->reports, 256, report_late, s) != 0){ s->reports = NULL; blog(LOG_ERROR, "[shuttle-source] could not start the delivery-timing reporter (%s): late handoffs are counted in the stop summary only", strerror(errno)); }
     if (pq_open(&s->pq, SIDECAR_QUEUE_CAP, publish_one, s) != 0){ s->pq = NULL; blog(LOG_ERROR, "[shuttle-source] could not start the sidecar publisher (%s): sidecars will stay in scratch (paths are logged), never published inline", strerror(errno)); }
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
@@ -477,11 +536,11 @@ static void shuttle_destroy(void *data){
     shuttle_src *s = data; if (!s) return;
     obs_frontend_remove_event_callback(frontend_event, s);
     pthread_mutex_lock(&s->m); shuttle_stop(s); pthread_mutex_unlock(&s->m);
-    pthread_mutex_lock(&s->tpc_m); while (atomic_load(&s->tpc_closers)) pthread_cond_wait(&s->tpc_c, &s->tpc_m); pthread_mutex_unlock(&s->tpc_m);   /* every raw .tpc drained before the code unloads */
+    pthread_mutex_lock(&s->close_m); while (atomic_load(&s->closers)) pthread_cond_wait(&s->close_c, &s->close_m); pthread_mutex_unlock(&s->close_m);   /* every raw .tpc and sidecar closed before the code unloads */
     pq_close(s->pq); pq_destroy(s->pq); s->pq = NULL;   /* drains every queued sidecar before the code unloads; the frontend callback (the only producer) was removed above */
     uint64_t lost_reports = tr_close(s->reports); s->reports = NULL;   /* the video worker (the only producer) was joined by shuttle_stop */
     if (lost_reports) blog(LOG_WARNING, "[shuttle-source] %llu late-handoff reports were not logged (the reporter fell 256 behind); the stop summaries count every event", (unsigned long long)lost_reports);
-    pthread_mutex_destroy(&s->m); pthread_mutex_destroy(&s->tpc_m); pthread_cond_destroy(&s->tpc_c);
+    pthread_mutex_destroy(&s->m); pthread_mutex_destroy(&s->close_m); pthread_cond_destroy(&s->close_c);
     bfree(s->tpc_path); bfree(s->sidecar_base); bfree(s->sidecar_partial); bfree(s->sidecar_final);
     bfree(s->vbuf); bfree(s->abuf); bfree(s);
     atomic_fetch_sub(&g_instances, 1);
@@ -489,7 +548,13 @@ static void shuttle_destroy(void *data){
 
 static void shuttle_update(void *data, obs_data_t *settings){
     shuttle_src *s = data; if (!s) return;
-    pthread_mutex_lock(&s->m); shuttle_stop(s); shuttle_start(s, settings); pthread_mutex_unlock(&s->m);
+    pthread_mutex_lock(&s->m);
+    s->restart_pending = 0;   /* a session started here replaces a pending restart (RECORDING_STARTED would otherwise start a second) */
+    shuttle_stop(s);
+    /* the end-of-file stop follows the current settings; a restart here begins the file again */
+    if (atomic_load(&s->stop_on_eof) && !(obs_data_get_bool(settings, S_REPLAY_RESTART) && obs_data_get_bool(settings, S_REPLAY_STOP))) atomic_store(&s->stop_on_eof, 0);
+    shuttle_start(s, settings);
+    pthread_mutex_unlock(&s->m);
 }
 
 static void shuttle_defaults(obs_data_t *settings){
