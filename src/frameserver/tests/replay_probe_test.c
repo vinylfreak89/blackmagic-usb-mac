@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 static int fails;
 #define CHECK(c, ...) do{ if(!(c)){ fails++; fprintf(stderr,"FAIL: "); fprintf(stderr,__VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
@@ -31,6 +32,25 @@ int main(int argc, char **argv){
     CHECK(fs_replay_probe(p, 16u << 20, NULL, &sp) == 0 && sp.last_counter == 118 && sp.first_counter == 0, "small-window probe: first %u last %u", sp.first_counter, sp.last_counter);
     /* a head window too small to hold a unit finds no first counter */
     CHECK(fs_replay_probe(p, 1u << 16, NULL, &sp) != 0 && !sp.have_first, "a 64 KiB head window cannot hold a 756,048-byte unit, yet found counter %u", sp.first_counter);
+    /* An end without picture units near it (a capture ending with the deck off): 40 MiB of audio-only
+     * records after the fixture. The default window finds nothing in the last 32 MiB and widens to
+     * 256 MiB; an explicit 32 MiB window does not widen. */
+    {
+        char tpath[] = "/tmp/replay_probe_tail_XXXXXX"; int fd = mkstemp(tpath);
+        FILE *in = fopen(p, "rb"); static uint8_t buf[1 << 20]; size_t got;
+        while (fd >= 0 && in && (got = fread(buf, 1, sizeof buf, in)) > 0) if (write(fd, buf, got) != (ssize_t)got) break;
+        if (in) fclose(in);
+        memset(buf, 0, sizeof buf);
+        for (uint32_t seq = 0; fd >= 0 && seq < 20480; seq++){   /* 20,480 x (24 + 2048) B = 42.4 MB */
+            uint8_t rec[24 + 2048] = {0}; uint32_t magic = 0x31504143u, req = 2048, act = 2048;
+            memcpy(rec, &magic, 4); rec[4] = 0; rec[5] = 0x84; memcpy(rec + 8, &seq, 4); memcpy(rec + 16, &req, 4); memcpy(rec + 20, &act, 4);
+            if (write(fd, rec, sizeof rec) != (ssize_t)sizeof rec) break;
+        }
+        if (fd >= 0) close(fd);
+        CHECK(fs_replay_probe(tpath, 0, NULL, &sp) == 0 && sp.last_counter == 118, "a unit-less 40 MiB tail: widened probe found last %s%u", sp.have_last ? "" : "(none) ", sp.last_counter);
+        CHECK(fs_replay_probe(tpath, 32u << 20, NULL, &sp) != 0 && !sp.have_last, "an explicit 32 MiB window widened (found last %u)", sp.last_counter);
+        unlink(tpath);
+    }
     _Atomic int abort_now = 1;
     CHECK(fs_replay_probe(p, 0, &abort_now, &sp) != 0, "an aborted probe reported success");
 

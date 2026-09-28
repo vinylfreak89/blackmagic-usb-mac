@@ -17,9 +17,13 @@ typedef struct {
 } fs_replay_span;
 
 // Reads from the start until the first complete unit (at most window_bytes of packets) and the last
-// window_bytes of the file (0 => 32 MiB). Blocking; a network volume may take seconds. `abort`
+// window_bytes of the file, to its end. window_bytes 0 => 32 MiB, widened once to 256 MiB for an end
+// without a unit near it. The last counter counts only if that run reached the end of the file (not
+// an abort, read error or unskippable damage). Blocking; a network volume may take seconds. `abort`
 // (optional) is polled while waiting (100 ms granularity): nonzero stops the probe early, with
 // have_first/have_last reporting what was found. Returns 0 when both ends were found, -1 otherwise.
+// Counters are 16-bit and the device restarts them at a counter epoch (§8 property 5): a caller that
+// turns the span into a length must check it against the file size.
 int fs_replay_probe(const char *path, uint64_t window_bytes, _Atomic int *abort, fs_replay_span *out);
 
 #ifdef __cplusplus

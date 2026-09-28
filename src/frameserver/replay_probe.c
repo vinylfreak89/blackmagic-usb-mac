@@ -12,7 +12,7 @@
 typedef struct {
     unit_parser *parser;
     int stop_at_first;                 // head probe: the first complete unit is the answer
-    _Atomic int found, ended, exhausted;
+    _Atomic int found, ended, exhausted; _Atomic int reason;
     uint64_t bytes, window;            // delivery thread: payload seen, and the head run's bound
     uint16_t first, last;              // delivery thread only; read after cc_stop
     pthread_mutex_t m; pthread_cond_t c;
@@ -37,7 +37,7 @@ static void on_packet_(void *ctx, const cc_packet *p){
 }
 static void on_loss_(void *ctx, uint8_t ep, uint32_t n, uint64_t b){ unit_parser_on_loss(((probe_run *)ctx)->parser, ep, n, b); }
 static void on_error_(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){ unit_parser_on_error(((probe_run *)ctx)->parser, ep, seq, st, kind); }
-static void on_end_(void *ctx, enum cc_end reason){ probe_run *r = ctx; (void)reason; atomic_store(&r->ended, 1); signal_(r); }
+static void on_end_(void *ctx, enum cc_end reason){ probe_run *r = ctx; atomic_store(&r->reason, (int)reason); atomic_store(&r->ended, 1); signal_(r); }
 
 /* One unpaced replay from `offset`: the head run stops at the first complete unit, the tail run
  * reads to the end of the file. The delivery ring holds the whole window, so nothing is shed. */
@@ -65,8 +65,13 @@ static int run_(const char *path, uint64_t offset, uint64_t window, int stop_at_
             pthread_cond_timedwait(&r.c, &r.m, &ts);   /* backstop for the abort flag only; the run signals */
         }
         pthread_mutex_unlock(&r.m);
+        int aborted = abort && atomic_load(abort);
         cc_stop(s);
-        if (atomic_load(&r.found)){ *first = r.first; *last = r.last; rc = 0; }
+        /* The head run's answer is its first unit. The tail run's is its LAST unit, which is the file's
+         * only if the run read to the end: an abort, a read error or damage past the skip bound ends it
+         * early with an earlier counter, and a too-short timeline is worse than none. */
+        int complete = stop_at_first ? 1 : !aborted && atomic_load(&r.ended) && atomic_load(&r.reason) == CC_END_REPLAY_EOF;
+        if (atomic_load(&r.found) && complete){ *first = r.first; *last = r.last; rc = 0; }
     }
     if (s) cc_close(s);
     pthread_mutex_destroy(&r.m); pthread_cond_destroy(&r.c); free(r.parser);
@@ -78,11 +83,20 @@ int fs_replay_probe(const char *path, uint64_t window_bytes, _Atomic int *abort,
     struct stat st;
     if (!path || stat(path, &st) != 0 || st.st_size <= 0) return -1;
     out->file_bytes = (uint64_t)st.st_size;
+    /* A capture can begin or end without picture units (deck off: 0x0800; a free-running decoder: 0xe809),
+     * measured for ~28 s at the end of the no-input capture. With the default window the search widens
+     * once, to 8x (256 MiB, ~11 s of stream), before giving up; an explicit window is used as given. */
     uint64_t w = window_bytes ? window_bytes : (32ull << 20);
+    int tries = window_bytes ? 1 : 2;
     uint16_t a, b;
-    if (run_(path, 0, w, 1, abort, &a, &b) == 0){ out->first_counter = a; out->have_first = 1; }
+    for (int k = 0; k < tries && !out->have_first && !(abort && atomic_load(abort)); k++, w *= 8)
+        if (run_(path, 0, w, 1, abort, &a, &b) == 0){ out->first_counter = a; out->have_first = 1; }
+    w = window_bytes ? window_bytes : (32ull << 20);
+    for (int k = 0; k < tries && !out->have_last && !(abort && atomic_load(abort)); k++, w *= 8){
+        uint64_t tail = out->file_bytes > w ? out->file_bytes - w : 0;
+        if (run_(path, tail, w, 0, abort, &a, &b) == 0){ out->last_counter = b; out->have_last = 1; }
+        if (tail == 0) break;
+    }
     if (abort && atomic_load(abort)) return -1;
-    uint64_t tail = out->file_bytes > w ? out->file_bytes - w : 0;
-    if (run_(path, tail, w, 0, abort, &a, &b) == 0){ out->last_counter = b; out->have_last = 1; }
     return out->have_first && out->have_last ? 0 : -1;
 }
