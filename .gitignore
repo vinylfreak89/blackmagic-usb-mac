@@ -59,6 +59,8 @@ src/capture_core/async_sink_test
 src/frameserver/tests/async_file_test
 src/frameserver/tests/async_file_asan
 src/frameserver/tests/async_file_tsan
+src/obs_plugin/tests_timing_report
+src/obs_plugin/tests_timing_report_tsan
 src/obs_plugin/tests_publish_queue_tsan
 src/field_registration/tests/cea608_unit
 src/field_registration/tests/geometry_rigid

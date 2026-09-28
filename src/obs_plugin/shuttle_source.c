@@ -50,6 +50,7 @@
 #include <limits.h>
 #include "publish_copy.h"
 #include "publish_queue.h"
+#include "timing_report.h"
 #include <stdio.h>      /* renamex_np (macOS 10.12+): RENAME_EXCL makes the publish rename fail instead of replacing a file that appeared meanwhile */
 #include "../frameserver/frameserver.h"
 
@@ -89,6 +90,7 @@ typedef struct {
      * tick, so a late frame repeats the previous one and a following burst is discarded. The
      * call time is how long obs_source_output_video blocked (OBS's async lock). */
     uint64_t last_handoff_ns, gap_events, max_gap_ns, max_call_ns, slow_calls;
+    timing_report *reports;                 /* late-handoff reports, logged off the worker (timing_report.h) */
     /* Raw .tpc beside each recording (owner, 2026-09-28: "let OBS do both"). Written at its final
      * path on the recording's volume (LucidLink takes growing files); closed off the UI thread by
      * a detached closer; destroy waits until every closer is done. */
@@ -100,6 +102,14 @@ typedef struct {
 static _Atomic int g_instances;
 #define FREEZE_GAP_NS 83000000ull   /* 2.5 unit periods: one late unit, not scheduling noise */
 #define SLOW_CALL_NS  20000000ull
+
+static void report_late(void *ctx, const tr_event *e){
+    (void)ctx; const fs_handoff_timing *h = &e->h;
+    blog(LOG_WARNING, "[shuttle-source] delivery timing: counter %llu handed to OBS %.1f ms after the previous frame (%.1f unit periods); output call blocked %.1f ms"
+         " | worker since previous handoff %.1f ms: idle %.1f, classify %.1f, registration %.1f, h-retiming %.1f, sidecar write %.1f, other %.1f; %u items; this unit queued %.1f ms",
+         (unsigned long long)e->counter, e->gap_ns / 1e6, e->gap_ns / (1e9 * 1001 / 30000), e->call_ns / 1e6,
+         h->since_prev_ns / 1e6, h->idle_ns / 1e6, h->classify_ns / 1e6, h->geometry_ns / 1e6, h->hretime_ns / 1e6, h->log_ns / 1e6, h->other_ns / 1e6, h->items, h->queue_wait_ns / 1e6);
+}
 
 static const char *shuttle_get_name(void *td){ (void)td; return "Blackmagic Intensity Shuttle (frameserver)"; }
 
@@ -126,8 +136,9 @@ static void on_frame(void *ctx, const fp_frame *fr){
     if (call > SLOW_CALL_NS) s->slow_calls++;
     if (gap > FREEZE_GAP_NS || call > SLOW_CALL_NS){
         if (gap > FREEZE_GAP_NS) s->gap_events++;
-        blog(LOG_WARNING, "[shuttle-source] delivery timing: counter %llu handed to OBS %.1f ms after the previous frame (%.1f unit periods); output call blocked %.1f ms",
-             (unsigned long long)fr->counter_ext, gap / 1e6, gap / (1e9 * 1001 / 30000), call / 1e6);
+        tr_event e = { fr->counter_ext, gap, call, {0} };
+        fs_handoff_timing_get(s->fs, &e.h);   /* worker thread: this sink runs on it */
+        tr_post(s->reports, &e);              /* never blog here: a log write on this thread delays the next frame */
     }
     atomic_fetch_add(&s->frames_out, 1); atomic_store(&s->last_counter, fr->counter_ext);
 }
@@ -394,6 +405,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
     obs_source_set_deinterlace_field_order(source, OBS_DEINTERLACE_FIELD_ORDER_TOP);   /* measured TFF (CLAUDE.md §6) */
     obs_source_set_deinterlace_mode(source, OBS_DEINTERLACE_MODE_YADIF_2X);          /* default presentation; the user may change it (OBS owns deinterlacing) */
     pthread_mutex_init(&s->m, NULL); pthread_mutex_init(&s->tpc_m, NULL); pthread_cond_init(&s->tpc_c, NULL);
+    if (tr_open(&s->reports, 256, report_late, s) != 0){ s->reports = NULL; blog(LOG_ERROR, "[shuttle-source] could not start the delivery-timing reporter (%s): late handoffs are counted in the stop summary only", strerror(errno)); }
     if (pq_open(&s->pq, SIDECAR_QUEUE_CAP, publish_one, s) != 0){ s->pq = NULL; blog(LOG_ERROR, "[shuttle-source] could not start the sidecar publisher (%s): sidecars will stay in scratch (paths are logged), never published inline", strerror(errno)); }
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
     /* Register for recording events BEFORE inspecting recording state, so a recording that starts
@@ -414,6 +426,8 @@ static void shuttle_destroy(void *data){
     pthread_mutex_lock(&s->m); shuttle_stop(s); pthread_mutex_unlock(&s->m);
     pthread_mutex_lock(&s->tpc_m); while (atomic_load(&s->tpc_closers)) pthread_cond_wait(&s->tpc_c, &s->tpc_m); pthread_mutex_unlock(&s->tpc_m);   /* every raw .tpc drained before the code unloads */
     pq_close(s->pq); pq_destroy(s->pq); s->pq = NULL;   /* drains every queued sidecar before the code unloads; the frontend callback (the only producer) was removed above */
+    uint64_t lost_reports = tr_close(s->reports); s->reports = NULL;   /* the video worker (the only producer) was joined by shuttle_stop */
+    if (lost_reports) blog(LOG_WARNING, "[shuttle-source] %llu late-handoff reports were not logged (the reporter fell 256 behind); the stop summaries count every event", (unsigned long long)lost_reports);
     pthread_mutex_destroy(&s->m); pthread_mutex_destroy(&s->tpc_m); pthread_cond_destroy(&s->tpc_c);
     bfree(s->tpc_path); bfree(s->sidecar_base); bfree(s->sidecar_partial); bfree(s->sidecar_final);
     bfree(s->vbuf); bfree(s->abuf); bfree(s);
