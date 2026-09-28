@@ -1,4 +1,5 @@
 #include "publish_copy.h"
+#include <limits.h>
 #include <fcntl.h>
 #include <string.h>
 #include <stdio.h>
@@ -29,8 +30,26 @@ static int write_full(int fd, const char *buf, size_t len){
 }
 static int fsync_dir_of(const char *path){
     char *copy = strdup(path); if (!copy) return -1;
-    int d = open(dirname(copy), O_RDONLY); free(copy); if (d < 0) return -1;
+    char dir[PATH_MAX]; if (!dirname_r(copy, dir)){ free(copy); return -1; }   /* dirname() shares one static buffer */
+    int d = open(dir, O_RDONLY); free(copy); if (d < 0) return -1;
     int rc = fsync(d); int e = errno; close(d); errno = e; return rc;   /* some filesystems refuse fsync on a directory: treated as best effort by the caller */
+}
+
+
+/* Rename without ever replacing an existing final name. RENAME_EXCL where the filesystem supports
+ * it; where it reports ENOTSUP (an SMB share from a cloud-drive client, measured 2026-09-28), take
+ * the final name first with an exclusive create -- an empty placeholder no one else can claim --
+ * then rename onto that placeholder. A failed rename removes the placeholder and keeps its errno
+ * (EXDEV included, so a caller can fall back to copying). */
+static int exclusive_rename(const char *from, const char *to){
+    if (FAIL_AT(PUB_STEP_EXCL_UNSUPPORTED)) errno = ENOTSUP;
+    else if (renamex_np(from, to, RENAME_EXCL) == 0) return 0;
+    if (errno != ENOTSUP) return -1;
+    int fd = open(to, O_WRONLY | O_CREAT | O_EXCL, 0644);
+    if (fd < 0) return -1;
+    close(fd);
+    if (rename(from, to) == 0) return 0;
+    int e = errno; unlink(to); errno = e; return -1;
 }
 
 int publish_by_copy(const char *src, const char *final){
@@ -71,7 +90,7 @@ int publish_by_copy(const char *src, const char *final){
         }
     }
     close(in); free(buf); free(b2);
-    if (ok && (FAIL_AT(PUB_STEP_RENAME) || renamex_np(staging, final, RENAME_EXCL) != 0)){ ok = 0; e = errno ? errno : EEXIST; }
+    if (ok && (FAIL_AT(PUB_STEP_RENAME) || exclusive_rename(staging, final) != 0)){ ok = 0; e = errno ? errno : EEXIST; }
     if (!ok){
         if (staged && (FAIL_AT(PUB_STEP_CLEANUP) || unlink(staging) != 0)){ if (!errno) errno = EIO; return -2; }
         errno = e; return -1;
@@ -79,4 +98,12 @@ int publish_by_copy(const char *src, const char *final){
     if (FAIL_AT(PUB_STEP_DIRSYNC) || fsync_dir_of(final) != 0) return 1;   /* published, but the directory entry may not be durable yet: keep the source */
     if (FAIL_AT(PUB_STEP_UNLINK_SRC) || unlink(src) != 0) return 1;
     return 0;
+}
+
+int publish_file(const char *src, const char *final){
+    /* PUB_STEP_CROSS_DEVICE simulates the kernel refusing a cross-filesystem rename */
+    if (FAIL_AT(PUB_STEP_CROSS_DEVICE)) errno = EXDEV;
+    else if (exclusive_rename(src, final) == 0) return 2;
+    if (errno != EXDEV) return -1;
+    return publish_by_copy(src, final);
 }

@@ -370,8 +370,12 @@ directory. After the writer closes and validation succeeds, publish with one sam
 atomic rename. For a multi-gigabyte media file never fall back to copy+delete; a small FINISHED
 file (a sidecar CSV) may be published to another filesystem by a staged, fsynced, read-back-verified
 copy followed by an exclusive rename, then deletion of the scratch copy (owner, 2026-09-04: a
-recording may live on a cloud volume such as a LucidLink filespace). Filesystem identity is checked
-before work begins and selects the path. An unfinished capture remains in scratch for diagnosis/recovery.
+recording may live on a cloud volume such as a LucidLink filespace). The kernel selects the path:
+try the exclusive rename, copy only on EXDEV (a device-number check once compared one static
+`dirname()` buffer with itself and never copied). Measured 2026-09-28 on a cloud client's SMB share:
+`renamex_np(RENAME_EXCL)` returns ENOTSUP, so an exclusively created placeholder is renamed over
+instead; and one 443 MB write was acknowledged and fsynced yet read back as zeros past 112 MiB,
+while 1 MiB (and the plugin's 64 KiB) writes verified. Read-back verification is not optional. An unfinished capture remains in scratch for diagnosis/recovery.
 The destination above describes final publication only, not the writer's working directory.
 
 **Review replacement retention (owner, 2026-09-26):** replace superseded renders,

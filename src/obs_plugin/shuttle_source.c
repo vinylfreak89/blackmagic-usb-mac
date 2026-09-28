@@ -47,6 +47,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <libgen.h>
+#include <limits.h>
 #include "publish_copy.h"
 #include "publish_queue.h"
 #include <stdio.h>      /* renamex_np (macOS 10.12+): RENAME_EXCL makes the publish rename fail instead of replacing a file that appeared meanwhile */
@@ -149,9 +150,6 @@ static int recording_path(shuttle_src *s){
     if (!p || !*p){ bfree(p); return -1; }
     s->sidecar_base = p; return 0;
 }
-static int same_filesystem(const char *dir_a, const char *dir_b){
-    struct stat a, b; if (stat(dir_a, &a) != 0 || stat(dir_b, &b) != 0) return 0; return a.st_dev == b.st_dev;
-}
 static void sidecar_final_name(struct dstr *fin, const shuttle_src *s, unsigned dup){
     dstr_free(fin);
     if (s->sidecar_part == 0) dstr_printf(fin, "%s.registration", s->sidecar_base);
@@ -171,7 +169,8 @@ static void sidecar_attach(shuttle_src *s){
     if (mkdir(scratch, 0700) != 0 && errno != EEXIST){ blog(LOG_ERROR, "[shuttle-source] sidecar scratch %s: %s", scratch, strerror(errno)); dstr_free(&fin); return; }
     if (stat(scratch, &sd) != 0 || !S_ISDIR(sd.st_mode) || sd.st_uid != getuid() || (sd.st_mode & 077)){ blog(LOG_ERROR, "[shuttle-source] sidecar scratch %s is not a private directory owned by this user; refusing", scratch); dstr_free(&fin); return; }
     char *namecopy = bstrdup(fin.array); struct dstr part = {0};
-    dstr_printf(&part, "%s/%s.partial-%08x%08x", scratch, basename(namecopy), (unsigned)arc4random(), (unsigned)arc4random()); bfree(namecopy);   /* random, exclusive (fs_log_start opens "wx") */
+    char base[PATH_MAX]; if (!basename_r(namecopy, base)){ blog(LOG_ERROR, "[shuttle-source] sidecar name too long: %s", fin.array); bfree(namecopy); dstr_free(&fin); return; }
+    dstr_printf(&part, "%s/%s.partial-%08x%08x", scratch, base, (unsigned)arc4random(), (unsigned)arc4random()); bfree(namecopy);   /* random, exclusive (fs_log_start opens "wx") */
     if (fs_log_start(s->fs, part.array) == 0){
         s->sidecar_attached = 1; s->sidecar_part++;
         bfree(s->sidecar_partial); s->sidecar_partial = bstrdup(part.array);
@@ -197,15 +196,12 @@ static void sidecar_attach(shuttle_src *s){
 #define SIDECAR_QUEUE_CAP 8
 static void publish_one(void *ctx, const char *partial, const char *final){
     (void)ctx;
-    char *dircopy = bstrdup(final); char *scratchcopy = bstrdup(partial);
-    int same = same_filesystem(dirname(scratchcopy), dirname(dircopy)); bfree(dircopy); bfree(scratchcopy);
-    if (same){
-        if (renamex_np(partial, final, RENAME_EXCL) != 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish refused (%s); the complete file is left at %s", strerror(errno), partial);
-        else blog(LOG_INFO, "[shuttle-source] sidecar published: %s", final);
-    } else {
-        int rc = publish_by_copy(partial, final);
+    /* the kernel decides: exclusive rename, and a verified copy only when it reports EXDEV */
+    int rc = publish_file(partial, final);
+    if (rc == 2) blog(LOG_INFO, "[shuttle-source] sidecar published: %s", final);
+    else {
         if (rc == -2) blog(LOG_ERROR, "[shuttle-source] sidecar publish by copy failed (%s) AND its staging file could not be removed: look for %s.partial-*; the complete file is at %s", strerror(errno), final, partial);
-        else if (rc < 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish by copy failed or did not verify (%s); the complete file is left at %s", strerror(errno), partial);
+        else if (rc < 0) blog(LOG_ERROR, "[shuttle-source] sidecar publish failed, or its copy did not verify (%s); the complete file is left at %s", strerror(errno), partial);
         else if (rc == 1) blog(LOG_WARNING, "[shuttle-source] sidecar published by verified copy: %s — the scratch copy was KEPT at %s (directory fsync or scratch removal failed: %s)", final, partial, strerror(errno));
         else blog(LOG_INFO, "[shuttle-source] sidecar published by verified copy (different filesystem; cache-visible on a cloud volume): %s", final);
     }
