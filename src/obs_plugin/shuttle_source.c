@@ -58,6 +58,7 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 
 #define S_INPUT       "input"
 #define S_HRETIME     "hretime"
+#define S_REGISTRATION "registration"
 #define S_REPLAY      "replay_path"
 #define S_USE_REPLAY  "use_replay"
 #define S_SIDECAR     "sidecar_with_recording"
@@ -82,10 +83,17 @@ typedef struct {
     char *sidecar_partial, *sidecar_final;  /* growing scratch path, and the published name it gets at detach */
     publish_queue *pq;                       /* persistent publisher (publish_queue.h): frontend callbacks only enqueue; drained at destroy */
     _Atomic uint64_t last_counter;          /* counter_ext of the last frame delivered to OBS */
+    /* Delivery timing (video worker only; read after fs_stop joins it). A handoff gap longer than
+     * FREEZE_GAP_NS is a freeze in OBS's unbuffered presentation: it shows the newest frame per
+     * tick, so a late frame repeats the previous one and a following burst is discarded. The
+     * call time is how long obs_source_output_video blocked (OBS's async lock). */
+    uint64_t last_handoff_ns, gap_events, max_gap_ns, max_call_ns, slow_calls;
 } shuttle_src;
 #define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; published by rename on the same filesystem, by verified copy otherwise */
 
 static _Atomic int g_instances;
+#define FREEZE_GAP_NS 83000000ull   /* 2.5 unit periods: one late unit, not scheduling noise */
+#define SLOW_CALL_NS  20000000ull
 
 static const char *shuttle_get_name(void *td){ (void)td; return "Blackmagic Intensity Shuttle (frameserver)"; }
 
@@ -103,7 +111,18 @@ static void on_frame(void *ctx, const fp_frame *fr){
     memcpy(f.color_matrix, s->color_matrix, sizeof f.color_matrix);
     memcpy(f.color_range_min, s->color_min, sizeof f.color_range_min); memcpy(f.color_range_max, s->color_max, sizeof f.color_range_max);
     f.full_range = false;
+    uint64_t t0 = os_gettime_ns();
     obs_source_output_video(s->source, &f);
+    uint64_t t1 = os_gettime_ns(), call = t1 - t0, gap = s->last_handoff_ns ? t0 - s->last_handoff_ns : 0;
+    s->last_handoff_ns = t0;
+    if (gap > s->max_gap_ns) s->max_gap_ns = gap;
+    if (call > s->max_call_ns) s->max_call_ns = call;
+    if (call > SLOW_CALL_NS) s->slow_calls++;
+    if (gap > FREEZE_GAP_NS || call > SLOW_CALL_NS){
+        if (gap > FREEZE_GAP_NS) s->gap_events++;
+        blog(LOG_WARNING, "[shuttle-source] delivery timing: counter %llu handed to OBS %.1f ms after the previous frame (%.1f unit periods); output call blocked %.1f ms",
+             (unsigned long long)fr->counter_ext, gap / 1e6, gap / (1e9 * 1001 / 30000), call / 1e6);
+    }
     atomic_fetch_add(&s->frames_out, 1); atomic_store(&s->last_counter, fr->counter_ext);
 }
 
@@ -251,6 +270,8 @@ static void shuttle_stop(shuttle_src *s){
          (unsigned long long)st.published, (unsigned long long)atomic_load(&s->frames_out), (unsigned long long)st.audio_frames_delivered,
          (unsigned long long)st.audio_dropped_frames, (unsigned long long)st.dropped_pool_full, (unsigned long long)st.dropped_ring_full,
          (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps));
+    blog(LOG_INFO, "[shuttle-source] delivery timing: %llu handoff gaps over 83 ms (max %.1f ms), %llu output calls over 20 ms (max %.1f ms)",
+         (unsigned long long)s->gap_events, s->max_gap_ns / 1e6, (unsigned long long)s->slow_calls, s->max_call_ns / 1e6);
     fs_close(s->fs); s->fs = NULL;
 }
 
@@ -265,6 +286,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
         cfg.capture.replay_path = rp; cfg.capture.replay_pace_us = 16000;    /* device cadence */
     }
     cfg.hretime = obs_data_get_bool(settings, S_HRETIME) ? 1 : 0;   /* per-tape choice; off leaves output unchanged */
+    cfg.registration_off = obs_data_get_bool(settings, S_REGISTRATION) ? 0 : 1;   /* per-tape: off publishes the nominal (0,0) placement */
     cfg.pool_units = 0; cfg.surface_pool = 6;   /* pool sized from the capture ring (frameserver default) */
     cfg.sink.on_frame = on_frame; cfg.sink.ctx = s;
     cfg.audio_sink.on_block = on_audio; cfg.audio_sink.ctx = s;
@@ -272,9 +294,11 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     cfg.on_end = on_end; cfg.end_ctx = s;
     atomic_store(&s->ended, 0); s->audio_clock = (shuttle_audio_clock){0};
     atomic_store(&s->frames_out, 0); atomic_store(&s->audio_frames_out, 0); atomic_store(&s->audio_steps, 0);   /* per-session accounting */
+    s->last_handoff_ns = s->gap_events = s->max_gap_ns = s->max_call_ns = s->slow_calls = 0;
     if (fs_open(&s->fs, &cfg) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL; return -1; }
     if (fs_start(s->fs) != 0){ blog(LOG_ERROR, "[shuttle-source] frameserver start failed"); fs_close(s->fs); s->fs = NULL; return -1; }
-    blog(LOG_INFO, "[shuttle-source] started (%s), H-retiming %s", cfg.capture.replay_path ? "replay" : "device", cfg.hretime ? "ON" : "off");
+    blog(LOG_INFO, "[shuttle-source] started (%s), registration %s, H-retiming %s", cfg.capture.replay_path ? "replay" : "device",
+         cfg.registration_off ? "OFF (nominal placement)" : "on", cfg.hretime ? "ON" : "off");
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
     if (s->sidecar_enabled && obs_frontend_recording_active() && s->sidecar_base) sidecar_attach(s);   /* restarted mid-recording: continue as the next part */
     return 0;
@@ -340,6 +364,7 @@ static void shuttle_defaults(obs_data_t *settings){
     obs_data_set_default_string(settings, S_REPLAY, "");
     obs_data_set_default_bool(settings, S_SIDECAR, true);
     obs_data_set_default_bool(settings, S_HRETIME, false);
+    obs_data_set_default_bool(settings, S_REGISTRATION, true);
 }
 
 static obs_properties_t *shuttle_properties(void *data){
@@ -349,6 +374,7 @@ static obs_properties_t *shuttle_properties(void *data){
     obs_property_list_add_string(in, "S-Video", "svideo");
     obs_property_list_add_string(in, "Composite", "composite");
     obs_property_list_add_string(in, "Component", "component");
+    obs_properties_add_bool(p, S_REGISTRATION, "Registration: correct vertical field placement (per tape; off publishes both fields at the nominal position)");
     obs_properties_add_bool(p, S_HRETIME, "H-retiming: repair horizontally mistimed lines (per tape; leave off for stable tapes)");
     obs_properties_add_bool(p, S_USE_REPLAY, "Replay a tagged capture (.tpc) instead of the device");
     obs_properties_add_path(p, S_REPLAY, "Tagged capture file", OBS_PATH_FILE, "Tagged capture (*.tpc *.cap6)", NULL);

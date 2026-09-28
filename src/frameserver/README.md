@@ -13,6 +13,13 @@ unit; consumers pair fields according to the logged ownership. Measurements
 and explicit unavailable values are retained separately from placement.
 `log_header` in frameserver.c defines the complete CSV column set.
 
+## Registration off
+
+`fs_config.registration_off` (tools: `FS_REGISTRATION_OFF=1`; OBS: the source's Registration
+checkbox, default on) publishes every field at the nominal (0,0) placement. The engine still runs
+and logs its evaluation; only applied_d1/d2 and frame_d1/d2 carry the published 0. H-retiming
+works from that placement.
+
 ## Optional horizontal retiming (other-field blanking)
 
 `fs_config.hretime` remains OFF by default; tools map `FS_HRETIME`.

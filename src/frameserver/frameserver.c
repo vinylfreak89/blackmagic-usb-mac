@@ -496,9 +496,15 @@ static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *uni
     geometry_log(f,it,d,rc==0,rc==0?"None":"PublisherFull",
                  it->audio_evidence_known?&it->audio_evidence:NULL,repair);
 }
+/* Registration off: publish the nominal aperture. The engine's own evaluation
+ * (comb, votes, census) stays in its decision fields for the sidecar. */
+static void placement_override(const frameserver *f,ge_decision *out,unsigned n) {
+    if(!f->cfg.registration_off)return;
+    for(unsigned i=0;i<n;i++)out[i].d1=out[i].d2=out[i].frame_d1=out[i].frame_d2=0;
+}
 static void geometry_flush(frameserver *f) {
     if(f->retime_work)hrt_reset(f->retime_work);
-    ge_decision out[2];unsigned n=ge_break(f->geometry,out);
+    ge_decision out[2];unsigned n=ge_break(f->geometry,out);placement_override(f,out,n);
     if(n && f->geometry_pending)geometry_publish(f,&f->geometry_item,f->geometry_unit,out,NULL);
     f->geometry_pending=0;f->geometry_reset=1;
 }
@@ -537,6 +543,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     const uint8_t *p=unit+48;
     for(unsigned i=0;i<GE_PIXELS;i++)f->geometry_y[i]=p[2*i+1];
     ge_decision out[2];unsigned n=ge_push(f->geometry,f->geometry_y,it->obs.counter_extended,f->geometry_reset,out);
+    placement_override(f,out,n);
     f->geometry_reset=0;
     if(f->cfg.hretime)memcpy(f->retime_unit,unit,FP_UNIT_BYTES);
     if(f->geometry_reversed) {
