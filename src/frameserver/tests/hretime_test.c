@@ -208,6 +208,14 @@ int main(void) {
     for(int i=170;i<173;i++){uint8_t *p=row(unit,0,i);for(int x=0;x<6;x++)p[2*(10+x)+1]=2;
         for(int x=26;x<680;x++)p[2*x+1]=60+random_byte()%160;}
     run(1);assert(!result.band_count);
+    /* 3:16 on the commercial tape: dark content at blanking level covers the left and right of most
+     * lines, so the frame standards land on content edges (140 and ~600), far from the window edges.
+     * The content sways 7 samples between fields in a band of lines; that is camera motion, not
+     * timing, and the line's real blanking is unobservable on both sides: nothing may change. */
+    fixture();noisy();
+    for(int k=0;k<2;k++)for(int i=0;i<240;i++){uint8_t *p=row(k?other:unit,k,i);for(int x=0;x<720;x++)if(x<135 || x>600)p[2*x+1]=2;}
+    for(int i=100;i<131;i++){memcpy(row(unit,0,i),row(other,1,i),1440);displace(unit,0,i,7);}
+    run(1);assert(!result.band_count && !changed(out1,unit) && !changed(out2,other));
     uint8_t flat[720];memset(flat,2,sizeof flat);
     assert(!carries_picture(flat,22,0,2,1));
     flat[100]=7;assert(!carries_picture(flat,22,0,2,1));

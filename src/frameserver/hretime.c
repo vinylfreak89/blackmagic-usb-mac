@@ -34,6 +34,13 @@ enum { ROW_BYTES=1440, HEADER=48,
        AGREEMENT=4,
        SCAN=147,        /* nominal horizontal blanking width, samples */
        STANDARD_LINES=20, /* measured edges needed for a frame standard */
+       /* The blanking falloff is set by the line timing and sits near the window
+        * edges: frame standards measured left 4-26 / right >= 697 on pan, tape1,
+        * cap2-4 and 99% of the whole commercial tape. A standard farther in is dark
+        * content at blanking level standing in for blanking (3:16, 9:15, 10:06-10:11
+        * on the commercial tape: straight edges made jagged by repairs); that side's
+        * timing is unobservable in that frame. */
+       EDGE_REACH=40,
        REF_DISTANCE=7 };
 struct hrt_workspace {
     uint8_t y[HRT_ROWS][HRT_WIDTH];
@@ -225,6 +232,10 @@ static int sharp(const uint8_t *y,int side,double e,double blank) {
 static int usable_reference(hrt_workspace *w,int n) {
     return n>=0 && n<HRT_ROWS && w->eligible[n] && !w->flagged[n];
 }
+/* A standard farther than EDGE_REACH from its window edge is content, not blanking. */
+static double plausible_standard(int side,double s) {
+    return isfinite(s) && (side ? s>=HRT_WIDTH-EDGE_REACH : s<=EDGE_REACH) ? s : NAN;
+}
 /* Frame standard per side: median falloff of the lines with picture there. */
 static double frame_standard(hrt_workspace *w,int side,const double *blank,const double *coarse) {
     int n=0;
@@ -283,6 +294,9 @@ static int waveform_confirms(hrt_workspace *w,const double *standard,int j,unsig
  * spill is window-limited. 0: contradicted; 1: consistent; 2: one side. */
 static int shift_consistent(hrt_workspace *w,const double *standard,int j) {
     double l=w->edge[j][0],r=w->edge[j][1];
+    /* Left spill is garbage whatever the right shows, including a right side whose
+     * timing is unobservable in this frame (its standard is content). */
+    if(isfinite(l) && l<0 && isfinite(standard[0]) && !isfinite(standard[1]))return 1;
     if(!isfinite(l) || !isfinite(r) || !isfinite(standard[0]) || !isfinite(standard[1]))return 2;
     int ls=l<0,rs=r>=HRT_WIDTH;
     double dl=l-standard[0],dr=r-standard[1];
@@ -314,7 +328,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
     /* Coarse standard from a fixed picture level, then each line's picture
      * level at that position and its own half-height falloff. */
     double standard[2];
-    for(int s=0;s<2;s++)standard[s]=frame_standard(w,s,o->blank,NULL);
+    for(int s=0;s<2;s++)standard[s]=plausible_standard(s,frame_standard(w,s,o->blank,NULL));
     for(int s=0;s<2;s++) {
         if(!isfinite(standard[s]))continue;
         for(int j=0;j<HRT_ROWS;j++)if(w->eligible[j]) {
@@ -322,7 +336,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
             w->level[j][s]=q-b;
             if(q-b>=PICTURE_MIN)w->edge[j][s]=crossing(w->y[j],s,(b+q)/2,SCAN);
         }
-        standard[s]=frame_standard(w,s,o->blank,standard);
+        standard[s]=plausible_standard(s,frame_standard(w,s,o->blank,standard));
     }
     /* Picture near blanking at the standard gives no evidence of its own; if
      * both other-field neighbours have picture there, measure where this
