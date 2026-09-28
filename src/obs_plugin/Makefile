@@ -29,7 +29,7 @@ CFLAGS ?= -O2 -std=c11 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden
 # its install name is @rpath/obs-frontend-api.dylib, resolved by the rpaths below at load time.
 LDFLAGS = -bundle -F"$(OBS_APP)/Contents/Frameworks" -framework libobs "$(OBS_APP)/Contents/Frameworks/obs-frontend-api.dylib" \
           -Wl,-rpath,@executable_path/../Frameworks -Wl,-rpath,@loader_path/../../../../Frameworks \
-          -framework IOSurface -framework CoreFoundation -framework IOKit -framework Security -lpthread -lm
+          -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm
 
 all: $(BUNDLE)
 

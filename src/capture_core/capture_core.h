@@ -84,6 +84,10 @@ typedef struct {
                                 // thread fills it ahead of the pacer, so a slow read (a network volume)
                                 // drains the ring instead of delaying delivery. A read error ends the
                                 // session with CC_END_INTERNAL_ERROR, never as a silent end of file.
+    int replay_diag;            // replay: nonzero reports a stall diagnosis at the end (diag_log, else stderr): waits on an
+                                // empty read-ahead ring (file too slow), slow reads, late pacer wake-ups
+    void (*diag_log)(void *ctx, const char *line); // optional: receives diagnosis lines instead of stderr
+    void *diag_ctx;
 } cc_config;
 
 // Lifecycle: open -> start -> (callbacks) -> stop -> close.

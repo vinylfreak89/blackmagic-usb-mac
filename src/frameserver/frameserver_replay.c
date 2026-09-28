@@ -111,6 +111,7 @@ int main(int argc, char **argv){
     if (g_vdump || g_log || g_limit || g_handoff_limit_ns) cfg.sink.on_frame = dump_frame;
     if (g_adump || g_log) cfg.audio_sink.on_block = dump_audio;
     frameserver *f = NULL;
+    { const char *dg=getenv("FS_REPLAY_DIAG"); cfg.capture.replay_diag=dg&&*dg&&strcmp(dg,"0"); }   /* capture-core stall diagnosis to stderr */
     if (fs_open(&f, &cfg) != 0){ fprintf(stderr, "open failed\n"); return 1; }
     g_fs = f;
     if (fs_start(f) != 0){ fprintf(stderr, "start failed\n"); return 1; }

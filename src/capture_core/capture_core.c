@@ -474,8 +474,21 @@ startup_failed:
  * Before this the pacer read with fread on its own thread, so every slow read on a network volume
  * delayed delivery directly (2026-09-28, 10 min off LucidLink: 3 handoff gaps over 83 ms, worst
  * 155.1 ms, all waiting on the file). Single producer (reader), single consumer (pacer). */
+/* Stall diagnosis (cfg.replay_diag): the worst few events of each kind, by duration. */
+#define RD_TOP 8
+typedef struct { uint64_t us, at_ms, off; } rd_event;
+typedef struct { rd_event ev[RD_TOP]; uint64_t n, total_us; } rd_list;
+static void rd_note_(rd_list *l, uint64_t us, uint64_t at_ms, uint64_t off){
+    l->n++; l->total_us+=us;
+    int k=RD_TOP-1; if(us<=l->ev[k].us) return;
+    while(k>0 && l->ev[k-1].us<us){ l->ev[k]=l->ev[k-1]; k--; }
+    l->ev[k]=(rd_event){us,at_ms,off};
+}
+static uint64_t rd_now_us_(void){ return clock_gettime_nsec_np(CLOCK_UPTIME_RAW)/1000; }
 typedef struct {
     int fd; uint8_t *ring; size_t cap, chunk, prefill;
+    rd_list slow_reads;                      /* reader: reads over 50 ms (reader thread only) */
+    _Atomic uint64_t t0_us;                  /* set by the pacer when pacing starts; 0 before */
     _Atomic uint64_t head, tail;            /* bytes read / bytes consumed, monotonic */
     _Atomic int eof, err, stop;             /* err: errno of a failed read */
     pthread_mutex_t m; pthread_cond_t cv;   /* sleep/wake only; both directions share it */
@@ -503,7 +516,11 @@ static void *rr_main_(void *arg){
         if(space<r->chunk){ rr_wait_(r,rr_has_space_); continue; }
         size_t o=(size_t)(head%r->cap), n=r->chunk;
         if(n>r->cap-o) n=r->cap-o;
+        uint64_t rs=rd_now_us_();
         ssize_t got=cc_test_replay_read(r->fd,r->ring+o,n);
+        uint64_t rt=rd_now_us_()-rs;
+        uint64_t t0=atomic_load(&r->t0_us);
+        if(rt>50000) rd_note_(&r->slow_reads,rt,t0&&rs>t0?(rs-t0)/1000:0,head);
         if(got<0 && errno==EINTR) continue;
         if(got<0){ atomic_store(&r->err,errno?errno:EIO); rr_wake_(r); break; }
         if(got==0){ atomic_store(&r->eof,1); rr_wake_(r); break; }
@@ -518,16 +535,22 @@ static int rr_prefilled_(replay_reader *r){
 static int rr_has_data_(replay_reader *r){
     return atomic_load(&r->eof) || atomic_load(&r->err) || atomic_load(&r->head)!=atomic_load(&r->tail);
 }
-/* fread-like: n bytes, fewer only at end of file or on a read error; -1 when stop is requested. */
-static ssize_t rr_read_(replay_reader *r, cc_session *s, void *dst, size_t n){
+/* fread-like: n bytes, fewer only at end of file or on a read error; -1 when stop is requested.
+ * Diagnosis (pacer thread only): each wait on an empty ring, and the lowest fill once pacing runs. */
+static ssize_t rr_read_diag_(replay_reader *r, cc_session *s, void *dst, size_t n, rd_list *waits, uint64_t *min_fill){
     size_t done=0;
     while(done<n){
         uint64_t tail=atomic_load_explicit(&r->tail,memory_order_relaxed);
         size_t avail=(size_t)(atomic_load_explicit(&r->head,memory_order_acquire)-tail);
+        uint64_t t0=atomic_load(&r->t0_us);
+        if(min_fill && t0 && !atomic_load(&r->eof) && avail<*min_fill) *min_fill=avail;   /* the end of the file drains it by design */
         if(!avail){
             if(atomic_load(&r->eof)||atomic_load(&r->err)) break;
             if(atomic_load(&s->stop_req)) return -1;
-            rr_wait_(r,rr_has_data_); continue;
+            uint64_t ws=rd_now_us_();
+            rr_wait_(r,rr_has_data_);
+            if(waits && t0) rd_note_(waits,rd_now_us_()-ws,(ws-t0)/1000,tail);
+            continue;
         }
         size_t k=n-done<avail?n-done:avail, o=(size_t)(tail%r->cap);
         if(k>r->cap-o) k=r->cap-o;
@@ -536,6 +559,16 @@ static ssize_t rr_read_(replay_reader *r, cc_session *s, void *dst, size_t n){
         rr_wake_(r);
     }
     return (ssize_t)done;
+}
+#define rr_read_(r,s,dst,n) rr_read_diag_((r),(s),(dst),(n),&empty_waits,&min_fill)
+static void rd_emit_(const cc_session *s, const char *line){
+    if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
+}
+static void rd_print_(const cc_session *s, const char *what, const rd_list *l){
+    char line[1024]; int n=snprintf(line,sizeof line,"capture_core replay diag: %s: %llu, total %.1f ms",what,(unsigned long long)l->n,l->total_us/1000.0);
+    for(int k=0;k<RD_TOP && l->ev[k].us && n>0 && (size_t)n<sizeof line;k++)
+        n+=snprintf(line+n,sizeof line-(size_t)n,"%s%.1f ms @%.2fs (offset %.2f GB)",k?", ":"; worst ",l->ev[k].us/1000.0,l->ev[k].at_ms/1000.0,l->ev[k].off/1e9);
+    rd_emit_(s,line);
 }
 static int rr_start_(replay_reader *r, const char *path, size_t cap){
     memset(r,0,sizeof *r);
@@ -559,6 +592,7 @@ static void* replay_main(void *arg){
     internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     replay_reader rd, *f=&rd;
+    rd_list empty_waits={0}, oversleeps={0}; uint64_t min_fill=UINT64_MAX;
     int rr=rr_start_(f,s->cfg.replay_path,(size_t)(s->cfg.replay_readahead_mb>0?s->cfg.replay_readahead_mb:CC_DEFAULT_READAHEAD_MB)<<20);
     if(rr!=CC_OK){ atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,rr); goto failed_start; }
     uint8_t *pay=malloc(1u<<20); size_t cap=1u<<20;
@@ -574,6 +608,7 @@ static void* replay_main(void *arg){
     // fixed interval per transfer ADDS the parser's own work to each period (measured: a "realtime"
     // replay ran 28% slow, starving a live audio mixer); sleeping until the deadline does not.
     struct timespec pace_t0; clock_gettime(CLOCK_MONOTONIC,&pace_t0); uint64_t paced_transfers=0;
+    atomic_store(&f->t0_us,rd_now_us_());
     while(!atomic_load(&s->stop_req)){
         rec_hdr h;
         if(rr_read_(f,s,&h,sizeof h)!=(ssize_t)sizeof h || h.magic!=REC_MAGIC) break;
@@ -595,12 +630,15 @@ static void* replay_main(void *arg){
                     int64_t elapsed_us=(int64_t)(now.tv_sec-pace_t0.tv_sec)*1000000+(now.tv_nsec-pace_t0.tv_nsec)/1000;
                     int64_t due_us=(int64_t)paced_transfers*s->cfg.replay_pace_us;
                     /* Preserve pacing, but allow stop to interrupt even a very long interval. */
+                    int slept=0;
                     while(due_us>elapsed_us && !atomic_load(&s->stop_req)) {
                         int64_t left=due_us-elapsed_us;
-                        usleep((useconds_t)(left>20000?20000:left));
+                        usleep((useconds_t)(left>20000?20000:left)); slept=1;
                         clock_gettime(CLOCK_MONOTONIC,&now);
                         elapsed_us=(int64_t)(now.tv_sec-pace_t0.tv_sec)*1000000+(now.tv_nsec-pace_t0.tv_nsec)/1000;
                     }
+                    /* a wake-up more than 20 ms past its deadline: the pacer was not scheduled in time */
+                    if(slept && elapsed_us-due_us>20000) rd_note_(&oversleeps,(uint64_t)(elapsed_us-due_us),(uint64_t)due_us/1000,atomic_load(&f->tail));
                 } }
             break; }
         case REC_TICK: put_meta_(s,REC_TICK,0,0,0,h.status,NULL,0); break;
@@ -616,6 +654,13 @@ static void* replay_main(void *arg){
         }
     }
     free(pay);
+    if(s->cfg.replay_diag){
+        rd_print_(s,"pacer waited on an empty read-ahead ring (file too slow)",&empty_waits);
+        rd_print_(s,"reads over 50 ms",&f->slow_reads);
+        rd_print_(s,"pacer woke over 20 ms late",&oversleeps);
+        char line[160]; snprintf(line,sizeof line,"capture_core replay diag: lowest read-ahead fill while pacing: %.1f MiB of %.0f",min_fill==UINT64_MAX?-1.0:min_fill/1048576.0,f->cap/1048576.0);
+        rd_emit_(s,line);
+    }
     int read_err=rr_finish_(f);
     if(read_err && !atomic_load(&s->stop_req)){
         fprintf(stderr,"capture_core: replay read failed: %s\n",strerror(read_err));

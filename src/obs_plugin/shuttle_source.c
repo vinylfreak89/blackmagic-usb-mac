@@ -52,6 +52,8 @@
 #include "publish_queue.h"
 #include "timing_report.h"
 #include <dispatch/dispatch.h>
+#include <objc/runtime.h>
+#include <objc/message.h>
 #include <stdio.h>      /* renamex_np (macOS 10.12+): RENAME_EXCL makes the publish rename fail instead of replacing a file that appeared meanwhile */
 #include "../frameserver/frameserver.h"
 
@@ -94,6 +96,7 @@ typedef struct {
      * call time is how long obs_source_output_video blocked (OBS's async lock). */
     uint64_t last_handoff_ns, gap_events, max_gap_ns, max_call_ns, slow_calls;
     timing_report *reports;                 /* late-handoff reports, logged off the worker (timing_report.h) */
+    void *activity;                         /* NSProcessInfo activity held while a session runs (latency_begin) */
     /* Raw .tpc beside each recording (owner, 2026-09-28: "let OBS do both"). Written at its final
      * path on the recording's volume (LucidLink takes growing files); closed off the UI thread by
      * a detached closer; destroy waits until every closer is done. */
@@ -124,6 +127,30 @@ static void report_late(void *ctx, const tr_event *e){
          (unsigned long long)e->counter, e->gap_ns / 1e6, e->gap_ns / (1e9 * 1001 / 30000), e->call_ns / 1e6,
          h->since_prev_ns / 1e6, h->idle_ns / 1e6, h->classify_ns / 1e6, h->geometry_ns / 1e6, h->hretime_ns / 1e6, h->log_ns / 1e6, h->other_ns / 1e6, h->items, h->queue_wait_ns / 1e6);
 }
+
+/* While a session runs, ask macOS not to throttle this process: NSActivityUserInitiated (no App Nap,
+ * no idle sleep) plus NSActivityLatencyCritical (no timer coalescing). OBS itself requests only
+ * user-initiated (libobs os_request_high_performance), and its own timers were measured waking late:
+ * the 25 ms hotkey thread 94% late, up to 76 ms, in the session whose replay stalled ~100 ms inside OBS
+ * while the same replay outside OBS never did (2026-09-29). Plain C via the Objective-C runtime. */
+#define ACTIVITY_OPTIONS (0x00FFFFFFULL | 0xFF00000000ULL)   /* NSActivityUserInitiated | NSActivityLatencyCritical */
+static void latency_begin(shuttle_src *s){
+    if (s->activity) return;
+    id pi = ((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("NSProcessInfo"), sel_registerName("processInfo"));
+    id act = pi ? ((id (*)(id, SEL, uint64_t, id))objc_msgSend)(pi, sel_registerName("beginActivityWithOptions:reason:"),
+                                                               ACTIVITY_OPTIONS, (id)CFSTR("Shuttle capture/replay: real-time frame delivery")) : NULL;
+    if (!act){ blog(LOG_WARNING, "[shuttle-source] could not request latency-critical scheduling; timers may be delayed while OBS is in the background"); return; }
+    s->activity = ((void *(*)(id, SEL))objc_msgSend)(act, sel_registerName("retain"));
+    blog(LOG_INFO, "[shuttle-source] latency-critical scheduling requested for the session");
+}
+static void latency_end(shuttle_src *s){
+    if (!s->activity) return;
+    id pi = ((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("NSProcessInfo"), sel_registerName("processInfo"));
+    ((void (*)(id, SEL, id))objc_msgSend)(pi, sel_registerName("endActivity:"), (id)s->activity);
+    ((void (*)(id, SEL))objc_msgSend)((id)s->activity, sel_registerName("release"));
+    s->activity = NULL;
+}
+static void diag_to_obs(void *ctx, const char *line){ (void)ctx; blog(LOG_INFO, "[shuttle-source] %s", line); }
 
 static const char *shuttle_get_name(void *td){ (void)td; return "Blackmagic Intensity Shuttle (frameserver)"; }
 
@@ -451,6 +478,7 @@ static void shuttle_stop(shuttle_src *s){
     blog(LOG_INFO, "[shuttle-source] delivery timing: %llu handoff gaps over 83 ms (max %.1f ms), %llu output calls over 20 ms (max %.1f ms)",
          (unsigned long long)s->gap_events, s->max_gap_ns / 1e6, (unsigned long long)s->slow_calls, s->max_call_ns / 1e6);
     fs_close(s->fs); s->fs = NULL;
+    latency_end(s);
 }
 
 static int shuttle_start(shuttle_src *s, obs_data_t *settings){
@@ -462,7 +490,9 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     if (obs_data_get_bool(settings, S_USE_REPLAY)){
         const char *rp = obs_data_get_string(settings, S_REPLAY);
         if (!rp || !*rp){ blog(LOG_WARNING, "[shuttle-source] replay selected but no file given"); return -1; }
+        if (access(rp, R_OK) != 0){ blog(LOG_ERROR, "[shuttle-source] replay file cannot be opened (%s): %s", strerror(errno), rp); return -1; }   /* renamed or moved: say so, not just "start failed" */
         cfg.capture.replay_path = rp; cfg.capture.replay_pace_us = 16000;    /* device cadence */
+        cfg.capture.replay_diag = 1; cfg.capture.diag_log = diag_to_obs;     /* stall diagnosis into the OBS log at session end */
     }
     s->replaying = cfg.capture.replay_path != NULL;
     cfg.hretime = obs_data_get_bool(settings, S_HRETIME) ? 1 : 0;   /* per-tape choice; off leaves output unchanged */
@@ -484,6 +514,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
         if (s->sidecar_attached){ s->sidecar_attached = 0; blog(LOG_ERROR, "[shuttle-source] sidecar of the failed session left unpublished at %s", s->sidecar_partial); }
         fs_close(s->fs); s->fs = NULL; return -1;
     }
+    latency_begin(s);
     blog(LOG_INFO, "[shuttle-source] started (%s), registration %s, H-retiming %s", cfg.capture.replay_path ? "replay" : "device",
          cfg.registration_off ? "OFF (nominal placement)" : "on", cfg.hretime ? "ON" : "off");
     /* A replay IS a raw capture: teeing it would write another copy of the file being read. */
