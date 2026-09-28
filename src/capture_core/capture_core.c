@@ -65,6 +65,9 @@ struct cc_session {
     // threads / state machine
     pthread_t backend_t, delivery_t;
     long corrupt_spans; uint64_t corrupt_bytes;   /* replay backend thread; read after stop */
+    uint64_t align_bytes;                          /* replay: walked past before the first whole video transfer */
+    _Atomic int replay_paused;                     /* cc_replay_pause: the pacer holds at a transfer boundary */
+    pthread_mutex_t pause_m; pthread_cond_t pause_c; int pause_init;
     _Atomic int stop_req, backend_done, started_successfully;
     _Atomic int end_reason; _Atomic int end_fired;
     _Atomic uint64_t packets_delivered; /* delivery thread, not the libusb callback */
@@ -88,6 +91,7 @@ struct cc_session {
 };
 
 static void destroy_sync_(cc_session *s){
+    if(s->pause_init){ pthread_cond_destroy(&s->pause_c); pthread_mutex_destroy(&s->pause_m); }
     if(s->life_c_init) pthread_cond_destroy(&s->life_c);
     if(s->life_m_init) pthread_mutex_destroy(&s->life_m);
     if(s->sig_c_init) pthread_cond_destroy(&s->sig_c);
@@ -115,6 +119,7 @@ extern void cc_test_input_done(void);
 extern void cc_test_packet_progress(void);
 extern ssize_t cc_test_replay_read(int fd, void *buf, size_t n);
 extern void cc_test_replay_prefill_wait(void);
+extern void cc_test_replay_paused(uint64_t video_bytes);
 #else
 #define cc_test_destroyed() ((void)0)
 #define cc_test_after_empty_snapshot(s) ((void)(s))
@@ -127,6 +132,7 @@ extern void cc_test_replay_prefill_wait(void);
 #define cc_test_packet_progress() ((void)0)
 #define cc_test_replay_read(fd,buf,n) read((fd),(buf),(n))
 #define cc_test_replay_prefill_wait() ((void)0)
+#define cc_test_replay_paused(b) ((void)(b))
 #endif
 
 static uint64_t monotonic_ms_(void){
@@ -488,6 +494,7 @@ static void rd_note_(rd_list *l, uint64_t us, uint64_t at_ms, uint64_t off){
 static uint64_t rd_now_us_(void){ return clock_gettime_nsec_np(CLOCK_UPTIME_RAW)/1000; }
 typedef struct {
     int fd; uint8_t *ring; size_t cap, chunk, prefill;
+    uint64_t base;                           /* file offset the reader started at; head/tail are file offsets */
     rd_list slow_reads;                      /* reader: reads over 50 ms (reader thread only) */
     _Atomic uint64_t t0_us;                  /* set by the pacer when pacing starts; 0 before */
     _Atomic uint64_t head, tail;            /* bytes read / bytes consumed, monotonic */
@@ -531,7 +538,7 @@ static void *rr_main_(void *arg){
     return NULL;
 }
 static int rr_prefilled_(replay_reader *r){
-    return atomic_load(&r->eof) || atomic_load(&r->err) || atomic_load(&r->head)>=r->prefill;
+    return atomic_load(&r->eof) || atomic_load(&r->err) || atomic_load(&r->head)-r->base>=r->prefill;
 }
 static int rr_has_data_(replay_reader *r){
     return atomic_load(&r->eof) || atomic_load(&r->err) || atomic_load(&r->head)!=atomic_load(&r->tail);
@@ -580,9 +587,11 @@ static int rec_plausible_(const rec_hdr *h){
     return 1;
 }
 #define REPLAY_MAX_SKIP ((uint64_t)256<<20)
-static int rr_start_(replay_reader *r, const char *path, size_t cap){
+static int rr_start_(replay_reader *r, const char *path, size_t cap, uint64_t offset){
     memset(r,0,sizeof *r);
     r->fd=open(path,O_RDONLY); if(r->fd<0) return CC_ERR_IO;
+    if(offset && lseek(r->fd,(off_t)offset,SEEK_SET)!=(off_t)offset){ close(r->fd); return CC_ERR_IO; }
+    r->base=offset; atomic_store(&r->head,offset); atomic_store(&r->tail,offset);   /* ring index = offset % cap on both sides */
     r->cap=cap; r->chunk=cap/4<(4u<<20)?cap/4:(4u<<20);   /* at most 4 MiB per read */
     r->prefill=cap/2;   /* delivery starts once half the ring is read (or the file ended) */
     r->ring=malloc(cap);
@@ -603,7 +612,7 @@ static void* replay_main(void *arg){
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     replay_reader rd, *f=&rd;
     rd_list empty_waits={0}, oversleeps={0}; uint64_t min_fill=UINT64_MAX;
-    int rr=rr_start_(f,s->cfg.replay_path,(size_t)(s->cfg.replay_readahead_mb>0?s->cfg.replay_readahead_mb:CC_DEFAULT_READAHEAD_MB)<<20);
+    int rr=rr_start_(f,s->cfg.replay_path,(size_t)(s->cfg.replay_readahead_mb>0?s->cfg.replay_readahead_mb:CC_DEFAULT_READAHEAD_MB)<<20,s->cfg.replay_start_offset);
     if(rr!=CC_OK){ atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,rr); goto failed_start; }
     uint8_t *pay=malloc(1u<<20); size_t cap=1u<<20;
     if(!pay){ rr_finish_(f); atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); startup_report_(s,CC_ERR_NOMEM); goto failed_start; }
@@ -619,9 +628,22 @@ static void* replay_main(void *arg){
     // replay ran 28% slow, starving a live audio mixer); sleeping until the deadline does not.
     struct timespec pace_t0; clock_gettime(CLOCK_MONOTONIC,&pace_t0); uint64_t paced_transfers=0;
     atomic_store(&f->t0_us,rd_now_us_());
+    /* A start offset lands anywhere, usually inside a payload: slide to a valid record, then pass
+     * over records until one begins a whole video transfer. A transfer is a group of consecutive
+     * packets written together, so from there on both endpoints begin on whole transfers too. */
+    int aligning=s->cfg.replay_start_offset>0;
     while(!atomic_load(&s->stop_req)){
         rec_hdr h;
         if(rr_read_(f,s,&h,sizeof h)!=(ssize_t)sizeof h) break;
+        if(!rec_plausible_(&h) && aligning){
+            while(!atomic_load(&s->stop_req) && s->align_bytes<REPLAY_MAX_SKIP){
+                memmove(&h,(uint8_t*)&h+1,sizeof h-1);
+                if(rr_read_(f,s,(uint8_t*)&h+sizeof h-1,1)!=1) break;
+                s->align_bytes++;
+                if(rec_plausible_(&h)) break;
+            }
+            if(!rec_plausible_(&h)){ rd_emit_(s,"capture_core replay: no valid record after the start offset: ending"); break; }
+        }
         if(!rec_plausible_(&h)){
             /* Corrupt stretch: slide byte by byte to the next valid record and say so. This used to end
              * the replay as a clean end of file (2026-09-29: a render lost its last 2:19 to 6.3 MB of
@@ -643,6 +665,10 @@ static void* replay_main(void *arg){
         size_t plen=(h.type==REC_DATA||h.type==REC_SESSION)?h.actual_len:0;
         if(plen>cap){ uint8_t *np=realloc(pay,plen); if(!np){ atomic_store(&s->end_reason,CC_END_INTERNAL_ERROR); break; } pay=np; cap=plen; }
         if(plen && rr_read_(f,s,pay,plen)!=(ssize_t)plen) break;
+        if(aligning){
+            if(h.type==REC_DATA && h.endpoint==CC_EP_VIDEO && h.pkt_index==0) aligning=0;
+            else { s->align_bytes+=sizeof h+plen; continue; }
+        }
         switch(h.type){
         case REC_DATA: {
             int e=ep_i(h.endpoint);
@@ -667,6 +693,23 @@ static void* replay_main(void *arg){
                     }
                     /* a wake-up more than 20 ms past its deadline: the pacer was not scheduled in time */
                     if(slept && elapsed_us-due_us>20000) rd_note_(&oversleeps,(uint64_t)(elapsed_us-due_us),(uint64_t)due_us/1000,atomic_load(&f->tail));
+                }
+                if(e==0 && atomic_load(&s->replay_paused)){
+                    /* Held after a whole video transfer. Pacing resumes from the resume time: the pause is
+                     * added to the pace origin, so the next deadline is one period after resuming. */
+                    struct timespec p0,p1; clock_gettime(CLOCK_MONOTONIC,&p0);
+                    cc_test_replay_paused(s->bytes[0]);
+                    pthread_mutex_lock(&s->pause_m);
+                    while(atomic_load(&s->replay_paused) && !atomic_load(&s->stop_req)){
+                        struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_nsec+=100000000;
+                        if(ts.tv_nsec>=1000000000){ ts.tv_sec++; ts.tv_nsec-=1000000000; }
+                        pthread_cond_timedwait(&s->pause_c,&s->pause_m,&ts);   /* liveness backstop: internal stop paths set stop_req without signalling */
+                    }
+                    pthread_mutex_unlock(&s->pause_m);
+                    clock_gettime(CLOCK_MONOTONIC,&p1);
+                    int64_t held_ns=(int64_t)(p1.tv_sec-p0.tv_sec)*1000000000+(p1.tv_nsec-p0.tv_nsec);
+                    int64_t t0_ns=(int64_t)pace_t0.tv_nsec+held_ns;
+                    pace_t0.tv_sec+=(time_t)(t0_ns/1000000000); pace_t0.tv_nsec=(long)(t0_ns%1000000000);
                 } }
             break; }
         case REC_TICK: put_meta_(s,REC_TICK,0,0,0,h.status,NULL,0); break;
@@ -725,6 +768,9 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
     s->life_m_init=1;
     if(pthread_cond_init(&s->life_c,NULL)) goto sync_fail;
     s->life_c_init=1;
+    if(pthread_mutex_init(&s->pause_m,NULL)) goto sync_fail;
+    if(pthread_cond_init(&s->pause_c,NULL)){ pthread_mutex_destroy(&s->pause_m); goto sync_fail; }
+    s->pause_init=1;
     s->life=CC_LIFE_OPEN;
     s->ring_sz=(size_t)(cfg->ring_mb>0?cfg->ring_mb:CC_DEFAULT_RING_MB)<<20;
     s->ring=malloc(s->ring_sz);
@@ -810,6 +856,7 @@ int cc_stop(cc_session *s){
     if(s->life!=CC_LIFE_RUNNING){ pthread_mutex_unlock(&s->life_m); return CC_ERR_STATE; }
     s->life=CC_LIFE_STOPPING; pthread_mutex_unlock(&s->life_m);
     atomic_store(&s->stop_req,1);
+    pthread_mutex_lock(&s->pause_m); pthread_cond_broadcast(&s->pause_c); pthread_mutex_unlock(&s->pause_m);   /* a paused pacer wakes now */
     pthread_join(s->backend_t,NULL);
     pthread_join(s->delivery_t,NULL);
     pthread_mutex_lock(&s->life_m); s->life=CC_LIFE_STOPPED; pthread_cond_broadcast(&s->life_c); pthread_mutex_unlock(&s->life_m);
@@ -850,6 +897,15 @@ void cc_get_stats(const cc_session *s, cc_stats *o){
     o->fleet[0]=s->fleet[0]; o->fleet[1]=s->fleet[1]; o->fleet_size=XFERS;
     o->transfers_allocated=s->xfers_alloc; o->transfers_freed=s->xfers_freed;
     o->replay_corrupt_spans=s->corrupt_spans; o->replay_corrupt_bytes=s->corrupt_bytes;
+    o->replay_align_bytes=s->align_bytes;
+}
+int cc_replay_pause(cc_session *s, int paused){
+    if(!s || !s->cfg.replay_path) return CC_ERR_STATE;
+    pthread_mutex_lock(&s->pause_m);
+    atomic_store(&s->replay_paused,paused?1:0);
+    pthread_cond_broadcast(&s->pause_c);
+    pthread_mutex_unlock(&s->pause_m);
+    return CC_OK;
 }
 uint64_t cc_packets_delivered(const cc_session *s){
     return atomic_load_explicit(&s->packets_delivered,memory_order_relaxed);

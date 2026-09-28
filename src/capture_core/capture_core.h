@@ -88,6 +88,10 @@ typedef struct {
                                 // empty read-ahead ring (file too slow), slow reads, late pacer wake-ups
     void (*diag_log)(void *ctx, const char *line); // optional: receives diagnosis lines instead of stderr
     void *diag_ctx;
+    uint64_t replay_start_offset; // replay: begin at this byte offset of the file (0 = its start). The replay walks
+                                // forward to the first record that begins a whole video transfer (pkt_index 0)
+                                // and delivers from there; the bytes before it are counted in replay_align_bytes,
+                                // not reported as corruption. Records are self-describing, so any offset works.
 } cc_config;
 
 // Lifecycle: open -> start -> (callbacks) -> stop -> close.
@@ -104,6 +108,11 @@ void cc_close(cc_session *s);
 // One race-free atomic load during streaming; unlike cc_get_stats. Updated by the
 // delivery thread only, after the callback returns, never in the libusb hot path.
 uint64_t cc_packets_delivered(const cc_session *s);
+// Replay only: hold delivery (paused != 0) or resume it. The pacer stops at the next video-transfer
+// boundary, after that transfer is delivered, and waits for resume or stop; on resume its deadlines
+// restart from the resume time, so no burst follows. The read-ahead keeps filling while paused.
+// CC_ERR_STATE for a device session (a live capture cannot be held; the device keeps streaming).
+int cc_replay_pause(cc_session *s, int paused);
 const char *cc_strerror(int err);
 
 typedef struct {
@@ -120,6 +129,7 @@ typedef struct {
     int  teardown_incomplete;       // libusb never proved quiescence at stop: cc_close leaks the session deliberately
     long replay_corrupt_spans;      // replay: unparseable stretches of the file skipped to the next valid record
     uint64_t replay_corrupt_bytes;  //   (each also reported through diag_log / stderr with its file offset)
+    uint64_t replay_align_bytes;    // replay_start_offset > 0: bytes walked past to reach the first whole video transfer
 } cc_stats;
 // Snapshot of plain backend-thread counters: authoritative after cc_stop; a live call during
 // streaming is a racy diagnostic read (values may be momentarily inconsistent), never corrupting.

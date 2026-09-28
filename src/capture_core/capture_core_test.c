@@ -20,6 +20,7 @@
 #include <time.h>
 #include <signal.h>
 #include <errno.h>
+#include <sys/stat.h>
 #include "../test_supervisor.h"
 #include "../test_liveness.h"
 
@@ -109,6 +110,40 @@ ssize_t cc_test_replay_read(int fd, void *buf, size_t n){
         pthread_mutex_unlock(&live.mutex);
     }
     ssize_t r=read(fd,buf,n); if(r>0) rd_bytes+=(uint64_t)r; return r;
+}
+/* Seek and pause tests. */
+static _Atomic int paused_entries; static uint64_t paused_video_bytes;
+void cc_test_replay_paused(uint64_t video_bytes){
+    pthread_mutex_lock(&live.mutex); paused_video_bytes=video_bytes; atomic_fetch_add(&paused_entries,1); test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
+}
+typedef struct { uint64_t bytes[2], pkts[2]; int first_ep, first_pkt, have_first; _Atomic int ended; int end_reason; double end_time; } seek_tally;
+static void s_packet(void *ctx, const cc_packet *p){
+    seek_tally *t=ctx; test_live_note(&live);
+    if(!t->have_first){ t->have_first=1; t->first_ep=p->endpoint; t->first_pkt=p->pkt_index; }
+    int e=p->endpoint==CC_EP_AUDIO; t->bytes[e]+=p->actual_len; t->pkts[e]++;
+}
+static void s_end(void *ctx, enum cc_end r){
+    seek_tally *t=ctx; t->end_reason=r; t->end_time=test_now();
+    pthread_mutex_lock(&live.mutex); atomic_store(&t->ended,1); test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
+}
+/* What a replay started at `offset` must deliver, read straight from the file: from the first record
+ * boundary at or after the offset, skip to the first video DATA record with pkt_index 0, then every
+ * DATA record to the end. Returns that record's file position. */
+static uint64_t expect_from_offset(const char *path, uint64_t offset, uint64_t bytes[2], uint64_t pkts[2]){
+    FILE *f=fopen(path,"rb"); uint8_t h[24]; uint64_t pos=0, start=UINT64_MAX; static uint8_t pay[1<<16];
+    bytes[0]=bytes[1]=pkts[0]=pkts[1]=0;
+    while(f && fread(h,1,24,f)==24){
+        uint32_t magic,req,al; uint16_t pi; memcpy(&magic,h,4); memcpy(&pi,h+6,2); memcpy(&req,h+16,4); memcpy(&al,h+20,4);
+        uint8_t type=h[4], ep=h[5];
+        if(magic!=0x31504143u){ fprintf(stderr,"fixture record chain broke at %llu\n",(unsigned long long)pos); break; }
+        size_t plen=(type==0||type==3)?al:0;
+        if(plen && fread(pay,1,plen,f)!=plen) break;
+        if(start==UINT64_MAX && pos>=offset && type==0 && ep==CC_EP_VIDEO && pi==0) start=pos;
+        if(start!=UINT64_MAX && type==0){ int e=ep==CC_EP_AUDIO; bytes[e]+=al; pkts[e]++; }
+        pos+=24+plen;
+    }
+    if(f) fclose(f);
+    return start;
 }
 void cc_test_input_done(void){
     pthread_mutex_lock(&live.mutex); input_done=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
@@ -491,6 +526,77 @@ int main(int argc, char **argv){
             cc_close(s);
         }
         unlink(cpath);
+    }
+
+    // Start offset: an offset inside a payload must deliver exactly the records from the first whole
+    // video transfer after it, with the walk counted as alignment, not corruption.
+    {
+        struct stat stt; CHECK(stat(slice,&stt)==0,"stat fixture");
+        uint64_t offset=(uint64_t)stt.st_size/3+7, eb[2], ep[2];
+        uint64_t at=expect_from_offset(slice,offset,eb,ep);
+        CHECK(at!=UINT64_MAX && at>offset,"fixture has a video transfer after byte %llu",(unsigned long long)offset);
+        seek_tally st={0}; cc_callbacks scb={0}; scb.on_packet=s_packet; scb.on_end=s_end; scb.ctx=&st;
+        cc_config kcfg={0}; kcfg.replay_path=slice; kcfg.replay_start_offset=offset; s=NULL;
+        CHECK(cc_open(&s,&kcfg,&scb)==CC_OK,"open (offset)");
+        if(s){
+            CHECK(cc_start(s)==CC_OK,"start (offset)");
+            wait_ended(&st.ended,"offset run");
+            CHECK(cc_stop(s)==CC_OK,"stop (offset)");
+            cc_stats cs; cc_get_stats(s,&cs);
+            CHECK(st.end_reason==CC_END_REPLAY_EOF,"offset run ended %d",st.end_reason);
+            CHECK(st.have_first && st.first_ep==CC_EP_VIDEO && st.first_pkt==0,"first packet after the offset: endpoint 0x%x index %d, expected video index 0",st.first_ep,st.first_pkt);
+            CHECK(st.bytes[0]==eb[0] && st.bytes[1]==eb[1] && st.pkts[0]==ep[0] && st.pkts[1]==ep[1],
+                  "offset run delivered %llu/%llu B in %llu/%llu pkts, file says %llu/%llu B in %llu/%llu",
+                  (unsigned long long)st.bytes[0],(unsigned long long)st.bytes[1],(unsigned long long)st.pkts[0],(unsigned long long)st.pkts[1],
+                  (unsigned long long)eb[0],(unsigned long long)eb[1],(unsigned long long)ep[0],(unsigned long long)ep[1]);
+            CHECK(cs.replay_align_bytes==at-offset,"alignment walked %llu bytes, expected %llu",(unsigned long long)cs.replay_align_bytes,(unsigned long long)(at-offset));
+            CHECK(cs.replay_corrupt_spans==0,"a start offset was reported as %ld corrupt spans",cs.replay_corrupt_spans);
+            cc_close(s);
+        }
+    }
+
+    // Pause: set before start, the pacer delivers exactly one video transfer and holds. Held longer than
+    // the rest of the file takes, resume must not burst: the remaining transfers keep their pace.
+    {
+        enum { PACE_US=2000 };
+        seek_tally st={0}; cc_callbacks scb={0}; scb.on_packet=s_packet; scb.on_end=s_end; scb.ctx=&st;
+        cc_config kcfg={0}; kcfg.replay_path=slice; kcfg.replay_pace_us=PACE_US; s=NULL;
+        atomic_store(&paused_entries,0);
+        CHECK(cc_open(&s,&kcfg,&scb)==CC_OK,"open (pause)");
+        if(s){
+            CHECK(cc_replay_pause(s,1)==CC_OK,"pause before start");
+            CHECK(cc_start(s)==CC_OK,"start (pause)");
+            double begun=test_now(); pthread_mutex_lock(&live.mutex);
+            while(!atomic_load(&paused_entries)) test_live_wait(&live,begun,"pacer never held for the pause");
+            uint64_t held_at=paused_video_bytes; pthread_mutex_unlock(&live.mutex);
+            uint64_t one=0; { FILE *f=fopen(slice,"rb"); uint8_t h[24]; int n=0; static uint8_t pay[1<<16];   /* first transfer's video bytes */
+                while(f && n<128 && fread(h,1,24,f)==24){ uint32_t al; memcpy(&al,h+20,4); size_t pl=(h[4]==0||h[4]==3)?al:0;
+                    if(pl && fread(pay,1,pl,f)!=pl) break; if(h[4]==0 && h[5]==CC_EP_VIDEO){ one+=al; n++; } }
+                if(f) fclose(f); }
+            CHECK(held_at==one,"held after %llu video bytes, expected exactly one transfer (%llu)",(unsigned long long)held_at,(unsigned long long)one);
+            usleep(300000);   /* the hold: longer than the rest of the file takes at this pace (39 transfers, 78 ms) */
+            CHECK(!atomic_load(&st.ended) && atomic_load(&paused_entries)==1,"the replay moved on while paused");
+            double resumed_at=test_now();
+            CHECK(cc_replay_pause(s,0)==CC_OK,"resume");
+            wait_ended(&st.ended,"paused run");
+            CHECK(cc_stop(s)==CC_OK,"stop (pause)");
+            CHECK(st.end_reason==CC_END_REPLAY_EOF && st.bytes[0]==vB && st.bytes[1]==aB,"paused run ended %d with %llu/%llu bytes",st.end_reason,(unsigned long long)st.bytes[0],(unsigned long long)st.bytes[1]);
+            double after=st.end_time-resumed_at;
+            CHECK(after>=0.9*39*PACE_US/1e6,"the rest of the file took %.1f ms after resuming: a burst (paced, it takes %d ms)",after*1e3,39*PACE_US/1000);
+            cc_close(s);
+        }
+        /* stop while paused: the stop wakes the held pacer */
+        memset(&st,0,sizeof st); s=NULL; atomic_store(&paused_entries,0);
+        CHECK(cc_open(&s,&kcfg,&scb)==CC_OK,"open (pause+stop)");
+        if(s){
+            cc_replay_pause(s,1); CHECK(cc_start(s)==CC_OK,"start (pause+stop)");
+            double begun=test_now(); pthread_mutex_lock(&live.mutex);
+            while(!atomic_load(&paused_entries)) test_live_wait(&live,begun,"pacer never held (pause+stop)");
+            pthread_mutex_unlock(&live.mutex);
+            CHECK(cc_stop(s)==CC_OK,"stop while paused");
+            CHECK(st.end_reason==CC_END_STOPPED,"stopped while paused ended %d",st.end_reason);
+            cc_close(s);
+        }
     }
 
     printf(fails? "FAILURES: %d\n" : "ALL TESTS PASSED\n", fails);
