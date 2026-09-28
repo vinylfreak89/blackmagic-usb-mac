@@ -33,7 +33,7 @@ LDFLAGS = -bundle -F"$(OBS_APP)/Contents/Frameworks" -framework libobs "$(OBS_AP
 
 all: $(BUNDLE)
 
-$(BUNDLE): shuttle_source.c audio_timing.h publish_copy.c publish_copy.h publish_queue.c publish_queue.h timing_report.c timing_report.h obsconfig.h Info.plist $(CORE) ../frameserver/pairing_schedule.h ../frameserver/audio_publisher.h ../frameserver/hretime.h
+$(BUNDLE): shuttle_source.c audio_timing.h replay_timeline.h ../frameserver/replay_probe.h publish_copy.c publish_copy.h publish_queue.c publish_queue.h timing_report.c timing_report.h obsconfig.h Info.plist $(CORE) ../frameserver/pairing_schedule.h ../frameserver/audio_publisher.h ../frameserver/hretime.h
 	mkdir -p "$(BUILD_DIR)"; rm -rf $(BUNDLE); mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/locale
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) shuttle_source.c publish_copy.c publish_queue.c timing_report.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
 	cp Info.plist $(BUNDLE)/Contents/Info.plist
@@ -43,12 +43,15 @@ $(BUNDLE): shuttle_source.c audio_timing.h publish_copy.c publish_copy.h publish
 	codesign --force --sign - $(BUNDLE)
 	@echo "built $(BUNDLE)"; otool -L $(BUNDLE)/Contents/MacOS/$(PLUGIN) | grep -E 'libobs|libusb' || true
 
-test: test-audio test-timing-report publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
+test: test-audio test-timing-report test-replay-timeline publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_copy.c tests_publish_copy.c -o tests_publish_copy && ./tests_publish_copy
 	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue -lpthread && ./tests_publish_queue
 	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue_tsan -lpthread && ./tests_publish_queue_tsan
 
-.PHONY: test-audio
+.PHONY: test-audio test-replay-timeline
+test-replay-timeline: replay_timeline.h tests_replay_timeline.c
+	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra tests_replay_timeline.c -o tests_replay_timeline && ./tests_replay_timeline
+
 test-timing-report: timing_report.c timing_report.h tests_timing_report.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra -I../frameserver -I../capture_core -I../unit_parser -I../signal_state -I../field_registration timing_report.c tests_timing_report.c -o tests_timing_report -lpthread && ./tests_timing_report
 	$(CC) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra -I../frameserver -I../capture_core -I../unit_parser -I../signal_state -I../field_registration timing_report.c tests_timing_report.c -o tests_timing_report_tsan -lpthread && ./tests_timing_report_tsan
