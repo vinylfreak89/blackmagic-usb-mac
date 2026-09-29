@@ -711,9 +711,12 @@ static void* replay_main(void *arg){
                     /* Held after a whole video transfer. Pacing resumes from the resume time: the pause is
                      * added to the pace origin, so the next deadline is one period after resuming. */
                     struct timespec p0,p1; clock_gettime(CLOCK_MONOTONIC,&p0);
-                    cc_test_replay_paused(s->bytes[0]);
                     pthread_mutex_lock(&s->pause_m);
+                    int told=0;
                     while(atomic_load(&s->replay_paused) && !atomic_load(&s->stop_req)){
+                        /* test hook, under pause_m after the check: a stop signalled after it can only land once
+                         * this thread waits, so a prompt stop proves the broadcast, not a lucky early check */
+                        if(!told){ told=1; cc_test_replay_paused(s->bytes[0]); }
                         struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_sec+=PAUSE_BACKSTOP_S; ts.tv_nsec+=PAUSE_BACKSTOP_NS;
                         if(ts.tv_nsec>=1000000000){ ts.tv_sec++; ts.tv_nsec-=1000000000; }
                         pthread_cond_timedwait(&s->pause_c,&s->pause_m,&ts);   /* liveness backstop: internal stop paths set stop_req without signalling */
