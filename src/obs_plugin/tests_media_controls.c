@@ -97,6 +97,11 @@ int main(int argc, char **argv){
     CHECK(stub_started_signals == started + 1 && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, "restart_check did not resume the replay");
     I->media_play_pause(d, true);
     WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PAUSED, 5, "a pause after a failed record press");
+    I->media_stop(d);
+    WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, 5, "a stop after a failed record press");
+    started = stub_started_signals;
+    I->media_restart(d);   /* stopped, restart_pending still set: the controls must still act */
+    WAIT(stub_started_signals == started + 1 && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 5, "a restart after stop, after a failed record press");
     stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STOPPED);
     stub_restart_on_record(0);
 
@@ -120,7 +125,7 @@ int main(int argc, char **argv){
     I->media_restart(d); I->video_tick(d, 0.016f);
     CHECK(stub_ended_signals == ended + 1, "live restart was not followed by media_ended on the next tick");
     I->video_tick(d, 0.016f);
-    CHECK(stub_ended_signals == ended + 1, "media_ended repeated on a later tick");
+    CHECK(stub_ended_signals == ended + 1, "media_ended repeated on a later tick");   /* sanity only: the live-to-live update above decides the arming */
     I->media_set_time(d, 1000); I->media_play_pause(d, true);
     usleep(50000);
     CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, "live state after pause/seek: %d", I->media_get_state(d));

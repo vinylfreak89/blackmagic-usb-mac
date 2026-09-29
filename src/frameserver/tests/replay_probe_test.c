@@ -66,6 +66,7 @@ int main(int argc, char **argv){
         CHECK(fs_replay_probe(tpath, 0, NULL, &sp) != 0 && sp.have_first && !sp.have_last && !sp.incomplete, "a unit-less 40 MiB tail: first %d last %d incomplete %d", sp.have_first, sp.have_last, sp.incomplete);
         unlink(tpath);
     }
+    CHECK(fs_replay_probe("/nonexistent/volume/capture.tpc", 0, NULL, &sp) != 0 && sp.incomplete, "an unreadable path must be unknown (incomplete), not a clean absence: incomplete %d", sp.incomplete);
     _Atomic int abort_now = 1;
     CHECK(fs_replay_probe(p, 0, &abort_now, &sp) != 0 && sp.incomplete, "an aborted probe reported success or a known absence");
 #ifdef CAPTURE_CORE_TEST_HOOKS

@@ -114,6 +114,8 @@ typedef struct {
      * over but not yet rendered would otherwise fall outside the recording. */
     int replaying;                          /* this session reads a .tpc */
     int restart_pending;                    /* stopped at RECORDING_STARTING, restart at RECORDING_STARTED */
+    int record_gap;                         /* blank on purpose: from RECORDING_STARTING until RECORDING_STARTED/STOPPED, or until
+                                               restart_check finds the start failed. Media controls wait it out. */
     _Atomic int stop_on_eof;                /* this recording ends when the replay does */
     _Atomic int stop_ticks;                 /* >0: render ticks left before requesting the stop */
     /* OBS media controls (OBS_SOURCE_CONTROLLABLE_MEDIA: play/pause, restart, stop, seek bar). libobs
@@ -493,9 +495,9 @@ static void media_apply(shuttle_src *s, int act, int64_t ms){
     }
     /* Between RECORDING_STARTING and RECORDING_STARTED the replay is stopped and the source blank on
      * purpose; the recording restarts it from the file's start. If the record press failed, restart_check
-     * resumed the replay with restart_pending still set (a late RECORDING_STARTED still restarts it), and
-     * the controls act normally: a seek or restart here keeps restart_pending, so that still holds. */
-    if (s->restart_pending && !s->fs){
+     * ends the gap and resumes the replay with restart_pending still set (a late RECORDING_STARTED still
+     * restarts it); from there the controls act normally, stop included, and keep restart_pending. */
+    if (s->record_gap){
         blog(LOG_INFO, "[shuttle-source] media control ignored while the recording starts (it restarts the replay from the beginning)");
         obs_data_release(settings); return;
     }
@@ -622,6 +624,7 @@ static void restart_check(void *param){
     int active = out && obs_output_active(out); obs_output_release(out);
     if (s){
         pthread_mutex_lock(&s->m);
+        if (s->restart_pending && !active) s->record_gap = 0;   /* the start failed: the gap is over, whatever resumes */
         if (s->restart_pending && !s->fs && !active){
             obs_data_t *st = obs_source_get_settings(src);
             if (shuttle_start(s, st) == 0) blog(LOG_WARNING, "[shuttle-source] the recording output is not active after the record press (start failed?): replay resumed; it restarts from the beginning if the recording does start");
@@ -641,7 +644,7 @@ static void frontend_event(enum obs_frontend_event ev, void *data){
         if (s->replaying && obs_data_get_bool(settings, S_REPLAY_RESTART)){
             shuttle_stop(s);
             obs_source_output_video(s->source, NULL);   /* blank until the restart: no earlier frame enters the recording */
-            s->restart_pending = 1;
+            s->restart_pending = 1; s->record_gap = 1;
             blog(LOG_INFO, "[shuttle-source] recording starting: replay stopped; it restarts from the beginning of the file once the recording has started");
             dispatch_async_f(dispatch_get_main_queue(), obs_source_get_weak_source(s->source), restart_check);
         }
@@ -649,6 +652,7 @@ static void frontend_event(enum obs_frontend_event ev, void *data){
     case OBS_FRONTEND_EVENT_RECORDING_STARTED:
         if (recording_path(s) != 0) blog(LOG_WARNING, "[shuttle-source] recording started but its path is unknown; no sidecar");
         else { s->sidecar_part = 0; s->tpc_part = 0; }
+        s->record_gap = 0;
         if (s->restart_pending){
             s->restart_pending = 0;
             shuttle_stop(s);   /* running if restart_check resumed it or a settings change started it */
@@ -669,6 +673,7 @@ static void frontend_event(enum obs_frontend_event ev, void *data){
     case OBS_FRONTEND_EVENT_RECORDING_STOPPED:
         atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);
         tpc_detach(s); sidecar_detach(s); bfree(s->sidecar_base); s->sidecar_base = NULL;
+        s->record_gap = 0;
         if (s->restart_pending){ s->restart_pending = 0; if (!s->fs) shuttle_start(s, settings); }   /* the recording never started: resume the replay */
         break;
     default: break;
@@ -834,7 +839,7 @@ static void shuttle_destroy(void *data){
 static void shuttle_update(void *data, obs_data_t *settings){
     shuttle_src *s = data; if (!s) return;
     pthread_mutex_lock(&s->m);
-    s->restart_pending = 0;   /* a session started here replaces a pending restart (RECORDING_STARTED would otherwise start a second) */
+    s->restart_pending = 0; s->record_gap = 0;   /* a session started here replaces a pending restart (RECORDING_STARTED would otherwise start a second) */
     shuttle_stop(s);
     /* the end-of-file stop follows the current settings; a restart here begins the file again */
     if (atomic_load(&s->stop_on_eof) && !(obs_data_get_bool(settings, S_REPLAY_RESTART) && obs_data_get_bool(settings, S_REPLAY_STOP))) atomic_store(&s->stop_on_eof, 0);

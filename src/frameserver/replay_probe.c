@@ -47,7 +47,7 @@ static int run_(const char *path, uint64_t offset, uint64_t window, int stop_at_
     probe_run r; memset(&r, 0, sizeof r);
     r.stop_at_first = stop_at_first; r.window = window;
     r.parser = aligned_alloc(unit_parser_alignment(), unit_parser_size());
-    if (!r.parser) return -1;
+    if (!r.parser) return -2;   /* nothing read: unknown, not absent */
     unit_parser_callbacks pcb = { on_video_, on_audio_, &r };
     unit_parser_init(r.parser, NULL, &pcb);
     unit_parser_begin_epoch(r.parser, 1);
@@ -86,7 +86,9 @@ static int run_(const char *path, uint64_t offset, uint64_t window, int stop_at_
 int fs_replay_probe(const char *path, uint64_t window_bytes, _Atomic int *abort, fs_replay_span *out){
     memset(out, 0, sizeof *out);
     struct stat st;
-    if (!path || stat(path, &st) != 0 || st.st_size <= 0) return -1;
+    if (!path){ out->incomplete = 1; return -1; }
+    if (stat(path, &st) != 0){ out->incomplete = 1; return -1; }   /* unreadable now (a network volume): unknown, not absent */
+    if (st.st_size <= 0) return -1;                                /* empty: a clean absence; a size change probes again */
     out->file_bytes = (uint64_t)st.st_size;
     uint64_t w = window_bytes ? window_bytes : (32ull << 20);
     uint16_t a, b; int rc;
