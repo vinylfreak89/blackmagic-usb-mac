@@ -85,4 +85,7 @@ void obs_source_set_deinterlace_mode(obs_source_t *s, enum obs_deinterlace_mode 
 bool video_format_get_parameters(enum video_colorspace c, enum video_range_type r, float m[16], float mn[3], float mx[3]){
     (void)c; (void)r; memset(m, 0, 16 * sizeof *m); memset(mn, 0, 3 * sizeof *mn); memset(mx, 0, 3 * sizeof *mx); return true;
 }
+bool video_format_get_parameters_for_format(enum video_colorspace c, enum video_range_type r, enum video_format f, float m[16], float mn[3], float mx[3]){
+    (void)f; return video_format_get_parameters(c, r, m, mn, mx);
+}
 uint64_t os_gettime_ns(void){ return clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }

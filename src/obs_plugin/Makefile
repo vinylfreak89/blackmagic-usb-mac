@@ -33,7 +33,7 @@ LDFLAGS = -bundle -F"$(OBS_APP)/Contents/Frameworks" -framework libobs "$(OBS_AP
 
 all: $(BUNDLE)
 
-$(BUNDLE): shuttle_source.c audio_timing.h replay_timeline.h ../frameserver/replay_probe.h publish_copy.c publish_copy.h publish_queue.c publish_queue.h timing_report.c timing_report.h obsconfig.h Info.plist $(CORE) ../frameserver/pairing_schedule.h ../frameserver/audio_publisher.h ../frameserver/hretime.h
+$(BUNDLE): shuttle_source.c audio_timing.h frame_levels.h replay_timeline.h ../frameserver/replay_probe.h publish_copy.c publish_copy.h publish_queue.c publish_queue.h timing_report.c timing_report.h obsconfig.h Info.plist $(CORE) ../frameserver/pairing_schedule.h ../frameserver/audio_publisher.h ../frameserver/hretime.h
 	mkdir -p "$(BUILD_DIR)"; rm -rf $(BUNDLE); mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/locale
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) shuttle_source.c publish_copy.c publish_queue.c timing_report.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
 	cp Info.plist $(BUNDLE)/Contents/Info.plist
@@ -43,16 +43,16 @@ $(BUNDLE): shuttle_source.c audio_timing.h replay_timeline.h ../frameserver/repl
 	codesign --force --sign - $(BUNDLE)
 	@echo "built $(BUNDLE)"; otool -L $(BUNDLE)/Contents/MacOS/$(PLUGIN) | grep -E 'libobs|libusb' || true
 
-test: test-audio test-timing-report test-replay-timeline test-media-controls publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
+test: test-audio test-frame-levels test-timing-report test-replay-timeline test-media-controls publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_copy.c tests_publish_copy.c -o tests_publish_copy && ./tests_publish_copy
 	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue -lpthread && ./tests_publish_queue
 	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue_tsan -lpthread && ./tests_publish_queue_tsan
 
-.PHONY: test-audio test-replay-timeline test-media-controls
+.PHONY: test-audio test-frame-levels test-replay-timeline test-media-controls
 # The plugin's media controls in a test process: libobs replaced by stubs, the real frameserver
 # replaying the plain synthetic fixture. Plain and ThreadSanitizer builds.
 MEDIA_FIXTURE = ../unit_parser/tests/fixture_plain.tpc
-test-media-controls: shuttle_source.c tests_media_controls.c tests_obs_stubs.c tests_obs_stubs.h replay_timeline.h $(CORE) publish_copy.c publish_queue.c timing_report.c
+test-media-controls: shuttle_source.c frame_levels.h tests_media_controls.c tests_obs_stubs.c tests_obs_stubs.h replay_timeline.h $(CORE) publish_copy.c publish_queue.c timing_report.c
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
 	$(CC) $(CPPFLAGS) -O1 -g -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls $(MEDIA_FIXTURE)
 	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls_tsan -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls_tsan $(MEDIA_FIXTURE)
@@ -63,6 +63,9 @@ test-replay-timeline: replay_timeline.h tests_replay_timeline.c
 test-timing-report: timing_report.c timing_report.h tests_timing_report.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra -I../frameserver -I../capture_core -I../unit_parser -I../signal_state -I../field_registration timing_report.c tests_timing_report.c -o tests_timing_report -lpthread && ./tests_timing_report
 	$(CC) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra -I../frameserver -I../capture_core -I../unit_parser -I../signal_state -I../field_registration timing_report.c tests_timing_report.c -o tests_timing_report_tsan -lpthread && ./tests_timing_report_tsan
+
+test-frame-levels: frame_levels.h tests_frame_levels.c
+	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra tests_frame_levels.c -o tests_frame_levels && ./tests_frame_levels
 
 test-audio:
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra tests_audio_timing.c -o tests_audio_timing
@@ -78,4 +81,4 @@ uninstall:
 	rm -rf "$(INSTALL_DIR)/$(PLUGIN).plugin"
 
 clean:
-	rm -rf $(BUNDLE) tests_timing_report tests_timing_report_tsan tests_publish_copy tests_publish_queue tests_publish_queue_tsan tests_audio_timing $(PLUGIN).plugin
+	rm -rf $(BUNDLE) tests_timing_report tests_timing_report_tsan tests_publish_copy tests_publish_queue tests_publish_queue_tsan tests_audio_timing tests_frame_levels $(PLUGIN).plugin

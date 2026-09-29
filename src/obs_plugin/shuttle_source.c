@@ -74,13 +74,14 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
 #include "audio_timing.h"
+#include "frame_levels.h"
 
 #define MEDIA_QUEUE 32
 enum { ACT_PLAY, ACT_PAUSE, ACT_RESTART, ACT_STOP, ACT_SEEK };
 typedef struct {
     obs_source_t *source;
     frameserver *fs;
-    uint8_t *vbuf;                         /* 720*480*2 UYVY staging (one frame; libobs copies) */
+    uint16_t *vbuf;                        /* I210 staging, Y then U then V planes (one frame; libobs copies); frame_levels.h */
     int32_t *abuf; uint32_t abuf_frames;   /* S32 interleaved stereo staging */
     float color_matrix[16], color_min[3], color_max[3];
     _Atomic uint64_t frames_out, audio_frames_out, audio_steps;
@@ -189,11 +190,13 @@ static void on_frame(void *ctx, const fp_frame *fr){
     if (!fr->surface) return;
     IOSurfaceLock(fr->surface, kIOSurfaceLockReadOnly, NULL);
     const uint8_t *base = IOSurfaceGetBaseAddress(fr->surface); size_t bpr = IOSurfaceGetBytesPerRow(fr->surface);
-    for (unsigned y = 0; y < FP_FRAME_HEIGHT; y++) memcpy(s->vbuf + (size_t)y * FP_FRAME_WIDTH * 2, base + (size_t)y * bpr, FP_FRAME_WIDTH * 2);
+    uint16_t *py = s->vbuf, *pu = py + (size_t)FP_FRAME_WIDTH * FP_FRAME_HEIGHT, *pv = pu + (size_t)FP_FRAME_WIDTH / 2 * FP_FRAME_HEIGHT;
+    shuttle_uyvy_to_i210(base, bpr, FP_FRAME_WIDTH, FP_FRAME_HEIGHT, py, pu, pv);
     IOSurfaceUnlock(fr->surface, kIOSurfaceLockReadOnly, NULL);
     struct obs_source_frame f; memset(&f, 0, sizeof f);
-    f.data[0] = s->vbuf; f.linesize[0] = FP_FRAME_WIDTH * 2;
-    f.width = FP_FRAME_WIDTH; f.height = FP_FRAME_HEIGHT; f.format = VIDEO_FORMAT_UYVY;
+    f.data[0] = (uint8_t *)py; f.data[1] = (uint8_t *)pu; f.data[2] = (uint8_t *)pv;
+    f.linesize[0] = FP_FRAME_WIDTH * 2; f.linesize[1] = f.linesize[2] = FP_FRAME_WIDTH;
+    f.width = FP_FRAME_WIDTH; f.height = FP_FRAME_HEIGHT; f.format = VIDEO_FORMAT_I210;
     f.timestamp = (uint64_t)((__uint128_t)fr->pts_num * 1000000000ull / fr->pts_den);
     memcpy(f.color_matrix, s->color_matrix, sizeof f.color_matrix);
     memcpy(f.color_range_min, s->color_min, sizeof f.color_range_min); memcpy(f.color_range_max, s->color_max, sizeof f.color_range_max);
@@ -778,9 +781,13 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
         return NULL;
     }
     shuttle_src *s = bzalloc(sizeof *s); s->source = source;
-    s->vbuf = bmalloc((size_t)FP_FRAME_WIDTH * FP_FRAME_HEIGHT * 2);
+    s->vbuf = bmalloc((size_t)FP_FRAME_WIDTH * FP_FRAME_HEIGHT * 2 * sizeof(uint16_t));   /* Y + U + V planes */
     s->abuf_frames = 4096; s->abuf = bmalloc((size_t)s->abuf_frames * 2 * sizeof(int32_t));
-    video_format_get_parameters(VIDEO_CS_601, VIDEO_RANGE_PARTIAL, s->color_matrix, s->color_min, s->color_max);
+    /* Rec.601 limited-range matrix for 10-bit I210: 64 -> black, 940 -> white, levels unchanged.
+     * The range clamp is opened to the whole code range so sub-black and super-white reach OBS's
+     * float texture instead of being clipped to 16..235 (frame_levels.h has the texture path). */
+    video_format_get_parameters_for_format(VIDEO_CS_601, VIDEO_RANGE_PARTIAL, VIDEO_FORMAT_I210, s->color_matrix, s->color_min, s->color_max);
+    for (int k = 0; k < 3; k++){ s->color_min[k] = 0.0f; s->color_max[k] = 1.0f; }
     /* libobs keeps audio timing independent of video only when the source is BOTH decoupled and
      * unbuffered (obs-source.c: the audio path re-anchors timing_adjust on its own only in that
      * mode, and the video path stops overwriting it). Frames are shown as they arrive at device
