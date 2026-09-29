@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <CoreFoundation/CoreFoundation.h>
 
 bool obs_module_load(void);
 static int fails;
@@ -22,9 +23,11 @@ int main(int argc, char **argv){
     const struct obs_source_info *I = stub_info;
     CHECK(I && (I->output_flags & OBS_SOURCE_CONTROLLABLE_MEDIA), "source registered with media controls");
     obs_data_t *st = stub_settings(argv[1], 1);
-    void *d = I->create(st, (obs_source_t *)&fails);   /* any non-NULL pointer: the stubs ignore it */
+    stub_source = (obs_source_t *)&fails;   /* any non-NULL pointer stands for the source */
+    void *d = I->create(st, stub_source);
     CHECK(d != NULL, "create");
     if (!d) return 1;
+    stub_data = d;
 
     /* 1. the probe gives the duration; the first run plays to the end and its last frame shows 3,937 ms */
     WAIT(I->media_get_duration(d) > 0, 20, "the replay length");
@@ -81,6 +84,22 @@ int main(int argc, char **argv){
     seeked = stub_video_frames - f0;
     CHECK(seeked > 10 && seeked < 35, "the run from 3,000 ms published %llu frames (from about unit 89-95)", (unsigned long long)seeked);
 
+    /* 4b. a record press whose output fails to start: RECORDING_STARTING stops the replay (actions in that
+     * blank gap are ignored), restart_check (main queue) finds no active output and resumes the replay with
+     * restart_pending still set. From there the controls must act; before the fix they were ignored. */
+    stub_restart_on_record(1);
+    I->media_restart(d);
+    WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 10, "playing before the record press");
+    stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STARTING);
+    CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, "RECORDING_STARTING left state %d", I->media_get_state(d));
+    started = stub_started_signals;
+    for (double t0 = now(); stub_started_signals == started && now() - t0 < 10; ) CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, false);
+    CHECK(stub_started_signals == started + 1 && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, "restart_check did not resume the replay");
+    I->media_play_pause(d, true);
+    WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PAUSED, 5, "a pause after a failed record press");
+    stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STOPPED);
+    stub_restart_on_record(0);
+
     /* 5. stop */
     I->media_stop(d);
     WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, 10, "stop");
@@ -92,7 +111,12 @@ int main(int argc, char **argv){
     I->update(d, st);
     CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED && I->media_get_duration(d) == 0 && I->media_get_time(d) == 0, "live controls: state %d duration %lld time %lld",
           I->media_get_state(d), (long long)I->media_get_duration(d), (long long)I->media_get_time(d));
+    I->video_tick(d, 0.016f);   /* the switch from replay armed one re-grey: consume it first */
     int ended = stub_ended_signals;
+    I->video_tick(d, 0.016f);
+    CHECK(stub_ended_signals == ended, "a tick with no live action emitted media_ended");
+    I->update(d, st); I->video_tick(d, 0.016f);   /* live to live: nothing to grey */
+    CHECK(stub_ended_signals == ended, "a live-to-live settings update emitted media_ended");
     I->media_restart(d); I->video_tick(d, 0.016f);
     CHECK(stub_ended_signals == ended + 1, "live restart was not followed by media_ended on the next tick");
     I->video_tick(d, 0.016f);
@@ -101,13 +125,28 @@ int main(int argc, char **argv){
     usleep(50000);
     CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, "live state after pause/seek: %d", I->media_get_state(d));
 
+    /* 6b. a replay path that cannot be opened: the previous file's length does not stay on the bar */
+    st = stub_settings(argv[1], 1);
+    I->update(d, st);
+    WAIT(I->media_get_duration(d) == 3937, 10, "the fixture's length again");
+    ended = stub_ended_signals;
+    st = stub_settings("/nonexistent/volume/capture.tpc", 1);
+    I->update(d, st);
+    CHECK(I->media_get_duration(d) == 0 && stub_ended_signals == ended + 1, "after a failed replay start: duration %lld, ended signals +%d",
+          (long long)I->media_get_duration(d), stub_ended_signals - ended);
+
     /* 7. back to replay, then destroy while it plays: prompt, no hang */
     st = stub_settings(argv[1], 1);
     I->update(d, st);
     WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 10, "replay after live");
     double t0 = now();
     I->destroy(d);
-    CHECK(now() - t0 < 3.0, "destroy took %.2f s", now() - t0);
+#if defined(__has_feature) && __has_feature(thread_sanitizer)
+    const double destroy_bound = 60;   /* fs_stop drains the pipeline's backlog, which TSan's slow workers let grow */
+#else
+    const double destroy_bound = 3;
+#endif
+    CHECK(now() - t0 < destroy_bound, "destroy took %.2f s", now() - t0);
     printf(fails ? "MEDIA CONTROLS: %d FAILURES\n" : "MEDIA CONTROLS PASS\n", fails);
     return fails ? 1 : 0;
 }

@@ -24,14 +24,12 @@ int main(void){
     CHECK(rt_resolve(&t, (uint16_t)(2763 + 162632 + 5), 162630) == 162632, "never past the last unit");
     CHECK(rt_resolve(&t, (uint16_t)(2763 + 50000 - 205), 50000) == 49795, "a counter within the slack is believed");
     CHECK(rt_resolve(&t, (uint16_t)(2763 + 50000 + 20000), 50000) == 50000, "a counter 20,000 units from the frame count (a counter restart) is not");
-    CHECK(rt_consistent(&t), "tape 1 is consistent");
     /* the wrap count: short files, and a file whose last counter is below its first */
     CHECK(rt_init(&t, 807324ull * 1000, 100, 1100) == 0 && t.units == 1000, "short file %llu", (unsigned long long)t.units);
     CHECK(rt_init(&t, 807324ull * 70000, 60000, (uint16_t)(60000 + 70000)) == 0 && t.units == 70000, "one wrap %llu", (unsigned long long)t.units);
-    CHECK(rt_init(&t, 807324ull * 70000 * 101 / 100, 60000, (uint16_t)(60000 + 70000)) == 0 && t.units == 70000 && rt_consistent(&t), "1%% off the nominal rate: the counters stand");
+    CHECK(rt_init(&t, 807324ull * 70000 * 11 / 10, 60000, (uint16_t)(60000 + 70000)) == 0 && t.units == 70000, "10%% off the nominal rate (host loss, another tape) still picks the right wrap");
     CHECK(rt_init(&t, 1000, 5, 5) != 0, "no units: unknown");
-    /* a counter restart inside a file: 100,000 units of bytes but a span of 30,000 counters */
-    CHECK(rt_init(&t, 807324ull * 100000, 1000, 31000) == 0 && !rt_consistent(&t) && t.units == 100000, "counter restart: units %llu approx %d", (unsigned long long)t.units, t.approx);
+
     printf(fails ? "REPLAY TIMELINE: %d FAILURES\n" : "REPLAY TIMELINE PASS\n", fails);
     return fails ? 1 : 0;
 }

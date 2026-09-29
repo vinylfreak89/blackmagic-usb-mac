@@ -18,8 +18,12 @@ const struct obs_source_info *stub_info;
 _Atomic int stub_started_signals, stub_ended_signals;
 _Atomic uint64_t stub_video_frames;
 int stub_verbose;
-struct obs_data { _Atomic(const char *) path; _Atomic int use_replay; };   /* OBS's obs_data is thread-safe; so is this */
+struct obs_data { _Atomic(const char *) path; _Atomic int use_replay, restart_on_record; };   /* OBS's obs_data is thread-safe; so is this */
+void *stub_data; obs_source_t *stub_source;
+static obs_frontend_event_cb g_event_cb; static void *g_event_param;
+void stub_fire_event(enum obs_frontend_event ev){ if (g_event_cb) g_event_cb(ev, g_event_param); }
 static struct obs_data g_settings;
+void stub_restart_on_record(int on){ atomic_store(&g_settings.restart_on_record, on); }
 obs_data_t *stub_settings(const char *path, int use_replay){ atomic_store(&g_settings.path, path); atomic_store(&g_settings.use_replay, use_replay); return &g_settings; }
 
 _Atomic int stub_late_reports;
@@ -42,6 +46,7 @@ void text_lookup_destroy(lookup_t *l){ (void)l; }
 lookup_t *obs_module_load_locale(obs_module_t *m, const char *d, const char *l){ (void)m; (void)d; (void)l; return NULL; }
 bool obs_data_get_bool(obs_data_t *d, const char *name){
     if (!strcmp(name, "use_replay")) return atomic_load(&d->use_replay);
+    if (!strcmp(name, "replay_restart_on_record")) return atomic_load(&d->restart_on_record);
     if (!strcmp(name, "registration")) return true;
     return false;   /* hretime, raw_tpc, restart/stop-on-record, sidecar: off */
 }
@@ -50,13 +55,13 @@ void obs_data_release(obs_data_t *d){ (void)d; }
 void obs_data_set_default_bool(obs_data_t *d, const char *n, bool v){ (void)d; (void)n; (void)v; }
 void obs_data_set_default_string(obs_data_t *d, const char *n, const char *v){ (void)d; (void)n; (void)v; }
 obs_data_t *obs_source_get_settings(const obs_source_t *s){ (void)s; return &g_settings; }
-void obs_frontend_add_event_callback(obs_frontend_event_cb cb, void *p){ (void)cb; (void)p; }
-void obs_frontend_remove_event_callback(obs_frontend_event_cb cb, void *p){ (void)cb; (void)p; }
+void obs_frontend_add_event_callback(obs_frontend_event_cb cb, void *p){ g_event_cb = cb; g_event_param = p; }
+void obs_frontend_remove_event_callback(obs_frontend_event_cb cb, void *p){ (void)cb; (void)p; g_event_cb = NULL; }
 char *obs_frontend_get_last_recording(void){ return NULL; }
 obs_output_t *obs_frontend_get_recording_output(void){ return NULL; }
 bool obs_frontend_recording_active(void){ return false; }
 void obs_frontend_recording_stop(void){}
-void *obs_obj_get_data(void *o){ (void)o; return NULL; }
+void *obs_obj_get_data(void *o){ return o == stub_source ? stub_data : NULL; }
 bool obs_output_active(const obs_output_t *o){ (void)o; return false; }
 void obs_output_release(obs_output_t *o){ (void)o; }
 obs_properties_t *obs_properties_create(void){ return NULL; }
@@ -65,8 +70,8 @@ obs_property_t *obs_properties_add_list(obs_properties_t *p, const char *n, cons
 obs_property_t *obs_properties_add_path(obs_properties_t *p, const char *n, const char *d, enum obs_path_type t, const char *f, const char *dp){ (void)p; (void)n; (void)d; (void)t; (void)f; (void)dp; return NULL; }
 size_t obs_property_list_add_string(obs_property_t *p, const char *n, const char *v){ (void)p; (void)n; (void)v; return 0; }
 void obs_register_source_s(const struct obs_source_info *info, size_t size){ (void)size; stub_info = info; }
-obs_weak_source_t *obs_source_get_weak_source(obs_source_t *s){ (void)s; return NULL; }
-obs_source_t *obs_weak_source_get_source(obs_weak_source_t *w){ (void)w; return NULL; }
+obs_weak_source_t *obs_source_get_weak_source(obs_source_t *s){ return (obs_weak_source_t *)s; }   /* the recording output never starts here, */
+obs_source_t *obs_weak_source_get_source(obs_weak_source_t *w){ return (obs_source_t *)w; }        /* so restart_check finds the source alive */
 void obs_weak_source_release(obs_weak_source_t *w){ (void)w; }
 void obs_source_release(obs_source_t *s){ (void)s; }
 void obs_source_media_started(obs_source_t *s){ (void)s; atomic_fetch_add(&stub_started_signals, 1); }

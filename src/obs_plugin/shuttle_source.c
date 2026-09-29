@@ -212,7 +212,7 @@ static void on_frame(void *ctx, const fp_frame *fr){
     }
     uint64_t units = atomic_load_explicit(&s->tl_units, memory_order_acquire);
     if (units){   /* the seek bar's time: this frame's own counter, resolved near the session's expected position */
-        rt_timeline tl = { atomic_load(&s->tl_bytes), units, (uint16_t)atomic_load(&s->tl_first16), 0 };
+        rt_timeline tl = { atomic_load(&s->tl_bytes), units, (uint16_t)atomic_load(&s->tl_first16) };
         uint64_t u = rt_resolve(&tl, (uint16_t)fr->counter_ext, (int64_t)(s->session_start_unit + atomic_load(&s->frames_out)));
         atomic_store(&s->time_ms, rt_ms(u));
     }
@@ -269,7 +269,7 @@ static void shuttle_video_tick(void *data, float seconds){
     (void)seconds; shuttle_src *s = data;
     /* Live: libobs followed our media callback with its own signal (media_play/media_restart), which
      * enables the seek bar and shows a pause button. Same thread, after it: grey them out again. */
-    if (atomic_exchange(&s->live_regrey, 0)) obs_source_media_ended(s->source);
+    if (atomic_exchange(&s->live_regrey, 0) && !atomic_load(&s->replay_mode)) obs_source_media_ended(s->source);
     if (atomic_load(&s->stop_ticks) > 0 && atomic_fetch_sub(&s->stop_ticks, 1) == 1 && atomic_exchange(&s->stop_on_eof, 0)){
         if (obs_frontend_recording_active()){
             blog(LOG_INFO, "[shuttle-source] replay reached the end of the file: stopping the recording");
@@ -323,7 +323,7 @@ static void sidecar_attach(shuttle_src *s){
         bfree(s->sidecar_partial); s->sidecar_partial = bstrdup(part.array);
         bfree(s->sidecar_final); s->sidecar_final = bstrdup(fin.array);
         uint64_t last = atomic_load(&s->last_counter);
-        if (last) blog(LOG_INFO, "[shuttle-source] sidecar attached -> %s (growing as %s); last unit delivered before attach: counter %llu — the recording's first frame is that unit or the next",
+        if (atomic_load(&s->frames_out)) blog(LOG_INFO, "[shuttle-source] sidecar attached -> %s (growing as %s); last unit delivered before attach: counter %llu — the recording's first frame is that unit or the next",
                        fin.array, part.array, (unsigned long long)last);
         else blog(LOG_INFO, "[shuttle-source] sidecar attached -> %s (growing as %s) before this session delivered a unit: its first row is the recording's first new frame",
                   fin.array, part.array);
@@ -451,6 +451,11 @@ static void timeline_track(shuttle_src *s, const char *path){
     atomic_store(&s->probe_abort, 1);   /* a probe of the previous file stops early */
     pthread_cond_broadcast(&s->ctl_c); pthread_mutex_unlock(&s->ctl_m);
 }
+/* Under s->m: no file is being replayed; the previous file's length must not stay on the bar. */
+static void timeline_forget(shuttle_src *s){
+    atomic_store(&s->tl_units, 0);
+    bfree(s->tl_path); s->tl_path = NULL; s->tl_gen++; s->tl_probing = s->tl_failed = 0; s->tl_size = 0;
+}
 static int timeline_get(shuttle_src *s, rt_timeline *tl){
     uint64_t units = atomic_load_explicit(&s->tl_units, memory_order_acquire);
     if (!units) return -1;
@@ -473,7 +478,6 @@ static void replay_start_at(shuttle_src *s, obs_data_t *settings, int64_t ms){
     rt_timeline tl; uint64_t u = 0, off = 0;
     if (ms > 0 && timeline_get(s, &tl) == 0){ u = rt_unit_at_ms(&tl, ms); off = rt_offset(&tl, u); }
     shuttle_stop(s);
-    s->restart_pending = 0;
     s->next_start_unit = u; s->next_start_offset = off;
     if (shuttle_start(s, settings) != 0) blog(LOG_ERROR, "[shuttle-source] replay could not be started at %.1f s", ms / 1000.0);
 }
@@ -482,12 +486,16 @@ static void media_apply(shuttle_src *s, int act, int64_t ms){
     if (!atomic_load(&s->replay_mode)){
         /* Live: the tape is the transport. Restart and stop act on the capture session; pause and seek
          * have nothing to act on (holding delivery would only discard what the deck keeps playing). */
-        if (act == ACT_RESTART){ shuttle_stop(s); s->restart_pending = 0; if (shuttle_start(s, settings) != 0) blog(LOG_ERROR, "[shuttle-source] capture restart failed"); }
+        if (act == ACT_RESTART){ shuttle_stop(s); if (shuttle_start(s, settings) != 0) blog(LOG_ERROR, "[shuttle-source] capture restart failed"); }
         else if (act == ACT_STOP) shuttle_stop(s);
         atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
         obs_data_release(settings); return;
     }
-    if (s->restart_pending){   /* a recording is starting: the replay restarts from the file's start when it has */
+    /* Between RECORDING_STARTING and RECORDING_STARTED the replay is stopped and the source blank on
+     * purpose; the recording restarts it from the file's start. If the record press failed, restart_check
+     * resumed the replay with restart_pending still set (a late RECORDING_STARTED still restarts it), and
+     * the controls act normally: a seek or restart here keeps restart_pending, so that still holds. */
+    if (s->restart_pending && !s->fs){
         blog(LOG_INFO, "[shuttle-source] media control ignored while the recording starts (it restarts the replay from the beginning)");
         obs_data_release(settings); return;
     }
@@ -515,7 +523,7 @@ static void media_apply(shuttle_src *s, int act, int64_t ms){
         if (timeline_get(s, &tl) != 0){ blog(LOG_WARNING, "[shuttle-source] seek refused: the replay's length is not known yet"); break; }
         if (ms < 0) ms = 0;
         if (ms > rt_ms(tl.units)) ms = rt_ms(tl.units);
-        if (s->paused){ s->pending_seek_ms = ms; atomic_store(&s->seek_shown_ms, ms); }   /* applied on play: OBS pauses around a drag */
+        if (s->paused && running){ s->pending_seek_ms = ms; atomic_store(&s->seek_shown_ms, ms); }   /* applied on play: OBS pauses around a drag */
         else replay_start_at(s, settings, ms);
         break; }
     case ACT_RESTART: replay_start_at(s, settings, 0); break;
@@ -559,15 +567,15 @@ static void *probe_thread(void *arg){
         if (gen == s->tl_gen && !aborted){
             s->tl_probing = 0;
             if (ok){
-                int consistent = rt_consistent(&tl);
                 atomic_store(&s->tl_bytes, tl.file_bytes); atomic_store(&s->tl_first16, tl.first16);
                 atomic_store_explicit(&s->tl_units, tl.units, memory_order_release);
-                blog(consistent ? LOG_INFO : LOG_WARNING, "[shuttle-source] replay length %.1f s (%llu units, counters %u..%u)%s — %s", rt_ms(tl.units) / 1000.0,
-                     (unsigned long long)tl.units, sp.first_counter, sp.last_counter,
-                     consistent ? "" : "; the counters disagree with the file size (a counter restart inside the file?): length taken from the size, times approximate", path);
+                blog(LOG_INFO, "[shuttle-source] replay length %.1f s (%llu units, counters %u..%u) — %s", rt_ms(tl.units) / 1000.0,
+                     (unsigned long long)tl.units, sp.first_counter, sp.last_counter, path);
+            } else if (sp.incomplete){
+                blog(LOG_WARNING, "[shuttle-source] replay length unknown: %s could not be read to its end (read error?); no seek bar until the replay is started again", path);
             } else {
-                s->tl_failed = 1;
-                blog(LOG_WARNING, "[shuttle-source] replay length unknown: no complete picture unit within 256 MiB of the %s of %s, or it could not be read to its end; no seek bar for this file",
+                s->tl_failed = 1;   /* a property of the file: not retried until the path or size changes */
+                blog(LOG_WARNING, "[shuttle-source] replay length unknown: no complete picture unit within 32 MiB (about 1.4 s) of the %s of %s; no seek bar for this file",
                      !sp.have_first && !sp.have_last ? "start or end" : !sp.have_first ? "start" : "end", path);
             }
         }
@@ -704,11 +712,14 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     s->pending_seek_ms = -1; s->paused = 0;
     s->session_start_unit = start_unit;   /* before any worker exists: on_frame reads it */
     atomic_store(&s->time_ms, rt_ms(start_unit)); atomic_store(&s->seek_shown_ms, -1);
-    atomic_store(&s->replay_mode, obs_data_get_bool(settings, S_USE_REPLAY) ? 1 : 0);
+    int was_replay = atomic_exchange(&s->replay_mode, obs_data_get_bool(settings, S_USE_REPLAY) ? 1 : 0);
     if (obs_data_get_bool(settings, S_USE_REPLAY)){
         const char *rp = obs_data_get_string(settings, S_REPLAY);
-        if (!rp || !*rp){ blog(LOG_WARNING, "[shuttle-source] replay selected but no file given"); return -1; }
-        if (access(rp, R_OK) != 0){ blog(LOG_ERROR, "[shuttle-source] replay file cannot be opened (%s): %s", strerror(errno), rp); return -1; }   /* renamed or moved: say so, not just "start failed" */
+        if (!rp || !*rp){ blog(LOG_WARNING, "[shuttle-source] replay selected but no file given"); timeline_forget(s); obs_source_media_ended(s->source); return -1; }
+        if (access(rp, R_OK) != 0){   /* renamed or moved: say so, not just "start failed" */
+            blog(LOG_ERROR, "[shuttle-source] replay file cannot be opened (%s): %s", strerror(errno), rp);
+            timeline_forget(s); obs_source_media_ended(s->source); return -1;   /* no stale length, and OBS's controls show restart */
+        }
         cfg.capture.replay_path = rp; cfg.capture.replay_pace_us = 16000;    /* device cadence */
         cfg.capture.replay_start_offset = start_offset;                     /* a seek: aligned forward to a whole transfer */
         timeline_track(s, rp);
@@ -726,7 +737,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     atomic_store(&s->frames_out, 0); atomic_store(&s->audio_frames_out, 0); atomic_store(&s->audio_steps, 0);   /* per-session accounting */
     atomic_store(&s->last_counter, 0); atomic_store(&s->handoff_reset, 0);
     s->last_handoff_ns = s->gap_events = s->max_gap_ns = s->max_call_ns = s->slow_calls = 0;
-    if (!s->replaying) atomic_store(&s->live_regrey, 1);   /* live: OBS's controls may still show a replay's bar; grey them on the next tick */
+    if (!s->replaying && was_replay) atomic_store(&s->live_regrey, 1);   /* from replay to live: OBS's controls still show the replay's bar; grey them */
     if (fs_open(&s->fs, &cfg) != 0){
         blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL;
         if (s->replaying) obs_source_media_ended(s->source);   /* nothing plays: OBS's controls show restart */
