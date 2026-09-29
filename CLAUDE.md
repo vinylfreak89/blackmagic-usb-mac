@@ -1571,6 +1571,15 @@ delivery edge; wrong one at acquisition.
   tested queue (`publish_queue.{c,h}`) with final-name reservation. Alignment is within
   one unit (the counter of the last frame delivered before the event is logged; exact alignment
   needs an in-band frame counter).
+  **Media controls / seek bar (owner, 2026-09-28: "if a seek bar was a first class object in OBS
+  plugins"; built 2026-09-29, branch obs-seekbar).** Facts from OBS 32.2.2's source that set the
+  design: libobs runs media callbacks on the render thread (`process_media_actions` in
+  `obs_source_video_tick`, before `video_tick`), so they only queue; OBS's controls compute the
+  time label from bar position × duration and grey the bar only for STOPPED/ENDED/NONE, so live
+  reports STOPPED (restart/stop act on the session; no pause); grabbing the bar pauses, drags seek
+  every 100 ms, release plays, so a drag costs one restart. Duration comes from the first/last unit
+  counters within 32 MiB of each end (none if a file begins or ends with longer stretches without
+  picture units); a seek lands within a few units (45:00 on tape 1: counter 18148 vs 18146).
 - **P4b CMIO extension (Swift)** — after P4a and the Apple team exist: standard device, two
   advertised formats (raw 480i, corrected 480i), sink-stream consumer, custom properties.
   Deinterlacing belongs to OBS/ffmpeg/post.
