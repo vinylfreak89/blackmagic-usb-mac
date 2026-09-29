@@ -1195,9 +1195,10 @@ never silently blank/dup/drop/resample/force-CFR.
   safely → flag the span in a sidecar and keep a **transient raw safety net** (≥ flagged spans) to
   re-resolve and patch the master without re-running tape; delete after QC.
 - **Bandwidth is a non-issue at SD:** lossless 4:2:2 ≈ 11–30 MB/s, real-time on an M3-class CPU
-  (no GPU needed). Note: base M3 parts lack the ProRes hardware engine, and
-  VideoToolbox can't do lossless YUV anyway — hardware offload is only relevant to *lossy*
-  H.264/HEVC access copies, not the master. **Live policy:** bounded jitter buffer; valid
+  (no GPU needed). The base M3 media engine does encode ProRes in hardware (VideoToolbox lists
+  `AppleProResHW` 422 Proxy/LT/422/HQ and 4444/4444 XQ as hardware-accelerated on this M3,
+  checked 2026-09-29), alongside H.264/HEVC. VideoToolbox can't do lossless YUV, so hardware
+  offload applies to the ProRes and H.264/HEVC outputs, not a lossless master. **Live policy:** bounded jitter buffer; valid
 audio as continuity master; **bob at field rate (59.94p/50p)**; conceal only in the live
 derivative; shed the live consumer before it threatens acquisition.
 
