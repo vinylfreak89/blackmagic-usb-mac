@@ -311,6 +311,13 @@ https://obsproject.com/blog/obs-studio-32-0-release-notes . ProRes in MP4 fails 
   structure — **needs the §6 synthetic test: feed a Y=1 / Y=250 frame through replay and read the
   recorded ProRes Y back**]. The OBS ProRes is therefore a *presentation copy*; the tagged capture
   remains the archive, exactly as §8 already states.
+  **Measured 2026-09-29 (`level_fixture.py`, OBS 32.2.2, P216 / 601 / Partial, VT ProRes 422):**
+  with the source sending UYVY, luma 1–15 recorded as black (64) and 236–254 as white (940),
+  in-range luma ±1, and saturated test chroma distorted even inside 16–240 (Cb=Cr=16 at Y=128
+  read 215/137): libobs clamps to the frame's range limits and converts UYVY into an 8-bit
+  `GS_BGRX` texture. Since 9439ca6 the source sends I210 (4c, Rec.601 limited parameters,
+  range clamp opened), which libobs uploads to `GS_RGBA16F`: all 31 bands, luma 1–254 and
+  Cb/Cr 2–254, recorded exact. This needs a 16-bit canvas; NV12 output is 8-bit and clips again.
 - **Interlaced recording: OBS cannot record fields.** `obs_video_info` has fps/size/format only [src]
   obs.h:191-219; the output stage has no field concept [src] obs-video.c; VT ProRes gets no field
   flags [src] encoder.c. The only "interlace-preserving" record is a **woven frame passed through
