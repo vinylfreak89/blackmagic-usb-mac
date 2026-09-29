@@ -1514,7 +1514,7 @@ delivery edge; wrong one at acquisition.
   target; the CMIO extension needs a paid Apple team even for personal use (system-extension
   entitlement; developer mode does not waive signing), and the owner wants a **ProRes capture
   end to end through OBS before paying for a certificate**. The plugin is a thin consumer of the
-  same C API (async video source, 480i UYVY frames + 48 kHz audio; OBS owns deinterlacing and
+  same C API (async video source, 480i frames (I210 since 2026-09-29, so OBS does not clip sub-black/super-white) + 48 kHz audio; OBS owns deinterlacing and
   the ProRes encode). First iteration may link the frameserver in-process; the API boundary stays
   the service's callback API so the CMIO extension later consumes the same thing. Spike report:
   `src/obs_plugin/PLUGIN_SPIKE.md`. Decisions taken from it: **build route A** for the dev loop (plain

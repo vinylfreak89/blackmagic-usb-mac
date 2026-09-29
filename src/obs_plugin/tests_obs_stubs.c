@@ -76,7 +76,23 @@ void obs_weak_source_release(obs_weak_source_t *w){ (void)w; }
 void obs_source_release(obs_source_t *s){ (void)s; }
 void obs_source_media_started(obs_source_t *s){ (void)s; atomic_fetch_add(&stub_started_signals, 1); }
 void obs_source_media_ended(obs_source_t *s){ (void)s; atomic_fetch_add(&stub_ended_signals, 1); }
-void obs_source_output_video(obs_source_t *s, const struct obs_source_frame *f){ (void)s; if (f) atomic_fetch_add(&stub_video_frames, 1); }
+/* What the plugin hands OBS: I210, byte linesizes 1440/720/720, contiguous Y/U/V planes, codes as 4c
+ * (fixture_plain is Y16/C128 everywhere -> 64/512), range clamp opened, limited range kept. */
+_Atomic uint64_t stub_frame_errors;
+void obs_source_output_video(obs_source_t *s, const struct obs_source_frame *f){
+    (void)s; if (!f) return;
+    atomic_fetch_add(&stub_video_frames, 1);
+    const uint16_t *y = (const uint16_t *)f->data[0], *u = (const uint16_t *)f->data[1], *v = (const uint16_t *)f->data[2];
+    int ok = f->format == VIDEO_FORMAT_I210 && f->width == 720 && f->height == 480 && !f->full_range &&
+             f->linesize[0] == 1440 && f->linesize[1] == 720 && f->linesize[2] == 720 &&
+             f->data[1] == f->data[0] + 720 * 480 * 2 && f->data[2] == f->data[1] + 360 * 480 * 2 &&
+             f->color_range_min[0] == 0.0f && f->color_range_max[0] == 1.0f;
+    for (unsigned i = 0; ok && i < 720 * 480; i += 997) ok = y[i] == 64;
+    for (unsigned i = 0; ok && i < 360 * 480; i += 499) ok = u[i] == 512 && v[i] == 512;
+    if (!ok && atomic_fetch_add(&stub_frame_errors, 1) == 0)
+        fprintf(stderr, "stub: frame not as expected: format %d %ux%u linesize %u/%u/%u full_range %d y0 %u u0 %u\n", (int)f->format,
+                f->width, f->height, f->linesize[0], f->linesize[1], f->linesize[2], (int)f->full_range, y ? y[0] : 0, u ? u[0] : 0);
+}
 void obs_source_output_audio(obs_source_t *s, const struct obs_source_audio *a){ (void)s; (void)a; }
 void obs_source_set_async_decoupled(obs_source_t *s, bool v){ (void)s; (void)v; }
 void obs_source_set_async_unbuffered(obs_source_t *s, bool v){ (void)s; (void)v; }

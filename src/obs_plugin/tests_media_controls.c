@@ -152,6 +152,7 @@ int main(int argc, char **argv){
     const double destroy_bound = 3;
 #endif
     CHECK(now() - t0 < destroy_bound, "destroy took %.2f s", now() - t0);
+    CHECK(stub_frame_errors == 0, "%llu frames handed to OBS were not I210 4c with the expected planes", (unsigned long long)stub_frame_errors);
     printf(fails ? "MEDIA CONTROLS: %d FAILURES\n" : "MEDIA CONTROLS PASS\n", fails);
     return fails ? 1 : 0;
 }

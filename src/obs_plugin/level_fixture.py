@@ -63,16 +63,26 @@ def check(rec: Path) -> int:
                                                 "-of", "json", str(rec)]))["streams"][0]
     w, h = probe["width"], probe["height"]
     print("recording:", probe)
-    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-nostdin", "-ss", "3", "-i", str(rec), "-frames:v", "1",
+    dur = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(rec)]))
+    at = min(3.0, dur / 2)   # a frame well inside the recording
+    raw = subprocess.check_output(["ffmpeg", "-v", "error", "-nostdin", "-ss", "%.3f" % at, "-i", str(rec), "-frames:v", "1",
                                    "-f", "rawvideo", "-pix_fmt", "yuv422p10le", "-"])
+    if len(raw) < w * h * 4:
+        print("ERROR: no frame decoded at %.3f s of a %.3f s recording (%d bytes)" % (at, dur, len(raw)))
+        return 2
     import numpy as np
     Y = np.frombuffer(raw[:w * h * 2], "<u2").reshape(h, w)
     U = np.frombuffer(raw[w * h * 2:w * h * 3], "<u2").reshape(h, w // 2)
     V = np.frombuffer(raw[w * h * 3:w * h * 4], "<u2").reshape(h, w // 2)
-    sx = w / 720.0
-    # rows of the recording that come from the luma / chroma regions of both fields (480-line output: rows 0..~110
-    # are field lines 19..~129 -> luma; the chroma region starts past field line 130 -> output row ~(130-19)*2)
-    ly = slice(20, 200); cy = slice(260, 440)
+    # Assumes the source fills the canvas (OBS scene item stretched to the recording's size). In a 480-line
+    # woven output, field line r lands at output row ~2*(r-19): luma (field lines 0-129) covers rows 0..~221,
+    # chroma starts at ~222. Rows scale with the recording's height; margins cover field shifts of -19..+11.
+    sx = w / 720.0; sy = h / 480.0
+    ly = slice(int(20 * sy), int(200 * sy)); cy = slice(int(260 * sy), int(440 * sy))
+    judge_chroma = probe.get("color_space") in ("smpte170m", "bt470bg")
+    if not judge_chroma:
+        print("NOTE: recording is tagged %r, not Rec.601: chroma bands only round-trip through a 601 output,"
+              " so they are shown but not judged" % probe.get("color_space"))
     bad = 0
     print("LUMA   code  expect10  measured10  (clipped would read %d / %d)" % (64, 940))
     for k, c in enumerate(LUMA):
@@ -83,8 +93,8 @@ def check(rec: Path) -> int:
     for k, c in enumerate(CHROMA):
         x0 = int((k * BAND + BAND * 0.3) * sx / 2); x1 = int((k * BAND + BAND * 0.7) * sx / 2)
         mu = float(np.median(U[cy, x0:x1])); mv = float(np.median(V[cy, x0:x1]))
-        ok = abs(mu - 4 * c) <= 3 and abs(mv - 4 * c) <= 3; bad += not ok
-        print("       %4d  %8d  %7.1f / %7.1f  %s" % (c, 4 * c, mu, mv, "ok" if ok else "MISMATCH"))
+        ok = abs(mu - 4 * c) <= 3 and abs(mv - 4 * c) <= 3; bad += judge_chroma and not ok
+        print("       %4d  %8d  %7.1f / %7.1f  %s" % (c, 4 * c, mu, mv, ("ok" if ok else "MISMATCH") if judge_chroma else "(not judged)"))
     print("RESULT:", "all bands carried" if not bad else f"{bad} band(s) not carried")
     return 1 if bad else 0
 

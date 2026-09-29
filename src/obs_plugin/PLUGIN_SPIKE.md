@@ -278,7 +278,9 @@ https://obsproject.com/blog/obs-studio-32-0-release-notes . ProRes in MP4 fails 
 [forum] PR #7010 discussion.
 
 **4:2:2 — what actually happens in the pipeline.**
-1. Our UYVY frame → `UYVY_Reverse` shader → an **RGB canvas texture**. Canvas precision is
+1. Our frame → conversion shader → an **RGB canvas texture**. (Written for UYVY, `UYVY_Reverse`; since
+   9439ca6 the source sends I210 → `I210_Reverse` into a `GS_RGBA16F` source texture, see the measured
+   note under "Faithfulness limits".) Canvas precision is
    `GS_BGRA` (8-bit) **unless the output Color Format is I010/P010/I210/I412/YA2L/P216/P416, in which
    case `GS_RGBA16F`** (`obs.c:357-372`) [src]
    https://raw.githubusercontent.com/obsproject/obs-studio/master/libobs/obs.c .
@@ -390,10 +392,10 @@ Two build routes:
 
 **Replay, no deck.** `create()` reads properties `replay_path` (a `.tpc`) and `pace_us` (default
 16000 = device cadence) and fills `fs_config.capture.replay_path/replay_pace_us`; `on_frame` receives
-`fp_frame` with an IOSurface → `IOSurfaceLock(kIOSurfaceLockReadOnly)`, `obs_source_frame{data[0] =
-IOSurfaceGetBaseAddress, linesize[0] = IOSurfaceGetBytesPerRow, width 720, height 480, format UYVY,
-timestamp = pts_num*1e9/pts_den, 601/limited matrix}` → `obs_source_output_video` (copies) →
-`IOSurfaceUnlock`. Fixtures: `src/unit_parser/tests/fixture.tpc` (synthetic, `make` regenerates it)
+`fp_frame` with an IOSurface → `IOSurfaceLock(kIOSurfaceLockReadOnly)`, UYVY expanded to I210 planes
+(frame_levels.h, each code as 4c) → `obs_source_frame{format I210, linesize 1440/720/720, width 720,
+height 480, timestamp = pts_num*1e9/pts_den, 601/limited matrix for I210, range clamp 0..1}` →
+`obs_source_output_video` (copies) → `IOSurfaceUnlock`. (UYVY was delivered directly until 9439ca6.) Fixtures: `src/unit_parser/tests/fixture.tpc` (synthetic, `make` regenerates it)
 for the smoke test; a real tape `.tpc` from `captures/` for content (check `ls -lO` first — the
 renderer already refuses dataless placeholders, CLAUDE.md §11). **Audio needs new code**: an audio
 batcher fed by `unit_audio_observation` (PCM records → S32 stereo, ~1601/1602 samples per resync
