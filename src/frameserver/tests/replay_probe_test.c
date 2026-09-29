@@ -13,6 +13,22 @@
 #include <stdlib.h>
 
 static int fails;
+#ifdef CAPTURE_CORE_TEST_HOOKS
+/* capture_core test hooks: every read passes through, except that a read reaching past fail_near_end
+ * (a file offset, 0 = off) fails with EIO, as a network volume can. */
+#include <errno.h>
+static _Atomic uint64_t fail_near_end;
+ssize_t cc_test_replay_read(int fd, void *buf, size_t n){
+    uint64_t at = atomic_load(&fail_near_end);
+    off_t pos = lseek(fd, 0, SEEK_CUR);
+    if (at && pos >= 0 && (uint64_t)pos + n > at){ errno = EIO; return -1; }
+    return read(fd, buf, n);
+}
+void cc_test_destroyed(void){} void cc_test_data_resumed(void){} void cc_test_after_empty_snapshot(cc_session *s){ (void)s; }
+void cc_test_before_backend_done(cc_session *s){ (void)s; } int cc_test_fail_delivery_allocation(size_t b){ (void)b; return 0; }
+void cc_test_ring_loss(void){} void cc_test_recorded_error(void){} void cc_test_meta_exhausted(void){} void cc_test_input_done(void){}
+void cc_test_packet_progress(void){} void cc_test_replay_prefill_wait(void){} void cc_test_replay_paused(uint64_t b){ (void)b; }
+#endif
 #define CHECK(c, ...) do{ if(!(c)){ fails++; fprintf(stderr,"FAIL: "); fprintf(stderr,__VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
 static _Atomic int ended; static uint64_t first_counter = UINT64_MAX, frames;
 static pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t c = PTHREAD_COND_INITIALIZER;
@@ -33,8 +49,8 @@ int main(int argc, char **argv){
     /* a head window too small to hold a unit finds no first counter */
     CHECK(fs_replay_probe(p, 1u << 16, NULL, &sp) != 0 && !sp.have_first, "a 64 KiB head window cannot hold a 756,048-byte unit, yet found counter %u", sp.first_counter);
     /* An end without picture units near it (a capture ending with the deck off): 40 MiB of audio-only
-     * records after the fixture. The default window finds nothing in the last 32 MiB and widens to
-     * 256 MiB; an explicit 32 MiB window does not widen. */
+     * records after the fixture. The last 32 MiB hold no unit: no span, and a clean absence (not
+     * incomplete), so the plugin does not retry it. */
     {
         char tpath[] = "/tmp/replay_probe_tail_XXXXXX"; int fd = mkstemp(tpath);
         FILE *in = fopen(p, "rb"); static uint8_t buf[1 << 20]; size_t got;
@@ -47,12 +63,18 @@ int main(int argc, char **argv){
             if (write(fd, rec, sizeof rec) != (ssize_t)sizeof rec) break;
         }
         if (fd >= 0) close(fd);
-        CHECK(fs_replay_probe(tpath, 0, NULL, &sp) == 0 && sp.last_counter == 118, "a unit-less 40 MiB tail: widened probe found last %s%u", sp.have_last ? "" : "(none) ", sp.last_counter);
-        CHECK(fs_replay_probe(tpath, 32u << 20, NULL, &sp) != 0 && !sp.have_last, "an explicit 32 MiB window widened (found last %u)", sp.last_counter);
+        CHECK(fs_replay_probe(tpath, 0, NULL, &sp) != 0 && sp.have_first && !sp.have_last && !sp.incomplete, "a unit-less 40 MiB tail: first %d last %d incomplete %d", sp.have_first, sp.have_last, sp.incomplete);
         unlink(tpath);
     }
     _Atomic int abort_now = 1;
-    CHECK(fs_replay_probe(p, 0, &abort_now, &sp) != 0, "an aborted probe reported success");
+    CHECK(fs_replay_probe(p, 0, &abort_now, &sp) != 0 && sp.incomplete, "an aborted probe reported success or a known absence");
+#ifdef CAPTURE_CORE_TEST_HOOKS
+    /* A read error 4 MiB before the end: the tail run has seen units, but not the last one. That is
+     * "incomplete", never a span ending at an earlier counter. */
+    atomic_store(&fail_near_end, (uint64_t)st.st_size - (4u << 20));
+    CHECK(fs_replay_probe(p, 0, NULL, &sp) != 0 && !sp.have_last && sp.incomplete, "a read error before the end: have_last %d (last %u) incomplete %d", sp.have_last, sp.last_counter, sp.incomplete);
+    atomic_store(&fail_near_end, 0);
+#endif
 
     /* Start offset through the whole frameserver: 40.5 units into the video stream (each 756,048-byte unit
      * is 49.2 packets of 15,360 B plus 24-byte tags), the first published unit is 41 or 42. */

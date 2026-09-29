@@ -40,7 +40,9 @@ static void on_error_(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){ un
 static void on_end_(void *ctx, enum cc_end reason){ probe_run *r = ctx; atomic_store(&r->reason, (int)reason); atomic_store(&r->ended, 1); signal_(r); }
 
 /* One unpaced replay from `offset`: the head run stops at the first complete unit, the tail run
- * reads to the end of the file. The delivery ring holds the whole window, so nothing is shed. */
+ * reads to the end of the file. The delivery ring holds the whole window, so nothing is shed.
+ * 0: found; -1: read completely, no unit (a property of the file); -2: not read completely (open
+ * failure, abort, read error, unskippable damage), so nothing is known. */
 static int run_(const char *path, uint64_t offset, uint64_t window, int stop_at_first, _Atomic int *abort, uint16_t *first, uint16_t *last){
     probe_run r; memset(&r, 0, sizeof r);
     r.stop_at_first = stop_at_first; r.window = window;
@@ -56,7 +58,7 @@ static int run_(const char *path, uint64_t offset, uint64_t window, int stop_at_
     cfg.ring_mb = (int)mb; cfg.replay_readahead_mb = mb < 16 ? (int)mb : 16;
     cc_callbacks cb; memset(&cb, 0, sizeof cb);
     cb.on_packet = on_packet_; cb.on_loss = on_loss_; cb.on_error = on_error_; cb.on_end = on_end_; cb.ctx = &r;
-    cc_session *s = NULL; int rc = -1;
+    cc_session *s = NULL; int rc = -2;
     if (cc_open(&s, &cfg, &cb) == CC_OK && cc_start(s) == CC_OK){
         pthread_mutex_lock(&r.m);
         while (!atomic_load(&r.ended) && !(stop_at_first && (atomic_load(&r.found) || atomic_load(&r.exhausted))) && !(abort && atomic_load(abort))){
@@ -70,8 +72,11 @@ static int run_(const char *path, uint64_t offset, uint64_t window, int stop_at_
         /* The head run's answer is its first unit. The tail run's is its LAST unit, which is the file's
          * only if the run read to the end: an abort, a read error or damage past the skip bound ends it
          * early with an earlier counter, and a too-short timeline is worse than none. */
-        int complete = stop_at_first ? 1 : !aborted && atomic_load(&r.ended) && atomic_load(&r.reason) == CC_END_REPLAY_EOF;
-        if (atomic_load(&r.found) && complete){ *first = r.first; *last = r.last; rc = 0; }
+        int eof = !aborted && atomic_load(&r.ended) && atomic_load(&r.reason) == CC_END_REPLAY_EOF;
+        int found = atomic_load(&r.found);
+        if (stop_at_first) rc = found ? 0 : eof || atomic_load(&r.exhausted) ? -1 : -2;
+        else rc = !eof ? -2 : found ? 0 : -1;
+        if (rc == 0){ *first = r.first; *last = r.last; }
     }
     if (s) cc_close(s);
     pthread_mutex_destroy(&r.m); pthread_cond_destroy(&r.c); free(r.parser);
@@ -83,20 +88,13 @@ int fs_replay_probe(const char *path, uint64_t window_bytes, _Atomic int *abort,
     struct stat st;
     if (!path || stat(path, &st) != 0 || st.st_size <= 0) return -1;
     out->file_bytes = (uint64_t)st.st_size;
-    /* A capture can begin or end without picture units (deck off: 0x0800; a free-running decoder: 0xe809),
-     * measured for ~28 s at the end of the no-input capture. With the default window the search widens
-     * once, to 8x (256 MiB, ~11 s of stream), before giving up; an explicit window is used as given. */
     uint64_t w = window_bytes ? window_bytes : (32ull << 20);
-    int tries = window_bytes ? 1 : 2;
-    uint16_t a, b;
-    for (int k = 0; k < tries && !out->have_first && !(abort && atomic_load(abort)); k++, w *= 8)
-        if (run_(path, 0, w, 1, abort, &a, &b) == 0){ out->first_counter = a; out->have_first = 1; }
-    w = window_bytes ? window_bytes : (32ull << 20);
-    for (int k = 0; k < tries && !out->have_last && !(abort && atomic_load(abort)); k++, w *= 8){
-        uint64_t tail = out->file_bytes > w ? out->file_bytes - w : 0;
-        if (run_(path, tail, w, 0, abort, &a, &b) == 0){ out->last_counter = b; out->have_last = 1; }
-        if (tail == 0) break;
-    }
-    if (abort && atomic_load(abort)) return -1;
+    uint16_t a, b; int rc;
+    if ((rc = run_(path, 0, w, 1, abort, &a, &b)) == 0){ out->first_counter = a; out->have_first = 1; }
+    else if (rc == -2) out->incomplete = 1;
+    if (abort && atomic_load(abort)){ out->incomplete = 1; return -1; }
+    if ((rc = run_(path, out->file_bytes > w ? out->file_bytes - w : 0, w, 0, abort, &a, &b)) == 0){ out->last_counter = b; out->have_last = 1; }
+    else if (rc == -2) out->incomplete = 1;
+    if (abort && atomic_load(abort)) out->incomplete = 1;
     return out->have_first && out->have_last ? 0 : -1;
 }

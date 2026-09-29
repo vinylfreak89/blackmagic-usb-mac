@@ -37,8 +37,9 @@ tests/frame_publisher_test: frame_publisher.c frame_publisher.h tests/frame_publ
 tests/frameserver_test: $(SRCS) tests/frameserver_test.c frameserver.h ../test_supervisor.h ../test_condition.h ../test_liveness.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(TESTFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/frameserver_test.c -o $@ $(LIBS)
 
+# Built with capture_core's test hooks: the probe test injects a read error near the end of the file.
 tests/replay_probe_test: $(SRCS) tests/replay_probe_test.c replay_probe.h frameserver.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_probe_test.c -o $@ $(LIBS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DCAPTURE_CORE_TEST_HOOKS $(shell pkg-config --cflags libusb-1.0) $(SRCS) tests/replay_probe_test.c -o $@ $(LIBS)
 
 test: tests/replay_probe_test tests/async_file_test tests/hretime_test tests/audio_evidence_test tests/audio_queue_flags_test tests/audio_publisher_test tests/frame_publisher_test tests/frameserver_test $(FIXTURE) $(FIXTURE_LONG)
 	./tests/async_file_test

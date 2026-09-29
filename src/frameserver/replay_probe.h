@@ -14,12 +14,16 @@ typedef struct {
     uint64_t file_bytes;
     uint16_t first_counter, last_counter;   // counter16 of the first / last complete 0xe801 unit
     int have_first, have_last;
+    int incomplete;   // a run did not read its window (abort, read error, unskippable damage): a missing end is
+                      // unknown, not absent, and worth retrying; 0 with a missing end means the window holds no unit
 } fs_replay_span;
 
 // Reads from the start until the first complete unit (at most window_bytes of packets) and the last
-// window_bytes of the file, to its end. window_bytes 0 => 32 MiB, widened once to 256 MiB for an end
-// without a unit near it. The last counter counts only if that run reached the end of the file (not
-// an abort, read error or unskippable damage). Blocking; a network volume may take seconds. `abort`
+// window_bytes of the file, to its end (0 => 32 MiB, about 1.4 s of NTSC stream). The last counter
+// counts only if that run reached the end of the file. A capture that begins or ends with more than the
+// window without picture units (deck off: 0x0800, ~28 s at the end of the no-input capture) has no
+// span: a wider search would read hundreds of MB unpaced beside a playing replay, and positions would
+// then spread over bytes the span does not cover. Blocking; a network volume may take seconds. `abort`
 // (optional) is polled while waiting (100 ms granularity): nonzero stops the probe early, with
 // have_first/have_last reporting what was found. Returns 0 when both ends were found, -1 otherwise.
 // Counters are 16-bit and the device restarts them at a counter epoch (§8 property 5): a caller that
