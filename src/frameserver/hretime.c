@@ -328,9 +328,7 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
     /* Coarse standard from a fixed picture level, then each line's picture
      * level at that position and its own half-height falloff. */
     double standard[2];
-    /* The coarse pass crosses a fixed low level over different lines than the refined one;
-     * the reach is a property of the refined falloff (what was measured), so only it is checked. */
-    for(int s=0;s<2;s++)standard[s]=frame_standard(w,s,o->blank,NULL);
+    for(int s=0;s<2;s++)standard[s]=plausible_standard(s,frame_standard(w,s,o->blank,NULL));
     for(int s=0;s<2;s++) {
         if(!isfinite(standard[s]))continue;
         for(int j=0;j<HRT_ROWS;j++)if(w->eligible[j]) {
