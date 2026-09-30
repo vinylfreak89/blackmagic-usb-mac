@@ -143,7 +143,7 @@ def judge(Y, tops, st, win_empty=False):
         if both.sum() < 20: continue   # statistics: same fields as before the per-edge reference
         ok = both & ~cut & (np.abs(dl) <= g) & (np.abs(dr) <= g)
         acc_b.append(Yl[ok, 0:3].ravel()); acc_b3.append(Yl[ok, 0:3].mean(1))
-        lvR = edges.lvR; nl = (Ls == 0) & ~cut & (np.abs(dl) <= g) & np.isfinite(lvR) & (lvR > 2 * (st['top'] - st['B']))
+        lvR = lvR0; nl = (Ls == 0) & ~cut & (np.abs(dl) <= g) & np.isfinite(lvR) & (lvR > 2 * (st['top'] - st['B']))
         acc_r.append((Yl[nl, 718] - st['B']) / lvR[nl])
         # line-to-line edge differences of adjacent measured, uncut lines (noise; a content run changes slowly line to line)
         adj = both[1:] & both[:-1] & ~cut[1:] & ~cut[:-1]
