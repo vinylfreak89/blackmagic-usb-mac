@@ -4,11 +4,11 @@ import sys, os, json, struct, csv, numpy as np, time
 sys.path.insert(0, os.path.dirname(__file__)); import playback as P
 NOT_MEASURED = {'level_fit': 'level reference fitted only with >= 20 lines within g of the flat median spanning >= 20 codes (p10-p90); else flat median','edge_ref_min': 'per-edge reference needs >= 20 measured lines of that edge (the old both-edge count)','avg3': 'sliding average length 3 = the blanking samples a fixture A line provides','N_WIN': 'window length 30 frames', 'band': 'blanking band top = 99.9th pct of accepted samples 0-2',
                 'guard': 'edge guard = 99th pct of line-to-line edge differences of accepted lines', 'band2': 'a band is >= 2 adjacent moved lines',
-                'switch': 'judged region ends above the measured head-switch line (start of the bottom run of lines departing from the field reference beyond g, near-blank lines allowed in the run); held from the last field where it was measured; field not judged before any measurement', 'right_half': 'fall beyond the window = still above half its level at 718 (the edge position is its halfway point)',
+                'last8': 'last 8 lines out (owner)', 'right_half': 'fall beyond the window = still above half its level at 718 (the edge position is its halfway point)',
                 'rspec': 'fall-beyond counts as evidence only if the 99th pct of the window normal lines level-at-718 ratio is below one half'}
 FIT = []; N_WIN = 30; FR = [(19, 262), (282, 525)]
 class Win:
-    def __init__(s): s.f = []; s.sw = [None, None]   # held head-switch line per field
+    def __init__(s): s.f = []
     def add(s, x): s.f.append(x); s.f = s.f[-N_WIN:]
     def ok(s): return len(s.f) >= 3
     def stats(s):
@@ -23,7 +23,7 @@ class Win:
         r7 = np.concatenate([x['r718'] for x in s.f]) if all('r718' in x for x in s.f) else np.zeros(0)
         # change: the right end can show a push only where this source's normal falls finish inside the window
         rspec = bool(len(r7) > 200 and np.percentile(r7, 99) < 0.5) if len(r7) > 200 else (s.last['rspec'] if hasattr(s, 'last') else False)
-        s.last = dict(B=B, top=top, g=max(g, 0.5), bump=max(bump, top - B), rspec=rspec, sw=s.sw); return s.last
+        s.last = dict(B=B, top=top, g=max(g, 0.5), bump=max(bump, top - B), rspec=rspec); return s.last
 def edges(Yl, st):
     """Each edge against its OWN step (C1): left = the steepest rise within 15 samples after the line leaves the blanking
     run that starts at sample 0, halfway between blanking and the level just after it; right = the mirror, from where the
@@ -61,29 +61,11 @@ def edges(Yl, st):
         else: Rs[i] = 2
     edges.lvR = lvR; edges.lvL = lvL
     return L, R, Ls, Rs
-def switch_line(Y, a, b, r0, st):
-    # the head switch: where a different head takes over, the timing departs from the field's reference and stays off it to
-    # the field's last row. Reference = per-edge medians of the field above its bottom 40 rows; departure = beyond the guard.
-    mid = np.arange(r0, b - 40); Lm, Rm, Lsm, Rsm = edges(Y[mid].astype(float), st)
-    if (Lsm == 0).sum() < 20 and (Rsm == 0).sum() < 20: return None
-    mL = np.median(Lm[Lsm == 0]) if (Lsm == 0).sum() >= 20 else np.nan; mR = np.median(Rm[Rsm == 0]) if (Rsm == 0).sum() >= 20 else np.nan
-    rows = np.arange(b - 40, b); L, R, Ls, Rs = edges(Y[rows].astype(float), st); g = st['g']
-    lv = np.median(Y[rows][:, 100:620].astype(float), 1) - st['B']
-    dep = (Ls == 1) | ((Ls == 0) & (np.abs(L - mL) > g)) | ((Rs == 0) & (np.abs(R - mR) > g))
-    ok = dep | (lv <= 2 * (st['top'] - st['B']))
-    i = len(rows)
-    while i > 0 and ok[i - 1]: i -= 1
-    while i < len(rows) and not dep[i]: i += 1
-    return int(rows[i] + 4) if i < len(rows) - 1 else None   # a run of only the last row (device padding) = not measured
 def judge(Y, tops, st, win_empty=False):
-    res = {'torn': [False, False], 'lines': [[], []], 'nosw': [False, False]}; acc_b, acc_d, acc_b3 = [], [], []; prof = []; acc_r = []
+    res = {'torn': [False, False], 'lines': [[], []]}; acc_b, acc_d, acc_b3 = [], [], []; prof = []; acc_r = []
     for fi, (a, b) in enumerate(FR):
         t0 = int(tops[fi]) - 4 if tops[fi] >= 0 else a
-        # change v9: the judged region ends at this field's measured head-switch line, not a fixed 8 lines from the field end
-        sw = switch_line(Y, a, b, max(a, t0), st)
-        if sw is not None: st['sw'][fi] = sw
-        if st['sw'][fi] is None: res['nosw'][fi] = True; continue
-        rows = np.arange(max(a, t0), st['sw'][fi] - 4); Yl = Y[rows].astype(float)
+        rows = np.arange(max(a, t0), b - 8); Yl = Y[rows].astype(float)
         L, R, Ls, Rs = edges(Yl, st)
         both = (Ls == 0) & (Rs == 0)
         # change v5: each edge's reference from the lines where THAT edge is measured (a black scene can leave the left
