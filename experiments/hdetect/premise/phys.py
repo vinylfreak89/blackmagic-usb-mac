@@ -2,7 +2,7 @@
 # measurement in the 2026-09-30 characterization; the ones that are not measured are listed in NOT_MEASURED.
 import sys, os, json, struct, csv, numpy as np, time
 sys.path.insert(0, os.path.dirname(__file__)); import playback as P
-NOT_MEASURED = {'N_WIN': 'window length 30 frames', 'band': 'blanking band top = 99.9th pct of accepted samples 0-2',
+NOT_MEASURED = {'avg3': 'sliding average length 3 = the blanking samples a fixture A line provides','N_WIN': 'window length 30 frames', 'band': 'blanking band top = 99.9th pct of accepted samples 0-2',
                 'guard': 'edge guard = 99th pct of line-to-line edge differences of accepted lines', 'band2': 'a band is >= 2 adjacent moved lines',
                 'last8': 'last 8 lines out (owner)', 'right_half': 'fall beyond the window = still above half its level at 718 (the edge position is its halfway point)',
                 'rspec': 'fall-beyond counts as evidence only if the 99th pct of the window normal lines level-at-718 ratio is below one half'}
@@ -14,7 +14,9 @@ class Win:
     def stats(s):
         b = np.concatenate([x['b'] for x in s.f]); d = np.concatenate([x['d'] for x in s.f]); pr = [x['prof'] for x in s.f if x['prof'] is not None]
         if len(b) < 300 and hasattr(s, 'last'): return s.last
-        B, top = float(np.median(b)), float(np.percentile(b, 99.9))
+        b3 = np.concatenate([x['b3'] for x in s.f]) if all('b3' in x for x in s.f) else b
+        # change v4: the band is the 3-sample average's band - the walk tests a sliding 3-sample average, not single samples
+        B, top = float(np.median(b)), float(np.percentile(b3, 99.9))
         g = float(np.percentile(np.abs(d), 99)) if len(d) > 200 else (s.last['g'] if hasattr(s, 'last') else 2.0)
         prof = np.median(np.array(pr), 0) if pr else None
         bump = float(prof[:max(3, int(np.argmax(prof > B + 0.5 * (prof.max() - B))) - 2)].max() - B) if prof is not None else 0.0
@@ -31,10 +33,11 @@ def edges(Yl, st):
     L = np.full(n, np.nan); R = np.full(n, np.nan); Ls = np.zeros(n, int); Rs = np.zeros(n, int); lvR = np.full(n, np.nan)
     for i, y in enumerate(Yl):
         # left
-        if (y[0:3] > top).all(): Ls[i] = 1
+        m3 = np.convolve(y, np.ones(3) / 3, 'valid')   # m3[k] = mean(y[k:k+3])
+        if m3[0] > top: Ls[i] = 1
         else:
             k = 0
-            while k < 150 and y[k] <= top: k += 1
+            while k < 150 and m3[k] <= top: k += 1
             if k >= 150: Ls[i] = 2
             else:
                 seg = np.diff(y[max(0, k - 1):k + 16]); j = max(0, k - 1) + int(np.argmax(seg))
@@ -46,7 +49,7 @@ def edges(Yl, st):
                     else: Ls[i] = 2
         # right
         k = 718
-        while k > 570 and y[k] <= top: k -= 1
+        while k > 570 and m3[k - 2] <= top: k -= 1
         if k <= 570: Rs[i] = 2; continue
         lo = max(0, k - 15); seg = np.diff(y[lo:k + 2]); j = lo + int(np.argmin(seg))
         lvl = np.median(y[max(0, j - 10):max(1, j - 3)]) - B; lvR[i] = lvl
@@ -59,7 +62,7 @@ def edges(Yl, st):
     edges.lvR = lvR
     return L, R, Ls, Rs
 def judge(Y, tops, st, win_empty=False):
-    res = {'torn': [False, False], 'lines': [[], []]}; acc_b, acc_d = [], []; prof = []; acc_r = []
+    res = {'torn': [False, False], 'lines': [[], []]}; acc_b, acc_d, acc_b3 = [], [], []; prof = []; acc_r = []
     for fi, (a, b) in enumerate(FR):
         t0 = int(tops[fi]) - 4 if tops[fi] >= 0 else a
         rows = np.arange(max(a, t0), b - 8); Yl = Y[rows].astype(float)
@@ -77,18 +80,18 @@ def judge(Y, tops, st, win_empty=False):
             cut = np.zeros(len(rows), bool); cut[lo:hi + 1] = True
         else: cut = np.zeros(len(rows), bool)
         ok = both & ~cut & (np.abs(dl) <= g) & (np.abs(dr) <= g)
-        acc_b.append(Yl[ok, 0:3].ravel())
+        acc_b.append(Yl[ok, 0:3].ravel()); acc_b3.append(Yl[ok, 0:3].mean(1))
         lvR = edges.lvR; nl = (Ls == 0) & ~cut & (np.abs(dl) <= g) & np.isfinite(lvR) & (lvR > 2 * (st['top'] - st['B']))
         acc_r.append((Yl[nl, 718] - st['B']) / lvR[nl])
         # line-to-line edge differences of adjacent measured, uncut lines (noise; a content run changes slowly line to line)
         adj = both[1:] & both[:-1] & ~cut[1:] & ~cut[:-1]
         acc_d.append(np.r_[np.diff(L)[adj], np.diff(R)[adj]])
         if ok.sum() > 20: prof.append(np.median(Yl[ok, 0:40], 0))
-    fr = dict(b=np.concatenate(acc_b) if acc_b else np.zeros(0), d=np.concatenate(acc_d) if acc_d else np.zeros(0), prof=np.median(prof, 0) if prof else None, r718=np.concatenate(acc_r) if acc_r else np.zeros(0))
+    fr = dict(b3=np.concatenate(acc_b3) if acc_b3 else np.zeros(0), b=np.concatenate(acc_b) if acc_b else np.zeros(0), d=np.concatenate(acc_d) if acc_d else np.zeros(0), prof=np.median(prof, 0) if prof else None, r718=np.concatenate(acc_r) if acc_r else np.zeros(0))
     return res, fr
 def warm_frame(Y):
     s = Y[19:516, 0:3].astype(float); p = np.percentile(s, 95)
-    b = s[(s <= p).all(1)].ravel(); return dict(b=b, d=np.zeros(0), prof=np.median(Y[60:240, 0:40].astype(float), 0), r718=np.zeros(0))
+    keep = s[(s <= p).all(1)]; b = keep.ravel(); return dict(b3=keep.mean(1), b=b, d=np.zeros(0), prof=np.median(Y[60:240, 0:40].astype(float), 0), r718=np.zeros(0))
 def play(frames, tops_of):
     """frames: iterable of (unit, Y) in playback order. tops_of(unit) -> (top1, top2) NTSC lines or -1."""
     W = Win(); out = {}
