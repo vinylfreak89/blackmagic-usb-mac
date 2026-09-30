@@ -30,7 +30,7 @@ def edges(Yl, st):
     line enters the blanking run before sample 719 (719 is an attenuated sample, not blanking). An edge whose own step is
     not taller than twice the blanking bump (left) or twice the band (right) is unmeasurable (dark picture)."""
     B, top, bump = st['B'], st['top'], st['bump']; n = len(Yl)
-    L = np.full(n, np.nan); R = np.full(n, np.nan); Ls = np.zeros(n, int); Rs = np.zeros(n, int); lvR = np.full(n, np.nan); lvL = np.full(n, np.nan)
+    L = np.full(n, np.nan); R = np.full(n, np.nan); Ls = np.zeros(n, int); Rs = np.zeros(n, int); lvR = np.full(n, np.nan); lvL = np.full(n, np.nan); kL = np.full(n, np.nan)
     for i, y in enumerate(Yl):
         # left
         m3 = np.convolve(y, np.ones(3) / 3, 'valid')   # m3[k] = mean(y[k:k+3])
@@ -40,6 +40,7 @@ def edges(Yl, st):
             while k < 150 and m3[k] <= top: k += 1
             if k >= 150: Ls[i] = 2
             else:
+                kL[i] = k   # where the line leaves the blanking band (first 3-sample mean above it)
                 seg = np.diff(y[max(0, k - 1):k + 16]); j = max(0, k - 1) + int(np.argmax(seg))
                 lvl = np.median(y[j + 4:j + 11]) - B; lvL[i] = lvl
                 if lvl <= 2 * bump: Ls[i] = 2
@@ -59,7 +60,7 @@ def edges(Yl, st):
         hit = [x for x in range(min(717, k + 1), max(0, j - 8), -1) if y[x] >= t > y[x + 1]]
         if hit: x = hit[0]; R[i] = x + (y[x] - t) / (y[x] - y[x + 1])
         else: Rs[i] = 2
-    edges.lvR = lvR; edges.lvL = lvL
+    edges.lvR = lvR; edges.lvL = lvL; edges.kL = kL
     return L, R, Ls, Rs
 SWR = [(19, 263), (282, 525)]   # whole field incl. trailing rows; device padding is found by content, not position
 def switch_line(Y, fr_, r0, st):
@@ -109,8 +110,13 @@ def judge(Y, tops, st, win_empty=False):
                 return lambda v: np.where(np.isfinite(a + b * v), a + b * v, m0)
             return lambda v: np.full(len(v), m0)
         fL, fR = fit(L, Ls, lvL, mL), fit(R, Rs, lvR0, mR)
+        # change v12: a late rise counts as a push right on its own (without rspec) when the line LEAVES the blanking band late -
+        # blanking extends up to the rise. Dark content beside the edge sits above the band, so that line leaves it at the normal
+        # place and only its halfway point is late; it does not pass.
+        kL0 = edges.kL.copy(); kref = np.median(kL0[(Ls == 0) & np.isfinite(kL0)]) if ((Ls == 0) & np.isfinite(kL0)).sum() >= 20 else np.nan
+        lateK = np.isfinite(kL0) & (kL0 - kref > g)
         dl, dr = L - fL(lvL), R - fR(lvR0)
-        pushR = (Rs == 1) & (Ls == 0) & (dl > g) & st['rspec']
+        pushR = (Rs == 1) & (Ls == 0) & (dl > g) & (st['rspec'] | lateK)
         pushL = (Ls == 1) & ((Rs == 2) | ((Rs == 0) & (dr < -g)))
         shiftsq = (Ls == 0) & (Rs == 0) & (np.abs(dl) > g) & (np.abs(dr) > g)
         moved = pushR | pushL | shiftsq
@@ -121,13 +127,14 @@ def judge(Y, tops, st, win_empty=False):
         xr = np.arange(a, rows[0]) if rows[0] > a else np.zeros(0, int); xm = np.zeros(len(xr), bool)
         if len(xr):
             Lx, Rx, Lsx, Rsx = edges(Y[xr].astype(float), st); lvLx, lvRx = edges.lvL.copy(), edges.lvR.copy(); floor = 2 * st['bump']
+            lateKx = np.isfinite(edges.kL) & (edges.kL - kref > g)
             for i, r in enumerate(xr):
                 m3 = np.convolve(Y[r].astype(float), np.ones(3) / 3, 'valid'); up = np.nonzero(m3 > st['top'])[0]
                 single = len(up) > 0 and bool((m3[up[0]:up[-1] + 1] > st['top']).all())
                 tall = (Lsx[i] == 0 and lvLx[i] > floor) or (Lsx[i] == 1 and np.median(Y[r, 40:680]) - st['B'] > floor)
                 xm[i] = single and tall
             dlx, drx = Lx - fL(lvLx), Rx - fR(lvRx)
-            movx = ((Rsx == 1) & (Lsx == 0) & (dlx > g) & st['rspec']) | ((Lsx == 1) & ((Rsx == 2) | ((Rsx == 0) & (drx < -g)))) | \
+            movx = ((Rsx == 1) & (Lsx == 0) & (dlx > g) & (st['rspec'] | lateKx)) | ((Lsx == 1) & ((Rsx == 2) | ((Rsx == 0) & (drx < -g)))) | \
                    ((Lsx == 0) & (Rsx == 0) & (np.abs(dlx) > g) & (np.abs(drx) > g))
             xm &= movx
         # band over tested lines in raster order: extra lines above the top, then the judged lines
