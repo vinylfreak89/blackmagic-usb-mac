@@ -23,22 +23,40 @@ class Win:
         rspec = bool(len(r7) > 200 and np.percentile(r7, 99) < 0.5) if len(r7) > 200 else (s.last['rspec'] if hasattr(s, 'last') else False)
         s.last = dict(B=B, top=top, g=max(g, 0.5), bump=max(bump, top - B), rspec=rspec); return s.last
 def edges(Yl, st):
+    """Each edge against its OWN step (C1): left = the steepest rise within 15 samples after the line leaves the blanking
+    run that starts at sample 0, halfway between blanking and the level just after it; right = the mirror, from where the
+    line enters the blanking run before sample 719 (719 is an attenuated sample, not blanking). An edge whose own step is
+    not taller than twice the blanking bump (left) or twice the band (right) is unmeasurable (dark picture)."""
     B, top, bump = st['B'], st['top'], st['bump']; n = len(Yl)
-    L = np.full(n, np.nan); R = np.full(n, np.nan); Ls = np.zeros(n, int); Rs = np.zeros(n, int)   # state: 0 edge, 1 none/beyond, 2 unknown
-    lvlL = np.median(Yl[:, 40:80], 1) - B; lvlR = np.median(Yl[:, 640:680], 1) - B
+    L = np.full(n, np.nan); R = np.full(n, np.nan); Ls = np.zeros(n, int); Rs = np.zeros(n, int); lvR = np.full(n, np.nan)
     for i, y in enumerate(Yl):
+        # left
         if (y[0:3] > top).all(): Ls[i] = 1
-        elif lvlL[i] <= 2 * bump: Ls[i] = 2                    # step not taller than twice the blanking bump: bump could be the edge
         else:
-            t = B + 0.5 * lvlL[i]; k = np.nonzero(y[:150] >= t)[0]
-            if not len(k) or k[0] == 0: Ls[i] = 2
-            else: k = k[0]; L[i] = k - 1 + (t - y[k - 1]) / (y[k] - y[k - 1])
-        if lvlR[i] <= 2 * (top - B): Rs[i] = 2
-        elif y[718] - B >= 0.5 * lvlR[i]: Rs[i] = 1
-        else:
-            t = B + 0.5 * lvlR[i]; k = np.nonzero(y[570:719] >= t)[0]
-            if not len(k): Rs[i] = 2
-            else: k = 570 + k[-1]; R[i] = k + (y[k] - t) / (y[k] - y[k + 1])
+            k = 0
+            while k < 150 and y[k] <= top: k += 1
+            if k >= 150: Ls[i] = 2
+            else:
+                seg = np.diff(y[max(0, k - 1):k + 16]); j = max(0, k - 1) + int(np.argmax(seg))
+                lvl = np.median(y[j + 4:j + 11]) - B
+                if lvl <= 2 * bump: Ls[i] = 2
+                else:
+                    t = B + 0.5 * lvl; hit = [x for x in range(max(1, k - 1), min(719, j + 8)) if y[x - 1] < t <= y[x]]
+                    if hit: x = hit[0]; L[i] = x - 1 + (t - y[x - 1]) / (y[x] - y[x - 1])
+                    else: Ls[i] = 2
+        # right
+        k = 718
+        while k > 570 and y[k] <= top: k -= 1
+        if k <= 570: Rs[i] = 2; continue
+        lo = max(0, k - 15); seg = np.diff(y[lo:k + 2]); j = lo + int(np.argmin(seg))
+        lvl = np.median(y[max(0, j - 10):max(1, j - 3)]) - B; lvR[i] = lvl
+        if lvl <= 2 * (top - B): Rs[i] = 2; continue
+        t = B + 0.5 * lvl
+        if y[718] - B >= 0.5 * lvl: Rs[i] = 1; continue
+        hit = [x for x in range(min(717, k + 1), max(0, j - 8), -1) if y[x] >= t > y[x + 1]]
+        if hit: x = hit[0]; R[i] = x + (y[x] - t) / (y[x] - y[x + 1])
+        else: Rs[i] = 2
+    edges.lvR = lvR
     return L, R, Ls, Rs
 def judge(Y, tops, st, win_empty=False):
     res = {'torn': [False, False], 'lines': [[], []]}; acc_b, acc_d = [], []; prof = []; acc_r = []
@@ -60,7 +78,7 @@ def judge(Y, tops, st, win_empty=False):
         else: cut = np.zeros(len(rows), bool)
         ok = both & ~cut & (np.abs(dl) <= g) & (np.abs(dr) <= g)
         acc_b.append(Yl[ok, 0:3].ravel())
-        lvR = np.median(Yl[:, 640:680], 1) - st['B']; nl = (Ls == 0) & ~cut & (np.abs(dl) <= g) & (lvR > 2 * (st['top'] - st['B']))
+        lvR = edges.lvR; nl = (Ls == 0) & ~cut & (np.abs(dl) <= g) & np.isfinite(lvR) & (lvR > 2 * (st['top'] - st['B']))
         acc_r.append((Yl[nl, 718] - st['B']) / lvR[nl])
         # line-to-line edge differences of adjacent measured, uncut lines (noise; a content run changes slowly line to line)
         adj = both[1:] & both[:-1] & ~cut[1:] & ~cut[:-1]
