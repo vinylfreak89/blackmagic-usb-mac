@@ -2,7 +2,7 @@
 # measurement in the 2026-09-30 characterization; the ones that are not measured are listed in NOT_MEASURED.
 import sys, os, json, struct, csv, numpy as np, time
 sys.path.insert(0, os.path.dirname(__file__)); import playback as P
-NOT_MEASURED = {'avg3': 'sliding average length 3 = the blanking samples a fixture A line provides','N_WIN': 'window length 30 frames', 'band': 'blanking band top = 99.9th pct of accepted samples 0-2',
+NOT_MEASURED = {'edge_ref_min': 'per-edge reference needs >= 20 measured lines of that edge (the old both-edge count)','avg3': 'sliding average length 3 = the blanking samples a fixture A line provides','N_WIN': 'window length 30 frames', 'band': 'blanking band top = 99.9th pct of accepted samples 0-2',
                 'guard': 'edge guard = 99th pct of line-to-line edge differences of accepted lines', 'band2': 'a band is >= 2 adjacent moved lines',
                 'last8': 'last 8 lines out (owner)', 'right_half': 'fall beyond the window = still above half its level at 718 (the edge position is its halfway point)',
                 'rspec': 'fall-beyond counts as evidence only if the 99th pct of the window normal lines level-at-718 ratio is below one half'}
@@ -68,8 +68,11 @@ def judge(Y, tops, st, win_empty=False):
         rows = np.arange(max(a, t0), b - 8); Yl = Y[rows].astype(float)
         L, R, Ls, Rs = edges(Yl, st)
         both = (Ls == 0) & (Rs == 0)
-        if both.sum() < 20: continue
-        mL, mR = np.median(L[both]), np.median(R[both]); dl, dr = L - mL, R - mR; g = st['g']
+        # change v5: each edge's reference from the lines where THAT edge is measured (a black scene can leave the left
+        # unmeasurable while the right is measured on every line); window statistics keep their old both-edge gate
+        mL = np.median(L[Ls == 0]) if (Ls == 0).sum() >= 20 else np.nan; mR = np.median(R[Rs == 0]) if (Rs == 0).sum() >= 20 else np.nan
+        if np.isnan(mL) and np.isnan(mR): continue
+        dl, dr = L - mL, R - mR; g = st['g']
         pushR = (Rs == 1) & (Ls == 0) & (dl > g) & st['rspec']
         pushL = (Ls == 1) & ((Rs == 2) | ((Rs == 0) & (dr < -g)))
         shiftsq = (Ls == 0) & (Rs == 0) & (np.abs(dl) > g) & (np.abs(dr) > g)
@@ -79,6 +82,7 @@ def judge(Y, tops, st, win_empty=False):
             res['torn'][fi] = True; res['lines'][fi] = (rows[band] + 4).tolist(); lo, hi = np.nonzero(band)[0][[0, -1]]
             cut = np.zeros(len(rows), bool); cut[lo:hi + 1] = True
         else: cut = np.zeros(len(rows), bool)
+        if both.sum() < 20: continue   # statistics: same fields as before the per-edge reference
         ok = both & ~cut & (np.abs(dl) <= g) & (np.abs(dr) <= g)
         acc_b.append(Yl[ok, 0:3].ravel()); acc_b3.append(Yl[ok, 0:3].mean(1))
         lvR = edges.lvR; nl = (Ls == 0) & ~cut & (np.abs(dl) <= g) & np.isfinite(lvR) & (lvR > 2 * (st['top'] - st['B']))
