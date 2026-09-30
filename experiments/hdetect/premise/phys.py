@@ -2,11 +2,11 @@
 # measurement in the 2026-09-30 characterization; the ones that are not measured are listed in NOT_MEASURED.
 import sys, os, json, struct, csv, numpy as np, time
 sys.path.insert(0, os.path.dirname(__file__)); import playback as P
-NOT_MEASURED = {'level_fit': 'level reference fitted only with >= 20 lines within g of the flat median spanning >= 20 codes (p10-p90); else flat median','edge_ref_min': 'per-edge reference needs >= 20 measured lines of that edge (the old both-edge count)','avg3': 'sliding average length 3 = the blanking samples a fixture A line provides','N_WIN': 'window length 30 frames', 'band': 'blanking band top = 99.9th pct of accepted samples 0-2',
+NOT_MEASURED = {'foot': 'foot = crossing of the band top (3-sample band) by the raw samples, from the halfway point outward; right foot must be reached by 718','level_fit': 'level reference fitted only with >= 20 lines within g of the flat median spanning >= 20 codes (p10-p90); else flat median','edge_ref_min': 'per-edge reference needs >= 20 measured lines of that edge (the old both-edge count)','avg3': 'sliding average length 3 = the blanking samples a fixture A line provides','N_WIN': 'window length 30 frames', 'band': 'blanking band top = 99.9th pct of accepted samples 0-2',
                 'guard': 'edge guard = 99th pct of line-to-line edge differences of accepted lines', 'band2': 'a band is >= 2 adjacent moved lines',
                 'last8': 'last 8 lines out (owner)', 'right_half': 'fall beyond the window = still above half its level at 718 (the edge position is its halfway point)',
                 'rspec': 'fall-beyond counts as evidence only if the 99th pct of the window normal lines level-at-718 ratio is below one half'}
-N_WIN = 30; FR = [(19, 262), (282, 525)]
+FIT = []; N_WIN = 30; FR = [(19, 262), (282, 525)]
 class Win:
     def __init__(s): s.f = []
     def add(s, x): s.f.append(x); s.f = s.f[-N_WIN:]
@@ -45,7 +45,13 @@ def edges(Yl, st):
                 if lvl <= 2 * bump: Ls[i] = 2
                 else:
                     t = B + 0.5 * lvl; hit = [x for x in range(max(1, k - 1), min(719, j + 8)) if y[x - 1] < t <= y[x]]
-                    if hit: x = hit[0]; L[i] = x - 1 + (t - y[x - 1]) / (y[x] - y[x - 1])
+                    if hit:
+                        # change v7: the edge is its FOOT - where the line leaves the blanking band - not the halfway point, which
+                        # carries the content after the edge (7146); searched from the halfway crossing back toward blanking
+                        x = hit[0]; q = x - 1
+                        while q > 0 and y[q] > top: q -= 1
+                        if y[q] <= top < y[q + 1]: L[i] = q + (top - y[q]) / (y[q + 1] - y[q])
+                        else: Ls[i] = 2
                     else: Ls[i] = 2
         # right
         k = 718
@@ -57,7 +63,12 @@ def edges(Yl, st):
         t = B + 0.5 * lvl
         if y[718] - B >= 0.5 * lvl: Rs[i] = 1; continue
         hit = [x for x in range(min(717, k + 1), max(0, j - 8), -1) if y[x] >= t > y[x + 1]]
-        if hit: x = hit[0]; R[i] = x + (y[x] - t) / (y[x] - y[x + 1])
+        if hit:
+            # change v7: right FOOT - where the fall reaches the band; not reached by 718 (719 is attenuated) = not in the window
+            x = hit[0]; q = x + 1
+            while q <= 718 and y[q] > top: q += 1
+            if q <= 718 and y[q - 1] > top >= y[q]: R[i] = q - 1 + (y[q - 1] - top) / (y[q - 1] - y[q])
+            else: Rs[i] = 2
         else: Rs[i] = 2
     edges.lvR = lvR; edges.lvL = lvL
     return L, R, Ls, Rs
@@ -75,14 +86,14 @@ def judge(Y, tops, st, win_empty=False):
         g = st['g']; lvL, lvR0 = edges.lvL.copy(), edges.lvR.copy()
         # change v6: each line's expected edge follows its own step height (C2: brighter edges land later), a straight-line
         # fit over this field's measured lines that sit within the guard of the flat median; flat median if under-determined
-        def expect(E, S, lv, m0):
+        def expect(E, S, lv, m0, side):
             if np.isnan(m0): return np.full(len(E), np.nan)
             sel = (S == 0) & np.isfinite(lv) & (np.abs(E - m0) <= g)
             if sel.sum() >= 20 and np.percentile(lv[sel], 90) - np.percentile(lv[sel], 10) >= 20:
-                b, a = np.polyfit(lv[sel], E[sel], 1); pred = a + b * lv
+                b, a = np.polyfit(lv[sel], E[sel], 1); pred = a + b * lv; FIT.append((side, float(b)))
                 return np.where(np.isfinite(pred), pred, m0)
             return np.full(len(E), m0)
-        dl, dr = L - expect(L, Ls, lvL, mL), R - expect(R, Rs, lvR0, mR)
+        dl, dr = L - expect(L, Ls, lvL, mL, 'L'), R - expect(R, Rs, lvR0, mR, 'R')
         pushR = (Rs == 1) & (Ls == 0) & (dl > g) & st['rspec']
         pushL = (Ls == 1) & ((Rs == 2) | ((Rs == 0) & (dr < -g)))
         shiftsq = (Ls == 0) & (Rs == 0) & (np.abs(dl) > g) & (np.abs(dr) > g)
