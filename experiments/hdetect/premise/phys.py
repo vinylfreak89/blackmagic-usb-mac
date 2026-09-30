@@ -2,7 +2,7 @@
 # measurement in the 2026-09-30 characterization; the ones that are not measured are listed in NOT_MEASURED.
 import sys, os, json, struct, csv, numpy as np, time
 sys.path.insert(0, os.path.dirname(__file__)); import playback as P
-NOT_MEASURED = {'edge_ref_min': 'per-edge reference needs >= 20 measured lines of that edge (the old both-edge count)','avg3': 'sliding average length 3 = the blanking samples a fixture A line provides','N_WIN': 'window length 30 frames', 'band': 'blanking band top = 99.9th pct of accepted samples 0-2',
+NOT_MEASURED = {'level_fit': 'level reference fitted only with >= 20 lines within g of the flat median spanning >= 20 codes (p10-p90); else flat median','edge_ref_min': 'per-edge reference needs >= 20 measured lines of that edge (the old both-edge count)','avg3': 'sliding average length 3 = the blanking samples a fixture A line provides','N_WIN': 'window length 30 frames', 'band': 'blanking band top = 99.9th pct of accepted samples 0-2',
                 'guard': 'edge guard = 99th pct of line-to-line edge differences of accepted lines', 'band2': 'a band is >= 2 adjacent moved lines',
                 'last8': 'last 8 lines out (owner)', 'right_half': 'fall beyond the window = still above half its level at 718 (the edge position is its halfway point)',
                 'rspec': 'fall-beyond counts as evidence only if the 99th pct of the window normal lines level-at-718 ratio is below one half'}
@@ -30,7 +30,7 @@ def edges(Yl, st):
     line enters the blanking run before sample 719 (719 is an attenuated sample, not blanking). An edge whose own step is
     not taller than twice the blanking bump (left) or twice the band (right) is unmeasurable (dark picture)."""
     B, top, bump = st['B'], st['top'], st['bump']; n = len(Yl)
-    L = np.full(n, np.nan); R = np.full(n, np.nan); Ls = np.zeros(n, int); Rs = np.zeros(n, int); lvR = np.full(n, np.nan)
+    L = np.full(n, np.nan); R = np.full(n, np.nan); Ls = np.zeros(n, int); Rs = np.zeros(n, int); lvR = np.full(n, np.nan); lvL = np.full(n, np.nan)
     for i, y in enumerate(Yl):
         # left
         m3 = np.convolve(y, np.ones(3) / 3, 'valid')   # m3[k] = mean(y[k:k+3])
@@ -41,7 +41,7 @@ def edges(Yl, st):
             if k >= 150: Ls[i] = 2
             else:
                 seg = np.diff(y[max(0, k - 1):k + 16]); j = max(0, k - 1) + int(np.argmax(seg))
-                lvl = np.median(y[j + 4:j + 11]) - B
+                lvl = np.median(y[j + 4:j + 11]) - B; lvL[i] = lvl
                 if lvl <= 2 * bump: Ls[i] = 2
                 else:
                     t = B + 0.5 * lvl; hit = [x for x in range(max(1, k - 1), min(719, j + 8)) if y[x - 1] < t <= y[x]]
@@ -59,7 +59,7 @@ def edges(Yl, st):
         hit = [x for x in range(min(717, k + 1), max(0, j - 8), -1) if y[x] >= t > y[x + 1]]
         if hit: x = hit[0]; R[i] = x + (y[x] - t) / (y[x] - y[x + 1])
         else: Rs[i] = 2
-    edges.lvR = lvR
+    edges.lvR = lvR; edges.lvL = lvL
     return L, R, Ls, Rs
 def judge(Y, tops, st, win_empty=False):
     res = {'torn': [False, False], 'lines': [[], []]}; acc_b, acc_d, acc_b3 = [], [], []; prof = []; acc_r = []
@@ -72,7 +72,17 @@ def judge(Y, tops, st, win_empty=False):
         # unmeasurable while the right is measured on every line); window statistics keep their old both-edge gate
         mL = np.median(L[Ls == 0]) if (Ls == 0).sum() >= 20 else np.nan; mR = np.median(R[Rs == 0]) if (Rs == 0).sum() >= 20 else np.nan
         if np.isnan(mL) and np.isnan(mR): continue
-        dl, dr = L - mL, R - mR; g = st['g']
+        g = st['g']; lvL, lvR0 = edges.lvL.copy(), edges.lvR.copy()
+        # change v6: each line's expected edge follows its own step height (C2: brighter edges land later), a straight-line
+        # fit over this field's measured lines that sit within the guard of the flat median; flat median if under-determined
+        def expect(E, S, lv, m0):
+            if np.isnan(m0): return np.full(len(E), np.nan)
+            sel = (S == 0) & np.isfinite(lv) & (np.abs(E - m0) <= g)
+            if sel.sum() >= 20 and np.percentile(lv[sel], 90) - np.percentile(lv[sel], 10) >= 20:
+                b, a = np.polyfit(lv[sel], E[sel], 1); pred = a + b * lv
+                return np.where(np.isfinite(pred), pred, m0)
+            return np.full(len(E), m0)
+        dl, dr = L - expect(L, Ls, lvL, mL), R - expect(R, Rs, lvR0, mR)
         pushR = (Rs == 1) & (Ls == 0) & (dl > g) & st['rspec']
         pushL = (Ls == 1) & ((Rs == 2) | ((Rs == 0) & (dr < -g)))
         shiftsq = (Ls == 0) & (Rs == 0) & (np.abs(dl) > g) & (np.abs(dr) > g)
