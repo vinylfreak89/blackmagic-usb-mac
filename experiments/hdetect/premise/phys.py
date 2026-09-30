@@ -100,22 +100,45 @@ def judge(Y, tops, st, win_empty=False):
         g = st['g']; lvL, lvR0 = edges.lvL.copy(), edges.lvR.copy()
         # change v6: each line's expected edge follows its own step height (C2: brighter edges land later), a straight-line
         # fit over this field's measured lines that sit within the guard of the flat median; flat median if under-determined
-        def expect(E, S, lv, m0):
-            if np.isnan(m0): return np.full(len(E), np.nan)
+        def fit(E, S, lv, m0):
+            # returns a predictor lv -> expected edge (level fit, or the flat median when under-determined)
+            if np.isnan(m0): return lambda v: np.full(len(v), np.nan)
             sel = (S == 0) & np.isfinite(lv) & (np.abs(E - m0) <= g)
             if sel.sum() >= 20 and np.percentile(lv[sel], 90) - np.percentile(lv[sel], 10) >= 20:
-                b, a = np.polyfit(lv[sel], E[sel], 1); pred = a + b * lv
-                return np.where(np.isfinite(pred), pred, m0)
-            return np.full(len(E), m0)
-        dl, dr = L - expect(L, Ls, lvL, mL), R - expect(R, Rs, lvR0, mR)
+                b, a = np.polyfit(lv[sel], E[sel], 1)
+                return lambda v: np.where(np.isfinite(a + b * v), a + b * v, m0)
+            return lambda v: np.full(len(v), m0)
+        fL, fR = fit(L, Ls, lvL, mL), fit(R, Rs, lvR0, mR)
+        dl, dr = L - fL(lvL), R - fR(lvR0)
         pushR = (Rs == 1) & (Ls == 0) & (dl > g) & st['rspec']
         pushL = (Ls == 1) & ((Rs == 2) | ((Rs == 0) & (dr < -g)))
         shiftsq = (Ls == 0) & (Rs == 0) & (np.abs(dl) > g) & (np.abs(dr) > g)
         moved = pushR | pushL | shiftsq
-        band = moved & (np.r_[False, moved[:-1]] | np.r_[moved[1:], False])
-        if band.any():
-            res['torn'][fi] = True; res['lines'][fi] = (rows[band] + 4).tolist(); lo, hi = np.nonzero(band)[0][[0, -1]]
-            cut = np.zeros(len(rows), bool); cut[lo:hi + 1] = True
+        # change v11: lines between the aperture start and registration's measured top are also TESTED when they carry the
+        # torn-line signature - a single rise (once the 3-sample average leaves the blanking band it does not return to it before
+        # the final fall; caption data returns between bits) to picture height (own step, or level with picture at sample 0,
+        # above the detector's measurable floor 2 x bump; a dark line has none). Reference and statistics stay below the top.
+        xr = np.arange(a, rows[0]) if rows[0] > a else np.zeros(0, int); xm = np.zeros(len(xr), bool)
+        if len(xr):
+            Lx, Rx, Lsx, Rsx = edges(Y[xr].astype(float), st); lvLx, lvRx = edges.lvL.copy(), edges.lvR.copy(); floor = 2 * st['bump']
+            for i, r in enumerate(xr):
+                m3 = np.convolve(Y[r].astype(float), np.ones(3) / 3, 'valid'); up = np.nonzero(m3 > st['top'])[0]
+                single = len(up) > 0 and bool((m3[up[0]:up[-1] + 1] > st['top']).all())
+                tall = (Lsx[i] == 0 and lvLx[i] > floor) or (Lsx[i] == 1 and np.median(Y[r, 40:680]) - st['B'] > floor)
+                xm[i] = single and tall
+            dlx, drx = Lx - fL(lvLx), Rx - fR(lvRx)
+            movx = ((Rsx == 1) & (Lsx == 0) & (dlx > g) & st['rspec']) | ((Lsx == 1) & ((Rsx == 2) | ((Rsx == 0) & (drx < -g)))) | \
+                   ((Lsx == 0) & (Rsx == 0) & (np.abs(dlx) > g) & (np.abs(drx) > g))
+            xm &= movx
+        # band over tested lines in raster order: extra lines above the top, then the judged lines
+        allr = np.r_[xr, rows]; allm = np.r_[xm, moved]
+        nb = np.r_[False, (allm[:-1] & (np.diff(allr) == 1))] | np.r_[(allm[1:] & (np.diff(allr) == 1)), False]
+        bandall = allm & nb; band = bandall[len(xr):]
+        if bandall.any():
+            res['torn'][fi] = True; res['lines'][fi] = (allr[bandall] + 4).tolist()
+            if band.any(): lo, hi = np.nonzero(band)[0][[0, -1]]; cut = np.zeros(len(rows), bool); cut[lo:hi + 1] = True
+            else: cut = np.zeros(len(rows), bool)
+            if bandall[:len(xr)].any(): res.setdefault('above_top', [[], []])[fi] = (xr[bandall[:len(xr)]] + 4).tolist()
         else: cut = np.zeros(len(rows), bool)
         if both.sum() < 20: continue   # statistics: same fields as before the per-edge reference
         ok = both & ~cut & (np.abs(dl) <= g) & (np.abs(dr) <= g)
