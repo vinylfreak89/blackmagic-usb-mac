@@ -1,3 +1,4 @@
+#include "line_edges.h"
 #include "geometry_engine.h"
 #include <math.h>
 #include <stdlib.h>
@@ -502,6 +503,16 @@ static ge_comb_result comb_static(const uint8_t *t,const uint8_t *b,const ge_fea
     r.shift=best-5;r.margin=energy[best]>0?energy[second]/energy[best]:(energy[second]>0?INFINITY:1);
     r.decided=1;memcpy(r.energies,energy,sizeof energy);return r;
 }
+/* A field's top line is horizontally mistimed when its picture already sits at the window's left
+ * edge (normal blanking runs to sample ~10) or its row carries a full-width horizontal blanking
+ * interval with sharp falloffs on both sides (tvc2 77-88 min: 145-153 samples against the nominal
+ * 147). Such a top makes no decision (owner, 2026-10-01). Returns 0 when the top is unknown. */
+static int top_mistimed(const uint8_t *y,int field,int line) {
+    if(!line)return 0;
+    le_line l;le_measure_line(y+(line-4)*LE_WIDTH,le_blank_level(y,field),&l);
+    int width=l.gap_end-l.gap_start;
+    return l.left_state==LE_SPILL || (l.gap_sharp && abs(width-LE_BLANKING)<=2*LE_FEW);
+}
 /* Per-frame evidence: each element proposes a relative alignment with a confidence weight
  * (log-odds of being right, from the 2026-10-01 calibrations); the candidate with the most weight wins.
  *   tops (census): waveform and level tops agree 99.6% right (logit 5.5); disagree 76% (1.15)
@@ -518,7 +529,8 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
     o.bottom[0]=t->bottom[0];o.bottom[1]=b->bottom[1];o.motion[0]=t->motion[0];o.motion[1]=b->motion[1];
     o.vertical[0]=t->vertical[0];o.vertical[1]=b->vertical[1];o.rigid[0]=t->rigid[0];o.rigid[1]=b->rigid[1];
     o.ev_tjump[0]=t->tjump[0];o.ev_tjump[1]=b->tjump[1];
-    int known=t->first[0] && b->first[1],st=known?b->first[1]-263-t->first[0]:0;
+    o.ev_top_mistimed=top_mistimed(ty,0,t->first[0])|(top_mistimed(by,1,b->first[1])<<1);
+    int known=t->first[0] && b->first[1] && !o.ev_top_mistimed,st=known?b->first[1]-263-t->first[0]:0;
     int l1=ge_level_scan(ty,0,g->config.wave_clamp).first,l2=ge_level_scan(by,1,g->config.wave_clamp).first;
     o.ev_tops_agree=known && l1==t->first[0] && l2==b->first[1];
     double wt=known?(o.ev_tops_agree?5.5:1.15):0;
