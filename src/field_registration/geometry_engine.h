@@ -118,6 +118,7 @@ typedef struct {
     double ev_weight_tops, ev_weight_comb, ev_weight_previous;
     float ev_tjump[2]; /* frame-owned median tile shift per field */
     int ev_whole_comb_d; /* whole-frame comb shift, for comparison; feeds only the anchor vote */
+    double ev_comb_t; /* static-tile paired t of the comb's best shift against its competitor */
 } ge_decision;
 typedef struct geometry_engine geometry_engine;
 size_t ge_size(void);

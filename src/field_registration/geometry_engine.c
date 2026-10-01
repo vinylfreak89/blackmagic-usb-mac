@@ -475,32 +475,60 @@ static void tile_states(ge_features *f,const ge_features *prev) {
     }
 }
 /* The comb over tiles still in both fields: a moving region measures motion, not registration. */
-static ge_comb_result comb_static(const uint8_t *t,const uint8_t *b,const ge_features *ft,const ge_features *fb,int *tiles) {
+/* Log-odds that a paired difference with t-statistic t is real (normal tail), without overflow. */
+static double tail_logodds(double t) {
+    if(!(t>0))return 0;
+    double q=0.5*erfc(t/sqrt(2.0));
+    double lq=q>0?log(q):-0.5*t*t-log(t*sqrt(2.0*M_PI));
+    return log1p(-(q>0?q:0))-lq;
+}
+/* The comb over tiles still in both fields: a moving region measures motion, not registration.
+ * Its confidence comes from the tiles themselves: each static tile has its own energy per shift,
+ * and the paired per-tile difference between two shifts gives a t-statistic. t_vs[k] compares the
+ * best shift with shift k-5 (NAN when fewer than two tiles). */
+static ge_comb_result comb_static(const uint8_t *t,const uint8_t *b,const ge_features *ft,const ge_features *fb,
+                                  int *tiles,double t_vs[11]) {
     uint8_t mask[EV_TR][EV_TC];*tiles=0;
     for(int ti=0;ti<EV_TR;ti++)for(int tj=0;tj<EV_TC;tj++){mask[ti][tj]=ft->tstatic[0][ti][tj]&&fb->tstatic[1][ti][tj];*tiles+=mask[ti][tj];}
+    for(int k=0;k<11;k++)t_vs[k]=NAN;
     ge_comb_result r={.shift=0,.decided=0,.margin=NAN};
     if(!*tiles)return r;
     /* Comb lines 30..240, samples 24..695, restricted to static tiles (rows 8+16*ti of field 1). */
-    uint64_t count=0;
+    static const int x0s[EV_TC]={24,48,96,144,192,240,288,336,384,432,480,528,576,624,672};
+    static const int x1s[EV_TC]={48,96,144,192,240,288,336,384,432,480,528,576,624,672,696};
+    uint32_t tcount[EV_TR][EV_TC]={{0}};uint64_t count=0;
     for(int line=30;line<=240;line++){int fr=line-23;if(fr<8)continue;int ti=(fr-8)/16;if(ti>=EV_TR)continue;
-        for(int tj=0;tj<EV_TC;tj++)if(mask[ti][tj]){int x0=tj*48<24?24:tj*48,x1=tj*48+48>696?696:tj*48+48;count+=(uint64_t)(x1-x0);}}
+        for(int tj=0;tj<EV_TC;tj++)if(mask[ti][tj]){tcount[ti][tj]+=(uint32_t)(x1s[tj]-x0s[tj]);count+=(uint64_t)(x1s[tj]-x0s[tj]);}}
+    uint32_t tsum[11][EV_TR][EV_TC]; /* per-tile sums; a tile's 16x48 products fit in 32 bits */
     double energy[11];
     for(int d=-5;d<=5;d++) {
         uint64_t sum=0;
+        for(int ti=0;ti<EV_TR;ti++)for(int tj=0;tj<EV_TC;tj++)tsum[d+5][ti][tj]=0;
         for(int line=30;line<=240;line++) {
             int fr=line-23;if(fr<8)continue;int ti=(fr-8)/16;if(ti>=EV_TR)continue;
             const uint8_t *a=t+(line-4)*720,*c=a+720,*bb=b+(line+259+d)*720;
             for(int tj=0;tj<EV_TC;tj++){if(!mask[ti][tj])continue;
-                int x0=tj*48<24?24:tj*48,x1=tj*48+48>696?696:tj*48+48;unsigned part=0;
-                for(int x=x0;x<x1;x++){int v=((int)a[x]-bb[x])*((int)c[x]-bb[x]);part+=v>0?(unsigned)v:0;}
-                sum+=part;}
+                unsigned part=0;
+                for(int x=x0s[tj];x<x1s[tj];x++){int v=((int)a[x]-bb[x])*((int)c[x]-bb[x]);part+=v>0?(unsigned)v:0;}
+                sum+=part;tsum[d+5][ti][tj]+=part;}
         }
         energy[d+5]=count?(double)sum/count:0;
     }
     int best=0,second=1;if(energy[second]<energy[best]){best=1;second=0;}
     for(int i=2;i<11;i++){if(energy[i]<energy[best]){second=best;best=i;}else if(energy[i]<energy[second])second=i;}
     r.shift=best-5;r.margin=energy[best]>0?energy[second]/energy[best]:(energy[second]>0?INFINITY:1);
-    r.decided=1;memcpy(r.energies,energy,sizeof energy);return r;
+    r.decided=1;memcpy(r.energies,energy,sizeof energy);
+    if(*tiles>=2)for(int k=0;k<11;k++) {
+        if(k==best)continue;
+        double m=0,m2=0;int n=0;
+        for(int ti=0;ti<EV_TR;ti++)for(int tj=0;tj<EV_TC;tj++)if(mask[ti][tj]) {
+            double dd=((double)tsum[k][ti][tj]-(double)tsum[best][ti][tj])/tcount[ti][tj];
+            n++;double dm=dd-m;m+=dm/n;m2+=dm*(dd-m);
+        }
+        double sd=sqrt(m2/(n-1));
+        t_vs[k]=sd>0?m/(sd/sqrt((double)n)):(m>0?INFINITY:0);
+    }
+    return r;
 }
 /* Per-frame evidence: each element proposes a relative alignment with a confidence weight
  * (log-odds of being right, from the 2026-10-01 calibrations); the candidate with the most weight wins.
@@ -522,8 +550,15 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
     int l1=ge_level_scan(ty,0,g->config.wave_clamp).first,l2=ge_level_scan(by,1,g->config.wave_clamp).first;
     o.ev_tops_agree=known && l1==t->first[0] && l2==b->first[1];
     double wt=known?(o.ev_tops_agree?5.5:1.15):0;
-    int tiles=0;o.comb=comb_static(ty,by,t,b,&tiles);o.ev_static_tiles=tiles;
-    double wc=0;if(tiles && !isnan(o.comb.margin))wc=o.comb.margin>=1.4?4.6:(o.comb.margin>=1.05?1.7:0);
+    int tiles=0;double tv[11];o.comb=comb_static(ty,by,t,b,&tiles,tv);o.ev_static_tiles=tiles;
+    /* The comb's weight: log-odds that its best shift beats the competitor across the static tiles.
+     * The competitor is the census when the comb disagrees with it, else the comb's own runner-up. */
+    double wc=0;o.ev_comb_t=NAN;
+    if(tiles>=2) {
+        int second=-1;for(int k=0;k<11;k++)if(k!=o.comb.shift+5 && (second<0||o.comb.energies[k]<o.comb.energies[second]))second=k;
+        int vs=(known && o.comb.shift!=st && st>=-5 && st<=5)?st+5:second;
+        o.ev_comb_t=tv[vs];wc=isnan(tv[vs])?0:tail_logodds(tv[vs]);
+    }
     o.ev_weight_tops=wt;o.ev_weight_comb=wc;
     int d;
     if(wt==0 && wc==0) {
