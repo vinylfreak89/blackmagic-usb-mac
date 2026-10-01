@@ -705,6 +705,7 @@ def main():
     ap.add_argument("--av-log", help="frameserver_replay --dump-log of the same capture: anchors the audio")
     ap.add_argument("--deint", default="bwdif", choices=("bwdif", "yadif_nospatial", "none"))
     ap.add_argument("--crf", default="14")
+    ap.add_argument("--codec", choices=["x264", "prores"], default="x264", help="prores: ProRes 422 via VideoToolbox (write a .mov)")
     ap.add_argument("--font", default="/System/Library/Fonts/Menlo.ttc")
     a = ap.parse_args()
     if a.pairing_schedule and (a.pair_next or a.parity):
@@ -914,7 +915,10 @@ def main():
         elif vf:
             cmd += ["-vf", "format=yuv422p," + vf]        # 4:2:2 into the deinterlacer (see above)
         print(f"deinterlacer: {a.deint}{' -> -vf ' + vf if vf else ''}", flush=True)
-    cmd += ["-c:v", "libx264", "-crf", a.crf, "-preset", "medium", "-pix_fmt", "yuv420p", a.out]
+    if a.codec == "prores":   # owner, 2026-09-28: renders are ProRes 422 from the VideoToolbox hardware encoder
+        cmd += ["-c:v", "prores_videotoolbox", "-profile:v", "standard", "-pix_fmt", "p210le", a.out]
+    else:
+        cmd += ["-c:v", "libx264", "-crf", a.crf, "-preset", "medium", "-pix_fmt", "yuv420p", a.out]
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
     gx0, gw = W - 300, 280
