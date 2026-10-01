@@ -8,11 +8,12 @@
 # working files in OUTDIR, deleted after validation passes. Any replay hole or drop stops the render: the
 # published frames would not be the engine's whole output. PACE_US (default 16000, real time) paces the replay
 # so the lossless spool, written to a cloud volume, keeps up: at 8000 with the range coder the dump fell behind
-# and the ring dropped 438 of 650 capture-4 units under load.
+# and the ring dropped 438 of 650 capture-4 units under load. SPOOLDIR puts the spool and PCM on a faster disk:
+# two spools writing to the cloud volume at once blocked fixture A's publish worker (491 ring drops, 2026-10-02).
 set -u -o pipefail   # bash 3.2: empty arrays expand as ${a[@]+"${a[@]}"} under set -u
 NAME=$1 CAPTURE=$2 OUT=$3 BIN=$4 SCHED=${5:-}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-SPOOL="$OUT/$NAME.spool.mkv" PCM="$OUT/$NAME.pcm" SIDE="$OUT/$NAME"_registration.csv FIFO=$(mktemp -u)
+SPOOL="${SPOOLDIR:-$OUT}/$NAME.spool.mkv" PCM="${SPOOLDIR:-$OUT}/$NAME.pcm" SIDE="$OUT/$NAME"_registration.csv FIFO=$(mktemp -u)
 VIDEO="$OUT/$NAME.mov" LOG="$OUT/$NAME.render.log"
 for f in "$SPOOL" "$PCM" "$SIDE" "$VIDEO" "$VIDEO.status.json"; do rm -f "$f"; done   # replace outright, no backups
 mkfifo "$FIFO" || exit 1
