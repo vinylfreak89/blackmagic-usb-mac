@@ -29,6 +29,7 @@ struct geometry_engine {
     ge_config config;
     int reverse, valid, held, provisional, have_placement, last_d, last_d2;
     int have_st, last_st; double prev_weight; /* evidence mode */
+    uint8_t trust_ring[128]; int trust_n, trust_head, trust_sum; /* evidence mode: per-source tops trust */
     int basis_valid, basis_first[2]; /* tops of the frame that derived held */
     uint64_t counter;
     ge_features previous, current;
@@ -443,6 +444,12 @@ static int rerun(ge_class c) { return c!=GE_NOTHING && c!=GE_VALID_MOVE; }
 #define EV_TC 15
 #define EV_DETAIL 1.3
 #define EV_STILL 0.4f
+/* Per-source trust in the tops' relative alignment: the share of the last EV_TRUST decisive comb
+ * frames (still, both tops measured and well timed, comb margin >= 1.4) whose comb agreed with the
+ * tops (owner, 2026-10-02: "learning trustworthiness is ... another sliding window statistic").
+ * EV_TRUST is the shortest window at which a source whose tops always agree earns the measured
+ * top-reading accuracy (99.6%, logit 5.5): (128+0.5)/(128+1) = 0.9961. */
+#define EV_TRUST 128
 static void tile_shifts(const uint8_t *cur,const uint8_t *prev,int field,ge_features *f) {
     int off=19+263*field;
     for(int ti=0;ti<EV_TR;ti++)for(int tj=0;tj<EV_TC;tj++) {
@@ -534,7 +541,7 @@ static ge_comb_result comb_timed(const uint8_t *t,const uint8_t *b,const uint8_t
 }
 /* Per-frame evidence: each element proposes a relative alignment with a confidence weight
  * (log-odds of being right, from the 2026-10-01 calibrations); the candidate with the most weight wins.
- *   tops (census): waveform and level tops agree 99.6% right (logit 5.5); disagree 76% (1.15)
+ *   tops (census): the source's learned trust (EV_TRUST), log-odds, never negative
  *   comb: best/second >= 1.4 99% right (4.6); 1.05-1.4 85% (1.7); below, no say; one step lower
  *   when anything in the frame is moving vertically
  * The previous decision is one more candidate carrying the fresh evidence that supported it on the
@@ -554,7 +561,9 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
     int known=t->first[0] && b->first[1] && !o.ev_top_mistimed,st=known?b->first[1]-263-t->first[0]:0;
     int l1=ge_level_scan(ty,0,g->config.wave_clamp).first,l2=ge_level_scan(by,1,g->config.wave_clamp).first;
     o.ev_tops_agree=known && l1==t->first[0] && l2==b->first[1];
-    double wt=known?(o.ev_tops_agree?5.5:1.15):0;
+    /* The tops' weight is the source's learned trust (log-odds, never negative). */
+    double trust=(g->trust_sum+0.5)/(g->trust_n+1.0);o.ev_tops_trust=trust;
+    double wt=known?fmax(0,log(trust/(1-trust))):0;
     /* The whole-frame comb over horizontally well-timed rows; sustained vertical motion anywhere in either field (a tile shifting the
      * same way on two consecutive units) downgrades its confidence one step (owner, 2026-10-01). */
     ge_comb_result whole=ge_comb(ty,by,&g->config);o.ev_whole_comb_d=whole.shift;
@@ -568,8 +577,9 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
     double wc=band==2?4.6:band==1?1.7:0;
     o.ev_weight_tops=wt;o.ev_weight_comb=wc;
     int d;
-    if(wt==0 && wc==0 && o.ev_top_mistimed && g->have_placement) {
-        /* Tops measured but mistimed: no raster to fall back to; the previous decision stands. */
+    if(wt==0 && wc==0 && g->have_placement && (o.ev_top_mistimed || !(log(trust/(1-trust))>0))) {
+        /* Tops mistimed, or a source whose tops are not trusted: no raster to fall back to; the
+         * previous decision stands. */
         d=g->last_d;o.relative_source=GE_SOURCE_PREVIOUS;o.triggers|=GE_EV_PREVIOUS;g->prev_weight=0;
     } else if(wt==0 && wc==0) {
         d=g->have_st?g->last_st:0;g->prev_weight=0;
@@ -596,6 +606,12 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
         else {o.relative_source=GE_SOURCE_COMB;o.comb_ran=1;o.triggers|=GE_EV_COMB;}
     }
     if(!o.ev_tops_agree && known)o.triggers|=GE_EV_TOPS_DISAGREE;
+    /* A decisive frame teaches the trust: still, tops measured and well timed, comb clear. */
+    if(known && !moving && !isnan(o.comb.margin) && o.comb.margin>=2) {
+        int agree=o.comb.shift==st;
+        if(g->trust_n==EV_TRUST)g->trust_sum-=g->trust_ring[g->trust_head];else g->trust_n++;
+        g->trust_ring[g->trust_head]=(uint8_t)agree;g->trust_sum+=agree;g->trust_head=(g->trust_head+1)%EV_TRUST;
+    }
     if(known){g->have_st=1;g->last_st=st;}
     /* The anchor vote keeps the approved input: the whole-frame comb examined at the published relative. */
     o.rejection=ge_comb_examine(&whole,d,&g->config);

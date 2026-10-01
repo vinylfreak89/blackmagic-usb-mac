@@ -298,7 +298,7 @@ static int log_header(FILE *L,int retime,int evidence){
         if(fputs(",hretime_evidence_f1,hretime_evidence_f2,hretime_normal_f1,hretime_normal_f2,hretime_typical_band",L)==EOF)return -1;
     }
     /* Evidence-mode registration experiment: the columns also mark the log as one (approved logs never carry them). */
-    if(evidence && fputs(",ge_evidence,ev_moving_tiles,ev_weight_tops,ev_weight_comb,ev_weight_previous,ev_tops_agree,ev_moved_field,ev_tjump_f1,ev_tjump_f2,ev_whole_comb_d,ev_top_mistimed,ev_untimed_rows",L)==EOF)return -1;
+    if(evidence && fputs(",ge_evidence,ev_moving_tiles,ev_weight_tops,ev_weight_comb,ev_weight_previous,ev_tops_agree,ev_moved_field,ev_tjump_f1,ev_tjump_f2,ev_whole_comb_d,ev_top_mistimed,ev_untimed_rows,ev_tops_trust",L)==EOF)return -1;
     return fputc('\n',L)==EOF?-1:0;
 }
 /* v11 rows are unit-keyed. Frame diagnostics belong to that unit's bottom field;
@@ -494,10 +494,10 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
         }
         if(f->cfg.geometry_config->evidence) {
             if(d && d->has_frame) {
-                if(fprintf(f->log,",1,%d,%.9g,%.9g,%.9g,%d,%d,%.9g,%.9g,%d,%d,%d",d->ev_moving_tiles,d->ev_weight_tops,
+                if(fprintf(f->log,",1,%d,%.9g,%.9g,%.9g,%d,%d,%.9g,%.9g,%d,%d,%d,%.9g",d->ev_moving_tiles,d->ev_weight_tops,
                    d->ev_weight_comb,d->ev_weight_previous,d->ev_tops_agree,d->ev_moved_field,
-                   (double)d->ev_tjump[0],(double)d->ev_tjump[1],d->ev_whole_comb_d,d->ev_top_mistimed,d->ev_untimed_rows)<0)bad=1;
-            } else if(fputs(",1,,,,,,,,,,,",f->log)==EOF)bad=1;
+                   (double)d->ev_tjump[0],(double)d->ev_tjump[1],d->ev_whole_comb_d,d->ev_top_mistimed,d->ev_untimed_rows,d->ev_tops_trust)<0)bad=1;
+            } else if(fputs(",1,,,,,,,,,,,,",f->log)==EOF)bad=1;
         }
         if(fputc('\n',f->log)==EOF)bad=1;
         if(bad){f->st.log_write_errors++;f->log_file_errors++;}else f->st.log_rows++;
