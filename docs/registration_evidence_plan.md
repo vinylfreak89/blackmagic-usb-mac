@@ -61,10 +61,12 @@ Not registration errors, recorded so they are not re-investigated:
   weight taken from how often that test is right on fixture A. Everything else in this design applies to
   fixture A too (owner: "you still have the changes we discussed about how decisions are made. no more of the
   overvoting that causes lagged decisions, that should still go in"): per-frame decisions by confidence, no
-  30-frame vote, no latch, the previous decision as a weighted candidate, and the static-tile comb with
-  motion lowering its confidence ("fixture A will still get the combing fix though and HOPEFULLY it doesn't
-  change too many registrations"). Whether "cannot be measured" is decided per frame
-  (the level scan abstains) or per tape is to be settled from fixture A's data. The approved-engine bound
+  30-frame vote, no latch, the previous decision as a weighted candidate, the static-tile comb with
+  motion lowering its confidence, and moving the field that actually moved rather than always field 1 ("fixture A will still get the combing fix though and HOPEFULLY it doesn't
+  change too many registrations"). Which tops confidence applies is decided per frame, like
+  everything else (owner: "the only thing left out would be the proper NTSC setup we are discussing, and even
+  that is still a per frame decision"): a frame whose setup-based check can be measured uses it, one whose
+  check cannot uses the approved test. The approved-engine bound
   applies: fewer than 100 changed comb decisions and 500 changed placements, each change beyond it shown
   to the owner.
 
