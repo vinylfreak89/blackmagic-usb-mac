@@ -13,6 +13,7 @@
 #ifndef CAPTURE_CORE_H
 #define CAPTURE_CORE_H
 #include <stdint.h>
+#include <sys/types.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -30,6 +31,8 @@ enum cc_err    { CC_OK = 0, CC_ERR_ARGS = -1, CC_ERR_NODEVICE = -2, CC_ERR_USB =
 enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
                      CC_ERROR_CONTROL_LOSS = 2 };
 
+#define CC_DEFAULT_READAHEAD_MB 256  /* replay read-ahead when replay_readahead_mb is 0: ~11 s of stream */
+#define CC_DEFAULT_RING_MB 256  /* delivery ring when ring_mb is 0; the frameserver sizes its unit pool from it */
 #define CC_EP_VIDEO 0x83
 #define CC_EP_AUDIO 0x84
 
@@ -69,7 +72,7 @@ typedef struct {
 
 typedef struct {
     enum cc_input input;        // device backend: which analog input
-    int ring_mb;                // delivery ring, 0 => 256
+    int ring_mb;                // delivery ring, 0 => CC_DEFAULT_RING_MB
     const char *replay_path;    // non-NULL => replay backend reading this .tpc
     int replay_pace_us;         // replay: usleep per transfer (0 = as fast as possible;
                                 // 16000 ~= the device's real video cadence)
@@ -77,6 +80,18 @@ typedef struct {
                                 // This is deliberately stricter than host-overflow continuation:
                                 // one parked transfer means future scheduled slots are absent.
     int fail_stop_on_control_loss; // 0: mark not-clean once and continue; nonzero: marker + stop
+    int replay_readahead_mb;    // replay: file read-ahead ring, 0 => CC_DEFAULT_READAHEAD_MB. A reader
+                                // thread fills it ahead of the pacer, so a slow read (a network volume)
+                                // drains the ring instead of delaying delivery. A read error ends the
+                                // session with CC_END_INTERNAL_ERROR, never as a silent end of file.
+    int replay_diag;            // replay: nonzero reports a stall diagnosis at the end (diag_log, else stderr): waits on an
+                                // empty read-ahead ring (file too slow), slow reads, late pacer wake-ups
+    void (*diag_log)(void *ctx, const char *line); // optional: receives diagnosis lines instead of stderr
+    void *diag_ctx;
+    uint64_t replay_start_offset; // replay: begin at this byte offset of the file (0 = its start). The replay walks
+                                // forward to the first record that begins a whole video transfer (pkt_index 0)
+                                // and delivers from there; the bytes before it are counted in replay_align_bytes,
+                                // not reported as corruption. Records are self-describing, so any offset works.
 } cc_config;
 
 // Lifecycle: open -> start -> (callbacks) -> stop -> close.
@@ -93,6 +108,11 @@ void cc_close(cc_session *s);
 // One race-free atomic load during streaming; unlike cc_get_stats. Updated by the
 // delivery thread only, after the callback returns, never in the libusb hot path.
 uint64_t cc_packets_delivered(const cc_session *s);
+// Replay only: hold delivery (paused != 0) or resume it. The pacer stops at the next video-transfer
+// boundary, after that transfer is delivered, and waits for resume or stop; on resume its deadlines
+// restart from the resume time, so no burst follows. The read-ahead keeps filling while paused.
+// CC_ERR_STATE for a device session (a live capture cannot be held; the device keeps streaming).
+int cc_replay_pause(cc_session *s, int paused);
 const char *cc_strerror(int err);
 
 typedef struct {
@@ -107,6 +127,9 @@ typedef struct {
     long control_records_dropped;   // HostLoss/TransferError/TICK/SESSION records that found no ring space (reserve exhausted)
     long control_loss_markers;      // terminal 0xFFFE marker emitted (0 or 1 per session)
     int  teardown_incomplete;       // libusb never proved quiescence at stop: cc_close leaks the session deliberately
+    long replay_corrupt_spans;      // replay: unparseable stretches of the file skipped to the next valid record
+    uint64_t replay_corrupt_bytes;  //   (each also reported through diag_log / stderr with its file offset)
+    uint64_t replay_align_bytes;    // replay_start_offset > 0: bytes walked past to reach the first whole video transfer
 } cc_stats;
 // Snapshot of plain backend-thread counters: authoritative after cc_stop; a live call during
 // streaming is a racy diagnostic read (values may be momentarily inconsistent), never corrupting.
@@ -119,6 +142,32 @@ typedef struct cc_tagged_sink cc_tagged_sink;
 int  cc_tagged_sink_open (cc_tagged_sink **out, const char *path, const char *session_note);
 void cc_tagged_sink_callbacks(cc_tagged_sink *k, cc_callbacks *out); // fills `out`
 int  cc_tagged_sink_close(cc_tagged_sink *k);   // returns CC_ERR_IO on any failed write
+
+// Buffered sink (tee): the same .tpc records, but the callbacks only copy into a bounded byte
+// ring and a writer thread does the I/O, in writes of at most write_chunk bytes. A stalled or
+// slow destination (a network/cloud volume) never blocks the caller: when the ring cannot take a
+// DATA record the packet is dropped and counted, and one HostLoss record per endpoint (exact
+// packets/bytes, split at 32 bits) is written before that endpoint's next DATA record, so the
+// file says precisely what it lacks. Control records that do not fit are counted. A write
+// failure is sticky: later records are discarded and counted, and close reports CC_ERR_IO.
+// The destination is created exclusively (never replaces a file). Single producer: calls into
+// the callbacks must not race each other (the capture delivery thread is the only producer).
+typedef struct cc_async_sink cc_async_sink;
+typedef struct {
+    uint64_t records, bytes_written;     // records accepted into the ring; bytes the writer wrote
+    uint64_t lost_packets[2], lost_bytes[2];  // [0]=video [1]=audio DATA dropped by this sink
+    uint64_t control_dropped;            // loss/error/tick records that found no room
+    uint64_t discarded_after_error;      // bytes the writer drained without writing after a failure
+    size_t high_water, max_write;        // ring occupancy peak; largest single write issued
+    int io_error;                        // errno of the first failed write/fsync/close, 0 if none
+} cc_async_sink_stats;
+int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *session_note,
+                         size_t ring_bytes, size_t write_chunk);
+void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *out); // packet/loss/error/tick
+// Drains everything accepted, joins the writer, fsyncs and closes; fills *st (may be NULL).
+int  cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st);
+// Test hook: when set, the writer's write() goes through it (stall / short-write / failure).
+extern ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n);
 
 #ifdef __cplusplus
 }

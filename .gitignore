@@ -48,10 +48,19 @@ src/frameserver/tests/geometry_worker_verify
 src/frameserver/tests/hretime_test
 src/frameserver/tests/hretime_asan
 src/frameserver/tests/hretime_tsan
+src/frameserver/tests/hretime_diagnosis
+src/frameserver/tests/waveform_boundary_observer
+src/frameserver/tests/hretime_repair_probe
 
 # field_registration test outputs
 src/obs_plugin/tests_publish_copy
 src/obs_plugin/tests_publish_queue
+src/capture_core/async_sink_test
+src/frameserver/tests/async_file_test
+src/frameserver/tests/async_file_asan
+src/frameserver/tests/async_file_tsan
+src/obs_plugin/tests_timing_report
+src/obs_plugin/tests_timing_report_tsan
 src/obs_plugin/tests_publish_queue_tsan
 src/field_registration/tests/cea608_unit
 src/field_registration/tests/geometry_rigid
@@ -126,6 +135,7 @@ src/frameserver/tests/replay_completion_test
 /src/frameserver/tests/geometry_replay_asan
 /src/frameserver/tests/geometry_replay_tsan
 /src/obs_plugin/tests_audio_timing
+/src/obs_plugin/tests_frame_levels
 /src/frameserver/tests/audio_queue_flags_test
 /src/field_registration/tests/hblank_probe
 
@@ -136,3 +146,9 @@ src/frameserver/tests/audio_lookup_stress
 src/frameserver/tests/audio_evidence_test
 src/frameserver/tests/audio_evidence_asan
 src/frameserver/tests/audio_evidence_tsan
+src/frameserver/tests/replay_probe_test
+src/obs_plugin/tests_replay_timeline
+src/obs_plugin/tests_replay_timeline.dSYM/
+src/obs_plugin/tests_media_controls
+src/obs_plugin/tests_media_controls_tsan
+src/obs_plugin/tests_media_controls*.dSYM/

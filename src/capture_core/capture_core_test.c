@@ -19,6 +19,8 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
+#include <errno.h>
+#include <sys/stat.h>
 #include "../test_supervisor.h"
 #include "../test_liveness.h"
 
@@ -85,6 +87,64 @@ void cc_test_ring_loss(void){ pressure_event(PRESSURE_LOSS); }
 void cc_test_recorded_error(void){ pressure_event(PRESSURE_ERROR); }
 void cc_test_meta_exhausted(void){ pressure_event(PRESSURE_META); }
 void cc_test_packet_progress(void){ test_live_note(&live); }
+/* Replay read injection (reader thread only), once after rd_after bytes: RD_STALL blocks the read
+ * until the pacer has delivered 100 more packets, which it can only do from the read-ahead ring;
+ * RD_FAIL fails the read with EIO. */
+enum { RD_PASS, RD_STALL, RD_FAIL, RD_PREFILL };
+static _Atomic int rd_mode; static uint64_t rd_after, rd_bytes; static int rd_fired, rd_stalled; static cc_session *rd_session;
+static int prefill_seen; static uint64_t delivered_at_hold=UINT64_MAX;
+void cc_test_replay_prefill_wait(void){ pthread_mutex_lock(&live.mutex); prefill_seen=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex); }
+ssize_t cc_test_replay_read(int fd, void *buf, size_t n){
+    int m=atomic_load(&rd_mode);
+    if(m==RD_PREFILL && !rd_fired && rd_bytes>0){   /* hold the second read until the pacer waits for the prefill, or delivers */
+        rd_fired=1; double begun=test_now(); pthread_mutex_lock(&live.mutex);
+        while(!prefill_seen && cc_packets_delivered(rd_session)==0) test_live_wait(&live,begun,"prefill: pacer neither waited nor delivered");
+        delivered_at_hold=cc_packets_delivered(rd_session); pthread_mutex_unlock(&live.mutex);
+    }
+    if(m!=RD_PASS && !rd_fired && rd_bytes>=rd_after){
+        rd_fired=1;
+        if(m==RD_FAIL){ errno=EIO; return -1; }
+        uint64_t need=cc_packets_delivered(rd_session)+100;
+        double begun=test_now(); pthread_mutex_lock(&live.mutex); rd_stalled=1; test_live_note_locked(&live);
+        while(cc_packets_delivered(rd_session)<need) test_live_wait(&live,begun,"replay read stalled: nothing delivered from the read-ahead");
+        pthread_mutex_unlock(&live.mutex);
+    }
+    ssize_t r=read(fd,buf,n); if(r>0) rd_bytes+=(uint64_t)r; return r;
+}
+/* Seek and pause tests. */
+static _Atomic int paused_entries; static uint64_t paused_video_bytes;
+void cc_test_replay_paused(uint64_t video_bytes){
+    pthread_mutex_lock(&live.mutex); paused_video_bytes=video_bytes; atomic_fetch_add(&paused_entries,1); test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
+}
+typedef struct { uint64_t bytes[2], pkts[2]; int first_ep, first_pkt, have_first; _Atomic int ended; int end_reason; double end_time; } seek_tally;
+static void s_packet(void *ctx, const cc_packet *p){
+    seek_tally *t=ctx; test_live_note(&live);
+    if(!t->have_first){ t->have_first=1; t->first_ep=p->endpoint; t->first_pkt=p->pkt_index; }
+    int e=p->endpoint==CC_EP_AUDIO; t->bytes[e]+=p->actual_len; t->pkts[e]++;
+}
+static void s_end(void *ctx, enum cc_end r){
+    seek_tally *t=ctx; t->end_reason=r; t->end_time=test_now();
+    pthread_mutex_lock(&live.mutex); atomic_store(&t->ended,1); test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
+}
+/* What a replay started at `offset` must deliver, read straight from the file: from the first record
+ * boundary at or after the offset, skip to the first video DATA record with pkt_index 0, then every
+ * DATA record to the end. Returns that record's file position. */
+static uint64_t expect_from_offset(const char *path, uint64_t offset, uint64_t bytes[2], uint64_t pkts[2]){
+    FILE *f=fopen(path,"rb"); uint8_t h[24]; uint64_t pos=0, start=UINT64_MAX; static uint8_t pay[1<<16];
+    bytes[0]=bytes[1]=pkts[0]=pkts[1]=0;
+    while(f && fread(h,1,24,f)==24){
+        uint32_t magic,req,al; uint16_t pi; memcpy(&magic,h,4); memcpy(&pi,h+6,2); memcpy(&req,h+16,4); memcpy(&al,h+20,4);
+        uint8_t type=h[4], ep=h[5];
+        if(magic!=0x31504143u){ fprintf(stderr,"fixture record chain broke at %llu\n",(unsigned long long)pos); break; }
+        size_t plen=(type==0||type==3)?al:0;
+        if(plen && fread(pay,1,plen,f)!=plen) break;
+        if(start==UINT64_MAX && pos>=offset && type==0 && ep==CC_EP_VIDEO && pi==0) start=pos;
+        if(start!=UINT64_MAX && type==0){ int e=ep==CC_EP_AUDIO; bytes[e]+=al; pkts[e]++; }
+        pos+=24+plen;
+    }
+    if(f) fclose(f);
+    return start;
+}
 void cc_test_input_done(void){
     pthread_mutex_lock(&live.mutex); input_done=1; test_live_note_locked(&live); pthread_mutex_unlock(&live.mutex);
 }
@@ -395,6 +455,171 @@ int main(int argc, char **argv){
         pthread_join(ta,NULL); pthread_join(tb,NULL);
         CHECK(a.rc==CC_OK && b.rc==CC_OK,"concurrent stop results %d/%d",a.rc,b.rc);
         CHECK(ct.end_count==1,"concurrent stop on_end count %d",ct.end_count); cc_close(s);
+    }
+
+    // Read-ahead: a stalled file read must not stop delivery while the ring holds data (paced, 4 MiB
+    // ring, stall after 8 MiB). A synchronous read path cannot deliver during the stall and fails by
+    // deadline. Then a read error ends the session as an internal error, not a clean end of file.
+    for(int mode=RD_STALL; mode<=RD_FAIL; mode++){
+        tally rt; memset(&rt,0,sizeof rt); rt.main_thread=pthread_self(); cb.ctx=&rt;
+        cc_config rcfg={0}; rcfg.replay_path=slice; rcfg.replay_pace_us=2000; rcfg.replay_readahead_mb=4; s=NULL;
+        rd_bytes=0; rd_fired=0; rd_stalled=0; rd_after=8u<<20; atomic_store(&rd_mode,mode);
+        CHECK(cc_open(&s,&rcfg,&cb)==CC_OK,"open (read-ahead %d)",mode);
+        if(!s) continue;
+        rd_session=s;
+        CHECK(cc_start(s)==CC_OK,"start (read-ahead %d)",mode);
+        wait_ended(&rt.ended, mode==RD_STALL?"read-ahead stall run":"read-error run");
+        CHECK(cc_stop(s)==CC_OK,"stop (read-ahead %d)",mode);
+        CHECK(rd_fired,"the read injection never fired (mode %d)",mode);
+        if(mode==RD_STALL){
+            CHECK(rd_stalled,"the read never stalled");
+            CHECK(rt.end_reason==CC_END_REPLAY_EOF,"stalled-read replay ended with reason %d, expected REPLAY_EOF",rt.end_reason);
+            CHECK(rt.bytes[0]==vB&&rt.bytes[1]==aB,"stalled-read replay delivered %llu/%llu bytes, expected %llu/%llu",(unsigned long long)rt.bytes[0],(unsigned long long)rt.bytes[1],(unsigned long long)vB,(unsigned long long)aB);
+        } else CHECK(rt.end_reason==CC_END_INTERNAL_ERROR,"a failed read ended with reason %d, expected INTERNAL_ERROR",rt.end_reason);
+        cc_close(s); rd_session=NULL;
+    }
+    // Prefill: with a 16 MiB ring (8 MiB prefill, 4 MiB reads) nothing is delivered after the first read;
+    // the pacer waits until half the ring is read. Without the wait it delivers from the first read.
+    {
+        tally pt; memset(&pt,0,sizeof pt); pt.main_thread=pthread_self(); cb.ctx=&pt;
+        cc_config fcfg={0}; fcfg.replay_path=slice; fcfg.replay_pace_us=2000; fcfg.replay_readahead_mb=16; s=NULL;
+        rd_bytes=0; rd_fired=0; prefill_seen=0; delivered_at_hold=UINT64_MAX; atomic_store(&rd_mode,RD_PREFILL);
+        CHECK(cc_open(&s,&fcfg,&cb)==CC_OK,"open (prefill)");
+        if(s){
+            rd_session=s;
+            CHECK(cc_start(s)==CC_OK,"start (prefill)");
+            wait_ended(&pt.ended,"prefill run");
+            CHECK(cc_stop(s)==CC_OK,"stop (prefill)");
+            CHECK(rd_fired,"the prefill hold never fired");
+            CHECK(prefill_seen&&delivered_at_hold==0,"pacer delivered %llu packets before half the ring was read (prefill wait seen: %d)",(unsigned long long)delivered_at_hold,prefill_seen);
+            CHECK(pt.end_reason==CC_END_REPLAY_EOF&&pt.bytes[0]==vB&&pt.bytes[1]==aB,"prefill run ended %d with %llu/%llu bytes",pt.end_reason,(unsigned long long)pt.bytes[0],(unsigned long long)pt.bytes[1]);
+            cc_close(s); rd_session=NULL;
+        }
+    }
+    atomic_store(&rd_mode,RD_PASS);
+
+    // Corrupt stretch: a copy of the fixture with 1 MiB of garbage at 20 MiB. The replay must skip it
+    // (one span, reported), keep delivering what follows, and still end at the real end of the file.
+    {
+        char cpath[]="/tmp/cc_corrupt_XXXXXX"; int cfd=mkstemp(cpath);
+        FILE *in=fopen(slice,"rb"); static uint8_t junk[1<<20]; size_t got; uint64_t total=0;
+        while(cfd>=0 && in && (got=fread(junk,1,sizeof junk,in))>0){ if(write(cfd,junk,got)!=(ssize_t)got) break; total+=got; }
+        if(in) fclose(in);
+        memset(junk,0x5A,sizeof junk);
+        CHECK(cfd>=0 && pwrite(cfd,junk,sizeof junk,20u<<20)==(ssize_t)sizeof junk,"write the corrupt copy");
+        if(cfd>=0) close(cfd);
+        tally ct2; memset(&ct2,0,sizeof ct2); ct2.main_thread=pthread_self(); cb.ctx=&ct2;
+        cc_config kcfg={0}; kcfg.replay_path=cpath; s=NULL;
+        CHECK(cc_open(&s,&kcfg,&cb)==CC_OK,"open (corrupt)");
+        if(s){
+            CHECK(cc_start(s)==CC_OK,"start (corrupt)");
+            wait_ended(&ct2.ended,"corrupt-copy run");
+            CHECK(cc_stop(s)==CC_OK,"stop (corrupt)");
+            cc_stats cs; cc_get_stats(s,&cs);
+            CHECK(cs.replay_corrupt_spans==1,"corrupt spans %ld, expected 1",cs.replay_corrupt_spans);
+            /* a record whose header precedes the garbage is read whole (payloads carry no checksum), so the skip starts at
+             * the first header inside the garbage: up to one record shorter, or longer, than the garbage itself */
+            CHECK(cs.replay_corrupt_bytes>=(1u<<20)-(15360+24) && cs.replay_corrupt_bytes<(1u<<20)+2*(15360+24),"skipped %llu bytes for a 1 MiB corrupt stretch",(unsigned long long)cs.replay_corrupt_bytes);
+            CHECK(ct2.end_reason==CC_END_REPLAY_EOF,"corrupt-copy run ended %d, expected REPLAY_EOF",ct2.end_reason);
+            uint64_t dl=ct2.bytes[0]+ct2.bytes[1];
+            CHECK(dl>(uint64_t)(total-(22u<<20)) && dl<vB+aB,"delivered %llu of %llu bytes: the data after the corrupt stretch must still arrive",(unsigned long long)dl,(unsigned long long)(vB+aB));
+            cc_close(s);
+        }
+        // A seek landing just before the damage: the damage is still a reported corrupt span, and only
+        // the bytes up to the first valid record after it count as alignment.
+        {
+            seek_tally st={0}; cc_callbacks scb={0}; scb.on_packet=s_packet; scb.on_end=s_end; scb.ctx=&st;
+            cc_config k2={0}; k2.replay_path=cpath; k2.replay_start_offset=(20u<<20)-100; s=NULL;
+            CHECK(cc_open(&s,&k2,&scb)==CC_OK,"open (seek before damage)");
+            if(s){
+                CHECK(cc_start(s)==CC_OK,"start (seek before damage)");
+                wait_ended(&st.ended,"seek-before-damage run");
+                CHECK(cc_stop(s)==CC_OK,"stop (seek before damage)");
+                cc_stats cs; cc_get_stats(s,&cs);
+                CHECK(cs.replay_corrupt_spans==1 && cs.replay_corrupt_bytes>=(1u<<20) && cs.replay_corrupt_bytes<(1u<<20)+100+2*(15360+24),"a seek next to 1 MiB of damage reported %ld corrupt spans / %llu bytes",cs.replay_corrupt_spans,(unsigned long long)cs.replay_corrupt_bytes);
+                /* every byte from the offset to the first whole video transfer after the damage is either damage or alignment */
+                uint64_t eb2[2], ep2[2], p=expect_from_offset(slice,21u<<20,eb2,ep2), off2=(20u<<20)-100;
+                CHECK(p!=UINT64_MAX && cs.replay_align_bytes+cs.replay_corrupt_bytes==p-off2,"alignment %llu + damage %llu bytes != %llu from the offset to the first transfer after the damage",
+                      (unsigned long long)cs.replay_align_bytes,(unsigned long long)cs.replay_corrupt_bytes,(unsigned long long)(p-off2));
+                CHECK(st.bytes[0]==eb2[0] && st.bytes[1]==eb2[1],"seek-before-damage run delivered %llu/%llu B, file says %llu/%llu",(unsigned long long)st.bytes[0],(unsigned long long)st.bytes[1],(unsigned long long)eb2[0],(unsigned long long)eb2[1]);
+                CHECK(st.end_reason==CC_END_REPLAY_EOF && st.have_first && st.first_ep==CC_EP_VIDEO && st.first_pkt==0,"seek-before-damage run: end %d, first packet 0x%x/%d",st.end_reason,st.first_ep,st.first_pkt);
+                cc_close(s);
+            }
+        }
+        unlink(cpath);
+    }
+
+    // Start offset: an offset inside a payload must deliver exactly the records from the first whole
+    // video transfer after it, with the walk counted as alignment, not corruption.
+    {
+        struct stat stt; CHECK(stat(slice,&stt)==0,"stat fixture");
+        uint64_t offset=(uint64_t)stt.st_size/3+7, eb[2], ep[2];
+        uint64_t at=expect_from_offset(slice,offset,eb,ep);
+        CHECK(at!=UINT64_MAX && at>offset,"fixture has a video transfer after byte %llu",(unsigned long long)offset);
+        seek_tally st={0}; cc_callbacks scb={0}; scb.on_packet=s_packet; scb.on_end=s_end; scb.ctx=&st;
+        cc_config kcfg={0}; kcfg.replay_path=slice; kcfg.replay_start_offset=offset; s=NULL;
+        CHECK(cc_open(&s,&kcfg,&scb)==CC_OK,"open (offset)");
+        if(s){
+            CHECK(cc_start(s)==CC_OK,"start (offset)");
+            wait_ended(&st.ended,"offset run");
+            CHECK(cc_stop(s)==CC_OK,"stop (offset)");
+            cc_stats cs; cc_get_stats(s,&cs);
+            CHECK(st.end_reason==CC_END_REPLAY_EOF,"offset run ended %d",st.end_reason);
+            CHECK(st.have_first && st.first_ep==CC_EP_VIDEO && st.first_pkt==0,"first packet after the offset: endpoint 0x%x index %d, expected video index 0",st.first_ep,st.first_pkt);
+            CHECK(st.bytes[0]==eb[0] && st.bytes[1]==eb[1] && st.pkts[0]==ep[0] && st.pkts[1]==ep[1],
+                  "offset run delivered %llu/%llu B in %llu/%llu pkts, file says %llu/%llu B in %llu/%llu",
+                  (unsigned long long)st.bytes[0],(unsigned long long)st.bytes[1],(unsigned long long)st.pkts[0],(unsigned long long)st.pkts[1],
+                  (unsigned long long)eb[0],(unsigned long long)eb[1],(unsigned long long)ep[0],(unsigned long long)ep[1]);
+            CHECK(cs.replay_align_bytes==at-offset,"alignment walked %llu bytes, expected %llu",(unsigned long long)cs.replay_align_bytes,(unsigned long long)(at-offset));
+            CHECK(cs.replay_corrupt_spans==0,"a start offset was reported as %ld corrupt spans",cs.replay_corrupt_spans);
+            cc_close(s);
+        }
+    }
+
+    // Pause: set before start, the pacer delivers exactly one video transfer and holds. Held longer than
+    // the rest of the file takes, resume must not burst: the remaining transfers keep their pace.
+    {
+        enum { PACE_US=2000 };
+        seek_tally st={0}; cc_callbacks scb={0}; scb.on_packet=s_packet; scb.on_end=s_end; scb.ctx=&st;
+        cc_config kcfg={0}; kcfg.replay_path=slice; kcfg.replay_pace_us=PACE_US; s=NULL;
+        atomic_store(&paused_entries,0);
+        CHECK(cc_open(&s,&kcfg,&scb)==CC_OK,"open (pause)");
+        if(s){
+            CHECK(cc_replay_pause(s,1)==CC_OK,"pause before start");
+            CHECK(cc_start(s)==CC_OK,"start (pause)");
+            double begun=test_now(); pthread_mutex_lock(&live.mutex);
+            while(!atomic_load(&paused_entries)) test_live_wait(&live,begun,"pacer never held for the pause");
+            uint64_t held_at=paused_video_bytes; pthread_mutex_unlock(&live.mutex);
+            uint64_t one=0; { FILE *f=fopen(slice,"rb"); uint8_t h[24]; int n=0; static uint8_t pay[1<<16];   /* first transfer's video bytes */
+                while(f && n<128 && fread(h,1,24,f)==24){ uint32_t al; memcpy(&al,h+20,4); size_t pl=(h[4]==0||h[4]==3)?al:0;
+                    if(pl && fread(pay,1,pl,f)!=pl) break; if(h[4]==0 && h[5]==CC_EP_VIDEO){ one+=al; n++; } }
+                if(f) fclose(f); }
+            CHECK(held_at==one,"held after %llu video bytes, expected exactly one transfer (%llu)",(unsigned long long)held_at,(unsigned long long)one);
+            usleep(300000);   /* the hold: longer than the rest of the file takes at this pace (39 transfers, 78 ms) */
+            CHECK(!atomic_load(&st.ended) && atomic_load(&paused_entries)==1,"the replay moved on while paused");
+            double resumed_at=test_now();
+            CHECK(cc_replay_pause(s,0)==CC_OK,"resume");
+            wait_ended(&st.ended,"paused run");
+            CHECK(cc_stop(s)==CC_OK,"stop (pause)");
+            CHECK(st.end_reason==CC_END_REPLAY_EOF && st.bytes[0]==vB && st.bytes[1]==aB,"paused run ended %d with %llu/%llu bytes",st.end_reason,(unsigned long long)st.bytes[0],(unsigned long long)st.bytes[1]);
+            double after=st.end_time-resumed_at;
+            CHECK(after>=0.9*39*PACE_US/1e6,"the rest of the file took %.1f ms after resuming: a burst (paced, it takes %d ms)",after*1e3,39*PACE_US/1000);
+            cc_close(s);
+        }
+        /* stop while paused: the stop wakes the held pacer */
+        memset(&st,0,sizeof st); s=NULL; atomic_store(&paused_entries,0);
+        CHECK(cc_open(&s,&kcfg,&scb)==CC_OK,"open (pause+stop)");
+        if(s){
+            cc_replay_pause(s,1); CHECK(cc_start(s)==CC_OK,"start (pause+stop)");
+            double begun=test_now(); pthread_mutex_lock(&live.mutex);
+            while(!atomic_load(&paused_entries)) test_live_wait(&live,begun,"pacer never held (pause+stop)");
+            pthread_mutex_unlock(&live.mutex);
+            double t0=test_now();
+            CHECK(cc_stop(s)==CC_OK,"stop while paused");
+            CHECK(test_now()-t0<2.0,"stop while paused took %.2f s: the pacer waited for its 10 s test backstop instead of being woken",test_now()-t0);
+            CHECK(st.end_reason==CC_END_STOPPED,"stopped while paused ended %d",st.end_reason);
+            cc_close(s);
+        }
     }
 
     printf(fails? "FAILURES: %d\n" : "ALL TESTS PASSED\n", fails);

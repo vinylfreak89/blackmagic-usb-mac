@@ -1,4 +1,11 @@
 #include "frameserver.h"
+#include "async_file.h"
+
+/* Sidecar rows go through a writer thread so storage stalls never stall the video worker (async_file.h).
+ * Rows with H-retiming measured 8.1 KB (948 rows, 7.7 MB), ~243 KB/s: 64 MiB rides out ~4.5 minutes of
+ * stalled disk. An overflow makes the file incomplete, never silently thinner. */
+#define FS_LOG_RING_BYTES (64u<<20)
+#define FS_LOG_WRITE_CHUNK (1u<<20)
 #include "../unit_parser/unit_parser.h"
 #include "../signal_state/signal_state.h"
 #include "../field_registration/geometry_engine.h"
@@ -39,6 +46,7 @@ typedef struct {
      * Genuinely later/missing resyncs stay unknown in this unit's log. */
     int audio_evidence_known;
     ap_correlation audio_evidence;
+    uint64_t t_enqueue;                    // parser handoff (CLOCK_UPTIME_RAW ns), for handoff timing
 } fs_item;
 
 struct frameserver {
@@ -52,6 +60,7 @@ struct frameserver {
     hrt_workspace *retime_work;
     hrt_result retime_result;
     fs_item geometry_item;
+    fs_handoff_timing ht; uint64_t ht_since, idle_since;   // worker-only handoff accounting
     int geometry_pending, geometry_reset;
     uint64_t geometry_epoch;
     int geometry_have_epoch;
@@ -75,6 +84,7 @@ struct frameserver {
     uint64_t aq_delivered_blocks, aq_delivered_frames;   // audio worker owned
     _Atomic uint64_t audio_master_frames;
     _Atomic int workers_terminal;        // video + audio workers that have drained; the second fires on_end
+    cc_async_sink *tee; cc_callbacks tee_cb; pthread_mutex_t tee_m; int tee_m_init;   // raw .tpc tee: delivery thread forwards under tee_m
     FILE *log; pthread_mutex_t log_m; int log_m_init; uint64_t log_file_errors;   // write errors in the CURRENTLY attached file (reset at attach; fs_log_stop reports them)   // log_m: worker row writes vs control-thread attach/detach (fs_log_start/stop)
     // pool + ring (single producer = delivery thread, single consumer = worker)
     unsigned n_slots; uint8_t *pool; _Atomic int *slot_used;
@@ -189,6 +199,7 @@ static void on_video(void *ctx, const unit_video_observation *u){
             it.slot = s;
         }
     }
+    it.t_enqueue = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     push(f, &it);
 }
 static void on_audio(void *ctx, const unit_audio_observation *a){
@@ -254,9 +265,12 @@ static void *audio_worker_main(void *arg){
     callback_session=NULL;
     return NULL;
 }
-static void cc_on_packet(void *ctx, const cc_packet *p){ frameserver *f = ctx; unit_parser_on_packet(f->parser, p); }
-static void cc_on_loss(void *ctx, uint8_t ep, uint32_t n, uint64_t b){ frameserver *f = ctx; unit_parser_on_loss(f->parser, ep, n, b); }
-static void cc_on_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){ frameserver *f = ctx; unit_parser_on_error(f->parser, ep, seq, st, kind); }
+/* The tee sees exactly what the parser sees, in the same order; its callbacks only copy. */
+#define TEE(call) do{ pthread_mutex_lock(&f->tee_m); if(f->tee) f->tee_cb.call; pthread_mutex_unlock(&f->tee_m); }while(0)
+static void cc_on_packet(void *ctx, const cc_packet *p){ frameserver *f = ctx; TEE(on_packet(f->tee_cb.ctx, p)); unit_parser_on_packet(f->parser, p); }
+static void cc_on_tick(void *ctx, uint32_t ms){ frameserver *f = ctx; TEE(on_tick(f->tee_cb.ctx, ms)); }
+static void cc_on_loss(void *ctx, uint8_t ep, uint32_t n, uint64_t b){ frameserver *f = ctx; TEE(on_loss(f->tee_cb.ctx, ep, n, b)); unit_parser_on_loss(f->parser, ep, n, b); }
+static void cc_on_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){ frameserver *f = ctx; TEE(on_error(f->tee_cb.ctx, ep, seq, st, kind)); unit_parser_on_error(f->parser, ep, seq, st, kind); }
 static void cc_on_end(void *ctx, enum cc_end r){
     frameserver *f = ctx; f->end_reason = r;
     unit_parser_finish(f->parser);
@@ -280,6 +294,8 @@ static int log_header(FILE *L,int retime){
         if(fputs(",fs_hretime",L)==EOF)return -1;
         for(int k=1;k<=2;k++)
             if(fprintf(L,",hretime_bands_f%d,hretime_retimed_f%d,hretime_interpolated_f%d,hretime_unavailable_f%d,hretime_first_f%d,hretime_last_f%d,hretime_lines_f%d",k,k,k,k,k,k,k)<0)return -1;
+        if(fputs(",hretime_edges_f1,hretime_edges_f2,hretime_content_f1,hretime_content_f2",L)==EOF)return -1;
+        if(fputs(",hretime_evidence_f1,hretime_evidence_f2,hretime_normal_f1,hretime_normal_f2,hretime_typical_band",L)==EOF)return -1;
     }
     return fputc('\n',L)==EOF?-1:0;
 }
@@ -435,11 +451,44 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
                     int sep=0;
                     for(int j=k;j<HRT_ROWS;j+=2)if(repair->action[j]) {
                         int line=(k?286+d->frame_d2:23+d->frame_d1)+j/2;
-                        if(fprintf(f->log,"%s%d:%c",sep?" ":"",line,repair->action[j]==HRT_RETIME?'R':repair->action[j]==HRT_INTERPOLATE?'I':'U')<0)bad=1;
+                        if(fprintf(f->log,"%s%d:%c",sep?" ":"",line,"NRIUC"[repair->action[j]])<0)bad=1;
                         sep=1;
                     }
                 } else if(fputs(",,,,,,,",f->log)==EOF)bad=1;
             }
+            for(int k=0;k<2;k++) {
+                if(fputc(',',f->log)==EOF)bad=1;
+                int sep=0;
+                if(repair)for(int j=k;j<HRT_ROWS;j+=2)if(repair->action[j]) {
+                    unsigned e=repair->edge_moved[j];
+                    int line=(k?286+d->frame_d2:23+d->frame_d1)+j/2;
+                    if(fprintf(f->log,"%s%d:%s%s%s%s%s",sep?" ":"",line,
+                       e&HRT_LEFT_EARLIER?"L-":"",e&HRT_LEFT_LATER?"L+":"",
+                       e&HRT_RIGHT_EARLIER?"R-":"",e&HRT_RIGHT_LATER?"R+":"",
+                       !(e&HRT_EDGES_KNOWN)?"?":(e&15)?"":"=")<0)bad=1;
+                    sep=1;
+                }
+            }
+            for(int k=0;k<2;k++) {
+                if(fputc(',',f->log)==EOF)bad=1;
+                if(repair && fprintf(f->log,"%d",repair->field[k].content)<0)bad=1;
+            }
+            for(int k=0;k<2;k++) {
+                if(fputc(',',f->log)==EOF)bad=1;
+                if(repair)for(int j=k;j<HRT_ROWS;j+=2) {
+                    int line=(k?286+d->frame_d2:23+d->frame_d1)+j/2;
+                    if(fprintf(f->log,"%s%d:%u/%.9g/%.9g/%d",j==k?"":" ",line,
+                       repair->reason[j],repair->r_line[j],repair->r_neighbours[j],repair->shift[j])<0)bad=1;
+                }
+            }
+            for(int k=0;k<2;k++) {
+                if(fputc(',',f->log)==EOF)bad=1;
+                if(repair && fprintf(f->log,"%.9g/%.9g/%.9g/%.9g/%.9g",
+                   repair->correlation_limit[k],repair->edge_median[k][0],repair->edge_median[k][1],
+                   repair->edge_spread[k][0],repair->edge_spread[k][1])<0)bad=1;
+            }
+            if(fputc(',',f->log)==EOF)bad=1;
+            if(repair && fprintf(f->log,"%.9g",repair->typical_band_length)<0)bad=1;
         }
         if(fputc('\n',f->log)==EOF)bad=1;
         if(bad){f->st.log_write_errors++;f->log_file_errors++;}else f->st.log_rows++;
@@ -458,11 +507,21 @@ static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *uni
     if(known)atomic_fetch_add(&f->audio_master_frames,1);
     int rc=fp_publish_placed(f->pub,unit,FP_UNIT_BYTES,d->counter,d->d1,d->d2,FP_TRANSPORT_COMPLETE,known,audio.pts_num);
     if(rc==0)f->st.published++;else f->st.publisher_dropped++;
+    if(rc==0){ memset(&f->ht,0,sizeof f->ht); f->ht_since=clock_gettime_nsec_np(CLOCK_UPTIME_RAW); }   /* accounting restarts at each handoff */
+    uint64_t tl=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     geometry_log(f,it,d,rc==0,rc==0?"None":"PublisherFull",
                  it->audio_evidence_known?&it->audio_evidence:NULL,repair);
+    f->ht.log_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-tl;
+}
+/* Registration off: publish the nominal aperture. The engine's own evaluation
+ * (comb, votes, census) stays in its decision fields for the sidecar. */
+static void placement_override(const frameserver *f,ge_decision *out,unsigned n) {
+    if(!f->cfg.registration_off)return;
+    for(unsigned i=0;i<n;i++)out[i].d1=out[i].d2=out[i].frame_d1=out[i].frame_d2=0;
 }
 static void geometry_flush(frameserver *f) {
-    ge_decision out[2];unsigned n=ge_break(f->geometry,out);
+    if(f->retime_work)hrt_reset(f->retime_work);
+    ge_decision out[2];unsigned n=ge_break(f->geometry,out);placement_override(f,out,n);
     if(n && f->geometry_pending)geometry_publish(f,&f->geometry_item,f->geometry_unit,out,NULL);
     f->geometry_pending=0;f->geometry_reset=1;
 }
@@ -500,7 +559,10 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     if(classified && sr->unsettled)f->st.unsettled_units++;
     const uint8_t *p=unit+48;
     for(unsigned i=0;i<GE_PIXELS;i++)f->geometry_y[i]=p[2*i+1];
+    uint64_t tg=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     ge_decision out[2];unsigned n=ge_push(f->geometry,f->geometry_y,it->obs.counter_extended,f->geometry_reset,out);
+    f->ht.geometry_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-tg;
+    placement_override(f,out,n);
     f->geometry_reset=0;
     if(f->cfg.hretime)memcpy(f->retime_unit,unit,FP_UNIT_BYTES);
     if(f->geometry_reversed) {
@@ -512,8 +574,11 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
             if(f->cfg.hretime && out[i].has_frame) {
                 memcpy(f->retime_previous,f->geometry_unit,FP_UNIT_BYTES);
                 repair=&f->retime_result;
+                hrt_begin(f->retime_work,out[i].top_unit,out[i].counter,it->obs.epoch,out[i].reset_before);
+                uint64_t th=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
                 hrt_apply(f->retime_work,unit,f->geometry_unit,out[i].frame_d1,out[i].frame_d2,
                           f->retime_unit,f->retime_previous,repair);
+                f->ht.hretime_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-th;
                 published=f->retime_previous;
             }
             geometry_publish(f,&f->geometry_item,published,out+i,repair);
@@ -527,8 +592,11 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
             hrt_result *repair=NULL;
             if(f->cfg.hretime && out[i].has_frame) {
                 repair=&f->retime_result;
+                hrt_begin(f->retime_work,out[i].top_unit,out[i].counter,it->obs.epoch,out[i].reset_before);
+                uint64_t th=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
                 hrt_apply(f->retime_work,unit,unit,out[i].frame_d1,out[i].frame_d2,
                           f->retime_unit,f->retime_unit,repair);
+                f->ht.hretime_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-th;
             }
             geometry_publish(f,it,f->cfg.hretime?f->retime_unit:unit,out+i,repair);
         }
@@ -558,7 +626,9 @@ static void process_item(frameserver *f, const fs_item *it){
     signal_result sr; memset(&sr, 0, sizeof sr);
     // obs.bytes/payload are NULL for units without a pool slot (ineligible, or PoolFull); the
     // classifier's contract is metadata-only for those (signal_state.c: !fixed_raster_eligible || !bytes).
+    uint64_t tc=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
     bool classified = signal_state_classify(f->sig, &obs, &signal_ctx, &sr);
+    f->ht.classify_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-tc;
     process_geometry(f,it,unit,&sr,classified);
 }
 static void *worker_main(void *arg){
@@ -572,6 +642,7 @@ static void *worker_main(void *arg){
         unsigned t = atomic_load_explicit(&f->r_tail, memory_order_relaxed);
         unsigned h = atomic_load_explicit(&f->r_head, memory_order_acquire);
         if (h == t){
+            if(!f->idle_since) f->idle_since=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
             fs_test_after_empty_snapshot(f);
             if (atomic_load(&f->producer_done)){
                 // producer_done is stored after the producer's last release-store of r_head, so
@@ -593,6 +664,9 @@ static void *worker_main(void *arg){
         }
         fs_item it = f->ring[t % RING_ITEMS];
         atomic_store_explicit(&f->r_tail, t + 1, memory_order_release);
+        { uint64_t now=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+          if(f->idle_since){ f->ht.idle_ns+=now-f->idle_since; f->idle_since=0; }
+          f->ht.queue_wait_ns=it.t_enqueue&&now>it.t_enqueue?now-it.t_enqueue:0; f->ht.items++; }
         process_item(f, &it);
         fs_test_after_item(f);
     }
@@ -628,7 +702,18 @@ int fs_open(frameserver **out, const fs_config *cfg){
         f->pairing_active=fs_pairing_find(&f->pairing,0);
         f->geometry_reversed=f->pairing_active->reversed;
     }
-    f->n_slots = cfg->pool_units ? cfg->pool_units : 16;   // default kept at 16 (~0.5 s): whole-tape high-water was 2; change only on a measured stall (F5 stress matrix)
+    // Default: as many unit slots as the capture ring holds bytes, so a slow video worker can fall
+    // behind for as long as acquisition itself can buffer (~11.8 s at the 256 MB default) before
+    // units are shed. Measured stall that motivated it: a live OBS capture on 2026-09-27 lost 64
+    // units (2.1 s) when the worker stalled past the old 64-slot pool while the ring stayed nearly
+    // empty. The delivery thread drains the ring immediately (it also carries audio), so the pool,
+    // not the ring, is the buffer a worker stall consumes; a zero-copy single buffer is the follow-up.
+    if (cfg->pool_units) f->n_slots = cfg->pool_units;
+    else {
+        size_t ring = (size_t)(cfg->capture.ring_mb > 0 ? cfg->capture.ring_mb : CC_DEFAULT_RING_MB) << 20;
+        f->n_slots = (unsigned)(ring / UNIT_PARSER_VIDEO_UNIT_BYTES);
+        if (!f->n_slots) f->n_slots = 1;
+    }
     f->pool = malloc((size_t)f->n_slots * UNIT_PARSER_VIDEO_UNIT_BYTES);
     f->slot_used = calloc(f->n_slots, sizeof(_Atomic int));
     f->parser = aligned_alloc(unit_parser_alignment(), unit_parser_size());
@@ -643,7 +728,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
         f->geometry_unit=malloc(FP_UNIT_BYTES);
         if(cfg->hretime) {
             f->retime_unit=malloc(FP_UNIT_BYTES);f->retime_previous=malloc(FP_UNIT_BYTES);
-            f->retime_work=malloc(hrt_size());
+            f->retime_work=calloc(1,hrt_size());
             if(!f->retime_unit || !f->retime_previous || !f->retime_work){fs_close(f);return -1;}
         }
         if(!f->geometry||!f->geometry_y||!f->geometry_unit){fs_close(f);return -1;}
@@ -663,8 +748,9 @@ int fs_open(frameserver **out, const fs_config *cfg){
     ap_sink asink = { aq_enqueue, f };
     if (ap_open(&f->aud, f->aq_cap_frames, &asink) != 0){ fs_close(f); return -1; }
     if (pthread_mutex_init(&f->log_m, NULL)){ fs_close(f); return -1; } f->log_m_init = 1;
-    if (cfg->decision_log){ f->log = fopen(cfg->decision_log, "wx"); if (!f->log || log_header(f->log,cfg->hretime) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
-    cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, NULL, cc_on_end, f };
+    if (pthread_mutex_init(&f->tee_m, NULL)){ fs_close(f); return -1; } f->tee_m_init = 1;
+    if (cfg->decision_log){ f->log = fs_async_fopen_excl(cfg->decision_log, FS_LOG_RING_BYTES, FS_LOG_WRITE_CHUNK); if (!f->log || log_header(f->log,cfg->hretime) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
+    cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, cc_on_tick, cc_on_end, f };
     if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
 sync_fail:
@@ -722,6 +808,7 @@ int fs_stop(frameserver *f){
     cc_stop(f->cap);                        // fires on_end -> producer_done (audio flushed before it)
     pthread_join(f->worker, NULL);
     pthread_join(f->audio_worker, NULL);    // exits by itself once cc_on_end set audio_done and the queue drained
+    cc_async_sink *T = fs_tee_detach(f); if (T) cc_async_sink_close(T, NULL);   // the capture is stopped: nothing more can arrive
     pthread_mutex_lock(&f->log_m); FILE *L = f->log; f->log = NULL; uint64_t ferrs = f->log_file_errors; pthread_mutex_unlock(&f->log_m);   // detach under the lock (fs_log_stop may race), close outside it
     if (L){ if (fclose(L) != 0){ f->st.log_close_errors++; ferrs++; } f->st.log_last_file_errors = ferrs; }
     pthread_mutex_lock(&f->life_m); f->life=FS_LIFE_STOPPED; pthread_cond_broadcast(&f->life_c); pthread_mutex_unlock(&f->life_m);
@@ -737,7 +824,7 @@ int fs_log_start(frameserver *f, const char *path){
     if(!f || !path || !*path || fs_log_from_worker(f)) return -1;
     pthread_mutex_lock(&f->log_m); int attached = f->log != NULL; pthread_mutex_unlock(&f->log_m);
     if(attached) return -1;                            // one log at a time; the caller ends the previous one
-    FILE *L = fopen(path, "wx");                       // never truncate an existing file: a sidecar is evidence
+    FILE *L = fs_async_fopen_excl(path, FS_LOG_RING_BYTES, FS_LOG_WRITE_CHUNK);   // never truncate an existing file: a sidecar is evidence
     if(!L) return -1;
     if(log_header(L,f->cfg.hretime) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
     // Lifecycle check and install happen under life_m so fs_stop (which moves life to STOPPING
@@ -761,6 +848,39 @@ int fs_log_stop(frameserver *f){
     f->st.log_last_file_errors = errs;
     return errs ? -1 : 0;                              // rows failed inside this file: the caller must not publish it as complete
 }
+FILE *fs_log_detach(frameserver *f, uint64_t *row_errors){
+    if(!f || fs_log_from_worker(f)) return NULL;
+    pthread_mutex_lock(&f->log_m);
+    FILE *L = f->log; f->log = NULL; uint64_t errs = f->log_file_errors;
+    pthread_mutex_unlock(&f->log_m);
+    if(L && row_errors) *row_errors = errs;
+    return L;
+}
+int fs_tee_start(frameserver *f, const char *path, const char *note, size_t ring_bytes){
+    if(!f || !path || !*path || fs_log_from_worker(f) || !f->tee_m_init) return -1;
+    pthread_mutex_lock(&f->tee_m); int attached = f->tee != NULL; pthread_mutex_unlock(&f->tee_m);
+    if(attached) return -1;
+    cc_async_sink *k; if(cc_async_sink_open(&k, path, note, ring_bytes, 1u<<20) != CC_OK) return -1;
+    pthread_mutex_lock(&f->life_m);
+    if(f->life!=FS_LIFE_RUNNING){ pthread_mutex_unlock(&f->life_m); cc_async_sink_close(k,NULL); remove(path); return -1; }
+    pthread_mutex_lock(&f->tee_m);
+    if(f->tee){ pthread_mutex_unlock(&f->tee_m); pthread_mutex_unlock(&f->life_m); cc_async_sink_close(k,NULL); remove(path); return -1; }
+    cc_async_sink_callbacks(k, &f->tee_cb); f->tee = k;
+    pthread_mutex_unlock(&f->tee_m); pthread_mutex_unlock(&f->life_m);
+    return 0;
+}
+cc_async_sink *fs_tee_detach(frameserver *f){
+    if(!f || !f->tee_m_init) return NULL;
+    pthread_mutex_lock(&f->tee_m); cc_async_sink *k = f->tee; f->tee = NULL; pthread_mutex_unlock(&f->tee_m);
+    return k;
+}
+void fs_handoff_timing_get(const frameserver *f, fs_handoff_timing *o){
+    *o=f->ht;
+    uint64_t now=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    o->since_prev_ns=f->ht_since&&now>f->ht_since?now-f->ht_since:0;
+    uint64_t known=o->idle_ns+o->classify_ns+o->geometry_ns+o->hretime_ns+o->log_ns;
+    o->other_ns=o->since_prev_ns>known?o->since_prev_ns-known:0;
+}
 void fs_get_stats(const frameserver *f, fs_stats *o){
     *o = f->st;
     o->video_observations = atomic_load(&f->video_obs); o->audio_records = atomic_load(&f->audio_records);
@@ -771,12 +891,13 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->audio_blocks_delivered = f->aq_delivered_blocks; o->audio_frames_delivered = f->aq_delivered_frames;
     o->audio_dropped_blocks = atomic_load(&f->aq_dropped_blocks); o->audio_dropped_frames = atomic_load(&f->aq_dropped_frames);
     o->audio_master_frames = atomic_load(&f->audio_master_frames);
-    o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw);
+    o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;
     o->eligible_observations = atomic_load(&f->eligible_ingress);
     o->holes = atomic_load(&f->holes); o->unframed = atomic_load(&f->unframed); o->short_units = atomic_load(&f->shorts);
     o->other_format = atomic_load(&f->other_fmt); o->no_signal_0800 = atomic_load(&f->ns0800);
 }
 uint64_t fs_packets_delivered(const frameserver *f){ return cc_packets_delivered(f->cap); }
+int fs_replay_pause(frameserver *f, int paused){ return f && f->cap && cc_replay_pause(f->cap, paused) == CC_OK ? 0 : -1; }
 void fs_close(frameserver *f){
     if (!f) return;
     if(callback_session==f){
@@ -792,6 +913,7 @@ void fs_close(frameserver *f){
     free(f->aq); free(f->aq_pcm);
     if (f->log) fclose(f->log);
     if (f->log_m_init) pthread_mutex_destroy(&f->log_m);
+    if (f->tee_m_init) pthread_mutex_destroy(&f->tee_m);
     if(f->c_init) pthread_cond_destroy(&f->c);
     if(f->m_init) pthread_mutex_destroy(&f->m);
     if(f->life_c_init) pthread_cond_destroy(&f->life_c);

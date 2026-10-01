@@ -74,6 +74,23 @@ int main(void){
     publish_copy_test_fail=NULL;
     CHECK(publish_by_copy(src,dst)==0,"publish");
     CHECK(same(dst,ref),"published content is byte-exact"); CHECK(access(src,F_OK)!=0,"source removed"); CHECK(partials(dst)==0,"no partial after success"); unlink(dst);
+    // 4b. publish_file: same filesystem renames (2); an EXDEV rename falls back to the verified copy
+    //     (0); an existing final name is refused by the rename itself (-1), never copied over.
+    fill(src,n,7);
+    CHECK(publish_file(src,dst)==2,"same filesystem: rename"); CHECK(same(dst,ref),"rename: byte-exact"); CHECK(access(src,F_OK)!=0,"rename: source gone"); CHECK(partials(dst)==0,"rename: no partial"); unlink(dst);
+    fill(src,n,7); fail_step=PUB_STEP_CROSS_DEVICE; publish_copy_test_fail=hook;
+    CHECK(publish_file(src,dst)==0,"EXDEV: verified copy"); CHECK(same(dst,ref),"EXDEV copy: byte-exact"); CHECK(access(src,F_OK)!=0,"EXDEV copy: source removed"); CHECK(partials(dst)==0,"EXDEV copy: no partial"); unlink(dst);
+    publish_copy_test_fail=NULL; fill(src,n,7); fill(dst,10,1);
+    CHECK(publish_file(src,dst)==-1,"existing final refused"); CHECK(same(src,ref),"refused: source intact"); CHECK(partials(dst)==0,"refused: no partial"); unlink(dst);
+    // 4c. no RENAME_EXCL (SMB share): the placeholder path publishes both ways and still refuses
+    //     an existing final name without touching it.
+    two[0]=PUB_STEP_EXCL_UNSUPPORTED; two[1]=PUB_STEP_EXCL_UNSUPPORTED; publish_copy_test_fail=hook2;
+    fill(src,n,7); CHECK(publish_file(src,dst)==2,"no EXCL: rename via placeholder"); CHECK(same(dst,ref),"no EXCL rename: byte-exact"); CHECK(access(src,F_OK)!=0,"no EXCL rename: source gone"); unlink(dst);
+    two[1]=PUB_STEP_CROSS_DEVICE; fill(src,n,7);
+    CHECK(publish_file(src,dst)==0,"no EXCL + EXDEV: copy via placeholder"); CHECK(same(dst,ref),"no EXCL copy: byte-exact"); CHECK(partials(dst)==0,"no EXCL copy: no partial"); unlink(dst);
+    two[1]=PUB_STEP_EXCL_UNSUPPORTED; fill(src,n,7); fill(dst,10,1); char keep[4096]; snprintf(keep,sizeof keep,"%s/keep.csv",dir); fill(keep,10,1);
+    CHECK(publish_file(src,dst)==-1,"no EXCL: existing final refused"); CHECK(same(dst,keep),"no EXCL: existing final untouched"); CHECK(same(src,ref),"no EXCL: source intact");
+    unlink(dst); unlink(keep); publish_copy_test_fail=NULL;
     // 5. unwritable directory (exists, mode 0): -1, source kept
     fill(src,n,9); char ro[4096]; snprintf(ro,sizeof ro,"%s/ro",dir); mkdir(ro,0); char rodst[4096]; snprintf(rodst,sizeof rodst,"%s/x.csv",ro);
     if (getuid()!=0){ CHECK(publish_by_copy(src,rodst)==-1,"unwritable directory fails"); CHECK(access(src,F_OK)==0,"source kept after failure"); }

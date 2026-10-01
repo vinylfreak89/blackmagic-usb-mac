@@ -423,7 +423,7 @@ static void vote_anchor(geometry_engine *g,ge_decision *o,
         }
         if(current!=best)g->vote_anchor=recent==best?g->vote_values[g->vote_count-1]:first;
         o->vote_winner_count=best;o->anchor_source=GE_SOURCE_VOTE;
-    } else if(!g->vote_published)g->vote_anchor=o->vote_engine_anchor;
+    } else if(!g->vote_published)g->vote_anchor=0; /* no confident frame yet: no evidence of displacement (owner, 2026-09-27) */
     else o->anchor_source=GE_SOURCE_VOTE;
     g->vote_published=1;
     o->vote_count=g->vote_count;o->vote_anchor=g->vote_anchor;

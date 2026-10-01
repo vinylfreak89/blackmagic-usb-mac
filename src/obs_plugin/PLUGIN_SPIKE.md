@@ -1,11 +1,10 @@
 # P4a spike — native OBS Studio source plugin on macOS 26 / Apple Silicon
 
-Read-only research, 2026-09-03 (JST). Context: CLAUDE.md §10 (delivery) and §11 P4. Note: CLAUDE.md
-§11 has no item literally named "P4a" — its P4 is the CMIO extension; this spike is the *OBS source
-plugin* branch that §10 names as the pragmatic V+A path and that `src/cmio/PACKAGING_SPIKE.md` line 74
-already recommends. No installs, no repo changes; every web source was treated as data. Upstream
-sources were downloaded verbatim into the scratchpad (`scratchpad/obs-src/`) and grepped; line numbers
-below refer to those `master` copies (OBS master is 32.2.x, matching the installed app).
+Historical read-only research, 2026-09-03 (JST), before the plugin and audio
+publisher were built. Baselines and open decisions below describe that date;
+CLAUDE.md §10–11 records the subsequent implementation and owner decisions.
+No installs or repo changes were made during the spike. Upstream line numbers
+refer to the downloaded OBS 32.2.x `master` copies, not current upstream.
 
 Tags: [doc] official documentation · [src] upstream source · [forum] forum/issue · [3p] third-party
 write-up · [local] measured on this Mac · [inferred] my reasoning from the cited facts.
@@ -279,7 +278,9 @@ https://obsproject.com/blog/obs-studio-32-0-release-notes . ProRes in MP4 fails 
 [forum] PR #7010 discussion.
 
 **4:2:2 — what actually happens in the pipeline.**
-1. Our UYVY frame → `UYVY_Reverse` shader → an **RGB canvas texture**. Canvas precision is
+1. Our frame → conversion shader → an **RGB canvas texture**. (Written for UYVY, `UYVY_Reverse`; since
+   9439ca6 the source sends I210 → `I210_Reverse` into a `GS_RGBA16F` source texture, see the measured
+   note under "Faithfulness limits".) Canvas precision is
    `GS_BGRA` (8-bit) **unless the output Color Format is I010/P010/I210/I412/YA2L/P216/P416, in which
    case `GS_RGBA16F`** (`obs.c:357-372`) [src]
    https://raw.githubusercontent.com/obsproject/obs-studio/master/libobs/obs.c .
@@ -312,6 +313,13 @@ https://obsproject.com/blog/obs-studio-32-0-release-notes . ProRes in MP4 fails 
   structure — **needs the §6 synthetic test: feed a Y=1 / Y=250 frame through replay and read the
   recorded ProRes Y back**]. The OBS ProRes is therefore a *presentation copy*; the tagged capture
   remains the archive, exactly as §8 already states.
+  **Measured 2026-09-29 (`level_fixture.py`, OBS 32.2.2, P216 / 601 / Partial, VT ProRes 422):**
+  with the source sending UYVY, luma 1–15 recorded as black (64) and 236–254 as white (940),
+  in-range luma ±1, and saturated test chroma distorted even inside 16–240 (Cb=Cr=16 at Y=128
+  read 215/137): libobs clamps to the frame's range limits and converts UYVY into an 8-bit
+  `GS_BGRX` texture. Since 9439ca6 the source sends I210 (4c, Rec.601 limited parameters,
+  range clamp opened), which libobs uploads to `GS_RGBA16F`: all 31 bands, luma 1–254 and
+  Cb/Cr 2–254, recorded exact. This needs a 16-bit canvas; NV12 output is 8-bit and clips again.
 - **Interlaced recording: OBS cannot record fields.** `obs_video_info` has fps/size/format only [src]
   obs.h:191-219; the output stage has no field concept [src] obs-video.c; VT ProRes gets no field
   flags [src] encoder.c. The only "interlace-preserving" record is a **woven frame passed through
@@ -384,10 +392,10 @@ Two build routes:
 
 **Replay, no deck.** `create()` reads properties `replay_path` (a `.tpc`) and `pace_us` (default
 16000 = device cadence) and fills `fs_config.capture.replay_path/replay_pace_us`; `on_frame` receives
-`fp_frame` with an IOSurface → `IOSurfaceLock(kIOSurfaceLockReadOnly)`, `obs_source_frame{data[0] =
-IOSurfaceGetBaseAddress, linesize[0] = IOSurfaceGetBytesPerRow, width 720, height 480, format UYVY,
-timestamp = pts_num*1e9/pts_den, 601/limited matrix}` → `obs_source_output_video` (copies) →
-`IOSurfaceUnlock`. Fixtures: `src/unit_parser/tests/fixture.tpc` (synthetic, `make` regenerates it)
+`fp_frame` with an IOSurface → `IOSurfaceLock(kIOSurfaceLockReadOnly)`, UYVY expanded to I210 planes
+(frame_levels.h, each code as 4c) → `obs_source_frame{format I210, linesize 1440/720/720, width 720,
+height 480, timestamp = pts_num*1e9/pts_den, 601/limited matrix for I210, range clamp 0..1}` →
+`obs_source_output_video` (copies) → `IOSurfaceUnlock`. (UYVY was delivered directly until 9439ca6.) Fixtures: `src/unit_parser/tests/fixture.tpc` (synthetic, `make` regenerates it)
 for the smoke test; a real tape `.tpc` from `captures/` for content (check `ls -lO` first — the
 renderer already refuses dataless placeholders, CLAUDE.md §11). **Audio needs new code**: an audio
 batcher fed by `unit_audio_observation` (PCM records → S32 stereo, ~1601/1602 samples per resync

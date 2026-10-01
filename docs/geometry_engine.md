@@ -143,8 +143,10 @@ Append the confident field-2 offset to the last vote_window confident frames.
 The mode wins. Ties retain the current anchor if tied, otherwise the newest
 tied value, otherwise the first tied value in chronological window order.
 Non-confident frames neither vote nor change the anchor. Resets clear votes
-but retain the last published anchor; only session start uses the engine's
-own anchor while the window is empty.
+but retain the last published anchor. At session start, before any confident
+frame, the anchor is 0: no confident frame is no evidence of displacement
+(owner, 2026-09-27; the engine's own unconfident guess once held a dark card at
++5 for 10 s). vote_engine_anchor still logs that guess.
 
 Publish (anchor-d, anchor), preserving the relative path's d. Keep unvoted
 fallback state separate from the vote: a prior voted anchor must not feed
@@ -170,11 +172,9 @@ switch is consulted to produce those values. Newly exposed numeric parameters
 without schema-28 columns are echoed to stderr when overridden; retain that
 startup output with non-default experiments.
 
-Audio-evidence cells use a correlation snapshot taken at the parser's video-unit
-callback on the sole delivery/writer thread. Later/missing resyncs remain empty
-by this deterministic input-order cutoff, independent of worker scheduling or
-subsequent table eviction. Live publication-time audio timestamp availability
-is unchanged and separate. See the frameserver README for the policy and tests.
+Audio-evidence cells follow the frameserver's
+[deterministic input-order cutoff](../src/frameserver/README.md#deterministic-audio-evidence),
+separate from live publication-time timestamp availability.
 
 comb_ran means triggered, not merely measured or adopted. confidence HIGH/LOW
 reflects that trigger state, not probability and not vote_confident. Compare
@@ -202,13 +202,9 @@ motion authority, source ownership, holds, reset/EOF handling and transport
 accounting. The standalone caption decoder has independent tests and is not
 linked into the current registration path.
 
-For CPU use frameserver's bench (bench-geometry is an alias) with CAPTURE, fresh scratch SIDECAR
-and TIMINGS paths, and optional BENCH_ARGS for input pairing. It executes the
-actual default worker, including conditional 2-D searches, with production
-compiler flags. Thread CPU covers classification through item completion,
-including sidecar formatting, excluding queue waits and input I/O. Report
-whole-worker median/p95 and zero/one/two-search populations; engine-only and
-legacy-v9 timings are not substitutes for this measurement. Run final replay
+Use the [frameserver benchmark](../src/frameserver/README.md#checks-and-worker-budget)
+for whole-worker CPU, not engine-only or legacy-v9 timing. The budget and latest
+measured rigid-SAD optimisation results are in CLAUDE.md §11b. Final replay is
 at 4x with no competing project jobs, checking holes/drops and all sidecar bytes.
 
 The phase-A full-tape default worker measured 1.748500/2.736334 ms median/p95

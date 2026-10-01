@@ -3,7 +3,8 @@
 // random ".partial-*" name next to the final path (so the final name is never visible until it is
 // complete), fsynced, read back and byte-compared against the source (read-full on both sides, so
 // legal short reads cannot fail a byte-identical file), then renamed into place with
-// renamex_np(RENAME_EXCL) — the final name is never replaced — and only then is the source deleted.
+// renamex_np(RENAME_EXCL) — the final name is never replaced; where RENAME_EXCL is unsupported (SMB),
+// an exclusively created placeholder is renamed over instead — and only then is the source deleted.
 //
 // What "published" means here: the destination FILESYSTEM has acknowledged the bytes (fsync of the
 // file; fsync of its directory is attempted and, if it fails, the source is kept and 1 is
@@ -19,8 +20,14 @@
 #ifndef PUBLISH_COPY_H
 #define PUBLISH_COPY_H
 int publish_by_copy(const char *src, const char *final);
+// publish_file: publish src at final by one exclusive rename when the kernel allows it (same
+// filesystem), otherwise -- only when the rename fails with EXDEV -- by publish_by_copy. The kernel
+// decides, not a device-number comparison (the plugin's st_dev check compared one static dirname()
+// buffer with itself and never took the copy path). Returns 2 renamed (source gone), else exactly
+// publish_by_copy's results; any other rename failure (e.g. EEXIST) is -1 with the source intact.
+int publish_file(const char *src, const char *final);
 // Test hook (weak): called at named steps; a test returns nonzero to make that step fail.
-enum publish_step { PUB_STEP_WRITE = 1, PUB_STEP_FSYNC, PUB_STEP_REOPEN, PUB_STEP_COMPARE, PUB_STEP_RENAME, PUB_STEP_CLEANUP, PUB_STEP_DIRSYNC, PUB_STEP_UNLINK_SRC };
+enum publish_step { PUB_STEP_WRITE = 1, PUB_STEP_FSYNC, PUB_STEP_REOPEN, PUB_STEP_COMPARE, PUB_STEP_RENAME, PUB_STEP_CLEANUP, PUB_STEP_DIRSYNC, PUB_STEP_UNLINK_SRC, PUB_STEP_CROSS_DEVICE, PUB_STEP_EXCL_UNSUPPORTED };
 extern int (*publish_copy_test_fail)(enum publish_step step);
 // Test hook: when set, every read() the helper issues goes through it (short-read / EINTR injection).
 #include <sys/types.h>

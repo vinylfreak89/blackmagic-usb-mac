@@ -1,11 +1,16 @@
 # Vertical sync mechanics vs. the registration model — research note (2026-09-04)
 
-Purpose: check, before the clean-sheet registration engine is written, whether the agreed model
+Historical research for the September 4 clean-sheet plan, not the current engine
+contract; use [geometry_engine.md](geometry_engine.md) for the approved policy and
+CLAUDE.md §7 for corrected storage/NTSC coordinates and insert attribution.
+
+Purpose at that revision: check whether the agreed model
 ("the Shuttle's raster is rigid; the deck places each field's picture inside it, and field 1's
 picture moves by whole lines; correct by a per-field whole-window shift back to a per-segment
 reference") is consistent with how vertical sync, VCR playback and video ADC decoders actually
 work. Sources are linked; quotes are short. Nothing here is a measurement of our tape — the
-measurements live in `experiments/picture_envelope_census.py` and CLAUDE.md.
+measurements were recorded by the historical `experiments/picture_envelope_census.py`
+and in CLAUDE.md.
 
 ## 1. The analog vertical interval and field identity
 

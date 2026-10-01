@@ -126,7 +126,7 @@ int main(int argc,char**argv){
         sink_path=staged;
     }
     char session_note[256];
-    int ring_mb=cfg.ring_mb>0?cfg.ring_mb:256;
+    int ring_mb=cfg.ring_mb>0?cfg.ring_mb:CC_DEFAULT_RING_MB;
     if(cfg.replay_path)
         snprintf(session_note,sizeof session_note,
                  "shuttle-capture v1 input=replay mode_word=n/a ring_mb=%d fleet=n/a control_loss=%s",

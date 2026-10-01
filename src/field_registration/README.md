@@ -12,21 +12,10 @@ before initialization and is immutable through the public streaming API.
 `fs_open` copies `fs_config.geometry_config` in the same way. A default OBS
 open needs no engine selection or environment settings.
 
-The approved path always uses waveform tops, continuation-only level fills
-on waveform abstention, same-frame flat-band bottoms, the paired-top anchor
-vote, blank-spot confidence, still-picture comb triggering and rigid-vertical
-comb withholding. Numeric defaults:
-
-- Wave step bar 0.45; symmetric top clamp 5.
-- Comb refusal ratio 2; selection/enclosed-floor factor 1.5.
-- Vote window 30 confident frames; top-pair correlation 0.6.
-- Flat-bottom margin 3; blank-spot tolerance +2.
-- Rigid-motion minimum 2 lines; clarity 1.3.
-
-There are no alternate-policy switches. Replay/probe tools share the numeric
-`GE_*` parser in `geometry_tool_controls.h`; the library reads no environment.
-The fixed vote storage capacity is 256, with a configurable window 1..256.
-All streaming state is bounded; measurement and publication do not allocate.
+The [configuration table](../../docs/geometry_engine.md#configuration-and-ownership)
+is the single reference for numeric defaults, validation and `GE_*` tool mappings.
+There are no alternate-policy switches or library environment reads. All streaming
+state is bounded; measurement and publication do not allocate.
 
 `ge_push` consumes contiguous 720x525 luma and emits 0..2 completed unit
 decisions. Coordinates are NTSC lines (storage row+4); zero edges explicitly
@@ -50,11 +39,9 @@ comb/basin, vote, pairing/reset, motion and per-instance configuration tests.
 The default-policy regression gate is byte identity with the five registered
 approved sidecars, not a comparison to retired experiment arms.
 
-From `src/frameserver`, run `make test test-geometry test-pairing` and the
-ASan/UBSan and TSan targets. `bench` (also named `bench-geometry`) measures the real default worker
-with conditional 2-D motion searches, reports whole-worker thread CPU and
-separates zero/one/two-search populations. It requires fresh scratch output
-paths; no captures, reference sidecars or results belong in this source tree.
+For integration tests, sanitizers and whole-worker CPU (including conditional
+2-D searches), use the [frameserver checks](../frameserver/README.md#checks-and-worker-budget).
+No captures, reference sidecars or results belong in this source tree.
 The worker benchmark reports rigid-search CPU separately from the rest of
 geometry. Those timers exist only in the benchmark build; production has no
 timing hooks. `tests/geometry_worker_verify` takes the same arguments and
