@@ -132,6 +132,15 @@ confidence; a surviving fixed number becomes the unit of a scale, learned from t
 | Absolute placement (30-frame vote) | per-frame candidates: field-2 top with its confidence, previous anchor carried |
 | Classifier resets | transport facts stay hard; appearance changes may lower the carried previous |
 
+## Gate for the overnight renders (owner, 2026-10-01 15:50Z)
+
+"less than 2 % change across the whole tape in placement decisions. comb decisions... well it was kind of doing
+that wrong anyway so that stat is out the window. but 10,000 is way too high." Partial changes are allowed: "if it
+needs to regress to small fixes (like fixing the intro comb) but can't do the larger fixes and it doesn't break
+fixture A then it may proceed with that." On fixture A 2% of 86,293 units is about 1,726 changed placements against
+the approved log; the comb-decision count is no longer a gate. Times are targets: "I don't want it rushing just to
+meet an arbitrary deadline".
+
 ## Order of work (owner)
 
 Registration cleanup (this plan), then H-timing correction, then stabilization.
