@@ -59,6 +59,10 @@ Not registration errors, recorded so they are not re-investigated:
   has no setup, so the level-based check may not exist there; where it cannot be measured, that element
   carries no weight and fixture A keeps the approved engine's method. Whether "cannot be measured" is
   decided per frame (the level scan abstains) or per tape is to be settled from fixture A's data.
+  Fixture A still gets the comb changes (static-tile comb, no latch, motion lowering comb confidence), and
+  the hope is that few of its registrations change (owner, same day: "fixture A will still get the combing
+  fix though and HOPEFULLY it doesn't change too many registrations"). The approved-engine bound applies:
+  fewer than 100 changed comb decisions and 500 changed placements, each change beyond it shown to the owner.
 
 ## Motion: comb confidence comes from what is not moving
 
