@@ -1035,7 +1035,8 @@ def main():
             for j, action in repair_ticks(rowB):
                 for x in TICK_X:
                     dr.line([(x,j),(x+4,j)], fill=TICK_COLORS[action], width=1)
-            dr.text((4,4), 'repair I red / R orange / S yellow', font=small, fill=(170,170,170))
+            dr.text((4,4), 'repair I red / R orange', font=small, fill=(170,170,170))
+            dr.text((4,16), 'S yellow', font=small, fill=(170,170,170))  # a longer line reaches the tick lane at x 172
         if not rowB and o:
             edges = [[o.get(f"f{k}_{key}") for key in ("first", "last")] for k in (1, 2)]
         for f, (first, d, col) in enumerate(((F1_FIRST_LINE, d1, RED), (F2_FIRST_LINE, d2, BLUE))):
