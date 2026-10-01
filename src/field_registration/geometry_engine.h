@@ -119,7 +119,8 @@ typedef struct {
     double ev_weight_tops, ev_weight_comb, ev_weight_previous;
     float ev_tjump[2]; /* frame-owned median tile shift per field */
     int ev_whole_comb_d; /* whole-frame comb shift, for comparison; feeds only the anchor vote */
-    double ev_tops_trust; /* per-source share of decisive combs agreeing with the tops, smoothed */
+    double ev_tops_trust;
+    double ev_comb_gap, ev_gap_scale; /* comb runner-up minus best energy, and its weight scale gap/(gap+g0) */ /* per-source share of decisive combs agreeing with the tops, smoothed */
     int ev_untimed_rows; /* rows the comb left out as horizontally mistimed */
     int ev_top_mistimed; /* bit 1: field 1's top line mistimed, bit 2: field 2's; the tops then make no decision */
 } ge_decision;

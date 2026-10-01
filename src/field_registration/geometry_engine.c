@@ -29,7 +29,8 @@ struct geometry_engine {
     ge_config config;
     int reverse, valid, held, provisional, have_placement, last_d, last_d2;
     int have_st, last_st; double prev_weight; /* evidence mode */
-    uint8_t trust_ring[128]; int trust_n, trust_head, trust_sum; /* evidence mode: per-source tops trust */
+    float trust_w[128], trust_agree[128]; int trust_n, trust_head; /* evidence mode: per-source tops trust, weighted */
+    float gap_ring[900]; int gap_n, gap_head; /* evidence mode: running comb energy gaps (about 30 s) */
     int basis_valid, basis_first[2]; /* tops of the frame that derived held */
     uint64_t counter;
     ge_features previous, current;
@@ -445,11 +446,11 @@ static int rerun(ge_class c) { return c!=GE_NOTHING && c!=GE_VALID_MOVE; }
 #define EV_TC 15
 #define EV_DETAIL 1.3
 #define EV_STILL 0.4f
-/* Per-source trust in the tops' relative alignment: the share of the last EV_TRUST decisive comb
- * frames (still, both tops measured and well timed, comb margin >= 1.4) whose comb agreed with the
- * tops (owner, 2026-10-02: "learning trustworthiness is ... another sliding window statistic").
- * EV_TRUST is the shortest window at which a source whose tops always agree earns the measured
- * top-reading accuracy (99.6%, logit 5.5): (128+0.5)/(128+1) = 0.9961. */
+/* Per-source trust in the tops' relative alignment: over the last EV_TRUST frames with both tops measured and
+ * well timed, the confidence-weighted share whose comb agreed with the tops (owner, 2026-10-02: "learning
+ * trustworthiness is ... another sliding window statistic"; each frame chips at it by its own confidence).
+ * EV_TRUST is the shortest window at which a source whose tops always agree, at full comb confidence, earns the
+ * measured top-reading accuracy (99.6%, logit 5.5): (128+0.5)/(128+1) = 0.9961. */
 #define EV_TRUST 128
 static void tile_shifts(const uint8_t *cur,const uint8_t *prev,int field,ge_features *f) {
     int off=19+263*field;
@@ -563,7 +564,8 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
     int l1=ge_level_scan(ty,0,g->config.wave_clamp).first,l2=ge_level_scan(by,1,g->config.wave_clamp).first;
     o.ev_tops_agree=known && l1==t->first[0] && l2==b->first[1];
     /* The tops' weight is the source's learned trust (log-odds, never negative). */
-    double trust=(g->trust_sum+0.5)/(g->trust_n+1.0);o.ev_tops_trust=trust;
+    double tw=0,ta=0;for(int i=0;i<g->trust_n;i++){tw+=g->trust_w[i];ta+=g->trust_agree[i];}
+    double trust=(ta+0.5)/(tw+1.0);o.ev_tops_trust=trust;
     double wt=known?fmax(0,log(trust/(1-trust))):0;
     /* The whole-frame comb over horizontally well-timed rows; sustained vertical motion anywhere in either field (a tile shifting the
      * same way on two consecutive units) downgrades its confidence one step (owner, 2026-10-01). */
@@ -576,6 +578,22 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
     int band=isnan(o.comb.margin)?0:o.comb.margin>=1.4?2:o.comb.margin>=1.05?1:0;
     if(moving && band)band--;
     double wc=band==2?4.6:band==1?1.7:0;
+    /* Structure: the absolute gap between the comb's runner-up and best energy. Flat picture gives tiny energies
+     * whose ratio is noise (tvc2 52:57 flat sky: gap ~1 at ratio 2-5; detailed frames 6.5-10.5; whole tape median
+     * 8.5). The weight scales by gap/(gap+g0), g0 the median gap over the tape's last ~30 s (owner, 2026-10-02:
+     * low confidence everywhere, as on flat sky, should hold). */
+    o.ev_comb_gap=NAN;
+    if(!isnan(o.comb.margin)) {
+        double e1=INFINITY,e2=INFINITY;
+        for(int k=0;k<11;k++){double e=o.comb.energies[k];if(e<e1){e2=e1;e1=e;}else if(e<e2)e2=e;}
+        double gap=e2-e1;o.ev_comb_gap=gap;
+        double g0=NAN;
+        if(g->gap_n>=30){float v[900];int n=g->gap_n;memcpy(v,g->gap_ring,(size_t)n*sizeof(float));
+            qsort(v,(size_t)n,sizeof(float),cmpf);g0=n&1?v[n/2]:(v[n/2-1]+v[n/2])/2;}
+        o.ev_gap_scale=isnan(g0)?1:(gap+g0>0?gap/(gap+g0):0);
+        wc*=o.ev_gap_scale;
+        if(isfinite(gap)){g->gap_ring[g->gap_head]=(float)gap;g->gap_head=(g->gap_head+1)%900;if(g->gap_n<900)g->gap_n++;}
+    }
     o.ev_weight_tops=wt;o.ev_weight_comb=wc;
     int d;
     if(wt==0 && wc==0 && g->have_placement && (o.ev_top_mistimed || !(log(trust/(1-trust))>0))) {
@@ -600,18 +618,25 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
             if(w<0||total[i]>total[w]||(total[i]==total[w] && g->have_placement && cand[i]==g->last_d))w=i;}
         d=cand[w];
         o.ev_weight_previous=g->have_placement?g->prev_weight:0;
-        /* The previous decision carries only last frame's fresh support: unsupported, it decays to nothing. */
-        g->prev_weight=fresh[w];
+        /* Hold on weak evidence (owner, 2026-10-02): the previous decision keeps its confidence and loses only as
+         * much as the strongest evidence against it this frame, so weak frames chip at it and a confident one
+         * replaces it at once. A new winner carries its own fresh support. */
+        if(have[w] && cand[w]==g->last_d && g->have_placement) {
+            double opp=0;for(int i=0;i<3;i++)if(have[i] && cand[i]!=g->last_d && fresh[i]>opp)opp=fresh[i];
+            g->prev_weight=fmax(fresh[w],g->prev_weight-opp);
+        } else g->prev_weight=fresh[w];
         if(fresh[w]==0){o.relative_source=GE_SOURCE_PREVIOUS;o.triggers|=GE_EV_PREVIOUS;}
         else if(known && d==st)o.relative_source=GE_SOURCE_CENSUS;
         else {o.relative_source=GE_SOURCE_COMB;o.comb_ran=1;o.triggers|=GE_EV_COMB;}
     }
     if(!o.ev_tops_agree && known)o.triggers|=GE_EV_TOPS_DISAGREE;
-    /* A decisive frame teaches the trust: still, tops measured and well timed, comb clear. */
-    if(known && !moving && !isnan(o.comb.margin) && o.comb.margin>=2) {
-        int agree=o.comb.shift==st;
-        if(g->trust_n==EV_TRUST)g->trust_sum-=g->trust_ring[g->trust_head];else g->trust_n++;
-        g->trust_ring[g->trust_head]=(uint8_t)agree;g->trust_sum+=agree;g->trust_head=(g->trust_head+1)%EV_TRUST;
+    /* Every frame with measured, well-timed tops teaches the trust in proportion to the comb's confidence
+     * (owner, 2026-10-02: chip away, don't gate): agreement with the tops' alignment counts with weight wc/4.6,
+     * so a flat-sky frame barely moves it and a clear, detailed, still frame moves it fully. */
+    if(known && wc>0) {
+        double w=wc/4.6;int agree=o.comb.shift==st;
+        g->trust_w[g->trust_head]=(float)w;g->trust_agree[g->trust_head]=(float)(agree?w:0);
+        g->trust_head=(g->trust_head+1)%EV_TRUST;if(g->trust_n<EV_TRUST)g->trust_n++;
     }
     if(known){g->have_st=1;g->last_st=st;}
     /* The anchor vote keeps the approved input: the whole-frame comb examined at the published relative. */
