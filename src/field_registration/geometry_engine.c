@@ -608,15 +608,7 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
     }
     if(!o.ev_tops_agree && known)o.triggers|=GE_EV_TOPS_DISAGREE;
     /* A decisive frame teaches the trust: still, tops measured and well timed, comb clear. */
-    /* ... and only a true minimum teaches: the parabola through the best shift and its neighbours must sit
-     * within a quarter line of that shift. Half-line material (fields offset by about half a line) gives a
-     * minimum near +-0.5 with a clear margin, and would teach that sound tops are wrong (tvc2 24:08, 52:43:
-     * sub-line optimum +0.50 and +-0.5, against +0.02 +-0.15 on ordinary material; 0.25 is midway). */
-    double subline=NAN;
-    {int bi=o.comb.shift+5;if(bi>0&&bi<10){double y0=o.comb.energies[bi-1],y1=o.comb.energies[bi],y2=o.comb.energies[bi+1],den=y0-2*y1+y2;
-        if(den>0)subline=0.5*(y0-y2)/den;}}
-    o.ev_comb_subline=subline;
-    if(known && !moving && !isnan(o.comb.margin) && o.comb.margin>=2 && fabs(subline)<0.25) {
+    if(known && !moving && !isnan(o.comb.margin) && o.comb.margin>=2) {
         int agree=o.comb.shift==st;
         if(g->trust_n==EV_TRUST)g->trust_sum-=g->trust_ring[g->trust_head];else g->trust_n++;
         g->trust_ring[g->trust_head]=(uint8_t)agree;g->trust_sum+=agree;g->trust_head=(g->trust_head+1)%EV_TRUST;
