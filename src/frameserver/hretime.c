@@ -1,3 +1,4 @@
+#include "line_edges.h"
 #include "hretime.h"
 #include <math.h>
 #include <stdlib.h>
@@ -20,19 +21,19 @@ enum { ROW_BYTES=1440, HEADER=48,
        /* Picture evidence at the standard edge: codes above blanking. Black
         * with setup measured ~16 codes above blanking, and the pan's dark
         * edge content reached 30; 40 is ~18 IRE. */
-       PICTURE_MIN=40,
+       PICTURE_MIN=LE_PICTURE_MIN, /* shared with registration: line_edges.h holds the provenance */
        /* "A few samples": the falloff rises over ~3 samples, and the pan's
         * cross-field left-edge disagreement was 3.0 at the 99.9th percentile. */
-       FEW=4,
+       FEW=LE_FEW,
        /* Coarse standard: the first rise above the blanking bumps seen before
         * the falloff (<=16 codes on tape1), below most picture. */
-       COARSE=20,
+       COARSE=LE_COARSE,
        /* Agreement: the retimed line may decorrelate from the other field at
         * most this many times the other field's own two lines do. Correct
         * retimes of labelled tape1 bends measured 1.0-3.2x; a 3-sample
         * misalignment measured ~15x. */
        AGREEMENT=4,
-       SCAN=147,        /* nominal horizontal blanking width, samples */
+       SCAN=LE_BLANKING, /* nominal horizontal blanking width, samples */
        STANDARD_LINES=20, /* measured edges needed for a frame standard */
        REF_DISTANCE=7 };
 struct hrt_workspace {

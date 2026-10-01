@@ -60,8 +60,12 @@ libcea608.dylib: cea608.c cea608.h
 tests/cea608_unit: cea608.c cea608.h tests/cea608_unit.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -I. cea608.c tests/cea608_unit.c -o $@ $(LDLIBS)
 
-test: geometry-test tests/cea608_unit
+test: geometry-test tests/cea608_unit tests/line_edges_test
 	./tests/cea608_unit
+	./tests/line_edges_test
+
+tests/line_edges_test: line_edges.h tests/line_edges_test.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/line_edges_test.c -o $@ $(LDLIBS)
 
 clean:
 	rm -f tests/hblank_probe tests/geometry_unit tests/geometry_basis tests/geometry_waveform tests/geometry_config
@@ -69,4 +73,4 @@ clean:
 	rm -f tests/geometry_bottom
 	rm -f tests/geometry_still
 	rm -f tests/geometry_rigid tests/geometry_rigid_scalar
-	rm -f libcea608.dylib tests/cea608_unit
+	rm -f libcea608.dylib tests/cea608_unit tests/line_edges_test

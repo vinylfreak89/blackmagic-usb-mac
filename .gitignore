@@ -125,6 +125,7 @@ src/capture_core/test_shim
 src/frameserver/tests/replay_completion_test
 /src/frameserver/tests/geometry_worker_bench
 /src/field_registration/tests/geometry_unit
+/src/field_registration/tests/line_edges_test
 /src/field_registration/tests/geometry_basis
 /src/field_registration/tests/geometry_waveform
 /src/field_registration/tests/geometry_rejection
