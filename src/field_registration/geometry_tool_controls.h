@@ -38,12 +38,14 @@ static int ge_tool_controls_from_env(ge_config *config) {
        !ge_tool_double("GE_COMB_BASIN_FACTOR",&c.comb_basin_factor,1,INFINITY,0,"finite number >=1") ||
        !ge_tool_int("GE_VOTE_WINDOW",&c.vote_window,1,GE_VOTE_CAPACITY,"integer in [1,256]") ||
        !ge_tool_double("GE_VOTE_BLANKSPOT_TOLERANCE",&c.blankspot_tolerance,0,INFINITY,0,"nonnegative finite number") ||
-       !ge_tool_int("GE_COMB_RIGID_MIN",&c.rigid_min,1,INT_MAX,"positive int"))return 0;
+       !ge_tool_int("GE_COMB_RIGID_MIN",&c.rigid_min,1,INT_MAX,"positive int") ||
+       !ge_tool_int("GE_EVIDENCE",&c.evidence,0,1,"0 or 1"))return 0;
     *config=c;return 1;
 }
 static void ge_tool_controls_echo(FILE *f,const ge_config *c) {
     fprintf(f,"# GE_WAVE_BAR=%.17g GE_WAVE_CLAMP=%d GE_COMB_REJECT=%.17g GE_ANCHOR_VOTE=%d GE_LEVEL_FILL=%d GE_LEVEL_FLAT=%d GE_VOTE_PAIR=%d GE_VOTE_PAIR_MIN=%.17g GE_BOTTOM_FLAT=%d GE_BOTTOM_FLAT_MARGIN=%.17g GE_VOTE_BLANKSPOT=%d GE_COMB_STILL=%d GE_COMB_MOTION_MIN=%d GE_COMB_RIGID=%d GE_COMB_RIGID_CLARITY=%.17g\n",
         c->wave_bar,c->wave_clamp,c->comb_reject,1,1,0,1,c->vote_pair_min,1,c->bottom_flat_margin,1,1,1,1,c->rigid_clarity);
+    if(c->evidence)fprintf(stderr,"# GE_EVIDENCE=1 (per-frame evidence experiment)\n");
     if(c->comb_basin_factor!=1.5 || c->vote_window!=30 ||
        c->blankspot_tolerance!=2 || c->rigid_min!=2)
         fprintf(stderr,"# GE_COMB_BASIN_FACTOR=%.17g GE_VOTE_WINDOW=%d GE_VOTE_BLANKSPOT_TOLERANCE=%.17g GE_COMB_RIGID_MIN=%d\n",

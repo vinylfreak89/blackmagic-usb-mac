@@ -20,7 +20,8 @@ int ge_config_valid(const ge_config *c) {
         isfinite(c->vote_pair_min) && c->vote_pair_min>=-1 && c->vote_pair_min<=1 &&
         isfinite(c->bottom_flat_margin) && c->bottom_flat_margin>0 &&
         isfinite(c->blankspot_tolerance) && c->blankspot_tolerance>=0 &&
-        c->rigid_min>=1 && isfinite(c->rigid_clarity) && c->rigid_clarity>=1;
+        c->rigid_min>=1 && isfinite(c->rigid_clarity) && c->rigid_clarity>=1 &&
+        (c->evidence==0 || c->evidence==1);
 }
 
 struct geometry_engine {
@@ -431,8 +432,108 @@ static void vote_anchor(geometry_engine *g,ge_decision *o,
     o->frame_d1=o->d1=g->vote_anchor-o->published_d;
 }
 static int rerun(ge_class c) { return c!=GE_NOTHING && c!=GE_VALID_MOVE; }
+/* ---- evidence mode (docs/registration_evidence_plan.md) ----
+ * Measured on tvc2 and fixture A (2026-10-01): a tile's shift estimate is reliable once its
+ * vertical detail is >= 1.3x its own best-match residual (0 wrong above 1.4 on two sources 3x
+ * apart in noise); still tiles stay under 0.4 line at the 99th percentile. */
+#define EV_TR 14
+#define EV_TC 15
+#define EV_DETAIL 1.3
+#define EV_STILL 0.4f
+static void tile_shifts(const uint8_t *cur,const uint8_t *prev,int field,ge_features *f) {
+    int off=19+263*field;
+    for(int ti=0;ti<EV_TR;ti++)for(int tj=0;tj<EV_TC;tj++) {
+        int r0=off+8+16*ti,c0=48*tj;unsigned s[9],det=0;
+        for(int r=r0;r<r0+15;r++){const uint8_t *a=prev+r*720+c0,*b=a+720;
+            for(int x=0;x<48;x++){int d=(int)b[x]-a[x];det+=(unsigned)(d<0?-d:d);}}
+        for(int k=0;k<9;k++){unsigned sum=0;int dy=k-4;
+            for(int r=r0;r<r0+16;r++){const uint8_t *a=prev+r*720+c0,*b=cur+(r+dy)*720+c0;
+                for(int x=0;x<48;x++){int d=(int)a[x]-b[x];sum+=(unsigned)(d<0?-d:d);}}
+            s[k]=sum;}
+        int k=0;for(int i=1;i<9;i++)if(s[i]<s[k]||(s[i]==s[k]&&abs(i-4)<abs(k-4)))k=i;
+        double x=k-4;
+        if(k>0&&k<8){double y0=s[k-1],y1=s[k],y2=s[k+1],den=y0-2*y1+y2;if(den!=0)x+=0.5*(y0-y2)/den;}
+        double detail=det/(15.0*48),resid=s[k]/(16.0*48);
+        f->tmeas[field][ti][tj]=detail>=EV_DETAIL*(resid>1e-9?resid:1e-9);
+        f->tshift[field][ti][tj]=(float)x;
+    }
+}
+static int cmpf(const void *a,const void *b){float x=*(const float*)a,y=*(const float*)b;return (x>y)-(x<y);}
+static void tile_states(ge_features *f,const ge_features *prev) {
+    for(int k=0;k<2;k++) {
+        float v[EV_TR*EV_TC];int n=0;
+        for(int ti=0;ti<EV_TR;ti++)for(int tj=0;tj<EV_TC;tj++) {
+            float s=f->tshift[k][ti][tj],p=prev->tshift[k][ti][tj];
+            int m=f->tmeas[k][ti][tj] && prev->tmeas[k][ti][tj];
+            f->tstatic[k][ti][tj]=m && fabsf(s)<EV_STILL && fabsf(p)<EV_STILL;
+            f->tmoving[k][ti][tj]=m && fabsf(s)>=EV_STILL && fabsf(p)>=EV_STILL && ((s>0)==(p>0));
+            if(f->tmeas[k][ti][tj])v[n++]=s;
+        }
+        if(n){qsort(v,(size_t)n,sizeof *v,cmpf);f->tjump[k]=v[n/2];} else f->tjump[k]=0;
+    }
+}
+/* The comb over tiles still in both fields: a moving region measures motion, not registration. */
+static ge_comb_result comb_static(const uint8_t *t,const uint8_t *b,const ge_features *ft,const ge_features *fb,int *tiles) {
+    uint8_t mask[EV_TR][EV_TC];*tiles=0;
+    for(int ti=0;ti<EV_TR;ti++)for(int tj=0;tj<EV_TC;tj++){mask[ti][tj]=ft->tstatic[0][ti][tj]&&fb->tstatic[1][ti][tj];*tiles+=mask[ti][tj];}
+    ge_comb_result r={.shift=0,.decided=0,.margin=NAN};
+    if(!*tiles)return r;
+    double energy[11];
+    for(int d=-5;d<=5;d++) {
+        uint64_t sum=0,count=0;
+        for(int line=30;line<=240;line++) {
+            int fr=(line-4)-19;if(fr<8)continue;int ti=(fr-8)/16;if(ti>=EV_TR)continue;
+            const uint8_t *a=t+(line-4)*720,*c=a+720,*bb=b+(line+259+d)*720;
+            for(int x=24;x<696;x++){if(!mask[ti][x/48])continue;
+                int v=((int)a[x]-bb[x])*((int)c[x]-bb[x]);sum+=v>0?(unsigned)v:0;count++;}
+        }
+        energy[d+5]=count?(double)sum/count:0;
+    }
+    int best=0,second=1;if(energy[second]<energy[best]){best=1;second=0;}
+    for(int i=2;i<11;i++){if(energy[i]<energy[best]){second=best;best=i;}else if(energy[i]<energy[second])second=i;}
+    r.shift=best-5;r.margin=energy[best]>0?energy[second]/energy[best]:(energy[second]>0?INFINITY:1);
+    r.decided=1;memcpy(r.energies,energy,sizeof energy);return r;
+}
+/* Per-frame evidence: each element proposes a relative alignment with a confidence weight
+ * (log-odds of being right, from the 2026-10-01 calibrations); the highest total wins; no latch.
+ *   tops (census): waveform and level tops agree 99.6% right (logit 5.5); disagree 76% (1.15)
+ *   static comb: best/second >= 1.4 99% right (4.6); 1.05-1.4 85% (1.7); below, no say
+ * All weight zero or a tie with the previous decision keeps the previous decision (owner (b)). */
+static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
+                                  const ge_features *t,const ge_features *b,uint64_t tc,uint64_t bc) {
+    ge_decision o={0};o.counter=bc;o.top_unit=tc;o.has_frame=1;o.comb.margin=NAN;
+    o.first[0]=t->first[0];o.first[1]=b->first[1];o.last[0]=t->last[0];o.last[1]=b->last[1];
+    o.bottom_evidence[0]=t->bottom_evidence[0];o.bottom_evidence[1]=b->bottom_evidence[1];
+    o.bottom[0]=t->bottom[0];o.bottom[1]=b->bottom[1];o.motion[0]=t->motion[0];o.motion[1]=b->motion[1];
+    o.vertical[0]=t->vertical[0];o.vertical[1]=b->vertical[1];o.rigid[0]=t->rigid[0];o.rigid[1]=b->rigid[1];
+    int known=t->first[0] && b->first[1],st=known?b->first[1]-263-t->first[0]:0;
+    int l1=ge_level_scan(ty,0,g->config.wave_clamp).first,l2=ge_level_scan(by,1,g->config.wave_clamp).first;
+    o.ev_tops_agree=known && l1==t->first[0] && l2==b->first[1];
+    double wt=known?(o.ev_tops_agree?5.5:1.15):0;
+    int tiles=0;o.comb=comb_static(ty,by,t,b,&tiles);o.ev_static_tiles=tiles;
+    double wc=0;if(tiles && isfinite(o.comb.margin))wc=o.comb.margin>=1.4?4.6:(o.comb.margin>=1.05?1.7:0);
+    o.ev_weight_tops=wt;o.ev_weight_comb=wc;
+    int prev=g->have_placement?g->last_d:0,d;
+    if(wt==0 && wc==0){d=prev;o.relative_source=g->have_placement?GE_SOURCE_PREVIOUS:GE_SOURCE_START;}
+    else if(wc==0 || (known && o.comb.shift==st)){d=st;o.relative_source=GE_SOURCE_CENSUS;}
+    else if(wt==0 || wc>wt){d=o.comb.shift;o.relative_source=GE_SOURCE_COMB;o.comb_ran=1;o.triggers|=1;}
+    else if(wt>wc){d=st;o.relative_source=GE_SOURCE_CENSUS;}
+    else {d=(prev==st||prev==o.comb.shift)?prev:st;o.relative_source=GE_SOURCE_PREVIOUS;o.triggers|=8;}
+    if(!o.ev_tops_agree && known)o.triggers|=4;
+    o.rejection=ge_comb_examine(&o.comb,known?st:d,&g->config);
+    int d2=b->first[1]?b->first[1]-286:(g->have_placement?g->last_d2:0);
+    /* Which field moved: the one whose tiles jumped against its own previous unit. */
+    int field2=known && d!=st && fabsf(b->tjump[1])>fabsf(t->tjump[0])+EV_STILL;
+    o.ev_moved_field=d==st?0:(field2?2:1);
+    o.frame_d1=o.d1=d2-d;o.frame_d2=o.d2=d2;o.published_d=d;o.held=0;
+    g->last_d=d;g->last_d2=d2;g->have_placement=1;g->held=0;g->provisional=0;
+    vote_anchor(g,&o,t,b,ty,by);
+    if(field2){int a=o.frame_d2;o.frame_d1=o.d1=a-st;o.frame_d2=o.d2=o.frame_d1+d;o.triggers|=2;}
+    return o;
+}
 static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
                          const ge_features *t,const ge_features *b,uint64_t tc,uint64_t bc) {
+    if(g->config.evidence)return frame_evidence(g,ty,by,t,b,tc,bc);
     ge_decision o={0};o.counter=bc;o.top_unit=tc;o.has_frame=1;o.comb.margin=NAN;
     o.first[0]=t->first[0];o.first[1]=b->first[1];
     o.last[0]=t->last[0];o.last[1]=b->last[1];
@@ -521,6 +622,7 @@ unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_dec
             if(abs(f->vertical[k].shift)>=g->config.rigid_min)
                 f->rigid[k]=ge_rigid_measure(y,g->previous_y,k);
         }
+    if(g->config.evidence && adjacent && !reset){tile_shifts(y,g->previous_y,0,f);tile_shifts(y,g->previous_y,1,f);tile_states(f,&g->previous);}
     if(reset || !adjacent)reset_frame_state(g);
     if(!g->reverse) {
         out[n]=frame(g,y,y,f,f,c,c);out[n].reset_before=reset;

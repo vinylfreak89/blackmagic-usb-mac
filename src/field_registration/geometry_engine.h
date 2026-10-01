@@ -25,6 +25,7 @@ typedef struct {
     double blankspot_tolerance;   /* 2, above field-2 VI median */
     int rigid_min;                /* 2, minimum absolute vertical shift */
     double rigid_clarity;         /* 1.3, inclusive far / best SAD */
+    int evidence;                 /* 0 approved; 1 per-frame evidence (experiment, docs/registration_evidence_plan.md) */
 } ge_config;
 ge_config ge_default_config(void);
 int ge_config_valid(const ge_config *);
@@ -79,6 +80,11 @@ typedef struct {
     ge_bottom_evidence bottom_evidence[2];
     ge_vertical_motion vertical[2]; /* this unit against its adjacent predecessor */
     ge_rigid_motion rigid[2]; /* conditional 2-D measurement on the same unit pair */
+    /* evidence mode: per-tile vertical shift of each field against the same field of the
+     * previous unit (14 x 15 tiles of 16 x 48 samples), measurable/static/moving flags */
+    float tshift[2][14][15];
+    uint8_t tmeas[2][14][15], tstatic[2][14][15], tmoving[2][14][15];
+    float tjump[2]; /* median shift of this unit's measurable tiles, per field */
 } ge_features;
 typedef struct {
     uint64_t counter, top_unit;
@@ -106,6 +112,8 @@ typedef struct {
     int still_trigger, comb_suppressed;
     int vote_blankspot_measured, vote_blankspot_pass, vote_blankspot_line;
     ge_rigid_motion rigid[2]; /* frame-owned, field 1 from top_unit */
+    int ev_static_tiles, ev_moved_field, ev_tops_agree; /* evidence mode only */
+    double ev_weight_tops, ev_weight_comb;
 } ge_decision;
 typedef struct geometry_engine geometry_engine;
 size_t ge_size(void);
