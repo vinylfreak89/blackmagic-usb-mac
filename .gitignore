@@ -153,3 +153,6 @@ src/obs_plugin/tests_replay_timeline.dSYM/
 src/obs_plugin/tests_media_controls
 src/obs_plugin/tests_media_controls_tsan
 src/obs_plugin/tests_media_controls*.dSYM/
+
+# Pairing schedules are replay inputs (owner, 2026-10-02), allowed by .artifact-allowlist
+!experiments/pairing/*.csv
