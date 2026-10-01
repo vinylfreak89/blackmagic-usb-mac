@@ -21,3 +21,13 @@ their last write; their earlier iterations are only in the transcript. Results a
 (repository rule); each commit message carries the result and verdict.
 
 Paths to captures, scored-event files and decision logs are the development machine's.
+
+## Backlog (low priority)
+
+- **Heavy noise bands repaired line by line** (owner, 2026-10-02: "Yes but pretty low priority. On playback that is
+  very much a 'who cares' and I would actually argue a few things (like the jacket outline) did come out cleaner").
+  Fixture A frame 66096 (34:14): field-1 lines ~118-176 and field-2 ~380-442 carry mixed retime/resize/interpolate/
+  unavailable actions, and the top of the band renders as stacked bars from retimed, resized and far-donor rows
+  rather than smeared noise. Open question for later correction work: whether a band this damaged is noise (his rule:
+  timing errors only, not dropouts) and should be left alone or interpolated only from a clean field, while keeping
+  edges that came out cleaner.
