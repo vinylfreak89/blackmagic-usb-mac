@@ -46,10 +46,12 @@ struct hrt_workspace {
     double edge[HRT_ROWS][2];  /* half-height falloff; -1/720 spill, NAN none */
     double ref_edge[HRT_ROWS][2];
     double sorted[HRT_ROWS];
-    uint8_t reference[HRT_WIDTH],filler[ROW_BYTES];
+    uint8_t reference[HRT_WIDTH],filler[ROW_BYTES],resized[ROW_BYTES],resized_y[HRT_WIDTH];
+    int resize;
 };
 size_t hrt_size(void) { return sizeof(hrt_workspace); }
 void hrt_reset(hrt_workspace *w) { w->have=0; }
+void hrt_set_resize(hrt_workspace *w,int resize) { w->resize=resize; }
 void hrt_begin(hrt_workspace *w,uint64_t c1,uint64_t c2,uint64_t epoch,int reset) {
     if(reset || (w->have && (w->epoch!=epoch || w->counter[0]==UINT64_MAX ||
        w->counter[1]==UINT64_MAX || w->counter[0]+1!=c1 || w->counter[1]+1!=c2)))hrt_reset(w);
@@ -178,6 +180,35 @@ static void retime(const uint8_t *in,uint8_t *out,int s,const uint8_t *fill) {
         out[2*x+1]=in[2*lx+1];
         if(!(x&1))
             for(int v=0;v<2;v++)out[2*x+2*v]=(uint8_t)chroma(in,sx,v);
+    }
+}
+/* Lanczos-3 (the 6-tap filter of the owner's rubber-band note, 2026-09-28): source value at real
+ * position s on an n-sample grid, edges extended. */
+static double lanczos3(double x){if(x==0)return 1;if(fabs(x)>=3)return 0;double px=3.14159265358979323846*x;return 3*sin(px)*sin(px/3)/(px*px);}
+static double lanczos_at(const double *v,int n,double s){
+    int i0=(int)floor(s)-2;double acc=0,wsum=0;
+    for(int i=i0;i<i0+6;i++){int c=i<0?0:i>=n?n-1:i;double w=lanczos3(s-i);acc+=w*v[c];wsum+=w;}
+    return wsum!=0?acc/wsum:v[(int)fmin(fmax(s,0),n-1)];
+}
+static uint8_t clamp8(double v){return (uint8_t)(v<0?0:v>255?255:lround(v));}
+/* Edge-pinned resize: out[x] = in[el + (x-rl)(er-el)/(rr-rl)], mapping this line's falloffs (el,er)
+ * onto the reference falloffs (rl,rr). As in retime, columns whose source lies outside the picture
+ * window (samples 1-718) come from the other field when a filler exists. yout receives the luma. */
+static void resize_line(const uint8_t *in,uint8_t *out,double el,double er,double rl,double rr,
+                        const uint8_t *fill,uint8_t *yout) {
+    double y[HRT_WIDTH],u[HRT_WIDTH/2],v[HRT_WIDTH/2],k=(er-el)/(rr-rl);
+    for(int x=0;x<HRT_WIDTH;x++)y[x]=in[2*x+1];
+    for(int p=0;p<HRT_WIDTH/2;p++){u[p]=in[4*p];v[p]=in[4*p+2];}
+    for(int x=0;x<HRT_WIDTH;x++) {
+        double sx=el+(x-rl)*k;
+        if(fill && (sx<1 || sx>HRT_WIDTH-2)) {
+            out[2*x+1]=fill[2*x+1];
+            if(!(x&1)){out[2*x]=fill[2*x];out[2*x+2]=fill[2*x+2];}
+        } else {
+            out[2*x+1]=clamp8(lanczos_at(y,HRT_WIDTH,sx));
+            if(!(x&1)){out[2*x]=clamp8(lanczos_at(u,HRT_WIDTH/2,sx/2));out[2*x+2]=clamp8(lanczos_at(v,HRT_WIDTH/2,sx/2));}
+        }
+        yout[x]=out[2*x+1];
     }
 }
 /* Integer moments are exact for 720 8-bit samples; only the final Pearson
@@ -405,13 +436,18 @@ void hrt_apply_detected(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         double el=w->edge[j][0],er=w->edge[j][1];
         int left=isfinite(el) && !spilled(el) && isfinite(reference_edge[0]);
         int right=isfinite(er) && !spilled(er) && isfinite(reference_edge[1]);
-        int shift=0,interpolate_line=0;
+        int shift=0,interpolate_line=0,resize_line_now=0;
         if(isfinite(el) && el<0)o->reason[j]|=HRT_MISSING_EDGE;
         if(isfinite(er) && er>=HRT_WIDTH)o->reason[j]|=HRT_MISSING_EDGE;
         if(left) {
             shift=(int)lround(el-reference_edge[0]);
-            if(right && fabs((er-reference_edge[1])-(el-reference_edge[0]))>FEW)
-                {o->reason[j]|=HRT_WIDTH_BREAK;interpolate_line=1;}
+            if(right && fabs((er-reference_edge[1])-(el-reference_edge[0]))>FEW) {
+                o->reason[j]|=HRT_WIDTH_BREAK;
+                /* Both falloffs measured but moved by different amounts: a stretched line. Try the
+                 * edge-pinned resize before giving the line up to interpolation. */
+                if(w->resize && reference_edge[1]-reference_edge[0]>2*FEW && er-el>2*FEW)resize_line_now=1;
+                else interpolate_line=1;
+            }
             /* Picture past the right window only fits a move to the right. */
             if(isfinite(er) && er>=HRT_WIDTH && shift<-FEW){o->reason[j]|=HRT_WIDTH_BREAK;interpolate_line=1;}
         } else if(right) {
@@ -434,6 +470,24 @@ void hrt_apply_detected(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
          * field, so it is left alone (shift 0). */
         o->shift[j]=shift;
         o->deficit[j]=overlap_correlation(w->y[j],w->reference,0);
+        if(resize_line_now) {
+            double bar=refs==2?line_correlation(ref[0],ref[1],0):NAN;
+            int filled=interpolate(w,j,w->filler);
+            resize_line(w->row[j],w->resized,el,er,reference_edge[0],reference_edge[1],filled?w->filler:NULL,w->resized_y);
+            double agree=line_correlation(w->resized_y,w->reference,0);
+            o->r_line[j]=agree;o->r_neighbours[j]=bar;
+            if(agrees(o->deficit[j],bar) && !(agree>o->deficit[j])) {
+                o->action[j]=HRT_CONTENT;o->field[k].content++;continue;
+            }
+            if(agrees(agree,bar) && agree>o->deficit[j]) {
+                memcpy(out,w->resized,ROW_BYTES);
+                o->action[j]=HRT_RESIZE;o->field[k].resized++;
+                if(!o->field[k].first)o->field[k].first=line;
+                o->field[k].last=line;
+                continue;
+            }
+            o->reason[j]|=HRT_CORRELATION;interpolate_line=1;
+        }
         if(!interpolate_line && abs(shift)<=FEW) {
             o->action[j]=HRT_CONTENT;o->field[k].content++;continue;
         }

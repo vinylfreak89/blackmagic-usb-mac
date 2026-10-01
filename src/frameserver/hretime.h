@@ -8,7 +8,8 @@
 #include <stddef.h>
 #include <stdint.h>
 enum { HRT_WIDTH=720, HRT_ROWS=480, HRT_FIELD_ROWS=240, HRT_MAX_BANDS=480 };
-enum hrt_action { HRT_NONE, HRT_RETIME, HRT_INTERPOLATE, HRT_UNAVAILABLE, HRT_CONTENT };
+enum hrt_action { HRT_NONE, HRT_RETIME, HRT_INTERPOLATE, HRT_UNAVAILABLE, HRT_CONTENT,
+                  HRT_RESIZE /* edge-pinned resample: both falloffs mapped onto the other field's */ };
 /* CORRELATION: retimed waveform failed the other-field agreement bar.
  * MISSING_EDGE: picture at the window edge (no blanking) on some side.
  * BLANKING_SIZE: falloff departs from the frame standard and the other field.
@@ -25,7 +26,7 @@ typedef struct {
     int top_fallback, displaced[2];
 } hrt_band;
 typedef struct {
-    int bands, retimed, interpolated, unavailable, first, last, content;
+    int bands, retimed, interpolated, unavailable, first, last, content, resized;
 } hrt_field_result;
 typedef struct {
     int measured, band_count, abstained;
@@ -47,6 +48,9 @@ typedef struct hrt_workspace hrt_workspace;
 size_t hrt_size(void);
 /* Zero-initialise workspace at open; all temporal storage is preallocated. */
 void hrt_reset(hrt_workspace *);
+/* Owner's repair order (2026-10-01): shift, then resize (edge-pinned), then interpolate. resize=0 keeps
+ * shift-or-interpolate; the option survives hrt_reset. */
+void hrt_set_resize(hrt_workspace *,int resize);
 void hrt_begin(hrt_workspace *,uint64_t f1_counter,uint64_t f2_counter,uint64_t epoch,int reset);
 void hrt_apply(hrt_workspace *, const uint8_t *f1, const uint8_t *f2,
                int d1, int d2, uint8_t *out1, uint8_t *out2, hrt_result *);

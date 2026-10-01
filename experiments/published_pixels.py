@@ -104,10 +104,10 @@ def repair_ticks(row):
         for token in row.get(f'hretime_lines_f{field}', '').split():
             line, action = token.split(':')
             line = int(line)
-            if line in seen or action not in ('R','I','U','C'):
+            if line in seen or action not in ('R','I','U','C','S'):
                 raise ValueError(f'invalid repair action {token}')
             seen.add(line)
-            if action not in ('R','I'):
+            if action not in ('R','I','S'):
                 continue
             j = 2*(line-origin)+field-1
             if not 0 <= j < 480:

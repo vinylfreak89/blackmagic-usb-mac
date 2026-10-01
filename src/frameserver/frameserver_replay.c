@@ -96,6 +96,11 @@ int main(int argc, char **argv){
         fputs("FS_HRETIME_DETECTOR must be builtin or v11\n",stderr);return 2;
     }
     cfg.hretime_detector=detector && !strcmp(detector,"v11");
+    const char *resize=getenv("FS_HRETIME_RESIZE");
+    if(resize && strcmp(resize,"0") && strcmp(resize,"1")) {
+        fputs("FS_HRETIME_RESIZE must be 0 or 1\n",stderr);return 2;
+    }
+    cfg.hretime_resize=resize && !strcmp(resize,"1");
     const char *regoff=getenv("FS_REGISTRATION_OFF");
     if(regoff && strcmp(regoff,"0") && strcmp(regoff,"1")) {
         fputs("FS_REGISTRATION_OFF must be 0 or 1\n",stderr);return 2;

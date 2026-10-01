@@ -455,7 +455,7 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
                     int sep=0;
                     for(int j=k;j<HRT_ROWS;j+=2)if(repair->action[j]) {
                         int line=(k?286+d->frame_d2:23+d->frame_d1)+j/2;
-                        if(fprintf(f->log,"%s%d:%c",sep?" ":"",line,"NRIUC"[repair->action[j]])<0)bad=1;
+                        if(fprintf(f->log,"%s%d:%c",sep?" ":"",line,"NRIUCS"[repair->action[j]])<0)bad=1;
                         sep=1;
                     }
                 } else if(fputs(",,,,,,,",f->log)==EOF)bad=1;
@@ -768,6 +768,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
             f->retime_unit=malloc(FP_UNIT_BYTES);f->retime_previous=malloc(FP_UNIT_BYTES);
             f->retime_work=calloc(1,hrt_size());
             if(!f->retime_unit || !f->retime_previous || !f->retime_work){fs_close(f);return -1;}
+            hrt_set_resize(f->retime_work,cfg->hretime_resize);
             if(cfg->hretime_detector==1){f->hdetect=calloc(1,hd_size());if(!f->hdetect){fs_close(f);return -1;}hd_init(f->hdetect);}
             else if(cfg->hretime_detector){fs_close(f);return -1;}
         }

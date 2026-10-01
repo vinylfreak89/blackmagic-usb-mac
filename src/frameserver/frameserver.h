@@ -59,6 +59,7 @@ typedef struct {
                                  // excludes geometry_pair_next. First row starts at 0.
     int hretime;               // default 0; post-placement horizontal repair only
     int hretime_detector;      // with hretime: 0 built-in detection, 1 v11 detector (hdetect.c)
+    int hretime_resize;        // with hretime: 1 tries the edge-pinned resize before interpolating a stretched line
     int registration_off;      // default 0; 1 publishes every field at the nominal (0,0) placement.
                                // The engine still runs and logs its evaluation; applied/frame offsets
                                // in the sidecar are the published 0. H-retiming uses that placement.
