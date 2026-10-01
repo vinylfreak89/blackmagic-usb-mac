@@ -1,6 +1,6 @@
 # Registration: per-frame evidence plan (draft for the owner, 2026-10-01)
 
-Plan only. No engine code has changed. Built from tvc2 (the commercial tape) with registration on,
+Plan, with a first implementation behind `GE_EVIDENCE=1` (off by default). Built from tvc2 (the commercial tape) with registration on,
 replayed through today's engine (162,633 units, 0 holes, 0 drops), and checked against fixture A's
 approved decision log. Every number below is from that work; the instruments live in the session
 scratchpad and their conclusions are recorded here.
@@ -52,6 +52,13 @@ Not registration errors, recorded so they are not re-investigated:
   the next frame's comb is confident, it decides again, otherwise the other evidence decides.
 - **When the tops cannot be measured** (fades from black, near-black frames), the last measured raster is
   the fallback, never the last comb answer.
+- **A confidence that cannot be measured on a source does not participate** (owner, 2026-10-01: "its fine
+  if fixture A can't do it. it just means that that confidence value can't participate so fixture A
+  maintains its current method"). The tops confidence was calibrated on tvc2, which carries NTSC setup
+  (black about 16 codes above blanking), by checking the waveform top against a level-based top. Fixture A
+  has no setup, so the level-based check may not exist there; where it cannot be measured, that element
+  carries no weight and fixture A keeps the approved engine's method. Whether "cannot be measured" is
+  decided per frame (the level scan abstains) or per tape is to be settled from fixture A's data.
 
 ## Motion: comb confidence comes from what is not moving
 
