@@ -52,17 +52,19 @@ Not registration errors, recorded so they are not re-investigated:
   the next frame's comb is confident, it decides again, otherwise the other evidence decides.
 - **When the tops cannot be measured** (fades from black, near-black frames), the last measured raster is
   the fallback, never the last comb answer.
-- **A confidence that cannot be measured on a source does not participate** (owner, 2026-10-01: "its fine
-  if fixture A can't do it. it just means that that confidence value can't participate so fixture A
-  maintains its current method"). The tops confidence was calibrated on tvc2, which carries NTSC setup
-  (black about 16 codes above blanking), by checking the waveform top against a level-based top. Fixture A
-  has no setup, so the level-based check may not exist there; where it cannot be measured, that element
-  carries no weight and fixture A keeps the approved engine's method. Whether "cannot be measured" is
-  decided per frame (the level scan abstains) or per tape is to be settled from fixture A's data.
-  Fixture A still gets the comb changes (static-tile comb, no latch, motion lowering comb confidence), and
-  the hope is that few of its registrations change (owner, same day: "fixture A will still get the combing
-  fix though and HOPEFULLY it doesn't change too many registrations"). The approved-engine bound applies:
-  fewer than 100 changed comb decisions and 500 changed placements, each change beyond it shown to the owner.
+- **A confidence that cannot be measured on a source does not participate; that source keeps its current
+  method** (owner, 2026-10-01: "its fine if fixture A can't do it. it just means that that confidence value
+  can't participate so fixture A maintains its current method"). The tops confidence was calibrated on tvc2,
+  which carries NTSC setup (black about 16 codes above blanking), by checking the waveform top against a
+  level-based top. Fixture A has no setup, so that check may not exist there. Where it cannot be measured,
+  the tops keep the approved engine's authority: the measured tops decide the relative alignment unless one of
+  the approved engine's comb triggers fires (owner: "I thought fixture A kept the old tops confidence mode").
+  Fixture A still gets the comb changes: the comb that answers a trigger is the static-tile comb, it does not
+  latch, and vertical motion lowers its confidence ("fixture A will still get the combing fix though and
+  HOPEFULLY it doesn't change too many registrations"). Whether "cannot be measured" is decided per frame
+  (the level scan abstains) or per tape is to be settled from fixture A's data. The approved-engine bound
+  applies: fewer than 100 changed comb decisions and 500 changed placements, each change beyond it shown
+  to the owner.
 
 ## Motion: comb confidence comes from what is not moving
 
