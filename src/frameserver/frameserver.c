@@ -11,6 +11,7 @@
 #include "../field_registration/geometry_engine.h"
 #include "pairing_schedule.h"
 #include "hretime.h"
+#include "hdetect.h"
 #include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -59,6 +60,7 @@ struct frameserver {
     uint8_t *retime_unit, *retime_previous; /* repaired copies, never geometry inputs */
     hrt_workspace *retime_work;
     hrt_result retime_result;
+    hd_state *hdetect;hd_result hd_unit[2];uint64_t hd_counter[2];int hd_have[2],hd_held[2];uint8_t hd_rows[HRT_ROWS];
     fs_item geometry_item;
     fs_handoff_timing ht; uint64_t ht_since, idle_since;   // worker-only handoff accounting
     int geometry_pending, geometry_reset;
@@ -505,6 +507,23 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
     }
     pthread_mutex_unlock(&f->log_m);
 }
+/* Woven rows the v11 detector flagged for one frame: field 1's lines from its top unit, field 2's from
+ * its own unit; NULL when the built-in detection is in use. */
+static const uint8_t *detected_rows(frameserver *f,const ge_decision *d) {
+    if(!f->hdetect)return NULL;
+    memset(f->hd_rows,0,sizeof f->hd_rows);
+    for(int k=0;k<2;k++) {
+        uint64_t want=k?d->counter:d->top_unit;
+        for(int i=0;i<2;i++)if(f->hd_have[i] && f->hd_counter[i]==want) {
+            const hd_result *r=&f->hd_unit[i];
+            for(int m=0;m<r->nlines[k];m++) {
+                int j=k?2*(r->lines[k][m]-286-d->frame_d2)+1:2*(r->lines[k][m]-23-d->frame_d1);
+                if(j>=0 && j<HRT_ROWS)f->hd_rows[j]=1;
+            }
+        }
+    }
+    return f->hd_rows;
+}
 static void geometry_publish(frameserver *f,const fs_item *it,const uint8_t *unit,const ge_decision *d,const hrt_result *repair) {
     ap_correlation audio={0};int known=ap_lookup_correlation(f->aud,it->obs.epoch,d->counter,&audio);
 #ifdef AP_LOOKUP_DIAGNOSTICS
@@ -573,6 +592,16 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     f->ht.geometry_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-tg;
     placement_override(f,out,n);
     f->geometry_reset=0;
+    if(f->hdetect) {
+        /* v11 detection on this unit, in playback order, with its own census tops (held when unknown). */
+        int tops[2];ge_unit_tops(f->geometry,tops);
+        for(int k=0;k<2;k++)if(tops[k]>0)f->hd_held[k]=tops[k];
+        f->hd_unit[0]=f->hd_unit[1];f->hd_counter[0]=f->hd_counter[1];f->hd_have[0]=f->hd_have[1];
+        uint64_t th=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+        hd_judge(f->hdetect,f->geometry_y,f->hd_held[0]?f->hd_held[0]:-1,f->hd_held[1]?f->hd_held[1]:-1,&f->hd_unit[1]);
+        f->ht.hretime_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-th;
+        f->hd_counter[1]=it->obs.counter_extended;f->hd_have[1]=1;
+    }
     if(f->cfg.hretime)memcpy(f->retime_unit,unit,FP_UNIT_BYTES);
     if(f->geometry_reversed) {
         /* Outputs precede replacement of the single pending raster. ge_push flushes
@@ -585,8 +614,8 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
                 repair=&f->retime_result;
                 hrt_begin(f->retime_work,out[i].top_unit,out[i].counter,it->obs.epoch,out[i].reset_before);
                 uint64_t th=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
-                hrt_apply(f->retime_work,unit,f->geometry_unit,out[i].frame_d1,out[i].frame_d2,
-                          f->retime_unit,f->retime_previous,repair);
+                hrt_apply_detected(f->retime_work,unit,f->geometry_unit,out[i].frame_d1,out[i].frame_d2,
+                          f->retime_unit,f->retime_previous,repair,detected_rows(f,out+i));
                 f->ht.hretime_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-th;
                 published=f->retime_previous;
             }
@@ -603,8 +632,8 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
                 repair=&f->retime_result;
                 hrt_begin(f->retime_work,out[i].top_unit,out[i].counter,it->obs.epoch,out[i].reset_before);
                 uint64_t th=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
-                hrt_apply(f->retime_work,unit,unit,out[i].frame_d1,out[i].frame_d2,
-                          f->retime_unit,f->retime_unit,repair);
+                hrt_apply_detected(f->retime_work,unit,unit,out[i].frame_d1,out[i].frame_d2,
+                          f->retime_unit,f->retime_unit,repair,detected_rows(f,out+i));
                 f->ht.hretime_ns+=clock_gettime_nsec_np(CLOCK_UPTIME_RAW)-th;
             }
             geometry_publish(f,it,f->cfg.hretime?f->retime_unit:unit,out+i,repair);
@@ -739,6 +768,8 @@ int fs_open(frameserver **out, const fs_config *cfg){
             f->retime_unit=malloc(FP_UNIT_BYTES);f->retime_previous=malloc(FP_UNIT_BYTES);
             f->retime_work=calloc(1,hrt_size());
             if(!f->retime_unit || !f->retime_previous || !f->retime_work){fs_close(f);return -1;}
+            if(cfg->hretime_detector==1){f->hdetect=calloc(1,hd_size());if(!f->hdetect){fs_close(f);return -1;}hd_init(f->hdetect);}
+            else if(cfg->hretime_detector){fs_close(f);return -1;}
         }
         if(!f->geometry||!f->geometry_y||!f->geometry_unit){fs_close(f);return -1;}
         ge_init(f->geometry,f->geometry_reversed,cfg->geometry_config);
@@ -929,7 +960,7 @@ void fs_close(frameserver *f){
     if(f->life_m_init) pthread_mutex_destroy(&f->life_m);
     fs_test_destroyed();
     free(f->geometry);free(f->geometry_y);free(f->geometry_unit);
-    free(f->retime_unit);free(f->retime_previous);free(f->retime_work);
+    free(f->retime_unit);free(f->retime_previous);free(f->retime_work);free(f->hdetect);
     fs_pairing_free(&f->pairing);
     free(f->pool); free((void *)f->slot_used); free(f->parser); free(f->sig); free(f);
 }

@@ -127,6 +127,8 @@ size_t ge_size(void);
 /* Returns -1 for invalid config without changing storage; otherwise 0. */
 int ge_init(geometry_engine *, int pair_next, const ge_config *);
 const ge_config *ge_get_config(const geometry_engine *);
+/* Census tops (NTSC lines, 0 unknown) of the unit most recently pushed. */
+void ge_unit_tops(const geometry_engine *,int tops[2]);
 /* After ge_break flushes the old pairing, reset for a new pairing within the
  * same session. Retains only the published vote anchor, never prior votes. */
 void ge_set_pairing(geometry_engine *, int pair_next);

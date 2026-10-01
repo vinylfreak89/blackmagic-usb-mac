@@ -58,6 +58,7 @@ typedef struct {
     const char *pairing_schedule; // CSV snapshot loaded by fs_open;
                                  // excludes geometry_pair_next. First row starts at 0.
     int hretime;               // default 0; post-placement horizontal repair only
+    int hretime_detector;      // with hretime: 0 built-in detection, 1 v11 detector (hdetect.c)
     int registration_off;      // default 0; 1 publishes every field at the nominal (0,0) placement.
                                // The engine still runs and logs its evaluation; applied/frame offsets
                                // in the sidecar are the published 0. H-retiming uses that placement.

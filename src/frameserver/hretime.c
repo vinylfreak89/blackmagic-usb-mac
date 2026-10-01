@@ -295,6 +295,10 @@ static int shift_consistent(hrt_workspace *w,const double *standard,int j) {
 }
 void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
                int d1,int d2,uint8_t *out1,uint8_t *out2,hrt_result *o) {
+    hrt_apply_detected(w,f1,f2,d1,d2,out1,out2,o,NULL);
+}
+void hrt_apply_detected(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
+               int d1,int d2,uint8_t *out1,uint8_t *out2,hrt_result *o,const uint8_t *detected) {
     HRT_DIAG_PHASE(0);
     memset(o,0,sizeof *o);
     memset(w->flagged,0,sizeof w->flagged);memset(w->range,0,sizeof w->range);
@@ -348,12 +352,14 @@ void hrt_apply(hrt_workspace *w,const uint8_t *f1,const uint8_t *f2,
         for(int s=0;s<2;s++)bits|=side_evidence(w,standard,o->blank,j,s);
         if(isfinite(w->edge[j][0]) || isfinite(w->edge[j][1]))bits|=HRT_EDGES_KNOWN;
         o->edge_moved[j]=(uint8_t)bits;
+        if(detected)continue;
         int consistent=(bits&15)?shift_consistent(w,standard,j):0;
         if(consistent==1 || (consistent==2 && waveform_confirms(w,standard,j,bits)))w->range[j]=1;
     }
+    if(detected)for(int j=0;j<HRT_ROWS;j++)if(detected[j]){w->flagged[j]=1;o->reason[j]|=HRT_DETECTED;}
     /* A lone line is a dropout or a little one-line shift, not a band: a
      * detection needs a detected neighbour in its own field. */
-    for(int j=0;j<HRT_ROWS;j++)
+    if(!detected)for(int j=0;j<HRT_ROWS;j++)
         if(w->range[j] && ((j>=2 && w->range[j-2]) || (j+2<HRT_ROWS && w->range[j+2])))
             {w->flagged[j]=1;o->reason[j]|=HRT_BLANKING_SIZE;}
     memset(w->range,0,sizeof w->range);

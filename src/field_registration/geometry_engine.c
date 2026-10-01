@@ -39,6 +39,7 @@ struct geometry_engine {
 };
 size_t ge_size(void) { return sizeof(geometry_engine); }
 const ge_config *ge_get_config(const geometry_engine *g) { return &g->config; }
+void ge_unit_tops(const geometry_engine *g,int tops[2]) { tops[0]=g->valid?g->previous.first[0]:0;tops[1]=g->valid?g->previous.first[1]:0; }
 int ge_init(geometry_engine *g, int reverse, const ge_config *config) {
     ge_config c=config?*config:defaults; /* copy before clearing, even if aliased */
     if(!g || !ge_config_valid(&c))return -1;

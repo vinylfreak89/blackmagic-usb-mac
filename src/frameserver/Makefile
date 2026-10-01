@@ -5,7 +5,7 @@ TESTFLAGS = -DFRAMESERVER_TEST_HOOKS
 CPPFLAGS ?= -I. -I../capture_core -I../unit_parser -I../signal_state -I../field_registration
 LIBS = $(shell pkg-config --libs libusb-1.0) -lpthread -lm -framework IOSurface -framework CoreFoundation
 CORE = ../capture_core/capture_core.c ../unit_parser/unit_parser.c ../signal_state/signal_state.c ../field_registration/geometry_engine.c
-SRCS = frame_publisher.c audio_publisher.c frameserver.c async_file.c pairing_schedule.c hretime.c replay_probe.c $(CORE)
+SRCS = frame_publisher.c audio_publisher.c frameserver.c async_file.c pairing_schedule.c hretime.c hdetect.c replay_probe.c $(CORE)
 FIXTURE = ../unit_parser/tests/fixture.tpc
 FIXTURE_LONG = ../unit_parser/tests/fixture_plain.tpc   # 120 exact units, for the runtime-log window test
 

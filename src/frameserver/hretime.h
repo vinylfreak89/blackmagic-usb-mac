@@ -15,7 +15,7 @@ enum hrt_action { HRT_NONE, HRT_RETIME, HRT_INTERPOLATE, HRT_UNAVAILABLE, HRT_CO
  * WIDTH_BREAK: the two sides imply different shifts. BAND_FILL: in range,
  * not itself detected. */
 enum hrt_reason { HRT_CORRELATION=1, HRT_MISSING_EDGE=2, HRT_BLANKING_SIZE=4,
-                  HRT_WIDTH_BREAK=8, HRT_BAND_FILL=16 };
+                  HRT_WIDTH_BREAK=8, HRT_BAND_FILL=16, HRT_DETECTED=32 /* flagged by an external detector */ };
 /* Coordinate directions against the frame standard: '-' earlier, '+' later. */
 enum hrt_edge { HRT_LEFT_EARLIER=1, HRT_LEFT_LATER=2,
                 HRT_RIGHT_EARLIER=4, HRT_RIGHT_LATER=8, HRT_EDGES_KNOWN=16 };
@@ -50,4 +50,8 @@ void hrt_reset(hrt_workspace *);
 void hrt_begin(hrt_workspace *,uint64_t f1_counter,uint64_t f2_counter,uint64_t epoch,int reset);
 void hrt_apply(hrt_workspace *, const uint8_t *f1, const uint8_t *f2,
                int d1, int d2, uint8_t *out1, uint8_t *out2, hrt_result *);
+/* As hrt_apply, but the woven rows to repair come from an external detector (detected[j] for woven row j:
+ * 2*i field 1, 2*i+1 field 2) instead of the built-in flagging; range and repair are unchanged. */
+void hrt_apply_detected(hrt_workspace *, const uint8_t *f1, const uint8_t *f2,
+               int d1, int d2, uint8_t *out1, uint8_t *out2, hrt_result *, const uint8_t detected[HRT_ROWS]);
 #endif

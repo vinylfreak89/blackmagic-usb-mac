@@ -91,6 +91,11 @@ int main(int argc, char **argv){
         fputs("FS_HRETIME must be 0 or 1\n",stderr);return 2;
     }
     cfg.hretime=retime && !strcmp(retime,"1");
+    const char *detector=getenv("FS_HRETIME_DETECTOR");
+    if(detector && strcmp(detector,"builtin") && strcmp(detector,"v11")) {
+        fputs("FS_HRETIME_DETECTOR must be builtin or v11\n",stderr);return 2;
+    }
+    cfg.hretime_detector=detector && !strcmp(detector,"v11");
     const char *regoff=getenv("FS_REGISTRATION_OFF");
     if(regoff && strcmp(regoff,"0") && strcmp(regoff,"1")) {
         fputs("FS_REGISTRATION_OFF must be 0 or 1\n",stderr);return 2;
