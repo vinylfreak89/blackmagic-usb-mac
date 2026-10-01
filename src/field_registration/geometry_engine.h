@@ -114,7 +114,7 @@ typedef struct {
     int still_trigger, comb_suppressed;
     int vote_blankspot_measured, vote_blankspot_pass, vote_blankspot_line;
     ge_rigid_motion rigid[2]; /* frame-owned, field 1 from top_unit */
-    int ev_static_tiles, ev_moved_field, ev_tops_agree; /* evidence mode only */
+    int ev_moving_tiles, ev_moved_field, ev_tops_agree; /* evidence mode only; moving tiles over both fields */
     double ev_weight_tops, ev_weight_comb, ev_weight_previous;
     float ev_tjump[2]; /* frame-owned median tile shift per field */
     int ev_whole_comb_d; /* whole-frame comb shift, for comparison; feeds only the anchor vote */
