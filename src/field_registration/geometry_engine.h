@@ -26,6 +26,7 @@ typedef struct {
     int rigid_min;                /* 2, minimum absolute vertical shift */
     double rigid_clarity;         /* 1.3, inclusive far / best SAD */
     int evidence;                 /* 0 approved; 1 per-frame evidence (experiment, docs/registration_evidence_plan.md) */
+    int still_tiles;              /* 1: the approved still trigger also needs no moving tile in either field */
 } ge_config;
 ge_config ge_default_config(void);
 int ge_config_valid(const ge_config *);

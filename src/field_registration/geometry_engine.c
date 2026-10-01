@@ -22,7 +22,7 @@ int ge_config_valid(const ge_config *c) {
         isfinite(c->bottom_flat_margin) && c->bottom_flat_margin>0 &&
         isfinite(c->blankspot_tolerance) && c->blankspot_tolerance>=0 &&
         c->rigid_min>=1 && isfinite(c->rigid_clarity) && c->rigid_clarity>=1 &&
-        (c->evidence==0 || c->evidence==1);
+        (c->evidence==0 || c->evidence==1) && (c->still_tiles==0 || c->still_tiles==1);
 }
 
 struct geometry_engine {
@@ -664,7 +664,12 @@ static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
     }
     o.comb_ran=o.triggers!=0;
     o.comb=ge_comb(ty,by,&g->config);
-    if(o.picture_motion==GE_PICTURE_STILL) {
+    /* The whole-field motion measure reads a static overlay as stillness (tvc2 title fade-in: the
+     * background tilts 2-4 lines a frame under a static title); with still_tiles any sustained tile
+     * motion in either field vetoes the still trigger (owner: vertical motion anywhere). */
+    int tile_moving=0;
+    if(g->config.still_tiles)for(int ti=0;ti<EV_TR;ti++)for(int tj=0;tj<EV_TC;tj++)tile_moving|=t->tmoving[0][ti][tj]|b->tmoving[1][ti][tj];
+    if(o.picture_motion==GE_PICTURE_STILL && !tile_moving) {
         int proposed=dknown?d:(g->have_placement?g->last_d:0);
         ge_comb_evidence e=ge_comb_examine(&o.comb,proposed,&g->config);
         if(e.basin && e.ratio>=g->config.comb_reject) {
@@ -717,7 +722,7 @@ unsigned ge_push(geometry_engine *g,const uint8_t *y,uint64_t c,int reset,ge_dec
             if(abs(f->vertical[k].shift)>=g->config.rigid_min)
                 f->rigid[k]=ge_rigid_measure(y,g->previous_y,k);
         }
-    if(g->config.evidence && adjacent && !reset){tile_shifts(y,g->previous_y,0,f);tile_shifts(y,g->previous_y,1,f);tile_states(f,&g->previous);}
+    if((g->config.evidence || g->config.still_tiles) && adjacent && !reset){tile_shifts(y,g->previous_y,0,f);tile_shifts(y,g->previous_y,1,f);tile_states(f,&g->previous);}
     if(reset || !adjacent)reset_frame_state(g);
     if(!g->reverse) {
         out[n]=frame(g,y,y,f,f,c,c);out[n].reset_before=reset;
