@@ -109,6 +109,29 @@ Not registration errors, recorded so they are not re-investigated:
 - Whole-worker CPU from `make -C src/frameserver bench` within the 10 ms budget; the per-tile motion is the
   new cost to watch.
 
+## Confidences, not gates (owner, 2026-10-01)
+
+"it should be a confidence based normalized decision, not a single yes/no/unknown for the deciders" (his list of
+examples was illustrative: "I don't know all the elements of the engine"). Every decider becomes a normalized
+confidence; a surviving fixed number becomes the unit of a scale, learned from the tape's running spread where possible.
+
+| Decider today | Becomes |
+|---|---|
+| Top accepted (waveform bar 0.45, clamp) | the top's step size against the field's running step spread |
+| Top mistimed (spill / full-width blanking run) | edge departure against the running edge spread; gap width against 147 |
+| Tops' trust (runtime share; "decisive" gate still, margin >= 2) | each observation weighted by the comb's confidence |
+| Comb strength (0 / 1.7 / 4.6 at margins 1.05, 1.4) | depth below the runner-up, symmetry of the minimum, share of rows timed |
+| Motion downgrades the comb one step | how well measured motion explains the comb's disagreement (equal vs half: measure) |
+| Tile measurable (detail >= 1.3 x residual) | the ratio as the tile's weight |
+| Tile static / moving (0.4 line) | the tile's shift against its own match noise |
+| Row timed for the comb (spill, gap, edge > 4 off a 20-row standard) | each row weighted by its timing confidence |
+| Edge measurable (20-80% rise in 8, picture >= 40, coarse 20) | rise time and level as continuous edge quality |
+| Previous decision (last frame's fresh support; tie keeps it) | carries the last frame's decision margin |
+| No-evidence fallback (raster or previous, by rule) | disappears: raster weighted by trust competes with the carried previous |
+| Which field moved (jump beats the other by 0.4) | probability per field from both jumps against their noise |
+| Absolute placement (30-frame vote) | per-frame candidates: field-2 top with its confidence, previous anchor carried |
+| Classifier resets | transport facts stay hard; appearance changes may lower the carried previous |
+
 ## Order of work (owner)
 
 Registration cleanup (this plan), then H-timing correction, then stabilization.
