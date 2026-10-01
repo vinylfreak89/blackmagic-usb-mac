@@ -47,7 +47,9 @@ typedef struct {
 typedef enum { GE_UNKNOWN, GE_NOTHING, GE_VALID_MOVE, GE_BOTTOM_ONLY,
                GE_TOP_ONLY, GE_NOT_IN_TANDEM } ge_class;
 enum { GE_T1=1, GE_UNMEASURABLE=2, GE_FIELD1=4, GE_FIELD2=8, GE_CONFIRM=16,
-       GE_BASIS_CHANGED=32, GE_STILL=64 };
+       GE_BASIS_CHANGED=32, GE_STILL=64,
+       /* evidence mode only (config.evidence=1) */
+       GE_EV_COMB=128, GE_EV_FIELD2=256, GE_EV_TOPS_DISAGREE=512, GE_EV_PREVIOUS=1024 };
 typedef struct {
     double error, second_error; /* exact integer SAD / (180*640) */
     int known, shift;
@@ -113,7 +115,9 @@ typedef struct {
     int vote_blankspot_measured, vote_blankspot_pass, vote_blankspot_line;
     ge_rigid_motion rigid[2]; /* frame-owned, field 1 from top_unit */
     int ev_static_tiles, ev_moved_field, ev_tops_agree; /* evidence mode only */
-    double ev_weight_tops, ev_weight_comb;
+    double ev_weight_tops, ev_weight_comb, ev_weight_previous;
+    float ev_tjump[2]; /* frame-owned median tile shift per field */
+    int ev_whole_comb_d; /* whole-frame comb shift, for comparison; feeds only the anchor vote */
 } ge_decision;
 typedef struct geometry_engine geometry_engine;
 size_t ge_size(void);

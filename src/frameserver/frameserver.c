@@ -288,7 +288,7 @@ static const char *transport_name(unit_transport_state t){
     switch (t){ case UNIT_TRANSPORT_COMPLETE: return "Complete"; case UNIT_TRANSPORT_HOLE: return "Hole";
                 case UNIT_TRANSPORT_SHORT: return "Short"; default: return "Unframed"; }
 }
-static int log_header(FILE *L,int retime){
+static int log_header(FILE *L,int retime,int evidence){
     if(fprintf(L,"ordinal,epoch,observed_counter,counter_extended,applied_d1,applied_d2,f1_unused,f2_unused,reset_before,comb_ran,comb_d,comb_margin,comb_decided,confidence,frame_top_unit,triggers,frame_d1,frame_d2,f1_first,f2_first,f1_last,f2_last,bl1,bl2,hblank_level_f1,hblank_cols_f1,hblank_level_f2,hblank_cols_f2,class_f1,class_f2,published,drop_reason,preceding_ring_drops,schema_version,pairing,pairing_note,audio_residual_ticks,audio_step_samples,comb_energies,ge_wave_bar,ge_wave_clamp,wave_top_f1,wave_step_f1,wave_max_step_f1,wave_status_f1,wave_top_f2,wave_step_f2,wave_max_step_f2,wave_status_f2,relative_source,anchor_source,held_correction,ge_comb_reject,comb_reject_ratio,comb_rejected,comb_refused_d,comb_substituted_d,comb_discarded,comb_floor_lo,comb_floor_hi,comb_rise_left,comb_rise_right,comb_basin,ge_anchor_vote,ge_level_fill,ge_level_flat,vote_confident,vote_anchor,vote_engine_anchor,vote_count,vote_winner_count,vote_top_f1,vote_top_f2,level_top_f1,level_ref_f1,level_mean_f1,level_sd_f1,level_corr_f1,level_accepted_f1,level_top_f2,level_ref_f2,level_mean_f2,level_sd_f2,level_corr_f2,level_accepted_f2,ge_vote_pair,ge_vote_pair_min,vote_rB,vote_pair_pass,ge_bottom_flat,ge_bottom_flat_margin,bottom_rule_f1,bottom_F_p5_f1,bottom_F_p50_f1,bottom_F_p95_f1,bottom_rule_f2,bottom_F_p5_f2,bottom_F_p50_f2,bottom_F_p95_f2,ge_vote_blankspot,ge_comb_still,vote_blankspot_pass,vote_blankspot_line,motion_shift_f1,motion_error_f1,motion_error2_f1,motion_shift_f2,motion_error_f2,motion_error2_f2,picture_motion,still_trigger,comb_suppressed,ge_comb_motion_min,ge_comb_rigid,ge_comb_rigid_clarity,rigid_dx_f1,rigid_dy_f1,rigid_sad_f1,rigid_sad_far_f1,rigid_clarity_f1,rigid_dx_f2,rigid_dy_f2,rigid_sad_f2,rigid_sad_far_f2,rigid_clarity_f2")<0)return -1;
     if(retime) {
         if(fputs(",fs_hretime",L)==EOF)return -1;
@@ -297,6 +297,8 @@ static int log_header(FILE *L,int retime){
         if(fputs(",hretime_edges_f1,hretime_edges_f2,hretime_content_f1,hretime_content_f2",L)==EOF)return -1;
         if(fputs(",hretime_evidence_f1,hretime_evidence_f2,hretime_normal_f1,hretime_normal_f2,hretime_typical_band",L)==EOF)return -1;
     }
+    /* Evidence-mode registration experiment: the columns also mark the log as one (approved logs never carry them). */
+    if(evidence && fputs(",ge_evidence,ev_static_tiles,ev_weight_tops,ev_weight_comb,ev_weight_previous,ev_tops_agree,ev_moved_field,ev_tjump_f1,ev_tjump_f2,ev_whole_comb_d",L)==EOF)return -1;
     return fputc('\n',L)==EOF?-1:0;
 }
 /* v11 rows are unit-keyed. Frame diagnostics belong to that unit's bottom field;
@@ -489,6 +491,13 @@ static void geometry_log(frameserver *f,const fs_item *it,const ge_decision *d,i
             }
             if(fputc(',',f->log)==EOF)bad=1;
             if(repair && fprintf(f->log,"%.9g",repair->typical_band_length)<0)bad=1;
+        }
+        if(f->cfg.geometry_config->evidence) {
+            if(d && d->has_frame) {
+                if(fprintf(f->log,",1,%d,%.9g,%.9g,%.9g,%d,%d,%.9g,%.9g,%d",d->ev_static_tiles,d->ev_weight_tops,
+                   d->ev_weight_comb,d->ev_weight_previous,d->ev_tops_agree,d->ev_moved_field,
+                   (double)d->ev_tjump[0],(double)d->ev_tjump[1],d->ev_whole_comb_d)<0)bad=1;
+            } else if(fputs(",1,,,,,,,,,",f->log)==EOF)bad=1;
         }
         if(fputc('\n',f->log)==EOF)bad=1;
         if(bad){f->st.log_write_errors++;f->log_file_errors++;}else f->st.log_rows++;
@@ -749,7 +758,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if (ap_open(&f->aud, f->aq_cap_frames, &asink) != 0){ fs_close(f); return -1; }
     if (pthread_mutex_init(&f->log_m, NULL)){ fs_close(f); return -1; } f->log_m_init = 1;
     if (pthread_mutex_init(&f->tee_m, NULL)){ fs_close(f); return -1; } f->tee_m_init = 1;
-    if (cfg->decision_log){ f->log = fs_async_fopen_excl(cfg->decision_log, FS_LOG_RING_BYTES, FS_LOG_WRITE_CHUNK); if (!f->log || log_header(f->log,cfg->hretime) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
+    if (cfg->decision_log){ f->log = fs_async_fopen_excl(cfg->decision_log, FS_LOG_RING_BYTES, FS_LOG_WRITE_CHUNK); if (!f->log || log_header(f->log,cfg->hretime,f->cfg.geometry_config->evidence) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
     cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, cc_on_tick, cc_on_end, f };
     if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
@@ -826,7 +835,7 @@ int fs_log_start(frameserver *f, const char *path){
     if(attached) return -1;                            // one log at a time; the caller ends the previous one
     FILE *L = fs_async_fopen_excl(path, FS_LOG_RING_BYTES, FS_LOG_WRITE_CHUNK);   // never truncate an existing file: a sidecar is evidence
     if(!L) return -1;
-    if(log_header(L,f->cfg.hretime) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
+    if(log_header(L,f->cfg.hretime,f->cfg.geometry_config->evidence) != 0){ fclose(L); remove(path); return -1; }   // we created it; a header-less file is not a log
     // Lifecycle check and install happen under life_m so fs_stop (which moves life to STOPPING
     // under the same lock before joining the workers) cannot slip between them.
     pthread_mutex_lock(&f->life_m);

@@ -27,6 +27,7 @@ int ge_config_valid(const ge_config *c) {
 struct geometry_engine {
     ge_config config;
     int reverse, valid, held, provisional, have_placement, last_d, last_d2;
+    int have_st, last_st; double prev_weight; /* evidence mode */
     int basis_valid, basis_first[2]; /* tops of the frame that derived held */
     uint64_t counter;
     ge_features previous, current;
@@ -371,6 +372,7 @@ static void reject_placement(geometry_engine *g,ge_decision *o,int *d,int *d2) {
 }
 static void reset_frame_state(geometry_engine *g) {
     g->held=0;g->provisional=0;g->have_placement=0;g->last_d=g->last_d2=0;
+    g->have_st=0;g->last_st=0;g->prev_weight=0;
     g->basis_valid=0;g->basis_first[0]=g->basis_first[1]=0;
     g->vote_count=0;
 }
@@ -478,14 +480,20 @@ static ge_comb_result comb_static(const uint8_t *t,const uint8_t *b,const ge_fea
     for(int ti=0;ti<EV_TR;ti++)for(int tj=0;tj<EV_TC;tj++){mask[ti][tj]=ft->tstatic[0][ti][tj]&&fb->tstatic[1][ti][tj];*tiles+=mask[ti][tj];}
     ge_comb_result r={.shift=0,.decided=0,.margin=NAN};
     if(!*tiles)return r;
+    /* Comb lines 30..240, samples 24..695, restricted to static tiles (rows 8+16*ti of field 1). */
+    uint64_t count=0;
+    for(int line=30;line<=240;line++){int fr=line-23;if(fr<8)continue;int ti=(fr-8)/16;if(ti>=EV_TR)continue;
+        for(int tj=0;tj<EV_TC;tj++)if(mask[ti][tj]){int x0=tj*48<24?24:tj*48,x1=tj*48+48>696?696:tj*48+48;count+=(uint64_t)(x1-x0);}}
     double energy[11];
     for(int d=-5;d<=5;d++) {
-        uint64_t sum=0,count=0;
+        uint64_t sum=0;
         for(int line=30;line<=240;line++) {
-            int fr=(line-4)-19;if(fr<8)continue;int ti=(fr-8)/16;if(ti>=EV_TR)continue;
+            int fr=line-23;if(fr<8)continue;int ti=(fr-8)/16;if(ti>=EV_TR)continue;
             const uint8_t *a=t+(line-4)*720,*c=a+720,*bb=b+(line+259+d)*720;
-            for(int x=24;x<696;x++){if(!mask[ti][x/48])continue;
-                int v=((int)a[x]-bb[x])*((int)c[x]-bb[x]);sum+=v>0?(unsigned)v:0;count++;}
+            for(int tj=0;tj<EV_TC;tj++){if(!mask[ti][tj])continue;
+                int x0=tj*48<24?24:tj*48,x1=tj*48+48>696?696:tj*48+48;unsigned part=0;
+                for(int x=x0;x<x1;x++){int v=((int)a[x]-bb[x])*((int)c[x]-bb[x]);part+=v>0?(unsigned)v:0;}
+                sum+=part;}
         }
         energy[d+5]=count?(double)sum/count:0;
     }
@@ -495,10 +503,13 @@ static ge_comb_result comb_static(const uint8_t *t,const uint8_t *b,const ge_fea
     r.decided=1;memcpy(r.energies,energy,sizeof energy);return r;
 }
 /* Per-frame evidence: each element proposes a relative alignment with a confidence weight
- * (log-odds of being right, from the 2026-10-01 calibrations); the highest total wins; no latch.
+ * (log-odds of being right, from the 2026-10-01 calibrations); the candidate with the most weight wins.
  *   tops (census): waveform and level tops agree 99.6% right (logit 5.5); disagree 76% (1.15)
  *   static comb: best/second >= 1.4 99% right (4.6); 1.05-1.4 85% (1.7); below, no say
- * All weight zero or a tie with the previous decision keeps the previous decision (owner (b)). */
+ * The previous decision is one more candidate carrying the weight of the fresh evidence that last
+ * supported it (owner (b): weak evidence against it does not flip it, a stronger frame does).
+ * A frame with no evidence at all falls back to the last measured raster, never the last comb answer.
+ * Nothing is held across frames beyond that stored weight. */
 static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
                                   const ge_features *t,const ge_features *b,uint64_t tc,uint64_t bc) {
     ge_decision o={0};o.counter=bc;o.top_unit=tc;o.has_frame=1;o.comb.margin=NAN;
@@ -506,29 +517,50 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
     o.bottom_evidence[0]=t->bottom_evidence[0];o.bottom_evidence[1]=b->bottom_evidence[1];
     o.bottom[0]=t->bottom[0];o.bottom[1]=b->bottom[1];o.motion[0]=t->motion[0];o.motion[1]=b->motion[1];
     o.vertical[0]=t->vertical[0];o.vertical[1]=b->vertical[1];o.rigid[0]=t->rigid[0];o.rigid[1]=b->rigid[1];
+    o.ev_tjump[0]=t->tjump[0];o.ev_tjump[1]=b->tjump[1];
     int known=t->first[0] && b->first[1],st=known?b->first[1]-263-t->first[0]:0;
     int l1=ge_level_scan(ty,0,g->config.wave_clamp).first,l2=ge_level_scan(by,1,g->config.wave_clamp).first;
     o.ev_tops_agree=known && l1==t->first[0] && l2==b->first[1];
     double wt=known?(o.ev_tops_agree?5.5:1.15):0;
     int tiles=0;o.comb=comb_static(ty,by,t,b,&tiles);o.ev_static_tiles=tiles;
-    double wc=0;if(tiles && isfinite(o.comb.margin))wc=o.comb.margin>=1.4?4.6:(o.comb.margin>=1.05?1.7:0);
+    double wc=0;if(tiles && !isnan(o.comb.margin))wc=o.comb.margin>=1.4?4.6:(o.comb.margin>=1.05?1.7:0);
     o.ev_weight_tops=wt;o.ev_weight_comb=wc;
-    int prev=g->have_placement?g->last_d:0,d;
-    if(wt==0 && wc==0){d=prev;o.relative_source=g->have_placement?GE_SOURCE_PREVIOUS:GE_SOURCE_START;}
-    else if(wc==0 || (known && o.comb.shift==st)){d=st;o.relative_source=GE_SOURCE_CENSUS;}
-    else if(wt==0 || wc>wt){d=o.comb.shift;o.relative_source=GE_SOURCE_COMB;o.comb_ran=1;o.triggers|=1;}
-    else if(wt>wc){d=st;o.relative_source=GE_SOURCE_CENSUS;}
-    else {d=(prev==st||prev==o.comb.shift)?prev:st;o.relative_source=GE_SOURCE_PREVIOUS;o.triggers|=8;}
-    if(!o.ev_tops_agree && known)o.triggers|=4;
-    o.rejection=ge_comb_examine(&o.comb,known?st:d,&g->config);
+    int d;
+    if(wt==0 && wc==0) {
+        d=g->have_st?g->last_st:0;g->prev_weight=0;
+        o.relative_source=g->have_st?GE_SOURCE_PREVIOUS:GE_SOURCE_START;
+    } else {
+        /* Candidates: census st, comb shift, previous decision. */
+        int cand[3]={st,o.comb.shift,g->last_d};double fresh[3]={0,0,0},total[3];
+        int have[3]={known,wc>0,g->have_placement};
+        for(int i=0;i<3;i++)if(have[i]){
+            if(known && cand[i]==st)fresh[i]+=wt;
+            if(wc>0 && cand[i]==o.comb.shift)fresh[i]+=wc;
+        }
+        int w=-1;
+        for(int i=0;i<3;i++){if(!have[i])continue;
+            total[i]=fresh[i]+(g->have_placement && cand[i]==g->last_d?g->prev_weight:0);
+            if(w<0||total[i]>total[w])w=i;}
+        d=cand[w];
+        o.ev_weight_previous=g->have_placement?g->prev_weight:0;
+        if(fresh[w]>0)g->prev_weight=fresh[w];
+        if(fresh[w]==0){o.relative_source=GE_SOURCE_PREVIOUS;o.triggers|=GE_EV_PREVIOUS;}
+        else if(known && d==st)o.relative_source=GE_SOURCE_CENSUS;
+        else {o.relative_source=GE_SOURCE_COMB;o.comb_ran=1;o.triggers|=GE_EV_COMB;}
+    }
+    if(!o.ev_tops_agree && known)o.triggers|=GE_EV_TOPS_DISAGREE;
+    if(known){g->have_st=1;g->last_st=st;}
+    /* The anchor vote keeps the approved input: the whole-frame comb examined at the published relative. */
+    ge_comb_result whole=ge_comb(ty,by,&g->config);o.ev_whole_comb_d=whole.shift;
+    o.rejection=ge_comb_examine(&whole,d,&g->config);
     int d2=b->first[1]?b->first[1]-286:(g->have_placement?g->last_d2:0);
     /* Which field moved: the one whose tiles jumped against its own previous unit. */
     int field2=known && d!=st && fabsf(b->tjump[1])>fabsf(t->tjump[0])+EV_STILL;
-    o.ev_moved_field=d==st?0:(field2?2:1);
+    o.ev_moved_field=!known||d==st?0:(field2?2:1);
     o.frame_d1=o.d1=d2-d;o.frame_d2=o.d2=d2;o.published_d=d;o.held=0;
     g->last_d=d;g->last_d2=d2;g->have_placement=1;g->held=0;g->provisional=0;
     vote_anchor(g,&o,t,b,ty,by);
-    if(field2){int a=o.frame_d2;o.frame_d1=o.d1=a-st;o.frame_d2=o.d2=o.frame_d1+d;o.triggers|=2;}
+    if(field2){int a=o.frame_d2;o.frame_d1=o.d1=a-st;o.frame_d2=o.d2=o.frame_d1+d;o.triggers|=GE_EV_FIELD2;}
     return o;
 }
 static ge_decision frame(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
