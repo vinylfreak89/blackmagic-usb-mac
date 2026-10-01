@@ -239,6 +239,12 @@ readback, replacing the old files outright; do not retain replaced renders,
 sidecars or status files. Status must name engine and renderer commits,
 configuration, frame accounting and hashes.
 
+**Open renderer fix (owner, 2026-10-02: "leave it for future renders").** The overlay path converts the picture
+to 8-bit full-range RGB (`geometry_render.py`, the `yy=(Y-16)/219` stage), so sub-black (Y < 16) and super-white
+(Y > 235) are clipped and the 10-bit ProRes carries an 8-bit intermediate; colour primaries and transfer are left
+untagged (range tv and matrix smpte170m are set). For the next render work: tag SD primaries/transfer and keep the
+picture out of a clipping 8-bit RGB stage, as the OBS I210 fix did. The 2026-10-02 renders were made before this.
+
 `render_stability_audit.py` remains an independent presentation diagnostic;
 its measurements do not choose registration. The retired schema-7/9 renderer,
 overlay and audit wrappers have been removed.
