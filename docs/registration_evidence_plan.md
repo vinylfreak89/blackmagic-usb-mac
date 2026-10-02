@@ -184,6 +184,12 @@ trouble spots, before the next):
    motion enters as a continuous confidence, scaled by the moving share. A compensated comb would need per-region
    motion weighted by comb energy. These curves come from fixture A; check them on other material before relying on
    them.
+   Known gap after step 1 (d0cf904): flat sky (tvc2 52:57-53:08) still wanders. The comb's ratio is noise-inflated
+   there and the structure term is out; and the tops, cleanly measured, carry little weight because the preceding
+   dub's source jitter pulled the trust window down. Next (owner, 2026-10-02: one at a time): a structure term that
+   transfers between recordings - the share of the picture with measurable detail (tile measurability), checked
+   SP<->EP - then tops confidence from the tops' own measurement (step 4) so a jittery stretch in the trust window
+   cannot silence cleanly measured tops.
 2. Trust taught by that confidence (chip away, no gates).
 3. The previous decision carrying its confidence and losing it to opposing evidence (hold on weak evidence).
 4. Continuous tops confidence (waveform step, cross-field agreement, timing).
