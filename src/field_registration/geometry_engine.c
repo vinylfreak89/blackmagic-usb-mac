@@ -544,11 +544,9 @@ static ge_comb_result comb_timed(const uint8_t *t,const uint8_t *b,const uint8_t
  * (log-odds of being right, from the 2026-10-01 calibrations); the candidate with the most weight wins.
  *   tops (census): the source's learned trust (EV_TRUST), log-odds, never negative
  *   comb: continuous log-odds from depth, motion and asymmetry (see the comb weight below)
- * The previous decision is one more candidate carrying the confidence it was decided with (owner (b):
- * weaker evidence against it does not flip it at once, a stronger frame does; a tie keeps it). Each frame's
- * opposing evidence wears that confidence down and fresh support restores it, never above the fresh weight,
- * so it cannot accumulate into a latch; with no evidence either way it holds (owner, 2026-10-01: when
- * everything is low confidence, "the answer should probably be a hold").
+ * The previous decision is one more candidate carrying the fresh evidence that supported it on the
+ * last frame (owner (b): weaker evidence against it does not flip it at once, a stronger frame does);
+ * a tie keeps it, and unsupported it decays to nothing, so a comb decision never latches.
  * A frame with no evidence at all falls back to the last measured raster, never the last comb answer.
  * Nothing is held across frames beyond that stored weight. */
 static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uint8_t *by,
@@ -593,7 +591,7 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
     if(wt==0 && wc==0 && g->have_placement && (o.ev_top_mistimed || !(log(trust/(1-trust))>0))) {
         /* Tops mistimed, or a source whose tops are not trusted: no raster to fall back to; the
          * previous decision stands. */
-        d=g->last_d;o.relative_source=GE_SOURCE_PREVIOUS;o.triggers|=GE_EV_PREVIOUS;
+        d=g->last_d;o.relative_source=GE_SOURCE_PREVIOUS;o.triggers|=GE_EV_PREVIOUS;g->prev_weight=0;
     } else if(wt==0 && wc==0) {
         d=g->have_st?g->last_st:0;g->prev_weight=0;
         o.relative_source=g->have_st?GE_SOURCE_PREVIOUS:GE_SOURCE_START;
@@ -612,11 +610,8 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
             if(w<0||total[i]>total[w]||(total[i]==total[w] && g->have_placement && cand[i]==g->last_d))w=i;}
         d=cand[w];
         o.ev_weight_previous=g->have_placement?g->prev_weight:0;
-        /* The winner carries its confidence forward: the larger of this frame's fresh support and what it
-         * already carried less the strongest opposing candidate. A new decision carries only its fresh weight. */
-        double opp=0,carry=g->have_placement && cand[w]==g->last_d?g->prev_weight:0;
-        for(int i=0;i<3;i++)if(have[i] && cand[i]!=cand[w])opp=fmax(opp,total[i]);
-        g->prev_weight=fmax(fresh[w],carry-opp);
+        /* The previous decision carries only last frame's fresh support: unsupported, it decays to nothing. */
+        g->prev_weight=fresh[w];
         if(fresh[w]==0){o.relative_source=GE_SOURCE_PREVIOUS;o.triggers|=GE_EV_PREVIOUS;}
         else if(known && d==st)o.relative_source=GE_SOURCE_CENSUS;
         else {o.relative_source=GE_SOURCE_COMB;o.comb_ran=1;o.triggers|=GE_EV_COMB;}
