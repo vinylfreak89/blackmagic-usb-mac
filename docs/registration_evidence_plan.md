@@ -170,6 +170,14 @@ trouble spots, before the next):
 1. Continuous comb confidence: depth (margin), symmetry of the minimum, structure (energy gap against the tape's
    running gap), and a continuous motion term - how much of the comb's disagreement the measured motion explains,
    with "equal vs half the frame-to-frame motion" measured on fixture A's captions and the tvc2 tilt first.
+   **Measured 2026-10-02 (fixture A captions, pairing-correct evidence run, 40,237 labelled frames):** the comb's
+   error against caption truth is +0.54 x the frame-to-frame motion when the whole picture moves (453 frames,
+   aligned pairing), +0.27 across all aligned moving frames (7,037; static picture dilutes it) and -0.16 under
+   reversed pairing (426; field 2 is first in time, so the sign flips). So a motion-fooled comb lands at half the
+   frame motion, i.e. at the motion between the two fields it compares (the owner's "equals the amount of
+   motion"), scaled by the moving share of the picture and signed by field order. The term is physical:
+   predicted shift = +-1/2 x tile motion x moving share of the comb's energy. Next: compare using it as a
+   confidence (disagreement explained by motion) against subtracting it (motion-compensated comb) on caption truth.
 2. Trust taught by that confidence (chip away, no gates).
 3. The previous decision carrying its confidence and losing it to opposing evidence (hold on weak evidence).
 4. Continuous tops confidence (waveform step, cross-field agreement, timing).
