@@ -171,7 +171,8 @@ int main(int argc,char**argv){
          * second after it is put back, cycling through the bytes of registers 4 and 8 and the two audio registers
          * for the whole capture; every write is listed beside the capture with its time. The registers are read
          * first and left as they were found. */
-        static const struct { uint16_t index; int byte; } steps[]={{4,0},{4,1},{4,2},{8,0},{8,1},{8,2},{28,-1},{32,-1}};
+        /* the audio registers come third and fourth so that, started with the tape, they fall on its silent cards */
+        static const struct { uint16_t index; int byte; } steps[]={{4,0},{4,1},{28,-1},{32,-1},{4,2},{8,0},{8,1},{8,2}};
         const unsigned nsteps=sizeof steps/sizeof *steps;
         uint32_t orig[4]={0}; const uint16_t regs[4]={4,8,28,32}; int ok=1;
         for(int r=0;r<4;r++) if(cc_debug_register(g_s,0,regs[r],&orig[r])!=CC_OK) ok=0;
