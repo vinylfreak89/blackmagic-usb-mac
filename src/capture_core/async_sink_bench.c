@@ -1,7 +1,7 @@
 /* Measurement, not a test: feed cc_async_sink at the device's rate for a while and report how its writer kept up.
  *   async_sink_bench PATH SECONDS utility|user BUSY_THREADS
  * PATH is created (must not exist) and left for the caller to delete. BUSY_THREADS spin at user-initiated QoS to
- * load the machine. Ring and chunk match the OBS source's raw tee (256 MiB, 1 MiB). */
+ * load the machine. Ring and chunk match the OBS source's raw tee (4 GiB, 1 MiB). */
 #include "capture_core.h"
 #include <pthread.h>
 #include <pthread/qos.h>
@@ -23,7 +23,7 @@ int main(int argc,char **argv){
     cc_async_sink_writer_qos=strcmp(argv[3],"user")?QOS_CLASS_UTILITY:QOS_CLASS_USER_INITIATED;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);       /* the capture delivery thread's class */
     cc_async_sink *k; cc_callbacks cb;
-    if(cc_async_sink_open(&k,argv[1],"async_sink_bench",256u<<20,1u<<20)!=CC_OK){ perror("open"); return 1; }
+    if(cc_async_sink_open(&k,argv[1],"async_sink_bench",(size_t)4<<30,1u<<20)!=CC_OK){ perror("open"); return 1; }
     cc_async_sink_callbacks(k,&cb);
     pthread_t th[64]; if(nbusy>64) nbusy=64;
     for(int i=0;i<nbusy;i++) pthread_create(&th[i],NULL,busy,NULL);

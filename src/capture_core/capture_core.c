@@ -12,6 +12,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #include <sys/qos.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -992,6 +993,7 @@ static uint64_t as_now_(void){ return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
 struct cc_async_sink {
     int fd; uint8_t *ring; size_t cap, chunk;
     _Atomic size_t head, tail;           // monotonic byte counts: producer publishes head, writer tail
+    size_t granule;                      // tail is published in whole granules so drained pages can be handed back; 0 = exact
     pthread_t thr; pthread_mutex_t m; pthread_cond_t cv; _Atomic int stop;
     uint64_t pend_pk[2], pend_by[2];     // producer-only: dropped DATA not yet confessed
     _Atomic uint64_t records, written, lost_pk[2], lost_by[2], control_dropped, discarded;
@@ -1071,12 +1073,23 @@ static void as_error_(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
 }
 static void as_tick_(void *ctx, uint32_t ms){ rec_hdr h={REC_MAGIC,REC_TICK,0,0,0,ms,0,0}; as_meta_(ctx,&h); }
 static void as_end_(void *ctx, enum cc_end r){ (void)ctx; (void)r; }
+/* Hand the memory of drained ring bytes [a,b) back to the system. Laid out end to end, the stream passes through
+ * every page of the ring once per ring length whether or not the writer keeps up, so without this a ring sized
+ * for a long stall would stay resident in full a few minutes into every recording. Called before the tail that
+ * frees [a,b) is published: until then the producer cannot write there. a and b are granule (page) multiples. */
+static void as_release_(struct cc_async_sink *k, size_t a, size_t b){
+    while(a<b){
+        size_t o=a%k->cap, n=b-a; if(n>k->cap-o) n=k->cap-o;
+        mmap(k->ring+o,n,PROT_READ|PROT_WRITE,MAP_FIXED|MAP_PRIVATE|MAP_ANON,-1,0);   /* fresh zero pages in place */
+        a+=n;
+    }
+}
 static void *as_writer_(void *arg){
     struct cc_async_sink *k=arg;
     pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
     uint64_t last_done=0;                /* end of the previous write if data was still waiting then, else 0 */
+    size_t tail=atomic_load_explicit(&k->tail,memory_order_relaxed);   /* drained up to here; the published tail may lag by under a granule */
     for(;;){
-        size_t tail=atomic_load_explicit(&k->tail,memory_order_relaxed);
         size_t avail=atomic_load_explicit(&k->head,memory_order_acquire)-tail;
         if(!avail){
             last_done=0;
@@ -1113,23 +1126,28 @@ static void *as_writer_(void *arg){
             atomic_fetch_add_explicit(&k->written,done,memory_order_relaxed);
             if(done<n) atomic_fetch_add_explicit(&k->discarded,n-done,memory_order_relaxed);
         }
-        atomic_store_explicit(&k->tail,tail+n,memory_order_release);
+        tail+=n;
+        size_t pub=k->granule?tail-tail%k->granule:tail, was=atomic_load_explicit(&k->tail,memory_order_relaxed);
+        if(pub>was){ if(k->granule) as_release_(k,was,pub); atomic_store_explicit(&k->tail,pub,memory_order_release); }
     }
     return NULL;
 }
 int cc_async_sink_open(cc_async_sink **out, const char *path, const char *note, size_t ring_bytes, size_t chunk){
     if(!out || !path || ring_bytes<(1u<<20) || !chunk) return CC_ERR_ARGS;
     cc_async_sink *k=calloc(1,sizeof *k); if(!k) return CC_ERR_NOMEM;
-    k->cap=ring_bytes; k->chunk=chunk; k->qos=cc_async_sink_writer_qos; k->ring=malloc(ring_bytes);
-    if(!k->ring){ free(k); return CC_ERR_NOMEM; }
+    k->cap=ring_bytes; k->chunk=chunk; k->qos=cc_async_sink_writer_qos;
+    size_t page=(size_t)getpagesize(), g=ring_bytes/64<(1u<<20)?ring_bytes/64:(1u<<20);
+    k->granule=ring_bytes%page?0:g-g%page;                /* a ring that is not whole pages publishes exactly and keeps its memory */
+    k->ring=mmap(NULL,ring_bytes,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0);
+    if(k->ring==MAP_FAILED){ free(k); return CC_ERR_NOMEM; }
     k->fd=open(path,O_WRONLY|O_CREAT|O_EXCL,0644);
-    if(k->fd<0){ free(k->ring); free(k); return CC_ERR_IO; }
+    if(k->fd<0){ munmap(k->ring,k->cap); free(k); return CC_ERR_IO; }
     pthread_mutex_init(&k->m,NULL); pthread_cond_init(&k->cv,NULL);
     if(note && *note){
         size_t len=strlen(note); rec_hdr h={REC_MAGIC,REC_SESSION,0,0,0,0,0,(uint32_t)len}; as_put_(k,&h,note,len);
     }
     if(pthread_create(&k->thr,NULL,as_writer_,k)!=0){
-        close(k->fd); unlink(path); pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); free(k->ring); free(k); return CC_ERR_NOMEM;
+        close(k->fd); unlink(path); pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); munmap(k->ring,k->cap); free(k); return CC_ERR_NOMEM;
     }
     *out=k; return CC_OK;
 }
@@ -1160,6 +1178,6 @@ int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
         st->max_in_write_at_loss_ns=atomic_load(&k->max_in_write_at_loss_ns);
     }
     int rc=k->io_errno?CC_ERR_IO:CC_OK;
-    pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); free(k->ring); free(k);
+    pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); munmap(k->ring,k->cap); free(k);
     return rc;
 }

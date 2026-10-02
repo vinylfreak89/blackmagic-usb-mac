@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <mach/mach.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -21,6 +22,27 @@ static ssize_t gated_write(int fd,const void *b,size_t n){
     while(!atomic_load(&gate_open)){ struct timespec t={0,1000000}; nanosleep(&t,NULL); }
     if(n>max_seen) max_seen=n;
     return write(fd,b,n>3000?3000:n);   /* short writes too */
+}
+static _Atomic uint64_t discarded_bytes;
+static ssize_t discarding_write(int fd,const void *b,size_t n){ (void)fd;(void)b; atomic_fetch_add(&discarded_bytes,n); return (ssize_t)n; }
+static uint64_t footprint(void){
+    task_vm_info_data_t ti; mach_msg_type_number_t c=TASK_VM_INFO_COUNT;
+    assert(task_info(mach_task_self(),TASK_VM_INFO,(task_info_t)&ti,&c)==KERN_SUCCESS); return ti.phys_footprint;
+}
+/* Pass four ring lengths of stream through a ring whose writer keeps up, and return how much the process grew. */
+static uint64_t ring_growth(const char *path,size_t ring){
+    cc_async_sink *k; cc_callbacks cb; cc_async_sink_stats st;
+    cc_async_sink_test_write=discarding_write; atomic_store(&discarded_bytes,0);
+    assert(cc_async_sink_open(&k,path,"",ring,1u<<20)==CC_OK); cc_async_sink_callbacks(k,&cb);
+    uint64_t before=footprint(), fed=0;
+    for(uint32_t i=0; fed<4*(uint64_t)ring; i++){
+        cc_packet p={CC_EP_VIDEO,(uint16_t)(i%128),i/128,0,15360,15360,payload}; cb.on_packet(cb.ctx,&p); fed+=24+15360;
+        if(i%64==63) for(int w=0; atomic_load(&discarded_bytes)<fed; w++){ assert(w<20000); struct timespec d={0,100000}; nanosleep(&d,NULL); }   /* writer has caught up */
+    }
+    uint64_t after=footprint();
+    assert(cc_async_sink_close(k,&st)==CC_OK && !st.lost_packets[0] && st.high_water<ring/8);
+    cc_async_sink_test_write=NULL; unlink(path);
+    return after>before?after-before:0;
 }
 static ssize_t failing_write(int fd,const void *b,size_t n){ (void)fd;(void)b;(void)n; errno=EIO; return -1; }
 static void feed(cc_callbacks *cb,int n,unsigned seed){
@@ -99,6 +121,13 @@ int main(void){
     assert(cc_async_sink_open(&as,d,"fail",1u<<20,65536)==CC_OK); cc_async_sink_callbacks(as,&ca);
     feed(&ca,100,3); assert(cc_async_sink_close(as,&st)==CC_ERR_IO && st.io_error==EIO && st.discarded_after_error>0);
     cc_async_sink_test_write=NULL;
+    /* 6. a ring's memory follows its backlog, not its size: the stream is laid through every page of the ring once
+     * per ring length, so a writer that keeps up must hand drained pages back. The same feed through a ring that
+     * cannot (not a whole number of pages) shows the measurement sees the difference. */
+    { char d[256]; snprintf(d,sizeof d,"%s/grow.tpc",dir);
+      uint64_t kept=ring_growth(d,(64u<<20)+1), freed=ring_growth(d,64u<<20);
+      if(!(kept>=(48u<<20) && freed<=(16u<<20))){ fprintf(stderr,"ring memory: %.1f MB without release, %.1f MB with\n",kept/1e6,freed/1e6); assert(0); }
+      printf("  ring memory after 4 ring lengths, writer keeping up: %.1f MB without release, %.1f MB with\n",kept/1e6,freed/1e6); }
     unlink(a); unlink(b); unlink(c); unlink(d); rmdir(dir);
     puts("ASYNC-SINK PASS: byte-identical to the tagged sink, bounded writes, non-blocking stall with exact HostLoss, sticky write failure, exclusive create");
     return 0;

@@ -397,7 +397,10 @@ static void sidecar_detach(shuttle_src *s){
     pthread_attr_destroy(&a);
 }
 
-#define TPC_RING_BYTES (256u << 20)   /* ~11 s of stream: rides out a stalled network write */
+/* ~3 minutes of stream (owner, 2026-10-02: 2 or 4 GB). The 256 MiB it replaces rode out 11 s; a 90-minute recording
+ * then lost 137 s of raw capture in two stretches where the writer fell behind. The sink hands drained pages back,
+ * so this is address space until the writer actually falls behind. */
+#define TPC_RING_BYTES ((size_t)4 << 30)
 typedef struct { shuttle_src *s; cc_async_sink *k; char *path; } tpc_close_job;
 static void *tpc_closer(void *arg){
     tpc_close_job *j = arg; cc_async_sink_stats st;
