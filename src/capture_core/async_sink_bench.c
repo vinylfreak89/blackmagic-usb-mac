@@ -23,7 +23,7 @@ int main(int argc,char **argv){
     cc_async_sink_writer_qos=strcmp(argv[3],"user")?QOS_CLASS_UTILITY:QOS_CLASS_USER_INITIATED;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);       /* the capture delivery thread's class */
     cc_async_sink *k; cc_callbacks cb;
-    if(cc_async_sink_open(&k,argv[1],"async_sink_bench",(size_t)4<<30,1u<<20)!=CC_OK){ perror("open"); return 1; }
+    if(cc_async_sink_open(&k,argv[1],"async_sink_bench",(size_t)4<<30,1u<<20)!=CC_OK){ fprintf(stderr,"cannot open %s (it must not exist)\n",argv[1]); return 1; }
     cc_async_sink_callbacks(k,&cb);
     pthread_t th[64]; if(nbusy>64) nbusy=64;
     for(int i=0;i<nbusy;i++) pthread_create(&th[i],NULL,busy,NULL);
@@ -44,9 +44,9 @@ int main(int argc,char **argv){
     cc_async_sink_stats st; int rc=cc_async_sink_close(k,&st);
     printf("%s writer, %d busy threads, %.1f s fed (%llu ms more than 50 ms late): rc %d | lost video %llu pkts audio %llu pkts | ring peak %.1f MB | "
            "%llu writes, mean %.2f ms, longest %.1f ms, %llu over 100 ms | longest wait between writes with data ready %.1f ms | "
-           "loss episodes %llu, writer inside a write at %llu of them (longest %.1f ms) | close took %.1f s\n",
+           "loss episodes %llu, writer inside a write at %llu of them (for up to %.1f ms by then) | most found waiting after an idle wait %.1f MB | handed back %.0f MB, %llu refusals | close took %.1f s\n",
            argv[3],nbusy,(t1-t0)/1e9,(unsigned long long)late,rc,(unsigned long long)st.lost_packets[0],(unsigned long long)st.lost_packets[1],st.high_water/1e6,
            (unsigned long long)st.writes,st.writes?st.write_ns/1e6/(double)st.writes:0.0,st.max_write_ns/1e6,(unsigned long long)st.slow_writes,st.max_ready_gap_ns/1e6,
-           (unsigned long long)st.loss_episodes,(unsigned long long)st.loss_in_write,st.max_in_write_at_loss_ns/1e6,(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)-t1)/1e9);
+           (unsigned long long)st.loss_episodes,(unsigned long long)st.loss_in_write,st.max_in_write_at_loss_ns/1e6,st.max_wake_backlog/1e6,st.released_bytes/1e6,(unsigned long long)st.release_failures,(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)-t1)/1e9);
     return 0;
 }

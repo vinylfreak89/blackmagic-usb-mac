@@ -994,6 +994,8 @@ struct cc_async_sink {
     int fd; uint8_t *ring; size_t cap, chunk;
     _Atomic size_t head, tail;           // monotonic byte counts: producer publishes head, writer tail
     size_t granule;                      // tail is published in whole granules so drained pages can be handed back; 0 = exact
+    _Atomic size_t drained;              // writer: exact drain position (the published tail lags it by under a granule)
+    _Atomic uint64_t max_wake_backlog, released_bytes, release_failures;
     pthread_t thr; pthread_mutex_t m; pthread_cond_t cv; _Atomic int stop;
     uint64_t pend_pk[2], pend_by[2];     // producer-only: dropped DATA not yet confessed
     _Atomic uint64_t records, written, lost_pk[2], lost_by[2], control_dropped, discarded;
@@ -1017,7 +1019,7 @@ static void as_put_(struct cc_async_sink *k, const rec_hdr *h, const void *pay, 
     size_t at=atomic_load_explicit(&k->head,memory_order_relaxed);
     as_copy_(k,at,h,sizeof *h); if(plen) as_copy_(k,at+sizeof *h,pay,plen);
     atomic_store_explicit(&k->head,at+sizeof *h+plen,memory_order_release);
-    size_t used=at+sizeof *h+plen-atomic_load_explicit(&k->tail,memory_order_relaxed);
+    size_t used=at+sizeof *h+plen-atomic_load_explicit(&k->drained,memory_order_relaxed);
     if(used>atomic_load_explicit(&k->high_water,memory_order_relaxed)) atomic_store_explicit(&k->high_water,used,memory_order_relaxed);
     atomic_fetch_add_explicit(&k->records,1,memory_order_relaxed);
 }
@@ -1032,6 +1034,18 @@ static void as_flush_loss_(struct cc_async_sink *k, int e){
     } while(by || pk);
     k->pend_pk[e]=k->pend_by[e]=0;
 }
+/* The first drop of a run of dropped packets (nothing pending on either endpoint): one loss episode, and what the
+ * writer was doing at that moment. */
+static void as_episode_(struct cc_async_sink *k){
+    if(k->pend_pk[0] || k->pend_pk[1]) return;
+    uint64_t ws=atomic_load_explicit(&k->write_started,memory_order_relaxed);
+    atomic_fetch_add_explicit(&k->loss_episodes,1,memory_order_relaxed);
+    if(ws){
+        uint64_t age=as_now_()-ws;
+        atomic_fetch_add_explicit(&k->loss_in_write,1,memory_order_relaxed);
+        if(age>atomic_load_explicit(&k->max_in_write_at_loss_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_in_write_at_loss_ns,age,memory_order_relaxed);
+    }
+}
 static void as_packet_(void *ctx, const cc_packet *p){
     struct cc_async_sink *k=ctx; int e=p->endpoint==CC_EP_AUDIO;
     size_t need=sizeof(rec_hdr)+p->actual_len;
@@ -1040,15 +1054,7 @@ static void as_packet_(void *ctx, const cc_packet *p){
         if(as_free_(k)>=loss+need) as_flush_loss_(k,e);
     }
     if(k->pend_pk[e] || as_free_(k)<need){
-        if(!k->pend_pk[0] && !k->pend_pk[1]){              /* first dropped packet of an episode: what is the writer doing? */
-            uint64_t ws=atomic_load_explicit(&k->write_started,memory_order_relaxed);
-            atomic_fetch_add_explicit(&k->loss_episodes,1,memory_order_relaxed);
-            if(ws){
-                uint64_t age=as_now_()-ws;
-                atomic_fetch_add_explicit(&k->loss_in_write,1,memory_order_relaxed);
-                if(age>atomic_load_explicit(&k->max_in_write_at_loss_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_in_write_at_loss_ns,age,memory_order_relaxed);
-            }
-        }
+        as_episode_(k);
         k->pend_pk[e]++; k->pend_by[e]+=p->actual_len;
         atomic_fetch_add_explicit(&k->lost_pk[e],1,memory_order_relaxed);
         atomic_fetch_add_explicit(&k->lost_by[e],p->actual_len,memory_order_relaxed);
@@ -1064,7 +1070,7 @@ static void as_meta_(struct cc_async_sink *k, const rec_hdr *h){
 static void as_loss_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     struct cc_async_sink *k=ctx; int e=ep==CC_EP_AUDIO;
     if(k->pend_pk[e]){ k->pend_pk[e]+=pk; k->pend_by[e]+=by; return; }   /* one run: confessed together */
-    if(as_free_(k)<as_loss_records_(by)*sizeof(rec_hdr)){ k->pend_pk[e]+=pk; k->pend_by[e]+=by; return; }
+    if(as_free_(k)<as_loss_records_(by)*sizeof(rec_hdr)){ as_episode_(k); k->pend_pk[e]+=pk; k->pend_by[e]+=by; return; }
     k->pend_pk[e]=pk; k->pend_by[e]=by; as_flush_loss_(k,e); as_wake_(k);
 }
 static void as_error_(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
@@ -1076,23 +1082,31 @@ static void as_end_(void *ctx, enum cc_end r){ (void)ctx; (void)r; }
 /* Hand the memory of drained ring bytes [a,b) back to the system. Laid out end to end, the stream passes through
  * every page of the ring once per ring length whether or not the writer keeps up, so without this a ring sized
  * for a long stall would stay resident in full a few minutes into every recording. Called before the tail that
- * frees [a,b) is published: until then the producer cannot write there. a and b are granule (page) multiples. */
-static void as_release_(struct cc_async_sink *k, size_t a, size_t b){
+ * frees [a,b) is published: until then the producer cannot write there. a and b are granule (page) multiples.
+ * The cost falls on the producer: its first copy into each handed-back page takes a zero-fill fault (about one
+ * per packet at device rate, +0.3-0.4 us measured 2026-10-02; not measured under memory pressure).
+ * Returns 0 if the kernel refused: the range may then be unmapped, so the caller must never publish a tail past a. */
+static int as_release_(struct cc_async_sink *k, size_t a, size_t b){
     while(a<b){
         size_t o=a%k->cap, n=b-a; if(n>k->cap-o) n=k->cap-o;
-        mmap(k->ring+o,n,PROT_READ|PROT_WRITE,MAP_FIXED|MAP_PRIVATE|MAP_ANON,-1,0);   /* fresh zero pages in place */
+        if(mmap(k->ring+o,n,PROT_READ|PROT_WRITE,MAP_FIXED|MAP_PRIVATE|MAP_ANON,-1,0)==MAP_FAILED){   /* fresh zero pages in place */
+            atomic_fetch_add_explicit(&k->release_failures,1,memory_order_relaxed); return 0;
+        }
+        atomic_fetch_add_explicit(&k->released_bytes,n,memory_order_relaxed);
         a+=n;
     }
+    return 1;
 }
 static void *as_writer_(void *arg){
     struct cc_async_sink *k=arg;
     pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
     uint64_t last_done=0;                /* end of the previous write if data was still waiting then, else 0 */
+    int idle=1, stuck=0;                 /* idle: the last pass found the ring empty; stuck: a release failed, the tail stays where it is */
     size_t tail=atomic_load_explicit(&k->tail,memory_order_relaxed);   /* drained up to here; the published tail may lag by under a granule */
     for(;;){
         size_t avail=atomic_load_explicit(&k->head,memory_order_acquire)-tail;
         if(!avail){
-            last_done=0;
+            last_done=0; idle=1;
             if(atomic_load(&k->stop)) break;
             pthread_mutex_lock(&k->m);
             if(atomic_load_explicit(&k->head,memory_order_acquire)==tail && !atomic_load(&k->stop)){
@@ -1102,6 +1116,9 @@ static void *as_writer_(void *arg){
             }
             pthread_mutex_unlock(&k->m); continue;
         }
+        /* What had built up while this thread was away in its idle wait: at device rate, how long it was not running.
+         * (max_ready_gap_ns cannot see that: it measures between writes, and an idle writer has no previous write.) */
+        if(idle){ idle=0; if(avail>atomic_load_explicit(&k->max_wake_backlog,memory_order_relaxed)) atomic_store_explicit(&k->max_wake_backlog,avail,memory_order_relaxed); }
         size_t o=tail%k->cap, n=avail;
         if(n>k->cap-o) n=k->cap-o;
         if(n>k->chunk) n=k->chunk;
@@ -1126,9 +1143,14 @@ static void *as_writer_(void *arg){
             atomic_fetch_add_explicit(&k->written,done,memory_order_relaxed);
             if(done<n) atomic_fetch_add_explicit(&k->discarded,n-done,memory_order_relaxed);
         }
-        tail+=n;
+        tail+=n; atomic_store_explicit(&k->drained,tail,memory_order_relaxed);
         size_t pub=k->granule?tail-tail%k->granule:tail, was=atomic_load_explicit(&k->tail,memory_order_relaxed);
-        if(pub>was){ if(k->granule) as_release_(k,was,pub); atomic_store_explicit(&k->tail,pub,memory_order_release); }
+        /* A refused release may have left a hole in the ring. The tail is then never published past it: the producer
+         * cannot reach the hole, sees the ring fill, and drops with exact counts; close reports the failure. */
+        if(pub>was && !stuck){
+            if(k->granule && !as_release_(k,was,pub)) stuck=1;
+            else atomic_store_explicit(&k->tail,pub,memory_order_release);
+        }
     }
     return NULL;
 }
@@ -1158,12 +1180,29 @@ void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *o){
 }
 int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
     if(!k) return CC_ERR_ARGS;
-    /* a loss run still pending at the end is confessed if it fits, else counted as control loss */
-    for(int e=0;e<2;e++) if(k->pend_pk[e]){
-        if(as_free_(k)>=as_loss_records_(k->pend_by[e])*sizeof(rec_hdr)) as_flush_loss_(k,e);
-        else atomic_fetch_add(&k->control_dropped,1);
-    }
     atomic_store(&k->stop,1); as_wake_(k); pthread_join(k->thr,NULL);
+    /* A loss run still pending at the end: the writer has drained and gone, so its confession goes straight to the
+     * file (the ring may have been full to the last packet). Only a file that already failed leaves it uncounted
+     * in the stream, and then it is counted as a dropped control record. */
+    for(int e=0;e<2;e++) if(k->pend_pk[e]){
+        if(k->io_errno){ atomic_fetch_add(&k->control_dropped,1); continue; }
+        uint64_t pk=k->pend_pk[e], by=k->pend_by[e];
+        do {
+            uint32_t b=(uint32_t)(by>0xffffffffu?0xffffffffu:by); by-=b;
+            uint32_t q=(uint32_t)(pk>0xffffffffu?0xffffffffu:pk); pk-=q;
+            rec_hdr h={REC_MAGIC,REC_HOSTLOSS,e?CC_EP_AUDIO:CC_EP_VIDEO,0,0,0,q,b}; size_t done=0;
+            while(done<sizeof h){
+                ssize_t w=cc_async_sink_test_write?cc_async_sink_test_write(k->fd,(const uint8_t*)&h+done,sizeof h-done):write(k->fd,(const uint8_t*)&h+done,sizeof h-done);
+                if(w<0 && errno==EINTR) continue;
+                if(w<=0){ k->io_errno=w<0?errno:EIO; break; }
+                done+=(size_t)w;
+            }
+            atomic_fetch_add(&k->written,done);
+            if(done==sizeof h) atomic_fetch_add(&k->records,1); else { atomic_fetch_add(&k->control_dropped,1); break; }
+        } while(by || pk);
+        k->pend_pk[e]=k->pend_by[e]=0;
+    }
+    if(atomic_load(&k->release_failures) && !k->io_errno) k->io_errno=ENOMEM;   /* the ring lost part of its memory: the capture is incomplete */
     if(!k->io_errno && fsync(k->fd)!=0) k->io_errno=errno;
     if(close(k->fd)!=0 && !k->io_errno) k->io_errno=errno;
     if(st){
@@ -1176,6 +1215,7 @@ int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
         st->slow_writes=atomic_load(&k->slow_writes); st->max_ready_gap_ns=atomic_load(&k->max_ready_gap_ns);
         st->loss_episodes=atomic_load(&k->loss_episodes); st->loss_in_write=atomic_load(&k->loss_in_write);
         st->max_in_write_at_loss_ns=atomic_load(&k->max_in_write_at_loss_ns);
+        st->max_wake_backlog=atomic_load(&k->max_wake_backlog); st->released_bytes=atomic_load(&k->released_bytes); st->release_failures=atomic_load(&k->release_failures);
     }
     int rc=k->io_errno?CC_ERR_IO:CC_OK;
     pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); munmap(k->ring,k->cap); free(k);

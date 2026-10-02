@@ -74,16 +74,15 @@ int main(void){
     feed(&ca,5000,1); cc_async_sink_stats st; assert(cc_async_sink_close(as,&st)==CC_OK);
     assert(same_file(a,b)); assert(max_seen<=65536 && st.max_write<=65536);
     assert(!st.lost_packets[0] && !st.lost_packets[1] && !st.io_error);
+    assert(st.max_wake_backlog>0 && st.max_wake_backlog<=(1u<<20) && st.released_bytes>0 && !st.release_failures);   /* the writer found data after idling; pages went back */
     assert(st.writes>0 && st.write_ns>0 && st.max_write_ns>0 && st.max_write_ns<=st.write_ns && !st.loss_episodes && !st.loss_in_write);
     /* 2. existing destination refused */
     assert(cc_async_sink_open(&as,b,"x",1u<<20,65536)==CC_ERR_IO);
     /* 3. stalled writer: the producer never blocks; drops are exactly confessed */
-    atomic_store(&gate_open,0);
+    atomic_store(&gate_open,0); atomic_store(&in_gate,0);
     assert(cc_async_sink_open(&as,c,"stall",1u<<20,65536)==CC_OK); cc_async_sink_callbacks(as,&ca);
-    /* the session note is already in the ring: wait for the writer to be inside its (stalled) write call, so
+    /* the session note is already in the ring: wait for the writer to be inside its (stalled) write of it, so
      * what the sink reports about each loss episode is decided by the stall and not by thread start-up */
-    atomic_store(&in_gate,0);
-    { cc_packet p0={CC_EP_VIDEO,0,0,0,15360,15360,payload}; ca.on_packet(ca.ctx,&p0); }
     for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }
     struct timespec t0,t1; clock_gettime(CLOCK_MONOTONIC,&t0);
     feed(&ca,3000,2);                              /* ~31 MB into a 1 MB ring with the writer stuck */
@@ -100,6 +99,7 @@ int main(void){
      * the longest write is at least as long as the writer had been stuck when the first packet was dropped */
     assert(st.loss_episodes>=1 && st.loss_in_write==st.loss_episodes);
     assert(st.max_in_write_at_loss_ns>0 && st.max_in_write_at_loss_ns<=st.max_write_ns);
+    assert(!st.release_failures && st.high_water<=(1u<<20));
     /* read back: sum HostLoss per endpoint == sink-counted loss + the forwarded capture loss */
     FILE *f=fopen(c,"rb"); uint64_t loss_pk[2]={0},loss_by[2]={0},data[2]={0};
     struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } h;
@@ -121,6 +121,24 @@ int main(void){
     assert(cc_async_sink_open(&as,d,"fail",1u<<20,65536)==CC_OK); cc_async_sink_callbacks(as,&ca);
     feed(&ca,100,3); assert(cc_async_sink_close(as,&st)==CC_ERR_IO && st.io_error==EIO && st.discarded_after_error>0);
     cc_async_sink_test_write=NULL;
+    /* 5b. a loss still pending at close is in the file: the writer stays stuck until the feed is over, nothing more
+     * is fed, and the ring is full to the end, so the confession can only be written by close itself */
+    { char e5[256]; snprintf(e5,sizeof e5,"%s/tail_loss.tpc",dir);
+      cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0);
+      assert(cc_async_sink_open(&as,e5,"tail",1u<<20,65536)==CC_OK); cc_async_sink_callbacks(as,&ca);
+      for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
+      for(uint32_t i=0;i<400;i++){ cc_packet v={CC_EP_VIDEO,(uint16_t)(i%128),i/128,0,15360,15360,payload}; ca.on_packet(ca.ctx,&v);
+                                   cc_packet q={CC_EP_AUDIO,(uint16_t)(i%128),i/128,0,192,192,payload}; ca.on_packet(ca.ctx,&q); }
+      atomic_store(&gate_open,1);
+      assert(cc_async_sink_close(as,&st)==CC_OK && st.lost_packets[0]>0 && st.lost_packets[1]>0 && !st.control_dropped);
+      FILE *g=fopen(e5,"rb"); uint64_t lp[2]={0},lb[2]={0}; long size;
+      struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } hh;
+      while(fread(&hh,1,24,g)==24){ assert(hh.magic==0x31504143u); int e=hh.ep==CC_EP_AUDIO;
+          if(hh.type==1){ lp[e]+=hh.req; lb[e]+=hh.al; } else if(hh.type==0||hh.type==3) fseek(g,hh.al,SEEK_CUR); }
+      fseek(g,0,SEEK_END); size=ftell(g); fclose(g); unlink(e5);
+      for(int e=0;e<2;e++) assert(lp[e]==st.lost_packets[e] && lb[e]==st.lost_bytes[e]);
+      assert((uint64_t)size==st.bytes_written);
+      cc_async_sink_test_write=NULL; }
     /* 6. a ring's memory follows its backlog, not its size: the stream is laid through every page of the ring once
      * per ring length, so a writer that keeps up must hand drained pages back. The same feed through a ring that
      * cannot (not a whole number of pages) shows the measurement sees the difference. */
