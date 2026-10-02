@@ -178,6 +178,12 @@ trouble spots, before the next):
    motion"), scaled by the moving share of the picture and signed by field order. The term is physical:
    predicted shift = +-1/2 x tile motion x moving share of the comb's energy. Next: compare using it as a
    confidence (disagreement explained by motion) against subtracting it (motion-compensated comb) on caption truth.
+   Result (same material): subtracting half the field-median tile motion makes the comb worse (right 91.6% -> 75.4%
+   at 0.5-1.5 lines of motion, 58.1% -> 32.7% at >= 1.5): the logged motion is a whole-field median, not the motion of
+   what the comb measures. The comb's own reliability falls smoothly with motion (94.6% still, 91.6%, 58.1%), so
+   motion enters as a continuous confidence, scaled by the moving share. A compensated comb would need per-region
+   motion weighted by comb energy. These curves come from fixture A; check them on other material before relying on
+   them.
 2. Trust taught by that confidence (chip away, no gates).
 3. The previous decision carrying its confidence and losing it to opposing evidence (hold on weak evidence).
 4. Continuous tops confidence (waveform step, cross-field agreement, timing).
