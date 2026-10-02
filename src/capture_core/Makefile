@@ -30,6 +30,10 @@ $(META_EXHAUST_FIXTURE): gen_packet_capture.py
 async_sink_test: capture_core.c async_sink_test.c capture_core.h
 	$(CC) -O1 -g -fsanitize=address,undefined $(CFLAGS) -o $@ capture_core.c async_sink_test.c $(LIBS)
 
+# measurement tool, not part of `test`: async_sink_bench PATH SECONDS utility|user BUSY_THREADS
+async_sink_bench: capture_core.c async_sink_bench.c capture_core.h
+	$(CC) -O2 $(CFLAGS) -o $@ capture_core.c async_sink_bench.c $(LIBS)
+
 test: capture_core_test async_sink_test $(FIXTURE) $(META_FIXTURE) $(META_EXHAUST_FIXTURE)
 	./async_sink_test
 	./capture_core_test $(FIXTURE) $$(cat fixture.expect) $(META_FIXTURE) $(META_EXHAUST_FIXTURE) $$(cat fixture_meta_exhaust.expect)

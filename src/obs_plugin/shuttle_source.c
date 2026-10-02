@@ -397,17 +397,23 @@ static void sidecar_detach(shuttle_src *s){
     pthread_attr_destroy(&a);
 }
 
-#define TPC_RING_BYTES (256u << 20)   /* ~11 s of stream: rides out a stalled network write */
+/* ~3 minutes of stream (owner, 2026-10-02: 2 or 4 GB). The 256 MiB it replaces rode out 11 s; a 90-minute recording
+ * then lost 137 s of raw capture in two stretches where the writer fell behind. The sink hands drained pages back,
+ * so this is address space until the writer actually falls behind. */
+#define TPC_RING_BYTES ((size_t)4 << 30)
 typedef struct { shuttle_src *s; cc_async_sink *k; char *path; } tpc_close_job;
 static void *tpc_closer(void *arg){
     tpc_close_job *j = arg; cc_async_sink_stats st;
     int rc = cc_async_sink_close(j->k, &st);
     uint64_t lost = st.lost_packets[0] + st.lost_packets[1];
     blog(rc == CC_OK && !lost ? LOG_INFO : LOG_ERROR,
-         "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B%s%s",
+         "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B | writer: %llu writes, mean %.2f ms, longest %.1f ms, %llu over 100 ms, longest wait between writes with data ready %.1f ms | loss episodes %llu, writer inside a write call at %llu of them (for up to %.1f ms by then); most found waiting after an idle wait %.1f MB | ring memory handed back %.0f MB, %llu refusals%s%s",
          rc == CC_OK ? "" : " WITH A WRITE ERROR", j->path, (unsigned long long)st.records, st.bytes_written / 1e6,
          (unsigned long long)st.lost_packets[0], (unsigned long long)st.lost_bytes[0], (unsigned long long)st.lost_packets[1], (unsigned long long)st.lost_bytes[1],
-         (unsigned long long)st.control_dropped, st.high_water / 1e6, st.max_write, st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");
+         (unsigned long long)st.control_dropped, st.high_water / 1e6, st.max_write,
+         (unsigned long long)st.writes, st.writes ? st.write_ns / 1e6 / (double)st.writes : 0.0, st.max_write_ns / 1e6, (unsigned long long)st.slow_writes, st.max_ready_gap_ns / 1e6,
+         (unsigned long long)st.loss_episodes, (unsigned long long)st.loss_in_write, st.max_in_write_at_loss_ns / 1e6, st.max_wake_backlog / 1e6,
+         st.released_bytes / 1e6, (unsigned long long)st.release_failures, st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");
     shuttle_src *s = j->s; bfree(j->path); bfree(j);
     pthread_mutex_lock(&s->close_m); atomic_fetch_sub(&s->closers, 1); pthread_cond_broadcast(&s->close_c); pthread_mutex_unlock(&s->close_m);
     return NULL;

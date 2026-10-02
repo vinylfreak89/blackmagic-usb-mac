@@ -154,3 +154,4 @@ src/obs_plugin/tests_media_controls_tsan
 src/obs_plugin/tests_media_controls*.dSYM/
 src/unit_parser/tests/counter_excursion_test
 src/unit_parser/tests/counter_excursion_asan
+src/capture_core/async_sink_bench

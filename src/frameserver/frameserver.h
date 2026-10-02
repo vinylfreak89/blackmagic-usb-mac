@@ -142,6 +142,8 @@ FILE *fs_log_detach(frameserver *f, uint64_t *row_errors);
 // packets instead, confessed as exact HostLoss records in the file. The file is created
 // exclusively and grows at its final path (owner, 2026-09-28: a LucidLink volume takes growing
 // files). The first records are mid-unit: a tee starts wherever the stream is. One at a time.
+// The ring's memory follows its backlog (cc_async_sink hands drained pages back), so ring_bytes may be far larger
+// than what a recording normally holds; it must be a whole number of pages for that.
 int  fs_tee_start(frameserver *f, const char *path, const char *session_note, size_t ring_bytes);
 // Detach and hand the writer back; the caller closes it (cc_async_sink_close drains and may
 // block). NULL if none. fs_stop closes a still-attached tee itself.

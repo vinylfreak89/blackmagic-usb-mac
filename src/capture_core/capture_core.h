@@ -150,6 +150,10 @@ int  cc_tagged_sink_close(cc_tagged_sink *k);   // returns CC_ERR_IO on any fail
 // packets/bytes, split at 32 bits) is written before that endpoint's next DATA record, so the
 // file says precisely what it lacks. Control records that do not fit are counted. A write
 // failure is sticky: later records are discarded and counted, and close reports CC_ERR_IO.
+// The ring is mapped memory whose pages are handed back to the system as the writer drains them, so its cost is
+// the backlog, not its size; this needs a ring that is a whole number of pages (otherwise it keeps its memory). The
+// producer then takes a zero-fill fault on its first copy into each page. Free space is published in steps of up to
+// 1 MiB, so the producer may see that much less than is free. Close drains the whole backlog before it returns.
 // The destination is created exclusively (never replaces a file). Single producer: calls into
 // the callbacks must not race each other (the capture delivery thread is the only producer).
 typedef struct cc_async_sink cc_async_sink;
@@ -158,8 +162,22 @@ typedef struct {
     uint64_t lost_packets[2], lost_bytes[2];  // [0]=video [1]=audio DATA dropped by this sink
     uint64_t control_dropped;            // loss/error/tick records that found no room
     uint64_t discarded_after_error;      // bytes the writer drained without writing after a failure
-    size_t high_water, max_write;        // ring occupancy peak; largest single write issued
+    size_t high_water, max_write;        // ring occupancy peak (against the exact drain position); largest single write issued
     int io_error;                        // errno of the first failed write/fsync/close, 0 if none
+    // Why the writer fell behind, when it did. A write call that blocks shows in the write times. A writer that was
+    // not running shows in max_ready_gap_ns if it stopped between two writes, and in max_wake_backlog (the bytes it
+    // found waiting when it came back from its idle wait; divide by the stream rate for the time away) if it
+    // stopped while idle, which is where a writer that keeps up spends its time. max_wake_backlog has a floor: a
+    // burst handed over while the writer wakes reads as its size (about 1.3 MB for 128 packets). A writer stopped
+    // between seeing data and starting its write shows in neither. Each run of dropped packets is one
+    // episode, and at its first dropped packet the writer was either inside a write call (for how long) or not.
+    uint64_t writes, write_ns, max_write_ns, slow_writes;   // slow: a write call longer than 100 ms
+    uint64_t max_ready_gap_ns;           // longest time from one write returning to the next starting, data waiting
+    uint64_t loss_episodes, loss_in_write, max_in_write_at_loss_ns;
+    uint64_t max_wake_backlog;           // bytes
+    // Ring memory handed back to the system as it drained (see below); a refused hand-back ends the capture's
+    // completeness: the sink stops freeing space, counts what it drops, and close returns CC_ERR_IO (ENOMEM).
+    uint64_t released_bytes, release_failures;
 } cc_async_sink_stats;
 int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *session_note,
                          size_t ring_bytes, size_t write_chunk);
@@ -168,6 +186,8 @@ void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *out); // packet/los
 int  cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st);
 // Test hook: when set, the writer's write() goes through it (stall / short-write / failure).
 extern ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n);
+// The writer thread's QoS class (default QOS_CLASS_UTILITY); read once when the sink opens. For measurement.
+extern int cc_async_sink_writer_qos;
 
 #ifdef __cplusplus
 }
