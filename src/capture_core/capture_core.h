@@ -167,7 +167,9 @@ typedef struct {
     // Why the writer fell behind, when it did. A write call that blocks shows in the write times. A writer that was
     // not running shows in max_ready_gap_ns if it stopped between two writes, and in max_wake_backlog (the bytes it
     // found waiting when it came back from its idle wait; divide by the stream rate for the time away) if it
-    // stopped while idle, which is where a writer that keeps up spends its time. Each run of dropped packets is one
+    // stopped while idle, which is where a writer that keeps up spends its time. max_wake_backlog has a floor: a
+    // burst handed over while the writer wakes reads as its size (about 1.3 MB for 128 packets). A writer stopped
+    // between seeing data and starting its write shows in neither. Each run of dropped packets is one
     // episode, and at its first dropped packet the writer was either inside a write call (for how long) or not.
     uint64_t writes, write_ns, max_write_ns, slow_writes;   // slow: a write call longer than 100 ms
     uint64_t max_ready_gap_ns;           // longest time from one write returning to the next starting, data waiting

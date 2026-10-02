@@ -74,7 +74,7 @@ int main(void){
     feed(&ca,5000,1); cc_async_sink_stats st; assert(cc_async_sink_close(as,&st)==CC_OK);
     assert(same_file(a,b)); assert(max_seen<=65536 && st.max_write<=65536);
     assert(!st.lost_packets[0] && !st.lost_packets[1] && !st.io_error);
-    assert(st.max_wake_backlog>0 && st.max_wake_backlog<=(1u<<20) && st.released_bytes>0 && !st.release_failures);   /* the writer found data after idling; pages went back */
+    assert(st.released_bytes>0 && !st.release_failures);   /* drained pages went back to the system */
     assert(st.writes>0 && st.write_ns>0 && st.max_write_ns>0 && st.max_write_ns<=st.write_ns && !st.loss_episodes && !st.loss_in_write);
     /* 2. existing destination refused */
     assert(cc_async_sink_open(&as,b,"x",1u<<20,65536)==CC_ERR_IO);
@@ -129,8 +129,11 @@ int main(void){
       for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
       for(uint32_t i=0;i<400;i++){ cc_packet v={CC_EP_VIDEO,(uint16_t)(i%128),i/128,0,15360,15360,payload}; ca.on_packet(ca.ctx,&v);
                                    cc_packet q={CC_EP_AUDIO,(uint16_t)(i%128),i/128,0,192,192,payload}; ca.on_packet(ca.ctx,&q); }
+      /* fill what is left with tick records until fewer than a record's 24 bytes remain: before close wrote the
+       * confession itself, 108 bytes left here let the old close fit both confessions and this case passed */
+      for(int i=0;i<64;i++) ca.on_tick(ca.ctx,(uint32_t)i);
       atomic_store(&gate_open,1);
-      assert(cc_async_sink_close(as,&st)==CC_OK && st.lost_packets[0]>0 && st.lost_packets[1]>0 && !st.control_dropped);
+      assert(cc_async_sink_close(as,&st)==CC_OK && st.lost_packets[0]>0 && st.lost_packets[1]>0 && st.control_dropped>0);
       FILE *g=fopen(e5,"rb"); uint64_t lp[2]={0},lb[2]={0}; long size;
       struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } hh;
       while(fread(&hh,1,24,g)==24){ assert(hh.magic==0x31504143u); int e=hh.ep==CC_EP_AUDIO;

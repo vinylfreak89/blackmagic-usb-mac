@@ -1101,7 +1101,7 @@ static void *as_writer_(void *arg){
     struct cc_async_sink *k=arg;
     pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
     uint64_t last_done=0;                /* end of the previous write if data was still waiting then, else 0 */
-    int idle=1, stuck=0;                 /* idle: the last pass found the ring empty; stuck: a release failed, the tail stays where it is */
+    int idle=0, stuck=0;                 /* idle: the last pass found the ring empty (not thread start-up); stuck: a release failed, the tail stays where it is */
     size_t tail=atomic_load_explicit(&k->tail,memory_order_relaxed);   /* drained up to here; the published tail may lag by under a granule */
     for(;;){
         size_t avail=atomic_load_explicit(&k->head,memory_order_acquire)-tail;
@@ -1218,6 +1218,10 @@ int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
         st->max_wake_backlog=atomic_load(&k->max_wake_backlog); st->released_bytes=atomic_load(&k->released_bytes); st->release_failures=atomic_load(&k->release_failures);
     }
     int rc=k->io_errno?CC_ERR_IO:CC_OK;
-    pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); munmap(k->ring,k->cap); free(k);
+    pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv);
+    /* After a refused hand-back part of the ring's range may be unmapped and something else may have been mapped
+     * there since; unmapping the whole range would take that with it. The address space is left to the process. */
+    if(!atomic_load(&k->release_failures)) munmap(k->ring,k->cap);
+    free(k);
     return rc;
 }
