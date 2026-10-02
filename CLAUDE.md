@@ -920,6 +920,14 @@ also had selection and adjacency defects, so neither universal identity nor a
 universal texture separator follows. Distinguish the hard-padding code 16,
 device fill near 1.4, and the source's qualified blanking before using a level.
 
+**Attribution corrected 2026-10-02 (owner: "it wasn't the shuttle doing that ever. it was the Victor"):** the constant
+vertical-interval blanking (1.375) and the line-20/21 inserts described below and in §6 as Shuttle-written were only
+ever measured through the JVC deck. Through a second deck (Panasonic, S-Video, same tape) the Shuttle passes the
+vertical interval as digitised signal: no inserts, lines 16 and 18 carry bright data, blanking reads 1.4-7 and wanders
+over the tape, and picture starts one line earlier (line 22). So the JVC regenerates the interval and writes the
+inserts; read "Shuttle" as "the JVC deck" in those passages. Hard padding (Y16) is still Shuttle fill. Not excluded,
+but unsupported: that the Shuttle writes them only on a signal it treats as standard.
+
 **Device inserts versus tape captions.** Lines 20/283 carry the Shuttle's
 pulse/timing insert; 21/284 carry its re-encoded CEA-608 waveform, not the tape's
 original waveform. They are placed relative to detected sync and can disappear
