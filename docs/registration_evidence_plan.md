@@ -207,6 +207,30 @@ trouble spots, before the next):
    previous decision's weight must not be a frame's evidence. Candidate: the prior that the alignment did not change,
    from the source's own measured rate of changes (a forward filter over the candidate alignments: belief carries
    over, discounted by that rate, and each frame's evidence adds), not yet built.
+   **Independent review of that candidate (2026-10-02, offline simulation from the step-1 log; the simulator
+   reproduced the engine's decisions on 86,289/86,289 fixture A frames and 162,633/162,633 tvc2 frames): the forward
+   filter does not pass the gate.** Fixture A 3.5-4.0% changed under every window and rate source tried (caption-correct
+   92.8-93.4%); simply dropping the previous candidate gives 3.37% / 93.20%, so the filter is no better there. On tvc2 it
+   lowers whole-tape churn (2,410 / 889 at a 128-frame window against today's 2,745 / 1,090) but the dub (367) and the
+   52:57 hold (92) stay worse than today: the measured change rate in the dub is 0.7-0.8 and carries into the flat sky.
+   What the review established:
+   - The previous decision's fault is a one-frame lag at real changes, not persistence: right on the frame of a true
+     change 52.8% (step 1) against 94.1% (baseline); the engine is right on the next frame in 1,702 of 1,838 cases. The
+     true alignment changes on 9.3% of labelled EP frames, so a prior worth about 2.3, not a frame's evidence (~4.5).
+   - Step 1's caption losses: previous outvoting a right fresh winner 75.9%; the field-2 exception 13.2% (it places
+     field 1 from the tops even when the tops have zero weight; on labelled frames it is right 45 of 492); no weighted
+     evidence 4.6%; wrong fresh winner 4.4%; neither candidate right 1.9%.
+   - Without the previous candidate and without the field-2 exception the changes are still 2.91% (caption-correct
+     94.08%, above the baseline): the remainder is low-margin combs followed where the baseline keeps the census or
+     the previous (weight 0-1 is right 49.8% on EP against 63% expected), and the scrolling credits (minute 47), where
+     the comb sits two lines off on 1,188 frames with the motion term near zero (median tile shift over a mostly black
+     frame) and trust frozen at 0.80 because nothing still teaches it.
+   - SP's caption score measures onset lag only: every SP label is a two-line field-1 displacement, in stretches of
+     median length 2 frames.
+   - Published frame_d2 is the 30-frame vote anchor, identical in baseline, step 1 and step 1+3 logs.
+   Order the data support: remove or trust-gate the field-2 exception; make the previous decision a small prior;
+   fix low-margin and scrolling-credit comb confidence before judging a temporal rule against the gate; the tvc2 dub
+   needs its own signal (a source-measured change rate works against it there).
 4. Continuous tops confidence (waveform step, cross-field agreement, timing).
 5. The absolute anchor as per-frame candidates (removing the 30-frame vote's lag).
 
