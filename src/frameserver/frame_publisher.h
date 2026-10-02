@@ -90,7 +90,8 @@ void fp_close(fp_publisher *p);
  * stretched over the 480 output rows by repeating lines, with no placement and no field structure. For looking,
  * not for keeping: the frame carries FP_TRANSPORT_SHORT. A unit of more than 300 lines is taken to hold two
  * fields one after the other and only the first is shown. Returns as fp_publish. */
-int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, uint64_t counter_ext);
+int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, uint64_t counter_ext,
+                       int audio_pts_known, uint64_t audio_pts_num);
 
 // Pure assembly, no IOSurface: writes the 480-line interlaced frame (1440 B/row) into dst.
 // Exposed for tests and for consumers that own their buffers.

@@ -209,6 +209,7 @@ static void on_video(void *ctx, const unit_video_observation *u){
         if (s >= 0){
             memcpy(f->pool + (size_t)s * UNIT_PARSER_VIDEO_UNIT_BYTES, u->bytes, u->byte_count);
             it.slot = s; it.partial_lines = (unsigned)((u->byte_count - UNIT_PARSER_VIDEO_HEADER_BYTES) / FP_LINE_BYTES);
+            it.audio_evidence_known=ap_lookup_correlation(f->aud,u->epoch,u->counter_extended,&it.audio_evidence);   /* its time on the audio clock, for the consumer's timestamp */
         }
     }
     it.t_enqueue = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
@@ -568,7 +569,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
         const char *why=it->drop==FS_DROP_POOL_FULL?"PoolFull":transport_name(it->obs.transport);
         if(it->partial_lines && it->slot>=0) {
             const uint8_t *rows=f->pool+(size_t)it->slot*UNIT_PARSER_VIDEO_UNIT_BYTES+UNIT_PARSER_VIDEO_HEADER_BYTES;
-            if(fp_publish_partial(f->pub,rows,it->partial_lines,it->obs.counter_extended)==0) {
+            if(fp_publish_partial(f->pub,rows,it->partial_lines,it->obs.counter_extended,it->audio_evidence_known,it->audio_evidence.pts_num)==0) {
                 f->st.partial_shown++;
                 why=it->obs.transport==UNIT_TRANSPORT_SHORT?"ShortShown":"OtherShown";
             }

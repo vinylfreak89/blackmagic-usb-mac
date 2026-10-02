@@ -6,10 +6,10 @@
 // OBS owns deinterlacing (per-source Deinterlacing menu; the plugin sets the TFF hint once) and
 // everything downstream (compositing, encoding, ProRes).
 //
-// Timestamps: video = unit counter * 1001/30000 s (frameserver pts); audio = the publisher's
-// sample-contiguous device pts, plus the correlation residual applied ONLY where it steps
-// (a device event that lost samples: advance audio time by the lost amount once, so sync is
-// restored with an honest gap) — never a continuous resample (CLAUDE.md §6, audio census).
+// Timestamps: audio is the clock (audio_timing.h). Audio blocks carry the publisher's sample-contiguous
+// device pts; a video frame carries the audio-clock time of its own unit. The unit counter is not time
+// (it runs several times too fast in search and drifts while a deck is stopped), so nothing is timed
+// from it and no audio is inserted or dropped to match it.
 // Both are converted to nanoseconds; OBS syncs audio to video by timestamp.
 //
 // Sidecar: the registration decision log is aligned to the RECORDING, not to the source's
@@ -86,7 +86,8 @@ typedef struct {
     int32_t *abuf; uint32_t abuf_frames;   /* S32 interleaved stereo staging */
     float color_matrix[16], color_min[3], color_max[3];
     _Atomic uint64_t frames_out, audio_frames_out, audio_steps;
-    shuttle_audio_clock audio_clock; int64_t audio_skip_pending;   /* early-audio frames still to drop (audio worker only) */
+    shuttle_audio_clock audio_clock;                               /* audio worker only */
+    shuttle_video_clock video_clock; _Atomic uint64_t video_estimated;   /* video worker only; frames timed without an audio-clock time */
     _Atomic int ended; enum cc_end end_reason;
     pthread_mutex_t m;                      /* serializes session + sidecar transitions (frontend events, update, destroy) */
     int sidecar_enabled;                    /* property: attach the decision log to each OBS recording */
@@ -198,7 +199,13 @@ static void on_frame(void *ctx, const fp_frame *fr){
     f.data[0] = (uint8_t *)py; f.data[1] = (uint8_t *)pu; f.data[2] = (uint8_t *)pv;
     f.linesize[0] = FP_FRAME_WIDTH * 2; f.linesize[1] = f.linesize[2] = FP_FRAME_WIDTH;
     f.width = FP_FRAME_WIDTH; f.height = FP_FRAME_HEIGHT; f.format = VIDEO_FORMAT_I210;
-    f.timestamp = (uint64_t)((__uint128_t)fr->pts_num * 1000000000ull / fr->pts_den);
+    /* The frame's time on the audio clock (audio_timing.h): the counter is not time. Without it, one nominal period
+     * (half for a single-field search frame) after the previous frame; the counter only for a session's first. */
+    int estimated; uint64_t vt = shuttle_video_time(&s->video_clock, fr->audio_pts_known, fr->audio_pts_num,
+                                                    fr->transport == FP_TRANSPORT_SHORT ? AP_TICKS_PER_UNIT / 2 : AP_TICKS_PER_UNIT,
+                                                    (uint64_t)((__uint128_t)fr->pts_num * AP_PTS_DEN / fr->pts_den), &estimated);
+    if (estimated) atomic_fetch_add(&s->video_estimated, 1);
+    f.timestamp = AP_TICKS_TO_NS(vt);
     memcpy(f.color_matrix, s->color_matrix, sizeof f.color_matrix);
     memcpy(f.color_range_min, s->color_min, sizeof f.color_range_min); memcpy(f.color_range_max, s->color_max, sizeof f.color_range_max);
     f.full_range = false;
@@ -228,38 +235,21 @@ static void on_frame(void *ctx, const fp_frame *fr){
 static void on_audio(void *ctx, const ap_block *b){
     shuttle_src *s = ctx;
     if (b->n_frames > s->abuf_frames) return;             /* cannot happen: publisher capacity == staging capacity */
-    uint64_t ticks; int64_t step = 0;
-    int stepped = shuttle_audio_time_step(&s->audio_clock, b, &ticks, &step);
-    if (stepped < 0) return;                             /* no device time yet */
-    if (stepped) atomic_fetch_add(&s->audio_steps, 1);
+    uint64_t ticks;
+    if (shuttle_audio_time(&s->audio_clock, b, &ticks) < 0) return;   /* no device time yet */
+    atomic_store(&s->audio_steps, s->audio_clock.residual_steps);     /* counted for the log; nothing is inserted or dropped */
     struct obs_source_audio a; memset(&a, 0, sizeof a);
     a.speakers = SPEAKERS_STEREO; a.format = AUDIO_FORMAT_32BIT; a.samples_per_sec = AP_SAMPLE_RATE;
-    /* Device lost samples: deliver the gap as real silence ending exactly where this block starts,
-     * so OBS sees contiguous audio (a bare timestamp jump is mishandled by OBS). */
-    if (step > 0){
-        memset(s->abuf, 0, (size_t)s->abuf_frames * 2 * sizeof(int32_t));
-        uint64_t t0 = ticks - (uint64_t)step * AP_TICKS_PER_FRAME;
-        for (int64_t done = 0; done < step; ){
-            uint32_t n = (uint32_t)(step - done < s->abuf_frames ? step - done : s->abuf_frames);
-            a.data[0] = (const uint8_t *)s->abuf; a.frames = n; a.timestamp = AP_TICKS_TO_NS(t0 + (uint64_t)done * AP_TICKS_PER_FRAME);
-            obs_source_output_audio(s->source, &a); done += n;
-        }
-    }
-    /* Device sent audio early (negative step): drop the overlap from the start of this and, if it is
-     * shorter than the overlap, the following blocks. A break or a later gap cancels what is left. */
-    int64_t gap_unused; uint32_t skip;
-    shuttle_audio_plan(step, (b->flags & AP_FLAG_DISCONTINUITY_BEFORE) != 0, b->n_frames, &s->audio_skip_pending, &gap_unused, &skip);
-    if (skip == b->n_frames) return;
-    const uint8_t *p = b->s24le + (size_t)skip * AP_BYTES_PER_FRAME;
-    for (uint32_t i = 0; i < b->n_frames - skip; i++){
+    const uint8_t *p = b->s24le;
+    for (uint32_t i = 0; i < b->n_frames; i++){
         int32_t l = (int32_t)((uint32_t)p[0] << 8 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 24);
         int32_t r = (int32_t)((uint32_t)p[3] << 8 | (uint32_t)p[4] << 16 | (uint32_t)p[5] << 24);
         s->abuf[2 * i] = l; s->abuf[2 * i + 1] = r; p += AP_BYTES_PER_FRAME;
     }
-    a.data[0] = (const uint8_t *)s->abuf; a.frames = b->n_frames - skip;
-    a.timestamp = AP_TICKS_TO_NS(ticks + (uint64_t)skip * AP_TICKS_PER_FRAME);
+    a.data[0] = (const uint8_t *)s->abuf; a.frames = b->n_frames;
+    a.timestamp = AP_TICKS_TO_NS(ticks);
     obs_source_output_audio(s->source, &a);
-    atomic_fetch_add(&s->audio_frames_out, b->n_frames - skip);
+    atomic_fetch_add(&s->audio_frames_out, b->n_frames);
 }
 
 static void on_end(void *ctx, enum cc_end r){ shuttle_src *s = ctx; s->end_reason = r; atomic_store(&s->ended, 1);
@@ -704,10 +694,10 @@ static void shuttle_stop(shuttle_src *s){
         if (st.log_last_file_errors) blog(LOG_ERROR, "[shuttle-source] sidecar part is INCOMPLETE (%llu write/close errors in this file); left unpublished at %s", (unsigned long long)st.log_last_file_errors, s->sidecar_partial);
         else sidecar_publish(s);
     }
-    blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, residual steps applied %llu, search frames shown %llu",
+    blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, counter-against-audio steps seen (none applied) %llu, search frames shown %llu, frames timed without an audio time %llu",
          (unsigned long long)st.published, (unsigned long long)atomic_load(&s->frames_out), (unsigned long long)st.audio_frames_delivered,
          (unsigned long long)st.audio_dropped_frames, (unsigned long long)st.dropped_pool_full, (unsigned long long)st.dropped_ring_full,
-         (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown);
+         (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown, (unsigned long long)atomic_load(&s->video_estimated));
     blog(LOG_INFO, "[shuttle-source] delivery timing: %llu handoff gaps over 83 ms (max %.1f ms), %llu output calls over 20 ms (max %.1f ms)",
          (unsigned long long)s->gap_events, s->max_gap_ns / 1e6, (unsigned long long)s->slow_calls, s->max_call_ns / 1e6);
     fs_close(s->fs); s->fs = NULL;
@@ -749,7 +739,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     cfg.audio_sink.on_block = on_audio; cfg.audio_sink.ctx = s;
     cfg.audio_block_frames = s->abuf_frames;
     cfg.on_end = on_end; cfg.end_ctx = s;
-    atomic_store(&s->ended, 0); s->audio_clock = (shuttle_audio_clock){0}; s->audio_skip_pending = 0;
+    atomic_store(&s->ended, 0); s->audio_clock = (shuttle_audio_clock){0}; s->video_clock = (shuttle_video_clock){0}; atomic_store(&s->video_estimated, 0);
     atomic_store(&s->frames_out, 0); atomic_store(&s->audio_frames_out, 0); atomic_store(&s->audio_steps, 0);   /* per-session accounting */
     atomic_store(&s->last_counter, 0); atomic_store(&s->handoff_reset, 0);
     s->last_handoff_ns = s->gap_events = s->max_gap_ns = s->max_call_ns = s->slow_calls = 0;
