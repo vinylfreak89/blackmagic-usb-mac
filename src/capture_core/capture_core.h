@@ -118,6 +118,9 @@ int cc_replay_pause(cc_session *s, int paused);
 // unexplained). Writes are refused except to 4, 8, 28 and 32; reads are limited to 0..56. *value is the four
 // bytes in wire order, first byte in the top bits. Call from the session's owner thread, not from a callback.
 int cc_debug_register(cc_session *s, int write, uint16_t index, uint32_t *value);
+// Measurement only: send the latch again, after the session's own mode word if with_mode (the same two writes
+// every capture start makes), in case a level register only takes effect on one of them.
+int cc_debug_relatch(cc_session *s, int with_mode);
 const char *cc_strerror(int err);
 
 typedef struct {

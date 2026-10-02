@@ -402,6 +402,13 @@ int cc_debug_register(cc_session *s, int write, uint16_t index, uint32_t *value)
     *value=(uint32_t)b[0]<<24|(uint32_t)b[1]<<16|(uint32_t)b[2]<<8|b[3];
     return CC_OK;
 }
+int cc_debug_relatch(cc_session *s, int with_mode){
+    if(!s || !s->h || s->cfg.replay_path) return CC_ERR_ARGS;
+    uint32_t vsel = s->cfg.input==CC_INPUT_COMPONENT?0x02000000u
+                  : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
+    if(with_mode && vout_(s->h,215,0,0x09000000u|vsel|0x10000000u|0x20000000u)!=4) return CC_ERR_USB;
+    return vout_(s->h,215,24,0x73c60001u)==4?CC_OK:CC_ERR_USB;
+}
 static void* device_main(void *arg){
     cc_session *s=arg;
     internal_session=s;

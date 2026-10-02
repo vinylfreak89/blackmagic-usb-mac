@@ -182,19 +182,25 @@ int main(int argc,char**argv){
             fprintf(sw,"ms_since_start,register,value_hex,what\n");
             for(int r=0;r<4;r++) fprintf(sw,"0,%u,%08x,as found\n",regs[r],orig[r]);
         }
+        /* CC_REG_SWEEP=1: plain writes, a second each, a quarter down. =2: each write followed by the latch, two
+         * seconds each, halved. =3: followed by the mode word and the latch. (A plain write changed nothing
+         * measurable on S-Video, 2026-10-02.) */
+        int variant=atoi(getenv("CC_REG_SWEEP")), dwell=variant>=2?20:10, cut=variant>=2?2:4;
         double t0=tool_clock(); int changed=-1;
         for(int i=0;i<secs*10 && !atomic_load(&g_done);i++){
-            if(sw && i%10==0){
-                int sec=i/10; uint32_t v; unsigned ms=(unsigned)((tool_clock()-t0)*1000);
+            if(sw && i%dwell==0){
+                int sec=i/dwell; uint32_t v; unsigned ms=(unsigned)((tool_clock()-t0)*1000);
                 if(changed>=0){                                   /* put the last one back */
                     v=orig[changed]; int rc=cc_debug_register(g_s,1,regs[changed],&v);
+                    if(variant>=2 && rc==CC_OK) rc=cc_debug_relatch(g_s,variant>=3);
                     fprintf(sw,"%u,%u,%08x,restored%s\n",ms,regs[changed],v,rc==CC_OK?"":" FAILED"); changed=-1;
-                } else if(sec>=2 && i<(secs-2)*10){               /* leave the first and last seconds alone */
+                } else if(sec>=2 && i<(secs-4)*10){               /* leave the first and last seconds alone */
                     unsigned k=(unsigned)(sec/2-1)%nsteps; int r=0; while(regs[r]!=steps[k].index) r++;
-                    /* about a quarter down from the value found: 0x80 -> 0x60, 0x40 -> 0x30 */
-                    if(steps[k].byte<0){ v=0; for(int b=0;b<4;b++){ uint32_t x=orig[r]>>(24-8*b)&0xff; v|=(x-x/4)<<(24-8*b); } }
-                    else { int sh=24-8*steps[k].byte; uint32_t x=orig[r]>>sh&0xff; v=(orig[r]&~(0xffu<<sh))|((x-x/4)<<sh); }
+                    /* down by 1/cut from the value found: 0x80 -> 0x60 or 0x40, 0x40 -> 0x30 or 0x20 */
+                    if(steps[k].byte<0){ v=0; for(int b=0;b<4;b++){ uint32_t x=orig[r]>>(24-8*b)&0xff; v|=(x-x/cut)<<(24-8*b); } }
+                    else { int sh=24-8*steps[k].byte; uint32_t x=orig[r]>>sh&0xff; v=(orig[r]&~(0xffu<<sh))|((x-x/cut)<<sh); }
                     int rc=cc_debug_register(g_s,1,steps[k].index,&v);
+                    if(variant>=2 && rc==CC_OK) rc=cc_debug_relatch(g_s,variant>=3);
                     fprintf(sw,"%u,%u,%08x,changed%s\n",ms,steps[k].index,v,rc==CC_OK?"":" FAILED"); changed=r;
                 }
                 fflush(sw);
@@ -203,6 +209,7 @@ int main(int argc,char**argv){
         }
         if(sw){
             for(int r=0;r<4;r++){ uint32_t v=orig[r]; int rc=cc_debug_register(g_s,1,regs[r],&v); uint32_t back=0; cc_debug_register(g_s,0,regs[r],&back);
+                if(r==3 && variant>=2) cc_debug_relatch(g_s,variant>=3);
                 fprintf(sw,"%u,%u,%08x,final restore%s reads back %08x\n",(unsigned)((tool_clock()-t0)*1000),regs[r],v,rc==CC_OK?"":" FAILED",back);
                 if(back!=orig[r]) fprintf(stderr,"REGISTER %u NOT RESTORED: found %08x, now %08x\n",regs[r],orig[r],back); }
             fclose(sw); printf("register sweep written to %s\n",sweep_path);
