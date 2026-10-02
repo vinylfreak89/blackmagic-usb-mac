@@ -15,7 +15,7 @@ Transport truth never comes from pixel or audio content.
 
 The parser recognizes marker candidates even when `00 00 ff ff` is split
 between packets, then validates the following header before accepting a unit
-boundary. It extends the 16-bit counter monotonically within an explicit epoch.
+boundary. The audio stream's counter is extended forward-only within an explicit epoch.
 
 The device counter is the one on the audio resync records. A formed picture unit
 takes its extended counter from the audio stream's position, so a unit and the

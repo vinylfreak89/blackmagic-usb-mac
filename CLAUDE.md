@@ -602,7 +602,8 @@ HostLoss 0, errors 0).** The Shuttle with nothing on its input does NOT sit in o
   Y ≈ 12 ± 4, chroma bytes far from neutral (U ≈ 188 or 76, V ≈ 0 — renders deep blue in a naive
   UYVY decode; bmusb called it green), no hard-padding ruler, consecutive units not
   byte-identical.** When the deck's output returned, the Shuttle relocked to `0xe801` (no-RF
-  sub-blanking black, padding ruler back) with a counter jump 4961 → 5162: a second epoch instance.
+  sub-blanking black, padding ruler back) with a counter jump 4961 → 5162 (the no-signal units' own numbering;
+  see the correction below).
   ⚠️ This is *absence of input*, not unlocked video — the unlocked-input experiment is still owed.
 - **`0xe809` — the PAL-family code — for ~15 s (444 units)** with the decoder free-running: units
   alternate **436,368 B and 463,728 B = 48-byte header + 303 and 322 lines × 1,440 B**
@@ -612,8 +613,15 @@ HostLoss 0, errors 0).** The Shuttle with nothing on its input does NOT sit in o
   hypothesis to "measured shape, unverified against real PAL content".
 - **`0xe801` for ~2 s at startup (66 units)** classified sub-black mute / a few program-like:
   the decoder's initial guess before it gave up; 34 exact units, 28 device-short.
-- **A counter epoch restart** at the `0xe809`→`0x0800` transition (raw 534 → 329): §8 property 5
-  (never extend the 16-bit counter across an ambiguous restart) has its first real instance.
+- **The `0x0800` units carry a counter of their own (corrected 2026-10-02).** What was read here as a counter
+  epoch restart (raw 534 → 329 at the `0xe809`→`0x0800` transition, and 4961 → 5162 at relock above) is the
+  no-signal units' numbering, which runs separately from the device counter on the audio resyncs and the
+  picture units (46 to 231 behind it in the captures examined, and drifting). The audio resync counter stepped
+  by one in every capture, through no signal, a stopped deck and relock. The parser therefore numbers picture
+  units from the audio stream and keeps `0x0800` units out of the numbering; fed to the old forward-only
+  extension they pushed the video counter ahead for good and video units stopped finding their audio. Unit
+  numbers logged for tape 1 by builds before this are one too high (a start-up `0x0800` unit); those quoted
+  in §9 (494/495/497/500/518, 848) are in that old numbering.
 - **Iso packets shrink to ~2,848 B** (every packet "short" vs the 15,360 B request) while the byte
   rate stays ≈22.6 MB/s: packet length is a scheduling artefact, never a unit-validity signal.
 - Parser + classifier handled all of it without a fixed-raster consumer ever seeing a wrong-size

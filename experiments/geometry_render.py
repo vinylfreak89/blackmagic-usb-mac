@@ -61,10 +61,12 @@ the frameserver decision log's counter_extended, applied_d1, applied_d2; each un
 --pair-next field 1 takes d1 from the NEXT unit's row. A row with an empty applied value is missing, not
 zero. Duplicate keys in either file are refused.
 
-Framing and counters mirror src/unit_parser/unit_parser.c (class Framer): a marker is a boundary when
-its format is plausible and its counter follows the previous header's, decided on the same eight bytes
-the parser uses, so the result does not depend on packet boundaries; the counter is extended exactly as
-the parser extends it, short units included, so frames carry the sidecar's counter_extended. Only
+Framing mirrors src/unit_parser/unit_parser.c (class Framer): a marker is a boundary when its format is
+plausible and its counter follows the previous header's, decided on the same eight bytes the parser
+uses, so the result does not depend on packet boundaries. With --engine-log each frame's counter is
+taken from the log, joined by the parser's observation ordinal and checked against the unit's own 16-bit
+counter; the renderer does not number units itself (the parser numbers a unit from the audio stream,
+which this file does not read). Without a log the Framer's own forward-only numbering is used. Only
 complete 0xe801 units are rendered; other formats, short units and unframed spans are counted.
 The timeline follows the device: between two rendered frames, fill frames make up the elapsed unit
 periods -- from their audio-clock times in --av-log (frameserver_replay --dump-log of the same capture;
@@ -114,6 +116,20 @@ def read_offsets(path):
         opt = lambda key: int(r[key]) if r.get(key, "") not in ("", None) else None
         out[k] = dict(d1=int(r["d1"]), d2=int(r["d2"]), f1_first=opt("f1_first"), f1_last=opt("f1_last"),
                       f2_first=opt("f2_first"), f2_last=opt("f2_last"), note=r.get("note", ""))
+    return out
+
+
+def read_ordinals(path):
+    """{observation ordinal: counter_extended or None} from the frameserver's decision log, or None without a log
+    (or with one that has no ordinal column). The ordinal is the parser's count of video observations."""
+    if not path:
+        return None
+    out = {}
+    for r in csv.DictReader(l for l in open(path) if not l.startswith("#")):
+        if r.get("ordinal", "") in ("", None):
+            return None
+        c = r.get("counter_extended", "")
+        out[int(r["ordinal"])] = int(c) if c not in ("", None) else None
     return out
 
 
@@ -530,8 +546,10 @@ def plausible_format(fmt):
 
 
 class Framer:
-    """A mirror of src/unit_parser/unit_parser.c's video framing and counter extension, so frames carry
-    the counter_extended the frameserver writes into its sidecar and --dump-log. A marker is a boundary
+    """A mirror of src/unit_parser/unit_parser.c's video framing: the same observations in the same order,
+    so observation k here is ordinal k in the frameserver's log. Its own counter extension (forward-only,
+    every framed unit) is NOT the parser's, which numbers a unit from the audio stream; main() replaces it
+    with the log's counter whenever a log is given. A marker is a boundary
     once eight bytes of it have arrived, when its format is plausible and -- after a first header -- its
     counter is the previous header's plus one. A buffer that reaches a unit plus 32 bytes without a
     boundary is emitted as a hole; with no header yet, a unit's worth of bytes is emitted unframed. Every
@@ -736,8 +754,27 @@ def main():
     # ---- pass 1: every observation, in the parser's framing and counter extension
     obs = []                              # (ext or None, complete e801?, framed?, count)
 
+    # The log's counter for each observation, by the parser's ordinal. A unit is never numbered here when a log
+    # is given: a second copy of the numbering rule once put 148 of 149 frames of a capture without placement.
+    log_counter = read_ordinals(a.engine_log)
+
     def walk(handler):
-        fr = Framer(handler)
+        k = [0]
+
+        def numbered(o):
+            if log_counter is not None:
+                if k[0] not in log_counter:
+                    sys.exit(f"refusing: observation {k[0]} of the capture has no row in the engine log "
+                             f"(the log is not of this capture, or of only part of it)")
+                ext = log_counter[k[0]]
+                if o["complete"] and (ext is None or (ext & 0xFFFF) != o["counter16"]):
+                    sys.exit(f"refusing: observation {k[0]} is a complete unit with device counter {o['counter16']}, "
+                             f"but the engine log's row has counter {ext}: the log is not of this capture, or was "
+                             f"written before unit numbering followed the device counter (replay the capture again)")
+                o = dict(o, ext=ext if o["framed"] else None)
+            k[0] += 1
+            handler(o)
+        fr = Framer(numbered)
         walk_tagged(a.capture, on_video=lambda p: fr.feed(p), progress=False)
         fr.finish()
 
