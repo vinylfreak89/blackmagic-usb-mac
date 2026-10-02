@@ -887,7 +887,7 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->audio_resync = atomic_load(&f->audio_resync); o->dropped_pool_full = atomic_load(&f->dropped_pool_full);
     if (f->aud){ ap_stats a; ap_get_stats(f->aud, &a); o->audio_pcm_records = a.records_pcm; o->audio_blocks = a.blocks;
         o->audio_frames_published = a.frames_published; o->audio_discontinuities = a.discontinuities; o->audio_blocks_unanchored = a.blocks_unanchored;
-        o->audio_counter_gaps = a.counter_gaps; o->audio_renumberings = a.renumberings; o->audio_residual_min = a.resyncs_anchored ? a.residual_min : 0; o->audio_residual_max = a.resyncs_anchored ? a.residual_max : 0; }
+        o->audio_counter_gaps = a.counter_gaps; o->audio_residual_min = a.resyncs_anchored ? a.residual_min : 0; o->audio_residual_max = a.resyncs_anchored ? a.residual_max : 0; }
     o->audio_blocks_delivered = f->aq_delivered_blocks; o->audio_frames_delivered = f->aq_delivered_frames;
     o->audio_dropped_blocks = atomic_load(&f->aq_dropped_blocks); o->audio_dropped_frames = atomic_load(&f->aq_dropped_frames);
     o->audio_master_frames = atomic_load(&f->audio_master_frames);

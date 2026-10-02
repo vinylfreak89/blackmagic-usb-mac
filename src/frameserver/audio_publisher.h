@@ -51,7 +51,7 @@ extern "C" {
 #define AP_LOOKUP_ENTRIES 256u       // resync correlation history: must exceed the video pool depth the worker may lag by
 
 enum ap_flags {
-    AP_FLAG_DISCONTINUITY_BEFORE = 1u << 0,  // a hole/unframed/epoch change or a renumbered device counter preceded this block
+    AP_FLAG_DISCONTINUITY_BEFORE = 1u << 0,  // a hole/unframed/epoch change preceded this block
     AP_FLAG_PARTIAL              = 1u << 1,  // buffer filled before the unit's resync arrived
     AP_FLAG_UNANCHORED           = 1u << 2,  // no resync yet in this run: pts is ordinal-only
     AP_FLAG_COUNTER_GAP          = 1u << 3,  // the last resync's counter was not previous + 1
@@ -82,7 +82,6 @@ typedef struct {
     uint64_t records_pcm, records_resync, records_hole, records_unframed;
     uint64_t blocks, frames_published, blocks_partial, blocks_unanchored, discontinuities;
     uint64_t counter_gaps;         // resync counter jumps (incl. parser-flagged discontinuities)
-    uint64_t renumberings;         // the video numbering jumped under a continuous audio counter: run re-placed on the video timebase
     int64_t  residual_min, residual_max;   // ticks, over all anchored resyncs (drift envelope)
     uint64_t resyncs_anchored;     // resyncs that contributed a residual measurement
 } ap_stats;
