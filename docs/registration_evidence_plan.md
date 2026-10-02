@@ -190,8 +190,23 @@ trouble spots, before the next):
    transfers between recordings - the share of the picture with measurable detail (tile measurability), checked
    SP<->EP - then tops confidence from the tops' own measurement (step 4) so a jittery stretch in the trust window
    cannot silence cleanly measured tops.
+   **Step 1 result (d0cf904, whole tapes, 2026-10-02): fails the gate.** Fixture A 6.80% changed placements,
+   caption-correct 88.90% against the baseline's 93.65%; tvc2 3,339 changes / 1,361 flip-backs against today's
+   2,745 / 1,090 (fade-in 2 -> 0, 29:10 7 -> 1, dub 202 -> 350, 52:57-53:08 17 -> 86). Fixture A's losses are mostly
+   EP (34-41, 46-47 min) and start at weak comb decisions (median weight 2.7 against 4.7 for right ones) meeting a
+   previous decision of weight zero.
 2. Trust taught by that confidence (chip away, no gates).
 3. The previous decision carrying its confidence and losing it to opposing evidence (hold on weak evidence).
+   **Tried on top of step 1 (742acb5, reverted): worse.** The winner carried max(fresh support, carried - strongest
+   opposition). Fixture A 7.61% changes, caption-correct 88.22%; tvc2 whole tape improved (2,306 / 949) but the dub
+   (304) and the 52:57 hold (65) stayed worse than today. Cause, measured: carrying a whole frame's evidence makes the
+   previous decision as strong as a fresh measurement. Of 2,901 wrong frames kept by the previous decision, the comb
+   was right on 2,291, with median weight 4.73 for the right answer against 5.36 carried; already in step 1 (carrying
+   only last frame's fresh support) 1,853 such frames, 4.62 against 5.19. At SP start (counter ~5000) census and comb
+   agree on the caption-correct move and lose to last frame's equally strong evidence for the old value. So the
+   previous decision's weight must not be a frame's evidence. Candidate: the prior that the alignment did not change,
+   from the source's own measured rate of changes (a forward filter over the candidate alignments: belief carries
+   over, discounted by that rate, and each frame's evidence adds), not yet built.
 4. Continuous tops confidence (waveform step, cross-field agreement, timing).
 5. The absolute anchor as per-frame candidates (removing the 30-frame vote's lag).
 
