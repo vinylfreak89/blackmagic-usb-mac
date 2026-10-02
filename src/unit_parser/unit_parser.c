@@ -45,7 +45,7 @@ struct unit_parser {
     bool audio_counter_valid;
     uint16_t audio_counter16;
     uint64_t audio_counter_extended;
-    uint32_t audio_resyncs_since_video;
+    uint32_t video_units_since_audio;
 
     endpoint_position positions[2];
 };
@@ -125,41 +125,50 @@ static uint64_t extend_counter(bool *valid, uint16_t *last,
     return *extended;
 }
 
-/* An audio resync counter takes its extension from the video stream's, so one device counter value maps to one
- * extended value on both streams however each stream got there (the forward-only rule above depends on the path:
- * a restart or a wrap seen by one stream and not the other parts them for the rest of the session). The video
- * position is used only while fewer resyncs than a 16-bit difference can express have passed since a video unit;
- * without video the audio stream extends on its own, as before, and both start from the raw value, so they agree. */
-static uint64_t extend_audio_counter(unit_parser *parser, uint16_t current,
+/* The device counter is the one on the audio resync records. It has stepped by one per unit in every capture,
+ * through no signal, a stopped deck and relock, so the audio stream extends it on its own, forward only. A formed
+ * video unit takes its extended counter from that position: one device counter value then has one extended value
+ * on both streams however long the video stream went without a formed unit (a 16-bit difference is ambiguous
+ * past 32,767 units, 18 minutes). Without recent audio the video stream extends on its own, as before. */
+static uint64_t extend_video_counter(unit_parser *parser, uint16_t current,
                                      uint32_t *flags)
 {
-    if (!parser->video_counter_valid ||
-        parser->audio_resyncs_since_video >= 0x4000u)
-        return extend_counter(&parser->audio_counter_valid,
-                              &parser->audio_counter16,
-                              &parser->audio_counter_extended, current, flags);
-    ++parser->audio_resyncs_since_video;
-    int64_t delta = (int16_t)(uint16_t)(current - parser->video_counter16);
-    if (delta < 0 && (uint64_t)-delta > parser->video_counter_extended)
+    if (!parser->audio_counter_valid ||
+        parser->video_units_since_audio >= 0x4000u)
+        return extend_counter(&parser->video_counter_valid,
+                              &parser->video_counter16,
+                              &parser->video_counter_extended, current, flags);
+    ++parser->video_units_since_audio;
+    int64_t delta = (int16_t)(uint16_t)(current - parser->audio_counter16);
+    if (delta < 0 && (uint64_t)-delta > parser->audio_counter_extended)
         delta += 65536;
-    uint64_t extended = parser->video_counter_extended + (uint64_t)delta;
-    if (parser->audio_counter_valid &&
-        extended != parser->audio_counter_extended + 1) {
+    uint64_t extended = parser->audio_counter_extended + (uint64_t)delta;
+    if (parser->video_counter_valid &&
+        extended != parser->video_counter_extended + 1)
         *flags |= UNIT_FLAG_COUNTER_DISCONTINUITY;
-        if ((uint16_t)(current - parser->audio_counter16) == 1)
-            *flags |= UNIT_FLAG_COUNTER_RENUMBERED;
-    }
-    parser->audio_counter_valid = true;
-    parser->audio_counter16 = current;
-    parser->audio_counter_extended = extended;
+    parser->video_counter_valid = true;
+    parser->video_counter16 = current;
+    parser->video_counter_extended = extended;
     return extended;
 }
 
-/* confirmed: the unit ended at a marker whose counter is this unit's plus one. A marker unit emitted because the
- * buffer filled has no such successor; in a stream that is not formed into units (deck stopped or unlocked) its
- * marker is as likely four bytes of junk, and its counter must not move the extension: on 2026-10-02 a handful of
- * them moved it 89,726 units while the audio counter ran on, and the recording that followed had no audio link.
- * Such a unit keeps its kind and transport as before and reports its 16-bit counter; it has no extended counter. */
+/* Where the device counter stands now, for a unit that has no counter of its own to offer. */
+static uint64_t device_position(const unit_parser *parser)
+{
+    if (parser->audio_counter_valid)
+        return parser->audio_counter_extended;
+    return parser->video_counter_valid ? parser->video_counter_extended : 0;
+}
+
+/* A unit's counter moves the video numbering only if it is the device counter and the unit is real:
+ *  - confirmed: the unit ended at a marker whose counter is this unit's plus one. A marker unit emitted because
+ *    the buffer filled has no such successor; in a stream not formed into units its marker may be four junk bytes.
+ *  - not a 0x0800 no-signal unit: those carry a counter of their own, not the one on the audio resyncs. Measured
+ *    2026-10-02 with a deck stopped before play: 200 of them numbered 6271..6470 while the resyncs ran 6501..6700.
+ *    Fed to the forward-only extension, each change between the two numberings moved the video counter (230
+ *    there; 89,726 in the session before a 90-minute recording), the audio counter ran on, and no video unit of
+ *    the recording found its audio.
+ * Any other unit keeps its kind, transport and 16-bit counter and is placed at the device counter's position. */
 static void emit_video(unit_parser *parser, const uint8_t *bytes, size_t count,
                        bool has_marker, bool confirmed, uint32_t flags)
 {
@@ -179,13 +188,11 @@ static void emit_video(unit_parser *parser, const uint8_t *bytes, size_t count,
         out.counter16 = load_u16(bytes + 4);
         out.format = load_u16(bytes + 6);
         out.kind = video_kind(out.format);
-        if (confirmed) {
-            out.counter_extended = extend_counter(
-                &parser->video_counter_valid, &parser->video_counter16,
-                &parser->video_counter_extended, out.counter16,
-                &out.transport_flags);
-            parser->audio_resyncs_since_video = 0;
-        }
+        if (confirmed && out.kind != UNIT_VIDEO_DEVICE_NO_SIGNAL_0800)
+            out.counter_extended = extend_video_counter(
+                parser, out.counter16, &out.transport_flags);
+        else
+            out.counter_extended = device_position(parser);
         if (out.transport_flags & TRANSPORT_HOLE_FLAGS) {
             out.transport = UNIT_TRANSPORT_HOLE;
         } else if (out.kind == UNIT_VIDEO_E801 &&
@@ -304,8 +311,11 @@ static void emit_audio_record(unit_parser *parser, const uint8_t *record)
     if (is_audio_sync(record)) {
         out.kind = UNIT_AUDIO_RESYNC;
         out.counter16 = load_u16(record + 20);
-        out.counter_extended = extend_audio_counter(
-            parser, out.counter16, &out.transport_flags);
+        out.counter_extended = extend_counter(
+            &parser->audio_counter_valid, &parser->audio_counter16,
+            &parser->audio_counter_extended, out.counter16,
+            &out.transport_flags);
+        parser->video_units_since_audio = 0;
     } else {
         out.kind = UNIT_AUDIO_PCM;
         memcpy(out.active_s24le, record, sizeof(out.active_s24le));

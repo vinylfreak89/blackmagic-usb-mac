@@ -1,14 +1,15 @@
 /* One device counter value must map to one extended value on both streams.
  *
- * Scenario 1, the 2026-10-02 failure: between formed units the video stream is junk (deck stopped) that happens
- * to hold a marker with a plausible format and a wild counter. Nothing follows it with counter + 1, so the parser
- * emits it when its buffer fills. That unit must not move the video extension; before the fix it did
- * (101 -> 30000, then 105 -> 30001) while the audio counter ran on, and no later video unit found its audio.
- *
- * Scenario 2: the device restarts its counter backward on both streams, and one more resync of the old numbering
- * reaches the audio stream than units reach the video stream. Each stream's forward-only extension counts its own
- * steps, so they end apart for good. Required: once the first complete unit of the new numbering has been seen
- * the two agree, and the resync that moves says the numbering jumped (its own counter stepped by one), not time. */
+ * The device counter is the one on the audio resync records; it steps by one per unit whatever the video stream
+ * is doing. These are the ways the video numbering used to leave it, each for good:
+ *  1. No-signal (0x0800) units carry their own counter. Measured 2026-10-02 (deck stopped, then play): 200 of them
+ *     numbered 6271..6470 while the resyncs ran 6501..6700; the picture units that followed came out 230 ahead of
+ *     their audio and none of the 2,585 found it. Here: no-signal units 900..903 while the resyncs run 102..105.
+ *  2. Junk that holds a marker with a plausible format and a wild counter, emitted when the buffer fills.
+ *  3. The video stream away for longer than a 16-bit difference can express (40,000 units).
+ *  4. A counter restart that one stream sees one step later than the other.
+ * Required in each: once formed picture units are back, a unit and the resync with the same device counter carry
+ * the same extended counter, and the audio numbering is never disturbed. */
 #include "unit_parser.h"
 
 #include <assert.h>
@@ -21,13 +22,14 @@ enum { UNIT = UNIT_PARSER_VIDEO_UNIT_BYTES, PACKET = 15360, PCM_PER_UNIT = 1601 
 typedef struct {
     uint64_t video_ext[65536], audio_ext[65536];
     uint32_t audio_flags[65536];
-    int video_seen[65536], audio_seen[65536];
+    int video_seen[65536], audio_seen[65536], video_kind[65536];
 } seen;
 
 static void on_video(void *context, const unit_video_observation *unit)
 {
     seen *s = context;
     if (unit->transport != UNIT_TRANSPORT_COMPLETE) return;
+    s->video_kind[unit->counter16] = unit->kind;
     s->video_ext[unit->counter16] = unit->counter_extended;
     s->video_seen[unit->counter16] = 1;
 }
@@ -53,12 +55,12 @@ static void feed(unit_parser *parser, uint8_t endpoint, const uint8_t *bytes, si
     }
 }
 
-static void feed_video_unit(unit_parser *parser, uint8_t *unit, uint16_t counter)
+static void feed_format_unit(unit_parser *parser, uint8_t *unit, uint16_t counter, uint16_t format)
 {
     memset(unit, 0, UNIT);
     unit[2] = unit[3] = 0xff;
     unit[4] = (uint8_t)counter; unit[5] = (uint8_t)(counter >> 8);
-    unit[6] = 0x01; unit[7] = 0xe8;
+    unit[6] = (uint8_t)format; unit[7] = (uint8_t)(format >> 8);
     for (size_t i = UNIT_PARSER_VIDEO_HEADER_BYTES; i + 1 < UNIT; i += 2) { unit[i] = 128; unit[i + 1] = 16; }
     feed(parser, CC_EP_VIDEO, unit, UNIT, &video_seq);
 }
@@ -75,6 +77,19 @@ static void feed_junk_with_false_marker(unit_parser *parser, uint8_t *unit, uint
         }
         feed(parser, CC_EP_VIDEO, unit, UNIT + 100, &video_seq);
     }
+}
+
+static void feed_video_unit(unit_parser *parser, uint8_t *unit, uint16_t counter)
+{
+    feed_format_unit(parser, unit, counter, 0xe801);
+}
+
+static void feed_resync_only(unit_parser *parser, uint16_t counter)
+{
+    uint8_t r[UNIT_PARSER_AUDIO_RECORD_BYTES] = {0};
+    memcpy(r, "DeckLinkAudioResyncT", 20);
+    r[20] = (uint8_t)counter; r[21] = (uint8_t)(counter >> 8); r[22] = 0x65; r[23] = 0x6e;
+    feed(parser, CC_EP_AUDIO, r, sizeof r, &audio_seq);
 }
 
 static void feed_audio_unit(unit_parser *parser, uint16_t counter)
@@ -104,7 +119,12 @@ static unit_parser *open_parser(seen *s)
 
 #define CHECK(cond, ...) do { if (!(cond)) { printf("FAIL: " __VA_ARGS__); printf("\n"); failures++; } } while (0)
 #define U(x) ((unsigned long long)(x))
-enum { MOVED = UNIT_FLAG_COUNTER_RENUMBERED | UNIT_FLAG_COUNTER_DISCONTINUITY };
+#define AGREE(lo, hi, what) for (uint16_t c = (lo); c <= (hi); c++) \
+    CHECK(s->audio_seen[c] && s->video_seen[c] && s->audio_ext[c] == s->video_ext[c], \
+          what ", counter %u: audio extended %llu, video extended %llu", c, U(s->audio_ext[c]), U(s->video_ext[c]))
+#define AUDIO_UNDISTURBED(lo, hi, what) for (uint16_t c = (lo); c <= (hi); c++) \
+    CHECK(s->audio_seen[c] && s->audio_ext[c] == c && !(s->audio_flags[c] & UNIT_FLAG_COUNTER_DISCONTINUITY), \
+          what ", resync %u: extended %llu, flags 0x%x", c, U(s->audio_ext[c]), s->audio_flags[c])
 
 int main(void)
 {
@@ -113,39 +133,50 @@ int main(void)
     assert(s && unit);
     int failures = 0;
 
-    /* 1: junk with a false marker between formed units; the audio counter runs on through it */
+    /* 1: a run of no-signal units numbered on their own while the resyncs run on */
     unit_parser *parser = open_parser(s);
+    for (uint16_t c = 100; c <= 101; c++) { feed_video_unit(parser, unit, c); feed_audio_unit(parser, c); }
+    for (uint16_t k = 0; k < 4; k++) { feed_format_unit(parser, unit, (uint16_t)(900 + k), 0x0800); feed_audio_unit(parser, (uint16_t)(102 + k)); }
+    for (uint16_t c = 106; c <= 110; c++) { feed_video_unit(parser, unit, c); feed_audio_unit(parser, c); }
+    unit_parser_finish(parser); free(parser);
+    CHECK(s->video_seen[107] && s->video_ext[107] == 107, "no-signal units moved the video numbering: 107 -> %llu", U(s->video_ext[107]));
+    AGREE(107, 109, "after no signal");
+    AUDIO_UNDISTURBED(100, 110, "through no signal");
+    /* (the parser gives up the first unit after a break in the numbering, here 900 and 106) */
+    for (uint16_t c = 901; c <= 902; c++)
+        CHECK(s->video_seen[c] && s->video_kind[c] == UNIT_VIDEO_DEVICE_NO_SIGNAL_0800 && s->video_ext[c] >= 101 && s->video_ext[c] <= 106,
+              "no-signal unit %u is placed at %llu, not at the device counter's position", c, U(s->video_ext[c]));
+
+    /* 2: junk with a false marker between formed units; the audio counter runs on through it */
+    parser = open_parser(s);
     for (uint16_t c = 100; c <= 101; c++) { feed_video_unit(parser, unit, c); feed_audio_unit(parser, c); }
     feed_junk_with_false_marker(parser, unit, 30000, 4);
     for (uint16_t c = 102; c <= 104; c++) feed_audio_unit(parser, c);
     for (uint16_t c = 105; c <= 109; c++) { feed_video_unit(parser, unit, c); feed_audio_unit(parser, c); }
     unit_parser_finish(parser); free(parser);
-    CHECK(!s->video_seen[30000] || s->video_ext[30000] == 0, "the junk marker's unit carries an extended counter (%llu)", U(s->video_ext[30000]));
-    CHECK(s->video_seen[105] && s->video_ext[105] == 105, "junk marker moved the video extension: 105 -> %llu", U(s->video_ext[105]));
-    for (uint16_t c = 105; c <= 108; c++)
-        CHECK(s->audio_seen[c] && s->video_seen[c] && s->audio_ext[c] == s->video_ext[c],
-              "after junk, counter %u: audio extended %llu, video extended %llu", c, U(s->audio_ext[c]), U(s->video_ext[c]));
-    for (uint16_t c = 100; c <= 109; c++)
-        CHECK(!(s->audio_flags[c] & MOVED), "after junk, resync %u flagged (0x%x): its numbering never jumped", c, s->audio_flags[c]);
+    CHECK(s->video_seen[105] && s->video_ext[105] == 105, "junk marker moved the video numbering: 105 -> %llu", U(s->video_ext[105]));
+    AGREE(105, 108, "after junk");
+    AUDIO_UNDISTURBED(100, 109, "through junk");
 
-    /* 2: backward restart on both streams, one more old-numbering resync on the audio side */
+    /* 3: the video stream away for 40,000 units */
+    parser = open_parser(s);
+    for (uint16_t c = 100; c <= 101; c++) { feed_video_unit(parser, unit, c); feed_audio_unit(parser, c); }
+    for (uint32_t c = 102; c < 40102; c++) feed_resync_only(parser, (uint16_t)c);
+    for (uint16_t c = 40102; c <= 40106; c++) { feed_video_unit(parser, unit, c); feed_audio_unit(parser, c); }
+    unit_parser_finish(parser); free(parser);
+    AGREE(40103, 40105, "after a long absence");
+    AUDIO_UNDISTURBED(40100, 40106, "through a long absence");
+
+    /* 4: a backward restart, with one more resync of the old numbering on the audio side. The parser frames a
+     * restart by giving up the unit before it and the first after it, so the first formed unit is 51. */
     parser = open_parser(s);
     for (uint16_t c = 100; c <= 101; c++) { feed_video_unit(parser, unit, c); feed_audio_unit(parser, c); }
     feed_audio_unit(parser, 102);
     for (uint16_t c = 50; c <= 55; c++) { feed_video_unit(parser, unit, c); feed_audio_unit(parser, c); }
     unit_parser_finish(parser); free(parser);
-    /* The parser frames a restart by giving up the unit before it and the first one after it (neither has a
-     * successor with counter + 1 where one is due), so the first complete unit of the new numbering is 51. */
-    CHECK(s->video_seen[51] && s->video_ext[51] == 101 && s->video_ext[53] == 103,
-          "video extension across a backward restart: 51 -> %llu, 53 -> %llu", U(s->video_ext[51]), U(s->video_ext[53]));
-    for (uint16_t c = 52; c <= 54; c++)
-        CHECK(s->audio_seen[c] && s->video_seen[c] && s->audio_ext[c] == s->video_ext[c],
-              "after a restart, counter %u: audio extended %llu, video extended %llu", c, U(s->audio_ext[c]), U(s->video_ext[c]));
-    CHECK(s->audio_flags[52] & UNIT_FLAG_COUNTER_RENUMBERED, "resync 52 (own counter +1, extended value moved) not marked renumbered (0x%x)", s->audio_flags[52]);
-    CHECK(!(s->audio_flags[50] & UNIT_FLAG_COUNTER_RENUMBERED) && (s->audio_flags[50] & UNIT_FLAG_COUNTER_DISCONTINUITY),
-          "resync 50 (own counter went back) must be a discontinuity, not a renumbering (0x%x)", s->audio_flags[50]);
-    for (uint16_t c = 53; c <= 55; c++)
-        CHECK(!(s->audio_flags[c] & MOVED), "after a restart, resync %u flagged (0x%x) once the numbering settled", c, s->audio_flags[c]);
+    AGREE(51, 54, "after a restart");
+    CHECK(s->audio_ext[50] == 103 && (s->audio_flags[50] & UNIT_FLAG_COUNTER_DISCONTINUITY) && s->audio_ext[53] == 106,
+          "audio numbering across a backward restart changed: 50 -> %llu (flags 0x%x), 53 -> %llu", U(s->audio_ext[50]), s->audio_flags[50], U(s->audio_ext[53]));
 
     free(unit); free(s);
     if (failures) return 1;

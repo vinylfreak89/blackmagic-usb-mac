@@ -17,6 +17,14 @@ The parser recognizes marker candidates even when `00 00 ff ff` is split
 between packets, then validates the following header before accepting a unit
 boundary. It extends the 16-bit counter monotonically within an explicit epoch.
 
+The device counter is the one on the audio resync records. A formed picture unit
+takes its extended counter from the audio stream's position, so a unit and the
+resync with the same device counter always carry the same extended value. Two
+kinds of unit never move the numbering and are placed at the device counter's
+current position instead: `0x0800` no-signal units, which carry a counter of
+their own, and a marker unit emitted because the buffer filled, which has no
+successor with counter + 1 to confirm it.
+
 A fixed-raster consumer may accept a unit only when all of these are true:
 
 ```

@@ -34,9 +34,6 @@ enum unit_transport_flag {
     UNIT_FLAG_PACKET_SEQUENCE_GAP = 1u << 2,
     UNIT_FLAG_PACKET_STATUS = 1u << 3,
     UNIT_FLAG_COUNTER_DISCONTINUITY = 1u << 4,
-    /* Audio resync only: its own 16-bit counter stepped by one, but the extended value (taken from the video
-     * stream's numbering) did not: the numbering jumped, no time did. */
-    UNIT_FLAG_COUNTER_RENUMBERED = 1u << 5,
 };
 
 typedef enum unit_video_kind {
