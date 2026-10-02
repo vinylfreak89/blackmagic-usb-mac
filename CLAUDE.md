@@ -106,6 +106,20 @@ experiment's mode word. Then latch: req 215, index 24, `0x73c60001`.
 **Status:** vendor control IN `request=214`; index 16 = signal/mode status
 (first byte ~`0x39` stable 576p, `0x2d` stable 720p, `0x20` no-signal).
 
+**Registers (measured 2026-10-02 on S-Video, `shuttle-capture` with `CC_REG_SWEEP`; bmusb's notes in its source
+give the same map).** Requests 214 (read) and 215 (write) address 4-byte registers by index. As found: 0 = the
+mode word; 4 and 8 = `80 80 80 00`; 12 and 44 change (counters); 16 = status, low bytes firmware `0c e0`;
+20 = `00 00 ff ff`; 24 = the latch; 28 and 32 = `40 40 40 40`; 36 = `80 1e 80 00`; 40 and 48..252 read zero.
+- **28 is the analogue audio level of our two channels:** half the value is -6 dB, live on a plain write. It acts
+  AFTER the point where a hot input clips (halved, loud passages peak flat at exactly half scale), so it cannot
+  cure clipping; that needs attenuation ahead of the Shuttle. 32 does nothing to our channels (the other four).
+- **4, 8, 20 and 36 change nothing on S-Video:** luma (a tape's steady vertical-interval pulses held within a
+  code through every change), chroma noise, audio floor and framing were unaffected by a plain write, a write
+  followed by the latch, or one followed by the mode word and the latch. Values tried: each byte of 4 and 8 down a
+  quarter and a half; 20 = 0; 36 = 0 and `80 36 80 2a` (the value bmusb saw the vendor driver write). Re-sending
+  the mode word and latch while streaming does not disturb the stream. No input video gain has been found.
+
+
 **Video formats** (16-bit code): NTSC 480i `0xe101` family → 720×480 interlaced,
 `second_field_start=280`, 30000/1001; PAL 576i `0xe109` family → 720×576, 335, 25/1;
 **no-signal `0x0800`** → green pseudo-frames ~30.13 Hz. SD is delivered with the **full
