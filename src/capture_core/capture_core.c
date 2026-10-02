@@ -394,7 +394,11 @@ static int vout_(libusb_device_handle*h,uint8_t req,uint16_t idx,uint32_t be){
 int cc_debug_register(cc_session *s, int write, uint16_t index, uint32_t *value){
     if(!s || !value || !s->h || s->cfg.replay_path || index>56 || index%4) return CC_ERR_ARGS;
     if(write){
-        if(index!=4 && index!=8 && index!=28 && index!=32) return CC_ERR_ARGS;
+        /* 20 and 36: only the values bmusb's author wrote or saw the vendor driver write, and the values found */
+        int ok = index==4 || index==8 || index==28 || index==32 ||
+                 (index==20 && (*value==0 || *value==0x0000ffffu)) ||
+                 (index==36 && (*value==0 || *value==0x8036802au || *value==0x801e8000u));
+        if(!ok) return CC_ERR_ARGS;
         return vout_(s->h,215,index,*value)==4?CC_OK:CC_ERR_USB;
     }
     uint8_t b[4];

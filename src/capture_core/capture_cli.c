@@ -167,50 +167,60 @@ int main(int argc,char**argv){
         }
     }
     else if(getenv("CC_REG_SWEEP")){
-        /* Measurement: find what the unexplained level registers do. Once a second one value is changed, and the
-         * second after it is put back, cycling through the bytes of registers 4 and 8 and the two audio registers
-         * for the whole capture; every write is listed beside the capture with its time. The registers are read
-         * first and left as they were found. */
+        /* Measurement: find what the unexplained registers do. One value is changed, held, and put back, cycling
+         * through a list for the whole capture; every write is listed beside the capture with its time. All six
+         * registers are read first and left as found.
+         *   CC_REG_SWEEP=1  4, 8, 28, 32: plain writes, a second each, a quarter down
+         *   CC_REG_SWEEP=2  the same, each write followed by the latch, two seconds each, halved
+         *   CC_REG_SWEEP=3  the same, followed by the mode word and the latch
+         *   CC_REG_SWEEP=4  4 and 8 with the mode word and the latch; 36 set to the value the vendor driver was
+         *                   seen to write and to zero, 20 set to zero (the values bmusb's notes record), with the latch
+         * Results, S-Video, 2026-10-02: =1 and =2 change nothing in the picture; 28 is the audio level of our two
+         * channels (half the value, -6 dB), applied after the point where a hot input clips. */
+        enum { PLAIN, LATCH, MODE };
+        typedef struct { uint16_t index; int byte; uint32_t value; int apply; } sweep_step;   /* byte -1: every byte; -2: value as given */
+        int variant=atoi(getenv("CC_REG_SWEEP")), dwell=variant>=2?20:10, cut=variant>=2?2:4, apply=variant>=3?MODE:variant==2?LATCH:PLAIN;
         /* the audio registers come third and fourth so that, started with the tape, they fall on its silent cards */
-        static const struct { uint16_t index; int byte; } steps[]={{4,0},{4,1},{28,-1},{32,-1},{4,2},{8,0},{8,1},{8,2}};
-        const unsigned nsteps=sizeof steps/sizeof *steps;
-        uint32_t orig[4]={0}; const uint16_t regs[4]={4,8,28,32}; int ok=1;
-        for(int r=0;r<4;r++) if(cc_debug_register(g_s,0,regs[r],&orig[r])!=CC_OK) ok=0;
+        const sweep_step basic[]={{4,0,0,apply},{4,1,0,apply},{28,-1,0,apply},{32,-1,0,apply},{4,2,0,apply},{8,0,0,apply},{8,1,0,apply},{8,2,0,apply}};
+        const sweep_step wider[]={{4,0,0,MODE},{4,1,0,MODE},{36,-2,0x8036802au,LATCH},{36,-2,0,LATCH},{4,2,0,MODE},{8,0,0,MODE},{8,1,0,MODE},{8,2,0,MODE},{20,-2,0,LATCH}};
+        const sweep_step *steps=variant>=4?wider:basic; const unsigned nsteps=variant>=4?sizeof wider/sizeof *wider:sizeof basic/sizeof *basic;
+        const uint16_t regs[6]={4,8,28,32,20,36}; uint32_t orig[6]={0}; int ok=1;
+        for(int r=0;r<6;r++) if(cc_debug_register(g_s,0,regs[r],&orig[r])!=CC_OK) ok=0;
+        if(ok && variant>=4 && (orig[4]!=0x0000ffffu || orig[5]!=0x801e8000u)){
+            fprintf(stderr,"registers 20/36 read %08x/%08x, not the values this sweep knows how to restore; not sweeping them\n",orig[4],orig[5]); ok=0;
+        }
         char sweep_path[PATH_MAX]; snprintf(sweep_path,sizeof sweep_path,"%s.regsweep.csv",out);
         FILE *sw=ok?fopen(sweep_path,"w"):NULL;
-        if(!sw) fprintf(stderr,"register sweep not started (registers unreadable or %s not writable); capturing without it\n",sweep_path);
+        if(!sw) fprintf(stderr,"register sweep not started; capturing without it\n");
         else {
             fprintf(sw,"ms_since_start,register,value_hex,what\n");
-            for(int r=0;r<4;r++) fprintf(sw,"0,%u,%08x,as found\n",regs[r],orig[r]);
+            for(int r=0;r<6;r++) fprintf(sw,"0,%u,%08x,as found\n",regs[r],orig[r]);
         }
-        /* CC_REG_SWEEP=1: plain writes, a second each, a quarter down. =2: each write followed by the latch, two
-         * seconds each, halved. =3: followed by the mode word and the latch. (A plain write changed nothing
-         * measurable on S-Video, 2026-10-02.) */
-        int variant=atoi(getenv("CC_REG_SWEEP")), dwell=variant>=2?20:10, cut=variant>=2?2:4;
-        double t0=tool_clock(); int changed=-1;
+        double t0=tool_clock(); int changed=-1, changed_apply=PLAIN;
         for(int i=0;i<secs*10 && !atomic_load(&g_done);i++){
             if(sw && i%dwell==0){
                 int sec=i/dwell; uint32_t v; unsigned ms=(unsigned)((tool_clock()-t0)*1000);
                 if(changed>=0){                                   /* put the last one back */
                     v=orig[changed]; int rc=cc_debug_register(g_s,1,regs[changed],&v);
-                    if(variant>=2 && rc==CC_OK) rc=cc_debug_relatch(g_s,variant>=3);
+                    if(changed_apply!=PLAIN && rc==CC_OK) rc=cc_debug_relatch(g_s,changed_apply==MODE);
                     fprintf(sw,"%u,%u,%08x,restored%s\n",ms,regs[changed],v,rc==CC_OK?"":" FAILED"); changed=-1;
                 } else if(sec>=2 && i<(secs-4)*10){               /* leave the first and last seconds alone */
-                    unsigned k=(unsigned)(sec/2-1)%nsteps; int r=0; while(regs[r]!=steps[k].index) r++;
-                    /* down by 1/cut from the value found: 0x80 -> 0x60 or 0x40, 0x40 -> 0x30 or 0x20 */
-                    if(steps[k].byte<0){ v=0; for(int b=0;b<4;b++){ uint32_t x=orig[r]>>(24-8*b)&0xff; v|=(x-x/cut)<<(24-8*b); } }
-                    else { int sh=24-8*steps[k].byte; uint32_t x=orig[r]>>sh&0xff; v=(orig[r]&~(0xffu<<sh))|((x-x/cut)<<sh); }
-                    int rc=cc_debug_register(g_s,1,steps[k].index,&v);
-                    if(variant>=2 && rc==CC_OK) rc=cc_debug_relatch(g_s,variant>=3);
-                    fprintf(sw,"%u,%u,%08x,changed%s\n",ms,steps[k].index,v,rc==CC_OK?"":" FAILED"); changed=r;
+                    const sweep_step *st=&steps[(unsigned)(sec/2-1)%nsteps]; int r=0; while(regs[r]!=st->index) r++;
+                    if(st->byte==-2) v=st->value;
+                    else if(st->byte<0){ v=0; for(int b=0;b<4;b++){ uint32_t x=orig[r]>>(24-8*b)&0xff; v|=(x-x/cut)<<(24-8*b); } }   /* down by 1/cut */
+                    else { int sh=24-8*st->byte; uint32_t x=orig[r]>>sh&0xff; v=(orig[r]&~(0xffu<<sh))|((x-x/cut)<<sh); }
+                    int rc=cc_debug_register(g_s,1,st->index,&v);
+                    if(st->apply!=PLAIN && rc==CC_OK) rc=cc_debug_relatch(g_s,st->apply==MODE);
+                    fprintf(sw,"%u,%u,%08x,changed%s%s\n",ms,st->index,v,st->apply==MODE?" +mode+latch":st->apply==LATCH?" +latch":"",rc==CC_OK?"":" FAILED");
+                    changed=r; changed_apply=st->apply;
                 }
                 fflush(sw);
             }
             usleep(100000);
         }
         if(sw){
-            for(int r=0;r<4;r++){ uint32_t v=orig[r]; int rc=cc_debug_register(g_s,1,regs[r],&v); uint32_t back=0; cc_debug_register(g_s,0,regs[r],&back);
-                if(r==3 && variant>=2) cc_debug_relatch(g_s,variant>=3);
+            for(int r=0;r<6;r++){ uint32_t v=orig[r]; int rc=cc_debug_register(g_s,1,regs[r],&v); if(r==5 && variant>=2) cc_debug_relatch(g_s,variant>=3);
+                uint32_t back=0; cc_debug_register(g_s,0,regs[r],&back);
                 fprintf(sw,"%u,%u,%08x,final restore%s reads back %08x\n",(unsigned)((tool_clock()-t0)*1000),regs[r],v,rc==CC_OK?"":" FAILED",back);
                 if(back!=orig[r]) fprintf(stderr,"REGISTER %u NOT RESTORED: found %08x, now %08x\n",regs[r],orig[r],back); }
             fclose(sw); printf("register sweep written to %s\n",sweep_path);

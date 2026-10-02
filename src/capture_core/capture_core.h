@@ -115,7 +115,8 @@ uint64_t cc_packets_delivered(const cc_session *s);
 int cc_replay_pause(cc_session *s, int paused);
 // Measurement only: read (write=0) or write one of the device's 4-byte registers on a streaming device session
 // (vendor requests 214/215; bmusb's notes name 28 and 32 as analogue audio input levels and leave 4 and 8
-// unexplained). Writes are refused except to 4, 8, 28 and 32; reads are limited to 0..56. *value is the four
+// unexplained). Writes are refused except to 4, 8, 28 and 32, and to 20 and 36 with the few values bmusb's
+// notes show were written to them (plus the values found); reads are limited to 0..56. *value is the four
 // bytes in wire order, first byte in the top bits. Call from the session's owner thread, not from a callback.
 int cc_debug_register(cc_session *s, int write, uint16_t index, uint32_t *value);
 // Measurement only: send the latch again, after the session's own mode word if with_mode (the same two writes
