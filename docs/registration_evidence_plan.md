@@ -141,6 +141,40 @@ fixture A then it may proceed with that." On fixture A 2% of 86,293 units is abo
 the approved log; the comb-decision count is no longer a gate. Times are targets: "I don't want it rushing just to
 meet an arbitrary deadline".
 
+## Attempts so far and the retry (2026-10-02)
+
+What the 2026-10-01/02 work established, so the normalized-confidence retry starts from it. Commits on engine-cleanup.
+
+- **Static-tile comb + fixed weights** (5e4b8ec, 5c8caf8): fixed tvc2's fade-in, dub thrash and the 52:57 hold, but on
+  mis-mastered material the tops overruled correct combs. The fixed tops weight was a category error: 99.6% measures
+  reading a top line, not the fields' relative alignment.
+- **Mistimed tops make no decision** (b031c68) and **the comb counts only well-timed rows** (058a2bc): kept.
+- **Whole-frame comb downgraded one step by any vertical motion** (e6d8e83): fixed the fade-in, but on fixture A it
+  undid correct corrections on moving frames (the same failure as the 2026-09-26 blanket suppression).
+- **Paired per-tile t-statistic as comb confidence** (dc37a68, reverted dfd8236): refuted; tiles are not independent,
+  so it was over-confident and did not separate right from wrong on raw labels.
+- **Runtime tops trust from a sliding window** (05785b3): repaired the mis-mastered shots, but trust collapsed where
+  the source itself jitters (tvc2 52:43-53:08) and fixture A failed the gate (8.72% changes, 86.4% caption-correct;
+  pairing-correct run, 2026-10-02).
+- **True-minimum gate on trust teaching** (d4cb10f, reverted b4cf5a5): no effect.
+- **Structure-scaled comb, hold on weak evidence, confidence-weighted trust** (0a20a01, reverted 3d753bc): the
+  structure measure is right (comb energy gap ~1 on flat sky against 6.5-10.5 on detailed frames, whole-tape median
+  8.5), but weighting let moving frames teach the trust: on an ordinary slice it fell from 0.99 to 0.36 and changes rose
+  11 -> 226. Diagnosis: a moving frame's comb partly measures motion, and a one-step motion downgrade leaves it real
+  weight. The retry needs a continuous motion term first.
+- **Shipped tonight instead** (owner's partial-fix allowance): the approved engine with a tile-motion veto on the still
+  trigger (664e620): 0.13% changes on fixture A, fade-in fixed; reviewed by the owner as the new baseline.
+
+**Retry order** (each step gated on fixture A, < 2% placement changes against the new baseline log, and on tvc2's
+trouble spots, before the next):
+1. Continuous comb confidence: depth (margin), symmetry of the minimum, structure (energy gap against the tape's
+   running gap), and a continuous motion term - how much of the comb's disagreement the measured motion explains,
+   with "equal vs half the frame-to-frame motion" measured on fixture A's captions and the tvc2 tilt first.
+2. Trust taught by that confidence (chip away, no gates).
+3. The previous decision carrying its confidence and losing it to opposing evidence (hold on weak evidence).
+4. Continuous tops confidence (waveform step, cross-field agreement, timing).
+5. The absolute anchor as per-frame candidates (removing the 30-frame vote's lag).
+
 ## Order of work (owner)
 
 Registration cleanup (this plan), then H-timing correction, then stabilization.
