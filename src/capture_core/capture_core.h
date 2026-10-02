@@ -113,6 +113,11 @@ uint64_t cc_packets_delivered(const cc_session *s);
 // restart from the resume time, so no burst follows. The read-ahead keeps filling while paused.
 // CC_ERR_STATE for a device session (a live capture cannot be held; the device keeps streaming).
 int cc_replay_pause(cc_session *s, int paused);
+// Measurement only: read (write=0) or write one of the device's 4-byte registers on a streaming device session
+// (vendor requests 214/215; bmusb's notes name 28 and 32 as analogue audio input levels and leave 4 and 8
+// unexplained). Writes are refused except to 4, 8, 28 and 32; reads are limited to 0..56. *value is the four
+// bytes in wire order, first byte in the top bits. Call from the session's owner thread, not from a callback.
+int cc_debug_register(cc_session *s, int write, uint16_t index, uint32_t *value);
 const char *cc_strerror(int err);
 
 typedef struct {

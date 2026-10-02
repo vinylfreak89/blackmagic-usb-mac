@@ -166,6 +166,48 @@ int main(int argc,char**argv){
                 tool_timeout("no capture-core packet delivery before stall deadline; partial capture retained");
         }
     }
+    else if(getenv("CC_REG_SWEEP")){
+        /* Measurement: find what the unexplained level registers do. Once a second one value is changed, and the
+         * second after it is put back, cycling through the bytes of registers 4 and 8 and the two audio registers
+         * for the whole capture; every write is listed beside the capture with its time. The registers are read
+         * first and left as they were found. */
+        static const struct { uint16_t index; int byte; } steps[]={{4,0},{4,1},{4,2},{8,0},{8,1},{8,2},{28,-1},{32,-1}};
+        const unsigned nsteps=sizeof steps/sizeof *steps;
+        uint32_t orig[4]={0}; const uint16_t regs[4]={4,8,28,32}; int ok=1;
+        for(int r=0;r<4;r++) if(cc_debug_register(g_s,0,regs[r],&orig[r])!=CC_OK) ok=0;
+        char sweep_path[PATH_MAX]; snprintf(sweep_path,sizeof sweep_path,"%s.regsweep.csv",out);
+        FILE *sw=ok?fopen(sweep_path,"w"):NULL;
+        if(!sw) fprintf(stderr,"register sweep not started (registers unreadable or %s not writable); capturing without it\n",sweep_path);
+        else {
+            fprintf(sw,"ms_since_start,register,value_hex,what\n");
+            for(int r=0;r<4;r++) fprintf(sw,"0,%u,%08x,as found\n",regs[r],orig[r]);
+        }
+        double t0=tool_clock(); int changed=-1;
+        for(int i=0;i<secs*10 && !atomic_load(&g_done);i++){
+            if(sw && i%10==0){
+                int sec=i/10; uint32_t v; unsigned ms=(unsigned)((tool_clock()-t0)*1000);
+                if(changed>=0){                                   /* put the last one back */
+                    v=orig[changed]; int rc=cc_debug_register(g_s,1,regs[changed],&v);
+                    fprintf(sw,"%u,%u,%08x,restored%s\n",ms,regs[changed],v,rc==CC_OK?"":" FAILED"); changed=-1;
+                } else if(sec>=2 && i<(secs-2)*10){               /* leave the first and last seconds alone */
+                    unsigned k=(unsigned)(sec/2-1)%nsteps; int r=0; while(regs[r]!=steps[k].index) r++;
+                    /* about a quarter down from the value found: 0x80 -> 0x60, 0x40 -> 0x30 */
+                    if(steps[k].byte<0){ v=0; for(int b=0;b<4;b++){ uint32_t x=orig[r]>>(24-8*b)&0xff; v|=(x-x/4)<<(24-8*b); } }
+                    else { int sh=24-8*steps[k].byte; uint32_t x=orig[r]>>sh&0xff; v=(orig[r]&~(0xffu<<sh))|((x-x/4)<<sh); }
+                    int rc=cc_debug_register(g_s,1,steps[k].index,&v);
+                    fprintf(sw,"%u,%u,%08x,changed%s\n",ms,steps[k].index,v,rc==CC_OK?"":" FAILED"); changed=r;
+                }
+                fflush(sw);
+            }
+            usleep(100000);
+        }
+        if(sw){
+            for(int r=0;r<4;r++){ uint32_t v=orig[r]; int rc=cc_debug_register(g_s,1,regs[r],&v); uint32_t back=0; cc_debug_register(g_s,0,regs[r],&back);
+                fprintf(sw,"%u,%u,%08x,final restore%s reads back %08x\n",(unsigned)((tool_clock()-t0)*1000),regs[r],v,rc==CC_OK?"":" FAILED",back);
+                if(back!=orig[r]) fprintf(stderr,"REGISTER %u NOT RESTORED: found %08x, now %08x\n",regs[r],orig[r],back); }
+            fclose(sw); printf("register sweep written to %s\n",sweep_path);
+        }
+    }
     else { for(int i=0;i<secs*10 && !atomic_load(&g_done);i++) usleep(100000); }
     tool_guard("cc_stop",lifecycle_s);
     cc_stop(g_s);

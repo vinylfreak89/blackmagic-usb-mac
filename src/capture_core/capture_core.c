@@ -391,6 +391,17 @@ static int vout_(libusb_device_handle*h,uint8_t req,uint16_t idx,uint32_t be){
     uint8_t b[4]={(uint8_t)(be>>24),(uint8_t)(be>>16),(uint8_t)(be>>8),(uint8_t)be};
     return libusb_control_transfer(h,0x40,req,0,idx,b,4,1000);
 }
+int cc_debug_register(cc_session *s, int write, uint16_t index, uint32_t *value){
+    if(!s || !value || !s->h || s->cfg.replay_path || index>56 || index%4) return CC_ERR_ARGS;
+    if(write){
+        if(index!=4 && index!=8 && index!=28 && index!=32) return CC_ERR_ARGS;
+        return vout_(s->h,215,index,*value)==4?CC_OK:CC_ERR_USB;
+    }
+    uint8_t b[4];
+    if(libusb_control_transfer(s->h,0xc0,214,0,index,b,4,1000)!=4) return CC_ERR_USB;
+    *value=(uint32_t)b[0]<<24|(uint32_t)b[1]<<16|(uint32_t)b[2]<<8|b[3];
+    return CC_OK;
+}
 static void* device_main(void *arg){
     cc_session *s=arg;
     internal_session=s;
