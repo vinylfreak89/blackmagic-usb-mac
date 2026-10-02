@@ -43,9 +43,11 @@ enum fp_transport { FP_TRANSPORT_COMPLETE = 0, FP_TRANSPORT_SHORT = 1, FP_TRANSP
 
 typedef struct {
     IOSurfaceRef surface;      // '2vuy', 720×480, interlaced TFF; use-count held by consumer
-    uint64_t pts_num;          // PTS = pts_num / pts_den seconds (monotonic per epoch)
+    uint64_t pts_num;          // PTS = pts_num / pts_den seconds; follows counter_ext
     uint32_t pts_den;
-    uint64_t counter_ext;      // extended unit counter this frame came from (64-bit: monotonic epoch contract)
+    uint64_t counter_ext;      // extended unit counter this frame came from: the device counter on the audio resyncs,
+                               // extended. It steps by one per unit; it could step back only if that counter itself
+                               // restarted within an epoch (never observed), and the unit is then flagged a discontinuity
     int8_t   d1, d2;           // applied per-field offsets used for the crop
     uint8_t  transport;        // enum fp_transport of the source unit
     uint8_t  audio_pts_known;  // 1 if audio_pts_num carries this unit's time on the AUDIO clock

@@ -19,11 +19,14 @@ typedef struct {
     uint64_t file_bytes, units;   /* units: index of the last complete unit (0 = unknown) */
     uint16_t first16;             /* counter of unit 0 */
 } rt_timeline;
-/* A frame's counter further than this from where the frame count puts it is not believed: the device
- * restarted its counter (a counter epoch, §8 property 5), and the frame count is the better position. */
+/* A frame's counter further than this from where the frame count puts it is not believed, and the frame
+ * count is the better position. (What used to put counters far off was the no-signal units' own numbering
+ * leaking into the unit counter; picture units now follow the device counter on the audio resyncs, which
+ * has not been seen to restart.) */
 #define RT_RESOLVE_SLACK 900      /* units, 30 s */
-/* Counters are 16-bit and the device restarts them at a counter epoch (a no-input or relock event):
- * a restart inside the file shifts the span by the jump, and nothing here can tell. The size does not
+/* Counters are 16-bit. The file's first and last unit headers are read raw here, so a file that begins or
+ * ends in no-signal units (numbered on their own, not on the device counter) shifts the span by the
+ * difference between the two numberings, and nothing here can tell. The size does not
  * decide it either: the wrap count comes from the size, so the span always lies within half a wrap of
  * the size estimate, and captures with host loss carry fewer bytes per unit. So the length can be off
  * by a counter restart's jump; the shown time cannot run past it (rt_resolve clamps and, beyond the
