@@ -543,8 +543,7 @@ static ge_comb_result comb_timed(const uint8_t *t,const uint8_t *b,const uint8_t
 /* Per-frame evidence: each element proposes a relative alignment with a confidence weight
  * (log-odds of being right, from the 2026-10-01 calibrations); the candidate with the most weight wins.
  *   tops (census): the source's learned trust (EV_TRUST), log-odds, never negative
- *   comb: best/second >= 1.4 99% right (4.6); 1.05-1.4 85% (1.7); below, no say; one step lower
- *   when anything in the frame is moving vertically
+ *   comb: continuous log-odds from depth, motion and asymmetry (see the comb weight below)
  * The previous decision is one more candidate carrying the fresh evidence that supported it on the
  * last frame (owner (b): weaker evidence against it does not flip it at once, a stronger frame does);
  * a tie keeps it, and unsupported it decays to nothing, so a comb decision never latches.
@@ -565,17 +564,28 @@ static ge_decision frame_evidence(geometry_engine *g,const uint8_t *ty,const uin
     /* The tops' weight is the source's learned trust (log-odds, never negative). */
     double trust=(g->trust_sum+0.5)/(g->trust_n+1.0);o.ev_tops_trust=trust;
     double wt=known?fmax(0,log(trust/(1-trust))):0;
-    /* The whole-frame comb over horizontally well-timed rows; sustained vertical motion anywhere in either field (a tile shifting the
-     * same way on two consecutive units) downgrades its confidence one step (owner, 2026-10-01). */
+    /* The whole-frame comb over horizontally well-timed rows; its confidence is continuous (below). */
     ge_comb_result whole=ge_comb(ty,by,&g->config);o.ev_whole_comb_d=whole.shift;
     uint8_t rows_ok[525];o.ev_untimed_rows=timed_rows(ty,by,rows_ok);
     o.comb=o.ev_untimed_rows?comb_timed(ty,by,rows_ok):whole;
     int moving=0;
     for(int ti=0;ti<EV_TR;ti++)for(int tj=0;tj<EV_TC;tj++)moving+=t->tmoving[0][ti][tj]+b->tmoving[1][ti][tj];
     o.ev_moving_tiles=moving;
-    int band=isnan(o.comb.margin)?0:o.comb.margin>=1.4?2:o.comb.margin>=1.05?1:0;
-    if(moving && band)band--;
-    double wc=band==2?4.6:band==1?1.7:0;
+    /* Continuous comb confidence (log-odds that the comb's best shift is right), fitted on fixture A's caption truth
+     * (40,237 frames, 2026-10-02) and cross-checked SP<->EP (both directions beat a constant; signs and sizes stable):
+     * depth log(margin), motion (|mean field tile shift| x moving share of the picture: a motion-fooled comb lands at
+     * half the frame motion, signed by field order) and asymmetry of the minimum (|parabola offset|; a half-line
+     * minimum is ambiguous). The structure gap was left out: its weight flipped sign between SP and EP. */
+    double wc=0;
+    if(!isnan(o.comb.margin)) {
+        int bi=o.comb.shift+5;double asym=0.5;
+        if(bi>0 && bi<10){double y0=o.comb.energies[bi-1],y1=o.comb.energies[bi],y2=o.comb.energies[bi+1],den=y0-2*y1+y2;
+            asym=den>0?fabs(0.5*(y0-y2)/den):0.5;}
+        double motion=fabs((t->tjump[0]+b->tjump[1])/2)*moving/(2.0*EV_TR*EV_TC);
+        double lm=log(fmin(o.comb.margin,50));
+        wc=fmax(0,1.17+1.82*lm-6.36*motion-4.66*asym);
+        o.ev_comb_asym=asym;o.ev_comb_motion=motion;
+    }
     o.ev_weight_tops=wt;o.ev_weight_comb=wc;
     int d;
     if(wt==0 && wc==0 && g->have_placement && (o.ev_top_mistimed || !(log(trust/(1-trust))>0))) {
