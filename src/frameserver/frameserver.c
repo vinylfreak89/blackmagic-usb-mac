@@ -38,6 +38,7 @@ typedef struct {
     int slot;                              // pool slot holding the unit bytes, or -1
     fs_drop drop;                          // why an eligible unit carries no bytes (sidecar honesty)
     int eligible, gap_only;
+    unsigned partial_lines;                // show_partial: whole lines of picture in a unit that is not whole, held in the slot
     uint64_t preceding_ring_drops;
     unit_video_observation obs;            // metadata copy; bytes/payload re-pointed to the slot
     /* Decision-log evidence has an input-order cutoff: the parser's video-unit
@@ -197,6 +198,17 @@ static void on_video(void *ctx, const unit_video_observation *u){
         } else {
             memcpy(f->pool + (size_t)s * UNIT_PARSER_VIDEO_UNIT_BYTES, u->bytes, UNIT_PARSER_VIDEO_UNIT_BYTES);
             it.slot = s;
+        }
+    }
+    /* A picture unit that is not whole (one short field per unit from a deck in search, or the PAL-family units of
+     * an unlocked decoder) is kept for showing if asked. No-signal pseudo-frames, units with bytes missing and
+     * stubs of a few lines are not picture. No slot free: it is simply not shown. */
+    else if (f->cfg.show_partial && u->bytes && u->transport != UNIT_TRANSPORT_HOLE && (u->format & 0xff00u) == 0xe800u &&
+             u->byte_count <= UNIT_PARSER_VIDEO_UNIT_BYTES && u->byte_count >= UNIT_PARSER_VIDEO_HEADER_BYTES + 32u * FP_LINE_BYTES){
+        int s = take_slot(f);
+        if (s >= 0){
+            memcpy(f->pool + (size_t)s * UNIT_PARSER_VIDEO_UNIT_BYTES, u->bytes, u->byte_count);
+            it.slot = s; it.partial_lines = (unsigned)((u->byte_count - UNIT_PARSER_VIDEO_HEADER_BYTES) / FP_LINE_BYTES);
         }
     }
     it.t_enqueue = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
@@ -552,7 +564,17 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
     if(!unit) {
         geometry_flush(f);
         if(it->drop==FS_DROP_POOL_FULL){atomic_fetch_add(&f->dropped_pool_full,1);f->st.exact_units++;f->st.discontinuity_calls++;}
-        geometry_log(f,it,NULL,0,it->drop==FS_DROP_POOL_FULL?"PoolFull":transport_name(it->obs.transport),NULL,NULL);
+        /* after the flush above, so an earlier whole unit still waiting for its pair is published first */
+        const char *why=it->drop==FS_DROP_POOL_FULL?"PoolFull":transport_name(it->obs.transport);
+        if(it->partial_lines && it->slot>=0) {
+            const uint8_t *rows=f->pool+(size_t)it->slot*UNIT_PARSER_VIDEO_UNIT_BYTES+UNIT_PARSER_VIDEO_HEADER_BYTES;
+            if(fp_publish_partial(f->pub,rows,it->partial_lines,it->obs.counter_extended)==0) {
+                f->st.partial_shown++;
+                why=it->obs.transport==UNIT_TRANSPORT_SHORT?"ShortShown":"OtherShown";
+            }
+            atomic_store(&f->slot_used[it->slot],0);
+        }
+        geometry_log(f,it,NULL,0,why,NULL,NULL);
         return;
     }
     f->st.exact_units++;
@@ -611,7 +633,7 @@ static void process_item(frameserver *f, const fs_item *it){
     }
     unit_video_observation obs = it->obs;
     const uint8_t *unit = NULL;
-    if (it->slot >= 0){ unit = f->pool + (size_t)it->slot * UNIT_PARSER_VIDEO_UNIT_BYTES; obs.bytes = unit; obs.payload = unit + UNIT_PARSER_VIDEO_HEADER_BYTES; }
+    if (it->slot >= 0 && !it->partial_lines){ unit = f->pool + (size_t)it->slot * UNIT_PARSER_VIDEO_UNIT_BYTES; obs.bytes = unit; obs.payload = unit + UNIT_PARSER_VIDEO_HEADER_BYTES; }
     switch (obs.transport){ case UNIT_TRANSPORT_HOLE: atomic_fetch_add(&f->holes, 1); break;
         case UNIT_TRANSPORT_SHORT: atomic_fetch_add(&f->shorts, 1); break;
         case UNIT_TRANSPORT_UNFRAMED: atomic_fetch_add(&f->unframed, 1); break; default: break; }

@@ -85,6 +85,13 @@ int fp_publish_placed(fp_publisher *p, const uint8_t *unit, size_t unit_len,
 void fp_get_stats(const fp_publisher *p, fp_stats *out);
 void fp_close(fp_publisher *p);
 
+/* A picture that did not arrive as a whole unit: a deck in search (fast-forward, rewind) or an unlocked source makes
+ * the device send one short field per unit. `rows` holds n_lines lines of 1440 bytes as they arrived; they are
+ * stretched over the 480 output rows by repeating lines, with no placement and no field structure. For looking,
+ * not for keeping: the frame carries FP_TRANSPORT_SHORT. A unit of more than 300 lines is taken to hold two
+ * fields one after the other and only the first is shown. Returns as fp_publish. */
+int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, uint64_t counter_ext);
+
 // Pure assembly, no IOSurface: writes the 480-line interlaced frame (1440 B/row) into dst.
 // Exposed for tests and for consumers that own their buffers.
 void fp_assemble(uint8_t *dst, const uint8_t *unit, int d1, int d2);

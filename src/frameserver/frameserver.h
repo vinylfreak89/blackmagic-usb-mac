@@ -61,6 +61,9 @@ typedef struct {
     int registration_off;      // default 0; 1 publishes every field at the nominal (0,0) placement.
                                // The engine still runs and logs its evaluation; applied/frame offsets
                                // in the sidecar are the published 0. H-retiming uses that placement.
+    int show_partial;          // default 0; 1 also shows picture units that are not whole (a deck in search or an
+                               // unlocked source sends one short field per unit): stretched to the frame, no
+                               // placement, transport FP_TRANSPORT_SHORT. The log row says ShortShown / OtherShown.
 } fs_config;
 
 // Audio: every PCM record the parser emits is published through audio_publisher as bounded
@@ -91,6 +94,7 @@ typedef struct {
     //   audio_frames_delivered + audio_dropped_frames == audio_frames_published (queue accounts every block).
     uint64_t eligible_observations;   // fixed-raster-eligible units seen at ingress (the denominator)
     uint64_t published, dropped_pool_full, dropped_ring_full, publisher_dropped, ring_drops_logged;
+    uint64_t partial_shown;     // frames shown from units that were not whole (show_partial)
     uint64_t eligible_ring_drops, ring_gap_rows;
     // dropped_pool_full: eligible unit, no free slot -> bytes shed, observation still logged (drop_reason=PoolFull).
     // dropped_ring_full: item ring full -> observation never reaches the worker; counted, and folded

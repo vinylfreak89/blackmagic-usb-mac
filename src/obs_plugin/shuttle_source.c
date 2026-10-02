@@ -65,6 +65,7 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #define S_INPUT       "input"
 #define S_HRETIME     "hretime"
 #define S_REGISTRATION "registration"
+#define S_PARTIAL      "show_partial"
 #define S_TPC         "raw_tpc"
 #define S_REPLAY      "replay_path"
 #define S_USE_REPLAY  "use_replay"
@@ -703,10 +704,10 @@ static void shuttle_stop(shuttle_src *s){
         if (st.log_last_file_errors) blog(LOG_ERROR, "[shuttle-source] sidecar part is INCOMPLETE (%llu write/close errors in this file); left unpublished at %s", (unsigned long long)st.log_last_file_errors, s->sidecar_partial);
         else sidecar_publish(s);
     }
-    blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, residual steps applied %llu",
+    blog(LOG_INFO, "[shuttle-source] stopped: published %llu frames (%llu to OBS), audio %llu frames delivered / %llu dropped, pool-full %llu, ring-full %llu, holes %llu, residual steps applied %llu, search frames shown %llu",
          (unsigned long long)st.published, (unsigned long long)atomic_load(&s->frames_out), (unsigned long long)st.audio_frames_delivered,
          (unsigned long long)st.audio_dropped_frames, (unsigned long long)st.dropped_pool_full, (unsigned long long)st.dropped_ring_full,
-         (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps));
+         (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown);
     blog(LOG_INFO, "[shuttle-source] delivery timing: %llu handoff gaps over 83 ms (max %.1f ms), %llu output calls over 20 ms (max %.1f ms)",
          (unsigned long long)s->gap_events, s->max_gap_ns / 1e6, (unsigned long long)s->slow_calls, s->max_call_ns / 1e6);
     fs_close(s->fs); s->fs = NULL;
@@ -742,6 +743,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     s->replaying = cfg.capture.replay_path != NULL;
     cfg.hretime = obs_data_get_bool(settings, S_HRETIME) ? 1 : 0;   /* per-tape choice; off leaves output unchanged */
     cfg.registration_off = obs_data_get_bool(settings, S_REGISTRATION) ? 0 : 1;   /* per-tape: off publishes the nominal (0,0) placement */
+    cfg.show_partial = obs_data_get_bool(settings, S_PARTIAL) ? 1 : 0;            /* search and unlocked picture: units that are not whole, stretched */
     cfg.pool_units = 0; cfg.surface_pool = 6;   /* pool sized from the capture ring (frameserver default) */
     cfg.sink.on_frame = on_frame; cfg.sink.ctx = s;
     cfg.audio_sink.on_block = on_audio; cfg.audio_sink.ctx = s;
@@ -867,6 +869,7 @@ static void shuttle_defaults(obs_data_t *settings){
     obs_data_set_default_bool(settings, S_SIDECAR, true);
     obs_data_set_default_bool(settings, S_HRETIME, false);
     obs_data_set_default_bool(settings, S_REGISTRATION, true);
+    obs_data_set_default_bool(settings, S_PARTIAL, true);
     obs_data_set_default_bool(settings, S_TPC, false);
     obs_data_set_default_bool(settings, S_REPLAY_RESTART, false);
     obs_data_set_default_bool(settings, S_REPLAY_STOP, false);
@@ -881,6 +884,7 @@ static obs_properties_t *shuttle_properties(void *data){
     obs_property_list_add_string(in, "Component", "component");
     obs_properties_add_bool(p, S_REGISTRATION, "Registration: correct vertical field placement (per tape; off publishes both fields at the nominal position)");
     obs_properties_add_bool(p, S_HRETIME, "H-retiming: repair horizontally mistimed lines (per tape; leave off for stable tapes)");
+    obs_properties_add_bool(p, S_PARTIAL, "Search picture: also show units that are not whole (fast-forward, rewind, unlocked signal), stretched to the frame");
     obs_properties_add_bool(p, S_TPC, "Raw capture: save a .tpc beside each recording (about 85 GB per hour)");
     obs_properties_add_bool(p, S_USE_REPLAY, "Replay a tagged capture (.tpc) instead of the device");
     obs_properties_add_path(p, S_REPLAY, "Tagged capture file", OBS_PATH_FILE, "Tagged capture (*.tpc *.cap6)", NULL);

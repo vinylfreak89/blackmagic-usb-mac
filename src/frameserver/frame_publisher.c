@@ -96,6 +96,22 @@ static int publish(fp_publisher *p, const uint8_t *unit, size_t unit_len,
     p->sink.on_frame(p->sink.ctx, &f);
     return 0;
 }
+int fp_publish_partial(fp_publisher *p, const uint8_t *rows, unsigned n_lines, uint64_t counter_ext){
+    if (!p || !rows || !n_lines){ if (p) p->st.rejected_bad_args++; return -1; }
+    if (n_lines > 300) n_lines /= 2;
+    IOSurfaceRef s = NULL;
+    for (unsigned i = 0; i < p->n && !s; i++) if (IOSurfaceGetUseCount(p->pool[i]) == 0) s = p->pool[i];
+    if (!s){ p->st.dropped_no_free_surface++; return 1; }
+    IOSurfaceLock(s, 0, NULL);
+    uint8_t *dst = IOSurfaceGetBaseAddress(s); size_t bpr = IOSurfaceGetBytesPerRow(s);
+    for (unsigned r = 0; r < FP_FRAME_HEIGHT; r++)
+        memcpy(dst + (size_t)r * bpr, rows + (size_t)(r * n_lines / FP_FRAME_HEIGHT) * FP_LINE_BYTES, FP_LINE_BYTES);
+    IOSurfaceUnlock(s, 0, NULL);
+    fp_frame f = { s, counter_ext * 1001u, 30000u, counter_ext, 0, 0, FP_TRANSPORT_SHORT, 0, 0, 0 };
+    p->st.published++;
+    p->sink.on_frame(p->sink.ctx, &f);
+    return 0;
+}
 int fp_publish(fp_publisher *p,const uint8_t *u,size_t n,uint64_t c,int d1,int d2,uint8_t tr,int known,uint64_t pts){
     return publish(p,u,n,c,d1,d2,tr,known,pts,0);
 }

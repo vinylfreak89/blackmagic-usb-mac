@@ -91,6 +91,7 @@ int main(int argc, char **argv){
         fputs("FS_HRETIME must be 0 or 1\n",stderr);return 2;
     }
     cfg.hretime=retime && !strcmp(retime,"1");
+    cfg.show_partial=getenv("FS_SHOW_PARTIAL") && !strcmp(getenv("FS_SHOW_PARTIAL"),"1");
     const char *regoff=getenv("FS_REGISTRATION_OFF");
     if(regoff && strcmp(regoff,"0") && strcmp(regoff,"1")) {
         fputs("FS_REGISTRATION_OFF must be 0 or 1\n",stderr);return 2;
@@ -156,6 +157,7 @@ int main(int argc, char **argv){
     printf("video obs %llu | exact %llu short %llu hole %llu unframed %llu other %llu 0x0800 %llu\n",
         (unsigned long long)s.video_observations, (unsigned long long)s.exact_units, (unsigned long long)s.short_units,
         (unsigned long long)s.holes, (unsigned long long)s.unframed, (unsigned long long)s.other_format, (unsigned long long)s.no_signal_0800);
+    if(s.partial_shown) printf("search frames shown from units that were not whole: %llu\n",(unsigned long long)s.partial_shown);
     printf("published %llu | dropped(pool) %llu dropped(ring) %llu dropped(surfaces) %llu | unsettled %llu | begin_segment %llu discontinuity %llu | log rows %llu | pool high %u\n",
         (unsigned long long)s.published, (unsigned long long)s.dropped_pool_full, (unsigned long long)s.dropped_ring_full, (unsigned long long)s.publisher_dropped,
         (unsigned long long)s.unsettled_units, (unsigned long long)s.begin_segment_calls, (unsigned long long)s.discontinuity_calls,
