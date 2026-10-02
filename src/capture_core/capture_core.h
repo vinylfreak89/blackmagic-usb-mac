@@ -160,6 +160,12 @@ typedef struct {
     uint64_t discarded_after_error;      // bytes the writer drained without writing after a failure
     size_t high_water, max_write;        // ring occupancy peak; largest single write issued
     int io_error;                        // errno of the first failed write/fsync/close, 0 if none
+    // Why the writer fell behind, when it did. A write call that blocks shows in the write times; a writer that
+    // was not running while data waited shows in max_ready_gap_ns. Each run of dropped packets is one episode,
+    // and at its first dropped packet the writer was either inside a write call (for how long) or not.
+    uint64_t writes, write_ns, max_write_ns, slow_writes;   // slow: a write call longer than 100 ms
+    uint64_t max_ready_gap_ns;           // longest time from one write returning to the next starting, data waiting
+    uint64_t loss_episodes, loss_in_write, max_in_write_at_loss_ns;
 } cc_async_sink_stats;
 int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *session_note,
                          size_t ring_bytes, size_t write_chunk);
@@ -168,6 +174,8 @@ void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *out); // packet/los
 int  cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st);
 // Test hook: when set, the writer's write() goes through it (stall / short-write / failure).
 extern ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n);
+// The writer thread's QoS class (default QOS_CLASS_UTILITY); read once when the sink opens. For measurement.
+extern int cc_async_sink_writer_qos;
 
 #ifdef __cplusplus
 }

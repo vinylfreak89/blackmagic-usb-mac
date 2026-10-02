@@ -15,8 +15,9 @@
 #include <unistd.h>
 static uint8_t payload[20000];
 static size_t max_seen;
-static _Atomic int gate_open=1;
+static _Atomic int gate_open=1, in_gate;
 static ssize_t gated_write(int fd,const void *b,size_t n){
+    atomic_store(&in_gate,1);
     while(!atomic_load(&gate_open)){ struct timespec t={0,1000000}; nanosleep(&t,NULL); }
     if(n>max_seen) max_seen=n;
     return write(fd,b,n>3000?3000:n);   /* short writes too */
@@ -51,11 +52,17 @@ int main(void){
     feed(&ca,5000,1); cc_async_sink_stats st; assert(cc_async_sink_close(as,&st)==CC_OK);
     assert(same_file(a,b)); assert(max_seen<=65536 && st.max_write<=65536);
     assert(!st.lost_packets[0] && !st.lost_packets[1] && !st.io_error);
+    assert(st.writes>0 && st.write_ns>0 && st.max_write_ns>0 && st.max_write_ns<=st.write_ns && !st.loss_episodes && !st.loss_in_write);
     /* 2. existing destination refused */
     assert(cc_async_sink_open(&as,b,"x",1u<<20,65536)==CC_ERR_IO);
     /* 3. stalled writer: the producer never blocks; drops are exactly confessed */
     atomic_store(&gate_open,0);
     assert(cc_async_sink_open(&as,c,"stall",1u<<20,65536)==CC_OK); cc_async_sink_callbacks(as,&ca);
+    /* the session note is already in the ring: wait for the writer to be inside its (stalled) write call, so
+     * what the sink reports about each loss episode is decided by the stall and not by thread start-up */
+    atomic_store(&in_gate,0);
+    { cc_packet p0={CC_EP_VIDEO,0,0,0,15360,15360,payload}; ca.on_packet(ca.ctx,&p0); }
+    for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec d={0,1000000}; nanosleep(&d,NULL); }
     struct timespec t0,t1; clock_gettime(CLOCK_MONOTONIC,&t0);
     feed(&ca,3000,2);                              /* ~31 MB into a 1 MB ring with the writer stuck */
     clock_gettime(CLOCK_MONOTONIC,&t1);
@@ -67,6 +74,10 @@ int main(void){
       ca.on_packet(ca.ctx,&q); ca.on_packet(ca.ctx,&p); }
     assert(cc_async_sink_close(as,&st)==CC_OK);
     assert(st.lost_packets[0]>0 && st.lost_packets[1]>0);
+    /* the stall is a write call that does not return: every loss episode began with the writer inside one, and
+     * the longest write is at least as long as the writer had been stuck when the first packet was dropped */
+    assert(st.loss_episodes>=1 && st.loss_in_write==st.loss_episodes);
+    assert(st.max_in_write_at_loss_ns>0 && st.max_in_write_at_loss_ns<=st.max_write_ns);
     /* read back: sum HostLoss per endpoint == sink-counted loss + the forwarded capture loss */
     FILE *f=fopen(c,"rb"); uint64_t loss_pk[2]={0},loss_by[2]={0},data[2]={0};
     struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } h;

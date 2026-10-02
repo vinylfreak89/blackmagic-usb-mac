@@ -404,10 +404,12 @@ static void *tpc_closer(void *arg){
     int rc = cc_async_sink_close(j->k, &st);
     uint64_t lost = st.lost_packets[0] + st.lost_packets[1];
     blog(rc == CC_OK && !lost ? LOG_INFO : LOG_ERROR,
-         "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B%s%s",
+         "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B | writer: %llu writes, mean %.2f ms, longest %.1f ms, %llu over 100 ms, longest wait between writes with data ready %.1f ms | loss episodes %llu, of which writer inside a write call %llu (longest so far %.1f ms)%s%s",
          rc == CC_OK ? "" : " WITH A WRITE ERROR", j->path, (unsigned long long)st.records, st.bytes_written / 1e6,
          (unsigned long long)st.lost_packets[0], (unsigned long long)st.lost_bytes[0], (unsigned long long)st.lost_packets[1], (unsigned long long)st.lost_bytes[1],
-         (unsigned long long)st.control_dropped, st.high_water / 1e6, st.max_write, st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");
+         (unsigned long long)st.control_dropped, st.high_water / 1e6, st.max_write,
+         (unsigned long long)st.writes, st.writes ? st.write_ns / 1e6 / (double)st.writes : 0.0, st.max_write_ns / 1e6, (unsigned long long)st.slow_writes, st.max_ready_gap_ns / 1e6,
+         (unsigned long long)st.loss_episodes, (unsigned long long)st.loss_in_write, st.max_in_write_at_loss_ns / 1e6, st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");
     shuttle_src *s = j->s; bfree(j->path); bfree(j);
     pthread_mutex_lock(&s->close_m); atomic_fetch_sub(&s->closers, 1); pthread_cond_broadcast(&s->close_c); pthread_mutex_unlock(&s->close_m);
     return NULL;

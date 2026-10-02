@@ -987,13 +987,18 @@ int cc_tagged_sink_close(cc_tagged_sink *k){
 
 // ---------------- buffered tpc sink (tee)
 ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n) = NULL;
+int cc_async_sink_writer_qos = QOS_CLASS_UTILITY;
+static uint64_t as_now_(void){ return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW); }
 struct cc_async_sink {
     int fd; uint8_t *ring; size_t cap, chunk;
     _Atomic size_t head, tail;           // monotonic byte counts: producer publishes head, writer tail
     pthread_t thr; pthread_mutex_t m; pthread_cond_t cv; _Atomic int stop;
     uint64_t pend_pk[2], pend_by[2];     // producer-only: dropped DATA not yet confessed
     _Atomic uint64_t records, written, lost_pk[2], lost_by[2], control_dropped, discarded;
-    _Atomic size_t high_water, max_write; int io_errno;
+    _Atomic size_t high_water, max_write; int io_errno; int qos;
+    _Atomic uint64_t write_started;      // writer: nonzero while inside a write call (its start time)
+    _Atomic uint64_t writes, write_ns, max_write_ns, slow_writes, max_ready_gap_ns;
+    _Atomic uint64_t loss_episodes, loss_in_write, max_in_write_at_loss_ns;
 };
 static size_t as_free_(struct cc_async_sink *k){
     return k->cap-(atomic_load_explicit(&k->head,memory_order_relaxed)-atomic_load_explicit(&k->tail,memory_order_acquire));
@@ -1033,6 +1038,15 @@ static void as_packet_(void *ctx, const cc_packet *p){
         if(as_free_(k)>=loss+need) as_flush_loss_(k,e);
     }
     if(k->pend_pk[e] || as_free_(k)<need){
+        if(!k->pend_pk[0] && !k->pend_pk[1]){              /* first dropped packet of an episode: what is the writer doing? */
+            uint64_t ws=atomic_load_explicit(&k->write_started,memory_order_relaxed);
+            atomic_fetch_add_explicit(&k->loss_episodes,1,memory_order_relaxed);
+            if(ws){
+                uint64_t age=as_now_()-ws;
+                atomic_fetch_add_explicit(&k->loss_in_write,1,memory_order_relaxed);
+                if(age>atomic_load_explicit(&k->max_in_write_at_loss_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_in_write_at_loss_ns,age,memory_order_relaxed);
+            }
+        }
         k->pend_pk[e]++; k->pend_by[e]+=p->actual_len;
         atomic_fetch_add_explicit(&k->lost_pk[e],1,memory_order_relaxed);
         atomic_fetch_add_explicit(&k->lost_by[e],p->actual_len,memory_order_relaxed);
@@ -1059,11 +1073,13 @@ static void as_tick_(void *ctx, uint32_t ms){ rec_hdr h={REC_MAGIC,REC_TICK,0,0,
 static void as_end_(void *ctx, enum cc_end r){ (void)ctx; (void)r; }
 static void *as_writer_(void *arg){
     struct cc_async_sink *k=arg;
-    pthread_set_qos_class_self_np(QOS_CLASS_UTILITY,0);
+    pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
+    uint64_t last_done=0;                /* end of the previous write if data was still waiting then, else 0 */
     for(;;){
         size_t tail=atomic_load_explicit(&k->tail,memory_order_relaxed);
         size_t avail=atomic_load_explicit(&k->head,memory_order_acquire)-tail;
         if(!avail){
+            last_done=0;
             if(atomic_load(&k->stop)) break;
             pthread_mutex_lock(&k->m);
             if(atomic_load_explicit(&k->head,memory_order_acquire)==tail && !atomic_load(&k->stop)){
@@ -1080,7 +1096,15 @@ static void *as_writer_(void *arg){
         else {
             size_t done=0;
             while(done<n){
+                uint64_t t0=as_now_();
+                if(last_done && t0-last_done>atomic_load_explicit(&k->max_ready_gap_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_ready_gap_ns,t0-last_done,memory_order_relaxed);
+                atomic_store_explicit(&k->write_started,t0,memory_order_relaxed);
                 ssize_t w=cc_async_sink_test_write?cc_async_sink_test_write(k->fd,k->ring+o+done,n-done):write(k->fd,k->ring+o+done,n-done);
+                uint64_t t1=as_now_(), dt=t1-t0;
+                atomic_store_explicit(&k->write_started,0,memory_order_relaxed); last_done=t1;
+                atomic_fetch_add_explicit(&k->writes,1,memory_order_relaxed); atomic_fetch_add_explicit(&k->write_ns,dt,memory_order_relaxed);
+                if(dt>atomic_load_explicit(&k->max_write_ns,memory_order_relaxed)) atomic_store_explicit(&k->max_write_ns,dt,memory_order_relaxed);
+                if(dt>100000000ull) atomic_fetch_add_explicit(&k->slow_writes,1,memory_order_relaxed);
                 if(w<0 && errno==EINTR) continue;
                 if(w<=0){ k->io_errno=w<0?errno:EIO; break; }
                 if((size_t)w>atomic_load_explicit(&k->max_write,memory_order_relaxed)) atomic_store_explicit(&k->max_write,(size_t)w,memory_order_relaxed);
@@ -1096,7 +1120,7 @@ static void *as_writer_(void *arg){
 int cc_async_sink_open(cc_async_sink **out, const char *path, const char *note, size_t ring_bytes, size_t chunk){
     if(!out || !path || ring_bytes<(1u<<20) || !chunk) return CC_ERR_ARGS;
     cc_async_sink *k=calloc(1,sizeof *k); if(!k) return CC_ERR_NOMEM;
-    k->cap=ring_bytes; k->chunk=chunk; k->ring=malloc(ring_bytes);
+    k->cap=ring_bytes; k->chunk=chunk; k->qos=cc_async_sink_writer_qos; k->ring=malloc(ring_bytes);
     if(!k->ring){ free(k); return CC_ERR_NOMEM; }
     k->fd=open(path,O_WRONLY|O_CREAT|O_EXCL,0644);
     if(k->fd<0){ free(k->ring); free(k); return CC_ERR_IO; }
@@ -1130,6 +1154,10 @@ int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
         for(int e=0;e<2;e++){ st->lost_packets[e]=atomic_load(&k->lost_pk[e]); st->lost_bytes[e]=atomic_load(&k->lost_by[e]); }
         st->control_dropped=atomic_load(&k->control_dropped); st->discarded_after_error=atomic_load(&k->discarded);
         st->high_water=atomic_load(&k->high_water); st->max_write=atomic_load(&k->max_write); st->io_error=k->io_errno;
+        st->writes=atomic_load(&k->writes); st->write_ns=atomic_load(&k->write_ns); st->max_write_ns=atomic_load(&k->max_write_ns);
+        st->slow_writes=atomic_load(&k->slow_writes); st->max_ready_gap_ns=atomic_load(&k->max_ready_gap_ns);
+        st->loss_episodes=atomic_load(&k->loss_episodes); st->loss_in_write=atomic_load(&k->loss_in_write);
+        st->max_in_write_at_loss_ns=atomic_load(&k->max_in_write_at_loss_ns);
     }
     int rc=k->io_errno?CC_ERR_IO:CC_OK;
     pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); free(k->ring); free(k);
