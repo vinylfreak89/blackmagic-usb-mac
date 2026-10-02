@@ -190,6 +190,12 @@ void ap_on_audio(audio_publisher *p, const unit_audio_observation *o){
                   (p->have_last_resync && o->counter_extended != p->last_resync_counter + 1);
         emit_(p, 0);                                     // the unit before this resync is complete
         if (gap){ p->st.counter_gaps++; p->pending_flags |= AP_FLAG_COUNTER_GAP; }   // lands on the NEXT block
+        /* The parser saw this stream's own counter step by exactly one while its extended value jumped: the video
+         * stream's numbering jumped, no time did. Place the run afresh at the new counter; continuing the old run
+         * would report the jump as a residual step, which a consumer fills with that much silence. */
+        if (p->anchored && (o->transport_flags & UNIT_FLAG_COUNTER_RENUMBERED)){
+            p->anchored = 0; p->pending_flags |= AP_FLAG_DISCONTINUITY_BEFORE; p->st.renumberings++;
+        }
         if (!p->anchored){
             // first resync of a contiguous run: place the run on the video timebase, once
             p->anchored = 1; p->anchor_counter = o->counter_extended;

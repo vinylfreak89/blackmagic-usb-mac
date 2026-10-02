@@ -168,10 +168,10 @@ int main(int argc, char **argv){
         (unsigned long long)s.audio_records, (unsigned long long)s.audio_resync, (unsigned long long)s.audio_pcm_records,
         (unsigned long long)s.audio_frames_published, (unsigned long long)s.audio_blocks,
         (unsigned long long)s.audio_blocks_unanchored, (unsigned long long)s.audio_discontinuities);
-    printf("audio sink: delivered %llu blocks / %llu frames, dropped %llu / %llu | counter gaps %llu | residual [%lld, %lld] ticks | frames with audio-clock pts %llu\n",
+    printf("audio sink: delivered %llu blocks / %llu frames, dropped %llu / %llu | counter gaps %llu (renumbered %llu) | residual [%lld, %lld] ticks | frames with audio-clock pts %llu\n",
         (unsigned long long)s.audio_blocks_delivered, (unsigned long long)s.audio_frames_delivered,
         (unsigned long long)s.audio_dropped_blocks, (unsigned long long)s.audio_dropped_frames,
-        (unsigned long long)s.audio_counter_gaps, (long long)s.audio_residual_min, (long long)s.audio_residual_max,
+        (unsigned long long)s.audio_counter_gaps, (unsigned long long)s.audio_renumberings, (long long)s.audio_residual_min, (long long)s.audio_residual_max,
         (unsigned long long)s.audio_master_frames);
     fs_close(f);
     fflush(stdout); fflush(stderr); /* Still guarded, including normal process cleanup. */

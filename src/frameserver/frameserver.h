@@ -84,7 +84,7 @@ typedef struct {
     uint64_t video_observations, exact_units, short_units, holes, unframed, other_format, no_signal_0800;
     uint64_t audio_records, audio_resync;
     uint64_t audio_pcm_records, audio_blocks, audio_frames_published, audio_discontinuities, audio_blocks_unanchored;
-    uint64_t audio_counter_gaps; int64_t audio_residual_min, audio_residual_max;   // A/V correlation provenance
+    uint64_t audio_counter_gaps, audio_renumberings; int64_t audio_residual_min, audio_residual_max;   // A/V correlation provenance
     uint64_t audio_blocks_delivered, audio_frames_delivered, audio_dropped_blocks, audio_dropped_frames;   // sink side
     uint64_t audio_master_frames;     // video frames published with a known audio-clock pts
     // Invariants after fs_stop: audio_frames_published == audio_pcm_records (publisher never invents/drops);

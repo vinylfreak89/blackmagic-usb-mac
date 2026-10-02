@@ -166,6 +166,30 @@ int main(int argc,char **argv){
     CHECK(ap_lookup_correlation(p,1,20,&old) && ap_lookup_correlation(p,1,23,&hit) &&
           old.run==hit.run && hit.residual_ticks==3*8008-8*5, "missing resync keeps the residual comparable");
 
+    // 4b: the numbering jumped under a continuous audio counter (parser: RENUMBERED): no time passed, so the run is
+    // placed afresh at the new counter instead of carrying the jump as a residual a consumer would fill with silence
+    ap_close(p); memset(&s, 0, sizeof s); CHECK(ap_open(&p, 64, &sink) == 0, "reopen 4b");
+    ord = 0;
+    { unit_audio_observation o = resync(1, ord, 20, 0); ap_on_audio(p, &o); }
+    feed_pcm(p, 1, &ord, 4, 1);
+    { unit_audio_observation o = resync(1, ord, 30021, UNIT_FLAG_COUNTER_DISCONTINUITY | UNIT_FLAG_COUNTER_RENUMBERED); ap_on_audio(p, &o); }
+    feed_pcm(p, 1, &ord, 4, 2);
+    { unit_audio_observation o = resync(1, ord, 30022, 0); ap_on_audio(p, &o); }
+    feed_pcm(p, 1, &ord, 4, 3);
+    ap_flush(p); ap_get_stats(p, &st);
+    CHECK(s.n == 3 && s.frames == 12, "renumbering case: 3 blocks, 12 frames (PCM untouched)");
+    if (s.n == 3){
+        CHECK((s.blocks[1].flags & AP_FLAG_DISCONTINUITY_BEFORE) && (s.blocks[1].flags & AP_FLAG_COUNTER_GAP) && !(s.blocks[1].flags & AP_FLAG_UNANCHORED),
+              "block after a renumbering is flagged as a break and stays anchored (flags 0x%x)", s.blocks[1].flags);
+        CHECK(s.blocks[1].anchor_counter_ext == 30021 && s.blocks[1].pts_num == 30021ull * AP_TICKS_PER_UNIT, "run placed afresh at the new counter's video time");
+        CHECK(s.blocks[1].correlation_residual == 0, "no residual step from a renumbering (%lld)", (long long)s.blocks[1].correlation_residual);
+        CHECK(s.blocks[2].pts_num == s.blocks[1].pts_num + 4 * 5 && !(s.blocks[2].flags & AP_FLAG_DISCONTINUITY_BEFORE), "the new run continues sample-contiguous");
+    }
+    CHECK(st.renumberings == 1 && st.discontinuities == 0, "one renumbering counted, no transport discontinuity (%llu, %llu)",
+          (unsigned long long)st.renumberings, (unsigned long long)st.discontinuities);
+    CHECK(ap_lookup_correlation(p,1,20,&old) && ap_lookup_correlation(p,1,30022,&hit) && old.run!=hit.run && hit.residual_ticks==8008-4*5,
+          "renumbering starts a new comparison run");
+
     // 5: buffer fill -> PARTIAL blocks with contiguous pts; then epoch change flags discontinuity
     ap_close(p); memset(&s, 0, sizeof s); CHECK(ap_open(&p, 4, &sink) == 0, "reopen 5");
     ord = 0;
