@@ -22,8 +22,12 @@ tests/fixture_plain.tpc: tests/gen_unit_parser_capture.py
 tests/unit_parser_test: unit_parser.c unit_parser.h tests/unit_parser_test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) unit_parser.c tests/unit_parser_test.c -o $@
 
-test: tests/unit_parser_test tests/fixture.tpc
+tests/counter_excursion_test: unit_parser.c unit_parser.h tests/counter_excursion_test.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) unit_parser.c tests/counter_excursion_test.c -o $@
+
+test: tests/unit_parser_test tests/counter_excursion_test tests/fixture.tpc
 	./tests/unit_parser_test tests/fixture.tpc
+	./tests/counter_excursion_test
 
 test-asan: tests/fixture.tpc
 	$(CC) $(CPPFLAGS) -O1 -g -std=c11 -Wall -Wextra -Werror \

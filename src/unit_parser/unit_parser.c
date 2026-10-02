@@ -45,6 +45,7 @@ struct unit_parser {
     bool audio_counter_valid;
     uint16_t audio_counter16;
     uint64_t audio_counter_extended;
+    uint32_t audio_resyncs_since_video;
 
     endpoint_position positions[2];
 };
@@ -124,8 +125,43 @@ static uint64_t extend_counter(bool *valid, uint16_t *last,
     return *extended;
 }
 
+/* An audio resync counter takes its extension from the video stream's, so one device counter value maps to one
+ * extended value on both streams however each stream got there (the forward-only rule above depends on the path:
+ * a restart or a wrap seen by one stream and not the other parts them for the rest of the session). The video
+ * position is used only while fewer resyncs than a 16-bit difference can express have passed since a video unit;
+ * without video the audio stream extends on its own, as before, and both start from the raw value, so they agree. */
+static uint64_t extend_audio_counter(unit_parser *parser, uint16_t current,
+                                     uint32_t *flags)
+{
+    if (!parser->video_counter_valid ||
+        parser->audio_resyncs_since_video >= 0x4000u)
+        return extend_counter(&parser->audio_counter_valid,
+                              &parser->audio_counter16,
+                              &parser->audio_counter_extended, current, flags);
+    ++parser->audio_resyncs_since_video;
+    int64_t delta = (int16_t)(uint16_t)(current - parser->video_counter16);
+    if (delta < 0 && (uint64_t)-delta > parser->video_counter_extended)
+        delta += 65536;
+    uint64_t extended = parser->video_counter_extended + (uint64_t)delta;
+    if (parser->audio_counter_valid &&
+        extended != parser->audio_counter_extended + 1) {
+        *flags |= UNIT_FLAG_COUNTER_DISCONTINUITY;
+        if ((uint16_t)(current - parser->audio_counter16) == 1)
+            *flags |= UNIT_FLAG_COUNTER_RENUMBERED;
+    }
+    parser->audio_counter_valid = true;
+    parser->audio_counter16 = current;
+    parser->audio_counter_extended = extended;
+    return extended;
+}
+
+/* confirmed: the unit ended at a marker whose counter is this unit's plus one. A marker unit emitted because the
+ * buffer filled has no such successor; in a stream that is not formed into units (deck stopped or unlocked) its
+ * marker is as likely four bytes of junk, and its counter must not move the extension: on 2026-10-02 a handful of
+ * them moved it 89,726 units while the audio counter ran on, and the recording that followed had no audio link.
+ * Such a unit keeps its kind and transport as before and reports its 16-bit counter; it has no extended counter. */
 static void emit_video(unit_parser *parser, const uint8_t *bytes, size_t count,
-                       bool has_marker, uint32_t flags)
+                       bool has_marker, bool confirmed, uint32_t flags)
 {
     if (!count)
         return;
@@ -143,10 +179,13 @@ static void emit_video(unit_parser *parser, const uint8_t *bytes, size_t count,
         out.counter16 = load_u16(bytes + 4);
         out.format = load_u16(bytes + 6);
         out.kind = video_kind(out.format);
-        out.counter_extended = extend_counter(
-            &parser->video_counter_valid, &parser->video_counter16,
-            &parser->video_counter_extended, out.counter16,
-            &out.transport_flags);
+        if (confirmed) {
+            out.counter_extended = extend_counter(
+                &parser->video_counter_valid, &parser->video_counter16,
+                &parser->video_counter_extended, out.counter16,
+                &out.transport_flags);
+            parser->audio_resyncs_since_video = 0;
+        }
         if (out.transport_flags & TRANSPORT_HOLE_FLAGS) {
             out.transport = UNIT_TRANSPORT_HOLE;
         } else if (out.kind == UNIT_VIDEO_E801 &&
@@ -175,9 +214,9 @@ static void emit_video(unit_parser *parser, const uint8_t *bytes, size_t count,
 static void accept_video_boundary(unit_parser *parser, size_t position)
 {
     if (parser->video_has_marker)
-        emit_video(parser, parser->video, position, true, parser->video_flags);
+        emit_video(parser, parser->video, position, true, true, parser->video_flags);
     else if (position)
-        emit_video(parser, parser->video, position, false, parser->video_flags);
+        emit_video(parser, parser->video, position, false, false, parser->video_flags);
 
     size_t retained = parser->video_bytes - position;
     memmove(parser->video, parser->video + position, retained);
@@ -191,7 +230,7 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
 {
     if (parser->video_bytes == sizeof(parser->video)) {
         emit_video(parser, parser->video, parser->video_bytes,
-                   parser->video_has_marker,
+                   parser->video_has_marker, false,
                    parser->video_flags | UNIT_FLAG_COUNTER_DISCONTINUITY);
         parser->video_bytes = 0;
         parser->video_has_marker = false;
@@ -204,7 +243,7 @@ static void feed_video_byte(unit_parser *parser, uint8_t byte)
         size_t keep = parser->video_bytes < 7 ? parser->video_bytes : 7;
         size_t emit = parser->video_bytes - keep;
         if (emit)
-            emit_video(parser, parser->video, emit, false, parser->video_flags);
+            emit_video(parser, parser->video, emit, false, false, parser->video_flags);
         memmove(parser->video, parser->video + emit, keep);
         parser->video_bytes = keep;
         parser->video_flags = 0;
@@ -265,10 +304,8 @@ static void emit_audio_record(unit_parser *parser, const uint8_t *record)
     if (is_audio_sync(record)) {
         out.kind = UNIT_AUDIO_RESYNC;
         out.counter16 = load_u16(record + 20);
-        out.counter_extended = extend_counter(
-            &parser->audio_counter_valid, &parser->audio_counter16,
-            &parser->audio_counter_extended, out.counter16,
-            &out.transport_flags);
+        out.counter_extended = extend_audio_counter(
+            parser, out.counter16, &out.transport_flags);
     } else {
         out.kind = UNIT_AUDIO_PCM;
         memcpy(out.active_s24le, record, sizeof(out.active_s24le));
@@ -334,7 +371,7 @@ void unit_parser_begin_epoch(unit_parser *parser, uint64_t epoch)
 {
     if (parser->video_bytes)
         emit_video(parser, parser->video, parser->video_bytes,
-                   false, parser->video_flags);
+                   false, false, parser->video_flags);
     if (parser->audio_record_bytes && parser->callbacks.on_audio) {
         unit_audio_observation out;
         memset(&out, 0, sizeof(out));
@@ -431,7 +468,7 @@ void unit_parser_finish(unit_parser *parser)
         return;
     if (parser->video_bytes)
         emit_video(parser, parser->video, parser->video_bytes,
-                   false, parser->video_flags);
+                   false, false, parser->video_flags);
     if (parser->audio_record_bytes && parser->callbacks.on_audio) {
         unit_audio_observation out;
         memset(&out, 0, sizeof(out));
