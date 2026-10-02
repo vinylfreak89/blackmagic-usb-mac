@@ -183,7 +183,12 @@ int main(int argc,char**argv){
         /* the audio registers come third and fourth so that, started with the tape, they fall on its silent cards */
         const sweep_step basic[]={{4,0,0,apply},{4,1,0,apply},{28,-1,0,apply},{32,-1,0,apply},{4,2,0,apply},{8,0,0,apply},{8,1,0,apply},{8,2,0,apply}};
         const sweep_step wider[]={{4,0,0,MODE},{4,1,0,MODE},{36,-2,0x8036802au,LATCH},{36,-2,0,LATCH},{4,2,0,MODE},{8,0,0,MODE},{8,1,0,MODE},{8,2,0,MODE},{20,-2,0,LATCH}};
-        const sweep_step *steps=variant>=4?wider:basic; const unsigned nsteps=variant>=4?sizeof wider/sizeof *wider:sizeof basic/sizeof *basic;
+        /* =5: register 36 alone, zero for three seconds and as found for three, to see whether it changes what the
+         * Shuttle sends for an unstable input (a deck rewinding or stopped) */
+        const sweep_step only36[]={{36,-2,0,LATCH}};
+        const sweep_step *steps=variant>=5?only36:variant>=4?wider:basic;
+        const unsigned nsteps=variant>=5?1:variant>=4?sizeof wider/sizeof *wider:sizeof basic/sizeof *basic;
+        if(variant>=5) dwell=30;
         const uint16_t regs[6]={4,8,28,32,20,36}; uint32_t orig[6]={0}; int ok=1;
         for(int r=0;r<6;r++) if(cc_debug_register(g_s,0,regs[r],&orig[r])!=CC_OK) ok=0;
         if(ok && variant>=4 && (orig[4]!=0x0000ffffu || orig[5]!=0x801e8000u)){
