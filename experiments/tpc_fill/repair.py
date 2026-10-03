@@ -18,7 +18,12 @@ def flush(force=False):
     global written, outbuf, last_report
     while len(outbuf) >= (1 << 20) or (force and outbuf):
         chunk = bytes(outbuf[:1 << 20]); del outbuf[:1 << 20]
-        n = os.write(fd, chunk); assert n == len(chunk), ('short write', n, len(chunk)); sha.update(chunk); written += n
+        try:
+            n = os.write(fd, chunk)
+            if n != len(chunk): raise OSError('short write %d of %d' % (n, len(chunk)))
+            sha.update(chunk); written += n
+            if written % SYNC_EVERY == 0: os.fsync(fd)      # a network volume reports refused writes on the flush: keep the unflushed amount small
+        except OSError as e: raise SystemExit('STOPPED: write refused at %d bytes: %s' % (written, e))
     if written - last_report > (2 << 30):
         last_report = written
         import resource
@@ -99,6 +104,7 @@ def audio_feed(final=False):
 # ---------------- records
 q = collections.deque()      # (header bytes, kind, payload length); kind 0 video, 1 audio, 2 other with its payload
 buf = b''; pos = 0; eof = False
+SYNC_EVERY = 256 << 20         # flush to the server this often (a multiple of the 1 MiB write size)
 HOLD_LIMIT = int(os.environ.get('REPAIR_HOLD_LIMIT', 384 << 20))       # never hold more than this in memory: stop with an error instead (an unwritten output buffer once took the whole machine down)
 RSS_LIMIT = 1536 << 20
 def emit():
@@ -146,7 +152,9 @@ if vin: vout += vin; st['unframed_bytes'] += len(vin)
 if ain: aout += ain
 emit(); assert not q, ('records left without payload', len(q), len(vout), len(aout))
 assert not vout and not aout, ('payload left over', len(vout), len(aout))
-flush(force=True); os.fsync(fd); os.close(fd)
+flush(force=True)
+try: os.fsync(fd); os.close(fd)
+except OSError as e: raise SystemExit('STOPPED: final flush refused: %s' % e)
 res = dict(destination=dst, bytes=written, sha256=sha.hexdigest(), seconds=time.time() - t0, **st)
 json.dump(res, open(os.environ.get('REPAIR_JSON', (dst.split('/')[-1] if not local else dst) + '.repair.json'), 'w'), indent=1)
 print('done: %d bytes, sha256 %s, %d records, %d units re-paired in %d run(s), %d resyncs moved, %d bytes unframed, %.0f s' % (written, sha.hexdigest(), st['records'], st['units'], st['runs'], st['resyncs'], st['unframed_bytes'], time.time() - t0), file=sys.stderr)
