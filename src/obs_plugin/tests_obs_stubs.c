@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <time.h>
 #include "tests_obs_stubs.h"
 
@@ -61,6 +62,20 @@ char *obs_frontend_get_last_recording(void){ return NULL; }
 obs_output_t *obs_frontend_get_recording_output(void){ return NULL; }
 bool obs_frontend_recording_active(void){ return false; }
 void obs_frontend_recording_stop(void){}
+/* streaming (the discard stream drives the same session logic as recording) */
+obs_output_t *obs_frontend_get_streaming_output(void){ return NULL; }
+bool obs_frontend_streaming_active(void){ return false; }
+void obs_frontend_streaming_stop(void){}
+config_t *obs_frontend_get_profile_config(void){ return NULL; }
+char *obs_frontend_get_current_record_output_path(void){ return NULL; }
+const char *config_get_string(config_t *c, const char *sec, const char *n){ (void)c; (void)sec; (void)n; return NULL; }
+bool config_get_bool(config_t *c, const char *sec, const char *n){ (void)c; (void)sec; (void)n; return false; }
+char *os_generate_formatted_filename(const char *ext, bool space, const char *fmt){ (void)ext; (void)space; (void)fmt; return NULL; }
+bool os_file_exists(const char *p){ return access(p, F_OK) == 0; }
+void dstr_copy(struct dstr *d, const char *a){ dstr_printf(d, "%s", a); }
+void dstr_ncopy(struct dstr *d, const char *a, const size_t n){ if (d->array) d->array[0] = 0; d->len = 0; dstr_ncat(d, a, n); }
+void discard_stream_register(void){}
+int discard_service_selected(void){ return 1; }
 void *obs_obj_get_data(void *o){ return o == stub_source ? stub_data : NULL; }
 bool obs_output_active(const obs_output_t *o){ (void)o; return false; }
 void obs_output_release(obs_output_t *o){ (void)o; }

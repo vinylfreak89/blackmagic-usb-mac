@@ -75,6 +75,9 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
 #include "audio_timing.h"
+#include "discard_stream.h"
+#include <util/config-file.h>
+enum { KIND_RECORDING = 1, KIND_STREAMING = 2 };
 #include "frame_levels.h"
 
 #define MEDIA_QUEUE 32
@@ -116,6 +119,11 @@ typedef struct {
      * has ticked STOP_TICKS frames: OBS stamps the stop when it is requested, and a frame handed
      * over but not yet rendered would otherwise fall outside the recording. */
     int replaying;                          /* this session reads a .tpc */
+    /* The frontend output whose session owns the raw file and sidecar: recording or streaming (owner,
+     * 2026-10-03: streaming to the discard service behaves exactly like recording, files included).
+     * While one owns them, the other's events are ignored. Atomic: the render thread reads it. */
+    _Atomic int session_kind;               /* 0 none, KIND_RECORDING, KIND_STREAMING */
+    int ignored_kind;                       /* the other output started meanwhile: its events are ignored until it stops */
     int restart_pending;                    /* stopped at RECORDING_STARTING, restart at RECORDING_STARTED */
     int record_gap;                         /* blank on purpose: from RECORDING_STARTING until RECORDING_STARTED/STOPPED, or until
                                                restart_check finds the start failed. Media controls wait it out. */
@@ -267,7 +275,12 @@ static void shuttle_video_tick(void *data, float seconds){
      * enables the seek bar and shows a pause button. Same thread, after it: grey them out again. */
     if (atomic_exchange(&s->live_regrey, 0) && !atomic_load(&s->replay_mode)) obs_source_media_ended(s->source);
     if (atomic_load(&s->stop_ticks) > 0 && atomic_fetch_sub(&s->stop_ticks, 1) == 1 && atomic_exchange(&s->stop_on_eof, 0)){
-        if (obs_frontend_recording_active()){
+        if (atomic_load(&s->session_kind) == KIND_STREAMING){
+            if (obs_frontend_streaming_active()){
+                blog(LOG_INFO, "[shuttle-source] replay reached the end of the file: stopping the stream");
+                obs_frontend_streaming_stop();
+            }
+        } else if (obs_frontend_recording_active()){
             blog(LOG_INFO, "[shuttle-source] replay reached the end of the file: stopping the recording");
             obs_frontend_recording_stop();
         }
@@ -292,6 +305,56 @@ static int recording_path(shuttle_src *s){
     char *p = obs_frontend_get_last_recording();
     if (!p || !*p){ bfree(p); return -1; }
     s->sidecar_base = p; return 0;
+}
+/* A stream has no recording file, so its raw file and sidecar take the name a recording started now
+ * would get: OBS's recording folder, file-name format, spacing and container extension from the
+ * profile, as GetOutputFilename/FindBestFilename build it (frontend/OBSApp.cpp, OBS 32.2.2). Nothing
+ * writes that recording file itself; a name already used by an earlier run's raw file or sidecar gets
+ * OBS's " (2)" / "_2" suffix. */
+static const char *format_ext(const char *container){
+    if (!container || !*container) return "mkv";
+    if (!strcmp(container, "fragmented_mp4") || !strcmp(container, "hybrid_mp4")) return "mp4";
+    if (!strcmp(container, "fragmented_mov") || !strcmp(container, "hybrid_mov")) return "mov";
+    if (!strcmp(container, "hls")) return "m3u8";
+    if (!strcmp(container, "mpegts")) return "ts";
+    return container;
+}
+static int name_taken(const char *base){
+    struct dstr t = {0}; int taken = os_file_exists(base);
+    dstr_printf(&t, "%s.raw.tpc", base); taken |= os_file_exists(t.array);
+    dstr_printf(&t, "%s.registration.csv", base); taken |= os_file_exists(t.array);
+    dstr_free(&t); return taken;
+}
+static int stream_path(shuttle_src *s){
+    bfree(s->sidecar_base); s->sidecar_base = NULL;
+    config_t *cfg = obs_frontend_get_profile_config();
+    char *dir = obs_frontend_get_current_record_output_path();
+    if (!cfg || !dir || !*dir){ bfree(dir); return -1; }
+    const char *mode = config_get_string(cfg, "Output", "Mode");
+    int adv = mode && !strcmp(mode, "Advanced");
+    const char *container = config_get_string(cfg, adv ? "AdvOut" : "SimpleOutput", "RecFormat2");
+    int no_space = config_get_bool(cfg, adv ? "AdvOut" : "SimpleOutput", adv ? "RecFileNameWithoutSpace" : "FileNameWithoutSpace");
+    const char *fmt = config_get_string(cfg, "Output", "FilenameFormatting");
+    char *name = os_generate_formatted_filename(format_ext(container), !no_space, fmt && *fmt ? fmt : "%CCYY-%MM-%DD %hh-%mm-%ss");
+    struct dstr base = {0}; dstr_copy(&base, dir);
+    if (base.len && base.array[base.len - 1] != '/') dstr_cat(&base, "/");
+    dstr_cat(&base, name); bfree(name); bfree(dir);
+    if (name_taken(base.array)){
+        const char *dot = strrchr(base.array, '.'); size_t at = dot ? (size_t)(dot - base.array) : base.len;
+        for (int n = 2; n < 10000; n++){
+            struct dstr t = {0}; dstr_ncopy(&t, base.array, at);
+            if (no_space) dstr_catf(&t, "_%d", n); else dstr_catf(&t, " (%d)", n);
+            dstr_cat(&t, base.array + at);
+            if (!name_taken(t.array)){ dstr_free(&base); base = t; break; }
+            dstr_free(&t);
+        }
+    }
+    s->sidecar_base = bstrdup(base.array); dstr_free(&base); return 0;
+}
+/* The output that owns the session is running (a capture restarted mid-session continues its files). */
+static int session_output_active(const shuttle_src *s){
+    int k = atomic_load(&s->session_kind);
+    return k == KIND_STREAMING ? obs_frontend_streaming_active() : k == KIND_RECORDING ? obs_frontend_recording_active() : 0;
 }
 static void sidecar_final_name(struct dstr *fin, const shuttle_src *s, unsigned dup){
     dstr_free(fin);
@@ -620,63 +683,94 @@ static void restart_check(void *param){
     obs_source_t *src = obs_weak_source_get_source(w); obs_weak_source_release(w);
     if (!src) return;   /* the source was destroyed meanwhile */
     shuttle_src *s = obs_obj_get_data(src);
-    obs_output_t *out = obs_frontend_get_recording_output();
+    if (!s){ obs_source_release(src); return; }
+    obs_output_t *out = atomic_load(&s->session_kind) == KIND_STREAMING ? obs_frontend_get_streaming_output() : obs_frontend_get_recording_output();
     int active = out && obs_output_active(out); obs_output_release(out);
     if (s){
         pthread_mutex_lock(&s->m);
         if (s->restart_pending && !active) s->record_gap = 0;   /* the start failed: the gap is over, whatever resumes */
         if (s->restart_pending && !s->fs && !active){
             obs_data_t *st = obs_source_get_settings(src);
-            if (shuttle_start(s, st) == 0) blog(LOG_WARNING, "[shuttle-source] the recording output is not active after the record press (start failed?): replay resumed; it restarts from the beginning if the recording does start");
+            if (shuttle_start(s, st) == 0) blog(LOG_WARNING, "[shuttle-source] the %s output is not active after the press (start failed?): replay resumed; it restarts from the beginning if it does start", atomic_load(&s->session_kind) == KIND_STREAMING ? "streaming" : "recording");
             obs_data_release(st);
         }
         pthread_mutex_unlock(&s->m);
     }
     obs_source_release(src);
 }
+/* Recording and streaming drive the same session logic (owner, 2026-10-03: streaming to the discard
+ * service should behave exactly like recording): raw .tpc and sidecar, the replay restarting from the
+ * beginning of its file, and the replay ending the session at end of file. Whichever output starts
+ * first owns the session; the other's events are ignored until it stops. */
+enum { OP_STARTING, OP_STARTED, OP_STOPPING, OP_STOPPED };
 static void frontend_event(enum obs_frontend_event ev, void *data){
     shuttle_src *s = data;
-    pthread_mutex_lock(&s->m);
-    obs_data_t *settings = obs_source_get_settings(s->source);
+    int kind = 0, op = 0;
     switch (ev){
-    case OBS_FRONTEND_EVENT_RECORDING_STARTING:
+    case OBS_FRONTEND_EVENT_RECORDING_STARTING: kind = KIND_RECORDING; op = OP_STARTING; break;
+    case OBS_FRONTEND_EVENT_RECORDING_STARTED:  kind = KIND_RECORDING; op = OP_STARTED; break;
+    case OBS_FRONTEND_EVENT_RECORDING_STOPPING: kind = KIND_RECORDING; op = OP_STOPPING; break;
+    case OBS_FRONTEND_EVENT_RECORDING_STOPPED:  kind = KIND_RECORDING; op = OP_STOPPED; break;
+    case OBS_FRONTEND_EVENT_STREAMING_STARTING: kind = KIND_STREAMING; op = OP_STARTING; break;
+    case OBS_FRONTEND_EVENT_STREAMING_STARTED:  kind = KIND_STREAMING; op = OP_STARTED; break;
+    case OBS_FRONTEND_EVENT_STREAMING_STOPPING: kind = KIND_STREAMING; op = OP_STOPPING; break;
+    case OBS_FRONTEND_EVENT_STREAMING_STOPPED:  kind = KIND_STREAMING; op = OP_STOPPED; break;
+    default: return;
+    }
+    const char *what = kind == KIND_STREAMING ? "stream" : "recording";
+    pthread_mutex_lock(&s->m);
+    int owner = atomic_load(&s->session_kind);
+    if (op == OP_STARTING && !owner){ atomic_store(&s->session_kind, kind); owner = kind; }
+    if (owner != kind){
+        if (op == OP_STARTING || op == OP_STARTED){
+            if (s->ignored_kind != kind) blog(LOG_WARNING, "[shuttle-source] %s started while the %s owns the raw file and sidecar: this %s gets none", what, owner == KIND_STREAMING ? "stream" : "recording", what);
+            s->ignored_kind = kind;
+        } else if (op == OP_STOPPED && s->ignored_kind == kind) s->ignored_kind = 0;
+        pthread_mutex_unlock(&s->m); return;
+    }
+    obs_data_t *settings = obs_source_get_settings(s->source);
+    switch (op){
+    case OP_STARTING:
         atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);
         if (s->replaying && obs_data_get_bool(settings, S_REPLAY_RESTART)){
             shuttle_stop(s);
-            obs_source_output_video(s->source, NULL);   /* blank until the restart: no earlier frame enters the recording */
+            obs_source_output_video(s->source, NULL);   /* blank until the restart: no earlier frame enters the recording or stream */
             s->restart_pending = 1; s->record_gap = 1;
-            blog(LOG_INFO, "[shuttle-source] recording starting: replay stopped; it restarts from the beginning of the file once the recording has started");
+            blog(LOG_INFO, "[shuttle-source] %s starting: replay stopped; it restarts from the beginning of the file once the %s has started", what, what);
             dispatch_async_f(dispatch_get_main_queue(), obs_source_get_weak_source(s->source), restart_check);
         }
         break;
-    case OBS_FRONTEND_EVENT_RECORDING_STARTED:
-        if (recording_path(s) != 0) blog(LOG_WARNING, "[shuttle-source] recording started but its path is unknown; no sidecar");
-        else { s->sidecar_part = 0; s->tpc_part = 0; }
+    case OP_STARTED:
+        if ((kind == KIND_STREAMING ? stream_path(s) : recording_path(s)) != 0) blog(LOG_WARNING, "[shuttle-source] %s started but no file name could be made; no sidecar or raw file", what);
+        else {
+            s->sidecar_part = 0; s->tpc_part = 0;
+            if (kind == KIND_STREAMING) blog(LOG_INFO, "[shuttle-source] stream started%s: raw file and sidecar named as a recording would be: %s", discard_service_selected() ? " (discard service)" : "", s->sidecar_base);
+        }
         s->record_gap = 0;
         if (s->restart_pending){
             s->restart_pending = 0;
             shuttle_stop(s);   /* running if restart_check resumed it or a settings change started it */
             atomic_store(&s->stop_on_eof, obs_data_get_bool(settings, S_REPLAY_STOP) ? 1 : 0);   /* armed before the session can end */
             if (shuttle_start(s, settings) != 0) atomic_store(&s->stop_on_eof, 0);
-            else {   /* shuttle_start attached the sidecar itself: the recording is active */
-                blog(LOG_INFO, "[shuttle-source] replay restarted from the beginning of the file%s", atomic_load(&s->stop_on_eof) ? "; the recording stops when it ends" : "");
+            else {   /* shuttle_start attached the sidecar itself: the recording or stream is active */
+                blog(LOG_INFO, "[shuttle-source] replay restarted from the beginning of the file%s", atomic_load(&s->stop_on_eof) ? (kind == KIND_STREAMING ? "; the stream stops when it ends" : "; the recording stops when it ends") : "");
             }
             break;
         }
         if (!s->sidecar_base) break;
-        if (!s->fs) blog(LOG_WARNING, "[shuttle-source] recording started while the capture is not running; sidecar starts when it does");
+        if (!s->fs) blog(LOG_WARNING, "[shuttle-source] %s started while the capture is not running; sidecar starts when it does", what);
         sidecar_attach(s); tpc_attach(s);
         break;
-    case OBS_FRONTEND_EVENT_RECORDING_STOPPING:
-        atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);   /* a second stop request would force-stop (StopRecording(recordingStopping)) */
+    case OP_STOPPING:
+        atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);   /* a second stop request would force-stop */
         break;
-    case OBS_FRONTEND_EVENT_RECORDING_STOPPED:
+    case OP_STOPPED:
         atomic_store(&s->stop_ticks, 0); atomic_store(&s->stop_on_eof, 0);
         tpc_detach(s); sidecar_detach(s); bfree(s->sidecar_base); s->sidecar_base = NULL;
         s->record_gap = 0;
-        if (s->restart_pending){ s->restart_pending = 0; if (!s->fs) shuttle_start(s, settings); }   /* the recording never started: resume the replay */
+        if (s->restart_pending){ s->restart_pending = 0; if (!s->fs) shuttle_start(s, settings); }   /* it never started: resume the replay */
+        atomic_store(&s->session_kind, 0);
         break;
-    default: break;
     }
     obs_data_release(settings);
     pthread_mutex_unlock(&s->m);
@@ -751,7 +845,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     }
     /* attach before fs_start, so a session started for a recording logs its first unit */
     s->sidecar_enabled = obs_data_get_bool(settings, S_SIDECAR);
-    if (s->sidecar_enabled && obs_frontend_recording_active() && s->sidecar_base) sidecar_attach(s);   /* restarted mid-recording: continue as the next part */
+    if (s->sidecar_enabled && session_output_active(s) && s->sidecar_base) sidecar_attach(s);   /* restarted mid-recording or mid-stream: continue as the next part */
     /* PLAYING before the session runs: an end that arrives at once (a seek to the last units) then
      * overwrites it with ENDED, never the other way round. */
     if (s->replaying){ atomic_store(&s->media_state, OBS_MEDIA_STATE_PLAYING); obs_source_media_started(s->source); }
@@ -768,7 +862,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     /* A replay IS a raw capture: teeing it would write another copy of the file being read. */
     s->tpc_enabled = obs_data_get_bool(settings, S_TPC) && !s->replaying;
     if (obs_data_get_bool(settings, S_TPC) && s->replaying) blog(LOG_INFO, "[shuttle-source] raw .tpc is not written while replaying a .tpc");
-    if (obs_frontend_recording_active() && s->sidecar_base) tpc_attach(s);
+    if (session_output_active(s) && s->sidecar_base) tpc_attach(s);
     return 0;
 }
 
@@ -815,7 +909,13 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
      * so no already-dispatched event can enter after it returns. */
     obs_frontend_add_event_callback(frontend_event, s);
     pthread_mutex_lock(&s->m);
-    if (obs_frontend_recording_active() && recording_path(s) == 0) s->sidecar_part = 0;   /* created during a recording */
+    if (obs_frontend_recording_active()){   /* created during a recording */
+        atomic_store(&s->session_kind, KIND_RECORDING);
+        if (recording_path(s) == 0) s->sidecar_part = 0;
+    } else if (obs_frontend_streaming_active()){   /* created during a stream: files named as a recording started now */
+        atomic_store(&s->session_kind, KIND_STREAMING);
+        if (stream_path(s) == 0) s->sidecar_part = 0;
+    }
     if (shuttle_start(s, settings) != 0) blog(LOG_WARNING, "[shuttle-source] created without a running capture; fix settings");
     pthread_mutex_unlock(&s->m);
     return s;
@@ -878,8 +978,8 @@ static obs_properties_t *shuttle_properties(void *data){
     obs_properties_add_bool(p, S_TPC, "Raw capture: save a .tpc beside each recording (about 85 GB per hour)");
     obs_properties_add_bool(p, S_USE_REPLAY, "Replay a tagged capture (.tpc) instead of the device");
     obs_properties_add_path(p, S_REPLAY, "Tagged capture file", OBS_PATH_FILE, "Tagged capture (*.tpc *.cap6)", NULL);
-    obs_properties_add_bool(p, S_REPLAY_RESTART, "Replay: restart the file from the beginning when recording starts");
-    obs_properties_add_bool(p, S_REPLAY_STOP, "Replay: stop the recording when the file ends (with the option above)");
+    obs_properties_add_bool(p, S_REPLAY_RESTART, "Replay: restart the file from the beginning when recording or streaming starts");
+    obs_properties_add_bool(p, S_REPLAY_STOP, "Replay: stop the recording or stream when the file ends (with the option above)");
     obs_properties_add_bool(p, S_SIDECAR, "Write the registration sidecar (<recording>.registration.csv) with each OBS recording");
     return p;
 }
@@ -912,6 +1012,7 @@ static struct obs_source_info shuttle_info = {
 
 bool obs_module_load(void){
     obs_register_source(&shuttle_info);
+    discard_stream_register();
     blog(LOG_INFO, "[shuttle-source] loaded (libobs API %u.%u.%u)", LIBOBS_API_MAJOR_VER, LIBOBS_API_MINOR_VER, LIBOBS_API_PATCH_VER);
     return true;
 }

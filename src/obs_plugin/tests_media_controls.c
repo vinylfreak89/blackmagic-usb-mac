@@ -103,6 +103,26 @@ int main(int argc, char **argv){
     I->media_restart(d);   /* stopped, restart_pending still set: the controls must still act */
     WAIT(stub_started_signals == started + 1 && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 5, "a restart after stop, after a failed record press");
     stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STOPPED);
+
+    /* 4c. the same through streaming (the discard stream): STREAMING_STARTING stops the replay, restart_check
+     * finds no active streaming output and resumes it, and STREAMING_STOPPED ends the session. */
+    WAIT(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, 10, "playing before the stream press");
+    stub_fire_event(OBS_FRONTEND_EVENT_STREAMING_STARTING);
+    CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, "STREAMING_STARTING left state %d", I->media_get_state(d));
+    started = stub_started_signals;
+    for (double t0 = now(); stub_started_signals == started && now() - t0 < 10; ) CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, false);
+    CHECK(stub_started_signals == started + 1 && I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, "restart_check did not resume the replay after a stream press");
+    /* 4d. while the stream owns the session, a record press is ignored: the replay keeps playing */
+    stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STARTING);
+    CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_PLAYING, "a record press during the stream changed the replay (state %d)", I->media_get_state(d));
+    stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STOPPED);
+    stub_fire_event(OBS_FRONTEND_EVENT_STREAMING_STOPPED);
+    /* 4e. after the stream stopped, a record press acts again */
+    stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STARTING);
+    CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, "a record press after the stream stopped was ignored (state %d)", I->media_get_state(d));
+    started = stub_started_signals;
+    for (double t0 = now(); stub_started_signals == started && now() - t0 < 10; ) CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, false);
+    stub_fire_event(OBS_FRONTEND_EVENT_RECORDING_STOPPED);
     stub_restart_on_record(0);
 
     /* 5. stop */
