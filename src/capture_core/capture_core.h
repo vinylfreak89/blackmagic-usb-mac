@@ -186,6 +186,8 @@ void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *out); // packet/los
 int  cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st);
 // Test hook: when set, the writer's write() goes through it (stall / short-write / failure).
 extern ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n);
+extern int (*cc_async_sink_test_fsync)(int fd);   /* test hook for the periodic flush */
+extern size_t cc_async_sink_sync_every;            /* bytes between flushes (default 256 MiB); 0: only at close */
 // The writer thread's QoS class (default QOS_CLASS_UTILITY); read once when the sink opens. For measurement.
 extern int cc_async_sink_writer_qos;
 

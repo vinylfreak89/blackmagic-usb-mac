@@ -45,6 +45,7 @@ static uint64_t ring_growth(const char *path,size_t ring){
     return after>before?after-before:0;
 }
 static ssize_t failing_write(int fd,const void *b,size_t n){ (void)fd;(void)b;(void)n; errno=EIO; return -1; }
+static int full_volume_fsync(int fd){ (void)fd; errno=ENOSPC; return -1; }
 static void feed(cc_callbacks *cb,int n,unsigned seed){
     srand(seed);
     for(int i=0;i<n;i++){
@@ -121,6 +122,11 @@ int main(void){
     assert(cc_async_sink_open(&as,d,"fail",1u<<20,65536)==CC_OK); cc_async_sink_callbacks(as,&ca);
     feed(&ca,100,3); assert(cc_async_sink_close(as,&st)==CC_ERR_IO && st.io_error==EIO && st.discarded_after_error>0);
     cc_async_sink_test_write=NULL;
+    /* 4b. a refused flush (a full network volume refuses at the flush, not at write) stops the file the same way */
+    { char e4[256]; snprintf(e4,sizeof e4,"%s/full.tpc",dir); size_t was=cc_async_sink_sync_every; cc_async_sink_sync_every=65536; cc_async_sink_test_fsync=full_volume_fsync;
+      assert(cc_async_sink_open(&as,e4,"full",1u<<20,65536)==CC_OK); cc_async_sink_callbacks(as,&ca);
+      feed(&ca,100,5); assert(cc_async_sink_close(as,&st)==CC_ERR_IO && st.io_error==ENOSPC && st.discarded_after_error>0);
+      cc_async_sink_test_fsync=NULL; cc_async_sink_sync_every=was; unlink(e4); }
     /* 5b. a loss still pending at close is in the file: the writer stays stuck until the feed is over, nothing more
      * is fed, and the ring is full to the end, so the confession can only be written by close itself */
     { char e5[256]; snprintf(e5,sizeof e5,"%s/tail_loss.tpc",dir);

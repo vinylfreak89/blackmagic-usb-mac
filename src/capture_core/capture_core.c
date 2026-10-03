@@ -988,6 +988,11 @@ int cc_tagged_sink_close(cc_tagged_sink *k){
 
 // ---------------- buffered tpc sink (tee)
 ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n) = NULL;
+int (*cc_async_sink_test_fsync)(int fd) = NULL;
+/* Flush to the volume this often. A network volume (LucidLink's SMB share) refuses writes at the flush, not at
+ * write(): a full filespace once let gigabytes of acknowledged writes pile up as failing write-backs that the
+ * system retried until it hung (2026-10-03). A refused flush is a write error like any other: the file stops. */
+size_t cc_async_sink_sync_every = (size_t)256 << 20;
 int cc_async_sink_writer_qos = QOS_CLASS_UTILITY;
 static uint64_t as_now_(void){ return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW); }
 struct cc_async_sink {
@@ -1101,6 +1106,7 @@ static void *as_writer_(void *arg){
     struct cc_async_sink *k=arg;
     pthread_set_qos_class_self_np((qos_class_t)k->qos,0);
     uint64_t last_done=0;                /* end of the previous write if data was still waiting then, else 0 */
+    uint64_t since_sync=0;               /* bytes written since the last flush */
     int idle=0, stuck=0;                 /* idle: the last pass found the ring empty (not thread start-up); stuck: a release failed, the tail stays where it is */
     size_t tail=atomic_load_explicit(&k->tail,memory_order_relaxed);   /* drained up to here; the published tail may lag by under a granule */
     for(;;){
@@ -1142,6 +1148,12 @@ static void *as_writer_(void *arg){
             }
             atomic_fetch_add_explicit(&k->written,done,memory_order_relaxed);
             if(done<n) atomic_fetch_add_explicit(&k->discarded,n-done,memory_order_relaxed);
+            since_sync+=done;
+            if(!k->io_errno && cc_async_sink_sync_every && since_sync>=cc_async_sink_sync_every){
+                since_sync=0;
+                int r=cc_async_sink_test_fsync?cc_async_sink_test_fsync(k->fd):fsync(k->fd);
+                if(r!=0) k->io_errno=errno?errno:EIO;   /* from here on the ring drains into the discarded count */
+            }
         }
         tail+=n; atomic_store_explicit(&k->drained,tail,memory_order_relaxed);
         size_t pub=k->granule?tail-tail%k->granule:tail, was=atomic_load_explicit(&k->tail,memory_order_relaxed);
