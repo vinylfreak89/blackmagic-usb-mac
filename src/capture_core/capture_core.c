@@ -394,6 +394,11 @@ static int vout_(libusb_device_handle*h,uint8_t req,uint16_t idx,uint32_t be){
     uint8_t b[4]={(uint8_t)(be>>24),(uint8_t)(be>>16),(uint8_t)(be>>8),(uint8_t)be};
     return libusb_control_transfer(h,0x40,req,0,idx,b,4,1000);
 }
+int cc_start_info(const cc_session *s, uint32_t *mode_word, uint32_t *reg4, const char **reg4_action){
+    if(!s || s->cfg.replay_path || !s->start_reg4_action) return -1;
+    *mode_word=s->start_mode_word; *reg4=s->start_reg4; *reg4_action=s->start_reg4_action;
+    return 0;
+}
 static void* device_main(void *arg){
     cc_session *s=arg;
     internal_session=s;

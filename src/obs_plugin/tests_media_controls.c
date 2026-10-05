@@ -10,6 +10,8 @@
 #include <CoreFoundation/CoreFoundation.h>
 
 bool obs_module_load(void);
+void shuttle_test_device_gone(void *d);
+int shuttle_test_reconnect_wanted(void *d);
 static int fails;
 #define CHECK(c, ...) do{ if(!(c)){ fails++; fprintf(stderr,"FAIL: "); fprintf(stderr,__VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
 static double now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
@@ -149,6 +151,22 @@ int main(int argc, char **argv){
     I->media_set_time(d, 1000); I->media_play_pause(d, true);
     usleep(50000);
     CHECK(I->media_get_state(d) == OBS_MEDIA_STATE_STOPPED, "live state after pause/seek: %d", I->media_get_state(d));
+
+    /* 6a. live, the device drops off USB (reported as the capture core does). There is no device here, so every
+     * reconnect attempt fails: the picture is blanked at once, attempts repeat (RECONNECT_INTERVAL_NS is 20 ms in
+     * this build) and stop after the limit; a second disconnect then a user stop cancels the attempts. */
+    {
+        uint64_t blanks = stub_blank_calls;
+        shuttle_test_device_gone(d);
+        CHECK(stub_blank_calls == blanks + 1, "a disconnect did not blank the source (%llu blank calls)", (unsigned long long)(stub_blank_calls - blanks));
+        CHECK(shuttle_test_reconnect_wanted(d), "a disconnect did not start reconnecting");
+        WAIT(!shuttle_test_reconnect_wanted(d), 10, "reconnect attempts to give up after the limit (30 x 20 ms)");
+        shuttle_test_device_gone(d);
+        CHECK(shuttle_test_reconnect_wanted(d), "a second disconnect did not start reconnecting");
+        I->media_stop(d);
+        WAIT(!shuttle_test_reconnect_wanted(d), 2, "a user stop to cancel reconnecting");
+        I->update(d, st);
+    }
 
     /* 6b. a replay path that cannot be opened: the previous file's length does not stay on the bar */
     st = stub_settings(argv[1], 1);

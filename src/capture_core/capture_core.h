@@ -121,6 +121,10 @@ uint64_t cc_packets_delivered(const cc_session *s);
 // CC_ERR_STATE for a device session (a live capture cannot be held; the device keeps streaming).
 int cc_replay_pause(cc_session *s, int paused);
 const char *cc_strerror(int err);
+// What the device start-up sent and found: the mode word, register 4 (as read back, written, or restored) and
+// which of those it was ("as found", "written", "written, reads back different", "restored to nominal",
+// "unread"). Replay sessions return -1.
+int cc_start_info(const cc_session *s, uint32_t *mode_word, uint32_t *reg4, const char **reg4_action);
 
 typedef struct {
     uint64_t bytes[2];              // [0]=video [1]=audio payload delivered

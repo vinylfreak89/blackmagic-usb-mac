@@ -107,8 +107,9 @@ void obs_source_media_ended(obs_source_t *s){ (void)s; atomic_fetch_add(&stub_en
 /* What the plugin hands OBS: I210, byte linesizes 1440/720/720, contiguous Y/U/V planes, codes as 4c
  * (fixture_plain is Y16/C128 everywhere -> 64/512), range clamp opened, limited range kept. */
 _Atomic uint64_t stub_frame_errors;
+_Atomic uint64_t stub_blank_calls;
 void obs_source_output_video(obs_source_t *s, const struct obs_source_frame *f){
-    (void)s; if (!f) return;
+    (void)s; if (!f){ atomic_fetch_add(&stub_blank_calls, 1); return; }
     atomic_fetch_add(&stub_video_frames, 1);
     const uint16_t *y = (const uint16_t *)f->data[0], *u = (const uint16_t *)f->data[1], *v = (const uint16_t *)f->data[2];
     int ok = f->format == VIDEO_FORMAT_I210 && f->width == 720 && f->height == 480 && !f->full_range &&
