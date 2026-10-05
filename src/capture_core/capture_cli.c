@@ -166,6 +166,45 @@ int main(int argc,char**argv){
                 tool_timeout("no capture-core packet delivery before stall deadline; partial capture retained");
         }
     }
+    else if(getenv("CC_REG_SWEEP") && atoi(getenv("CC_REG_SWEEP"))>=6){
+        /* Measurement, 2026-10-05: the vendor driver writes the mode word (input select) and THEN register 4, and
+         * the mode word carries a 7.5 IRE setup bit (wire byte 0, 0x08) that ours has always had on.
+         *   CC_REG_SWEEP=6  setup bit off and on, alternating every half second
+         *   CC_REG_SWEEP=7  register 4 in the driver's order (mode word, register 4, latch): two seconds as found,
+         *                   two with one byte a quarter down, cycling luma, Cb, Cr
+         * Every write is listed beside the capture with its time; everything is put back and read back at the end. */
+        int variant=atoi(getenv("CC_REG_SWEEP")); uint32_t mode0=0, gain0=0; int ok=1;
+        if(cc_debug_register(g_s,0,0,&mode0)!=CC_OK || cc_debug_register(g_s,0,4,&gain0)!=CC_OK) ok=0;
+        uint32_t want = 0x09000000u|(cfg.input==CC_INPUT_COMPONENT?0x02000000u:cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u)|0x30000000u;
+        if(ok && mode0!=want){ fprintf(stderr,"register 0 reads %08x, not the mode word this capture wrote (%08x); not sweeping\n",mode0,want); ok=0; }
+        char sweep_path[PATH_MAX]; snprintf(sweep_path,sizeof sweep_path,"%s.regsweep.csv",out);
+        FILE *sw=ok?fopen(sweep_path,"w"):NULL;
+        if(!sw) fprintf(stderr,"register sweep not started; capturing without it\n");
+        else fprintf(sw,"ms_since_start,register,value_hex,what\n0,0,%08x,as found\n0,4,%08x,as found\n",mode0,gain0);
+        double t0=tool_clock(); int state=0;
+        for(int i=0;i<secs*10 && !atomic_load(&g_done);i++){
+            unsigned ms=(unsigned)((tool_clock()-t0)*1000);
+            if(sw && i>=20 && i<(secs-3)*10){                       /* the first two and last three seconds alone */
+                if(variant==6 && i%5==0){
+                    int on=state&1; int rc=cc_debug_mode_order(g_s,on,NULL);
+                    fprintf(sw,"%u,0,%08x,setup %s%s\n",ms,on?want:(want&~0x08000000u),on?"on":"off",rc==CC_OK?"":" FAILED"); state++;
+                } else if(variant==7 && i%20==0){
+                    int phase=state%6; uint32_t v=gain0; const char *what="as found";
+                    if(phase%2){ int b=phase/2, sh=24-8*b; uint32_t x=gain0>>sh&0xff; v=(gain0&~(0xffu<<sh))|((x-x/4)<<sh); what=b==0?"luma byte down a quarter":b==1?"Cb byte down a quarter":"Cr byte down a quarter"; }
+                    int rc=cc_debug_mode_order(g_s,1,&v);
+                    fprintf(sw,"%u,4,%08x,mode+4+latch %s%s\n",ms,v,what,rc==CC_OK?"":" FAILED"); state++;
+                }
+                fflush(sw);
+            }
+            usleep(100000);
+        }
+        if(sw){
+            int rc=cc_debug_mode_order(g_s,1,&gain0); uint32_t m=0,g=0; cc_debug_register(g_s,0,0,&m); cc_debug_register(g_s,0,4,&g);
+            fprintf(sw,"%u,0,%08x,final restore%s; reads back mode %08x reg4 %08x\n",(unsigned)((tool_clock()-t0)*1000),want,rc==CC_OK?"":" FAILED",m,g);
+            if(m!=mode0||g!=gain0) fprintf(stderr,"REGISTERS NOT RESTORED: mode %08x->%08x, reg4 %08x->%08x\n",mode0,m,gain0,g);
+            fclose(sw); printf("register sweep written to %s\n",sweep_path);
+        }
+    }
     else if(getenv("CC_REG_SWEEP")){
         /* Measurement: find what the unexplained registers do. One value is changed, held, and put back, cycling
          * through a list for the whole capture; every write is listed beside the capture with its time. All six

@@ -122,6 +122,9 @@ int cc_debug_register(cc_session *s, int write, uint16_t index, uint32_t *value)
 // Measurement only: send the latch again, after the session's own mode word if with_mode (the same two writes
 // every capture start makes), in case a level register only takes effect on one of them.
 int cc_debug_relatch(cc_session *s, int with_mode);
+// Measurement only, in the vendor driver's order: the session's mode word with the 7.5 IRE setup bit (wire byte 0,
+// 0x08) on or off, then register 4 if reg4 is given (wire order, first byte in the top bits), then the latch.
+int cc_debug_mode_order(cc_session *s, int setup_on, const uint32_t *reg4);
 const char *cc_strerror(int err);
 
 typedef struct {

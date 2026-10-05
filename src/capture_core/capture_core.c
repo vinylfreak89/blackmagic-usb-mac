@@ -413,6 +413,16 @@ int cc_debug_relatch(cc_session *s, int with_mode){
     if(with_mode && vout_(s->h,215,0,0x09000000u|vsel|0x10000000u|0x20000000u)!=4) return CC_ERR_USB;
     return vout_(s->h,215,24,0x73c60001u)==4?CC_OK:CC_ERR_USB;
 }
+int cc_debug_mode_order(cc_session *s, int setup_on, const uint32_t *reg4){
+    if(!s || !s->h || s->cfg.replay_path) return CC_ERR_ARGS;
+    uint32_t vsel = s->cfg.input==CC_INPUT_COMPONENT?0x02000000u
+                  : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
+    uint32_t mode = 0x09000000u|vsel|0x10000000u|0x20000000u;      /* the session's own word: setup bit (wire byte 0, 0x08) on */
+    if(!setup_on) mode &= ~0x08000000u;
+    if(vout_(s->h,215,0,mode)!=4) return CC_ERR_USB;
+    if(reg4 && vout_(s->h,215,4,*reg4)!=4) return CC_ERR_USB;
+    return vout_(s->h,215,24,0x73c60001u)==4?CC_OK:CC_ERR_USB;
+}
 static void* device_main(void *arg){
     cc_session *s=arg;
     internal_session=s;
@@ -826,8 +836,16 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         }
         uint32_t vsel = s->cfg.input==CC_INPUT_COMPONENT?0x02000000u
                       : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
-        if(vout_(s->h,215,0,0x09000000u|vsel|0x10000000u|0x20000000u)!=4 ||
-           vout_(s->h,215,24,0x73c60001u)!=4){
+        /* Measurement only (2026-10-05): CC_INIT_SETUP_OFF=1 clears the 7.5 IRE setup bit (wire byte 0, 0x08) in the
+         * start-up mode word; CC_INIT_REG4=<hex, wire order> writes register 4 after the mode word and before the
+         * latch, as the vendor driver orders them. Mid-stream writes of both changed nothing on S-Video; these
+         * decide whether the device takes them only at start-up. */
+        uint32_t mode_word=0x09000000u|vsel|0x10000000u|0x20000000u;
+        if(getenv("CC_INIT_SETUP_OFF") && atoi(getenv("CC_INIT_SETUP_OFF"))) mode_word&=~0x08000000u;
+        int reg4_ok=1;
+        if(vout_(s->h,215,0,mode_word)!=4) goto usb_fail;
+        if(getenv("CC_INIT_REG4")) reg4_ok = vout_(s->h,215,4,(uint32_t)strtoul(getenv("CC_INIT_REG4"),NULL,16))==4;
+        if(!reg4_ok || vout_(s->h,215,24,0x73c60001u)!=4){
             // A failed/short control transfer leaves the analog mux wherever it was and every
             // downstream layer would report a healthy capture of the WRONG input.
             goto usb_fail;
