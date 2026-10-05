@@ -831,6 +831,17 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         if(libusb_claim_interface(s->h,0)) goto usb_fail;
         // alt1 -> alt2 is the reset + input select (§5); an unchecked failure here streams nothing
         // or streams the previous state, so every lifecycle transition must be confirmed.
+        /* Measurement only (2026-10-06): CC_INIT_MODE_BEFORE_RESET=1 also sends the mode word (with the same setup
+         * choice) and the latch BEFORE the alt-setting reset, to test whether the device applies the mode word it
+         * last received at the reset (the setup bit appeared to act one start late). */
+        if(getenv("CC_INIT_MODE_BEFORE_RESET") && atoi(getenv("CC_INIT_MODE_BEFORE_RESET"))){
+            uint32_t vs = s->cfg.input==CC_INPUT_COMPONENT?0x02000000u : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
+            uint32_t mw=0x09000000u|vs|0x10000000u|0x20000000u;
+            if(getenv("CC_INIT_SETUP_OFF") && atoi(getenv("CC_INIT_SETUP_OFF"))) mw&=~0x08000000u;
+            if(vout_(s->h,215,0,mw)!=4) goto usb_fail;
+            if(getenv("CC_INIT_REG4") && vout_(s->h,215,4,(uint32_t)strtoul(getenv("CC_INIT_REG4"),NULL,16))!=4) goto usb_fail;
+            if(vout_(s->h,215,24,0x73c60001u)!=4) goto usb_fail;
+        }
         if(libusb_set_interface_alt_setting(s->h,0,1) || libusb_set_interface_alt_setting(s->h,0,2)){
             goto usb_fail;
         }
