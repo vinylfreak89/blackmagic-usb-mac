@@ -43,12 +43,12 @@ $(BUNDLE): shuttle_source.c discard_stream.c discard_stream.h audio_timing.h fra
 	codesign --force --sign - $(BUNDLE)
 	@echo "built $(BUNDLE)"; otool -L $(BUNDLE)/Contents/MacOS/$(PLUGIN) | grep -E 'libobs|libusb' || true
 
-test: test-audio test-frame-levels test-timing-report test-replay-timeline test-media-controls publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
+test: test-tracking-meter test-audio test-frame-levels test-timing-report test-replay-timeline test-media-controls publish_copy.c publish_copy.h tests_publish_copy.c publish_queue.c publish_queue.h tests_publish_queue.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_copy.c tests_publish_copy.c -o tests_publish_copy && ./tests_publish_copy
 	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue -lpthread && ./tests_publish_queue
 	$(CC) -DPUBLISH_QUEUE_TEST_HOOKS -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra publish_queue.c tests_publish_queue.c -o tests_publish_queue_tsan -lpthread && ./tests_publish_queue_tsan
 
-.PHONY: test-audio test-frame-levels test-replay-timeline test-media-controls
+.PHONY: test-tracking-meter test-audio test-frame-levels test-replay-timeline test-media-controls
 # The plugin's media controls in a test process: libobs replaced by stubs, the real frameserver
 # replaying the plain synthetic fixture. Plain and ThreadSanitizer builds.
 MEDIA_FIXTURE = ../unit_parser/tests/fixture_plain.tpc
@@ -66,6 +66,14 @@ test-timing-report: timing_report.c timing_report.h tests_timing_report.c
 
 test-frame-levels: frame_levels.h tests_frame_levels.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra tests_frame_levels.c -o tests_frame_levels && ./tests_frame_levels
+
+# The tracking meter's known answers (synthetic fields with chosen noise), and its checking tool:
+#   ../frameserver/frameserver_replay <capture.tpc> --dump-uyvy /dev/stdout --limit-units N | ./tracking_meter_cli
+test-tracking-meter: tracking_meter.c tracking_meter.h tests_tracking_meter.c
+	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra tracking_meter.c tests_tracking_meter.c -o tests_tracking_meter -lm && ./tests_tracking_meter
+
+tracking_meter_cli: tracking_meter.c tracking_meter.h tracking_meter_cli.c
+	$(CC) -O2 -std=c11 -Wall -Wextra tracking_meter.c tracking_meter_cli.c -o tracking_meter_cli -lm
 
 test-audio:
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra tests_audio_timing.c -o tests_audio_timing
