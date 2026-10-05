@@ -959,7 +959,13 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     atomic_store(&s->last_counter, 0); atomic_store(&s->handoff_reset, 0);
     s->last_handoff_ns = s->gap_events = s->max_gap_ns = s->max_call_ns = s->slow_calls = 0;
     if (!s->replaying && was_replay) atomic_store(&s->live_regrey, 1);   /* from replay to live: OBS's controls still show the replay's bar; grey them */
-    if (fs_open(&s->fs, &cfg) != 0){
+#ifdef SHUTTLE_TEST_HOOKS
+    /* Tests never open real hardware: a Shuttle plugged in while they run must not change their outcome. */
+    int test_refuse = !cfg.capture.replay_path;
+#else
+    int test_refuse = 0;
+#endif
+    if (test_refuse || fs_open(&s->fs, &cfg) != 0){
         blog(LOG_ERROR, "[shuttle-source] frameserver open failed (device present? replay path?)"); s->fs = NULL;
         if (s->replaying) obs_source_media_ended(s->source);   /* nothing plays: OBS's controls show restart */
         return -1;
