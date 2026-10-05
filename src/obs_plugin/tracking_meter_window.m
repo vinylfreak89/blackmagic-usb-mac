@@ -132,7 +132,7 @@ static NSTextField *label(NSString *s, NSRect r, CGFloat size){
 
 - (void)buildControls {
     const CGFloat W = self.view.bounds.size.width, pad = 16;
-    [self.view addSubview:label(@"Device input levels (the Shuttle's register 4 and setup bit)", NSMakeRect(pad, 360, W - 2 * pad, 18), 12)];
+    [self.view addSubview:label(@"Device input levels. Gains: no effect measured on S-Video so far (register 4).", NSMakeRect(pad, 360, W - 2 * pad, 18), 12)];
     NSString *names[3] = { @"Y gain", @"Cb gain", @"Cr gain" };
     self.sliders = [NSMutableArray array]; self.values = [NSMutableArray array];
     for (int c = 0; c < 3; c++){
@@ -148,7 +148,7 @@ static NSTextField *label(NSString *s, NSRect r, CGFloat size){
         v.alignment = NSTextAlignmentRight; v.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular];
         [self.view addSubview:v]; [self.values addObject:v];
     }
-    self.setup = [NSButton checkboxWithTitle:@"7.5 IRE setup bit (experimental: no effect measured yet; on = every capture so far)" target:self action:@selector(levelChanged:)];
+    self.setup = [NSButton checkboxWithTitle:@"7.5 IRE setup: on = NTSC-M, US tapes (black at code 16); off = 0 IRE, NTSC-J (black lifted)" target:self action:@selector(levelChanged:)];
     self.setup.frame = NSMakeRect(pad, 470, W - 2 * pad - 130, 20);
     [self.view addSubview:self.setup];
     self.reset = [NSButton buttonWithTitle:@"Reset to nominal" target:self action:@selector(resetLevels:)];

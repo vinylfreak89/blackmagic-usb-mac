@@ -809,13 +809,20 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         if(libusb_claim_interface(s->h,0)) goto usb_fail;
         // alt1 -> alt2 is the reset + input select (§5); an unchecked failure here streams nothing
         // or streams the previous state, so every lifecycle transition must be confirmed.
-        if(libusb_set_interface_alt_setting(s->h,0,1) || libusb_set_interface_alt_setting(s->h,0,2)){
-            goto usb_fail;
-        }
         uint32_t vsel = s->cfg.input==CC_INPUT_COMPONENT?0x02000000u
                       : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
         uint32_t mode_word=0x09000000u|vsel|0x10000000u|0x20000000u;
         if(s->cfg.setup_off) mode_word&=~0x08000000u;          /* the 7.5 IRE setup bit: wire byte 0, 0x08 */
+        /* The mode word and latch go out BEFORE the alt-setting reset too. Measured 2026-10-06 on a locked S-Video
+         * signal: the device applies the setup bit at the reset from the mode word it last received, so with the word
+         * only after the reset every start showed the PREVIOUS start's setup (a grey field read 143 asked-off right
+         * after an on start, 151 asked-on right after an off start); sent before as well, each start matched its own
+         * setting (150.5 off, 141 on, 151 off, 143.8 on). The input select was never affected (each start's input
+         * was right), so the words after the reset stay as they always were. */
+        if(vout_(s->h,215,0,mode_word)!=4 || vout_(s->h,215,24,0x73c60001u)!=4) goto usb_fail;
+        if(libusb_set_interface_alt_setting(s->h,0,1) || libusb_set_interface_alt_setting(s->h,0,2)){
+            goto usb_fail;
+        }
         if(vout_(s->h,215,0,mode_word)!=4) goto usb_fail;
         s->start_mode_word=mode_word;
         /* Register 4, in the vendor driver's order (mode word, then 4). Asked-for gains are written and read back. At
