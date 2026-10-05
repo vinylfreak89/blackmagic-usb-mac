@@ -25,7 +25,7 @@ static uint8_t clip(double v){ return v < 0 ? 0 : v > 255 ? 255 : (uint8_t)lroun
 
 static void *offer_loop(void *a){
     (void)a;
-    while (atomic_load(&run_offer)){ tmt_offer(frame, FW * 2); usleep(2000); }   // ~500 frames/s, faster than real
+    while (atomic_load(&run_offer)){ tmt_offer(frame, FW * 2, 1); usleep(2000); }   // ~500 frames/s, faster than real
     return NULL;
 }
 
@@ -36,7 +36,8 @@ int main(void){
         uint8_t *row = frame + (size_t)r * FW * 2;
         for (int cx = 0; cx < FW / 2; cx++){
             row[4 * cx] = clip(128 + 2.0 * sc * gauss()); row[4 * cx + 2] = clip(128 + 2.0 * gauss());
-            row[4 * cx + 1] = clip(100 + 2.0 * gauss()); row[4 * cx + 3] = clip(100 + 2.0 * gauss());
+            double y = (cx > 60 && cx < 120 && r > 100 && r < 300) || (cx > 200 && cx < 230) ? 180 : 100;   // picture detail
+            row[4 * cx + 1] = clip(y + 2.0 * gauss()); row[4 * cx + 3] = clip(y + 2.0 * gauss());
         }
     }
     pthread_t t; pthread_create(&t, NULL, offer_loop, NULL);
@@ -62,7 +63,29 @@ int main(void){
     usleep(100000); tmt_snapshot_take(&s);
     if (s.frames_measured != before || s.active){ printf("FAIL: measuring after close\n"); fails++; }
 
+    // Stale: while frames arrive the reading is live; 1.7 s after they stop it must no longer be shown as live.
+    tmt_start(); usleep(400000); tmt_snapshot_take(&s);
+    int was = s.now.valid;
     atomic_store(&run_offer, 0); pthread_join(t, NULL);
+    usleep(1700000); tmt_snapshot_take(&s);
+    printf("stale: valid while offered %d, 1.7 s after the last offer %d (want 1, 0)\n", was, s.now.valid);
+    if (!was || s.now.valid){ printf("FAIL: stale reading\n"); fails++; }
+    tmt_stop();
+
+    // Frames that are not two heads' fields must give no reading.
+    tm_frame m0;
+    uint8_t *dup = malloc((size_t)FW * FH * 2);
+    for (int r = 0; r < FH; r++) memcpy(dup + (size_t)r * FW * 2, frame + (size_t)(r & ~1) * FW * 2, FW * 2);   // field 1 shown twice
+    tm_measure_uyvy(dup, FW * 2, &m0);
+    printf("one field shown twice: valid %d why %d (want 0, %d)\n", m0.valid, m0.why, TM_FIELDS_IDENTICAL);
+    if (m0.valid || m0.why != TM_FIELDS_IDENTICAL) fails++;
+    for (int r = 0; r < FH; r++){ uint8_t *row = dup + (size_t)r * FW * 2;                  // a deck's grey mute
+        for (int cx = 0; cx < FW / 2; cx++){ row[4*cx] = clip(128 + 0.6 * gauss()); row[4*cx+2] = clip(128 + 0.6 * gauss());
+            row[4*cx+1] = clip(117 + 0.6 * gauss()); row[4*cx+3] = clip(117 + 0.6 * gauss()); } }
+    tm_measure_uyvy(dup, FW * 2, &m0);
+    printf("flat grey mute: valid %d why %d (want 0, %d)\n", m0.valid, m0.why, TM_NO_DETAIL);
+    if (m0.valid || m0.why != TM_NO_DETAIL) fails++;
+    free(dup);
 
     // Cost of one measured frame (the copy is a 691 kB memcpy on the frame callback; this is the thread's work).
     tm_frame m; struct timespec a, b; clock_gettime(CLOCK_MONOTONIC, &a);

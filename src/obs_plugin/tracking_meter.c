@@ -13,6 +13,11 @@
 #define LUMA_HI 210
 #define PCTL 0.10                       // the flattest 10% of blocks
 #define MIN_BLOCKS 40
+#define MIN_DETAIL_FRACTION 0.02        // at least 2% of usable blocks well above the noise: a flat screen (a deck's
+                                        // grey mute, a blank card) is all noise and would read as balanced
+#define DETAIL_FACTOR 4.0               // "well above": block residual over 4x the field's noise figure
+#define MIN_FIELD_DIFF 0.5              // mean |field 1 line - field 2 line| below this: one field shown twice
+                                        // (a stretched partial unit), not two heads' fields
 #define MAX_BLOCKS (((W - 2 * EDGE_X) / BLK_Y) * ((FIELD_LINES - 2 * EDGE_LINES) / BLK_LINES))
 
 // Residual standard deviation of v (bw x BLK_LINES, row stride `stride` elements apart in `step`)
@@ -53,10 +58,17 @@ static double pctl_bias(double dof){
 
 void tm_measure_uyvy(const uint8_t *frame, size_t bpr, tm_frame *out){
     static const int chan_offset[TM_CHANNELS] = { 1, 0, 2 };  // Y in odd bytes; U at 0, V at 2 of each 4
-    double *vals = malloc(sizeof(double) * MAX_BLOCKS * TM_CHANNELS);
+    double *vals = malloc(sizeof(double) * MAX_BLOCKS * (TM_CHANNELS + 1));
     memset(out, 0, sizeof *out);
-    if (!vals) return;
-    int ok = 1;
+    if (!vals){ out->why = TM_TOO_FEW_BLOCKS; return; }
+    // One field shown twice? Compare each field-1 line with the field-2 line below it, over the central picture.
+    double diff = 0; long nd = 0;
+    for (int l = EDGE_LINES; l < FIELD_LINES - EDGE_LINES; l += 2){
+        const uint8_t *a = frame + (size_t)(2 * l) * bpr, *b = frame + (size_t)(2 * l + 1) * bpr;
+        for (int x = 2 * EDGE_X; x < 2 * (W - EDGE_X); x += 2){ diff += abs((int)a[x + 1] - (int)b[x + 1]); nd++; }
+    }
+    if (nd && diff / nd < MIN_FIELD_DIFF){ out->why = TM_FIELDS_IDENTICAL; free(vals); return; }
+    int ok = 1, detail_ok = 1;
     for (int f = 0; f < 2; f++){
         unsigned nb = 0;
         double *vy = vals, *vu = vals + MAX_BLOCKS, *vv = vals + 2 * MAX_BLOCKS;
@@ -76,6 +88,8 @@ void tm_measure_uyvy(const uint8_t *frame, size_t bpr, tm_frame *out){
             }
         out->blocks[f] = nb;
         if (nb < MIN_BLOCKS){ ok = 0; continue; }
+        double *ycopy = vals + 3 * MAX_BLOCKS;                 // detail test on luma, before the sort reorders it
+        memcpy(ycopy, vy, sizeof *vy * nb);
         const unsigned k = (unsigned)(PCTL * nb);
         const double dof[TM_CHANNELS] = { BLK_Y * BLK_LINES - 3.0, BLK_Y / 2 * BLK_LINES - 3.0, BLK_Y / 2 * BLK_LINES - 3.0 };
         for (int c = 0; c < TM_CHANNELS; c++){
@@ -83,8 +97,12 @@ void tm_measure_uyvy(const uint8_t *frame, size_t bpr, tm_frame *out){
             qsort(v, nb, sizeof *v, cmp_double);
             out->noise[f][c] = v[k] / pctl_bias(dof[c]);
         }
+        unsigned detail = 0;
+        for (unsigned i = 0; i < nb; i++) if (ycopy[i] > DETAIL_FACTOR * out->noise[f][TM_Y]) detail++;
+        if (detail < MIN_DETAIL_FRACTION * nb) detail_ok = 0;
     }
-    out->valid = ok;
+    out->valid = ok && detail_ok;
+    out->why = !ok ? TM_TOO_FEW_BLOCKS : !detail_ok ? TM_NO_DETAIL : TM_OK;
     free(vals);
 }
 

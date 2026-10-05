@@ -805,8 +805,17 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         }
         uint32_t vsel = s->cfg.input==CC_INPUT_COMPONENT?0x02000000u
                       : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
-        if(vout_(s->h,215,0,0x09000000u|vsel|0x10000000u|0x20000000u)!=4 ||
-           vout_(s->h,215,24,0x73c60001u)!=4){
+        uint32_t mode_word=0x09000000u|vsel|0x10000000u|0x20000000u;
+        if(s->cfg.setup_off) mode_word&=~0x08000000u;          /* the 7.5 IRE setup bit: wire byte 0, 0x08 */
+        if(vout_(s->h,215,0,mode_word)!=4) goto usb_fail;
+        /* Register 4 every start, in the vendor driver's order (mode word, then 4). All-nominal is 80 80 80 00, the
+         * value it has read as found in every capture, so a later session at 0 undoes an earlier session's change
+         * even if the device keeps it across the alt-setting reset (not established). */
+        uint32_t r4=0;
+        for(int c=0;c<3;c++){ int u=s->cfg.input_gain[c]; if(u<-100) u=-100; if(u>100) u=100;
+            int code=128+u*128/100; if(code>255) code=255; if(code<0) code=0; r4|=(uint32_t)code<<(24-8*c); }
+        int gain_ok = vout_(s->h,215,4,r4)==4;
+        if(!gain_ok || vout_(s->h,215,24,0x73c60001u)!=4){
             // A failed/short control transfer leaves the analog mux wherever it was and every
             // downstream layer would report a healthy capture of the WRONG input.
             goto usb_fail;

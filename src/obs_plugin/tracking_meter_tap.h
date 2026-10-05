@@ -15,15 +15,19 @@ typedef struct {
     int      active;                    // the window is open and measuring
     int      fresh;                     // a frame arrived within the last 1.5 s
     uint64_t frames_offered, frames_measured, frames_skipped_busy, frames_no_reading;
-    tm_reading now;                     // the running reading (median of the last TM_WINDOW measured frames)
+    tm_reading now;                     // the running reading; now.valid only while a frame measured within 1.5 s
+    double   since_valid_s;             // seconds since the last measurable frame (-1: none yet)
+    int      last_why;                  // TM_* reason for the most recent measured frame
+    int      start_failed;              // the measuring thread or its buffers could not be created
     unsigned history_n;                 // valid points in history, oldest first
     double   history[TMT_HISTORY][TM_CHANNELS];   // ratio field 2 / field 1 per point (0: no reading)
 } tmt_snapshot;
 
 void tmt_start(void);                   // window opened: start measuring (idempotent)
 void tmt_stop(void);                    // window closed: stop and join the thread (idempotent)
-// From the frame callback, with the surface locked: cheap when inactive or busy.
-void tmt_offer(const uint8_t *uyvy, size_t bytes_per_row);
+// From the frame callback, with the surface locked: cheap when inactive or busy. Only whole units are measured:
+// `complete` is 0 for a stretched partial unit or a hole, which say nothing about the two heads.
+void tmt_offer(const uint8_t *uyvy, size_t bytes_per_row, int complete);
 // Called on the UI's own cadence; also advances the history by one point.
 void tmt_snapshot_take(tmt_snapshot *out);
 

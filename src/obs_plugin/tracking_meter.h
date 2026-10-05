@@ -17,8 +17,12 @@
 
 enum { TM_Y = 0, TM_CB = 1, TM_CR = 2, TM_CHANNELS = 3 };
 
+// Why a frame gave no reading. A frame must be real interlaced picture: two different fields with detail.
+enum { TM_OK = 0, TM_TOO_FEW_BLOCKS = 1, TM_FIELDS_IDENTICAL = 2, TM_NO_DETAIL = 3 };
+
 typedef struct {
-    int    valid;                       // 0: too few usable flat blocks in either field
+    int    valid;                       // 0: no reading; `why` says which test failed
+    int    why;                         // TM_* above
     double noise[2][TM_CHANNELS];       // [field 0 = field 1 (top), 1 = field 2][channel], 8-bit codes
     unsigned blocks[2];                 // usable blocks per field
 } tm_frame;

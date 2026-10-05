@@ -19,6 +19,8 @@ static int stopping;                                        // ask the thread to
 static _Atomic int active;                                  // read by the frame callback without the lock
 static _Atomic int slot_state;
 static _Atomic uint64_t offered, measured, skipped_busy, no_reading, last_offer_ns;
+static uint64_t last_valid_ns;                              // guarded by lock
+static int last_why, start_failed;                          // guarded by lock
 static uint8_t *slot, *work;
 static tm_window window;
 static tm_reading reading;
@@ -41,8 +43,8 @@ static void *measure_loop(void *arg){
         atomic_fetch_add(&measured, 1);
         if (!m.valid) atomic_fetch_add(&no_reading, 1);
         pthread_mutex_lock(&lock);
-        tm_window_add(&window, &m);
-        tm_window_read(&window, &reading);
+        last_why = m.why;
+        if (m.valid){ last_valid_ns = now_ns(); tm_window_add(&window, &m); tm_window_read(&window, &reading); }
     }
     pthread_mutex_unlock(&lock);
     return NULL;
@@ -55,11 +57,12 @@ void tmt_start(void){
         if (!work) work = malloc(FRAME_BYTES);
         if (slot && work){
             tm_window_reset(&window); memset(&reading, 0, sizeof reading);
-            history_n = 0; stopping = 0;
+            history_n = 0; stopping = 0; last_valid_ns = 0; last_why = TM_OK; start_failed = 0;
             atomic_store(&slot_state, EMPTY);
             atomic_store(&offered, 0); atomic_store(&measured, 0); atomic_store(&skipped_busy, 0); atomic_store(&no_reading, 0);
             if (pthread_create(&thread, NULL, measure_loop, NULL) == 0){ running = 1; atomic_store(&active, 1); }
-        }
+            else start_failed = 1;
+        } else start_failed = 1;
     }
     pthread_mutex_unlock(&lock);
 }
@@ -76,8 +79,8 @@ void tmt_stop(void){
     }
 }
 
-void tmt_offer(const uint8_t *uyvy, size_t bpr){
-    if (!atomic_load(&active)) return;
+void tmt_offer(const uint8_t *uyvy, size_t bpr, int complete){
+    if (!atomic_load(&active) || !complete) return;
     uint64_t n = atomic_fetch_add(&offered, 1);
     atomic_store(&last_offer_ns, now_ns());
     if (n % TMT_EVERY) return;
@@ -99,9 +102,13 @@ void tmt_snapshot_take(tmt_snapshot *out){
     out->frames_offered = atomic_load(&offered); out->frames_measured = atomic_load(&measured);
     out->frames_skipped_busy = atomic_load(&skipped_busy); out->frames_no_reading = atomic_load(&no_reading);
     out->now = reading;
+    out->last_why = last_why; out->start_failed = start_failed;
+    uint64_t t = now_ns();
+    out->since_valid_s = last_valid_ns ? (t - last_valid_ns) / 1e9 : -1;
+    if (!last_valid_ns || t - last_valid_ns > 1500000000ull) out->now.valid = 0;   // an old reading is not shown as live
     if (out->active){                                      // one history point per snapshot
         if (history_n == TMT_HISTORY){ memmove(history[0], history[1], sizeof history[0] * (TMT_HISTORY - 1)); history_n--; }
-        for (int c = 0; c < TM_CHANNELS; c++) history[history_n][c] = (out->fresh && reading.valid) ? reading.ratio[c] : 0;
+        for (int c = 0; c < TM_CHANNELS; c++) history[history_n][c] = (out->fresh && out->now.valid) ? reading.ratio[c] : 0;
         history_n++;
     }
     out->history_n = history_n;

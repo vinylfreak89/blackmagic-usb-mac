@@ -49,12 +49,20 @@ bool obs_data_get_bool(obs_data_t *d, const char *name){
     if (!strcmp(name, "use_replay")) return atomic_load(&d->use_replay);
     if (!strcmp(name, "replay_restart_on_record")) return atomic_load(&d->restart_on_record);
     if (!strcmp(name, "registration")) return true;
+    if (!strcmp(name, "setup_7_5_ire")) return true;   /* the device default: setup bit on */
     return false;   /* hretime, raw_tpc, restart/stop-on-record, sidecar: off */
 }
 const char *obs_data_get_string(obs_data_t *d, const char *name){ return !strcmp(name, "replay_path") ? atomic_load(&d->path) : !strcmp(name, "input") ? "svideo" : ""; }
 void obs_data_release(obs_data_t *d){ (void)d; }
 void obs_data_set_default_bool(obs_data_t *d, const char *n, bool v){ (void)d; (void)n; (void)v; }
 void obs_data_set_default_string(obs_data_t *d, const char *n, const char *v){ (void)d; (void)n; (void)v; }
+/* input levels (shuttle_levels.h): nominal in these tests; the setter is not exercised here */
+long long obs_data_get_int(obs_data_t *d, const char *n){ (void)d; (void)n; return 0; }
+void obs_data_set_default_int(obs_data_t *d, const char *n, long long v){ (void)d; (void)n; (void)v; }
+obs_data_t *obs_data_create(void){ return &g_settings; }
+void obs_data_set_int(obs_data_t *d, const char *n, long long v){ (void)d; (void)n; (void)v; }
+void obs_data_set_bool(obs_data_t *d, const char *n, bool v){ (void)d; (void)n; (void)v; }
+void obs_source_update(obs_source_t *s, obs_data_t *d){ (void)s; (void)d; }
 obs_data_t *obs_source_get_settings(const obs_source_t *s){ (void)s; return &g_settings; }
 void obs_frontend_add_event_callback(obs_frontend_event_cb cb, void *p){ g_event_cb = cb; g_event_param = p; }
 void obs_frontend_remove_event_callback(obs_frontend_event_cb cb, void *p){ (void)cb; (void)p; g_event_cb = NULL; }

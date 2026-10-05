@@ -72,12 +72,17 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #define S_REPLAY_RESTART "replay_restart_on_record"
 #define S_REPLAY_STOP    "replay_stop_at_end"
 #define S_SIDECAR     "sidecar_with_recording"
+#define S_GAIN_Y      "input_gain_y"     /* shuttle_levels.h: set from the tracking meter window */
+#define S_GAIN_CB     "input_gain_cb"
+#define S_GAIN_CR     "input_gain_cr"
+#define S_SETUP       "setup_7_5_ire"
 
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
 #include "audio_timing.h"
 #include "discard_stream.h"
 #include "tracking_meter_tap.h"
 #include "tracking_meter_window.h"
+#include "shuttle_levels.h"
 #include <util/config-file.h>
 enum { KIND_RECORDING = 1, KIND_STREAMING = 2 };
 #include "frame_levels.h"
@@ -160,6 +165,38 @@ typedef struct {
 #define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; published by rename on the same filesystem, by verified copy otherwise */
 
 static _Atomic int g_instances;
+static obs_weak_source_t *g_levels_source;   /* set at create, cleared at destroy (libobs may destroy on its own thread) */
+static pthread_mutex_t g_levels_m = PTHREAD_MUTEX_INITIALIZER;
+static obs_source_t *levels_source_ref(void){
+    pthread_mutex_lock(&g_levels_m);
+    obs_source_t *src = g_levels_source ? obs_weak_source_get_source(g_levels_source) : NULL;
+    pthread_mutex_unlock(&g_levels_m);
+    return src;
+}
+
+int shuttle_levels_busy(void){ return obs_frontend_recording_active() || obs_frontend_streaming_active(); }
+
+int shuttle_levels_get(int gain[3], int *setup_on){
+    obs_source_t *src = levels_source_ref();
+    if (!src) return SL_NO_SOURCE;
+    obs_data_t *st = obs_source_get_settings(src);
+    gain[0] = (int)obs_data_get_int(st, S_GAIN_Y); gain[1] = (int)obs_data_get_int(st, S_GAIN_CB); gain[2] = (int)obs_data_get_int(st, S_GAIN_CR);
+    *setup_on = obs_data_get_bool(st, S_SETUP);
+    obs_data_release(st); obs_source_release(src);
+    return SL_OK;
+}
+
+int shuttle_levels_set(const int gain[3], int setup_on){
+    if (shuttle_levels_busy()) return SL_BUSY;              /* never restart the device under a recording or stream */
+    obs_source_t *src = levels_source_ref();
+    if (!src) return SL_NO_SOURCE;
+    obs_data_t *d = obs_data_create();
+    obs_data_set_int(d, S_GAIN_Y, gain[0]); obs_data_set_int(d, S_GAIN_CB, gain[1]); obs_data_set_int(d, S_GAIN_CR, gain[2]);
+    obs_data_set_bool(d, S_SETUP, setup_on);
+    obs_source_update(src, d);                               /* stored, then shuttle_update restarts the session */
+    obs_data_release(d); obs_source_release(src);
+    return SL_OK;
+}
 #define FREEZE_GAP_NS 83000000ull   /* 2.5 unit periods: one late unit, not scheduling noise */
 #define SLOW_CALL_NS  20000000ull
 
@@ -204,7 +241,7 @@ static void on_frame(void *ctx, const fp_frame *fr){
     const uint8_t *base = IOSurfaceGetBaseAddress(fr->surface); size_t bpr = IOSurfaceGetBytesPerRow(fr->surface);
     uint16_t *py = s->vbuf, *pu = py + (size_t)FP_FRAME_WIDTH * FP_FRAME_HEIGHT, *pv = pu + (size_t)FP_FRAME_WIDTH / 2 * FP_FRAME_HEIGHT;
     shuttle_uyvy_to_i210(base, bpr, FP_FRAME_WIDTH, FP_FRAME_HEIGHT, py, pu, pv);
-    tmt_offer(base, bpr);                 /* tracking meter: nothing unless its window is open (tracking_meter_tap.h) */
+    tmt_offer(base, bpr, fr->transport == FP_TRANSPORT_COMPLETE);                 /* tracking meter: nothing unless its window is open (tracking_meter_tap.h) */
     IOSurfaceUnlock(fr->surface, kIOSurfaceLockReadOnly, NULL);
     struct obs_source_frame f; memset(&f, 0, sizeof f);
     f.data[0] = (uint8_t *)py; f.data[1] = (uint8_t *)pu; f.data[2] = (uint8_t *)pv;
@@ -809,6 +846,13 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     /* NULL geometry_config selects the approved per-engine defaults, with no environment reads. */
     const char *input = obs_data_get_string(settings, S_INPUT);
     cfg.capture.input = !strcmp(input, "composite") ? CC_INPUT_COMPOSITE : !strcmp(input, "component") ? CC_INPUT_COMPONENT : CC_INPUT_SVIDEO;
+    cfg.capture.input_gain[0] = (int)obs_data_get_int(settings, S_GAIN_Y);
+    cfg.capture.input_gain[1] = (int)obs_data_get_int(settings, S_GAIN_CB);
+    cfg.capture.input_gain[2] = (int)obs_data_get_int(settings, S_GAIN_CR);
+    cfg.capture.setup_off = !obs_data_get_bool(settings, S_SETUP);
+    if (cfg.capture.input_gain[0] || cfg.capture.input_gain[1] || cfg.capture.input_gain[2] || cfg.capture.setup_off)
+        blog(LOG_INFO, "[shuttle-source] input levels: gain Y %d Cb %d Cr %d, 7.5 IRE setup %s", cfg.capture.input_gain[0],
+             cfg.capture.input_gain[1], cfg.capture.input_gain[2], cfg.capture.setup_off ? "off" : "on");
     uint64_t start_unit = s->next_start_unit, start_offset = s->next_start_offset;
     s->next_start_unit = s->next_start_offset = 0;   /* every other start begins the file */
     s->pending_seek_ms = -1; s->paused = 0;
@@ -876,6 +920,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
         return NULL;
     }
     shuttle_src *s = bzalloc(sizeof *s); s->source = source;
+    pthread_mutex_lock(&g_levels_m); g_levels_source = obs_source_get_weak_source(source); pthread_mutex_unlock(&g_levels_m);   /* tracking meter window (shuttle_levels.h) */
     s->vbuf = bmalloc((size_t)FP_FRAME_WIDTH * FP_FRAME_HEIGHT * 2 * sizeof(uint16_t));   /* Y + U + V planes */
     s->abuf_frames = 4096; s->abuf = bmalloc((size_t)s->abuf_frames * 2 * sizeof(int32_t));
     /* Rec.601 limited-range matrix for 10-bit I210: 64 -> black, 940 -> white, levels unchanged.
@@ -925,6 +970,7 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
 }
 
 static void shuttle_destroy(void *data){
+    pthread_mutex_lock(&g_levels_m); if (g_levels_source){ obs_weak_source_release(g_levels_source); g_levels_source = NULL; } pthread_mutex_unlock(&g_levels_m);
     shuttle_src *s = data; if (!s) return;
     obs_frontend_remove_event_callback(frontend_event, s);
     if (s->ctl_running){   /* the render thread no longer calls in (the source is being destroyed); finish the action under way */
@@ -966,6 +1012,8 @@ static void shuttle_defaults(obs_data_t *settings){
     obs_data_set_default_bool(settings, S_TPC, false);
     obs_data_set_default_bool(settings, S_REPLAY_RESTART, false);
     obs_data_set_default_bool(settings, S_REPLAY_STOP, false);
+    obs_data_set_default_int(settings, S_GAIN_Y, 0); obs_data_set_default_int(settings, S_GAIN_CB, 0);
+    obs_data_set_default_int(settings, S_GAIN_CR, 0); obs_data_set_default_bool(settings, S_SETUP, true);
 }
 
 static obs_properties_t *shuttle_properties(void *data){
