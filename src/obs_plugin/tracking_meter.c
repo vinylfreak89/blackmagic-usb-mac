@@ -16,7 +16,7 @@
 #define MIN_DETAIL_FRACTION 0.02        // at least 2% of usable blocks well above the noise: a flat screen (a deck's
                                         // grey mute, a blank card) is all noise and would read as balanced
 #define DETAIL_FACTOR 4.0               // "well above": block residual over 4x the field's noise figure
-#define DUP_LINE_FRACTION 0.5           // half or more of field-1 lines byte-identical to the field-2 line below:
+#define DUP_LINE_FRACTION 0.3           // 30% or more of field-1 lines byte-identical to the field-2 line below:
                                         // one field shown twice (a stretched partial unit). Real fields never repeat
                                         // a line exactly; floor-clipped black can be near-identical, so not "near"
 #define MAX_NOISE 6.0                   // fine-grain luma noise above this in either field is snow or an unlocked

@@ -12,6 +12,7 @@
 bool obs_module_load(void);
 void shuttle_test_device_gone(void *d);
 int shuttle_test_reconnect_wanted(void *d);
+unsigned shuttle_test_reconnect_tries(void *d);
 static int fails;
 #define CHECK(c, ...) do{ if(!(c)){ fails++; fprintf(stderr,"FAIL: "); fprintf(stderr,__VA_ARGS__); fprintf(stderr,"\n"); } }while(0)
 static double now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
@@ -160,9 +161,12 @@ int main(int argc, char **argv){
         shuttle_test_device_gone(d);
         CHECK(stub_blank_calls == blanks + 1, "a disconnect did not blank the source (%llu blank calls)", (unsigned long long)(stub_blank_calls - blanks));
         CHECK(shuttle_test_reconnect_wanted(d), "a disconnect did not start reconnecting");
-        WAIT(!shuttle_test_reconnect_wanted(d), 10, "reconnect attempts to give up after the limit (30 x 20 ms)");
+        WAIT(shuttle_test_reconnect_tries(d) >= 30, 10, "timed reconnect attempts to stop after the limit (30 x 20 ms)");
+        usleep(200000);
+        CHECK(shuttle_test_reconnect_tries(d) == 30, "attempts went on past the limit: %u", shuttle_test_reconnect_tries(d));
+        CHECK(shuttle_test_reconnect_wanted(d), "after the limit it should still wait for the device to come back");
         shuttle_test_device_gone(d);
-        CHECK(shuttle_test_reconnect_wanted(d), "a second disconnect did not start reconnecting");
+        CHECK(shuttle_test_reconnect_wanted(d), "a second disconnect did not keep reconnecting");
         I->media_stop(d);
         WAIT(!shuttle_test_reconnect_wanted(d), 2, "a user stop to cancel reconnecting");
         I->update(d, st);

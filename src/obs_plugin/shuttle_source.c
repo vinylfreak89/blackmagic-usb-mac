@@ -151,7 +151,7 @@ typedef struct {
     /* Reconnect after the device drops off USB (reason DEVICE_GONE): wanted until a start succeeds, the user stops
      * or restarts, or RECONNECT_TRIES attempts fail. An IOKit arrival notification triggers an attempt at once;
      * failed attempts (another app briefly holding the device) retry once a second. */
-    _Atomic int reconnect_wanted; unsigned reconnect_tries; uint64_t reconnect_due_ns, gone_ns;   /* due_ns: ctl_m */
+    _Atomic int reconnect_wanted; unsigned reconnect_tries; uint64_t reconnect_due_ns; _Atomic uint64_t gone_ns; _Atomic int arrival_reset;   /* due_ns: ctl_m; tries: s->m */
     IONotificationPortRef usb_port; io_iterator_t usb_iter; dispatch_queue_t usb_q;
     pthread_mutex_t ctl_m; pthread_cond_t ctl_c;   /* guards the queue and the probe request only; never held while taking s->m */
     int ctl_quit;
@@ -323,13 +323,14 @@ static void on_audio(void *ctx, const ap_block *b){
 
 static void media_post(shuttle_src *s, int act, int64_t ms);
 static void on_end(void *ctx, enum cc_end r){ shuttle_src *s = ctx; s->end_reason = r; atomic_store(&s->ended, 1);
-    if (r == CC_END_DEVICE_GONE && !atomic_load(&s->replay_mode)){
+    if ((r == CC_END_DEVICE_GONE || r == CC_END_TRANSFER_FAILED) && !atomic_load(&s->replay_mode)){
         /* The Shuttle dropped off USB. Blank the source, so neither the preview nor a recording shows the last frame
          * as if the tape were still playing, and wait for it to come back. */
         obs_source_output_video(s->source, NULL);
-        s->gone_ns = os_gettime_ns();
+        atomic_store(&s->gone_ns, os_gettime_ns());
         if (!atomic_exchange(&s->reconnect_wanted, 1))
-            blog(LOG_WARNING, "[shuttle-source] the Shuttle disconnected (USB connection lost): picture blanked; reconnecting when it comes back");
+            blog(LOG_WARNING, "[shuttle-source] the Shuttle %s: picture blanked; reconnecting when it comes back",
+                 r == CC_END_DEVICE_GONE ? "disconnected (USB connection lost)" : "stopped answering (transfers failed)");
         media_post(s, ACT_RECONNECT, 0);
     }
     if (r == CC_END_REPLAY_EOF && atomic_load(&s->stop_on_eof)) atomic_store(&s->stop_ticks, STOP_TICKS);   /* every frame and audio block is already delivered */
@@ -629,25 +630,28 @@ static void media_apply(shuttle_src *s, int act, int64_t ms){
          * have nothing to act on (holding delivery would only discard what the deck keeps playing). */
         if (act == ACT_RECONNECT){
             if (atomic_load(&s->reconnect_wanted)){
+                if (atomic_exchange(&s->arrival_reset, 0)) s->reconnect_tries = 0;
                 shuttle_stop(s);
                 if (shuttle_start(s, settings) == 0){
                     atomic_store(&s->reconnect_wanted, 0);
                     blog(LOG_INFO, "[shuttle-source] reconnected to the Shuttle %.1f s after it disconnected (attempt %u)",
-                         (os_gettime_ns() - s->gone_ns) / 1e9, s->reconnect_tries + 1);
+                         (os_gettime_ns() - atomic_load(&s->gone_ns)) / 1e9, s->reconnect_tries + 1);
                     s->reconnect_tries = 0;
-                } else if (++s->reconnect_tries >= RECONNECT_TRIES){
-                    atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0;
-                    blog(LOG_ERROR, "[shuttle-source] could not reconnect to the Shuttle after %d attempts (another app holding it, or not plugged in): restart the source when it is back", RECONNECT_TRIES);
-                } else {
+                } else if (++s->reconnect_tries == RECONNECT_TRIES){
+                    /* stop retrying on a timer, but keep listening: the next arrival of the device still reconnects */
+                    blog(LOG_ERROR, "[shuttle-source] could not reconnect to the Shuttle after %d attempts (another app holding it, or not plugged in): "
+                         "waiting for it to be plugged in again; or restart the source", RECONNECT_TRIES);
+                } else if (s->reconnect_tries < RECONNECT_TRIES){
                     pthread_mutex_lock(&s->ctl_m); s->reconnect_due_ns = os_gettime_ns() + RECONNECT_INTERVAL_NS; pthread_mutex_unlock(&s->ctl_m);
                 }
                 if (!s->fs) atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
             }
             obs_data_release(settings); return;
         }
-        if (act == ACT_RESTART || act == ACT_STOP){ atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; }   /* the user takes over */
-        if (act == ACT_RESTART){ shuttle_stop(s); if (shuttle_start(s, settings) != 0) blog(LOG_ERROR, "[shuttle-source] capture restart failed"); }
-        else if (act == ACT_STOP) shuttle_stop(s);
+        /* The user takes over: cancel reconnecting AFTER the stop, since a session ending in a disconnect reports it
+         * from inside shuttle_stop and would otherwise re-arm reconnecting against the user's stop. */
+        if (act == ACT_RESTART){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; if (shuttle_start(s, settings) != 0) blog(LOG_ERROR, "[shuttle-source] capture restart failed"); }
+        else if (act == ACT_STOP){ shuttle_stop(s); atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0; }
         atomic_store(&s->media_state, OBS_MEDIA_STATE_STOPPED);
         obs_data_release(settings); return;
     }
@@ -700,9 +704,8 @@ static void *media_thread(void *arg){
             if (s->reconnect_due_ns){                       /* a failed reconnect attempt: try again when due */
                 uint64_t now = os_gettime_ns();
                 if (now >= s->reconnect_due_ns){
-                    s->reconnect_due_ns = 0;
-                    if (s->q_n < MEDIA_QUEUE){ unsigned i = (s->q_head + s->q_n) % MEDIA_QUEUE; s->q[i].act = ACT_RECONNECT; s->q[i].ms = 0; s->q_n++; }
-                    continue;
+                    if (s->q_n < MEDIA_QUEUE){ s->reconnect_due_ns = 0; unsigned i = (s->q_head + s->q_n) % MEDIA_QUEUE; s->q[i].act = ACT_RECONNECT; s->q[i].ms = 0; s->q_n++; }
+                    continue;   /* a full queue keeps the retry due: it goes in once the queue drains */
                 }
                 uint64_t d = s->reconnect_due_ns - now;
                 struct timespec ts = { (time_t)(d / 1000000000ull), (long)(d % 1000000000ull) };
@@ -990,6 +993,7 @@ static void usb_arrived(void *ctx, io_iterator_t it){
     while ((o = IOIteratorNext(it))){ IOObjectRelease(o); any = 1; }
     if (any && atomic_load(&s->reconnect_wanted)){
         pthread_mutex_lock(&s->ctl_m); s->reconnect_due_ns = 0; pthread_mutex_unlock(&s->ctl_m);
+        atomic_store(&s->arrival_reset, 1);   /* a fresh arrival: the media thread restarts the attempt count */
         media_post(s, ACT_RECONNECT, 0);
     }
 }
@@ -1021,6 +1025,7 @@ static void usb_watch_stop(shuttle_src *s){
 /* Tests: a disconnect as the capture core reports it, and the reconnect state. */
 void shuttle_test_device_gone(void *d){ on_end(d, CC_END_DEVICE_GONE); }
 int shuttle_test_reconnect_wanted(void *d){ return atomic_load(&((shuttle_src *)d)->reconnect_wanted); }
+unsigned shuttle_test_reconnect_tries(void *d){ shuttle_src *s = d; pthread_mutex_lock(&s->m); unsigned t = s->reconnect_tries; pthread_mutex_unlock(&s->m); return t; }
 #endif
 
 static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
@@ -1118,9 +1123,9 @@ static void shuttle_update(void *data, obs_data_t *settings){
         pthread_mutex_unlock(&s->m);
         return;
     }
-    atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0;   /* a settings change starts the device itself */
     s->restart_pending = 0; s->record_gap = 0;   /* a session started here replaces a pending restart (RECORDING_STARTED would otherwise start a second) */
     shuttle_stop(s);
+    atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0;   /* a settings change starts the device itself (after the stop: see ACT_STOP) */
     /* the end-of-file stop follows the current settings; a restart here begins the file again */
     if (atomic_load(&s->stop_on_eof) && !(obs_data_get_bool(settings, S_REPLAY_RESTART) && obs_data_get_bool(settings, S_REPLAY_STOP))) atomic_store(&s->stop_on_eof, 0);
     shuttle_start(s, settings);

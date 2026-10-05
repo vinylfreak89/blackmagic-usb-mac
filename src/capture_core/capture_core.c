@@ -827,10 +827,11 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
             int code=128+u*128/100; if(code>255) code=255; if(code<0) code=0; r4|=(uint32_t)code<<(24-8*c); }
         uint8_t rb[4]; uint32_t found=0; int read_ok=0;
         if(gain_set){
-            gain_ok = vout_(s->h,215,4,r4)==4; s->start_reg4=r4; s->start_reg4_action="written";
+            gain_ok = vout_(s->h,215,4,r4)==4; s->start_reg4=r4; s->start_reg4_action="written, not read back";
             if(gain_ok && libusb_control_transfer(s->h,0xc0,214,0,4,rb,4,1000)==4){
                 found=(uint32_t)rb[0]<<24|(uint32_t)rb[1]<<16|(uint32_t)rb[2]<<8|rb[3];
-                if(found!=r4){ s->start_reg4=found; s->start_reg4_action="written, reads back different"; }
+                s->start_reg4_action = found==r4 ? "written, reads back the same" : "written, reads back different";
+                if(found!=r4) s->start_reg4=found;
             }
         } else {
             read_ok = libusb_control_transfer(s->h,0xc0,214,0,4,rb,4,1000)==4;
