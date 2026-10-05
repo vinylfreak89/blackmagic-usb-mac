@@ -63,6 +63,9 @@ obs_data_t *obs_data_create(void){ return &g_settings; }
 void obs_data_set_int(obs_data_t *d, const char *n, long long v){ (void)d; (void)n; (void)v; }
 void obs_data_set_bool(obs_data_t *d, const char *n, bool v){ (void)d; (void)n; (void)v; }
 void obs_source_update(obs_source_t *s, obs_data_t *d){ (void)s; (void)d; }
+bool obs_frontend_replay_buffer_active(void){ return false; }
+bool obs_frontend_virtualcam_active(void){ return false; }
+obs_property_t *obs_properties_add_text(obs_properties_t *p, const char *n, const char *d, enum obs_text_type t){ (void)p; (void)n; (void)d; (void)t; return NULL; }
 obs_data_t *obs_source_get_settings(const obs_source_t *s){ (void)s; return &g_settings; }
 void obs_frontend_add_event_callback(obs_frontend_event_cb cb, void *p){ g_event_cb = cb; g_event_param = p; }
 void obs_frontend_remove_event_callback(obs_frontend_event_cb cb, void *p){ (void)cb; (void)p; g_event_cb = NULL; }

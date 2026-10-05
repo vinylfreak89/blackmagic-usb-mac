@@ -16,8 +16,11 @@
 #define MIN_DETAIL_FRACTION 0.02        // at least 2% of usable blocks well above the noise: a flat screen (a deck's
                                         // grey mute, a blank card) is all noise and would read as balanced
 #define DETAIL_FACTOR 4.0               // "well above": block residual over 4x the field's noise figure
-#define MIN_FIELD_DIFF 0.5              // mean |field 1 line - field 2 line| below this: one field shown twice
-                                        // (a stretched partial unit), not two heads' fields
+#define DUP_LINE_FRACTION 0.5           // half or more of field-1 lines byte-identical to the field-2 line below:
+                                        // one field shown twice (a stretched partial unit). Real fields never repeat
+                                        // a line exactly; floor-clipped black can be near-identical, so not "near"
+#define MAX_NOISE 6.0                   // fine-grain luma noise above this in either field is snow or an unlocked
+                                        // signal, not programme (programme measured 1.3-2.7 codes, snow 4-16)
 #define MAX_BLOCKS (((W - 2 * EDGE_X) / BLK_Y) * ((FIELD_LINES - 2 * EDGE_LINES) / BLK_LINES))
 
 // Residual standard deviation of v (bw x BLK_LINES, row stride `stride` elements apart in `step`)
@@ -61,13 +64,6 @@ void tm_measure_uyvy(const uint8_t *frame, size_t bpr, tm_frame *out){
     double *vals = malloc(sizeof(double) * MAX_BLOCKS * (TM_CHANNELS + 1));
     memset(out, 0, sizeof *out);
     if (!vals){ out->why = TM_TOO_FEW_BLOCKS; return; }
-    // One field shown twice? Compare each field-1 line with the field-2 line below it, over the central picture.
-    double diff = 0; long nd = 0;
-    for (int l = EDGE_LINES; l < FIELD_LINES - EDGE_LINES; l += 2){
-        const uint8_t *a = frame + (size_t)(2 * l) * bpr, *b = frame + (size_t)(2 * l + 1) * bpr;
-        for (int x = 2 * EDGE_X; x < 2 * (W - EDGE_X); x += 2){ diff += abs((int)a[x + 1] - (int)b[x + 1]); nd++; }
-    }
-    if (nd && diff / nd < MIN_FIELD_DIFF){ out->why = TM_FIELDS_IDENTICAL; free(vals); return; }
     int ok = 1, detail_ok = 1;
     for (int f = 0; f < 2; f++){
         unsigned nb = 0;
@@ -101,8 +97,17 @@ void tm_measure_uyvy(const uint8_t *frame, size_t bpr, tm_frame *out){
         for (unsigned i = 0; i < nb; i++) if (ycopy[i] > DETAIL_FACTOR * out->noise[f][TM_Y]) detail++;
         if (detail < MIN_DETAIL_FRACTION * nb) detail_ok = 0;
     }
-    out->valid = ok && detail_ok;
-    out->why = !ok ? TM_TOO_FEW_BLOCKS : !detail_ok ? TM_NO_DETAIL : TM_OK;
+    // After the block gate (so a frame with nothing usable says so): one field shown twice? Count field-1 lines
+    // that are byte-for-byte the field-2 line below them, over the central picture.
+    int dup_lines = 0, lines = 0;
+    for (int l = EDGE_LINES; l < FIELD_LINES - EDGE_LINES; l++, lines++){
+        const uint8_t *a = frame + (size_t)(2 * l) * bpr + 2 * EDGE_X, *b = frame + (size_t)(2 * l + 1) * bpr + 2 * EDGE_X;
+        if (!memcmp(a, b, (size_t)2 * (W - 2 * EDGE_X))) dup_lines++;          // UYVY: 2 bytes per luma sample
+    }
+    int dup = lines && dup_lines >= DUP_LINE_FRACTION * lines;
+    int snow = ok && (out->noise[0][TM_Y] > MAX_NOISE || out->noise[1][TM_Y] > MAX_NOISE);
+    out->valid = ok && !dup && detail_ok && !snow;
+    out->why = !ok ? TM_TOO_FEW_BLOCKS : dup ? TM_FIELDS_IDENTICAL : snow ? TM_SNOW : !detail_ok ? TM_NO_DETAIL : TM_OK;
     free(vals);
 }
 

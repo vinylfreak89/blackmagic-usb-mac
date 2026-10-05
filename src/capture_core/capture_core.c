@@ -53,6 +53,8 @@ enum cc_life { CC_LIFE_OPEN, CC_LIFE_STARTING, CC_LIFE_RUNNING,
 enum { DELIVERY_BUFFER_BYTES = 1u << 20 };
 
 struct cc_session {
+    uint32_t start_mode_word, start_reg4;      // provenance: the mode word sent and register 4 as read (or written) at start
+    const char *start_reg4_action;             // "as found", "written", "restored to nominal", "unread"
     cc_config cfg;
     cc_callbacks cb;
     // ring
@@ -396,9 +398,11 @@ static void* device_main(void *arg){
     cc_session *s=arg;
     internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
-    char note[192];
-    snprintf(note,sizeof note,"capture_core v1 input=%d ring=%zuMB V_NPK=%d XFERS=%d",
-             s->cfg.input,s->ring_sz>>20,V_NPK,XFERS);
+    char note[320];
+    snprintf(note,sizeof note,"capture_core v1 input=%d ring=%zuMB V_NPK=%d XFERS=%d mode=0x%08x reg4=0x%08x (%s) gain=%d,%d,%d setup=%s",
+             s->cfg.input,s->ring_sz>>20,V_NPK,XFERS,s->start_mode_word,s->start_reg4,
+             s->start_reg4_action?s->start_reg4_action:"replay",s->cfg.input_gain[0],s->cfg.input_gain[1],s->cfg.input_gain[2],
+             s->cfg.setup_off?"off":"on");
     put_meta_(s,REC_SESSION,0,0,0,0,note,(uint32_t)strlen(note));
     int n=0, startup_rc=CC_OK;
     for(int w=0;w<2;w++){
@@ -808,13 +812,28 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         uint32_t mode_word=0x09000000u|vsel|0x10000000u|0x20000000u;
         if(s->cfg.setup_off) mode_word&=~0x08000000u;          /* the 7.5 IRE setup bit: wire byte 0, 0x08 */
         if(vout_(s->h,215,0,mode_word)!=4) goto usb_fail;
-        /* Register 4 every start, in the vendor driver's order (mode word, then 4). All-nominal is 80 80 80 00, the
-         * value it has read as found in every capture, so a later session at 0 undoes an earlier session's change
-         * even if the device keeps it across the alt-setting reset (not established). */
-        uint32_t r4=0;
-        for(int c=0;c<3;c++){ int u=s->cfg.input_gain[c]; if(u<-100) u=-100; if(u>100) u=100;
+        s->start_mode_word=mode_word;
+        /* Register 4, in the vendor driver's order (mode word, then 4). Asked-for gains are written and read back. At
+         * the defaults the historical start-up is kept: the register is only read, and written back to nominal
+         * (80 80 80 00, its value as found in every capture) only if it reads otherwise, in case a device keeps an
+         * earlier session's value across the alt-setting reset (not established). */
+        uint32_t r4=0; int gain_set=0, gain_ok=1;
+        for(int c=0;c<3;c++){ int u=s->cfg.input_gain[c]; if(u<-100) u=-100; if(u>100) u=100; if(u) gain_set=1;
             int code=128+u*128/100; if(code>255) code=255; if(code<0) code=0; r4|=(uint32_t)code<<(24-8*c); }
-        int gain_ok = vout_(s->h,215,4,r4)==4;
+        uint8_t rb[4]; uint32_t found=0; int read_ok=0;
+        if(gain_set){
+            gain_ok = vout_(s->h,215,4,r4)==4; s->start_reg4=r4; s->start_reg4_action="written";
+            if(gain_ok && libusb_control_transfer(s->h,0xc0,214,0,4,rb,4,1000)==4){
+                found=(uint32_t)rb[0]<<24|(uint32_t)rb[1]<<16|(uint32_t)rb[2]<<8|rb[3];
+                if(found!=r4){ s->start_reg4=found; s->start_reg4_action="written, reads back different"; }
+            }
+        } else {
+            read_ok = libusb_control_transfer(s->h,0xc0,214,0,4,rb,4,1000)==4;
+            if(read_ok){ found=(uint32_t)rb[0]<<24|(uint32_t)rb[1]<<16|(uint32_t)rb[2]<<8|rb[3];
+                s->start_reg4=found; s->start_reg4_action="as found";
+                if(found!=0x80808000u){ gain_ok = vout_(s->h,215,4,0x80808000u)==4; s->start_reg4=0x80808000u; s->start_reg4_action="restored to nominal"; }
+            } else s->start_reg4_action="unread";
+        }
         if(!gain_ok || vout_(s->h,215,24,0x73c60001u)!=4){
             // A failed/short control transfer leaves the analog mux wherever it was and every
             // downstream layer would report a healthy capture of the WRONG input.

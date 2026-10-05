@@ -95,7 +95,8 @@ typedef struct {
     // Device input levels, applied once at start-up (the Shuttle ignored both when written mid-stream, measured
     // 2026-10-05): input_gain[] = Y, Cb, Cr in the vendor control panel's units, -100..+100, 0 = nominal; each
     // becomes one byte of register 4 (128 + units*128/100). setup_off clears the 7.5 IRE setup bit of the mode word.
-    // All zero writes register 4 as 80 80 80 00 (its value as found in every capture) and keeps the setup bit on.
+    // All zero keeps the historical start-up: register 4 is only read (and put back to 80 80 80 00 if it reads
+    // otherwise) and the setup bit stays on. The session note records the mode word and register 4 either way.
     int input_gain[3];
     int setup_off;
 } cc_config;

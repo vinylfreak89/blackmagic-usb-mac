@@ -18,7 +18,7 @@
 enum { TM_Y = 0, TM_CB = 1, TM_CR = 2, TM_CHANNELS = 3 };
 
 // Why a frame gave no reading. A frame must be real interlaced picture: two different fields with detail.
-enum { TM_OK = 0, TM_TOO_FEW_BLOCKS = 1, TM_FIELDS_IDENTICAL = 2, TM_NO_DETAIL = 3 };
+enum { TM_OK = 0, TM_TOO_FEW_BLOCKS = 1, TM_FIELDS_IDENTICAL = 2, TM_NO_DETAIL = 3, TM_SNOW = 4 };
 
 typedef struct {
     int    valid;                       // 0: no reading; `why` says which test failed

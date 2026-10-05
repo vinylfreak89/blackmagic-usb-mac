@@ -85,6 +85,22 @@ int main(void){
     tm_measure_uyvy(dup, FW * 2, &m0);
     printf("flat grey mute: valid %d why %d (want 0, %d)\n", m0.valid, m0.why, TM_NO_DETAIL);
     if (m0.valid || m0.why != TM_NO_DETAIL) fails++;
+    // A stretched partial with realistic noise: every field-2 line a copy of the field-1 line above it.
+    for (int r = 0; r < FH; r += 2){ uint8_t *row = dup + (size_t)r * FW * 2;
+        for (int cx = 0; cx < FW / 2; cx++){ double y = (cx > 60 && cx < 120 && r > 100 && r < 300) ? 180 : 100;
+            row[4*cx] = clip(128 + 2 * gauss()); row[4*cx+2] = clip(128 + 2 * gauss());
+            row[4*cx+1] = clip(y + 2 * gauss()); row[4*cx+3] = clip(y + 2 * gauss()); }
+        memcpy(row + FW * 2, row, FW * 2); }
+    tm_measure_uyvy(dup, FW * 2, &m0);
+    printf("stretched partial, noise 2: valid %d why %d (want 0, %d)\n", m0.valid, m0.why, TM_FIELDS_IDENTICAL);
+    if (m0.valid || m0.why != TM_FIELDS_IDENTICAL) fails++;
+    // Snow: picture-like structure buried in heavy noise in both fields.
+    for (int r = 0; r < FH; r++){ uint8_t *row = dup + (size_t)r * FW * 2;
+        for (int cx = 0; cx < FW / 2; cx++){ row[4*cx] = clip(128 + 6 * gauss()); row[4*cx+2] = clip(128 + 6 * gauss());
+            row[4*cx+1] = clip(110 + 12 * gauss()); row[4*cx+3] = clip(110 + 12 * gauss()); } }
+    tm_measure_uyvy(dup, FW * 2, &m0);
+    printf("snow: valid %d why %d (want 0, %d)\n", m0.valid, m0.why, TM_SNOW);
+    if (m0.valid || m0.why != TM_SNOW) fails++;
     free(dup);
 
     // Cost of one measured frame (the copy is a 691 kB memcpy on the frame callback; this is the thread's work).

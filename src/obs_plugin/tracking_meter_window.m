@@ -46,6 +46,7 @@ static CGFloat xOf(double v, NSRect r){
     else if (!s->now.valid){
         NSString *why = s->last_why == TM_FIELDS_IDENTICAL ? @"one field shown twice (a partial or search frame)"
                       : s->last_why == TM_NO_DETAIL ? @"no picture detail (a blank or muted screen)"
+                      : s->last_why == TM_SNOW ? @"snow or an unlocked signal, not programme"
                       : @"too little picture between black and white";
         status = s->since_valid_s < 0 ? [NSString stringWithFormat:@"Nothing measurable yet: %@.", why]
                : [NSString stringWithFormat:@"No measurable picture for %.0f s: %@.", s->since_valid_s, why];
@@ -121,6 +122,7 @@ static CGFloat xOf(double v, NSRect r){
 @property (strong) NSButton *setup;
 @property (strong) NSButton *reset;
 @property (strong) NSTextField *note;
+@property (nonatomic) unsigned sourceGeneration;
 @end
 
 @implementation ShuttleTrackingMeterController
@@ -146,7 +148,7 @@ static NSTextField *label(NSString *s, NSRect r, CGFloat size){
         v.alignment = NSTextAlignmentRight; v.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular];
         [self.view addSubview:v]; [self.values addObject:v];
     }
-    self.setup = [NSButton checkboxWithTitle:@"7.5 IRE setup bit (on is how every capture so far was made)" target:self action:@selector(levelChanged:)];
+    self.setup = [NSButton checkboxWithTitle:@"7.5 IRE setup bit (experimental: no effect measured yet; on = every capture so far)" target:self action:@selector(levelChanged:)];
     self.setup.frame = NSMakeRect(pad, 470, W - 2 * pad - 130, 20);
     [self.view addSubview:self.setup];
     self.reset = [NSButton buttonWithTitle:@"Reset to nominal" target:self action:@selector(resetLevels:)];
@@ -158,12 +160,13 @@ static NSTextField *label(NSString *s, NSRect r, CGFloat size){
 }
 
 - (void)loadLevels {
+    self.sourceGeneration = shuttle_levels_generation();
     int g[3], setup;
     if (shuttle_levels_get(g, &setup) != SL_OK){ self.note.stringValue = @"No Shuttle source in OBS: add one to set its levels."; return; }
     for (int c = 0; c < 3; c++){ self.sliders[c].intValue = g[c]; self.values[c].stringValue = [NSString stringWithFormat:@"%+d", g[c]]; }
     self.setup.state = setup ? NSControlStateValueOn : NSControlStateValueOff;
     self.note.stringValue = @"Applied when you let go of a slider: the Shuttle takes these only at start-up, so its capture restarts "
-                            "(about a second of blank picture). Locked while OBS is recording or streaming.";
+                            "(about a second of blank picture). Locked while OBS records, streams, or runs its replay buffer or virtual camera.";
 }
 
 - (void)apply {
@@ -206,6 +209,7 @@ static NSTextField *label(NSString *s, NSRect r, CGFloat size){
         self.timer = [NSTimer timerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *t){
             (void)t; ShuttleTrackingMeterController *me = weakSelf; if (!me) return;
             tmt_snapshot s; tmt_snapshot_take(&s); me.view.snap = s; [me.view setNeedsDisplay:YES];
+            if (shuttle_levels_generation() != me.sourceGeneration) [me loadLevels];   // the source was re-created
             BOOL busy = shuttle_levels_busy() != 0;
             for (NSSlider *sl in me.sliders) sl.enabled = !busy;
             me.setup.enabled = !busy; me.reset.enabled = !busy;
