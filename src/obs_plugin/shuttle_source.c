@@ -76,6 +76,8 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
 #include "audio_timing.h"
 #include "discard_stream.h"
+#include "tracking_meter_tap.h"
+#include "tracking_meter_window.h"
 #include <util/config-file.h>
 enum { KIND_RECORDING = 1, KIND_STREAMING = 2 };
 #include "frame_levels.h"
@@ -202,6 +204,7 @@ static void on_frame(void *ctx, const fp_frame *fr){
     const uint8_t *base = IOSurfaceGetBaseAddress(fr->surface); size_t bpr = IOSurfaceGetBytesPerRow(fr->surface);
     uint16_t *py = s->vbuf, *pu = py + (size_t)FP_FRAME_WIDTH * FP_FRAME_HEIGHT, *pv = pu + (size_t)FP_FRAME_WIDTH / 2 * FP_FRAME_HEIGHT;
     shuttle_uyvy_to_i210(base, bpr, FP_FRAME_WIDTH, FP_FRAME_HEIGHT, py, pu, pv);
+    tmt_offer(base, bpr);                 /* tracking meter: nothing unless its window is open (tracking_meter_tap.h) */
     IOSurfaceUnlock(fr->surface, kIOSurfaceLockReadOnly, NULL);
     struct obs_source_frame f; memset(&f, 0, sizeof f);
     f.data[0] = (uint8_t *)py; f.data[1] = (uint8_t *)pu; f.data[2] = (uint8_t *)pv;
@@ -1013,7 +1016,8 @@ static struct obs_source_info shuttle_info = {
 bool obs_module_load(void){
     obs_register_source(&shuttle_info);
     discard_stream_register();
+    tracking_meter_menu_register();
     blog(LOG_INFO, "[shuttle-source] loaded (libobs API %u.%u.%u)", LIBOBS_API_MAJOR_VER, LIBOBS_API_MINOR_VER, LIBOBS_API_PATCH_VER);
     return true;
 }
-void obs_module_unload(void){}
+void obs_module_unload(void){ tracking_meter_shutdown(); }

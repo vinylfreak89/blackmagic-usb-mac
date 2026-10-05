@@ -158,3 +158,5 @@ src/capture_core/async_sink_bench
 src/obs_plugin/tests_tracking_meter
 src/obs_plugin/tests_tracking_meter.dSYM/
 src/obs_plugin/tracking_meter_cli
+src/obs_plugin/tests_tracking_meter_tap
+src/obs_plugin/tests_tracking_meter_tap.dSYM/

@@ -33,9 +33,10 @@ LDFLAGS = -bundle -F"$(OBS_APP)/Contents/Frameworks" -framework libobs "$(OBS_AP
 
 all: $(BUNDLE)
 
-$(BUNDLE): shuttle_source.c discard_stream.c discard_stream.h audio_timing.h frame_levels.h replay_timeline.h ../frameserver/replay_probe.h publish_copy.c publish_copy.h publish_queue.c publish_queue.h timing_report.c timing_report.h obsconfig.h Info.plist $(CORE) ../frameserver/pairing_schedule.h ../frameserver/audio_publisher.h ../frameserver/hretime.h
+$(BUNDLE): shuttle_source.c discard_stream.c discard_stream.h tracking_meter.c tracking_meter.h tracking_meter_tap.c tracking_meter_tap.h tracking_meter_window.m tracking_meter_window.h audio_timing.h frame_levels.h replay_timeline.h ../frameserver/replay_probe.h publish_copy.c publish_copy.h publish_queue.c publish_queue.h timing_report.c timing_report.h obsconfig.h Info.plist $(CORE) ../frameserver/pairing_schedule.h ../frameserver/audio_publisher.h ../frameserver/hretime.h
 	mkdir -p "$(BUILD_DIR)"; rm -rf $(BUNDLE); mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/locale
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) shuttle_source.c discard_stream.c publish_copy.c publish_queue.c timing_report.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
+	$(CC) $(CPPFLAGS) -O2 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden -fobjc-arc -c tracking_meter_window.m -o "$(BUILD_DIR)/tracking_meter_window.o"
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -framework AppKit "$(BUILD_DIR)/tracking_meter_window.o" tracking_meter.c tracking_meter_tap.c shuttle_source.c discard_stream.c publish_copy.c publish_queue.c timing_report.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
 	cp Info.plist $(BUNDLE)/Contents/Info.plist
 	printf 'ShuttleSource="Blackmagic Intensity Shuttle (frameserver)"\n' > $(BUNDLE)/Contents/Resources/locale/en-US.ini
 	cp $(BUNDLE)/Contents/Resources/locale/en-US.ini $(BUNDLE)/Contents/Resources/locale/ja-JP.ini
@@ -52,10 +53,10 @@ test: test-tracking-meter test-audio test-frame-levels test-timing-report test-r
 # The plugin's media controls in a test process: libobs replaced by stubs, the real frameserver
 # replaying the plain synthetic fixture. Plain and ThreadSanitizer builds.
 MEDIA_FIXTURE = ../unit_parser/tests/fixture_plain.tpc
-test-media-controls: shuttle_source.c frame_levels.h tests_media_controls.c tests_obs_stubs.c tests_obs_stubs.h replay_timeline.h $(CORE) publish_copy.c publish_queue.c timing_report.c
+test-media-controls: shuttle_source.c tracking_meter.c tracking_meter_tap.c frame_levels.h tests_media_controls.c tests_obs_stubs.c tests_obs_stubs.h replay_timeline.h $(CORE) publish_copy.c publish_queue.c timing_report.c
 	$(MAKE) -C ../unit_parser tests/fixture_plain.tpc
-	$(CC) $(CPPFLAGS) -O1 -g -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls $(MEDIA_FIXTURE)
-	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls_tsan -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls_tsan $(MEDIA_FIXTURE)
+	$(CC) $(CPPFLAGS) -O1 -g -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c tracking_meter.c tracking_meter_tap.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls $(MEDIA_FIXTURE)
+	$(CC) $(CPPFLAGS) -O1 -g -fsanitize=thread -std=c11 -Wall -Wno-unused-parameter shuttle_source.c publish_copy.c publish_queue.c timing_report.c tests_obs_stubs.c tests_media_controls.c tracking_meter.c tracking_meter_tap.c $(CORE) "$(LIBUSB_A)" -o tests_media_controls_tsan -framework IOSurface -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -lpthread -lm && ./tests_media_controls_tsan $(MEDIA_FIXTURE)
 
 test-replay-timeline: replay_timeline.h tests_replay_timeline.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra tests_replay_timeline.c -o tests_replay_timeline && ./tests_replay_timeline
@@ -69,8 +70,9 @@ test-frame-levels: frame_levels.h tests_frame_levels.c
 
 # The tracking meter's known answers (synthetic fields with chosen noise), and its checking tool:
 #   ../frameserver/frameserver_replay <capture.tpc> --dump-uyvy /dev/stdout --limit-units N | ./tracking_meter_cli
-test-tracking-meter: tracking_meter.c tracking_meter.h tests_tracking_meter.c
+test-tracking-meter: tracking_meter.c tracking_meter.h tests_tracking_meter.c tracking_meter_tap.c tracking_meter_tap.h tests_tracking_meter_tap.c
 	$(CC) -O1 -g -fsanitize=address,undefined -std=c11 -Wall -Wextra tracking_meter.c tests_tracking_meter.c -o tests_tracking_meter -lm && ./tests_tracking_meter
+	$(CC) -O1 -g -fsanitize=thread -std=c11 -Wall -Wextra tracking_meter.c tracking_meter_tap.c tests_tracking_meter_tap.c -o tests_tracking_meter_tap -lm && ./tests_tracking_meter_tap
 
 tracking_meter_cli: tracking_meter.c tracking_meter.h tracking_meter_cli.c
 	$(CC) -O2 -std=c11 -Wall -Wextra tracking_meter.c tracking_meter_cli.c -o tracking_meter_cli -lm

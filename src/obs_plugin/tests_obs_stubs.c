@@ -75,6 +75,8 @@ bool os_file_exists(const char *p){ return access(p, F_OK) == 0; }
 void dstr_copy(struct dstr *d, const char *a){ dstr_printf(d, "%s", a); }
 void dstr_ncopy(struct dstr *d, const char *a, const size_t n){ if (d->array) d->array[0] = 0; d->len = 0; dstr_ncat(d, a, n); }
 void discard_stream_register(void){}
+void tracking_meter_menu_register(void){}
+void tracking_meter_shutdown(void){}
 int discard_service_selected(void){ return 1; }
 void *obs_obj_get_data(void *o){ return o == stub_source ? stub_data : NULL; }
 bool obs_output_active(const obs_output_t *o){ (void)o; return false; }
