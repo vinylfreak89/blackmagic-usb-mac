@@ -813,39 +813,34 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
                       : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
         uint32_t mode_word=0x09000000u|vsel|0x10000000u|0x20000000u;
         if(s->cfg.setup_off) mode_word&=~0x08000000u;          /* the 7.5 IRE setup bit: wire byte 0, 0x08 */
-        /* The mode word and latch go out BEFORE the alt-setting reset too. Measured 2026-10-06 on a locked S-Video
-         * signal: the device applies the setup bit at the reset from the mode word it last received, so with the word
-         * only after the reset every start showed the PREVIOUS start's setup (a grey field read 143 asked-off right
-         * after an on start, 151 asked-on right after an off start); sent before as well, each start matched its own
-         * setting (150.5 off, 141 on, 151 off, 143.8 on). The input select was never affected (each start's input
-         * was right), so the words after the reset stay as they always were. */
-        if(vout_(s->h,215,0,mode_word)!=4 || vout_(s->h,215,24,0x73c60001u)!=4) goto usb_fail;
+        /* Register 4 = input gain, one byte each for Y, Cb, Cr (wire order {Y,Cb,Cr,0}), 128 + units*128/100; all
+         * zero units = nominal 80 80 80 00, written explicitly so an earlier session's gains never carry over. */
+        uint32_t r4=0; int gain_set=0;
+        for(int c=0;c<3;c++){ int u=s->cfg.input_gain[c]; if(u<-100) u=-100; if(u>100) u=100; if(u) gain_set=1;
+            int code=128+u*128/100; if(code>255) code=255; if(code<0) code=0; r4|=(uint32_t)code<<(24-8*c); }
+        /* The device latches the mode register and the gains only at the alt-setting reset, and from the value written
+         * BEFORE the most recent write of each (a one-write lag). Measured 2026-10-06: with the mode word sent only after
+         * the reset, each start showed the previous start's setup bit; register 4 changed nothing at any value when
+         * written after the reset. So before the reset, with the stream idle (alt 0), every register goes out twice in
+         * a row, in address order (0x00, 0x04, 0x18), so the staged and the committed value are both this start's;
+         * the reset then applies them. The words after the reset stay as they always were (input select). */
+        if(libusb_set_interface_alt_setting(s->h,0,0)) goto usb_fail;
+        if(vout_(s->h,215,0,mode_word)!=4 || vout_(s->h,215,0,mode_word)!=4 ||
+           vout_(s->h,215,4,r4)!=4 || vout_(s->h,215,4,r4)!=4 ||
+           vout_(s->h,215,24,0x73c60001u)!=4 || vout_(s->h,215,24,0x73c60001u)!=4) goto usb_fail;
         if(libusb_set_interface_alt_setting(s->h,0,1) || libusb_set_interface_alt_setting(s->h,0,2)){
             goto usb_fail;
         }
         if(vout_(s->h,215,0,mode_word)!=4) goto usb_fail;
         s->start_mode_word=mode_word;
-        /* Register 4, in the vendor driver's order (mode word, then 4). Asked-for gains are written and read back. At
-         * the defaults the historical start-up is kept: the register is only read, and written back to nominal
-         * (80 80 80 00, its value as found in every capture) only if it reads otherwise, in case a device keeps an
-         * earlier session's value across the alt-setting reset (not established). */
-        uint32_t r4=0; int gain_set=0, gain_ok=1;
-        for(int c=0;c<3;c++){ int u=s->cfg.input_gain[c]; if(u<-100) u=-100; if(u>100) u=100; if(u) gain_set=1;
-            int code=128+u*128/100; if(code>255) code=255; if(code<0) code=0; r4|=(uint32_t)code<<(24-8*c); }
-        uint8_t rb[4]; uint32_t found=0; int read_ok=0;
-        if(gain_set){
-            gain_ok = vout_(s->h,215,4,r4)==4; s->start_reg4=r4; s->start_reg4_action="written, not read back";
-            if(gain_ok && libusb_control_transfer(s->h,0xc0,214,0,4,rb,4,1000)==4){
-                found=(uint32_t)rb[0]<<24|(uint32_t)rb[1]<<16|(uint32_t)rb[2]<<8|rb[3];
-                s->start_reg4_action = found==r4 ? "written, reads back the same" : "written, reads back different";
-                if(found!=r4) s->start_reg4=found;
-            }
-        } else {
-            read_ok = libusb_control_transfer(s->h,0xc0,214,0,4,rb,4,1000)==4;
-            if(read_ok){ found=(uint32_t)rb[0]<<24|(uint32_t)rb[1]<<16|(uint32_t)rb[2]<<8|rb[3];
-                s->start_reg4=found; s->start_reg4_action="as found";
-                if(found!=0x80808000u){ gain_ok = vout_(s->h,215,4,0x80808000u)==4; s->start_reg4=0x80808000u; s->start_reg4_action="restored to nominal"; }
-            } else s->start_reg4_action="unread";
+        /* After the reset, register 4 again (the staged value for the next start stays this start's), then read back:
+         * a read returns the staged value, so it confirms the bytes, not that the decoder applied them. */
+        uint8_t rb[4]; int gain_ok = vout_(s->h,215,4,r4)==4;
+        s->start_reg4=r4; s->start_reg4_action = gain_set ? "written, not read back" : "nominal, not read back";
+        if(gain_ok && libusb_control_transfer(s->h,0xc0,214,0,4,rb,4,1000)==4){
+            uint32_t found=(uint32_t)rb[0]<<24|(uint32_t)rb[1]<<16|(uint32_t)rb[2]<<8|rb[3];
+            s->start_reg4_action = found!=r4 ? "written, reads back different" : gain_set ? "written, reads back the same" : "nominal, reads back the same";
+            if(found!=r4) s->start_reg4=found;
         }
         if(!gain_ok || vout_(s->h,215,24,0x73c60001u)!=4){
             // A failed/short control transfer leaves the analog mux wherever it was and every
