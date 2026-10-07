@@ -14,26 +14,15 @@ def put_file(path, data):
     for o in range(0, len(mv), 1 << 20):
         n = os.write(fd, mv[o:o + (1 << 20)]); assert n == len(mv[o:o + (1 << 20)])
     os.fsync(fd); os.close(fd)
-# event rows of the live sidecar: anything that is not a plain unit, or carries an audio step
-marks = []; nrows = 0; hdr = None
-with open(SIDECAR) as f:
-    for line in f:
-        if line.startswith('#'): continue
-        if hdr is None: hdr = line.rstrip('\n').split(','); iD = hdr.index('drop_reason'); iS = hdr.index('audio_step_samples'); continue
-        r = line.split(',', iS + 2)
-        if r[iD] != 'None' or r[iS] not in ('', '0'): marks.append(nrows)
-        nrows += 1
-groups = []
-for i in marks:
-    if groups and i - groups[-1][-1] <= 400: groups[-1].append(i)
-    else: groups.append([i])
+from stretches import event_groups, stretch_range
+groups, nrows = event_groups(SIDECAR); marks = [i for g in groups for i in g]
 SIZE = os.path.getsize(T); PER = SIZE / nrows
 print('%d event rows in %d stretches; %d rows' % (len(marks), len(groups), nrows), flush=True)
 plan_path = os.path.join(WORK, 'plan.json'); plan = json.load(open(plan_path)) if os.path.exists(plan_path) else {}
 for g, grp in enumerate(groups):
     if g < g_first or g > g_last: continue
     t0 = time.time()
-    lo = max(0, int(grp[0] * PER) - 45_000_000); hi = min(SIZE, int(grp[-1] * PER) + 300_000_000)
+    lo, hi = stretch_range(grp, PER, SIZE)
     p0, b = read_region(T, lo, hi - lo); R = Region(b, p0); S = Stretch(R, print)
     vg, ag = find_gaps(S); cl = cluster_gaps(vg, ag); mods = []; entries = []
     for i, c in enumerate(cl):

@@ -5,8 +5,16 @@ from region import *
 from PIL import Image
 def check_stretch(g, sheet=True):
     meta = json.load(open('ev/events.json'))[g]; mods = pickle.load(open('ev/m%02d.pkl' % g, 'rb'))
-    N = Region(open('ev/n%02d.bin' % g, 'rb').read(), meta['file_from']); L, Rr = N.pcm(); res = []
-    shift = 0
+    N = Region(open('ev/n%02d.bin' % g, 'rb').read(), meta['file_from'])
+    return check_region(N, mods, 'ev' if sheet else None)
+def check_region(N, mods, sheet_dir=None, repaired=False, lag=0):
+    """N: the filled stretch, starting where its plan's stretch started (the seams' sample positions count from there);
+    mods: the plan's entries for it. repaired: N comes from the re-paired output, where a filled unit's fields also
+    reach the unit before it (new unit c = old c's second field + old c+1's first). lag: N's first sample is the plan
+    stretch's sample number lag (re-pairing moves resync records 801 samples later, so one from just before the stretch
+    can land inside it and shift where its samples begin by one)."""
+    L, Rr = N.pcm(); res = []
+    shift = -lag
     for m in sorted(mods, key=lambda m: m['file_from']):
         rep = m['rep']
         for sm in rep.get('seams', []):
@@ -29,10 +37,11 @@ def check_stretch(g, sheet=True):
                 seq = [(c, s) for c in range(lo - 4, hi + 5) for s in (1, 2)]
                 d = [float(np.abs(f(*seq[i]) - f(*seq[i - 2])).mean()) for i in range(2, len(seq))]      # same-slot change, field by field in time order
                 lab = [seq[i] for i in range(2, len(seq))]
-                inside = [x for x, (c, s) in zip(d, lab) if lo <= c <= hi + 1]; outside = [x for x, (c, s) in zip(d, lab) if not (lo <= c <= hi + 1)]
+                lo_in = lo - 1 if repaired else lo
+                inside = [x for x, (c, s) in zip(d, lab) if lo_in <= c <= hi + 1]; outside = [x for x, (c, s) in zip(d, lab) if not (lo_in <= c <= hi + 1)]
                 res.append(dict(cluster=rep['name'], kind='picture', units=[lo, hi], change_at_and_inside_fill=[round(x, 2) for x in inside], change_in_untouched_neighbours=[round(x, 2) for x in outside],
                                 worst_ratio=round(max(inside) / (np.median(outside) + 1e-6), 2)))
-                if sheet:
+                if sheet_dir:
                     tiles = []
                     for c in range(lo - 2, hi + 3):
                         r = rows(c); fr = np.empty((464, 720), np.uint8); fr[0::2] = r[24:256, 1::2]; fr[1::2] = r[287:519, 1::2]
@@ -40,8 +49,8 @@ def check_stretch(g, sheet=True):
                     W_ = min(len(tiles), 7); H_ = (len(tiles) + W_ - 1) // W_; sh = Image.new('L', (360 * W_, 290 * H_), 0)
                     from PIL import ImageDraw; dr = ImageDraw.Draw(sh)
                     for i, (c, im) in enumerate(tiles):
-                        x, y = (i % W_) * 360, (i // W_) * 290; sh.paste(im, (x, y + 20)); dr.text((x + 4, y + 4), '%d %s' % (c % 65536, 'FILLED' if lo <= c <= hi else 'target'), fill=255)
-                    sh.save('ev/sheet_%s_%d.png' % (rep['name'], lo))
+                        x, y = (i % W_) * 360, (i // W_) * 290; sh.paste(im, (x, y + 20)); dr.text((x + 4, y + 4), '%d %s' % (c % 65536, 'FILLED' if lo_in <= c <= hi else 'target'), fill=255)
+                    sh.save('%s/sheet_%s_%d.png' % (sheet_dir, rep['name'], lo))
     return res
 if __name__ == '__main__':
     allr = []
