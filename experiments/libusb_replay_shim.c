@@ -68,6 +68,17 @@ static int g_fail_submit_code=LIBUSB_ERROR_BUSY;
 static long g_alt_calls=0, g_fail_alt_at=-1, g_control_calls=0, g_fail_control_at=-1,
             g_short_control_at=-1, g_alloc_calls=0, g_fail_alloc_at=-1;
 static int g_withhold_cancel=0, g_burst=4, g_pace=0;
+// Start-up trace for tests (replay_shim_trace): every alternate-setting call and control transfer of this
+// session, in order: "alt<n>", "W<request>/<index>:<4 data bytes as sent>", "R<request>/<index>"; "..." if full.
+static char g_trace[4096]; static size_t g_trace_len; static int g_trace_full;
+static void trace_(const char *op){
+    size_t n=strlen(op);
+    if(g_trace_full) return;
+    if(g_trace_len+n+5>=sizeof g_trace){ memcpy(g_trace+g_trace_len," ...",5); g_trace_len+=4; g_trace_full=1; return; }
+    if(g_trace_len) g_trace[g_trace_len++]=' ';
+    memcpy(g_trace+g_trace_len,op,n+1); g_trace_len+=n;
+}
+const char *replay_shim_trace(void){ return g_trace; }
 static int g_eof=0;
 
 static epstate* eps(uint8_t ep){ return ep==0x84 ? &EP84 : &EP83; }
@@ -83,6 +94,7 @@ int libusb_init(libusb_context **ctx){
     memset(&EP83,0,sizeof EP83); memset(&EP84,0,sizeof EP84);
     g_data_seen=0; g_v_completed=0; g_v_submits=0; g_eof=0;
     g_alt_calls=0; g_control_calls=0; g_alloc_calls=0;
+    g_trace[0]=0; g_trace_len=0; g_trace_full=0;
     g_max_data=-1; g_drop_video=-1; g_fail_submit_at=-1; g_fail_submit_from=-1;
     g_fail_alt_at=-1; g_fail_control_at=-1; g_short_control_at=-1; g_fail_alloc_at=-1;
     if(getenv("REPLAY_MAX_DATA")) g_max_data=atol(getenv("REPLAY_MAX_DATA"));
@@ -108,10 +120,16 @@ void libusb_close(libusb_device_handle*h){ (void)h; }
 int libusb_claim_interface(libusb_device_handle*h,int i){ (void)h;(void)i; return 0; }
 int libusb_release_interface(libusb_device_handle*h,int i){ (void)h;(void)i; return 0; }
 int libusb_set_interface_alt_setting(libusb_device_handle*h,int i,int a){
-    (void)h;(void)i;(void)a; return (++g_alt_calls==g_fail_alt_at)?LIBUSB_ERROR_PIPE:0; }
+    (void)h;(void)i; char op[16]; snprintf(op,sizeof op,"alt%d",a); trace_(op);
+    return (++g_alt_calls==g_fail_alt_at)?LIBUSB_ERROR_PIPE:0; }
 int libusb_control_transfer(libusb_device_handle*h,uint8_t t,uint8_t r,uint16_t v,
                             uint16_t i,unsigned char*d,uint16_t len,unsigned int to){
-    (void)h;(void)t;(void)r;(void)v;(void)i;(void)d;(void)to;
+    (void)h;(void)v;(void)to;
+    char op[48];
+    if(t&0x80) snprintf(op,sizeof op,"R%u/%u",r,i);
+    else if(d && len==4) snprintf(op,sizeof op,"W%u/%u:%02x%02x%02x%02x",r,i,d[0],d[1],d[2],d[3]);
+    else snprintf(op,sizeof op,"W%u/%u:len%u",r,i,len);
+    trace_(op);
     g_control_calls++; if(g_control_calls==g_fail_control_at) return LIBUSB_ERROR_PIPE;
     if(g_control_calls==g_short_control_at) return len?len-1:0; return len; }
 const char* libusb_error_name(int code){

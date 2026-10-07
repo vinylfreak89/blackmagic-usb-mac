@@ -28,9 +28,27 @@ void stub_restart_on_record(int on){ atomic_store(&g_settings.restart_on_record,
 obs_data_t *stub_settings(const char *path, int use_replay){ atomic_store(&g_settings.path, path); atomic_store(&g_settings.use_replay, use_replay); return &g_settings; }
 
 _Atomic int stub_late_reports;
+/* Expected log lines: a test that drives a failure path names the lines it must cause (stub_expect); while
+ * named, matching lines are counted instead of printed, and the test asserts the count (stub_expect_end).
+ * Every other warning or error still prints, so a clean run shows only results. */
+#define STUB_EXPECT_MAX 8
+static _Atomic(const char *) g_expect[STUB_EXPECT_MAX];
+static _Atomic int g_expect_n[STUB_EXPECT_MAX];
+void stub_expect(const char *text){
+    for (int i = 0; i < STUB_EXPECT_MAX; i++) if (!atomic_load(&g_expect[i])){ atomic_store(&g_expect_n[i], 0); atomic_store(&g_expect[i], text); return; }
+    fprintf(stderr, "stub_expect: more than %d expected lines at once\n", STUB_EXPECT_MAX); abort();
+}
+int stub_expect_end(const char *text){
+    for (int i = 0; i < STUB_EXPECT_MAX; i++) if (atomic_load(&g_expect[i]) == text){ atomic_store(&g_expect[i], NULL); return atomic_load(&g_expect_n[i]); }
+    fprintf(stderr, "stub_expect_end: \"%s\" was not expected\n", text); abort();
+}
 void blog(int level, const char *fmt, ...){
     char line[2048]; va_list ap; va_start(ap, fmt); vsnprintf(line, sizeof line, fmt, ap); va_end(ap);
     if (strstr(line, "delivery timing: counter")) atomic_fetch_add(&stub_late_reports, 1);
+    for (int i = 0; i < STUB_EXPECT_MAX; i++){
+        const char *e = atomic_load(&g_expect[i]);
+        if (e && strstr(line, e)){ atomic_fetch_add(&g_expect_n[i], 1); if (!stub_verbose) return; }
+    }
     if (stub_verbose || level <= LOG_WARNING) fprintf(stderr, "%s\n", line);
 }
 void *bmalloc(size_t n){ return malloc(n ? n : 1); }
@@ -56,7 +74,6 @@ const char *obs_data_get_string(obs_data_t *d, const char *name){ return !strcmp
 void obs_data_release(obs_data_t *d){ (void)d; }
 void obs_data_set_default_bool(obs_data_t *d, const char *n, bool v){ (void)d; (void)n; (void)v; }
 void obs_data_set_default_string(obs_data_t *d, const char *n, const char *v){ (void)d; (void)n; (void)v; }
-obs_property_t *obs_properties_add_text(obs_properties_t *p, const char *n, const char *d, enum obs_text_type t){ (void)p; (void)n; (void)d; (void)t; return NULL; }
 obs_data_t *obs_source_get_settings(const obs_source_t *s){ (void)s; return &g_settings; }
 void obs_frontend_add_event_callback(obs_frontend_event_cb cb, void *p){ g_event_cb = cb; g_event_param = p; }
 void obs_frontend_remove_event_callback(obs_frontend_event_cb cb, void *p){ (void)cb; (void)p; g_event_cb = NULL; }

@@ -10,6 +10,8 @@ extern _Atomic uint64_t stub_blank_calls;
 extern _Atomic uint64_t stub_frame_errors;   /* frames handed to OBS not in the expected I210 layout/values */
 extern int stub_verbose;
 extern _Atomic int stub_late_reports;   /* late-handoff WARNINGs the plugin logged */
+void stub_expect(const char *text);       /* lines containing text are counted, not printed, until stub_expect_end */
+int stub_expect_end(const char *text);    /* the count since stub_expect (same pointer) */
 obs_data_t *stub_settings(const char *path, int use_replay);
 #include <obs-frontend-api.h>
 extern void *stub_data; extern obs_source_t *stub_source;   /* the test's source and the plugin's data for it */

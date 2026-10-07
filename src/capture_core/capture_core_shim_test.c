@@ -8,6 +8,9 @@
 //   2 retry deadline — permanent BUSY terminates loudly and frees the fleet
 //   3 startup honesty — every init stage and initial submit/allocation fail synchronously
 //   4 teardown containment — a missing cancel callback poisons/leaks instead of UAF
+//   5 start-up sequence — the exact alt-setting and control-transfer sequence cc_open sends, for setup on and off,
+//                     and the mode word cc_start_info reports (written out here from the vendor driver's commit, not
+//                     taken from the code under test)
 #include "capture_core.h"
 #include <stdatomic.h>
 #include <stdio.h>
@@ -32,6 +35,19 @@ static void wait_device_end(tally *t, double seconds){
         }
         usleep(20000);
     }
+}
+
+const char *replay_shim_trace(void);   // libusb_replay_shim.c: this session's alt-setting and control-transfer calls
+
+// cc_open alone (no streaming): the start-up trace and the reported mode word
+static int open_trace(int setup_off, char *trace, size_t n, uint32_t *mode, int *info_rc){
+    tally t={0}; cc_config cfg={0}; cfg.input=CC_INPUT_SVIDEO; cfg.ring_mb=16; cfg.setup_off=setup_off;
+    cc_callbacks cb={0}; cb.on_packet=t_packet; cb.on_end=t_end; cb.ctx=&t;
+    cc_session *s=NULL; int rc=cc_open(&s,&cfg,&cb);
+    snprintf(trace,n,"%s",replay_shim_trace());
+    *mode=0; *info_rc=rc==CC_OK?cc_start_info(s,mode):-99;
+    if(rc==CC_OK) cc_close(s);
+    return rc;
 }
 
 static int run_device(cc_stats *st, tally *t, int wait_for_end, int deadline_ms){
@@ -98,12 +114,12 @@ int main(int argc, char **argv){
     CHECK(run_device(&st,&t,1,0)==CC_ERR_NOMEM,"transfer allocation failure did not fail start");
     unsetenv("REPLAY_FAIL_ALLOC_AT");
 
-    for(int i=1;i<=2;i++){
+    for(int i=1;i<=3;i++){                 // alt0, alt1, alt2
         char n[8]; snprintf(n,sizeof n,"%d",i); setenv("REPLAY_FAIL_ALT_AT",n,1);
         CHECK(run_device(&st,&t,0,0)==CC_ERR_USB,"cc_open ignored alt-setting failure %d",i);
         unsetenv("REPLAY_FAIL_ALT_AT");
     }
-    for(int i=1;i<=2;i++){
+    for(int i=1;i<=8;i++){                 // six writes before the reset, the mode word and the latch after it
         char n[8]; snprintf(n,sizeof n,"%d",i); setenv("REPLAY_FAIL_CONTROL_AT",n,1);
         CHECK(run_device(&st,&t,0,0)==CC_ERR_USB,"cc_open ignored control failure %d",i);
         unsetenv("REPLAY_FAIL_CONTROL_AT"); setenv("REPLAY_SHORT_CONTROL_AT",n,1);
@@ -116,6 +132,22 @@ int main(int argc, char **argv){
     CHECK(run_device(&st,&t,0,0)==CC_OK,"device open (withheld cancel)");
     unsetenv("REPLAY_WITHHOLD_CANCEL");
     CHECK(st.teardown_incomplete==1,"withheld cancel did not mark teardown incomplete");
+
+    // 5: the start-up sequence, exactly, for both settings of the 7.5 IRE setup bit
+    {
+        static const char *want[2]={
+            "alt0 W215/0:3f000000 W215/0:3f000000 W215/4:80808000 W215/4:80808000 W215/24:73c60001 W215/24:73c60001 "
+            "alt1 alt2 W215/0:3f000000 W215/24:73c60001",
+            "alt0 W215/0:37000000 W215/0:37000000 W215/4:80808000 W215/4:80808000 W215/24:73c60001 W215/24:73c60001 "
+            "alt1 alt2 W215/0:37000000 W215/24:73c60001" };
+        static const uint32_t want_mode[2]={0x3f000000u,0x37000000u};
+        for(int off=0;off<=1;off++){
+            char tr[4096]; uint32_t mode; int irc;
+            CHECK(open_trace(off,tr,sizeof tr,&mode,&irc)==CC_OK,"setup %s: cc_open",off?"off":"on");
+            CHECK(!strcmp(tr,want[off]),"setup %s: start-up sequence\n  got  %s\n  want %s",off?"off":"on",tr,want[off]);
+            CHECK(irc==0 && mode==want_mode[off],"setup %s: cc_start_info rc %d mode 0x%08x, want 0x%08x",off?"off":"on",irc,mode,want_mode[off]);
+        }
+    }
 
     printf(fails? "FAILURES: %d\n" : "SHIM TESTS PASSED\n", fails);
     return fails?1:0;
