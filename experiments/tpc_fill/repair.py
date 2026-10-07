@@ -4,7 +4,9 @@
 #          each new unit sits half a unit later in the video stream than old unit c did (its content starts one field later)
 #   audio: every resync record moves 801 samples later (half a unit), the samples keep their order
 # Record layout (headers, sizes, order) is unchanged; only payload bytes change.
-# usage: repair.py <input or -> <output> [--local]
+# usage: repair.py <input or -> <output> [--local] [--resume]
+#   --resume: <output> is a partial file from an earlier run of the same input. The stream is regenerated from the start and
+#   every byte up to the partial file's length is compared with it (a mismatch stops the run); only the rest is appended.
 import sys, os, struct, hashlib, time, json, subprocess, collections
 import numpy as np
 H = struct.Struct('<IBBHIIII'); MAGIC = 0x31504143; UNIT = 756048; ROW = 1440; HDR = 48; MARK = b'\x00\x00\xff\xff'
@@ -12,7 +14,12 @@ SYNC = np.frombuffer(b'DeckLinkAudioResyncT', np.uint8); SHIFT = 801
 PADROW = bytes([128, 16]) * 720
 src, dst = sys.argv[1], sys.argv[2]; local = '--local' in sys.argv or dst == '--null'
 fin = sys.stdin.buffer if src == '-' else open(src, 'rb', buffering=0)
-fd = os.open('/dev/null', os.O_WRONLY) if dst == '--null' else os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)      # --null: run everything, keep nothing (for tests)
+resume = '--resume' in sys.argv; resume_len = 0; vfd = None
+if resume:
+    fd = os.open(dst, os.O_WRONLY); resume_len = os.fstat(fd).st_size; os.lseek(fd, resume_len, os.SEEK_SET); vfd = os.open(dst, os.O_RDONLY)
+    print('resume: verifying the first %d bytes of %s, then appending' % (resume_len, dst), file=sys.stderr, flush=True)
+else:
+    fd = os.open('/dev/null', os.O_WRONLY) if dst == '--null' else os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)      # --null: run everything, keep nothing (for tests)
 sha = hashlib.sha256(); written = 0; t0 = time.time(); last_report = 0; outbuf = bytearray()
 # a local output stops cleanly before the disk is full (a full boot disk can wedge the machine); FREE_FLOOR_GB overrides
 fd_free = None if dst == '--null' else fd
@@ -21,10 +28,17 @@ def flush(force=False):
     global written, outbuf, last_report
     while len(outbuf) >= (1 << 20) or (force and outbuf):
         chunk = bytes(outbuf[:1 << 20]); del outbuf[:1 << 20]
+        k = min(len(chunk), resume_len - written) if written < resume_len else 0
+        if k:                                   # resume: this part of the stream is already in the file and must match it exactly
+            have = os.pread(vfd, k, written)
+            if have != chunk[:k]:
+                i = next((j for j in range(len(have)) if have[j] != chunk[j]), len(have))      # first differing byte (or the end of a short read)
+                raise SystemExit('STOPPED: resume mismatch at byte %d: the partial file is not this stream' % (written + i))
+            if k == len(chunk): sha.update(chunk); written += k; continue
         try:
-            n = os.write(fd, chunk)
-            if n != len(chunk): raise OSError('short write %d of %d' % (n, len(chunk)))
-            sha.update(chunk); written += n
+            n = os.write(fd, chunk[k:])
+            if n != len(chunk) - k: raise OSError('short write %d of %d' % (n, len(chunk) - k))
+            sha.update(chunk); written += len(chunk)
             if written % SYNC_EVERY == 0: os.fsync(fd)      # a network volume reports refused writes on the flush: keep the unflushed amount small
         except OSError as e: raise SystemExit('STOPPED: write refused at %d bytes: %s' % (written, e))
         if fd_free is not None and written % FREE_CHECK_EVERY == 0:
@@ -160,6 +174,8 @@ if ain: aout += ain
 emit(); assert not q, ('records left without payload', len(q), len(vout), len(aout))
 assert not vout and not aout, ('payload left over', len(vout), len(aout))
 flush(force=True)
+if written < resume_len: raise SystemExit('STOPPED: the stream ended at %d bytes, before the partial file\'s %d' % (written, resume_len))
+if resume: print('resume: %d bytes verified, %d appended' % (resume_len, written - resume_len), file=sys.stderr)
 try: os.fsync(fd); os.close(fd)
 except OSError as e: raise SystemExit('STOPPED: final flush refused: %s' % e)
 res = dict(destination=dst, bytes=written, sha256=sha.hexdigest(), seconds=time.time() - t0, **st)
