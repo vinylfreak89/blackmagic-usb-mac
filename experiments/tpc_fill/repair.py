@@ -14,6 +14,9 @@ src, dst = sys.argv[1], sys.argv[2]; local = '--local' in sys.argv or dst == '--
 fin = sys.stdin.buffer if src == '-' else open(src, 'rb', buffering=0)
 fd = os.open('/dev/null', os.O_WRONLY) if dst == '--null' else os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)      # --null: run everything, keep nothing (for tests)
 sha = hashlib.sha256(); written = 0; t0 = time.time(); last_report = 0; outbuf = bytearray()
+# a local output stops cleanly before the disk is full (a full boot disk can wedge the machine); FREE_FLOOR_GB overrides
+fd_free = None if dst == '--null' else fd
+FREE_FLOOR = int(float(os.environ.get('FREE_FLOOR_GB', '5')) * 1e9); FREE_CHECK_EVERY = 256 << 20
 def flush(force=False):
     global written, outbuf, last_report
     while len(outbuf) >= (1 << 20) or (force and outbuf):
@@ -24,6 +27,10 @@ def flush(force=False):
             sha.update(chunk); written += n
             if written % SYNC_EVERY == 0: os.fsync(fd)      # a network volume reports refused writes on the flush: keep the unflushed amount small
         except OSError as e: raise SystemExit('STOPPED: write refused at %d bytes: %s' % (written, e))
+        if fd_free is not None and written % FREE_CHECK_EVERY == 0:
+            st_ = os.fstatvfs(fd); free = st_.f_bavail * st_.f_frsize
+            if free < FREE_FLOOR: raise SystemExit('STOPPED: %.2f GB free on the output volume (stop below %.0f GB) at %d bytes written'
+                                                   % (free / 1e9, FREE_FLOOR / 1e9, written))
     if written - last_report > (2 << 30):
         last_report = written
         import resource
