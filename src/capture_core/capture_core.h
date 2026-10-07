@@ -92,14 +92,10 @@ typedef struct {
                                 // forward to the first record that begins a whole video transfer (pkt_index 0)
                                 // and delivers from there; the bytes before it are counted in replay_align_bytes,
                                 // not reported as corruption. Records are self-describing, so any offset works.
-    // Device input levels, applied once at start-up (the Shuttle ignored both when written mid-stream, measured
-    // 2026-10-05): input_gain[] = Y, Cb, Cr in the vendor control panel's units, -100..+100, 0 = nominal; each
-    // becomes one byte of register 4 (128 + units*128/100). On S-Video register 4 changed nothing at any value or
-    // order (measured 2026-10-06, luma -50..+50). setup_off clears the 7.5 IRE setup bit: ON (the default, every
-    // capture before) maps NTSC-M's 7.5 IRE black to code 16; OFF maps 0 IRE there (black lifted ~16 codes), NTSC-J.
-    // All zero keeps the historical start-up: register 4 is only read (and put back to 80 80 80 00 if it reads
-    // otherwise) and the setup bit stays on. The session note records the mode word and register 4 either way.
-    int input_gain[3];
+    // setup_off clears the 7.5 IRE setup bit, applied once at start-up (the Shuttle ignores it mid-stream): ON (the
+    // default, every capture before) maps NTSC-M's 7.5 IRE black to code 16; OFF maps 0 IRE there (black lifted
+    // ~16 codes), NTSC-J. The Shuttle has no input gain controls (owner, 2026-10-07): register 4 is written as the
+    // driver writes it, 80 80 80 00, never as a user setting. The session note records the mode word.
     int setup_off;
 } cc_config;
 
@@ -123,10 +119,8 @@ uint64_t cc_packets_delivered(const cc_session *s);
 // CC_ERR_STATE for a device session (a live capture cannot be held; the device keeps streaming).
 int cc_replay_pause(cc_session *s, int paused);
 const char *cc_strerror(int err);
-// What the device start-up sent and found: the mode word, register 4 (as read back, written, or restored) and
-// which of those it was ("as found", "written", "written, reads back different", "restored to nominal",
-// "unread"). Replay sessions return -1.
-int cc_start_info(const cc_session *s, uint32_t *mode_word, uint32_t *reg4, const char **reg4_action);
+// The mode word the device start-up sent (it carries the input select and the setup bit). Replay sessions return -1.
+int cc_start_info(const cc_session *s, uint32_t *mode_word);
 
 typedef struct {
     uint64_t bytes[2];              // [0]=video [1]=audio payload delivered

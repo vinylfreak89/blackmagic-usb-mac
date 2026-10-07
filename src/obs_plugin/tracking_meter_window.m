@@ -1,5 +1,5 @@
 // Tools -> "Shuttle: tracking meter": a small floating window showing field 2's noise against field 1's, live,
-// while the Shuttle source runs, plus the device's input levels (gain per channel and the 7.5 IRE setup bit).
+// while the Shuttle source runs. (The 7.5 IRE setup bit is in the source's own properties.)
 // Plain AppKit (no Qt): OBS's Tools-menu callbacks run on the main thread, which is AppKit's. Closing the window
 // stops the measuring. Class names carry a prefix: Objective-C classes share one namespace across all of OBS.
 #import <AppKit/AppKit.h>
@@ -7,7 +7,6 @@
 #include <obs-module.h>
 #include "tracking_meter_tap.h"
 #include "tracking_meter_window.h"
-#include "shuttle_levels.h"
 
 static const double kLo = 0.80, kHi = 1.25, kGood = 0.03;   // bar range and the "balanced" band
 
@@ -108,8 +107,6 @@ static CGFloat xOf(double v, NSRect r){
                        s->now.noise[1][TM_Y], s->now.noise[1][TM_CB], s->now.noise[1][TM_CR]];
         drawText(n, NSMakePoint(pad, NSMaxY(g) + 17), 10, [NSColor secondaryLabelColor], NO);
     }
-    // Separator above the level controls (the controls themselves are subviews).
-    [[NSColor separatorColor] setFill]; NSRectFill(NSMakeRect(pad, 352, W - 2 * pad, 1));
 }
 @end
 
@@ -117,78 +114,12 @@ static CGFloat xOf(double v, NSRect r){
 @property (strong) NSPanel *panel;
 @property (strong) ShuttleTrackingMeterView *view;
 @property (strong) NSTimer *timer;
-@property (strong) NSMutableArray<NSSlider *> *sliders;
-@property (strong) NSMutableArray<NSTextField *> *values;
-@property (strong) NSButton *setup;
-@property (strong) NSButton *reset;
-@property (strong) NSTextField *note;
-@property (nonatomic) unsigned sourceGeneration;
 @end
 
 @implementation ShuttleTrackingMeterController
-static NSTextField *label(NSString *s, NSRect r, CGFloat size){
-    NSTextField *t = [NSTextField labelWithString:s]; t.frame = r; t.font = [NSFont systemFontOfSize:size]; return t;
-}
-
-- (void)buildControls {
-    const CGFloat W = self.view.bounds.size.width, pad = 16;
-    [self.view addSubview:label(@"Device input levels. Gains: no effect measured on S-Video so far (register 4).", NSMakeRect(pad, 360, W - 2 * pad, 18), 12)];
-    NSString *names[3] = { @"Y gain", @"Cb gain", @"Cr gain" };
-    self.sliders = [NSMutableArray array]; self.values = [NSMutableArray array];
-    for (int c = 0; c < 3; c++){
-        CGFloat y = 384 + c * 28;
-        [self.view addSubview:label(names[c], NSMakeRect(pad, y + 2, 70, 18), 12)];
-        NSSlider *sl = [NSSlider sliderWithValue:0 minValue:-100 maxValue:100 target:self action:@selector(levelChanged:)];
-        sl.frame = NSMakeRect(pad + 74, y, W - 2 * pad - 74 - 52, 22);
-        sl.continuous = NO;                                 // applied when the slider is let go, not while dragging
-        sl.numberOfTickMarks = 21; sl.allowsTickMarkValuesOnly = NO;
-        sl.tag = c;
-        [self.view addSubview:sl]; [self.sliders addObject:sl];
-        NSTextField *v = label(@"0", NSMakeRect(W - pad - 44, y + 2, 44, 18), 12);
-        v.alignment = NSTextAlignmentRight; v.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular];
-        [self.view addSubview:v]; [self.values addObject:v];
-    }
-    self.setup = [NSButton checkboxWithTitle:@"7.5 IRE setup: on = NTSC-M, US tapes (black at code 16); off = 0 IRE, NTSC-J (black lifted)" target:self action:@selector(levelChanged:)];
-    self.setup.frame = NSMakeRect(pad, 470, W - 2 * pad - 130, 20);
-    [self.view addSubview:self.setup];
-    self.reset = [NSButton buttonWithTitle:@"Reset to nominal" target:self action:@selector(resetLevels:)];
-    self.reset.frame = NSMakeRect(W - pad - 128, 466, 128, 28);
-    [self.view addSubview:self.reset];
-    self.note = label(@"", NSMakeRect(pad, 498, W - 2 * pad, 32), 11);
-    self.note.textColor = [NSColor secondaryLabelColor]; self.note.maximumNumberOfLines = 2;
-    [self.view addSubview:self.note];
-}
-
-- (void)loadLevels {
-    self.sourceGeneration = shuttle_levels_generation();
-    int g[3], setup;
-    if (shuttle_levels_get(g, &setup) != SL_OK){ self.note.stringValue = @"No Shuttle source in OBS: add one to set its levels."; return; }
-    for (int c = 0; c < 3; c++){ self.sliders[c].intValue = g[c]; self.values[c].stringValue = [NSString stringWithFormat:@"%+d", g[c]]; }
-    self.setup.state = setup ? NSControlStateValueOn : NSControlStateValueOff;
-    self.note.stringValue = @"Applied when you let go of a slider: the Shuttle takes these only at start-up, so its capture restarts "
-                            "(about a second of blank picture). Locked while OBS records, streams, or runs its replay buffer or virtual camera.";
-}
-
-- (void)apply {
-    int g[3];
-    for (int c = 0; c < 3; c++){ g[c] = (int)lround(self.sliders[c].doubleValue); self.values[c].stringValue = [NSString stringWithFormat:@"%+d", g[c]]; }
-    int rc = shuttle_levels_set(g, self.setup.state == NSControlStateValueOn);
-    if (rc == SL_BUSY){ self.note.stringValue = @"Not applied: OBS is recording or streaming. Stop it first; the levels are back as they were."; [self loadLevels]; }
-    else if (rc == SL_NO_SOURCE) self.note.stringValue = @"Not applied: there is no Shuttle source in OBS.";
-    else self.note.stringValue = [NSString stringWithFormat:@"Applied: Y %+d Cb %+d Cr %+d, setup %@. The capture restarted.",
-                                  g[0], g[1], g[2], self.setup.state == NSControlStateValueOn ? @"on" : @"off"];
-}
-- (void)levelChanged:(id)sender { (void)sender; [self apply]; }
-- (void)resetLevels:(id)sender {
-    (void)sender;
-    for (NSSlider *sl in self.sliders) sl.intValue = 0;
-    self.setup.state = NSControlStateValueOn;
-    [self apply];
-}
-
 - (void)show {
     if (!self.panel){
-        NSRect r = NSMakeRect(200, 200, 620, 540);
+        NSRect r = NSMakeRect(200, 200, 620, 310);
         self.panel = [[NSPanel alloc] initWithContentRect:r
                                                styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow
                                                  backing:NSBackingStoreBuffered defer:NO];
@@ -199,20 +130,14 @@ static NSTextField *label(NSString *s, NSRect r, CGFloat size){
         self.panel.delegate = self;
         self.view = [[ShuttleTrackingMeterView alloc] initWithFrame:NSMakeRect(0, 0, r.size.width, r.size.height)];
         self.panel.contentView = self.view;
-        [self buildControls];
         [self.panel center];
     }
-    [self loadLevels];
     tmt_start();
     if (!self.timer){
         __weak ShuttleTrackingMeterController *weakSelf = self;
         self.timer = [NSTimer timerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *t){
             (void)t; ShuttleTrackingMeterController *me = weakSelf; if (!me) return;
             tmt_snapshot s; tmt_snapshot_take(&s); me.view.snap = s; [me.view setNeedsDisplay:YES];
-            if (shuttle_levels_generation() != me.sourceGeneration) [me loadLevels];   // the source was re-created
-            BOOL busy = shuttle_levels_busy() != 0;
-            for (NSSlider *sl in me.sliders) sl.enabled = !busy;
-            me.setup.enabled = !busy; me.reset.enabled = !busy;
         }];
         [[NSRunLoop mainRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];   // keeps ticking during menus
     }

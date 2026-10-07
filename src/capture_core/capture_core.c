@@ -53,8 +53,7 @@ enum cc_life { CC_LIFE_OPEN, CC_LIFE_STARTING, CC_LIFE_RUNNING,
 enum { DELIVERY_BUFFER_BYTES = 1u << 20 };
 
 struct cc_session {
-    uint32_t start_mode_word, start_reg4;      // provenance: the mode word sent and register 4 as read (or written) at start
-    const char *start_reg4_action;             // "as found", "written", "restored to nominal", "unread"
+    uint32_t start_mode_word;                  // provenance: the mode word sent at start (0 until the device start-up sent it)
     cc_config cfg;
     cc_callbacks cb;
     // ring
@@ -394,9 +393,9 @@ static int vout_(libusb_device_handle*h,uint8_t req,uint16_t idx,uint32_t be){
     uint8_t b[4]={(uint8_t)(be>>24),(uint8_t)(be>>16),(uint8_t)(be>>8),(uint8_t)be};
     return libusb_control_transfer(h,0x40,req,0,idx,b,4,1000);
 }
-int cc_start_info(const cc_session *s, uint32_t *mode_word, uint32_t *reg4, const char **reg4_action){
-    if(!s || s->cfg.replay_path || !s->start_reg4_action) return -1;
-    *mode_word=s->start_mode_word; *reg4=s->start_reg4; *reg4_action=s->start_reg4_action;
+int cc_start_info(const cc_session *s, uint32_t *mode_word){
+    if(!s || s->cfg.replay_path || !s->start_mode_word) return -1;
+    *mode_word=s->start_mode_word;
     return 0;
 }
 static void* device_main(void *arg){
@@ -404,10 +403,8 @@ static void* device_main(void *arg){
     internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     char note[320];
-    snprintf(note,sizeof note,"capture_core v1 input=%d ring=%zuMB V_NPK=%d XFERS=%d mode=0x%08x reg4=0x%08x (%s) gain=%d,%d,%d setup=%s",
-             s->cfg.input,s->ring_sz>>20,V_NPK,XFERS,s->start_mode_word,s->start_reg4,
-             s->start_reg4_action?s->start_reg4_action:"replay",s->cfg.input_gain[0],s->cfg.input_gain[1],s->cfg.input_gain[2],
-             s->cfg.setup_off?"off":"on");
+    snprintf(note,sizeof note,"capture_core v1 input=%d ring=%zuMB V_NPK=%d XFERS=%d mode=0x%08x setup=%s",
+             s->cfg.input,s->ring_sz>>20,V_NPK,XFERS,s->start_mode_word,s->cfg.setup_off?"off":"on");
     put_meta_(s,REC_SESSION,0,0,0,0,note,(uint32_t)strlen(note));
     int n=0, startup_rc=CC_OK;
     for(int w=0;w<2;w++){
@@ -813,17 +810,14 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
                       : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
         uint32_t mode_word=0x09000000u|vsel|0x10000000u|0x20000000u;
         if(s->cfg.setup_off) mode_word&=~0x08000000u;          /* the 7.5 IRE setup bit: wire byte 0, 0x08 */
-        /* Register 4 = input gain, one byte each for Y, Cb, Cr (wire order {Y,Cb,Cr,0}), 128 + units*128/100; all
-         * zero units = nominal 80 80 80 00, written explicitly so an earlier session's gains never carry over. */
-        uint32_t r4=0; int gain_set=0;
-        for(int c=0;c<3;c++){ int u=s->cfg.input_gain[c]; if(u<-100) u=-100; if(u>100) u=100; if(u) gain_set=1;
-            int code=128+u*128/100; if(code>255) code=255; if(code<0) code=0; r4|=(uint32_t)code<<(24-8*c); }
-        /* The device latches the mode register and the gains only at the alt-setting reset, and from the value written
-         * BEFORE the most recent write of each (a one-write lag). Measured 2026-10-06: with the mode word sent only after
-         * the reset, each start showed the previous start's setup bit; register 4 changed nothing at any value when
-         * written after the reset. So before the reset, with the stream idle (alt 0), every register goes out twice in
-         * a row, in address order (0x00, 0x04, 0x18), so the staged and the committed value are both this start's;
-         * the reset then applies them. The words after the reset stay as they always were (input select). */
+        /* Register 4 has no user meaning (the Shuttle has no input gain controls, owner 2026-10-07); the driver's
+         * settings commit writes it as 80 80 80 00, so it is written so here, never anything else. */
+        const uint32_t r4=0x80808000u;
+        /* The device latches the mode register only at the alt-setting reset, and from the value written BEFORE the
+         * most recent write (a one-write lag). Measured 2026-10-06: with the mode word sent only after the reset, each
+         * start showed the previous start's setup bit. So before the reset, with the stream idle (alt 0), the driver's
+         * commit goes out twice in a row, in address order (0x00, 0x04, 0x18), so the staged and the committed value
+         * are both this start's; the reset then applies them. The words after the reset stay as they always were. */
         if(libusb_set_interface_alt_setting(s->h,0,0)) goto usb_fail;
         if(vout_(s->h,215,0,mode_word)!=4 || vout_(s->h,215,0,mode_word)!=4 ||
            vout_(s->h,215,4,r4)!=4 || vout_(s->h,215,4,r4)!=4 ||
@@ -833,16 +827,7 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         }
         if(vout_(s->h,215,0,mode_word)!=4) goto usb_fail;
         s->start_mode_word=mode_word;
-        /* After the reset, register 4 again (the staged value for the next start stays this start's), then read back:
-         * a read returns the staged value, so it confirms the bytes, not that the decoder applied them. */
-        uint8_t rb[4]; int gain_ok = vout_(s->h,215,4,r4)==4;
-        s->start_reg4=r4; s->start_reg4_action = gain_set ? "written, not read back" : "nominal, not read back";
-        if(gain_ok && libusb_control_transfer(s->h,0xc0,214,0,4,rb,4,1000)==4){
-            uint32_t found=(uint32_t)rb[0]<<24|(uint32_t)rb[1]<<16|(uint32_t)rb[2]<<8|rb[3];
-            s->start_reg4_action = found!=r4 ? "written, reads back different" : gain_set ? "written, reads back the same" : "nominal, reads back the same";
-            if(found!=r4) s->start_reg4=found;
-        }
-        if(!gain_ok || vout_(s->h,215,24,0x73c60001u)!=4){
+        if(vout_(s->h,215,24,0x73c60001u)!=4){
             // A failed/short control transfer leaves the analog mux wherever it was and every
             // downstream layer would report a healthy capture of the WRONG input.
             goto usb_fail;

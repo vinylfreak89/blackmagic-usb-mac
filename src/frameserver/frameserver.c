@@ -904,8 +904,8 @@ void fs_handoff_timing_get(const frameserver *f, fs_handoff_timing *o){
     uint64_t known=o->idle_ns+o->classify_ns+o->geometry_ns+o->hretime_ns+o->log_ns;
     o->other_ns=o->since_prev_ns>known?o->since_prev_ns-known:0;
 }
-int fs_device_start_info(const frameserver *f, uint32_t *mode_word, uint32_t *reg4, const char **reg4_action){
-    return f && f->cap ? cc_start_info(f->cap, mode_word, reg4, reg4_action) : -1;
+int fs_device_start_info(const frameserver *f, uint32_t *mode_word){
+    return f && f->cap ? cc_start_info(f->cap, mode_word) : -1;
 }
 void fs_get_stats(const frameserver *f, fs_stats *o){
     *o = f->st;

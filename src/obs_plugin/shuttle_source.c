@@ -74,17 +74,13 @@ OBS_MODULE_USE_DEFAULT_LOCALE("shuttle-source", "en-US")
 #define S_REPLAY_RESTART "replay_restart_on_record"
 #define S_REPLAY_STOP    "replay_stop_at_end"
 #define S_SIDECAR     "sidecar_with_recording"
-#define S_GAIN_Y      "input_gain_y"     /* shuttle_levels.h: set from the tracking meter window */
-#define S_GAIN_CB     "input_gain_cb"
-#define S_GAIN_CR     "input_gain_cr"
-#define S_SETUP       "setup_7_5_ire"
+#define S_SETUP       "setup_7_5_ire"    /* the Shuttle's only input level setting: applied at start-up (a change restarts the session) */
 
 #define AP_TICKS_TO_NS(t) ((uint64_t)((__uint128_t)(t) * 1000000000ull / AP_PTS_DEN))
 #include "audio_timing.h"
 #include "discard_stream.h"
 #include "tracking_meter_tap.h"
 #include "tracking_meter_window.h"
-#include "shuttle_levels.h"
 #include <util/config-file.h>
 enum { KIND_RECORDING = 1, KIND_STREAMING = 2 };
 #include "frame_levels.h"
@@ -168,8 +164,8 @@ typedef struct {
     int tl_probing, tl_failed;                    /* under s->m: a probe for tl_gen is queued or running / found no length */
     int paused; int64_t pending_seek_ms;          /* under s->m: replay held; a seek chosen while held (-1 none) */
     uint64_t next_start_unit, next_start_offset;  /* under s->m: consumed by the next shuttle_start (0 = the file's start) */
-    int applied_gain[3], applied_setup;
-    const char *input_name;                       /* "svideo", "composite" or "component": the running session's input */           /* input levels of the running session, to undo a refused change */
+    int applied_setup;                            /* the running session's 7.5 IRE setup bit (recorded in the raw file's note) */
+    const char *input_name;                       /* "svideo", "composite" or "component": the running session's input */
     uint64_t session_start_unit;                  /* the running session's first unit, estimated: on_frame resolves counters from it */
     _Atomic int live_regrey;                      /* live: put OBS's controls back in their greyed restart state on the next tick */
     _Atomic int handoff_reset;                    /* resumed from a pause: the next frame's gap is the pause, not a stall */
@@ -178,46 +174,6 @@ typedef struct {
 #define SIDECAR_SCRATCH_FMT "/private/tmp/shuttle-source-%u"   /* per-uid, mode 0700, non-synced; published by rename on the same filesystem, by verified copy otherwise */
 
 static _Atomic int g_instances;
-static obs_weak_source_t *g_levels_source;   /* set at create, cleared at destroy (libobs may destroy on its own thread) */
-static pthread_mutex_t g_levels_m = PTHREAD_MUTEX_INITIALIZER;
-static obs_source_t *levels_source_ref(void){
-    pthread_mutex_lock(&g_levels_m);
-    obs_source_t *src = g_levels_source ? obs_weak_source_get_source(g_levels_source) : NULL;
-    pthread_mutex_unlock(&g_levels_m);
-    return src;
-}
-
-static shuttle_src *g_levels_owner;            /* the instance g_levels_source belongs to (guarded by g_levels_m) */
-static _Atomic unsigned g_levels_generation;    /* bumps when the source is created or destroyed: the window reloads */
-static _Atomic int g_levels_only_update;        /* the next shuttle_update came from the window's level controls */
-unsigned shuttle_levels_generation(void){ return atomic_load(&g_levels_generation); }
-int shuttle_levels_busy(void){
-    return obs_frontend_recording_active() || obs_frontend_streaming_active() ||
-           obs_frontend_replay_buffer_active() || obs_frontend_virtualcam_active();
-}
-
-int shuttle_levels_get(int gain[3], int *setup_on){
-    obs_source_t *src = levels_source_ref();
-    if (!src) return SL_NO_SOURCE;
-    obs_data_t *st = obs_source_get_settings(src);
-    gain[0] = (int)obs_data_get_int(st, S_GAIN_Y); gain[1] = (int)obs_data_get_int(st, S_GAIN_CB); gain[2] = (int)obs_data_get_int(st, S_GAIN_CR);
-    *setup_on = obs_data_get_bool(st, S_SETUP);
-    obs_data_release(st); obs_source_release(src);
-    return SL_OK;
-}
-
-int shuttle_levels_set(const int gain[3], int setup_on){
-    if (shuttle_levels_busy()) return SL_BUSY;              /* never restart the device under a recording or stream */
-    obs_source_t *src = levels_source_ref();
-    if (!src) return SL_NO_SOURCE;
-    obs_data_t *d = obs_data_create();
-    obs_data_set_int(d, S_GAIN_Y, gain[0]); obs_data_set_int(d, S_GAIN_CB, gain[1]); obs_data_set_int(d, S_GAIN_CR, gain[2]);
-    obs_data_set_bool(d, S_SETUP, setup_on);
-    atomic_store(&g_levels_only_update, 1);                  /* shuttle_update re-checks busy before restarting */
-    obs_source_update(src, d);                               /* stored, then shuttle_update restarts the session */
-    obs_data_release(d); obs_source_release(src);
-    return SL_OK;
-}
 #define FREEZE_GAP_NS 83000000ull   /* 2.5 unit periods: one late unit, not scheduling noise */
 #define SLOW_CALL_NS  20000000ull
 
@@ -562,12 +518,13 @@ static void tpc_attach(shuttle_src *s){
     if (++s->tpc_part == 1) dstr_printf(&path, "%s.raw.tpc", s->sidecar_base);
     else dstr_printf(&path, "%s.raw.part%u.tpc", s->sidecar_base, s->tpc_part);
     struct dstr note = {0}; char *b = bstrdup(s->sidecar_base); char base[PATH_MAX];
-    uint32_t mw = 0, r4 = 0; const char *r4a = "unknown";
-    int have = fs_device_start_info(s->fs, &mw, &r4, &r4a) == 0;
-    dstr_printf(&note, "shuttle-source tee v1 input=%s recording=%s part=%u gain=%d,%d,%d setup=%s mode=0x%08x reg4=0x%08x (%s)",
-                s->input_name ? s->input_name : "?", basename_r(b, base) ? base : "?", s->tpc_part,
-                s->applied_gain[0], s->applied_gain[1], s->applied_gain[2], s->applied_setup ? "on" : "off",
-                have ? mw : 0, have ? r4 : 0, have ? r4a : "not reported"); bfree(b);
+    uint32_t mw = 0;
+    int have = fs_device_start_info(s->fs, &mw) == 0;
+    if (have) dstr_printf(&note, "shuttle-source tee v1 input=%s recording=%s part=%u setup=%s mode=0x%08x",
+                          s->input_name ? s->input_name : "?", basename_r(b, base) ? base : "?", s->tpc_part, s->applied_setup ? "on" : "off", mw);
+    else dstr_printf(&note, "shuttle-source tee v1 input=%s recording=%s part=%u setup=%s mode=not reported",
+                     s->input_name ? s->input_name : "?", basename_r(b, base) ? base : "?", s->tpc_part, s->applied_setup ? "on" : "off");
+    bfree(b);
     if (fs_tee_start(s->fs, path.array, note.array, TPC_RING_BYTES) == 0){
         s->tpc_path = bstrdup(path.array);
         blog(LOG_INFO, "[shuttle-source] raw .tpc started: %s", path.array);
@@ -917,16 +874,10 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     const char *input = obs_data_get_string(settings, S_INPUT);
     cfg.capture.input = !strcmp(input, "composite") ? CC_INPUT_COMPOSITE : !strcmp(input, "component") ? CC_INPUT_COMPONENT : CC_INPUT_SVIDEO;
     s->input_name = cfg.capture.input == CC_INPUT_COMPOSITE ? "composite" : cfg.capture.input == CC_INPUT_COMPONENT ? "component" : "svideo";
-    cfg.capture.input_gain[0] = (int)obs_data_get_int(settings, S_GAIN_Y);
-    cfg.capture.input_gain[1] = (int)obs_data_get_int(settings, S_GAIN_CB);
-    cfg.capture.input_gain[2] = (int)obs_data_get_int(settings, S_GAIN_CR);
     cfg.capture.setup_off = !obs_data_get_bool(settings, S_SETUP);
-    for (int c = 0; c < 3; c++) s->applied_gain[c] = cfg.capture.input_gain[c];
     s->applied_setup = !cfg.capture.setup_off;
     if (!obs_data_get_bool(settings, S_USE_REPLAY))
-        blog(LOG_INFO, "[shuttle-source] input levels: gain Y %d Cb %d Cr %d, 7.5 IRE setup %s%s", cfg.capture.input_gain[0],
-             cfg.capture.input_gain[1], cfg.capture.input_gain[2], cfg.capture.setup_off ? "off" : "on",
-             (cfg.capture.input_gain[0] || cfg.capture.input_gain[1] || cfg.capture.input_gain[2] || cfg.capture.setup_off) ? " (NOT nominal)" : "");
+        blog(LOG_INFO, "[shuttle-source] 7.5 IRE setup %s", cfg.capture.setup_off ? "off (0 IRE black, NTSC-J)" : "on (NTSC-M)");
     uint64_t start_unit = s->next_start_unit, start_offset = s->next_start_offset;
     s->next_start_unit = s->next_start_offset = 0;   /* every other start begins the file */
     s->pending_seek_ms = -1; s->paused = 0;
@@ -1041,8 +992,6 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
         return NULL;
     }
     shuttle_src *s = bzalloc(sizeof *s); s->source = source;
-    pthread_mutex_lock(&g_levels_m); g_levels_source = obs_source_get_weak_source(source); g_levels_owner = s; pthread_mutex_unlock(&g_levels_m);   /* tracking meter window (shuttle_levels.h) */
-    atomic_fetch_add(&g_levels_generation, 1);
     s->vbuf = bmalloc((size_t)FP_FRAME_WIDTH * FP_FRAME_HEIGHT * 2 * sizeof(uint16_t));   /* Y + U + V planes */
     s->abuf_frames = 4096; s->abuf = bmalloc((size_t)s->abuf_frames * 2 * sizeof(int32_t));
     /* Rec.601 limited-range matrix for 10-bit I210: 64 -> black, 940 -> white, levels unchanged.
@@ -1094,10 +1043,6 @@ static void *shuttle_create(obs_data_t *settings, obs_source_t *source){
 
 static void shuttle_destroy(void *data){
     shuttle_src *s = data; if (!s) return;
-    pthread_mutex_lock(&g_levels_m);
-    if (s && g_levels_owner == s){ if (g_levels_source) obs_weak_source_release(g_levels_source); g_levels_source = NULL; g_levels_owner = NULL; }
-    pthread_mutex_unlock(&g_levels_m);
-    atomic_fetch_add(&g_levels_generation, 1);
     obs_frontend_remove_event_callback(frontend_event, s);
     usb_watch_stop(s);                       /* no arrival callback can post to the media thread after this */
     if (s->ctl_running){   /* the render thread no longer calls in (the source is being destroyed); finish the action under way */
@@ -1120,15 +1065,6 @@ static void shuttle_destroy(void *data){
 static void shuttle_update(void *data, obs_data_t *settings){
     shuttle_src *s = data; if (!s) return;
     pthread_mutex_lock(&s->m);
-    /* A level change from the tracking meter window is applied by a restart. obs_source_update only queues it, so a
-     * recording or stream may have started since the window checked: then put the running levels back and keep going. */
-    if (atomic_exchange(&g_levels_only_update, 0) && shuttle_levels_busy()){
-        obs_data_set_int(settings, S_GAIN_Y, s->applied_gain[0]); obs_data_set_int(settings, S_GAIN_CB, s->applied_gain[1]);
-        obs_data_set_int(settings, S_GAIN_CR, s->applied_gain[2]); obs_data_set_bool(settings, S_SETUP, s->applied_setup);
-        blog(LOG_WARNING, "[shuttle-source] input level change refused: an output started before it could be applied");
-        pthread_mutex_unlock(&s->m);
-        return;
-    }
     s->restart_pending = 0; s->record_gap = 0;   /* a session started here replaces a pending restart (RECORDING_STARTED would otherwise start a second) */
     shuttle_stop(s);
     atomic_store(&s->reconnect_wanted, 0); s->reconnect_tries = 0;   /* a settings change starts the device itself (after the stop: see ACT_STOP) */
@@ -1149,27 +1085,17 @@ static void shuttle_defaults(obs_data_t *settings){
     obs_data_set_default_bool(settings, S_TPC, false);
     obs_data_set_default_bool(settings, S_REPLAY_RESTART, false);
     obs_data_set_default_bool(settings, S_REPLAY_STOP, false);
-    obs_data_set_default_int(settings, S_GAIN_Y, 0); obs_data_set_default_int(settings, S_GAIN_CB, 0);
-    obs_data_set_default_int(settings, S_GAIN_CR, 0); obs_data_set_default_bool(settings, S_SETUP, true);
+    obs_data_set_default_bool(settings, S_SETUP, true);
 }
 
 static obs_properties_t *shuttle_properties(void *data){
-    shuttle_src *src = data;
+    (void)data;
     obs_properties_t *p = obs_properties_create();
-    if (src && src->source){                      /* the device input levels, set in Tools -> Shuttle: tracking meter */
-        obs_data_t *st = obs_source_get_settings(src->source);
-        long long y = obs_data_get_int(st, S_GAIN_Y), cb = obs_data_get_int(st, S_GAIN_CB), cr = obs_data_get_int(st, S_GAIN_CR);
-        bool setup = obs_data_get_bool(st, S_SETUP);
-        char text[256];
-        snprintf(text, sizeof text, "Device input levels: Y %+lld, Cb %+lld, Cr %+lld, 7.5 IRE setup %s%s. Change them in Tools \u2192 Shuttle: tracking meter.",
-                 y, cb, cr, setup ? "on" : "off", (y || cb || cr || !setup) ? " (NOT nominal)" : " (nominal)");
-        obs_properties_add_text(p, "levels_info", text, OBS_TEXT_INFO);
-        obs_data_release(st);
-    }
     obs_property_t *in = obs_properties_add_list(p, S_INPUT, "Analog input", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
     obs_property_list_add_string(in, "S-Video", "svideo");
     obs_property_list_add_string(in, "Composite", "composite");
     obs_property_list_add_string(in, "Component", "component");
+    obs_properties_add_bool(p, S_SETUP, "7.5 IRE setup: on = NTSC-M, US tapes (black at code 16); off = 0 IRE, NTSC-J (black lifted). Applied at start-up: a change restarts the capture");
     obs_properties_add_bool(p, S_REGISTRATION, "Registration: correct vertical field placement (per tape; off publishes both fields at the nominal position)");
     obs_properties_add_bool(p, S_HRETIME, "H-retiming: repair horizontally mistimed lines (per tape; leave off for stable tapes)");
     obs_properties_add_bool(p, S_PARTIAL, "Search picture: also show units that are not whole (fast-forward, rewind, unlocked signal), stretched to the frame");

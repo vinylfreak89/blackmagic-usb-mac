@@ -149,8 +149,8 @@ FILE *fs_log_detach(frameserver *f, uint64_t *row_errors);
 // The ring's memory follows its backlog (cc_async_sink hands drained pages back), so ring_bytes may be far larger
 // than what a recording normally holds; it must be a whole number of pages for that.
 int  fs_tee_start(frameserver *f, const char *path, const char *session_note, size_t ring_bytes);
-// The device start-up's mode word and register 4 (cc_start_info); -1 for a replay or before fs_start.
-int  fs_device_start_info(const frameserver *f, uint32_t *mode_word, uint32_t *reg4, const char **reg4_action);
+// The mode word the device start-up sent (cc_start_info); -1 for a replay or before fs_start.
+int  fs_device_start_info(const frameserver *f, uint32_t *mode_word);
 // Detach and hand the writer back; the caller closes it (cc_async_sink_close drains and may
 // block). NULL if none. fs_stop closes a still-attached tee itself.
 cc_async_sink *fs_tee_detach(frameserver *f);

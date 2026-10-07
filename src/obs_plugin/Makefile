@@ -33,7 +33,7 @@ LDFLAGS = -bundle -F"$(OBS_APP)/Contents/Frameworks" -framework libobs "$(OBS_AP
 
 all: $(BUNDLE)
 
-$(BUNDLE): shuttle_source.c discard_stream.c discard_stream.h tracking_meter.c tracking_meter.h tracking_meter_tap.c tracking_meter_tap.h tracking_meter_window.m tracking_meter_window.h shuttle_levels.h audio_timing.h frame_levels.h replay_timeline.h ../frameserver/replay_probe.h publish_copy.c publish_copy.h publish_queue.c publish_queue.h timing_report.c timing_report.h obsconfig.h Info.plist $(CORE) ../frameserver/pairing_schedule.h ../frameserver/audio_publisher.h ../frameserver/hretime.h
+$(BUNDLE): shuttle_source.c discard_stream.c discard_stream.h tracking_meter.c tracking_meter.h tracking_meter_tap.c tracking_meter_tap.h tracking_meter_window.m tracking_meter_window.h audio_timing.h frame_levels.h replay_timeline.h ../frameserver/replay_probe.h publish_copy.c publish_copy.h publish_queue.c publish_queue.h timing_report.c timing_report.h obsconfig.h Info.plist $(CORE) ../frameserver/pairing_schedule.h ../frameserver/audio_publisher.h ../frameserver/hretime.h
 	mkdir -p "$(BUILD_DIR)"; rm -rf $(BUNDLE); mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/locale
 	$(CC) $(CPPFLAGS) -O2 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden -fobjc-arc -c tracking_meter_window.m -o "$(BUILD_DIR)/tracking_meter_window.o"
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -framework AppKit "$(BUILD_DIR)/tracking_meter_window.o" tracking_meter.c tracking_meter_tap.c shuttle_source.c discard_stream.c publish_copy.c publish_queue.c timing_report.c $(CORE) "$(LIBUSB_A)" -o $(BUNDLE)/Contents/MacOS/$(PLUGIN)
