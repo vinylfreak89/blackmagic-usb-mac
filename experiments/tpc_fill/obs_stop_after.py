@@ -1,6 +1,8 @@
-# Stop OBS's recording once OBS itself reports the recording has run for the target duration.
+# Stop OBS's recording (or, with --stream, its stream) once OBS itself reports the output has run for the target
+# duration, or (with --at HH:MM:SS) at that local wall-clock time. Polls every 0.1 s in the last 5 s before the target.
 # Talks to OBS's built-in WebSocket server (v5 protocol, no authentication configured). Standard library only.
-# usage: obs_stop_after.py <seconds> <logfile> [--probe]
+# usage: obs_stop_after.py <seconds | --at HH:MM:SS> <logfile> [--stream] [--probe]
+#   --probe only reads the output's status; it never stops anything.
 import sys, os, socket, base64, json, struct, time
 
 def log(path, msg):
@@ -50,31 +52,40 @@ class WS:
             if m.get('op') == 7 and m['d'].get('requestId') == rid: return m['d']
 
 def main():
-    target = float(sys.argv[1]); lg = sys.argv[2]
+    args = [a for a in sys.argv[1:] if a not in ('--stream', '--probe')]
+    stream = '--stream' in sys.argv; what = 'stream' if stream else 'recording'
+    GET, STOP = ('GetStreamStatus', 'StopStream') if stream else ('GetRecordStatus', 'StopRecord')
+    at = None
+    if args[0] == '--at':
+        hh, mm, ss = (float(x) for x in args[1].split(':')); lt = time.localtime()
+        at = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, int(hh), int(mm), 0, 0, 0, -1)) + ss
+        if at < time.time(): at += 86400                     # a time already past today means tomorrow
+        target = None; lg = args[2]
+    else: target = float(args[0]); lg = args[1]
     if '--probe' in sys.argv:
-        w = WS(); st = w.request('GetRecordStatus'); print('status', st['requestStatus'], st.get('responseData'))
-        sp = w.request('StopRecord'); print('stop while idle ->', sp['requestStatus']); return 0
-    log(lg, 'armed: stop the recording at %.0f s of OBS record time' % target)
+        w = WS(); st = w.request(GET); print(what, 'status', st['requestStatus'], st.get('responseData')); return 0
+    if at: log(lg, 'armed: stop the %s at %s local time (%.0f s from now)' % (what, time.strftime('%H:%M:%S', time.localtime(at)) + ('%.2f' % (at % 1))[1:], at - time.time()))
+    else: log(lg, 'armed: stop the %s at %.1f s of OBS %s time' % (what, target, what))
     seen = False; t_end = time.time() + 4 * 3600; fails = 0; w = None
     while time.time() < t_end:
         try:
             if w is None: w = WS()
-            st = w.request('GetRecordStatus')['responseData']; fails = 0
-            ms = st['outputDuration']
+            st = w.request(GET)['responseData']; fails = 0
+            ms = st['outputDuration']; left = (at - time.time()) if at else (target - ms / 1000)
             if st['outputActive']:
-                if not seen: log(lg, 'recording seen running, %.1f s in' % (ms / 1000)); seen = True
-                if ms >= target * 1000:
-                    r = w.request('StopRecord'); log(lg, 'StopRecord sent at %.1f s: %r' % (ms / 1000, r['requestStatus']))
+                if not seen: log(lg, '%s seen running, %.1f s in' % (what, ms / 1000)); seen = True
+                if left <= 0:
+                    r = w.request(STOP); log(lg, '%s sent at %.2f s of %s time (%s local): %r' % (STOP, ms / 1000, what, time.strftime('%H:%M:%S'), r['requestStatus']))
                     for _ in range(60):
                         time.sleep(1)
-                        if not w.request('GetRecordStatus')['responseData']['outputActive']: log(lg, 'CONFIRMED stopped'); return 0
-                    log(lg, 'FAILED: still recording 60 s after StopRecord'); return 2
+                        if not w.request(GET)['responseData']['outputActive']: log(lg, 'CONFIRMED stopped'); return 0
+                    log(lg, 'FAILED: still running 60 s after %s' % STOP); return 2
             elif seen:
-                log(lg, 'recording ended before the target (stopped by someone else); nothing to do'); return 0
-            time.sleep(1 if ms >= (target - 30) * 1000 else 5)
+                log(lg, '%s ended before the target (stopped by someone else); nothing to do' % what); return 0
+            time.sleep(0.1 if left < 5 else 1 if left < 60 else 5)
         except Exception as e:
             fails += 1; w = None; log(lg, 'connection problem %d: %r' % (fails, e))
             if fails > 120: log(lg, 'GAVE UP: OBS unreachable'); return 3
             time.sleep(5)
-    log(lg, 'GAVE UP: no recording reached the target within 4 hours'); return 4
+    log(lg, 'GAVE UP: the target was not reached within 4 hours'); return 4
 sys.exit(main())
