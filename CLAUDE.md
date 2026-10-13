@@ -1635,9 +1635,9 @@ delivery edge; wrong one at acquisition.
   4. ~~**Composite fixture (P6)**~~ — **DONE 2026-09-03 (`captures/composite_program_30s.tpc`,
      700 MB, byte-complete):** **not a composite capture** (2026-10-13): mode word `0x3d000000`
      set the S-Video bit and the S-Video cable was connected, so it decoded S-Video (no 3.58 MHz
-     residue in its luma). Composite proper is `0x3a000000` (§5); measured 2026-10-13 on bars, same
-     `0xe801` framing. The S-Video-vs-composite chroma A/B still needs a proper 75 Ω cable (the
-     composite lead used so far is audio-grade RCA) and the same passage on both inputs.
+     residue in its luma). Composite proper is `0x3a000000` (§5); measured 2026-10-13 on bars over a
+     proper 75 Ω composite cable, same `0xe801` framing. The S-Video-vs-composite chroma A/B on one
+     passage is still to be analysed.
   5. **V-stabilize comparison:** the later work identified this as the deck's
      line-TBC switch and recorded both settings. The source inventory, pairing
      caveat and on/off observations are in §7. Earlier independent “TBC on /
