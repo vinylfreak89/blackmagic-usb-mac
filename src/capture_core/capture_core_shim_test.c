@@ -40,14 +40,17 @@ static void wait_device_end(tally *t, double seconds){
 const char *replay_shim_trace(void);   // libusb_replay_shim.c: this session's alt-setting and control-transfer calls
 
 // cc_open alone (no streaming): the start-up trace and the reported mode word
-static int open_trace(int setup_off, char *trace, size_t n, uint32_t *mode, int *info_rc){
-    tally t={0}; cc_config cfg={0}; cfg.input=CC_INPUT_SVIDEO; cfg.ring_mb=16; cfg.setup_off=setup_off;
+static int open_trace_in(int input, int setup_off, char *trace, size_t n, uint32_t *mode, int *info_rc){
+    tally t={0}; cc_config cfg={0}; cfg.input=input; cfg.ring_mb=16; cfg.setup_off=setup_off;
     cc_callbacks cb={0}; cb.on_packet=t_packet; cb.on_end=t_end; cb.ctx=&t;
     cc_session *s=NULL; int rc=cc_open(&s,&cfg,&cb);
     snprintf(trace,n,"%s",replay_shim_trace());
     *mode=0; *info_rc=rc==CC_OK?cc_start_info(s,mode):-99;
     if(rc==CC_OK) cc_close(s);
     return rc;
+}
+static int open_trace(int setup_off, char *trace, size_t n, uint32_t *mode, int *info_rc){
+    return open_trace_in(CC_INPUT_SVIDEO,setup_off,trace,n,mode,info_rc);
 }
 
 static int run_device(cc_stats *st, tally *t, int wait_for_end, int deadline_ms){
@@ -146,6 +149,20 @@ int main(int argc, char **argv){
             CHECK(open_trace(off,tr,sizeof tr,&mode,&irc)==CC_OK,"setup %s: cc_open",off?"off":"on");
             CHECK(!strcmp(tr,want[off]),"setup %s: start-up sequence\n  got  %s\n  want %s",off?"off":"on",tr,want[off]);
             CHECK(irc==0 && mode==want_mode[off],"setup %s: cc_start_info rc %d mode 0x%08x, want 0x%08x",off?"off":"on",irc,mode,want_mode[off]);
+        }
+    }
+
+    // 6: the input select reaches the mode word, before and after the reset: composite 0x04, component 0x02 (S-video 0x06 above)
+    {
+        static const struct { int in; const char *name; const char *w; uint32_t mode; } cases[]={
+            {CC_INPUT_COMPOSITE,"composite","3d000000",0x3d000000u},{CC_INPUT_COMPONENT,"component","3b000000",0x3b000000u}};
+        for(int i=0;i<2;i++){
+            char tr[4096], want[512]; uint32_t mode; int irc;
+            snprintf(want,sizeof want,"alt0 W215/0:%s W215/0:%s W215/4:80808000 W215/4:80808000 W215/24:73c60001 W215/24:73c60001 "
+                     "alt1 alt2 W215/0:%s W215/24:73c60001",cases[i].w,cases[i].w,cases[i].w);
+            CHECK(open_trace_in(cases[i].in,0,tr,sizeof tr,&mode,&irc)==CC_OK,"%s: cc_open",cases[i].name);
+            CHECK(!strcmp(tr,want),"%s: start-up sequence\n  got  %s\n  want %s",cases[i].name,tr,want);
+            CHECK(irc==0 && mode==cases[i].mode,"%s: mode 0x%08x, want 0x%08x",cases[i].name,mode,cases[i].mode);
         }
     }
 

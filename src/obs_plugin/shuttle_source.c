@@ -877,7 +877,7 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
     cfg.capture.setup_off = !obs_data_get_bool(settings, S_SETUP);
     s->applied_setup = !cfg.capture.setup_off;
     if (!obs_data_get_bool(settings, S_USE_REPLAY))
-        blog(LOG_INFO, "[shuttle-source] 7.5 IRE setup %s", cfg.capture.setup_off ? "off (0 IRE black, NTSC-J)" : "on (NTSC-M)");
+        blog(LOG_INFO, "[shuttle-source] input %s, 7.5 IRE setup %s", s->input_name, cfg.capture.setup_off ? "off (0 IRE black, NTSC-J)" : "on (NTSC-M)");
     uint64_t start_unit = s->next_start_unit, start_offset = s->next_start_offset;
     s->next_start_unit = s->next_start_offset = 0;   /* every other start begins the file */
     s->pending_seek_ms = -1; s->paused = 0;
