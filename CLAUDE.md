@@ -89,16 +89,20 @@ as reset+select-input. Then send the mode word (req 215) → the index-24 latch 
 
 **Mode word** — vendor control OUT, `request=215, value=0, index=0`, 4 bytes big-endian:
 ```
-mode = 0x09000000 | video_input | audio_input   (| 0x20000000 for 8-bit; omit for 10-bit v210)
+mode = 0x08000000 (7.5 IRE setup) | video_input | audio_input   (| 0x20000000 for 8-bit; omit for 10-bit v210)
 ```
-| Selector | Values |
+| Selector | Values (wire byte 0 of register 0x00, as the vendor driver writes them) |
 |---|---|
-| video_input | HDMI/SDI `0x00000000`, Component `0x02000000`, Composite `0x04000000`, **S-video `0x06000000`** |
+| video_input | exactly one of SDI `0x80000000`, HDMI `0x01000000`, **S-video `0x04000000`**, Composite `0x02000000`, or none for Component |
 | audio_input | Embedded `0x00000000`, **Analog `0x10000000`** |
 | pixel | 8-bit YCbCr (UYVY) sets `0x20000000`; 10-bit v210 is default |
 
-→ **S-video + analog audio + 8-bit = `0x3F000000`** (wire `3f 00 00 00`). This is the first
-experiment's mode word. Then latch: req 215, index 24, `0x73c60001`.
+→ **S-video + analog audio + 8-bit = `0x3C000000`**, composite `0x3A000000`, component `0x38000000`.
+Then latch: req 215, index 24, `0x73c60001`. **Measured 2026-10-13** against bars with each cable alone and
+with both: `0x3C` decodes S-Video, `0x3A` decodes the composite jack (3.58 MHz residue in luma 5.3× its
+neighbours, S-Video 0.8×); component is the driver's value, not exercised. The bmusb-derived words used until
+then (`0x09` base: S-video `0x3F`, "composite" `0x3D`, component `0x3B`) set the HDMI bit and put composite on
+the S-Video bit, so every "composite" capture before 2026-10-13 decoded S-Video.
 
 **Streaming:** async **isochronous** IN on `0x84` = **audio**, the other IN (`0x83` per bmusb) =
 **video**. (bmusb uses iso, NOT bulk — matters a lot for the Darwin backend.)
@@ -133,7 +137,8 @@ firmware-upgrade — stay away.
 - ✅ Userspace `libusb` open + `claim_interface(0)` — no root, no entitlement.
 - ✅ Real endpoint map (usb_descriptor_probe): IF0 **alt2** = iso IN **`0x83` video** (49152 B/interval,
   burst 11) + **`0x84` audio** (2048) + bulk `0x05`/`0x86`; **alt1** = output.
-- ✅ Full init: `alt1→alt2` reset, mode word (`0x3f000000` S-video / `0x3b000000` component),
+- ✅ Full init: `alt1→alt2` reset, mode word (then `0x3f000000` S-video / `0x3b000000` component; the driver's
+  words are `0x3c`/`0x3a`/`0x38`, §5),
   latch `0x73c60001`, status `214/16`.
 - ✅ **ANALOG CAPTURE WORKS — existential unknown RESOLVED.** Real color **NTSC 480i** captured
   via **S-Video** and **visually confirmed** (bob-deinterlaced to a clean frame). Source deck:
@@ -296,7 +301,7 @@ not audio-row ordinal. Review apertures, renderer and deinterlacer policy are in
 **The measured 0 IRE reference is code ≈ 1.5, not 16**, established three
 independent ways: the vertical-interval lines carry a device-WRITTEN dithered constant 1.375 (identical in all five
 captures, spread 0.0007; its lag-1 autocorrelation of −0.33 is the high-pass signature of dither, so it is written
-rather than digitised); each picture line's own horizontal blanking reads 1.459–1.53; and the relay-muted composite
+rather than digitised); each picture line's own horizontal blanking reads 1.459–1.53; and capture 1's relay-muted
 units, whose active area goes through the same decode path, read 1.533. Against that zero, 7.5 IRE lands near code
 18, and it is there. Measured on 95 units of a full-frame black card on the commercial tape, using each line's OWN
 blanking as its 0 IRE reference (the classical black-minus-porch measurement, needing no device constant): blanking
@@ -308,8 +313,8 @@ samples per million, and the skirt below code 15 is the black's own noise (0.029
 16.4% at code 16, 24.8% at 17, 24.4% at 18, a smooth distribution with tails ~10× heavier than Gaussian, where a
 clamp would make them lighter. Nothing at code 0 or 255 in any capture.
 **What IS truncated is sub-black.** With 0 IRE at ≈ 1.5 there is half a code below blanking, so every excursion
-under 0 IRE is lost at the floor: the composite capture has 2.576% of samples at code 1 against 0.352% at code 3, a
-ratio of 7.3, traced to composite edge undershoot at sharp white text. With black at 16 those would survive to −7
+under 0 IRE is lost at the floor: capture 1 has 2.576% of samples at code 1 against 0.352% at code 3, a
+ratio of 7.3, traced to edge undershoot at sharp white text. With black at 16 those would survive to −7
 IRE. The black level is not squashed; sub-black content is.
 **Attribution is not separated by these measurements:** within one tape, one deck and one S-Video input, black
 sits at ≈ 9 in the SP passage, floor-crushed at 2,100 s, and ≈ 24 at 2,700 s — a range as wide as the pedestal
@@ -818,7 +823,7 @@ file is a separate, longer input, not a fifth independent source.
 
 | Input | Material and reason it matters | Recorded location / provenance |
 |---|---|---|
-| Capture 1 | Commercial tape, composite input, recorded with V-stabilize/line TBC off. Opening rewind/acquisition, a dark boxed card and brighter programme exercise different visibility and level regimes. A comparison source distinct from the two off-air recordings. | `captures/composite_program_30s.tpc`, captured 2026-09-03. |
+| Capture 1 | Commercial tape, recorded with the composite select but decoded from S-Video (the old composite word set the S-Video bit, §5; its luma has no subcarrier residue), V-stabilize/line TBC off. Opening rewind/acquisition, a dark boxed card and brighter programme exercise different visibility and level regimes. A comparison source distinct from the two off-air recordings. | `captures/composite_program_30s.tpc`, captured 2026-09-03. |
 | Capture 2 | EP part of fixture A. Different recording conditions, data-like top lines, sometimes no blank row between data and picture; tests whether an SP-derived gauge generalizes. | `/private/tmp/hw-session/w_2100s_aligned.tpc`, sliced from the whole-tape capture (below), byte start `50811787037`. |
 | Capture 3 | SP part of fixture A, V-stabilize on. Contains the field-position problem, weak recorded timing and the corrected head-switch-region appearance. | `/private/tmp/hw-session/w_300s_aligned.tpc`, sliced from the same whole tape, byte start `7260251349`. |
 | Capture 4 | Another SP pass with V-stabilize off. Exposes stronger horizontal timing disturbance near the switch and a different transport pairing; not a frame-aligned A/B of capture 3. | `captures/sp_vstab_off_aligned.tpc` (SHA-256 `d6fbd509…`), cut at byte `118907896` from `sp_vstab_off_45s.tpc`, captured 2026-09-07. That original no longer exists, so this is the only copy. An older cut, defective and a strict subset of this one, was deleted on 2026-09-16. |
@@ -1410,7 +1415,7 @@ delivery edge; wrong one at acquisition.
 
 ## 11. Milestones / experiment plan
 
-1. ✅ **DONE** — **Native probe** (direct-attached, 8-bit S-video, mode `0x3F000000`):
+1. ✅ **DONE** — **Native probe** (direct-attached, 8-bit S-video, mode `0x3F000000`, the old word; §5):
    open/claim/alt-reset/mode/latch/stream. Real NTSC 480i captured and visually confirmed;
    sustained capture established feasibility. The early five-minute run later proved
    lossy; byte-complete tagged acquisition is established separately in §6.
@@ -1628,11 +1633,11 @@ delivery edge; wrong one at acquisition.
      transient (snow) and the settled deck mute are in one file. Verifies "snow is only the
      acquisition transient".
   4. ~~**Composite fixture (P6)**~~ — **DONE 2026-09-03 (`captures/composite_program_30s.tpc`,
-     700 MB, byte-complete):** mode word `0x3d000000` selects the composite decoder; framing is
-     identical to S-Video (`0xe801`, 756,048-byte units, padding ruler at the same 18 lines),
-     real colour program decoded. Taken over an audio-grade RCA lead (not 75 Ω), so it proves the
-     path and the framing, **not** chroma quality — the S-Video-vs-composite chroma A/B still needs
-     a proper 75 Ω cable and the same passage on both inputs.
+     700 MB, byte-complete):** **not a composite capture** (2026-10-13): mode word `0x3d000000`
+     set the S-Video bit and the S-Video cable was connected, so it decoded S-Video (no 3.58 MHz
+     residue in its luma). Composite proper is `0x3a000000` (§5); measured 2026-10-13 on bars, same
+     `0xe801` framing. The S-Video-vs-composite chroma A/B still needs a proper 75 Ω cable (the
+     composite lead used so far is audio-grade RCA) and the same passage on both inputs.
   5. **V-stabilize comparison:** the later work identified this as the deck's
      line-TBC switch and recorded both settings. The source inventory, pairing
      caveat and on/off observations are in §7. Earlier independent “TBC on /

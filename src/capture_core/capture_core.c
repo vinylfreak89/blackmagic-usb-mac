@@ -393,6 +393,19 @@ static int vout_(libusb_device_handle*h,uint8_t req,uint16_t idx,uint32_t be){
     uint8_t b[4]={(uint8_t)(be>>24),(uint8_t)(be>>16),(uint8_t)(be>>8),(uint8_t)be};
     return libusb_control_transfer(h,0x40,req,0,idx,b,4,1000);
 }
+/* Input select, wire byte 0 of register 0x00, as the vendor driver writes it: one of bits 7 (SDI), 0 (HDMI),
+ * 2 (S-Video), 1 (composite), or none (component). Measured 2026-10-13 against bars with each cable alone and
+ * both: 0x04 decodes S-Video, 0x02 decodes the composite jack (3.58 MHz residue in luma 5.3x, S-Video 0.8x).
+ * The words this code sent before, 0x09|0x06 for S-Video and 0x09|0x04 for "composite", set the HDMI bit and
+ * put composite on the S-Video bit, so "composite" decoded S-Video. Component (0x00) is the driver's and has
+ * not been exercised on hardware. Bits 4 (analog audio) and 5 (8-bit) as before; bit 3 is the 7.5 IRE setup bit. */
+uint32_t cc_mode_word(const cc_config *cfg){
+    uint32_t vsel = cfg->input==CC_INPUT_COMPONENT?0x00000000u
+                  : cfg->input==CC_INPUT_COMPOSITE?0x02000000u:0x04000000u;
+    uint32_t w=0x08000000u|vsel|0x10000000u|0x20000000u;
+    if(cfg->setup_off) w&=~0x08000000u;
+    return w;
+}
 int cc_start_info(const cc_session *s, uint32_t *mode_word){
     if(!s || s->cfg.replay_path || !s->start_mode_word) return -1;
     *mode_word=s->start_mode_word;
@@ -806,10 +819,7 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
         if(libusb_claim_interface(s->h,0)) goto usb_fail;
         // alt1 -> alt2 is the reset + input select (§5); an unchecked failure here streams nothing
         // or streams the previous state, so every lifecycle transition must be confirmed.
-        uint32_t vsel = s->cfg.input==CC_INPUT_COMPONENT?0x02000000u
-                      : s->cfg.input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
-        uint32_t mode_word=0x09000000u|vsel|0x10000000u|0x20000000u;
-        if(s->cfg.setup_off) mode_word&=~0x08000000u;          /* the 7.5 IRE setup bit: wire byte 0, 0x08 */
+        uint32_t mode_word=cc_mode_word(&s->cfg);
         /* Register 4 has no user meaning (the Shuttle has no input gain controls, owner 2026-10-07); the driver's
          * settings commit writes it as 80 80 80 00, so it is written so here, never anything else. */
         const uint32_t r4=0x80808000u;

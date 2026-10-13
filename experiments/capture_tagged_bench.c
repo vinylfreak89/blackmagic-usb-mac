@@ -203,9 +203,10 @@ int main(int argc,char**argv){
     if(ringmb<64) ringmb=64;
     RING = ringmb<<20;
     uint32_t vsel;
-    if(!strcmp(in,"component"))vsel=0x02000000; else if(!strcmp(in,"composite"))vsel=0x04000000;
-    else if(!strcmp(in,"svideo"))vsel=0x06000000; else { printf("bad input\n"); return 9; }
-    uint32_t mode=0x09000000|vsel|0x10000000|0x20000000;
+    /* input select as the vendor driver writes it (capture_core.c: S-Video 0x04, composite 0x02, component 0x00, HDMI 0x01) */
+    if(!strcmp(in,"component"))vsel=0x00000000; else if(!strcmp(in,"composite"))vsel=0x02000000;
+    else if(!strcmp(in,"svideo"))vsel=0x04000000; else { printf("bad input\n"); return 9; }
+    uint32_t mode=0x08000000|vsel|0x10000000|0x20000000;
 
     ring=malloc(RING); if(!ring){ printf("ring alloc fail\n"); return 1; }
     g_out=fopen(outf,"wb"); if(!g_out){ printf("open %s fail\n",outf); return 1; }

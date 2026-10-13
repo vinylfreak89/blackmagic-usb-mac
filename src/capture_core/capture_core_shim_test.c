@@ -139,11 +139,11 @@ int main(int argc, char **argv){
     // 5: the start-up sequence, exactly, for both settings of the 7.5 IRE setup bit
     {
         static const char *want[2]={
-            "alt0 W215/0:3f000000 W215/0:3f000000 W215/4:80808000 W215/4:80808000 W215/24:73c60001 W215/24:73c60001 "
-            "alt1 alt2 W215/0:3f000000 W215/24:73c60001",
-            "alt0 W215/0:37000000 W215/0:37000000 W215/4:80808000 W215/4:80808000 W215/24:73c60001 W215/24:73c60001 "
-            "alt1 alt2 W215/0:37000000 W215/24:73c60001" };
-        static const uint32_t want_mode[2]={0x3f000000u,0x37000000u};
+            "alt0 W215/0:3c000000 W215/0:3c000000 W215/4:80808000 W215/4:80808000 W215/24:73c60001 W215/24:73c60001 "
+            "alt1 alt2 W215/0:3c000000 W215/24:73c60001",
+            "alt0 W215/0:34000000 W215/0:34000000 W215/4:80808000 W215/4:80808000 W215/24:73c60001 W215/24:73c60001 "
+            "alt1 alt2 W215/0:34000000 W215/24:73c60001" };
+        static const uint32_t want_mode[2]={0x3c000000u,0x34000000u};
         for(int off=0;off<=1;off++){
             char tr[4096]; uint32_t mode; int irc;
             CHECK(open_trace(off,tr,sizeof tr,&mode,&irc)==CC_OK,"setup %s: cc_open",off?"off":"on");
@@ -152,10 +152,11 @@ int main(int argc, char **argv){
         }
     }
 
-    // 6: the input select reaches the mode word, before and after the reset: composite 0x04, component 0x02 (S-video 0x06 above)
+    // 6: the input select reaches the mode word, before and after the reset, as the vendor driver selects inputs:
+    //    composite bit 1 (0x02), component none (0x00); S-video bit 2 (0x04) above; never the HDMI bit 0
     {
         static const struct { int in; const char *name; const char *w; uint32_t mode; } cases[]={
-            {CC_INPUT_COMPOSITE,"composite","3d000000",0x3d000000u},{CC_INPUT_COMPONENT,"component","3b000000",0x3b000000u}};
+            {CC_INPUT_COMPOSITE,"composite","3a000000",0x3a000000u},{CC_INPUT_COMPONENT,"component","38000000",0x38000000u}};
         for(int i=0;i<2;i++){
             char tr[4096], want[512]; uint32_t mode; int irc;
             snprintf(want,sizeof want,"alt0 W215/0:%s W215/0:%s W215/4:80808000 W215/4:80808000 W215/24:73c60001 W215/24:73c60001 "

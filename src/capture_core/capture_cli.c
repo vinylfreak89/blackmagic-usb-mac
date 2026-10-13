@@ -43,11 +43,6 @@ static const char *input_name(enum cc_input input){
     }
     return "unknown";
 }
-static uint32_t mode_word(enum cc_input input){
-    uint32_t video=input==CC_INPUT_COMPONENT?0x02000000u:
-                   input==CC_INPUT_COMPOSITE?0x04000000u:0x06000000u;
-    return 0x09000000u|video|0x10000000u|0x20000000u;
-}
 
 static int path_below(const char *path,const char *root){
     size_t n=strlen(root);
@@ -134,7 +129,7 @@ int main(int argc,char**argv){
     else
         snprintf(session_note,sizeof session_note,
                  "shuttle-capture v1 input=%s mode_word=0x%08x ring_mb=%d fleet=8+8 control_loss=%s",
-                 input_name(cfg.input),mode_word(cfg.input),ring_mb,
+                 input_name(cfg.input),cc_mode_word(&cfg),ring_mb,
                  cfg.fail_stop_on_control_loss?"fail-stop":"continue");
     if(cc_tagged_sink_open(&g_k,sink_path,session_note)!=CC_OK){
         perror(sink_path); if(publish) unlink(staged); return 1;

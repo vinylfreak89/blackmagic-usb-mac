@@ -121,6 +121,8 @@ int cc_replay_pause(cc_session *s, int paused);
 const char *cc_strerror(int err);
 // The mode word the device start-up sent (it carries the input select and the setup bit). Replay sessions return -1.
 int cc_start_info(const cc_session *s, uint32_t *mode_word);
+// The mode word cc_open sends for this configuration (input select and setup bit): the one place it is computed.
+uint32_t cc_mode_word(const cc_config *cfg);
 
 typedef struct {
     uint64_t bytes[2];              // [0]=video [1]=audio payload delivered
