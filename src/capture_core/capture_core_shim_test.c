@@ -8,9 +8,9 @@
 //   2 retry deadline — permanent BUSY terminates loudly and frees the fleet
 //   3 startup honesty — every init stage and initial submit/allocation fail synchronously
 //   4 teardown containment — a missing cancel callback poisons/leaks instead of UAF
-//   7 unscheduled slots — on the real USB schedule (REPLAY_REALTIME), a permanent 50 ms shift (macOS skipping slots)
-//                     is reported as ~400 video packets of HostLoss; a 300 ms stall that catches up, and a clean
-//                     run, report nothing (the detector must not cry wolf)
+//   7 unread USB slots — the shim schedules like libusb's Darwin backend (REPLAY_REALTIME) and records every gap it
+//                     creates; for a clean run and stalls of 300-1000 ms the reported packets must match the truth
+//                     (within one frame), and every report must come immediately before its transfer's first packet
 //   5 start-up sequence — the exact alt-setting and control-transfer sequence cc_open sends, for setup on and off,
 //                     and the mode word cc_start_info reports (written out here from the vendor driver's commit, not
 //                     taken from the code under test)
@@ -56,6 +56,28 @@ static int open_trace(int setup_off, char *trace, size_t n, uint32_t *mode, int 
     return open_trace_in(CC_INPUT_SVIDEO,setup_off,trace,n,mode,info_rc);
 }
 
+void replay_shim_gaps(int ep_index, long long *frames, long *events, long *first_transfer);
+/* placement check: an unread-slot report must be followed, on its endpoint, by packet 0 of the transfer it names */
+static struct { int n, misplaced; int pending[2]; uint32_t seq[2]; } lt;
+static void lt_packet(void *ctx, const cc_packet *p){
+    t_packet(ctx,p); int e=p->endpoint==CC_EP_AUDIO;
+    if(lt.pending[e]){ if(p->submit_seq!=lt.seq[e] || p->pkt_index!=0) lt.misplaced++; lt.pending[e]=0; }
+}
+static void lt_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
+    (void)ctx; (void)pk; (void)by;
+    if(kind!=CC_LOSS_UNSCHEDULED) return;
+    int e=ep==CC_EP_AUDIO; if(lt.pending[e]) lt.misplaced++;
+    lt.pending[e]=1; lt.seq[e]=seq; lt.n++;
+}
+static int run_device_lt(cc_stats *st, tally *t){
+    memset(t,0,sizeof *t);
+    cc_config cfg={0}; cfg.input=CC_INPUT_SVIDEO; cfg.ring_mb=16;
+    cc_callbacks cb={0}; cb.on_packet=lt_packet; cb.on_end=t_end; cb.ctx=t; cb.on_loss_ex=lt_loss_ex;
+    cc_session *s=NULL; int rc=cc_open(&s,&cfg,&cb); if(rc!=CC_OK) return rc;
+    rc=cc_start(s); if(rc!=CC_OK){ cc_get_stats(s,st); cc_close(s); return rc; }
+    wait_device_end(t,20);
+    CHECK(cc_stop(s)==CC_OK,"stop"); cc_get_stats(s,st); cc_close(s); return CC_OK;
+}
 static int run_device(cc_stats *st, tally *t, int wait_for_end, int deadline_ms){
     memset(t,0,sizeof *t);
     cc_config cfg={0}; cfg.input=CC_INPUT_SVIDEO; cfg.ring_mb=16; cfg.resubmit_deadline_ms=deadline_ms;
@@ -170,25 +192,31 @@ int main(int argc, char **argv){
         }
     }
 
-    // 7: unscheduled-slot detector, on a 4 s fixture paced to the real USB schedule
+    // 7: unread USB slots, against the shim's ground truth (REPLAY_REALTIME = libusb's Darwin scheduling rule)
     if(argc>=3){
         setenv("REPLAY_CAPTURE",argv[2],1); unsetenv("REPLAY_MAX_DATA"); setenv("REPLAY_REALTIME","1",1);
-        CHECK(run_device(&st,&t,1,0)==CC_OK,"realtime clean: open");
-        CHECK(st.unscheduled_events==0,"realtime clean: %llu false unscheduled events (%llu video, %llu audio packets)",
-              (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1]);
-        setenv("REPLAY_STALL_VIDEO_AT","100",1); setenv("REPLAY_STALL_MS","300",1);
-        CHECK(run_device(&st,&t,1,0)==CC_OK,"realtime stall: open");
-        CHECK(st.unscheduled_events==0,"300 ms stall that caught up was reported as loss: %llu events, %llu video packets",
-              (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_packets[0]);
-        unsetenv("REPLAY_STALL_VIDEO_AT"); unsetenv("REPLAY_STALL_MS");
-        setenv("REPLAY_SKIP_VIDEO_AT","100",1); setenv("REPLAY_SKIP_MS","50",1);
-        CHECK(run_device(&st,&t,1,0)==CC_OK,"realtime skip: open");
-        CHECK(st.unscheduled_events>=1,"50 ms of skipped slots NOT reported");
-        CHECK(st.unscheduled_packets[0]>=360 && st.unscheduled_packets[0]<=440,
-              "50 ms skip estimated as %llu video packets, want ~400",(unsigned long long)st.unscheduled_packets[0]);
-        unsetenv("REPLAY_SKIP_VIDEO_AT"); unsetenv("REPLAY_SKIP_MS"); unsetenv("REPLAY_REALTIME");
-        printf("unscheduled-slot detector: clean 0, stall 0, 50 ms skip -> %llu video / %llu audio packets\n",
-               (unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1]);
+        static const struct { int ms, at; } sc[]={{0,0},{300,100},{450,97},{450,100},{450,105},{500,100},{600,100},{800,100},{1000,103}};
+        for(unsigned i=0;i<sizeof sc/sizeof sc[0];i++){
+            char ms[16], at[16]; snprintf(ms,sizeof ms,"%d",sc[i].ms); snprintf(at,sizeof at,"%d",sc[i].at);
+            if(sc[i].ms){ setenv("REPLAY_STALL_MS",ms,1); setenv("REPLAY_STALL_VIDEO_AT",at,1); }
+            else { unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT"); }
+            lt.n=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            CHECK(run_device_lt(&st,&t)==CC_OK,"stall %d@%d: open",sc[i].ms,sc[i].at);
+            for(int e=0;e<2;e++){
+                long long tf; long tev, tfirst; replay_shim_gaps(e,&tf,&tev,&tfirst);
+                long long got=(long long)st.unscheduled_packets[e], want=tf*8;
+                CHECK(got>=want-8 && got<=want+8,"stall %d@%d %s: reported %lld unread packets, truth %lld",
+                      sc[i].ms,sc[i].at,e?"audio":"video",got,want);
+                CHECK((tev>0)==(got>0),"stall %d@%d %s: truth %ld gap events, reported %lld packets",sc[i].ms,sc[i].at,e?"audio":"video",tev,got);
+            }
+            CHECK(lt.misplaced==0,"stall %d@%d: %d unread-slot reports not immediately before their transfer's first packet",
+                  sc[i].ms,sc[i].at,lt.misplaced);
+            long long vf,af; long ve,ae,vk,ak; replay_shim_gaps(0,&vf,&ve,&vk); replay_shim_gaps(1,&af,&ae,&ak);
+            printf("  stall %4d ms @%3d: truth video %lld / audio %lld packets; reported %llu / %llu in %llu events; misplaced %d\n",
+                   sc[i].ms,sc[i].at,vf*8,af*8,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1],
+                   (unsigned long long)st.unscheduled_events,lt.misplaced);
+        }
+        unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT"); unsetenv("REPLAY_REALTIME");
     } else { fails++; fprintf(stderr,"FAIL: no realtime fixture given (case 7 not run)\n"); }
 
     printf(fails? "FAILURES: %d\n" : "SHIM TESTS PASSED\n", fails);

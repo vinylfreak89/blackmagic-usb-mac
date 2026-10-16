@@ -859,6 +859,10 @@ static void shuttle_stop(shuttle_src *s){
          (unsigned long long)st.published, (unsigned long long)atomic_load(&s->frames_out), (unsigned long long)st.audio_frames_delivered,
          (unsigned long long)st.audio_dropped_frames, (unsigned long long)st.dropped_pool_full, (unsigned long long)st.dropped_ring_full,
          (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown, (unsigned long long)atomic_load(&s->video_estimated));
+    if (!s->replaying)
+        blog(st.unscheduled_events ? LOG_ERROR : LOG_INFO, "[shuttle-source] USB: %llu unread-slot events (%llu video / %llu audio packets never read); real-time USB threads: event %s (%s at stop), libusb %d",
+             (unsigned long long)st.unscheduled_events, (unsigned long long)st.unscheduled_packets[0], (unsigned long long)st.unscheduled_packets[1],
+             st.rt_event_thread ? "yes" : "NO", st.rt_event_at_stop ? "still" : "NOT", st.rt_libusb_threads);
     blog(LOG_INFO, "[shuttle-source] delivery timing: %llu handoff gaps over 83 ms (max %.1f ms), %llu output calls over 20 ms (max %.1f ms)",
          (unsigned long long)s->gap_events, s->max_gap_ns / 1e6, (unsigned long long)s->slow_calls, s->max_call_ns / 1e6);
     fs_close(s->fs); s->fs = NULL;
@@ -894,8 +898,9 @@ static int shuttle_start(shuttle_src *s, obs_data_t *settings){
         cfg.capture.replay_path = rp; cfg.capture.replay_pace_us = 16000;    /* device cadence */
         cfg.capture.replay_start_offset = start_offset;                     /* a seek: aligned forward to a whole transfer */
         timeline_track(s, rp);
-        cfg.capture.replay_diag = 1; cfg.capture.diag_log = diag_to_obs;     /* stall diagnosis into the OBS log at session end */
+        cfg.capture.replay_diag = 1;                                        /* stall diagnosis into the OBS log at session end */
     }
+    cfg.capture.diag_log = diag_to_obs;   /* live too: real-time status at start, unread-USB-slot HostLoss as it happens */
     s->replaying = cfg.capture.replay_path != NULL;
     cfg.hretime = obs_data_get_bool(settings, S_HRETIME) ? 1 : 0;   /* per-tape choice; off leaves output unchanged */
     cfg.registration_off = obs_data_get_bool(settings, S_REGISTRATION) ? 0 : 1;   /* per-tape: off publishes the nominal (0,0) placement */

@@ -25,14 +25,14 @@
 //   REPLAY_FAIL_ALLOC_AT=N       Nth libusb transfer allocation fails
 //   REPLAY_WITHHOLD_CANCEL=1     retain cancel callbacks (teardown containment test)
 //                              once — exercises the no-fleet-shrink retry path
-//   REPLAY_REALTIME=1            complete each endpoint's transfers on the real USB schedule: the k-th transfer of
-//                                an endpoint at t0 + k x packets x 125 us (both endpoints share t0). For the
-//                                capture core's unscheduled-slot detector:
-//   REPLAY_SKIP_VIDEO_AT=N, REPLAY_SKIP_MS=M   from the Nth video completion on, every completion on both
-//                                endpoints is M ms later for good (macOS rescheduling a late resubmission past
-//                                frames that are then never read). The data itself is unchanged.
-//   REPLAY_STALL_VIDEO_AT=N, REPLAY_STALL_MS=M the Nth video completion is held M ms, then the schedule catches
-//                                up (a held-off event thread that lost nothing). Must NOT be reported.
+//   REPLAY_REALTIME=1            behave like libusb's Darwin backend on a real bus: each submitted transfer is scheduled
+//                                at max(current 1 ms frame + 4, the end of what its endpoint has queued) and completes
+//                                at its scheduled end. A start past the queued data leaves a gap: the device's packets
+//                                for those frames are discarded from the file (never read), and the gap is recorded
+//                                as ground truth (replay_shim_gaps). For the capture core's unread-slot model:
+//   REPLAY_STALL_VIDEO_AT=N, REPLAY_STALL_MS=M  the event thread is held off for M ms at the Nth video completion
+//                                (nothing is delivered, nothing resubmitted); whether slots are lost follows from the
+//                                schedule: a stall shorter than the queued time loses nothing.
 //   REPLAY_PACE_US=N             sleep N µs per completed transfer (16000 ≈ the
 //                              real device's video cadence -> realtime replay
 //                              for clock/A-V-sync/live-path development);
@@ -62,6 +62,8 @@ static struct libusb_device_handle g_h;
 #define QMAX 64
 typedef struct {
     struct libusb_transfer *q[QMAX];   // submitted, awaiting data (FIFO)
+    uint64_t end_us[QMAX];             // REPLAY_REALTIME: each queued transfer's scheduled end
+    long gap_pk[QMAX];                 // REPLAY_REALTIME: device packets lost to the gap before this transfer
     int head, count;
     int fill;                          // packets filled into q[head] so far
     struct libusb_transfer *cancelled[QMAX];
@@ -77,20 +79,38 @@ static int g_fail_submit_code=LIBUSB_ERROR_BUSY;
 static long g_alt_calls=0, g_fail_alt_at=-1, g_control_calls=0, g_fail_control_at=-1,
             g_short_control_at=-1, g_alloc_calls=0, g_fail_alloc_at=-1;
 static int g_withhold_cancel=0, g_burst=4, g_pace=0;
-static int g_rt=0, g_skip_ms=0, g_stall_ms=0; static long g_skip_at=-1, g_stall_at=-1, g_rt_vk=0;
-static uint64_t g_rt_t0=0; static long g_rt_k[2];
+static int g_rt=0, g_stall_ms=0; static long g_stall_at=-1, g_rt_vk=0;
+static uint64_t g_rt_t0=0;
+static long long g_qend[2];                 /* REPLAY_REALTIME: per endpoint, end frame of the queued schedule */
+static long long g_gap_frames[2]; static long g_gap_events[2], g_skip_pkts[2];
+static long g_gap_first_k[2]; static long g_last_gap_pk;               /* index (1-based submit count) of the first transfer preceded by a gap */
+static long g_submits_rt[2];
+void replay_shim_gaps(int ep_index, long long *frames, long *events, long *first_transfer){
+    *frames=g_gap_frames[ep_index]; *events=g_gap_events[ep_index]; *first_transfer=g_gap_first_k[ep_index]; }
 static uint64_t rt_now_us_(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return (uint64_t)t.tv_sec*1000000ull+(uint64_t)t.tv_nsec/1000; }
-/* REPLAY_REALTIME: hold a filled transfer until its endpoint's next slot on the USB schedule */
-static void rt_wait_(struct libusb_transfer *x){
-    if(!g_rt) return;
-    int e=x->endpoint==0x83?0:1;
+static int rt_ep_(const struct libusb_transfer *x){ return x->endpoint==0x83?0:1; }
+static long long rt_cur_frame_(void){ return (long long)((rt_now_us_()-g_rt_t0)/1000ull); }
+/* at submit: libusb's rule. Returns the scheduled end in us since t0. */
+static uint64_t rt_schedule_(struct libusb_transfer *x){
+    int e=rt_ep_(x); long long tf=x->num_iso_packets/8;
     if(!g_rt_t0) g_rt_t0=rt_now_us_();
-    if(e==0){ g_rt_vk++;
-        if(g_rt_vk==g_skip_at) g_rt_t0+=(uint64_t)g_skip_ms*1000ull;
-        if(g_rt_vk==g_stall_at) usleep((useconds_t)g_stall_ms*1000); }
-    uint64_t due=g_rt_t0+(uint64_t)(g_rt_k[e]+1)*(uint64_t)x->num_iso_packets*125ull, now=rt_now_us_();
+    long long start=rt_cur_frame_()+4; g_last_gap_pk=0;
+    if(g_qend[e] && start<g_qend[e]) start=g_qend[e];
+    g_submits_rt[e]++;
+    if(g_qend[e] && start>g_qend[e]){
+        long long gap=start-g_qend[e];
+        g_gap_frames[e]+=gap; g_gap_events[e]++; g_last_gap_pk=(long)(gap*8);
+        if(!g_gap_first_k[e]) g_gap_first_k[e]=g_submits_rt[e];
+    }
+    g_qend[e]=start+tf;
+    return (uint64_t)g_qend[e]*1000ull;
+}
+/* REPLAY_REALTIME: hold a filled transfer until its scheduled end; the stall holds everything */
+static void rt_wait_(struct libusb_transfer *x, uint64_t end_us){
+    if(!g_rt) return;
+    if(x->endpoint==0x83){ g_rt_vk++; if(g_rt_vk==g_stall_at) usleep((useconds_t)g_stall_ms*1000); }
+    uint64_t due=g_rt_t0+end_us, now=rt_now_us_();
     if(due>now) usleep((useconds_t)(due-now));
-    g_rt_k[e]++;
 }
 // Start-up trace for tests (replay_shim_trace): every alternate-setting call and control transfer of this
 // session, in order: "alt<n>", "W<request>/<index>:<4 data bytes as sent>", "R<request>/<index>"; "..." if full.
@@ -134,8 +154,8 @@ int libusb_init(libusb_context **ctx){
     g_withhold_cancel=getenv("REPLAY_WITHHOLD_CANCEL")!=NULL;
     { const char *b=getenv("REPLAY_BURST"); g_burst=b?atoi(b):4; if(g_burst<1) g_burst=1; }
     { const char *p=getenv("REPLAY_PACE_US"); g_pace=p?atoi(p):0; }
-    g_rt=getenv("REPLAY_REALTIME")!=NULL; g_rt_t0=0; g_rt_k[0]=g_rt_k[1]=0; g_rt_vk=0;
-    g_skip_at=getenv("REPLAY_SKIP_VIDEO_AT")?atol(getenv("REPLAY_SKIP_VIDEO_AT")):-1; g_skip_ms=getenv("REPLAY_SKIP_MS")?atoi(getenv("REPLAY_SKIP_MS")):0;
+    g_rt=getenv("REPLAY_REALTIME")!=NULL; g_rt_t0=0; g_rt_vk=0;
+    for(int e=0;e<2;e++){ g_qend[e]=0; g_gap_frames[e]=0; g_gap_events[e]=0; g_skip_pkts[e]=0; g_gap_first_k[e]=0; g_submits_rt[e]=0; }
     g_stall_at=getenv("REPLAY_STALL_VIDEO_AT")?atol(getenv("REPLAY_STALL_VIDEO_AT")):-1; g_stall_ms=getenv("REPLAY_STALL_MS")?atoi(getenv("REPLAY_STALL_MS")):0;
     if(ctx) *ctx=&g_ctx;
     return 0;
@@ -180,6 +200,8 @@ int libusb_submit_transfer(struct libusb_transfer *x){
         if(g_fail_submit_from>0 && g_v_submits>=g_fail_submit_from) return g_fail_submit_code;
     }
     if(s->count>=QMAX) return LIBUSB_ERROR_BUSY;
+    s->end_us[(s->head+s->count)%QMAX]=g_rt?rt_schedule_(x):0;
+    s->gap_pk[(s->head+s->count)%QMAX]=g_rt?g_last_gap_pk:0;
     s->q[(s->head+s->count)%QMAX]=x; s->count++;
     return 0;
 }
@@ -233,6 +255,8 @@ int libusb_handle_events_timeout(libusb_context *ctx, struct timeval *tv){
         if(h.type!=REC_DATA){ if(plen) fseek(g_in,plen,SEEK_CUR); continue; }
         g_data_seen++;
         epstate *s=eps(h.endpoint);
+        if(g_rt && s->count>0 && s->fill==0 && s->gap_pk[s->head]>0){   // the gap's packets: never read
+            s->gap_pk[s->head]--; if(plen) fseek(g_in,plen,SEEK_CUR); continue; }
         if(s->count==0){                       // no transfer waiting: replay can't
             if(plen) fseek(g_in,plen,SEEK_CUR); // backpressure a file; drop like a
             continue;                           // device would on a starved host
@@ -248,7 +272,7 @@ int libusb_handle_events_timeout(libusb_context *ctx, struct timeval *tv){
         p->actual_length=n; p->status=LIBUSB_TRANSFER_COMPLETED;
         s->fill++;
         if(g_pace>0 && s->fill>=x->num_iso_packets) usleep(g_pace);
-        if(s->fill>=x->num_iso_packets){ rt_wait_(x); pop_and_complete(s,LIBUSB_TRANSFER_COMPLETED); delivered++; }
+        if(s->fill>=x->num_iso_packets){ rt_wait_(x,s->end_us[s->head]); pop_and_complete(s,LIBUSB_TRANSFER_COMPLETED); delivered++; }
     }
     return 0;
 }

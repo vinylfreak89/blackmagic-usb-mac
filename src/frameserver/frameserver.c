@@ -319,6 +319,15 @@ static void *audio_worker_main(void *arg){
 static void cc_on_packet(void *ctx, const cc_packet *p){ frameserver *f = ctx; TEE(on_packet(f->tee_cb.ctx, p)); unit_parser_on_packet(f->parser, p); }
 static void cc_on_tick(void *ctx, uint32_t ms){ frameserver *f = ctx; TEE(on_tick(f->tee_cb.ctx, ms)); }
 static void cc_on_loss(void *ctx, uint8_t ep, uint32_t n, uint64_t b){ frameserver *f = ctx; TEE(on_loss(f->tee_cb.ctx, ep, n, b)); unit_parser_on_loss(f->parser, ep, n, b); }
+/* the same events with their kind: the raw tee writes an unread-USB-slot record back as captured (pkt_index 0xFFFD + seq) */
+static void tee_loss_ex(frameserver *f, uint8_t ep, uint32_t n, uint64_t b, int kind, uint32_t seq){
+    if (f->tee_cb.on_loss_ex) f->tee_cb.on_loss_ex(f->tee_cb.ctx, ep, n, b, kind, seq); else f->tee_cb.on_loss(f->tee_cb.ctx, ep, n, b);
+}
+static void cc_on_loss_ex(void *ctx, uint8_t ep, uint32_t n, uint64_t b, int kind, uint32_t seq){
+    frameserver *f = ctx;
+    pthread_mutex_lock(&f->tee_m); if (f->tee) tee_loss_ex(f, ep, n, b, kind, seq); pthread_mutex_unlock(&f->tee_m);
+    unit_parser_on_loss(f->parser, ep, n, b);
+}
 static void cc_on_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){ frameserver *f = ctx; TEE(on_error(f->tee_cb.ctx, ep, seq, st, kind)); unit_parser_on_error(f->parser, ep, seq, st, kind); }
 static void cc_on_end(void *ctx, enum cc_end r){
     frameserver *f = ctx; f->end_reason = r;
@@ -812,7 +821,7 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if (pthread_mutex_init(&f->log_m, NULL)){ fs_close(f); return -1; } f->log_m_init = 1;
     if (pthread_mutex_init(&f->tee_m, NULL)){ fs_close(f); return -1; } f->tee_m_init = 1;
     if (cfg->decision_log){ f->log = fs_async_fopen_excl(cfg->decision_log, FS_LOG_RING_BYTES, FS_LOG_WRITE_CHUNK); if (!f->log || log_header(f->log,cfg->hretime) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
-    cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, cc_on_tick, cc_on_end, f };
+    cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, cc_on_tick, cc_on_end, f, cc_on_loss_ex };
     cc_config capcfg = cfg->capture; if (cfg->offline_backpressure) capcfg.replay_block_when_full = 1;
     if (cc_open(&f->cap, &capcfg, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
@@ -959,7 +968,9 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->audio_dropped_blocks = atomic_load(&f->aq_dropped_blocks); o->audio_dropped_frames = atomic_load(&f->aq_dropped_frames);
     o->audio_master_frames = atomic_load(&f->audio_master_frames);
     o->backpressure_waits = atomic_load(&f->bp_waits);
-    if (f->cap){ cc_stats cs; cc_get_stats(f->cap, &cs); o->replay_space_waits = cs.replay_space_waits; }
+    if (f->cap){ cc_stats cs; cc_get_stats(f->cap, &cs); o->replay_space_waits = cs.replay_space_waits;
+        o->unscheduled_events = cs.unscheduled_events; o->unscheduled_packets[0] = cs.unscheduled_packets[0]; o->unscheduled_packets[1] = cs.unscheduled_packets[1];
+        o->rt_event_thread = cs.rt_event_thread; o->rt_libusb_threads = cs.rt_libusb_threads; o->rt_event_at_stop = cs.rt_event_at_stop; }
     o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;
     o->eligible_observations = atomic_load(&f->eligible_ingress);
     o->holes = atomic_load(&f->holes); o->unframed = atomic_load(&f->unframed); o->short_units = atomic_load(&f->shorts);

@@ -28,6 +28,8 @@ enum cc_end    { CC_END_STOPPED = 0, CC_END_DEVICE_GONE = 1, CC_END_REPLAY_EOF =
                  CC_END_INTERNAL_ERROR = 5 };
 enum cc_err    { CC_OK = 0, CC_ERR_ARGS = -1, CC_ERR_NODEVICE = -2, CC_ERR_USB = -3,
                  CC_ERR_NOMEM = -4, CC_ERR_STATE = -5, CC_ERR_IO = -6 };
+enum cc_loss_kind { CC_LOSS_RING = 0,         /* delivery-ring overflow: packets that crossed the bus, then shed */
+                    CC_LOSS_UNSCHEDULED = 1 }; /* USB slots never read (.tpc HostLoss pkt_index CC_PI_UNSCHEDULED) */
 enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
                      CC_ERROR_CONTROL_LOSS = 2 };
 
@@ -74,6 +76,10 @@ typedef struct {
     // Required. Fires exactly once; after it returns no callback will fire.
     void (*on_end)(void *ctx, enum cc_end reason);
     void *ctx;
+    // Optional; when set it is called INSTEAD of on_loss, for the same events, with their enum cc_loss_kind and, for
+    // CC_LOSS_UNSCHEDULED, the submit_seq of the transfer the gap precedes (it arrives just before that transfer's
+    // packets). Sinks use it to write the record back as captured.
+    void (*on_loss_ex)(void *ctx, uint8_t endpoint, uint32_t packets, uint64_t bytes, int kind, uint32_t seq);
 } cc_callbacks;
 
 typedef struct {
@@ -151,7 +157,10 @@ typedef struct {
     uint64_t replay_align_bytes;    // replay_start_offset > 0: bytes walked past to reach the first whole video transfer
     uint64_t replay_space_waits;    // replay_block_when_full: times the replay waited for the consumer (never data lost)
     uint64_t unscheduled_events;    // device: USB slots that were never read (see CC_PI_UNSCHEDULED), all endpoints
-    uint64_t unscheduled_packets[2];// [0]=video [1]=audio: estimated slots never read, from completion timing
+    uint64_t unscheduled_packets[2];// [0]=video [1]=audio: slots never read (libusb's Darwin scheduling rule, +-1 frame)
+    int rt_event_thread;            // device: 1 if the USB event thread got real-time scheduling at start
+    int rt_libusb_threads;          // device: libusb-internal threads promoted (expected 1: org.libusb.device-hotplug)
+    int rt_event_at_stop;           // device: 1 if the event thread still had its real-time policy when streaming ended
 } cc_stats;
 // Snapshot of plain backend-thread counters: authoritative after cc_stop; a live call during
 // streaming is a racy diagnostic read (values may be momentarily inconsistent), never corrupting.
