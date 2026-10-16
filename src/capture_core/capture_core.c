@@ -93,10 +93,9 @@ struct cc_session {
      * transfer = npk x 125 us. A window's minimum lateness that steps up and stays up means slots were skipped. */
     struct { int anchored; uint64_t origin_ns; int64_t corr_ns, wmin_ns; int wn, high_windows;
              int64_t lib_qend, data_end; int64_t tf; int uncertain;
-             int doubt, defer; int64_t defer_min;
-             uint64_t last_cb_ns; int64_t last_late; } sch[2];   /* the endpoint's previous normal completion: when, how late */
+             int doubt, defer; int64_t defer_min, defer_end; uint32_t defer_seq; } sch[2];
     double abs_to_ns;
-    _Atomic uint64_t unsched_events, unsched_pkts[2];
+    _Atomic uint64_t unsched_events, unsched_pkts[2], unsched_late;
     int sched_off; char sched_note[160];   /* the unread-slot model is off when the endpoints are not bInterval 1 */
     int rt_event, rt_lib, rt_still, rt_pri_stop, rt_pri_min;   /* rt_pri_min: lowest scheduled priority, sampled each tick and at stop */
     _Atomic uint64_t sched_shifts, sched_shift_frames;   /* backstop: unexplained completion shifts (model missed a gap) */
@@ -374,14 +373,14 @@ static void* delivery_main(void *arg){
             atomic_fetch_add_explicit(&s->packets_delivered,1,memory_order_relaxed);
             break; }
         case REC_HOSTLOSS:
-            if(rh.pkt_index==CC_PI_UNSCHEDULED){   /* loud: this loss leaves no other trace anywhere */
-                char line[200];
-                snprintf(line,sizeof line,"capture_core: HOST LOSS: ~%u USB %s slots never read (macOS skipped past them after a late resubmission), from transfer seq %u",
-                         rh.req_len,rh.endpoint==CC_EP_VIDEO?"video":"audio",rh.submit_seq);
+            if(rh.pkt_index==CC_PI_UNSCHEDULED || rh.pkt_index==CC_PI_UNSCHEDULED_LATE){   /* loud: this loss leaves no other trace anywhere */
+                char line[240];
+                snprintf(line,sizeof line,"capture_core: HOST LOSS: ~%u USB %s slots never read (macOS skipped past them after a late resubmission), %s transfer seq %u",
+                         rh.req_len,rh.endpoint==CC_EP_VIDEO?"video":"audio",rh.pkt_index==CC_PI_UNSCHEDULED?"from":"found late, before",rh.submit_seq);
                 if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
             }
             if(s->cb.on_loss_ex) s->cb.on_loss_ex(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len,
-                                                  rh.pkt_index==CC_PI_UNSCHEDULED?CC_LOSS_UNSCHEDULED:CC_LOSS_RING,rh.submit_seq);
+                                                  rh.pkt_index==CC_PI_UNSCHEDULED?CC_LOSS_UNSCHEDULED:rh.pkt_index==CC_PI_UNSCHEDULED_LATE?CC_LOSS_UNSCHEDULED_LATE:CC_LOSS_RING,rh.submit_seq);
             else if(s->cb.on_loss) s->cb.on_loss(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len);
             break;
         case REC_XFERERR:
@@ -445,9 +444,8 @@ static int rt_promote_libusb_threads_(char *names, size_t names_sz){
  * gap is under-predicted by that delay (a gap no larger than it is missed at the gap). Measure it on hardware
  * (CC_DEBUG_HOLD_*); exact frame numbers need IOKit's own completion timestamps.
  * A failed submit is uncertain (libusb may or may not have advanced its queue end): it is settled when the next
- * transferred one completes, by whether that completion lands a whole transfer later than the model said. A late
- * callback can also be a held event thread; then the next SCHED_DEFER completions decide (a phantom transfer keeps
- * them all late) and a phantom found that way is a counted schedule shift: its data has gone by, so nothing is placed.
+ * transferred ones complete: a late callback can be a phantom transfer or a held event thread, so the minimum
+ * lateness over SCHED_DEFER completions decides, and a phantom is written as a late record (CC_PI_UNSCHEDULED_LATE).
  * Backstop: completions that stay > 2 ms later than the model for 3 windows are counted as a schedule shift and the
  * model re-anchored; no record is placed (it could only land on an intact unit). */
 #define SCHED_FRAME_NS 1000000ll
@@ -458,14 +456,14 @@ static uint64_t sched_now_ns_(const cc_session *s){ return (uint64_t)((double)ma
 static void sched_count_(cc_session *s, int e, uint64_t frames){
     atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[e],frames*SCHED_PKTS_PER_FRAME);
 }
-static void sched_place_(cc_session *s, uint8_t ep, uint32_t seq, uint64_t frames){
+static void sched_place_(cc_session *s, uint8_t ep, uint32_t seq, uint64_t frames, uint16_t pi){
     uint32_t pk=(uint32_t)(frames*SCHED_PKTS_PER_FRAME);
     int e=ep_i(ep);
     if(s->lost_pkts[e]) flush_loss_(s,ep);            /* ring loss already pending on this endpoint comes first */
     if(ring_free_(s)>=sizeof(rec_hdr)+CONTROL_TERMINAL_RESERVE){
-        rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)CC_PI_UNSCHEDULED,seq,0,pk,0};
+        rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,pi,seq,0,pk,0};
         ring_put_record_(s,&h,NULL,0); wake_(s);
-    } else put_meta_(s,REC_HOSTLOSS,ep,(uint16_t)CC_PI_UNSCHEDULED,seq,0,NULL,0);   /* reserve policy: marks control loss */
+    } else put_meta_(s,REC_HOSTLOSS,ep,pi,seq,0,NULL,0);   /* reserve policy: marks control loss */
 }
 /* The model counts SCHED_PKTS_PER_FRAME packets per 1 ms frame, which holds for bInterval 1 on both iso endpoints of
  * IF0 alt 2. Read it from the device: anything else turns the model off (named), an unreadable descriptor leaves
@@ -525,38 +523,26 @@ static void sched_complete_(cc_session *s, xinfo *xi, int normal){
     if(!q->anchored){ q->anchored=1; q->origin_ns=now-(uint64_t)(xi->end_frame*SCHED_FRAME_NS); q->corr_ns=0; q->wn=0; q->high_windows=0; }
     int64_t r=(int64_t)(now-q->origin_ns)-xi->end_frame*SCHED_FRAME_NS;
     int64_t half=q->tf*SCHED_FRAME_NS/2;
-    if(xi->uncertain || q->doubt){                    /* settle failed submits before this one */
-        int64_t late=r-q->corr_ns; xi->uncertain=0; q->doubt=0;
-        if(late>half){
-            /* A transfer late: a phantom one before it (libusb did advance), or this callback was held up. A held event
-             * thread holds the other endpoint too, so it is a phantom for certain only if the other endpoint kept
-             * completing on time: its last completion on time, no earlier than this one's due moment and within one of
-             * its transfers of now (both endpoints complete on the same frames). Otherwise the next completions decide:
-             * a phantom keeps them all late, a hold catches up. Known limit: a hold that begins between the two
-             * endpoints' callbacks of one frame and lasts under one transfer passes this test. */
-            __typeof__(s->sch[0]) *o=&s->sch[e^1];
-            uint64_t due=now-(uint64_t)late, recent=now-(uint64_t)(o->tf*SCHED_FRAME_NS);   /* due: this callback without its lateness */
-            uint64_t need=(due>recent?due:recent)-(uint64_t)SCHED_FRAME_NS;
-            int held=!o->anchored || o->last_cb_ns<need || o->last_late>2*SCHED_FRAME_NS;
-            if(!held){
-                int64_t shift=(late+SCHED_FRAME_NS/2)/SCHED_FRAME_NS;
-                xi->gap_frames+=(uint32_t)shift; sched_count_(s,e,(uint64_t)shift);
-                sched_shift_(s,xi,xi->end_frame,shift); xi->end_frame+=shift; r-=shift*SCHED_FRAME_NS;
-            } else { q->defer=SCHED_DEFER; q->defer_min=late; }
-        }
+    if(xi->uncertain || q->doubt){                    /* a failed submit before this one: the next completions settle it */
+        /* Late by a transfer or more means a phantom transfer before this one (libusb advanced its queue end) or a
+         * held event thread, and one completion cannot tell them apart: a phantom keeps every later completion late,
+         * a hold catches up. So the minimum lateness over this and the next SCHED_DEFER completions decides. The data
+         * the gap precedes has gone by then, so a phantom is written as a late record naming this transfer. */
+        xi->uncertain=0; q->doubt=0;
+        q->defer=SCHED_DEFER; q->defer_min=r-q->corr_ns; q->defer_seq=xi->seq; q->defer_end=xi->end_frame;
     } else if(q->defer){
         int64_t late=r-q->corr_ns; if(late<q->defer_min) q->defer_min=late;
         if(--q->defer==0){
-            if(q->defer_min>half){                    /* it stayed late: a phantom transfer, found after its data went by */
+            if(q->defer_min>half){                    /* it stayed late: a phantom transfer */
                 int64_t shift=(q->defer_min+SCHED_FRAME_NS/2)/SCHED_FRAME_NS;
-                atomic_fetch_add(&s->sched_shifts,1); atomic_fetch_add(&s->sched_shift_frames,(uint64_t)shift);
-                sched_shift_(s,xi,INT64_MIN,shift); xi->end_frame+=shift; r-=shift*SCHED_FRAME_NS;
+                sched_count_(s,e,(uint64_t)shift); atomic_fetch_add(&s->unsched_late,1);
+                sched_place_(s,xi->ep,q->defer_seq,(uint64_t)shift,(uint16_t)CC_PI_UNSCHEDULED_LATE);
+                sched_shift_(s,xi,q->defer_end,shift); xi->end_frame+=shift; r-=shift*SCHED_FRAME_NS;
             }
             q->wn=0; q->high_windows=0;
         }
     }
-    if(xi->gap_frames){ sched_place_(s,xi->ep,xi->seq,xi->gap_frames); xi->gap_frames=0; }
-    q->last_cb_ns=now; q->last_late=r-q->corr_ns;
+    if(xi->gap_frames){ sched_place_(s,xi->ep,xi->seq,xi->gap_frames,(uint16_t)CC_PI_UNSCHEDULED); xi->gap_frames=0; }
     if(r<q->corr_ns) q->corr_ns=r;                    /* latency floor: any decrease at once */
     if(q->defer) return;                              /* the deferred decision owns this stretch, not the backstop */
     if(!q->wn || r<q->wmin_ns) q->wmin_ns=r;
@@ -1011,12 +997,13 @@ static void* replay_main(void *arg){
         case REC_XFERERR: put_meta_(s,REC_XFERERR,h.endpoint,h.pkt_index,h.submit_seq,h.status,NULL,0); break;
         case REC_HOSTLOSS: {
             int le=ep_i(h.endpoint);
-            if(h.pkt_index==CC_PI_UNSCHEDULED){   /* the capture's own unread-slot record: forward it as captured */
+            if(h.pkt_index==CC_PI_UNSCHEDULED || h.pkt_index==CC_PI_UNSCHEDULED_LATE){   /* the capture's own unread-slot record: forward it as captured */
                 if(s->cfg.replay_block_when_full) replay_wait_space_(s,0);
                 if(s->lost_pkts[le]) flush_loss_(s,h.endpoint);   /* earlier ring loss first */
                 atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[le],h.req_len);
+                if(h.pkt_index==CC_PI_UNSCHEDULED_LATE) atomic_fetch_add(&s->unsched_late,1);
                 if(ring_free_(s)>=sizeof(rec_hdr)+CONTROL_TERMINAL_RESERVE){ ring_put_record_(s,&h,NULL,0); wake_(s); }
-                else put_meta_(s,REC_HOSTLOSS,h.endpoint,(uint16_t)CC_PI_UNSCHEDULED,h.submit_seq,0,NULL,0);
+                else put_meta_(s,REC_HOSTLOSS,h.endpoint,h.pkt_index,h.submit_seq,0,NULL,0);
                 break;
             }
             // fold the ORIGINAL capture's loss into our accounting so counts
@@ -1218,7 +1205,7 @@ void cc_get_stats(const cc_session *s, cc_stats *o){
     o->replay_corrupt_spans=s->corrupt_spans; o->replay_corrupt_bytes=s->corrupt_bytes;
     o->replay_align_bytes=s->align_bytes; o->replay_space_waits=atomic_load(&s->replay_space_waits);
     o->unscheduled_events=atomic_load(&s->unsched_events);
-    o->rt_event_thread=s->rt_event; o->rt_libusb_threads=s->rt_lib; o->rt_event_at_stop=s->rt_still; o->rt_priority_at_stop=s->rt_pri_stop; o->rt_priority_min=s->rt_pri_min;
+    o->rt_event_thread=s->rt_event; o->rt_libusb_threads=s->rt_lib; o->rt_event_at_stop=s->rt_still; o->rt_priority_at_stop=s->rt_pri_stop; o->rt_priority_min=s->rt_pri_min; o->unscheduled_late=atomic_load(&s->unsched_late);
     o->schedule_shifts=atomic_load(&s->sched_shifts); o->schedule_shift_frames=atomic_load(&s->sched_shift_frames);
     o->unscheduled_packets[0]=atomic_load(&s->unsched_pkts[0]); o->unscheduled_packets[1]=atomic_load(&s->unsched_pkts[1]);
 }
@@ -1259,8 +1246,8 @@ static void snk_loss(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     snk_wr(k,&h,sizeof h);
 }
 static void snk_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
-    if(kind!=CC_LOSS_UNSCHEDULED){ snk_loss(ctx,ep,pk,by); return; }
-    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)CC_PI_UNSCHEDULED,seq,0,pk,0};
+    if(kind!=CC_LOSS_UNSCHEDULED && kind!=CC_LOSS_UNSCHEDULED_LATE){ snk_loss(ctx,ep,pk,by); return; }
+    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)(kind==CC_LOSS_UNSCHEDULED?CC_PI_UNSCHEDULED:CC_PI_UNSCHEDULED_LATE),seq,0,pk,0};
     snk_wr(sink_of(ctx),&h,sizeof h);
 }
 static void snk_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
@@ -1412,9 +1399,9 @@ static void as_loss_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     k->pend_pk[e]=pk; k->pend_by[e]=by; as_flush_loss_(k,e); as_wake_(k);
 }
 static void as_loss_ex_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
-    if(kind!=CC_LOSS_UNSCHEDULED){ as_loss_(ctx,ep,pk,by); return; }   /* never merged into a ring-loss run */
+    if(kind!=CC_LOSS_UNSCHEDULED && kind!=CC_LOSS_UNSCHEDULED_LATE){ as_loss_(ctx,ep,pk,by); return; }   /* never merged into a ring-loss run */
     struct cc_async_sink *k=ctx; int e=ep==CC_EP_AUDIO;
-    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)CC_PI_UNSCHEDULED,seq,0,pk,0};
+    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)(kind==CC_LOSS_UNSCHEDULED?CC_PI_UNSCHEDULED:CC_PI_UNSCHEDULED_LATE),seq,0,pk,0};
     if(k->pend_pk[e]){                                /* loss confessed before this record stays before it */
         /* Pending loss means the ring had no room for a packet: both records must fit, or this one is counted as a
          * dropped control record (the pending HostLoss still marks the stretch) and the run stays pending. */

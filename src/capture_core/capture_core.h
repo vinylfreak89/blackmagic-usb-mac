@@ -29,7 +29,8 @@ enum cc_end    { CC_END_STOPPED = 0, CC_END_DEVICE_GONE = 1, CC_END_REPLAY_EOF =
 enum cc_err    { CC_OK = 0, CC_ERR_ARGS = -1, CC_ERR_NODEVICE = -2, CC_ERR_USB = -3,
                  CC_ERR_NOMEM = -4, CC_ERR_STATE = -5, CC_ERR_IO = -6 };
 enum cc_loss_kind { CC_LOSS_RING = 0,         /* delivery-ring overflow: packets that crossed the bus, then shed */
-                    CC_LOSS_UNSCHEDULED = 1 }; /* USB slots never read (.tpc HostLoss pkt_index CC_PI_UNSCHEDULED) */
+                    CC_LOSS_UNSCHEDULED = 1,   /* USB slots never read (.tpc HostLoss pkt_index CC_PI_UNSCHEDULED) */
+                    CC_LOSS_UNSCHEDULED_LATE = 2 }; /* the same, found after the affected data went by (CC_PI_UNSCHEDULED_LATE) */
 enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
                      CC_ERROR_CONTROL_LOSS = 2 };
 
@@ -39,6 +40,12 @@ enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
  * own scheduling rule mirrored at submit (an estimate: the host clock stands in for the bus frame), actual_len = 0
  * (bytes unknown), submit_seq = the transfer the gap precedes; the record comes just before that transfer's data. */
 #define CC_PI_UNSCHEDULED 0xFFFDu
+/* The same loss found only after the data it precedes was delivered: after a failed submit, whether libusb advanced
+ * its queue end (unread slots) or the event thread was merely held up cannot be told from one completion, so the
+ * next ones decide, and by then the transfer the gap precedes has gone by. submit_seq still names that transfer; the
+ * record itself arrives later in the stream, so a reader locates the gap by seq, never by the record's position
+ * (the unit parser does not flag the unit in progress for it). */
+#define CC_PI_UNSCHEDULED_LATE 0xFFFCu
 #define CC_XFERS_PER_ENDPOINT 32  /* isochronous transfers kept queued per endpoint (video: 32 x 16 ms = 512 ms ahead) */
 #define CC_DEFAULT_RING_MB 256  /* delivery ring when ring_mb is 0; the frameserver sizes its unit pool from it */
 #define CC_EP_VIDEO 0x83
@@ -157,6 +164,7 @@ typedef struct {
     uint64_t replay_align_bytes;    // replay_start_offset > 0: bytes walked past to reach the first whole video transfer
     uint64_t replay_space_waits;    // replay_block_when_full: times the replay waited for the consumer (never data lost)
     uint64_t unscheduled_events;    // device: gaps of never-read USB slots found (see CC_PI_UNSCHEDULED), all endpoints; one record can carry two
+    uint64_t unscheduled_late;      // of those, found only after their data went by (CC_PI_UNSCHEDULED_LATE records)
     uint64_t unscheduled_packets[2];// [0]=video [1]=audio: slots never read (libusb's Darwin scheduling rule, +-1 frame)
     int rt_event_thread;            // device: 1 if the USB event thread got real-time scheduling at start
     int rt_libusb_threads;          // device: libusb-internal threads promoted (expected 1: org.libusb.device-hotplug)

@@ -875,8 +875,8 @@ static void shuttle_stop(shuttle_src *s){
          (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown, (unsigned long long)atomic_load(&s->video_estimated));
     if (!s->replaying)
         blog(st.unscheduled_events || st.schedule_shifts || !st.rt_event_thread || st.rt_priority_min < 97 ? LOG_ERROR : LOG_INFO,
-             "[shuttle-source] USB: %llu unread-slot events (%llu video / %llu audio packets never read), %llu unexplained schedule shifts; real-time USB threads: event %s (priority lowest %d, at stop %d; real time is 97 and up%s), libusb %d",
-             (unsigned long long)st.unscheduled_events, (unsigned long long)st.unscheduled_packets[0], (unsigned long long)st.unscheduled_packets[1],
+             "[shuttle-source] USB: %llu unread-slot events (%llu found late; %llu video / %llu audio packets never read), %llu unexplained schedule shifts; real-time USB threads: event %s (priority lowest %d, at stop %d; real time is 97 and up%s), libusb %d",
+             (unsigned long long)st.unscheduled_events, (unsigned long long)st.unscheduled_late, (unsigned long long)st.unscheduled_packets[0], (unsigned long long)st.unscheduled_packets[1],
              (unsigned long long)st.schedule_shifts, st.rt_event_thread ? "yes" : "NO", st.rt_priority_min, st.rt_priority_at_stop,
              !st.rt_event_thread || st.rt_priority_min < 97 ? ": REAL TIME LOST" : "", st.rt_libusb_threads);
     blog(LOG_INFO, "[shuttle-source] delivery timing: %llu handoff gaps over 83 ms (max %.1f ms), %llu output calls over 20 ms (max %.1f ms)",

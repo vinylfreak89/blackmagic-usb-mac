@@ -326,7 +326,7 @@ static void tee_loss_ex(frameserver *f, uint8_t ep, uint32_t n, uint64_t b, int 
 static void cc_on_loss_ex(void *ctx, uint8_t ep, uint32_t n, uint64_t b, int kind, uint32_t seq){
     frameserver *f = ctx;
     pthread_mutex_lock(&f->tee_m); if (f->tee) tee_loss_ex(f, ep, n, b, kind, seq); pthread_mutex_unlock(&f->tee_m);
-    unit_parser_on_loss(f->parser, ep, n, b);
+    if (kind != CC_LOSS_UNSCHEDULED_LATE) unit_parser_on_loss(f->parser, ep, n, b);   // a late record is not in the unit in progress
 }
 static void cc_on_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){ frameserver *f = ctx; TEE(on_error(f->tee_cb.ctx, ep, seq, st, kind)); unit_parser_on_error(f->parser, ep, seq, st, kind); }
 static void cc_on_end(void *ctx, enum cc_end r){
@@ -982,7 +982,7 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->audio_master_frames = atomic_load(&f->audio_master_frames);
     o->backpressure_waits = atomic_load(&f->bp_waits);
     if (f->cap){ cc_stats cs; cc_get_stats(f->cap, &cs); o->replay_space_waits = cs.replay_space_waits;
-        o->unscheduled_events = cs.unscheduled_events; o->unscheduled_packets[0] = cs.unscheduled_packets[0]; o->unscheduled_packets[1] = cs.unscheduled_packets[1];
+        o->unscheduled_events = cs.unscheduled_events; o->unscheduled_packets[0] = cs.unscheduled_packets[0]; o->unscheduled_packets[1] = cs.unscheduled_packets[1]; o->unscheduled_late = cs.unscheduled_late;
         o->rt_event_thread = cs.rt_event_thread; o->rt_libusb_threads = cs.rt_libusb_threads; o->rt_event_at_stop = cs.rt_event_at_stop;
         o->rt_priority_at_stop = cs.rt_priority_at_stop; o->rt_priority_min = cs.rt_priority_min; o->schedule_shifts = cs.schedule_shifts; o->schedule_shift_frames = cs.schedule_shift_frames; }
     o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;

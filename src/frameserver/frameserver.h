@@ -101,7 +101,7 @@ typedef struct {
     uint64_t partial_shown;     // frames shown from units that were not whole (show_partial)
     uint64_t backpressure_waits; // offline_backpressure: times the producer waited for the worker (frames kept, not shed)
     uint64_t replay_space_waits; // offline_backpressure: times the capture core's replay waited for the delivery ring
-    uint64_t unscheduled_events, unscheduled_packets[2]; // capture core: USB slots never read (explicit HostLoss)
+    uint64_t unscheduled_events, unscheduled_packets[2], unscheduled_late; // capture core: USB slots never read (explicit HostLoss); late: found after their data went by
     int rt_event_thread, rt_libusb_threads, rt_event_at_stop, rt_priority_at_stop, rt_priority_min; // capture core: real-time USB threads
     uint64_t schedule_shifts, schedule_shift_frames; // capture core: completions persistently later than its model
     uint64_t eligible_ring_drops, ring_gap_rows;

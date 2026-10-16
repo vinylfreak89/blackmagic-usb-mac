@@ -58,13 +58,14 @@ static int open_trace(int setup_off, char *trace, size_t n, uint32_t *mode, int 
 
 void replay_shim_gaps(int ep_index, long long *frames, long *events, long *first_transfer);
 /* placement check: an unread-slot report must be followed, on its endpoint, by packet 0 of the transfer it names */
-static struct { int n, misplaced; int pending[2]; uint32_t seq[2]; } lt;
+static struct { int n, misplaced, late; int pending[2]; uint32_t seq[2]; } lt;
 static void lt_packet(void *ctx, const cc_packet *p){
     t_packet(ctx,p); int e=p->endpoint==CC_EP_AUDIO;
     if(lt.pending[e]){ if(p->submit_seq!=lt.seq[e] || p->pkt_index!=0) lt.misplaced++; lt.pending[e]=0; }
 }
 static void lt_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
     (void)ctx; (void)pk; (void)by;
+    if(kind==CC_LOSS_UNSCHEDULED_LATE){ lt.late++; return; }   /* located by seq, not position */
     if(kind!=CC_LOSS_UNSCHEDULED) return;
     int e=ep==CC_EP_AUDIO; if(lt.pending[e]) lt.misplaced++;
     lt.pending[e]=1; lt.seq[e]=seq; lt.n++;
@@ -240,33 +241,38 @@ int main(int argc, char **argv){
         // 7c: a failed submit: no loss if libusb did not advance its queue end; one phantom transfer if it did
         for(int adv=0;adv<2;adv++){
             setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT","100",1); if(adv) setenv("REPLAY_FAIL_ADVANCES","1",1); else unsetenv("REPLAY_FAIL_ADVANCES");
-            lt.n=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            lt.n=0; lt.late=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
             CHECK(run_device_lt(&st,&t)==CC_OK,"failed submit (advances %d): open",adv);
             long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
             long long got=(long long)st.unscheduled_packets[0], want=tf*8;
             CHECK(got>=want-8 && got<=want+8,"failed submit (advances %d): reported %lld video packets, truth %lld",adv,got,want);
+            CHECK(lt.n==0 && lt.late==adv && (int)st.unscheduled_late==adv && !st.schedule_shifts,"failed submit (advances %d): %d on-time records, %d late (want %d), %llu shifts",
+                  adv,lt.n,lt.late,adv,(unsigned long long)st.schedule_shifts);
             CHECK(lt.misplaced==0,"failed submit (advances %d): %d misplaced",adv,lt.misplaced);
-            printf("  failed submit, libusb %s its queue end: truth %lld, reported %lld, misplaced %d\n",adv?"advances":"does not advance",want,got,lt.misplaced);
+            printf("  failed submit, libusb %s its queue end: truth %lld, reported %lld (late records %d), misplaced %d\n",adv?"advances":"does not advance",want,got,lt.late,lt.misplaced);
         }
         // 7d: a failed submit with the event thread held around the transfer that settles it. The held callback is
         // late without any phantom transfer; it must not be read as one (review D6: 2,160-2,416 packets reported, truth 0
         // or 128). A phantom is still found, placed at once or, when the hold leaves it in doubt, as a counted shift.
-        struct { int ms, at; } hc[]={{300,99},{300,100},{300,101},{20,100},{450,100}};
+        struct { int ms, at, aphase; } hc[]={{300,99,0},{300,100,0},{300,101,0},{20,100,0},{450,100,0},
+            {10,100,15},{10,99,15},{12,100,14},{14,100,15},{10,100,7}};   /* review: audio 15 ms off video, a 10 ms hold placed 80 */
         for(size_t i=0;i<sizeof hc/sizeof hc[0];i++) for(int adv=0;adv<2;adv++){
             char ms[16],at[16]; snprintf(ms,sizeof ms,"%d",hc[i].ms); snprintf(at,sizeof at,"%d",hc[i].at);
             setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT","100",1); if(adv) setenv("REPLAY_FAIL_ADVANCES","1",1); else unsetenv("REPLAY_FAIL_ADVANCES");
             setenv("REPLAY_STALL_MS",ms,1); setenv("REPLAY_STALL_VIDEO_AT",at,1);
-            lt.n=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            { char ph[8]; snprintf(ph,sizeof ph,"%d",hc[i].aphase); setenv("REPLAY_APHASE_MS",ph,1); }
+            lt.n=0; lt.late=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
             CHECK(run_device_lt(&st,&t)==CC_OK,"failed submit + hold %d@%d (advances %d): open",hc[i].ms,hc[i].at,adv);
             long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
             long long placed=(long long)st.unscheduled_packets[0], shifted=(long long)st.schedule_shift_frames*8, want=tf*8;
-            CHECK(placed+shifted>=want-8 && placed+shifted<=want+8,"failed submit + hold %d@%d (advances %d): reported %lld placed + %lld shifted, truth %lld",
+            CHECK(placed>=want-8 && placed<=want+8 && !shifted,"failed submit + hold %d@%d (advances %d): reported %lld + %lld shifted, truth %lld",
                   hc[i].ms,hc[i].at,adv,placed,shifted,want);
+            CHECK(lt.n==0 && lt.late==adv,"failed submit + hold %d@%d (advances %d): %d records at the data, %d late (want %d)",hc[i].ms,hc[i].at,adv,lt.n,lt.late,adv);
             CHECK(lt.misplaced==0,"failed submit + hold %d@%d (advances %d): %d misplaced",hc[i].ms,hc[i].at,adv,lt.misplaced);
-            printf("  failed submit + hold %3d ms @%d, libusb %s: truth %lld; placed %lld, counted as a shift %lld; misplaced %d\n",
-                   hc[i].ms,hc[i].at,adv?"advances":"does not advance",want,placed,shifted,lt.misplaced);
+            printf("  failed submit + hold %3d ms @%d, audio phase %2d ms, libusb %s: truth %lld; reported %lld (late records %d), shifts %lld; misplaced %d\n",
+                   hc[i].ms,hc[i].at,hc[i].aphase,adv?"advances":"does not advance",want,placed,lt.late,shifted,lt.misplaced);
         }
-        unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT");
+        unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT"); unsetenv("REPLAY_APHASE_MS");
         unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"); unsetenv("REPLAY_FAIL_ADVANCES");
         // 7e: the model's packets-per-frame comes from bInterval 1: read from the device, it stays on at 1 and turns
         // off (nothing reported) at any other interval, here with a stall that leaves unread slots

@@ -203,8 +203,8 @@ int main(int argc,char**argv){
            (unsigned long long)st.lost_bytes[0],(unsigned long long)st.lost_bytes[1],
            st.zero_len_packets,st.short_packets,st.ring_high_water,st.ring_size,
            st.fleet[0],st.fleet[1],st.fleet_size);
-    printf("unread USB slots (macOS skipped past them): %llu events, %llu video / %llu audio packets; unexplained schedule shifts %llu (%llu frames)\n",
-           (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1],
+    printf("unread USB slots (macOS skipped past them): %llu events (%llu found late), %llu video / %llu audio packets; unexplained schedule shifts %llu (%llu frames)\n",
+           (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_late,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1],
            (unsigned long long)st.schedule_shifts,(unsigned long long)st.schedule_shift_frames);
     if(!cfg.replay_path)
         printf("real-time USB threads: event %s (priority lowest %d, at stop %d; real time is 97 and up)%s, libusb %d\n",
