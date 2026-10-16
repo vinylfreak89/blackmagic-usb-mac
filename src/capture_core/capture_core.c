@@ -23,6 +23,8 @@
 #include <limits.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <dirent.h>
+#include <signal.h>
 
 #define VID 0x1EDB
 #define PID 0xBD3B
@@ -1331,6 +1333,7 @@ struct cc_async_sink {
     pthread_t sthr; pthread_cond_t acv; _Atomic size_t a_wake_at;   // the producer wakes the spiller when head reaches a_wake_at
     char *sdir, *sbase; uint32_t stag; uint64_t sfloor; size_t safter, sseg;
     uint64_t sp_w, sp_r, floor_retry_ns; // under m
+    int64_t spill_room; uint64_t stale_files, stale_bytes; int finished;   /* at open: free bytes above the floor; segments of dead writers */
     int swfd, srfd; uint64_t swseg, srseg;   // spiller's open segment; writer's
     _Atomic uint64_t spill_bytes, spill_peak, spill_segments, spill_floor_refusals, spill_max_write_ns;
 };
@@ -1341,8 +1344,11 @@ static void as_copy_(struct cc_async_sink *k, size_t at, const void *p, size_t n
     size_t o=at%k->cap, first=n<k->cap-o?n:k->cap-o;
     memcpy(k->ring+o,p,first); if(n>first) memcpy(k->ring,(const uint8_t*)p+first,n-first);
 }
+/* The producer never waits for the writers' lock (they hold it across a page hand-back): a busy lock skips the
+ * signal, and the waiter's 100 ms liveness backstop picks the data up instead. */
 static void as_wake_(struct cc_async_sink *k){
-    pthread_mutex_lock(&k->m); pthread_cond_signal(&k->cv);
+    if(pthread_mutex_trylock(&k->m)!=0) return;
+    pthread_cond_signal(&k->cv);
     if(atomic_load_explicit(&k->head,memory_order_relaxed)>=atomic_load_explicit(&k->a_wake_at,memory_order_relaxed)) pthread_cond_signal(&k->acv);
     pthread_mutex_unlock(&k->m);
 }
@@ -1459,7 +1465,7 @@ static void as_consumed_(struct cc_async_sink *k, size_t pos){
     }
 }
 static void as_seg_name_(const struct cc_async_sink *k, uint64_t seg, char *out, size_t cap){
-    snprintf(out,cap,"%s/%.96s.%08x.spill%06llu",k->sdir,k->sbase,(unsigned)k->stag,(unsigned long long)seg);
+    snprintf(out,cap,"%s/%.96s.p%d.%08x.spill%06llu",k->sdir,k->sbase,(int)getpid(),(unsigned)k->stag,(unsigned long long)seg);
 }
 /* Write buf[0,n) to the destination. Short only after a failure, which sets io_errno; the rest is counted discarded. */
 static void as_dest_write_(struct cc_async_sink *k, const uint8_t *buf, size_t n, uint64_t *last_done, uint64_t *since_sync){
@@ -1628,6 +1634,22 @@ static void *as_spiller_(void *arg){
     pthread_mutex_unlock(&k->m);
     return NULL;
 }
+/* Segments left by a process that is gone hold capture bytes that never reached their destination: they are
+ * counted and named, never deleted here (the scratch volume clears them at restart). */
+static void as_stale_scan_(struct cc_async_sink *k){
+    DIR *d=opendir(k->sdir); if(!d) return; struct dirent *e;
+    while((e=readdir(d))){
+        /* <base>.p<pid>.<8 hex>.spill<n>: the pid is the last ".p" field before the tag */
+        const char *sp=strstr(e->d_name,".spill"); if(!sp || sp-e->d_name<12 || sp[-9]!='.') continue;
+        const char *p=NULL; for(const char *q=e->d_name; q<sp-9; q++) if(q[0]=='.' && q[1]=='p') p=q;
+        if(!p) continue;
+        int pid=atoi(p+2); if(pid<=0 || pid==getpid()) continue;
+        if(kill(pid,0)==0 || errno!=ESRCH) continue;   /* its writer is alive (or not ours to judge) */
+        char nm[PATH_MAX]; struct stat st; snprintf(nm,sizeof nm,"%s/%s",k->sdir,e->d_name);
+        if(lstat(nm,&st)==0 && S_ISREG(st.st_mode)){ k->stale_files++; k->stale_bytes+=(uint64_t)st.st_blocks*512u; }
+    }
+    closedir(d);
+}
 int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *note, size_t ring_bytes, size_t chunk,
                              const cc_async_sink_spill *sp){
     if(!out || !path || ring_bytes<(1u<<20) || !chunk) return CC_ERR_ARGS;
@@ -1646,18 +1668,20 @@ int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *
     if(sp && sp->dir && *sp->dir){
         struct stat ds, fs;
         if(mkdir(sp->dir,0700)!=0 && errno!=EEXIST) k->spill_state=-errno;
-        else if(stat(sp->dir,&ds)!=0) k->spill_state=-errno;
-        else if(!S_ISDIR(ds.st_mode)) k->spill_state=-ENOTDIR;
+        else if(lstat(sp->dir,&ds)!=0) k->spill_state=-errno;
+        else if(!S_ISDIR(ds.st_mode)) k->spill_state=-ENOTDIR;   /* a symlink too: the spill is never redirected */
+        else if(ds.st_uid!=getuid() || (ds.st_mode&077)) k->spill_state=-EPERM;   /* private: nobody else may swap segments */
         else if(fstat(k->fd,&fs)!=0) k->spill_state=-errno;
         else if(fs.st_dev==ds.st_dev && !cc_async_sink_test_spill_any_volume) k->spill_state=0;   /* the destination is that disk already: a spill would only add a copy */
         else {
             const char *b=strrchr(path,'/');
             k->sdir=strdup(sp->dir); k->sbase=strdup(b?b+1:path); k->stag=arc4random();
-            k->sfloor=sp->floor?sp->floor:(uint64_t)32<<30;
+            k->sfloor=sp->floor?sp->floor:32000000000ull;   /* 32 GB (owner's staging floor, decimal) */
             k->sseg=sp->segment?sp->segment:(size_t)128<<20;
             size_t def=ring_bytes/16; if(def<((size_t)8<<20)) def=(size_t)8<<20; if(def>((size_t)256<<20)) def=(size_t)256<<20;
             k->safter=sp->after?sp->after:def;
             k->spill_state=k->sdir && k->sbase?1:-ENOMEM; k->spill_on=k->spill_state==1;
+            if(k->spill_on){ uint64_t fr=as_free_bytes_(k); k->spill_room=(int64_t)fr-(int64_t)k->sfloor; as_stale_scan_(k); }
         }
     }
     pthread_mutex_init(&k->m,NULL); pthread_cond_init(&k->cv,NULL); pthread_cond_init(&k->acv,NULL);
@@ -1679,16 +1703,26 @@ int cc_async_sink_open(cc_async_sink **out, const char *path, const char *note, 
     return cc_async_sink_open_spill(out,path,note,ring_bytes,chunk,NULL);
 }
 int cc_async_sink_spill_state(const cc_async_sink *k){ return k?k->spill_state:-EINVAL; }
+int64_t cc_async_sink_spill_room(const cc_async_sink *k){ return k?k->spill_room:0; }
+void cc_async_sink_spill_stale(const cc_async_sink *k, uint64_t *files, uint64_t *bytes){ *files=k?k->stale_files:0; *bytes=k?k->stale_bytes:0; }
+uint64_t cc_async_sink_progress(cc_async_sink *k){ return atomic_load(&k->written)+atomic_load(&k->discarded); }
 void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *o){
     memset(o,0,sizeof *o);
     o->on_packet=as_packet_; o->on_loss=as_loss_; o->on_error=as_error_;
     o->on_tick=as_tick_; o->on_end=as_end_; o->ctx=k; o->on_loss_ex=as_loss_ex_;
 }
-int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
+int cc_async_sink_finish(cc_async_sink *k){
     if(!k) return CC_ERR_ARGS;
+    if(k->finished) return CC_OK;
     pthread_mutex_lock(&k->m); atomic_store(&k->stop,1); pthread_cond_broadcast(&k->cv); pthread_cond_broadcast(&k->acv); pthread_mutex_unlock(&k->m);
     if(k->spill_thread) pthread_join(k->sthr,NULL);
     pthread_join(k->thr,NULL);             /* the writer has delivered memory and spill, or counted them discarded */
+    k->finished=1;
+    return CC_OK;
+}
+int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
+    if(!k) return CC_ERR_ARGS;
+    cc_async_sink_finish(k);
     if(k->swfd>=0) close(k->swfd);
     if(k->srfd>=0) close(k->srfd);
     if(k->sdir) for(uint64_t g=k->sp_r/k->sseg; g<=k->sp_w/k->sseg; g++){ char nm[PATH_MAX]; as_seg_name_(k,g,nm,sizeof nm); unlink(nm); }

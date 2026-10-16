@@ -212,7 +212,7 @@ typedef struct {
     // Ring memory handed back to the system as it drained (see below); a refused hand-back ends the capture's
     // completeness: the sink stops freeing space, counts what it drops, and close returns CC_ERR_IO (ENOMEM).
     uint64_t released_bytes, release_failures;
-    // The local spill (cc_async_sink_open_spill). spill_state: 1 on; 0 not configured, or the destination is on the
+    // The local spill (cc_async_sink_open_spill). spill_state: 1 on (it may still have no room: cc_async_sink_spill_room); 0 not configured, or the destination is on the
     // spill's own volume; -errno: the directory was unusable, so memory was the only buffer. spill_error: the errno
     // that turned it off mid-capture (the bytes of that write stayed in memory: nothing is lost by it).
     int spill_state, spill_error;
@@ -230,14 +230,24 @@ int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *sess
 // Segments are deleted as they are delivered and at close. A destination on the spill's own volume gets no spill.
 typedef struct {
     const char *dir;      // local, non-synced directory (created 0700 if absent); NULL: no spill
-    uint64_t floor;       // free bytes always left on the spill volume; 0: 32 GiB
+    uint64_t floor;       // free bytes always left on the spill volume; 0: 32 GB (32e9)
     size_t after;         // memory backlog at which bytes start going to disk; 0: ring/16 within [8 MiB, 256 MiB]
     size_t segment;       // bytes per segment file; 0: 128 MiB
 } cc_async_sink_spill;
 int  cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *session_note,
                               size_t ring_bytes, size_t write_chunk, const cc_async_sink_spill *spill);
 int  cc_async_sink_spill_state(const cc_async_sink *k);   // as cc_async_sink_stats.spill_state, from open on
+// Free bytes above the floor on the spill volume at open (under one segment: the spill cannot grow now); and the
+// segment files of writers that are gone (undelivered capture bytes; counted, never deleted by the sink).
+int64_t cc_async_sink_spill_room(const cc_async_sink *k);
+void cc_async_sink_spill_stale(const cc_async_sink *k, uint64_t *files, uint64_t *bytes);
+// Bytes the writer has finished with (written + discarded): a close that drains a backlog advances it.
+uint64_t cc_async_sink_progress(cc_async_sink *k);
 void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *out); // packet/loss/error/tick
+// Stop accepting, drain everything accepted (memory and spill) to the destination and join the writer threads;
+// the sink stays valid, so cc_async_sink_progress can be watched from another thread meanwhile. Call it from one
+// thread, after the producer has stopped; close calls it if it has not run.
+int  cc_async_sink_finish(cc_async_sink *k);
 // Drains everything accepted, joins the writer, fsyncs and closes; fills *st (may be NULL).
 int  cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st);
 // Test hook: when set, the writer's write() goes through it (stall / short-write / failure).

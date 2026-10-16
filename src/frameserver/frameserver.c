@@ -948,6 +948,13 @@ int fs_tee_spill_state(frameserver *f){
     pthread_mutex_lock(&f->tee_m); int r = f->tee ? cc_async_sink_spill_state(f->tee) : -EINVAL; pthread_mutex_unlock(&f->tee_m);
     return r;
 }
+int fs_tee_spill_info(frameserver *f, int64_t *room, uint64_t *stale_files, uint64_t *stale_bytes){
+    if(!f || !f->tee_m_init) return -1;
+    pthread_mutex_lock(&f->tee_m); int ok = f->tee != NULL;
+    if(ok){ *room = cc_async_sink_spill_room(f->tee); cc_async_sink_spill_stale(f->tee, stale_files, stale_bytes); }
+    pthread_mutex_unlock(&f->tee_m);
+    return ok ? 0 : -1;
+}
 cc_async_sink *fs_tee_detach(frameserver *f){
     if(!f || !f->tee_m_init) return NULL;
     pthread_mutex_lock(&f->tee_m); cc_async_sink *k = f->tee; f->tee = NULL; pthread_mutex_unlock(&f->tee_m);

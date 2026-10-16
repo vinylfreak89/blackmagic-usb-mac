@@ -536,6 +536,12 @@ static void tpc_attach(shuttle_src *s){
         int ss = fs_tee_spill_state(s->fs);
         if (ss < 0) blog(LOG_ERROR, "[shuttle-source] raw .tpc started: %s — local spill %s UNUSABLE (%s): memory is the only buffer if the destination falls behind", path.array, spill, strerror(-ss));
         else blog(LOG_INFO, "[shuttle-source] raw .tpc started: %s — local spill %s", path.array, ss ? spill : "off (destination is on the local disk)");
+        int64_t room = 0; uint64_t sf = 0, sb = 0;
+        if (fs_tee_spill_info(s->fs, &room, &sf, &sb) == 0){
+            if (ss == 1 && room < (int64_t)(128 << 20))
+                blog(LOG_ERROR, "[shuttle-source] local spill %s has NO ROOM now (%.1f GB above its 32 GB free-space floor): memory is the only buffer until space is freed", spill, room / 1e9);
+            if (sf) blog(LOG_WARNING, "[shuttle-source] local spill %s holds %llu segment files (%.1f MB) from capture processes that are gone: capture bytes that never reached their destination (left in place)", spill, (unsigned long long)sf, sb / 1e6);
+        }
     } else blog(LOG_ERROR, "[shuttle-source] raw .tpc could not be started (exists? volume writable?): %s", path.array);
     dstr_free(&path); dstr_free(&note);
 }

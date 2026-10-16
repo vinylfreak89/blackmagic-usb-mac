@@ -13,6 +13,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pthread.h>
 #include "../tool_deadline.h"
 static cc_session *g_s;
 static cc_async_sink *g_k;
@@ -27,6 +28,22 @@ static void end_cb(void *ctx, enum cc_end r){
     atomic_store(&g_done,1);
 }
 
+struct sink_finish_job { cc_async_sink *k; _Atomic int done; };
+static void *sink_finisher(void *a){ struct sink_finish_job *j=a; cc_async_sink_finish(j->k); atomic_store(&j->done,1); return NULL; }
+/* drain on a thread while this one re-arms the guard on progress; the sink is freed only after the drain is joined */
+static int close_sink_guarded(cc_async_sink *k, cc_async_sink_stats *st, const char *phase, double seconds){
+    struct sink_finish_job j={k,0}; uint64_t seen=cc_async_sink_progress(k);
+    tool_guard(phase,seconds);
+    pthread_t t;
+    if(pthread_create(&t,NULL,sink_finisher,&j)==0){
+        while(!atomic_load(&j.done)){             /* polled: a liveness check, not how the drain finishes */
+            usleep(100000);
+            uint64_t now=cc_async_sink_progress(k); if(now!=seen){ seen=now; tool_guard(phase,seconds); }
+        }
+        pthread_join(t,NULL);
+    }
+    return cc_async_sink_close(k,st);
+}
 static const char *end_name(enum cc_end r){
     switch(r){
     case CC_END_STOPPED: return "Stopped";
@@ -139,8 +156,13 @@ int main(int argc,char**argv){
     if(cc_async_sink_open_spill(&g_k,sink_path,session_note,CLI_SINK_RING,1u<<20,&spill)!=CC_OK){
         perror(sink_path); if(publish) unlink(staged); return 1;
     }
-    { int ss=cc_async_sink_spill_state(g_k);
-      if(ss<0) fprintf(stderr,"local spill %s UNUSABLE (%s): memory is the only buffer if the destination falls behind\n",spill_dir,strerror(-ss)); }
+    { int ss=cc_async_sink_spill_state(g_k); uint64_t sf,sb; cc_async_sink_spill_stale(g_k,&sf,&sb);
+      if(ss<0) fprintf(stderr,"local spill %s UNUSABLE (%s): memory is the only buffer if the destination falls behind\n",spill_dir,strerror(-ss));
+      else if(ss==1 && cc_async_sink_spill_room(g_k)<(int64_t)(128<<20))
+          fprintf(stderr,"local spill %s has NO ROOM now (%.1f GB above its 32 GB free-space floor): memory is the only buffer until space is freed\n",
+                  spill_dir,cc_async_sink_spill_room(g_k)/1e9);
+      if(sf) fprintf(stderr,"local spill %s holds %llu segment files (%.1f MB) from capture processes that are gone: capture bytes that never reached their destination (left in place)\n",
+                     spill_dir,(unsigned long long)sf,sb/1e6); }
     cc_callbacks cb; cc_async_sink_callbacks(g_k,&cb); cb.on_end=end_cb;
     int rc=cc_open(&g_s,&cfg,&cb);
     if(rc!=CC_OK){
@@ -184,13 +206,20 @@ int main(int argc,char**argv){
     printf("unread USB slots (macOS skipped past them): %llu events, %llu video / %llu audio packets; unexplained schedule shifts %llu (%llu frames)\n",
            (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1],
            (unsigned long long)st.schedule_shifts,(unsigned long long)st.schedule_shift_frames);
-    printf("real-time USB threads: event %s (priority lowest %d, at stop %d; real time is 97 and up)%s, libusb %d\n",
-           st.rt_event_thread?"yes":"NO",st.rt_priority_min,st.rt_priority_at_stop,
-           !st.rt_event_thread||st.rt_priority_min<97?" — REAL TIME LOST: USB reads could be held off":"",st.rt_libusb_threads);
+    if(!cfg.replay_path)
+        printf("real-time USB threads: event %s (priority lowest %d, at stop %d; real time is 97 and up)%s, libusb %d\n",
+               st.rt_event_thread?"yes":"NO",st.rt_priority_min,st.rt_priority_at_stop,
+               !st.rt_event_thread||st.rt_priority_min<97?" — REAL TIME LOST: USB reads could be held off":"",st.rt_libusb_threads);
     printf("end=%s | control_records_dropped=%ld control_loss_markers=%ld\n",
            end_name(end_reason),st.control_records_dropped,st.control_loss_markers);
     cc_close(g_s);
-    cc_async_sink_stats ks; int krc=cc_async_sink_close(g_k,&ks);
+    /* The writer may still hold a backlog (memory and the local spill) that the destination has to take. Closing
+     * is bounded by progress, not by a fixed time: the guard re-arms whenever the writer moves on, and fires only
+     * when it has been stuck for the lifecycle period, saying where the undelivered bytes are. */
+    static char drain_phase[400];
+    snprintf(drain_phase,sizeof drain_phase,"sink drain: the destination took nothing for the lifecycle period; capture bytes not yet delivered stay in %s (memory backlog lost) and the partial capture at %s",
+             spill_dir,sink_path);
+    cc_async_sink_stats ks; int krc=close_sink_guarded(g_k,&ks,drain_phase,lifecycle_s);
     printf("writer: %.1f MB written, lost v=%llu a=%llu pkts, control records dropped %llu, ring peak %.1f MB, longest write %.1f ms, %llu over 100 ms\n",
            ks.bytes_written/1e6,(unsigned long long)ks.lost_packets[0],(unsigned long long)ks.lost_packets[1],(unsigned long long)ks.control_dropped,
            ks.high_water/1e6,ks.max_write_ns/1e6,(unsigned long long)ks.slow_writes);

@@ -162,6 +162,8 @@ FILE *fs_log_detach(frameserver *f, uint64_t *row_errors);
 int  fs_tee_start(frameserver *f, const char *path, const char *session_note, size_t ring_bytes, const char *spill_dir);
 // The attached tee's spill: 1 on, 0 none (not configured, or same volume), -errno unusable; -EINVAL with no tee.
 int  fs_tee_spill_state(frameserver *f);
+// The attached tee's spill room above its floor at open, and stale segment files of writers that are gone (cc_async_sink_spill_room/_stale).
+int  fs_tee_spill_info(frameserver *f, int64_t *room, uint64_t *stale_files, uint64_t *stale_bytes);
 // The mode word the device start-up sent (cc_start_info; cc_open sends it, so it is known from fs_open on); -1 for a replay or without an open device session.
 int  fs_device_start_info(const frameserver *f, uint32_t *mode_word);
 // Detach and hand the writer back; the caller closes it (cc_async_sink_close drains and may
