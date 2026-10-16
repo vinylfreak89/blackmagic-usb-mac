@@ -9,6 +9,10 @@ CAPTURE?=
 shuttle-capture: capture_core.c capture_cli.c capture_core.h ../tool_deadline.h
 	$(CC) $(CFLAGS) -o $@ capture_core.c capture_cli.c $(LIBS)
 
+# Measurement build only: CC_DEBUG_HOLD_AT/MS hold the USB event thread once (unread-slot census). Never installed.
+shuttle-capture-hold: capture_core.c capture_cli.c capture_core.h ../tool_deadline.h
+	$(CC) $(CFLAGS) -DCC_DEBUG_HOLD -o $@ capture_core.c capture_cli.c $(LIBS)
+
 check: shuttle-capture
 	@test -n "$(CAPTURE)" || { echo 'usage: make check CAPTURE=<capture.tpc>'; exit 2; }
 	./shuttle-capture --replay $(CAPTURE) /dev/null
@@ -71,4 +75,4 @@ test-shim: test_shim $(FIXTURE) $(SCHED_FIXTURE)
 	./test_shim $(FIXTURE) $(SCHED_FIXTURE)
 
 clean:
-	rm -f shuttle-capture capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect fixture_meta_exhaust.tpc fixture_meta_exhaust.expect fixture_sched.tpc fixture_sched.expect
+	rm -f shuttle-capture shuttle-capture-hold capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect fixture_meta_exhaust.tpc fixture_meta_exhaust.expect fixture_sched.tpc fixture_sched.expect

@@ -173,6 +173,20 @@ libusb_device_handle* libusb_open_device_with_vid_pid(libusb_context*c,uint16_t 
 void libusb_close(libusb_device_handle*h){ (void)h; }
 int libusb_claim_interface(libusb_device_handle*h,int i){ (void)h;(void)i; return 0; }
 int libusb_release_interface(libusb_device_handle*h,int i){ (void)h;(void)i; return 0; }
+/* descriptors: the replay has none recorded (the capture core then says its interval assumption is unverified),
+ * unless REPLAY_BINTERVAL=N describes IF0 alt 2's two iso endpoints with that bInterval */
+libusb_device* libusb_get_device(libusb_device_handle *h){ (void)h; return (libusb_device*)&EP83; }
+int libusb_get_active_config_descriptor(libusb_device *d, struct libusb_config_descriptor **out){
+    (void)d; const char *b=getenv("REPLAY_BINTERVAL"); if(!b) return LIBUSB_ERROR_NOT_SUPPORTED;
+    static struct libusb_endpoint_descriptor ep[2]; static struct libusb_interface_descriptor alt[3]; static struct libusb_interface itf; static struct libusb_config_descriptor cd;
+    memset(ep,0,sizeof ep); memset(alt,0,sizeof alt);
+    ep[0].bEndpointAddress=0x83; ep[1].bEndpointAddress=0x84; ep[0].bInterval=ep[1].bInterval=(uint8_t)atoi(b);
+    for(int a=0;a<3;a++){ alt[a].bInterfaceNumber=0; alt[a].bAlternateSetting=(uint8_t)a; }
+    alt[2].bNumEndpoints=2; alt[2].endpoint=ep;
+    itf.altsetting=alt; itf.num_altsetting=3; cd.bNumInterfaces=1; cd.interface=&itf;
+    *out=&cd; return 0;
+}
+void libusb_free_config_descriptor(struct libusb_config_descriptor *c){ (void)c; }
 int libusb_set_interface_alt_setting(libusb_device_handle*h,int i,int a){
     (void)h;(void)i; char op[16]; snprintf(op,sizeof op,"alt%d",a); trace_(op);
     return (++g_alt_calls==g_fail_alt_at)?LIBUSB_ERROR_PIPE:0; }

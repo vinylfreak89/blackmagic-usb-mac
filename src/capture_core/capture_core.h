@@ -35,9 +35,9 @@ enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
 
 #define CC_DEFAULT_READAHEAD_MB 256  /* replay read-ahead when replay_readahead_mb is 0: ~11 s of stream */
 /* HostLoss records whose pkt_index is CC_PI_UNSCHEDULED report USB slots that were never read: macOS moved a late
- * resubmission past them, so no transfer, error or sequence gap records the loss. req_len = estimated packets (from
- * how much later every following completion lands on the 125 us schedule), actual_len = 0 (bytes unknown),
- * submit_seq = the first transfer seen late. */
+ * resubmission past them, so no transfer, error or sequence gap records the loss. req_len = packets, from libusb's
+ * own scheduling rule mirrored at submit (an estimate: the host clock stands in for the bus frame), actual_len = 0
+ * (bytes unknown), submit_seq = the transfer the gap precedes; the record comes just before that transfer's data. */
 #define CC_PI_UNSCHEDULED 0xFFFDu
 #define CC_XFERS_PER_ENDPOINT 32  /* isochronous transfers kept queued per endpoint (video: 32 x 16 ms = 512 ms ahead) */
 #define CC_DEFAULT_RING_MB 256  /* delivery ring when ring_mb is 0; the frameserver sizes its unit pool from it */
@@ -156,12 +156,13 @@ typedef struct {
     uint64_t replay_corrupt_bytes;  //   (each also reported through diag_log / stderr with its file offset)
     uint64_t replay_align_bytes;    // replay_start_offset > 0: bytes walked past to reach the first whole video transfer
     uint64_t replay_space_waits;    // replay_block_when_full: times the replay waited for the consumer (never data lost)
-    uint64_t unscheduled_events;    // device: USB slots that were never read (see CC_PI_UNSCHEDULED), all endpoints
+    uint64_t unscheduled_events;    // device: gaps of never-read USB slots found (see CC_PI_UNSCHEDULED), all endpoints; one record can carry two
     uint64_t unscheduled_packets[2];// [0]=video [1]=audio: slots never read (libusb's Darwin scheduling rule, +-1 frame)
     int rt_event_thread;            // device: 1 if the USB event thread got real-time scheduling at start
     int rt_libusb_threads;          // device: libusb-internal threads promoted (expected 1: org.libusb.device-hotplug)
     int rt_event_at_stop;           // device: 1 if the event thread's real-time policy reads back at the end (can survive a demotion)
-    int rt_priority_at_stop;        // device: the event thread's scheduled priority at the end (real-time band >= 96; -1 unknown)
+    int rt_priority_at_stop;        // device: the event thread's scheduled priority at the end (real-time queues >= 97; -1 unknown)
+    int rt_priority_min;            // device: its lowest, sampled once a second and at the end: under 97 = it lost real time at some point
     uint64_t schedule_shifts, schedule_shift_frames; // device: completions persistently later than the model (it missed a gap); not placed
 } cc_stats;
 // Snapshot of plain backend-thread counters: authoritative after cc_stop; a live call during

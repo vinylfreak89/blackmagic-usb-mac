@@ -248,7 +248,39 @@ int main(int argc, char **argv){
             CHECK(lt.misplaced==0,"failed submit (advances %d): %d misplaced",adv,lt.misplaced);
             printf("  failed submit, libusb %s its queue end: truth %lld, reported %lld, misplaced %d\n",adv?"advances":"does not advance",want,got,lt.misplaced);
         }
-        unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"); unsetenv("REPLAY_FAIL_ADVANCES"); unsetenv("REPLAY_REALTIME");
+        // 7d: a failed submit with the event thread held around the transfer that settles it. The held callback is
+        // late without any phantom transfer; it must not be read as one (review D6: 2,160-2,416 packets reported, truth 0
+        // or 128). A phantom is still found, placed at once or, when the hold leaves it in doubt, as a counted shift.
+        struct { int ms, at; } hc[]={{300,99},{300,100},{300,101},{20,100},{450,100}};
+        for(size_t i=0;i<sizeof hc/sizeof hc[0];i++) for(int adv=0;adv<2;adv++){
+            char ms[16],at[16]; snprintf(ms,sizeof ms,"%d",hc[i].ms); snprintf(at,sizeof at,"%d",hc[i].at);
+            setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT","100",1); if(adv) setenv("REPLAY_FAIL_ADVANCES","1",1); else unsetenv("REPLAY_FAIL_ADVANCES");
+            setenv("REPLAY_STALL_MS",ms,1); setenv("REPLAY_STALL_VIDEO_AT",at,1);
+            lt.n=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            CHECK(run_device_lt(&st,&t)==CC_OK,"failed submit + hold %d@%d (advances %d): open",hc[i].ms,hc[i].at,adv);
+            long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
+            long long placed=(long long)st.unscheduled_packets[0], shifted=(long long)st.schedule_shift_frames*8, want=tf*8;
+            CHECK(placed+shifted>=want-8 && placed+shifted<=want+8,"failed submit + hold %d@%d (advances %d): reported %lld placed + %lld shifted, truth %lld",
+                  hc[i].ms,hc[i].at,adv,placed,shifted,want);
+            CHECK(lt.misplaced==0,"failed submit + hold %d@%d (advances %d): %d misplaced",hc[i].ms,hc[i].at,adv,lt.misplaced);
+            printf("  failed submit + hold %3d ms @%d, libusb %s: truth %lld; placed %lld, counted as a shift %lld; misplaced %d\n",
+                   hc[i].ms,hc[i].at,adv?"advances":"does not advance",want,placed,shifted,lt.misplaced);
+        }
+        unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT");
+        unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"); unsetenv("REPLAY_FAIL_ADVANCES");
+        // 7e: the model's packets-per-frame comes from bInterval 1: read from the device, it stays on at 1 and turns
+        // off (nothing reported) at any other interval, here with a stall that leaves unread slots
+        for(int iv=1;iv<=4;iv+=3){
+            char b[4]; snprintf(b,sizeof b,"%d",iv); setenv("REPLAY_BINTERVAL",b,1);
+            setenv("REPLAY_STALL_MS","800",1); setenv("REPLAY_STALL_VIDEO_AT","100",1);
+            lt.n=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            CHECK(run_device_lt(&st,&t)==CC_OK,"bInterval %d: open",iv);
+            long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
+            if(iv==1) CHECK((long long)st.unscheduled_packets[0]==tf*8 && tf>0,"bInterval 1: reported %llu, truth %lld",(unsigned long long)st.unscheduled_packets[0],tf*8);
+            else CHECK(st.unscheduled_events==0 && st.schedule_shifts==0,"bInterval %d: model still reporting (%llu events)",iv,(unsigned long long)st.unscheduled_events);
+            printf("  bInterval %d read from the device: unread-slot model %s (reported %llu, truth %lld)\n",iv,iv==1?"on":"off",(unsigned long long)st.unscheduled_packets[0],tf*8);
+        }
+        unsetenv("REPLAY_BINTERVAL"); unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT"); unsetenv("REPLAY_REALTIME");
     } else { fails++; fprintf(stderr,"FAIL: no realtime fixture given (case 7 not run)\n"); }
 
     printf(fails? "FAILURES: %d\n" : "SHIM TESTS PASSED\n", fails);

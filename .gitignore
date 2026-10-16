@@ -29,6 +29,7 @@ __pycache__/
 *.tpc
 captures/
 src/capture_core/shuttle-capture
+src/capture_core/shuttle-capture-hold
 src/capture_core/capture_core_test
 src/capture_core/test_tsan
 src/capture_core/test_asan
