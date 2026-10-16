@@ -32,6 +32,11 @@ enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
                      CC_ERROR_CONTROL_LOSS = 2 };
 
 #define CC_DEFAULT_READAHEAD_MB 256  /* replay read-ahead when replay_readahead_mb is 0: ~11 s of stream */
+/* HostLoss records whose pkt_index is CC_PI_UNSCHEDULED report USB slots that were never read: macOS moved a late
+ * resubmission past them, so no transfer, error or sequence gap records the loss. req_len = estimated packets (from
+ * how much later every following completion lands on the 125 us schedule), actual_len = 0 (bytes unknown),
+ * submit_seq = the first transfer seen late. */
+#define CC_PI_UNSCHEDULED 0xFFFDu
 #define CC_XFERS_PER_ENDPOINT 32  /* isochronous transfers kept queued per endpoint (video: 32 x 16 ms = 512 ms ahead) */
 #define CC_DEFAULT_RING_MB 256  /* delivery ring when ring_mb is 0; the frameserver sizes its unit pool from it */
 #define CC_EP_VIDEO 0x83
@@ -145,6 +150,8 @@ typedef struct {
     uint64_t replay_corrupt_bytes;  //   (each also reported through diag_log / stderr with its file offset)
     uint64_t replay_align_bytes;    // replay_start_offset > 0: bytes walked past to reach the first whole video transfer
     uint64_t replay_space_waits;    // replay_block_when_full: times the replay waited for the consumer (never data lost)
+    uint64_t unscheduled_events;    // device: USB slots that were never read (see CC_PI_UNSCHEDULED), all endpoints
+    uint64_t unscheduled_packets[2];// [0]=video [1]=audio: estimated slots never read, from completion timing
 } cc_stats;
 // Snapshot of plain backend-thread counters: authoritative after cc_stop; a live call during
 // streaming is a racy diagnostic read (values may be momentarily inconsistent), never corrupting.

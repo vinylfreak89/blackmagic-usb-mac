@@ -120,6 +120,7 @@ src/**/tests/*.md
 
 # capture_core test outputs
 src/capture_core/fixture_meta.expect
+src/capture_core/fixture_sched.expect
 src/capture_core/fixture_meta_exhaust.expect
 src/capture_core/test_shim
 src/frameserver/tests/replay_completion_test

@@ -174,6 +174,8 @@ int main(int argc,char**argv){
            (unsigned long long)st.lost_bytes[0],(unsigned long long)st.lost_bytes[1],
            st.zero_len_packets,st.short_packets,st.ring_high_water,st.ring_size,
            st.fleet[0],st.fleet[1],st.fleet_size);
+    printf("unread USB slots (macOS skipped past them): %llu events, ~%llu video / ~%llu audio packets\n",
+           (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1]);
     printf("end=%s | control_records_dropped=%ld control_loss_markers=%ld\n",
            end_name(end_reason),st.control_records_dropped,st.control_loss_markers);
     cc_close(g_s);

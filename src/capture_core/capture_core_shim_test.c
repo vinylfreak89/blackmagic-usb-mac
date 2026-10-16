@@ -8,6 +8,9 @@
 //   2 retry deadline — permanent BUSY terminates loudly and frees the fleet
 //   3 startup honesty — every init stage and initial submit/allocation fail synchronously
 //   4 teardown containment — a missing cancel callback poisons/leaks instead of UAF
+//   7 unscheduled slots — on the real USB schedule (REPLAY_REALTIME), a permanent 50 ms shift (macOS skipping slots)
+//                     is reported as ~400 video packets of HostLoss; a 300 ms stall that catches up, and a clean
+//                     run, report nothing (the detector must not cry wolf)
 //   5 start-up sequence — the exact alt-setting and control-transfer sequence cc_open sends, for setup on and off,
 //                     and the mode word cc_start_info reports (written out here from the vendor driver's commit, not
 //                     taken from the code under test)
@@ -166,6 +169,27 @@ int main(int argc, char **argv){
             CHECK(irc==0 && mode==cases[i].mode,"%s: mode 0x%08x, want 0x%08x",cases[i].name,mode,cases[i].mode);
         }
     }
+
+    // 7: unscheduled-slot detector, on a 4 s fixture paced to the real USB schedule
+    if(argc>=3){
+        setenv("REPLAY_CAPTURE",argv[2],1); unsetenv("REPLAY_MAX_DATA"); setenv("REPLAY_REALTIME","1",1);
+        CHECK(run_device(&st,&t,1,0)==CC_OK,"realtime clean: open");
+        CHECK(st.unscheduled_events==0,"realtime clean: %llu false unscheduled events (%llu video, %llu audio packets)",
+              (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1]);
+        setenv("REPLAY_STALL_VIDEO_AT","100",1); setenv("REPLAY_STALL_MS","300",1);
+        CHECK(run_device(&st,&t,1,0)==CC_OK,"realtime stall: open");
+        CHECK(st.unscheduled_events==0,"300 ms stall that caught up was reported as loss: %llu events, %llu video packets",
+              (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_packets[0]);
+        unsetenv("REPLAY_STALL_VIDEO_AT"); unsetenv("REPLAY_STALL_MS");
+        setenv("REPLAY_SKIP_VIDEO_AT","100",1); setenv("REPLAY_SKIP_MS","50",1);
+        CHECK(run_device(&st,&t,1,0)==CC_OK,"realtime skip: open");
+        CHECK(st.unscheduled_events>=1,"50 ms of skipped slots NOT reported");
+        CHECK(st.unscheduled_packets[0]>=360 && st.unscheduled_packets[0]<=440,
+              "50 ms skip estimated as %llu video packets, want ~400",(unsigned long long)st.unscheduled_packets[0]);
+        unsetenv("REPLAY_SKIP_VIDEO_AT"); unsetenv("REPLAY_SKIP_MS"); unsetenv("REPLAY_REALTIME");
+        printf("unscheduled-slot detector: clean 0, stall 0, 50 ms skip -> %llu video / %llu audio packets\n",
+               (unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1]);
+    } else { fails++; fprintf(stderr,"FAIL: no realtime fixture given (case 7 not run)\n"); }
 
     printf(fails? "FAILURES: %d\n" : "SHIM TESTS PASSED\n", fails);
     return fails?1:0;

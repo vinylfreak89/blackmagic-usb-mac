@@ -64,8 +64,11 @@ capture_core_test: capture_core.c capture_core_test.c capture_core.h ../test_sup
 SHIM=../../experiments/libusb_replay_shim.c
 test_shim: capture_core.c capture_core_shim_test.c capture_core.h $(SHIM) ../test_supervisor.h
 	$(CC) -O1 -g -fsanitize=address,undefined $(CFLAGS) -o test_shim capture_core.c capture_core_shim_test.c $(SHIM) -lpthread
-test-shim: test_shim $(FIXTURE)
-	./test_shim $(FIXTURE)
+SCHED_FIXTURE=fixture_sched.tpc
+$(SCHED_FIXTURE): gen_packet_capture.py
+	python3 gen_packet_capture.py --out $(SCHED_FIXTURE) --expect fixture_sched.expect --video-transfers 250 --audio-transfers 400 --bus-interleave
+test-shim: test_shim $(FIXTURE) $(SCHED_FIXTURE)
+	./test_shim $(FIXTURE) $(SCHED_FIXTURE)
 
 clean:
-	rm -f shuttle-capture capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect fixture_meta_exhaust.tpc fixture_meta_exhaust.expect
+	rm -f shuttle-capture capture_core_test test_tsan test_asan test_shim *.o fixture.tpc fixture.expect fixture_meta.tpc fixture_meta.expect fixture_meta_exhaust.tpc fixture_meta_exhaust.expect fixture_sched.tpc fixture_sched.expect
