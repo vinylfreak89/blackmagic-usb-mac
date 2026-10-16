@@ -157,7 +157,11 @@ FILE *fs_log_detach(frameserver *f, uint64_t *row_errors);
 // files). The first records are mid-unit: a tee starts wherever the stream is. One at a time.
 // The ring's memory follows its backlog (cc_async_sink hands drained pages back), so ring_bytes may be far larger
 // than what a recording normally holds; it must be a whole number of pages for that.
-int  fs_tee_start(frameserver *f, const char *path, const char *session_note, size_t ring_bytes);
+// spill_dir: a local, non-synced directory where the backlog goes when the destination falls behind (see
+// cc_async_sink_open_spill; NULL for none, and a destination on that same volume gets none).
+int  fs_tee_start(frameserver *f, const char *path, const char *session_note, size_t ring_bytes, const char *spill_dir);
+// The attached tee's spill: 1 on, 0 none (not configured, or same volume), -errno unusable; -EINVAL with no tee.
+int  fs_tee_spill_state(frameserver *f);
 // The mode word the device start-up sent (cc_start_info; cc_open sends it, so it is known from fs_open on); -1 for a replay or without an open device session.
 int  fs_device_start_info(const frameserver *f, uint32_t *mode_word);
 // Detach and hand the writer back; the caller closes it (cc_async_sink_close drains and may

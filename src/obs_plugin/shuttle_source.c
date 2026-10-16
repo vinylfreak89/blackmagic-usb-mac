@@ -489,13 +489,17 @@ static void *tpc_closer(void *arg){
     int rc = cc_async_sink_close(j->k, &st);
     uint64_t lost = st.lost_packets[0] + st.lost_packets[1];
     blog(rc == CC_OK && !lost ? LOG_INFO : LOG_ERROR,
-         "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B | writer: %llu writes, mean %.2f ms, longest %.1f ms, %llu over 100 ms, longest wait between writes with data ready %.1f ms | loss episodes %llu, writer inside a write call at %llu of them (for up to %.1f ms by then); most found waiting after an idle wait %.1f MB | ring memory handed back %.0f MB, %llu refusals%s%s",
+         "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B | writer: %llu writes, mean %.2f ms, longest %.1f ms, %llu over 100 ms, longest wait between writes with data ready %.1f ms | loss episodes %llu, writer inside a write call at %llu of them (for up to %.1f ms by then); most found waiting after an idle wait %.1f MB | ring memory handed back %.0f MB, %llu refusals | local spill %s: %.1f MB through it, peak %.1f MB on disk, %llu segments, %llu refused at the free-space floor, longest spill write %.1f ms%s%s%s%s",
          rc == CC_OK ? "" : " WITH A WRITE ERROR", j->path, (unsigned long long)st.records, st.bytes_written / 1e6,
          (unsigned long long)st.lost_packets[0], (unsigned long long)st.lost_bytes[0], (unsigned long long)st.lost_packets[1], (unsigned long long)st.lost_bytes[1],
          (unsigned long long)st.control_dropped, st.high_water / 1e6, st.max_write,
          (unsigned long long)st.writes, st.writes ? st.write_ns / 1e6 / (double)st.writes : 0.0, st.max_write_ns / 1e6, (unsigned long long)st.slow_writes, st.max_ready_gap_ns / 1e6,
          (unsigned long long)st.loss_episodes, (unsigned long long)st.loss_in_write, st.max_in_write_at_loss_ns / 1e6, st.max_wake_backlog / 1e6,
-         st.released_bytes / 1e6, (unsigned long long)st.release_failures, st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");
+         st.released_bytes / 1e6, (unsigned long long)st.release_failures,
+         st.spill_state == 1 ? "on" : st.spill_state == 0 ? "off (same volume)" : "UNUSABLE", st.spill_bytes / 1e6, st.spill_peak / 1e6,
+         (unsigned long long)st.spill_segments, (unsigned long long)st.spill_floor_refusals, st.spill_max_write_ns / 1e6,
+         st.spill_error ? ", spill turned off by: " : "", st.spill_error ? strerror(st.spill_error) : "",
+         st.io_error ? ", error: " : "", st.io_error ? strerror(st.io_error) : "");
     shuttle_src *s = j->s; bfree(j->path); bfree(j);
     pthread_mutex_lock(&s->close_m); atomic_fetch_sub(&s->closers, 1); pthread_cond_broadcast(&s->close_c); pthread_mutex_unlock(&s->close_m);
     return NULL;
@@ -525,9 +529,13 @@ static void tpc_attach(shuttle_src *s){
     else dstr_printf(&note, "shuttle-source tee v1 input=%s recording=%s part=%u setup=%s mode=not reported",
                      s->input_name ? s->input_name : "?", basename_r(b, base) ? base : "?", s->tpc_part, s->applied_setup ? "on" : "off");
     bfree(b);
-    if (fs_tee_start(s->fs, path.array, note.array, TPC_RING_BYTES) == 0){
+    /* The backlog goes to local scratch when the destination (a network volume) falls behind; see cc_async_sink_open_spill. */
+    char spill[64]; snprintf(spill, sizeof spill, SIDECAR_SCRATCH_FMT, (unsigned)getuid());
+    if (fs_tee_start(s->fs, path.array, note.array, TPC_RING_BYTES, spill) == 0){
         s->tpc_path = bstrdup(path.array);
-        blog(LOG_INFO, "[shuttle-source] raw .tpc started: %s", path.array);
+        int ss = fs_tee_spill_state(s->fs);
+        if (ss < 0) blog(LOG_ERROR, "[shuttle-source] raw .tpc started: %s — local spill %s UNUSABLE (%s): memory is the only buffer if the destination falls behind", path.array, spill, strerror(-ss));
+        else blog(LOG_INFO, "[shuttle-source] raw .tpc started: %s — local spill %s", path.array, ss ? spill : "off (destination is on the local disk)");
     } else blog(LOG_ERROR, "[shuttle-source] raw .tpc could not be started (exists? volume writable?): %s", path.array);
     dstr_free(&path); dstr_free(&note);
 }

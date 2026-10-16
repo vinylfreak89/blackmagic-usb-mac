@@ -15,7 +15,10 @@
 #include <unistd.h>
 #include "../tool_deadline.h"
 static cc_session *g_s;
-static cc_tagged_sink *g_k;
+static cc_async_sink *g_k;
+/* The writer's memory ring (pages handed back as it drains) and its local spill for a destination that falls behind. */
+#define CLI_SINK_RING ((size_t)1 << 30)
+#define CLI_SPILL_FMT "/private/tmp/shuttle-capture-%u"
 static _Atomic int g_done;
 static _Atomic int g_end_reason;
 static void end_cb(void *ctx, enum cc_end r){
@@ -131,20 +134,24 @@ int main(int argc,char**argv){
                  "shuttle-capture v1 input=%s mode_word=0x%08x ring_mb=%d fleet=%d+%d control_loss=%s",
                  input_name(cfg.input),cc_mode_word(&cfg),ring_mb,CC_XFERS_PER_ENDPOINT,CC_XFERS_PER_ENDPOINT,
                  cfg.fail_stop_on_control_loss?"fail-stop":"continue");
-    if(cc_tagged_sink_open(&g_k,sink_path,session_note)!=CC_OK){
+    char spill_dir[64]; snprintf(spill_dir,sizeof spill_dir,CLI_SPILL_FMT,(unsigned)getuid());
+    cc_async_sink_spill spill={spill_dir,0,0,0};
+    if(cc_async_sink_open_spill(&g_k,sink_path,session_note,CLI_SINK_RING,1u<<20,&spill)!=CC_OK){
         perror(sink_path); if(publish) unlink(staged); return 1;
     }
-    cc_callbacks cb; cc_tagged_sink_callbacks(g_k,&cb); cb.on_end=end_cb;
+    { int ss=cc_async_sink_spill_state(g_k);
+      if(ss<0) fprintf(stderr,"local spill %s UNUSABLE (%s): memory is the only buffer if the destination falls behind\n",spill_dir,strerror(-ss)); }
+    cc_callbacks cb; cc_async_sink_callbacks(g_k,&cb); cb.on_end=end_cb;
     int rc=cc_open(&g_s,&cfg,&cb);
     if(rc!=CC_OK){
         fprintf(stderr,"open: %s\n",cc_strerror(rc));
-        cc_tagged_sink_close(g_k); if(publish) unlink(staged); return 2;
+        cc_async_sink_close(g_k,NULL); if(publish) unlink(staged); return 2;
     }
     rc=cc_start(g_s);
     if(rc!=CC_OK){
         fprintf(stderr,"start: %s\n",cc_strerror(rc));
         cc_close(g_s);
-        cc_tagged_sink_close(g_k);
+        cc_async_sink_close(g_k,NULL);
         if(publish) unlink(staged);
         return 2;
     }
@@ -182,7 +189,14 @@ int main(int argc,char**argv){
     printf("end=%s | control_records_dropped=%ld control_loss_markers=%ld\n",
            end_name(end_reason),st.control_records_dropped,st.control_loss_markers);
     cc_close(g_s);
-    int krc=cc_tagged_sink_close(g_k);
+    cc_async_sink_stats ks; int krc=cc_async_sink_close(g_k,&ks);
+    printf("writer: %.1f MB written, lost v=%llu a=%llu pkts, control records dropped %llu, ring peak %.1f MB, longest write %.1f ms, %llu over 100 ms\n",
+           ks.bytes_written/1e6,(unsigned long long)ks.lost_packets[0],(unsigned long long)ks.lost_packets[1],(unsigned long long)ks.control_dropped,
+           ks.high_water/1e6,ks.max_write_ns/1e6,(unsigned long long)ks.slow_writes);
+    printf("local spill %s: %.1f MB through it, peak %.1f MB on disk, %llu segments, %llu refused at the free-space floor, longest spill write %.1f ms%s%s\n",
+           ks.spill_state==1?"on":ks.spill_state==0?"off (same volume)":"UNUSABLE",ks.spill_bytes/1e6,ks.spill_peak/1e6,
+           (unsigned long long)ks.spill_segments,(unsigned long long)ks.spill_floor_refusals,ks.spill_max_write_ns/1e6,
+           ks.spill_error?", turned off by: ":"",ks.spill_error?strerror(ks.spill_error):"");
     if(krc!=CC_OK){
         fprintf(stderr,"SINK WRITE FAILURE; partial capture retained at %s\n",sink_path);
         return 3;

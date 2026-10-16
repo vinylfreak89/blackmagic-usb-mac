@@ -211,15 +211,40 @@ typedef struct {
     // Ring memory handed back to the system as it drained (see below); a refused hand-back ends the capture's
     // completeness: the sink stops freeing space, counts what it drops, and close returns CC_ERR_IO (ENOMEM).
     uint64_t released_bytes, release_failures;
+    // The local spill (cc_async_sink_open_spill). spill_state: 1 on; 0 not configured, or the destination is on the
+    // spill's own volume; -errno: the directory was unusable, so memory was the only buffer. spill_error: the errno
+    // that turned it off mid-capture (the bytes of that write stayed in memory: nothing is lost by it).
+    int spill_state, spill_error;
+    uint64_t spill_bytes, spill_peak;        // bytes that went through the local disk; most on disk at once
+    uint64_t spill_segments;                 // segment files created
+    uint64_t spill_floor_refusals;           // times a new segment was refused because it would break the free-space floor
+    uint64_t spill_max_write_ns;             // longest local spill write
 } cc_async_sink_stats;
 int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *session_note,
                          size_t ring_bytes, size_t write_chunk);
+// A destination on another volume (a network share) can stall for seconds or minutes. With a spill, once the
+// memory backlog reaches `after` bytes the oldest of it moves to segment files in `dir` on the local disk and is
+// delivered from there, in order, so a stalled destination costs local disk space instead of the capture. The spill
+// always leaves `floor` bytes free on its volume; beyond that memory is the only buffer and overflow is HostLoss.
+// Segments are deleted as they are delivered and at close. A destination on the spill's own volume gets no spill.
+typedef struct {
+    const char *dir;      // local, non-synced directory (created 0700 if absent); NULL: no spill
+    uint64_t floor;       // free bytes always left on the spill volume; 0: 32 GiB
+    size_t after;         // memory backlog at which bytes start going to disk; 0: ring/16 within [8 MiB, 256 MiB]
+    size_t segment;       // bytes per segment file; 0: 128 MiB
+} cc_async_sink_spill;
+int  cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *session_note,
+                              size_t ring_bytes, size_t write_chunk, const cc_async_sink_spill *spill);
+int  cc_async_sink_spill_state(const cc_async_sink *k);   // as cc_async_sink_stats.spill_state, from open on
 void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *out); // packet/loss/error/tick
 // Drains everything accepted, joins the writer, fsyncs and closes; fills *st (may be NULL).
 int  cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st);
 // Test hook: when set, the writer's write() goes through it (stall / short-write / failure).
 extern ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n);
 extern int (*cc_async_sink_test_fsync)(int fd);   /* test hook for the periodic flush */
+extern ssize_t (*cc_async_sink_test_spill_write)(int fd, const void *buf, size_t n, off_t off);   /* spill writes */
+extern uint64_t (*cc_async_sink_test_free)(const char *dir);   /* free bytes on the spill volume */
+extern int cc_async_sink_test_spill_any_volume;   /* spill even onto the destination's own volume */
 extern size_t cc_async_sink_sync_every;            /* bytes between flushes (default 256 MiB); 0: only at close */
 // The writer thread's QoS class (default QOS_CLASS_UTILITY); read once when the sink opens. For measurement.
 extern int cc_async_sink_writer_qos;

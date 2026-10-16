@@ -929,11 +929,12 @@ FILE *fs_log_detach(frameserver *f, uint64_t *row_errors){
     if(L && row_errors) *row_errors = errs;
     return L;
 }
-int fs_tee_start(frameserver *f, const char *path, const char *note, size_t ring_bytes){
+int fs_tee_start(frameserver *f, const char *path, const char *note, size_t ring_bytes, const char *spill_dir){
     if(!f || !path || !*path || fs_log_from_worker(f) || !f->tee_m_init) return -1;
     pthread_mutex_lock(&f->tee_m); int attached = f->tee != NULL; pthread_mutex_unlock(&f->tee_m);
     if(attached) return -1;
-    cc_async_sink *k; if(cc_async_sink_open(&k, path, note, ring_bytes, 1u<<20) != CC_OK) return -1;
+    cc_async_sink_spill sp = { spill_dir, 0, 0, 0 };
+    cc_async_sink *k; if(cc_async_sink_open_spill(&k, path, note, ring_bytes, 1u<<20, spill_dir ? &sp : NULL) != CC_OK) return -1;
     pthread_mutex_lock(&f->life_m);
     if(f->life!=FS_LIFE_RUNNING){ pthread_mutex_unlock(&f->life_m); cc_async_sink_close(k,NULL); remove(path); return -1; }
     pthread_mutex_lock(&f->tee_m);
@@ -941,6 +942,11 @@ int fs_tee_start(frameserver *f, const char *path, const char *note, size_t ring
     cc_async_sink_callbacks(k, &f->tee_cb); f->tee = k;
     pthread_mutex_unlock(&f->tee_m); pthread_mutex_unlock(&f->life_m);
     return 0;
+}
+int fs_tee_spill_state(frameserver *f){
+    if(!f || !f->tee_m_init) return -EINVAL;
+    pthread_mutex_lock(&f->tee_m); int r = f->tee ? cc_async_sink_spill_state(f->tee) : -EINVAL; pthread_mutex_unlock(&f->tee_m);
+    return r;
 }
 cc_async_sink *fs_tee_detach(frameserver *f){
     if(!f || !f->tee_m_init) return NULL;

@@ -128,7 +128,7 @@ int main(int argc, char **argv){
     g_fs = f;
     if (fs_start(f) != 0){ fprintf(stderr, "start failed\n"); return 1; }
     const char *tee_path=getenv("FS_TEE");   /* test/diagnostic: raw .tpc tee of the replayed stream */
-    if(tee_path && *tee_path && fs_tee_start(f,tee_path,"frameserver tee v1 input=replay",256u<<20)!=0){ fprintf(stderr,"tee start failed: %s\n",tee_path); return 1; }
+    if(tee_path && *tee_path && fs_tee_start(f,tee_path,"frameserver tee v1 input=replay",256u<<20,NULL)!=0){ fprintf(stderr,"tee start failed: %s\n",tee_path); return 1; }
     tool_guard(NULL,0);
     double limit=tool_stall_seconds(stall_s,cfg.capture.replay_pace_us);
     uint64_t seen = fs_packets_delivered(f); double last_progress = tool_clock();
