@@ -270,10 +270,17 @@ void cc_async_sink_spill_stale(const cc_async_sink *k, uint64_t *files, uint64_t
 // kept what it wrote). A system crash or power loss is not covered: the spill directories live in /private/tmp,
 // which macOS clears at restart, and the destination then simply ends where its last flushed write did, unmarked.
 typedef struct { unsigned recovered, kept, failed; uint64_t bytes; } cc_spill_recover_stats;
-// The manifest's on-disk form, <spill dir>/<dest name>.p<pid>.<tag>.manifest next to its segments
-// <...>.spill<6 digits>, each whole records from offset 0: next_seg/next_off is the first byte not yet delivered.
+// The on-disk form: <spill dir>/<dest name>.p<pid>.<tag>.manifest next to its segments <...>.spill<6 digits>.
+// A segment is chunks, each a cc_spill_chunk_s header (its records' stream position and length) and whole records.
+// next_seg/next_off is the header of the first chunk not yet delivered; delta is destination bytes minus stream
+// bytes so far, so that chunk belongs at destination offset spos + delta.
 #define CC_SPILL_MANIFEST_MAGIC "CCSPILL1"
-struct cc_spill_manifest_s { char magic[8]; uint32_t version, pid; uint64_t next_seg, next_off; char dest[1024]; };
+#define CC_SPILL_CHUNK_MAGIC 0x43534343u   /* "CCSC" */
+struct cc_spill_manifest_s { char magic[8]; uint32_t version, pid; uint64_t next_seg, next_off; int64_t delta; char dest[1024]; };
+struct cc_spill_chunk_s { uint32_t magic, len; uint64_t spos; };
+/* HostLoss written by recovery where bytes are missing whose packets are unknown: actual_len = bytes (a chunk the
+ * crash cut short in the destination, or spilled records that cannot be read). */
+#define CC_PI_HOLE 0xFFF9u
 int  cc_spill_recover(const char *dir, void (*log)(void *ctx, const char *line), void *ctx, const _Atomic int *stop,
                       _Atomic uint64_t *progress, cc_spill_recover_stats *st);
 extern ssize_t (*cc_spill_recover_test_write)(int fd, const void *buf, size_t n, off_t off);   /* recovery's writes */

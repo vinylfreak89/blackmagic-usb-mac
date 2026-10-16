@@ -1413,7 +1413,8 @@ struct cc_async_sink {
     uint64_t sd_w, sd_r, segs_made, seg_lo, swoff;   /* chunks; segments created; the oldest not yet deleted; fill of the open one */
     _Atomic uint64_t spill_read_errors, spill_read_lost_pk[2], spill_read_lost_by[2];
     int64_t spill_room; uint64_t stale_files, stale_bytes; int finished;
-    int mfd, mfd_stale;                  /* the spill manifest, locked for this writer's life (-1: none); updates failed */   /* at open: free bytes above the floor; segments of dead writers */
+    int mfd, mfd_stale;                  /* the spill manifest, locked for this writer's life (-1: none); updates failed */
+    int64_t sdelta;                      /* writer: destination bytes minus stream bytes (HostLoss written for lost spill chunks) */   /* at open: free bytes above the floor; segments of dead writers */
     int swfd, srfd; uint64_t swseg, srseg;   // spiller's open segment; writer's
     size_t bcap;                         // bbuf: a chunk, or one record larger than a chunk
     _Atomic uint64_t spill_bytes, spill_peak, spill_segments, spill_floor_refusals, spill_max_write_ns;
@@ -1577,6 +1578,7 @@ static void as_dest_write_(struct cc_async_sink *k, const uint8_t *buf, size_t n
 }
 #define AS_SD_CAP ((uint64_t)1<<18)      /* spilled chunks tracked at once: 256 GB of spill at 1 MiB chunks */
 #define AS_PI_SPILL_LOSS 0xFFFBu          /* HostLoss written where spilled records could not be read back */
+#define AS_SPILL_CHUNK ((size_t)1<<20)     /* spilled chunks hold at most this (one recovery write each) */
 static void as_peek_(const struct cc_async_sink *k, size_t at, void *out, size_t n){
     size_t o=at%k->cap, first=n<k->cap-o?n:k->cap-o;
     memcpy(out,k->ring+o,first); if(n>first) memcpy((uint8_t*)out+first,k->ring,n-first);
@@ -1619,7 +1621,7 @@ static int as_spill_read_(struct cc_async_sink *k, const struct as_sd *d){
  * (their packets, and loss they had already confessed), so the file stays whole records and says what is missing
  * there. The capture goes on (owner: "real time drops shouldn't crash a program"). */
 static void as_spill_lost_(struct cc_async_sink *k, const struct as_sd *d, uint64_t *last_done, uint64_t *since_sync){
-    atomic_fetch_add(&k->spill_read_errors,1);
+    atomic_fetch_add(&k->spill_read_errors,1); k->sdelta-=(int64_t)d->len;
     for(int e=0;e<2;e++){
         if(!d->pk[e] && !d->by[e]) continue;
         atomic_fetch_add(&k->spill_read_lost_pk[e],d->pk[e]); atomic_fetch_add(&k->spill_read_lost_by[e],d->by[e]);
@@ -1627,7 +1629,7 @@ static void as_spill_lost_(struct cc_async_sink *k, const struct as_sd *d, uint6
         do { uint32_t b=(uint32_t)(by>0xffffffffu?0xffffffffu:by); by-=b;
              rec_hdr h={REC_MAGIC,REC_HOSTLOSS,e?CC_EP_AUDIO:CC_EP_VIDEO,(uint16_t)AS_PI_SPILL_LOSS,0,0,d->pk[e],b};
              if(!k->io_errno) as_dest_write_(k,(const uint8_t*)&h,sizeof h,last_done,since_sync);
-             atomic_fetch_add(&k->records,1);
+             atomic_fetch_add(&k->records,1); k->sdelta+=(int64_t)sizeof h;
         } while(by);
     }
     if(d->ctl) atomic_fetch_add(&k->control_dropped,d->ctl);
@@ -1638,7 +1640,7 @@ static void as_spill_lost_(struct cc_async_sink *k, const struct as_sd *d, uint6
 #define AS_MANIFEST_MAGIC CC_SPILL_MANIFEST_MAGIC
 static void as_manifest_next_(struct cc_async_sink *k, uint64_t seg, uint64_t off){
     if(k->mfd<0) return;
-    uint64_t v[2]={seg,off};
+    int64_t v[3]={(int64_t)seg,(int64_t)off,k->sdelta};
     if(k->mfd_stale) return;
     /* a failed update leaves an earlier position: recovery then skips what the destination already has. The fd
      * stays open: its lock says this writer is alive. */
@@ -1687,8 +1689,8 @@ static void *as_writer_(void *arg){
         if(from_spill){
             int last=k->sdq[k->sd_r%AS_SD_CAP].last;   /* re-read: the spiller may have closed this segment meanwhile */
             k->sd_r++; k->sp_r+=d.len;
-            uint64_t ns=d.seg, no=(uint64_t)d.off+d.len;
-            if(k->sd_r<k->sd_w){ ns=k->sdq[k->sd_r%AS_SD_CAP].seg; no=k->sdq[k->sd_r%AS_SD_CAP].off; }
+            uint64_t ns=d.seg, no=(uint64_t)d.off+d.len;   /* the next chunk's header */
+            if(k->sd_r<k->sd_w){ ns=k->sdq[k->sd_r%AS_SD_CAP].seg; no=k->sdq[k->sd_r%AS_SD_CAP].off-sizeof(struct cc_spill_chunk_s); }
             else if(last){ ns=d.seg+1; no=0; }
             pthread_mutex_unlock(&k->m);
             as_manifest_next_(k,ns,no);       /* the writer's own fd, outside the lock: after the bytes reached the destination */
@@ -1730,8 +1732,9 @@ static void *as_spiller_(void *arg){
         if(k->sd_w-k->sd_r==AS_SD_CAP){      /* every chunk slot in use: memory is the buffer until one frees */
             atomic_fetch_add_explicit(&k->spill_floor_refusals,1,memory_order_relaxed); k->floor_retry_ns=as_now_()+100000000ull; continue;
         }
-        struct as_sd d; size_t lo=k->mpos, n=as_records_(k,lo,head,k->chunk,&d);
-        if(k->swfd<0 || k->swoff+n>k->sseg){ /* a new segment: only with the floor still clear after it */
+        struct as_sd d; size_t lo=k->mpos, n=as_records_(k,lo,head,k->chunk<AS_SPILL_CHUNK?k->chunk:AS_SPILL_CHUNK,&d);
+        const size_t ch=sizeof(struct cc_spill_chunk_s);
+        if(k->swfd<0 || k->swoff+ch+n>k->sseg){ /* a new segment: only with the floor still clear after it */
             int ours=0; uint64_t old=k->swseg;
             if(k->swfd>=0){                  /* the full one goes to whoever delivers its last chunk */
                 if(k->sd_w>k->sd_r) k->sdq[(k->sd_w-1)%AS_SD_CAP].last=1; else ours=1;
@@ -1759,10 +1762,13 @@ static void *as_spiller_(void *arg){
         uint64_t at=k->swoff; k->mpos=lo+n; k->take_busy=1;
         pthread_mutex_unlock(&k->m);
         size_t done=0; int err=0; uint64_t t0=as_now_();
-        while(done<n){                       /* records may wrap the ring: at most two pieces */
+        /* a chunk header (its stream position and length) so a recovery knows exactly where its records belong */
+        struct cc_spill_chunk_s chh={CC_SPILL_CHUNK_MAGIC,(uint32_t)n,(uint64_t)lo};
+        if(pwrite(k->swfd,&chh,ch,(off_t)at)!=(ssize_t)ch) err=errno?errno:EIO;
+        while(!err && done<n){               /* records may wrap the ring: at most two pieces */
             size_t o=(lo+done)%k->cap, piece=n-done<k->cap-o?n-done:k->cap-o;
-            ssize_t w=cc_async_sink_test_spill_write?cc_async_sink_test_spill_write(k->swfd,k->ring+o,piece,(off_t)(at+done))
-                                                    :pwrite(k->swfd,k->ring+o,piece,(off_t)(at+done));
+            ssize_t w=cc_async_sink_test_spill_write?cc_async_sink_test_spill_write(k->swfd,k->ring+o,piece,(off_t)(at+ch+done))
+                                                    :pwrite(k->swfd,k->ring+o,piece,(off_t)(at+ch+done));
             if(w<0 && errno==EINTR) continue;
             if(w<=0){ err=w<0?errno:EIO; break; }
             done+=(size_t)w;
@@ -1774,8 +1780,8 @@ static void *as_spiller_(void *arg){
         if(err){                             /* the records are still in memory; their partial copy must not stay in the segment */
             if(ftruncate(k->swfd,(off_t)at)!=0){ char nm[PATH_MAX]; as_seg_name_(k,k->swseg,nm,sizeof nm); if(at==0) unlink(nm); }
             k->mpos=lo; k->spill_error=err; pthread_cond_signal(&k->cv); break; }
-        d.seg=k->swseg; d.off=(uint32_t)at; d.len=(uint32_t)n; d.last=0;
-        k->sdq[k->sd_w%AS_SD_CAP]=d; k->sd_w++; k->swoff=at+n; k->sp_w+=n; as_consumed_(k,lo+n);
+        d.seg=k->swseg; d.off=(uint32_t)(at+ch); d.len=(uint32_t)n; d.last=0;
+        k->sdq[k->sd_w%AS_SD_CAP]=d; k->sd_w++; k->swoff=at+ch+n; k->sp_w+=n; as_consumed_(k,lo+n);
         atomic_fetch_add_explicit(&k->spill_bytes,n,memory_order_relaxed);
         if(k->sp_w-k->sp_r>atomic_load_explicit(&k->spill_peak,memory_order_relaxed)) atomic_store_explicit(&k->spill_peak,k->sp_w-k->sp_r,memory_order_relaxed);
         pthread_cond_signal(&k->cv);
@@ -1832,25 +1838,26 @@ static int rv_tail_(int fd, uint64_t size, uint64_t *cut, uint8_t **tail, size_t
 }
 static void rv_log_(void (*log)(void*,const char*), void *ctx, const char *line){ if(log) log(ctx,line); else fprintf(stderr,"%s\n",line); }
 static int rv_cmp_idx_(const void *a, const void *b){ uint64_t x=*(const uint64_t*)a, y=*(const uint64_t*)b; return x<y?-1:x>y; }
-/* Whole records of a segment from `off`, at most `max` bytes (at least one record): their length, 0 at the end of
- * what the segment holds (a cut record there was still in memory when the writer died). */
-static size_t rv_piece_(int sfd, uint64_t off, uint64_t end, size_t max){
-    uint64_t q=off;
-    while(end-q>=sizeof(rec_hdr)){
-        uint8_t h[sizeof(rec_hdr)]; if(!rv_pread_(sfd,h,sizeof h,(off_t)q) || !rv_plausible_(h)) break;
-        size_t len=rv_len_(h); if(len>end-q || (q>off && q+len-off>max)) break;
-        q+=len;
-    }
-    return (size_t)(q-off);
+/* A chunk's records form an exact chain of whole records filling its length. */
+static int rv_chain_(const uint8_t *b, size_t len){
+    size_t q=0; while(q<len){ if(len-q<sizeof(rec_hdr) || !rv_plausible_(b+q)) return 0; size_t l=rv_len_(b+q); if(l>len-q) return 0; q+=l; }
+    return 1;
 }
-#define RV_PIECE ((size_t)1<<20)   /* recovery writes: at most 1 MiB, read back each (a network volume can lose a large one) */
-/* One crashed writer, resumably: the destination is cut back to its whole records, then the undelivered records are
- * appended in pieces of at most RV_PIECE, each read back after fsync and then recorded in the manifest, so a stop or
- * failure loses nothing and the next run resumes exactly there (a failed piece is cut off the destination again).
- * The first undelivered chunk may already be partly in the destination: it is skipped up to the destination's tail.
- * At the end, a CC_PI_UNCLOSED HostLoss (what was in memory when the writer died is lost, amount unknown), then the
- * segments and the manifest go. 1 done, 0 kept (logged), -1 stopped. */
-static int rv_one_(const char *dir, const char *mname, int mfd, struct as_manifest *mf, void (*log)(void*,const char*), void *ctx,
+#define RV_PIECE (AS_SPILL_CHUNK+((size_t)128<<10))   /* one spilled chunk: at most 1 MiB of records, one write each */
+/* Append buf[0,n) at *at: write, fsync, read back (a network volume can acknowledge a write and lose it). */
+static int rv_put_(int dfd, const uint8_t *buf, size_t n, uint64_t at, uint8_t *chk){
+    return rv_write_(dfd,buf,n,(off_t)at) && fsync(dfd)==0 && rv_pread_(dfd,chk,n,(off_t)at) && !memcmp(chk,buf,n);
+}
+/* One crashed writer, resumably and exactly. Every spilled chunk carries its stream position, and the manifest the
+ * difference between destination and stream bytes, so the first undelivered chunk belongs at a known destination
+ * offset E. A destination at least that long has everything before it complete: it is cut back to E (whatever is
+ * past it is that chunk partly written, or an earlier run's unverified piece). A shorter one stopped inside a chunk
+ * the writer was writing from memory, whose rest is gone: it is cut back to its whole records and the gap is
+ * confessed as a CC_PI_HOLE HostLoss of its bytes. Chunks are then appended one per write, each read back and
+ * recorded in the manifest as the resume point; a chunk whose records do not chain is confessed in place (its bytes,
+ * CC_PI_HOLE) and skipped, and only the newest segment may end in a chunk the crash cut. At the end a CC_PI_UNCLOSED
+ * HostLoss (what was in memory is lost, amount unknown); then the segments and manifest go. 1 done, 0 kept, -1 stopped. */
+static int rv_one_(const char *dir, const char *mname, int mfd, struct cc_spill_manifest_s *mf, void (*log)(void*,const char*), void *ctx,
                    const _Atomic int *stop, _Atomic uint64_t *progress, cc_spill_recover_stats *st){
     char line[PATH_MAX+256], prefix[PATH_MAX]; size_t pl=strlen(mname)-strlen(".manifest");
     snprintf(prefix,sizeof prefix,"%.*s",(int)pl,mname);
@@ -1863,50 +1870,72 @@ static int rv_one_(const char *dir, const char *mname, int mfd, struct as_manife
     int dfd=open(mf->dest,O_RDWR);
     if(dfd<0){ snprintf(line,sizeof line,"capture_core: spill of a capture that ended without closing KEPT in %s: its destination %s cannot be opened (%s)",dir,mf->dest,strerror(errno));
                rv_log_(log,ctx,line); st->kept++; return 0; }
-    struct stat ds; fstat(dfd,&ds);
-    uint64_t cut; uint8_t *tail=NULL; size_t tail_len=0; int ended=0;
-    if(!rv_tail_(dfd,(uint64_t)ds.st_size,&cut,&tail,&tail_len,&ended)){
-        snprintf(line,sizeof line,"capture_core: spill KEPT in %s: no record boundary found at the end of %s",dir,mf->dest);
-        rv_log_(log,ctx,line); close(dfd); st->kept++; return 0; }
-    if((uint64_t)ds.st_size>cut && (ftruncate(dfd,(off_t)cut)!=0 || fsync(dfd)!=0)){
-        snprintf(line,sizeof line,"capture_core: spill KEPT in %s: cannot cut %s back to its whole records (%s)",dir,mf->dest,strerror(errno));
-        rv_log_(log,ctx,line); free(tail); close(dfd); st->kept++; return 0; }
-    if(ended){ free(tail); tail=NULL; tail_len=0; }   /* an earlier run finished appending; only its marker is redone */
-    uint64_t at=cut, appended=0, skipped=0; int bad=0, stopped=0, first=1; const char *why="";
-    uint8_t *buf=malloc(RV_PIECE+((size_t)128<<10)), *chk=malloc(RV_PIECE+((size_t)128<<10));
+    struct stat ds; fstat(dfd,&ds); uint64_t size=(uint64_t)ds.st_size;
+    uint8_t *buf=malloc(RV_PIECE), *chk=malloc(RV_PIECE);
+    uint64_t at=0, appended=0, holes=0, hole_bytes=0; int bad=0, stopped=0, placed=0; const char *why="";
     if(!buf || !chk){ bad=1; why="out of memory"; }
+    int64_t delta=mf->delta;
     for(int i=0;i<n && !bad && !stopped;i++){
         if(idx[i]<mf->next_seg) continue;              /* delivered before the crash */
         char sn[PATH_MAX]; snprintf(sn,sizeof sn,"%s/%s.spill%06llu",dir,prefix,(unsigned long long)idx[i]);
         int sfd=open(sn,O_RDONLY); struct stat ss;
         if(sfd<0 || fstat(sfd,&ss)!=0){ bad=1; why="a segment cannot be read"; if(sfd>=0) close(sfd); break; }
-        uint64_t off=idx[i]==mf->next_seg?mf->next_off:0, end=(uint64_t)ss.st_size;
-        if(first && tail_len){                         /* the first undelivered chunk may be partly delivered already */
-            uint64_t lim=off+RV_PIECE+((uint64_t)256<<10);  /* the overlap lies within one chunk */
-            for(uint64_t r=off; r<lim && end-r>=tail_len; ){
-                uint8_t h[sizeof(rec_hdr)]; if(!rv_pread_(sfd,h,sizeof h,(off_t)r) || !rv_plausible_(h)) break;
-                if(!memcmp(h,tail,sizeof h) && tail_len<=RV_PIECE+((size_t)128<<10) && rv_pread_(sfd,chk,tail_len,(off_t)r) && !memcmp(chk,tail,tail_len)){
-                    skipped=r+tail_len-off; off=r+tail_len; break; }
-                r+=rv_len_(h);
-            }
-        }
-        first=0;
-        for(;;){
+        uint64_t off=idx[i]==mf->next_seg?mf->next_off:0, end=(uint64_t)ss.st_size; int newest=i==n-1;
+        while(off<end && !bad){
             if(stop && atomic_load(stop)){ stopped=1; break; }
-            size_t len=rv_piece_(sfd,off,end,RV_PIECE); if(!len) break;
-            if(len>RV_PIECE+((size_t)128<<10) || !rv_pread_(sfd,buf,len,(off_t)off)){ bad=1; why="a segment cannot be read"; break; }
-            if(!rv_write_(dfd,buf,len,(off_t)at) || fsync(dfd)!=0 || !rv_pread_(dfd,chk,len,(off_t)at) || memcmp(chk,buf,len)){
-                bad=1; why="a write to the destination failed or did not read back"; break; }
-            at+=len; off+=len; appended+=len; if(progress) atomic_fetch_add(progress,len);
-            uint64_t v[2]={idx[i],off};                /* resume point: after this verified piece */
-            if(pwrite(mfd,v,sizeof v,(off_t)offsetof(struct as_manifest,next_seg))!=(ssize_t)sizeof v){ bad=1; why="the manifest cannot be updated"; break; }
-            mf->next_seg=idx[i]; mf->next_off=off;
+            if(newest && end-off<sizeof(struct cc_spill_chunk_s)) break;   /* a header the crash cut */
+            struct cc_spill_chunk_s c; int ok=end-off>=sizeof c && rv_pread_(sfd,&c,sizeof c,(off_t)off) && c.magic==CC_SPILL_CHUNK_MAGIC && c.len<=AS_SPILL_CHUNK;
+            uint64_t span=ok?sizeof c+(uint64_t)c.len:0;
+            if(ok && span>end-off){                    /* cut by the crash: still in memory then, so lost with it */
+                if(newest) break;
+                ok=0;
+            }
+            if(ok) ok=rv_pread_(sfd,buf,c.len,(off_t)(off+sizeof c)) && rv_chain_(buf,c.len);
+            if(!placed){                               /* where this chunk belongs decides the destination's end */
+                uint64_t E=ok?(uint64_t)((int64_t)c.spos+delta):size;
+                placed=1;
+                if(!ok || size>=E){ at=ok?E:size; if(!ok){ uint64_t cut; uint8_t *tl; size_t tll; int en;
+                        if(!rv_tail_(dfd,size,&cut,&tl,&tll,&en)){ bad=1; why="no record boundary at the destination's end"; break; } free(tl); at=cut; } }
+                else {                                 /* short: a chunk written from memory was cut, its rest lost */
+                    uint64_t cut; uint8_t *tl; size_t tll; int en;
+                    if(!rv_tail_(dfd,size,&cut,&tl,&tll,&en)){ bad=1; why="no record boundary at the destination's end"; break; }
+                    free(tl); at=cut;
+                }
+                if(ftruncate(dfd,(off_t)at)!=0 || fsync(dfd)!=0){ bad=1; why="the destination cannot be cut back"; break; }
+                if(ok && at<E){
+                    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,CC_EP_VIDEO,(uint16_t)CC_PI_HOLE,0,0,0,(uint32_t)(E-at>0xffffffffu?0xffffffffu:E-at)};
+                    if(!rv_put_(dfd,(const uint8_t*)&h,sizeof h,at,chk)){ bad=1; why="a write to the destination failed or did not read back"; break; }
+                    holes++; hole_bytes+=E-at; at+=sizeof h; delta=(int64_t)at-(int64_t)c.spos;
+                }
+            }
+            if(!ok){                                   /* damaged: confessed where it was, then on to the next chunk */
+                uint64_t skip=end-off;                 /* to the next chunk header, or the segment's end */
+                for(uint64_t r=off+1; r+sizeof c<=end; r++){ struct cc_spill_chunk_s c2;
+                    if(rv_pread_(sfd,&c2,sizeof c2,(off_t)r) && c2.magic==CC_SPILL_CHUNK_MAGIC && c2.len<=AS_SPILL_CHUNK){ skip=r-off; break; } }
+                rec_hdr h={REC_MAGIC,REC_HOSTLOSS,CC_EP_VIDEO,(uint16_t)CC_PI_HOLE,0,0,0,(uint32_t)(skip>0xffffffffu?0xffffffffu:skip)};
+                if(!rv_put_(dfd,(const uint8_t*)&h,sizeof h,at,chk)){ bad=1; why="a write to the destination failed or did not read back"; break; }
+                holes++; hole_bytes+=skip; at+=sizeof h; off+=skip;
+                /* the next chunk's own position resets the delta */
+                struct cc_spill_chunk_s c3; if(off+sizeof c3<=end && rv_pread_(sfd,&c3,sizeof c3,(off_t)off) && c3.magic==CC_SPILL_CHUNK_MAGIC) delta=(int64_t)at-(int64_t)c3.spos;
+            } else {
+                if(!rv_put_(dfd,buf,c.len,at,chk)){ bad=1; why="a write to the destination failed or did not read back"; break; }
+                at+=c.len; off+=span; appended+=c.len; if(progress) atomic_fetch_add(progress,c.len);
+                delta=(int64_t)at-(int64_t)(c.spos+c.len);
+            }
+            int64_t v[3]={(int64_t)idx[i],(int64_t)off,delta};   /* resume point: after this verified chunk */
+            if(pwrite(mfd,v,sizeof v,(off_t)offsetof(struct cc_spill_manifest_s,next_seg))!=(ssize_t)sizeof v){ bad=1; why="the manifest cannot be updated"; break; }
+            mf->next_seg=idx[i]; mf->next_off=off; mf->delta=delta;
         }
         close(sfd);
     }
-    free(buf); free(chk); free(tail);
+    if(!placed && !bad && !stopped){                   /* nothing left in the spill: only the end to settle */
+        uint64_t cut; uint8_t *tl; size_t tll; int en;
+        if(!rv_tail_(dfd,size,&cut,&tl,&tll,&en)){ bad=1; why="no record boundary at the destination's end"; }
+        else { free(tl); at=cut; if(ftruncate(dfd,(off_t)at)!=0 || fsync(dfd)!=0){ bad=1; why="the destination cannot be cut back"; } }
+    }
+    free(buf); free(chk);
     if(bad || stopped){                                /* whatever was not verified comes off again; the rest stays */
-        int cutback=ftruncate(dfd,(off_t)at)==0 && fsync(dfd)==0; close(dfd);
+        int cutback=!placed || (ftruncate(dfd,(off_t)at)==0 && fsync(dfd)==0); close(dfd);
         if(stopped){ snprintf(line,sizeof line,"capture_core: spill recovery into %s paused at %.1f MB: it resumes at the next start",mf->dest,appended/1e6);
                      rv_log_(log,ctx,line); st->kept++; return -1; }
         snprintf(line,sizeof line,"capture_core: spill recovery into %s FAILED after %.1f MB (%s%s): the rest is kept in %s and resumes at the next start",
@@ -1921,8 +1950,8 @@ static int rv_one_(const char *dir, const char *mname, int mfd, struct as_manife
     close(dfd);
     for(int i=0;i<n;i++){ char sn[PATH_MAX]; snprintf(sn,sizeof sn,"%s/%s.spill%06llu",dir,prefix,(unsigned long long)idx[i]); unlink(sn); }
     char mn[PATH_MAX]; snprintf(mn,sizeof mn,"%s/%s",dir,mname); unlink(mn);
-    snprintf(line,sizeof line,"capture_core: recovered %.1f MB of a capture that ended without closing into %s (%llu bytes of a cut record removed, %llu already there; marked as ended there)",
-             appended/1e6,mf->dest,(unsigned long long)((uint64_t)ds.st_size>cut?(uint64_t)ds.st_size-cut:0),(unsigned long long)skipped);
+    snprintf(line,sizeof line,"capture_core: recovered %.1f MB of a capture that ended without closing into %s (%llu bytes missing in %llu places, each marked; marked as ended there)",
+             appended/1e6,mf->dest,(unsigned long long)hole_bytes,(unsigned long long)holes);
     rv_log_(log,ctx,line); st->recovered++; st->bytes+=appended;
     return 1;
 }
@@ -1933,7 +1962,13 @@ int cc_spill_recover(const char *dir, void (*log)(void *ctx, const char *line), 
     if(!S_ISDIR(ds.st_mode) || ds.st_uid!=getuid() || (ds.st_mode&077)){ if(out) *out=st; return -EPERM; }
     char names[256][256]; int nm=0;
     DIR *d=opendir(dir); struct dirent *e;
-    if(d){ while((e=readdir(d)) && nm<256){ size_t l=strlen(e->d_name); if(l>9 && l<256 && !strcmp(e->d_name+l-9,".manifest")) snprintf(names[nm++],256,"%s",e->d_name); } closedir(d); }
+    if(d){ while((e=readdir(d))){
+        size_t l=strlen(e->d_name);
+        if(l>9 && l<256 && !strcmp(e->d_name+l-9,".manifest") && nm<256) snprintf(names[nm++],256,"%s",e->d_name);
+        else if(l>13 && !strcmp(e->d_name+l-13,".manifest.new")){   /* a writer that died before its first segment */
+            char nn[PATH_MAX]; snprintf(nn,sizeof nn,"%s/%s",dir,e->d_name);
+            int fd=open(nn,O_RDONLY); if(fd>=0){ if(flock(fd,LOCK_EX|LOCK_NB)==0) unlink(nn); close(fd); }
+        } } closedir(d); }
     for(int i=0;i<nm;i++){
         if(stop && atomic_load(stop)) break;
         char mn[PATH_MAX]; snprintf(mn,sizeof mn,"%s/%s",dir,names[i]);
@@ -1941,7 +1976,7 @@ int cc_spill_recover(const char *dir, void (*log)(void *ctx, const char *line), 
         struct stat ms;
         if(flock(mfd,LOCK_EX|LOCK_NB)!=0 || fstat(mfd,&ms)!=0 || ms.st_nlink==0){ close(mfd); continue; }   /* alive, or done by another run */
         struct as_manifest mf;
-        if(!rv_pread_(mfd,&mf,sizeof mf,0) || memcmp(mf.magic,AS_MANIFEST_MAGIC,8) || mf.version!=1){
+        if(!rv_pread_(mfd,&mf,sizeof mf,0) || memcmp(mf.magic,AS_MANIFEST_MAGIC,8) || mf.version!=2){
             char line[PATH_MAX+96]; snprintf(line,sizeof line,"capture_core: spill manifest %s is unreadable: its segments are kept",mn);
             rv_log_(log,ctx,line); close(mfd); st.kept++; continue; }
         mf.dest[sizeof mf.dest-1]=0;
@@ -2005,7 +2040,7 @@ int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *
             k->spill_state=k->sdir && k->sbase && k->sdq?1:-ENOMEM; k->spill_on=k->spill_state==1;
             if(k->spill_on){
                 uint64_t fr=as_free_bytes_(k); k->spill_room=(int64_t)fr-(int64_t)k->sfloor; as_stale_scan_(k);
-                struct as_manifest mf; memset(&mf,0,sizeof mf); memcpy(mf.magic,AS_MANIFEST_MAGIC,8); mf.version=1; mf.pid=(uint32_t)getpid();
+                struct as_manifest mf; memset(&mf,0,sizeof mf); memcpy(mf.magic,AS_MANIFEST_MAGIC,8); mf.version=2; mf.pid=(uint32_t)getpid();
                 if(!realpath(path,mf.dest)) snprintf(mf.dest,sizeof mf.dest,"%s",path);
                 /* locked and written under a temporary name, then renamed: a recovery never sees it unlocked */
                 char nm[PATH_MAX], tmp[PATH_MAX+8];
