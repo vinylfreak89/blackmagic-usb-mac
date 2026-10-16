@@ -31,7 +31,8 @@ enum cc_err    { CC_OK = 0, CC_ERR_ARGS = -1, CC_ERR_NODEVICE = -2, CC_ERR_USB =
 enum cc_loss_kind { CC_LOSS_RING = 0,         /* delivery-ring overflow: packets that crossed the bus, then shed */
                     CC_LOSS_UNSCHEDULED = 1,   /* USB slots never read (.tpc HostLoss pkt_index CC_PI_UNSCHEDULED) */
                     CC_LOSS_UNSCHEDULED_LATE = 2, /* the same, found after the affected data went by (CC_PI_UNSCHEDULED_LATE) */
-                    CC_LOSS_UNCLOSED = 3 };    /* the capture ended without closing (CC_PI_UNCLOSED, replayed) */
+                    CC_LOSS_UNCLOSED = 3,      /* the capture ended without closing (CC_PI_UNCLOSED, replayed) */
+                    CC_LOSS_HOLE = 4 };        /* bytes missing there, packets unknown (CC_PI_HOLE, replayed; bytes in the call) */
 enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
                      CC_ERROR_CONTROL_LOSS = 2 };
 
@@ -170,6 +171,7 @@ typedef struct {
     uint64_t unscheduled_events;    // device: gaps of never-read USB slots found (see CC_PI_UNSCHEDULED), all endpoints; one record can carry two
     uint64_t unscheduled_late;      // of those, found only after their data went by (CC_PI_UNSCHEDULED_LATE records)
     uint64_t unclosed_marks;        // replay: CC_PI_UNCLOSED records met (the capture ended without closing there)
+    uint64_t hole_marks, hole_bytes; // replay: CC_PI_HOLE records met, and the bytes they say are missing
     uint64_t unscheduled_packets[2];// [0]=video [1]=audio: slots never read (libusb's Darwin scheduling rule, +-1 frame)
     int rt_event_thread;            // device: 1 if the USB event thread got real-time scheduling at start
     int rt_libusb_threads;          // device: libusb-internal threads promoted (expected 1: org.libusb.device-hotplug)

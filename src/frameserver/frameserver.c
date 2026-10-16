@@ -326,7 +326,8 @@ static void tee_loss_ex(frameserver *f, uint8_t ep, uint32_t n, uint64_t b, int 
 static void cc_on_loss_ex(void *ctx, uint8_t ep, uint32_t n, uint64_t b, int kind, uint32_t seq){
     frameserver *f = ctx;
     pthread_mutex_lock(&f->tee_m); if (f->tee) tee_loss_ex(f, ep, n, b, kind, seq); pthread_mutex_unlock(&f->tee_m);
-    if (kind != CC_LOSS_UNSCHEDULED_LATE) unit_parser_on_loss(f->parser, ep, n, b);   // a late record is not in the unit in progress
+    if (kind == CC_LOSS_HOLE){ unit_parser_on_loss(f->parser, CC_EP_VIDEO, n, b); unit_parser_on_loss(f->parser, CC_EP_AUDIO, n, b); }   // bytes of both streams
+    else if (kind != CC_LOSS_UNSCHEDULED_LATE) unit_parser_on_loss(f->parser, ep, n, b);   // a late record is not in the unit in progress
 }
 static void cc_on_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){ frameserver *f = ctx; TEE(on_error(f->tee_cb.ctx, ep, seq, st, kind)); unit_parser_on_error(f->parser, ep, seq, st, kind); }
 static void cc_on_end(void *ctx, enum cc_end r){

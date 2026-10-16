@@ -114,6 +114,11 @@ static ssize_t failing_spill_read(int fd,void *b,size_t n,off_t off){
     return pread(fd,b,n,off);
 }
 static void replay_pkt_(void *ctx, const cc_packet *p){ (void)ctx; (void)p; }
+struct hole_rx { _Atomic int ended; int holes; uint64_t hole_bytes; long last_seq, hole_after; };
+static void hole_pkt_(void *ctx, const cc_packet *p){ struct hole_rx *x=ctx; if(p->endpoint==CC_EP_VIDEO) x->last_seq=p->submit_seq; }
+static void hole_end_(void *ctx, enum cc_end r){ (void)r; atomic_store(&((struct hole_rx*)ctx)->ended,1); }
+static void hole_loss_ex_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
+    (void)ep;(void)pk;(void)seq; struct hole_rx *x=ctx; if(kind==CC_LOSS_HOLE){ x->holes++; x->hole_bytes+=by; x->hole_after=x->last_seq; } }
 static void replay_end_(void *ctx, enum cc_end r){ (void)r; atomic_store((_Atomic int*)ctx,1); }
 static void replay_loss_ex_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
     (void)ep;(void)pk;(void)by;(void)seq; if(kind==CC_LOSS_UNCLOSED) atomic_fetch_add((_Atomic int*)ctx+1,1); }
@@ -488,9 +493,24 @@ int main(int argc, char **argv){
       { struct cc_spill_manifest_s m; char mn[600]; snprintf(mn,sizeof mn,"%s/hand.tpc.p99999.0000abcd.manifest",sdir); FILE *f=fopen(mn,"r+b"); assert(f && fread(&m,1,sizeof m,f)==sizeof m);
         m.next_seg=1; m.next_off=0; fseek(f,0,SEEK_SET); fwrite(&m,1,sizeof m,f); fclose(f); }
       assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.recovered==1 && dest_desc(hd,"0-14,H620,20-39,E"));
+      /* replayed, that hole is one loss callback in its place (review, tenth round: it was dropped and its bytes
+       * carried into the next loss record) */
+      { cc_config rc={0}; rc.replay_path=hd; struct hole_rx hx; memset(&hx,0,sizeof hx);
+        cc_callbacks rcb={0}; rcb.ctx=&hx; rcb.on_packet=hole_pkt_; rcb.on_end=hole_end_; rcb.on_loss_ex=hole_loss_ex_;
+        cc_session *rs3; assert(cc_open(&rs3,&rc,&rcb)==CC_OK && cc_start(rs3)==CC_OK);
+        for(int i=0;!atomic_load(&hx.ended);i++){ assert(i<20000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
+        cc_stats cst; cc_stop(rs3); cc_get_stats(rs3,&cst); cc_close(rs3);
+        assert(hx.holes==1 && hx.hole_bytes==620 && hx.hole_after==14 && cst.hole_marks==1 && cst.hole_bytes==620 && !cst.lost_bytes[0] && !cst.lost_bytes[1]); }
       /* (f) a damaged chunk in the middle of a segment (records 20-24): confessed in place, the rest recovered */
       unlink(hd); make_leftovers(sdir,hd,10,0,0,0,20,0);
       assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.recovered==1 && dest_desc(hd,"0-19,H636,25-39,E") && spill_files(sdir)==0);
+      /* (h) a damaged last chunk of a segment (15-19), the next segment unreadable on the first run, then a rerun: one
+       * hole, not two (review, tenth round: the resume placed the next chunk with a stale delta) */
+      unlink(hd); make_leftovers(sdir,hd,10,0,0,0,15,0);
+      { char sn[600]; snprintf(sn,sizeof sn,"%s/hand.tpc.p99999.0000abcd.spill000001",sdir); assert(chmod(sn,0)==0);
+        assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.failed==1 && dest_desc(hd,"0-14,H636"));
+        assert(chmod(sn,0600)==0); }
+      assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.recovered==1 && dest_desc(hd,"0-14,H636,20-39,E") && spill_files(sdir)==0);
       /* (g) junk past the resume point (a failed cut-back of an unverified piece): cut back exactly, no guessing */
       unlink(hd); make_leftovers(sdir,hd,10,0,0,0,-1,700000);
       assert(cc_spill_recover(sdir,NULL,NULL,NULL,NULL,&rs)==0 && rs.recovered==1 && dest_is(hd,40,1));

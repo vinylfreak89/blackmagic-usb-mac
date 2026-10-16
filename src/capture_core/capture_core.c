@@ -102,7 +102,7 @@ struct cc_session {
              struct { uint32_t seq; int64_t end; uint32_t frames; } pg[SCHED_MAXDOUBT];   /* gaps predicted against an open doubt */
              } sch[2];
     double abs_to_ns;
-    _Atomic uint64_t unsched_events, unsched_pkts[2], unsched_late, unclosed_marks;
+    _Atomic uint64_t unsched_events, unsched_pkts[2], unsched_late, unclosed_marks, hole_marks, hole_bytes;
     int sched_off; char sched_note[160];   /* the unread-slot model is off when the endpoints are not bInterval 1 */
     int rt_event, rt_lib, rt_still, rt_pri_stop, rt_pri_min;   /* rt_pri_min: lowest scheduled priority, sampled each tick and at stop */
     _Atomic uint64_t sched_shifts, sched_shift_frames;   /* backstop: unexplained completion shifts (model missed a gap) */
@@ -387,7 +387,7 @@ static void* delivery_main(void *arg){
                 if(s->cfg.diag_log) s->cfg.diag_log(s->cfg.diag_ctx,line); else fprintf(stderr,"%s\n",line);
             }
             if(s->cb.on_loss_ex) s->cb.on_loss_ex(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len,
-                                                  rh.pkt_index==CC_PI_UNSCHEDULED?CC_LOSS_UNSCHEDULED:rh.pkt_index==CC_PI_UNSCHEDULED_LATE?CC_LOSS_UNSCHEDULED_LATE:rh.pkt_index==CC_PI_UNCLOSED?CC_LOSS_UNCLOSED:CC_LOSS_RING,rh.submit_seq);
+                                                  rh.pkt_index==CC_PI_UNSCHEDULED?CC_LOSS_UNSCHEDULED:rh.pkt_index==CC_PI_UNSCHEDULED_LATE?CC_LOSS_UNSCHEDULED_LATE:rh.pkt_index==CC_PI_UNCLOSED?CC_LOSS_UNCLOSED:rh.pkt_index==CC_PI_HOLE?CC_LOSS_HOLE:CC_LOSS_RING,rh.submit_seq);
             else if(s->cb.on_loss && rh.pkt_index!=CC_PI_UNSCHEDULED_LATE)   /* a late record has no position: on_loss would flag where it lands */
                 s->cb.on_loss(s->cb.ctx,rh.endpoint,rh.req_len,rh.actual_len);
             break;
@@ -1075,10 +1075,10 @@ static void* replay_main(void *arg){
         case REC_XFERERR: put_meta_(s,REC_XFERERR,h.endpoint,h.pkt_index,h.submit_seq,h.status,NULL,0); break;
         case REC_HOSTLOSS: {
             int le=ep_i(h.endpoint);
-            if(h.pkt_index==CC_PI_UNCLOSED){       /* the capture ended without closing: forward the mark as captured */
+            if(h.pkt_index==CC_PI_UNCLOSED || h.pkt_index==CC_PI_HOLE){   /* recovery's marks: forwarded as captured */
                 if(s->cfg.replay_block_when_full) replay_wait_space_(s,0);
                 if(s->lost_pkts[le]) flush_loss_(s,h.endpoint);
-                atomic_fetch_add(&s->unclosed_marks,1);
+                if(h.pkt_index==CC_PI_UNCLOSED) atomic_fetch_add(&s->unclosed_marks,1); else { atomic_fetch_add(&s->hole_marks,1); atomic_fetch_add(&s->hole_bytes,h.actual_len); }
                 if(ring_free_(s)>=sizeof(rec_hdr)+CONTROL_TERMINAL_RESERVE){ ring_put_record_(s,&h,NULL,0); wake_(s); }
                 else put_meta_(s,REC_HOSTLOSS,h.endpoint,h.pkt_index,h.submit_seq,0,NULL,0);
                 break;
@@ -1291,7 +1291,7 @@ void cc_get_stats(const cc_session *s, cc_stats *o){
     o->replay_corrupt_spans=s->corrupt_spans; o->replay_corrupt_bytes=s->corrupt_bytes;
     o->replay_align_bytes=s->align_bytes; o->replay_space_waits=atomic_load(&s->replay_space_waits);
     o->unscheduled_events=atomic_load(&s->unsched_events);
-    o->rt_event_thread=s->rt_event; o->rt_libusb_threads=s->rt_lib; o->rt_event_at_stop=s->rt_still; o->rt_priority_at_stop=s->rt_pri_stop; o->rt_priority_min=s->rt_pri_min; o->unscheduled_late=atomic_load(&s->unsched_late); o->unclosed_marks=atomic_load(&s->unclosed_marks);
+    o->rt_event_thread=s->rt_event; o->rt_libusb_threads=s->rt_lib; o->rt_event_at_stop=s->rt_still; o->rt_priority_at_stop=s->rt_pri_stop; o->rt_priority_min=s->rt_pri_min; o->unscheduled_late=atomic_load(&s->unsched_late); o->unclosed_marks=atomic_load(&s->unclosed_marks); o->hole_marks=atomic_load(&s->hole_marks); o->hole_bytes=atomic_load(&s->hole_bytes);
     o->schedule_shifts=atomic_load(&s->sched_shifts); o->schedule_shift_frames=atomic_load(&s->sched_shift_frames);
     o->unscheduled_packets[0]=atomic_load(&s->unsched_pkts[0]); o->unscheduled_packets[1]=atomic_load(&s->unsched_pkts[1]);
 }
@@ -1332,8 +1332,9 @@ static void snk_loss(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     snk_wr(k,&h,sizeof h);
 }
 static void snk_loss_ex(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
-    if(kind!=CC_LOSS_UNSCHEDULED && kind!=CC_LOSS_UNSCHEDULED_LATE && kind!=CC_LOSS_UNCLOSED){ snk_loss(ctx,ep,pk,by); return; }
-    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)(kind==CC_LOSS_UNSCHEDULED?CC_PI_UNSCHEDULED:kind==CC_LOSS_UNCLOSED?CC_PI_UNCLOSED:CC_PI_UNSCHEDULED_LATE),seq,0,pk,0};
+    if(kind!=CC_LOSS_UNSCHEDULED && kind!=CC_LOSS_UNSCHEDULED_LATE && kind!=CC_LOSS_UNCLOSED && kind!=CC_LOSS_HOLE){ snk_loss(ctx,ep,pk,by); return; }
+    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)(kind==CC_LOSS_UNSCHEDULED?CC_PI_UNSCHEDULED:kind==CC_LOSS_UNCLOSED?CC_PI_UNCLOSED:kind==CC_LOSS_HOLE?CC_PI_HOLE:CC_PI_UNSCHEDULED_LATE),seq,0,pk,
+               kind==CC_LOSS_HOLE?(uint32_t)(by>0xffffffffu?0xffffffffu:by):0};
     snk_wr(sink_of(ctx),&h,sizeof h);
 }
 static void snk_error(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
@@ -1494,9 +1495,10 @@ static void as_loss_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
     k->pend_pk[e]=pk; k->pend_by[e]=by; as_flush_loss_(k,e); as_wake_(k);
 }
 static void as_loss_ex_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
-    if(kind!=CC_LOSS_UNSCHEDULED && kind!=CC_LOSS_UNSCHEDULED_LATE && kind!=CC_LOSS_UNCLOSED){ as_loss_(ctx,ep,pk,by); return; }   /* never merged into a ring-loss run */
+    if(kind!=CC_LOSS_UNSCHEDULED && kind!=CC_LOSS_UNSCHEDULED_LATE && kind!=CC_LOSS_UNCLOSED && kind!=CC_LOSS_HOLE){ as_loss_(ctx,ep,pk,by); return; }   /* never merged into a ring-loss run */
     struct cc_async_sink *k=ctx; int e=ep==CC_EP_AUDIO;
-    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)(kind==CC_LOSS_UNSCHEDULED?CC_PI_UNSCHEDULED:kind==CC_LOSS_UNCLOSED?CC_PI_UNCLOSED:CC_PI_UNSCHEDULED_LATE),seq,0,pk,0};
+    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)(kind==CC_LOSS_UNSCHEDULED?CC_PI_UNSCHEDULED:kind==CC_LOSS_UNCLOSED?CC_PI_UNCLOSED:kind==CC_LOSS_HOLE?CC_PI_HOLE:CC_PI_UNSCHEDULED_LATE),seq,0,pk,
+               kind==CC_LOSS_HOLE?(uint32_t)(by>0xffffffffu?0xffffffffu:by):0};
     if(k->pend_pk[e]){                                /* loss confessed before this record stays before it */
         /* Pending loss means the ring had no room for a packet: both records must fit, or this one is counted as a
          * dropped control record (the pending HostLoss still marks the stretch) and the run stays pending. */
@@ -1628,8 +1630,8 @@ static void as_spill_lost_(struct cc_async_sink *k, const struct as_sd *d, uint6
         uint64_t by=d->by[e];
         do { uint32_t b=(uint32_t)(by>0xffffffffu?0xffffffffu:by); by-=b;
              rec_hdr h={REC_MAGIC,REC_HOSTLOSS,e?CC_EP_AUDIO:CC_EP_VIDEO,(uint16_t)AS_PI_SPILL_LOSS,0,0,d->pk[e],b};
-             if(!k->io_errno) as_dest_write_(k,(const uint8_t*)&h,sizeof h,last_done,since_sync);
-             atomic_fetch_add(&k->records,1); k->sdelta+=(int64_t)sizeof h;
+             if(!k->io_errno){ as_dest_write_(k,(const uint8_t*)&h,sizeof h,last_done,since_sync); if(!k->io_errno) k->sdelta+=(int64_t)sizeof h; }
+             atomic_fetch_add(&k->records,1);
         } while(by);
     }
     if(d->ctl) atomic_fetch_add(&k->control_dropped,d->ctl);
@@ -1884,17 +1886,18 @@ static int rv_one_(const char *dir, const char *mname, int mfd, struct cc_spill_
         while(off<end && !bad){
             if(stop && atomic_load(stop)){ stopped=1; break; }
             if(newest && end-off<sizeof(struct cc_spill_chunk_s)) break;   /* a header the crash cut */
-            struct cc_spill_chunk_s c; int ok=end-off>=sizeof c && rv_pread_(sfd,&c,sizeof c,(off_t)off) && c.magic==CC_SPILL_CHUNK_MAGIC && c.len<=AS_SPILL_CHUNK;
-            uint64_t span=ok?sizeof c+(uint64_t)c.len:0;
-            if(ok && span>end-off){                    /* cut by the crash: still in memory then, so lost with it */
+            struct cc_spill_chunk_s c; int hok=end-off>=sizeof c && rv_pread_(sfd,&c,sizeof c,(off_t)off) && c.magic==CC_SPILL_CHUNK_MAGIC && c.len<=AS_SPILL_CHUNK;
+            uint64_t span=hok?sizeof c+(uint64_t)c.len:0;
+            if(hok && span>end-off){                   /* cut by the crash: still in memory then, so lost with it */
                 if(newest) break;
-                ok=0;
+                hok=0;
             }
-            if(ok) ok=rv_pread_(sfd,buf,c.len,(off_t)(off+sizeof c)) && rv_chain_(buf,c.len);
+            int ok=hok && rv_pread_(sfd,buf,c.len,(off_t)(off+sizeof c)) && rv_chain_(buf,c.len);
             if(!placed){                               /* where this chunk belongs decides the destination's end */
-                uint64_t E=ok?(uint64_t)((int64_t)c.spos+delta):size;
+                int known=hok && delta!=INT64_MIN;     /* a readable header gives its place even if its records are damaged */
+                uint64_t E=known?(uint64_t)((int64_t)c.spos+delta):size;
                 placed=1;
-                if(!ok || size>=E){ at=ok?E:size; if(!ok){ uint64_t cut; uint8_t *tl; size_t tll; int en;
+                if(!known || size>=E){ at=known?E:size; if(!known){ uint64_t cut; uint8_t *tl; size_t tll; int en;
                         if(!rv_tail_(dfd,size,&cut,&tl,&tll,&en)){ bad=1; why="no record boundary at the destination's end"; break; } free(tl); at=cut; } }
                 else {                                 /* short: a chunk written from memory was cut, its rest lost */
                     uint64_t cut; uint8_t *tl; size_t tll; int en;
@@ -1902,22 +1905,29 @@ static int rv_one_(const char *dir, const char *mname, int mfd, struct cc_spill_
                     free(tl); at=cut;
                 }
                 if(ftruncate(dfd,(off_t)at)!=0 || fsync(dfd)!=0){ bad=1; why="the destination cannot be cut back"; break; }
-                if(ok && at<E){
+                if(known && at<E){
                     rec_hdr h={REC_MAGIC,REC_HOSTLOSS,CC_EP_VIDEO,(uint16_t)CC_PI_HOLE,0,0,0,(uint32_t)(E-at>0xffffffffu?0xffffffffu:E-at)};
                     if(!rv_put_(dfd,(const uint8_t*)&h,sizeof h,at,chk)){ bad=1; why="a write to the destination failed or did not read back"; break; }
-                    holes++; hole_bytes+=E-at; at+=sizeof h; delta=(int64_t)at-(int64_t)c.spos;
+                    holes++; hole_bytes+=E-at; at+=sizeof h;
                 }
+                if(hok) delta=(int64_t)at-(int64_t)c.spos;
             }
             if(!ok){                                   /* damaged: confessed where it was, then on to the next chunk */
-                uint64_t skip=end-off;                 /* to the next chunk header, or the segment's end */
-                for(uint64_t r=off+1; r+sizeof c<=end; r++){ struct cc_spill_chunk_s c2;
-                    if(rv_pread_(sfd,&c2,sizeof c2,(off_t)r) && c2.magic==CC_SPILL_CHUNK_MAGIC && c2.len<=AS_SPILL_CHUNK){ skip=r-off; break; } }
+                uint64_t skip=hok?span:end-off;        /* its own length when its header is readable, else to the next header */
+                if(!hok) for(uint64_t r=off+1; r+sizeof c<=end; ){ /* scanned a block at a time */
+                    size_t w=end-r<RV_PIECE?(size_t)(end-r):RV_PIECE; if(!rv_pread_(sfd,chk,w,(off_t)r)) break;
+                    int found=0; for(size_t q=0;q+sizeof c<=w;q++){ struct cc_spill_chunk_s c2; memcpy(&c2,chk+q,sizeof c2);
+                        if(c2.magic==CC_SPILL_CHUNK_MAGIC && c2.len<=AS_SPILL_CHUNK){ skip=r+q-off; found=1; break; } }
+                    if(found || w<sizeof c) break; r+=w-(sizeof c-1);
+                }
                 rec_hdr h={REC_MAGIC,REC_HOSTLOSS,CC_EP_VIDEO,(uint16_t)CC_PI_HOLE,0,0,0,(uint32_t)(skip>0xffffffffu?0xffffffffu:skip)};
                 if(!rv_put_(dfd,(const uint8_t*)&h,sizeof h,at,chk)){ bad=1; why="a write to the destination failed or did not read back"; break; }
                 holes++; hole_bytes+=skip; at+=sizeof h; off+=skip;
-                /* the next chunk's own position resets the delta */
-                struct cc_spill_chunk_s c3; if(off+sizeof c3<=end && rv_pread_(sfd,&c3,sizeof c3,(off_t)off) && c3.magic==CC_SPILL_CHUNK_MAGIC) delta=(int64_t)at-(int64_t)c3.spos;
+                /* where the next chunk goes: right after the damaged one's place when its header told it, else
+                 * unknown (the next chunk then goes straight after the marker) */
+                delta=hok?(int64_t)at-(int64_t)(c.spos+c.len):INT64_MIN;
             } else {
+                if(delta==INT64_MIN) delta=(int64_t)at-(int64_t)c.spos;   /* placed straight after the marker */
                 if(!rv_put_(dfd,buf,c.len,at,chk)){ bad=1; why="a write to the destination failed or did not read back"; break; }
                 at+=c.len; off+=span; appended+=c.len; if(progress) atomic_fetch_add(progress,c.len);
                 delta=(int64_t)at-(int64_t)(c.spos+c.len);
