@@ -17,6 +17,9 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread/qos.h>
+#include <mach/mach.h>
+#include <mach/thread_policy.h>
+#include <mach/mach_time.h>
 
 #define VID 0x1EDB
 #define PID 0xBD3B
@@ -24,7 +27,10 @@
 #define V_NPK 128
 #define A_PKT 0xc0
 #define A_NPK 80
-#define XFERS 8
+/* Transfers queued per endpoint. Each video transfer is 128 microframes (16 ms), so 32 keep ~512 ms of USB slots
+ * requested ahead. With 8 (128 ms), a held-off event thread let macOS reschedule late resubmissions past the
+ * frames in between, which are then never read and leave no record (2026-10-15: 1,352 video packets in one second). */
+#define XFERS CC_XFERS_PER_ENDPOINT
 #define NXF (XFERS*2)
 
 #define REC_MAGIC 0x31504143u
@@ -367,6 +373,34 @@ static void* delivery_main(void *arg){
 }
 
 // ---------------- device backend
+/* Real-time scheduling (THREAD_TIME_CONSTRAINT_POLICY, the mechanism Core Audio uses; no root, no entitlement) for the
+ * threads that only move USB packets into the ring: our event thread and libusb's internal Darwin completion thread.
+ * Ordinary system load (another app's I/O, the window server, a network volume's client) must not hold them off.
+ * Aperiodic; computation is a budget per wake-up, preemptible so a burst of callbacks cannot monopolise a core. */
+static int rt_policy_(thread_t th){
+    mach_timebase_info_data_t tb; if(mach_timebase_info(&tb)!=KERN_SUCCESS || !tb.numer) return -1;
+    double us=1000.0*(double)tb.denom/(double)tb.numer;          /* absolute-time units per microsecond */
+    thread_time_constraint_policy_data_t p={ .period=0, .computation=(uint32_t)(5000*us), .constraint=(uint32_t)(10000*us), .preemptible=1 };
+    return thread_policy_set(th,THREAD_TIME_CONSTRAINT_POLICY,(thread_policy_t)&p,THREAD_TIME_CONSTRAINT_POLICY_COUNT)==KERN_SUCCESS?0:-1;
+}
+/* libusb's Darwin backend delivers completions on its own CFRunLoop thread before our event thread sees them. It is
+ * created inside libusb_init and named by libusb; find it by name. Returns how many threads were promoted. */
+static int rt_promote_libusb_threads_(char *names, size_t names_sz){
+    thread_act_array_t th; mach_msg_type_number_t n=0; int promoted=0; size_t used=0;
+    if(names_sz) names[0]=0;
+    if(task_threads(mach_task_self(),&th,&n)!=KERN_SUCCESS) return -1;
+    for(mach_msg_type_number_t i=0;i<n;i++){
+        pthread_t pt=pthread_from_mach_thread_np(th[i]); char nm[64]="";
+        if(pt) pthread_getname_np(pt,nm,sizeof nm);
+        if(!strncmp(nm,"org.libusb",10) && rt_policy_(th[i])==0){
+            promoted++;
+            if(used<names_sz){ int w=snprintf(names+used,names_sz-used,"%s%s",used?",":"",nm); if(w>0) used+=(size_t)w; }
+        }
+        mach_port_deallocate(mach_task_self(),th[i]);
+    }
+    vm_deallocate(mach_task_self(),(vm_address_t)th,n*sizeof *th);
+    return promoted;
+}
 static void usb_cb(struct libusb_transfer *x){
     xinfo *xi=x->user_data;
     cc_session *s=xi->s;
@@ -433,9 +467,16 @@ static void* device_main(void *arg){
     cc_session *s=arg;
     internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
-    char note[320];
-    snprintf(note,sizeof note,"capture_core v1 input=%d ring=%zuMB V_NPK=%d XFERS=%d mode=0x%08x setup=%s",
-             s->cfg.input,s->ring_sz>>20,V_NPK,XFERS,s->start_mode_word,s->cfg.setup_off?"off":"on");
+    char note[480], lnames[96];
+    int rt_self=rt_policy_(mach_thread_self())==0, rt_lib=rt_promote_libusb_threads_(lnames,sizeof lnames);
+    if(!rt_self || rt_lib<1)
+        fprintf(stderr,"capture_core: real-time scheduling NOT fully applied (event thread %s, libusb threads promoted %d): USB reads can be held off by system load\n",
+                rt_self?"ok":"FAILED",rt_lib);
+    else fprintf(stderr,"capture_core: real-time scheduling on: event thread and %d libusb thread%s (%s); %d transfers queued per endpoint\n",
+                 rt_lib,rt_lib==1?"":"s",lnames,XFERS);
+    snprintf(note,sizeof note,"capture_core v1 input=%d ring=%zuMB V_NPK=%d XFERS=%d mode=0x%08x setup=%s rt=event:%s,libusb:%d[%s]",
+             s->cfg.input,s->ring_sz>>20,V_NPK,XFERS,s->start_mode_word,s->cfg.setup_off?"off":"on",
+             rt_self?"yes":"NO",rt_lib,lnames);
     put_meta_(s,REC_SESSION,0,0,0,0,note,(uint32_t)strlen(note));
     int n=0, startup_rc=CC_OK;
     for(int w=0;w<2;w++){

@@ -32,6 +32,7 @@ enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
                      CC_ERROR_CONTROL_LOSS = 2 };
 
 #define CC_DEFAULT_READAHEAD_MB 256  /* replay read-ahead when replay_readahead_mb is 0: ~11 s of stream */
+#define CC_XFERS_PER_ENDPOINT 32  /* isochronous transfers kept queued per endpoint (video: 32 x 16 ms = 512 ms ahead) */
 #define CC_DEFAULT_RING_MB 256  /* delivery ring when ring_mb is 0; the frameserver sizes its unit pool from it */
 #define CC_EP_VIDEO 0x83
 #define CC_EP_AUDIO 0x84
@@ -105,7 +106,7 @@ typedef struct {
 
 // Lifecycle: open -> start -> (callbacks) -> stop -> close.
 // start() allocates the delivery buffer before launching either worker; allocation failure
-// is synchronous and produces no on_end. Success follows complete 8+8 fleet submission. stop()
+// is synchronous and produces no on_end. Success follows complete fleet submission (CC_XFERS_PER_ENDPOINT per endpoint). stop()
 // cancels in-flight transfers, drains and joins; it is idempotent and concurrent stop/close
 // callers wait for the elected stopper. Calling stop/close from a library callback is forbidden
 // and fails/leaks safely rather than self-joining. close performs stop if needed.

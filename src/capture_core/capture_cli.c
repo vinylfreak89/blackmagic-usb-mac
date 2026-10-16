@@ -128,8 +128,8 @@ int main(int argc,char**argv){
                  ring_mb,cfg.fail_stop_on_control_loss?"fail-stop":"continue");
     else
         snprintf(session_note,sizeof session_note,
-                 "shuttle-capture v1 input=%s mode_word=0x%08x ring_mb=%d fleet=8+8 control_loss=%s",
-                 input_name(cfg.input),cc_mode_word(&cfg),ring_mb,
+                 "shuttle-capture v1 input=%s mode_word=0x%08x ring_mb=%d fleet=%d+%d control_loss=%s",
+                 input_name(cfg.input),cc_mode_word(&cfg),ring_mb,CC_XFERS_PER_ENDPOINT,CC_XFERS_PER_ENDPOINT,
                  cfg.fail_stop_on_control_loss?"fail-stop":"continue");
     if(cc_tagged_sink_open(&g_k,sink_path,session_note)!=CC_OK){
         perror(sink_path); if(publish) unlink(staged); return 1;
