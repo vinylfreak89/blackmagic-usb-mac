@@ -97,6 +97,8 @@ struct frameserver {
     fs_life life; int worker_created, start_gate; _Atomic int notify_end;   // read by both workers, written by fs_start
     enum cc_end end_reason;
     fs_stats st; _Atomic uint64_t audio_records, audio_resync, dropped_pool_full, dropped_ring_full, video_obs, holes, unframed, shorts, other_fmt, ns0800;
+    _Atomic int bp_waiting, bp_abort; _Atomic uint64_t bp_waits;   // offline_backpressure: producer waits; fs_stop aborts them
+    pthread_mutex_t bp_m; pthread_cond_t bp_c;                      // statically initialised in fs_open
     _Atomic unsigned pool_hw;              // written on the delivery thread, read by fs_get_stats
     _Atomic uint64_t eligible_ingress;     // fixed-raster-eligible observations seen at ingress (denominator)
     uint64_t ring_drops_pending;           // producer-owned: attached only to a later item
@@ -134,6 +136,30 @@ extern void fs_test_after_item(frameserver *f);
 #define fs_test_after_item(f) ((void)(f))
 #endif
 
+// ------------------------------------------------------------ offline backpressure (replay renders only)
+// The producer (delivery thread) waits on a state change the consumers signal; the timeout is a liveness backstop.
+static void bp_notify(frameserver *f){
+    if(atomic_load(&f->bp_waiting)){ pthread_mutex_lock(&f->bp_m); pthread_cond_broadcast(&f->bp_c); pthread_mutex_unlock(&f->bp_m); }
+}
+static void bp_wait(frameserver *f, int (*room)(frameserver *)){
+    if(room(f)) return;
+    atomic_fetch_add(&f->bp_waiting,1); atomic_fetch_add(&f->bp_waits,1);
+    pthread_mutex_lock(&f->bp_m);
+    while(!room(f) && !atomic_load(&f->bp_abort)){
+        struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_nsec+=100*1000000L;
+        if(ts.tv_nsec>=1000000000L){ ts.tv_sec++; ts.tv_nsec-=1000000000L; }
+        pthread_cond_timedwait(&f->bp_c,&f->bp_m,&ts);
+    }
+    pthread_mutex_unlock(&f->bp_m);
+    atomic_fetch_sub(&f->bp_waiting,1);
+}
+static int bp_slot_free(frameserver *f){
+    for(unsigned i=0;i<f->n_slots;i++) if(!atomic_load(&f->slot_used[i])) return 1;
+    return 0;
+}
+static int bp_ring_room(frameserver *f);
+static int bp_audio_room(frameserver *f);
+
 // ------------------------------------------------------------ producer side (delivery thread)
 static int take_slot(frameserver *f){
     unsigned used = 0; int free_i = -1;
@@ -146,6 +172,7 @@ static int take_slot(frameserver *f){
     return free_i;
 }
 static int push(frameserver *f, const fs_item *it){
+    if (f->cfg.offline_backpressure) bp_wait(f, bp_ring_room);
     unsigned h = atomic_load_explicit(&f->r_head, memory_order_relaxed);
     unsigned t = atomic_load_explicit(&f->r_tail, memory_order_acquire);
     // Ring full: the worker is behind. Distinct from pool exhaustion (slots held too long).
@@ -189,6 +216,7 @@ static void on_video(void *ctx, const unit_video_observation *u){
     if (u->fixed_raster_eligible && u->byte_count == UNIT_PARSER_VIDEO_UNIT_BYTES){
         it.eligible=1;
         atomic_fetch_add(&f->eligible_ingress, 1);
+        if (f->cfg.offline_backpressure) bp_wait(f, bp_slot_free);
         int s = take_slot(f);
         if (s < 0){
             // Bytes are shed (§8 property 7) but the OBSERVATION is not: the item still reaches the
@@ -222,8 +250,15 @@ static void on_audio(void *ctx, const unit_audio_observation *a){
     ap_on_audio(f->aud, a);                 // delivery thread: bounded, allocation-free
 }
 // publisher sink (delivery thread): copy the block into the bounded queue or drop it explicitly
+static int bp_ring_room(frameserver *f){
+    return atomic_load_explicit(&f->r_head, memory_order_relaxed) - atomic_load_explicit(&f->r_tail, memory_order_acquire) < RING_ITEMS-1;
+}
+static int bp_audio_room(frameserver *f){
+    return atomic_load_explicit(&f->aq_head, memory_order_relaxed) - atomic_load_explicit(&f->aq_tail, memory_order_acquire) < f->aq_slots;
+}
 static void aq_enqueue(void *ctx, const ap_block *b){
     frameserver *f = ctx;
+    if (f->cfg.offline_backpressure) bp_wait(f, bp_audio_room);
     unsigned h = atomic_load_explicit(&f->aq_head, memory_order_relaxed);
     unsigned t = atomic_load_explicit(&f->aq_tail, memory_order_acquire);
     if (h - t >= f->aq_slots || b->n_frames > f->aq_cap_frames){
@@ -270,6 +305,7 @@ static void *audio_worker_main(void *arg){
         if (f->user_audio_sink.on_block) f->user_audio_sink.on_block(f->user_audio_sink.ctx, b);
         f->aq_delivered_blocks++; f->aq_delivered_frames += b->n_frames;
         atomic_store_explicit(&f->aq_tail, t + 1, memory_order_release);
+        bp_notify(f);
     }
     atomic_store(&f->audio_worker_done, 1);
     // on_end means BOTH media workers are terminal: whichever drains second fires it
@@ -573,7 +609,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
                 f->st.partial_shown++;
                 why=it->obs.transport==UNIT_TRANSPORT_SHORT?"ShortShown":"OtherShown";
             }
-            atomic_store(&f->slot_used[it->slot],0);
+            atomic_store(&f->slot_used[it->slot],0); bp_notify(f);
         }
         geometry_log(f,it,NULL,0,why,NULL,NULL);
         return;
@@ -625,7 +661,7 @@ static void process_geometry(frameserver *f,const fs_item *it,const uint8_t *uni
         }
         f->geometry_epoch=it->obs.epoch;
     }
-    atomic_store(&f->slot_used[it->slot],0);
+    atomic_store(&f->slot_used[it->slot],0); bp_notify(f);
 }
 static void process_item(frameserver *f, const fs_item *it){
     if(it->gap_only){
@@ -687,6 +723,7 @@ static void *worker_main(void *arg){
         }
         fs_item it = f->ring[t % RING_ITEMS];
         atomic_store_explicit(&f->r_tail, t + 1, memory_order_release);
+        bp_notify(f);
         { uint64_t now=clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
           if(f->idle_since){ f->ht.idle_ns+=now-f->idle_since; f->idle_since=0; }
           f->ht.queue_wait_ns=it.t_enqueue&&now>it.t_enqueue?now-it.t_enqueue:0; f->ht.items++; }
@@ -708,8 +745,10 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if(cfg->pairing_schedule && cfg->geometry_pair_next) {
         fprintf(stderr,"pairing schedule: excludes --pair-next\n");return -1;
     }
+    if(cfg->offline_backpressure && !cfg->capture.replay_path) return -1;   // a live device cannot wait for its consumer
     frameserver *f = calloc(1, sizeof *f); if (!f) return -1;
     f->cfg = *cfg;
+    f->bp_m=(pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER; f->bp_c=(pthread_cond_t)PTHREAD_COND_INITIALIZER;
     if(pthread_mutex_init(&f->m,NULL)) goto sync_fail;
     f->m_init=1;
     if(pthread_cond_init(&f->c,NULL)) goto sync_fail;
@@ -774,7 +813,8 @@ int fs_open(frameserver **out, const fs_config *cfg){
     if (pthread_mutex_init(&f->tee_m, NULL)){ fs_close(f); return -1; } f->tee_m_init = 1;
     if (cfg->decision_log){ f->log = fs_async_fopen_excl(cfg->decision_log, FS_LOG_RING_BYTES, FS_LOG_WRITE_CHUNK); if (!f->log || log_header(f->log,cfg->hretime) != 0){ fs_close(f); return -1; } f->st.log_files++; }   // exclusive: a sidecar is evidence, never truncated
     cc_callbacks ccb = { cc_on_packet, cc_on_loss, cc_on_error, cc_on_tick, cc_on_end, f };
-    if (cc_open(&f->cap, &cfg->capture, &ccb) != 0){ fs_close(f); return -1; }
+    cc_config capcfg = cfg->capture; if (cfg->offline_backpressure) capcfg.replay_block_when_full = 1;
+    if (cc_open(&f->cap, &capcfg, &ccb) != 0){ fs_close(f); return -1; }
     *out = f; return 0;
 sync_fail:
     if(f->life_c_init) pthread_cond_destroy(&f->life_c);
@@ -828,6 +868,7 @@ int fs_stop(frameserver *f){
     if(f->life==FS_LIFE_STOPPED){ pthread_mutex_unlock(&f->life_m); return 0; }
     if(f->life!=FS_LIFE_RUNNING){ pthread_mutex_unlock(&f->life_m); return -1; }
     f->life=FS_LIFE_STOPPING; pthread_mutex_unlock(&f->life_m);
+    atomic_store(&f->bp_abort,1); pthread_mutex_lock(&f->bp_m); pthread_cond_broadcast(&f->bp_c); pthread_mutex_unlock(&f->bp_m);   // a waiting producer must not hold up the stop
     cc_stop(f->cap);                        // fires on_end -> producer_done (audio flushed before it)
     pthread_join(f->worker, NULL);
     pthread_join(f->audio_worker, NULL);    // exits by itself once cc_on_end set audio_done and the queue drained
@@ -917,6 +958,8 @@ void fs_get_stats(const frameserver *f, fs_stats *o){
     o->audio_blocks_delivered = f->aq_delivered_blocks; o->audio_frames_delivered = f->aq_delivered_frames;
     o->audio_dropped_blocks = atomic_load(&f->aq_dropped_blocks); o->audio_dropped_frames = atomic_load(&f->aq_dropped_frames);
     o->audio_master_frames = atomic_load(&f->audio_master_frames);
+    o->backpressure_waits = atomic_load(&f->bp_waits);
+    if (f->cap){ cc_stats cs; cc_get_stats(f->cap, &cs); o->replay_space_waits = cs.replay_space_waits; }
     o->dropped_ring_full = atomic_load(&f->dropped_ring_full); o->pool_high_water = atomic_load(&f->pool_hw); o->pool_units = f->n_slots;
     o->eligible_observations = atomic_load(&f->eligible_ingress);
     o->holes = atomic_load(&f->holes); o->unframed = atomic_load(&f->unframed); o->short_units = atomic_load(&f->shorts);

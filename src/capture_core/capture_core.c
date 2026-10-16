@@ -70,6 +70,9 @@ struct cc_session {
     uint64_t align_bytes;                          /* replay: walked past before the first whole video transfer */
     _Atomic int replay_paused;                     /* cc_replay_pause: the pacer holds at a transfer boundary */
     pthread_mutex_t pause_m; pthread_cond_t pause_c; int pause_init;
+    _Atomic int space_waiting;                     /* replay_block_when_full: the replay waits for ring space */
+    pthread_mutex_t space_m; pthread_cond_t space_c;   /* statically initialised in cc_open; signalled by the delivery thread */
+    _Atomic uint64_t replay_space_waits;
     _Atomic int stop_req, backend_done, started_successfully;
     _Atomic int end_reason; _Atomic int end_fired;
     _Atomic uint64_t packets_delivered; /* delivery thread, not the libusb callback */
@@ -253,6 +256,20 @@ static void put_pkt_(cc_session *s, uint8_t ep, uint16_t pi, uint32_t seq,
     if(resuming) cc_test_data_resumed();
 #endif
 }
+/* replay_block_when_full: wait until the next DATA record fits (as put_pkt_ requires) or the session stops. The
+ * delivery thread broadcasts after every consumed record while a waiter exists; the timeout is a liveness backstop. */
+static void replay_wait_space_(cc_session *s, size_t data_need){
+    if(ring_free_(s)>=META_RESERVE+data_need) return;
+    atomic_fetch_add(&s->space_waiting,1); atomic_fetch_add(&s->replay_space_waits,1);
+    pthread_mutex_lock(&s->space_m);
+    while(ring_free_(s)<META_RESERVE+data_need && !atomic_load(&s->stop_req)){
+        struct timespec ts; clock_gettime(CLOCK_REALTIME,&ts); ts.tv_nsec+=100000000;
+        if(ts.tv_nsec>=1000000000){ ts.tv_sec++; ts.tv_nsec-=1000000000; }
+        pthread_cond_timedwait(&s->space_c,&s->space_m,&ts);
+    }
+    pthread_mutex_unlock(&s->space_m);
+    atomic_fetch_sub(&s->space_waiting,1);
+}
 static void put_meta_(cc_session *s, uint8_t type, uint8_t ep, uint16_t pi,
                       uint32_t seq, uint32_t st, const void *p, uint32_t plen){
     if(ring_free_(s)<sizeof(rec_hdr)+plen+CONTROL_TERMINAL_RESERVE){
@@ -320,6 +337,7 @@ static void* delivery_main(void *arg){
         memcpy(buf,s->ring+p0,f2);
         if(plen>f2) memcpy(buf+f2,s->ring,plen-f2);
         atomic_store_explicit(&s->r_tail,t+sizeof rh+plen,memory_order_release);
+        if(atomic_load(&s->space_waiting)){ pthread_mutex_lock(&s->space_m); pthread_cond_broadcast(&s->space_c); pthread_mutex_unlock(&s->space_m); }
         switch(rh.type){
         case REC_DATA: {
             cc_packet p={rh.endpoint,rh.pkt_index,rh.submit_seq,rh.status,
@@ -705,7 +723,8 @@ static void* replay_main(void *arg){
         switch(h.type){
         case REC_DATA: {
             int e=ep_i(h.endpoint);
-            // deliver with the ORIGINAL tags; backpressure via ring, honestly
+            // deliver with the ORIGINAL tags; backpressure via ring, honestly (offline: wait for room instead)
+            if(s->cfg.replay_block_when_full) replay_wait_space_(s,sizeof(rec_hdr)+(size_t)h.actual_len);
             put_pkt_(s,h.endpoint,h.pkt_index,h.submit_seq,h.status,h.req_len,pay,h.actual_len);
             s->bytes[e]+=h.actual_len;
             if(h.actual_len==0) s->zero_pkts++; else if(h.actual_len<h.req_len) s->short_pkts++;
@@ -793,9 +812,11 @@ int cc_open(cc_session **out, const cc_config *cfg, const cc_callbacks *cb){
     if(!out||!cfg||!cb||!cb->on_packet||!cb->on_end) return CC_ERR_ARGS;
     if(!cfg->replay_path && cfg->input!=CC_INPUT_SVIDEO && cfg->input!=CC_INPUT_COMPONENT &&
        cfg->input!=CC_INPUT_COMPOSITE) return CC_ERR_ARGS;   // never silently map junk to S-video
+    if(cfg->replay_block_when_full && !cfg->replay_path) return CC_ERR_ARGS;   // a device cannot wait for its consumer
     cc_session *s=calloc(1,sizeof *s);
     if(!s) return CC_ERR_NOMEM;
     s->cfg=*cfg; s->cb=*cb;
+    s->space_m=(pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER; s->space_c=(pthread_cond_t)PTHREAD_COND_INITIALIZER;
     if(pthread_mutex_init(&s->sig_m,NULL)) goto sync_fail;
     s->sig_m_init=1;
     if(pthread_cond_init(&s->sig_c,NULL)) goto sync_fail;
@@ -945,7 +966,7 @@ void cc_get_stats(const cc_session *s, cc_stats *o){
     o->fleet[0]=s->fleet[0]; o->fleet[1]=s->fleet[1]; o->fleet_size=XFERS;
     o->transfers_allocated=s->xfers_alloc; o->transfers_freed=s->xfers_freed;
     o->replay_corrupt_spans=s->corrupt_spans; o->replay_corrupt_bytes=s->corrupt_bytes;
-    o->replay_align_bytes=s->align_bytes;
+    o->replay_align_bytes=s->align_bytes; o->replay_space_waits=atomic_load(&s->replay_space_waits);
 }
 int cc_replay_pause(cc_session *s, int paused){
     if(!s || !s->cfg.replay_path) return CC_ERR_STATE;

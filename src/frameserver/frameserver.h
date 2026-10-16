@@ -61,6 +61,10 @@ typedef struct {
     int registration_off;      // default 0; 1 publishes every field at the nominal (0,0) placement.
                                // The engine still runs and logs its evaluation; applied/frame offsets
                                // in the sidecar are the published 0. H-retiming uses that placement.
+    int offline_backpressure;  // default 0; replay only (fs_open refuses it for a device). Offline render: a full frame
+                               // pool, work ring or audio queue makes the producer WAIT for the worker instead of shedding,
+                               // and the capture core's replay waits too (replay_block_when_full). Output can then be as
+                               // slow as it likes: the render runs slower and loses nothing. Live capture never waits.
     int show_partial;          // default 0; 1 also shows picture units that are not whole (a deck in search or an
                                // unlocked source sends one short field per unit): stretched to the frame, no
                                // placement, transport FP_TRANSPORT_SHORT. The log row says ShortShown / OtherShown.
@@ -95,6 +99,8 @@ typedef struct {
     uint64_t eligible_observations;   // fixed-raster-eligible units seen at ingress (the denominator)
     uint64_t published, dropped_pool_full, dropped_ring_full, publisher_dropped, ring_drops_logged;
     uint64_t partial_shown;     // frames shown from units that were not whole (show_partial)
+    uint64_t backpressure_waits; // offline_backpressure: times the producer waited for the worker (frames kept, not shed)
+    uint64_t replay_space_waits; // offline_backpressure: times the capture core's replay waited for the delivery ring
     uint64_t eligible_ring_drops, ring_gap_rows;
     // dropped_pool_full: eligible unit, no free slot -> bytes shed, observation still logged (drop_reason=PoolFull).
     // dropped_ring_full: item ring full -> observation never reaches the worker; counted, and folded

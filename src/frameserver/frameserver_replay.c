@@ -103,6 +103,7 @@ int main(int argc, char **argv){
         else if (!strcmp(argv[i], "--pool") && i + 1 < argc) cfg.pool_units = (unsigned)atoi(argv[++i]);
         else if (!strcmp(argv[i], "--geometry-v11")) {} /* compatibility; now the default */
         else if (!strcmp(argv[i], "--pair-next")) cfg.geometry_pair_next=1;
+        else if (!strcmp(argv[i], "--offline")) cfg.offline_backpressure=1;   /* render: wait, never drop; pace optional */
         else if (!strcmp(argv[i], "--pairing-schedule")) {
             if(i+1==argc || argv[i+1][0]=='-' || cfg.pairing_schedule){fprintf(stderr,"--pairing-schedule requires one FILE\n");return 9;}
             cfg.pairing_schedule=argv[++i];
@@ -162,6 +163,9 @@ int main(int argc, char **argv){
         (unsigned long long)s.published, (unsigned long long)s.dropped_pool_full, (unsigned long long)s.dropped_ring_full, (unsigned long long)s.publisher_dropped,
         (unsigned long long)s.unsettled_units, (unsigned long long)s.begin_segment_calls, (unsigned long long)s.discontinuity_calls,
         (unsigned long long)s.log_rows, s.pool_high_water);
+    if (cfg.offline_backpressure)
+        printf("offline: frameserver waited %llu times, replay waited %llu times (frames kept, not shed)\n",
+               (unsigned long long)s.backpressure_waits, (unsigned long long)s.replay_space_waits);
     printf("eligible ingress %llu = processed exact %llu + eligible ring loss %llu | ring loss logged %llu in %llu terminal range rows\n",
         (unsigned long long)s.eligible_observations,(unsigned long long)s.exact_units,
         (unsigned long long)s.eligible_ring_drops,(unsigned long long)s.ring_drops_logged,

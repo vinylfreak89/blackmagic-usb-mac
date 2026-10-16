@@ -97,6 +97,10 @@ typedef struct {
     // ~16 codes), NTSC-J. The Shuttle has no input gain controls (owner, 2026-10-07): register 4 is written as the
     // driver writes it, 80 80 80 00, never as a user setting. The session note records the mode word.
     int setup_off;
+    // replay_block_when_full: replay only (cc_open refuses it for a device). When the delivery ring is full the replay
+    // WAITS for the consumer instead of recording host loss, so an offline render whose consumer is slow (a busy CPU, a
+    // network volume) runs slower and never loses data. A real device cannot wait: there the ring overflow stays HostLoss.
+    int replay_block_when_full;
 } cc_config;
 
 // Lifecycle: open -> start -> (callbacks) -> stop -> close.
@@ -139,6 +143,7 @@ typedef struct {
     long replay_corrupt_spans;      // replay: unparseable stretches of the file skipped to the next valid record
     uint64_t replay_corrupt_bytes;  //   (each also reported through diag_log / stderr with its file offset)
     uint64_t replay_align_bytes;    // replay_start_offset > 0: bytes walked past to reach the first whole video transfer
+    uint64_t replay_space_waits;    // replay_block_when_full: times the replay waited for the consumer (never data lost)
 } cc_stats;
 // Snapshot of plain backend-thread counters: authoritative after cc_stop; a live call during
 // streaming is a racy diagnostic read (values may be momentarily inconsistent), never corrupting.
