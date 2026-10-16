@@ -228,6 +228,9 @@ typedef struct {
     uint64_t spill_segments;                 // segment files created
     uint64_t spill_floor_refusals;           // times a new segment was refused because it would break the free-space floor
     uint64_t spill_max_write_ns;             // longest local spill write
+    // Spilled chunks the local disk would not give back: each is replaced in the file by HostLoss records
+    // (pkt_index 0xFFFB) carrying exactly the packets and bytes it held, and the capture goes on.
+    uint64_t spill_read_errors, spill_read_lost_packets[2], spill_read_lost_bytes[2];
 } cc_async_sink_stats;
 int  cc_async_sink_open (cc_async_sink **out, const char *path, const char *session_note,
                          size_t ring_bytes, size_t write_chunk);
@@ -263,6 +266,7 @@ extern ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n);
 extern int (*cc_async_sink_test_fsync)(int fd);   /* test hook for the periodic flush */
 extern ssize_t (*cc_async_sink_test_spill_write)(int fd, const void *buf, size_t n, off_t off);   /* spill writes */
 extern uint64_t (*cc_async_sink_test_free)(const char *dir);   /* free bytes on the spill volume */
+extern ssize_t (*cc_async_sink_test_spill_read)(int fd, void *buf, size_t n, off_t off);   /* spill reads */
 extern int cc_async_sink_test_spill_any_volume;   /* spill even onto the destination's own volume */
 extern size_t cc_async_sink_sync_every;            /* bytes between flushes (default 256 MiB); 0: only at close */
 // The writer thread's QoS class (default QOS_CLASS_UTILITY); read once when the sink opens. For measurement.

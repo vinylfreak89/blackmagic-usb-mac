@@ -227,6 +227,10 @@ int main(int argc,char**argv){
            ks.spill_state==1?"on":ks.spill_state==0?"off (same volume)":"UNUSABLE",ks.spill_bytes/1e6,ks.spill_peak/1e6,
            (unsigned long long)ks.spill_segments,(unsigned long long)ks.spill_floor_refusals,ks.spill_max_write_ns/1e6,
            ks.spill_error?", turned off by: ":"",ks.spill_error?strerror(ks.spill_error):"");
+    if(ks.spill_read_errors)
+        printf("LOCAL SPILL READ FAILED %llu times: %llu video / %llu audio packets (%.1f MB) lost there, confessed in the file in their place; the capture went on\n",
+               (unsigned long long)ks.spill_read_errors,(unsigned long long)ks.spill_read_lost_packets[0],(unsigned long long)ks.spill_read_lost_packets[1],
+               (ks.spill_read_lost_bytes[0]+ks.spill_read_lost_bytes[1])/1e6);
     if(krc!=CC_OK){
         fprintf(stderr,"SINK WRITE FAILURE; partial capture retained at %s\n",sink_path);
         return 3;

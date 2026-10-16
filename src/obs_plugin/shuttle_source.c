@@ -487,7 +487,10 @@ typedef struct { shuttle_src *s; cc_async_sink *k; char *path; } tpc_close_job;
 static void *tpc_closer(void *arg){
     tpc_close_job *j = arg; cc_async_sink_stats st;
     int rc = cc_async_sink_close(j->k, &st);
-    uint64_t lost = st.lost_packets[0] + st.lost_packets[1];
+    uint64_t lost = st.lost_packets[0] + st.lost_packets[1] + st.spill_read_lost_packets[0] + st.spill_read_lost_packets[1];
+    if (st.spill_read_errors)
+        blog(LOG_ERROR, "[shuttle-source] raw .tpc: the local spill could not give back %llu chunks: %llu video / %llu audio packets lost there, confessed in the file in their place; the capture went on",
+             (unsigned long long)st.spill_read_errors, (unsigned long long)st.spill_read_lost_packets[0], (unsigned long long)st.spill_read_lost_packets[1]);
     blog(rc == CC_OK && !lost ? LOG_INFO : LOG_ERROR,
          "[shuttle-source] raw .tpc closed%s: %s — %llu records, %.1f MB written, tee loss video %llu pkts / %llu B, audio %llu pkts / %llu B, control records dropped %llu, ring peak %.1f MB, largest write %zu B | writer: %llu writes, mean %.2f ms, longest %.1f ms, %llu over 100 ms, longest wait between writes with data ready %.1f ms | loss episodes %llu, writer inside a write call at %llu of them (for up to %.1f ms by then); most found waiting after an idle wait %.1f MB | ring memory handed back %.0f MB, %llu refusals | local spill %s: %.1f MB through it, peak %.1f MB on disk, %llu segments, %llu refused at the free-space floor, longest spill write %.1f ms%s%s%s%s",
          rc == CC_OK ? "" : " WITH A WRITE ERROR", j->path, (unsigned long long)st.records, st.bytes_written / 1e6,

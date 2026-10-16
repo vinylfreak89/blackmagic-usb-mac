@@ -1336,6 +1336,7 @@ ssize_t (*cc_async_sink_test_write)(int fd, const void *buf, size_t n) = NULL;
 int (*cc_async_sink_test_fsync)(int fd) = NULL;
 ssize_t (*cc_async_sink_test_spill_write)(int fd, const void *buf, size_t n, off_t off) = NULL;
 uint64_t (*cc_async_sink_test_free)(const char *dir) = NULL;
+ssize_t (*cc_async_sink_test_spill_read)(int fd, void *buf, size_t n, off_t off) = NULL;
 int cc_async_sink_test_spill_any_volume = 0;
 /* Flush to the volume this often. A network volume (LucidLink's SMB share) refuses writes at the flush, not at
  * write(): a full filespace once let gigabytes of acknowledged writes pile up as failing write-backs that the
@@ -1366,9 +1367,15 @@ struct cc_async_sink {
     int spill_on, spill_thread, spill_state; _Atomic int spill_error;
     pthread_t sthr; pthread_cond_t acv; _Atomic size_t a_wake_at;   // the producer wakes the spiller when head reaches a_wake_at
     char *sdir, *sbase; uint32_t stag; uint64_t sfloor; size_t safter, sseg;
-    uint64_t sp_w, sp_r, floor_retry_ns; // under m
+    uint64_t sp_w, sp_r, floor_retry_ns; // under m: bytes spilled and consumed (sp_w-sp_r is on disk)
+    /* Spilled chunks, in order: whole records each, with what they hold, so a chunk the local disk cannot give back
+     * is replaced in the file by HostLoss records saying exactly what was lost there. Under m. */
+    struct as_sd { uint64_t seg; uint32_t off, len, ctl; uint32_t pk[2]; uint64_t by[2]; int last; } *sdq;
+    uint64_t sd_w, sd_r, segs_made, seg_lo, swoff;   /* chunks; segments created; the oldest not yet deleted; fill of the open one */
+    _Atomic uint64_t spill_read_errors, spill_read_lost_pk[2], spill_read_lost_by[2];
     int64_t spill_room; uint64_t stale_files, stale_bytes; int finished;   /* at open: free bytes above the floor; segments of dead writers */
     int swfd, srfd; uint64_t swseg, srseg;   // spiller's open segment; writer's
+    size_t bcap;                         // bbuf: a chunk, or one record larger than a chunk
     _Atomic uint64_t spill_bytes, spill_peak, spill_segments, spill_floor_refusals, spill_max_write_ns;
 };
 static size_t as_free_(struct cc_async_sink *k){
@@ -1528,25 +1535,64 @@ static void as_dest_write_(struct cc_async_sink *k, const uint8_t *buf, size_t n
         if(r!=0) k->io_errno=errno?errno:EIO;   /* from here on everything drains into the discarded count */
     }
 }
-/* Read spill bytes [off, off+n) (within one segment) into the writer's buffer. 0 on failure (errno set). */
-static int as_spill_read_(struct cc_async_sink *k, uint64_t off, size_t n){
-    uint64_t seg=off/k->sseg;
-    if(k->srfd<0 || k->srseg!=seg){
+#define AS_SD_CAP ((uint64_t)1<<18)      /* spilled chunks tracked at once: 256 GB of spill at 1 MiB chunks */
+#define AS_PI_SPILL_LOSS 0xFFFBu          /* HostLoss written where spilled records could not be read back */
+static void as_peek_(const struct cc_async_sink *k, size_t at, void *out, size_t n){
+    size_t o=at%k->cap, first=n<k->cap-o?n:k->cap-o;
+    memcpy(out,k->ring+o,first); if(n>first) memcpy((uint8_t*)out+first,k->ring,n-first);
+}
+/* Whole records from stream position `from` (a record boundary) to `end`, at most `max` bytes but at least one
+ * record; what they hold: DATA packets and bytes, HostLoss already confessed, other records (ctl). */
+static size_t as_records_(const struct cc_async_sink *k, size_t from, size_t end, size_t max, struct as_sd *d){
+    size_t p=from; memset(d,0,sizeof *d);
+    while(end-p>=sizeof(rec_hdr)){
+        rec_hdr h; as_peek_(k,p,&h,sizeof h);
+        size_t len=sizeof h+((h.type==REC_DATA||h.type==REC_SESSION)?h.actual_len:0);
+        if(len>end-p || (p>from && p+len-from>max)) break;
+        int e=h.endpoint==CC_EP_AUDIO;
+        if(h.type==REC_DATA){ d->pk[e]++; d->by[e]+=h.actual_len; }
+        else if(h.type==REC_HOSTLOSS){ d->pk[e]+=h.req_len; d->by[e]+=h.actual_len; }
+        else d->ctl++;
+        p+=len;
+    }
+    return p-from;
+}
+/* The writer's chunk of spill: one segment read. 0 on failure (errno set). */
+static int as_spill_read_(struct cc_async_sink *k, const struct as_sd *d){
+    if(k->srfd<0 || k->srseg!=d->seg){
         if(k->srfd>=0) close(k->srfd);
-        char nm[PATH_MAX]; as_seg_name_(k,seg,nm,sizeof nm);
-        k->srfd=open(nm,O_RDONLY); k->srseg=seg;
+        char nm[PATH_MAX]; as_seg_name_(k,d->seg,nm,sizeof nm);
+        k->srfd=open(nm,O_RDONLY); k->srseg=d->seg;
         if(k->srfd<0) return 0;
     }
     size_t done=0;
-    while(done<n){
-        ssize_t r=pread(k->srfd,k->bbuf+done,n-done,(off_t)(off%k->sseg+done));
+    while(done<d->len){
+        ssize_t r=cc_async_sink_test_spill_read?cc_async_sink_test_spill_read(k->srfd,k->bbuf+done,d->len-done,(off_t)(d->off+done))
+                                              :pread(k->srfd,k->bbuf+done,d->len-done,(off_t)(d->off+done));
         if(r<0 && errno==EINTR) continue;
         if(r<=0){ if(!r) errno=EIO; return 0; }
         done+=(size_t)r;
     }
     return 1;
 }
-/* The writer: the only thread that touches the destination. It takes the oldest bytes, from the spill while the
+/* Spilled records the disk would not give back: in their place, HostLoss records with exactly what they held
+ * (their packets, and loss they had already confessed), so the file stays whole records and says what is missing
+ * there. The capture goes on (owner: "real time drops shouldn't crash a program"). */
+static void as_spill_lost_(struct cc_async_sink *k, const struct as_sd *d, uint64_t *last_done, uint64_t *since_sync){
+    atomic_fetch_add(&k->spill_read_errors,1);
+    for(int e=0;e<2;e++){
+        if(!d->pk[e] && !d->by[e]) continue;
+        atomic_fetch_add(&k->spill_read_lost_pk[e],d->pk[e]); atomic_fetch_add(&k->spill_read_lost_by[e],d->by[e]);
+        uint64_t by=d->by[e];
+        do { uint32_t b=(uint32_t)(by>0xffffffffu?0xffffffffu:by); by-=b;
+             rec_hdr h={REC_MAGIC,REC_HOSTLOSS,e?CC_EP_AUDIO:CC_EP_VIDEO,(uint16_t)AS_PI_SPILL_LOSS,0,0,d->pk[e],b};
+             if(!k->io_errno) as_dest_write_(k,(const uint8_t*)&h,sizeof h,last_done,since_sync);
+             atomic_fetch_add(&k->records,1);
+        } while(by);
+    }
+    if(d->ctl) atomic_fetch_add(&k->control_dropped,d->ctl);
+}
+/* The writer: the only thread that touches the destination. It takes the oldest records, from the spill while the
  * spill holds any, otherwise from memory, and writes them in stream order. A destination call that blocks for
  * seconds holds only this thread and its private chunk; memory keeps draining into the spill meanwhile. */
 static void *as_writer_(void *arg){
@@ -1557,15 +1603,13 @@ static void *as_writer_(void *arg){
     int idle=0;                          /* the last pass found nothing to write (not thread start-up) */
     pthread_mutex_lock(&k->m);
     for(;;){
-        size_t n; uint64_t sp=0; int from_spill=0;
-        if(k->sp_r<k->sp_w){             /* the oldest bytes are on disk */
-            sp=k->sp_r; n=k->sp_w-sp<k->chunk?(size_t)(k->sp_w-sp):k->chunk;
-            size_t left=(size_t)(k->sseg-sp%k->sseg); if(n>left) n=left;
-            from_spill=1;
-        } else if(k->take_busy){         /* the spiller is moving the next bytes to disk; it signals when done */
+        size_t n; struct as_sd d; int from_spill=0;
+        if(k->sd_r<k->sd_w){             /* the oldest records are on disk */
+            d=k->sdq[k->sd_r%AS_SD_CAP]; n=d.len; from_spill=1;
+        } else if(k->take_busy){         /* the spiller is moving the next records to disk; it signals when done */
             as_wait_(&k->cv,&k->m,100000000ull); continue;
         } else {
-            size_t avail=atomic_load_explicit(&k->head,memory_order_acquire)-k->mpos;
+            size_t head=atomic_load_explicit(&k->head,memory_order_acquire), avail=head-k->mpos;
             if(!avail){
                 last_done=0; idle=1;
                 if(atomic_load(&k->stop)) break;
@@ -1574,27 +1618,31 @@ static void *as_writer_(void *arg){
             /* What had built up while this thread was away in its idle wait: at device rate, how long it was not running.
              * (max_ready_gap_ns cannot see that: it measures between writes, and an idle writer has no previous write.) */
             if(idle){ idle=0; if(avail>atomic_load_explicit(&k->max_wake_backlog,memory_order_relaxed)) atomic_store_explicit(&k->max_wake_backlog,avail,memory_order_relaxed); }
-            size_t lo=k->mpos, o=lo%k->cap; n=avail;
-            if(n>k->cap-o) n=k->cap-o;
-            if(n>k->chunk) n=k->chunk;
+            size_t lo=k->mpos; n=as_records_(k,lo,head,k->chunk,&d);
             k->mpos=lo+n; k->take_busy=1;
             pthread_mutex_unlock(&k->m);
-            memcpy(k->bbuf,k->ring+o,n);
+            as_peek_(k,lo,k->bbuf,n);
             pthread_mutex_lock(&k->m);
             as_consumed_(k,lo+n); k->take_busy=0; pthread_cond_signal(&k->acv);
         }
         pthread_mutex_unlock(&k->m);
-        if(from_spill && !k->io_errno && !as_spill_read_(k,sp,n)) k->io_errno=errno?errno:EIO;   /* bytes lost on the local disk: the file is incomplete */
         if(k->io_errno) atomic_fetch_add_explicit(&k->discarded,n,memory_order_relaxed);
-        else as_dest_write_(k,k->bbuf,n,&last_done,&since_sync);
-        uint64_t done_seg=UINT64_MAX;
-        if(from_spill && (sp+n)%k->sseg==0){   /* that segment is fully delivered: its disk space goes back now */
-            done_seg=sp/k->sseg;
-            if(k->srfd>=0 && k->srseg==done_seg){ close(k->srfd); k->srfd=-1; }
-            char nm[PATH_MAX]; as_seg_name_(k,done_seg,nm,sizeof nm); unlink(nm);
+        else if(from_spill && !as_spill_read_(k,&d)) as_spill_lost_(k,&d,&last_done,&since_sync);
+        else for(size_t w=0;w<n && !k->io_errno;){   /* destination writes never exceed the chunk */
+            size_t m=n-w<k->chunk?n-w:k->chunk; as_dest_write_(k,k->bbuf+w,m,&last_done,&since_sync); w+=m;
         }
         pthread_mutex_lock(&k->m);
-        if(from_spill){ k->sp_r=sp+n; if(done_seg!=UINT64_MAX){ k->floor_retry_ns=0; pthread_cond_signal(&k->acv); } }
+        if(from_spill){
+            int last=k->sdq[k->sd_r%AS_SD_CAP].last;   /* re-read: the spiller may have closed this segment meanwhile */
+            k->sd_r++; k->sp_r+=d.len;
+            if(last){                    /* that segment is fully delivered: its disk space goes back now */
+                pthread_mutex_unlock(&k->m);
+                if(k->srfd>=0 && k->srseg==d.seg){ close(k->srfd); k->srfd=-1; }
+                char nm[PATH_MAX]; as_seg_name_(k,d.seg,nm,sizeof nm); unlink(nm);
+                pthread_mutex_lock(&k->m);
+                k->seg_lo=d.seg+1; k->floor_retry_ns=0; pthread_cond_signal(&k->acv);
+            }
+        }
     }
     pthread_mutex_unlock(&k->m);
     return NULL;
@@ -1614,52 +1662,60 @@ static void *as_spiller_(void *arg){
     pthread_mutex_lock(&k->m);
     for(;;){
         if(atomic_load(&k->stop) || k->io_errno) break;
-        size_t backlog=atomic_load_explicit(&k->head,memory_order_acquire)-k->mpos;
+        size_t head=atomic_load_explicit(&k->head,memory_order_acquire), backlog=head-k->mpos;
         if(k->take_busy || backlog<k->safter){
             atomic_store_explicit(&k->a_wake_at,k->mpos+k->safter,memory_order_relaxed);
             as_wait_(&k->acv,&k->m,100000000ull); continue;
         }
-        uint64_t seg=k->sp_w/k->sseg;
-        if(k->swfd<0 || k->swseg!=seg){  /* a new segment: only with the floor still clear after it */
-            uint64_t now=as_now_();
-            if(now<k->floor_retry_ns){ atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed); as_wait_(&k->acv,&k->m,k->floor_retry_ns-now); continue; }
+        uint64_t now=as_now_();
+        if(now<k->floor_retry_ns){ atomic_store_explicit(&k->a_wake_at,SIZE_MAX,memory_order_relaxed); as_wait_(&k->acv,&k->m,k->floor_retry_ns-now); continue; }
+        if(k->sd_w-k->sd_r==AS_SD_CAP){      /* every chunk slot in use: memory is the buffer until one frees */
+            atomic_fetch_add_explicit(&k->spill_floor_refusals,1,memory_order_relaxed); k->floor_retry_ns=as_now_()+100000000ull; continue;
+        }
+        struct as_sd d; size_t lo=k->mpos, n=as_records_(k,lo,head,k->chunk,&d);
+        if(k->swfd<0 || k->swoff+n>k->sseg){ /* a new segment: only with the floor still clear after it */
+            int ours=0; uint64_t old=k->swseg;
+            if(k->swfd>=0){                  /* the full one goes to whoever delivers its last chunk */
+                if(k->sd_w>k->sd_r) k->sdq[(k->sd_w-1)%AS_SD_CAP].last=1; else ours=1;
+            }
+            int oldfd=k->swfd; k->swfd=-1;
             pthread_mutex_unlock(&k->m);
-            int fd=-1, err=0; uint64_t fr=as_free_bytes_(k);
-            if(k->swfd>=0){ close(k->swfd); k->swfd=-1; }
+            if(oldfd>=0) close(oldfd);
+            if(ours){ char nm[PATH_MAX]; as_seg_name_(k,old,nm,sizeof nm); unlink(nm); }
+            int fd=-1, err=0; uint64_t fr=as_free_bytes_(k), seg=k->segs_made;
             if(fr>=k->sfloor+k->sseg){
                 char nm[PATH_MAX]; as_seg_name_(k,seg,nm,sizeof nm);
                 fd=open(nm,O_WRONLY|O_CREAT|O_EXCL,0600); if(fd<0) err=errno;
             }
             pthread_mutex_lock(&k->m);
+            if(ours){ k->seg_lo=old+1; }
             if(fd<0 && !err){                /* the floor: retry when a segment is freed, or the volume gains space */
                 atomic_fetch_add_explicit(&k->spill_floor_refusals,1,memory_order_relaxed);
                 k->floor_retry_ns=as_now_()+100000000ull; continue;
             }
             if(fd<0){ k->spill_error=err; break; }
-            k->swfd=fd; k->swseg=seg; atomic_fetch_add_explicit(&k->spill_segments,1,memory_order_relaxed);
+            k->swfd=fd; k->swseg=seg; k->segs_made=seg+1; k->swoff=0;
+            atomic_fetch_add_explicit(&k->spill_segments,1,memory_order_relaxed);
             continue;                        /* state may have moved while unlocked */
         }
-        size_t lo=k->mpos, o=lo%k->cap, n=backlog;
-        if(n>k->cap-o) n=k->cap-o;
-        if(n>k->chunk) n=k->chunk;
-        size_t left=(size_t)(k->sseg-k->sp_w%k->sseg); if(n>left) n=left;
-        uint64_t at=k->sp_w; k->mpos=lo+n; k->take_busy=1;
+        uint64_t at=k->swoff; k->mpos=lo+n; k->take_busy=1;
         pthread_mutex_unlock(&k->m);
         size_t done=0; int err=0; uint64_t t0=as_now_();
-        while(done<n){
-            ssize_t w=cc_async_sink_test_spill_write?cc_async_sink_test_spill_write(k->swfd,k->ring+o+done,n-done,(off_t)(at%k->sseg+done))
-                                                    :pwrite(k->swfd,k->ring+o+done,n-done,(off_t)(at%k->sseg+done));
+        while(done<n){                       /* records may wrap the ring: at most two pieces */
+            size_t o=(lo+done)%k->cap, piece=n-done<k->cap-o?n-done:k->cap-o;
+            ssize_t w=cc_async_sink_test_spill_write?cc_async_sink_test_spill_write(k->swfd,k->ring+o,piece,(off_t)(at+done))
+                                                    :pwrite(k->swfd,k->ring+o,piece,(off_t)(at+done));
             if(w<0 && errno==EINTR) continue;
             if(w<=0){ err=w<0?errno:EIO; break; }
             done+=(size_t)w;
         }
         uint64_t dt=as_now_()-t0;
         if(dt>atomic_load_explicit(&k->spill_max_write_ns,memory_order_relaxed)) atomic_store_explicit(&k->spill_max_write_ns,dt,memory_order_relaxed);
-        if(!err && (at+n)%k->sseg==0){ close(k->swfd); k->swfd=-1; }   /* full: the writer frees it once delivered */
         pthread_mutex_lock(&k->m);
         k->take_busy=0;
-        if(err){ k->mpos=lo; k->spill_error=err; pthread_cond_signal(&k->cv); break; }   /* the bytes are still in memory */
-        k->sp_w=at+n; as_consumed_(k,lo+n);
+        if(err){ k->mpos=lo; k->spill_error=err; pthread_cond_signal(&k->cv); break; }   /* the records are still in memory */
+        d.seg=k->swseg; d.off=(uint32_t)at; d.len=(uint32_t)n; d.last=0;
+        k->sdq[k->sd_w%AS_SD_CAP]=d; k->sd_w++; k->swoff=at+n; k->sp_w+=n; as_consumed_(k,lo+n);
         atomic_fetch_add_explicit(&k->spill_bytes,n,memory_order_relaxed);
         if(k->sp_w-k->sp_r>atomic_load_explicit(&k->spill_peak,memory_order_relaxed)) atomic_store_explicit(&k->spill_peak,k->sp_w-k->sp_r,memory_order_relaxed);
         pthread_cond_signal(&k->cv);
@@ -1692,7 +1748,7 @@ int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *
     atomic_store(&k->a_wake_at,SIZE_MAX);
     size_t page=(size_t)getpagesize(), g=ring_bytes/64<(1u<<20)?ring_bytes/64:(1u<<20);
     k->granule=ring_bytes%page?0:g-g%page;                /* a ring that is not whole pages publishes exactly and keeps its memory */
-    k->bbuf=malloc(chunk);
+    k->bcap=chunk+((size_t)128<<10); k->bbuf=malloc(k->bcap);   /* a chunk, or one record larger than it */
     k->ring=k->bbuf?mmap(NULL,ring_bytes,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0):MAP_FAILED;
     if(k->ring==MAP_FAILED){ free(k->bbuf); free(k); return CC_ERR_NOMEM; }
     k->fd=open(path,O_WRONLY|O_CREAT|O_EXCL,0644);
@@ -1714,7 +1770,9 @@ int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *
             k->sseg=sp->segment?sp->segment:(size_t)128<<20;
             size_t def=ring_bytes/16; if(def<((size_t)8<<20)) def=(size_t)8<<20; if(def>((size_t)256<<20)) def=(size_t)256<<20;
             k->safter=sp->after?sp->after:def;
-            k->spill_state=k->sdir && k->sbase?1:-ENOMEM; k->spill_on=k->spill_state==1;
+            k->sdq=mmap(NULL,AS_SD_CAP*sizeof *k->sdq,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANON,-1,0);   /* touched as used */
+            if(k->sdq==MAP_FAILED) k->sdq=NULL;
+            k->spill_state=k->sdir && k->sbase && k->sdq?1:-ENOMEM; k->spill_on=k->spill_state==1;
             if(k->spill_on){ uint64_t fr=as_free_bytes_(k); k->spill_room=(int64_t)fr-(int64_t)k->sfloor; as_stale_scan_(k); }
         }
     }
@@ -1729,7 +1787,7 @@ int cc_async_sink_open_spill(cc_async_sink **out, const char *path, const char *
     }
     if(!started){
         close(k->fd); unlink(path); pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); pthread_cond_destroy(&k->acv);
-        munmap(k->ring,k->cap); free(k->bbuf); free(k->sdir); free(k->sbase); free(k); return CC_ERR_NOMEM;
+        munmap(k->ring,k->cap); free(k->bbuf); free(k->sdir); free(k->sbase); if(k->sdq) munmap(k->sdq,AS_SD_CAP*sizeof *k->sdq); free(k); return CC_ERR_NOMEM;
     }
     *out=k; return CC_OK;
 }
@@ -1759,7 +1817,8 @@ int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
     cc_async_sink_finish(k);
     if(k->swfd>=0) close(k->swfd);
     if(k->srfd>=0) close(k->srfd);
-    if(k->sdir) for(uint64_t g=k->sp_r/k->sseg; g<=k->sp_w/k->sseg; g++){ char nm[PATH_MAX]; as_seg_name_(k,g,nm,sizeof nm); unlink(nm); }
+    if(k->sdir) for(uint64_t g=k->seg_lo; g<k->segs_made; g++){ char nm[PATH_MAX]; as_seg_name_(k,g,nm,sizeof nm); unlink(nm); }
+    if(k->sdq) munmap(k->sdq,AS_SD_CAP*sizeof *k->sdq);
     /* A loss run still pending at the end: the writer has drained and gone, so its confession goes straight to the
      * file (the ring may have been full to the last packet). Only a file that already failed leaves it uncounted
      * in the stream, and then it is counted as a dropped control record. */
@@ -1798,6 +1857,8 @@ int cc_async_sink_close(cc_async_sink *k, cc_async_sink_stats *st){
         st->spill_state=k->spill_state; st->spill_error=k->spill_error; st->spill_bytes=atomic_load(&k->spill_bytes);
         st->spill_peak=atomic_load(&k->spill_peak); st->spill_segments=atomic_load(&k->spill_segments);
         st->spill_floor_refusals=atomic_load(&k->spill_floor_refusals); st->spill_max_write_ns=atomic_load(&k->spill_max_write_ns);
+        st->spill_read_errors=atomic_load(&k->spill_read_errors);
+        for(int e=0;e<2;e++){ st->spill_read_lost_packets[e]=atomic_load(&k->spill_read_lost_pk[e]); st->spill_read_lost_bytes[e]=atomic_load(&k->spill_read_lost_by[e]); }
     }
     int rc=k->io_errno?CC_ERR_IO:CC_OK;
     pthread_mutex_destroy(&k->m); pthread_cond_destroy(&k->cv); pthread_cond_destroy(&k->acv);

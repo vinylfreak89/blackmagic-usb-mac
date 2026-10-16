@@ -105,6 +105,11 @@ static void parse(const char *path,uint64_t data[2],uint64_t lost[2]){
     fclose(f);
 }
 static ssize_t slow_write(int fd,const void *b,size_t n){ struct timespec d={0,2000000}; nanosleep(&d,NULL); return write(fd,b,n); }
+static _Atomic int sread_calls, sread_fail_at;
+static ssize_t failing_spill_read(int fd,void *b,size_t n,off_t off){
+    if(atomic_fetch_add(&sread_calls,1)+1==atomic_load(&sread_fail_at)){ errno=EIO; return -1; }
+    return pread(fd,b,n,off);
+}
 struct prog { cc_async_sink *k; _Atomic int stop; int advances; };
 static void *watch_progress(void *a){
     struct prog *p=a; uint64_t last=cc_async_sink_progress(p->k);
@@ -251,7 +256,7 @@ int main(void){
     for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
     feed_paced(&ca,3000); atomic_store(&gate_open,1);
     assert(cc_async_sink_close(as,&st)==CC_OK);
-    assert(st.spill_error==EIO && st.spill_bytes==4*65536 && !st.lost_packets[0] && !st.lost_packets[1]);
+    assert(st.spill_error==EIO && st.spill_bytes>3*60000 && st.spill_bytes<=4*65536 && !st.lost_packets[0] && !st.lost_packets[1]);   /* four whole-record chunks */
     assert(same_file(r7,s9) && spill_files(sdir)==0);
     cc_async_sink_test_spill_write=NULL; cc_async_sink_test_spill_any_volume=0;
     /* 10. a destination on the spill's own volume gets no spill */
@@ -307,8 +312,31 @@ int main(void){
       uint64_t nf,nb; cc_async_sink_spill_stale(as,&nf,&nb); assert(nf==1 && nb>=4096);
       assert(cc_async_sink_close(as,&st)==CC_OK && access(stale,F_OK)==0 && access(live,F_OK)==0);
       unlink(stale); unlink(live); unlink(s13); unlink(ln); rmdir(pd); cc_async_sink_test_spill_any_volume=0; }
+    /* 14. a spilled chunk the local disk will not give back: the capture goes on. In its place the file gets HostLoss
+     * records (pkt_index 0xFFFB) with exactly the packets it held; every record still parses, and every fed packet
+     * is in the file or confessed, per endpoint. */
+    { char s14[256]; snprintf(s14,sizeof s14,"%s/sread14.tpc",dir); cc_async_sink_test_spill_any_volume=1;
+      cc_async_sink_test_spill_read=failing_spill_read; atomic_store(&sread_calls,0); atomic_store(&sread_fail_at,7);
+      cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0);
+      assert(cc_async_sink_open_spill(&as,s14,"sread",8u<<20,65536,&sp)==CC_OK); cc_async_sink_callbacks(as,&ca);
+      for(int i=0;!atomic_load(&in_gate);i++){ assert(i<5000); struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
+      feed_paced(&ca,3000); atomic_store(&gate_open,1);
+      assert(cc_async_sink_close(as,&st)==CC_OK && !st.io_error);
+      assert(st.spill_read_errors==1 && st.spill_read_lost_packets[0]>0 && !st.lost_packets[0] && !st.lost_packets[1]);
+      FILE *g=fopen(s14,"rb"); uint64_t dt[2]={0},lo[2]={0},sl[2]={0}; struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } hh;
+      while(fread(&hh,1,24,g)==24){ assert(hh.magic==0x31504143u); int e=hh.ep==CC_EP_AUDIO;
+          if(hh.type==0){ dt[e]++; fseek(g,hh.al,SEEK_CUR); } else if(hh.type==3) fseek(g,hh.al,SEEK_CUR);
+          else if(hh.type==1){ lo[e]+=hh.req; if(hh.pi==0xFFFB) sl[e]+=hh.req; } }
+      fclose(g);
+      printf("  unreadable spill chunk: %llu video / %llu audio packets confessed in its place, %llu + %llu delivered\n",
+             (unsigned long long)sl[0],(unsigned long long)sl[1],(unsigned long long)dt[0],(unsigned long long)dt[1]);
+      assert(sl[0]==st.spill_read_lost_packets[0] && sl[1]==st.spill_read_lost_packets[1]);
+      /* fed 2000 video / 1000 audio plus the forwarded loss of 3 video packets: all in the file or confessed */
+      assert(dt[0]+lo[0]==2003 && dt[1]+lo[1]==1000);
+      assert(spill_files(sdir)==0);
+      unlink(s14); cc_async_sink_test_spill_read=NULL; cc_async_sink_test_write=NULL; cc_async_sink_test_spill_any_volume=0; }
     unlink(r7); unlink(s7); unlink(s8); unlink(s9); rmdir(sdir);
     unlink(a); unlink(b); unlink(c); unlink(d); rmdir(dir);
-    puts("ASYNC-SINK PASS: byte-identical to the tagged sink, bounded writes, non-blocking stall with exact HostLoss, sticky write failure, exclusive create, lossless spill through a stalled destination, spill floor, failed spill write, no ring overrun on an unread-slot record, drain at close with progress, private spill directory, stale segments reported and kept");
+    puts("ASYNC-SINK PASS: byte-identical to the tagged sink, bounded writes, non-blocking stall with exact HostLoss, sticky write failure, exclusive create, lossless spill through a stalled destination, spill floor, failed spill write, no ring overrun on an unread-slot record, drain at close with progress, private spill directory, stale segments reported and kept, unreadable spill chunk confessed exactly and the capture goes on");
     return 0;
 }
