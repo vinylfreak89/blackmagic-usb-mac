@@ -46,6 +46,9 @@ enum cc_error_kind { CC_ERROR_TRANSFER = 0, CC_ERROR_SUBMIT = 1,
  * record itself arrives later in the stream, so a reader locates the gap by seq, never by the record's position
  * (the unit parser does not flag the unit in progress for it). */
 #define CC_PI_UNSCHEDULED_LATE 0xFFFCu
+/* The last record of a capture whose writer ended without closing, written by cc_spill_recover after the spilled
+ * records it recovered: whatever was still in memory then is lost, amount unknown (packets/bytes 0 = unknown). */
+#define CC_PI_UNCLOSED 0xFFFAu
 #define CC_XFERS_PER_ENDPOINT 32  /* isochronous transfers kept queued per endpoint (video: 32 x 16 ms = 512 ms ahead) */
 #define CC_DEFAULT_RING_MB 256  /* delivery ring when ring_mb is 0; the frameserver sizes its unit pool from it */
 #define CC_EP_VIDEO 0x83
@@ -253,6 +256,15 @@ int  cc_async_sink_spill_state(const cc_async_sink *k);   // as cc_async_sink_st
 // segment files of writers that are gone (undelivered capture bytes; counted, never deleted by the sink).
 int64_t cc_async_sink_spill_room(const cc_async_sink *k);
 void cc_async_sink_spill_stale(const cc_async_sink *k, uint64_t *files, uint64_t *bytes);
+// A writer that ended without closing (a crash) leaves its undelivered spill in the spill directory, with a
+// manifest naming its destination. This puts it where it belongs: for each such writer (its manifest lock is free),
+// the undelivered records are appended to the destination in order (a record cut by the crash is removed first and
+// what already arrived is skipped), followed by a CC_PI_UNCLOSED HostLoss; the appended bytes are read back, and only
+// then are the segments and manifest deleted. Anything it cannot do keeps them and is logged. Run it at start-up
+// (shuttle-capture and the OBS plugin do); log(ctx, line) gets one line per writer (NULL: stderr). 0, or -EPERM for
+// a spill directory that is not this user's private one.
+typedef struct { unsigned recovered, kept, failed; uint64_t bytes; } cc_spill_recover_stats;
+int  cc_spill_recover(const char *dir, void (*log)(void *ctx, const char *line), void *ctx, cc_spill_recover_stats *st);
 // Bytes the writer has finished with (written + discarded): a close that drains a backlog advances it.
 uint64_t cc_async_sink_progress(cc_async_sink *k);
 void cc_async_sink_callbacks(cc_async_sink *k, cc_callbacks *out); // packet/loss/error/tick

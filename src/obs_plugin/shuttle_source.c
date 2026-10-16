@@ -543,7 +543,7 @@ static void tpc_attach(shuttle_src *s){
         if (fs_tee_spill_info(s->fs, &room, &sf, &sb) == 0){
             if (ss == 1 && room < (int64_t)(128 << 20))
                 blog(LOG_ERROR, "[shuttle-source] local spill %s has NO ROOM now (%.1f GB above its 32 GB free-space floor): memory is the only buffer until space is freed", spill, room / 1e9);
-            if (sf) blog(LOG_WARNING, "[shuttle-source] local spill %s holds %llu segment files (%.1f MB) from capture processes that are gone: capture bytes that never reached their destination (left in place)", spill, (unsigned long long)sf, sb / 1e6);
+            if (sf) blog(LOG_WARNING, "[shuttle-source] local spill %s holds %llu segment files (%.1f MB) from capture processes that are gone and not yet recovered (see the spill recovery lines at load; left in place)", spill, (unsigned long long)sf, sb / 1e6);
         }
     } else blog(LOG_ERROR, "[shuttle-source] raw .tpc could not be started (exists? volume writable?): %s", path.array);
     dstr_free(&path); dstr_free(&note);
@@ -1158,11 +1158,22 @@ static struct obs_source_info shuttle_info = {
     .media_get_state = media_get_state,
 };
 
+/* A capture that ended without closing (an OBS crash) left its undelivered raw .tpc spill in scratch: it is put
+ * into its .tpc on a background thread at load, never on the UI thread (cc_spill_recover). */
+static pthread_t spill_recover_thr; static int spill_recover_started;
+static void spill_recover_log(void *ctx, const char *line){ (void)ctx; blog(strstr(line, "recovered") ? LOG_WARNING : LOG_ERROR, "[shuttle-source] %s", line); }
+static void *spill_recover_main(void *arg){
+    (void)arg; char dir[64]; snprintf(dir, sizeof dir, SIDECAR_SCRATCH_FMT, (unsigned)getuid());
+    cc_spill_recover_stats rs; int rc = cc_spill_recover(dir, spill_recover_log, NULL, &rs);
+    if (rc != 0) blog(LOG_ERROR, "[shuttle-source] spill recovery: %s is not a private directory of this user; nothing recovered", dir);
+    return NULL;
+}
 bool obs_module_load(void){
+    spill_recover_started = pthread_create(&spill_recover_thr, NULL, spill_recover_main, NULL) == 0;
     obs_register_source(&shuttle_info);
     discard_stream_register();
     tracking_meter_menu_register();
     blog(LOG_INFO, "[shuttle-source] loaded (libobs API %u.%u.%u)", LIBOBS_API_MAJOR_VER, LIBOBS_API_MINOR_VER, LIBOBS_API_PATCH_VER);
     return true;
 }
-void obs_module_unload(void){ tracking_meter_shutdown(); }
+void obs_module_unload(void){ tracking_meter_shutdown(); if (spill_recover_started) pthread_join(spill_recover_thr, NULL); }

@@ -152,6 +152,9 @@ int main(int argc,char**argv){
                  input_name(cfg.input),cc_mode_word(&cfg),ring_mb,CC_XFERS_PER_ENDPOINT,CC_XFERS_PER_ENDPOINT,
                  cfg.fail_stop_on_control_loss?"fail-stop":"continue");
     char spill_dir[64]; snprintf(spill_dir,sizeof spill_dir,CLI_SPILL_FMT,(unsigned)getuid());
+    { cc_spill_recover_stats rs;                   /* a capture that crashed before: its spill goes home first */
+      if(cc_spill_recover(spill_dir,NULL,NULL,&rs)==0 && (rs.recovered||rs.kept||rs.failed))
+          fprintf(stderr,"spill recovery: %u captures recovered (%.1f MB), %u kept, %u failed\n",rs.recovered,rs.bytes/1e6,rs.kept,rs.failed); }
     cc_async_sink_spill spill={spill_dir,0,0,0};
     if(cc_async_sink_open_spill(&g_k,sink_path,session_note,CLI_SINK_RING,1u<<20,&spill)!=CC_OK){
         perror(sink_path); if(publish) unlink(staged); return 1;
@@ -161,7 +164,7 @@ int main(int argc,char**argv){
       else if(ss==1 && cc_async_sink_spill_room(g_k)<(int64_t)(128<<20))
           fprintf(stderr,"local spill %s has NO ROOM now (%.1f GB above its 32 GB free-space floor): memory is the only buffer until space is freed\n",
                   spill_dir,cc_async_sink_spill_room(g_k)/1e9);
-      if(sf) fprintf(stderr,"local spill %s holds %llu segment files (%.1f MB) from capture processes that are gone: capture bytes that never reached their destination (left in place)\n",
+      if(sf) fprintf(stderr,"local spill %s holds %llu segment files (%.1f MB) from capture processes that are gone that recovery could not put back (see its lines above; left in place)\n",
                      spill_dir,(unsigned long long)sf,sb/1e6); }
     cc_callbacks cb; cc_async_sink_callbacks(g_k,&cb); cb.on_end=end_cb;
     int rc=cc_open(&g_s,&cfg,&cb);

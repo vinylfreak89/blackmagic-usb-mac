@@ -15,6 +15,9 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/wait.h>
+#include <spawn.h>
+extern char **environ;
 #include <signal.h>
 #include <sys/stat.h>
 static uint8_t payload[20000];
@@ -117,7 +120,21 @@ static void *watch_progress(void *a){
         uint64_t now=cc_async_sink_progress(p->k); if(now!=last){ p->advances++; last=now; } }
     return NULL;
 }
-int main(void){
+/* the crash child (test 15), run as its own process: spill with the destination stalled, let the writer cut a
+ * record mid-write, then exit without closing */
+static int crash_child(const char *dest, const char *sdir){
+    cc_async_sink_spill sp={sdir,1,1u<<20,1u<<20}; cc_async_sink *cs; cc_callbacks cc;
+    for(size_t i=0;i<sizeof payload;i++) payload[i]=(uint8_t)(i*7);
+    cc_async_sink_test_spill_any_volume=1; cc_async_sink_test_write=gated_write; atomic_store(&gate_open,0); atomic_store(&in_gate,0);
+    if(cc_async_sink_open_spill(&cs,dest,"spill",8u<<20,65536,&sp)!=CC_OK) return 2;
+    cc_async_sink_callbacks(cs,&cc);
+    for(int i=0;!atomic_load(&in_gate);i++){ if(i>5000) return 3; struct timespec dd={0,1000000}; nanosleep(&dd,NULL); }
+    feed_paced(&cc,3000);
+    atomic_store(&gate_open,1); struct timespec dd={0,30000000}; nanosleep(&dd,NULL);   /* some delivery, in 3000-byte writes */
+    _exit(0);                                          /* no close: the crash */
+}
+int main(int argc, char **argv){
+    if(argc==4 && !strcmp(argv[1],"--crash-child")) return crash_child(argv[2],argv[3]);
     for(size_t i=0;i<sizeof payload;i++) payload[i]=(uint8_t)(i*7);
     char dir[]="/tmp/async_sink_XXXXXX"; assert(mkdtemp(dir));
     char a[256],b[256],c[256]; snprintf(a,sizeof a,"%s/sync.tpc",dir); snprintf(b,sizeof b,"%s/async.tpc",dir); snprintf(c,sizeof c,"%s/stall.tpc",dir);
@@ -335,8 +352,37 @@ int main(void){
       assert(dt[0]+lo[0]==2003 && dt[1]+lo[1]==1000);
       assert(spill_files(sdir)==0);
       unlink(s14); cc_async_sink_test_spill_read=NULL; cc_async_sink_test_write=NULL; cc_async_sink_test_spill_any_volume=0; }
+    /* 15. a writer that dies without closing: its undelivered spill is put where it belongs at the next start. The
+     * child spills with its destination stalled, lets the writer cut a record mid-write, and exits without close.
+     * cc_spill_recover then leaves a destination that parses record by record, is a prefix of the full stream
+     * (byte for byte, against the synchronous sink's file) plus the end marker, and nothing in the spill directory.
+     * A live writer's spill is never touched. */
+    { char s15[256]; snprintf(s15,sizeof s15,"%s/crash15.tpc",dir); cc_async_sink_test_spill_any_volume=1;
+      pid_t c; char *cargv[]={argv[0],(char*)"--crash-child",s15,sdir,NULL};
+      assert(posix_spawn(&c,argv[0],NULL,NULL,cargv,environ)==0);
+      int ws; assert(waitpid(c,&ws,0)==c && WIFEXITED(ws) && WEXITSTATUS(ws)==0);
+      assert(spill_files(sdir)>0);                   /* something was left on the local disk */
+      struct stat before; assert(stat(s15,&before)==0);
+      /* a live writer alongside: its manifest is locked, so recovery leaves it */
+      char s15b[256]; snprintf(s15b,sizeof s15b,"%s/live15.tpc",dir); cc_async_sink *lv; assert(cc_async_sink_open_spill(&lv,s15b,"live",1u<<20,65536,&sp)==CC_OK);
+      cc_spill_recover_stats rs; assert(cc_spill_recover(sdir,NULL,NULL,&rs)==0);
+      assert(rs.recovered==1 && !rs.failed && !rs.kept);
+#if !defined(__has_feature) || !__has_feature(thread_sanitizer)
+      assert(rs.bytes>0);                              /* timing under TSan can leave nothing spilled to recover */
+#endif
+      { DIR *dd=opendir(sdir); struct dirent *de; int live=0; while((de=readdir(dd))) if(strstr(de->d_name,"live15")) live++; closedir(dd); assert(live==1); }   /* its manifest */
+      assert(cc_async_sink_close(lv,&st)==CC_OK); unlink(s15b);
+      assert(spill_files(sdir)==0);
+      FILE *g=fopen(s15,"rb"), *rf=fopen(r7,"rb"); assert(g && rf);
+      struct { uint32_t magic; uint8_t type,ep; uint16_t pi; uint32_t seq,st,req,al; } hh; long lastpos=-1; uint16_t lastpi=0; uint8_t lasttype=9;
+      while(fread(&hh,1,24,g)==24){ assert(hh.magic==0x31504143u); lastpos=ftell(g)-24; lasttype=hh.type; lastpi=hh.pi; if(hh.type==0||hh.type==3) fseek(g,hh.al,SEEK_CUR); }
+      assert(lasttype==1 && lastpi==0xFFFA);           /* marked as ended without closing */
+      fseek(g,0,SEEK_SET); for(long i=0;i<lastpos;i++) assert(fgetc(g)==fgetc(rf));   /* a prefix of the full stream */
+      printf("  crash without close: %.1f MB in the destination before (%lld B), %.1f MB recovered after it, %ld B of stream now, marked ended\n",
+             before.st_size/1e6,(long long)before.st_size,rs.bytes/1e6,lastpos);
+      fclose(g); fclose(rf); unlink(s15); cc_async_sink_test_spill_any_volume=0; cc_async_sink_test_write=NULL; atomic_store(&gate_open,1); }
     unlink(r7); unlink(s7); unlink(s8); unlink(s9); rmdir(sdir);
     unlink(a); unlink(b); unlink(c); unlink(d); rmdir(dir);
-    puts("ASYNC-SINK PASS: byte-identical to the tagged sink, bounded writes, non-blocking stall with exact HostLoss, sticky write failure, exclusive create, lossless spill through a stalled destination, spill floor, failed spill write, no ring overrun on an unread-slot record, drain at close with progress, private spill directory, stale segments reported and kept, unreadable spill chunk confessed exactly and the capture goes on");
+    puts("ASYNC-SINK PASS: byte-identical to the tagged sink, bounded writes, non-blocking stall with exact HostLoss, sticky write failure, exclusive create, lossless spill through a stalled destination, spill floor, failed spill write, no ring overrun on an unread-slot record, drain at close with progress, private spill directory, stale segments reported and kept, unreadable spill chunk confessed exactly and the capture goes on, a crashed writer's spill recovered into its destination");
     return 0;
 }
