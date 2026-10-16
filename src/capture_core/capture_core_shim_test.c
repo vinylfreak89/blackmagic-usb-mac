@@ -216,7 +216,39 @@ int main(int argc, char **argv){
                    sc[i].ms,sc[i].at,vf*8,af*8,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1],
                    (unsigned long long)st.unscheduled_events,lt.misplaced);
         }
-        unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT"); unsetenv("REPLAY_REALTIME");
+        unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT");
+        // 7b: bus-to-callback delay the model cannot see: under-reporting by at most the delay, never over, never misplaced
+        static const struct { int lat_us, ms; } lc[]={{1500,520},{1500,600},{3000,520},{3000,600},{3000,800}};
+        for(unsigned i=0;i<sizeof lc/sizeof lc[0];i++){
+            char lat[16], ms[16]; snprintf(lat,sizeof lat,"%d",lc[i].lat_us); snprintf(ms,sizeof ms,"%d",lc[i].ms);
+            setenv("REPLAY_LAT_US",lat,1); setenv("REPLAY_STALL_MS",ms,1); setenv("REPLAY_STALL_VIDEO_AT","100",1);
+            lt.n=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            CHECK(run_device_lt(&st,&t)==CC_OK,"latency %d us stall %d: open",lc[i].lat_us,lc[i].ms);
+            long long slack=((lc[i].lat_us+999)/1000+1)*8;
+            for(int e=0;e<2;e++){
+                long long tf; long tev, tk; replay_shim_gaps(e,&tf,&tev,&tk); long long got=(long long)st.unscheduled_packets[e], want=tf*8;
+                CHECK(got<=want+8 && got>=want-slack,"latency %d us stall %d %s: reported %lld, truth %lld (allowed down to %lld)",
+                      lc[i].lat_us,lc[i].ms,e?"audio":"video",got,want,want-slack);
+            }
+            CHECK(lt.misplaced==0,"latency %d us stall %d: %d misplaced reports",lc[i].lat_us,lc[i].ms,lt.misplaced);
+            long long vf,af; long ve,ae,vk,ak; replay_shim_gaps(0,&vf,&ve,&vk); replay_shim_gaps(1,&af,&ae,&ak);
+            printf("  latency %4d us, stall %d ms: truth %lld / %lld; reported %llu / %llu; backstop shifts %llu; misplaced %d\n",
+                   lc[i].lat_us,lc[i].ms,vf*8,af*8,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1],
+                   (unsigned long long)st.schedule_shifts,lt.misplaced);
+        }
+        unsetenv("REPLAY_LAT_US"); unsetenv("REPLAY_STALL_MS"); unsetenv("REPLAY_STALL_VIDEO_AT");
+        // 7c: a failed submit: no loss if libusb did not advance its queue end; one phantom transfer if it did
+        for(int adv=0;adv<2;adv++){
+            setenv("REPLAY_FAIL_SUBMIT_VIDEO_AT","100",1); if(adv) setenv("REPLAY_FAIL_ADVANCES","1",1); else unsetenv("REPLAY_FAIL_ADVANCES");
+            lt.n=0; lt.misplaced=0; lt.pending[0]=lt.pending[1]=0;
+            CHECK(run_device_lt(&st,&t)==CC_OK,"failed submit (advances %d): open",adv);
+            long long tf; long tev, tk; replay_shim_gaps(0,&tf,&tev,&tk);
+            long long got=(long long)st.unscheduled_packets[0], want=tf*8;
+            CHECK(got>=want-8 && got<=want+8,"failed submit (advances %d): reported %lld video packets, truth %lld",adv,got,want);
+            CHECK(lt.misplaced==0,"failed submit (advances %d): %d misplaced",adv,lt.misplaced);
+            printf("  failed submit, libusb %s its queue end: truth %lld, reported %lld, misplaced %d\n",adv?"advances":"does not advance",want,got,lt.misplaced);
+        }
+        unsetenv("REPLAY_FAIL_SUBMIT_VIDEO_AT"); unsetenv("REPLAY_FAIL_ADVANCES"); unsetenv("REPLAY_REALTIME");
     } else { fails++; fprintf(stderr,"FAIL: no realtime fixture given (case 7 not run)\n"); }
 
     printf(fails? "FAILURES: %d\n" : "SHIM TESTS PASSED\n", fails);

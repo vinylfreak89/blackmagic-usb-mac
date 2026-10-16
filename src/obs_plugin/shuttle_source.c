@@ -860,9 +860,9 @@ static void shuttle_stop(shuttle_src *s){
          (unsigned long long)st.audio_dropped_frames, (unsigned long long)st.dropped_pool_full, (unsigned long long)st.dropped_ring_full,
          (unsigned long long)st.holes, (unsigned long long)atomic_load(&s->audio_steps), (unsigned long long)st.partial_shown, (unsigned long long)atomic_load(&s->video_estimated));
     if (!s->replaying)
-        blog(st.unscheduled_events ? LOG_ERROR : LOG_INFO, "[shuttle-source] USB: %llu unread-slot events (%llu video / %llu audio packets never read); real-time USB threads: event %s (%s at stop), libusb %d",
+        blog(st.unscheduled_events || st.schedule_shifts ? LOG_ERROR : LOG_INFO, "[shuttle-source] USB: %llu unread-slot events (%llu video / %llu audio packets never read), %llu unexplained schedule shifts; real-time USB threads: event %s (priority at stop %d), libusb %d",
              (unsigned long long)st.unscheduled_events, (unsigned long long)st.unscheduled_packets[0], (unsigned long long)st.unscheduled_packets[1],
-             st.rt_event_thread ? "yes" : "NO", st.rt_event_at_stop ? "still" : "NOT", st.rt_libusb_threads);
+             (unsigned long long)st.schedule_shifts, st.rt_event_thread ? "yes" : "NO", st.rt_priority_at_stop, st.rt_libusb_threads);
     blog(LOG_INFO, "[shuttle-source] delivery timing: %llu handoff gaps over 83 ms (max %.1f ms), %llu output calls over 20 ms (max %.1f ms)",
          (unsigned long long)s->gap_events, s->max_gap_ns / 1e6, (unsigned long long)s->slow_calls, s->max_call_ns / 1e6);
     fs_close(s->fs); s->fs = NULL;

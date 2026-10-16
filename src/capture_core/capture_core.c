@@ -55,6 +55,7 @@ typedef struct {
     uint64_t next_retry_ms;
     int64_t end_frame;          /* unscheduled-slot model: the USB frame this transfer's slots end at */
     uint32_t gap_frames;        /* frames left unread before this transfer (reported just before its data) */
+    int uncertain;              /* failed submits just before this one: libusb may have advanced its queue end */
     struct cc_session *s;
 } xinfo;
 
@@ -86,10 +87,12 @@ struct cc_session {
     /* unscheduled-slot detector (device backend, event thread only): per endpoint, completions are expected every
      * transfer = npk x 125 us. A window's minimum lateness that steps up and stays up means slots were skipped. */
     struct { int anchored; uint64_t origin_ns; int64_t corr_ns, wmin_ns; int wn, high_windows;
-             int64_t lib_qend, data_end; int64_t tf; uint32_t wseq; } sch[2];
+             int64_t lib_qend, data_end; int64_t tf; int uncertain; } sch[2];
     double abs_to_ns;
     _Atomic uint64_t unsched_events, unsched_pkts[2];
-    int rt_event, rt_lib, rt_still;
+    int rt_event, rt_lib, rt_still, rt_pri_stop;
+    _Atomic uint64_t sched_shifts, sched_shift_frames;   /* backstop: unexplained completion shifts (model missed a gap) */
+    long dbg_hold_at; int dbg_hold_ms; long dbg_video_done;   /* CC_DEBUG_HOLD_AT/MS: hold the event thread once (tests) */
     _Atomic int stop_req, backend_done, started_successfully;
     _Atomic int end_reason; _Atomic int end_fired;
     _Atomic uint64_t packets_delivered; /* delivery thread, not the libusb callback */
@@ -420,65 +423,84 @@ static int rt_promote_libusb_threads_(char *names, size_t names_sz){
     vm_deallocate(mach_task_self(),(vm_address_t)th,n*sizeof *th);
     return promoted;
 }
-/* Unscheduled-slot detector: libusb's Darwin backend schedules an isochronous transfer at
- *     start = max(current bus frame + 4, the end of what the endpoint already has queued)      (1 ms frames)
- * and advances that end by the transfer's length on every submit attempt, even a failed one (libusb 1.0.30
- * darwin_usb.c). A start later than the end of the data already queued leaves frames that are never read and that
- * nothing records. This model mirrors the rule on the event thread (arithmetic only): it knows each transfer's start
- * and end frame, so it knows the size of every gap and the transfer it precedes, and the HostLoss record goes into the
- * stream immediately before that transfer's data. A stall that does not drain the queue leaves no gap, so it cannot
- * be reported. The current bus frame comes from the host clock: frame 0 is where the initial fleet starts (anchored by
- * the first completion, which ends at frame tf),
- * and corr_ns (the minimum of completion minus scheduled end, i.e. the callback latency floor) is tracked from every
- * normal completion, so the 3 ppm USB/host drift never accumulates. Backstop: completions that stay > 2 ms later
- * than the model for 3 windows mean the model missed a gap; that is reported (one window late) and the model re-anchored. */
+/* Unscheduled-slot detector: libusb's Darwin backend (1.0.30 darwin_usb.c) schedules an isochronous transfer at
+ *     start = max(current 1 ms bus frame + 4, the end of what the endpoint already has queued)
+ * and sets that end to start + the transfer's length after the IOKit call (even when the call fails; earlier failures,
+ * such as BUSY or NO_DEVICE in libusb core, return before it). A start past the end of the data already queued leaves
+ * frames that are never read and that nothing records. The event thread mirrors the rule (arithmetic only): each
+ * transfer's start and end frame is known at submit, so a gap is known with the transfer it precedes; it is counted
+ * at once and its HostLoss goes into the stream immediately before that transfer's data. A stall that does not drain
+ * the queue creates no gap, so it cannot be reported.
+ * The bus frame comes from the host clock: frame 0 is where the initial fleet starts, anchored by the first NORMAL
+ * completion; corr_ns is the latency floor (minimum of completion minus scheduled end) over normal completions, so
+ * the 3 ppm USB/host drift never accumulates. Known limit: the floor absorbs the bus-to-callback delay, so every
+ * gap is under-predicted by that delay (a gap no larger than it is missed at the gap). Measure it on hardware
+ * (CC_DEBUG_HOLD_*); exact frame numbers need IOKit's own completion timestamps.
+ * A failed submit is uncertain (libusb may or may not have advanced its queue end): it is settled when the next
+ * transferred one completes, by whether that completion lands a whole transfer later than the model said.
+ * Backstop: completions that stay > 2 ms later than the model for 3 windows are counted as a schedule shift and the
+ * model re-anchored; no record is placed (it could only land on an intact unit). */
 #define SCHED_FRAME_NS 1000000ll
 #define SCHED_LEAD 4                          /* libusb: frame += 4 */
-#define SCHED_PKTS_PER_FRAME 8                /* bInterval 1 at high speed: one packet per 125 us microframe */
+#define SCHED_PKTS_PER_FRAME 8                /* bInterval 1 at high speed (both endpoints, 8,000 packets/s measured) */
 static uint64_t sched_now_ns_(const cc_session *s){ return (uint64_t)((double)mach_absolute_time()*s->abs_to_ns); }
-static void sched_report_(cc_session *s, uint8_t ep, uint32_t seq, uint64_t frames){
-    int e=ep_i(ep); uint64_t pk=frames*SCHED_PKTS_PER_FRAME;
-    atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[e],pk);
+static void sched_count_(cc_session *s, int e, uint64_t frames){
+    atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[e],frames*SCHED_PKTS_PER_FRAME);
+}
+static void sched_place_(cc_session *s, uint8_t ep, uint32_t seq, uint64_t frames){
+    uint32_t pk=(uint32_t)(frames*SCHED_PKTS_PER_FRAME);
+    int e=ep_i(ep);
+    if(s->lost_pkts[e]) flush_loss_(s,ep);            /* ring loss already pending on this endpoint comes first */
     if(ring_free_(s)>=sizeof(rec_hdr)+CONTROL_TERMINAL_RESERVE){
-        rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)CC_PI_UNSCHEDULED,seq,0,(uint32_t)pk,0};
+        rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)CC_PI_UNSCHEDULED,seq,0,pk,0};
         ring_put_record_(s,&h,NULL,0); wake_(s);
     } else put_meta_(s,REC_HOSTLOSS,ep,(uint16_t)CC_PI_UNSCHEDULED,seq,0,NULL,0);   /* reserve policy: marks control loss */
 }
-/* every submit attempt goes through here: initial fleet (pre-anchor: contiguous by construction), resubmit, retry */
+/* every submit attempt goes through here: initial fleet (pre-anchor: back to back), resubmit, retry */
 static int sched_submit_(cc_session *s, xinfo *xi, int initial_index){
     int e=ep_i(xi->ep); __typeof__(s->sch[0]) *q=&s->sch[e];
     if(!q->tf) q->tf=(int64_t)xi->x->num_iso_packets/SCHED_PKTS_PER_FRAME;
-    int64_t start;
-    if(initial_index>=0 || !q->anchored){             /* before the first completion: libusb queues them back to back */
-        start=q->lib_qend; xi->gap_frames=0;          /* frame numbers fixed at the anchor: initial i ends at i*tf */
-    } else {
+    int64_t start; uint32_t gap=0;
+    if(initial_index>=0 || !q->anchored) start=q->lib_qend;   /* frames fixed at the anchor: initial i ends at (i+1)tf */
+    else {
         int64_t cur=((int64_t)(sched_now_ns_(s)-q->origin_ns)-q->corr_ns)/SCHED_FRAME_NS;
         start=cur+SCHED_LEAD; if(start<q->lib_qend) start=q->lib_qend;
-        xi->gap_frames=start>q->data_end?(uint32_t)(start-q->data_end):0;
+        gap=start>q->data_end?(uint32_t)(start-q->data_end):0;
     }
-    q->lib_qend=start+q->tf;                          /* advanced even if the submit fails, as libusb does */
     int rc=libusb_submit_transfer(xi->x);
-    if(rc==0){ xi->end_frame=start+q->tf; q->data_end=xi->end_frame; }
-    else xi->gap_frames=0;
+    if(rc==0){
+        q->lib_qend=start+q->tf; xi->end_frame=q->lib_qend; q->data_end=xi->end_frame;
+        xi->gap_frames=gap; xi->uncertain=q->uncertain; q->uncertain=0;
+        if(gap) sched_count_(s,e,gap);                /* counted when known, even if this transfer never completes */
+    } else { q->uncertain++; xi->gap_frames=0; xi->uncertain=0; }
     return rc;
 }
+/* before the transfer's data, on the event thread */
 static void sched_complete_(cc_session *s, xinfo *xi, int normal){
     int e=ep_i(xi->ep); __typeof__(s->sch[0]) *q=&s->sch[e];
     uint64_t now=sched_now_ns_(s);
-    if(!q->anchored){
-        /* frame 0 = the end of the first completed transfer; the initial fleet ends at 0, tf, 2tf, ... */
-        q->anchored=1; q->origin_ns=now-(uint64_t)(xi->end_frame*SCHED_FRAME_NS); q->corr_ns=0; q->wn=0; q->high_windows=0;
-    }
-    if(!normal) return;                               /* error completions occupied their slots but say nothing of timing */
+    if(!normal){ xi->uncertain=0; return; }           /* error completions occupied slots but say nothing of timing */
+    if(!q->anchored){ q->anchored=1; q->origin_ns=now-(uint64_t)(xi->end_frame*SCHED_FRAME_NS); q->corr_ns=0; q->wn=0; q->high_windows=0; }
     int64_t r=(int64_t)(now-q->origin_ns)-xi->end_frame*SCHED_FRAME_NS;
+    if(xi->uncertain){                                /* settle failed submits before this one */
+        int64_t late=r-q->corr_ns; xi->uncertain=0;
+        if(late>q->tf*SCHED_FRAME_NS/2){              /* a whole phantom transfer (or more): libusb did advance */
+            int64_t shift=(late+SCHED_FRAME_NS/2)/SCHED_FRAME_NS;
+            xi->gap_frames+=(uint32_t)shift; sched_count_(s,e,(uint64_t)shift);
+            for(int i=0;i<NXF;i++) if(s->xs[i].x && s->xs[i].ep==xi->ep && &s->xs[i]!=xi && (int32_t)(s->xs[i].seq-xi->seq)>0)
+                s->xs[i].end_frame+=shift;            /* everything queued after it moved too */
+            q->lib_qend+=shift; q->data_end+=shift; xi->end_frame+=shift; r-=shift*SCHED_FRAME_NS;
+        }
+    }
+    if(xi->gap_frames){ sched_place_(s,xi->ep,xi->seq,xi->gap_frames); xi->gap_frames=0; }
     if(r<q->corr_ns) q->corr_ns=r;                    /* latency floor: any decrease at once */
-    if(!q->wn || r<q->wmin_ns){ q->wmin_ns=r; if(!q->wn) q->wseq=xi->seq; }
+    if(!q->wn || r<q->wmin_ns) q->wmin_ns=r;
     if(++q->wn<16) return;
     q->wn=0;
     int64_t step=q->wmin_ns-q->corr_ns;
     if(step>2*SCHED_FRAME_NS){
-        if(++q->high_windows>=3){                     /* the model missed a gap: report it, then re-anchor */
-            sched_report_(s,xi->ep,q->wseq,(uint64_t)(step/SCHED_FRAME_NS));
+        if(++q->high_windows>=3){                     /* the model missed something: count it, re-anchor, place nothing */
+            atomic_fetch_add(&s->sched_shifts,1); atomic_fetch_add(&s->sched_shift_frames,(uint64_t)(step/SCHED_FRAME_NS));
             q->corr_ns=q->wmin_ns; q->high_windows=0;
         }
     } else { q->high_windows=0; q->corr_ns+=step<50000?step:50000; }   /* drift: slow increase only */
@@ -489,10 +511,10 @@ static void usb_cb(struct libusb_transfer *x){
     atomic_fetch_sub(&s->inflight,1);
     int e=ep_i(xi->ep);
     int stopping_cancel=x->status==LIBUSB_TRANSFER_CANCELLED && atomic_load(&s->stop_req);
-    if(!stopping_cancel && x->status!=LIBUSB_TRANSFER_NO_DEVICE){
-        if(xi->gap_frames){ sched_report_(s,xi->ep,xi->seq,xi->gap_frames); xi->gap_frames=0; }   /* before its data */
-        sched_complete_(s,xi,x->status==LIBUSB_TRANSFER_COMPLETED);
-    }
+    if(!stopping_cancel && x->status!=LIBUSB_TRANSFER_NO_DEVICE)
+        sched_complete_(s,xi,x->status==LIBUSB_TRANSFER_COMPLETED);   /* places a known gap before this data */
+    if(e==0 && s->dbg_hold_at>0 && ++s->dbg_video_done==s->dbg_hold_at)
+        usleep((useconds_t)s->dbg_hold_ms*1000);      /* CC_DEBUG_HOLD_*: a held-off event thread, on purpose */
     if(x->status==LIBUSB_TRANSFER_COMPLETED){
         for(int i=0;i<x->num_iso_packets;i++){
             struct libusb_iso_packet_descriptor *p=&x->iso_packet_desc[i];
@@ -555,6 +577,8 @@ static void* device_main(void *arg){
     internal_session=s;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
     { mach_timebase_info_data_t tb; mach_timebase_info(&tb); s->abs_to_ns=tb.numer?(double)tb.numer/(double)tb.denom:1.0; }
+    { const char *a=getenv("CC_DEBUG_HOLD_AT"), *m=getenv("CC_DEBUG_HOLD_MS");   /* test instrument: never set in normal use */
+      s->dbg_hold_at=a?atol(a):0; s->dbg_hold_ms=m?atoi(m):0; s->dbg_video_done=0; }
     char note[480], lnames[96];
     int rt_self=rt_policy_(pthread_mach_thread_np(pthread_self()))==0, rt_lib=rt_promote_libusb_threads_(lnames,sizeof lnames);
     s->rt_event=rt_self; s->rt_lib=rt_lib;
@@ -615,7 +639,10 @@ static void* device_main(void *arg){
     }
 stopping:
     { thread_time_constraint_policy_data_t p; mach_msg_type_number_t n=THREAD_TIME_CONSTRAINT_POLICY_COUNT; boolean_t dflt=0;
-      s->rt_still=thread_policy_get(pthread_mach_thread_np(pthread_self()),THREAD_TIME_CONSTRAINT_POLICY,(thread_policy_t)&p,&n,&dflt)==KERN_SUCCESS && !dflt; }
+      s->rt_still=thread_policy_get(pthread_mach_thread_np(pthread_self()),THREAD_TIME_CONSTRAINT_POLICY,(thread_policy_t)&p,&n,&dflt)==KERN_SUCCESS && !dflt;
+      /* the policy read back can survive a fail-safe demotion; the scheduled priority cannot (real-time band >= 96) */
+      struct thread_extended_info ei; mach_msg_type_number_t c=THREAD_EXTENDED_INFO_COUNT;
+      s->rt_pri_stop=thread_info(pthread_mach_thread_np(pthread_self()),THREAD_EXTENDED_INFO,(thread_info_t)&ei,&c)==KERN_SUCCESS?ei.pth_curpri:-1; }
     // capture fleet before cancelling
     for(int i=0;i<NXF;i++) if(s->xs[i].x && !s->xs[i].pending)
         s->fleet[ep_i(s->xs[i].ep)]++;
@@ -907,6 +934,7 @@ static void* replay_main(void *arg){
             int le=ep_i(h.endpoint);
             if(h.pkt_index==CC_PI_UNSCHEDULED){   /* the capture's own unread-slot record: forward it as captured */
                 if(s->cfg.replay_block_when_full) replay_wait_space_(s,0);
+                if(s->lost_pkts[le]) flush_loss_(s,h.endpoint);   /* earlier ring loss first */
                 atomic_fetch_add(&s->unsched_events,1); atomic_fetch_add(&s->unsched_pkts[le],h.req_len);
                 if(ring_free_(s)>=sizeof(rec_hdr)+CONTROL_TERMINAL_RESERVE){ ring_put_record_(s,&h,NULL,0); wake_(s); }
                 else put_meta_(s,REC_HOSTLOSS,h.endpoint,(uint16_t)CC_PI_UNSCHEDULED,h.submit_seq,0,NULL,0);
@@ -1110,7 +1138,8 @@ void cc_get_stats(const cc_session *s, cc_stats *o){
     o->replay_corrupt_spans=s->corrupt_spans; o->replay_corrupt_bytes=s->corrupt_bytes;
     o->replay_align_bytes=s->align_bytes; o->replay_space_waits=atomic_load(&s->replay_space_waits);
     o->unscheduled_events=atomic_load(&s->unsched_events);
-    o->rt_event_thread=s->rt_event; o->rt_libusb_threads=s->rt_lib; o->rt_event_at_stop=s->rt_still;
+    o->rt_event_thread=s->rt_event; o->rt_libusb_threads=s->rt_lib; o->rt_event_at_stop=s->rt_still; o->rt_priority_at_stop=s->rt_pri_stop;
+    o->schedule_shifts=atomic_load(&s->sched_shifts); o->schedule_shift_frames=atomic_load(&s->sched_shift_frames);
     o->unscheduled_packets[0]=atomic_load(&s->unsched_pkts[0]); o->unscheduled_packets[1]=atomic_load(&s->unsched_pkts[1]);
 }
 int cc_replay_pause(cc_session *s, int paused){
@@ -1282,7 +1311,9 @@ static void as_loss_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by){
 }
 static void as_loss_ex_(void *ctx, uint8_t ep, uint32_t pk, uint64_t by, int kind, uint32_t seq){
     if(kind!=CC_LOSS_UNSCHEDULED){ as_loss_(ctx,ep,pk,by); return; }   /* never merged into a ring-loss run */
-    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)CC_PI_UNSCHEDULED,seq,0,pk,0}; as_meta_(ctx,&h);
+    struct cc_async_sink *k=ctx; int e=ep==CC_EP_AUDIO;
+    if(k->pend_pk[e]) as_flush_loss_(k,e);           /* loss confessed before this record stays before it */
+    rec_hdr h={REC_MAGIC,REC_HOSTLOSS,ep,(uint16_t)CC_PI_UNSCHEDULED,seq,0,pk,0}; as_meta_(k,&h);
 }
 static void as_error_(void *ctx, uint8_t ep, uint32_t seq, int st, int kind){
     uint16_t pi=kind==CC_ERROR_CONTROL_LOSS?0xFFFE:(kind==CC_ERROR_SUBMIT?0xFFFF:0);

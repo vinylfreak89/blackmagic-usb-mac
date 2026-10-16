@@ -30,6 +30,10 @@
 //                                at its scheduled end. A start past the queued data leaves a gap: the device's packets
 //                                for those frames are discarded from the file (never read), and the gap is recorded
 //                                as ground truth (replay_shim_gaps). For the capture core's unread-slot model:
+//   REPLAY_LAT_US=N              every completion arrives N us after its scheduled end (the bus-to-callback delay
+//                                the capture core cannot observe)
+//   REPLAY_FAIL_ADVANCES=1       a REPLAY_FAIL_SUBMIT_VIDEO_AT failure still advances the queue end by one transfer
+//                                (libusb sets frames[] after a failing IOKit call); default: it returns before
 //   REPLAY_STALL_VIDEO_AT=N, REPLAY_STALL_MS=M  the event thread is held off for M ms at the Nth video completion
 //                                (nothing is delivered, nothing resubmitted); whether slots are lost follows from the
 //                                schedule: a stall shorter than the queued time loses nothing.
@@ -81,7 +85,9 @@ static long g_alt_calls=0, g_fail_alt_at=-1, g_control_calls=0, g_fail_control_a
 static int g_withhold_cancel=0, g_burst=4, g_pace=0;
 static int g_rt=0, g_stall_ms=0; static long g_stall_at=-1, g_rt_vk=0;
 static uint64_t g_rt_t0=0;
-static long long g_qend[2];                 /* REPLAY_REALTIME: per endpoint, end frame of the queued schedule */
+static long long g_qend[2];                 /* REPLAY_REALTIME: per endpoint, libusb's frames[]: end of the schedule */
+static long long g_dend[2];                 /* end frame of the queued DATA (a failed advancing submit leaves a phantom) */
+static int g_lat_us=0, g_fail_advances=0;
 static long long g_gap_frames[2]; static long g_gap_events[2], g_skip_pkts[2];
 static long g_gap_first_k[2]; static long g_last_gap_pk;               /* index (1-based submit count) of the first transfer preceded by a gap */
 static long g_submits_rt[2];
@@ -97,13 +103,13 @@ static uint64_t rt_schedule_(struct libusb_transfer *x){
     long long start=rt_cur_frame_()+4; g_last_gap_pk=0;
     if(g_qend[e] && start<g_qend[e]) start=g_qend[e];
     g_submits_rt[e]++;
-    if(g_qend[e] && start>g_qend[e]){
-        long long gap=start-g_qend[e];
+    if(g_dend[e] && start>g_dend[e]){
+        long long gap=start-g_dend[e];
         g_gap_frames[e]+=gap; g_gap_events[e]++; g_last_gap_pk=(long)(gap*8);
         if(!g_gap_first_k[e]) g_gap_first_k[e]=g_submits_rt[e];
     }
-    g_qend[e]=start+tf;
-    return (uint64_t)g_qend[e]*1000ull;
+    g_qend[e]=start+tf; g_dend[e]=g_qend[e];
+    return (uint64_t)g_qend[e]*1000ull+(uint64_t)g_lat_us;
 }
 /* REPLAY_REALTIME: hold a filled transfer until its scheduled end; the stall holds everything */
 static void rt_wait_(struct libusb_transfer *x, uint64_t end_us){
@@ -155,7 +161,8 @@ int libusb_init(libusb_context **ctx){
     { const char *b=getenv("REPLAY_BURST"); g_burst=b?atoi(b):4; if(g_burst<1) g_burst=1; }
     { const char *p=getenv("REPLAY_PACE_US"); g_pace=p?atoi(p):0; }
     g_rt=getenv("REPLAY_REALTIME")!=NULL; g_rt_t0=0; g_rt_vk=0;
-    for(int e=0;e<2;e++){ g_qend[e]=0; g_gap_frames[e]=0; g_gap_events[e]=0; g_skip_pkts[e]=0; g_gap_first_k[e]=0; g_submits_rt[e]=0; }
+    g_lat_us=getenv("REPLAY_LAT_US")?atoi(getenv("REPLAY_LAT_US")):0; g_fail_advances=getenv("REPLAY_FAIL_ADVANCES")!=NULL;
+    for(int e=0;e<2;e++){ g_qend[e]=0; g_dend[e]=0; g_gap_frames[e]=0; g_gap_events[e]=0; g_skip_pkts[e]=0; g_gap_first_k[e]=0; g_submits_rt[e]=0; }
     g_stall_at=getenv("REPLAY_STALL_VIDEO_AT")?atol(getenv("REPLAY_STALL_VIDEO_AT")):-1; g_stall_ms=getenv("REPLAY_STALL_MS")?atoi(getenv("REPLAY_STALL_MS")):0;
     if(ctx) *ctx=&g_ctx;
     return 0;
@@ -195,6 +202,9 @@ int libusb_submit_transfer(struct libusb_transfer *x){
         g_v_submits++;
         if(g_fail_submit_at>0 && g_v_submits==g_fail_submit_at){
             g_fail_submit_at=-1;             // fail exactly once
+            if(g_rt && g_fail_advances){     // libusb's frames[] moves on although nothing was queued
+                long long start=rt_cur_frame_()+4; if(g_qend[0] && start<g_qend[0]) start=g_qend[0];
+                g_qend[0]=start+x->num_iso_packets/8; }
             return g_fail_submit_code;
         }
         if(g_fail_submit_from>0 && g_v_submits>=g_fail_submit_from) return g_fail_submit_code;

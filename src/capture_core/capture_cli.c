@@ -174,9 +174,11 @@ int main(int argc,char**argv){
            (unsigned long long)st.lost_bytes[0],(unsigned long long)st.lost_bytes[1],
            st.zero_len_packets,st.short_packets,st.ring_high_water,st.ring_size,
            st.fleet[0],st.fleet[1],st.fleet_size);
-    printf("unread USB slots (macOS skipped past them): %llu events, %llu video / %llu audio packets | real-time USB threads: event %s (%s at stop), libusb %d\n",
+    printf("unread USB slots (macOS skipped past them): %llu events, %llu video / %llu audio packets; unexplained schedule shifts %llu (%llu frames)\n",
            (unsigned long long)st.unscheduled_events,(unsigned long long)st.unscheduled_packets[0],(unsigned long long)st.unscheduled_packets[1],
-           st.rt_event_thread?"yes":"NO",st.rt_event_at_stop?"still":"NOT",st.rt_libusb_threads);
+           (unsigned long long)st.schedule_shifts,(unsigned long long)st.schedule_shift_frames);
+    printf("real-time USB threads: event %s (priority at stop %d, real-time band >= 96), libusb %d\n",
+           st.rt_event_thread?"yes":"NO",st.rt_priority_at_stop,st.rt_libusb_threads);
     printf("end=%s | control_records_dropped=%ld control_loss_markers=%ld\n",
            end_name(end_reason),st.control_records_dropped,st.control_loss_markers);
     cc_close(g_s);

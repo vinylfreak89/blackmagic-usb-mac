@@ -160,7 +160,9 @@ typedef struct {
     uint64_t unscheduled_packets[2];// [0]=video [1]=audio: slots never read (libusb's Darwin scheduling rule, +-1 frame)
     int rt_event_thread;            // device: 1 if the USB event thread got real-time scheduling at start
     int rt_libusb_threads;          // device: libusb-internal threads promoted (expected 1: org.libusb.device-hotplug)
-    int rt_event_at_stop;           // device: 1 if the event thread still had its real-time policy when streaming ended
+    int rt_event_at_stop;           // device: 1 if the event thread's real-time policy reads back at the end (can survive a demotion)
+    int rt_priority_at_stop;        // device: the event thread's scheduled priority at the end (real-time band >= 96; -1 unknown)
+    uint64_t schedule_shifts, schedule_shift_frames; // device: completions persistently later than the model (it missed a gap); not placed
 } cc_stats;
 // Snapshot of plain backend-thread counters: authoritative after cc_stop; a live call during
 // streaming is a racy diagnostic read (values may be momentarily inconsistent), never corrupting.
